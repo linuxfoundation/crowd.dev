@@ -107,60 +107,89 @@ setImmediate(async () => {
           if (data.attributes) {
             log.debug({ memberId: data.id }, 'Processing member attributes')
 
-            const oldAttributes = data.attributes
-            data.attributes = await mas.setAttributesDefaultValues(data.attributes)
+            // check if any has default empty but other are full
+            let process = false
+            for (const attName of Object.keys(data.attributes)) {
+              const defValue = data.attributes[attName].default
 
-            let attributes: Record<string, unknown> | undefined
-            const temp = { ...data.attributes }
-            const manuallyChangedFields: string[] = data.manuallyChangedFields || []
+              if (defValue === undefined || defValue === null || defValue === '') {
+                for (const platform of Object.keys(data.attributes[attName]).filter(
+                  (p) => p !== 'default',
+                )) {
+                  const value = data.attributes[attName][platform]
 
-            if (manuallyChangedFields.length > 0) {
-              log.debug(
-                {
-                  memberId: data.id,
-                  manuallyChangedFieldsCount: manuallyChangedFields.length,
-                },
-                'Member has manually changed fields',
-              )
+                  if (value !== undefined && value !== null && value !== '') {
+                    log.debug(
+                      { memberId: data.id, attName, platform, value },
+                      'Found value for attribute',
+                    )
+                    process = true
+                    break
+                  }
+                }
 
-              const prefix = 'attributes.'
-              const manuallyChangedAttributes = [
-                ...new Set(
-                  manuallyChangedFields
-                    .filter((f) => f.startsWith(prefix))
-                    .map((f) => f.slice(prefix.length)),
-                ),
-              ]
-
-              log.debug(
-                {
-                  memberId: data.id,
-                  manuallyChangedAttributes,
-                },
-                'Preserving manually changed attributes',
-              )
-
-              // Preserve manually changed attributes
-              for (const key of manuallyChangedAttributes) {
-                if (oldAttributes?.[key] !== undefined) {
-                  temp[key] = oldAttributes[key] // Fixed: removed .attributes
+                if (process) {
+                  break
                 }
               }
             }
 
-            if (!isEqual(temp, oldAttributes)) {
-              attributes = temp
-              log.debug({ memberId: data.id }, 'Attributes changed, will update')
-            } else {
-              log.debug({ memberId: data.id }, 'No changes needed for attributes')
-            }
+            if (process) {
+              const oldAttributes = data.attributes
+              data.attributes = await mas.setAttributesDefaultValues(data.attributes)
 
-            if (attributes) {
-              log.debug({ memberId: data.id }, 'Updating member attributes')
-              await updateMember(pgQx, data.id, { attributes } as any)
-              batchUpdated++
-              totalUpdated++
-              log.debug({ memberId: data.id }, 'Member attributes updated successfully')
+              let attributes: Record<string, unknown> | undefined
+              const temp = { ...data.attributes }
+              const manuallyChangedFields: string[] = data.manuallyChangedFields || []
+
+              if (manuallyChangedFields.length > 0) {
+                log.debug(
+                  {
+                    memberId: data.id,
+                    manuallyChangedFieldsCount: manuallyChangedFields.length,
+                  },
+                  'Member has manually changed fields',
+                )
+
+                const prefix = 'attributes.'
+                const manuallyChangedAttributes = [
+                  ...new Set(
+                    manuallyChangedFields
+                      .filter((f) => f.startsWith(prefix))
+                      .map((f) => f.slice(prefix.length)),
+                  ),
+                ]
+
+                log.debug(
+                  {
+                    memberId: data.id,
+                    manuallyChangedAttributes,
+                  },
+                  'Preserving manually changed attributes',
+                )
+
+                // Preserve manually changed attributes
+                for (const key of manuallyChangedAttributes) {
+                  if (oldAttributes?.[key] !== undefined) {
+                    temp[key] = oldAttributes[key] // Fixed: removed .attributes
+                  }
+                }
+              }
+
+              if (!isEqual(temp, oldAttributes)) {
+                attributes = temp
+                log.debug({ memberId: data.id }, 'Attributes changed, will update')
+              } else {
+                log.debug({ memberId: data.id }, 'No changes needed for attributes')
+              }
+
+              if (attributes) {
+                log.debug({ memberId: data.id }, 'Updating member attributes')
+                await updateMember(pgQx, data.id, { attributes } as any)
+                batchUpdated++
+                totalUpdated++
+                log.debug({ memberId: data.id }, 'Member attributes updated successfully')
+              }
             }
           } else {
             log.debug({ memberId: data.id }, 'Member has no attributes to process')
