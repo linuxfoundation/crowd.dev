@@ -119,6 +119,14 @@ setImmediate(async () => {
               const defValue = data.attributes[attName].default
 
               if (defValue === undefined || defValue === null || String(defValue) === '') {
+                log.debug(
+                  {
+                    memberId: data.id,
+                    attName,
+                    defValue: defValue ? String(defValue) : 'undefined',
+                  },
+                  'Attribute has default empty',
+                )
                 for (const platform of Object.keys(data.attributes[attName]).filter(
                   (p) => p !== 'default',
                 )) {
