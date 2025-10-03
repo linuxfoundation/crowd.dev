@@ -14,6 +14,8 @@ import MemberAttributeService from '../service/memberAttribute.service'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const BATCH_SIZE = process.env.TEST_RUN ? 1 : 5000
+
 const log = getServiceLogger()
 
 async function getMemberIds(
@@ -44,7 +46,7 @@ async function getMemberIds(
                                           and coalesce(kv.value, '') != '')
                                           ${lastId ? `and id < '${lastId}'` : ''}
                                           order by id desc
-                          limit 5000)
+                          limit ${BATCH_SIZE})
 select m.id, m.attributes
 from members m
          inner join
@@ -253,6 +255,10 @@ setImmediate(async () => {
       // Get next batch
       const lastId = membersToFix[membersToFix.length - 1].id
       log.debug({ lastId }, 'Fetching next batch starting from last ID')
+
+      if (process.env.TEST_RUN) {
+        break
+      }
 
       membersToFix = await getMemberIds(dbClient, lastId)
       log.info({ count: membersToFix.length }, 'Found members for next batch')
