@@ -196,7 +196,7 @@ setImmediate(async () => {
                 log.debug({ memberId: data.id }, 'Attributes changed, will update')
               } else {
                 log.debug(
-                  { memberId: data.id, newAttributes: temp },
+                  { memberId: data.id, newAttributes: temp, oldAttributes },
                   'No changes needed for attributes',
                 )
               }
