@@ -111,7 +111,10 @@ setImmediate(async () => {
       for (const data of membersToFix) {
         try {
           if (data.attributes) {
-            log.debug({ memberId: data.id }, 'Processing member attributes')
+            log.debug(
+              { memberId: data.id, oldAttributes: data.attributes },
+              'Processing member attributes',
+            )
 
             // check if any has default empty but other are full
             let process = false
