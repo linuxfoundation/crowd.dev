@@ -21,8 +21,14 @@ export async function setAttributesDefaultValues(
         throw err
       }
     }
+
+    const nonEmptyPlatform = Object.keys(attributes[attributeName]).filter((p) => {
+      const value = attributes[attributeName][p]
+      return value !== undefined && value !== null && String(value).trim().length > 0
+    })
+
     const highestPriorityPlatform = getHighestPriorityPlatformForAttributes(
-      Object.keys(attributes[attributeName]),
+      nonEmptyPlatform,
       priorities,
     )
 
