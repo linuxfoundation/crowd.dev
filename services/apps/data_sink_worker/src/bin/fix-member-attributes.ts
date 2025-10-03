@@ -155,7 +155,7 @@ setImmediate(async () => {
             }
 
             if (process) {
-              const oldAttributes = data.attributes
+              const oldAttributes = JSON.parse(JSON.stringify(data.attributes)) // Deep copy
               data.attributes = await mas.setAttributesDefaultValues(data.attributes)
 
               let attributes: Record<string, unknown> | undefined
