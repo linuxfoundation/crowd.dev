@@ -112,13 +112,13 @@ setImmediate(async () => {
             for (const attName of Object.keys(data.attributes)) {
               const defValue = data.attributes[attName].default
 
-              if (defValue === undefined || defValue === null || defValue === '') {
+              if (defValue === undefined || defValue === null || String(defValue) === '') {
                 for (const platform of Object.keys(data.attributes[attName]).filter(
                   (p) => p !== 'default',
                 )) {
                   const value = data.attributes[attName][platform]
 
-                  if (value !== undefined && value !== null && value !== '') {
+                  if (value !== undefined && value !== null && String(value) !== '') {
                     log.debug(
                       { memberId: data.id, attName, platform, value },
                       'Found value for attribute',
