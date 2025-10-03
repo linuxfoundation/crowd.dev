@@ -1,4 +1,5 @@
 import isEqual from 'lodash.isequal'
+import mergeWith from 'lodash.mergewith'
 
 import { connQx, updateMember } from '@crowd/data-access-layer'
 import {
@@ -159,7 +160,7 @@ setImmediate(async () => {
               data.attributes = await mas.setAttributesDefaultValues(data.attributes)
 
               let attributes: Record<string, unknown> | undefined
-              const temp = { ...data.attributes }
+              const temp = mergeWith({}, oldAttributes, data.attributes)
               const manuallyChangedFields: string[] = data.manuallyChangedFields || []
 
               if (manuallyChangedFields.length > 0) {
@@ -212,7 +213,7 @@ setImmediate(async () => {
                   'Updating member attributes',
                 )
 
-                // await updateMember(pgQx, data.id, { attributes } as any)
+                await updateMember(pgQx, data.id, { attributes } as any)
                 batchUpdated++
                 totalUpdated++
                 log.debug({ memberId: data.id }, 'Member attributes updated successfully')
