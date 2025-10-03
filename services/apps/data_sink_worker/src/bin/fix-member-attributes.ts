@@ -120,7 +120,7 @@ setImmediate(async () => {
             )
 
             // check if any has default empty but other are full
-            let process = false
+            let toProcess = false
             for (const attName of Object.keys(data.attributes)) {
               const defValue = data.attributes[attName].default
 
@@ -144,18 +144,18 @@ setImmediate(async () => {
                       { memberId: data.id, attName, platform, value },
                       'Found value for attribute',
                     )
-                    process = true
+                    toProcess = true
                     break
                   }
                 }
 
-                if (process) {
+                if (toProcess) {
                   break
                 }
               }
             }
 
-            if (process) {
+            if (toProcess) {
               const oldAttributes = JSON.parse(JSON.stringify(data.attributes)) // Deep copy
               data.attributes = await mas.setAttributesDefaultValues(data.attributes)
 
@@ -213,7 +213,10 @@ setImmediate(async () => {
                   'Updating member attributes',
                 )
 
-                await updateMember(pgQx, data.id, { attributes } as any)
+                if (!process.env.TEST_RUN) {
+                  await updateMember(pgQx, data.id, { attributes } as any)
+                }
+
                 batchUpdated++
                 totalUpdated++
                 log.debug({ memberId: data.id }, 'Member attributes updated successfully')
