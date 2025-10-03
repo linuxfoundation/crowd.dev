@@ -24,26 +24,32 @@ async function getMemberIds(
     log.debug({ lastId }, 'Querying for members with attribute issues')
 
     const results = await db.any(
-      `with relevant_members as (with member_with_attributes as (select id,
-                                                                   "createdAt",
-                                                                   jsonb_object_keys(attributes)               as attr_key,
-                                                                   attributes -> jsonb_object_keys(attributes) as attr_value
-                                                            from members
-                                                            where "deletedAt" is null
-                                                              and attributes is not null
-                                                              and attributes != 'null'::jsonb
-                                                              and attributes != '{}'::jsonb)
-                            select distinct id
-                            from member_with_attributes
-                            where jsonb_typeof(attr_value) = 'object'
-                              and coalesce(attr_value ->> 'default', '') = ''
-                              ${lastId ? `and id < '${lastId}'` : ''}
-                            order by id desc
-                            limit 5000)
-  select m.id, m.attributes, m."manuallyChangedFields"
-  from members m
-           inner join
-       relevant_members rm on rm.id = m.id;`,
+      `
+      with relevant_members as (with member_with_attributes as (select id,
+                                                                 "createdAt",
+                                                                 jsonb_object_keys(attributes)               as attr_key,
+                                                                 attributes -> jsonb_object_keys(attributes) as attr_value
+                                                          from members
+                                                          where "deletedAt" is null
+                                                            and attributes is not null
+                                                            and attributes != 'null'::jsonb
+                                                            and attributes != '{}'::jsonb)
+                          select distinct id
+                          from member_with_attributes
+                          where jsonb_typeof(attr_value) = 'object'
+                            and coalesce(attr_value ->> 'default', '') = ''
+                            and exists (select 1
+                                        from jsonb_each_text(attr_value) as kv
+                                        where kv.key != 'default'
+                                          and coalesce(kv.value, '') != '')
+                                          ${lastId ? `and id < '${lastId}'` : ''}
+                                          order by id desc
+                          limit 5000)
+select m.id, m.attributes
+from members m
+         inner join
+     relevant_members rm on rm.id = m.id;
+      `,
       { lastId },
     )
 
