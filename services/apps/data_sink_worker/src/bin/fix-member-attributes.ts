@@ -122,6 +122,7 @@ setImmediate(async () => {
                 log.debug(
                   {
                     memberId: data.id,
+                    attributes: data.attributes,
                     attName,
                     defValue: defValue ? String(defValue) : 'undefined',
                   },
