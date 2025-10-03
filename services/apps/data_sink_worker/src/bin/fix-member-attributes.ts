@@ -184,8 +184,12 @@ setImmediate(async () => {
               }
 
               if (attributes) {
-                log.debug({ memberId: data.id }, 'Updating member attributes')
-                await updateMember(pgQx, data.id, { attributes } as any)
+                log.debug(
+                  { memberId: data.id, oldAttributes, attributes },
+                  'Updating member attributes',
+                )
+
+                // await updateMember(pgQx, data.id, { attributes } as any)
                 batchUpdated++
                 totalUpdated++
                 log.debug({ memberId: data.id }, 'Member attributes updated successfully')
