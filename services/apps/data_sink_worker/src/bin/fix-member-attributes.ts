@@ -194,6 +194,11 @@ setImmediate(async () => {
                 totalUpdated++
                 log.debug({ memberId: data.id }, 'Member attributes updated successfully')
               }
+            } else {
+              log.debug(
+                { memberId: data.id, attributes: data.attributes },
+                'No changes needed for attributes',
+              )
             }
           } else {
             log.debug({ memberId: data.id }, 'Member has no attributes to process')
