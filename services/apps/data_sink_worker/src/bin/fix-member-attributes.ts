@@ -164,7 +164,7 @@ setImmediate(async () => {
               const manuallyChangedFields: string[] = data.manuallyChangedFields || []
 
               if (manuallyChangedFields.length > 0) {
-                log.debug(
+                log.warn(
                   {
                     memberId: data.id,
                     manuallyChangedFieldsCount: manuallyChangedFields.length,
@@ -181,7 +181,7 @@ setImmediate(async () => {
                   ),
                 ]
 
-                log.debug(
+                log.warn(
                   {
                     memberId: data.id,
                     manuallyChangedAttributes,
@@ -199,7 +199,7 @@ setImmediate(async () => {
 
               if (!isEqual(temp, oldAttributes)) {
                 attributes = temp
-                log.debug({ memberId: data.id }, 'Attributes changed, will update')
+                log.info({ memberId: data.id }, 'Attributes changed, will update')
               } else {
                 log.debug(
                   { memberId: data.id, newAttributes: temp, oldAttributes },
@@ -208,7 +208,7 @@ setImmediate(async () => {
               }
 
               if (attributes) {
-                log.debug(
+                log.info(
                   { memberId: data.id, oldAttributes, attributes },
                   'Updating member attributes',
                 )
