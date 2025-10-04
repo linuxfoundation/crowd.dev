@@ -208,10 +208,7 @@ setImmediate(async () => {
               }
 
               if (attributes) {
-                log.info(
-                  { memberId: data.id, oldAttributes, attributes },
-                  'Updating member attributes',
-                )
+                log.info({ memberId: data.id }, 'Updating member attributes')
 
                 if (!process.env.TEST_RUN) {
                   await updateMember(pgQx, data.id, { attributes } as any)
