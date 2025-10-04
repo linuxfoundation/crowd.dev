@@ -1144,7 +1144,7 @@ export default class ActivityService extends LoggerBase {
               organizations: value.member.organizations,
               reach: value.member.reach,
             },
-            value.platform,
+            value.platform as PlatformType,
           )
           .then((memberId) => {
             // map ids for members
