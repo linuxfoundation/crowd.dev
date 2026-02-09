@@ -1,9 +1,9 @@
 {
-  "name": "@crowd/automatic-project-discovery-worker",
+  "name": "@crowd/automatic-projects-discovery-worker",
   "scripts": {
-    "start": "CROWD_TEMPORAL_TASKQUEUE=automatic-project-discovery SERVICE=automatic-project-discovery-worker tsx src/main.ts",
-    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=automatic-project-discovery SERVICE=automatic-project-discovery-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
-    "start:debug": "CROWD_TEMPORAL_TASKQUEUE=automatic-project-discovery SERVICE=automatic-project-discovery-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
+    "start": "CROWD_TEMPORAL_TASKQUEUE=automatic-projects-discovery SERVICE=automatic-projects-discovery-worker tsx src/main.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=automatic-projects-discovery SERVICE=automatic-projects-discovery-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
+    "start:debug": "CROWD_TEMPORAL_TASKQUEUE=automatic-projects-discovery SERVICE=automatic-projects-discovery-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "lint": "npx eslint --ext .ts src --max-warnings=0",

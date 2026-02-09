@@ -3,17 +3,17 @@ version: '3.1'
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
-  SERVICE: automatic-project-discovery-worker
-  CROWD_TEMPORAL_TASKQUEUE: automatic-project-discovery
+  SERVICE: automatic-projects-discovery-worker
+  CROWD_TEMPORAL_TASKQUEUE: automatic-projects-discovery
   SHELL: /bin/sh
 
 services:
-  automatic-project-discovery-worker:
+  automatic-projects-discovery-worker:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.automatic_project_discovery_worker
+      dockerfile: ./scripts/services/docker/Dockerfile.automatic_projects_discovery_worker
     command: 'pnpm run start'
-    working_dir: /usr/crowd/app/services/apps/automatic_project_discovery_worker
+    working_dir: /usr/crowd/app/services/apps/automatic_projects_discovery_worker
     env_file:
       - ../../backend/.env.dist.local
       - ../../backend/.env.dist.composed
@@ -25,12 +25,12 @@ services:
     networks:
       - crowd-bridge
 
-  automatic-project-discovery-worker-dev:
+  automatic-projects-discovery-worker-dev:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.automatic_project_discovery_worker
+      dockerfile: ./scripts/services/docker/Dockerfile.automatic_projects_discovery_worker
     command: 'pnpm run dev'
-    working_dir: /usr/crowd/app/services/apps/automatic_project_discovery_worker
+    working_dir: /usr/crowd/app/services/apps/automatic_projects_discovery_worker
     env_file:
       - ../../backend/.env.dist.local
       - ../../backend/.env.dist.composed
@@ -38,7 +38,7 @@ services:
       - ../../backend/.env.override.composed
     environment:
       <<: *env-args
-    hostname: automatic-project-discovery-worker
+    hostname: automatic-projects-discovery-worker
     networks:
       - crowd-bridge
     volumes:
@@ -57,7 +57,7 @@ services:
       - ../../services/libs/telemetry/src:/usr/crowd/app/services/libs/telemetry/src
       - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
       - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
-      - ../../services/apps/automatic_project_discovery_worker/src:/usr/crowd/app/services/apps/automatic_project_discovery_worker/src
+      - ../../services/apps/automatic_projects_discovery_worker/src:/usr/crowd/app/services/apps/automatic_projects_discovery_worker/src
 
 networks:
   crowd-bridge:
