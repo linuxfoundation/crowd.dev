@@ -5,14 +5,14 @@ import { discoverProjects } from '../workflows'
 
 const DEFAULT_CRON = '0 2 * * *' // Daily at 2:00 AM
 
-export const scheduleProjectDiscovery = async () => {
-  const cronExpression = process.env.CROWD_AUTOMATIC_PROJECT_DISCOVERY_CRON || DEFAULT_CRON
+export const scheduleProjectsDiscovery = async () => {
+  const cronExpression = process.env.CROWD_AUTOMATIC_PROJECTS_DISCOVERY_CRON || DEFAULT_CRON
 
-  svc.log.info(`Scheduling project discovery with cron: ${cronExpression}`)
+  svc.log.info(`Scheduling projects discovery with cron: ${cronExpression}`)
 
   try {
     await svc.temporal.schedule.create({
-      scheduleId: 'automaticProjectDiscovery',
+      scheduleId: 'automaticProjectsDiscovery',
       spec: {
         cronExpressions: [cronExpression],
       },
@@ -23,7 +23,7 @@ export const scheduleProjectDiscovery = async () => {
       action: {
         type: 'startWorkflow',
         workflowType: discoverProjects,
-        taskQueue: 'automatic-project-discovery',
+        taskQueue: 'automatic-projects-discovery',
         retry: {
           initialInterval: '15 seconds',
           backoffCoefficient: 2,
