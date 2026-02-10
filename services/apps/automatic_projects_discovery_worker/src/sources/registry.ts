@@ -1,10 +1,8 @@
-import { IDiscoverySource } from './types'
 import { OssfCriticalityScoreSource } from './ossf-criticality-score/source'
+import { IDiscoverySource } from './types'
 
 // To add a new source: instantiate it here.
-const sources: IDiscoverySource[] = [
-  new OssfCriticalityScoreSource(),
-]
+const sources: IDiscoverySource[] = [new OssfCriticalityScoreSource()]
 
 export function getSource(name: string): IDiscoverySource {
   const source = sources.find((s) => s.name === name)

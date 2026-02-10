@@ -4,7 +4,6 @@ import { svc } from '../main'
 import { discoverProjects } from '../workflows'
 
 export const scheduleProjectsDiscovery = async () => {
-
   svc.log.info(`Scheduling projects discovery`)
 
   try {

@@ -6,7 +6,12 @@ function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     https
       .get(url, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
           httpsGet(res.headers.location).then(resolve, reject)
           return
         }
@@ -69,7 +74,12 @@ export function getHttpsStream(url: string): Promise<NodeJS.ReadableStream> {
   return new Promise((resolve, reject) => {
     https
       .get(url, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
           getHttpsStream(res.headers.location).then(resolve, reject)
           return
         }

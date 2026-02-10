@@ -1,8 +1,8 @@
 import { parse } from 'csv-parse'
 
 import { bulkUpsertProjectCatalog } from '@crowd/data-access-layer'
-import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
+import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
 import { svc } from '../main'
