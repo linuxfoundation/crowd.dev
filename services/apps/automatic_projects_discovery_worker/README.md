@@ -8,11 +8,11 @@ Temporal worker that discovers open-source projects from external data sources a
 
 Every data source implements the `IDiscoverySource` interface (`src/sources/types.ts`):
 
-| Method | Purpose |
-|--------|---------|
-| `listAvailableDatasets()` | Returns available dataset snapshots, sorted newest-first |
-| `fetchDatasetStream(dataset)` | Returns a readable stream for the dataset (e.g. HTTP response) |
-| `parseRow(rawRow)` | Converts a raw CSV/JSON row into a `IDiscoverySourceRow`, or `null` to skip |
+| Method                        | Purpose                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `listAvailableDatasets()`     | Returns available dataset snapshots, sorted newest-first                    |
+| `fetchDatasetStream(dataset)` | Returns a readable stream for the dataset (e.g. HTTP response)              |
+| `parseRow(rawRow)`            | Converts a raw CSV/JSON row into a `IDiscoverySourceRow`, or `null` to skip |
 
 Sources are registered in `src/sources/registry.ts` as a simple name → factory map.
 
@@ -20,8 +20,8 @@ Sources are registered in `src/sources/registry.ts` as a simple name → factory
 
 ### Current sources
 
-| Name | Folder | Description |
-|------|--------|-------------|
+| Name                     | Folder                                | Description                                                                          |
+| ------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------ |
 | `ossf-criticality-score` | `src/sources/ossf-criticality-score/` | OSSF Criticality Score snapshots from a public GCS bucket (~750K repos per snapshot) |
 
 ### Workflow
@@ -41,11 +41,11 @@ discoverProjects({ mode: 'incremental' | 'full' })
 
 ### Timeouts
 
-| Activity | startToCloseTimeout | retries |
-|----------|-------------------|---------|
-| `listDatasets` | 2 min | 3 |
-| `processDataset` | 30 min | 3 |
-| Workflow execution | 2 hours | 3 |
+| Activity           | startToCloseTimeout | retries |
+| ------------------ | ------------------- | ------- |
+| `listDatasets`     | 2 min               | 3       |
+| `processDataset`   | 30 min              | 3       |
+| Workflow execution | 2 hours             | 3       |
 
 ### Schedule
 
