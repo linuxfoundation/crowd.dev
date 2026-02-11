@@ -7,7 +7,7 @@ import { getServiceLogger } from '@crowd/logging'
 
 import { svc } from '../main'
 import { getSource } from '../sources/registry'
-import { IDatasetDescriptor, IDiscoverySourceRow } from '../sources/types'
+import { IDatasetDescriptor } from '../sources/types'
 
 const log = getServiceLogger()
 
