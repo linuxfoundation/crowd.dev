@@ -4,27 +4,20 @@ import type * as activities from '../activities'
 
 const listActivities = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
-  retry: {
-    maximumAttempts: 3,
-  },
+  retry: { maximumAttempts: 3 },
 })
 
 // processDataset is long-running (10-20 min for ~119MB / ~750K rows).
 const processActivities = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 minutes',
-  retry: {
-    maximumAttempts: 3,
-  },
+  retry: { maximumAttempts: 3 },
 })
 
-export interface DiscoverProjectsInput {
-  mode: 'incremental' | 'full'
-}
-
 export async function discoverProjects(
-  input: DiscoverProjectsInput = { mode: 'incremental' },
+  input: { mode: 'incremental' | 'full' } = { mode: 'incremental' },
 ): Promise<void> {
   const sourceName = 'ossf-criticality-score'
+
   const { mode } = input
 
   const allDatasets = await listActivities.listDatasets(sourceName)
@@ -34,7 +27,7 @@ export async function discoverProjects(
     return
   }
 
-  // allDatasets is sorted newest-first.
+  // allDatasets is sorted newest-first, that is the reason we need the .reverse().
   // Incremental: process only the latest snapshot.
   // Full: process oldest-first so the newest data wins the final upsert.
   const datasets = mode === 'incremental' ? [allDatasets[0]] : [...allDatasets].reverse()

@@ -26,16 +26,21 @@ export async function processDataset(
   sourceName: string,
   dataset: IDatasetDescriptor,
 ): Promise<void> {
-  const source = getSource(sourceName)
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
   log.info({ sourceName, datasetId: dataset.id, url: dataset.url }, 'Processing dataset...')
 
+  const source = getSource(sourceName)
+
   // We use streaming (not full download) because each CSV is ~119MB / ~750K rows.
   // Streaming keeps memory usage low (only one batch in memory at a time) and leverages
   // Node.js backpressure: if DB writes are slow, the HTTP stream pauses automatically.
   const httpStream = await source.fetchDatasetStream(dataset)
+
+  httpStream.on('error', (err: Error) => {
+    log.error({ datasetId: dataset.id, error: err.message }, 'HTTP stream error.')
+  })
 
   // Pipe the raw HTTP response directly into csv-parse.
   // Data flows as: HTTP response → csv-parse → for-await → batch → DB
@@ -51,10 +56,6 @@ export async function processDataset(
     log.error({ datasetId: dataset.id, error: err.message }, 'CSV parser error.')
   })
 
-  httpStream.on('error', (err: Error) => {
-    log.error({ datasetId: dataset.id, error: err.message }, 'HTTP stream error.')
-  })
-
   let batch: IDbProjectCatalogCreate[] = []
   let totalProcessed = 0
   let totalSkipped = 0
@@ -64,7 +65,7 @@ export async function processDataset(
   for await (const rawRow of parser) {
     totalRows++
 
-    const parsed: IDiscoverySourceRow | null = source.parseRow(rawRow)
+    const parsed = source.parseRow(rawRow)
     if (!parsed) {
       totalSkipped++
       continue
@@ -79,6 +80,7 @@ export async function processDataset(
 
     if (batch.length >= BATCH_SIZE) {
       batchNumber++
+
       await bulkUpsertProjectCatalog(qx, batch)
       totalProcessed += batch.length
       batch = []
