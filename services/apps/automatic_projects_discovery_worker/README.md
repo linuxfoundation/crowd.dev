@@ -49,7 +49,7 @@ discoverProjects({ mode: 'incremental' | 'full' })
 
 ### Schedule
 
-Runs daily via Temporal cron. The cron expression can be overridden with the `CROWD_AUTOMATIC_PROJECTS_DISCOVERY_CRON` env var.
+Runs daily at midnight via Temporal cron (`0 0 * * *`).
 
 ## File structure
 
