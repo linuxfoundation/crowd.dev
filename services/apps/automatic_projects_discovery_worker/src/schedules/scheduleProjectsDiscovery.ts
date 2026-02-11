@@ -10,7 +10,8 @@ export const scheduleProjectsDiscovery = async () => {
     await svc.temporal.schedule.create({
       scheduleId: 'automaticProjectsDiscovery',
       spec: {
-        cronExpressions: ['55 14 * * *'],
+        // Run every day at midnight
+        cronExpressions: ['0 0 * * *'],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
