@@ -21,7 +21,7 @@ export const scheduleProjectsDiscovery = async () => {
         type: 'startWorkflow',
         workflowType: discoverProjects,
         taskQueue: 'automatic-projects-discovery',
-        args: [{ mode: 'full' as const }],
+        args: [{ mode: 'incremental' as const }],
         workflowExecutionTimeout: '2 hours',
         retry: {
           initialInterval: '15 seconds',
