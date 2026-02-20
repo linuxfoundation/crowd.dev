@@ -5,6 +5,7 @@ DROP INDEX IF EXISTS "uix_evaluatedProjects_projectCatalogId";
 DROP TABLE IF EXISTS "evaluatedProjects";
 
 DROP INDEX IF EXISTS "ix_projectCatalog_syncedAt";
-DROP INDEX IF EXISTS "ix_projectCatalog_criticalityScore";
+DROP INDEX IF EXISTS "ix_projectCatalog_lfCriticalityScore";
+DROP INDEX IF EXISTS "ix_projectCatalog_ossfCriticalityScore";
 DROP INDEX IF EXISTS "uix_projectCatalog_repoUrl";
 DROP TABLE IF EXISTS "projectCatalog";
