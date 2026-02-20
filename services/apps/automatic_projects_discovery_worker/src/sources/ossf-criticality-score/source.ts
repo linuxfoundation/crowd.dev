@@ -39,8 +39,8 @@ export class OssfCriticalityScoreSource implements IDiscoverySource {
   }
 
   // CSV columns use dot notation (e.g. "repo.url", "default_score")
-  parseRow(rawRow: Record<string, string>): IDiscoverySourceRow | null {
-    const repoUrl = rawRow['repo.url']
+  parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
+    const repoUrl = rawRow['repo.url'] as string | undefined
     if (!repoUrl) {
       return null
     }
@@ -62,14 +62,14 @@ export class OssfCriticalityScoreSource implements IDiscoverySource {
       return null
     }
 
-    const criticalityScoreRaw = rawRow['default_score']
-    const criticalityScore = criticalityScoreRaw ? parseFloat(criticalityScoreRaw) : undefined
+    const scoreRaw = rawRow['default_score']
+    const ossfCriticalityScore = scoreRaw ? parseFloat(scoreRaw as string) : undefined
 
     return {
       projectSlug,
       repoName,
       repoUrl,
-      criticalityScore: Number.isNaN(criticalityScore) ? undefined : criticalityScore,
+      ossfCriticalityScore: Number.isNaN(ossfCriticalityScore) ? undefined : ossfCriticalityScore,
     }
   }
 }

@@ -6,12 +6,16 @@ import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
 import { svc } from '../main'
-import { getSource } from '../sources/registry'
+import { getAvailableSourceNames, getSource } from '../sources/registry'
 import { IDatasetDescriptor } from '../sources/types'
 
 const log = getServiceLogger()
 
 const BATCH_SIZE = 5000
+
+export async function listSources(): Promise<string[]> {
+  return getAvailableSourceNames()
+}
 
 export async function listDatasets(sourceName: string): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
@@ -32,29 +36,30 @@ export async function processDataset(
   log.info({ sourceName, datasetId: dataset.id, url: dataset.url }, 'Processing dataset...')
 
   const source = getSource(sourceName)
+  const stream = await source.fetchDatasetStream(dataset)
 
-  // We use streaming (not full download) because each CSV is ~119MB / ~750K rows.
-  // Streaming keeps memory usage low (only one batch in memory at a time) and leverages
-  // Node.js backpressure: if DB writes are slow, the HTTP stream pauses automatically.
-  const httpStream = await source.fetchDatasetStream(dataset)
-
-  httpStream.on('error', (err: Error) => {
-    log.error({ datasetId: dataset.id, error: err.message }, 'HTTP stream error.')
+  stream.on('error', (err: Error) => {
+    log.error({ datasetId: dataset.id, error: err.message }, 'Stream error.')
   })
 
-  // Pipe the raw HTTP response directly into csv-parse.
-  // Data flows as: HTTP response → csv-parse → for-await → batch → DB
-  const parser = httpStream.pipe(
-    parse({
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    }),
-  )
+  // For CSV sources: pipe through csv-parse to get Record<string, string> objects.
+  // For JSON sources: the stream already emits pre-parsed objects in object mode.
+  const records =
+    source.format === 'json'
+      ? stream
+      : stream.pipe(
+          parse({
+            columns: true,
+            skip_empty_lines: true,
+            trim: true,
+          }),
+        )
 
-  parser.on('error', (err) => {
-    log.error({ datasetId: dataset.id, error: err.message }, 'CSV parser error.')
-  })
+  if (source.format !== 'json') {
+    ;(records as ReturnType<typeof parse>).on('error', (err) => {
+      log.error({ datasetId: dataset.id, error: err.message }, 'CSV parser error.')
+    })
+  }
 
   let batch: IDbProjectCatalogCreate[] = []
   let totalProcessed = 0
@@ -62,10 +67,10 @@ export async function processDataset(
   let batchNumber = 0
   let totalRows = 0
 
-  for await (const rawRow of parser) {
+  for await (const rawRow of records) {
     totalRows++
 
-    const parsed = source.parseRow(rawRow)
+    const parsed = source.parseRow(rawRow as Record<string, unknown>)
     if (!parsed) {
       totalSkipped++
       continue
@@ -75,7 +80,8 @@ export async function processDataset(
       projectSlug: parsed.projectSlug,
       repoName: parsed.repoName,
       repoUrl: parsed.repoUrl,
-      criticalityScore: parsed.criticalityScore,
+      ossfCriticalityScore: parsed.ossfCriticalityScore,
+      lfCriticalityScore: parsed.lfCriticalityScore,
     })
 
     if (batch.length >= BATCH_SIZE) {

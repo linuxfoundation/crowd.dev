@@ -1,3 +1,3 @@
-import { listDatasets, processDataset } from './activities/activities'
+import { listDatasets, listSources, processDataset } from './activities/activities'
 
-export { listDatasets, processDataset }
+export { listDatasets, listSources, processDataset }

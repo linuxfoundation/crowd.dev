@@ -196,8 +196,8 @@ export async function upsertProjectCatalog(
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "ossfCriticalityScore" = EXCLUDED."ossfCriticalityScore",
-      "lfCriticalityScore" = EXCLUDED."lfCriticalityScore",
+      "ossfCriticalityScore" = COALESCE(EXCLUDED."ossfCriticalityScore", "projectCatalog"."ossfCriticalityScore"),
+      "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
       "updatedAt" = NOW()
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
@@ -256,8 +256,8 @@ export async function bulkUpsertProjectCatalog(
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "ossfCriticalityScore" = EXCLUDED."ossfCriticalityScore",
-      "lfCriticalityScore" = EXCLUDED."lfCriticalityScore",
+      "ossfCriticalityScore" = COALESCE(EXCLUDED."ossfCriticalityScore", "projectCatalog"."ossfCriticalityScore"),
+      "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
       "updatedAt" = NOW()
     `,
     { values: JSON.stringify(values) },
