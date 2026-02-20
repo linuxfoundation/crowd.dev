@@ -4,14 +4,16 @@ CREATE TABLE IF NOT EXISTS "projectCatalog" (
     "projectSlug" VARCHAR(255) NOT NULL,
     "repoName" VARCHAR(255) NOT NULL,
     "repoUrl" VARCHAR(1024) NOT NULL,
-    "criticalityScore" DOUBLE PRECISION,
+    "ossfCriticalityScore" DOUBLE PRECISION,
+    "lfCriticalityScore" DOUBLE PRECISION,
     "syncedAt" TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX "uix_projectCatalog_repoUrl" ON "projectCatalog" ("repoUrl");
-CREATE INDEX "ix_projectCatalog_criticalityScore" ON "projectCatalog" ("criticalityScore" DESC NULLS LAST);
+CREATE INDEX "ix_projectCatalog_ossfCriticalityScore" ON "projectCatalog" ("ossfCriticalityScore" DESC NULLS LAST);
+CREATE INDEX "ix_projectCatalog_lfCriticalityScore" ON "projectCatalog" ("lfCriticalityScore" DESC NULLS LAST);
 CREATE INDEX "ix_projectCatalog_syncedAt" ON "projectCatalog" ("syncedAt");
 
 -- Evaluated Projects: AI evaluation results linked to catalog entries
