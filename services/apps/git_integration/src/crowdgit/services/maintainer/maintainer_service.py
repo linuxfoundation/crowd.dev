@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import os
 import time as time_module
 from datetime import datetime, time, timezone
@@ -20,6 +19,7 @@ from crowdgit.database.crud import (
 )
 from crowdgit.enums import ErrorCode, ExecutionStatus, OperationType
 from crowdgit.errors import (
+    CommandExecutionError,
     CrowdGitError,
     MaintainerFileNotFoundError,
     MaintainerIntervalNotElapsedError,
@@ -37,7 +37,7 @@ from crowdgit.models.maintainer_info import (
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.maintainer.bedrock import invoke_bedrock
-from crowdgit.services.utils import parse_repo_url
+from crowdgit.services.utils import run_shell_command
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
 
 
@@ -46,23 +46,59 @@ class MaintainerService(BaseService):
 
     MAX_CHUNK_SIZE = 5000
     MAX_CONCURRENT_CHUNKS = 3  # Maximum concurrent chunk processing
+    MAX_AI_ANALYSIS_ATTEMPTS = 3
+
     # List of common maintainer file names
     MAINTAINER_FILES = [
         "MAINTAINERS",
         "MAINTAINERS.md",
         "MAINTAINER.md",
+        "CODEOWNERS",
         "CODEOWNERS.md",
         "CONTRIBUTORS",
         "CONTRIBUTORS.md",
-        "docs/MAINTAINERS.md",
         "OWNERS",
-        "CODEOWNERS",
+        "OWNERS.md",
+        "AUTHORS",
+        "AUTHORS.md",
+        "docs/MAINTAINERS.md",
         ".github/MAINTAINERS.md",
         ".github/CONTRIBUTORS.md",
+        ".github/CODEOWNERS",
         "GOVERNANCE.md",
-        "README.md",
-        "SECURITY-INSIGHTS.md",
     ]
+
+    VALID_EXTENSIONS = {
+        "",
+        ".md",
+        ".markdown",
+        ".txt",
+        ".rst",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".adoc",
+        ".csv",
+    }
+
+    CONTENT_VALIDATION_KEYWORDS = [
+        "maintainer",
+        "codeowner",
+        "owner",
+        "contributor",
+        "author",
+        "reviewer",
+        "governance",
+        "lead",
+        "approver",
+        "committer",
+        "credit",
+        "administrator",
+        "steward",
+        "emeritus",
+    ]
+
+    EXCLUDED_FILENAMES = {"contributing.md", "contributing"}
 
     def make_role(self, title: str):
         title = title.lower()
@@ -358,44 +394,122 @@ class MaintainerService(BaseService):
         else:
             return None, result.cost
 
-    async def find_maintainer_file(self, repo_path: str, owner: str, repo: str):
-        self.logger.info(f"Looking for maintainer files in {owner}/{repo}...")
+    async def _list_repo_files(self, repo_path: str) -> list[str]:
+        """List all files in the repo recursively, respecting .gitignore via rg."""
+        try:
+            output = await run_shell_command(
+                ["rg", "--files", "--hidden", "--glob", "!.git/", "."], cwd=repo_path
+            )
+            return [
+                line[2:] if line.startswith("./") else line
+                for line in output.strip().split("\n")
+                if line.strip()
+            ]
+        except Exception as e:
+            self.logger.warning(f"rg --files failed, falling back to os.walk: {repr(e)}")
+            results = []
+            for dirpath, dirnames, filenames in os.walk(repo_path):
+                dirnames[:] = [d for d in dirnames if d != ".git"]
+                for filename in filenames:
+                    full_path = os.path.join(dirpath, filename)
+                    results.append(os.path.relpath(full_path, repo_path))
+            return results
 
-        file_names = await aiofiles.os.listdir(repo_path)
+    async def _ripgrep_search(self, repo_path: str) -> list[str]:
+        """Search for files containing maintainer-related keywords, filtered to valid extensions."""
+        pattern = "|".join(self.CONTENT_VALIDATION_KEYWORDS)
+
+        exclusion_globs = ["--glob", "!.git/"]
+        for name in self.EXCLUDED_FILENAMES:
+            exclusion_globs.extend(["--iglob", f"!{name}"])
+
+        try:
+            output = await run_shell_command(
+                ["rg", "-l", "-i", "--hidden", pattern, *exclusion_globs, "."], cwd=repo_path
+            )
+        except CommandExecutionError:
+            self.logger.info("Ripgrep found no files containing maintainer keywords")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Ripgrep search failed: {repr(e)}")
+            return []
+
+        results = []
+        for line in output.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("./"):
+                line = line[2:]
+            basename = os.path.basename(line).lower()
+            ext = os.path.splitext(basename)[1]
+            if ext not in self.VALID_EXTENSIONS:
+                self.logger.debug(f"Skipping '{line}': extension '{ext}' not in valid extensions")
+                continue
+            if ext == "" and not any(kw in basename for kw in self.CONTENT_VALIDATION_KEYWORDS):
+                self.logger.debug(
+                    f"Skipping extensionless file '{line}': "
+                    f"basename '{basename}' contains no governance keyword"
+                )
+                continue
+            results.append(line)
+
+        self.logger.info(f"Ripgrep found {len(results)} candidate files after filtering")
+        return results
+
+    async def find_candidate_files(self, repo_path: str) -> list[tuple[str, str]]:
+        """
+        Find all potential maintainer files using static list + dynamic ripgrep search.
+        Returns ordered list of (relative_path, content) tuples.
+        Static matches come first, then dynamic matches sorted by content keyword score.
+        """
+        candidates_static = []
+        static_paths_lower = set()
 
         for file in self.MAINTAINER_FILES:
             file_path = os.path.join(repo_path, file)
             if await aiofiles.os.path.isfile(file_path):
-                self.logger.info(f"maintainer file: {file_path} found in repo")
+                try:
+                    async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                        content = await f.read()
+                    candidates_static.append((file, content))
+                    static_paths_lower.add(file.lower())
+                    self.logger.info(f"Static match found: {file}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to read static match {file}: {repr(e)}")
+
+        dynamic_paths = await self._ripgrep_search(repo_path)
+
+        scored_dynamic = []
+        for candidate_path in dynamic_paths:
+            if candidate_path.lower() in static_paths_lower:
+                continue
+
+            file_path = os.path.join(repo_path, candidate_path)
+            try:
                 async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
                     content = await f.read()
+            except Exception as e:
+                self.logger.warning(f"Failed to read dynamic match {candidate_path}: {repr(e)}")
+                continue
 
-                if file.lower() == "readme.md" and "maintainer" not in content.lower():
-                    self.logger.info(f"Skipping {file}: no maintainer-related content found")
-                    continue
+            content_lower = content.lower()
+            # Calculate score based on keywords matched in the content
+            score = sum(1 for kw in self.CONTENT_VALIDATION_KEYWORDS if kw in content_lower)
+            if score > 0:
+                scored_dynamic.append((candidate_path, content, score))
+                self.logger.info(
+                    f"Dynamic match validated: {candidate_path} (keyword score: {score})"
+                )
 
-                return file, base64.b64encode(content.encode()).decode(), 0
+        # Sort by score DESC
+        scored_dynamic.sort(key=lambda c: c[2], reverse=True)
 
-        self.logger.warning("No maintainer files found using the known file names.")
-
-        file_name, ai_cost = await self.find_maintainer_file_with_ai(file_names)
-
-        if file_name:
-            file_path = os.path.join(repo_path, file_name)
-            if await aiofiles.os.path.isfile(file_path):
-                async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                    content = await f.read()
-
-                if file_name.lower() == "readme.md" and "maintainer" not in content.lower():
-                    self.logger.info(
-                        f"AI suggested {file_name}, but it has no maintainer-related content. Skipping."
-                    )
-                    return None, None, ai_cost
-
-                self.logger.info(f"\nMaintainer file found: {file_name}")
-                return file_name, base64.b64encode(content.encode()).decode(), ai_cost
-
-        return None, None, ai_cost
+        result = candidates_static + [(path, content) for path, content, _ in scored_dynamic]
+        self.logger.info(
+            f"Found {len(candidates_static)} static and {len(scored_dynamic)} dynamic candidates"
+        )
+        return result
 
     async def analyze_and_build_result(self, filename: str, content: str) -> MaintainerResult:
         """
@@ -452,12 +566,11 @@ class MaintainerService(BaseService):
     async def extract_maintainers(
         self,
         repo_path: str,
-        owner: str,
-        repo: str,
         saved_maintainer_file: str | None = None,
     ):
         total_cost = 0
 
+        # Step 1: Try the previously saved maintainer file
         if saved_maintainer_file:
             self.logger.info(f"Trying saved maintainer file: {saved_maintainer_file}")
             result, cost = await self.try_saved_maintainer_file(repo_path, saved_maintainer_file)
@@ -467,22 +580,53 @@ class MaintainerService(BaseService):
                 return result
             self.logger.info("Falling back to maintainer file detection")
 
-        self.logger.info("Looking for maintainer file...")
-        maintainer_file, file_content, cost = await self.find_maintainer_file(
-            repo_path, owner, repo
-        )
-        total_cost += cost
+        # Step 2: Find candidates via static list + ripgrep dynamic search
+        candidates = await self.find_candidate_files(repo_path)
 
-        if not maintainer_file or not file_content:
-            self.logger.error("No maintainer file found")
-            raise MaintainerFileNotFoundError(ai_cost=total_cost)
+        # Step 3: Try AI analysis on candidates, stop on first success
+        if candidates:
+            attempts = min(len(candidates), self.MAX_AI_ANALYSIS_ATTEMPTS)
+            for filename, content in candidates[:attempts]:
+                try:
+                    result = await self.analyze_and_build_result(filename, content)
+                    total_cost += result.total_cost
+                    result.total_cost = total_cost
+                    return result
+                except MaintanerAnalysisError as e:
+                    total_cost += e.ai_cost
+                    self.logger.warning(f"AI analysis failed for '{filename}': {e.error_message}")
+                except Exception as e:
+                    self.logger.warning(f"Unexpected error analyzing '{filename}': {repr(e)}")
 
-        decoded_content = base64.b64decode(file_content).decode("utf-8")
-        result = await self.analyze_and_build_result(maintainer_file, decoded_content)
-        total_cost += result.total_cost
+            self.logger.warning(
+                f"AI analysis failed for all {attempts} candidate(s), trying AI file detection"
+            )
+        else:
+            self.logger.warning("No candidate files found via search, trying AI file detection")
 
-        result.total_cost = total_cost
-        return result
+        # Step 4: AI file detection as last resort
+        file_names = await self._list_repo_files(repo_path)
+        ai_file_name, ai_cost = await self.find_maintainer_file_with_ai(file_names)
+        total_cost += ai_cost
+
+        if ai_file_name:
+            file_path = os.path.join(repo_path, ai_file_name)
+            if await aiofiles.os.path.isfile(file_path):
+                try:
+                    async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                        content = await f.read()
+                    result = await self.analyze_and_build_result(ai_file_name, content)
+                    total_cost += result.total_cost
+                    result.total_cost = total_cost
+                    return result
+                except MaintanerAnalysisError as e:
+                    total_cost += e.ai_cost
+                    self.logger.warning(
+                        f"AI-suggested file '{ai_file_name}' analysis failed: {e.error_message}"
+                    )
+
+        self.logger.error("No maintainer file found")
+        raise MaintainerFileNotFoundError(ai_cost=total_cost)
 
     async def check_if_interval_elapsed(self, repository: Repository) -> tuple[bool, float]:
         """
@@ -560,8 +704,6 @@ class MaintainerService(BaseService):
         maintainers_skipped = 0
 
         try:
-            owner, repo_name = parse_repo_url(batch_info.remote)
-
             has_interval_elapsed, remaining_hours = await self.check_if_interval_elapsed(
                 repository
             )
@@ -573,8 +715,6 @@ class MaintainerService(BaseService):
             self.logger.info(f"Starting maintainers processing for repo: {batch_info.remote}")
             maintainers = await self.extract_maintainers(
                 batch_info.repo_path,
-                owner,
-                repo_name,
                 saved_maintainer_file=repository.maintainer_file,
             )
             latest_maintainer_file = maintainers.maintainer_file
