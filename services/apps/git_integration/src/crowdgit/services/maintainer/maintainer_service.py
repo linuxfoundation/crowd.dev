@@ -397,8 +397,75 @@ class MaintainerService(BaseService):
 
         return None, None, ai_cost
 
-    async def extract_maintainers(self, repo_path: str, owner: str, repo: str):
+    async def analyze_and_build_result(self, filename: str, content: str) -> MaintainerResult:
+        """
+        Analyze file content with AI and return a MaintainerResult.
+        Raises MaintanerAnalysisError if no maintainers are found.
+        """
+        self.logger.info(f"Analyzing maintainer file: {filename}")
+        result = await self.analyze_file_content(filename, content)
+
+        if not result.output.info:
+            raise MaintanerAnalysisError(ai_cost=result.cost)
+
+        return MaintainerResult(
+            maintainer_file=filename,
+            maintainer_info=result.output.info,
+            total_cost=result.cost,
+        )
+
+    async def try_saved_maintainer_file(
+        self, repo_path: str, saved_maintainer_file: str
+    ) -> tuple[MaintainerResult | None, float]:
+        """
+        Attempt to read and analyze the previously saved maintainer file.
+        Returns (result, cost) where result is None if the attempt failed.
+        """
+        cost = 0.0
+        file_path = os.path.join(repo_path, saved_maintainer_file)
+
+        if not await aiofiles.os.path.isfile(file_path):
+            self.logger.warning(
+                f"Saved maintainer file '{saved_maintainer_file}' no longer exists on disk"
+            )
+            return None, cost
+
+        try:
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+
+            result = await self.analyze_and_build_result(saved_maintainer_file, content)
+            cost += result.total_cost
+            return result, cost
+        except MaintanerAnalysisError as e:
+            cost += e.ai_cost
+            self.logger.warning(
+                f"Saved maintainer file '{saved_maintainer_file}' analysis failed: {e.error_message}"
+            )
+            return None, cost
+        except Exception as e:
+            self.logger.warning(
+                f"Saved maintainer file '{saved_maintainer_file}' processing failed: {repr(e)}"
+            )
+            return None, cost
+
+    async def extract_maintainers(
+        self,
+        repo_path: str,
+        owner: str,
+        repo: str,
+        saved_maintainer_file: str | None = None,
+    ):
         total_cost = 0
+
+        if saved_maintainer_file:
+            self.logger.info(f"Trying saved maintainer file: {saved_maintainer_file}")
+            result, cost = await self.try_saved_maintainer_file(repo_path, saved_maintainer_file)
+            total_cost += cost
+            if result:
+                result.total_cost = total_cost
+                return result
+            self.logger.info("Falling back to maintainer file detection")
 
         self.logger.info("Looking for maintainer file...")
         maintainer_file, file_content, cost = await self.find_maintainer_file(
@@ -411,21 +478,11 @@ class MaintainerService(BaseService):
             raise MaintainerFileNotFoundError(ai_cost=total_cost)
 
         decoded_content = base64.b64decode(file_content).decode("utf-8")
+        result = await self.analyze_and_build_result(maintainer_file, decoded_content)
+        total_cost += result.total_cost
 
-        self.logger.info(f"Analyzing maintainer file: {maintainer_file}")
-        result = await self.analyze_file_content(maintainer_file, decoded_content)
-        maintainer_info = result.output.info
-        total_cost += result.cost
-
-        if not maintainer_info:
-            self.logger.error("Failed to analyze the maintainer file content.")
-            raise MaintanerAnalysisError(ai_cost=total_cost)
-
-        return MaintainerResult(
-            maintainer_file=maintainer_file,
-            maintainer_info=maintainer_info,
-            total_cost=total_cost,
-        )
+        result.total_cost = total_cost
+        return result
 
     async def check_if_interval_elapsed(self, repository: Repository) -> tuple[bool, float]:
         """
@@ -514,7 +571,12 @@ class MaintainerService(BaseService):
                 )
 
             self.logger.info(f"Starting maintainers processing for repo: {batch_info.remote}")
-            maintainers = await self.extract_maintainers(batch_info.repo_path, owner, repo_name)
+            maintainers = await self.extract_maintainers(
+                batch_info.repo_path,
+                owner,
+                repo_name,
+                saved_maintainer_file=repository.maintainer_file,
+            )
             latest_maintainer_file = maintainers.maintainer_file
             ai_cost = maintainers.total_cost
             maintainers_found = len(maintainers.maintainer_info)
