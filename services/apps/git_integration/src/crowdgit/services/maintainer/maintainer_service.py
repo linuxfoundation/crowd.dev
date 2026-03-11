@@ -621,7 +621,7 @@ class MaintainerService(BaseService):
 
         # Step 2: Find top candidate via filename search + scoring
         candidates = await self.find_candidate_files(repo_path)
-        candidate_files = [(path, score) for path, _, score in candidates]
+        candidate_files = [(path, score) for path, _, score in candidates][:100]
 
         # Step 3: Try AI analysis on top candidate
         failed_candidate: str | None = None
