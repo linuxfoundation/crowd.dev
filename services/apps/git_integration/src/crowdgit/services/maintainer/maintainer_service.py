@@ -46,6 +46,7 @@ class MaintainerService(BaseService):
 
     MAX_CHUNK_SIZE = 5000
     MAX_CONCURRENT_CHUNKS = 3
+    MAX_AI_FILE_LIST_SIZE = 300
 
     # Full paths that get the highest score bonus when matched exactly
     KNOWN_PATHS = {
@@ -376,33 +377,40 @@ class MaintainerService(BaseService):
                 ai_cost=maintainer_info.cost,
             )
 
-    def get_maintainer_file_prompt(self, example_files: list[str], file_names: list[str]) -> str:
+    def get_maintainer_file_prompt(
+        self, example_files: list[str], candidates: list[tuple[str, int]]
+    ) -> str:
         """
         Generates the prompt for the LLM to identify a maintainer file from a list.
+        candidates: list of (filename, score) where score reflects name-match strength.
         """
         example_files_str = "\n".join(f"- {name}" for name in example_files)
-        file_names_str = "\n".join(f"- {name}" for name in file_names)
+        candidates_str = "\n".join(f"- {name}  [score={score}]" for name, score in candidates)
 
         return f"""
-        You are an expert AI assistant specializing in identifying repository governance files. Your task is to find a maintainer file from a given list of filenames.
+        You are an expert AI assistant specializing in identifying repository governance files. Your task is to find the single best maintainer file from a given list of candidates.
 
         <instructions>
-        1.  **Analyze the Input**: Carefully review the list of filenames provided in the `<file_list>` tag.
-        2.  **Identify a Maintainer File**: Compare each filename against the characteristics of a maintainer file. These files typically define project ownership, governance, or code owners. Use the `<example_maintainer_files>` as a guide.
-        3.  **Apply Rules**: Follow all constraints listed in the `<rules>` section, especially the exclusion rule.
-        4.  **Select the First Match**: Scan the list and select the *first* filename that you identify as a maintainer file. You only need to find one. Once a match is found, stop searching.
+        1.  **Analyze the Input**: Carefully review the list of candidates in the `<file_list>` tag. Each entry shows the file path and a pre-computed name-match score.
+        2.  **Identify the Best Maintainer File**: Compare each candidate against the characteristics of a maintainer file. These files typically define project ownership, governance, or code owners. Use the `<example_maintainer_files>` as a guide.
+        3.  **Use Signals to Rank**: When multiple candidates qualify, prefer:
+            - Higher **score** — stronger filename match against known governance patterns.
+            - Fewer path separators (`/`) in the path — files closer to the repo root apply to the whole project; deeply nested files are usually component-specific.
+            - When score and nesting conflict, prefer the file most likely to be the repo-wide governance file.
+        4.  **Apply Rules**: Follow all constraints listed in the `<rules>` section.
         5.  **Format the Output**: Return your answer as a single JSON object according to the `<output_format>` specification, and nothing else.
         </instructions>
 
         <rules>
         - **Definition**: A maintainer file's name usually contains keywords like `MAINTAINERS`, `CODEOWNERS`, or `OWNERS`.
         - **Exclusion**: The filename `CONTRIBUTING.md` must ALWAYS be ignored and never selected, even if it's the only file that seems relevant.
+        - **Third-party exclusion**: Do NOT select files that are inside directories associated with vendored dependencies, third-party libraries, or packages consumed by the project (e.g. paths containing `vendor/`, `node_modules/`, `third_party/`, `external/`, `.cache/`, `dist/`, `site-packages/`). These files belong to external projects, not this repository's own governance.
         - **No Match**: If no file in the list matches the criteria after checking all of them, you must return the 'not_found' error.
         - **Empty Input**: If the `<file_list>` is empty or contains no filenames, you must return the 'not_found' error.
         </rules>
 
         <output_format>
-        - **If a maintainer file is found**: Return a JSON object in the format `{{"file_name": "<the_first_found_file_name>"}}`.
+        - **If a maintainer file is found**: Return a JSON object in the format `{{"file_name": "<the_best_matched_file_name>"}}`.
         - **If no maintainer file is found**: Return a JSON object in the format `{{"error": "not_found"}}`.
         </output_format>
 
@@ -411,15 +419,18 @@ class MaintainerService(BaseService):
         </example_maintainer_files>
 
         <file_list>
-        {file_names_str}
+        {candidates_str}
         </file_list>
 
         Return only the final JSON object.
         """
 
-    async def find_maintainer_file_with_ai(self, file_names):
+    async def find_maintainer_file_with_ai(
+        self, candidates: list[tuple[str, int]]
+    ) -> tuple[str | None, float]:
+        """Ask AI to select the best maintainer file from scored candidates."""
         self.logger.info("Using AI to find maintainer files...")
-        prompt = self.get_maintainer_file_prompt(sorted(self.KNOWN_PATHS), file_names)
+        prompt = self.get_maintainer_file_prompt(sorted(self.KNOWN_PATHS), candidates)
         result = await invoke_bedrock(prompt, pydantic_model=MaintainerFile)
 
         if result.output.file_name is not None:
@@ -613,6 +624,7 @@ class MaintainerService(BaseService):
         candidate_files = [(path, score) for path, _, score in candidates]
 
         # Step 3: Try AI analysis on top candidate
+        failed_candidate: str | None = None
         if candidates:
             filename, content, _ = candidates[0]
             try:
@@ -625,13 +637,33 @@ class MaintainerService(BaseService):
             except Exception as e:
                 self.logger.warning(f"Unexpected error analyzing '{filename}': {repr(e)}")
 
+            failed_candidate = filename
             self.logger.warning("Top candidate failed, trying AI file detection")
         else:
             self.logger.warning("No candidate files found via search, trying AI file detection")
 
         # Step 4: AI file detection as last resort
         file_names = await self._list_repo_files(repo_path)
-        ai_file_name, ai_cost = await self.find_maintainer_file_with_ai(file_names)
+        # Pre-filter to governance-scored files to keep the AI prompt within model limits.
+        # Fall back to a hard-capped slice of the full list if nothing scores.
+        # Exclude the already-failed top candidate to avoid re-suggesting it.
+        scored_tuples = [
+            (f, self._score_filename(f))
+            for f in file_names
+            if self._score_filename(f) > 0 and f != failed_candidate
+        ]
+        ai_input_files: list[tuple[str, int]] = (
+            scored_tuples
+            if scored_tuples
+            else [
+                (f, 0) for f in file_names[: self.MAX_AI_FILE_LIST_SIZE] if f != failed_candidate
+            ]
+        )
+        self.logger.info(
+            f"Passing {len(ai_input_files)} files to AI for maintainer file detection "
+            f"(total repo files: {len(file_names)})"
+        )
+        ai_file_name, ai_cost = await self.find_maintainer_file_with_ai(ai_input_files)
         ai_suggested_file = ai_file_name
         total_cost += ai_cost
 
