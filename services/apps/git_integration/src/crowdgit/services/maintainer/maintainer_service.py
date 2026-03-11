@@ -188,14 +188,18 @@ class MaintainerService(BaseService):
         for github_username, maintainer in new_maintainers_dict.items():
             role = maintainer.normalized_title
             original_role = self.make_role(maintainer.title)
-            if github_username == "unknown":
+            if github_username == "unknown" and maintainer.email in ("unknown", None):
                 self.logger.warning(
-                    f"Skipping unkown github_username with title {maintainer.title}"
+                    f"Skipping unknown github_username & email with title {maintainer.title}"
                 )
                 continue
             elif github_username not in current_maintainers_dict:
                 # New maintainer
-                identity_id = await find_github_identity(github_username)
+                identity_id = (
+                    await find_github_identity(github_username)
+                    if github_username != "unknown"
+                    else await find_maintainer_identity_by_email(maintainer.email)
+                )
                 self.logger.info(f"Found new maintainer {github_username} to be inserted")
                 if identity_id:
                     await upsert_maintainer(
@@ -205,7 +209,7 @@ class MaintainerService(BaseService):
                         f"Successfully inserted new maintainer {github_username} with identity_id {identity_id}"
                     )
                 else:
-                    # will happend for new users if their identity isn't created yet but should fixed on the next iteration
+                    # will happen for new users if their identity isn't created yet but should be fixed on the next iteration
                     self.logger.warning(f"Identity not found for username: {github_username}")
             else:
                 # Existing maintainer
