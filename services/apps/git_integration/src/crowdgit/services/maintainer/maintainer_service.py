@@ -309,7 +309,6 @@ class MaintainerService(BaseService):
         """
 
     async def analyze_file_content(self, maintainer_filename: str, content: str):
-        prompt = self.get_extraction_prompt(maintainer_filename, content)
         if len(content) > self.MAX_CHUNK_SIZE:
             self.logger.info(
                 "Maintainers file content exceeded max chunk size, splitting into chunks"
@@ -353,7 +352,10 @@ class MaintainerService(BaseService):
                 aggregated_info.cost += chunk_info.cost
             maintainer_info = aggregated_info
         else:
-            maintainer_info = await invoke_bedrock(prompt, pydantic_model=MaintainerInfo)
+            maintainer_info = await invoke_bedrock(
+                self.get_extraction_prompt(maintainer_filename, content),
+                pydantic_model=MaintainerInfo,
+            )
         self.logger.info("Maintainers file content analyzed by AI")
         self.logger.info(f"Maintainers response: {maintainer_info}")
         if maintainer_info.output.info is not None:
