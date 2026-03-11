@@ -533,6 +533,11 @@ class MaintainerService(BaseService):
         Raises MaintanerAnalysisError if no maintainers are found.
         """
         self.logger.info(f"Analyzing maintainer file: {filename}")
+        if "readme" in filename.lower() and "maintainer" not in content.lower():
+            self.logger.warning(
+                f"Skipping README file '{filename}': no 'maintainer' keyword found in content"
+            )
+            raise MaintanerAnalysisError(error_code=ErrorCode.NO_MAINTAINER_FOUND)
         result = await self.analyze_file_content(filename, content)
 
         if not result.output.info:
