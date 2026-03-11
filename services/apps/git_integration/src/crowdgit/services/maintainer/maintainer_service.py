@@ -66,6 +66,7 @@ class MaintainerService(BaseService):
         ".github/maintainers.md",
         ".github/contributors.md",
         ".github/codeowners",
+        "SECURITY-INSIGHTS.md",
     }
 
     # Governance stems (basename without extension, lowercased) for filename search
@@ -90,6 +91,7 @@ class MaintainerService(BaseService):
         "core_team",
         "code_owners",
         "emeritus",
+        "workgroup",
     }
 
     VALID_EXTENSIONS = {
