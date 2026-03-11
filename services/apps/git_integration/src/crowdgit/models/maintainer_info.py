@@ -34,5 +34,5 @@ class MaintainerResult(BaseModel):
     maintainer_file: str | None = None
     maintainer_info: list[MaintainerInfoItem] | None = None
     total_cost: float = 0
-    candidate_files: list[str] = []
+    candidate_files: list[tuple[str, int]] = []
     ai_suggested_file: str | None = None

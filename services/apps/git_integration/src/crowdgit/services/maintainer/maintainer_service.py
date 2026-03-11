@@ -45,28 +45,51 @@ class MaintainerService(BaseService):
     """Service for processing maintainer data"""
 
     MAX_CHUNK_SIZE = 5000
-    MAX_CONCURRENT_CHUNKS = 3  # Maximum concurrent chunk processing
-    MAX_AI_ANALYSIS_ATTEMPTS = 3
+    MAX_CONCURRENT_CHUNKS = 3
 
-    # List of common maintainer file names
-    MAINTAINER_FILES = [
-        "MAINTAINERS",
-        "MAINTAINERS.md",
-        "MAINTAINER.md",
-        "CODEOWNERS",
-        "CODEOWNERS.md",
-        "CONTRIBUTORS",
-        "CONTRIBUTORS.md",
-        "OWNERS",
-        "OWNERS.md",
-        "AUTHORS",
-        "AUTHORS.md",
-        "docs/MAINTAINERS.md",
-        ".github/MAINTAINERS.md",
-        ".github/CONTRIBUTORS.md",
-        ".github/CODEOWNERS",
-        "GOVERNANCE.md",
-    ]
+    # Full paths that get the highest score bonus when matched exactly
+    KNOWN_PATHS = {
+        "maintainers",
+        "maintainers.md",
+        "maintainer.md",
+        "codeowners",
+        "codeowners.md",
+        "contributors",
+        "contributors.md",
+        "owners",
+        "owners.md",
+        "authors",
+        "authors.md",
+        "governance.md",
+        "docs/maintainers.md",
+        ".github/maintainers.md",
+        ".github/contributors.md",
+        ".github/codeowners",
+    }
+
+    # Governance stems (basename without extension, lowercased) for filename search
+    GOVERNANCE_STEMS = {
+        "maintainers",
+        "maintainer",
+        "codeowners",
+        "codeowner",
+        "contributors",
+        "contributor",
+        "owners",
+        "owners_aliases",
+        "authors",
+        "committers",
+        "commiters",
+        "reviewers",
+        "approvers",
+        "administrators",
+        "stewards",
+        "credits",
+        "governance",
+        "core_team",
+        "code_owners",
+        "emeritus",
+    }
 
     VALID_EXTENSIONS = {
         "",
@@ -79,26 +102,31 @@ class MaintainerService(BaseService):
         ".toml",
         ".adoc",
         ".csv",
+        ".rdoc",
     }
 
-    CONTENT_VALIDATION_KEYWORDS = [
+    SCORING_KEYWORDS = [
         "maintainer",
         "codeowner",
         "owner",
         "contributor",
-        "author",
-        "reviewer",
         "governance",
-        "lead",
-        "approver",
-        "committer",
-        "credit",
-        "administrator",
         "steward",
         "emeritus",
+        "approver",
+        "reviewer",
     ]
 
-    EXCLUDED_FILENAMES = {"contributing.md", "contributing"}
+    EXCLUDED_FILENAMES = {
+        "contributing.md",
+        "contributing",
+        "code_of_conduct.md",
+        "code-of-conduct.md",
+    }
+
+    FULL_PATH_SCORE = 100
+    STEM_MATCH_SCORE = 50
+    PARTIAL_STEM_SCORE = 25
 
     def make_role(self, title: str):
         title = title.lower()
@@ -385,7 +413,7 @@ class MaintainerService(BaseService):
 
     async def find_maintainer_file_with_ai(self, file_names):
         self.logger.info("Using AI to find maintainer files...")
-        prompt = self.get_maintainer_file_prompt(self.MAINTAINER_FILES, file_names)
+        prompt = self.get_maintainer_file_prompt(sorted(self.KNOWN_PATHS), file_names)
         result = await invoke_bedrock(prompt, pydantic_model=MaintainerFile)
 
         if result.output.file_name is not None:
@@ -395,40 +423,39 @@ class MaintainerService(BaseService):
             return None, result.cost
 
     async def _list_repo_files(self, repo_path: str) -> list[str]:
-        """List all files in the repo recursively, respecting .gitignore via rg."""
-        try:
-            output = await run_shell_command(
-                ["rg", "--files", "--hidden", "--glob", "!.git/", "."], cwd=repo_path
-            )
-            return [
-                line[2:] if line.startswith("./") else line
-                for line in output.strip().split("\n")
-                if line.strip()
-            ]
-        except Exception as e:
-            self.logger.warning(f"rg --files failed, falling back to os.walk: {repr(e)}")
-            results = []
-            for dirpath, dirnames, filenames in os.walk(repo_path):
-                dirnames[:] = [d for d in dirnames if d != ".git"]
-                for filename in filenames:
-                    full_path = os.path.join(dirpath, filename)
-                    results.append(os.path.relpath(full_path, repo_path))
-            return results
+        """List non-code files in the repo recursively, filtered by VALID_EXTENSIONS."""
+        glob_args = ["--glob", "!.git/"]
+        for ext in self.VALID_EXTENSIONS:
+            glob_args.extend(["--iglob", f"*{ext}"])
+
+        output = await run_shell_command(
+            ["rg", "--files", "--hidden", *glob_args, "."], cwd=repo_path
+        )
+        return [
+            line[2:] if line.startswith("./") else line
+            for line in output.strip().split("\n")
+            if line.strip()
+        ]
 
     async def _ripgrep_search(self, repo_path: str) -> list[str]:
-        """Search for files containing maintainer-related keywords, filtered to valid extensions."""
-        pattern = "|".join(self.CONTENT_VALIDATION_KEYWORDS)
-
-        exclusion_globs = ["--glob", "!.git/"]
-        for name in self.EXCLUDED_FILENAMES:
-            exclusion_globs.extend(["--iglob", f"!{name}"])
+        """Search for files whose basename matches a governance stem, at any depth."""
+        glob_args = ["--glob", "!.git/"]
+        for stem in self.GOVERNANCE_STEMS:
+            glob_args.extend(
+                [
+                    "--iglob",
+                    f"*{stem}*",
+                    "--iglob",
+                    f"*{stem}*.*",
+                ]
+            )
 
         try:
             output = await run_shell_command(
-                ["rg", "-l", "-i", "--hidden", pattern, *exclusion_globs, "."], cwd=repo_path
+                ["rg", "--files", "--hidden", *glob_args, "."], cwd=repo_path
             )
         except CommandExecutionError:
-            self.logger.info("Ripgrep found no files containing maintainer keywords")
+            self.logger.info("Ripgrep found no governance files by filename")
             return []
         except Exception as e:
             self.logger.warning(f"Ripgrep search failed: {repr(e)}")
@@ -442,74 +469,64 @@ class MaintainerService(BaseService):
             if line.startswith("./"):
                 line = line[2:]
             basename = os.path.basename(line).lower()
+            if basename in self.EXCLUDED_FILENAMES:
+                continue
             ext = os.path.splitext(basename)[1]
             if ext not in self.VALID_EXTENSIONS:
-                self.logger.debug(f"Skipping '{line}': extension '{ext}' not in valid extensions")
-                continue
-            if ext == "" and not any(kw in basename for kw in self.CONTENT_VALIDATION_KEYWORDS):
-                self.logger.debug(
-                    f"Skipping extensionless file '{line}': "
-                    f"basename '{basename}' contains no governance keyword"
-                )
                 continue
             results.append(line)
 
-        self.logger.info(f"Ripgrep found {len(results)} candidate files after filtering")
+        self.logger.info(f"Ripgrep found {len(results)} governance files by filename")
         return results
 
-    async def find_candidate_files(self, repo_path: str) -> list[tuple[str, str]]:
+    def _score_filename(self, candidate_path: str) -> int:
+        """Score by how closely the filename matches known governance patterns."""
+        path = candidate_path.lower()
+        if path in self.KNOWN_PATHS:
+            return self.FULL_PATH_SCORE
+        stem = os.path.splitext(os.path.basename(path))[0].lstrip(".")
+        if stem in self.GOVERNANCE_STEMS:
+            return self.STEM_MATCH_SCORE
+        if any(known_stem in stem for known_stem in self.GOVERNANCE_STEMS):
+            return self.PARTIAL_STEM_SCORE
+        return 0
+
+    async def find_candidate_files(self, repo_path: str) -> list[tuple[str, str, int]]:
         """
-        Find all potential maintainer files using static list + dynamic ripgrep search.
-        Returns ordered list of (relative_path, content) tuples.
-        Static matches come first, then dynamic matches sorted by content keyword score.
+        Find governance files by filename, score them, and return all candidates sorted by score.
+        Scoring: full known-path match (100) > exact stem (50) > partial stem (25) + content keywords (+1 each).
         """
-        candidates_static = []
-        static_paths_lower = set()
+        found_paths = await self._ripgrep_search(repo_path)
+        if not found_paths:
+            return []
 
-        for file in self.MAINTAINER_FILES:
-            file_path = os.path.join(repo_path, file)
-            if await aiofiles.os.path.isfile(file_path):
-                try:
-                    async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                        content = await f.read()
-                    candidates_static.append((file, content))
-                    static_paths_lower.add(file.lower())
-                    self.logger.info(f"Static match found: {file}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to read static match {file}: {repr(e)}")
-
-        dynamic_paths = await self._ripgrep_search(repo_path)
-
-        scored_dynamic = []
-        for candidate_path in dynamic_paths:
-            if candidate_path.lower() in static_paths_lower:
-                continue
-
+        scored = []
+        for candidate_path in found_paths:
             file_path = os.path.join(repo_path, candidate_path)
             try:
                 async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
                     content = await f.read()
             except Exception as e:
-                self.logger.warning(f"Failed to read dynamic match {candidate_path}: {repr(e)}")
+                self.logger.warning(f"Failed to read candidate {candidate_path}: {repr(e)}")
                 continue
 
-            content_lower = content.lower()
-            # Calculate score based on keywords matched in the content
-            score = sum(1 for kw in self.CONTENT_VALIDATION_KEYWORDS if kw in content_lower)
-            if score > 0:
-                scored_dynamic.append((candidate_path, content, score))
-                self.logger.info(
-                    f"Dynamic match validated: {candidate_path} (keyword score: {score})"
-                )
+            filename_score = self._score_filename(candidate_path)
+            content_score = sum(1 for kw in self.SCORING_KEYWORDS if kw in content.lower())
+            total = filename_score + content_score
 
-        # Sort by score DESC
-        scored_dynamic.sort(key=lambda c: c[2], reverse=True)
+            scored.append((candidate_path, content, total))
+            self.logger.info(
+                f"Candidate: {candidate_path} "
+                f"(filename: {filename_score}, content: {content_score}, total: {total})"
+            )
 
-        result = candidates_static + [(path, content) for path, content, _ in scored_dynamic]
-        self.logger.info(
-            f"Found {len(candidates_static)} static and {len(scored_dynamic)} dynamic candidates"
-        )
-        return result
+        scored.sort(key=lambda c: c[2], reverse=True)
+
+        if scored:
+            self.logger.info(f"Top candidate: {scored[0][0]} (from {len(scored)} total)")
+        else:
+            self.logger.info("No valid candidates after scoring")
+        return scored
 
     async def analyze_and_build_result(self, filename: str, content: str) -> MaintainerResult:
         """
@@ -569,7 +586,7 @@ class MaintainerService(BaseService):
         saved_maintainer_file: str | None = None,
     ):
         total_cost = 0
-        candidate_files: list[str] = []
+        candidate_files: list[tuple[str, int]] = []
         ai_suggested_file: str | None = None
 
         def _attach_metadata(result: MaintainerResult) -> MaintainerResult:
@@ -587,27 +604,24 @@ class MaintainerService(BaseService):
                 return _attach_metadata(result)
             self.logger.info("Falling back to maintainer file detection")
 
-        # Step 2: Find candidates via static list + ripgrep dynamic search
+        # Step 2: Find top candidate via filename search + scoring
         candidates = await self.find_candidate_files(repo_path)
-        candidate_files = [path for path, _ in candidates]
+        candidate_files = [(path, score) for path, _, score in candidates]
 
-        # Step 3: Try AI analysis on candidates, stop on first success
+        # Step 3: Try AI analysis on top candidate
         if candidates:
-            attempts = min(len(candidates), self.MAX_AI_ANALYSIS_ATTEMPTS)
-            for filename, content in candidates[:attempts]:
-                try:
-                    result = await self.analyze_and_build_result(filename, content)
-                    total_cost += result.total_cost
-                    return _attach_metadata(result)
-                except MaintanerAnalysisError as e:
-                    total_cost += e.ai_cost
-                    self.logger.warning(f"AI analysis failed for '{filename}': {e.error_message}")
-                except Exception as e:
-                    self.logger.warning(f"Unexpected error analyzing '{filename}': {repr(e)}")
+            filename, content, _ = candidates[0]
+            try:
+                result = await self.analyze_and_build_result(filename, content)
+                total_cost += result.total_cost
+                return _attach_metadata(result)
+            except MaintanerAnalysisError as e:
+                total_cost += e.ai_cost
+                self.logger.warning(f"AI analysis failed for '{filename}': {e.error_message}")
+            except Exception as e:
+                self.logger.warning(f"Unexpected error analyzing '{filename}': {repr(e)}")
 
-            self.logger.warning(
-                f"AI analysis failed for all {attempts} candidate(s), trying AI file detection"
-            )
+            self.logger.warning("Top candidate failed, trying AI file detection")
         else:
             self.logger.warning("No candidate files found via search, trying AI file detection")
 
@@ -619,7 +633,11 @@ class MaintainerService(BaseService):
 
         if ai_file_name:
             file_path = os.path.join(repo_path, ai_file_name)
-            if await aiofiles.os.path.isfile(file_path):
+            if not await aiofiles.os.path.isfile(file_path):
+                self.logger.warning(
+                    f"AI suggested '{ai_file_name}' but file does not exist on disk"
+                )
+            else:
                 try:
                     async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
                         content = await f.read()
