@@ -447,14 +447,7 @@ class MaintainerService(BaseService):
         """Search for files whose basename matches a governance stem, at any depth."""
         glob_args = ["--glob", "!.git/"]
         for stem in self.GOVERNANCE_STEMS:
-            glob_args.extend(
-                [
-                    "--iglob",
-                    f"*{stem}*",
-                    "--iglob",
-                    f"*{stem}*.*",
-                ]
-            )
+            glob_args.extend(["--iglob", f"*{stem}*"])
 
         try:
             output = await run_shell_command(
