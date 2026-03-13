@@ -456,15 +456,21 @@ class MaintainerService(BaseService):
             if line.strip()
         ]
 
-    async def _ripgrep_search(self, repo_path: str) -> list[str]:
-        """Search for files whose basename matches a governance stem, at any depth."""
+    async def _ripgrep_search(self, repo_path: str, max_depth: int | None = None) -> list[str]:
+        """Search for files whose basename matches a governance stem.
+
+        Args:
+            max_depth: If set, passed as --max-depth to ripgrep (1 = repo root files only).
+        """
         glob_args = ["--glob", "!.git/"]
         for stem in self.GOVERNANCE_STEMS:
             glob_args.extend(["--iglob", f"*{stem}*"])
 
+        depth_args = ["--max-depth", str(max_depth)] if max_depth is not None else []
+
         try:
             output = await run_shell_command(
-                ["rg", "--files", "--hidden", *glob_args, "."], cwd=repo_path
+                ["rg", "--files", "--hidden", *depth_args, *glob_args, "."], cwd=repo_path
             )
         except CommandExecutionError:
             self.logger.info("Ripgrep found no governance files by filename")
@@ -503,17 +509,26 @@ class MaintainerService(BaseService):
             return self.PARTIAL_STEM_SCORE
         return 0
 
-    async def find_candidate_files(self, repo_path: str) -> list[tuple[str, str, int]]:
+    async def find_candidate_files(
+        self, repo_path: str
+    ) -> tuple[list[tuple[str, str, int]], list[tuple[str, str, int]]]:
         """
-        Find governance files by filename, score them, and return all candidates sorted by score.
+        Find governance files by filename, score them, and return (root_candidates, subdir_candidates).
+
+        Root candidates are files directly in the repo root (max-depth 0).
+        Subdir candidates are files in subdirectories.
+        Both lists are sorted by score descending.
         Scoring: full known-path match (100) > exact stem (50) > partial stem (25) + content keywords (+1 each).
         """
-        found_paths = await self._ripgrep_search(repo_path)
-        if not found_paths:
-            return []
+        root_paths = set(await self._ripgrep_search(repo_path, max_depth=1))
+        all_paths = await self._ripgrep_search(repo_path)
+        if not all_paths:
+            return [], []
 
-        scored = []
-        for candidate_path in found_paths:
+        root_scored: list[tuple[str, str, int]] = []
+        subdir_scored: list[tuple[str, str, int]] = []
+
+        for candidate_path in all_paths:
             file_path = os.path.join(repo_path, candidate_path)
             try:
                 async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
@@ -526,19 +541,24 @@ class MaintainerService(BaseService):
             content_score = sum(1 for kw in self.SCORING_KEYWORDS if kw in content.lower())
             total = filename_score + content_score
 
-            scored.append((candidate_path, content, total))
+            entry = (candidate_path, content, total)
+            if candidate_path in root_paths:
+                root_scored.append(entry)
+            else:
+                subdir_scored.append(entry)
+
             self.logger.info(
                 f"Candidate: {candidate_path} "
                 f"(filename: {filename_score}, content: {content_score}, total: {total})"
             )
 
-        scored.sort(key=lambda c: c[2], reverse=True)
+        root_scored.sort(key=lambda c: c[2], reverse=True)
+        subdir_scored.sort(key=lambda c: c[2], reverse=True)
 
-        if scored:
-            self.logger.info(f"Top candidate: {scored[0][0]} (from {len(scored)} total)")
-        else:
-            self.logger.info("No valid candidates after scoring")
-        return scored
+        self.logger.info(
+            f"Found {len(root_scored)} root candidate(s) and {len(subdir_scored)} subdirectory candidate(s)"
+        )
+        return root_scored, subdir_scored
 
     async def analyze_and_build_result(self, filename: str, content: str) -> MaintainerResult:
         """
@@ -621,14 +641,56 @@ class MaintainerService(BaseService):
                 return _attach_metadata(result)
             self.logger.info("Falling back to maintainer file detection")
 
-        # Step 2: Find top candidate via filename search + scoring
-        candidates = await self.find_candidate_files(repo_path)
-        candidate_files = [(path, score) for path, _, score in candidates][:100]
+        # Step 2: Find candidates via filename search + scoring, split by depth
+        root_candidates, subdir_candidates = await self.find_candidate_files(repo_path)
+        all_candidates = root_candidates + subdir_candidates
+        candidate_files = [(path, score) for path, _, score in all_candidates][:100]
 
-        # Step 3: Try AI analysis on top candidate
-        failed_candidate: str | None = None
-        if candidates:
-            filename, content, _ = candidates[0]
+        # Step 3: Try root-level files first (in score order), then top subdirectory file
+        failed_candidates: set[str] = set()
+
+        if not all_candidates:
+            self.logger.warning("No candidate files found via search, trying AI file detection")
+
+        combined_info: list = []
+        best_file: str | None = None
+        best_file_count: int = 0
+
+        for filename, content, _ in root_candidates:
+            try:
+                result = await self.analyze_and_build_result(filename, content)
+                total_cost += result.total_cost
+                file_info = result.maintainer_info or []
+                combined_info.extend(file_info)
+                if len(file_info) > best_file_count:
+                    best_file = filename
+                    best_file_count = len(file_info)
+            except MaintanerAnalysisError as e:
+                total_cost += e.ai_cost
+                self.logger.warning(
+                    f"AI analysis failed for root file '{filename}': {e.error_message}"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Unexpected error analyzing root file '{filename}': {repr(e)}"
+                )
+            failed_candidates.add(filename)
+
+        if combined_info:
+            return _attach_metadata(
+                MaintainerResult(
+                    maintainer_file=best_file,
+                    maintainer_info=combined_info,
+                )
+            )
+
+        if root_candidates and subdir_candidates:
+            self.logger.warning("All root candidates failed, trying top subdirectory candidate")
+        elif root_candidates:
+            self.logger.warning("All root candidates failed, trying AI file detection")
+
+        if subdir_candidates:
+            filename, content, _ = subdir_candidates[0]
             try:
                 result = await self.analyze_and_build_result(filename, content)
                 total_cost += result.total_cost
@@ -638,27 +700,26 @@ class MaintainerService(BaseService):
                 self.logger.warning(f"AI analysis failed for '{filename}': {e.error_message}")
             except Exception as e:
                 self.logger.warning(f"Unexpected error analyzing '{filename}': {repr(e)}")
-
-            failed_candidate = filename
-            self.logger.warning("Top candidate failed, trying AI file detection")
-        else:
-            self.logger.warning("No candidate files found via search, trying AI file detection")
+            failed_candidates.add(filename)
+            self.logger.warning("Top subdirectory candidate failed, trying AI file detection")
 
         # Step 4: AI file detection as last resort
         file_names = await self._list_repo_files(repo_path)
         # Pre-filter to governance-scored files to keep the AI prompt within model limits.
         # Fall back to a hard-capped slice of the full list if nothing scores.
-        # Exclude the already-failed top candidate to avoid re-suggesting it.
+        # Exclude all already-failed candidates to avoid re-suggesting them.
         scored_tuples = [
             (f, self._score_filename(f))
             for f in file_names
-            if self._score_filename(f) > 0 and f != failed_candidate
+            if self._score_filename(f) > 0 and f not in failed_candidates
         ]
         ai_input_files: list[tuple[str, int]] = (
             scored_tuples
             if scored_tuples
             else [
-                (f, 0) for f in file_names[: self.MAX_AI_FILE_LIST_SIZE] if f != failed_candidate
+                (f, 0)
+                for f in file_names[: self.MAX_AI_FILE_LIST_SIZE]
+                if f not in failed_candidates
             ]
         )
         self.logger.info(
