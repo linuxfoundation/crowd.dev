@@ -206,4 +206,3 @@ export interface SnowflakeConfiguration {
 export interface LinuxFoundationConfiguration {
   collectionId: string
 }
-
