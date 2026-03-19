@@ -50,5 +50,6 @@
   "jiraIssueReporter": {},
   "snowflake": {},
   "nango": {},
-  "linuxFoundation": {}
+  "linuxFoundation": {},
+  "devStats": {}
 }

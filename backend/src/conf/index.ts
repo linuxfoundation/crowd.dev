@@ -26,6 +26,7 @@ import {
   IOpenStatusApiConfig,
   IRedditConfig,
   IntegrationProcessingConfiguration,
+  DevStatsConfiguration,
   LinuxFoundationConfiguration,
   NangoConfiguration,
   OrganizationEnrichmentConfiguration,
@@ -157,3 +158,6 @@ export const LINUX_FOUNDATION_CONFIG: LinuxFoundationConfiguration =
 
 export const ENABLE_LF_COLLECTION_MANAGEMENT: boolean =
   process.env.ENABLE_LF_COLLECTION_MANAGEMENT === 'true'
+
+export const DEV_STATS_CONFIG: DevStatsConfiguration =
+  config.get<DevStatsConfiguration>('devStats')
