@@ -189,6 +189,9 @@
     "callbackUrl": "CROWD_GITLAB_CALLBACK_URL",
     "webhookToken": "CROWD_GITLAB_WEBHOOK_TOKEN"
   },
+  "devStats": {
+    "apiKey": "CROWD_DEV_STATS_API_KEY"
+  },
   "snowflake": {
     "privateKey": "CROWD_SNOWFLAKE_PRIVATE_KEY",
     "account": "CROWD_SNOWFLAKE_ACCOUNT",

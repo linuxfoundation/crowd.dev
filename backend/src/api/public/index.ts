@@ -1,6 +1,6 @@
 import { Router } from 'express'
 
-import { AUTH0_CONFIG } from '../../conf'
+import { AUTH0_CONFIG, DEV_STATS_CONFIG } from '../../conf'
 
 import { errorHandler } from './middlewares/errorHandler'
 import { oauth2Middleware } from './middlewares/oauth2Middleware'
