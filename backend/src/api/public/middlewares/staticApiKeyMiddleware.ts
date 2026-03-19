@@ -1,6 +1,5 @@
 import crypto from 'crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
-
 import { UnauthorizedError } from '@crowd/common'
 import { findApiKeyByHash, optionsQx, touchApiKeyLastUsed } from '@crowd/data-access-layer'
 
