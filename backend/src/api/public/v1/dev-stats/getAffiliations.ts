@@ -1,12 +1,18 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { optionsQx } from '@crowd/data-access-layer'
+import {
+  findMembersByGithubHandles,
+  findVerifiedEmailsByMemberIds,
+  findWorkExperiencesByMemberIds,
+  optionsQx,
+} from '@crowd/data-access-layer'
+import { getServiceChildLogger } from '@crowd/logging'
 
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { findAffiliationsByGithubHandles } from './queries'
+const log = getServiceChildLogger('dev-stats')
 
 const MAX_HANDLES = 1000
 
@@ -21,11 +27,94 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
   const { githubHandles } = validateOrThrow(bodySchema, req.body)
   const qx = optionsQx(req)
 
-  const { contributors, notFound } = await findAffiliationsByGithubHandles(qx, githubHandles)
+  const t0 = performance.now()
 
-  ok(res, {
-    total_found: contributors.length,
-    contributors,
-    notFound,
+  const lowercasedHandles = githubHandles.map((h) => h.toLowerCase())
+
+  // Step 1: find verified members by github handles
+  const memberRows = await findMembersByGithubHandles(qx, lowercasedHandles)
+
+  const t1 = performance.now()
+  log.info(
+    { handles: githubHandles.length, found: memberRows.length, ms: Math.round(t1 - t0) },
+    'Step 1: members lookup',
+  )
+
+  const foundHandles = new Set(memberRows.map((r) => r.githubHandle.toLowerCase()))
+  const notFound = githubHandles.filter((h) => !foundHandles.has(h.toLowerCase()))
+
+  if (memberRows.length === 0) {
+    ok(res, { total_found: 0, contributors: [], notFound })
+    return
+  }
+
+  const memberIds = memberRows.map((r) => r.memberId)
+
+  // Step 2: fetch verified emails
+  const emailRows = await findVerifiedEmailsByMemberIds(qx, memberIds)
+
+  const t2 = performance.now()
+  log.info(
+    { members: memberIds.length, emails: emailRows.length, ms: Math.round(t2 - t1) },
+    'Step 2: emails lookup',
+  )
+
+  const emailsByMember = new Map<string, string[]>()
+  for (const row of emailRows) {
+    const list = emailsByMember.get(row.memberId) ?? []
+    list.push(row.email)
+    emailsByMember.set(row.memberId, list)
+  }
+
+  // Step 3: fetch work experiences
+  const workExperienceRows = await findWorkExperiencesByMemberIds(qx, memberIds)
+
+  const t3 = performance.now()
+  log.info(
+    { members: memberIds.length, rows: workExperienceRows.length, ms: Math.round(t3 - t2) },
+    'Step 3: work experiences lookup',
+  )
+
+  const workExpByMember = new Map<string, typeof workExperienceRows>()
+  for (const row of workExperienceRows) {
+    const list = workExpByMember.get(row.memberId) ?? []
+    list.push(row)
+    workExpByMember.set(row.memberId, list)
+  }
+
+  // Step 4: build response
+  const contributors = memberRows.map((member) => {
+    const workExperiences = workExpByMember.get(member.memberId) ?? []
+
+    const affiliations = workExperiences
+      .sort((a, b) => {
+        if (!a.dateStart) return 1
+        if (!b.dateStart) return -1
+        return new Date(b.dateStart).getTime() - new Date(a.dateStart).getTime()
+      })
+      .map((we) => ({
+        organization: we.organizationName,
+        startDate: we.dateStart ? new Date(we.dateStart).toISOString() : null,
+        endDate: we.dateEnd ? new Date(we.dateEnd).toISOString() : null,
+      }))
+
+    return {
+      githubHandle: member.githubHandle,
+      name: member.displayName,
+      emails: emailsByMember.get(member.memberId) ?? [],
+      affiliations,
+    }
   })
+
+  log.info(
+    {
+      handles: githubHandles.length,
+      found: contributors.length,
+      notFound: notFound.length,
+      totalMs: Math.round(t3 - t0),
+    },
+    'dev-stats affiliations complete',
+  )
+
+  ok(res, { total_found: contributors.length, contributors, notFound })
 }
