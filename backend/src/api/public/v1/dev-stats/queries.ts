@@ -1,15 +1,10 @@
-import { fetchManyMemberOrgsWithOrgData } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 const log = getServiceChildLogger('dev-stats-queries')
 
-export interface MemberRow {
-  githubHandle: string
-  memberId: string
-  displayName: string | null
-}
+const BLACKLISTED_TITLES = ['investor', 'mentor', 'board member']
 
 export interface AffiliationResult {
   githubHandle: string
@@ -27,15 +22,29 @@ export interface DevStatsQueryResult {
   notFound: string[]
 }
 
+interface MemberRow {
+  githubHandle: string
+  memberId: string
+  displayName: string | null
+}
+
+interface WorkExperienceRow {
+  memberId: string
+  organizationName: string
+  title: string | null
+  dateStart: string | null
+  dateEnd: string | null
+}
+
 export async function findAffiliationsByGithubHandles(
   qx: QueryExecutor,
   githubHandles: string[],
 ): Promise<DevStatsQueryResult> {
   const t0 = performance.now()
 
-  // Step 1: find members by github handles
   const lowercasedHandles = githubHandles.map((h) => h.toLowerCase())
 
+  // Step 1: find verified members by github handles
   log.info(
     {
       query: `
@@ -44,6 +53,7 @@ export async function findAffiliationsByGithubHandles(
         JOIN members m ON m.id = mi."memberId"
         WHERE mi.platform = '${PlatformType.GITHUB}'
           AND mi.type = '${MemberIdentityType.USERNAME}'
+          AND mi.verified = true
           AND lower(mi.value) IN (${lowercasedHandles.map((h) => `'${h}'`).join(', ')})
           AND mi."deletedAt" IS NULL
           AND m."deletedAt" IS NULL
@@ -62,6 +72,7 @@ export async function findAffiliationsByGithubHandles(
       JOIN members m ON m.id = mi."memberId"
       WHERE mi.platform = $(platform)
         AND mi.type     = $(type)
+        AND mi.verified = true
         AND lower(mi.value) IN ($(lowercasedHandles:csv))
         AND mi."deletedAt" IS NULL
         AND m."deletedAt"  IS NULL
@@ -74,10 +85,13 @@ export async function findAffiliationsByGithubHandles(
   )
 
   const t1 = performance.now()
-  log.info({ handles: githubHandles.length, found: memberRows.length, ms: Math.round(t1 - t0) }, 'Step 1: members lookup')
+  log.info(
+    { handles: githubHandles.length, found: memberRows.length, ms: Math.round(t1 - t0) },
+    'Step 1: members lookup',
+  )
 
-  const foundHandles = new Set(memberRows.map((r) => r.githubHandle))
-  const notFound = githubHandles.filter((h) => !foundHandles.has(h))
+  const foundHandles = new Set(memberRows.map((r) => r.githubHandle.toLowerCase()))
+  const notFound = githubHandles.filter((h) => !foundHandles.has(h.toLowerCase()))
 
   if (memberRows.length === 0) {
     return { contributors: [], notFound }
@@ -105,13 +119,13 @@ export async function findAffiliationsByGithubHandles(
       SELECT "memberId", value AS email
       FROM "memberIdentities"
       WHERE "memberId" IN ($(memberIds:csv))
-        AND type       = $(type)
+        AND type       = $(emailType)
         AND verified   = true
         AND "deletedAt" IS NULL
     `,
     {
       memberIds,
-      type: MemberIdentityType.EMAIL,
+      emailType: MemberIdentityType.EMAIL,
     },
   )
 
@@ -123,30 +137,65 @@ export async function findAffiliationsByGithubHandles(
   }
 
   const t2 = performance.now()
-  log.info({ members: memberIds.length, emails: emailRows.length, ms: Math.round(t2 - t1) }, 'Step 2: emails lookup')
+  log.info(
+    { members: memberIds.length, emails: emailRows.length, ms: Math.round(t2 - t1) },
+    'Step 2: emails lookup',
+  )
 
-  // Step 3: fetch work experiences for found members
+  // Step 3: fetch work experiences — excluding blocked affiliations
   log.info(
     {
       query: `
-        SELECT mo.*, o."displayName" as "organizationName", o.logo as "organizationLogo"
+        SELECT mo."memberId", o."displayName" AS "organizationName", mo.title, mo."dateStart", mo."dateEnd"
         FROM "memberOrganizations" mo
         JOIN organizations o ON mo."organizationId" = o.id
+        LEFT JOIN "memberOrganizationAffiliationOverrides" ovr ON ovr."memberOrganizationId" = mo.id
         WHERE mo."memberId" IN (${memberIds.map((id) => `'${id}'`).join(', ')})
           AND mo."deletedAt" IS NULL
+          AND COALESCE(ovr."allowAffiliation", true) = true
       `,
     },
     'Step 3 query',
   )
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, memberIds)
+  const workExperienceRows: WorkExperienceRow[] = await qx.select(
+    `
+      SELECT
+        mo."memberId",
+        o."displayName" AS "organizationName",
+        mo.title,
+        mo."dateStart",
+        mo."dateEnd"
+      FROM "memberOrganizations" mo
+      JOIN organizations o ON mo."organizationId" = o.id
+      LEFT JOIN "memberOrganizationAffiliationOverrides" ovr ON ovr."memberOrganizationId" = mo.id
+      WHERE mo."memberId" IN ($(memberIds:csv))
+        AND mo."deletedAt" IS NULL
+        AND COALESCE(ovr."allowAffiliation", true) = true
+    `,
+    { memberIds },
+  )
 
   const t3 = performance.now()
-  log.info({ members: memberIds.length, ms: Math.round(t3 - t2) }, 'Step 3: work experiences lookup')
+  log.info(
+    { members: memberIds.length, ms: Math.round(t3 - t2) },
+    'Step 3: work experiences lookup',
+  )
+
+  // group work experiences by memberId, filtering blacklisted titles
+  const workExpByMember = new Map<string, WorkExperienceRow[]>()
+  for (const row of workExperienceRows) {
+    if (row.title && BLACKLISTED_TITLES.some((t) => row.title.toLowerCase().includes(t))) {
+      continue
+    }
+    const list = workExpByMember.get(row.memberId) ?? []
+    list.push(row)
+    workExpByMember.set(row.memberId, list)
+  }
 
   // Step 4: build response
   const contributors: AffiliationResult[] = memberRows.map((member) => {
-    const workExperiences = orgsMap.get(member.memberId) ?? []
+    const workExperiences = workExpByMember.get(member.memberId) ?? []
 
     const affiliations = workExperiences
       .sort((a, b) => {
@@ -168,7 +217,15 @@ export async function findAffiliationsByGithubHandles(
     }
   })
 
-  log.info({ handles: githubHandles.length, found: contributors.length, notFound: notFound.length, totalMs: Math.round(t3 - t0) }, 'dev-stats affiliations query complete')
+  log.info(
+    {
+      handles: githubHandles.length,
+      found: contributors.length,
+      notFound: notFound.length,
+      totalMs: Math.round(t3 - t0),
+    },
+    'dev-stats affiliations query complete',
+  )
 
   return { contributors, notFound }
 }
