@@ -70,10 +70,7 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
   const affiliationsByMember = await resolveAffiliationsByMemberIds(qx, memberIds)
 
   const t3 = performance.now()
-  log.info(
-    { members: memberIds.length, ms: Math.round(t3 - t2) },
-    'Step 3: affiliations resolved',
-  )
+  log.info({ members: memberIds.length, ms: Math.round(t3 - t2) }, 'Step 3: affiliations resolved')
 
   // Step 4: build response
   const contributors = memberRows.map((member) => ({
