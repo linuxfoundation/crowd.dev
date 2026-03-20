@@ -4,8 +4,8 @@ import { z } from 'zod'
 import {
   findMembersByGithubHandles,
   findVerifiedEmailsByMemberIds,
-  findWorkExperiencesByMemberIds,
   optionsQx,
+  resolveAffiliationsByMemberIds,
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -66,45 +66,22 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
     emailsByMember.set(row.memberId, list)
   }
 
-  // Step 3: fetch work experiences
-  const workExperienceRows = await findWorkExperiencesByMemberIds(qx, memberIds)
+  // Step 3: resolve affiliations (conflict resolution, gap-filling, selection priority)
+  const affiliationsByMember = await resolveAffiliationsByMemberIds(qx, memberIds)
 
   const t3 = performance.now()
   log.info(
-    { members: memberIds.length, rows: workExperienceRows.length, ms: Math.round(t3 - t2) },
-    'Step 3: work experiences lookup',
+    { members: memberIds.length, ms: Math.round(t3 - t2) },
+    'Step 3: affiliations resolved',
   )
 
-  const workExpByMember = new Map<string, typeof workExperienceRows>()
-  for (const row of workExperienceRows) {
-    const list = workExpByMember.get(row.memberId) ?? []
-    list.push(row)
-    workExpByMember.set(row.memberId, list)
-  }
-
   // Step 4: build response
-  const contributors = memberRows.map((member) => {
-    const workExperiences = workExpByMember.get(member.memberId) ?? []
-
-    const affiliations = workExperiences
-      .sort((a, b) => {
-        if (!a.dateStart) return 1
-        if (!b.dateStart) return -1
-        return new Date(b.dateStart).getTime() - new Date(a.dateStart).getTime()
-      })
-      .map((we) => ({
-        organization: we.organizationName,
-        startDate: we.dateStart ? new Date(we.dateStart).toISOString() : null,
-        endDate: we.dateEnd ? new Date(we.dateEnd).toISOString() : null,
-      }))
-
-    return {
-      githubHandle: member.githubHandle,
-      name: member.displayName,
-      emails: emailsByMember.get(member.memberId) ?? [],
-      affiliations,
-    }
-  })
+  const contributors = memberRows.map((member) => ({
+    githubHandle: member.githubHandle,
+    name: member.displayName,
+    emails: emailsByMember.get(member.memberId) ?? [],
+    affiliations: affiliationsByMember.get(member.memberId) ?? [],
+  }))
 
   log.info(
     {
