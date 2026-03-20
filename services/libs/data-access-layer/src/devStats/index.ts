@@ -135,7 +135,7 @@ async function findWorkExperiencesBulk(
   )
 
   return rows.filter(
-    (r) => !r.title || !BLACKLISTED_TITLES.some((t) => r.title!.toLowerCase().includes(t)),
+    (r) => !r.title || !BLACKLISTED_TITLES.some((t) => r.title?.toLowerCase().includes(t)),
   )
 }
 
@@ -175,9 +175,9 @@ function longestDateRange(orgs: IDevStatsWorkRow[]): IDevStatsWorkRow {
 
   return withDates.reduce((best, curr) => {
     const bestMs =
-      new Date(best.dateEnd ?? '9999-12-31').getTime() - new Date(best.dateStart!).getTime()
+      new Date(best.dateEnd ?? '9999-12-31').getTime() - new Date(best.dateStart ?? '').getTime()
     const currMs =
-      new Date(curr.dateEnd ?? '9999-12-31').getTime() - new Date(curr.dateStart!).getTime()
+      new Date(curr.dateEnd ?? '9999-12-31').getTime() - new Date(curr.dateStart ?? '').getTime()
     return currMs > bestMs ? curr : best
   })
 }
@@ -239,7 +239,7 @@ function collectBoundaries(datedRows: IDevStatsWorkRow[]): Date[] {
   const ms = new Set<number>([today.getTime()])
 
   for (const row of datedRows) {
-    const start = startOfDay(row.dateStart!)
+    const start = startOfDay(row.dateStart ?? '')
     if (start <= today) ms.add(start.getTime())
 
     if (row.dateEnd) {
@@ -256,7 +256,7 @@ function collectBoundaries(datedRows: IDevStatsWorkRow[]): Date[] {
 
 function orgsActiveAt(datedRows: IDevStatsWorkRow[], point: Date): IDevStatsWorkRow[] {
   return datedRows.filter((r) => {
-    const start = startOfDay(r.dateStart!)
+    const start = startOfDay(r.dateStart ?? '')
     const end = r.dateEnd ? startOfDay(r.dateEnd) : null
     return point >= start && (!end || point <= end)
   })
@@ -291,7 +291,11 @@ function buildTimeline(
       { memberId, org: org.organizationName, start: start.toISOString(), end: end.toISOString() },
       'closing segment',
     )
-    resolved.push({ organization: org.organizationName, startDate: start.toISOString(), endDate: end.toISOString() })
+    resolved.push({
+      organization: org.organizationName,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    })
   }
 
   for (let i = 0; i < boundaries.length - 1; i++) {
@@ -318,7 +322,12 @@ function buildTimeline(
 
     if (gapStart !== null) {
       log.debug(
-        { memberId, fallback: fallbackOrg?.organizationName ?? null, gapStart: gapStart.toISOString(), gapEnd: dayBefore(point).toISOString() },
+        {
+          memberId,
+          fallback: fallbackOrg?.organizationName ?? null,
+          gapStart: gapStart.toISOString(),
+          gapEnd: dayBefore(point).toISOString(),
+        },
         'closing gap with fallback org',
       )
       if (fallbackOrg) closeSegment(fallbackOrg, gapStart, dayBefore(point))
@@ -328,15 +337,23 @@ function buildTimeline(
     const winner = selectPrimaryWorkExperience(active)
 
     if (!currentOrg) {
-      log.debug({ memberId, org: winner.organizationName, from: point.toISOString() }, 'opening segment')
+      log.debug(
+        { memberId, org: winner.organizationName, from: point.toISOString() },
+        'opening segment',
+      )
       currentOrg = winner
       currentStart = point
     } else if (currentOrg.organizationId !== winner.organizationId) {
       log.debug(
-        { memberId, from: currentOrg.organizationName, to: winner.organizationName, at: point.toISOString() },
+        {
+          memberId,
+          from: currentOrg.organizationName,
+          to: winner.organizationName,
+          at: point.toISOString(),
+        },
         'org changed',
       )
-      closeSegment(currentOrg, currentStart!, dayBefore(point))
+      closeSegment(currentOrg, currentStart ?? point, dayBefore(point))
       currentOrg = winner
       currentStart = point
     }
@@ -345,7 +362,10 @@ function buildTimeline(
   // Close the final open segment using the org's actual endDate (null = ongoing)
   if (currentOrg && currentStart) {
     const endDate = currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null
-    log.debug({ memberId, org: currentOrg.organizationName, start: currentStart.toISOString(), endDate }, 'closing final segment')
+    log.debug(
+      { memberId, org: currentOrg.organizationName, start: currentStart.toISOString(), endDate },
+      'closing final segment',
+    )
     resolved.push({
       organization: currentOrg.organizationName,
       startDate: currentStart.toISOString(),
@@ -355,14 +375,24 @@ function buildTimeline(
 
   // Close a trailing gap with the fallback org (ongoing, no endDate)
   if (gapStart !== null && fallbackOrg) {
-    log.debug({ memberId, fallback: fallbackOrg.organizationName, gapStart: gapStart.toISOString() }, 'closing trailing gap with fallback org')
-    resolved.push({ organization: fallbackOrg.organizationName, startDate: gapStart.toISOString(), endDate: null })
+    log.debug(
+      { memberId, fallback: fallbackOrg.organizationName, gapStart: gapStart.toISOString() },
+      'closing trailing gap with fallback org',
+    )
+    resolved.push({
+      organization: fallbackOrg.organizationName,
+      startDate: gapStart.toISOString(),
+      endDate: null,
+    })
   }
 
   return resolved
 }
 
-function resolveAffiliationsForMember(memberId: string, rows: IDevStatsWorkRow[]): IDevStatsAffiliation[] {
+function resolveAffiliationsForMember(
+  memberId: string,
+  rows: IDevStatsWorkRow[],
+): IDevStatsAffiliation[] {
   log.debug({ memberId, totalRows: rows.length }, 'resolving affiliations')
 
   // If one undated org is marked primary, drop all other undated orgs to avoid infinite conflicts
@@ -372,7 +402,10 @@ function resolveAffiliationsForMember(memberId: string, rows: IDevStatsWorkRow[]
     : rows
 
   if (cleaned.length < rows.length) {
-    log.debug({ memberId, dropped: rows.length - cleaned.length }, 'dropped undated orgs (primary undated exists)')
+    log.debug(
+      { memberId, dropped: rows.length - cleaned.length },
+      'dropped undated orgs (primary undated exists)',
+    )
   }
 
   const fallbackOrg = findFallbackOrg(cleaned)
