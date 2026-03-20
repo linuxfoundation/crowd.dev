@@ -33,7 +33,7 @@ interface IDevStatsWorkRow {
   title: string | null
   dateStart: string | null
   dateEnd: string | null
-  createdAt: string
+  createdAt: Date | string
   isPrimaryWorkExperience: boolean
   memberCount: number
   /** null for memberOrganizations rows; non-null for memberSegmentAffiliations rows */
@@ -224,7 +224,7 @@ function findFallbackOrg(rows: IDevStatsWorkRow[]): IDevStatsWorkRow | null {
   return (
     rows
       .filter((r) => !r.dateStart && !r.dateEnd)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .at(0) ?? null
   )
 }
