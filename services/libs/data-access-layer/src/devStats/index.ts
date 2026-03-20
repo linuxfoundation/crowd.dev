@@ -155,7 +155,7 @@ async function findManualAffiliationsBulk(
         NULL              AS title,
         msa."dateStart",
         msa."dateEnd",
-        msa."createdAt",
+        NULL::timestamptz AS "createdAt",
         false             AS "isPrimaryWorkExperience",
         0                 AS "memberCount",
         msa."segmentId"
