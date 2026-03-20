@@ -1,8 +1,9 @@
-import _ from 'lodash'
-
+import { getServiceChildLogger } from '@crowd/logging'
 import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+
+const log = getServiceChildLogger('dev-stats:affiliations')
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -215,142 +216,186 @@ function selectPrimaryWorkExperience(orgs: IDevStatsWorkRow[]): IDevStatsWorkRow
 
 // ─── Per-member affiliation resolution ───────────────────────────────────────
 
-function resolveAffiliationsForMember(rows: IDevStatsWorkRow[]): IDevStatsAffiliation[] {
-  // Undated org cleanup: if one undated org is marked as primary, drop all other undated orgs
-  const primaryUndated = rows.find(
-    (r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd,
-  )
-  const cleaned = primaryUndated
-    ? rows.filter((r) => r.dateStart || r.id === primaryUndated.id)
-    : rows
+/** Returns the org used to fill gaps — primary undated wins, then earliest-created undated. */
+function findFallbackOrg(rows: IDevStatsWorkRow[]): IDevStatsWorkRow | null {
+  const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
+  if (primaryUndated) return primaryUndated
 
-  // Fallback org: covers gaps and pre-history; primary undated takes precedence,
-  // otherwise use the earliest-created undated org
-  const fallbackOrg =
-    primaryUndated ??
-    (_.chain(cleaned)
+  return (
+    rows
       .filter((r) => !r.dateStart && !r.dateEnd)
-      .sortBy('createdAt')
-      .head()
-      .value() as IDevStatsWorkRow | undefined) ??
-    null
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .at(0) ?? null
+  )
+}
 
-  const datedRows = cleaned.filter((r) => r.dateStart)
-  if (datedRows.length === 0) {
-    return []
-  }
+/**
+ * Collects all date boundaries from the dated rows, capped at today.
+ * Each dateStart and (dateEnd + 1 day) marks a point where active orgs can change.
+ */
+function collectBoundaries(datedRows: IDevStatsWorkRow[]): Date[] {
+  const today = startOfDay(new Date())
 
-  // Collect date boundaries: each dateStart and (dateEnd + 1 day) as interval edges
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const ms = new Set<number>([today.getTime()])
 
-  const boundarySet = new Set<number>()
   for (const row of datedRows) {
-    const start = new Date(row.dateStart!)
-    start.setHours(0, 0, 0, 0)
-    if (start.getTime() <= today.getTime()) {
-      boundarySet.add(start.getTime())
-    }
+    const start = startOfDay(row.dateStart!)
+    if (start <= today) ms.add(start.getTime())
 
     if (row.dateEnd) {
-      const afterEnd = new Date(row.dateEnd)
-      afterEnd.setHours(0, 0, 0, 0)
+      const afterEnd = startOfDay(row.dateEnd)
       afterEnd.setDate(afterEnd.getDate() + 1)
-      if (afterEnd.getTime() <= today.getTime()) {
-        boundarySet.add(afterEnd.getTime())
-      }
+      if (afterEnd <= today) ms.add(afterEnd.getTime())
     }
   }
-  boundarySet.add(today.getTime())
 
-  const boundaries = Array.from(boundarySet).sort((a, b) => a - b)
+  return Array.from(ms)
+    .sort((a, b) => a - b)
+    .map((t) => new Date(t))
+}
 
+function orgsActiveAt(datedRows: IDevStatsWorkRow[], point: Date): IDevStatsWorkRow[] {
+  return datedRows.filter((r) => {
+    const start = startOfDay(r.dateStart!)
+    const end = r.dateEnd ? startOfDay(r.dateEnd) : null
+    return point >= start && (!end || point <= end)
+  })
+}
+
+function startOfDay(date: Date | string): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function dayBefore(date: Date): Date {
+  const d = new Date(date)
+  d.setDate(d.getDate() - 1)
+  return d
+}
+
+/** Iterates boundary intervals and builds non-overlapping affiliation segments. */
+function buildTimeline(
+  memberId: string,
+  datedRows: IDevStatsWorkRow[],
+  fallbackOrg: IDevStatsWorkRow | null,
+  boundaries: Date[],
+): IDevStatsAffiliation[] {
   const resolved: IDevStatsAffiliation[] = []
   let currentOrg: IDevStatsWorkRow | null = null
   let currentStart: Date | null = null
   let gapStart: Date | null = null
 
-  for (let i = 0; i < boundaries.length - 1; i++) {
-    const intervalStart = new Date(boundaries[i])
+  const closeSegment = (org: IDevStatsWorkRow, start: Date, end: Date) => {
+    log.debug(
+      { memberId, org: org.organizationName, start: start.toISOString(), end: end.toISOString() },
+      'closing segment',
+    )
+    resolved.push({ organization: org.organizationName, startDate: start.toISOString(), endDate: end.toISOString() })
+  }
 
-    // Orgs active at the start of this interval
-    const active = datedRows.filter((r) => {
-      const start = new Date(r.dateStart!)
-      start.setHours(0, 0, 0, 0)
-      const end = r.dateEnd ? new Date(r.dateEnd) : null
-      if (end) end.setHours(0, 0, 0, 0)
-      return intervalStart >= start && (!end || intervalStart <= end)
-    })
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const point = boundaries[i]
+    const active = orgsActiveAt(datedRows, point)
+
+    log.debug(
+      { memberId, point: point.toISOString(), activeOrgs: active.map((r) => r.organizationName) },
+      'processing boundary',
+    )
 
     if (active.length === 0) {
-      // Gap — close current org segment if open
       if (currentOrg && currentStart) {
-        const dayBefore = new Date(intervalStart)
-        dayBefore.setDate(dayBefore.getDate() - 1)
-        resolved.push({
-          organization: currentOrg.organizationName,
-          startDate: currentStart.toISOString(),
-          endDate: dayBefore.toISOString(),
-        })
+        closeSegment(currentOrg, currentStart, dayBefore(point))
         currentOrg = null
         currentStart = null
       }
-      if (gapStart === null) gapStart = new Date(intervalStart)
-    } else {
-      // Close gap with fallback org if present
-      if (gapStart !== null) {
-        const dayBefore = new Date(intervalStart)
-        dayBefore.setDate(dayBefore.getDate() - 1)
-        if (fallbackOrg) {
-          resolved.push({
-            organization: fallbackOrg.organizationName,
-            startDate: gapStart.toISOString(),
-            endDate: dayBefore.toISOString(),
-          })
-        }
-        gapStart = null
+      if (gapStart === null) {
+        gapStart = point
+        log.debug({ memberId, gapStart: point.toISOString() }, 'gap started')
       }
+      continue
+    }
 
-      const winner = selectPrimaryWorkExperience(active)
+    if (gapStart !== null) {
+      log.debug(
+        { memberId, fallback: fallbackOrg?.organizationName ?? null, gapStart: gapStart.toISOString(), gapEnd: dayBefore(point).toISOString() },
+        'closing gap with fallback org',
+      )
+      if (fallbackOrg) closeSegment(fallbackOrg, gapStart, dayBefore(point))
+      gapStart = null
+    }
 
-      if (!currentOrg) {
-        currentOrg = winner
-        currentStart = new Date(intervalStart)
-      } else if (currentOrg.organizationId !== winner.organizationId) {
-        // Org changed — close previous segment and open a new one
-        const dayBefore = new Date(intervalStart)
-        dayBefore.setDate(dayBefore.getDate() - 1)
-        resolved.push({
-          organization: currentOrg.organizationName,
-          startDate: currentStart!.toISOString(),
-          endDate: dayBefore.toISOString(),
-        })
-        currentOrg = winner
-        currentStart = new Date(intervalStart)
-      }
+    const winner = selectPrimaryWorkExperience(active)
+
+    if (!currentOrg) {
+      log.debug({ memberId, org: winner.organizationName, from: point.toISOString() }, 'opening segment')
+      currentOrg = winner
+      currentStart = point
+    } else if (currentOrg.organizationId !== winner.organizationId) {
+      log.debug(
+        { memberId, from: currentOrg.organizationName, to: winner.organizationName, at: point.toISOString() },
+        'org changed',
+      )
+      closeSegment(currentOrg, currentStart!, dayBefore(point))
+      currentOrg = winner
+      currentStart = point
     }
   }
 
-  // Close the final open segment
+  // Close the final open segment using the org's actual endDate (null = ongoing)
   if (currentOrg && currentStart) {
+    const endDate = currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null
+    log.debug({ memberId, org: currentOrg.organizationName, start: currentStart.toISOString(), endDate }, 'closing final segment')
     resolved.push({
       organization: currentOrg.organizationName,
       startDate: currentStart.toISOString(),
-      endDate: currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null,
+      endDate,
     })
   }
 
-  // Close a trailing gap with the fallback org
+  // Close a trailing gap with the fallback org (ongoing, no endDate)
   if (gapStart !== null && fallbackOrg) {
-    resolved.push({
-      organization: fallbackOrg.organizationName,
-      startDate: gapStart.toISOString(),
-      endDate: null,
-    })
+    log.debug({ memberId, fallback: fallbackOrg.organizationName, gapStart: gapStart.toISOString() }, 'closing trailing gap with fallback org')
+    resolved.push({ organization: fallbackOrg.organizationName, startDate: gapStart.toISOString(), endDate: null })
   }
 
-  // Most recent affiliations first
-  return resolved.sort((a, b) => {
+  return resolved
+}
+
+function resolveAffiliationsForMember(memberId: string, rows: IDevStatsWorkRow[]): IDevStatsAffiliation[] {
+  log.debug({ memberId, totalRows: rows.length }, 'resolving affiliations')
+
+  // If one undated org is marked primary, drop all other undated orgs to avoid infinite conflicts
+  const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
+  const cleaned = primaryUndated
+    ? rows.filter((r) => r.dateStart || r.id === primaryUndated.id)
+    : rows
+
+  if (cleaned.length < rows.length) {
+    log.debug({ memberId, dropped: rows.length - cleaned.length }, 'dropped undated orgs (primary undated exists)')
+  }
+
+  const fallbackOrg = findFallbackOrg(cleaned)
+  const datedRows = cleaned.filter((r) => r.dateStart)
+
+  log.debug(
+    { memberId, datedRows: datedRows.length, fallbackOrg: fallbackOrg?.organizationName ?? null },
+    'prepared rows',
+  )
+
+  if (datedRows.length === 0) {
+    log.debug({ memberId }, 'no dated rows — returning empty affiliations')
+    return []
+  }
+
+  const boundaries = collectBoundaries(datedRows)
+  log.debug({ memberId, boundaries: boundaries.length }, 'collected boundaries')
+
+  const timeline = buildTimeline(memberId, datedRows, fallbackOrg, boundaries)
+
+  log.debug({ memberId, affiliations: timeline.length }, 'timeline built')
+
+  return timeline.sort((a, b) => {
     if (!a.startDate) return 1
     if (!b.startDate) return -1
     return new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
@@ -377,7 +422,7 @@ export async function resolveAffiliationsByMemberIds(
 
   const result = new Map<string, IDevStatsAffiliation[]>()
   for (const id of memberIds) {
-    result.set(id, resolveAffiliationsForMember(byMember.get(id) ?? []))
+    result.set(id, resolveAffiliationsForMember(id, byMember.get(id) ?? []))
   }
   return result
 }
