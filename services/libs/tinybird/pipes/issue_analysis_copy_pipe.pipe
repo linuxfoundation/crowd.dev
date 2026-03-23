@@ -1,5 +1,6 @@
 DESCRIPTION >
-    Compacts activities from same issue into one, keeping necessary information in a single row. Helps to serve issue-wide widgets in the development tab.
+	Compacts activities from same issue into one, keeping necessary information in a single row. Helps to serve issue-wide widgets in the development tab.
+
 
 NODE issues_opened
 SQL >
@@ -13,24 +14,33 @@ SQL >
         memberId,
         organizationId
     FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE type = 'issues-opened'
+    WHERE type = 'issues-opened' AND toYear(timestamp) >= 1971
+
+
 
 NODE issues_closed
 SQL >
+
     SELECT sourceParentId, MIN(timestamp) AS closedAt
     FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE type = 'issues-closed' AND sourceParentId != ''
+    WHERE type = 'issues-closed' AND sourceParentId != '' AND toYear(timestamp) >= 1971
     GROUP BY sourceParentId
+
+
 
 NODE issues_comment
 SQL >
+
     SELECT sourceParentId, MIN(timestamp) AS commentedAt
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'issue-comment' AND sourceParentId != '' AND toYear(timestamp) >= 1971
     GROUP BY sourceParentId
 
+
+
 NODE issue_analysis_results_merged
 SQL >
+
     SELECT
         opened.id,
         opened.sourceId,
@@ -57,7 +67,9 @@ SQL >
     LEFT JOIN issues_closed AS closed ON opened.sourceId = closed.sourceParentId
     LEFT JOIN issues_comment AS comment ON opened.sourceId = comment.sourceParentId
 
-TYPE COPY
+TYPE copy
 TARGET_DATASOURCE issues_analyzed
 COPY_MODE replace
 COPY_SCHEDULE 20 * * * *
+
+
