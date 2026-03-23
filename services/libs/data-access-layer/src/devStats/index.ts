@@ -303,7 +303,18 @@ function buildTimeline(
     const active = orgsActiveAt(datedRows, point)
 
     log.debug(
-      { memberId, point: point.toISOString(), activeOrgs: active.map((r) => r.organizationName) },
+      {
+        memberId,
+        point: point.toISOString(),
+        activeOrgs: active.map((r) => ({
+          org: r.organizationName,
+          dateStart: r.dateStart,
+          dateEnd: r.dateEnd,
+          isPrimary: r.isPrimaryWorkExperience,
+          memberCount: r.memberCount,
+          isManual: r.segmentId !== null,
+        })),
+      },
       'processing boundary',
     )
 
@@ -393,7 +404,21 @@ function resolveAffiliationsForMember(
   memberId: string,
   rows: IDevStatsWorkRow[],
 ): IDevStatsAffiliation[] {
-  log.debug({ memberId, totalRows: rows.length }, 'resolving affiliations')
+  log.debug(
+    {
+      memberId,
+      totalRows: rows.length,
+      rows: rows.map((r) => ({
+        org: r.organizationName,
+        dateStart: r.dateStart,
+        dateEnd: r.dateEnd,
+        isPrimary: r.isPrimaryWorkExperience,
+        memberCount: r.memberCount,
+        isManual: r.segmentId !== null,
+      })),
+    },
+    'resolving affiliations',
+  )
 
   // If one undated org is marked primary, drop all other undated orgs to avoid infinite conflicts
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
@@ -403,7 +428,7 @@ function resolveAffiliationsForMember(
 
   if (cleaned.length < rows.length) {
     log.debug(
-      { memberId, dropped: rows.length - cleaned.length },
+      { memberId, dropped: rows.length - cleaned.length, keptPrimaryUndated: primaryUndated?.organizationName },
       'dropped undated orgs (primary undated exists)',
     )
   }
@@ -412,7 +437,17 @@ function resolveAffiliationsForMember(
   const datedRows = cleaned.filter((r) => r.dateStart)
 
   log.debug(
-    { memberId, datedRows: datedRows.length, fallbackOrg: fallbackOrg?.organizationName ?? null },
+    {
+      memberId,
+      datedRows: datedRows.length,
+      undatedRows: cleaned.length - datedRows.length,
+      fallbackOrg: fallbackOrg?.organizationName ?? null,
+      datedRowsList: datedRows.map((r) => ({
+        org: r.organizationName,
+        dateStart: r.dateStart,
+        dateEnd: r.dateEnd,
+      })),
+    },
     'prepared rows',
   )
 
@@ -422,11 +457,21 @@ function resolveAffiliationsForMember(
   }
 
   const boundaries = collectBoundaries(datedRows)
-  log.debug({ memberId, boundaries: boundaries.length }, 'collected boundaries')
+  log.debug(
+    { memberId, boundaries: boundaries.length, boundaryDates: boundaries.map((b) => b.toISOString()) },
+    'collected boundaries',
+  )
 
   const timeline = buildTimeline(memberId, datedRows, fallbackOrg, boundaries)
 
-  log.debug({ memberId, affiliations: timeline.length }, 'timeline built')
+  log.debug(
+    {
+      memberId,
+      affiliations: timeline.length,
+      result: timeline.map((a) => ({ org: a.organization, startDate: a.startDate, endDate: a.endDate })),
+    },
+    'timeline built',
+  )
 
   return timeline.sort((a, b) => {
     if (!a.startDate) return 1
