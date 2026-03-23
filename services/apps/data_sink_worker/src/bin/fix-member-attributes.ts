@@ -48,7 +48,7 @@ async function getMemberIds(
                                           ${lastId ? `and id < '${lastId}'` : ''}
                                           order by id desc
                           limit ${BATCH_SIZE})
-select m.id, m.attributes
+select m.id, m.attributes, m."manuallyChangedFields"
 from members m
          inner join
      relevant_members rm on rm.id = m.id;
