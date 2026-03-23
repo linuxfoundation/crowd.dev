@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,23 +14,27 @@ import (
 )
 
 func main() {
-	response := processRepository()
+	numProcessors := flag.Int("num-processors", 0, "Number of parallel scc workers (0 = scc default, 1 = minimum for large repos)")
+	flag.Parse()
+
+	response := processRepository(*numProcessors)
 	outputJSON(response)
 
 	// Always exit with code 0 - status details are in JSON response
 }
 
 // processRepository handles the main logic and returns a StandardResponse
-func processRepository() StandardResponse {
+func processRepository(numProcessors int) StandardResponse {
 	ctx := context.Background()
 
-	// Get target path from command line argument
+	// Get target path from remaining non-flag arguments
+	args := flag.Args()
 	var targetPath string
-	if len(os.Args) > 1 {
-		targetPath = os.Args[1]
+	if len(args) > 0 {
+		targetPath = args[0]
 	} else {
 		errorCode := ErrorCodeInvalidArguments
-		errorMessage := fmt.Sprintf("Usage: %s <target-path>", os.Args[0])
+		errorMessage := fmt.Sprintf("Usage: %s [--num-processors N] <target-path>", os.Args[0])
 		return StandardResponse{
 			Status:       StatusFailure,
 			ErrorCode:    &errorCode,
@@ -84,7 +89,7 @@ func processRepository() StandardResponse {
 	}
 
 	// Process the repository with SCC
-	report, err := getSCCReport(config.SCCPath, repoDir)
+	report, err := getSCCReport(config.SCCPath, repoDir, numProcessors)
 	if err != nil {
 		errorCode := getErrorCodeFromSCCError(err)
 		errorMessage := fmt.Sprintf("Error processing repository '%s': %v", repoDir, err)
@@ -136,8 +141,8 @@ func processRepository() StandardResponse {
 
 
 // getSCCReport analyzes a directory with scc and returns a report containing the estimated cost and language statistics.
-func getSCCReport(sccPath, dirPath string) (SCCReport, error) {
-	cost, err := getCost(sccPath, dirPath)
+func getSCCReport(sccPath, dirPath string, numProcessors int) (SCCReport, error) {
+	cost, err := getCost(sccPath, dirPath, numProcessors)
 	if err != nil {
 		return SCCReport{}, fmt.Errorf("error getting SCC report for '%s': %v", dirPath, err)
 	}
@@ -149,7 +154,7 @@ func getSCCReport(sccPath, dirPath string) (SCCReport, error) {
 
 	projectPath := filepath.Base(dirPath)
 
-	langStats, err := getLanguageStats(sccPath, dirPath)
+	langStats, err := getLanguageStats(sccPath, dirPath, numProcessors)
 	if err != nil {
 		return SCCReport{}, fmt.Errorf("error getting language stats for '%s': %v", dirPath, err)
 	}
@@ -193,8 +198,8 @@ func getGitRepositoryURL(dirPath string) (string, error) {
 }
 
 // getCost runs the scc command and parses the output to get the estimated cost.
-func getCost(sccPathPath, repoPath string) (float64, error) {
-	output, err := runSCC(sccPathPath, "--format=short", repoPath)
+func getCost(sccPathPath, repoPath string, numProcessors int) (float64, error) {
+	output, err := runSCC(sccPathPath, numProcessors, "--format=short", repoPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to run scc command: %w", err)
 	}
@@ -208,8 +213,8 @@ func getCost(sccPathPath, repoPath string) (float64, error) {
 }
 
 // getLanguageStats runs the scc command and parses the output to get language statistics.
-func getLanguageStats(sccPathPath, repoPath string) ([]LanguageStats, error) {
-	output, err := runSCC(sccPathPath, "--format=json", repoPath)
+func getLanguageStats(sccPathPath, repoPath string, numProcessors int) ([]LanguageStats, error) {
+	output, err := runSCC(sccPathPath, numProcessors, "--format=json", repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run scc command: %w", err)
 	}
@@ -223,8 +228,18 @@ func getLanguageStats(sccPathPath, repoPath string) ([]LanguageStats, error) {
 }
 
 // runSCC executes the scc command with the given arguments and returns the output.
-func runSCC(sccPathPath string, args ...string) (string, error) {
-	cmd := exec.Command(sccPathPath, args...)
+// When numProcessors > 0, scc is run with reduced parallelism to limit memory usage on large repos.
+func runSCC(sccPathPath string, numProcessors int, args ...string) (string, error) {
+	var cmdArgs []string
+	if numProcessors > 0 {
+		n := strconv.Itoa(numProcessors)
+		cmdArgs = append(cmdArgs,
+			"--directory-walker-job-workers", n,
+			"--file-process-job-workers", n,
+		)
+	}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.Command(sccPathPath, cmdArgs...)
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
