@@ -1068,7 +1068,7 @@ export default class ActivityService extends LoggerBase {
         segmentIds: Set<string>
         resultIds: Set<string>
         integrationId: string
-        platform: string
+        platform: PlatformType
         username: string
         timestamp: string
       }
@@ -1144,7 +1144,7 @@ export default class ActivityService extends LoggerBase {
               organizations: value.member.organizations,
               reach: value.member.reach,
             },
-            value.platform as PlatformType,
+            value.platform,
           )
           .then((memberId) => {
             // map ids for members

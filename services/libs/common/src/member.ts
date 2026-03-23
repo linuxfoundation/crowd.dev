@@ -14,12 +14,7 @@ export async function setAttributesDefaultValues(
   for (const attributeName of Object.keys(attributes)) {
     if (typeof attributes[attributeName] === 'string') {
       // we try to fix it
-      try {
-        attributes[attributeName] = JSON.parse(attributes[attributeName] as string)
-      } catch (err) {
-        this.log.error(err, { attributeName }, 'Could not parse a string attribute value!')
-        throw err
-      }
+      attributes[attributeName] = JSON.parse(attributes[attributeName] as string)
     }
 
     const nonEmptyPlatform = Object.keys(attributes[attributeName]).filter((p) => {
