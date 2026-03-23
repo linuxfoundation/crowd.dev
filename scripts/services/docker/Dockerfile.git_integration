@@ -22,6 +22,23 @@ COPY ./services/apps/git_integration/src/crowdgit/services/software_value/ ./
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-w -s" -o software-value ./
 
+# Go builder stage 2: build the vulnerability-scanner binary
+FROM golang:1.25-alpine AS go-vuln-builder
+
+WORKDIR /go/src/vulnerability-scanner
+
+# Copy module files first for dependency caching
+COPY ./services/apps/git_integration/src/crowdgit/services/vulnerability_scanner/go.mod ./
+COPY ./services/apps/git_integration/src/crowdgit/services/vulnerability_scanner/go.sum ./
+
+# Copy source code
+COPY ./services/apps/git_integration/src/crowdgit/services/vulnerability_scanner/ ./
+
+# Download dependencies and build, using cache mounts to avoid re-downloading on every build
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download && CGO_ENABLED=0 GOOS=linux go build -ldflags "-w -s" -o vulnerability-scanner ./
+
 # Builder stage: install build dependencies, uv, and dependencies
 FROM base AS builder
 
@@ -84,13 +101,17 @@ COPY --from=builder /usr/crowd/app /usr/crowd/app
 COPY --from=go-builder /go/src/software-value/software-value /usr/local/bin/software-value
 COPY --from=go-builder /go/bin/scc /usr/local/bin/scc
 
+# Copy vulnerability-scanner binary from go-vuln-builder stage
+COPY --from=go-vuln-builder /go/src/vulnerability-scanner/vulnerability-scanner /usr/local/bin/vulnerability-scanner
+
 # Add virtual environment bin to PATH
 ENV PATH="/usr/crowd/app/.venv/bin:$PATH"
 
 # Make runner script and binaries executable
 RUN chmod +x ./src/runner.sh \
     && chmod +x /usr/local/bin/software-value \
-    && chmod +x /usr/local/bin/scc
+    && chmod +x /usr/local/bin/scc \
+    && chmod +x /usr/local/bin/vulnerability-scanner
 
 EXPOSE 8085
 

@@ -56,6 +56,7 @@ class PermissionError(CrowdGitError):
 class CommandExecutionError(CrowdGitError):
     error_message: str = "Command execution failed"
     error_code: ErrorCode = ErrorCode.SHELL_COMMAND_FAILED
+    returncode: int | None = None
 
 
 @dataclass
