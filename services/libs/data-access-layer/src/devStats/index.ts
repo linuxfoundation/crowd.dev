@@ -2,15 +2,11 @@ import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
-// ─── Public interfaces ────────────────────────────────────────────────────────
-
 export interface IDevStatsMemberRow {
   githubHandle: string
   memberId: string
   displayName: string | null
 }
-
-// ─── Step 1: member lookup by GitHub handle ───────────────────────────────────
 
 export async function findMembersByGithubHandles(
   qx: QueryExecutor,
@@ -38,8 +34,6 @@ export async function findMembersByGithubHandles(
     },
   )
 }
-
-// ─── Step 2: verified emails ──────────────────────────────────────────────────
 
 export async function findVerifiedEmailsByMemberIds(
   qx: QueryExecutor,
