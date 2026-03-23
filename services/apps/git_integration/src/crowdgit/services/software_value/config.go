@@ -22,7 +22,6 @@ type Config struct {
 	TargetPath       string   `koanf:"target.path"`
 	SCCPath          string   `koanf:"scc.path"`
 	InsightsDatabase DBConfig `koanf:"database.insights"`
-	CMDatabase       DBConfig `koanf:"database.cm"`
 }
 
 func getConfig(targetPath string) (Config, error) {
@@ -62,27 +61,6 @@ func getConfig(targetPath string) (Config, error) {
 	}
 	if readOnlyStr := os.Getenv("INSIGHTS_DB_READONLY"); readOnlyStr != "" {
 		config.InsightsDatabase.ReadOnly = readOnlyStr == "true"
-	}
-
-	config.CMDatabase.User = os.Getenv("CROWD_DB_USERNAME")
-	config.CMDatabase.Password = os.Getenv("CROWD_DB_PASSWORD")
-	config.CMDatabase.DBName = os.Getenv("CROWD_DB_DATABASE")
-	config.CMDatabase.Host = os.Getenv("CROWD_DB_READ_HOST")
-	if portStr := os.Getenv("CROWD_DB_PORT"); portStr != "" {
-		if port, err := strconv.Atoi(portStr); err == nil {
-			config.CMDatabase.Port = port
-		}
-	}
-	config.CMDatabase.SSLMode = os.Getenv("CROWD_DB_SSLMODE")
-	if poolMaxStr := os.Getenv("CROWD_DB_POOL_MAX"); poolMaxStr != "" {
-		if poolMax, err := strconv.Atoi(poolMaxStr); err == nil {
-			config.CMDatabase.PoolMax = poolMax
-		}
-	} else {
-		config.CMDatabase.PoolMax = 10 // Default pool max
-	}
-	if readOnlyStr := os.Getenv("CROWD_DB_READONLY"); readOnlyStr != "" {
-		config.CMDatabase.ReadOnly = readOnlyStr == "true"
 	}
 
 	return config, nil

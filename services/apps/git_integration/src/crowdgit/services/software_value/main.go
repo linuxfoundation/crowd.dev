@@ -15,7 +15,7 @@ import (
 func main() {
 	response := processRepository()
 	outputJSON(response)
-	
+
 	// Always exit with code 0 - status details are in JSON response
 }
 
@@ -62,18 +62,6 @@ func processRepository() StandardResponse {
 		}
 	}
 	defer insightsDb.Close()
-
-	cmdb, err := NewCMDB(ctx, config.CMDatabase)
-	if err != nil {
-		errorCode := ErrorCodeDatabaseConnection
-		errorMessage := fmt.Sprintf("Error connecting to CM database: %v", err)
-		return StandardResponse{
-			Status:       StatusFailure,
-			ErrorCode:    &errorCode,
-			ErrorMessage: &errorMessage,
-		}
-	}
-	defer cmdb.Close()
 
 	// Get git URL for the repository
 	gitUrl, err := getGitRepositoryURL(repoDir)
@@ -297,4 +285,3 @@ func getErrorCodeFromSCCError(err error) string {
 	}
 	return ErrorCodeUnknown
 }
-
