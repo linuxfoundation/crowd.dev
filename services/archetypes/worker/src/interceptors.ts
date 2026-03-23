@@ -10,9 +10,13 @@ import {
 
 import * as activities from './activities'
 
-// Use string literal instead of enum to avoid bundling @slack/webhook in workflow code
+// Use string literals instead of enums to avoid bundling @crowd/slack in workflow code
 // The activity will handle the type conversion
 const SLACK_PERSONA_ERROR_REPORTER = 'ERROR_REPORTER' as const
+const SLACK_CHANNEL_CDP = 'CDP_ALERTS' as const
+const SLACK_CHANNEL_INSIGHTS_CRITICAL = 'INSIGHTS_CRITICAL_ALERTS' as const
+
+const INSIGHTS_TASK_QUEUES = ['security-best-practices'] as const
 
 const activity = proxyActivities<typeof activities>({
   startToCloseTimeout: '10 seconds',
@@ -75,17 +79,23 @@ export class WorkflowMonitoringInterceptor implements WorkflowInboundCallsInterc
 
         // temp ignore for these workflows
         if (!ignoredWorkflowTypes.includes(info.workflowType)) {
+          const channel = INSIGHTS_TASK_QUEUES.includes(
+            info.taskQueue as (typeof INSIGHTS_TASK_QUEUES)[number],
+          )
+            ? SLACK_CHANNEL_INSIGHTS_CRITICAL
+            : SLACK_CHANNEL_CDP
+
           // Only send detailed notification if it's an activity that reached retry limit
           if (err instanceof ActivityFailure && err.retryState === 'MAXIMUM_ATTEMPTS_REACHED') {
             const errorDetails = getActivityRetryLimitDetails(err)
             const message = `*Workflow Failed: Activity Retry Limit Reached*\n\n*Workflow:* \`${info.workflowType}\`\n*Workflow ID:* \`${info.workflowId}\`\n*Run ID:* \`${info.runId}\`\n\n${errorDetails}`
 
-            await activity.slackNotify(message, SLACK_PERSONA_ERROR_REPORTER)
+            await activity.slackNotify(message, SLACK_PERSONA_ERROR_REPORTER, channel)
           } else {
             // For other errors, send a simpler notification
             const message = `*Workflow Failed*\n\n*Workflow:* \`${info.workflowType}\`\n*Workflow ID:* \`${info.workflowId}\`\n*Run ID:* \`${info.runId}\`\n*Error:* ${err.message}`
 
-            await activity.slackNotify(message, SLACK_PERSONA_ERROR_REPORTER)
+            await activity.slackNotify(message, SLACK_PERSONA_ERROR_REPORTER, channel)
           }
         }
       }
