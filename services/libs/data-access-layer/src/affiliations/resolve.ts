@@ -1,5 +1,4 @@
 import { getServiceChildLogger } from '@crowd/logging'
-import { MemberIdentityType, PlatformType } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
