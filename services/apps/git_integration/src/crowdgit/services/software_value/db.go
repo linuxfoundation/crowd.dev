@@ -18,7 +18,7 @@ type InsightsDB struct {
 }
 
 // newDBConnection establishes a new database connection pool.
-// This is a helper function used by NewInsightsDB and NewCMDB.
+// This is a helper function used by NewInsightsDB.
 func newDBConnection(ctx context.Context, config DBConfig) (*pgxpool.Pool, error) {
 	const dbConnectionStringTemplate = "user=%s password=%s host=%s port=%d dbname=%s sslmode=%s pool_max_conns=%d"
 	dbConnectionString := fmt.Sprintf(dbConnectionStringTemplate,
