@@ -6,6 +6,11 @@ DESCRIPTION >
     - `slugs`: Optional array of project slugs for multi-project query (e.g., ['kubernetes', 'tensorflow'])
     - `ids`: Optional array of project ids for multi-project query
     - At least one of `slug`, `slugs`, or `ids` should be provided.
+    - `isLfx`: Optional integer (1 = LFX, 0 = non-LFX) to filter by LFX project status
+    - `orderByField`: Optional string specifying sort field, defaults to 'name'
+    - `orderByDirection`: Optional string ('asc' or 'desc'), defaults to 'asc'
+    - `pageSize`: Optional integer for result limit, defaults to 10
+    - `page`: Optional integer for pagination offset calculation, defaults to 0
     - Response: Project records with all insights metrics including achievements as array of (leaderboardType, rank, totalCount) tuples
     TAGS ""Insights, Widget", "Project""
 
@@ -54,3 +59,29 @@ SQL >
             AND id
             IN {{ Array(ids, 'String', description="Filter by project id list", required=False) }}
         {% end %}
+        {% if defined(isLfx) %}
+            AND isLF
+            = {{
+                UInt8(
+                    isLfx, description="Filter by LFX project (1 = LFX, 0 = non-LFX)", required=False
+                )
+            }}
+        {% end %}
+    ORDER BY
+        {{ column(String(orderByField, "name", description="Order by field.", required=False)) }}
+        {% if String(
+            orderByDirection,
+            'asc',
+            description="Order by direction. ASC or DESC",
+            required=False,
+        ) == 'asc' or String(
+            orderByDirection,
+            'asc',
+            description="Order by direction. ASC or DESC",
+            required=False,
+        ) == 'ASC' %} ASC
+        {% else %} DESC
+        {% end %},
+        name ASC
+    LIMIT {{ Int32(pageSize, 10) }}
+    OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}

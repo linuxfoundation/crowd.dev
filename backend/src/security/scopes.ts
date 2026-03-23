@@ -9,6 +9,7 @@ export const SCOPES = {
   WRITE_WORK_EXPERIENCES: 'write:work-experiences',
   READ_PROJECT_AFFILIATIONS: 'read:project-affiliations',
   WRITE_PROJECT_AFFILIATIONS: 'write:project-affiliations',
+  READ_AFFILIATIONS: 'read:affiliations',
 } as const
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES]
