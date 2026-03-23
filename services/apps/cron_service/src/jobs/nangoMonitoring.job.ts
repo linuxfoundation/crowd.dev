@@ -326,7 +326,7 @@ const job: IJobDefinition = {
         // Queue notification for this platform
         notificationPromises.push(
           sendSlackNotificationAsync(
-            SlackChannel.NANGO_ALERTS,
+            SlackChannel.CDP_INTEGRATIONS_ALERTS,
             persona,
             `Nango Monitor: ${nangoIntegration}`,
             sections,
@@ -344,7 +344,7 @@ const job: IJobDefinition = {
     if (failedStatusChecks > 0) {
       notificationPromises.push(
         sendSlackNotificationAsync(
-          SlackChannel.NANGO_ALERTS,
+          SlackChannel.CDP_INTEGRATIONS_ALERTS,
           SlackPersona.ERROR_REPORTER,
           'Nango Monitor: API Errors',
           `Failed to retrieve status for ${failedStatusChecks} connection${failedStatusChecks > 1 ? 's' : ''} due to Nango API errors.\n\nCheck logs for details.`,

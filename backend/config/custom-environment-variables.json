@@ -143,9 +143,6 @@
     "installationId": "GITHUB_TOKEN_INSTALLATION_ID",
     "privateKey": "GITHUB_TOKEN_PRIVATE_KEY"
   },
-  "slackAlerting": {
-    "url": "CROWD_SLACK_ALERTING_URL"
-  },
   "weeklyEmails": {
     "enabled": "CROWD_WEEKLY_EMAILS_ENABLED"
   },

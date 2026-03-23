@@ -332,6 +332,23 @@ export async function updateInsightsProject(
     await syncRepositoriesEnabledStatus(qx, id, enabledUrls)
   }
 
+  // When slug changes, ON UPDATE CASCADE propagates the new slug to securityInsights* tables
+  // but does not touch their updatedAt — update it explicitly so Tinybird picks up the change
+  if (project.slug) {
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationSuites" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluations" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationAssessments" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+  }
+
   return updated as IInsightsProject
 }
 

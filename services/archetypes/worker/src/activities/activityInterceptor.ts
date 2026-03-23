@@ -34,7 +34,7 @@ export class ActivityMonitoringInterceptor implements ActivityInboundCallsInterc
 
       // Fire and forget - don't await to avoid blocking the activity
       sendSlackNotificationAsync(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
         'High Activity Retry Count',
         message,

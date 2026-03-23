@@ -36,7 +36,7 @@ export const scheduleSnowflakeS3Export = async () => {
     } else {
       svc.log.error({ err }, 'Failed to create snowflake-s3-export schedule')
       sendSlackNotification(
-        SlackChannel.INTEGRATION_NOTIFICATIONS,
+        SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
         'Snowflake S3 Export Schedule Failed',
         `Failed to create the \`snowflake-s3-export\` Temporal schedule.\n\n*Error:* ${err.message || err}`,

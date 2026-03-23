@@ -3,6 +3,13 @@ import type {
   IWorkExperienceAffiliation,
 } from '@crowd/data-access-layer'
 
+export const AFFILIATION_TYPE = {
+  PROJECT: 'project',
+  WORK_HISTORY: 'work-history',
+} as const
+
+export type AffiliationType = (typeof AFFILIATION_TYPE)[keyof typeof AFFILIATION_TYPE]
+
 export function mapSegmentAffiliation(a: ISegmentAffiliationWithOrg) {
   return {
     id: a.id,
@@ -13,6 +20,7 @@ export function mapSegmentAffiliation(a: ISegmentAffiliationWithOrg) {
     verifiedBy: a.verifiedBy ?? null,
     startDate: a.dateStart ?? null,
     endDate: a.dateEnd ?? null,
+    type: AFFILIATION_TYPE.PROJECT,
   }
 }
 
@@ -27,5 +35,6 @@ export function mapWorkExperienceAffiliation(a: IWorkExperienceAffiliation) {
     source: a.source ?? null,
     startDate: a.dateStart ?? null,
     endDate: a.dateEnd ?? null,
+    type: AFFILIATION_TYPE.WORK_HISTORY,
   }
 }
