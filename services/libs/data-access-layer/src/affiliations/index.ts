@@ -27,8 +27,6 @@ interface IWorkRow {
   segmentId: string | null
 }
 
-// ─── Query: regular work experiences (bulk) ──────────────────────────────────
-
 export async function findWorkExperiencesBulk(
   qx: QueryExecutor,
   memberIds: string[],
@@ -75,8 +73,6 @@ export async function findWorkExperiencesBulk(
   )
 }
 
-// ─── Query: manual affiliations (bulk) ───────────────────────────────────────
-
 export async function findManualAffiliationsBulk(
   qx: QueryExecutor,
   memberIds: string[],
@@ -105,17 +101,23 @@ export async function findManualAffiliationsBulk(
 
 // ─── Selection priority ───────────────────────────────────────────────────────
 
+function durationMs(org: IWorkRow): number {
+  const start = new Date(org.dateStart ?? '').getTime()
+  const end = new Date(org.dateEnd ?? '9999-12-31').getTime()
+  return end - start
+}
+
 function longestDateRange(orgs: IWorkRow[]): IWorkRow {
   const withDates = orgs.filter((r) => r.dateStart)
-  if (withDates.length === 0) return orgs[0]
+  const candidates = withDates.length > 0 ? withDates : orgs
 
-  return withDates.reduce((best, curr) => {
-    const bestMs =
-      new Date(best.dateEnd ?? '9999-12-31').getTime() - new Date(best.dateStart ?? '').getTime()
-    const currMs =
-      new Date(curr.dateEnd ?? '9999-12-31').getTime() - new Date(curr.dateStart ?? '').getTime()
-    return currMs > bestMs ? curr : best
-  })
+  let best = candidates[0]
+
+  for (const org of candidates) {
+    if (durationMs(org) > durationMs(best)) best = org
+  }
+
+  return best
 }
 
 function selectPrimaryWorkExperience(orgs: IWorkRow[]): IWorkRow {
