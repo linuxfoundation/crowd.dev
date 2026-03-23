@@ -138,7 +138,8 @@
     "uuid": "^9.0.0",
     "validator": "^13.7.0",
     "verify-github-webhook": "^1.0.1",
-    "zlib-sync": "^0.1.8"
+    "zlib-sync": "^0.1.8",
+    "zod": "^4.3.6"
   },
   "private": true,
   "devDependencies": {
@@ -150,6 +151,7 @@
     "@types/bunyan-format": "^0.2.5",
     "@types/config": "^3.3.0",
     "@types/cron": "^2.0.0",
+    "@types/express": "^4.17.17",
     "@types/html-to-text": "^8.1.1",
     "@types/node": "~18.0.4",
     "@types/sanitize-html": "^2.6.2",

@@ -1,5 +1,6 @@
 import { get as getLevenshteinDistance } from 'fast-levenshtein'
 
+import { parseGitHubNoreplyEmail } from '@crowd/common'
 import {
   IMemberIdentity,
   IMemberOpensearch,
@@ -105,6 +106,11 @@ class MemberSimilarityCalculator {
       }
     }
 
+    // Check if a noreply email on one member resolves to a username on the other
+    if (this.hasMatchingUsernameFromNoreplyEmail(primaryMember, similarMember)) {
+      return 0.95
+    }
+
     for (const primaryIdentity of primaryMember.identities.filter((i) => i.verified)) {
       // similar member has an unverified identity as one of primary members's verified identity, return score 95
       if (
@@ -187,7 +193,9 @@ class MemberSimilarityCalculator {
     similarMember: IMemberOpensearch,
   ): boolean {
     if (member.identities && member.identities.length > 0) {
-      for (const identity of member.identities) {
+      for (const identity of member.identities.filter(
+        (i) => i.type === MemberIdentityType.USERNAME,
+      )) {
         if (
           similarMember.nested_identities.some(
             (i) =>
@@ -198,6 +206,59 @@ class MemberSimilarityCalculator {
         ) {
           return true
         }
+      }
+    }
+
+    return false
+  }
+
+  /**
+   * Checks if a noreply email in one member matches a username in the other (e.g. GitHub noreply email -> GitHub username)
+   * Works bidirectionally: primary email -> similar username, and similar email -> primary username.
+   */
+  static hasMatchingUsernameFromNoreplyEmail(
+    primaryMember: IMemberWithAggregatesForMergeSuggestions,
+    similarMember: IMemberOpensearch,
+  ): boolean {
+    // Primary member's noreply emails -> similar member's platform usernames
+    const similarUsernamesByPlatform = {
+      [PlatformType.GITHUB]: new Set(
+        similarMember.nested_identities
+          .filter(
+            (i) =>
+              i.string_platform === PlatformType.GITHUB &&
+              i.keyword_type === MemberIdentityType.USERNAME,
+          )
+          .map((i) => i.string_value?.toLowerCase()),
+      ),
+    }
+
+    for (const identity of primaryMember.identities) {
+      if (!identity.verified || identity.type !== MemberIdentityType.EMAIL) continue
+
+      const ghUsername = parseGitHubNoreplyEmail(identity.value)
+      if (ghUsername && similarUsernamesByPlatform[PlatformType.GITHUB].has(ghUsername)) {
+        return true
+      }
+    }
+
+    // Similar member's noreply emails -> primary member's platform usernames
+    const primaryUsernamesByPlatform = {
+      [PlatformType.GITHUB]: new Set(
+        primaryMember.identities
+          .filter(
+            (i) => i.platform === PlatformType.GITHUB && i.type === MemberIdentityType.USERNAME,
+          )
+          .map((i) => i.value?.toLowerCase()),
+      ),
+    }
+
+    for (const identity of similarMember.nested_identities) {
+      if (!identity.bool_verified || identity.keyword_type !== MemberIdentityType.EMAIL) continue
+
+      const ghUsername = parseGitHubNoreplyEmail(identity.string_value)
+      if (ghUsername && primaryUsernamesByPlatform[PlatformType.GITHUB].has(ghUsername)) {
+        return true
       }
     }
 

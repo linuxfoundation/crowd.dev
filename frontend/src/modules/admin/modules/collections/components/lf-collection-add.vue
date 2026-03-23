@@ -56,24 +56,6 @@
                 </lf-field>
               </article>
 
-              <!-- Logo URL -->
-              <article class="mb-6">
-                <lf-field label-text="Logo URL">
-                  <lf-input
-                    v-model="form.logoUrl"
-                    class="h-10"
-                    placeholder="https://example.com/logo.png"
-                    :invalid="$v.logoUrl.$invalid && $v.logoUrl.$dirty"
-                    @blur="$v.logoUrl.$touch()"
-                    @change="$v.logoUrl.$touch()"
-                  />
-                  <lf-field-messages
-                    :validation="$v.logoUrl"
-                    :error-messages="{ url: 'Please enter a valid URL' }"
-                  />
-                </lf-field>
-              </article>
-
               <!-- Category -->
               <article class="mb-5">
                 <lf-field label-text="Category">
@@ -134,6 +116,76 @@
                   />
                 </lf-field>
               </article>
+
+              <!-- Appearance section -->
+              <div class="mb-6">
+                <div class="flex items-center gap-3">
+                  <h6 class="text-sm font-primary font-semibold text-gray-500 mb-4  pb-2">
+                    Appearance
+                  </h6>
+                  <div class="border-b border-gray-100 w-full" />
+                </div>
+
+                <!-- Card image URL -->
+                <article class="mb-6">
+                  <lf-field label-text="Card image URL" :required="true">
+                    <lf-input
+                      v-model="form.imageUrl"
+                      class="h-10"
+                      placeholder="https://example.com/card-image.png"
+                      :invalid="$v.imageUrl.$invalid && $v.imageUrl.$dirty"
+                      @blur="$v.imageUrl.$touch()"
+                      @change="$v.imageUrl.$touch()"
+                    />
+                    <lf-field-messages
+                      :validation="$v.imageUrl"
+                      :error-messages="{ url: 'Please enter a valid URL' }"
+                    />
+                    <span class="text-2xs text-gray-400">Recommended image size: 800×240px</span>
+                  </lf-field>
+                </article>
+
+                <!-- Collection logo URL -->
+                <article class="mb-6">
+                  <lf-field label-text="Collection logo URL" :required="true">
+                    <lf-input
+                      v-model="form.logoUrl"
+                      class="h-10"
+                      placeholder="https://example.com/logo.png"
+                      :invalid="$v.logoUrl.$invalid && $v.logoUrl.$dirty"
+                      @blur="$v.logoUrl.$touch()"
+                      @change="$v.logoUrl.$touch()"
+                    />
+                    <lf-field-messages
+                      :validation="$v.logoUrl"
+                      :error-messages="{ url: 'Please enter a valid URL' }"
+                    />
+                    <span class="text-2xs text-gray-400">Recommended image size: 400×400px</span>
+                  </lf-field>
+                </article>
+
+                <!-- Collection color -->
+                <article class="mb-6">
+                  <lf-field label-text="Collection color">
+                    <div class="flex items-center gap-2">
+                      <lf-input
+                        v-model="form.color"
+                        class="h-10 flex-grow"
+                        placeholder="Enter HEX code"
+                      >
+                        <template #prefix>
+                          <div
+                            v-if="form.color"
+                            class="w-6 h-6 rounded-full flex-shrink-0 border border-gray-200"
+                            :style="{ backgroundColor: form.color || '#009AFF' }"
+                          />
+                        </template>
+                      </lf-input>
+                    </div>
+                    <span class="text-2xs text-gray-400">Leave blank to use the default color #009AFF</span>
+                  </lf-field>
+                </article>
+              </div>
             </div>
             <lf-collection-add-projects-tab
               v-if="activeTab === 'projects'"
@@ -204,6 +256,8 @@ const form = reactive<CollectionFormModel>({
   type: '',
   categoryId: null,
   logoUrl: '',
+  imageUrl: '',
+  color: '',
   projects: [],
   starred: false,
 });
@@ -214,6 +268,7 @@ const rules = {
     maxLength,
   },
   description: { required: (value: string) => value.trim().length },
+  imageUrl: { url },
   logoUrl: { url },
   projects: { required: (value: any) => value.length > 0 },
 };
@@ -239,6 +294,8 @@ const fillForm = (record?: CollectionModel) => {
     form.type = record.category?.categoryGroupType;
     form.categoryId = record.categoryId || null;
     form.logoUrl = record.logoUrl || '';
+    form.imageUrl = record.imageUrl || '';
+    form.color = record.color || '';
   }
 
   formSnapshot();
@@ -263,6 +320,8 @@ const onSubmit = () => {
     name: form.name,
     description: form.description,
     logoUrl: form.logoUrl || undefined,
+    imageUrl: form.imageUrl || undefined,
+    color: form.color || undefined,
     projects: form.projects.map((project: any) => ({
       id: project.id,
       starred: project?.starred || false,

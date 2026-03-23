@@ -125,13 +125,12 @@ export default class MemberService extends LoggerBase {
             }
           }
 
-          const id = await logExecutionTimeV2(
+          const { id } = await logExecutionTimeV2(
             () =>
               createMember(this.pgQx, {
                 displayName: data.displayName,
                 joinedAt: data.joinedAt.toISOString(),
                 attributes,
-                identities: data.identities,
                 reach: MemberService.calculateReach({}, data.reach),
               }),
             this.log,

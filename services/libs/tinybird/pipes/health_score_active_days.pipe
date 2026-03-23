@@ -6,9 +6,8 @@ SQL >
         FROM activityRelations_bucket_routing
         WHERE
             segmentId = (SELECT segmentId FROM segments_filtered)
-            {% if defined(repos) %}
-                AND channel IN (SELECT channel FROM repos_to_channels)
-            {% end %}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -21,7 +20,10 @@ SQL >
     {% else %}
         SELECT segmentId, countDistinct(DATE(timestamp)) AS activeDaysCount
         FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE timestamp >= toStartOfDay(now() - toIntervalDay(365)) AND timestamp < toStartOfDay(now())
+        WHERE
+            timestamp >= toStartOfDay(now() - toIntervalDay(365))
+            AND timestamp < toStartOfDay(now())
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY segmentId
     {% end %}
 

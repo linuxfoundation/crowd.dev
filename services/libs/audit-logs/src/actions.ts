@@ -88,6 +88,20 @@ export function memberEditProfileAction<T>(
   return modifyEntityAction(ActionType.MEMBERS_EDIT_PROFILE, entityId, captureFn)
 }
 
+export function memberVerifyIdentityAction<T>(
+  entityId: string,
+  captureFn: CaptureFn<T>,
+): BuildActionFn<T> {
+  return modifyEntityAction(ActionType.MEMBERS_VERIFY_IDENTITY, entityId, captureFn)
+}
+
+export function memberVerifyWorkExperienceAction<T>(
+  entityId: string,
+  captureFn: CaptureFn<T>,
+): BuildActionFn<T> {
+  return modifyEntityAction(ActionType.MEMBERS_VERIFY_WORK_EXPERIENCE, entityId, captureFn)
+}
+
 export function memberMergeAction<T>(entityId: string, captureFn: CaptureFn<T>): BuildActionFn<T> {
   return modifyEntityAction(ActionType.MEMBERS_MERGE, entityId, captureFn)
 }

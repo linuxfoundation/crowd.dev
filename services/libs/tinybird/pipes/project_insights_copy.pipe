@@ -1,11 +1,60 @@
 NODE project_insights_copy_base_projects
 DESCRIPTION >
-    Returns base project information (id, name, slug, segmentId, softwareValue, healthScore, firstCommit)
+    Returns base project information (id, name, slug, segmentId, logoUrl, isLF, contributorCount, organizationCount, softwareValue, healthScore, firstCommit)
 
 SQL >
-    SELECT id, name, slug, segmentId, softwareValue, healthScore, firstCommit
+    SELECT
+        id,
+        name,
+        slug,
+        segmentId,
+        logoUrl,
+        isLF,
+        contributorCount,
+        organizationCount,
+        softwareValue,
+        healthScore,
+        firstCommit
     FROM insights_projects_populated_ds
-    GROUP BY id, name, slug, segmentId, softwareValue, healthScore, firstCommit
+    GROUP BY
+        id,
+        name,
+        slug,
+        segmentId,
+        logoUrl,
+        isLF,
+        contributorCount,
+        organizationCount,
+        softwareValue,
+        healthScore,
+        firstCommit
+
+NODE project_insights_copy_dependency_metrics
+DESCRIPTION >
+    Get contributor and organization dependency metrics from health_score_copy_ds
+
+SQL >
+    SELECT
+        slug,
+        contributorDependencyCount,
+        contributorDependencyPercentage,
+        organizationDependencyCount,
+        organizationDependencyPercentage,
+        contributorPercentage,
+        popularityPercentage,
+        developmentPercentage,
+        securityPercentage
+    FROM health_score_copy_ds
+
+NODE project_insights_copy_achievements
+DESCRIPTION >
+    Aggregate leaderboard achievements per project from leaderboards_copy_ds (latest snapshot)
+
+SQL >
+    SELECT slug, groupArray(tuple(leaderboardType, rank, totalCount)) AS achievements
+    FROM leaderboards_copy_ds
+    WHERE snapshotId = (SELECT max(snapshotId) FROM leaderboards_copy_ds)
+    GROUP BY slug
 
 NODE project_insights_copy_last_365_days_metrics
 DESCRIPTION >
@@ -50,8 +99,21 @@ SQL >
         base.id AS id,
         base.name AS name,
         base.slug AS slug,
+        base.logoUrl AS logoUrl,
+        base.isLF AS isLF,
+        base.contributorCount AS contributorCount,
+        base.organizationCount AS organizationCount,
         base.softwareValue AS softwareValue,
+        COALESCE(dep.contributorDependencyCount, 0) AS contributorDependencyCount,
+        COALESCE(dep.contributorDependencyPercentage, 0) AS contributorDependencyPercentage,
+        COALESCE(dep.organizationDependencyCount, 0) AS organizationDependencyCount,
+        COALESCE(dep.organizationDependencyPercentage, 0) AS organizationDependencyPercentage,
+        COALESCE(ach.achievements, []) AS achievements,
         base.healthScore AS healthScore,
+        dep.contributorPercentage AS contributorHealthScore,
+        dep.popularityPercentage AS popularityHealthScore,
+        dep.developmentPercentage AS developmentHealthScore,
+        dep.securityPercentage AS securityHealthScore,
         base.firstCommit AS firstCommit,
         l365.starsLast365Days AS starsLast365Days,
         l365.forksLast365Days AS forksLast365Days,
@@ -62,6 +124,8 @@ SQL >
         p365.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         p365.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days
     FROM project_insights_copy_base_projects AS base
+    LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
+    LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
     LEFT JOIN project_insights_copy_last_365_days_metrics AS l365 USING (segmentId)
     LEFT JOIN project_insights_copy_previous_365_days_metrics AS p365 USING (segmentId)
 

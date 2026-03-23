@@ -1,11 +1,13 @@
 import { Router } from 'express'
 
-import { identitiesRouter } from './identities'
+import { membersRouter } from './members'
+import { organizationsRouter } from './organizations'
 
 export function v1Router(): Router {
   const router = Router()
 
-  router.use('/identities', identitiesRouter())
+  router.use('/members', membersRouter())
+  router.use('/organizations', organizationsRouter())
 
   return router
 }

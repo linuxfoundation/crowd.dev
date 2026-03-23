@@ -18,11 +18,7 @@ SQL >
     SELECT i.id as insightsProjectId, i.segmentId, groupArrayIf(r.url, r.url != '') as repositories
     FROM insightsProjects i FINAL
     LEFT JOIN
-        repositories r FINAL
-        ON r.insightsProjectId = i.id
-        AND isNull (r.deletedAt)
-        AND r.excluded = false
-        AND r.enabled = true
+        repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
     WHERE
         isNull (i.deletedAt) AND i.enabled
         {% if defined(project) %}

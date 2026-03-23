@@ -6,7 +6,7 @@ SQL >
     SELECT cip.insightsProjectId, groupArray(c.slug) AS "collectionsSlugs"
     FROM collectionsInsightsProjects cip FINAL
     JOIN collections c FINAL ON c.id = cip.collectionId
-    WHERE isNull (c.deletedAt) AND isNull (cip.deletedAt)
+    WHERE isNull (c.deletedAt) AND isNull (c.ssoUserId) AND isNull (cip.deletedAt)
     GROUP BY cip.insightsProjectId
 
 NODE insights_projects_populated_copy_segment_id_mapping
@@ -69,11 +69,7 @@ SQL >
     SELECT i.id, r.url AS repository
     FROM insightsProjects i FINAL
     JOIN
-        repositories r FINAL
-        ON r.insightsProjectId = i.id
-        AND isNull (r.deletedAt)
-        AND r.enabled = true
-        AND r.excluded = false
+        repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
     WHERE isNull (i.deletedAt)
 
 NODE insights_projects_populated_copy_repository_criticality

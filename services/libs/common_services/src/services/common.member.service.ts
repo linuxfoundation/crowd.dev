@@ -20,6 +20,7 @@ import {
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
+  changeMemberOrganizationAffiliationOverrides,
   checkOrganizationAffiliationPolicy,
   createOrUpdateMemberOrganizations,
   deleteMemberOrganizations,
@@ -40,7 +41,6 @@ import {
   updateMember,
 } from '@crowd/data-access-layer'
 import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
-import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
 import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,

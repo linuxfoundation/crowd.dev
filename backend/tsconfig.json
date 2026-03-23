@@ -10,7 +10,7 @@
     "noUnusedParameters": false,
     "sourceMap": true,
     "target": "es2018",
-    "types": ["node"],
+    "types": ["node", "express"],
     "baseUrl": "./src",
     "paths": {
       "@/*": ["./*"]

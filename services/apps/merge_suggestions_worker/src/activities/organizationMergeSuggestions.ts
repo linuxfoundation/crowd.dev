@@ -155,10 +155,10 @@ export async function getOrganizationMergeSuggestions(
       cleaned = cleaned.split(':').pop() || cleaned
     }
 
-    return cleaned
+    return cleaned.toLowerCase()
   }
 
-  // Process up to 100 identities
+  // Process up to 75 identities
   // This is a safety limit to prevent OpenSearch max clause errors
   for (let i = 0; i < Math.min(identities.length, 75); i++) {
     const { value: rawValue, platform } = identities[i]
@@ -187,7 +187,7 @@ export async function getOrganizationMergeSuggestions(
 
   // Build OpenSearch query clauses
   const identitiesShould = []
-  const CHUNK_SIZE = 20 // Split queries into chunks to avoid OpenSearch limits
+  const CHUNK_SIZE = 15 // Split queries into chunks to avoid OpenSearch limits
 
   const clauseBuilders: OpenSearchQueryClauseBuilder<Partial<IOrganizationIdentity>>[] = [
     {
@@ -212,6 +212,7 @@ export async function getOrganizationMergeSuggestions(
             query: value,
             prefix_length: 1,
             fuzziness: 'auto',
+            max_expansions: 3,
           },
         },
       }),
@@ -224,6 +225,7 @@ export async function getOrganizationMergeSuggestions(
         prefix: {
           [`nested_identities.string_value`]: {
             value,
+            rewrite: 'top_terms_3',
           },
         },
       }),

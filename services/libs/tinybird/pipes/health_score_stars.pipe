@@ -8,10 +8,10 @@ SQL >
         SELECT segmentId, count() AS stars
         FROM activityRelations_bucket_routing
         WHERE
-            type = 'star' AND segmentId = (SELECT segmentId FROM segments_filtered)
-            {% if defined(repos) %}
-                AND channel IN (SELECT channel FROM repos_to_channels)
-            {% end %}
+            type = 'star'
+            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -24,7 +24,7 @@ SQL >
     {% else %}
         SELECT segmentId, count() AS stars
         FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE type = 'star'
+        WHERE type = 'star' AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY segmentId
     {% end %}
 

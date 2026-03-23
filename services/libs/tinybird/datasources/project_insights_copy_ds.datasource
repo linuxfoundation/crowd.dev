@@ -5,7 +5,21 @@ DESCRIPTION >
     - `id` column is the primary key identifier for the project.
     - `name` column is the human-readable project name.
     - `slug` column is the URL-friendly identifier used in routing and filtering.
+    - `logoUrl` column is the URL to the project's logo image.
+    - `isLF` column indicates whether the project is a Linux Foundation project (1 = true, 0 = false).
+    - `contributorCount` column is the total number of contributors for the project.
+    - `organizationCount` column is the total number of organizations for the project.
+    - `softwareValue` column is the estimated economic value of the software.
+    - `contributorDependencyCount` column is the number of contributors making up 51% of contributions (bus factor).
+    - `contributorDependencyPercentage` column is the combined contribution percentage of dependent contributors.
+    - `organizationDependencyCount` column is the number of organizations making up 51% of contributions.
+    - `organizationDependencyPercentage` column is the combined contribution percentage of dependent organizations.
+    - `achievements` column is an array of tuples (leaderboardType, rank, totalCount) representing project achievements.
     - `healthScore` column is the overall health score for the project (0-100).
+    - `contributorHealthScore` column is the health score percentage for the contributors category (0-100).
+    - `popularityHealthScore` column is the health score percentage for the popularity category (0-100).
+    - `developmentHealthScore` column is the health score percentage for the development category (0-100).
+    - `securityHealthScore` column is the health score percentage for the security category (0-100).
     - `firstCommit` column is the timestamp of the first commit in the project.
     - `starsLast365Days` column is the count of stars in the last 365 days.
     - `forksLast365Days` column is the count of forks in the last 365 days.
@@ -22,8 +36,21 @@ SCHEMA >
     `id` String,
     `name` String,
     `slug` String,
+    `logoUrl` String,
+    `isLF` UInt8,
+    `contributorCount` UInt64,
+    `organizationCount` UInt64,
     `softwareValue` UInt64,
+    `contributorDependencyCount` UInt64,
+    `contributorDependencyPercentage` Float64,
+    `organizationDependencyCount` UInt64,
+    `organizationDependencyPercentage` Float64,
+    `achievements` Array(Tuple(String, UInt64, UInt64)),
     `healthScore` Nullable(Float64),
+    `contributorHealthScore` Nullable(Float64),
+    `popularityHealthScore` Nullable(Float64),
+    `developmentHealthScore` Nullable(Float64),
+    `securityHealthScore` Nullable(Float64),
     `firstCommit` Nullable(DateTime64(3)),
     `starsLast365Days` UInt64,
     `forksLast365Days` UInt64,

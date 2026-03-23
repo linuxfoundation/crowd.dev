@@ -1,6 +1,8 @@
-import { checkOrganizationAffiliationPolicy } from '@crowd/data-access-layer'
+import {
+  changeMemberOrganizationAffiliationOverrides,
+  checkOrganizationAffiliationPolicy,
+} from '@crowd/data-access-layer'
 import { DbStore } from '@crowd/data-access-layer/src/database'
-import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
 import {
   addOrgsToMember,
   addOrgsToSegments,

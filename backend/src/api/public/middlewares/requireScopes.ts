@@ -1,13 +1,12 @@
-import type { NextFunction, Response } from 'express'
+import type { NextFunction, Request, Response } from 'express'
 
 import { InsufficientScopeError, UnauthorizedError } from '@crowd/common'
 
 import { Scope } from '@/security/scopes'
-import type { ApiRequest } from '@/types/api'
 
 export const requireScopes =
   (required: Scope[], mode: 'all' | 'any' = 'all') =>
-  (req: ApiRequest, _res: Response, next: NextFunction) => {
+  (req: Request, _res: Response, next: NextFunction) => {
     if (!req.actor) {
       next(new UnauthorizedError())
       return

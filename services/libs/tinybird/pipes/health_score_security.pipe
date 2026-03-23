@@ -5,9 +5,7 @@ SQL >
     FROM insightsProjects i FINAL
     JOIN repositories r FINAL ON r.insightsProjectId = i.id
     WHERE
-        isNull(i.deletedAt)
-        AND isNull(r.deletedAt)
-        AND r.enabled = true
+        isNull (i.deletedAt) AND isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
         {% if defined(project) %}
             AND i.id = (SELECT insightsProjectId FROM segments_filtered)
             AND r.url in (select arrayJoin(repositories) from segments_filtered)

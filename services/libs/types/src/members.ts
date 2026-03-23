@@ -24,6 +24,7 @@ export interface IMemberIdentity {
   type: MemberIdentityType
   memberId?: string
   verified: boolean
+  verifiedBy?: string
 
   source?: string
   sourceId?: string
@@ -34,9 +35,15 @@ export interface IMemberIdentity {
   deletedAt?: string
 }
 
+export type MemberIdentityField = keyof IMemberIdentity
+
 export type NewMemberIdentity = Omit<
   IMemberIdentity,
   'id' | 'createdAt' | 'updatedAt' | 'deletedAt'
+>
+
+export type UpdateMemberIdentity = Partial<
+  Omit<IMemberIdentity, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>
 >
 
 export interface IActivityIdentity {

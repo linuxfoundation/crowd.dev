@@ -20,8 +20,8 @@
     "@crowd/integrations": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/queue": "workspace:*",
-    "@crowd/temporal": "workspace:*",
     "@crowd/redis": "workspace:*",
+    "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
     "@octokit/request": "^5.6.3",
     "@octokit/rest": "^22.0.0",
@@ -29,6 +29,7 @@
     "jsonwebtoken": "^9.0.0",
     "lodash.isequal": "^4.5.0",
     "lodash.pick": "~4.4.0",
+    "lodash.uniqby": "^4.7.0",
     "moment": "^2.30.1"
   }
 }

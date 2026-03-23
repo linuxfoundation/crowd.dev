@@ -44,6 +44,7 @@ const parseUser = ({ data }: { data: UserSchema }): IMemberData | undefined => {
         value: data.username as string,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GITLAB,
       },
       ...(data.public_email
         ? [
@@ -52,6 +53,7 @@ const parseUser = ({ data }: { data: UserSchema }): IMemberData | undefined => {
               value: data.public_email,
               type: MemberIdentityType.EMAIL,
               verified: true,
+              verifiedBy: PlatformType.GITLAB,
             },
           ]
         : []),
@@ -122,6 +124,7 @@ const parseUserFromCommit = ({ data }: { data: ExpandedCommitSchema }): IMemberD
         value: data.author_email as string,
         type: MemberIdentityType.EMAIL,
         verified: true,
+        verifiedBy: PlatformType.GITLAB,
       },
     ],
     displayName: data.author_name,

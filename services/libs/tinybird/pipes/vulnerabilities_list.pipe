@@ -1,0 +1,45 @@
+NODE vulnerabilities_list
+SQL >
+    %
+    {% if Boolean(count, false) %}
+        SELECT count(distinct(v.vulnerabilityId, v.packageName)) as count
+        FROM vulnerabilities as v FINAL
+        WHERE
+            repoUrl in (select arrayJoin(repositories) from segments_filtered)
+            {% if defined(ecosystem) %}
+                AND v.packageEcosystem = {{ String(ecosystem, required=False) }}
+            {% end %}
+            {% if defined(status) %} AND v.status = {{ String(status, required=False) }} {% end %}
+            {% if defined(severity) %} AND v.severity = {{ String(severity, required=False) }} {% end %}
+    {% else %}
+        SELECT
+            any (v.vulnerabilityId) as vulnerabilityId,
+            any (arrayElement(v.cveIds, 1)) as cveId,
+            any (v.packageName) as packageName,
+            any (v.severity) as severity,
+            any (v.summary) as description,
+            any (v.packageEcosystem) as ecosystem,
+            any (v.publishedAt) as publishedAt,
+            any (v.status) as status,
+            groupArray(concat(v.repoUrl, '/blob/HEAD', v.sourcePath)) as paths
+        FROM vulnerabilities as v FINAL
+        WHERE
+            repoUrl in (select arrayJoin(repositories) from segments_filtered)
+            {% if defined(ecosystem) %} AND v.packageEcosystem = {{ String(ecosystem, required=False) }}
+            {% end %}
+            {% if defined(status) %} AND v.status = {{ String(status, required=False) }}
+            {% end %}
+            {% if defined(severity) %} AND v.severity = {{ String(severity, required=False) }}
+            {% end %}
+        GROUP BY v.vulnerabilityId, v.packageName
+        ORDER BY
+            publishedAt
+            {% if String(orderByDirection, 'desc', required=False) == 'asc' or String(
+                orderByDirection, 'desc', required=False
+            ) == 'ASC' %} ASC
+            {% else %} DESC
+            {% end %},
+            v.vulnerabilityId ASC
+        LIMIT {{ Int32(pageSize, 10) }}
+        OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+    {% end %}

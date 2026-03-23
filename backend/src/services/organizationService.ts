@@ -7,6 +7,7 @@ import {
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
 import { Error400, Error404, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -14,7 +15,7 @@ import {
   removeMemberRole,
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
-import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
+import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
 import {
   addMergeAction,
   queryMergeActions,
@@ -62,7 +63,6 @@ import {
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
 } from './helpers/mergeFunctions'
-import MemberOrganizationService from './memberOrganizationService'
 import SearchSyncService from './searchSyncService'
 
 export default class OrganizationService extends LoggerBase {
@@ -368,7 +368,7 @@ export default class OrganizationService extends LoggerBase {
                   repoOptions,
                 )
 
-              const primaryUnmergedRoles = await MemberOrganizationService.unmergeRoles(
+              const primaryUnmergedRoles = await unmergeRoles(
                 memberOrganizations,
                 mergeAction.unmergeBackup.primary.memberOrganizations,
                 mergeAction.unmergeBackup.secondary.memberOrganizations,

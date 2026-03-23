@@ -12,9 +12,8 @@ SQL >
         1 = 1
         {% if defined(project) %}
             AND segmentId = (SELECT segmentId FROM segments_filtered)
-            {% if defined(repos) %}
-                AND channel IN (SELECT channel FROM repos_to_channels)
-            {% end %}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -26,6 +25,7 @@ SQL >
         {% else %}
             AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
             AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         {% end %}
     GROUP BY segmentId
 
