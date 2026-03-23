@@ -31,7 +31,8 @@ SQL >
         SELECT segmentId, groupUniqArray(memberId) AS currentQuarterMembers
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            memberId != '' AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            memberId != ''
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             {% if defined(endDate) %}
                 AND timestamp >= toStartOfQuarter(
@@ -85,7 +86,8 @@ SQL >
         SELECT segmentId, groupUniqArray(memberId) AS previousQuarterMembers
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            memberId != '' AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            memberId != ''
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
             {% if defined(endDate) %}
                 AND timestamp >= toStartOfQuarter(
