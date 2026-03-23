@@ -10,9 +10,6 @@
     "brokers": "CROWD_KAFKA_BROKERS",
     "extra": "CROWD_KAFKA_EXTRA"
   },
-  "slackAlerting": {
-    "url": "CROWD_SLACK_ALERTING_URL"
-  },
   "redis": {
     "username": "CROWD_REDIS_USERNAME",
     "password": "CROWD_REDIS_PASSWORD",

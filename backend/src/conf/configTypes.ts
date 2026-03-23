@@ -156,10 +156,6 @@ export interface StackExchangeConfiguration {
   key: string
 }
 
-export interface SlackAlertingConfiguration {
-  url: string
-}
-
 export interface IntegrationProcessingConfiguration {
   maxRetries: number
 }

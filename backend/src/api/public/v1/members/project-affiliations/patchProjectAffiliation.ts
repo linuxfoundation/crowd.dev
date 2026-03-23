@@ -26,9 +26,9 @@ const paramsSchema = z.object({
   projectId: z.uuid(),
 })
 
-const bodySchema = z.object({
-  affiliations: z
-    .array(
+const bodySchema = z
+  .object({
+    affiliations: z.array(
       z
         .object({
           organizationId: z.uuid(),
@@ -38,10 +38,13 @@ const bodySchema = z.object({
         .refine((a) => a.dateEnd == null || a.dateEnd >= a.dateStart, {
           message: 'dateEnd must be greater than or equal to dateStart',
         }),
-    )
-    .min(1),
-  verifiedBy: z.string().max(255),
-})
+    ),
+    verifiedBy: z.string().max(255).optional(),
+  })
+  .refine((b) => b.affiliations.length === 0 || b.verifiedBy != null, {
+    message: 'verifiedBy is required when affiliations is non-empty',
+    path: ['verifiedBy'],
+  })
 
 export async function patchProjectAffiliation(req: Request, res: Response): Promise<void> {
   const { memberId, projectId } = validateOrThrow(paramsSchema, req.params)
@@ -75,17 +78,19 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
       await qx.tx(async (tx) => {
         await deleteAllMemberSegmentAffiliationsForProject(tx, memberId, projectId)
 
-        await insertMemberSegmentAffiliations(
-          tx,
-          memberId,
-          projectId,
-          affiliations.map((a) => ({
-            organizationId: a.organizationId,
-            dateStart: a.dateStart.toISOString(),
-            dateEnd: a.dateEnd?.toISOString() ?? null,
-            verifiedBy,
-          })),
-        )
+        if (affiliations.length > 0) {
+          await insertMemberSegmentAffiliations(
+            tx,
+            memberId,
+            projectId,
+            affiliations.map((a) => ({
+              organizationId: a.organizationId,
+              dateStart: a.dateStart.toISOString(),
+              dateEnd: a.dateEnd?.toISOString() ?? null,
+              verifiedBy: verifiedBy!,
+            })),
+          )
+        }
 
         const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
         const newOrgIds = affiliations.map((a) => a.organizationId)

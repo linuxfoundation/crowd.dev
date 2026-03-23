@@ -40,7 +40,7 @@ export const errorHandler: ErrorRequestHandler = (
   )
 
   sendSlackNotification(
-    SlackChannel.ALERTS,
+    SlackChannel.CDP_ALERTS,
     SlackPersona.ERROR_REPORTER,
     `Public API Error 500: ${req.method} ${req.url}`,
     [
