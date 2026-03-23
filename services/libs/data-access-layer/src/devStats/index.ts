@@ -305,7 +305,7 @@ function buildTimeline(
     const boundaryDate = boundaries[i]
     const activeOrgsAtBoundary = orgsActiveAt(datedRows, boundaryDate)
 
-    log.debug(
+    log.info(
       {
         memberId,
         boundaryDate: boundaryDate.toISOString(),
@@ -337,7 +337,7 @@ function buildTimeline(
 
       if (uncoveredPeriodStart === null) {
         uncoveredPeriodStart = boundaryDate
-        log.debug(
+        log.info(
           { memberId, uncoveredPeriodStart: boundaryDate.toISOString() },
           'uncovered period started',
         )
@@ -348,7 +348,7 @@ function buildTimeline(
 
     // Orgs are active again — close the uncovered period using the fallback org if available
     if (uncoveredPeriodStart !== null) {
-      log.debug(
+      log.info(
         {
           memberId,
           fallbackOrg: fallbackOrg?.organizationName ?? null,
@@ -375,7 +375,7 @@ function buildTimeline(
 
     // No current window open — start a new one with the winning org
     if (!currentOrg) {
-      log.debug(
+      log.info(
         { memberId, org: winningAffiliation.organizationName, from: boundaryDate.toISOString() },
         'opening affiliation window',
       )
@@ -386,7 +386,7 @@ function buildTimeline(
 
     // Winning org changed — close the current window and open a new one
     if (currentOrg.organizationId !== winningAffiliation.organizationId) {
-      log.debug(
+      log.info(
         {
           memberId,
           from: currentOrg.organizationName,
@@ -410,7 +410,7 @@ function buildTimeline(
   // Close the last open window using the org's actual end date (null = ongoing)
   if (currentOrg && currentWindowStart) {
     const endDate = currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null
-    log.debug(
+    log.info(
       {
         memberId,
         org: currentOrg.organizationName,
@@ -428,7 +428,7 @@ function buildTimeline(
 
   // Close a trailing uncovered period using the fallback org (ongoing, no end date)
   if (uncoveredPeriodStart !== null && fallbackOrg) {
-    log.debug(
+    log.info(
       {
         memberId,
         fallbackOrg: fallbackOrg.organizationName,
