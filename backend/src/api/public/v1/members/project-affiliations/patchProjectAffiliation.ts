@@ -42,7 +42,7 @@ const bodySchema = z
     verifiedBy: z.string().max(255).optional(),
   })
   .refine((b) => b.affiliations.length === 0 || b.verifiedBy != null, {
-    message: 'verifiedBy is required when affiliations are provided',
+    message: 'verifiedBy is required when affiliations is non-empty',
     path: ['verifiedBy'],
   })
 
