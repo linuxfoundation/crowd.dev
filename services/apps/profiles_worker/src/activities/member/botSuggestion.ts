@@ -84,7 +84,7 @@ export async function updateMemberAttributes(
 export async function removeMemberOrganizations(memberId: string): Promise<void> {
   try {
     const qx = pgpQx(svc.postgres.writer.connection())
-    await deleteMemberOrganizations(qx, memberId, undefined, false)
+    await deleteMemberOrganizations(qx, memberId, undefined, true)
   } catch (error) {
     svc.log.error({ error, memberId }, `Failed to remove member organizations!`)
     throw error

@@ -10,6 +10,7 @@ import {
   escapeNullByte,
   generateUUIDv1,
   isValidEmail,
+  parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
   trimUtf8ToMaxByteLength,
@@ -797,6 +798,92 @@ export default class ActivityService extends LoggerBase {
                 i.verified &&
                 i.type === MemberIdentityType.EMAIL &&
                 i.value.toLowerCase() === value.toLowerCase(),
+            ),
+          (p, member) => {
+            p.dbObjectMember = member
+            p.dbObjectMemberSource = 'email'
+          },
+        )
+      }
+
+      // Look up members by parsing noreply emails to extract platform usernames
+      // e.g. "123+john@users.noreply.github.com" -> GitHub username "john"
+      const noreplyEmailFilterMap = new Map<
+        string,
+        { platform: PlatformType; username: string; segmentId: string }
+      >()
+
+      for (const payload of payloadsNotInDb.filter((p) => !p.dbMember)) {
+        for (const identity of payload.activity.member.identities.filter(
+          (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+        )) {
+          const ghUsername = parseGitHubNoreplyEmail(identity.value)
+          if (ghUsername) {
+            const key = `${PlatformType.GITHUB}:${ghUsername}:${payload.segmentId}`
+            if (!noreplyEmailFilterMap.has(key)) {
+              noreplyEmailFilterMap.set(key, {
+                platform: PlatformType.GITHUB,
+                username: ghUsername,
+                segmentId: payload.segmentId,
+              })
+            }
+          }
+        }
+      }
+
+      for (const payload of payloadsNotInDb.filter(
+        (p) => !p.dbObjectMember && p.activity.objectMember,
+      )) {
+        for (const identity of payload.activity.objectMember.identities.filter(
+          (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+        )) {
+          const ghUsername = parseGitHubNoreplyEmail(identity.value)
+          if (ghUsername) {
+            const key = `${PlatformType.GITHUB}:${ghUsername}:${payload.segmentId}`
+            if (!noreplyEmailFilterMap.has(key)) {
+              noreplyEmailFilterMap.set(key, {
+                platform: PlatformType.GITHUB,
+                username: ghUsername,
+                segmentId: payload.segmentId,
+              })
+            }
+          }
+        }
+      }
+
+      if (noreplyEmailFilterMap.size > 0) {
+        const dbMembersByNoreplyEmail = await logExecutionTimeV2(
+          async () =>
+            findMembersByVerifiedUsernames(this.pgQx, Array.from(noreplyEmailFilterMap.values())),
+          this.log,
+          'processActivities -> memberRepo.findMembersByVerifiedUsernames (noreply-email)',
+        )
+
+        mapResultsToPayloads(
+          dbMembersByNoreplyEmail,
+          (p, value) =>
+            !p.dbMember &&
+            p.activity.member.identities.some(
+              (i) =>
+                i.verified &&
+                i.type === MemberIdentityType.EMAIL &&
+                parseGitHubNoreplyEmail(i.value) === value.toLowerCase(),
+            ),
+          (p, member) => {
+            p.dbMember = member
+            p.dbMemberSource = 'email'
+          },
+        )
+
+        mapResultsToPayloads(
+          dbMembersByNoreplyEmail,
+          (p, value) =>
+            !p.dbObjectMember &&
+            p.activity.objectMember?.identities.some(
+              (i) =>
+                i.verified &&
+                i.type === MemberIdentityType.EMAIL &&
+                parseGitHubNoreplyEmail(i.value) === value.toLowerCase(),
             ),
           (p, member) => {
             p.dbObjectMember = member
