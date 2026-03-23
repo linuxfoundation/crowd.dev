@@ -67,7 +67,7 @@ SQL >
     LEFT JOIN issues_closed AS closed ON opened.sourceId = closed.sourceParentId
     LEFT JOIN issues_comment AS comment ON opened.sourceId = comment.sourceParentId
 
-TYPE copy
+TYPE COPY
 TARGET_DATASOURCE issues_analyzed
 COPY_MODE replace
 COPY_SCHEDULE 20 * * * *
