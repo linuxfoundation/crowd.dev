@@ -258,7 +258,7 @@ function orgsActiveAt(datedRows: IDevStatsWorkRow[], boundaryDate: Date): IDevSt
   return datedRows.filter((role) => {
     const roleStart = startOfDay(role.dateStart ?? '')
     const roleEnd = role.dateEnd ? startOfDay(role.dateEnd) : null
-    
+
     // org is active if the boundary date falls within its employment period
     return boundaryDate >= roleStart && (!roleEnd || boundaryDate <= roleEnd)
   })
@@ -333,16 +333,24 @@ function buildTimeline(
 
     // No orgs active at this boundary — close the current window and start tracking a gap
     if (activeOrgsAtBoundary.length === 0) {
-      
       if (currentOrg && currentWindowStart) {
-        closeAffiliationWindow(memberId, affiliations, currentOrg, currentWindowStart, dayBefore(boundaryDate))
+        closeAffiliationWindow(
+          memberId,
+          affiliations,
+          currentOrg,
+          currentWindowStart,
+          dayBefore(boundaryDate),
+        )
         currentOrg = null
         currentWindowStart = null
       }
 
       if (uncoveredPeriodStart === null) {
         uncoveredPeriodStart = boundaryDate
-        log.debug({ memberId, uncoveredPeriodStart: boundaryDate.toISOString() }, 'uncovered period started')
+        log.debug(
+          { memberId, uncoveredPeriodStart: boundaryDate.toISOString() },
+          'uncovered period started',
+        )
       }
 
       continue
@@ -361,9 +369,15 @@ function buildTimeline(
       )
 
       if (fallbackOrg) {
-        closeAffiliationWindow(memberId, affiliations, fallbackOrg, uncoveredPeriodStart, dayBefore(boundaryDate))
+        closeAffiliationWindow(
+          memberId,
+          affiliations,
+          fallbackOrg,
+          uncoveredPeriodStart,
+          dayBefore(boundaryDate),
+        )
       }
-      
+
       uncoveredPeriodStart = null
     }
 
@@ -391,7 +405,13 @@ function buildTimeline(
         },
         'affiliation changed',
       )
-      closeAffiliationWindow(memberId, affiliations, currentOrg, currentWindowStart ?? boundaryDate, dayBefore(boundaryDate))
+      closeAffiliationWindow(
+        memberId,
+        affiliations,
+        currentOrg,
+        currentWindowStart ?? boundaryDate,
+        dayBefore(boundaryDate),
+      )
       currentOrg = winningAffiliation
       currentWindowStart = boundaryDate
     }
@@ -401,7 +421,12 @@ function buildTimeline(
   if (currentOrg && currentWindowStart) {
     const endDate = currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null
     log.debug(
-      { memberId, org: currentOrg.organizationName, start: currentWindowStart.toISOString(), endDate },
+      {
+        memberId,
+        org: currentOrg.organizationName,
+        start: currentWindowStart.toISOString(),
+        endDate,
+      },
       'closing final affiliation window',
     )
     affiliations.push({
@@ -414,7 +439,11 @@ function buildTimeline(
   // Close a trailing uncovered period using the fallback org (ongoing, no end date)
   if (uncoveredPeriodStart !== null && fallbackOrg) {
     log.debug(
-      { memberId, fallbackOrg: fallbackOrg.organizationName, uncoveredPeriodStart: uncoveredPeriodStart.toISOString() },
+      {
+        memberId,
+        fallbackOrg: fallbackOrg.organizationName,
+        uncoveredPeriodStart: uncoveredPeriodStart.toISOString(),
+      },
       'closing trailing uncovered period with fallback org',
     )
     affiliations.push({
@@ -455,7 +484,11 @@ function resolveAffiliationsForMember(
 
   if (cleaned.length < rows.length) {
     log.debug(
-      { memberId, dropped: rows.length - cleaned.length, keptPrimaryUndated: primaryUndated?.organizationName },
+      {
+        memberId,
+        dropped: rows.length - cleaned.length,
+        keptPrimaryUndated: primaryUndated?.organizationName,
+      },
       'dropped undated orgs (primary undated exists)',
     )
   }
@@ -485,7 +518,11 @@ function resolveAffiliationsForMember(
 
   const boundaries = collectBoundaries(datedRows)
   log.debug(
-    { memberId, boundaries: boundaries.length, boundaryDates: boundaries.map((b) => b.toISOString()) },
+    {
+      memberId,
+      boundaries: boundaries.length,
+      boundaryDates: boundaries.map((b) => b.toISOString()),
+    },
     'collected boundaries',
   )
 
@@ -495,7 +532,11 @@ function resolveAffiliationsForMember(
     {
       memberId,
       affiliations: timeline.length,
-      result: timeline.map((a) => ({ org: a.organization, startDate: a.startDate, endDate: a.endDate })),
+      result: timeline.map((a) => ({
+        org: a.organization,
+        startDate: a.startDate,
+        endDate: a.endDate,
+      })),
     },
     'timeline built',
   )
