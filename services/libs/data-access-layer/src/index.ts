@@ -1,4 +1,5 @@
 export * from './activities'
+export * from './affiliations'
 export * from './devStats'
 export * from './activityRelations'
 export * from './apiKeys'
