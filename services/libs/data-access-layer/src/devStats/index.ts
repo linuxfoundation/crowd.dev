@@ -5,11 +5,7 @@ import { QueryExecutor } from '../queryExecutor'
 
 const log = getServiceChildLogger('dev-stats:affiliations')
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const BLACKLISTED_TITLES = ['investor', 'mentor', 'board member']
-
-// ─── Public interfaces ────────────────────────────────────────────────────────
 
 export interface IDevStatsMemberRow {
   githubHandle: string
@@ -22,8 +18,6 @@ export interface IDevStatsAffiliation {
   startDate: string | null
   endDate: string | null
 }
-
-// ─── Internal row type (union of memberOrganizations + manual affiliations) ───
 
 interface IDevStatsWorkRow {
   id: string
@@ -167,8 +161,6 @@ async function findManualAffiliationsBulk(
   )
 }
 
-// ─── Selection priority (mirrors selectPrimaryWorkExperience) ─────────────────
-
 function longestDateRange(orgs: IDevStatsWorkRow[]): IDevStatsWorkRow {
   const withDates = orgs.filter((r) => r.dateStart)
   if (withDates.length === 0) return orgs[0]
@@ -213,8 +205,6 @@ function selectPrimaryWorkExperience(orgs: IDevStatsWorkRow[]): IDevStatsWorkRow
   // 5. Longest date range as final tiebreaker
   return longestDateRange(orgs)
 }
-
-// ─── Per-member affiliation resolution ───────────────────────────────────────
 
 /** Returns the org used to fill gaps — primary undated wins, then earliest-created undated. */
 function findFallbackOrg(rows: IDevStatsWorkRow[]): IDevStatsWorkRow | null {
@@ -547,8 +537,6 @@ function resolveAffiliationsForMember(
     return new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
   })
 }
-
-// ─── Public bulk resolver ─────────────────────────────────────────────────────
 
 export async function resolveAffiliationsByMemberIds(
   qx: QueryExecutor,
