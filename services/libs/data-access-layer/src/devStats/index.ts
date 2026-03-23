@@ -254,11 +254,13 @@ function collectBoundaries(datedRows: IDevStatsWorkRow[]): Date[] {
     .map((t) => new Date(t))
 }
 
-function orgsActiveAt(datedRows: IDevStatsWorkRow[], point: Date): IDevStatsWorkRow[] {
-  return datedRows.filter((r) => {
-    const start = startOfDay(r.dateStart ?? '')
-    const end = r.dateEnd ? startOfDay(r.dateEnd) : null
-    return point >= start && (!end || point <= end)
+function orgsActiveAt(datedRows: IDevStatsWorkRow[], boundaryDate: Date): IDevStatsWorkRow[] {
+  return datedRows.filter((role) => {
+    const roleStart = startOfDay(role.dateStart ?? '')
+    const roleEnd = role.dateEnd ? startOfDay(role.dateEnd) : null
+    
+    // org is active if the boundary date falls within its employment period
+    return boundaryDate >= roleStart && (!roleEnd || boundaryDate <= roleEnd)
   })
 }
 
@@ -274,39 +276,50 @@ function dayBefore(date: Date): Date {
   return d
 }
 
-/** Iterates boundary intervals and builds non-overlapping affiliation segments. */
+function closeAffiliationWindow(
+  memberId: string,
+  affiliations: IDevStatsAffiliation[],
+  org: IDevStatsWorkRow,
+  windowStart: Date,
+  windowEnd: Date,
+): void {
+  log.debug(
+    {
+      memberId,
+      org: org.organizationName,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+    },
+    'closing affiliation window',
+  )
+  affiliations.push({
+    organization: org.organizationName,
+    startDate: windowStart.toISOString(),
+    endDate: windowEnd.toISOString(),
+  })
+}
+
+/** Iterates boundary intervals and builds non-overlapping affiliation windows. */
 function buildTimeline(
   memberId: string,
   datedRows: IDevStatsWorkRow[],
   fallbackOrg: IDevStatsWorkRow | null,
   boundaries: Date[],
 ): IDevStatsAffiliation[] {
-  const resolved: IDevStatsAffiliation[] = []
-  let currentOrg: IDevStatsWorkRow | null = null
-  let currentStart: Date | null = null
-  let gapStart: Date | null = null
-
-  const closeSegment = (org: IDevStatsWorkRow, start: Date, end: Date) => {
-    log.debug(
-      { memberId, org: org.organizationName, start: start.toISOString(), end: end.toISOString() },
-      'closing segment',
-    )
-    resolved.push({
-      organization: org.organizationName,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-    })
-  }
+  const affiliations: IDevStatsAffiliation[] = []
+  let currentOrg: IDevStatsWorkRow = null
+  let currentWindowStart: Date = null
+  let uncoveredPeriodStart: Date = null
 
   for (let i = 0; i < boundaries.length - 1; i++) {
-    const point = boundaries[i]
-    const active = orgsActiveAt(datedRows, point)
+    const boundaryDate = boundaries[i]
+    const activeOrgsAtBoundary = orgsActiveAt(datedRows, boundaryDate)
 
     log.debug(
       {
         memberId,
-        point: point.toISOString(),
-        activeOrgs: active.map((r) => ({
+        boundaryDate: boundaryDate.toISOString(),
+        orgsAtBoundary: activeOrgsAtBoundary.map((r) => ({
           org: r.organizationName,
           dateStart: r.dateStart,
           dateEnd: r.dateEnd,
@@ -318,86 +331,100 @@ function buildTimeline(
       'processing boundary',
     )
 
-    if (active.length === 0) {
-      if (currentOrg && currentStart) {
-        closeSegment(currentOrg, currentStart, dayBefore(point))
+    // No orgs active at this boundary — close the current window and start tracking a gap
+    if (activeOrgsAtBoundary.length === 0) {
+      
+      if (currentOrg && currentWindowStart) {
+        closeAffiliationWindow(memberId, affiliations, currentOrg, currentWindowStart, dayBefore(boundaryDate))
         currentOrg = null
-        currentStart = null
+        currentWindowStart = null
       }
-      if (gapStart === null) {
-        gapStart = point
-        log.debug({ memberId, gapStart: point.toISOString() }, 'gap started')
+
+      if (uncoveredPeriodStart === null) {
+        uncoveredPeriodStart = boundaryDate
+        log.debug({ memberId, uncoveredPeriodStart: boundaryDate.toISOString() }, 'uncovered period started')
       }
+
       continue
     }
 
-    if (gapStart !== null) {
+    // Orgs are active again — close the uncovered period using the fallback org if available
+    if (uncoveredPeriodStart !== null) {
       log.debug(
         {
           memberId,
-          fallback: fallbackOrg?.organizationName ?? null,
-          gapStart: gapStart.toISOString(),
-          gapEnd: dayBefore(point).toISOString(),
+          fallbackOrg: fallbackOrg?.organizationName ?? null,
+          uncoveredPeriodStart: uncoveredPeriodStart.toISOString(),
+          uncoveredPeriodEnd: dayBefore(boundaryDate).toISOString(),
         },
-        'closing gap with fallback org',
+        'closing uncovered period with fallback org',
       )
-      if (fallbackOrg) closeSegment(fallbackOrg, gapStart, dayBefore(point))
-      gapStart = null
+
+      if (fallbackOrg) {
+        closeAffiliationWindow(memberId, affiliations, fallbackOrg, uncoveredPeriodStart, dayBefore(boundaryDate))
+      }
+      
+      uncoveredPeriodStart = null
     }
 
-    const winner = selectPrimaryWorkExperience(active)
+    const winningAffiliation = selectPrimaryWorkExperience(activeOrgsAtBoundary)
 
+    // No current window open — start a new one with the winning org
     if (!currentOrg) {
       log.debug(
-        { memberId, org: winner.organizationName, from: point.toISOString() },
-        'opening segment',
+        { memberId, org: winningAffiliation.organizationName, from: boundaryDate.toISOString() },
+        'opening affiliation window',
       )
-      currentOrg = winner
-      currentStart = point
-    } else if (currentOrg.organizationId !== winner.organizationId) {
+      currentOrg = winningAffiliation
+      currentWindowStart = boundaryDate
+      continue
+    }
+
+    // Winning org changed — close the current window and open a new one
+    if (currentOrg.organizationId !== winningAffiliation.organizationId) {
       log.debug(
         {
           memberId,
           from: currentOrg.organizationName,
-          to: winner.organizationName,
-          at: point.toISOString(),
+          to: winningAffiliation.organizationName,
+          at: boundaryDate.toISOString(),
         },
-        'org changed',
+        'affiliation changed',
       )
-      closeSegment(currentOrg, currentStart ?? point, dayBefore(point))
-      currentOrg = winner
-      currentStart = point
+      closeAffiliationWindow(memberId, affiliations, currentOrg, currentWindowStart ?? boundaryDate, dayBefore(boundaryDate))
+      currentOrg = winningAffiliation
+      currentWindowStart = boundaryDate
     }
   }
 
-  // Close the final open segment using the org's actual endDate (null = ongoing)
-  if (currentOrg && currentStart) {
+  // Close the last open window using the org's actual end date (null = ongoing)
+  if (currentOrg && currentWindowStart) {
     const endDate = currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null
     log.debug(
-      { memberId, org: currentOrg.organizationName, start: currentStart.toISOString(), endDate },
-      'closing final segment',
+      { memberId, org: currentOrg.organizationName, start: currentWindowStart.toISOString(), endDate },
+      'closing final affiliation window',
     )
-    resolved.push({
+    affiliations.push({
       organization: currentOrg.organizationName,
-      startDate: currentStart.toISOString(),
+      startDate: currentWindowStart.toISOString(),
       endDate,
     })
   }
 
-  // Close a trailing gap with the fallback org (ongoing, no endDate)
-  if (gapStart !== null && fallbackOrg) {
+  // Close a trailing uncovered period using the fallback org (ongoing, no end date)
+  if (uncoveredPeriodStart !== null && fallbackOrg) {
     log.debug(
-      { memberId, fallback: fallbackOrg.organizationName, gapStart: gapStart.toISOString() },
-      'closing trailing gap with fallback org',
+      { memberId, fallbackOrg: fallbackOrg.organizationName, uncoveredPeriodStart: uncoveredPeriodStart.toISOString() },
+      'closing trailing uncovered period with fallback org',
     )
-    resolved.push({
+    affiliations.push({
       organization: fallbackOrg.organizationName,
-      startDate: gapStart.toISOString(),
+      startDate: uncoveredPeriodStart.toISOString(),
       endDate: null,
     })
   }
 
-  return resolved
+  return affiliations
 }
 
 function resolveAffiliationsForMember(
