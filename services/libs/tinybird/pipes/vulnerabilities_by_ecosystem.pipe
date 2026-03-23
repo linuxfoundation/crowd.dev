@@ -1,0 +1,10 @@
+NODE vulnerabilities_by_ecosystem
+SQL >
+    SELECT
+        v.packageEcosystem,
+        count(v.id) as count,
+        round(count(v.id) * 100.0 / greatest(sum(count(v.id)) OVER (), 1), 0) as percentage
+    FROM vulnerabilities as v FINAL
+    WHERE repoUrl in (select arrayJoin(repositories) from segments_filtered) AND v.status != 'RESOLVED'
+    GROUP BY v.packageEcosystem
+    ORDER BY count DESC

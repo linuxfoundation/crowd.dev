@@ -23,7 +23,7 @@ export async function executeCleanup(intervalHours = 24): Promise<void> {
     } catch (err) {
       log.error({ jobId: job.id, s3Path: job.s3Path, err }, 'Failed to clean job, skipping')
       sendSlackNotification(
-        SlackChannel.INTEGRATION_NOTIFICATIONS,
+        SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
         'Snowflake S3 Cleanup Failed',
         `Failed to clean job \`${job.id}\` at \`${job.s3Path}\`.\n\n*Error:* ${err instanceof Error ? err.message : err}`,

@@ -139,7 +139,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     } catch (error) {
       req.log.warn({ error }, 'Audit log capture failed after identity unmerge')
       sendSlackNotification(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.ERROR_REPORTER,
         `Audit log capture failed after identity unmerge: member ${memberId}`,
         [{ title: 'Error', text: `\`${error?.message || error}\`` }],
@@ -164,7 +164,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     } catch (error) {
       req.log.warn({ error }, 'Failed to start unmerge workflow after identity unmerge')
       sendSlackNotification(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.ERROR_REPORTER,
         `Failed to start unmerge workflow after identity unmerge: member ${memberId}`,
         [
