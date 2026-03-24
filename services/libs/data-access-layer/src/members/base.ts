@@ -76,6 +76,7 @@ export enum MemberField {
 }
 
 export interface MemberCreateInput {
+  id?: string
   displayName: string
   joinedAt: string
   attributes: Record<string, unknown>
@@ -666,7 +667,7 @@ export async function updateMember(
 }
 
 export async function createMember(qx: QueryExecutor, data: MemberCreateInput): Promise<MemberRow> {
-  const id = generateUUIDv1()
+  const id = data.id ?? generateUUIDv1()
   const ts = new Date()
   const dbInstance = getDbInstance()
   const columnSet = new dbInstance.helpers.ColumnSet(MEMBER_INSERT_COLUMNS, {

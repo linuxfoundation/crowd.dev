@@ -15,7 +15,9 @@ SQL >
         SELECT segmentId, round(avg(closedInSeconds) / (60 * 60 * 24)) AS issueResolution
         FROM issues_analyzed
         WHERE
-            segmentId = (SELECT segmentId FROM segments_filtered) AND closedAt IS NOT NULL
+            segmentId = (SELECT segmentId FROM segments_filtered)
+            AND closedAt IS NOT NULL
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND openedAt
@@ -32,6 +34,7 @@ SQL >
             openedAt >= toStartOfDay(now()) - INTERVAL 365 DAY
             AND openedAt < toStartOfDay(now()) + INTERVAL 1 DAY
             AND closedAt IS NOT NULL
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY segmentId
     {% end %}
 

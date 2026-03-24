@@ -31,6 +31,7 @@ async function parsePost(ctx: IProcessDataContext) {
         type: MemberIdentityType.USERNAME,
         sourceId: post.user.id,
         verified: true,
+        verifiedBy: PlatformType.HACKERNEWS,
       },
     ],
     displayName: post.user.id,

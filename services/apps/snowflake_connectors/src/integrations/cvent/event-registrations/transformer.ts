@@ -50,6 +50,7 @@ export class CventTransformer extends TransformerBase {
           value: email,
           type: MemberIdentityType.EMAIL,
           verified: true,
+          verifiedBy: PlatformType.CVENT,
           sourceId,
         },
         {
@@ -57,6 +58,7 @@ export class CventTransformer extends TransformerBase {
           value: userName,
           type: MemberIdentityType.USERNAME,
           verified: true,
+          verifiedBy: PlatformType.CVENT,
           sourceId,
         },
       )
@@ -66,6 +68,7 @@ export class CventTransformer extends TransformerBase {
         value: email,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.CVENT,
         sourceId,
       })
     }
@@ -76,6 +79,7 @@ export class CventTransformer extends TransformerBase {
         value: lfUsername,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.CVENT,
         sourceId,
       })
     }

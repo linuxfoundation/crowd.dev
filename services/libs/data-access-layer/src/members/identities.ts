@@ -208,6 +208,7 @@ export async function insertManyMemberIdentities(
         'value',
         'type',
         'verified',
+        'verifiedBy',
       ],
       identities.map((i) => {
         return {

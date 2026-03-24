@@ -27,11 +27,12 @@ export async function getMemberIdentities(req: Request, res: Response): Promise<
   const rawIdentities = await fetchMemberIdentities(qx, memberId)
 
   const identities = rawIdentities.map(
-    ({ id, value, platform, verified, source, createdAt, updatedAt }) => ({
+    ({ id, value, platform, verified, verifiedBy, source, createdAt, updatedAt }) => ({
       id,
       value,
       platform,
       verified,
+      verifiedBy: verifiedBy ?? null,
       source,
       createdAt,
       updatedAt,

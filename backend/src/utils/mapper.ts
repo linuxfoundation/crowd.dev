@@ -8,6 +8,7 @@ export function toMemberWorkExperience(mo: IMemberRoleWithOrganization) {
     organizationLogo: mo.organizationLogo,
     jobTitle: mo.title ?? null,
     verified: mo.verified ?? false,
+    verifiedBy: mo.verifiedBy ?? null,
     source: mo.source ?? null,
     startDate: mo.dateStart ?? null,
     endDate: mo.dateEnd ?? null,

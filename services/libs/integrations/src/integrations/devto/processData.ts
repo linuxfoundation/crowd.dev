@@ -23,6 +23,7 @@ const getMember = (comment: IDevToComment): IMemberData => {
         value: comment.user.username,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.DEVTO,
       },
     ],
     attributes: {

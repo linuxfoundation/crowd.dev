@@ -54,6 +54,7 @@ function toReturn(identity: IMemberIdentity) {
     value: identity.value,
     platform: identity.platform,
     verified: identity.verified,
+    verifiedBy: identity.verifiedBy ?? null,
     source: identity.source,
     createdAt: identity.createdAt,
     updatedAt: identity.updatedAt,
@@ -138,7 +139,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     } catch (error) {
       req.log.warn({ error }, 'Audit log capture failed after identity unmerge')
       sendSlackNotification(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.ERROR_REPORTER,
         `Audit log capture failed after identity unmerge: member ${memberId}`,
         [{ title: 'Error', text: `\`${error?.message || error}\`` }],
@@ -163,7 +164,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     } catch (error) {
       req.log.warn({ error }, 'Failed to start unmerge workflow after identity unmerge')
       sendSlackNotification(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.ERROR_REPORTER,
         `Failed to start unmerge workflow after identity unmerge: member ${memberId}`,
         [

@@ -475,6 +475,7 @@ export async function unmergeMember(
 
   // Create the secondary member
   const secondaryRow = await createMember(tx, {
+    id: secondary.id,
     displayName: secondary.displayName,
     joinedAt: secondary.joinedAt,
     attributes: secondary.attributes,
