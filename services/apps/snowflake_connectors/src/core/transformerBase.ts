@@ -36,7 +36,17 @@ export abstract class TransformerBase {
     try {
       return this.transformRow(row)
     } catch (err) {
-      log.warn({ err, platform: this.platform }, 'Failed to transform row, skipping')
+      const message = err instanceof Error ? err.message : String(err)
+      const stack = err instanceof Error ? err.stack : undefined
+      log.warn(
+        {
+          errMessage: message,
+          errStack: stack,
+          platform: this.platform,
+          rowKeys: Object.keys(row),
+        },
+        'Failed to transform row, skipping',
+      )
       return null
     }
   }

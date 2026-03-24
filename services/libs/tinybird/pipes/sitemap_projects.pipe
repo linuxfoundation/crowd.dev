@@ -1,3 +1,3 @@
 NODE sitemap_projects_slugs
 SQL >
-    SELECT slug FROM insightsProjects FINAL
+    SELECT slug FROM insightsProjects FINAL WHERE isNull (deletedAt)
