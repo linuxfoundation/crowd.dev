@@ -2,6 +2,7 @@ import { Router } from 'express'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { requireScopes } from '@/api/public/middlewares/requireScopes'
+import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
 import { getAffiliations } from './getAffiliations'
@@ -13,7 +14,7 @@ export function devStatsRouter(): Router {
 
   router.use(rateLimiter)
 
-  router.post('/affiliations', requireScopes([SCOPES.READ_AFFILIATIONS]), getAffiliations)
+  router.post('/affiliations', requireScopes([SCOPES.READ_AFFILIATIONS]), safeWrap(getAffiliations))
 
   return router
 }
