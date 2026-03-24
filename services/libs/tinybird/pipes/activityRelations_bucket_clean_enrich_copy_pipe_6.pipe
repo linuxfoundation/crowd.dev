@@ -36,12 +36,11 @@ SQL >
         and (
             (
                 platform IN ('git', 'gerrit', 'github', 'gitlab')
-                AND channel
-                IN (SELECT arrayJoin(i.repositories) FROM insightsProjects i where isNull (i.deletedAt))
-                AND activityRelations_bucket_MV_ds_6.segmentId IN (
-                    SELECT segmentId
-                    FROM segmentRepositories sr FINAL
-                    WHERE (sr.excluded IS NULL OR sr.excluded = false)
+                AND (channel, activityRelations_bucket_MV_ds_6.segmentId) IN (
+                    SELECT r.url, r.segmentId
+                    FROM repositories r FINAL
+                    INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
+                    WHERE isNull (r.deletedAt) AND isNull (i.deletedAt) AND r.enabled = true
                 )
             )
             OR platform NOT IN ('git', 'gerrit', 'github', 'gitlab')

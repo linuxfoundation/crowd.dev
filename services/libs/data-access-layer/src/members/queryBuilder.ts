@@ -46,6 +46,7 @@ export const buildSearchCTE = (
         SELECT mi."memberId"
         FROM "memberIdentities" mi
         WHERE mi."value" ILIKE $(searchPattern)
+          and mi."deletedAt" is null
         UNION
         SELECT m.id AS "memberId"
         FROM members m

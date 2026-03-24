@@ -16,6 +16,7 @@ export interface IDbOrganization {
   importHash?: string
   location?: string
   isTeamOrganization: boolean
+  isAffiliationBlocked?: boolean
   type?: string
   size?: string
   headline?: string
@@ -36,6 +37,7 @@ export interface IDbOrganizationInput {
   importHash?: string
   location?: string
   isTeamOrganization: boolean
+  isAffiliationBlocked?: boolean
   type?: string
   size?: string
   headline?: string
@@ -87,16 +89,6 @@ export interface IDbOrgIdentity {
   platform: string
   type: OrganizationIdentityType
   value: string
-  verified: boolean
-  sourceId?: string
-  integrationId?: string
-}
-
-export interface IDbOrgIdentityInsertInput {
-  organizationId: string
-  platform: string
-  value: string
-  type: OrganizationIdentityType
   verified: boolean
   sourceId?: string
   integrationId?: string

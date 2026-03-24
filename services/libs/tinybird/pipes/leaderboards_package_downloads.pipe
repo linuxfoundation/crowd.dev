@@ -71,19 +71,28 @@ DESCRIPTION >
 
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (ORDER BY coalesce(c.downloads, 0) DESC) as rank,
         p.id as id,
         p.segmentId as segmentId,
         p.name as name,
         p.slug as slug,
         p.logoUrl as logoUrl,
-        p.collectionsSlugs as collectionsSlugs,
-        p.isLF as isLF,
+        'package-downloads' as leaderboardType,
         cast(coalesce(c.downloads, 0) as Float64) as value,
         cast(coalesce(pp.downloads, 0) as Float64) as previousPeriodValue,
-        p.status as status
+        p.collectionsSlugs as collectionsSlugs,
+        p.isLF as isLF,
+        [] as githubHandleArray,
+        p.status as status,
+        count() OVER () as totalCount
     FROM leaderboards_package_downloads_projects p
     INNER JOIN leaderboards_package_downloads_current_period c ON p.id = c.insightsProjectId
     LEFT JOIN leaderboards_package_downloads_previous_period pp ON p.id = pp.insightsProjectId
     WHERE c.downloads > 0
     ORDER BY value DESC
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 20 1 * * *

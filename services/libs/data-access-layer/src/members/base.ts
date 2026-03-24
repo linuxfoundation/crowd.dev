@@ -11,13 +11,16 @@ import {
 import { formatSql, getDbInstance, prepareForModification } from '@crowd/database'
 import { getServiceLogger } from '@crowd/logging'
 import { RedisClient } from '@crowd/redis'
-import { ALL_PLATFORM_TYPES, MemberAttributeType, PageData, SegmentType } from '@crowd/types'
+import {
+  ALL_PLATFORM_TYPES,
+  IMemberContribution,
+  MemberAttributeType,
+  MemberRow,
+  PageData,
+  SegmentType,
+} from '@crowd/types'
 
 import { findMaintainerRoles } from '../maintainers'
-import {
-  IDbMemberCreateData,
-  IDbMemberUpdateData,
-} from '../old/apps/data_sink_worker/repo/member.data'
 import { QueryExecutor } from '../queryExecutor'
 import { fetchManySegments } from '../segments'
 import { QueryOptions, QueryResult, queryTable, queryTableById } from '../utils'
@@ -41,6 +44,7 @@ interface IQueryMembersAdvancedParams {
   segmentId?: string
   countOnly?: boolean
   fields?: string[]
+  includeAllAttributes?: boolean
   include?: {
     identities?: boolean
     segments?: boolean
@@ -71,6 +75,26 @@ export enum MemberField {
   UPDATED_BY_ID = 'updatedById',
 }
 
+export interface MemberCreateInput {
+  id?: string
+  displayName: string
+  joinedAt: string
+  attributes: Record<string, unknown>
+  reach: Partial<Record<string, number>>
+  manuallyCreated?: boolean
+  contributions?: IMemberContribution[]
+}
+
+export interface MemberUpdateInput {
+  joinedAt?: string
+  attributes?: Record<string, unknown>
+  displayName?: string
+  reach?: Partial<Record<string, number>>
+  contributions?: IMemberContribution[] | string
+  manuallyChangedFields?: string[]
+  manuallyCreated?: boolean
+}
+
 export const MEMBER_MERGE_FIELDS = [
   'affiliations',
   'attributes',
@@ -81,9 +105,6 @@ export const MEMBER_MERGE_FIELDS = [
   'manuallyChangedFields',
   'manuallyCreated',
   'reach',
-  'tags',
-  'tasks',
-  'tenantId',
 ]
 
 export const MEMBER_UPDATE_COLUMNS = [
@@ -107,10 +128,12 @@ export const MEMBER_SELECT_COLUMNS = [
 
 export const MEMBER_INSERT_COLUMNS = [
   'attributes',
+  'contributions',
   'createdAt',
   'displayName',
   'id',
   'joinedAt',
+  'manuallyCreated',
   'reach',
   'tenantId',
   'updatedAt',
@@ -148,6 +171,7 @@ export async function queryMembersAdvanced(
     segmentId = undefined,
     countOnly = false,
     fields = [...QUERY_FILTER_COLUMN_MAP.keys()],
+    includeAllAttributes = false,
     include = {
       identities: true,
       segments: false,
@@ -175,6 +199,7 @@ export async function queryMembersAdvanced(
     fields,
     filter,
     include,
+    includeAllAttributes,
     limit,
     offset,
     orderBy,
@@ -184,7 +209,7 @@ export async function queryMembersAdvanced(
 
   // Try to get from cache first
   const cachedResult = countOnly ? null : await cache.get(cacheKey)
-  const cachedCount = countOnly ? await cache.getCount(cacheKey) : null
+  const cachedCount = countOnly ? null : await cache.getCount(cacheKey)
 
   if (cachedResult) {
     refreshCacheInBackground(bgQx, redis, cacheKey, {
@@ -197,6 +222,7 @@ export async function queryMembersAdvanced(
       countOnly: false,
       fields,
       include,
+      includeAllAttributes,
       attributeSettings,
     })
 
@@ -210,6 +236,7 @@ export async function queryMembersAdvanced(
       search,
       segmentId,
       include,
+      includeAllAttributes,
       attributeSettings,
     })
 
@@ -232,6 +259,7 @@ export async function queryMembersAdvanced(
     countOnly,
     fields,
     include,
+    includeAllAttributes,
     attributeSettings,
   })
 }
@@ -249,6 +277,7 @@ export async function executeQuery(
     segmentId = undefined,
     countOnly = false,
     fields = [...QUERY_FILTER_COLUMN_MAP.keys()],
+    includeAllAttributes = false,
     include = {
       identities: true,
       segments: false,
@@ -474,13 +503,32 @@ export async function executeQuery(
 
   for (const member of rows) {
     if (member.attributes) {
+      // Always include default attributes for optimization
       const { isBot, jobTitle, avatarUrl, isTeamMember } = member.attributes
 
-      member.attributes = {
+      const defaultAttributes = {
         ...(isBot !== undefined && { isBot }),
         ...(jobTitle !== undefined && { jobTitle }),
         ...(avatarUrl !== undefined && { avatarUrl }),
         ...(isTeamMember !== undefined && { isTeamMember }),
+      }
+
+      if (includeAllAttributes) {
+        // When includeAllAttributes is true, add additional attributes to prevent data loss during updates
+        const { bio, url, company, location, isHireable, websiteUrl } = member.attributes
+
+        member.attributes = {
+          ...defaultAttributes,
+          ...(bio !== undefined && { bio }),
+          ...(url !== undefined && { url }),
+          ...(company !== undefined && { company }),
+          ...(location !== undefined && { location }),
+          ...(isHireable !== undefined && { isHireable }),
+          ...(websiteUrl !== undefined && { websiteUrl }),
+        }
+      } else {
+        // Default behavior: only commonly used attributes for list views
+        member.attributes = defaultAttributes
       }
     }
   }
@@ -556,8 +604,8 @@ export async function moveAffiliationsBetweenMembers(
 export async function updateMember(
   qx: QueryExecutor,
   id: string,
-  data: IDbMemberUpdateData,
-): Promise<void> {
+  data: MemberUpdateInput,
+): Promise<MemberRow | undefined> {
   // Only allow updating columns that actually exist in the `members` table.
   // This prevents runtime SQL errors when higher-level code passes extra fields
   // (e.g. `affiliations`, `tags`, `tasks`, etc.) that are not actually columns.
@@ -577,7 +625,7 @@ export async function updateMember(
 
   const keys = Object.keys(dbData)
   if (keys.length === 0) {
-    return
+    return undefined
   }
 
   if (typeof dbData.displayName === 'string' && dbData.displayName) {
@@ -615,11 +663,11 @@ export async function updateMember(
     updatedAt,
   })
 
-  await qx.result(`${query} ${condition}`)
+  return qx.selectOneOrNone(`${query} ${condition} returning *`)
 }
 
-export async function createMember(qx: QueryExecutor, data: IDbMemberCreateData): Promise<string> {
-  const id = generateUUIDv1()
+export async function createMember(qx: QueryExecutor, data: MemberCreateInput): Promise<MemberRow> {
+  const id = data.id ?? generateUUIDv1()
   const ts = new Date()
   const dbInstance = getDbInstance()
   const columnSet = new dbInstance.helpers.ColumnSet(MEMBER_INSERT_COLUMNS, {
@@ -627,18 +675,21 @@ export async function createMember(qx: QueryExecutor, data: IDbMemberCreateData)
       table: 'members',
     },
   })
-  const prepared = prepareForModification(
-    {
-      ...data,
-      id,
-      tenantId: DEFAULT_TENANT_ID,
-      createdAt: ts,
-      updatedAt: ts,
-    },
-    columnSet,
-  )
+
+  const dbData: Record<string, unknown> = {
+    ...data,
+    id,
+    tenantId: DEFAULT_TENANT_ID,
+    createdAt: ts,
+    updatedAt: ts,
+  }
+
+  if (Array.isArray(dbData.contributions)) {
+    dbData.contributions = JSON.stringify(dbData.contributions)
+  }
+
+  const prepared = prepareForModification(dbData, columnSet)
 
   const query = dbInstance.helpers.insert(prepared, columnSet)
-  await qx.select(query)
-  return id
+  return qx.selectOne(`${query} returning *`)
 }

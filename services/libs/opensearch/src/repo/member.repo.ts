@@ -49,7 +49,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
             ${syncFrom !== undefined ? '(msa."createdAt" < $(syncFrom) OR msa."createdAt" IS NULL) AND' : ''}
             ${lastId !== undefined ? 'mo."memberId" > $(lastId) AND' : ''}
             m."deletedAt" is null AND
-            exists (select 1 from "memberIdentities" where "memberId" = mo."memberId")
+            exists (select 1 from "memberIdentities" where "memberId" = mo."memberId" and "deletedAt" is null)
         ORDER BY mo."memberId"
         LIMIT ${perPage};
       `,
@@ -118,6 +118,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
       ) as identities
       from "memberIdentities" mi
       where mi."memberId" = $(memberId)
+      and mi."deletedAt" is null
       group by mi."memberId"),
   member_affiliations as (
           select msa."memberId",
@@ -180,7 +181,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
       select m.id as "memberId", m."manuallyCreated"
       from members m
       where m.id in ($(memberIds:csv)) and
-            exists(select 1 from "memberIdentities" mi where mi."memberId" = m.id)
+            exists(select 1 from "memberIdentities" mi where mi."memberId" = m.id and mi."deletedAt" is null)
       `,
       {
         memberIds,

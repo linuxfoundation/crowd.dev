@@ -13,6 +13,13 @@
     <lf-icon name="people-group" />
     {{ props.organization.isTeamOrganization ? 'Unmark' : 'Mark' }} as team organization
   </lf-dropdown-item>
+  <lf-dropdown-item
+    v-if="hasPermission(LfPermission.organizationEdit)"
+    @click="toggleOrganizationAffiliations(!props.organization.isAffiliationBlocked)"
+  >
+    <lf-icon name="ban" />
+    {{ props.organization.isAffiliationBlocked ? 'Enable' : 'Block' }} affiliations
+  </lf-dropdown-item>
 
   <template v-if="hasPermission(LfPermission.organizationDestroy)">
     <lf-dropdown-separator />
@@ -68,6 +75,25 @@ const markTeamOrganization = (teamOrganization: boolean) => {
     errorMessage: 'Something went wrong',
     actionFn: OrganizationService.update(props.organization.id, {
       isTeamOrganization: teamOrganization,
+    }, props.organization.segments),
+  }).then(() => {
+    fetchOrganization(props.organization.id);
+    emit('reload');
+  });
+};
+
+const toggleOrganizationAffiliations = (isAffiliationBlocked: boolean) => {
+  trackEvent({
+    key: FeatureEventKey.TOGGLE_ORGANIZATION_AFFILIATIONS,
+    type: EventType.FEATURE,
+  });
+
+  doManualAction({
+    loadingMessage: 'Organization is being updated',
+    successMessage: 'Organization updated successfully',
+    errorMessage: 'Something went wrong',
+    actionFn: OrganizationService.update(props.organization.id, {
+      isAffiliationBlocked,
     }, props.organization.segments),
   }).then(() => {
     fetchOrganization(props.organization.id);

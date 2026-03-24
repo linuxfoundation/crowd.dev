@@ -91,6 +91,7 @@ const defaultForm: OrganizationIdentity = {
   verified: true,
   platform: Platform.CUSTOM,
   type: OrganizationIdentityType.USERNAME,
+  source: 'ui',
   sourceId: null,
 };
 
@@ -135,6 +136,7 @@ const updateIdentity = () => {
         ...form,
         value: form.platform === Platform.LINKEDIN ? `company:${form.value}` : form.value,
         verified: false,
+        source: 'ui',
         integrationId: null,
         sourceId: null,
       } as OrganizationIdentity;

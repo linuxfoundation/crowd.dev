@@ -97,6 +97,22 @@ export default class DataSinkService extends LoggerBase {
       }`
     }
 
+    if (errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified')) {
+      const delaySeconds = Math.floor(Math.random() * (120 - 10 + 1) + 10) * 60
+      const until = addSeconds(new Date(), delaySeconds)
+      this.log.warn(
+        { until: until.toISOString(), delayMinutes: delaySeconds / 60 },
+        'Delaying result due to member identity uniqueness conflict!',
+      )
+      await this.repo.delayResult(
+        resultInfo.id,
+        until,
+        errorData,
+        resultExists ? undefined : resultInfo,
+      )
+      return
+    }
+
     if (
       !(error instanceof UnrepeatableError) &&
       resultInfo.retries + 1 <= WORKER_SETTINGS().maxStreamRetries

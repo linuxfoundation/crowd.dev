@@ -3,7 +3,6 @@ import _get from 'lodash/get'
 import SegmentService from '../../services/segmentService'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import SequelizeRepository from './sequelizeRepository'
 
 export default class SettingsRepository {
@@ -55,16 +54,6 @@ export default class SettingsRepository {
     await settings.update(data, {
       transaction,
     })
-
-    await AuditLogRepository.log(
-      {
-        entityName: 'settings',
-        entityId: settings.id,
-        action: AuditLogRepository.UPDATE,
-        values: data,
-      },
-      options,
-    )
 
     return this._populateRelations(settings, options)
   }

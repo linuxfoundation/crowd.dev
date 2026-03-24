@@ -45,7 +45,9 @@ SCHEMA >
     `projectSlug` LowCardinality(String) `json:$.projectSlug` DEFAULT '',
     `createdAt` DateTime64(3) `json:$.createdAt` DEFAULT now64(3),
     `bookmarked` UInt8 `json:$.bookmarked`,
-    `keywords` Array(String) `json:$.keywords[:]`
+    `keywords` Array(String) `json:$.keywords[:]`,
+    `authorFollowerCount` Nullable(Int32) `json:$.authorFollowerCount`,
+    `tags` Array(Nullable(String)) `json:$.tags[:]`
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(timestamp)

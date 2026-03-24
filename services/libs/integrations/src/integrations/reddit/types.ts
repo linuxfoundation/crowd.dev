@@ -5,9 +5,7 @@ export enum RedditActivityType {
   COMMENT = 'comment',
 }
 
-export interface IRedditIntegrationSettings {
-  subreddits: string[]
-}
+export { IRedditIntegrationSettings } from '@crowd/types'
 
 export interface IRedditPublishData {
   type: RedditActivityType
@@ -59,10 +57,6 @@ interface RedditBase {
   created: number
   author: string
   author_fullname: string
-}
-
-export interface RedditIntegrationSettings {
-  subreddits: string[]
 }
 
 export interface RedditGetPostsInput {

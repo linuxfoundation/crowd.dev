@@ -8,6 +8,7 @@ NODE segments_aggregates_with_ids_collections_projects
 SQL >
     SELECT collectionsInsightsProjects.collectionId, collectionsInsightsProjects.insightsProjectId
     FROM collectionsInsightsProjects FINAL
+    WHERE isNull (collectionsInsightsProjects.deletedAt)
 
 NODE segments_aggregates_with_ids_collections
 SQL >
@@ -42,10 +43,10 @@ SQL >
 
 NODE segments_aggregates_with_ids_copy_flatten_project_deduplicated
 SQL >
-    SELECT id, repo AS repository
-    FROM insightsProjects FINAL ARRAY
-    JOIN repositories AS repo
-    where isNull (insightsProjects.deletedAt)
+    SELECT i.id, r.url AS repository
+    FROM insightsProjects i FINAL
+    JOIN repositories r FINAL ON r.insightsProjectId = i.id
+    WHERE isNull (i.deletedAt) AND isNull (r.deletedAt) AND r.enabled = true
 
 NODE segments_aggregates_with_ids_copy_software_value_deduplicated
 SQL >

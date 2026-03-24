@@ -1,8 +1,8 @@
 import {
   scheduleMembersEnrichment,
   scheduleMembersLFIDEnrichment,
-  scheduleRefreshMembersEnrichmentMaterializedViews,
-} from './schedules/getMembersToEnrich'
+} from './schedules/membersEnrichment'
+import { scheduleRefreshMembersEnrichmentMaterializedViews } from './schedules/refreshMembersEnrichmentMaterializedViews'
 
 export {
   scheduleMembersEnrichment,

@@ -6,6 +6,8 @@
     pre-title="Integration"
     :show-footer="true"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="isDrawerVisible = false"
   >
     <template #beforeTitle>
@@ -15,14 +17,26 @@
         alt="GitHub logo"
       />
     </template>
+    <template #belowTitle>
+      <drawer-description integration-key="github" />
+    </template>
     <template #content>
+      <div class="flex gap-2 bg-brand-50 -mt-5 -mx-6 py-3 px-6 mb-5">
+        <div>
+          <lf-icon name="circle-info" type="solid" class="text-brand-500" :size="20" />
+        </div>
+        <div class="text-xs text-brand-800">
+          Connected repositories are also synced through Git, which automatically mirrors your
+          GitHub settings for adding, updating, and deleting repositories.
+        </div>
+      </div>
       <div>
         <!-- Connected organization info -->
         <section
           v-if="owner"
           class="border border-gray-200 rounded-md py-4 px-5 mb-6"
         >
-          <p class="text-2xs font-medium text-gray-400 mb-1">
+          <p class="text-2xs font-medium text-neutral-400 mb-1">
             Connected organization
           </p>
           <div class="flex items-center">
@@ -57,7 +71,7 @@
                 <span class="text-xs font-normal"> Bulk selection </span>
               </div>
             </div>
-            <p class="text-2xs leading-4.5 text-gray-500">
+            <p class="text-2xs leading-4.5 text-neutral-500">
               Select the subproject you want to map with each connected
               repository.
             </p>
@@ -85,9 +99,10 @@
             v-model="search"
             clearable
             placeholder="Search repositories..."
+            class="is-rounded"
           >
             <template #prefix>
-              <lf-icon name="magnifying-glass" class="text-gray-400" />
+              <lf-icon name="magnifying-glass" class="text-neutral-400" />
             </template>
           </el-input>
         </section>
@@ -97,14 +112,14 @@
           <div class="flex border-b border-gray-200 items-center h-8">
             <div class="w-1/2 pr-4">
               <p
-                class="text-3xs uppercase text-gray-400 font-semibold tracking-1"
+                class="text-3xs uppercase text-neutral-400 font-semibold tracking-1"
               >
                 REPOSITORY
               </p>
             </div>
             <div class="w-1/2 pr-4">
               <p
-                class="text-3xs uppercase text-gray-400 font-semibold tracking-1"
+                class="text-3xs uppercase text-neutral-400 font-semibold tracking-1"
               >
                 SUB-PROJECT
               </p>
@@ -117,7 +132,7 @@
               class="py-1.5 flex items-center"
             >
               <div class="w-1/2 flex items-center pr-4">
-                <lf-svg name="git-repository" class="w-4 h-4 mr-2" />
+                <lf-icon name="book" :size="16" class="text-neutral-400 mr-2" />
                 <p class="text-2xs leading-5 flex-grow truncate">
                   /{{ repo.name }}
                 </p>
@@ -134,7 +149,7 @@
                   <el-select
                     v-model="form[repo.url]"
                     placeholder="Select sub-project"
-                    class="w-full"
+                    class="w-full el-select--pill"
                     placement="bottom-end"
                     filterable
                     @blur="$v[repo.url].$touch"
@@ -156,12 +171,12 @@
               name="spinner"
               type="solid"
               :size="16"
-              class="text-gray-400 animate-spin"
+              class="text-neutral-400 animate-spin"
             />
           </div>
         </section>
         <section v-else>
-          <p class="text-center text-sm text-gray-500 mb-4">
+          <p class="text-center text-sm text-neutral-500 mb-4">
             No repositories found
           </p>
         </section>
@@ -169,25 +184,16 @@
     </template>
 
     <template #footer>
-      <div style="flex: auto">
-        <lf-button
-          type="bordered"
-          size="medium"
-          class="mr-3"
-          @click="isDrawerVisible = false"
-        >
-          Cancel
-        </lf-button>
-        <lf-button
-          type="primary"
-          size="medium"
-          :disabled="sending || $v.$invalid"
-          :loading="sending"
-          @click="connect()"
-        >
-          Connect
-        </lf-button>
-      </div>
+      <drawer-footer-buttons
+        :integration="props.integration"
+        :is-edit-mode="!!props.integration?.settings"
+        :has-form-changed="hasFormChanged"
+        :is-loading="loading"
+        :is-submit-disabled="sending || $v.$invalid"
+        :cancel="() => (isDrawerVisible = false)"
+        :revert-changes="revertChanges"
+        :connect="connect"
+      />
     </template>
   </app-drawer>
   <app-github-settings-bulk-select
@@ -196,6 +202,7 @@
     :subprojects="subprojects"
     @apply="bulkApply"
   />
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script lang="ts" setup>
@@ -220,11 +227,13 @@ import {
 } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import AppGithubSettingsBulkSelect from '@/config/integrations/github/components/settings/github-settings-bulk-select.vue';
-import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import LfButton from '@/ui-kit/button/Button.vue';
 import { ProjectGroup, SubProject } from '@/modules/lf/segments/types/Segments';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import AppDrawer from '@/shared/drawer/drawer.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -234,6 +243,7 @@ const props = defineProps<{
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
 
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const route = useRoute();
 const router = useRouter();
@@ -301,6 +311,17 @@ const rules = computed(() => repos.value.reduce(
 ));
 
 const $v = useVuelidate(rules, form);
+
+const hasFormChanged = computed(() => {
+  const original = repos.value.reduce(
+    (a: Record<string, any>, b: any) => ({
+      ...a,
+      [b.url]: props.integration.segmentId,
+    }),
+    {},
+  );
+  return JSON.stringify(form.value) !== JSON.stringify(original);
+});
 
 // Connecting
 const sending = ref(false);
@@ -388,6 +409,31 @@ const fetchSubProjects = () => {
     .finally(() => {
       loading.value = false;
     });
+};
+
+const revertChanges = () => {
+  form.value = repos.value.reduce(
+    (a: Record<string, any>, b: any) => ({
+      ...a,
+      [b.url]: props.integration.segmentId,
+    }),
+    {},
+  );
+};
+
+const canClose = (done: (value: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
 };
 
 onMounted(() => {

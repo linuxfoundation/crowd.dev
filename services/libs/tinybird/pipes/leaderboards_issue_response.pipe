@@ -49,19 +49,28 @@ DESCRIPTION >
 
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (ORDER BY coalesce(o.averageResponseTimeSeconds, 0) ASC) as rank,
         p.id as id,
         p.segmentId as segmentId,
         p.name as name,
         p.slug as slug,
         p.logoUrl as logoUrl,
+        'fastest-responders' as leaderboardType,
+        cast(coalesce(o.averageResponseTimeSeconds, 0) as Float64) as value,
+        cast(coalesce(pp.averageResponseTimeSeconds, 0) as Float64) as previousPeriodValue,
         p.collectionsSlugs as collectionsSlugs,
         p.isLF as isLF,
-        coalesce(o.averageResponseTimeSeconds, 0) as value,
-        coalesce(pp.averageResponseTimeSeconds, 0) as previousPeriodValue,
-        p.status as status
+        [] as githubHandleArray,
+        p.status as status,
+        count() OVER () as totalCount
     FROM leaderboards_issue_response_projects p
     INNER JOIN leaderboards_issue_response_current_period o ON p.segmentId = o.segmentId
     LEFT JOIN leaderboards_issue_response_previous_period pp ON p.segmentId = pp.segmentId
     WHERE o.averageResponseTimeSeconds > 0
     ORDER BY value ASC
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 10 1 * * *

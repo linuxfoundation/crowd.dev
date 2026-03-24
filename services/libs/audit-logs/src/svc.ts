@@ -1,8 +1,9 @@
 import {
+  ActorType,
   AuditLogAction,
   AuditLogRequestOptions,
   addAuditAction,
-} from '@crowd/data-access-layer/src/audit_logs/repo'
+} from '@crowd/data-access-layer'
 
 import { IS_PROD_ENV, SERVICE, generateUUIDv1 } from '../../common/src'
 
@@ -10,8 +11,14 @@ import { BuildActionFn } from './baseActions'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function convertRepositoryOptions(options: any): AuditLogRequestOptions {
+  const actor = options.actor ?? {
+    id: options.currentUser?.id,
+    type: ActorType.USER,
+  }
+
   return {
-    userId: options.currentUser?.id,
+    actorId: actor?.id,
+    actorType: actor?.type,
     ipAddress: options.userData?.ip,
     userAgent: options.userData?.userAgent,
     requestId: options.requestId,
@@ -57,7 +64,8 @@ export async function captureApiChange<T>(
     auditOptions = convertRepositoryOptions(options)
   } else if (process.env.CROWD_API_SERVICE_USER_ID) {
     auditOptions = {
-      userId: process.env.CROWD_API_SERVICE_USER_ID,
+      actorId: process.env.CROWD_API_SERVICE_USER_ID,
+      actorType: ActorType.SERVICE,
       requestId: generateUUIDv1(),
       ipAddress: '127.0.0.1',
       userAgent: SERVICE,

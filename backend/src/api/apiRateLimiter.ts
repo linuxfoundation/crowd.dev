@@ -1,28 +1,15 @@
 import rateLimit from 'express-rate-limit'
 
-export function createRateLimiter({
-  max,
-  windowMs,
-  message,
-}: {
-  max: number
-  windowMs: number
-  message: string
-}) {
+import { RateLimitError } from '@crowd/common'
+
+export function createRateLimiter({ max, windowMs }: { max: number; windowMs: number }) {
   return rateLimit({
     max,
     windowMs,
-    message,
-    skip: (req) => {
-      if (req.method === 'OPTIONS') {
-        return true
-      }
-
-      if (req.originalUrl.endsWith('/import')) {
-        return true
-      }
-
-      return false
+    handler: (_req, res) => {
+      const err = new RateLimitError()
+      res.status(err.status).json(err.toJSON())
     },
+    skip: (req) => req.method === 'OPTIONS' || req.originalUrl.endsWith('/import'),
   })
 }

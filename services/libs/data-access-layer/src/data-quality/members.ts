@@ -68,6 +68,7 @@ export async function fetchMembersWithTooManyIdentities(
                      JOIN "members" m ON mi."memberId" = m.id
                      INNER JOIN "memberSegmentsAgg" msa ON m.id = msa."memberId" AND msa."segmentId" = '${segmentId}'
             WHERE COALESCE((m.attributes -> 'isBot' ->> 'default')::BOOLEAN, FALSE) = FALSE
+              AND mi."deletedAt" is null
             GROUP BY mi."memberId", m."displayName", m."attributes", m.id, msa."activityCount"
             HAVING COUNT(DISTINCT CASE WHEN mi."type" = 'email' THEN mi."value"::text ELSE mi.id::text END) > ${threshold}
             ORDER BY msa."activityCount" DESC
@@ -108,6 +109,7 @@ export async function fetchMembersWithTooManyIdentitiesPerPlatform(
                     COUNT(*) AS "identityCount"
                 FROM "memberIdentities" mi
                 WHERE mi.type = 'username'
+                  AND mi."deletedAt" is null
                   AND mi.verified = true
                   AND mi.platform IN ('linkedin', 'github', 'twitter', 'lfx', 'slack', 'cvent', 'tnc', 'groupsio')
                 GROUP BY mi."memberId", mi.platform
@@ -174,6 +176,7 @@ export async function fetchMembersWithTooManyEmails(
                  JOIN "members" m ON mi."memberId" = m.id
                  INNER JOIN "memberSegmentsAgg" msa ON m.id = msa."memberId" AND msa."segmentId" = '${segmentId}'
         WHERE mi.verified = true
+          AND mi."deletedAt" is null
           AND mi.type = 'email'
           AND COALESCE((m.attributes -> 'isBot' ->> 'default')::BOOLEAN, FALSE) = FALSE
         GROUP BY mi."memberId", m."displayName", m."attributes", m.id, msa."activityCount"

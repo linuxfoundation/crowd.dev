@@ -50,7 +50,7 @@ export async function fetchMemberDataForLLMSquashing(
                                                 mi.value) r)
                           )
                     from "memberIdentities" mi
-                    where mi."memberId" = m.id), '[]'::json) as identities,
+                    where mi."memberId" = m.id and mi."deletedAt" is null), '[]'::json) as identities,
           case
               when exists (select 1 from member_orgs where "memberId" = m.id)
                   then (
@@ -100,15 +100,26 @@ export async function fetchMembersForEnrichment(
   const enrichableBySqlConditions = []
 
   sourceInputs.forEach((input) => {
-    cacheAgeInnerQueryItems.push(
-      `
+    if (input.neverReenrich) {
+      cacheAgeInnerQueryItems.push(
+        `
+      ( NOT EXISTS (
+          SELECT 1 FROM "memberEnrichmentCache" mec
+          WHERE mec."memberId" = members.id
+          AND mec.source = '${input.source}')
+      )`,
+      )
+    } else {
+      cacheAgeInnerQueryItems.push(
+        `
       ( NOT EXISTS (
           SELECT 1 FROM "memberEnrichmentCache" mec
           WHERE mec."memberId" = members.id
           AND mec.source = '${input.source}'
           AND EXTRACT(EPOCH FROM (now() - mec."updatedAt")) < ${input.cacheObsoleteAfterSeconds})
       )`,
-    )
+      )
+    }
 
     enrichableBySqlConditions.push(`(${input.enrichableBySql})`)
   })
@@ -136,7 +147,7 @@ export async function fetchMembersForEnrichment(
          ) AS identities,
          MAX(coalesce("membersGlobalActivityCount".total_count, 0)) AS "activityCount"
     FROM members
-         INNER JOIN "memberIdentities" mi ON mi."memberId" = members.id
+         INNER JOIN "memberIdentities" mi ON mi."memberId" = members.id and mi."deletedAt" is null
          LEFT JOIN "membersGlobalActivityCount" ON "membersGlobalActivityCount"."memberId" = members.id
     WHERE
       ${enrichableBySqlJoined}
@@ -166,6 +177,7 @@ export async function fetchMembersForLFIDEnrichment(db: DbStore, limit: number, 
         jsonb_agg(mi.*) as identities
       FROM members
               INNER JOIN "memberIdentities" mi ON mi."memberId" = members.id
+              AND mi."deletedAt" is null
       WHERE (
           (mi.platform = 'github' and mi."sourceId" is not null) OR
           (mi.platform = 'linkedin' and mi."sourceId" is not null) OR
@@ -221,7 +233,7 @@ export async function getIdentitiesExistInOtherMembers(
   replacements.push(excludeMemberId)
 
   const query = `select * from "memberIdentities" mi
-  where ${identityPartialQuery}
+  where ${identityPartialQuery} and mi."deletedAt" is null
   and mi."memberId" <> $${replacementIndex + 1};`
 
   return db.connection().query(query, replacements)
@@ -236,7 +248,7 @@ export async function getGithubIdentitiesWithoutSourceId(
   if (afterId) {
     return db.connection().query(
       `select * from "memberIdentities" mi
-      where mi.platform = 'github' and mi."sourceId" is null
+      where mi.platform = 'github' and mi."sourceId" is null and mi."deletedAt" is null
       and (
         mi."memberId" < $1 OR
         (mi."memberId" = $1 AND mi."value" < $2)
@@ -249,7 +261,7 @@ export async function getGithubIdentitiesWithoutSourceId(
 
   return db.connection().query(
     `select * from "memberIdentities" mi
-    where mi.platform = 'github' and mi."sourceId" is null
+    where mi.platform = 'github' and mi."sourceId" is null and mi."deletedAt" is null
     order by mi."memberId" desc
     limit $1;`,
     [limit],
@@ -264,7 +276,7 @@ export async function updateIdentitySourceId(
   await db
     .connection()
     .query(
-      `UPDATE "memberIdentities" SET "sourceId" = $1 WHERE "memberId" = $2 AND platform = $3 AND value = $4;`,
+      `UPDATE "memberIdentities" SET "sourceId" = $1 WHERE "memberId" = $2 AND platform = $3 AND value = $4 AND "deletedAt" is null;`,
       [sourceId, identity.memberId, identity.platform, identity.value],
     )
 }
@@ -307,7 +319,8 @@ export async function findExistingMember(
   const results = await db.connection().any(
     `SELECT mi."memberId"
        FROM "memberIdentities" mi
-       WHERE mi."memberId" <> $(memberId)
+       WHERE mi."deletedAt" is null
+         AND mi."memberId" <> $(memberId)
          AND mi.platform = $(platform)
          AND mi.value in ($(values:csv))
          AND mi.type = $(type)
@@ -413,26 +426,6 @@ export async function updateOrgIdentity(
   )
 }
 
-export async function insertOrgIdentity(
-  tx: DbTransaction,
-  organizationId: string,
-  tenantId: string,
-  identity: IOrganizationIdentity,
-) {
-  await tx.query(
-    `INSERT INTO "organizationIdentities" ("organizationId", "tenantId", value, type, verified, platform)
-            VALUES ($(organizationId), $(tenantId), $(value), $(type), $(verified), $(platform));`,
-    {
-      organizationId,
-      tenantId,
-      value: identity.value,
-      type: identity.type,
-      verified: identity.verified,
-      platform: identity.platform,
-    },
-  )
-}
-
 export async function deleteMemberOrgById(tx: DbTransaction, id: string): Promise<void> {
   // Execute directly on the provided transaction to avoid creating nested savepoints
   await tx.none(
@@ -470,20 +463,21 @@ export async function updateMemberOrg(
   memberId: string,
   original: IMemberOrganizationData,
   toUpdate: Record<string, unknown>,
-) {
+): Promise<string | null> {
   const keys = Object.keys(toUpdate)
   if (keys.length === 0) {
-    return
+    return null
   }
 
-  // first check if another row like this exists
-  // so that we don't get unique index violations
+  // First check if another row like this exists so that we don't get unique index violations.
+  // We compute the "target" state after applying toUpdate to decide what to look for.
   const params = {
     memberId,
     id: original.id,
     organizationId: original.orgId,
-    dateStart: toUpdate.dateStart === undefined ? toUpdate.dateStart : original.dateStart,
-    dateEnd: toUpdate.dateEnd === undefined ? toUpdate.dateEnd : original.dateEnd,
+    // Use updated value if provided, otherwise keep original
+    dateStart: toUpdate.dateStart !== undefined ? toUpdate.dateStart : original.dateStart,
+    dateEnd: toUpdate.dateEnd !== undefined ? toUpdate.dateEnd : original.dateEnd,
   }
 
   let dateEndFilter = `and "dateEnd" = $(dateEnd)`
@@ -515,21 +509,26 @@ export async function updateMemberOrg(
   if (existing) {
     // we should just delete the row
     await deleteMemberOrgById(tx, original.id)
-  } else {
-    const sets = keys.map((k) => `"${k}" = $(${k})`)
-    await tx.none(
-      `
+    return null
+  }
+
+  const sets = keys.map((k) => `"${k}" = $(${k})`)
+
+  const result = await tx.oneOrNone(
+    `
       update "memberOrganizations"
       set ${sets.join(',\n')}
       where "memberId" = $(memberId) and id = $(id)
+      returning id
       `,
-      {
-        memberId,
-        id: original.id,
-        ...toUpdate,
-      },
-    )
-  }
+    {
+      memberId,
+      id: original.id,
+      ...toUpdate,
+    },
+  )
+
+  return result?.id ?? null
 }
 
 export async function insertWorkExperience(
@@ -540,7 +539,7 @@ export async function insertWorkExperience(
   dateStart: string,
   dateEnd: string,
   source: OrganizationSource,
-) {
+): Promise<string | null> {
   let conflictCondition = `("memberId", "organizationId", "dateStart", "dateEnd")`
   if (!dateEnd) {
     conflictCondition = `("memberId", "organizationId", "dateStart") WHERE "dateEnd" IS NULL`
@@ -554,14 +553,17 @@ export async function insertWorkExperience(
       ? `ON CONFLICT ${conflictCondition} DO UPDATE SET "title" = $3, "dateStart" = $4, "dateEnd" = $5, "deletedAt" = NULL, "source" = $6`
       : 'ON CONFLICT DO NOTHING'
 
-  await tx.query(
+  const result = await tx.oneOrNone(
     `
               INSERT INTO "memberOrganizations" ("memberId", "organizationId", "createdAt", "updatedAt", "title", "dateStart", "dateEnd", "source")
               VALUES ($1, $2, NOW(), NOW(), $3, $4, $5, $6)
-              ${onConflict};
+              ${onConflict}
+              RETURNING id;
             `,
     [memberId, orgId, title, dateStart, dateEnd, source],
   )
+
+  return result?.id ?? null
 }
 
 export async function updateMember(

@@ -1,7 +1,12 @@
 import { Config } from '@crowd/archetype-standard'
 import { Options, ServiceWorker } from '@crowd/archetype-worker'
 
-import { scheduleMembersCleanup, scheduleOrganizationsCleanup } from './schedules/scheduleCleanup'
+import {
+  scheduleMemberSegmentsAggCleanup,
+  scheduleMembersCleanup,
+  scheduleOrganizationSegmentAggCleanup,
+  scheduleOrganizationsCleanup,
+} from './schedules/scheduleCleanup'
 
 const config: Config = {
   envvars: ['CROWD_TINYBIRD_ACCESS_TOKEN'],
@@ -35,6 +40,8 @@ setImmediate(async () => {
 
   await scheduleMembersCleanup()
   await scheduleOrganizationsCleanup()
+  await scheduleMemberSegmentsAggCleanup()
+  await scheduleOrganizationSegmentAggCleanup()
 
   await svc.start()
 })

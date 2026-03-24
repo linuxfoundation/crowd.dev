@@ -147,6 +147,7 @@ const platformList: OrganizationIdentity[] = organizationIdentities
     type: OrganizationIdentityType.USERNAME,
     value: '',
     verified: true,
+    source: 'ui',
     sourceId: null,
   }));
 
@@ -212,12 +213,14 @@ const createOrganization = () => {
           platform: i.platform as Platform,
           value: i.value,
           verified: true,
+          source: 'ui',
         })),
       {
         type: OrganizationIdentityType.PRIMARY_DOMAIN,
         platform: Platform.CUSTOM,
         value: form.website,
         verified: true,
+        source: 'ui',
       },
     ],
     segments: [form.subproject],

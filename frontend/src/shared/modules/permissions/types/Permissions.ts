@@ -23,7 +23,6 @@ export enum LfPermission {
   settingsEdit = 'settingsEdit',
 
   // Integrations
-  integrationImport = 'integrationImport',
   integrationCreate = 'integrationCreate',
   integrationEdit = 'integrationEdit',
   integrationDestroy = 'integrationDestroy',
@@ -63,12 +62,6 @@ export enum LfPermission {
   activityDestroy = 'activityDestroy',
   activityRead = 'activityRead',
   activityAutocomplete = 'activityAutocomplete',
-
-  // Eagle eye
-  eagleEyeRead = 'eagleEyeRead',
-  eagleEyeCreate = 'eagleEyeCreate',
-  eagleEyeEdit = 'eagleEyeEdit',
-  eagleEyeActionCreate = 'eagleEyeActionCreate',
 
   // Project groups
   projectGroupCreate = 'projectGroupCreate',

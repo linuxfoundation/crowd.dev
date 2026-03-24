@@ -8,10 +8,6 @@ export interface MemberUpdateInput {
   syncToOpensearch?: boolean
 }
 
-export interface IRecalculateAffiliationsForNewRolesInput {
-  offset?: number
-}
-
 export interface ProcessMemberBotSuggestionWithLLMInput {
   memberId: string
 }

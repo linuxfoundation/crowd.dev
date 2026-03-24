@@ -1,23 +1,31 @@
 DESCRIPTION >
     - `issues_average_resolve_velocity.pipe` serves the "Avg velocity" portion of the "Development - Issues resolution" widget.
-    - Calculates the average time in seconds to resolve issues for filtered activities.
-    - Only includes issues that have been closed (`isNotNull(ia.closedAt)`) to ensure accurate velocity calculations.
+    - Calculates the average time in seconds to resolve issues.
+    - Only includes issues that have been closed (`isNotNull(closedAt)`) to ensure accurate velocity calculations.
+    - Queries `issues_analyzed` directly for optimal performance using sorting key on `segmentId, channel, openedAt`.
     - Primary use case: displaying average issue resolution time metrics in development health dashboards.
     - Parameters:
     - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
-    - `repos`: Optional array of repository URLs for filtering (inherited from `segments_filtered`)
-    - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
-    - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
-    - `repos`: Optional array of repository URLs (e.g., ['https://github.com/kubernetes/kubernetes'])
-    - `platform`: Optional string filter for source platform (e.g., 'github', 'discord', 'slack')
-    - `activity_type`: Optional string filter for single activity type (e.g., 'authored-commit')
-    - `activity_types`: Optional array of activity types (e.g., ['authored-commit', 'co-authored-commit'])
-    - `onlyContributions`: Optional boolean, defaults to 1 (contributions only), set to 0 for all activities
+    - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes'])
+    - `startDate`: Optional DateTime filter for issues opened after timestamp (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for issues opened before timestamp (e.g., '2024-12-31 23:59:59')
     - Response: `averageIssueResolveVelocitySeconds` (average resolution time in seconds)
 
 NODE average_issue_resolve_velocity_0
 SQL >
-    select round(avg(ia.closedInSeconds)) "averageIssueResolveVelocitySeconds"
-    from activities_filtered af
-    left join issues_analyzed ia on af.id = ia.id
-    where isNotNull(ia.closedAt)
+    %
+    SELECT round(avg(closedInSeconds)) AS "averageIssueResolveVelocitySeconds"
+    FROM issues_analyzed
+    WHERE
+        segmentId = (SELECT segmentId FROM segments_filtered) AND isNotNull(closedAt)
+        {% if defined(repos) %}
+            AND channel
+            IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
+        {% else %} AND channel IN (SELECT channel FROM repos_to_channels)
+        {% end %}
+        {% if defined(startDate) %}
+            AND openedAt > {{ DateTime(startDate, description="Filter after date", required=False) }}
+        {% end %}
+        {% if defined(endDate) %}
+            AND openedAt < {{ DateTime(endDate, description="Filter before date", required=False) }}
+        {% end %}

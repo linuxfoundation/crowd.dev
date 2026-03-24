@@ -24,4 +24,5 @@ export enum Platform {
     GITLAB = 'gitlab',
     JIRA = 'jira',
     GITHUB_NANGO = 'github-nango',
+    GERRIT = 'gerrit',
 }

@@ -26,13 +26,13 @@ import {
   IOpenStatusApiConfig,
   IRedditConfig,
   IntegrationProcessingConfiguration,
+  LinuxFoundationConfiguration,
   NangoConfiguration,
   OrganizationEnrichmentConfiguration,
   S3Configuration,
   SSOConfiguration,
   SegmentConfiguration,
   ServiceType,
-  SlackAlertingConfiguration,
   SlackConfiguration,
   SnowflakeConfiguration,
   StackExchangeConfiguration,
@@ -131,9 +131,6 @@ export const STACKEXCHANGE_CONFIG: StackExchangeConfiguration =
     key: process.env.STACKEXCHANGE_KEY,
   }
 
-export const SLACK_ALERTING_CONFIG: SlackAlertingConfiguration =
-  config.get<SlackAlertingConfiguration>('slackAlerting')
-
 export const INTEGRATION_PROCESSING_CONFIG: IntegrationProcessingConfiguration =
   config.get<IntegrationProcessingConfiguration>('integrationProcessing')
 
@@ -154,3 +151,9 @@ export const REDDIT_CONFIG: IRedditConfig = config.get<IRedditConfig>('reddit')
 
 export const SNOWFLAKE_CONFIG: SnowflakeConfiguration =
   config.get<SnowflakeConfiguration>('snowflake')
+
+export const LINUX_FOUNDATION_CONFIG: LinuxFoundationConfiguration =
+  config.get<LinuxFoundationConfiguration>('linuxFoundation')
+
+export const ENABLE_LF_COLLECTION_MANAGEMENT: boolean =
+  process.env.ENABLE_LF_COLLECTION_MANAGEMENT === 'true'

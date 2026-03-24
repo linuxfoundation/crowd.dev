@@ -198,6 +198,7 @@ services/libs/tinybird/.diff_tmp
 
 # claude code rules
 CLAUDE.md
+.claude
 
 # git integration test repositories & output
 services/apps/git_integration/src/test/repos/

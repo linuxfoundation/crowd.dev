@@ -8,7 +8,7 @@ DESCRIPTION >
     Retrieves all members from the populated datasource
 
 SQL >
-    SELECT id, displayName, avatar, githubHandle FROM members_sorted
+    SELECT id, displayName, avatar, githubHandleArray FROM members_sorted
 
 NODE leaderboards_member_activity_types
 DESCRIPTION >
@@ -57,18 +57,21 @@ DESCRIPTION >
 
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (ORDER BY coalesce(c.memberActivityCount, 0) DESC) as rank,
         p.id as id,
         '' as segmentId,
         p.displayName as name,
         '' as slug,
         p.avatar as logoUrl,
-        arrayDistinct(arrayFlatten(groupArray(proj.collectionsSlugs))) as collectionSlugs,
-        0 as isLF,
+        'contributors' as leaderboardType,
         cast(coalesce(c.memberActivityCount, 0) as Float64) as value,
         cast(coalesce(pp.memberActivityCount, 0) as Float64) as previousPeriodValue,
-        p.githubHandle as githubHandle,
-        '' as status
+        arrayDistinct(arrayFlatten(groupArray(proj.collectionsSlugs))) as collectionsSlugs,
+        toUInt8(0) as isLF,
+        p.githubHandleArray as githubHandleArray,
+        '' as status,
+        count() OVER () as totalCount
     FROM leaderboards_members_data p
     INNER JOIN leaderboards_members_current_period c ON p.id = c.memberId
     LEFT JOIN leaderboards_members_previous_period pp ON p.id = pp.memberId ARRAY
@@ -76,6 +79,16 @@ SQL >
     LEFT JOIN leaderboards_members_projects proj ON proj.segmentId = sid
     WHERE c.memberActivityCount > 0
     GROUP BY
-        p.id, p.displayName, p.avatar, p.githubHandle, c.memberActivityCount, pp.memberActivityCount
+        p.id,
+        p.displayName,
+        p.avatar,
+        p.githubHandleArray,
+        c.memberActivityCount,
+        pp.memberActivityCount
     ORDER BY value DESC
     LIMIT 100
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 10 1 * * *

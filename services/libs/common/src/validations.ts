@@ -1,4 +1,4 @@
-import Error400 from './errors/Error400'
+import Error400 from './errors/deprecated/Error400'
 
 const URL_REGEXP = new RegExp(
   '^(https?:\\/\\/)?' + // validate protocol

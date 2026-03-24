@@ -6,7 +6,7 @@ import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/i
 import { INTEGRATION_SERVICES, IProcessDataContext } from '@crowd/integrations'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { RedisCache, RedisClient } from '@crowd/redis'
-import { IActivityData, IntegrationResultType } from '@crowd/types'
+import { IActivityData, IntegrationResultType, PlatformType } from '@crowd/types'
 
 import { PLATFORM_CONFIG } from '../conf'
 
@@ -44,7 +44,7 @@ export default class IntegrationDataService extends LoggerBase {
       integration: {
         id: stream.integrationId,
         identifier: stream.integrationIdentifier,
-        platform: stream.integrationType,
+        platform: stream.integrationType as PlatformType,
         status: stream.integrationState,
         settings: stream.integrationSettings,
         token: stream.integrationToken,

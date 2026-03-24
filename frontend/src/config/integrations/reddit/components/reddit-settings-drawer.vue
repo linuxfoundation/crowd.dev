@@ -6,6 +6,8 @@
     size="600px"
     pre-title="Integration"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="isVisible = false"
   >
     <template #beforeTitle>
@@ -14,6 +16,9 @@
         :src="logoUrl"
         alt="Git logo"
       />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="reddit" />
     </template>
     <template #content>
       <div
@@ -73,45 +78,19 @@
     </template>
 
     <template #footer>
-      <div
-        class="flex grow items-center"
-        :class="
-          hasFormChanged ? 'justify-between' : 'justify-end'
-        "
-      >
-        <lf-button
-          v-if="hasFormChanged"
-          type="primary-link"
-          size="medium"
-          @click="doReset"
-        >
-          <lf-icon name="arrow-turn-left" :size="16" />
-          <span>Reset changes</span>
-        </lf-button>
-        <div class="flex gap-4">
-          <lf-button
-            type="secondary-gray"
-            size="medium"
-            @click="isVisible = false"
-          >
-            Cancel
-          </lf-button>
-          <lf-button
-            type="primary"
-            size="medium"
-            :disabled="!hasFormChanged || connectDisabled"
-            @click="hasFormChanged ? connect() : undefined"
-          >
-            {{
-              integration?.settings?.subreddits.length > 0
-                ? 'Update'
-                : 'Connect'
-            }}
-          </lf-button>
-        </div>
-      </div>
+      <drawer-footer-buttons
+        :integration="integration"
+        :is-edit-mode="integration?.settings?.subreddits.length > 0"
+        :has-form-changed="hasFormChanged"
+        :is-loading="false"
+        :is-submit-disabled="!hasFormChanged || connectDisabled"
+        :cancel="() => (isVisible = false)"
+        :revert-changes="doReset"
+        :connect="hasFormChanged ? connect : () => {}"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup lang="ts">
@@ -134,6 +113,9 @@ import { Platform } from '@/shared/modules/platform/types/Platform';
 import reddit from '@/config/integrations/reddit/config';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const store = useStore();
 
@@ -153,6 +135,7 @@ const subreddits = props.integration?.settings?.subreddits.map((i: any) => ({
 })) || [{ value: '', loading: false }];
 
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const model = ref(JSON.parse(JSON.stringify(subreddits)));
 
@@ -187,6 +170,21 @@ const deleteItem = (index: number) => {
 
 const doReset = () => {
   model.value = JSON.parse(JSON.stringify(subreddits));
+};
+
+const canClose = (done: (value: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        doReset();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
 };
 
 const handleSubredditValidation = async (index: number) => {

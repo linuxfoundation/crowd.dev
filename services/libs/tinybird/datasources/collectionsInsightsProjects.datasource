@@ -7,6 +7,7 @@ DESCRIPTION >
     - `insightsProjectId` links to the insights project in this relationship.
     - `starred` indicates whether this project is featured/highlighted within the collection (UInt8 boolean, 0 default).
     - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
+    - `deletedAt` is used for soft delete functionality - null means active record, timestamp means logically deleted.
 
 SCHEMA >
     `id` String `json:$.record.id`,
@@ -14,7 +15,8 @@ SCHEMA >
     `insightsProjectId` String `json:$.record.insightsProjectId`,
     `starred` UInt8 `json:$.record.starred` DEFAULT 0,
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
-    `updatedAt` DateTime64(3) `json:$.record.updatedAt`
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
+    `deletedAt` Nullable(DateTime64(3)) `json:$.record.deletedAt`
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

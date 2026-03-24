@@ -33,7 +33,7 @@
             Action
           </lf-table-head>
           <lf-table-head class="pl-3">
-            User
+            Actor
           </lf-table-head>
           <lf-table-head class="pl-3 w-52">
             Timestamp
@@ -89,13 +89,14 @@
 
           <lf-table-cell class="pl-3">
             <div class="text-sm font-semibold text-black mb-1 leading-5">
-              {{ auditLog.user.fullName }}
+              {{ auditLog.actor.fullName }}
             </div>
-            <p class="text-2xs text-gray-500 leading-5">
-              {{ auditLog.user.email }}
+            <p v-if="auditLog.actor.email" class="text-2xs text-gray-500 leading-5">
+              {{ auditLog.actor.email }}
             </p>
             <p class="text-2xs text-gray-500 leading-5">
-              ID: {{ auditLog.user.id }}
+              <span v-if="auditLog.actor.type === 'service'" class="capitalize">{{ auditLog.actor.type }} · </span>
+              ID: {{ auditLog.actor.id }}
             </p>
           </lf-table-cell>
 

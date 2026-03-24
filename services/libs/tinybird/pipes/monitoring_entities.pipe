@@ -53,15 +53,15 @@ SQL >
     FROM insightsProjects final
     where enabled = 1 and isLF = 0 and isNotNull(segmentId) and segmentId <> ''
 
-NODE segmentRepositories_total
+NODE repositories_total
 SQL >
     SELECT
         'rows_total' AS name,
         'Total rows in table' AS help,
         'gauge' AS type,
-        map('table', 'segmentRepositories') AS labels,
+        map('table', 'repositories') AS labels,
         count() AS value
-    FROM segmentRepositories final
+    FROM repositories final
 
 NODE merge_results
 SQL >
@@ -81,4 +81,4 @@ SQL >
     FROM non_lf_insightsProjects_total
     UNION ALL
     SELECT *
-    FROM segmentRepositories_total
+    FROM repositories_total

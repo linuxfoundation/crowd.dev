@@ -6,6 +6,7 @@ import {
   IOrganizationIdentity,
   MemberAttributeName,
   MemberEnrichmentSource,
+  NewMemberIdentity,
   OrganizationSource,
   PlatformType,
 } from '@crowd/types'
@@ -41,7 +42,11 @@ export interface IEnrichmentService {
   source: MemberEnrichmentSource
 
   // cache rows with older updatedAt than this will be considered obsolete and will be re-enriched
-  cacheObsoleteAfterSeconds: number
+  // not required when neverReenrich is true
+  cacheObsoleteAfterSeconds?: number
+
+  // when true, members are enriched only once and cached data is never refreshed
+  neverReenrich?: boolean
 
   // max concurrent requests that can be made to the source
   maxConcurrentRequests: number
@@ -72,7 +77,7 @@ export interface IEnrichmentService {
 export type IMemberEnrichmentMetadataNormalized = IMemberEnrichmentLinkedinScraperMetadata
 
 export interface IMemberEnrichmentDataNormalized {
-  identities?: IMemberIdentity[]
+  identities?: Omit<NewMemberIdentity, 'memberId'>[]
   contributions?: IMemberContribution[]
   attributes?: IAttributes
   reach?: IMemberReach
@@ -113,4 +118,14 @@ export type IMemberEnrichmentAttributeSettings = {
 export interface IProcessMemberSourcesArgs {
   memberId: string
   sources: MemberEnrichmentSource[]
+}
+
+type MemberIdentityConsumableBase = Omit<
+  IMemberIdentity,
+  'id' | 'memberId' | 'createdAt' | 'updatedAt' | 'deletedAt'
+>
+
+export type ConsumableIdentity = MemberIdentityConsumableBase & {
+  repeatedTimesInDifferentSources: number
+  isFromVerifiedSource: boolean
 }

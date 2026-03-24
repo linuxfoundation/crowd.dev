@@ -8,6 +8,8 @@ import { DbConnection, DbStore, DbTransaction } from '@crowd/data-access-layer/s
 import IncomingWebhookRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/incomingWebhook.repo'
 import { IStreamData } from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.data'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
+import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { populateGithubSettingsWithRepos } from '@crowd/data-access-layer/src/repositories'
 import {
   INTEGRATION_SERVICES,
   IProcessStreamContext,
@@ -19,6 +21,7 @@ import {
   IntegrationRunState,
   IntegrationState,
   IntegrationStreamType,
+  PlatformType,
   RateLimitError,
   WebhookType,
 } from '@crowd/types'
@@ -37,7 +40,7 @@ export default class IntegrationStreamService extends LoggerBase {
     private readonly runWorkerEmitter: IntegrationRunWorkerEmitter,
     private readonly streamWorkerEmitter: IntegrationStreamWorkerEmitter,
     dataSinkWorkerEmitter: DataSinkWorkerEmitter,
-    store: DbStore,
+    private readonly store: DbStore,
     parentLog: Logger,
   ) {
     super(parentLog)
@@ -221,6 +224,18 @@ export default class IntegrationStreamService extends LoggerBase {
       return false
     }
 
+    // Populate orgs[].repos from repositories table for github integrations
+    if (
+      streamInfo.integrationType === PlatformType.GITHUB ||
+      streamInfo.integrationType === PlatformType.GITHUB_NANGO
+    ) {
+      streamInfo.integrationSettings = await populateGithubSettingsWithRepos(
+        dbStoreQx(this.store),
+        streamInfo.integrationId,
+        streamInfo.integrationSettings,
+      )
+    }
+
     if (streamInfo.runId) {
       this.log.warn({ streamId }, 'Stream is a regular stream! Processing as such!')
       return await this.processStream(streamId)
@@ -298,7 +313,7 @@ export default class IntegrationStreamService extends LoggerBase {
       integration: {
         id: streamInfo.integrationId,
         identifier: streamInfo.integrationIdentifier,
-        platform: streamInfo.integrationType,
+        platform: streamInfo.integrationType as PlatformType,
         status: streamInfo.integrationState,
         settings: streamInfo.integrationSettings,
         token: streamInfo.integrationToken,
@@ -389,6 +404,18 @@ export default class IntegrationStreamService extends LoggerBase {
       return false
     }
 
+    // Populate orgs[].repos from repositories table for github integrations
+    if (
+      streamInfo.integrationType === PlatformType.GITHUB ||
+      streamInfo.integrationType === PlatformType.GITHUB_NANGO
+    ) {
+      streamInfo.integrationSettings = await populateGithubSettingsWithRepos(
+        dbStoreQx(this.store),
+        streamInfo.integrationId,
+        streamInfo.integrationSettings,
+      )
+    }
+
     if (streamInfo.webhookId) {
       this.log.warn({ streamId }, 'Stream is a webhook stream! Processing as such!')
       return await this.processWebhookStream(streamInfo.webhookId)
@@ -463,7 +490,7 @@ export default class IntegrationStreamService extends LoggerBase {
       integration: {
         id: streamInfo.integrationId,
         identifier: streamInfo.integrationIdentifier,
-        platform: streamInfo.integrationType,
+        platform: streamInfo.integrationType as PlatformType,
         status: streamInfo.integrationState,
         settings: streamInfo.integrationSettings,
         token: streamInfo.integrationToken,

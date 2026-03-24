@@ -14,11 +14,8 @@ import { IIntegrationResult, IntegrationResultState } from '@crowd/types'
 import { QUEUE_CLIENT } from '@/serverless/utils/queueService'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
-
-const log: boolean = false
 
 class ActivityRepository {
   static async create(data, options: IRepositoryOptions) {
@@ -79,8 +76,6 @@ class ActivityRepository {
     }
 
     const record = await this.findById(ids[0], options)
-
-    await this._createAuditLog(AuditLogRepository.CREATE, record, data, options)
 
     return record
   }
@@ -214,28 +209,6 @@ class ActivityRepository {
     )
 
     return results[0][0].id
-  }
-
-  static async _createAuditLog(action, record, data, options: IRepositoryOptions) {
-    if (log) {
-      let values = {}
-
-      if (data) {
-        values = {
-          ...record.get({ plain: true }),
-        }
-      }
-
-      await AuditLogRepository.log(
-        {
-          entityName: 'activity',
-          entityId: record.id,
-          action,
-          values,
-        },
-        options,
-      )
-    }
   }
 
   static async _populateRelationsForRows(rows, options: IRepositoryOptions) {

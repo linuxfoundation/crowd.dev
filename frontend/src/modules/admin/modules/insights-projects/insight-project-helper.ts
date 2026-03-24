@@ -44,13 +44,7 @@ export const buildForm = (
   keywords: result.keywords || [],
   searchKeywords: result.searchKeywords || [],
   repositoryGroups: result.repositoryGroups || [],
-  repositories:
-    repositories?.map((repository) => ({
-      ...repository,
-      enabled:
-        result.repositories?.some((repo: string) => repo === repository.url)
-        || false,
-    })) || [],
+  repositories: repositories || [],
   widgets: Object.fromEntries(
     getDefaultWidgets().map((key) => [
       key,
@@ -62,7 +56,7 @@ export const buildForm = (
 });
 
 export const buildRepositories = (
-  res: Record<string, Array<{ url: string; label: string }>>,
+  res: Record<string, Array<{ url: string; label: string; enabled: boolean }>>,
 ) => {
   const urlMap = new Map<
     string,
@@ -82,12 +76,15 @@ export const buildRepositories = (
         // If URL exists, add the platform to its platforms array
         const existing = urlMap.get(repo.url)!;
         existing.platforms.push(platform);
+        if (repo.enabled) {
+          existing.enabled = true;
+        }
       } else {
         // If URL is new, create a new entry
         urlMap.set(repo.url, {
           url: repo.url,
           label: repo.label,
-          enabled: true,
+          enabled: repo.enabled,
           platforms: [platform],
         });
       }

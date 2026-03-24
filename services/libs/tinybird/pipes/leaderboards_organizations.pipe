@@ -62,17 +62,21 @@ DESCRIPTION >
 
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (ORDER BY coalesce(c.organizationActivityCount, 0) DESC) as rank,
         p.id as id,
         '' as segmentId,
         p.displayName as name,
         '' as slug,
         p.logo as logoUrl,
-        arrayDistinct(arrayFlatten(groupArray(proj.collectionsSlugs))) as collectionSlugs,
-        0 as isLF,
+        'organizations' as leaderboardType,
         cast(coalesce(c.organizationActivityCount, 0) as Float64) as value,
         cast(coalesce(pp.organizationActivityCount, 0) as Float64) as previousPeriodValue,
-        '' as status
+        arrayDistinct(arrayFlatten(groupArray(proj.collectionsSlugs))) as collectionsSlugs,
+        toUInt8(0) as isLF,
+        [] as githubHandleArray,
+        '' as status,
+        count() OVER () as totalCount
     FROM leaderboards_organizations_data p
     INNER JOIN leaderboards_organizations_current_period c ON p.id = c.organizationId
     LEFT JOIN leaderboards_organizations_previous_period pp ON p.id = pp.organizationId ARRAY
@@ -82,3 +86,8 @@ SQL >
     GROUP BY p.id, p.displayName, p.logo, c.organizationActivityCount, pp.organizationActivityCount
     ORDER BY value DESC
     LIMIT 100
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 15 1 * * *

@@ -10,9 +10,12 @@ SQL >
             CASE WHEN collectionsInsightsProjects.insightsProjectId != '' THEN 1 ELSE 0 END
         ) as "projectCount"
     FROM collections FINAL
-    left join collectionsInsightsProjects on collectionsInsightsProjects.collectionId = collections.id
+    left join
+        collectionsInsightsProjects
+        on collectionsInsightsProjects.collectionId = collections.id
+        and isNull (collectionsInsightsProjects.deletedAt)
     where
-        isNull (collections.deletedAt)
+        isNull (collections.deletedAt) AND isNull (collections.ssoUserId)
         {% if defined(slug) %}
             AND collections.slug
             = {{ String(slug, description="Filter collection by slug", required=False) }}
@@ -48,4 +51,7 @@ SQL >
         collections.createdAt,
         collections.updatedAt,
         collections.deletedAt,
-        collections.starred
+        collections.starred,
+        collections.isPrivate,
+        collections.ssoUserId,
+        collections.logoUrl

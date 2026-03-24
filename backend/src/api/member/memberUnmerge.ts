@@ -7,5 +7,5 @@ export default async (req, res) => {
 
   const payload = await new MemberService(req).unmerge(req.params.memberId, req.body)
 
-  await req.responseHandler.success(req, res, payload, 200)
+  return req.responseHandler.success(req, res, payload)
 }

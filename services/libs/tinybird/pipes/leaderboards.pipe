@@ -1,17 +1,33 @@
 DESCRIPTION >
     Main leaderboard query endpoint that retrieves leaderboard data from the consolidated datasource.
     Supports filtering by project slug, leaderboard type, and search term. Includes pagination support.
+    Automatically filters to the latest snapshotId for fresh data.
 
 NODE leaderboards_list
 DESCRIPTION >
-    Queries the unified leaderboards datasource with optional filtering and pagination
+    Queries the unified leaderboards datasource with optional filtering and pagination.
+    Always filters by the latest snapshotId to return current data.
 
 SQL >
     %
-    SELECT *
+    SELECT
+        rank,
+        id,
+        segmentId,
+        name,
+        slug,
+        logoUrl,
+        leaderboardType,
+        value,
+        previousPeriodValue,
+        collectionsSlugs,
+        isLF,
+        githubHandleArray,
+        status,
+        totalCount
     FROM leaderboards_copy_ds
     WHERE
-        1 = 1
+        snapshotId = (SELECT max(snapshotId) FROM leaderboards_copy_ds)
         {% if defined(slug) %}
             AND slug = {{ String(slug, description="Project slug", required=False) }}
         {% end %}

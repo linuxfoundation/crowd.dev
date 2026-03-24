@@ -1,3 +1,7 @@
+import {
+  changeMemberOrganizationAffiliationOverrides,
+  checkOrganizationAffiliationPolicy,
+} from '@crowd/data-access-layer'
 import { DbStore } from '@crowd/data-access-layer/src/database'
 import {
   addOrgsToMember,
@@ -48,7 +52,26 @@ export class OrganizationService extends LoggerBase {
       orgs.map((org) => org.id),
     )
 
-    await addOrgsToMember(qe, memberId, orgs)
+    const newMemberOrgs = await addOrgsToMember(qe, memberId, orgs)
+
+    for (const newMemberOrg of newMemberOrgs) {
+      // Check if organization affiliation is blocked
+      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
+        qe,
+        newMemberOrg.organizationId,
+      )
+
+      if (isAffiliationBlocked) {
+        // If organization affiliation is blocked, create an affiliation override
+        await changeMemberOrganizationAffiliationOverrides(qe, [
+          {
+            memberId,
+            memberOrganizationId: newMemberOrg.memberOrganizationId,
+            allowAffiliation: false,
+          },
+        ])
+      }
+    }
   }
 
   public async findMemberOrganizations(

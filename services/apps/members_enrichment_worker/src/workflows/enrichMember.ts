@@ -27,10 +27,10 @@ const {
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '7 minutes',
   retry: {
-    maximumAttempts: 3,
+    maximumAttempts: 4,
     initialInterval: '5 minutes',
     backoffCoefficient: 2,
-    maximumInterval: '10 minutes',
+    maximumInterval: '20 minutes',
   },
 })
 
@@ -70,6 +70,8 @@ export async function enrichMember(
         if (data) {
           changeInEnrichmentSourceData = true
         }
+      } else if (data === null && cache.data !== null) {
+        await touchMemberEnrichmentCacheUpdatedAt(source, input.id)
       } else if (sourceHasDifferentDataComparedToCache(cache, data)) {
         await updateMemberEnrichmentCache(source, input.id, data)
         changeInEnrichmentSourceData = true

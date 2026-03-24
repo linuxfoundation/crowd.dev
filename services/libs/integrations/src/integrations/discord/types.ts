@@ -5,12 +5,7 @@ export enum DiscordActivityType {
   THREAD_MESSAGE = 'thread_message',
 }
 
-export interface IDiscordIntegrationSettings {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  channels: any[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  forumChannels: any[]
-}
+export { IDiscordIntegrationSettings } from '@crowd/types'
 
 export interface IDiscordPlatformSettings {
   token: string

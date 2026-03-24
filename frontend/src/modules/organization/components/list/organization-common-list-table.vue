@@ -81,6 +81,10 @@
                   <lf-icon name="people-group" />
                   {{ org.isTeamOrganization ? 'Unmark' : 'Mark' }} as team organization
                 </lf-dropdown-item>
+                <lf-dropdown-item @click="toggleOrganizationAffiliations(org)">
+                  <lf-icon name="ban" />
+                  {{ org.isAffiliationBlocked ? 'Enable' : 'Block' }} affiliations
+                </lf-dropdown-item>
                 <lf-dropdown-separator />
                 <lf-dropdown-item type="danger" @click="deleteOrganization(org)">
                   <lf-icon name="trash-can" />
@@ -162,6 +166,23 @@ const markAsTeamOrganization = (organization: any) => {
       ToastStore.error('Something went wrong');
     });
 };
+
+const toggleOrganizationAffiliations = (organization: any) => {
+  ToastStore.info('Organization is being updated');
+  OrganizationService.update(organization.id, {
+    isAffiliationBlocked: !organization.isAffiliationBlocked,
+  }, organization.segments)
+    .then(() => {
+      ToastStore.closeAll();
+      ToastStore.success('Organization updated successfully');
+      emit('reload');
+    })
+    .catch(() => {
+      ToastStore.closeAll();
+      ToastStore.error('Something went wrong');
+    });
+};
+
 const deleteOrganization = (organization: any) => {
   ConfirmDialog({
     type: 'danger',

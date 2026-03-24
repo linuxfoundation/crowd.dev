@@ -1,4 +1,4 @@
-import { queryAuditLogs } from '@crowd/data-access-layer/src/audit_logs/repo'
+import { queryAuditLogs } from '@crowd/data-access-layer'
 import { LoggerBase } from '@crowd/logging'
 
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'

@@ -3,11 +3,9 @@ import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error409 } from '@crowd/common'
-import { optionsQx } from '@crowd/data-access-layer'
-import { findIdentitiesForMembers } from '@crowd/data-access-layer/src/member_identities'
+import { createMemberIdentity, findIdentitiesForMembers, optionsQx } from '@crowd/data-access-layer'
 import {
   checkIdentityExistance,
-  createMemberIdentity,
   deleteMemberIdentity,
   fetchMemberIdentities,
   findMemberIdentityById,
@@ -15,7 +13,7 @@ import {
   updateMemberIdentity,
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
-import { IMemberIdentity } from '@crowd/types'
+import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
@@ -37,10 +35,8 @@ export default class MemberIdentityService extends LoggerBase {
   }
 
   // Member identity creation
-  async create(memberId: string, data: Partial<IMemberIdentity>): Promise<IMemberIdentity[]> {
+  async create(memberId: string, data: NewMemberIdentity): Promise<IMemberIdentity[]> {
     let tx
-
-    const tenantId = SequelizeRepository.getCurrentTenant(this.options).id
 
     try {
       const list = await captureApiChange(
@@ -75,7 +71,7 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Create member identity
-          await createMemberIdentity(qx, tenantId, memberId, data)
+          await createMemberIdentity(qx, { ...data, memberId })
 
           await touchMemberUpdatedAt(qx, memberId)
 
@@ -106,12 +102,8 @@ export default class MemberIdentityService extends LoggerBase {
   }
 
   // Member multiple identity creation
-  async createMultiple(
-    memberId: string,
-    data: Partial<IMemberIdentity>[],
-  ): Promise<IMemberIdentity[]> {
+  async createMultiple(memberId: string, data: NewMemberIdentity[]): Promise<IMemberIdentity[]> {
     let tx
-    const tenantId = SequelizeRepository.getCurrentTenant(this.options).id
 
     try {
       const list = await captureApiChange(
@@ -154,7 +146,7 @@ export default class MemberIdentityService extends LoggerBase {
 
           // Create member identities
           for (const identity of data) {
-            await createMemberIdentity(qx, tenantId, memberId, identity)
+            await createMemberIdentity(qx, { ...identity, memberId })
           }
 
           await touchMemberUpdatedAt(qx, memberId)

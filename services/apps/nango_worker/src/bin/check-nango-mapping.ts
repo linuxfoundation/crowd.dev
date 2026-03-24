@@ -1,6 +1,11 @@
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { fetchNangoIntegrationData } from '@crowd/data-access-layer/src/integrations'
+import {
+  fetchNangoCursorRowsForIntegration,
+  fetchNangoIntegrationData,
+  getNangoMappingsForIntegrations,
+} from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { getReposForGithubIntegration } from '@crowd/data-access-layer/src/repositories'
 import { getServiceLogger } from '@crowd/logging'
 import { PlatformType } from '@crowd/types'
 
@@ -34,51 +39,53 @@ async function collectStats(): Promise<Stats> {
   const integrationsWithoutConnections = new Set<string>()
   const integrationsWithoutCursors = new Set<string>()
 
+  const qx = pgpQx(db)
+
   for (const integration of integrations) {
+    // Fetch nango mappings from the dedicated table
+    const allNangoMappings = await getNangoMappingsForIntegrations(qx, [integration.id])
+    const nangoMapping = allNangoMappings[integration.id] || {}
+    const connectionIds = Object.keys(nangoMapping)
+
     // Track connectionIds that don't have cursors
-    if (integration.settings?.nangoMapping) {
-      const connectionIds = Object.keys(integration.settings.nangoMapping)
+    if (connectionIds.length > 0) {
       totalConnectionIds += connectionIds.length
 
+      const cursorRows = await fetchNangoCursorRowsForIntegration(qx, integration.id)
+      const connectionIdsWithCursorsSet = new Set(cursorRows.map((r) => r.connectionId))
+
       for (const connectionId of connectionIds) {
-        if (!integration.settings.cursors || !integration.settings.cursors[connectionId]) {
+        if (!connectionIdsWithCursorsSet.has(connectionId)) {
           connectionIdsWithoutCursor++
           integrationsWithoutCursors.add(integration.id)
         }
       }
     }
 
-    // Loop through orgs in settings
-    if (integration.settings?.orgs) {
-      for (const org of integration.settings.orgs) {
-        // Loop through repos in each org
-        if (org.repos) {
-          for (const repo of org.repos) {
-            totalRepos++
+    // Get repos from repositories table
+    const repos = await getReposForGithubIntegration(qx, integration.id)
+    for (const repo of repos) {
+      totalRepos++
 
-            if (!integration.settings.nangoMapping) {
-              missingConnectionCount++
-              integrationsWithoutConnections.add(integration.id)
-              continue
-            }
+      if (connectionIds.length === 0) {
+        missingConnectionCount++
+        integrationsWithoutConnections.add(integration.id)
+        continue
+      }
 
-            let found = false
-            for (const connectionId of Object.keys(integration.settings.nangoMapping)) {
-              const mapping = integration.settings.nangoMapping[connectionId]
-              if (mapping.owner === org.name && mapping.repoName === repo.name) {
-                found = true
-                break
-              }
-            }
-
-            if (!found) {
-              missingConnectionCount++
-              integrationsWithoutConnections.add(integration.id)
-            } else {
-              connectedRepos++
-            }
-          }
+      let found = false
+      for (const mapping of Object.values(nangoMapping)) {
+        if (mapping.owner === repo.owner && mapping.repoName === repo.name) {
+          found = true
+          break
         }
+      }
+
+      if (!found) {
+        missingConnectionCount++
+        integrationsWithoutConnections.add(integration.id)
+      } else {
+        connectedRepos++
       }
     }
   }

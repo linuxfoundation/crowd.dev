@@ -80,6 +80,7 @@ SQL >
     where
         (collectionsInsightsProjects.collectionId in (select id from collections_paginated))
         and collectionsInsightsProjects.starred
+        and isNull (collectionsInsightsProjects.deletedAt)
 
 NODE merging_fields_together
 SQL >

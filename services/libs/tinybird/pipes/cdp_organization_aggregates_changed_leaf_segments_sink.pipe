@@ -1,0 +1,31 @@
+NODE leaf_segment_aggs_updated_previous_day
+SQL >
+    %
+    SELECT
+        segmentId,
+        organizationId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        minMerge(joinedAtState) as joinedAt,
+        maxMerge(lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        countMerge(activityCountState) AS activityCount,
+        countDistinctMerge(memberCountState) as memberCount,
+        avgMerge(avgContributorEngagement) AS avgContributorEngagement,
+        now() as updatedAt
+    FROM cdp_organization_segment_aggregates_ds
+    WHERE
+        organizationId <> ''
+        AND (organizationId, segmentId) in (
+            select distinct organizationId, segmentId
+            from cdp_organization_segment_aggregates_ds
+            where updatedAt >= toStartOfDay(toTimeZone(now(), 'Europe/Berlin') - INTERVAL 1 DAY)
+        )
+    GROUP BY segmentId, organizationId, updatedAt
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE 0 2 * * *
+EXPORT_FORMAT csv
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC organizationSegmentsAgg_sink

@@ -7,10 +7,12 @@ import {
 import { DbStore } from '@crowd/data-access-layer/src/database'
 import IntegrationRunRepository from '@crowd/data-access-layer/src/old/apps/integration_run_worker/integrationRun.repo'
 import MemberAttributeSettingsRepository from '@crowd/data-access-layer/src/old/apps/integration_run_worker/memberAttributeSettings.repo'
+import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { populateGithubSettingsWithRepos } from '@crowd/data-access-layer/src/repositories'
 import { IGenerateStreamsContext, INTEGRATION_SERVICES } from '@crowd/integrations'
 import { Logger, LoggerBase, getChildLogger } from '@crowd/logging'
 import { ApiPubSubEmitter, RedisCache, RedisClient } from '@crowd/redis'
-import { IntegrationRunState, IntegrationStreamState } from '@crowd/types'
+import { IntegrationRunState, IntegrationStreamState, PlatformType } from '@crowd/types'
 
 import { NANGO_CONFIG, PLATFORM_CONFIG, WORKER_CONFIG } from '../conf'
 
@@ -223,6 +225,18 @@ export default class IntegrationRunService extends LoggerBase {
       return
     }
 
+    // Populate orgs[].repos from repositories table for github integrations
+    if (
+      runInfo.integrationType === PlatformType.GITHUB ||
+      runInfo.integrationType === PlatformType.GITHUB_NANGO
+    ) {
+      runInfo.integrationSettings = await populateGithubSettingsWithRepos(
+        dbStoreQx(this.store),
+        runInfo.integrationId,
+        runInfo.integrationSettings,
+      )
+    }
+
     // we can do this because this service instance is only used for one run
     this.log = getChildLogger('run-processor', this.log, {
       runId,
@@ -285,8 +299,6 @@ export default class IntegrationRunService extends LoggerBase {
         await cache.delete('default')
 
         await txRunRepo.updateIntegrationSettings(runId, {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ...(runInfo.integrationSettings as any),
           updateMemberAttributes: false,
         })
       })
@@ -308,7 +320,7 @@ export default class IntegrationRunService extends LoggerBase {
       integration: {
         id: runInfo.integrationId,
         identifier: runInfo.integrationIdentifier,
-        platform: runInfo.integrationType,
+        platform: runInfo.integrationType as PlatformType,
         status: runInfo.integrationState,
         settings: runInfo.integrationSettings,
         token: runInfo.integrationToken,

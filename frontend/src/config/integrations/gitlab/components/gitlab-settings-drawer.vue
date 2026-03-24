@@ -6,12 +6,26 @@
     pre-title="Integration"
     :show-footer="true"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="isDrawerVisible = false"
   >
     <template #beforeTitle>
       <img :src="gitlabDetails.image" class="min-w-6 h-6 mr-2" alt="GitLab logo" />
     </template>
+    <template #belowTitle>
+      <drawer-description integration-key="gitlab" />
+    </template>
     <template #content>
+      <div class="flex gap-2 bg-brand-50 -mt-5 -mx-6 py-3 px-6 mb-5">
+        <div>
+          <lf-icon name="circle-info" type="solid" class="text-brand-500" :size="20" />
+        </div>
+        <div class="text-xs text-brand-800">
+          Connected repositories are also synced through Git, which automatically mirrors your
+          GitLab settings for adding, updating, and deleting repositories.
+        </div>
+      </div>
       <div>
         <!-- Connected user info -->
         <section v-if="connectedUser" class="border border-gray-200 rounded-md py-4 px-5 mb-6">
@@ -156,28 +170,16 @@
     </template>
 
     <template #footer>
-      <div style="flex: auto">
-        <lf-button type="bordered" size="medium" class="mr-3" @click="isDrawerVisible = false">
-          Cancel
-        </lf-button>
-        <el-tooltip
-          content="Select at least one repository in order to connect GitLab"
-          placement="top"
-          :disabled="!(sending || $v.$invalid || !hasSelectedRepos)"
-        >
-          <span>
-            <lf-button
-              type="primary"
-              size="medium"
-              :disabled="sending || $v.$invalid || !hasSelectedRepos"
-              :loading="sending"
-              @click="connect()"
-            >
-              Connect
-            </lf-button>
-          </span>
-        </el-tooltip>
-      </div>
+      <drawer-footer-buttons
+        :integration="props.integration"
+        :is-edit-mode="!!props.integration"
+        :has-form-changed="hasFormChanged"
+        :is-loading="false"
+        :is-submit-disabled="sending || $v.$invalid || !hasSelectedRepos"
+        :cancel="() => (isDrawerVisible = false)"
+        :revert-changes="revertChanges"
+        :connect="connect"
+      />
     </template>
   </app-drawer>
   <app-gitlab-settings-bulk-select
@@ -187,6 +189,7 @@
     :mapped-repos="form"
     @apply="bulkApply"
   />
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script lang="ts" setup>
@@ -206,9 +209,11 @@ import { mapActions } from '@/shared/vuex/vuex.helpers';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
 import LfSvg from '@/shared/svg/svg.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import LfButton from '@/ui-kit/button/Button.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
 import LfTag from '@/ui-kit/tag/Tag.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import AppGitlabSettingsBulkSelect from './gitlab-settings-bulk-select.vue';
 
 const props = defineProps<{
@@ -221,6 +226,7 @@ const props = defineProps<{
 const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
 
 const router = useRouter();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 // Store
 const { doFetch } = mapActions('integration');
@@ -297,6 +303,17 @@ const form = ref<Record<string, string>>(
   ),
 );
 
+const hasFormChanged = computed(() => {
+  const original = allProjects.value.reduce(
+    (a: Record<string, any>, b: any) => ({
+      ...a,
+      [b.url]: props.integration.segmentId,
+    }),
+    {},
+  );
+  return JSON.stringify(form.value) !== JSON.stringify(original);
+});
+
 const rules = computed(() => allProjects.value.reduce(
   (a: Record<string, any>, b: any) => ({
     ...a,
@@ -322,6 +339,28 @@ onMounted(() => {
     form.value[project.web_url] = props.integration.segmentId;
   });
 });
+
+const revertChanges = () => {
+  allProjects.value.forEach((project) => {
+    selectedRepos.value[project.web_url] = false;
+    form.value[project.web_url] = props.integration.segmentId;
+  });
+};
+
+const canClose = (done: (value: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
+};
 
 // Update selected repos
 const updateSelectedRepos = () => {

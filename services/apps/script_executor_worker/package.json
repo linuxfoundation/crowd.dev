@@ -8,6 +8,7 @@
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "cleanup-fork-activities": "npx tsx src/bin/cleanup-fork-activities-and-maintainers.ts",
     "cleanup-member-aggregates": "npx tsx src/bin/cleanup-member-aggregates.ts",
+    "add-lf-projects-to-collection": "npx tsx src/bin/add-lf-projects-to-collection.ts",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",

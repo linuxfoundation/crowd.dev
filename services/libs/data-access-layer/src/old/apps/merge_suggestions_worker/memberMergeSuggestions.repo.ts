@@ -260,7 +260,8 @@ class MemberMergeSuggestionsRepository {
             '[]'::jsonb
           ) as organizations
         from members mem
-        join "memberIdentities" mI on mem.id = mI."memberId"
+        join "memberIdentities" mI
+          on mem.id = mI."memberId" and mI."deletedAt" is null
         where mem.id in ($(memberIds:csv))
         group by mem.id, mem.attributes, mem."displayName", mem."joinedAt";`,
         {

@@ -65,13 +65,6 @@
         />
       </div>
     </div>
-    <lf-menu-link
-      v-if="hasPermission(LfPermission.eagleEyeRead)"
-      title="Community Lens"
-      icon="eye"
-      :is-collapsed="isCollapsed"
-      :to="{ path: '/community-lens' }"
-    />
     <template
       v-if="hasPermission(LfPermission.projectGroupCreate) || hasPermission(LfPermission.projectGroupEdit)"
     >

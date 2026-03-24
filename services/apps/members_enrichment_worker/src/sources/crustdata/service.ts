@@ -4,7 +4,6 @@ import { isEmail, replaceDoubleQuotes } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   IMemberEnrichmentCache,
-  IMemberIdentity,
   MemberAttributeName,
   MemberEnrichmentSource,
   MemberIdentityType,
@@ -16,6 +15,7 @@ import {
 import { findMemberEnrichmentCacheForAllSources } from '../../activities/enrichment'
 import { EnrichmentSourceServiceFactory } from '../../factory'
 import {
+  ConsumableIdentity,
   IEnrichmentService,
   IEnrichmentSourceInput,
   IMemberEnrichmentAttributeSettings,
@@ -45,7 +45,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
   public enrichableBySql = `("membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan}) AND mi.verified AND mi.type = 'username' and mi.platform = 'linkedin'`
 
-  public cacheObsoleteAfterSeconds = 60 * 60 * 24 * 90
+  public neverReenrich = true
 
   public maxConcurrentRequests = 5
 
@@ -91,10 +91,25 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
   }
 
   async isEnrichableBySource(input: IEnrichmentSourceInput): Promise<boolean> {
-    const caches = await findMemberEnrichmentCacheForAllSources(input.memberId)
+    // Include cache rows with null data so we can detect members where
+    // Crustdata was already attempted but returned no results.
+    const caches = await findMemberEnrichmentCacheForAllSources(input.memberId, true)
 
+    // Skip if Crustdata has already been tried for this member.
+    const hasCrustdataCache = caches.some((cache) => cache.source === this.source)
+    if (hasCrustdataCache) {
+      this.log.debug(
+        { memberId: input.memberId },
+        'Skipping Crustdata for previously enriched profile!',
+      )
+
+      return false
+    }
+
+    // Check other sources' caches for a LinkedIn identity to scrape.
+    const cachesWithData = caches.filter((cache) => cache.data !== null)
     let hasEnrichableLinkedinInCache = false
-    for (const cache of caches) {
+    for (const cache of cachesWithData) {
       if (this.alsoFindInputsInSourceCaches.includes(cache.source)) {
         const service = EnrichmentSourceServiceFactory.getEnrichmentSourceService(
           cache.source,
@@ -164,7 +179,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       method: 'get',
       url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}/screener/person/enrich`,
       params: {
-        linkedin_profile_url: `https://linkedin.com/in/${handle}`,
+        linkedin_profile_url: `https://linkedin.com/in/${encodeURIComponent(handle)}`,
         enrich_realtime: true,
       },
       headers: {
@@ -198,13 +213,8 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
   private async findDistinctScrapableLinkedinIdentities(
     input: IEnrichmentSourceInput,
     caches: IMemberEnrichmentCache<IMemberEnrichmentData>[],
-  ): Promise<
-    (IMemberIdentity & { repeatedTimesInDifferentSources: number; isFromVerifiedSource: boolean })[]
-  > {
-    const consumableIdentities: (IMemberIdentity & {
-      repeatedTimesInDifferentSources: number
-      isFromVerifiedSource: boolean
-    })[] = []
+  ): Promise<ConsumableIdentity[]> {
+    const consumableIdentities: ConsumableIdentity[] = []
     const linkedinUrlHashmap = new Map<string, number>()
 
     for (const cache of caches) {
@@ -316,6 +326,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
           platform: this.platform,
           value: email.trim(),
           verified: false,
+          source: 'enrichment',
         })
       }
     }
@@ -364,6 +375,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
             value: `company:${workExperience.employer_linkedin_id}`,
             type: OrganizationIdentityType.USERNAME,
             verified: true,
+            source: 'enrichment',
           })
         }
 

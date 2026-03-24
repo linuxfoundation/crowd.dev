@@ -10,6 +10,8 @@ export * from './dashboard'
 
 export * from './integrations'
 
+export * from './integrationSettings'
+
 export * from './members'
 
 export * from './activities'

@@ -225,9 +225,21 @@ function select_services() {
         SERVICES+=("$filename")
     done < <(find "$CLI_HOME/services" -name '*.yaml')
 
-    # Show multiselect and store results in SELECTED_SERVICES
-    multiselect SELECTED_SERVICES SERVICES[@]
+    # Use fzf if available, fall back to built-in multiselect
+    if command -v fzf &>/dev/null; then
+        mapfile -t SELECTED_SERVICES < <(
+            printf '%s\n' "${SERVICES[@]}" | sort | fzf --multi --height=40% --prompt="Select services (TAB to toggle, ENTER to confirm): "
+        )
+    else
+        multiselect SELECTED_SERVICES SERVICES[@]
+    fi
 
+    if [[ ${#SELECTED_SERVICES[@]} -eq 0 ]]; then
+        error "No services selected!"
+        exit 1
+    fi
+
+    local selected_services=""
     for service in "${SELECTED_SERVICES[@]}"; do
         selected_services+="$service, "
     done
@@ -686,7 +698,7 @@ function migrate_postgres_local() {
 
 function migrate_productdb_local() {
     say "Building product flyway migration image..."
-    docker build $DOCKER_PLATFORM_FLAGS -t product_flyway -f $CLI_HOME/../backend/src/product/Dockerfile.flyway $CLI_HOME/../backend/src/product
+    docker build $DOCKER_PLATFORM_FLAGS -t product_flyway -f $CLI_HOME/../backend/src/product/Dockerfile.flyway $CLI_HOME/../backend/src/product --load
     say "Applying product database migrations!"
     docker run --rm --network "${PROJECT_NAME}-bridge" \
         -e PGHOST=product \
@@ -804,6 +816,53 @@ function scaffold_reset() {
     post_up_scaffold
 }
 
+function get_running_services() {
+    # Detect which services are currently running and whether they use DEV mode
+    RUNNING_SERVICES=()
+    RUNNING_SERVICES_DEV=()
+
+    for service in $CONTAINERS; do
+        if [[ $(check_container_status "${service}-dev") ]]; then
+            RUNNING_SERVICES_DEV+=("$service")
+        elif [[ $(check_container_status "${service}") ]]; then
+            RUNNING_SERVICES+=("$service")
+        fi
+    done
+}
+
+function reset_and_restart() {
+    say "Detecting running services..."
+    get_running_services
+
+    if [[ ${#RUNNING_SERVICES[@]} -eq 0 && ${#RUNNING_SERVICES_DEV[@]} -eq 0 ]]; then
+        say "No services running."
+    else
+        if [[ ${#RUNNING_SERVICES_DEV[@]} -gt 0 ]]; then
+            say "Running services (dev): ${RUNNING_SERVICES_DEV[*]}"
+        fi
+        if [[ ${#RUNNING_SERVICES[@]} -gt 0 ]]; then
+            say "Running services: ${RUNNING_SERVICES[*]}"
+        fi
+    fi
+
+    nl
+    say "Resetting scaffold..."
+    scaffold_reset
+
+    say "Restarting previously running services..."
+    for service in "${RUNNING_SERVICES[@]}"; do
+        say "Starting service $service"
+        start_service "$service"
+    done
+
+    for service in "${RUNNING_SERVICES_DEV[@]}"; do
+        say "Starting service $service (dev)"
+        DEV=1 start_service "$service"
+    done
+
+    say "Done! All previously running services have been restarted."
+}
+
 function kill_all_containers() {
     for i in $CONTAINERS; do
         say "Killing service $i."
@@ -884,7 +943,24 @@ function start() {
     service_start
 }
 
-SCRIPT_USAGE="${YELLOW}${PROJECT_NAME} CLI ${RESET}\n\nExample usage: ./cli [ start, start-dev, clean-start, clean-start-dev, start-backend, start-backend-dev, clean-start-backend, clean-start-backend-dev, scaffold =>, service =>, build =>, build-and-push ]"
+SCRIPT_USAGE="${YELLOW}${PROJECT_NAME} CLI ${RESET}\n
+Usage: ./cli <command>\n
+${YELLOW}Scaffold:${RESET}
+  scaffold [up|down|destroy|reset|create-migration|create-product-migration|migrate-up|up-test]\n
+${YELLOW}Services:${RESET}
+  service <name> [up|down|restart|status|logs|id]
+  start | start-dev | start-be | start-e2e
+  clean-start | clean-start-dev | clean-start-backend | clean-start-backend-dev | clean-start-fe-dev
+  service-restart | service-restart-be | service-restart-dev | service-restart-fe-dev
+  reset-selected-services | reset-selected-services-dev
+  reset-and-restart\n
+${YELLOW}Build & Deploy:${RESET}
+  build <name> | build-and-push <name> | build-and-push-multiple <names...> | push <name>
+  deploy-staging | deploy-production\n
+${YELLOW}Database:${RESET}
+  db-backup <name> | db-restore <name> | migrate-env\n
+${YELLOW}Lint:${RESET}
+  lint-backend | lint-services\n"
 
 [[ -z "$1" ]] && say "$SCRIPT_USAGE" && exit 1
 while test $# -gt 0; do
@@ -982,7 +1058,7 @@ while test $# -gt 0; do
         exit
         ;;
     clean-start-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "discord-ws" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "discord-ws" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker")
         CLEAN_START=1
         DEV=1
         start
@@ -1052,6 +1128,10 @@ while test $# -gt 0; do
         ;;
     db-restore)
         restore_db_backup $2
+        exit
+        ;;
+    reset-and-restart)
+        reset_and_restart
         exit
         ;;
     lint-backend)

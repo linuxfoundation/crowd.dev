@@ -42,5 +42,5 @@ SCHEMA >
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)
-ENGINE_SORTING_KEY slug
+ENGINE_SORTING_KEY slug, id
 ENGINE_VER updatedAt

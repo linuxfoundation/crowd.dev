@@ -4,6 +4,11 @@ DESCRIPTION >
     - Tracks issue resolution velocity and patterns across projects and repositories.
     - `id` is the unique identifier for the analyzed issue record.
     - `sourceId` is the external identifier from the source platform (GitHub, GitLab, etc.).
+    - `segmentId` links to the project segment this issue belongs to.
+    - `channel` contains the repository where the issue was created.
+    - `platform` is the source platform (GitHub, GitLab, etc.).
+    - `memberId` is the member who opened the issue.
+    - `organizationId` is the organization affiliated with the issue opener.
     - `openedAt` is the timestamp when the issue was opened.
     - `closedAt` is the timestamp when the issue was closed (nullable for open issues).
     - `closedInSeconds` is the computed duration from open to close in seconds (nullable for open issues).
@@ -14,6 +19,10 @@ SCHEMA >
     `id` String,
     `sourceId` String,
     `segmentId` String,
+    `channel` String,
+    `platform` LowCardinality(String),
+    `memberId` String,
+    `organizationId` String,
     `openedAt` DateTime64(3),
     `commentedAt` Nullable(DateTime64(3)),
     `closedAt` Nullable(DateTime64(3)),
@@ -22,4 +31,4 @@ SCHEMA >
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(openedAt)
-ENGINE_SORTING_KEY openedAt, id, sourceId
+ENGINE_SORTING_KEY segmentId, channel, openedAt, id, sourceId

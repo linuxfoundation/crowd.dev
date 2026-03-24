@@ -1,12 +1,12 @@
 <template>
   <div>
     <div class="flex justify-between pb-6">
-      <lf-button type="primary-link" @click="emit('add')">
+      <lf-button type="primary-link" class="!font-medium" @click="emit('add')">
         <lf-icon name="plus" />
-        Add repositories
+        Sync repositories/organizations
       </lf-button>
-      <lf-button type="secondary-link" @click="isBulkSelectOpened = true">
-        <lf-icon name="list-check" />
+      <lf-button type="secondary-link" class="!font-medium" @click="isBulkSelectOpened = true">
+        <lf-icon name="list-check" type="light" class="!font-light" />
         Bulk mapping
       </lf-button>
     </div>
@@ -14,7 +14,7 @@
       <lf-search
         v-model="search"
         placeholder="Search repositories..."
-        class="!h-9"
+        class="!h-9 !rounded-full"
       />
     </div>
     <div v-if="filteredRepos.length === 0" class="flex justify-center">
@@ -38,12 +38,12 @@
         @remove-mapping="(urls) => urls.forEach((url) => removeMapping(url))"
       >
         <lf-table>
-          <thead>
+          <thead class="!border-b-gray-200">
             <tr>
-              <th class="w-5/12">
+              <th class="w-5/12 !h-10 !text-gray-500">
                 Repository
               </th>
-              <th class="w-7/12">
+              <th class="w-7/12 !h-10 !text-gray-500">
                 Mapped with
               </th>
             </tr>

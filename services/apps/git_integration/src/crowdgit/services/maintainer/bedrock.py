@@ -1,8 +1,11 @@
+import asyncio
 import json
+import random
 from typing import Generic, TypeVar
 
 import aioboto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from pydantic import BaseModel, ValidationError
 
 from crowdgit.logger import logger
@@ -18,6 +21,10 @@ T = TypeVar("T", bound=BaseModel)
 class BedrockResponse(BaseModel, Generic[T]):
     output: T
     cost: float
+
+
+MAX_THROTTLE_RETRIES = 5
+THROTTLE_BASE_DELAY = 10  # seconds
 
 
 async def invoke_bedrock(
@@ -71,41 +78,60 @@ async def invoke_bedrock(
             }
         )
 
-        try:
-            modelId = "us.anthropic.claude-sonnet-4-20250514-v1:0"
-            accept = "application/json"
-            contentType = "application/json"
-            response = await bedrock_client.invoke_model(
-                body=body, modelId=modelId, accept=accept, contentType=contentType
-            )
+        modelId = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        accept = "application/json"
+        contentType = "application/json"
 
+        for attempt in range(1, MAX_THROTTLE_RETRIES + 1):
             try:
-                body_bytes = await response["body"].read()
-                response_body = json.loads(body_bytes.decode("utf-8"))
-                raw_text = response_body["content"][0]["text"].replace('"""', "").strip()
+                response = await bedrock_client.invoke_model(
+                    body=body, modelId=modelId, accept=accept, contentType=contentType
+                )
+                break
+            except ClientError as e:
+                if (
+                    e.response["Error"]["Code"] == "ThrottlingException"
+                    and attempt < MAX_THROTTLE_RETRIES
+                ):
+                    delay = THROTTLE_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 2)
+                    logger.warning(
+                        f"Bedrock ThrottlingException (attempt {attempt}/{MAX_THROTTLE_RETRIES}), "
+                        f"retrying in {delay:.1f}s: {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
 
-                # Expect pure JSON - no markdown handling
-                output = json.loads(raw_text)
+        try:
+            body_bytes = await response["body"].read()
+            response_body = json.loads(body_bytes.decode("utf-8"))
+            raw_text = response_body["content"][0]["text"].replace('"""', "").strip()
 
-                # Calculate cost
-                input_tokens = response_body["usage"]["input_tokens"]
-                output_tokens = response_body["usage"]["output_tokens"]
-                input_cost = (input_tokens / 1000) * 0.003
-                output_cost = (output_tokens / 1000) * 0.015
-                total_cost = input_cost + output_cost
+            # Strip markdown code fences if present (Haiku sometimes ignores the system prompt)
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("\n", 1)[-1]
+                if raw_text.endswith("```"):
+                    raw_text = raw_text.rsplit("```", 1)[0]
+                raw_text = raw_text.strip()
 
-                # Validate output with the provided model if it exists
-                try:
-                    validated_output = pydantic_model.model_validate(output, strict=True)
-                except ValidationError as ve:
-                    logger.error(f"Output validation failed: {ve}")
-                    raise ve
+            output = json.loads(raw_text)
 
-                return BedrockResponse[T](output=validated_output, cost=total_cost)
-            except Exception as e:
-                logger.error("Failed to parse the response as JSON. Raw response:")
-                logger.error(response_body["content"][0]["text"])
-                raise e
+            # Calculate cost (Claude Haiku 4.5 on AWS Bedrock: $1.00/$5.00 per 1M tokens)
+            input_tokens = response_body["usage"]["input_tokens"]
+            output_tokens = response_body["usage"]["output_tokens"]
+            input_cost = (input_tokens / 1_000_000) * 1.00
+            output_cost = (output_tokens / 1_000_000) * 5.00
+            total_cost = input_cost + output_cost
+
+            # Validate output with the provided model if it exists
+            try:
+                validated_output = pydantic_model.model_validate(output, strict=True)
+            except ValidationError as ve:
+                logger.error(f"Output validation failed: {ve}")
+                raise ve
+
+            return BedrockResponse[T](output=validated_output, cost=total_cost)
         except Exception as e:
-            logger.error(f"Amazon Bedrock API error: {e}")
+            logger.error("Failed to parse the response as JSON. Raw response:")
+            logger.error(response_body["content"][0]["text"])
             raise e

@@ -49,6 +49,9 @@ module.exports = {
     'vuejs-accessibility/label-has-for': 'off',
     'func-names': 'off',
     'import/no-cycle': 'off',
+    // TODO: This is a temporary rule to allow the use of destructuring in setup props - from package version upgrade
+    'vue/no-setup-props-destructure': 'off',
+    'vue/space-infix-ops': 'off',
     'vue/max-len': [
       'error',
       {

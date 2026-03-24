@@ -86,10 +86,11 @@ export class MemberService {
     return response.data;
   }
 
-  static async find(id, segmentId) {
+  static async find(id, segmentId, includeAllAttributes = false) {
     const response = await authAxios.get(`/member/${id}`, {
       params: {
         segments: [segmentId ?? getSelectedProjectGroup().id],
+        includeAllAttributes,
         include: {
           identities: true,
           memberOrganizations: true,

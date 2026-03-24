@@ -95,8 +95,8 @@ SQL >
         and assessment.result <> 'Not Run'
         and eval.insightsProjectId in (
             select insightsProjectId
-            from segmentRepositories sr final
-            where sr.excluded IS NULL OR sr.excluded = false
+            from repositories r final
+            where r.excluded IS NULL OR r.excluded = false
         )
     group by
         eval.id,

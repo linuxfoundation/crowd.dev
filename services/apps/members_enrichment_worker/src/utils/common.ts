@@ -34,6 +34,7 @@ export function normalizeSocialIdentity(
     type: identityType,
     platform: data.platform,
     verified: false,
+    source: 'enrichment',
   })
 
   return normalized

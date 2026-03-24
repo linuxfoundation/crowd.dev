@@ -1,4 +1,9 @@
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
+import {
+  clearNangoCursorForModel,
+  getNangoMappingByConnectionId,
+} from '@crowd/data-access-layer/src/integrations'
+import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { INangoWebhookPayload, platformToNangoIntegration } from '@crowd/nango'
 import { TEMPORAL_CONFIG, WorkflowIdReusePolicy, getTemporalClient } from '@crowd/temporal'
@@ -27,9 +32,11 @@ setImmediate(async () => {
   )
 
   if (integration) {
+    const qx = pgpQx(dbConnection)
+    const nangoMappingRow = await getNangoMappingByConnectionId(qx, connectionId)
     if (
       integration.id === connectionId ||
-      (integration.settings.nangoMapping && integration.settings.nangoMapping[connectionId])
+      (nangoMappingRow && nangoMappingRow.integrationId === integration.id)
     ) {
       log.info(
         `Triggering nango integration check for integrationId '${integrationId}' and connectionId '${connectionId}'!`,
@@ -39,20 +46,7 @@ setImmediate(async () => {
         integration.settings,
       )
 
-      await dbConnection.none(
-        `
-        update integrations 
-        set settings = jsonb_set(
-                          settings,
-                        '{cursors}',
-                        (settings->'cursors') - $(model))
-        where id = $(integrationId)
-        `,
-        {
-          model,
-          integrationId,
-        },
-      )
+      await clearNangoCursorForModel(pgpQx(dbConnection), integrationId, connectionId, model)
 
       const payload: INangoWebhookPayload = {
         connectionId: connectionId,

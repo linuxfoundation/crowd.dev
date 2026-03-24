@@ -3,12 +3,7 @@ import {
   calculateAllMemberLeafAggregates,
   calculateAllOrganizationLeafAggregates,
 } from './activities/calculateLeafSegmentAggregates'
-import {
-  getAffiliationsLastCheckedAt,
-  getLLMResult,
-  getMemberIdsForAffiliationUpdates,
-  updateAffiliationsLastCheckedAt,
-} from './activities/common'
+import { getLLMResult } from './activities/common'
 import {
   createMemberBotSuggestion,
   createMemberNoBot,
@@ -45,9 +40,6 @@ import {
 
 export {
   updateMemberAffiliations,
-  getAffiliationsLastCheckedAt,
-  getMemberIdsForAffiliationUpdates,
-  updateAffiliationsLastCheckedAt,
   syncMember,
   syncOrganization,
   findMembersInOrganization,

@@ -57,18 +57,19 @@
       </div>
     </article>
 
-    <!-- User -->
+    <!-- Actor -->
     <article class="flex pb-4">
       <div class="w-5/12 text-sm leading-6 font-medium text-gray-500">
-        User
+        Actor
       </div>
       <div class="w-7/12 text-sm leading-24">
-        {{ props.log.user.fullName }}
-        <p class="text-2xs text-gray-500">
-          {{ props.log.user.email }}
+        {{ props.log.actor.fullName }}
+        <p v-if="props.log.actor.email" class="text-2xs text-gray-500">
+          {{ props.log.actor.email }}
         </p>
         <p class="text-2xs text-gray-500">
-          ID: {{ props.log.user.id }}
+          <span v-if="props.log.actor.type === 'service'" class="capitalize">{{ props.log.actor.type }} · </span>
+          ID: {{ props.log.actor.id }}
         </p>
       </div>
     </article>

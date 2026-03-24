@@ -24,12 +24,9 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
     return results
   }
 
-  public async getExistingPlatforms(tenantId: string): Promise<PlatformType[]> {
+  public async getExistingPlatforms(): Promise<PlatformType[]> {
     const results = await this.db().any(
-      `select distinct platform from "memberIdentities" where "tenantId" = $(tenantId)`,
-      {
-        tenantId,
-      },
+      `select distinct platform from "memberIdentities" where "deletedAt" is null;`,
     )
 
     return results.map((p) => p.platform)
@@ -105,7 +102,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
                                               )
                                       ) as identities
                             from "memberIdentities" mi
-                            where mi."memberId" = $(id)
+                            where mi."memberId" = $(id) and mi."deletedAt" is null
                             group by mi."memberId"),
             activity_data as (select a."memberId",
                                       a."segmentId",

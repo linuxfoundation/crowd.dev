@@ -1,7 +1,10 @@
 import {
   blockMemberOrganizationAffiliation,
-  getOrganizationMembers,
-} from './activities/block-organization-affiliation'
+  fetchProjectMemberOrganizationsToBlock,
+  getMembersForAffiliationRecalc,
+  markMemberForAffiliationRecalc,
+  setOrganizationAffiliationPolicyIfNotBlocked,
+} from './activities/block-project-organization-affiliations'
 import {
   findDuplicateMembersAfterDate,
   moveMemberActivityRelations,
@@ -13,6 +16,14 @@ import {
   queueOrgForAggComputation,
   syncRemoveOrganization,
 } from './activities/cleanup/organization'
+import {
+  deleteOrphanMembersSegmentsAgg,
+  deleteOrphanOrganizationSegmentsAgg,
+  getOrphanMembersSegmentsAgg,
+  getOrphanOrganizationSegmentsAgg,
+  startOrphanCleanupRun,
+  updateOrphanCleanupRun,
+} from './activities/cleanup/segments-agg'
 import {
   calculateMemberAffiliations,
   getWorkflowsCount,
@@ -40,6 +51,10 @@ import {
   isLfxMember,
   updateOrganizationIdentity,
 } from './activities/fix-organization-identities-with-wrong-urls'
+import {
+  findMemberWorkExperienceWithEpochDates,
+  updateMemberWorkExperience,
+} from './activities/fix-work-experience-epoch-dates'
 import {
   findMembersWithSamePlatformIdentitiesDifferentCapitalization,
   findMembersWithSameVerifiedEmailsInDifferentPlatforms,
@@ -78,6 +93,17 @@ export {
   unlinkOrganizationFromBotActivities,
   syncMember,
   blockMemberOrganizationAffiliation,
-  getOrganizationMembers,
+  fetchProjectMemberOrganizationsToBlock,
+  setOrganizationAffiliationPolicyIfNotBlocked,
+  markMemberForAffiliationRecalc,
+  getMembersForAffiliationRecalc,
   calculateMemberAffiliations,
+  startOrphanCleanupRun,
+  updateOrphanCleanupRun,
+  getOrphanMembersSegmentsAgg,
+  deleteOrphanMembersSegmentsAgg,
+  getOrphanOrganizationSegmentsAgg,
+  deleteOrphanOrganizationSegmentsAgg,
+  findMemberWorkExperienceWithEpochDates,
+  updateMemberWorkExperience,
 }

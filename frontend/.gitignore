@@ -1,7 +1,6 @@
 .DS_Store
 node_modules
 dist
-cypress
 
 # local env files
 .env*

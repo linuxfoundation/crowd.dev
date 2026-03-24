@@ -18,7 +18,7 @@ import { IJobDefinition } from '../types'
 const job: IJobDefinition = {
   name: 'nango-github-sync',
   cronTime: CronTime.every(
-    Number(process.env.CROWD_GH_NANGO_SYNC_INTERVAL_MINUTES || IS_DEV_ENV ? 5 : 60),
+    Number(process.env.CROWD_GH_NANGO_SYNC_INTERVAL_MINUTES || (IS_DEV_ENV ? 5 : 60)),
   ).minutes(),
   timeout: 4 * 60 * 60, // 4 hours
   process: async (ctx) => {

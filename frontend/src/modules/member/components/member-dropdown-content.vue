@@ -156,7 +156,6 @@ import { MemberService } from '@/modules/member/member-service';
 
 import { ToastStore } from '@/shared/message/notification';
 import ConfirmDialog from '@/shared/dialog/confirm-dialog';
-import { useMemberStore } from '@/modules/member/store/pinia';
 import { useRoute } from 'vue-router';
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
@@ -166,6 +165,8 @@ import { LfPermission } from '@/shared/modules/permissions/types/Permissions';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
+import { useQueryClient } from '@tanstack/vue-query';
+import { TanstackKey } from '@/shared/types/tanstack';
 import { Member } from '../types/Member';
 
 enum Actions {
@@ -189,6 +190,7 @@ const props = defineProps<{
 }>();
 
 const route = useRoute();
+const queryClient = useQueryClient();
 
 const { doFind } = mapActions('member');
 
@@ -196,13 +198,30 @@ const { trackEvent } = useProductTracking();
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
-const memberStore = useMemberStore();
-
 const { hasPermission } = usePermissions();
 
 const isFindingGitHubDisabled = computed(() => (
   !!props.member.username?.github
 ));
+
+// Refresh member data by invalidating TanStack Query cache
+// Note: Backend cache is invalidated by passing invalidateCache parameter to update/delete operations
+const refreshMemberData = async () => {
+  await queryClient.invalidateQueries({
+    queryKey: [TanstackKey.MEMBERS_LIST],
+  });
+};
+
+// Helper function to fetch member with all attributes before update
+const fetchMemberWithAllAttributes = async (memberId: string) => {
+  const response = await MemberService.find(
+    memberId,
+    selectedProjectGroup.value?.id,
+    true,
+  );
+
+  return response;
+};
 
 const doManualAction = async ({
   loadingMessage,
@@ -266,8 +285,8 @@ const handleCommand = async (command: {
         successMessage: 'Profile successfully deleted',
         errorMessage: 'Something went wrong',
         actionFn: MemberService.destroyAll([command.member.id]),
-      }).then(() => {
-        memberStore.fetchMembers({ reload: true });
+      }).then(async () => {
+        await refreshMemberData();
       });
     });
 
@@ -292,9 +311,9 @@ const handleCommand = async (command: {
       actionFn: isSyncing
         ? HubspotApiService.syncMember(command.member.id)
         : HubspotApiService.stopSyncMember(command.member.id),
-    }).then(() => {
+    }).then(async () => {
       if (route.name === 'member') {
-        memberStore.fetchMembers({ reload: true });
+        await refreshMemberData();
       } else {
         doFind({
           id: command.member.id,
@@ -316,28 +335,26 @@ const handleCommand = async (command: {
       },
     });
 
+    // Fetch member with all attributes to prevent data loss
+    const memberWithAllAttributes = await fetchMemberWithAllAttributes(command.member.id);
+    const currentAttributes = memberWithAllAttributes.attributes;
+
     doManualAction({
       loadingMessage: 'Profile is being updated',
       successMessage: 'Profile updated successfully',
       errorMessage: 'Something went wrong',
       actionFn: MemberService.update(command.member.id, {
         attributes: {
-          ...command.member.attributes,
+          ...currentAttributes,
           isTeamMember: {
             default: command.value,
             custom: command.value,
           },
         },
+        invalidateCache: true,
       }),
-    }).then(() => {
-      if (route.name === 'member') {
-        memberStore.fetchMembers({ reload: true });
-      } else {
-        doFind({
-          id: command.member.id,
-          segments: [selectedProjectGroup.value?.id],
-        });
-      }
+    }).then(async () => {
+      await refreshMemberData();
     });
 
     return;
@@ -356,28 +373,29 @@ const handleCommand = async (command: {
       },
     });
 
+    // Fetch member with all attributes to prevent data loss
+    const memberWithAllAttributes = await fetchMemberWithAllAttributes(command.member.id);
+    const currentAttributes = memberWithAllAttributes.attributes;
+
+    const isBot = command.action === Actions.MARK_CONTACT_AS_BOT;
+
     doManualAction({
       loadingMessage: 'Profile is being updated',
       successMessage: 'Profile updated successfully',
       errorMessage: 'Something went wrong',
       actionFn: MemberService.update(command.member.id, {
         attributes: {
-          ...command.member.attributes,
+          ...currentAttributes,
           isBot: {
-            default: command.action === Actions.MARK_CONTACT_AS_BOT,
-            custom: command.action === Actions.MARK_CONTACT_AS_BOT,
+            ...currentAttributes.isBot,
+            default: isBot,
+            custom: isBot,
           },
         },
+        invalidateCache: true,
       }),
-    }).then(() => {
-      if (route.name === 'member') {
-        memberStore.fetchMembers({ reload: true });
-      } else {
-        doFind({
-          id: command.member.id,
-          segments: command.member.segments.map((s) => s.id),
-        });
-      }
+    }).then(async () => {
+      await refreshMemberData();
     });
 
     return;

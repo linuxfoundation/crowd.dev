@@ -35,7 +35,7 @@ SQL >
         FROM activities_filtered af
         JOIN organizations org FINAL ON org.id = af.organizationId
         GROUP BY org.id, org.logo, org.displayName
-        ORDER BY contributionCount DESC
+        ORDER BY contributionCount DESC, id desc
         LIMIT {{ Int32(limit, 10) }}
         OFFSET {{ Int32(offset, 0) }}
     {% end %}

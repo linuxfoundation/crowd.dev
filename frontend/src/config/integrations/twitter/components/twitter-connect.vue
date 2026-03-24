@@ -4,7 +4,7 @@
     <!--      <lf-icon name="circle-info" type="regular" />-->
     <!--      Details-->
     <!--    </lf-button>-->
-    <lf-button type="secondary" @click="connect()">
+    <lf-button type="outline" @click="connect()">
       <lf-icon name="link-simple" />
       <slot>Connect</slot>
     </lf-button>

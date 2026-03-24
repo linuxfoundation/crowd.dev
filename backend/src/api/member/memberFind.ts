@@ -20,6 +20,9 @@ export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.memberRead)
 
   const segmentId = req.query.segments?.length > 0 ? req.query.segments[0] : null
+  const includeAllAttributes =
+    req.query.includeAllAttributes === 'true' || req.query.includeAllAttributes === true
+
   if (!segmentId) {
     await req.responseHandler.error(req, res, {
       code: 400,
@@ -28,7 +31,12 @@ export default async (req, res) => {
     return
   }
 
-  const payload = await new MemberService(req).findById(req.params.id, segmentId, req.query.include)
+  const payload = await new MemberService(req).findById(
+    req.params.id,
+    segmentId,
+    req.query.include,
+    includeAllAttributes,
+  )
 
   await req.responseHandler.success(req, res, payload)
 }

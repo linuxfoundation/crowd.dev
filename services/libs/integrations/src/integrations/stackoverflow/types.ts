@@ -10,10 +10,7 @@ export interface StackOverflowPlatformSettings {
   key: string
 }
 
-export interface IStackOverflowIntegrationSettings {
-  tags: string[]
-  keywords: string[]
-}
+export { IStackoverflowIntegrationSettings as IStackOverflowIntegrationSettings } from '@crowd/types'
 
 export interface IStackOverflowPublishQuestion {
   question: StackOverflowShallowQuestion

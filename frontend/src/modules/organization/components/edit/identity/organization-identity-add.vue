@@ -137,6 +137,7 @@ const defaultForm: OrganizationIdentity = {
   verified: false,
   platform: Platform.CUSTOM,
   type: OrganizationIdentityType.USERNAME,
+  source: 'ui',
   sourceId: null,
 };
 

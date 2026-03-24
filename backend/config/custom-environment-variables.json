@@ -143,9 +143,6 @@
     "installationId": "GITHUB_TOKEN_INSTALLATION_ID",
     "privateKey": "GITHUB_TOKEN_PRIVATE_KEY"
   },
-  "slackAlerting": {
-    "url": "CROWD_SLACK_ALERTING_URL"
-  },
   "weeklyEmails": {
     "enabled": "CROWD_WEEKLY_EMAILS_ENABLED"
   },
@@ -156,7 +153,9 @@
   },
   "auth0": {
     "clientId": "CROWD_AUTH0_CLIENT_ID",
-    "jwks": "CROWD_AUTH0_JWKS"
+    "jwks": "CROWD_AUTH0_JWKS",
+    "issuerBaseURL": "CROWD_AUTH0_ISSUER_BASE_URL",
+    "audience": "CROWD_AUTH0_AUDIENCE"
   },
   "sso": {
     "crowdTenantId": "CROWD_SSO_CROWD_TENANT_ID",

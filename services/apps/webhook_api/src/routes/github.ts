@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { Error400BadRequest } from '@crowd/common'
+import { BadRequestError } from '@crowd/common'
 import { WebhooksRepository } from '@crowd/data-access-layer/src/old/apps/webhook_api/webhooks.repo'
 import { PlatformType, WebhookType } from '@crowd/types'
 
@@ -14,18 +14,18 @@ export const installGithubRoutes = async (app: express.Express) => {
     '/github',
     asyncWrap(async (req, res) => {
       if (!req.headers[SIGNATURE_HEADER]) {
-        throw new Error400BadRequest('Missing signature header!')
+        throw new BadRequestError('Missing signature header!')
       }
       const signature = req.headers['x-hub-signature']
 
       if (!req.headers[EVENT_HEADER]) {
-        throw new Error400BadRequest('Missing event header!')
+        throw new BadRequestError('Missing event header!')
       }
       const event = req.headers['x-github-event']
 
       const data = req.body
       if (!data.installation?.id) {
-        throw new Error400BadRequest('Missing installation id!')
+        throw new BadRequestError('Missing installation id!')
       }
       const identifier = data.installation.id.toString()
       const repo = new WebhooksRepository(req.dbStore, req.log)

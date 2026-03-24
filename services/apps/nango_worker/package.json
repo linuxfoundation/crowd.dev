@@ -10,7 +10,9 @@
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",
-    "check-nango-mapping": "tsx src/bin/check-nango-mapping.ts"
+    "check-nango-mapping": "tsx src/bin/check-nango-mapping.ts",
+    "script:create-missing-github-token-connections": "tsx src/bin/create-missing-github-token-connections.ts",
+    "script:sync-github-token-connections-metadata": "tsx src/bin/sync-github-token-connections-metadata.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",

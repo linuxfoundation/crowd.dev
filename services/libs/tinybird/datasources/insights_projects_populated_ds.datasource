@@ -16,6 +16,7 @@ DESCRIPTION >
     - `collectionsSlugs` array contains slugs of collections this project belongs to.
     - `connectedPlatforms` array lists platforms integrated for this project.
     - `firstCommit` is the timestamp of the earliest commit in the project (nullable).
+    - `firstCommitUrl` is the URL link to the first commit on the source platform (empty string if not available).
     - `score` and `rank` provide project importance scoring and ranking (Float64, UInt64).
     - `repoData` array contains tuples of (repository, score, rank) for multi-repo projects.
     - `softwareValue` is the estimated economic value of the software (UInt64).
@@ -49,6 +50,7 @@ SCHEMA >
     `collectionsSlugs` Array(String),
     `connectedPlatforms` Array(String),
     `firstCommit` Nullable(DateTime64(3)),
+    `firstCommitUrl` String,
     `score` Float64,
     `rank` UInt64,
     `repoData` Array(Tuple(String, Float64, UInt64)),

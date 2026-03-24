@@ -122,7 +122,20 @@ export async function insertActivities(
       },
       'Dispatching activity to queue!',
     )
-    await emitter.sendMessage(generateUUIDv4(), row, generateUUIDv4())
+    const messageWithMetadata = {
+      ...row,
+      metadata: {
+        commit_timestamp: new Date().toISOString(),
+      },
+    }
+    logger.debug(
+      {
+        activityId: row.id,
+        commitTimestamp: messageWithMetadata.metadata.commit_timestamp,
+      },
+      'Sending activity with metadata to Kafka',
+    )
+    await emitter.sendMessage(generateUUIDv4(), messageWithMetadata, generateUUIDv4())
   }
   telemetry.increment('tinybird.insert_activity', activities.length)
 

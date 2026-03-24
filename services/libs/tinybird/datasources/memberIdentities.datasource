@@ -11,6 +11,7 @@ DESCRIPTION >
     - `type` specifies the identity type (username, email, user_id, etc.).
     - `verified` indicates whether this identity has been verified as belonging to the member (UInt8 boolean).
     - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
+    - `deletedAt` is the soft deletion timestamp; null means active, non-null means soft-deleted. Filter with `isNull(deletedAt)` to exclude deleted records.
 
 SCHEMA >
     `id` String `json:$.record.id`,
@@ -22,7 +23,8 @@ SCHEMA >
     `type` String `json:$.record.type`,
     `verified` UInt8 `json:$.record.verified`,
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
-    `updatedAt` DateTime64(3) `json:$.record.updatedAt`
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
+    `deletedAt` Nullable(DateTime64(3)) `json:$.record.deletedAt`
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

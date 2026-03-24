@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { Error400BadRequest } from '@crowd/common'
+import { BadRequestError } from '@crowd/common'
 import { WebhooksRepository } from '@crowd/data-access-layer/src/old/apps/webhook_api/webhooks.repo'
 import { WebhookType } from '@crowd/types'
 
@@ -18,7 +18,7 @@ export const installGroupsIoRoutes = async (app: express.Express) => {
       const groupName = data?.group?.name
 
       if (!groupName) {
-        throw new Error400BadRequest('Missing group name!')
+        throw new BadRequestError('Missing group name!')
       }
 
       const repo = new WebhooksRepository(req.dbStore, req.log)

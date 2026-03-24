@@ -25,16 +25,26 @@ SQL >
 NODE leaderboards_resolution_rate_results
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (ORDER BY resolutionRate DESC) as rank,
         p.id as id,
         p.segmentId as segmentId,
         p.name as name,
         p.slug as slug,
         p.logoUrl as logoUrl,
+        'resolution-rate' as leaderboardType,
+        c.resolutionRate as value,
+        0.0 as previousPeriodValue,
         p.collectionsSlugs as collectionsSlugs,
         p.isLF as isLF,
-        c.resolutionRate as value,
-        p.status as status
+        [] as githubHandleArray,
+        p.status as status,
+        count() OVER () as totalCount
     FROM leaderboards_resolution_rate_projects p
     INNER JOIN leaderboards_resolution_rate_activities c ON p.segmentId = c.segmentId
     ORDER BY resolutionRate DESC
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 25 1 * * *

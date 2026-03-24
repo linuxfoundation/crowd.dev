@@ -1,7 +1,6 @@
 import { DataSinkWorkerEmitter, SearchSyncWorkerEmitter } from '@crowd/common_services'
-import { dbStoreQx } from '@crowd/data-access-layer'
+import { dbStoreQx, findIdentitiesForMembers } from '@crowd/data-access-layer'
 import { DbStore, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { findIdentitiesForMembers } from '@crowd/data-access-layer/src/member_identities'
 import DataSinkRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/dataSink.repo'
 import MemberRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/member.repo'
 import { getServiceLogger } from '@crowd/logging'

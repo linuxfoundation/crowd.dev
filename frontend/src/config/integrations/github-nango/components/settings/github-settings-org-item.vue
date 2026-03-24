@@ -1,7 +1,7 @@
 <template>
   <div>
     <div
-      class="bg-gray-50 px-2 py-1.5 border-t border-b border-gray-100 flex flex-col"
+      class="bg-gray-50 px-2 py-1.5 border-t border-b border-gray-200 flex flex-col"
     >
       <div class="flex w-full items-center justify-between gap-3">
         <!-- Org information -->
@@ -37,7 +37,7 @@
           <lf-dropdown placement="bottom-end" width="11.125rem">
             <template #trigger>
               <lf-button type="secondary-ghost" icon-only>
-                <lf-icon name="ellipsis" />
+                <lf-icon name="ellipsis" type="light" class="!font-light" />
               </lf-button>
             </template>
             <lf-dropdown-item v-if="!isSynced" @click="sync()">

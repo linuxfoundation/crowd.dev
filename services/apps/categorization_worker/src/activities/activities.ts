@@ -13,26 +13,56 @@ import {
 import { svc } from '../main'
 import { IFindCategoryParams, IFindCollectionsParams, IListedCategory } from '../types'
 
+function validateAndCorrectLLMItems<T extends { name: string; id: string }>(
+  llmItems: T[],
+  databaseItems: T[],
+  itemType: string,
+): T[] {
+  if (!llmItems || llmItems.length === 0) {
+    return []
+  }
+
+  const validUuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+  return llmItems
+    .map((llmItem) => {
+      // Try to find by ID if UUID is valid
+      if (validUuidRegex.test(llmItem.id)) {
+        const dbItem = databaseItems.find((item) => item.id === llmItem.id)
+        if (dbItem) {
+          return { name: dbItem.name, id: dbItem.id } as T
+        }
+        svc.log.warn(`${itemType} UUID "${llmItem.id}" not found in database, trying name lookup`)
+      } else {
+        svc.log.warn(
+          `${itemType} has invalid UUID format: "${llmItem.id}" (length: ${llmItem.id?.length || 0}), trying name lookup`,
+        )
+      }
+
+      // Fallback: try to find by name
+      const dbItem = llmItem.name
+        ? databaseItems.find((item) => item.name.toLowerCase() === llmItem.name.toLowerCase())
+        : null
+
+      if (dbItem) {
+        svc.log.info(`Found ${itemType} "${llmItem.name}" by name, using DB UUID "${dbItem.id}"`)
+        return { name: dbItem.name, id: dbItem.id } as T
+      }
+
+      svc.log.warn(`${itemType} "${llmItem.name}" not found in database, skipping`)
+      return null
+    })
+    .filter(Boolean)
+}
+
 function formatTextCategoriesForPrompt(categories: IListedCategory[]): string {
-  const groupedCategories = new Map<string, string[]>()
+  const categoryObjects = categories.map((category) => ({
+    name: category.name,
+    id: category.id,
+    categoryGroupName: category.categoryGroupName,
+  }))
 
-  for (const category of categories) {
-    const groupName = category.categoryGroupName
-    if (!groupedCategories.has(groupName)) {
-      groupedCategories.set(groupName, [])
-    }
-    groupedCategories.get(groupName).push(category.name + '-' + category.id)
-  }
-
-  let categoriesText = ''
-  for (const [groupName, names] of groupedCategories) {
-    categoriesText += `## ${groupName}\n`
-    for (const name of names) {
-      categoriesText += `- ${name}\n`
-    }
-    categoriesText += '\n'
-  }
-  return categoriesText.trim()
+  return JSON.stringify(categoryObjects, null, 2)
 }
 
 function formatTextCollectionsForPrompt(
@@ -87,60 +117,75 @@ export async function findCategoriesWithLLM({
   })
 
   const prompt = `
+    You are an expert open-source analyst. Your job is to classify ${github} into appropriate categories.
 
-      You are an expert open-source analyst. Your job is to classify ${github} into appropriate categories.
+    ## Context and Purpose
+    This classification is part of the Open Source Index, a comprehensive catalog of the most critical open-source projects.
+    Developers and organizations use this index to:
+    - Discover relevant open-source tools for their technology stack
+    - Understand the open-source ecosystem in their domain
+    - Make informed decisions about which projects to adopt or contribute to
+    - Assess the health and importance of projects in specific technology areas
 
-      ## Context and Purpose
-      This classification is part of the Open Source Index, a comprehensive catalog of the most critical open-source projects. 
-      Developers and organizations use this index to:
-      - Discover relevant open-source tools for their technology stack
-      - Understand the open-source ecosystem in their domain
-      - Make informed decisions about which projects to adopt or contribute to
-      - Assess the health and importance of projects in specific technology areas
+    Accurate categorization is essential for users to find the right projects when browsing by technology domain or industry vertical.
 
-      Accurate categorization is essential for users to find the right projects when browsing by technology domain or industry vertical.
+    ## Project Information
+    - URL: ${github}
+    - Description: ${description}
+    - Topics: ${topics}
+    - Homepage: ${website}
 
-      ## Project Information
-      - URL: ${github}
-      - Description: ${description}
-      - Topics: ${topics}
-      - Homepage: ${website}
+    ## Available Categories (AUTHORITATIVE, CLOSED SET)
+    The following categories are the ONLY valid options.
+    They are provided as a JSON array of immutable objects.
+    Every valid category is exactly one object in this array:
 
-      ## Available Categories
-      These categories are organized by category groups and each category is shown as "CategoryName-CategoryID":
+    ${formatTextCategoriesForPrompt(categories)}
 
-      ${formatTextCategoriesForPrompt(categories)}
+    ## NON-NEGOTIABLE OUTPUT CONSTRAINTS (MUST FOLLOW)
+    - You MUST select categories ONLY from the JSON array above.
+    - You MUST NOT invent categories.
+    - You MUST NOT generate new ids.
+    - You MUST NOT retype, rephrase, normalize, translate, or modify ANY character
+      of any selected category object's "name" or "id".
+    - The output "categories" MUST be a subset of objects copied EXACTLY from the array above.
+    - If you cannot comply perfectly, return {"categories": []}.
 
-      ## Your Task
-      Analyze the project and determine which categories it belongs to. A project can belong to multiple categories if appropriate.
+    ### MANDATORY SELF-CHECK BEFORE FINAL OUTPUT
+    For each object you plan to output in "categories":
+    1) Confirm there is an IDENTICAL object in the provided JSON array (same "name" string, same "id" string).
+    2) If not identical, REMOVE it (do not replace it).
 
-      Consider:
-      - The project's primary functionality and purpose
-      - The technology domain it operates in
-      - The industry or vertical it serves (if applicable)
-      - How developers would expect to find this project when browsing by category
+    ## Your Task
+    Analyze the project and determine which categories it belongs to.
+    A project can belong to multiple categories if appropriate.
 
-      If the project doesn't clearly fit into any of the available categories, return an empty array for categories.
+    Consider:
+    - The project's primary functionality and purpose
+    - The technology domain it operates in
+    - The industry or vertical it serves (if applicable)
+    - How developers would expect to find this project when browsing by category
 
-      ## Format
-      Respond with a valid JSON object **only**. Do not include any explanations, markdown formatting, or extra text.
+    If the project doesn't clearly fit into any of the available categories, return an empty array for categories.
 
-      If the project fits one or more categories:
-      {
-        "categories": [
-          { "name": "CategoryName", "id": "CategoryID" },
-          { "name": "AnotherCategory", "id": "AnotherID" }
-        ],
-        "explanation": "Brief explanation of why you chose these categories"
-      }
+    ## Format
+    Respond with a valid JSON object ONLY.
+    Do not include explanations outside the JSON.
+    Do not include markdown formatting or extra text.
 
-      If the project does not clearly fit any category:
-      {
-        "categories": []
-      }
+    If the project fits one or more categories:
+    {
+      "categories": [
+      { "name": "Source Code Management", "id": "9a66d814-22b8-493d-a3a7-fb2d9e93587c" }
+      ],
+      "explanation": "Brief explanation of why you chose these categories"
+    }
 
-
-    `
+    If the project does not clearly fit any category OR if any mismatch risk exists:
+    {
+      "categories": []
+    }
+  `
 
   const llmService = new LlmService(
     qx,
@@ -156,7 +201,22 @@ export async function findCategoriesWithLLM({
     explanation: string
   }>(prompt)
 
+  // Check if result is null (LLM disabled or error)
+  if (!result) {
+    svc.log.warn('LLM service returned null result, skipping categorization')
+    return { categories: [], explanation: 'LLM service unavailable' }
+  }
+
+  // Validate and correct UUIDs from LLM response
+  if (Array.isArray(result.categories) && result.categories.length > 0) {
+    result.categories = validateAndCorrectLLMItems(result.categories, categories, 'Category')
+  } else if (result.categories && !Array.isArray(result.categories)) {
+    svc.log.error(`LLM returned categories as non-array: ${typeof result.categories}`)
+    result.categories = []
+  }
+
   svc.log.info(`categories found: ${JSON.stringify(result)}`)
+
   return result
 }
 
@@ -261,6 +321,30 @@ export async function findCollectionsWithLLM({
     explanation: string
   }>(prompt)
 
+  // Check if result is null (LLM disabled or error)
+  if (!result) {
+    svc.log.warn('LLM service returned null result, skipping collection classification')
+    return { collections: [], explanation: 'LLM service unavailable' }
+  }
+
+  // Validate and correct UUIDs from LLM response
+  if (Array.isArray(result.collections) && result.collections.length > 0) {
+    const validatedCollections = validateAndCorrectLLMItems(
+      result.collections,
+      collections,
+      'Collection',
+    )
+    result.collections = validatedCollections
+
+    // Log the validated collection IDs for debugging
+    svc.log.info(
+      `Validated collections: ${validatedCollections.map((c) => `${c.name}:${c.id}`).join(', ')}`,
+    )
+  } else if (result.collections && !Array.isArray(result.collections)) {
+    svc.log.error(`LLM returned collections as non-array: ${typeof result.collections}`)
+    result.collections = []
+  }
+
   svc.log.info(`collections found: ${JSON.stringify(result)}`)
 
   return result
@@ -283,6 +367,11 @@ export async function connectProjectAndCollection(
   collectionIds: string[],
   insightsProjectId: string,
 ) {
+  if (collectionIds.length === 0) {
+    svc.log.warn(`No collection IDs to connect for project ${insightsProjectId}, skipping`)
+    return
+  }
+
   svc.log.info(`updating the collections: ${collectionIds} with the project: ${insightsProjectId}`)
   await connectProjectsAndCollections(
     dbStoreQx(svc.postgres.writer),

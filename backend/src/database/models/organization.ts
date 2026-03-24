@@ -21,6 +21,11 @@ export default (sequelize) => {
         defaultValue: false,
         allowNull: false,
       },
+      isAffiliationBlocked: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false,
+      },
 
       lastEnrichedAt: {
         type: DataTypes.DATE,

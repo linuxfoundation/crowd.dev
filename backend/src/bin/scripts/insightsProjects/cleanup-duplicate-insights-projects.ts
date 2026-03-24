@@ -117,8 +117,9 @@ async function cleanUpDuplicateProjects(qx, internalProjects, dryRun: boolean) {
         }
 
         const deletedLinks = await qx.result(
-          `DELETE FROM "collectionsInsightsProjects" 
-                    WHERE "insightsProjectId" = $1
+          `UPDATE "collectionsInsightsProjects" 
+                    SET "deletedAt" = NOW()
+                    WHERE "insightsProjectId" = $1 AND "deletedAt" IS NULL
                     RETURNING *`,
           [projectToDelete.rows[0].id],
         )

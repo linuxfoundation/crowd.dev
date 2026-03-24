@@ -30,6 +30,7 @@ export class MemberQueryCache {
     fields?: string[]
     filter?: Record<string, unknown>
     include?: IncludeOptions
+    includeAllAttributes?: boolean
     limit: number
     offset: number
     orderBy?: string
@@ -42,6 +43,7 @@ export class MemberQueryCache {
         fields: params.fields?.sort(),
         filter: params.filter,
         include: params.include,
+        includeAllAttributes: params.includeAllAttributes,
         limit: params.limit,
         offset: params.offset,
         orderBy: params.orderBy,

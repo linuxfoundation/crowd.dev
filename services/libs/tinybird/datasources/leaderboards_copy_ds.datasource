@@ -1,8 +1,10 @@
 DESCRIPTION >
     - `leaderboards_copy_ds` contains pre-computed leaderboard rankings for open source projects across multiple categories.
-    - Created via copy pipe that runs daily at 1 AM, combining data from multiple leaderboard metric pipes.
-    - Supports six leaderboard types: longest-running, active-contributors, active-organizations, commit-activity, focused-teams, and small-teams-massive-output.
-    - Designed for high-performance read access to power project ranking and comparison features.
+    - Created via individual copy pipes that run daily at 1 AM, each appending their leaderboard type with a snapshotId.
+    - Supports multiple leaderboard types: active-contributors, active-organizations, commit-activity, focused-teams, small-teams-massive-output, stars, forks, package-downloads, codebase-size, fastest-mergers, fastest-responders, resolution-rate, contributors, and organizations.
+    - Uses snapshotId for temporal versioning - queries should filter by latest snapshotId.
+    - TTL of 2 days automatically cleans up old snapshots.
+    - `snapshotId` is the timestamp marking when this snapshot was created (daily granularity).
     - `rank` is the position of the project within its leaderboard type (1 = top ranked).
     - `id` is the unique project identifier.
     - `segmentId` is the internal segment identifier for the project.
@@ -14,11 +16,12 @@ DESCRIPTION >
     - `previousPeriodValue` is the comparison metric from the previous period (0 for non-temporal leaderboards).
     - `collectionsSlugs` list of collection slugs the project belongs to.
     - `isLF` indicates whether the project is a LF project (1 = true, 0 = false).
-    - `githubHandle` is the GitHub username for contributor leaderboards (empty string for non-contributor leaderboards).
+    - `githubHandleArray` is the array of GitHub usernames for contributor leaderboards (empty array for non-contributor leaderboards).
 
 TAGS "Analytics, Leaderboards, Project rankings"
 
 SCHEMA >
+    `snapshotId` DateTime,
     `rank` UInt64,
     `id` String,
     `segmentId` String,
@@ -30,8 +33,11 @@ SCHEMA >
     `previousPeriodValue` Float64,
     `collectionsSlugs` Array(String),
     `isLF` UInt8,
-    `githubHandle` String,
-    `status` String
+    `githubHandleArray` Array(String),
+    `status` String,
+    `totalCount` UInt64
 
 ENGINE MergeTree
-ENGINE_SORTING_KEY leaderboardType, rank, slug, id
+ENGINE_PARTITION_KEY snapshotId
+ENGINE_SORTING_KEY snapshotId, leaderboardType, rank, slug, id
+ENGINE_TTL toDateTime(snapshotId) + toIntervalDay(2)

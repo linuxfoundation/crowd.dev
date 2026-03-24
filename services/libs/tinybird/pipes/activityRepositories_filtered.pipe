@@ -12,22 +12,23 @@ DESCRIPTION >
 NODE activity_repositories_filtered_0
 SQL >
     %
-    select
-        id as "projectId", name as "projectName", slug as "projectSlug", arrayJoin(repositories) as repo
-    from insightsProjects final
+    select i.id as "projectId", i.name as "projectName", i.slug as "projectSlug", r.url as repo
+    from insightsProjects i final
+    JOIN
+        repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
     where
-        isNull (deletedAt)
+        isNull (i.deletedAt)
         {% if defined(repos) %}
-            AND repo
+            AND r.url
             IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
         {% end %}
         {% if defined(search) %}
-            AND repo
+            AND r.url
             like 'https://%'
             || {{ String(search, description="Search repos open ended wildcard ", required=False) }}
             || '%'
         {% end %}
         {% if defined(projectSlug) %}
-            AND projectSlug
+            AND i.slug
             = {{ String(projectSlug, description="Search repos using projectSlug", required=False) }}
         {% end %}

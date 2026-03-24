@@ -9,18 +9,20 @@ import {
   IMemberOrganization,
   IOrganization,
   IOrganizationIdSource,
+  IOrganizationIdentity,
   IQueryTimeseriesParams,
   ITimeseriesDatapoint,
   OrganizationIdentityType,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+import { findLfSegmentByName } from '../segments'
 import { QueryOptions, QueryResult, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
 
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
 import { addOrgIdentity, upsertOrgIdentities } from './identities'
-import { IDbOrgIdentity, IDbOrganization, IDbOrganizationInput } from './types'
+import { IDbOrganization, IDbOrganizationInput } from './types'
 import { prepareOrganizationData } from './utils'
 
 const log = getServiceChildLogger('data-access-layer/organizations')
@@ -36,6 +38,7 @@ const ORG_SELECT_COLUMNS = [
   'importHash',
   'location',
   'isTeamOrganization',
+  'isAffiliationBlocked',
   'type',
   'size',
   'headline',
@@ -125,28 +128,30 @@ export async function findOrgsByIds(
   return results
 }
 
-export async function findOrgByName(
+export async function findOrganizationsByName(
   qx: QueryExecutor,
   name: string,
-): Promise<IDbOrganization | null> {
-  const result = await qx.selectOneOrNone(
+  options: { limit?: number } = {},
+): Promise<IDbOrganization[]> {
+  const { limit } = options
+
+  return qx.select(
     `
-          select  ${prepareSelectColumns(ORG_SELECT_COLUMNS, 'o')}
-          from organizations o
-          where trim(lower(o."displayName")) = trim(lower($(name)))
-          limit 1;
+      select ${prepareSelectColumns(ORG_SELECT_COLUMNS, 'o')}
+      from organizations o
+      where lower(trim(o."displayName")) = lower(trim($(name)))
+      ${limit !== undefined ? 'limit $(limit)' : ''}
     `,
     {
       name,
+      limit,
     },
   )
-
-  return result
 }
 
 export async function findOrgByVerifiedDomain(
   qx: QueryExecutor,
-  identity: IDbOrgIdentity,
+  identity: IOrganizationIdentity,
 ): Promise<IDbOrganization | null> {
   if (identity.type !== OrganizationIdentityType.PRIMARY_DOMAIN) {
     throw new Error('Invalid identity type')
@@ -178,7 +183,7 @@ export async function findOrgByVerifiedDomain(
 
 export async function findOrgByVerifiedIdentity(
   qx: QueryExecutor,
-  identity: IDbOrgIdentity,
+  identity: IOrganizationIdentity,
 ): Promise<IDbOrganization | null> {
   const result = await qx.selectOneOrNone(
     `
@@ -204,27 +209,6 @@ export async function findOrgByVerifiedIdentity(
   )
 
   return result
-}
-
-export async function getOrgIdentities(
-  qx: QueryExecutor,
-  organizationId: string,
-): Promise<IDbOrgIdentity[]> {
-  return await qx.select(
-    `
-      select platform,
-             type,
-             value,
-             verified,
-             "sourceId",
-             "integrationId"
-      from "organizationIdentities"
-      where "organizationId" = $(organizationId)
-    `,
-    {
-      organizationId,
-    },
-  )
 }
 
 export async function markOrganizationEnriched(
@@ -284,7 +268,16 @@ export async function addOrgsToMember(
   qe: QueryExecutor,
   memberId: string,
   orgs: IOrganizationIdSource[],
-): Promise<void> {
+): Promise<
+  {
+    memberOrganizationId: string
+    organizationId: string
+  }[]
+> {
+  if (orgs.length === 0) {
+    return []
+  }
+
   const parameters: Record<string, unknown> = {
     memberId,
   }
@@ -302,10 +295,16 @@ export async function addOrgsToMember(
   const query = `
   insert into "memberOrganizations"("organizationId", "memberId", "createdAt", "updatedAt", "source")
   values ${valueString}
-  on conflict do nothing;
+  on conflict do nothing
+  returning id, "organizationId";
   `
 
-  await qe.selectNone(query, parameters)
+  const rows = await qe.select(query, parameters)
+
+  return rows.map((r) => ({
+    memberOrganizationId: r.id,
+    organizationId: r.organizationId,
+  }))
 }
 
 export async function findMemberOrganizations(
@@ -367,29 +366,34 @@ export async function insertOrganization(
 export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
-  data: IDbOrganizationInput,
-): Promise<void> {
+  data: Partial<IDbOrganizationInput>,
+): Promise<string | null> {
   const columns = Object.keys(data)
   if (columns.length === 0) {
-    return
+    return null
   }
 
   const updatedAt = new Date()
-  const oneMinuteAgo = new Date(updatedAt.getTime() - 60 * 1000)
   columns.push('updatedAt')
 
   const query = `
     update organizations set
       ${columns.map((c) => `"${c}" = $(${c})`).join(',\n')}
-    where id = $(organizationId) and "updatedAt" <= $(oneMinuteAgo)
+    where id = $(organizationId)
+    returning id;
   `
 
-  await qe.selectNone(query, {
+  const result = await qe.selectOneOrNone(query, {
     ...data,
     organizationId,
     updatedAt,
-    oneMinuteAgo,
   })
+
+  if (!result) {
+    return null
+  }
+
+  return result.id
 }
 
 export async function getTimeseriesOfNewOrganizations(
@@ -484,11 +488,15 @@ export async function findOrCreateOrganization(
     }
 
     if (!existing) {
-      existing = await logExecutionTimeV2(
-        async () => findOrgByName(qe, data.displayName),
+      const organizations = await logExecutionTimeV2(
+        async () => findOrganizationsByName(qe, data.displayName, { limit: 1 }),
         log,
-        'organizationService -> findOrCreateOrganization -> findOrgByName',
+        'organizationService -> findOrCreateOrganization -> findOrganizationsByName',
       )
+
+      if (organizations.length > 0) {
+        existing = organizations[0]
+      }
     }
 
     let id
@@ -522,7 +530,13 @@ export async function findOrCreateOrganization(
         )
       }
       await logExecutionTimeV2(
-        async () => upsertOrgIdentities(qe, existing.id, data.identities, integrationId),
+        async () =>
+          upsertOrgIdentities(
+            qe,
+            existing.id,
+            data.identities.map((i) => ({ ...i, source })),
+            integrationId,
+          ),
         log,
         'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
       )
@@ -546,7 +560,7 @@ export async function findOrCreateOrganization(
       log.trace(`Organization wasn't found via website or identities.`)
       const displayName = data.displayName ? data.displayName : verifiedIdentities[0].value
 
-      const payload = {
+      const payload: Partial<IDbOrganizationInput> = {
         displayName,
         description: data.description,
         logo: data.logo,
@@ -558,6 +572,13 @@ export async function findOrCreateOrganization(
         headline: data.headline,
         industry: data.industry,
         founded: data.founded,
+      }
+
+      // Block organization affiliation if a segment (project, subproject, or project group)
+      // has the same name as the organization when creating one.
+      const lfSegment = await findLfSegmentByName(qe, displayName)
+      if (lfSegment) {
+        payload.isAffiliationBlocked = true
       }
 
       log.trace({ data, payload }, `Preparing payload to create a new organization!`)
@@ -601,6 +622,7 @@ export async function findOrCreateOrganization(
               verified: i.verified,
               sourceId: i.sourceId,
               integrationId,
+              source: i.source,
             }),
           log,
           'organizationService -> findOrCreateOrganization -> addOrgIdentity',
@@ -636,6 +658,7 @@ export enum OrganizationField {
   REVENUE_RANGE = 'revenueRange',
   LOCATION = 'location',
   IS_TEAM_ORGANIZATION = 'isTeamOrganization',
+  IS_AFFILIATION_BLOCKED = 'isAffiliationBlocked',
   TYPE = 'type',
   SIZE = 'size',
   HEADLINE = 'headline',
@@ -659,4 +682,31 @@ export async function findOrgById<T extends OrganizationField>(
   fields: T[],
 ): Promise<QueryResult<T>> {
   return queryTableById(qx, 'organizations', Object.values(OrganizationField), orgId, fields)
+}
+
+export async function findNonExistingOrganizationIds(
+  qx: QueryExecutor,
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return []
+
+  const valuesClause = ids.map((_, i) => `($(id_${i})::uuid)`).join(', ')
+  const params: Record<string, string> = {}
+  ids.forEach((id, i) => {
+    params[`id_${i}`] = id
+  })
+
+  const rows = await qx.select(
+    `
+    WITH id_list (id) AS (VALUES ${valuesClause})
+    SELECT id_list.id
+    FROM id_list
+    WHERE NOT EXISTS (
+      SELECT 1 FROM organizations o WHERE o.id = id_list.id
+    )
+    `,
+    params,
+  )
+
+  return rows.map((r: { id: string }) => r.id)
 }

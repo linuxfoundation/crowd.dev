@@ -206,12 +206,23 @@ watch(membersData, (newData) => {
     // Update the Pinia store with the new data
     memberStore.members = newData.rows || [];
     memberStore.totalMembers = newData.count || 0;
+
+    // Build the correct transformed filter for savedFilterBody
+    const transformedFilter = filters.value
+      ? buildApiFilter(
+        filters.value,
+        { ...memberFilters, ...customAttributesFilter.value },
+        memberSearchFilter,
+        memberSavedViews,
+      )
+      : { search: '', filter: {}, orderBy: 'activityCount_DESC' };
+
     memberStore.savedFilterBody = {
       search: queryParams.value.search,
-      filter: filters.value,
+      filter: transformedFilter.filter,
       offset: queryParams.value.offset,
       limit: queryParams.value.limit,
-      orderBy: queryParams.value.orderBy,
+      orderBy: transformedFilter.orderBy,
     };
   }
 }, { immediate: true });

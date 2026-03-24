@@ -8,5 +8,8 @@
   },
   "slack": {
     "maxRetrospectInSeconds": 86400
+  },
+  "linuxFoundation": {
+    "collectionId": "1606ad11-c96d-4177-8147-8f990b76b35d"
   }
 }

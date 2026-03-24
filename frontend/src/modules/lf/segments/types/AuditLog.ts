@@ -15,14 +15,17 @@ export enum ActionType {
   INTEGRATIONS_RECONNECT = 'integrations-reconnect',
 }
 
+export interface Actor {
+  id: string;
+  type: 'user' | 'service';
+  fullName: string;
+  email: string | null;
+}
+
 export interface AuditLog{
   id: string;
   timestamp: string;
-  user: {
-    id: string;
-    email: string;
-    fullName: string;
-  };
+  actor: Actor;
   ipAddress?: string;
   userAgent?: string;
   requestId: string;

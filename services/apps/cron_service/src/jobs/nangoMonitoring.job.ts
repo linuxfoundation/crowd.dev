@@ -10,9 +10,12 @@ import {
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
   INangoIntegrationData,
+  fetchNangoCursorRowsForIntegration,
   fetchNangoIntegrationData,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { getReposForGithubIntegration } from '@crowd/data-access-layer/src/repositories'
 import {
   ALL_NANGO_INTEGRATIONS,
   NangoIntegration,
@@ -69,38 +72,42 @@ const job: IJobDefinition = {
 
     for (const int of allIntegrations) {
       if (int.platform === PlatformType.GITHUB_NANGO) {
-        // first go through all orgs and repos and check if they are connected to nango
-        for (const org of int.settings.orgs) {
-          const orgName = org.name
-          for (const repo of org.repos) {
-            const repoName = repo.name
-            totalRepos++
+        // Fetch nango mappings from the dedicated table
+        const allNangoMappings = await getNangoMappingsForIntegrations(pgpQx(dbConnection), [
+          int.id,
+        ])
+        const nangoMapping = allNangoMappings[int.id] || {}
 
-            let found = false
+        // Check which repos are connected to nango by comparing repositories table vs nango_mapping
+        const repoRows = await getReposForGithubIntegration(pgpQx(dbConnection), int.id)
+        for (const repo of repoRows) {
+          totalRepos++
 
-            if (int.settings.nangoMapping) {
-              for (const mapping of Object.values(int.settings.nangoMapping) as any[]) {
-                if (mapping.owner === orgName && mapping.repoName === repoName) {
-                  found = true
-                }
-              }
+          let found = false
+          for (const mapping of Object.values(nangoMapping)) {
+            if (mapping.owner === repo.owner && mapping.repoName === repo.name) {
+              found = true
             }
+          }
 
-            if (!found) {
-              if (ghNotConnectedToNangoYet.has(int.id)) {
-                ghNotConnectedToNangoYet.set(int.id, ghNotConnectedToNangoYet.get(int.id) + 1)
-              } else {
-                ghNotConnectedToNangoYet.set(int.id, 1)
-              }
+          if (!found) {
+            if (ghNotConnectedToNangoYet.has(int.id)) {
+              ghNotConnectedToNangoYet.set(int.id, ghNotConnectedToNangoYet.get(int.id) + 1)
+            } else {
+              ghNotConnectedToNangoYet.set(int.id, 1)
             }
           }
         }
 
         // then collect nango connection status checks for each connection
-        if (int.settings.nangoMapping) {
-          for (const connectionId of Object.keys(int.settings.nangoMapping)) {
+        const connectionIds = Object.keys(nangoMapping)
+        if (connectionIds.length > 0) {
+          const cursorRows = await fetchNangoCursorRowsForIntegration(pgpQx(dbConnection), int.id)
+          const connectionIdsWithCursors = new Set(cursorRows.map((r) => r.connectionId))
+
+          for (const connectionId of connectionIds) {
             // check if we have cursors already for this connection
-            if (!int.settings.cursors || !int.settings.cursors[connectionId]) {
+            if (!connectionIdsWithCursors.has(connectionId)) {
               if (ghNoCursorsYet.has(int.id)) {
                 ghNoCursorsYet.set(int.id, ghNoCursorsYet.get(int.id) + 1)
               } else {
@@ -319,7 +326,7 @@ const job: IJobDefinition = {
         // Queue notification for this platform
         notificationPromises.push(
           sendSlackNotificationAsync(
-            SlackChannel.NANGO_ALERTS,
+            SlackChannel.CDP_INTEGRATIONS_ALERTS,
             persona,
             `Nango Monitor: ${nangoIntegration}`,
             sections,
@@ -337,7 +344,7 @@ const job: IJobDefinition = {
     if (failedStatusChecks > 0) {
       notificationPromises.push(
         sendSlackNotificationAsync(
-          SlackChannel.NANGO_ALERTS,
+          SlackChannel.CDP_INTEGRATIONS_ALERTS,
           SlackPersona.ERROR_REPORTER,
           'Nango Monitor: API Errors',
           `Failed to retrieve status for ${failedStatusChecks} connection${failedStatusChecks > 1 ? 's' : ''} due to Nango API errors.\n\nCheck logs for details.`,

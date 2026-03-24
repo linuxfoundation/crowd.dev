@@ -97,6 +97,41 @@
     </button>
   </template>
 
+  <!-- Block Organization Affiliations -->
+  <template v-if="hasPermission(LfPermission.organizationEdit)">
+    <button
+      v-if="!organization.isAffiliationBlocked"
+      class="h-10 el-dropdown-menu__item w-full"
+      type="button"
+      @click="
+        handleCommand({
+          action: Actions.TOGGLE_ORGANIZATION_AFFILIATIONS,
+          organization,
+          value: true,
+        })
+      "
+    >
+      <lf-icon name="ban" :size="16" class="mr-2" />
+      <span class="text-xs">Block affiliations</span>
+    </button>
+
+    <button
+      v-if="organization.isAffiliationBlocked"
+      class="h-10 el-dropdown-menu__item w-full"
+      type="button"
+      @click="
+        handleCommand({
+          action: Actions.TOGGLE_ORGANIZATION_AFFILIATIONS,
+          organization,
+          value: false,
+        })
+      "
+    >
+      <lf-icon name="toggle-on" :size="16" class="mr-2" />
+      <span class="text-xs">Enable affiliations</span>
+    </button>
+  </template>
+
   <template v-if="hasPermission(LfPermission.organizationDestroy)">
     <el-divider class="border-gray-200 my-2" />
 
@@ -139,6 +174,7 @@ enum Actions {
   SYNC_HUBSPOT = 'syncHubspot',
   STOP_SYNC_HUBSPOT = 'stopSyncHubspot',
   MARK_ORGANIZATION_AS_TEAM_ORGANIZATION = 'markOrganizationAsTeamOrganization',
+  TOGGLE_ORGANIZATION_AFFILIATIONS = 'toggleOrganizationAffiliations',
 }
 
 const route = useRoute();
@@ -293,6 +329,36 @@ const handleCommand = (command: {
       errorMessage: 'Something went wrong',
       actionFn: OrganizationService.update(command.organization.id, {
         isTeamOrganization: command.value,
+      }, command.organization.segments),
+    }).then(() => {
+      if (router.currentRoute.value.name === 'organization') {
+        organizationStore.fetchOrganizations({
+          reload: true,
+        });
+      } else {
+        organizationStore.fetchOrganization(command.organization.id, segments);
+      }
+    });
+
+    return;
+  }
+
+  // Toggle organization affiliations
+  if (command.action === Actions.TOGGLE_ORGANIZATION_AFFILIATIONS) {
+    trackEvent({
+      key: FeatureEventKey.TOGGLE_ORGANIZATION_AFFILIATIONS,
+      type: EventType.FEATURE,
+      properties: {
+        path: router.currentRoute.value.path,
+      },
+    });
+
+    doManualAction({
+      loadingMessage: 'Organization is being updated',
+      successMessage: 'Organization updated successfully',
+      errorMessage: 'Something went wrong',
+      actionFn: OrganizationService.update(command.organization.id, {
+        isAffiliationBlocked: command.value,
       }, command.organization.segments),
     }).then(() => {
       if (router.currentRoute.value.name === 'organization') {

@@ -38,7 +38,7 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
   // bust cache after 90 days
   public cacheObsoleteAfterSeconds = 60 * 60 * 24 * 90
 
-  public maxConcurrentRequests = 1000
+  public maxConcurrentRequests = 3
 
   public attributeSettings: IMemberEnrichmentAttributeSettings = {
     [MemberAttributeName.AVATAR_URL]: {
@@ -200,6 +200,7 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
               type: MemberIdentityType.EMAIL,
               platform: this.platform,
               verified: false,
+              source: 'enrichment',
             })
           }
         }
@@ -300,21 +301,37 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
             })
           }
 
+          // ProgAI uses epoch (1970-01-01) to represent "unknown" or "ongoing" dates.
+          // We treat these as null since they break timeline logic downstream.
+          const startDate = this.normalizeDate(workExperience.startDate)
+          const endDate = this.normalizeDate(workExperience.endDate)
+
           normalized.memberOrganizations.push({
             name: replaceDoubleQuotes(workExperience.company),
             source: OrganizationSource.ENRICHMENT_PROGAI,
             identities,
             title: replaceDoubleQuotes(workExperience.title),
-            startDate: workExperience.startDate
-              ? workExperience.startDate.replace('Z', '+00:00')
-              : null,
-            endDate: workExperience.endDate ? workExperience.endDate.replace('Z', '+00:00') : null,
+            startDate,
+            endDate,
           })
         }
       }
     }
 
     return normalized
+  }
+
+  /**
+   * Normalizes a date string from ProgAI.
+   * Returns null if the date is missing or is the Unix epoch (1970-01-01),
+   * which ProgAI uses to represent "unknown" or "ongoing" dates.
+   */
+  private normalizeDate(date: string | null | undefined): string | null {
+    if (!date) return null
+
+    if (date.startsWith('1970-01-01')) return null
+
+    return date.replace('Z', '+00:00')
   }
 
   private getLinkedInProfileHandle(url: string): string | null {

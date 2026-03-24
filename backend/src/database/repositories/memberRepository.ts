@@ -13,20 +13,18 @@ import {
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
-  getActiveMembers,
-  getLastActivitiesForMembers,
-  queryActivityRelations,
-  queryOrgs,
-} from '@crowd/data-access-layer'
-import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
-import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
-import {
   createMemberIdentity,
   deleteMemberIdentities,
   deleteMemberIdentitiesByCombinations,
   findAlreadyExistingVerifiedIdentities,
+  getActiveMembers,
+  getLastActivitiesForMembers,
+  queryActivityRelations,
+  queryOrgs,
   updateVerifiedFlag,
-} from '@crowd/data-access-layer/src/member_identities'
+} from '@crowd/data-access-layer'
+import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
+import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
 import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   MemberField,
@@ -78,7 +76,6 @@ import { PlatformIdentities } from '../../serverless/integrations/types/messageT
 import { AttributeData } from '../attributes/attribute'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import MemberAttributeSettingsRepository from './memberAttributeSettingsRepository'
 import MemberSegmentAffiliationRepository from './memberSegmentAffiliationRepository'
 import SegmentRepository from './segmentRepository'
@@ -92,8 +89,6 @@ import {
 } from './types/memberTypes'
 
 const { Op } = Sequelize
-
-const log: boolean = false
 
 class MemberRepository {
   static async create(data, options: IRepositoryOptions) {
@@ -170,6 +165,7 @@ class MemberRepository {
           sourceId: i.sourceId || null,
           integrationId: i.integrationId || null,
           verified: i.verified,
+          source: i.source,
         })
       }
     } else if (data.username) {
@@ -186,6 +182,7 @@ class MemberRepository {
             verified: true,
             sourceId: identity.sourceId || null,
             integrationId: identity.integrationId || null,
+            source: identity.source || 'ui',
           })
         }
       }
@@ -217,8 +214,6 @@ class MemberRepository {
     if (data.affiliations) {
       await this.setAffiliations(record.id, data.affiliations, options)
     }
-
-    await this._createAuditLog(AuditLogRepository.CREATE, record, data, options)
 
     if (botDetection === MemberBotDetection.SUSPECTED_BOT) {
       options.log.debug({ memberId: record.id }, 'Member suspected as bot, running LLM check!')
@@ -266,16 +261,25 @@ class MemberRepository {
     },
     options: IRepositoryOptions,
   ): Promise<number> {
+    const membersJoin = displayNameFilter
+      ? `JOIN members m ON m.id = mtm."memberId"
+         JOIN members m2 ON m2.id = mtm."toMergeId"`
+      : ''
+
     const totalCount = await options.database.sequelize.query(
       `
         SELECT
-            COUNT(DISTINCT mtm."memberId"::TEXT || mtm."toMergeId"::TEXT) AS count
+            COUNT(*) AS count
         FROM "memberToMerge" mtm
-        JOIN member_segments_mv ms ON ms."memberId" = mtm."memberId"
-        JOIN member_segments_mv ms2 ON ms2."memberId" = mtm."toMergeId"
-        join members m on m.id = mtm."memberId"
-        join members m2 on m2.id = mtm."toMergeId"
-        WHERE ms."segmentId" IN (:segmentIds) and ms2."segmentId" IN (:segmentIds)
+        ${membersJoin}
+        WHERE EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms
+            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
+        )
+        AND EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms2
+            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
+        )
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -365,7 +369,6 @@ class MemberRepository {
     const mems = await options.database.sequelize.query(
       `
         SELECT
-            DISTINCT
             mtm."memberId" AS id,
             mtm."toMergeId",
             mtm.similarity,
@@ -375,11 +378,17 @@ class MemberRepository {
             m2."displayName" as "toMergeDisplayName",
             m2.attributes->'avatarUrl'->>'default' as "toMergeAvatarUrl"
         FROM "memberToMerge" mtm
-        JOIN member_segments_mv ms ON ms."memberId" = mtm."memberId"
-        JOIN member_segments_mv ms2 ON ms2."memberId" = mtm."toMergeId"
-        join members m on m.id = mtm."memberId"
-        join members m2 on m2.id = mtm."toMergeId"
-        WHERE ms."segmentId" IN (:segmentIds) and ms2."segmentId" IN (:segmentIds) AND mtm.similarity IS NOT NULL
+        JOIN members m ON m.id = mtm."memberId"
+        JOIN members m2 ON m2.id = mtm."toMergeId"
+        WHERE EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms
+            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
+        )
+        AND EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms2
+            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
+        )
+        AND mtm.similarity IS NOT NULL
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -620,6 +629,7 @@ class MemberRepository {
     where mi.platform = :platform and
           mi.type = :type and
           mi.value in (:usernames) and
+          mi."deletedAt" is null and
           exists (select 1 from "memberSegments" ms where ms."memberId" = mi."memberId")
   `,
       {
@@ -664,7 +674,7 @@ class MemberRepository {
                                         "createdAt",
                                         row_number() over (partition by "memberId", platform order by "createdAt" desc) =
                                         1 as is_latest
-                                  from "memberIdentities" where "memberId" = :memberId and type = '${MemberIdentityType.USERNAME}') sub
+                                  from "memberIdentities" where "memberId" = :memberId and type = '${MemberIdentityType.USERNAME}' and "deletedAt" is null) sub
                             group by "memberId", platform) mi
                       group by mi."memberId"),
         member_organizations as (
@@ -916,7 +926,8 @@ class MemberRepository {
           from "memberIdentities"
           where "platform" = :platform and
                 "value" = :value and
-                "type" = :type
+                "type" = :type and
+                "deletedAt" is null
         `
 
         const data: IMemberIdentity[] = await seq.query(query, {
@@ -1013,6 +1024,7 @@ class MemberRepository {
           sourceId: i.sourceId || null,
           integrationId: i.integrationId || null,
           verified: i.verified !== undefined ? i.verified : !!manualChange,
+          source: i.source,
         })
       }
     }
@@ -1074,6 +1086,7 @@ class MemberRepository {
                 sourceId: identity.sourceId || null,
                 integrationId: identity.integrationId || null,
                 verified: identity.verified !== undefined ? identity.verified : !!manualChange,
+                source: identity.source || 'ui',
               })
             }
           }
@@ -1089,8 +1102,6 @@ class MemberRepository {
         }
       }
     }
-
-    await this._createAuditLog(AuditLogRepository.UPDATE, record, data, options)
 
     return this.findById(record.id, options)
   }
@@ -1119,7 +1130,6 @@ class MemberRepository {
         force,
         transaction,
       })
-      await this._createAuditLog(AuditLogRepository.DELETE, record, record, options)
     }
   }
 
@@ -1190,6 +1200,7 @@ class MemberRepository {
       segmentId?: string
     } = {},
     include: Record<string, boolean> = {},
+    includeAllAttributes = false,
   ) {
     let memberResponse = null
 
@@ -1201,6 +1212,7 @@ class MemberRepository {
       limit: 1,
       offset: 0,
       segmentId,
+      includeAllAttributes,
       include: {
         memberOrganizations: false,
         lfxMemberships: true,
@@ -1219,6 +1231,7 @@ class MemberRepository {
         filter: { id: { eq: id } },
         limit: 1,
         offset: 0,
+        includeAllAttributes,
         include: {
           lfxMemberships: true,
           segments: true,
@@ -1794,7 +1807,7 @@ class MemberRepository {
           SELECT
             DISTINCT "memberId"
           FROM "memberIdentities" mi
-          where (verified and lower("value") like '%${search}%')
+          where (verified and lower("value") like '%${search}%') and "deletedAt" is null
         )
       `
       searchJoin = ` LEFT JOIN member_search ms ON ms."memberId" = m.id `
@@ -2167,30 +2180,6 @@ class MemberRepository {
         type: QueryTypes.INSERT,
         transaction,
       })
-    }
-  }
-
-  static async _createAuditLog(action, record, data, options: IRepositoryOptions) {
-    if (log) {
-      let values = {}
-
-      if (data) {
-        values = {
-          ...record.get({ plain: true }),
-          activitiesIds: data.activities,
-          noMergeIds: data.noMerge,
-        }
-      }
-
-      await AuditLogRepository.log(
-        {
-          entityName: 'member',
-          entityId: record.id,
-          action,
-          values,
-        },
-        options,
-      )
     }
   }
 

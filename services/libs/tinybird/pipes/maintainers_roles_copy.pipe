@@ -1,13 +1,13 @@
 NODE maintainers_roles_copy_project_repos
 SQL >
-    SELECT id, repo AS repository
-    FROM insightsProjects ARRAY
-    JOIN repositories AS repo
-    where isNull (deletedAt)
+    SELECT i.id, r.url AS repository
+    FROM insightsProjects i FINAL
+    JOIN repositories r FINAL ON r.insightsProjectId = i.id
+    WHERE isNull (i.deletedAt) AND isNull (r.deletedAt) AND r.enabled = true
 
 NODE maintainers_roles_copy_member_identities_deduplicated
 SQL >
-    SELECT id, memberId FROM memberIdentities FINAL
+    SELECT id, memberId FROM memberIdentities FINAL WHERE isNull (deletedAt)
 
 NODE maintainers_roles_copy_maintainers_deduplicated
 SQL >

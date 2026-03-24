@@ -4,7 +4,7 @@
     <!--        <lf-icon name="circle-info" type="regular" />-->
     <!--        Details-->
     <!--      </lf-button>-->
-    <lf-button type="secondary" @click="isGerritConnectDrawerOpen = true">
+    <lf-button type="outline" @click="isGerritConnectDrawerOpen = true">
       <lf-icon name="link-simple" />
       <slot>Connect</slot>
     </lf-button>

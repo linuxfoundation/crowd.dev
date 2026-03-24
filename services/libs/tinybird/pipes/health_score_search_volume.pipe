@@ -6,7 +6,7 @@ SQL >
     WHERE
         1 = 1
         {% if defined(project) %}
-            AND insightsProjectId = (SELECT insightsProjectId FROM segments_filtered)
+            AND insightsProjectId IN (SELECT insightsProjectId FROM segments_filtered)
             {% if defined(startDate) %}
                 AND dataTimestamp > parseDateTimeBestEffort(
                     {{ DateTime(startDate, description="Filter after date", required=False) }}

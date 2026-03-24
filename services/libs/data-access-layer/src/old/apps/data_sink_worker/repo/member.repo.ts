@@ -6,7 +6,7 @@ import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 import {
   deleteManyMemberIdentities,
   insertManyMemberIdentities,
-} from '../../../../member_identities'
+} from '../../../../members/identities'
 import { PgPromiseQueryExecutor } from '../../../../queryExecutor'
 
 import { IDbMember, getInsertMemberColumnSet, getSelectMemberColumnSet } from './member.data'
@@ -59,16 +59,19 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
         ['verified', '?memberId', '?platform', '?type', '?value'],
         'memberIdentities',
       ) +
-      ' where t."memberId" = v."memberId"::uuid and t.platform = v.platform and t.type = v.type and t.value = v.value'
+      ' where t."memberId" = v."memberId"::uuid and t.platform = v.platform and t.type = v.type and t.value = v.value and t."deletedAt" is null'
 
     await this.db().none(query)
   }
 
   public async destroyMemberAfterError(id: string, clearIdentities = false): Promise<void> {
     if (clearIdentities) {
-      await this.db().none(`delete from "memberIdentities" where "memberId" = $(id)`, {
-        id,
-      })
+      await this.db().none(
+        `update "memberIdentities" set "deletedAt" = now() where "memberId" = $(id)`,
+        {
+          id,
+        },
+      )
     }
 
     await this.db().none(
@@ -93,6 +96,7 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
         value: i.value,
         type: i.type,
         verified: i.verified,
+        source: 'integration',
       }
     })
 
@@ -178,8 +182,8 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
       with member_emails as (
         select mi."memberId", array_agg(mi.value) as emails
         from "memberIdentities" mi
-        where mi.verified = true and
-              mi.type = '${MemberIdentityType.EMAIL}'
+        where mi."deletedAt" is null and mi.verified = true
+              and mi.type = '${MemberIdentityType.EMAIL}'
         group by mi."memberId"
       )
       SELECT m.id, me.emails

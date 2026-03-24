@@ -1,6 +1,6 @@
 import { ErrorRequestHandler, NextFunction, Request, Response } from 'express'
 
-import { HttpStatusError } from '@crowd/common'
+import { HttpError } from '@crowd/common'
 
 import { ApiRequest } from '.'
 
@@ -15,9 +15,9 @@ export const errorMiddleware = (): ErrorRequestHandler => {
   return (err, req, res, _next) => {
     const request = req as ApiRequest
 
-    if (err instanceof HttpStatusError) {
-      request.log.error(err, { statusCode: err.status }, 'HTTP status error occured!')
-      res.status(err.status).send(err.message)
+    if (err instanceof HttpError) {
+      request.log.error(err, { statusCode: err.status }, 'HTTP error occurred!')
+      res.status(err.status).json(err.toJSON())
     } else {
       request.log.error(err, 'Unknown error occured!')
       res.status(500).send('Internal Server Error')

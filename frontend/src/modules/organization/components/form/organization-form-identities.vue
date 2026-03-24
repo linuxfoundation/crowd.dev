@@ -139,6 +139,7 @@ watch(
           type: OrganizationIdentityType.USERNAME,
           verified: true,
           platform,
+          source: 'ui',
         }));
 
       model.value = [...identities, ...noIdentity];

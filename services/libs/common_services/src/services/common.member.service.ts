@@ -20,11 +20,14 @@ import {
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
+  changeMemberOrganizationAffiliationOverrides,
+  checkOrganizationAffiliationPolicy,
   createOrUpdateMemberOrganizations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
+  findIdentitiesForMembers,
   findMemberById,
   findMemberCountEstimateOfOrganizations,
   findMemberManualAffiliation,
@@ -37,7 +40,6 @@ import {
   moveOrgsBetweenMembers,
   updateMember,
 } from '@crowd/data-access-layer'
-import { findIdentitiesForMembers } from '@crowd/data-access-layer/src/member_identities'
 import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
@@ -131,7 +133,7 @@ export class CommonMemberService extends LoggerBase {
               source: org.source,
             }
 
-            await createOrUpdateMemberOrganizations(
+            const newMemberOrgId = await createOrUpdateMemberOrganizations(
               this.qx,
               memberId,
               org.id,
@@ -140,7 +142,20 @@ export class CommonMemberService extends LoggerBase {
               org.startDate,
               org.endDate,
             )
-            await addOrgsToSegments(org.id, segmentIds, [org.id])
+
+            const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(this.qx, org.id)
+
+            if (newMemberOrgId && isAffiliationBlocked) {
+              await changeMemberOrganizationAffiliationOverrides(this.qx, [
+                {
+                  memberId,
+                  memberOrganizationId: newMemberOrgId,
+                  allowAffiliation: false,
+                },
+              ])
+            }
+
+            await addOrgsToSegments(this.qx, segmentIds, [org.id])
             newOrgs.push(newOrg)
           }
         }

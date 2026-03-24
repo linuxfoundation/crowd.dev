@@ -1,0 +1,110 @@
+NODE leaf_segment_aggregates
+SQL >
+    %
+    SELECT
+        segmentId,
+        organizationId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        minMerge(joinedAtState) as joinedAt,
+        maxMerge(lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        countMerge(activityCountState) AS activityCount,
+        countDistinctMerge(memberCountState) as memberCount,
+        round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
+        max(updatedAt) AS updatedAt
+    FROM cdp_organization_segment_aggregates_ds
+    {% if defined(bucket_id) %}
+        WHERE
+            organizationId <> ''
+            AND cityHash64(segmentId) % 5
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="This is bucket id of the activity segment",
+                    required=False,
+                )
+            }}
+    {% end %}
+    GROUP BY segmentId, organizationId
+
+NODE parent_segment_aggregates
+SQL >
+    %
+    SELECT
+        parentId as segmentId,
+        organizationId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        minMerge(joinedAtState) as joinedAt,
+        maxMerge(lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        countMerge(activityCountState) AS activityCount,
+        countDistinctMerge(memberCountState) as memberCount,
+        round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
+        max(updatedAt) AS updatedAt
+    FROM cdp_organization_segment_aggregates_ds as cdp_aggs
+    join segments s on s.id = cdp_aggs.segmentId
+    {% if defined(bucket_id) %}
+        WHERE
+            organizationId <> ''
+            AND cityHash64(parentId) % 5
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="This is bucket id of the activity segment",
+                    required=False,
+                )
+            }}
+    {% end %}
+    GROUP BY parentId, organizationId
+
+NODE grandparent_segment_aggregates
+SQL >
+    %
+    SELECT
+        grandparentId as segmentId,
+        organizationId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        minMerge(joinedAtState) as joinedAt,
+        maxMerge(lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        countMerge(activityCountState) AS activityCount,
+        countDistinctMerge(memberCountState) as memberCount,
+        round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
+        max(updatedAt) AS updatedAt
+    FROM cdp_organization_segment_aggregates_ds as cdp_aggs
+    join segments s on s.id = cdp_aggs.segmentId
+    {% if defined(bucket_id) %}
+        WHERE
+            organizationId <> ''
+            AND cityHash64(grandparentId) % 5
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="This is bucket id of the activity segment",
+                    required=False,
+                )
+            }}
+    {% end %}
+    GROUP BY grandparentId, organizationId
+
+NODE cdp_organization_segment_aggs_union
+SQL >
+    select *
+    from leaf_segment_aggregates
+    union all
+    select *
+    from parent_segment_aggregates
+    union all
+    select *
+    from grandparent_segment_aggregates
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE @on-demand
+EXPORT_FORMAT csv
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC organizationSegmentsAgg_sink

@@ -10,6 +10,7 @@ import {
   escapeNullByte,
   generateUUIDv1,
   isValidEmail,
+  parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
   trimUtf8ToMaxByteLength,
@@ -17,17 +18,16 @@ import {
 import { CommonMemberService, SearchSyncWorkerEmitter } from '@crowd/common_services'
 import {
   createOrUpdateRelations,
+  findIdentitiesForMembers,
+  findMembersByIdentities,
+  findMembersByVerifiedEmails,
+  findMembersByVerifiedUsernames,
+  findSegmentsForRepos,
   insertActivities,
   queryActivityRelations,
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
-import {
-  findIdentitiesForMembers,
-  findMembersByIdentities,
-  findMembersByVerifiedEmails,
-  findMembersByVerifiedUsernames,
-} from '@crowd/data-access-layer/src/member_identities'
 import { getMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   IActivityRelationCreateOrUpdateData,
@@ -35,8 +35,6 @@ import {
   IDbActivityCreateData,
   IDbActivityUpdateData,
 } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/activity.data'
-import GithubReposRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/githubRepos.repo'
-import GitlabReposRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/gitlabRepos.repo'
 import { IDbMember } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/member.data'
 import MemberRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/member.repo'
 import RequestedForErasureMemberIdentitiesRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/requestedForErasureMemberIdentities.repo'
@@ -67,8 +65,6 @@ export default class ActivityService extends LoggerBase {
   private readonly settingsRepo: SettingsRepository
   private readonly memberRepo: MemberRepository
   private readonly commonMemberService: CommonMemberService
-  private readonly githubReposRepo: GithubReposRepository
-  private readonly gitlabReposRepo: GitlabReposRepository
   private readonly requestedForErasureMemberIdentitiesRepo: RequestedForErasureMemberIdentitiesRepository
 
   private readonly pgQx: QueryExecutor
@@ -85,8 +81,6 @@ export default class ActivityService extends LoggerBase {
 
     this.settingsRepo = new SettingsRepository(this.pgStore, this.log)
     this.memberRepo = new MemberRepository(this.pgStore, this.log)
-    this.githubReposRepo = new GithubReposRepository(this.pgStore, this.redisClient, this.log)
-    this.gitlabReposRepo = new GitlabReposRepository(this.pgStore, this.redisClient, this.log)
     this.requestedForErasureMemberIdentitiesRepo =
       new RequestedForErasureMemberIdentitiesRepository(this.pgStore, this.log)
 
@@ -293,7 +287,8 @@ export default class ActivityService extends LoggerBase {
               value: username,
               type: MemberIdentityType.USERNAME,
               verified: true,
-            },
+              source: 'integration',
+            } as IMemberIdentity,
           ],
         }
       }
@@ -389,7 +384,8 @@ export default class ActivityService extends LoggerBase {
               value: objectMemberUsername,
               type: MemberIdentityType.USERNAME,
               verified: true,
-            },
+              source: 'integration',
+            } as IMemberIdentity,
           ],
         }
       }
@@ -507,8 +503,7 @@ export default class ActivityService extends LoggerBase {
 
     let promises = []
 
-    const gitlabPayloads: IActivityProcessData[] = []
-    const githubPayloads: IActivityProcessData[] = []
+    const repoPayloads: IActivityProcessData[] = []
     for (const payload of relevantPayloads) {
       if (!handleErasure(payload.activity.member, payload.resultId)) {
         continue
@@ -521,10 +516,8 @@ export default class ActivityService extends LoggerBase {
         continue
       }
 
-      if (payload.platform === PlatformType.GITLAB) {
-        gitlabPayloads.push(payload)
-      } else if (payload.platform === PlatformType.GITHUB) {
-        githubPayloads.push(payload)
+      if (payload.platform === PlatformType.GITLAB || payload.platform === PlatformType.GITHUB) {
+        repoPayloads.push(payload)
       } else if (!payload.segmentId) {
         resultMap.set(payload.resultId, {
           success: false,
@@ -536,58 +529,41 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    // determine segmentIds
-    const distinctGitlabChannels = distinctBy(
-      gitlabPayloads,
+    // determine segmentIds from public.repositories
+    const distinctChannels = distinctBy(
+      repoPayloads,
       (a) => `${a.integrationId}-${a.activity.channel}`,
     )
 
-    const distinctGithubChannels = distinctBy(
-      githubPayloads,
-      (a) => `${a.integrationId}-${a.activity.channel}`,
-    )
+    if (distinctChannels.length > 0) {
+      this.log.info(
+        { repoPayloads: repoPayloads.length, distinctChannels: distinctChannels.length },
+        '[ACTIVITY] Looking up segments from public.repositories',
+      )
 
-    promises.push(
-      this.gitlabReposRepo
-        .findSegmentsForRepos(
-          distinctGitlabChannels.map((c) => {
-            return { integrationId: c.integrationId, url: c.activity.channel }
-          }),
-        )
-        .then((results) => {
+      promises.push(
+        findSegmentsForRepos(
+          this.pgQx,
+          this.redisClient,
+          this.log,
+          distinctChannels.map((c) => ({
+            integrationId: c.integrationId,
+            url: c.activity.channel,
+          })),
+        ).then((results) => {
           for (const result of results) {
             if (result.segmentId) {
-              for (const payload of gitlabPayloads.filter(
-                (g) =>
-                  g.integrationId === result.integrationId && g.activity.channel === result.url,
+              for (const payload of repoPayloads.filter(
+                (p) =>
+                  p.integrationId === result.integrationId && p.activity.channel === result.url,
               )) {
                 payload.segmentId = result.segmentId
               }
             }
           }
         }),
-    )
-
-    promises.push(
-      this.githubReposRepo
-        .findSegmentsForRepos(
-          distinctGithubChannels.map((c) => {
-            return { integrationId: c.integrationId, url: c.activity.channel }
-          }),
-        )
-        .then((results) => {
-          for (const result of results) {
-            if (result.segmentId) {
-              for (const payload of githubPayloads.filter(
-                (g) =>
-                  g.integrationId === result.integrationId && g.activity.channel === result.url,
-              )) {
-                payload.segmentId = result.segmentId
-              }
-            }
-          }
-        }),
-    )
+      )
+    }
 
     await Promise.all(promises)
 
@@ -822,6 +798,92 @@ export default class ActivityService extends LoggerBase {
                 i.verified &&
                 i.type === MemberIdentityType.EMAIL &&
                 i.value.toLowerCase() === value.toLowerCase(),
+            ),
+          (p, member) => {
+            p.dbObjectMember = member
+            p.dbObjectMemberSource = 'email'
+          },
+        )
+      }
+
+      // Look up members by parsing noreply emails to extract platform usernames
+      // e.g. "123+john@users.noreply.github.com" -> GitHub username "john"
+      const noreplyEmailFilterMap = new Map<
+        string,
+        { platform: PlatformType; username: string; segmentId: string }
+      >()
+
+      for (const payload of payloadsNotInDb.filter((p) => !p.dbMember)) {
+        for (const identity of payload.activity.member.identities.filter(
+          (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+        )) {
+          const ghUsername = parseGitHubNoreplyEmail(identity.value)
+          if (ghUsername) {
+            const key = `${PlatformType.GITHUB}:${ghUsername}:${payload.segmentId}`
+            if (!noreplyEmailFilterMap.has(key)) {
+              noreplyEmailFilterMap.set(key, {
+                platform: PlatformType.GITHUB,
+                username: ghUsername,
+                segmentId: payload.segmentId,
+              })
+            }
+          }
+        }
+      }
+
+      for (const payload of payloadsNotInDb.filter(
+        (p) => !p.dbObjectMember && p.activity.objectMember,
+      )) {
+        for (const identity of payload.activity.objectMember.identities.filter(
+          (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+        )) {
+          const ghUsername = parseGitHubNoreplyEmail(identity.value)
+          if (ghUsername) {
+            const key = `${PlatformType.GITHUB}:${ghUsername}:${payload.segmentId}`
+            if (!noreplyEmailFilterMap.has(key)) {
+              noreplyEmailFilterMap.set(key, {
+                platform: PlatformType.GITHUB,
+                username: ghUsername,
+                segmentId: payload.segmentId,
+              })
+            }
+          }
+        }
+      }
+
+      if (noreplyEmailFilterMap.size > 0) {
+        const dbMembersByNoreplyEmail = await logExecutionTimeV2(
+          async () =>
+            findMembersByVerifiedUsernames(this.pgQx, Array.from(noreplyEmailFilterMap.values())),
+          this.log,
+          'processActivities -> memberRepo.findMembersByVerifiedUsernames (noreply-email)',
+        )
+
+        mapResultsToPayloads(
+          dbMembersByNoreplyEmail,
+          (p, value) =>
+            !p.dbMember &&
+            p.activity.member.identities.some(
+              (i) =>
+                i.verified &&
+                i.type === MemberIdentityType.EMAIL &&
+                parseGitHubNoreplyEmail(i.value) === value.toLowerCase(),
+            ),
+          (p, member) => {
+            p.dbMember = member
+            p.dbMemberSource = 'email'
+          },
+        )
+
+        mapResultsToPayloads(
+          dbMembersByNoreplyEmail,
+          (p, value) =>
+            !p.dbObjectMember &&
+            p.activity.objectMember?.identities.some(
+              (i) =>
+                i.verified &&
+                i.type === MemberIdentityType.EMAIL &&
+                parseGitHubNoreplyEmail(i.value) === value.toLowerCase(),
             ),
           (p, member) => {
             p.dbObjectMember = member
@@ -1560,7 +1622,7 @@ export default class ActivityService extends LoggerBase {
         error.constructor &&
         error.constructor.name === 'DatabaseError' &&
         error.constraint &&
-        error.constraint === 'uix_memberIdentities_platform_value_type_tenantId_verified' &&
+        error.constraint === 'uix_memberIdentities_platform_value_type_verified' &&
         error.detail
       ) {
         return true
@@ -1576,7 +1638,7 @@ export default class ActivityService extends LoggerBase {
 
       // extract the platform, value, type from the detail
       const detail = error.detail
-      const regex = /\(platform, value, type, "tenantId", verified\)=\((.*?)\)/
+      const regex = /\(platform, value, type\)=\((.*?)\)/
       const match = detail.match(regex)
 
       if (!match || match.length < 2) {
@@ -1603,7 +1665,7 @@ export default class ActivityService extends LoggerBase {
             value,
             type,
             verified: true,
-          },
+          } as IMemberIdentity,
         ],
         undefined,
         true,

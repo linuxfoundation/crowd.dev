@@ -1,0 +1,18 @@
+NODE cdp_member_aggregates_sink_initial_snapshot_0
+SQL >
+    SELECT
+        segmentId,
+        memberId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        countState(activityId) AS activityCountState,
+        maxState(timestamp) AS lastActiveState,
+        groupArrayDistinctState(type) AS activityTypesState,
+        groupArrayDistinctState(platform) AS activeOnState,
+        avgState(sentimentScore) AS averageSentimentState,
+        maxState(updatedAt) AS lastActivityUpdatedAtState,
+        now64(3) as updatedAt
+    FROM activityRelations_enrich_snapshot_MV_ds
+    GROUP BY segmentId, memberId
+
+TYPE MATERIALIZED
+DATASOURCE cdp_member_segment_aggregates_ds

@@ -15,17 +15,21 @@ TAGS "Infrastructure", "Core", "Project scoping", "Security"
 NODE segments_filtered_0
 SQL >
     %
-    SELECT id as insightsProjectId, segmentId, repositories
-    FROM insightsProjects FINAL
-    where
-        isNull (insightsProjects.deletedAt) AND insightsProjects.enabled
+    SELECT i.id as insightsProjectId, i.segmentId, groupArrayIf(r.url, r.url != '') as repositories
+    FROM insightsProjects i FINAL
+    LEFT JOIN
+        repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
+    WHERE
+        isNull (i.deletedAt) AND i.enabled
         {% if defined(project) %}
-            AND slug = {{ String(project, description="Filter by project slug", required=True) }}
+            AND i.slug = {{ String(project, description="Filter by project slug", required=True) }}
         {% else %} AND false
         {% end %}
-        {% if defined(repos) %}
-            AND arrayAll(
-                r -> has(insightsProjects.repositories, r),
+    GROUP BY i.id, i.segmentId
+    {% if defined(repos) %}
+        HAVING
+            arrayAll(
+                repo -> has(repositories, repo),
                 {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
             )
-        {% end %}
+    {% end %}

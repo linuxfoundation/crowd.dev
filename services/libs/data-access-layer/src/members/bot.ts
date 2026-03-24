@@ -42,6 +42,7 @@ export async function fetchBotCandidateMembers(qx: QueryExecutor, limit = 100): 
     FROM "memberIdentities" mi
     JOIN "members" m ON mi."memberId" = m.id
     WHERE m."deletedAt" IS NULL
+      AND mi."deletedAt" IS NULL
       AND (
         mi.value ~* '(^|[-_/\\s])(bot|robot)($|[-_/\\s])'
         OR mi.value ~* '(^|[-_/])(bot|automation|ci|cd|deploy|build|release)[-_]?\\d+$'

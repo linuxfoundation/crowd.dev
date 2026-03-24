@@ -1,16 +1,12 @@
 import axios from 'axios'
 
 import { Logger, LoggerBase } from '@crowd/logging'
-import {
-  IMemberEnrichmentCache,
-  IMemberIdentity,
-  MemberEnrichmentSource,
-  PlatformType,
-} from '@crowd/types'
+import { IMemberEnrichmentCache, MemberEnrichmentSource, PlatformType } from '@crowd/types'
 
 import { findMemberEnrichmentCacheForAllSources } from '../../activities/enrichment'
 import { EnrichmentSourceServiceFactory } from '../../factory'
 import {
+  ConsumableIdentity,
   IEnrichmentService,
   IEnrichmentSourceInput,
   IMemberEnrichmentData,
@@ -37,7 +33,7 @@ export default class EnrichmentServiceProgAILinkedinScraper
 
   public cacheObsoleteAfterSeconds = 60 * 60 * 24 * 90
 
-  public maxConcurrentRequests = 1000
+  public maxConcurrentRequests = 3
 
   constructor(public readonly log: Logger) {
     super(log)
@@ -109,7 +105,7 @@ export default class EnrichmentServiceProgAILinkedinScraper
       method: 'get',
       url: `${process.env['CROWD_ENRICHMENT_PROGAI_URL']}/get_profile`,
       params: {
-        linkedin_url: `https://linkedin.com/in/${handle}`,
+        linkedin_url: `https://linkedin.com/in/${encodeURIComponent(handle)}`,
         with_emails: true,
         api_key: process.env['CROWD_ENRICHMENT_PROGAI_API_KEY'],
       },
@@ -136,13 +132,8 @@ export default class EnrichmentServiceProgAILinkedinScraper
   private async findDistinctScrapableLinkedinIdentities(
     input: IEnrichmentSourceInput,
     caches: IMemberEnrichmentCache<IMemberEnrichmentData>[],
-  ): Promise<
-    (IMemberIdentity & { repeatedTimesInDifferentSources: number; isFromVerifiedSource: boolean })[]
-  > {
-    const consumableIdentities: (IMemberIdentity & {
-      repeatedTimesInDifferentSources: number
-      isFromVerifiedSource: boolean
-    })[] = []
+  ): Promise<ConsumableIdentity[]> {
+    const consumableIdentities: ConsumableIdentity[] = []
     const linkedinUrlHashmap = new Map<string, number>()
 
     for (const cache of caches) {

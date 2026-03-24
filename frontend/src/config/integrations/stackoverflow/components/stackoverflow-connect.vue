@@ -4,7 +4,7 @@
     <!--        <lf-icon name="circle-info" type="regular" />-->
     <!--        Details-->
     <!--      </lf-button>-->
-    <lf-button type="secondary" @click="isStackoverflowConnectDrawerOpen = true">
+    <lf-button type="outline" @click="isStackoverflowConnectDrawerOpen = true">
       <lf-icon name="link-simple" />
       <slot>Connect</slot>
     </lf-button>

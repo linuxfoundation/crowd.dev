@@ -2,6 +2,7 @@ import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@temporalio/wor
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { moveActivityRelationsToAnotherOrganization } from '@crowd/data-access-layer/src/activityRelations'
+import { moveInsightsProjectsToAnotherOrganization } from '@crowd/data-access-layer/src/collections'
 import {
   deleteOrganizationById,
   deleteOrganizationSegments,
@@ -35,6 +36,7 @@ export async function finishOrganizationMergingUpdateActivities(
 ): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   await moveActivityRelationsToAnotherOrganization(qx, secondaryId, primaryId)
+  await moveInsightsProjectsToAnotherOrganization(qx, secondaryId, primaryId)
 }
 
 export async function recalculateActivityAffiliationsOfOrganizationAsync(

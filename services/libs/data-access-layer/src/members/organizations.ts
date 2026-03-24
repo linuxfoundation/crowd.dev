@@ -2,14 +2,15 @@ import {
   IMemberOrganization,
   IMemberOrganizationAffiliationOverride,
   IMemberRoleWithOrganization,
+  MemberOrganizationUpdate,
   OrganizationSource,
 } from '@crowd/types'
 
 import {
-  changeOverride,
+  changeMemberOrganizationAffiliationOverrides,
   findMemberAffiliationOverrides,
   findOrganizationAffiliationOverrides,
-} from '../member_organization_affiliation_overrides'
+} from '../member-organization-affiliation'
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
 
@@ -39,6 +40,32 @@ export async function fetchMemberOrganizations(
       memberId,
     },
   )
+}
+
+export async function fetchOrganizationMemberIds(
+  qx: QueryExecutor,
+  organizationId: string,
+  limit: number,
+  afterMemberId?: string,
+): Promise<string[]> {
+  const result = await qx.select(
+    `
+      SELECT DISTINCT "memberId"
+      FROM "memberOrganizations"
+      WHERE "organizationId" = $(organizationId)
+        AND "deletedAt" IS NULL
+        ${afterMemberId ? `AND "memberId" > $(afterMemberId)` : ''}
+      ORDER BY "memberId"
+      LIMIT $(limit);
+    `,
+    {
+      organizationId,
+      limit,
+      afterMemberId,
+    },
+  )
+
+  return result.map((r) => r.memberId)
 }
 
 export async function fetchManyMemberOrgs(
@@ -97,6 +124,18 @@ export async function fetchManyMemberOrgsWithOrgData(
   return resultMap
 }
 
+export async function checkOrganizationAffiliationPolicy(
+  qx: QueryExecutor,
+  organizationId: string,
+): Promise<boolean> {
+  const result = await qx.selectOneOrNone(
+    `SELECT "isAffiliationBlocked" FROM "organizations" WHERE "id" = $(organizationId)`,
+    { organizationId },
+  )
+
+  return result?.isAffiliationBlocked ?? false
+}
+
 export async function createMemberOrganization(
   qx: QueryExecutor,
   memberId: string,
@@ -104,23 +143,46 @@ export async function createMemberOrganization(
 ): Promise<string | undefined> {
   const result = await qx.selectOneOrNone(
     `
-        INSERT INTO "memberOrganizations"("memberId", "organizationId", "dateStart", "dateEnd", "title", "source", "createdAt", "updatedAt")
-        VALUES($(memberId), $(organizationId), $(dateStart), $(dateEnd), $(title), $(source), now(), now())
-        on conflict do nothing returning id;
+      INSERT INTO "memberOrganizations"(
+        "memberId",
+        "organizationId",
+        "dateStart",
+        "dateEnd",
+        "title",
+        "source",
+        "verified",
+        "verifiedBy",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES(
+        $(memberId),
+        $(organizationId),
+        $(dateStart),
+        $(dateEnd),
+        $(title),
+        $(source),
+        $(verified),
+        $(verifiedBy),
+        now(),
+        now()
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING id
     `,
     {
       memberId,
       organizationId: data.organizationId,
-      dateStart: data.dateStart,
-      dateEnd: data.dateEnd,
-      title: data.title || null,
-      source: data.source || null,
+      dateStart: data.dateStart ?? null,
+      dateEnd: data.dateEnd ?? null,
+      title: data.title ?? null,
+      source: data.source ?? null,
+      verified: data.verified ?? false,
+      verifiedBy: data.verifiedBy ?? null,
     },
   )
 
-  if (result) {
-    return result.id
-  }
+  return result?.id
 }
 
 export async function createOrUpdateMemberOrganizations(
@@ -131,7 +193,7 @@ export async function createOrUpdateMemberOrganizations(
   title: string | null | undefined,
   dateStart: string | null | undefined,
   dateEnd: string | null | undefined,
-): Promise<void> {
+): Promise<string | undefined> {
   if (dateStart) {
     const whereClause = `
       "memberId" = $(memberId)
@@ -206,11 +268,12 @@ export async function createOrUpdateMemberOrganizations(
       ? `ON CONFLICT ${conflictCondition} DO UPDATE SET "title" = $(title), "dateStart" = $(dateStart), "dateEnd" = $(dateEnd), "deletedAt" = NULL, "source" = $(source)`
       : 'ON CONFLICT DO NOTHING'
 
-  await qx.result(
+  const result = await qx.selectOneOrNone(
     `
         INSERT INTO "memberOrganizations" ("memberId", "organizationId", "createdAt", "updatedAt", "title", "dateStart", "dateEnd", "source")
         VALUES ($(memberId), $(organizationId), NOW(), NOW(), $(title), $(dateStart), $(dateEnd), $(source))
         ${onConflict}
+        returning id
       `,
     {
       memberId,
@@ -221,37 +284,31 @@ export async function createOrUpdateMemberOrganizations(
       source: source || null,
     },
   )
+
+  return result?.id
 }
 
 export async function updateMemberOrganization(
   qx: QueryExecutor,
   memberId: string,
   id: string,
-  data: Partial<IMemberOrganization>,
-): Promise<void> {
-  await qx.result(
-    `
-          UPDATE "memberOrganizations"
-          SET
-            "organizationId" = $(organizationId),
-            "dateStart" = $(dateStart),
-            "dateEnd" = $(dateEnd),
-            title = $(title),
-            source = $(source),
-            "updatedAt" = $(updatedAt)
-          WHERE "memberId" = $(memberId) AND "id" = $(id);
-      `,
-    {
-      memberId,
-      id,
-      organizationId: data.organizationId,
-      dateStart: data.dateStart,
-      dateEnd: data.dateEnd,
-      title: data.title,
-      source: data.source,
-      updatedAt: new Date().toISOString(),
-    },
-  )
+  data: MemberOrganizationUpdate,
+): Promise<IMemberOrganization | undefined> {
+  const setClause = Object.keys(data).map((key) => `"${key}" = $(${key})`)
+  setClause.push('"updatedAt" = now()')
+
+  const params = { memberId, id, ...data }
+
+  const query = `
+    UPDATE "memberOrganizations"
+    SET ${setClause.join(', ')}
+    WHERE "id" = $(id)
+      AND "memberId" = $(memberId)
+      AND "deletedAt" IS NULL
+    RETURNING *;
+  `
+
+  return qx.selectOneOrNone(query, params)
 }
 
 export async function deleteMemberOrganizations(
@@ -278,11 +335,19 @@ export async function deleteMemberOrganizations(
   const query = `${baseQuery} WHERE ${whereClause};`
 
   await qx.tx(async (tx) => {
+    // Capture affected org IDs before the delete — needed for the cleanup step below,
+    // since a hard delete removes rows before we can look them up.
+    const affectedOrgs: { organizationId: string }[] = await tx.select(
+      `SELECT DISTINCT "organizationId" FROM "memberOrganizations" WHERE ${whereClause}`,
+      params,
+    )
+    const affectedOrgIds = affectedOrgs.map((r) => r.organizationId)
+
     // First delete from memberOrganizationAffiliationOverrides using the same conditions
     await tx.result(
-      `DELETE FROM "memberOrganizationAffiliationOverrides" 
+      `DELETE FROM "memberOrganizationAffiliationOverrides"
        WHERE "memberOrganizationId" IN (
-         SELECT "id" FROM "memberOrganizations" 
+         SELECT "id" FROM "memberOrganizations"
          WHERE ${whereClause}
        )`,
       params,
@@ -290,6 +355,22 @@ export async function deleteMemberOrganizations(
 
     // Then perform the soft/hard delete on memberOrganizations
     await tx.result(query, params)
+
+    // Clean up segment affiliations for orgs that no longer have any active work experiences
+    if (affectedOrgIds.length > 0) {
+      await tx.result(
+        `DELETE FROM "memberSegmentAffiliations" msa
+         WHERE msa."memberId" = $(memberId)
+           AND msa."organizationId" IN ($(orgIds:csv))
+           AND NOT EXISTS (
+             SELECT 1 FROM "memberOrganizations" mo
+             WHERE mo."memberId" = $(memberId)
+               AND mo."organizationId" = msa."organizationId"
+               AND mo."deletedAt" IS NULL
+           )`,
+        { memberId, orgIds: affectedOrgIds },
+      )
+    }
   })
 }
 
@@ -608,11 +689,13 @@ async function moveRolesBetweenEntities(
         }
       }
 
-      await changeOverride(qx, {
-        ...overrideToApply,
-        memberId: mergeStrat.targetMemberId(role),
-        memberOrganizationId: newRoleId,
-      })
+      await changeMemberOrganizationAffiliationOverrides(qx, [
+        {
+          ...overrideToApply,
+          memberId: mergeStrat.targetMemberId(role),
+          memberOrganizationId: newRoleId,
+        },
+      ])
     }
   }
 }
@@ -830,11 +913,13 @@ export async function mergeRoles(
         const overrideToApply = primaryOverride?.override || relevantOverrides[0]?.override
 
         if (overrideToApply) {
-          await changeOverride(qx, {
-            ...overrideToApply,
-            memberId: mergeStrat.targetMemberId(addRole),
-            memberOrganizationId: newRoleId,
-          })
+          await changeMemberOrganizationAffiliationOverrides(qx, [
+            {
+              ...overrideToApply,
+              memberId: mergeStrat.targetMemberId(addRole),
+              memberOrganizationId: newRoleId,
+            },
+          ])
         }
       }
     } else {
@@ -916,13 +1001,37 @@ export async function mergeRoles(
             }
           }
 
-          await changeOverride(qx, {
-            ...finalOverride,
-            memberId: existingPrimaryRole.memberId,
-            memberOrganizationId: existingPrimaryRole.id,
-          })
+          await changeMemberOrganizationAffiliationOverrides(qx, [
+            {
+              ...finalOverride,
+              memberId: existingPrimaryRole.memberId,
+              memberOrganizationId: existingPrimaryRole.id,
+            },
+          ])
         }
       }
     }
   }
+}
+
+export async function fetchMemberWorkExperienceWithEpochDates(
+  qx: QueryExecutor,
+  batchSize: number,
+): Promise<IMemberOrganization[]> {
+  const result = await qx.select(
+    `
+    SELECT id, "memberId", "organizationId", "dateStart", "dateEnd", "title", "source"
+    FROM "memberOrganizations"
+    WHERE (
+      "dateStart" = '1970-01-01 00:00:00+00'::timestamptz
+      OR "dateEnd" = '1970-01-01 00:00:00+00'::timestamptz
+    )
+    AND "deletedAt" IS NULL
+    ORDER BY "id" ASC
+    LIMIT $(batchSize);
+    `,
+    { batchSize },
+  )
+
+  return result
 }

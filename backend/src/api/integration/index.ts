@@ -21,7 +21,6 @@ export default (app) => {
   app.post(`/integration/query`, safeWrap(require('./integrationQuery').default))
   app.post(`/integration`, safeWrap(require('./integrationCreate').default))
   app.put(`/integration/:id`, safeWrap(require('./integrationUpdate').default))
-  app.post(`/integration/import`, safeWrap(require('./integrationImport').default))
   app.delete(`/integration`, safeWrap(require('./integrationDestroy').default))
   app.get(`/integration/autocomplete`, safeWrap(require('./integrationAutocomplete').default))
   app.get(`/integration/global`, safeWrap(require('./integrationGlobal').default))

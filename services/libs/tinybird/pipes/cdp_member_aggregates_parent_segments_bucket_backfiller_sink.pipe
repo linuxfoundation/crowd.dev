@@ -1,0 +1,36 @@
+NODE parent_segment_aggregates
+SQL >
+    %
+    SELECT
+        parentId as segmentId,
+        cdp_aggs.memberId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        countMerge(cdp_aggs.activityCountState) AS activityCount,
+        maxMerge(cdp_aggs.lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(cdp_aggs.activityTypesState) AS activityTypes,
+        groupArrayDistinctMerge(cdp_aggs.activeOnState) AS activeOn,
+        avgMerge(cdp_aggs.averageSentimentState) AS averageSentiment,
+        now() AS updatedAt
+    FROM cdp_member_segment_aggregates_ds cdp_aggs
+    join segments s on s.id = cdp_aggs.segmentId
+    {% if defined(bucket_id) %}
+        WHERE
+            cityHash64(parentId) % 5
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="This is bucket id of the activity segment",
+                    required=False,
+                )
+            }}
+    {% end %}
+    GROUP BY parentId, memberId
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE @on-demand
+EXPORT_FORMAT csv
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC memberSegmentsAgg_sink

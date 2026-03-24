@@ -22,7 +22,7 @@
         <lf-button
           type="primary"
           size="medium"
-          :disabled="!selectedIdentity || !preview"
+          :disabled="!localSelectedIdentity || !preview"
           :loading="unmerging"
           @click="unmerge()"
         >
@@ -52,7 +52,7 @@
               v-model="revertPreviousMerge"
               class="text-gray-900 text-xs"
               size="tiny"
-              @update:model-value="fetchPreview(selectedIdentity!)"
+              @update:model-value="fetchPreview(localSelectedIdentity!)"
             >
               Revert previous merge
             </lf-switch>
@@ -200,7 +200,7 @@
                       <template #dropdown>
                         <template v-for="i of identities" :key="i.id">
                           <el-dropdown-item
-                            v-if="i.id !== selectedIdentity"
+                            v-if="i.id !== localSelectedIdentity"
                             :value="i.id"
                             :label="i.value"
                             @click="changeIdentity(i.id)"
@@ -376,7 +376,7 @@ const preview = ref<{
   primary: Contributor;
   secondary: Contributor;
 } | null>(null);
-const selectedIdentity = ref<string | null>(null);
+const localSelectedIdentity = ref<string | null>(null);
 
 const isModalOpen = computed({
   get() {
@@ -385,7 +385,7 @@ const isModalOpen = computed({
   set() {
     emit('update:modelValue', null);
     fetchingPreview.value = false;
-    selectedIdentity.value = null;
+    localSelectedIdentity.value = null;
     preview.value = null;
   },
 });
@@ -401,7 +401,7 @@ const identities = computed(() => (props.modelValue.identities || []).sort((a, b
 }));
 
 const changeIdentity = (identityId: string) => {
-  selectedIdentity.value = identityId;
+  localSelectedIdentity.value = identityId;
   resetRevertPreviousMerge();
   getCanRevertMerge(identityId);
   fetchPreview(identityId);
@@ -456,7 +456,7 @@ const unmerge = () => {
     key: FeatureEventKey.UNMERGE_MEMBER_IDENTITY,
     type: EventType.FEATURE,
     properties: {
-      identity: selectedIdentity.value,
+      identity: localSelectedIdentity.value,
     },
   });
 

@@ -6,8 +6,6 @@
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=members-enrichment SERVICE=members-enrichment-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../../libs --ext ts --exec pnpm run start:debug",
-    "script:onboarding:local": "set -a && . ../../../../backend/.env.dist.local && . ../../../../backend/.env.override.local && set +a && SERVICE=script tsx --inspect src/bin/onboarding.ts",
-    "script:onboarding": "SERVICE=script tsx --inspect src/bin/onboarding.ts",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",

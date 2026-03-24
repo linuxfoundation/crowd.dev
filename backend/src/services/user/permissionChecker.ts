@@ -55,17 +55,6 @@ export default class PermissionChecker {
   }
 
   /**
-   * Checks if the user has permission to change certain protected
-   * fields in an integration.
-   * @param data Data sent to the integration write service
-   */
-  public validateIntegrationsProtectedFields(data) {
-    if (data.limitCount !== undefined) {
-      this.validateHas(Permissions.values.integrationControlLimit)
-    }
-  }
-
-  /**
    * Checks if the user has a specific permission.
    */
   private has(permission) {

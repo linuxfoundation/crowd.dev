@@ -6,6 +6,8 @@
     size="600px"
     pre-title="Integration"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="isVisible = false"
   >
     <template #beforeTitle>
@@ -14,6 +16,9 @@
         :src="logoUrl"
         alt="Stack Overflow logo"
       />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="stackoverflow" />
     </template>
     <template #content>
       <el-form
@@ -125,55 +130,24 @@
     </template>
 
     <template #footer>
-      <div
-        class="flex grow items-center"
-        :class="
-          hasFormChanged ? 'justify-between' : 'justify-end'
-        "
-      >
-        <lf-button
-          v-if="hasFormChanged"
-          type="primary-link"
-          size="medium"
-          @click="doReset"
-        >
-          <lf-icon name="arrow-turn-left" :size="16" />
-          <span>Reset changes</span>
-        </lf-button>
-        <div class="flex gap-4">
-          <lf-button
-            type="secondary-gray"
-            size="medium"
-            @click="doCancel"
-          >
-            Cancel
-          </lf-button>
-          <lf-button
-            type="primary"
-            size="medium"
-            :disabled="!hasFormChanged || connectDisabled"
-            :loading="isVolumeUpdating"
-            @click="
-              hasFormChanged && !connectDisabled
-                ? connect()
-                : undefined
-            "
-          >
-            {{
-              integration?.settings?.tags.length > 0
-                ? 'Update'
-                : 'Connect'
-            }}
-          </lf-button>
-        </div>
-      </div>
+      <drawer-footer-buttons
+        :integration="integration"
+        :is-edit-mode="integration?.settings?.tags.length > 0"
+        :has-form-changed="hasFormChanged"
+        :is-loading="isVolumeUpdating"
+        :is-submit-disabled="!hasFormChanged || connectDisabled"
+        :cancel="doCancel"
+        :revert-changes="doReset"
+        :connect="hasFormChanged ? connect : () => {}"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup>
 import {
-  computed, defineEmits, defineProps, ref, watch,
+  computed, ref, watch,
 } from 'vue';
 import { useThrottleFn } from '@vueuse/core';
 import { useStore } from 'vuex';
@@ -187,11 +161,15 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const MAX_STACK_OVERFLOW_QUESTIONS_PER_TAG = 350000;
 const MAX_STACK_OVERFLOW_QUESTIONS_FOR_KEYWORDS = 1100;
 
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref(null);
 
 const store = useStore();
 
@@ -353,6 +331,21 @@ const doReset = () => {
 const doCancel = () => {
   isVisible.value = false;
   doReset();
+};
+
+const canClose = (done) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges) => {
+      if (discardChanges) {
+        doReset();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
 };
 
 const handleTagValidation = async (index) => {

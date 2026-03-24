@@ -64,6 +64,7 @@ export interface ContributorIdentity {
   type: string;
   value: string;
   verified: boolean;
+  source: string | null;
   sourceId: string | null;
   integrationId?: string | null;
   // Computed properties

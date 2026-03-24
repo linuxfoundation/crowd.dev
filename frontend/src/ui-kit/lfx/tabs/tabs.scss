@@ -1,0 +1,32 @@
+.lfx-c-tabs {
+  @apply flex relative whitespace-nowrap w-fit transition bg-gray-100 rounded-full gap-1 p-1;
+
+  &--small {
+    .lfx-c-tab {
+      --lf-tab-font-size: var(--lf-tabs-small-font-size);
+      --lf-tab-line-height: var(--lf-tabs-small-line-height);
+      --lf-tab-padding: var(--lf-tabs-small-padding);
+    }
+  }
+
+  &--medium {
+    .lfx-c-tab {
+      --lf-tab-font-size: var(--lf-tabs-medium-font-size);
+      --lf-tab-line-height: var(--lf-tabs-medium-line-height);
+      --lf-tab-padding: var(--lf-tabs-medium-padding);
+    }
+  }
+}
+
+.lfx-c-tab {
+  @apply flex items-center justify-center text-center cursor-pointer transition-all select-none;
+  @apply rounded-full px-3 py-1 text-gray-600 font-normal leading-5 text-sm;
+
+  &:hover {
+    background: var(--lf-tab-hover-background);
+  }
+
+  &.is-active {
+    @apply bg-white text-gray-900 font-medium;
+  }
+}

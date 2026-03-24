@@ -22,6 +22,7 @@ export async function organizationUpdate(input: IOrganizationProfileSyncInput): 
     if (input.syncOptions?.doSync) {
       await syncOrganization(input.organization.id)
     }
+
     return
   }
 

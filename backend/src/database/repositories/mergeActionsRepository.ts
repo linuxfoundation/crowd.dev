@@ -179,6 +179,9 @@ class MergeActionsRepository {
                 value: (backup.primary as any).website,
                 platform: 'custom',
                 verified: true,
+                source: null,
+                sourceId: null,
+                integrationId: null,
               })
             }
 
@@ -189,6 +192,9 @@ class MergeActionsRepository {
                   value: domain,
                   platform: 'enrichment',
                   verified: false,
+                  source: null,
+                  sourceId: null,
+                  integrationId: null,
                 })
               }
             }
@@ -200,6 +206,9 @@ class MergeActionsRepository {
                   value: profile,
                   platform: 'enrichment',
                   verified: false,
+                  source: null,
+                  sourceId: null,
+                  integrationId: null,
                 })
               }
             }
@@ -220,6 +229,9 @@ class MergeActionsRepository {
                 value: (backup.secondary as any).website,
                 platform: 'custom',
                 verified: true,
+                source: null,
+                sourceId: null,
+                integrationId: null,
               })
             }
 
@@ -230,6 +242,9 @@ class MergeActionsRepository {
                   value: domain,
                   platform: 'enrichment',
                   verified: false,
+                  source: null,
+                  sourceId: null,
+                  integrationId: null,
                 })
               }
             }
@@ -241,6 +256,9 @@ class MergeActionsRepository {
                   value: profile,
                   platform: 'enrichment',
                   verified: false,
+                  source: null,
+                  sourceId: null,
+                  integrationId: null,
                 })
               }
             }

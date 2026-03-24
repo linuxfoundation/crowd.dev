@@ -3,7 +3,15 @@ DESCRIPTION >
 
 NODE issues_opened
 SQL >
-    SELECT activityId as id, sourceId, timestamp AS openedAt, segmentId
+    SELECT
+        activityId as id,
+        sourceId,
+        timestamp AS openedAt,
+        segmentId,
+        channel,
+        platform,
+        memberId,
+        organizationId
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'issues-opened'
 
@@ -27,16 +35,23 @@ SQL >
         opened.id,
         opened.sourceId,
         opened.segmentId as segmentId,
+        opened.channel,
+        opened.platform,
+        opened.memberId,
+        opened.organizationId,
         opened.openedAt,
         comment.commentedAt,
         IF(closed.closedAt = toDateTime(0), NULL, closed.closedAt) AS closedAt,
         IF(
-            closedAt IS NULL, NULL, toUnixTimestamp(closed.closedAt) - toUnixTimestamp(opened.openedAt)
+            closedAt IS NULL,
+            NULL,
+            toUnixTimestamp(toDateTime(closed.closedAt)) - toUnixTimestamp(toDateTime(opened.openedAt))
         ) AS closedInSeconds,
         IF(
             commentedAt IS NULL,
             NULL,
-            toUnixTimestamp(comment.commentedAt) - toUnixTimestamp(opened.openedAt)
+            toUnixTimestamp(toDateTime(comment.commentedAt))
+            - toUnixTimestamp(toDateTime(opened.openedAt))
         ) AS respondedInSeconds
     FROM issues_opened opened
     LEFT JOIN issues_closed AS closed ON opened.sourceId = closed.sourceParentId

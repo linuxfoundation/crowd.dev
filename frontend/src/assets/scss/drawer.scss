@@ -1,7 +1,8 @@
 .el-drawer {
   @apply opacity-100;
-  --el-drawer-padding-primary: 24px;
+  --el-drawer-padding-primary: 20px 24px;
   box-shadow: -4px 0px 10px rgba(0, 0, 0, 0.05);
+  overflow: unset;
 
   &__header {
     @apply mb-4;
@@ -12,7 +13,25 @@
   }
 
   &__footer {
-    @apply p-6 bg-gray-50 border-t border-gray-200;
+    @apply px-6 py-5 bg-gray-50 border-t border-gray-100 bg-white;
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -20px;
+      left: 0;
+      right: 0;
+      height: 20px;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.06), transparent);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+  }
+
+  &.has-scroll .el-drawer__footer::before {
+    opacity: 1;
   }
 
   &__close-btn {

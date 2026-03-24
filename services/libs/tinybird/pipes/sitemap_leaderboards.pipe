@@ -1,0 +1,3 @@
+NODE sitemap_projects_slugs
+SQL >
+    SELECT DISTINCT leaderboardType FROM leaderboards_copy_ds

@@ -1,7 +1,11 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ParentClosePolicy, executeChild, proxyActivities, startChild } from '@temporalio/workflow'
 
-import * as activities from '../activities/nangoActivities'
+import type * as activities from '../activities/nangoActivities'
 import { ISyncGithubIntegrationArguments } from '../types'
+
+import { deleteDuplicateGithubConnection } from './deleteDuplicateGithubConnection'
+import { deleteGithubRepoConnection } from './deleteGithubRepoConnection'
+import { syncGithubRepo } from './syncGithubRepo'
 
 const activity = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 hour',
@@ -9,63 +13,60 @@ const activity = proxyActivities<typeof activities>({
 })
 
 export async function syncGithubIntegration(args: ISyncGithubIntegrationArguments): Promise<void> {
-  const integrationId = args.integrationId
+  const { integrationId } = args
 
   const result = await activity.analyzeGithubIntegration(integrationId)
 
-  // delete connections that are no longer needed
+  // Delete connections that are no longer needed - fire and forget (parallel)
   for (const repo of result.reposToDelete) {
-    // delete nango connection
-    await activity.deleteConnection(integrationId, result.providerConfigKey, repo.connectionId)
-
-    // delete connection from integrations.settings.nangoMapping object
-    await activity.removeGithubConnection(integrationId, repo.connectionId)
-
-    // delete githubRepos mapping + soft-delete from public.repositories
-    await activity.unmapGithubRepo(integrationId, repo.repo)
+    await startChild(deleteGithubRepoConnection, {
+      workflowId: `sync-github/${integrationId}/delete-connection/${repo.repo.owner}/${repo.repo.repoName}/${repo.connectionId}`,
+      parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON,
+      args: [
+        {
+          integrationId,
+          providerConfigKey: result.providerConfigKey,
+          connectionId: repo.connectionId,
+          repo: repo.repo,
+        },
+      ],
+    })
   }
 
-  // delete duplicate connections
+  // Delete duplicate connections - fire and forget (parallel)
   for (const repo of result.duplicatesToDelete) {
-    // delete nango connection
-    await activity.deleteConnection(integrationId, result.providerConfigKey, repo.connectionId)
-
-    // delete connection from integrations.settings.nangoMapping object
-    await activity.removeGithubConnection(integrationId, repo.connectionId)
-
-    // we don't unmap because this one was duplicated
+    await startChild(deleteDuplicateGithubConnection, {
+      workflowId: `sync-github/${integrationId}/delete-duplicate/${repo.repo.owner}/${repo.repo.repoName}/${repo.connectionId}`,
+      parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON,
+      args: [
+        {
+          integrationId,
+          providerConfigKey: result.providerConfigKey,
+          connectionId: repo.connectionId,
+          repo: repo.repo,
+        },
+      ],
+    })
   }
 
-  // create connections for repos that are not already connected
+  // Create connections for repos that are not already connected - sequential (rate limiting)
   for (const repo of result.reposToSync) {
-    const canCreate = await activity.canCreateGithubConnection()
+    const { skipped } = await executeChild(syncGithubRepo, {
+      workflowId: `sync-github/${integrationId}/create-connection/${repo.owner}/${repo.repoName}`,
+      parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
+      args: [
+        {
+          integrationId,
+          providerConfigKey: result.providerConfigKey,
+          repo,
+        },
+      ],
+    })
 
-    if (!canCreate) {
+    if (skipped) {
       await activity.logInfo(
         `Not enough time has passed since last connection! Skipping repo ${repo.owner}/${repo.repoName} from integration ${integrationId}!`,
       )
-      continue
     }
-
-    // create nango connection
-    const connectionId = await activity.createGithubConnection(integrationId, repo)
-
-    // add connection to integrations.settings.nangoMapping object
-    await activity.setGithubConnection(integrationId, repo, connectionId)
-
-    // add repo to githubRepos mapping if it's not already mapped
-    await activity.mapGithubRepo(integrationId, repo)
-
-    // add repo to git integration
-    await activity.updateGitIntegrationWithRepo(integrationId, repo)
-
-    // add repo to public.repositories (+ git.repositoryProcessing if first time)
-    await activity.mapGithubRepoToRepositories(integrationId, repo)
-
-    // start nango sync
-    await activity.startNangoSync(integrationId, result.providerConfigKey, connectionId)
-
-    // sync repositories to segmentRepositories and insightsProjects after processing all repos
-    await activity.syncGithubReposToInsights(integrationId)
   }
 }

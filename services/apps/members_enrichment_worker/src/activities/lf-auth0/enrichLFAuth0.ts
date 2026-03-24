@@ -1,9 +1,9 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { PgPromiseQueryExecutor, createMemberIdentity } from '@crowd/data-access-layer'
 import {
   getIdentitiesExistInOtherMembers as getIdentitiesExistInOthers,
   updateMemberAttributes,
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
-import { insertMemberIdentity } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker/normalize'
 import { IAttributes, IMemberIdentity } from '@crowd/types'
 
 import { svc } from '../../service'
@@ -32,14 +32,14 @@ export async function updateMemberWithEnrichmentData(
   try {
     await svc.postgres.writer.connection().tx(async (tx) => {
       for (const identity of identities) {
-        await insertMemberIdentity(
-          tx,
-          identity.platform,
+        await createMemberIdentity(new PgPromiseQueryExecutor(tx), {
           memberId,
-          identity.value,
-          identity.type,
-          identity.verified || false,
-        )
+          platform: identity.platform,
+          value: identity.value,
+          type: identity.type,
+          verified: identity.verified || false,
+          source: 'enrichment',
+        })
       }
       if (attributes) {
         await updateMemberAttributes(tx, memberId, attributes)

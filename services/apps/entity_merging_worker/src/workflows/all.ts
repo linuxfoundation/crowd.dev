@@ -91,12 +91,17 @@ export async function finishOrganizationMerging(
   secondaryId: string,
   original: string,
   toMerge: string,
+  blockAffiliation: boolean,
   userId: string,
 ): Promise<void> {
   await setMergeAction(primaryId, secondaryId, {
     step: MergeActionStep.MERGE_ASYNC_STARTED,
   })
   await finishOrganizationMergingUpdateActivities(secondaryId, primaryId)
+
+  if (blockAffiliation) {
+    await recalculateActivityAffiliationsOfOrganizationAsync(primaryId)
+  }
 
   const syncStart = new Date()
   await syncOrganization(primaryId, syncStart)

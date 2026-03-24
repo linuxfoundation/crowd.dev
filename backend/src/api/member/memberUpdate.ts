@@ -20,9 +20,12 @@ import PermissionChecker from '../../services/user/permissionChecker'
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.memberEdit)
 
-  const payload = await new MemberService(req).update(req.params.id, req.body, {
+  const { invalidateCache, ...data } = req.body
+
+  const payload = await new MemberService(req).update(req.params.id, data, {
     syncToOpensearch: true,
     manualChange: true,
+    invalidateCache: invalidateCache ?? false,
   })
 
   await req.responseHandler.success(req, res, payload)

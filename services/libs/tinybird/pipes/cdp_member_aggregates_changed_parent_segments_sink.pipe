@@ -1,0 +1,49 @@
+NODE members_with_changed_aggs_previous_day
+SQL >
+    select distinct memberId
+    from cdp_member_segment_aggregates_ds
+    where updatedAt >= toStartOfDay(toTimeZone(now(), 'Europe/Berlin') - INTERVAL 1 DAY)
+
+NODE segments_with_changed_aggs_previous_day
+SQL >
+    select id as segmentId
+    from segments
+    where
+        parentId in (
+            select parentId
+            from segments
+            where
+                id in (
+                    select distinct segmentId
+                    from cdp_member_segment_aggregates_ds
+                    where updatedAt >= toStartOfDay(toTimeZone(now(), 'Europe/Berlin') - INTERVAL 1 DAY)
+                )
+        )
+
+NODE cdp_member_aggregates_sink_daily_parent_segments_1
+SQL >
+    %
+    SELECT
+        parentId as segmentId,
+        memberId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        countMerge(activityCountState) AS activityCount,
+        maxMerge(lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(activityTypesState) AS activityTypes,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        avgMerge(averageSentimentState) AS averageSentiment,
+        now() AS updatedAt
+    FROM cdp_member_segment_aggregates_ds as cdp_aggs
+    join segments s on s.id = cdp_aggs.segmentId
+    where
+        cdp_aggs.segmentId in (select segmentId from segments_with_changed_aggs_previous_day)
+        and memberId in (select memberId from members_with_changed_aggs_previous_day)
+    GROUP BY parentId, memberId
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE 0 1 * * *
+EXPORT_FORMAT csv
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC memberSegmentsAgg_sink

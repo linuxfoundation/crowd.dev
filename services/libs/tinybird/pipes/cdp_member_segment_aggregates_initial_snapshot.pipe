@@ -1,0 +1,20 @@
+NODE cdp_member_aggregates_sink_initial_snapshot_0
+SQL >
+    SELECT
+        segmentId,
+        memberId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        countState(activityId) AS activityCountState,
+        maxState(timestamp) AS lastActiveState,
+        groupArrayDistinctState(type) AS activityTypesState,
+        groupArrayDistinctState(platform) AS activeOnState,
+        avgState(sentimentScore) AS averageSentimentState,
+        maxState(act.updatedAt) as lastActivityUpdatedAtState,
+        max(act.updatedAt) as updatedAt
+    FROM activityRelations_enriched_deduplicated_ds act
+    GROUP BY segmentId, memberId
+
+TYPE COPY
+TARGET_DATASOURCE cdp_member_segment_aggregates_ds
+COPY_MODE replace
+COPY_SCHEDULE @on-demand

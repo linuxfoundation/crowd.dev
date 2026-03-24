@@ -53,19 +53,28 @@ DESCRIPTION >
 
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (ORDER BY coalesce(c.contributor_count, 0) DESC) as rank,
         p.id as id,
         p.segmentId as segmentId,
         p.name as name,
         p.slug as slug,
         p.logoUrl as logoUrl,
-        p.collectionsSlugs as collectionsSlugs,
-        p.isLF as isLF,
+        'active-contributors' as leaderboardType,
         cast(coalesce(c.contributor_count, 0) as Float64) as value,
         cast(coalesce(pp.contributor_count, 0) as Float64) as previousPeriodValue,
-        p.status as status
+        p.collectionsSlugs as collectionsSlugs,
+        p.isLF as isLF,
+        [] as githubHandleArray,
+        p.status as status,
+        count() OVER () as totalCount
     FROM leaderboards_project_active_contributors_projects p
     INNER JOIN leaderboards_project_active_contributors_current_period c ON p.segmentId = c.segmentId
     LEFT JOIN leaderboards_project_active_contributors_previous_period pp ON p.segmentId = pp.segmentId
     WHERE c.contributor_count > 0
     ORDER BY value DESC
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 20 1 * * *

@@ -12,14 +12,8 @@ DESCRIPTION >
 
 NODE pull_requests_filtered_0
 SQL >
-    %
     SELECT *
     FROM pull_requests_analyzed pra
-    where
+    WHERE
         pra.segmentId = (SELECT segmentId FROM segments_filtered)
-        {% if defined(repos) %}
-            AND pra.channel
-            IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
-        {% else %}
-            AND pra.channel IN (SELECT repository FROM segmentRepositories where excluded = false)
-        {% end %}
+        AND pra.channel IN (SELECT channel FROM repos_to_channels)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from loguru import logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -151,6 +151,7 @@ async def acquire_recurrent_repo() -> Repository | None:
         RepositoryState.PENDING,
         RepositoryState.PROCESSING,
         RepositoryState.STUCK,
+        RepositoryState.PENDING_REONBOARD,
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
@@ -173,6 +174,39 @@ async def can_onboard_more():
         return False  # if query failed mostly due to timeout then db is already under high load
 
 
+async def acquire_pending_reonboard_repo() -> Repository | None:
+    """Acquire a pending_reonboard repo for re-onboarding (only called on weekends)."""
+    pending_reonboard_sql_query = f"""
+    WITH selected_repo AS (
+        SELECT r.id
+        FROM public.repositories r
+        JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
+        WHERE rp.state = $1
+            AND rp."lockedAt" IS NULL
+            AND r."deletedAt" IS NULL
+        ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
+        LIMIT 1
+        FOR UPDATE OF rp SKIP LOCKED
+    )
+    UPDATE git."repositoryProcessing" rp
+    SET "lockedAt" = NOW(),
+        state = $2,
+        "lastProcessedCommit" = NULL,
+        branch = NULL,
+        "reOnboardingCount" = rp."reOnboardingCount" + 1,
+        "updatedAt" = NOW()
+    FROM public.repositories r
+    CROSS JOIN selected_repo
+    WHERE rp."repositoryId" = r.id
+        AND rp."repositoryId" = selected_repo.id
+    RETURNING {REPO_SELECT_COLUMNS}
+    """
+    return await acquire_repository(
+        pending_reonboard_sql_query,
+        (RepositoryState.PENDING_REONBOARD, RepositoryState.PROCESSING),
+    )
+
+
 async def acquire_repo_for_processing() -> Repository | None:
     """
     Acquire the next repository to process based on priority and system load.
@@ -182,6 +216,8 @@ async def acquire_repo_for_processing() -> Repository | None:
        current onboarding count is below MAX_CONCURRENT_ONBOARDINGS
     2. Recurrent repos (non-PENDING/non-PROCESSING) - fallback when onboarding
        is unavailable or skipped due to high load
+    3. Pending reonboard repos (PENDING_REONBOARD state) - weekend-only, lowest priority.
+       These are repos needing re-onboarding that were deferred until the weekend.
 
     Onboarding is delayed when integration.results exceeds MAX_INTEGRATION_RESULTS
     to prevent overloading the system during high activity periods.
@@ -191,6 +227,11 @@ async def acquire_repo_for_processing() -> Repository | None:
         repo_to_process = await acquire_onboarding_repo()
     else:
         logger.info("Skipping onboarding due to high load on integration.results")
+
+    if not repo_to_process:
+        is_weekend = datetime.now(timezone.utc).weekday() >= 5
+        if is_weekend:
+            repo_to_process = await acquire_pending_reonboard_repo()
 
     if not repo_to_process:
         repo_to_process = await acquire_recurrent_repo()
@@ -227,16 +268,6 @@ async def update_last_processed_commit(repo_id: str, commit_hash: str, branch: s
     return str(result)
 
 
-async def increase_re_onboarding_count(repo_id: str):
-    sql_query = """
-    UPDATE git."repositoryProcessing"
-        SET "reOnboardingCount" = "reOnboardingCount" + 1,
-            "updatedAt" = NOW()
-    WHERE "repositoryId" = $1
-    """
-    return await execute(sql_query, (repo_id,))
-
-
 async def mark_repo_as_processed(repo_id: str, repo_state: RepositoryState):
     sql_query = """
     UPDATE git."repositoryProcessing"
@@ -269,6 +300,7 @@ async def find_github_identity(github_username: str):
     WHERE
         platform = 'github'
         AND value = $1
+        AND "deletedAt" is null
     LIMIT 1
     """
     result = await fetchval(
@@ -282,10 +314,10 @@ async def find_maintainer_identity_by_email(email: str):
     sql_query = """
     SELECT id
         FROM "memberIdentities"
-    WHERE
-        platform IN ('github', 'git', 'gitlab')
+    WHERE platform IN ('github', 'git', 'gitlab')
         AND "verified" = TRUE
         AND value = $1
+        AND "deletedAt" is null
     LIMIT 1
     """
     result = await fetchval(
@@ -339,7 +371,7 @@ async def get_maintainers_for_repo(repo_id: str):
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
-        WHERE mi."repoId" = $1 AND mem.platform = 'github' AND mem.type = 'username' and mem.verified = True
+        WHERE mi."repoId" = $1 AND mem.platform = 'github' AND mem.type = 'username' and mem.verified = True AND mem."deletedAt" is null
         """
     return await query(
         maintainers_sql_query,

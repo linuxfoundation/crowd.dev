@@ -1,5 +1,6 @@
 import { QueryFilter } from '../query'
 import { QueryExecutor } from '../queryExecutor'
+import { syncRepositoriesEnabledStatus } from '../repositories'
 import { ICreateRepositoryGroup } from '../repositoryGroups'
 import {
   QueryResult,
@@ -14,10 +15,15 @@ import { QueryOptions } from '../utils'
 
 export interface ICreateCollection {
   categoryId: string
+  color?: string | null
   description?: string
+  imageUrl?: string | null
   name: string
   slug?: string
   starred: boolean
+  isPrivate?: boolean
+  ssoUserId?: string | null
+  logoUrl?: string | null
 }
 
 export interface ICollection extends ICreateCollection {
@@ -76,11 +82,16 @@ export interface ICollectionInsightProject {
 
 export enum CollectionField {
   CATEGORY_ID = 'categoryId',
+  COLOR = 'color',
   CREATED_AT = 'createdAt',
   DESCRIPTION = 'description',
   ID = 'id',
+  IMAGE_URL = 'imageUrl',
+  IS_PRIVATE = 'isPrivate',
+  LOGO_URL = 'logoUrl',
   NAME = 'name',
   SLUG = 'slug',
+  SSO_USER_ID = 'ssoUserId',
   STARRED = 'starred',
   UPDATED_AT = 'updatedAt',
   DELETED_AT = 'deletedAt',
@@ -129,8 +140,8 @@ export async function createCollection(
 ): Promise<ICollection> {
   return qx.selectOne(
     `
-      INSERT INTO collections (name, description, slug, "categoryId", starred)
-      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred))
+      INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color)
+      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color))
       RETURNING *
     `,
     collection,
@@ -157,7 +168,8 @@ export enum InsightsProjectField {
   LOGO_URL = 'logoUrl',
   NAME = 'name',
   ORGANIZATION_ID = 'organizationId',
-  REPOSITORIES = 'repositories',
+  // REPOSITORIES column deprecated - repos are managed via public.repositories table
+  // API still accepts repositories param which syncs public.repositories.enabled
   SEARCH_KEYWORDS = 'searchKeywords',
   SEGMENT_ID = 'segmentId',
   SLUG = 'slug',
@@ -201,8 +213,10 @@ export async function disconnectProjectsAndCollections(
 ) {
   return qx.result(
     `
-      DELETE FROM "collectionsInsightsProjects"
-      WHERE 1=1
+      UPDATE "collectionsInsightsProjects"
+      SET "deletedAt" = NOW(),
+          "updatedAt" = NOW()
+      WHERE "deletedAt" IS NULL
         ${collectionId ? `AND "collectionId" = $(collectionId)` : ''}
         ${insightsProjectId ? `AND "insightsProjectId" = $(insightsProjectId)` : ''}
     `,
@@ -251,7 +265,7 @@ export async function findCollectionProjectConnections(
     `
       SELECT *
       FROM "collectionsInsightsProjects"
-      WHERE 1=1
+      WHERE "deletedAt" IS NULL
         ${collectionIds ? `AND "collectionId" IN ($(collectionIds:csv))` : ''}
         ${insightsProjectIds ? `AND "insightsProjectId" IN ($(insightsProjectIds:csv))` : ''}
     `,
@@ -296,19 +310,58 @@ export async function updateInsightsProject(
   id: string,
   project: Partial<ICreateInsightsProject>,
 ) {
+  // Exclude repositories from update; only used to sync public.repositories.enabled
+  const { repositories, ...projectWithoutRepositories } = project
+
   const updated = await updateTableById(
     qx,
     'insightsProjects',
     id,
     Object.values(InsightsProjectField),
-    prepareProject(project),
+    prepareProject(projectWithoutRepositories),
   )
 
   if (!updated) {
     throw new Error(`Update failed or project with id ${id} not found`)
   }
 
+  // Sync repositories.enabled status when repositories field is provided
+  // Disables repos not in the new list (new repos are enabled by default on insert)
+  if (repositories !== undefined) {
+    const enabledUrls = normalizeRepositoriesToUrls(repositories)
+    await syncRepositoriesEnabledStatus(qx, id, enabledUrls)
+  }
+
+  // When slug changes, ON UPDATE CASCADE propagates the new slug to securityInsights* tables
+  // but does not touch their updatedAt — update it explicitly so Tinybird picks up the change
+  if (project.slug) {
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationSuites" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluations" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationAssessments" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+  }
+
   return updated as IInsightsProject
+}
+
+function normalizeRepositoriesToUrls(
+  repositories: string[] | { platform: string; url: string }[] | undefined,
+): string[] {
+  if (!repositories || repositories.length === 0) return []
+
+  if (typeof repositories[0] === 'string') {
+    return repositories as string[]
+  }
+
+  return (repositories as { platform: string; url: string }[]).map((r) => r.url)
 }
 
 function prepareProject(project: Partial<ICreateInsightsProject>) {
@@ -316,6 +369,23 @@ function prepareProject(project: Partial<ICreateInsightsProject>) {
     ...project,
   }
   return toUpdate
+}
+
+export async function moveInsightsProjectsToAnotherOrganization(
+  qx: QueryExecutor,
+  fromId: string,
+  toId: string,
+) {
+  return qx.result(
+    `
+      UPDATE "insightsProjects"
+      SET "organizationId" = $(toId),
+          "updatedAt" = now()
+      WHERE "organizationId" = $(fromId)
+        AND "deletedAt" IS NULL
+    `,
+    { fromId, toId },
+  )
 }
 
 export async function findBySlug(qx: QueryExecutor, slug: string) {
@@ -326,74 +396,4 @@ export async function findBySlug(qx: QueryExecutor, slug: string) {
     fields: Object.values(CollectionField),
   })
   return collections
-}
-
-export async function upsertSegmentRepositories(
-  qx: QueryExecutor,
-  {
-    insightsProjectId,
-    repositories,
-    segmentId,
-  }: {
-    insightsProjectId: string
-    repositories: string[]
-    segmentId: string
-  },
-) {
-  if (repositories.length === 0) {
-    return
-  }
-
-  return qx.result(
-    `
-    WITH "input" AS (
-      SELECT DISTINCT unnest(ARRAY[$(repositories:csv)]::text[]) AS "repository"
-    )
-    INSERT INTO "segmentRepositories" ("repository", "segmentId", "insightsProjectId")
-    SELECT "repository", $(segmentId), $(insightsProjectId)
-    FROM "input"
-    ON CONFLICT ("repository")
-    DO UPDATE SET
-      "segmentId" = EXCLUDED."segmentId",
-      "insightsProjectId" = EXCLUDED."insightsProjectId";
-    `,
-    { insightsProjectId, repositories, segmentId },
-  )
-}
-
-export async function deleteSegmentRepositories(
-  qx: QueryExecutor,
-  {
-    segmentId,
-  }: {
-    segmentId: string
-  },
-) {
-  return qx.result(
-    `
-    DELETE FROM "segmentRepositories"
-    WHERE "segmentId" = '${segmentId}'
-     `,
-    { segmentId },
-  )
-}
-
-export async function deleteMissingSegmentRepositories(
-  qx: QueryExecutor,
-  {
-    segmentId,
-    repositories,
-  }: {
-    segmentId: string
-    repositories: string[]
-  },
-) {
-  return qx.result(
-    `
-    DELETE FROM "segmentRepositories"
-    WHERE "segmentId" = '${segmentId}'
-      AND ${repositories.length > 0 ? `"repository" != ALL(ARRAY[${repositories.map((repo) => `'${repo}'`).join(', ')}])` : 'TRUE'};
-    `,
-    { segmentId, repositories },
-  )
 }

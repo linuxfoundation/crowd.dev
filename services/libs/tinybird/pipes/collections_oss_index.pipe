@@ -91,6 +91,7 @@ SQL >
     FROM collections FINAL
     WHERE
         isNull (collections.deletedAt)
+        AND isNull (collections.ssoUserId)
         and collections.categoryId IN (SELECT id from collections_oss_index_category_ids)
 
 NODE collections_oss_index_top_projects
@@ -121,7 +122,7 @@ NODE collections_oss_index_projects_count
 SQL >
     SELECT collectionId, count(insightsProjectId) as projectCount
     FROM collectionsInsightsProjects
-    WHERE collectionId != ''
+    WHERE collectionId != '' AND isNull (deletedAt)
     GROUP BY collectionId
 
 NODE collections_oss_index_results

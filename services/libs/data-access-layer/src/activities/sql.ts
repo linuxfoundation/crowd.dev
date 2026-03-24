@@ -614,7 +614,10 @@ export async function createOrUpdateRelations(
               `
           SELECT "memberId"
           FROM "memberIdentities"
-          WHERE value = $(value) and platform = $(platform) and verified = true
+          WHERE value = $(value) 
+            and platform = $(platform) 
+            and verified = true
+            and "deletedAt" is null
           limit 1
         `,
               {
@@ -687,7 +690,10 @@ export async function createOrUpdateRelations(
           `
         SELECT "memberId"
         FROM "memberIdentities"
-        WHERE value = $(value) and platform = $(platform) and verified = true
+        WHERE value = $(value) 
+          and platform = $(platform) 
+          and verified = true
+          and "deletedAt" is null
         limit 1
       `,
           {

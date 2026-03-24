@@ -165,18 +165,35 @@ class OrganizationRepository {
     )
   }
 
-  async findOrganizationMembers(
-    organizationId: string,
+  async fetchProjectMemberOrganizationsToBlock(
     limit: number,
-    offset: number,
-  ): Promise<IMemberOrganization[]> {
+    afterId?: string,
+  ): Promise<Pick<IMemberOrganization, 'memberId' | 'id' | 'organizationId'>[]> {
     return this.connection.any(
       `
-      SELECT * FROM "memberOrganizations" 
-      WHERE "organizationId" = $(organizationId) AND "deletedAt" IS NULL 
-      ORDER BY "memberId", "id"
-      LIMIT $(limit) OFFSET $(offset)`,
-      { organizationId, limit, offset },
+        select mo.id, mo."memberId", mo."organizationId"
+        from "memberOrganizations" mo
+        join organizations o on mo."organizationId" = o.id
+        where o."deletedAt" is null
+          and mo."deletedAt" is null
+          and exists (
+            select 1
+            from segments s
+            where s."isLF" = true
+              and trim(lower(o."displayName")) = trim(lower(s.name))
+          )
+          and not exists (
+            select 1
+            from "memberOrganizationAffiliationOverrides" mao
+            where mao."memberId" = mo."memberId"
+              and mao."memberOrganizationId" = mo.id
+              and mao."allowAffiliation" = false
+          )
+          ${afterId !== undefined ? 'and mo.id > $(afterId)' : ''}
+        order by mo.id
+        limit $(limit);
+      `,
+      { limit, afterId },
     )
   }
 }

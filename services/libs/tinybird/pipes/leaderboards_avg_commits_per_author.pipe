@@ -33,6 +33,7 @@ DESCRIPTION >
 
 SQL >
     SELECT
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId,
         row_number() OVER (
             ORDER BY
                 CAST(coalesce(c.commits, 0) AS Float64)
@@ -43,9 +44,18 @@ SQL >
         p.name as name,
         p.slug as slug,
         p.logoUrl as logoUrl,
+        'focused-teams' as leaderboardType,
+        (coalesce(c.commits, 0) / coalesce(c.unique_authors, 1)) as value,
+        0.0 as previousPeriodValue,
         p.collectionsSlugs as collectionsSlugs,
         p.isLF as isLF,
-        (coalesce(c.commits, 0) / coalesce(c.unique_authors, 1)) as value,
-        p.status as status
+        [] as githubHandleArray,
+        p.status as status,
+        count() OVER () as totalCount
     FROM leaderboards_avg_commits_per_author_projects p
     INNER JOIN leaderboards_avg_commits_per_author_activities c ON p.segmentId = c.segmentId
+
+TYPE COPY
+TARGET_DATASOURCE leaderboards_copy_ds
+COPY_MODE append
+COPY_SCHEDULE 0 1 * * *

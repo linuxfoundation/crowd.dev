@@ -6,7 +6,9 @@ import { Error404 } from '@crowd/common'
 import {
   buildSegmentActivityTypes,
   findSegmentById,
+  getMappedWithSegmentName,
   getSegmentActivityTypes,
+  hasMappedRepos,
   isSegmentProject,
   isSegmentProjectGroup,
   populateSegmentRelations,
@@ -14,6 +16,7 @@ import {
 import {
   ActivityTypeSettings,
   PageData,
+  PlatformType,
   QueryData,
   SegmentCreateData,
   SegmentData,
@@ -633,11 +636,13 @@ class SegmentRepository extends RepositoryBase<
 
     const subprojects = projects.map((p) => p.subprojects).flat()
     const integrationsBySegments = await this.queryIntegrationsForSubprojects(subprojects)
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const githubPlatforms = [PlatformType.GITHUB, PlatformType.GITHUB_NANGO]
     const mappedGithubReposBySegments = (
       await Promise.all(
         subprojects.map(async (s) => ({
           segmentId: s.id,
-          hasMappedRepo: await this.hasMappedRepos(s.id),
+          hasMappedRepo: await hasMappedRepos(qx, s.id, githubPlatforms),
         })),
       )
     ).reduce((acc, { segmentId, hasMappedRepo }) => {
@@ -666,7 +671,7 @@ class SegmentRepository extends RepositoryBase<
                 platform: 'github',
                 segmentId: subproject.id,
                 type: 'mapped',
-                mappedWith: await this.mappedWith(subproject.id),
+                mappedWith: await getMappedWithSegmentName(qx, subproject.id, githubPlatforms),
               })
             }
 
@@ -889,66 +894,6 @@ class SegmentRepository extends RepositoryBase<
     )
 
     return segments.map((i: any) => i.id)
-  }
-
-  async hasMappedRepos(segmentId: string) {
-    const transaction = SequelizeRepository.getTransaction(this.options)
-    const tenantId = this.options.currentTenant.id
-
-    const result = await this.options.database.sequelize.query(
-      `
-        SELECT EXISTS (
-          SELECT 1
-          FROM "githubRepos" r
-          LEFT JOIN "integrations" i ON r."integrationId" = i.id
-          WHERE r."segmentId" = :segmentId
-          AND r."tenantId" = :tenantId
-          AND r."deletedAt" IS NULL
-          AND (i.id IS NULL OR i."segmentId" != :segmentId)
-          LIMIT 1
-        ) as has_repos
-      `,
-      {
-        replacements: {
-          segmentId,
-          tenantId,
-        },
-        type: QueryTypes.SELECT,
-        transaction,
-      },
-    )
-
-    return !!result[0].has_repos
-  }
-
-  async mappedWith(segmentId: string) {
-    const transaction = SequelizeRepository.getTransaction(this.options)
-    const tenantId = this.options.currentTenant.id
-
-    const result = await this.options.database.sequelize.query(
-      `
-       select
-         s.name as segment_name
-       from
-        "githubRepos" r
-       left join "integrations" i on r."integrationId" = i.id
-       left join "segments" s on i."segmentId" = s.id
-       where r."segmentId" = :segmentId
-       and r."tenantId" = :tenantId
-       and (i.id is null or i."segmentId" != :segmentId)
-       limit 1
-      `,
-      {
-        replacements: {
-          segmentId,
-          tenantId,
-        },
-        type: QueryTypes.SELECT,
-        transaction,
-      },
-    )
-
-    return result[0].segment_name as string
   }
 }
 

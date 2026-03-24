@@ -15,12 +15,6 @@ export default (sequelize) => {
       status: {
         type: DataTypes.TEXT,
       },
-      limitCount: {
-        type: DataTypes.INTEGER,
-      },
-      limitLastResetAt: {
-        type: DataTypes.DATE,
-      },
       token: {
         type: DataTypes.TEXT,
       },
@@ -34,26 +28,9 @@ export default (sequelize) => {
       integrationIdentifier: {
         type: DataTypes.TEXT,
       },
-      importHash: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
-        validate: {
-          len: [0, 255],
-        },
-      },
-      emailSentAt: {
-        type: DataTypes.DATE,
-      },
     },
     {
       indexes: [
-        {
-          unique: true,
-          fields: ['importHash', 'tenantId'],
-          where: {
-            deletedAt: null,
-          },
-        },
         {
           unique: false,
           fields: ['integrationIdentifier'],

@@ -6,7 +6,8 @@ import {
   organizationMergeAction,
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
-import { Error400, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import { Error400, Error404, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -14,16 +15,20 @@ import {
   removeMemberRole,
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
+import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
 import {
   addMergeAction,
   queryMergeActions,
   setMergeAction,
 } from '@crowd/data-access-layer/src/mergeActions/repo'
 import {
+  OrganizationField,
   addOrgsToSegments,
   findOrgAttributes,
+  findOrgById,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
+import { findLfSegmentByName } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import {
@@ -58,7 +63,6 @@ import {
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
 } from './helpers/mergeFunctions'
-import MemberOrganizationService from './memberOrganizationService'
 import SearchSyncService from './searchSyncService'
 
 export default class OrganizationService extends LoggerBase {
@@ -77,6 +81,7 @@ export default class OrganizationService extends LoggerBase {
 
     'joinedAt',
     'isTeamOrganization',
+    'isAffiliationBlocked',
     'manuallyCreated',
 
     'activityCount',
@@ -339,6 +344,8 @@ export default class OrganizationService extends LoggerBase {
             secondaryOrganization.id,
             MergeActionStep.UNMERGE_STARTED,
             MergeActionState.IN_PROGRESS,
+            undefined,
+            this.options.currentUser?.id,
           )
 
           if (payload.mergeActionId) {
@@ -361,7 +368,7 @@ export default class OrganizationService extends LoggerBase {
                   repoOptions,
                 )
 
-              const primaryUnmergedRoles = await MemberOrganizationService.unmergeRoles(
+              const primaryUnmergedRoles = await unmergeRoles(
                 memberOrganizations,
                 mergeAction.unmergeBackup.primary.memberOrganizations,
                 mergeAction.unmergeBackup.secondary.memberOrganizations,
@@ -496,11 +503,13 @@ export default class OrganizationService extends LoggerBase {
       throw new Error409(this.options.language, 'merge.errors.multiple', mergeActions[0].state)
     }
 
+    let blockAffiliations = false
+
     try {
       const { original, toMerge } = await captureApiChange(
         this.options,
         organizationMergeAction(originalId, async (captureOldState, captureNewState) => {
-          this.log.info('[Merge Organizations] - Finding organizations! ')
+          this.log.info('[Merge Organizations] - Finding organizations!')
           let original = await OrganizationRepository.findById(originalId, this.options, segmentId)
           let toMerge = await OrganizationRepository.findById(toMergeId, this.options, segmentId)
 
@@ -515,7 +524,7 @@ export default class OrganizationService extends LoggerBase {
             await OrganizationRepository.addNoMerge(originalId, toMergeId, this.options)
             this.log.info(
               { originalId, toMergeId },
-              '[Merge Organizations] - Skipping merge of two LFX membership orgs! ',
+              '[Merge Organizations] - Skipping merge of two LFX membership orgs!',
             )
 
             return {
@@ -528,7 +537,7 @@ export default class OrganizationService extends LoggerBase {
             throw new Error400(this.options.language, 'merge.errors.mergeLfxSecondary')
           }
 
-          this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Found organizations! ')
+          this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Found organizations!')
 
           captureOldState({
             primary: original,
@@ -571,6 +580,7 @@ export default class OrganizationService extends LoggerBase {
             MergeActionStep.MERGE_STARTED,
             MergeActionState.IN_PROGRESS,
             backup,
+            this.options.currentUser?.id,
           )
 
           const repoOptions: IRepositoryOptions =
@@ -604,7 +614,7 @@ export default class OrganizationService extends LoggerBase {
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Moving identities between organizations! ',
+            '[Merge Organizations] - Moving identities between organizations!',
           )
 
           // move non existing identities
@@ -633,7 +643,7 @@ export default class OrganizationService extends LoggerBase {
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Generating merge object! ',
+            '[Merge Organizations] - Generating merge object!',
           )
 
           // Performs a merge and returns the fields that were changed so we can update
@@ -643,14 +653,14 @@ export default class OrganizationService extends LoggerBase {
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Generating merge object done! ',
+            '[Merge Organizations] - Generating merge object done!',
           )
 
           const txService = new OrganizationService(repoOptions as IServiceOptions)
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Updating original organisation! ',
+            '[Merge Organizations] - Updating original organisation!',
           )
 
           // check if website is being updated, if yes we need to set toMerge.website to null before doing the update
@@ -660,16 +670,16 @@ export default class OrganizationService extends LoggerBase {
           }
 
           // Update original organization
-          await txService.update(originalId, toUpdate, false, false)
+          await txService.update(originalId, toUpdate, false, false, false, true)
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Updating original organisation done! ',
+            '[Merge Organizations] - Updating original organisation done!',
           )
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Moving members to original organisation! ',
+            '[Merge Organizations] - Moving members to original organisation!',
           )
 
           // update members that belong to source organization to destinati
@@ -677,12 +687,12 @@ export default class OrganizationService extends LoggerBase {
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Moving members to original organisation done! ',
+            '[Merge Organizations] - Moving members to original organisation done!',
           )
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Including original organisation into secondary organisation segments! ',
+            '[Merge Organizations] - Including original organisation into secondary organisation segments!',
           )
 
           const secondMemberSegments = await OrganizationRepository.getOrganizationSegments(
@@ -700,12 +710,27 @@ export default class OrganizationService extends LoggerBase {
 
           this.log.info(
             { originalId, toMergeId },
-            '[Merge Organizations] - Including original organisation into secondary organisation segments done! ',
+            '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
+
+          if (toUpdate.isAffiliationBlocked) {
+            this.log.info(
+              { originalId, toMergeId },
+              '[Merge Organizations] - Organization wide affiliation block detected!',
+            )
+
+            await applyOrganizationAffiliationPolicyToMembers(
+              optionsQx(repoOptions),
+              originalId,
+              false,
+            )
+
+            blockAffiliations = true
+          }
 
           await SequelizeRepository.commitTransaction(tx)
 
-          this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited! ')
+          this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
 
           await setMergeAction(
             optionsQx(this.options),
@@ -732,6 +757,7 @@ export default class OrganizationService extends LoggerBase {
           toMergeId,
           original.displayName,
           toMerge.displayName,
+          blockAffiliations,
           this.options.currentUser.id,
         ],
       })
@@ -769,6 +795,7 @@ export default class OrganizationService extends LoggerBase {
       createdById: keepPrimary,
       updatedById: keepPrimary,
       isTeamOrganization: keepPrimaryIfExists,
+      isAffiliationBlocked: keepPrimary,
       lastEnrichedAt: keepPrimary,
       searchSyncedAt: keepPrimary,
       manuallyCreated: keepPrimary,
@@ -838,6 +865,9 @@ export default class OrganizationService extends LoggerBase {
           type: OrganizationIdentityType.USERNAME,
           platform: 'custom',
           verified: true,
+          source: 'ui',
+          sourceId: null,
+          integrationId: null,
         },
       ]
       delete (data as any).name
@@ -887,6 +917,20 @@ export default class OrganizationService extends LoggerBase {
 
         await upsertOrgIdentities(qx, record.id, data.identities)
       } else {
+        if (data.displayName) {
+          // Block organization affiliation if a LF segment (project, subproject, or project group)
+          // has the same name as the organization when creating one.
+          const lfSegment = await findLfSegmentByName(qx, data.displayName)
+          if (lfSegment) {
+            this.log.info(
+              { displayName: data.displayName },
+              'Found segment with the same name as the organization, blocking affiliation!',
+            )
+
+            data.isAffiliationBlocked = true
+          }
+        }
+
         record = await OrganizationRepository.create(data, txOptions)
         telemetryTrack(
           'Organization created',
@@ -919,8 +963,9 @@ export default class OrganizationService extends LoggerBase {
       await SequelizeRepository.commitTransaction(transaction)
 
       if (syncOptions.doSync) {
-        const searchSyncService = new SearchSyncService(this.options, syncOptions.mode)
-        await searchSyncService.triggerOrganizationSync(record.id)
+        await this.startOrganizationUpdateWorkflow(record.id, {
+          syncToOpensearch: syncOptions.doSync,
+        })
       }
 
       return result
@@ -943,14 +988,28 @@ export default class OrganizationService extends LoggerBase {
     overrideIdentities = false,
     syncToOpensearch = true,
     manualChange = false,
+    skipAffiliationBlockUpdate = false,
   ) {
     let tx
+    let recalculateAffiliations = false
 
     try {
       const repoOptions = await SequelizeRepository.createTransactionalRepositoryOptions(
         this.options,
       )
+
+      const qx = SequelizeRepository.getQueryExecutor(repoOptions)
       tx = repoOptions.transaction
+
+      // findOrgById to get the existing organization
+      const existingOrg = await findOrgById(qx, id, [
+        OrganizationField.ID,
+        OrganizationField.IS_AFFILIATION_BLOCKED,
+      ])
+
+      if (!existingOrg) {
+        throw new Error404(this.options.language, 'Organization not found!')
+      }
 
       if (data.identities) {
         // Normalize the website identities
@@ -1018,28 +1077,23 @@ export default class OrganizationService extends LoggerBase {
         manualChange,
       )
 
+      if (
+        !skipAffiliationBlockUpdate &&
+        typeof data.isAffiliationBlocked === 'boolean' &&
+        data.isAffiliationBlocked !== existingOrg.isAffiliationBlocked
+      ) {
+        await applyOrganizationAffiliationPolicyToMembers(qx, record.id, !data.isAffiliationBlocked)
+        recalculateAffiliations = true
+      }
+
       await SequelizeRepository.commitTransaction(tx)
 
-      await this.options.temporal.workflow.start('organizationUpdate', {
-        taskQueue: 'profiles',
-        workflowId: `${TemporalWorkflowId.ORGANIZATION_UPDATE}/${id}`,
-        workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-        retry: {
-          maximumAttempts: 10,
-        },
-        args: [
-          {
-            organization: {
-              id: record.id,
-            },
-            recalculateAffiliations: false,
-            syncOptions: {
-              doSync: syncToOpensearch,
-              withAggs: false,
-            },
-          },
-        ],
-      })
+      if (syncToOpensearch || recalculateAffiliations) {
+        await this.startOrganizationUpdateWorkflow(record.id, {
+          syncToOpensearch,
+          recalculateAffiliations,
+        })
+      }
 
       return record
     } catch (error) {
@@ -1182,5 +1236,30 @@ export default class OrganizationService extends LoggerBase {
       await SequelizeRepository.rollbackTransaction(transaction)
       throw error
     }
+  }
+
+  async startOrganizationUpdateWorkflow(
+    organizationId: string,
+    { syncToOpensearch = false, recalculateAffiliations = false },
+  ) {
+    await this.options.temporal.workflow.start('organizationUpdate', {
+      taskQueue: 'profiles',
+      workflowId: `${TemporalWorkflowId.ORGANIZATION_UPDATE}/${organizationId}`,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
+      retry: {
+        maximumAttempts: 10,
+      },
+      args: [
+        {
+          organization: {
+            id: organizationId,
+          },
+          recalculateAffiliations,
+          syncOptions: {
+            doSync: syncToOpensearch,
+          },
+        },
+      ],
+    })
   }
 }

@@ -14,7 +14,7 @@ DESCRIPTION >
     - `activity_type`: Optional string filter for single activity type (e.g., 'authored-commit')
     - `activity_types`: Optional array of activity types (e.g., ['authored-commit', 'co-authored-commit'])
     - `onlyContributions`: Optional boolean, defaults to 1 (contributions only), set to 0 for all activities
-    - Response: `id`, `displayName`, `githubHandle`, `contributionCount`, `contributionPercentage`, `roles`, `contributionPercentageRunningTotal`, `totalContributorCount`
+    - Response: `id`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`, `contributionPercentageRunningTotal`, `totalContributorCount`
 
 NODE contributions_percentage_running_total
 SQL >
@@ -24,7 +24,7 @@ SQL >
             SELECT
                 id,
                 displayName,
-                githubHandle,
+                githubHandleArray,
                 contributionCount,
                 contributionPercentage,
                 roles,

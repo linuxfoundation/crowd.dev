@@ -7,12 +7,12 @@ DESCRIPTION >
     - `name` column is the human-readable project name.
     - `slug` column is the URL-friendly identifier used in routing and filtering.
     - `segmentId` column links to the segment this project belongs to. Joins to `activityRelations_deduplicated_cleaned_ds`.segmentId
-    - `repositories` array contains the list of repository URLs associated with the project.
     - `widgets` array defines which insights widgets are enabled for this project.
     - `logoUrl` column contains the URL to the project's logo image.
     - `organizationId` column links to the parent organization if applicable.
     - Social media fields (`github`, `linkedin`, `twitter`, `website`) contain project's external social links.
     - `keywords` array contains searchable keywords and tags for the project.
+    - Note: `repositories` are managed via the `repositories` datasource, not stored in this table.
 
 TAGS "Project metadata"
 
@@ -32,7 +32,6 @@ SCHEMA >
     `linkedin` String `json:$.record.linkedin` DEFAULT '',
     `twitter` String `json:$.record.twitter` DEFAULT '',
     `widgets` Array(String) `json:$.record.widgets[:]` DEFAULT [],
-    `repositories` Array(String) `json:$.record.repositories[:]` DEFAULT [],
     `enabled` UInt8 `json:$.record.enabled` DEFAULT 1,
     `isLF` UInt8 `json:$.record.isLF` DEFAULT 0,
     `keywords` Array(String) `json:$.record.keywords[:]` DEFAULT []

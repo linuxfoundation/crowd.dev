@@ -15,31 +15,27 @@ export async function findObsoleteReposQx(
   limit = 1000,
 ): Promise<ISecurityInsightsObsoleteRepo[]> {
   const failedReposSubquery =
-    failedRepos.length > 0 ? 'and all_repos."repoUrl" not in ($(failedRepos:csv))' : ''
+    failedRepos.length > 0 ? 'and r."url" not in ($(failedRepos:csv))' : ''
 
   const repos: ISecurityInsightsObsoleteRepo[] = await qx.select(
     `
-      with all_repos as (
-            select
-                id as "insightsProjectId",
-                slug as "insightsProjectSlug",
-                unnest(repositories) as "repoUrl"
-            from "insightsProjects"
-      )
       select distinct
-          "insightsProjectId",
-          "insightsProjectSlug",
-          "repoUrl"
-      from all_repos
-      where not exists (
-          select 1
-          from "securityInsightsEvaluationSuites" s
-          where s.repo = all_repos."repoUrl"
-          AND EXTRACT(EPOCH FROM (now() - s."updatedAt")) < $(insightsObsoleteAfterSeconds)
-      )
-      and "repoUrl" like 'https://github.com%'
-      ${failedReposSubquery}
-      order by "repoUrl" asc
+          ip.id as "insightsProjectId",
+          ip.slug as "insightsProjectSlug",
+          r.url as "repoUrl"
+      from "insightsProjects" ip
+      join "repositories" r on r."insightsProjectId" = ip.id
+      where r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+        and not exists (
+            select 1
+            from "securityInsightsEvaluationSuites" s
+            where s.repo = r.url
+            AND EXTRACT(EPOCH FROM (now() - s."updatedAt")) < $(insightsObsoleteAfterSeconds)
+        )
+        ${failedReposSubquery}
+      order by r.url asc
       limit $(limit)
     `,
     {

@@ -63,7 +63,6 @@ import {
 } from '@/types/mergeSuggestionTypes'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import { OrganizationQueryCache } from './organizationsQueryCache'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
@@ -89,6 +88,7 @@ class OrganizationRepository {
     ['tags', 'o."tags"'],
     ['type', 'o."type"'],
     ['isTeamOrganization', 'o."isTeamOrganization"'],
+    ['isAffiliationBlocked', 'o."isAffiliationBlocked"'],
 
     // basic fields for querying
     ['displayName', 'o."displayName"'],
@@ -135,6 +135,7 @@ class OrganizationRepository {
         'logo',
         'importHash',
         'isTeamOrganization',
+        'isAffiliationBlocked',
         'lastEnrichedAt',
         'manuallyCreated',
       ]),
@@ -181,8 +182,6 @@ class OrganizationRepository {
       [record.id],
     )
 
-    await this._createAuditLog(AuditLogRepository.CREATE, record, data, options)
-
     return this.findById(record.id, options)
   }
 
@@ -228,6 +227,7 @@ class OrganizationRepository {
   static ORGANIZATION_UPDATE_COLUMNS = [
     'importHash',
     'isTeamOrganization',
+    'isAffiliationBlocked',
     'headline',
     'lastEnrichedAt',
 
@@ -256,6 +256,7 @@ class OrganizationRepository {
     logo: (a, b) => a === b,
     location: (a, b) => a === b,
     isTeamOrganization: (a, b) => a === b,
+    isAffiliationBlocked: (a, b) => a === b,
     attributes: (a, b) => lodash.isEqual(a, b),
   }
 
@@ -500,8 +501,6 @@ class OrganizationRepository {
       }),
     )
 
-    await this._createAuditLog(AuditLogRepository.UPDATE, record, data, options)
-
     return this.findById(record.id, options)
   }
 
@@ -571,8 +570,6 @@ class OrganizationRepository {
       transaction,
       force,
     })
-
-    await this._createAuditLog(AuditLogRepository.DELETE, record, record, options)
   }
 
   static async setIdentities(
@@ -623,6 +620,7 @@ class OrganizationRepository {
     await addOrgIdentity(qx, {
       organizationId,
       platform: identity.platform,
+      source: identity.source,
       sourceId: identity.sourceId || null,
       value: identity.value,
       type: identity.type,
@@ -640,7 +638,7 @@ class OrganizationRepository {
 
     const results = await sequelize.query(
       `
-      select "sourceId", platform, value, type, verified, "integrationId", "organizationId" from "organizationIdentities"
+      select "sourceId", "source", platform, value, type, verified, "integrationId", "organizationId" from "organizationIdentities"
       where "organizationId" in (:organizationIds)
     `,
       {
@@ -809,37 +807,37 @@ class OrganizationRepository {
     },
     options: IRepositoryOptions,
   ): Promise<number> {
+    const organizationsJoin = displayNameFilter
+      ? `JOIN organizations o1 ON o1.id = otm."organizationId"
+         JOIN organizations o2 ON o2.id = otm."toMergeId"`
+      : ''
+
     const result = await options.database.sequelize.query(
       `
-      WITH
-      cte AS (
-        SELECT
-          Greatest(Hashtext(Concat(org.id, otm."toMergeId")), Hashtext(Concat(otm."toMergeId", org.id))) as hash,
-          org.id,
-          otm."toMergeId",
-          org."createdAt",
-          otm."similarity"
-        FROM organizations org
-        JOIN "organizationToMerge" otm ON org.id = otm."organizationId"
-        JOIN "organization_segments_mv" os1 ON os1."organizationId" = org.id
-        JOIN "organization_segments_mv" os2 ON os2."organizationId" = otm."toMergeId"
-        join organizations o1 on o1.id = org.id
-        join organizations o2 on o2.id = otm."toMergeId"
-        LEFT JOIN "mergeActions" ma
-          ON ma.type = :mergeActionType
-          AND (
-            (ma."primaryId" = org.id AND ma."secondaryId" = otm."toMergeId")
-            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = org.id)
-          )
-        WHERE os1."segmentId" IN (:segmentIds)
-          AND os2."segmentId" IN (:segmentIds)
-          AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
-          ${organizationFilter}
-          ${similarityFilter}
-          ${displayNameFilter}
+      SELECT COUNT(DISTINCT Greatest(
+        Hashtext(Concat(otm."organizationId", otm."toMergeId")),
+        Hashtext(Concat(otm."toMergeId", otm."organizationId"))
+      )) AS total_count
+      FROM "organizationToMerge" otm
+      ${organizationsJoin}
+      LEFT JOIN "mergeActions" ma
+        ON ma.type = :mergeActionType
+        AND (
+          (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+          OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
+        )
+      WHERE EXISTS (
+          SELECT 1 FROM "organizationSegmentsAgg" os1
+          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
       )
-      SELECT COUNT(DISTINCT hash) AS total_count
-      FROM cte
+      AND EXISTS (
+          SELECT 1 FROM "organizationSegmentsAgg" os2
+          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+      )
+      AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
+        ${organizationFilter}
+        ${similarityFilter}
+        ${displayNameFilter}
       `,
       {
         replacements,
@@ -926,32 +924,39 @@ class OrganizationRepository {
       `WITH
       cte AS (
         SELECT
-          Greatest(Hashtext(Concat(org.id, otm."toMergeId")), Hashtext(Concat(otm."toMergeId", org.id))) as hash,
-          org.id,
+          Greatest(Hashtext(Concat(otm."organizationId", otm."toMergeId")), Hashtext(Concat(otm."toMergeId", otm."organizationId"))) as hash,
+          otm."organizationId" as id,
           otm."toMergeId",
-          org."createdAt",
+          o1."createdAt",
           otm."similarity",
           o1."displayName" as "primaryDisplayName",
           o1.logo as "primaryLogo",
           o2."displayName" as "secondaryDisplayName",
           o2.logo as "secondaryLogo",
-          os1."segmentId" as "primarySegmentId",
-          os2."segmentId" as "secondarySegmentId"
-        FROM organizations org
-        JOIN "organizationToMerge" otm ON org.id = otm."organizationId"
-        JOIN "organization_segments_mv" os1 ON os1."organizationId" = org.id
-        JOIN "organization_segments_mv" os2 ON os2."organizationId" = otm."toMergeId"
-        join organizations o1 on o1.id = org.id
-        join organizations o2 on o2.id = otm."toMergeId"
+          (SELECT os1."segmentId" FROM "organizationSegmentsAgg" os1
+           WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+           LIMIT 1) as "primarySegmentId",
+          (SELECT os2."segmentId" FROM "organizationSegmentsAgg" os2
+           WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+           LIMIT 1) as "secondarySegmentId"
+        FROM "organizationToMerge" otm
+        JOIN organizations o1 ON o1.id = otm."organizationId"
+        JOIN organizations o2 ON o2.id = otm."toMergeId"
         LEFT JOIN "mergeActions" ma
           ON ma.type = :mergeActionType
           AND (
-            (ma."primaryId" = org.id AND ma."secondaryId" = otm."toMergeId")
-            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = org.id)
+            (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
           )
-        WHERE os1."segmentId" IN (:segmentIds)
-          AND os2."segmentId" IN (:segmentIds)
-          AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
+        WHERE EXISTS (
+            SELECT 1 FROM "organizationSegmentsAgg" os1
+            WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+        )
+        AND EXISTS (
+            SELECT 1 FROM "organizationSegmentsAgg" os2
+            WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+        )
+        AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
           ${organizationFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -1151,6 +1156,7 @@ class OrganizationRepository {
       OrganizationField.INDUSTRY,
       OrganizationField.FOUNDED,
       OrganizationField.IS_TEAM_ORGANIZATION,
+      OrganizationField.IS_AFFILIATION_BLOCKED,
       OrganizationField.MANUALLY_CREATED,
     ])
 
@@ -1982,27 +1988,6 @@ class OrganizationRepository {
     )
 
     return records
-  }
-
-  static async _createAuditLog(action, record, data, options: IRepositoryOptions) {
-    let values = {}
-
-    if (data) {
-      values = {
-        ...record.get({ plain: true }),
-        memberIds: data.members,
-      }
-    }
-
-    await AuditLogRepository.log(
-      {
-        entityName: 'organization',
-        entityId: record.id,
-        action,
-        values,
-      },
-      options,
-    )
   }
 
   static calculateRenderFriendlyOrganizations(

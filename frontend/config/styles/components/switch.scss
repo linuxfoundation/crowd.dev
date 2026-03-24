@@ -24,19 +24,9 @@
 
   // Disabled Unchecked
   --lf-switch-disabled-unchecked-handle: var(--lf-color-white);
-
-  // Disabled Checked
+  --lf-switch-disabled-background: var(--lf-color-gray-200);
   --lf-switch-disabled-checked-handle: var(--lf-color-white);
-
-  /* ---------------------------------- *\
-           Switch sizes
-  \* ---------------------------------- */
-
-  /* Tiny */
-  --lf-switch-tiny-height: #{rem(16)};
-  --lf-switch-tiny-width: #{rem(30)};
-  --lf-switch-tiny-font-size: #{rem(12)};
-  --lf-switch-tiny-line-height: #{rem(15)};
+  --lf-switch-disabled-checked-background: var(--lf-color-primary-500);
 
   /* Small */
   --lf-switch-small-height: #{rem(20)};

@@ -92,6 +92,7 @@ const defaultForm: ContributorIdentity = {
   verified: false,
   platform: 'custom',
   type: 'username',
+  source: 'ui',
   sourceId: null,
 };
 
@@ -130,6 +131,7 @@ const updateIdentity = () => {
   updateContributorIdentity(props.contributor.id, props.modelValue.id, {
     ...form,
     verified: false,
+    source: 'ui',
     integrationId: null,
     sourceId: null,
     platform: form.type === 'email' ? 'custom' : form.platform,
