@@ -232,7 +232,7 @@ func getLanguageStats(sccPathPath, repoPath string, noLarge bool) ([]LanguageSta
 func runSCC(sccPathPath string, noLarge bool, args ...string) (string, error) {
 	var cmdArgs []string
 	if noLarge {
-		cmdArgs = append(cmdArgs, "--no-large", "--large-file-limit", "100000000")
+		cmdArgs = append(cmdArgs, "--no-large", "--large-byte-count", "100000000")
 	}
 	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.Command(sccPathPath, cmdArgs...)
