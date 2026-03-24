@@ -33,16 +33,23 @@ export async function findWorkExperiencesBulk(
 ): Promise<IWorkRow[]> {
   const rows: IWorkRow[] = await qx.select(
     `
-      WITH aggs AS (
+      WITH relevant_orgs AS (
+        SELECT DISTINCT "organizationId"
+        FROM "memberOrganizations"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND "deletedAt" IS NULL
+      ),
+      aggs AS (
         SELECT
           osa."organizationId",
           sum(osa."memberCount") AS total_count
         FROM "organizationSegmentsAgg" osa
-        WHERE osa."segmentId" IN (
-          SELECT id FROM segments
-          WHERE "grandparentId" IS NOT NULL
-            AND "parentId"      IS NOT NULL
-        )
+        WHERE osa."organizationId" IN (SELECT "organizationId" FROM relevant_orgs)
+          AND osa."segmentId" IN (
+            SELECT id FROM segments
+            WHERE "grandparentId" IS NOT NULL
+              AND "parentId"      IS NOT NULL
+          )
         GROUP BY osa."organizationId"
       )
       SELECT
