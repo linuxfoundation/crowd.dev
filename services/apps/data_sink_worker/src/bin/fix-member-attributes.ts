@@ -51,7 +51,8 @@ async function getMemberIds(
 select m.id, m.attributes, m."manuallyChangedFields"
 from members m
          inner join
-     relevant_members rm on rm.id = m.id;
+     relevant_members rm on rm.id = m.id
+order by m.id desc;
       `,
       { lastId },
     )
@@ -83,6 +84,7 @@ from members m
 setImmediate(async () => {
   let dbClient: DbConnOrTx | undefined
   let redisClient: any | undefined
+  let exitCode = 0
 
   try {
     log.info('Starting member attributes fix script')
@@ -283,9 +285,9 @@ setImmediate(async () => {
       },
       'Fatal error in member attributes fix script',
     )
-    process.exit(1)
+    exitCode = 1
   } finally {
     log.info('Script execution completed')
-    process.exit(0)
+    process.exit(exitCode)
   }
 })
