@@ -252,11 +252,17 @@ WHERE cityHash64(segmentId) % 10 = {bucket_number}
 
 ### Bootstrap Procedure
 
+The snapshot pipes use **append COPY MODE**. This means running a snapshot pipe will add rows to the existing datasource rather than replacing it. To recreate the buckets from scratch, follow these steps for each bucket `#` (0–9):
+
 1. **Prepare**: Ensure all bucket datasources exist
-2. **Execute Snapshots**: Run all 10 snapshot pipes manually
-3. **Verify**: Check each bucket has ~10% of total records
-4. **Enable Enrichment**: Allow scheduled copy pipes to run
-5. **Monitor**: Watch for snapshotId updates in cleaned buckets
+2. **Pause** the `activityRelations_bucket_clean_enrich_copy_pipe_#` pipe
+3. **Truncate** `activityRelations_bucket_MV_ds_#`
+4. **Run** the `activityRelations_bucket_MV_snapshot_#` pipe
+5. **Confirm** that `activityRelations_bucket_MV_ds_#` was populated and has 10% of total records
+6. **Resume** the `activityRelations_bucket_clean_enrich_copy_pipe_#` pipe
+7. **Monitor**: Watch for snapshotId updates in cleaned buckets
+
+> **Why pause the enrichment pipe first?** The enrichment copy pipe reads from `activityRelations_bucket_MV_ds_#`. Truncating while it runs could cause it to produce empty or partial results. Pausing ensures a clean window for the snapshot to populate the datasource.
 
 ## Query Patterns
 

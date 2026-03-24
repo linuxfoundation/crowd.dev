@@ -14,15 +14,17 @@ export async function setAttributesDefaultValues(
   for (const attributeName of Object.keys(attributes)) {
     if (typeof attributes[attributeName] === 'string') {
       // we try to fix it
-      try {
-        attributes[attributeName] = JSON.parse(attributes[attributeName] as string)
-      } catch (err) {
-        this.log.error(err, { attributeName }, 'Could not parse a string attribute value!')
-        throw err
-      }
+      attributes[attributeName] = JSON.parse(attributes[attributeName] as string)
     }
+
+    const nonEmptyPlatform = Object.keys(attributes[attributeName]).filter((p) => {
+      if (p === 'default') return false
+      const value = attributes[attributeName][p]
+      return value !== undefined && value !== null && String(value).trim().length > 0
+    })
+
     const highestPriorityPlatform = getHighestPriorityPlatformForAttributes(
-      Object.keys(attributes[attributeName]),
+      nonEmptyPlatform,
       priorities,
     )
 
@@ -31,7 +33,17 @@ export async function setAttributesDefaultValues(
       ;(attributes[attributeName] as any).default =
         attributes[attributeName][highestPriorityPlatform]
     } else {
-      delete attributes[attributeName]
+      // Only delete if there is no existing non-empty default value.
+      // An attribute with only a `default` key and no platform-specific keys
+      // has no source platform to derive from, but its value should be preserved.
+      const existingDefault = (attributes[attributeName] as any).default
+      if (
+        existingDefault === undefined ||
+        existingDefault === null ||
+        String(existingDefault).trim().length === 0
+      ) {
+        delete attributes[attributeName]
+      }
     }
   }
 
