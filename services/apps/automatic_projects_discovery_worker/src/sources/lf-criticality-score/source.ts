@@ -128,37 +128,28 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     const startDate = parsed.searchParams.get('startDate') ?? ''
     const endDate = parsed.searchParams.get('endDate') ?? ''
 
-    const stream = new Readable({ objectMode: true, read() {} })
+    async function* pages() {
+      let page = 1
+      let totalPages = 1
 
-    // Fetch pages asynchronously and push rows into the stream
-    ;(async () => {
-      try {
-        let page = 1
-        let totalPages = 1
+      do {
+        const response = await fetchPage(baseUrl, startDate, endDate, page)
+        totalPages = response.totalPages
 
-        do {
-          const response = await fetchPage(baseUrl, startDate, endDate, page)
-          totalPages = response.totalPages
+        for (const row of response.data) {
+          yield row
+        }
 
-          for (const row of response.data) {
-            stream.push(row)
-          }
+        log.debug(
+          { datasetId: dataset.id, page, totalPages, rowsInPage: response.data.length },
+          'LF Criticality Score page fetched.',
+        )
 
-          log.debug(
-            { datasetId: dataset.id, page, totalPages, rowsInPage: response.data.length },
-            'LF Criticality Score page fetched.',
-          )
+        page++
+      } while (page <= totalPages)
+    }
 
-          page++
-        } while (page <= totalPages)
-
-        stream.push(null) // signal end of stream
-      } catch (err) {
-        stream.destroy(err instanceof Error ? err : new Error(String(err)))
-      }
-    })()
-
-    return stream
+    return Readable.from(pages(), { objectMode: true })
   }
 
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
