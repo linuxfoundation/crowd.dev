@@ -11,7 +11,7 @@ import { devStatsRouter } from './v1/dev-stats'
 export function publicRouter(): Router {
   const router = Router()
 
-  router.use('/v1/dev-stats', staticApiKeyMiddleware(), devStatsRouter())
+  router.use('/v1', staticApiKeyMiddleware(), devStatsRouter())
   router.use('/v1', oauth2Middleware(AUTH0_CONFIG), v1Router())
   router.use(errorHandler)
 
