@@ -1,7 +1,7 @@
 -- The existing idx_memberIdentities_email_verified_trgm covers the right partial
 -- conditions (verified = true, type = 'email', deletedAt IS NULL) but is a GIN
--- trigram index -- PostgreSQL will not use it for the equality join in
--- findMembersByVerifiedEmails:
+-- trigram index -- PostgreSQL will not use it for equality joins on
+-- lower(mi.value) against input emails, for example:
 --
 --   JOIN ON lower(mi.value) = input_email
 --   WHERE mi.verified = true AND mi.type = 'email' AND mi."deletedAt" IS NULL
