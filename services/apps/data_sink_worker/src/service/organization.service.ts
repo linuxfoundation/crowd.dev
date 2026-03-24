@@ -28,7 +28,7 @@ export class OrganizationService extends LoggerBase {
   ): Promise<string> {
     const id = await this.store.transactionally(async (txStore) => {
       const qe = dbStoreQx(txStore)
-      const id = await findOrCreateOrganization(qe, source, data, integrationId)
+      const id = await findOrCreateOrganization(qe, source, data, integrationId, true)
       return id
     })
 
