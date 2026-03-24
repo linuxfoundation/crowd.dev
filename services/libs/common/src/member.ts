@@ -33,7 +33,17 @@ export async function setAttributesDefaultValues(
       ;(attributes[attributeName] as any).default =
         attributes[attributeName][highestPriorityPlatform]
     } else {
-      delete attributes[attributeName]
+      // Only delete if there is no existing non-empty default value.
+      // An attribute with only a `default` key and no platform-specific keys
+      // has no source platform to derive from, but its value should be preserved.
+      const existingDefault = (attributes[attributeName] as any).default
+      if (
+        existingDefault === undefined ||
+        existingDefault === null ||
+        String(existingDefault).trim().length === 0
+      ) {
+        delete attributes[attributeName]
+      }
     }
   }
 
