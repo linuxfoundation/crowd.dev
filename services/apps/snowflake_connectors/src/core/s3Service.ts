@@ -42,8 +42,9 @@ export class S3Service {
   }
 
   async readParquetRows(s3Uri: string): Promise<Record<string, unknown>[]> {
-    const buffer = await this.downloadFile(s3Uri)
+    let buffer: Buffer | null = await this.downloadFile(s3Uri)
     const reader = await ParquetReader.openBuffer(buffer)
+    buffer = null
     const cursor = reader.getCursor()
     const rows: Record<string, unknown>[] = []
     let row: Record<string, unknown> | null = null

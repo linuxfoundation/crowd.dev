@@ -47,6 +47,8 @@ export class TransformerConsumer {
           log.info({ jobId: job.id, platform: job.platform, s3Path: job.s3Path }, 'Processing job')
           this.currentPollingIntervalMs = this.pollingIntervalMs
           await this.processJob(job)
+          // yield to the event loop so GC can collect the previous batch before the next one starts
+          await new Promise<void>((resolve) => setImmediate(resolve))
           continue
         }
       } catch (err) {
@@ -82,7 +84,7 @@ export class TransformerConsumer {
       const platform = job.platform as PlatformType
       const source = getDataSource(platform, job.sourceName)
 
-      const rows = await this.s3Service.readParquetRows(job.s3Path)
+      let rows: Record<string, unknown>[] | null = await this.s3Service.readParquetRows(job.s3Path)
 
       let transformedCount = 0
       let transformSkippedCount = 0
@@ -109,6 +111,8 @@ export class TransformerConsumer {
         )
         transformedCount++
       }
+
+      rows = null
 
       const skippedCount = transformSkippedCount + resolveSkippedCount
       const processingMetrics = {
