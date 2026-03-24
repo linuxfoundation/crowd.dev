@@ -84,14 +84,11 @@ export class TransformerConsumer {
       const platform = job.platform as PlatformType
       const source = getDataSource(platform, job.sourceName)
 
-      let rows: Record<string, unknown>[] | null = await this.s3Service.readParquetRows(job.s3Path)
-
       let transformedCount = 0
       let transformSkippedCount = 0
       let resolveSkippedCount = 0
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]
+      for await (const row of this.s3Service.streamParquetRows(job.s3Path)) {
         const result = source.transformer.safeTransformRow(row)
         if (!result) {
           transformSkippedCount++
@@ -111,8 +108,6 @@ export class TransformerConsumer {
         )
         transformedCount++
       }
-
-      rows = null
 
       const skippedCount = transformSkippedCount + resolveSkippedCount
       const processingMetrics = {
