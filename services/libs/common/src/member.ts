@@ -18,6 +18,7 @@ export async function setAttributesDefaultValues(
     }
 
     const nonEmptyPlatform = Object.keys(attributes[attributeName]).filter((p) => {
+      if (p === 'default') return false
       const value = attributes[attributeName][p]
       return value !== undefined && value !== null && String(value).trim().length > 0
     })
