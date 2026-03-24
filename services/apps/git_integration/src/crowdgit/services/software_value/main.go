@@ -56,25 +56,17 @@ func processRepository(noLarge bool) StandardResponse {
 	// Process single repository (the target path argument)
 	repoDir := config.TargetPath
 
-	dryRun := os.Getenv("IS_PROD_ENV") != "true"
-
-	var insightsDb *InsightsDB
-	if !dryRun {
-		var dbErr error
-		insightsDb, dbErr = NewInsightsDB(ctx, config.InsightsDatabase)
-		if dbErr != nil {
-			errorCode := ErrorCodeDatabaseConnection
-			errorMessage := fmt.Sprintf("Error connecting to insights database: %v", dbErr)
-			return StandardResponse{
-				Status:       StatusFailure,
-				ErrorCode:    &errorCode,
-				ErrorMessage: &errorMessage,
-			}
+	insightsDb, dbErr := NewInsightsDB(ctx, config.InsightsDatabase)
+	if dbErr != nil {
+		errorCode := ErrorCodeDatabaseConnection
+		errorMessage := fmt.Sprintf("Error connecting to insights database: %v", dbErr)
+		return StandardResponse{
+			Status:       StatusFailure,
+			ErrorCode:    &errorCode,
+			ErrorMessage: &errorMessage,
 		}
-		defer insightsDb.Close()
-	} else {
-		fmt.Println("[DRY RUN] Skipping database connection")
 	}
+	defer insightsDb.Close()
 
 	// Get git URL for the repository
 	gitUrl, err := getGitRepositoryURL(repoDir)
@@ -101,32 +93,24 @@ func processRepository(noLarge bool) StandardResponse {
 	}
 	report.Repository.URL = gitUrl
 
-	if dryRun {
-		fmt.Printf("[DRY RUN] Would save project cost: repo=%s cost=$%.2f\n", report.Repository.URL, report.Cocomo.CostInDollars)
-		fmt.Printf("[DRY RUN] Would save %d language stats entries\n", len(report.LanguageStats))
-		for _, ls := range report.LanguageStats {
-			fmt.Printf("[DRY RUN]   language=%s lines=%d code=%d\n", ls.LanguageName, ls.Lines, ls.Code)
+	// Save to database
+	if err := insightsDb.saveProjectCost(ctx, report.Repository, report.Cocomo.CostInDollars); err != nil {
+		errorCode := ErrorCodeDatabaseOperation
+		errorMessage := fmt.Sprintf("Error saving project cost: %v", err)
+		return StandardResponse{
+			Status:       StatusFailure,
+			ErrorCode:    &errorCode,
+			ErrorMessage: &errorMessage,
 		}
-	} else {
-		// Save to database
-		if err := insightsDb.saveProjectCost(ctx, report.Repository, report.Cocomo.CostInDollars); err != nil {
-			errorCode := ErrorCodeDatabaseOperation
-			errorMessage := fmt.Sprintf("Error saving project cost: %v", err)
-			return StandardResponse{
-				Status:       StatusFailure,
-				ErrorCode:    &errorCode,
-				ErrorMessage: &errorMessage,
-			}
-		}
+	}
 
-		if err := insightsDb.saveLanguageStats(ctx, report.Repository, report.LanguageStats); err != nil {
-			errorCode := ErrorCodeDatabaseOperation
-			errorMessage := fmt.Sprintf("Error saving language stats: %v", err)
-			return StandardResponse{
-				Status:       StatusFailure,
-				ErrorCode:    &errorCode,
-				ErrorMessage: &errorMessage,
-			}
+	if err := insightsDb.saveLanguageStats(ctx, report.Repository, report.LanguageStats); err != nil {
+		errorCode := ErrorCodeDatabaseOperation
+		errorMessage := fmt.Sprintf("Error saving language stats: %v", err)
+		return StandardResponse{
+			Status:       StatusFailure,
+			ErrorCode:    &errorCode,
+			ErrorMessage: &errorMessage,
 		}
 	}
 

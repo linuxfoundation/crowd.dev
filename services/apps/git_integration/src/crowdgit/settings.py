@@ -44,4 +44,3 @@ STUCK_ONBOARDING_REPO_TIMEOUT_HOURS = int(
 STUCK_RECURRENT_REPO_TIMEOUT_HOURS = int(
     load_env_var("STUCK_RECURRENT_REPO_TIMEOUT_HOURS", default="4")
 )
-IS_PROD_ENV: bool = load_env_var("NODE_ENV", required=False) == "production"

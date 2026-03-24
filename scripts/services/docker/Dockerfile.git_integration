@@ -7,7 +7,7 @@ FROM golang:1.25-alpine AS go-builder
 WORKDIR /go/src/software-value
 
 # Install scc using the official Go toolchain (specific version as per project README)
-RUN go install github.com/boyter/scc/v3@v3.7.0
+RUN go install github.com/boyter/scc/v3@v3.5.0
 
 # Copy Go module files
 COPY ./services/apps/git_integration/src/crowdgit/services/software_value/go.mod ./
