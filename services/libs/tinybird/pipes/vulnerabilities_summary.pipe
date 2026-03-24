@@ -1,0 +1,62 @@
+NODE last_scan_status
+SQL >
+    SELECT
+        multiIf(
+            max(
+                multiIf(
+                    s.status = 'success',
+                    4,
+                    s.status = 'no_packages_found',
+                    3,
+                    s.status = 'failure',
+                    2,
+                    1
+                )
+            )
+            = 4,
+            'success',
+            max(
+                multiIf(
+                    s.status = 'success',
+                    4,
+                    s.status = 'no_packages_found',
+                    3,
+                    s.status = 'failure',
+                    2,
+                    1
+                )
+            )
+            = 3,
+            'no_packages_found',
+            max(
+                multiIf(
+                    s.status = 'success',
+                    4,
+                    s.status = 'no_packages_found',
+                    3,
+                    s.status = 'failure',
+                    2,
+                    1
+                )
+            )
+            = 2,
+            'failure',
+            'running'
+        ) as lastScanStatus
+    FROM vulnerability_scans as s FINAL
+    WHERE s.repoUrl in (select arrayJoin(repositories) from segments_filtered)
+
+NODE summary
+SQL >
+    SELECT
+        countIf(v.status != 'RESOLVED') as count,
+        round(countIf(v.status = 'RESOLVED') * 100.0 / greatest(count(v.id), 1), 2) as fixedPercentage,
+        if(count(v.id) > 0, dateDiff('day', max(v.firstDetectedAt), now()), 0) as daysSinceLastVuln,
+        round(avgIf(v.cvssScore, v.status != 'RESOLVED'), 2) as avgCvssScore,
+        groupUniqArray(v.packageEcosystem) as ecosystems
+    FROM vulnerabilities as v FINAL
+    WHERE repoUrl in (select arrayJoin(repositories) from segments_filtered)
+
+NODE vulnerabilities_summary
+SQL >
+    SELECT summary.*, last_scan_status.lastScanStatus FROM summary CROSS JOIN last_scan_status

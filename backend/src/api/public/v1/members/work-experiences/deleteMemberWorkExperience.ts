@@ -46,7 +46,6 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
 
       await qx.tx(async (tx) => {
         await deleteMemberOrganizations(tx, memberId, [workExperienceId])
-
         const commonMemberService = new CommonMemberService(tx, req.temporal, req.log)
         await commonMemberService.startAffiliationRecalculation(memberId, [
           memberOrg.organizationId,

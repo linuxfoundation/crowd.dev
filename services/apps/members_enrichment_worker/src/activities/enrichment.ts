@@ -613,15 +613,24 @@ function prepareWorkExperiences(
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): IWorkExperienceChanges {
   // we delete all the work experiences that were not manually created
-  let toDelete = oldVersion.filter((c) => c.source !== OrganizationSource.UI)
+  const toDelete = oldVersion.filter((c) => c.source !== OrganizationSource.UI)
 
   const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toUpdate: Map<IMemberOrganizationData, Record<string, any>> = new Map()
 
   if (isHighConfidenceSourceSelectedForWorkExperiences) {
-    toDelete = oldVersion
-    toCreate.push(...newVersion)
+    const uiEntries = oldVersion.filter((c) => c.source === OrganizationSource.UI)
+    const filteredNewVersion = newVersion.filter(
+      (e) =>
+        !uiEntries.some(
+          (ui) =>
+            e.title === ui.jobTitle &&
+            e.identities &&
+            e.identities.some((i) => i.organizationId === ui.orgId),
+        ),
+    )
+    toCreate.push(...filteredNewVersion)
     return {
       toDelete,
       toCreate,

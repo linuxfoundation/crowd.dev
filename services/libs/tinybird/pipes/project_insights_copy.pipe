@@ -10,6 +10,7 @@ SQL >
         segmentId,
         logoUrl,
         isLF,
+        status,
         contributorCount,
         organizationCount,
         softwareValue,
@@ -23,6 +24,7 @@ SQL >
         segmentId,
         logoUrl,
         isLF,
+        status,
         contributorCount,
         organizationCount,
         softwareValue,
@@ -101,6 +103,7 @@ SQL >
         base.slug AS slug,
         base.logoUrl AS logoUrl,
         base.isLF AS isLF,
+        base.status AS status,
         base.contributorCount AS contributorCount,
         base.organizationCount AS organizationCount,
         base.softwareValue AS softwareValue,
@@ -132,4 +135,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE project_insights_copy_ds
 COPY_MODE replace
-COPY_SCHEDULE 0 2 * * *
+COPY_SCHEDULE 0 3 * * *

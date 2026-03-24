@@ -33,7 +33,6 @@ import {
   SSOConfiguration,
   SegmentConfiguration,
   ServiceType,
-  SlackAlertingConfiguration,
   SlackConfiguration,
   SnowflakeConfiguration,
   StackExchangeConfiguration,
@@ -131,9 +130,6 @@ export const STACKEXCHANGE_CONFIG: StackExchangeConfiguration =
   config.get<StackExchangeConfiguration>('stackexchange') ?? {
     key: process.env.STACKEXCHANGE_KEY,
   }
-
-export const SLACK_ALERTING_CONFIG: SlackAlertingConfiguration =
-  config.get<SlackAlertingConfiguration>('slackAlerting')
 
 export const INTEGRATION_PROCESSING_CONFIG: IntegrationProcessingConfiguration =
   config.get<IntegrationProcessingConfiguration>('integrationProcessing')

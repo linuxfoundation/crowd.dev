@@ -53,7 +53,7 @@ const job: IJobDefinition = {
 
     if (msg && msg.trim().length > 0) {
       await sendSlackNotificationAsync(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_CRITICAL_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
         'Queue Monitoring Alert',
         msg,

@@ -1,0 +1,54 @@
+DESCRIPTION >
+    - `vulnerabilities` contains security vulnerability records detected in repositories.
+    - `id` is the primary key identifier for the vulnerability record.
+    - `repoUrl` is the repository URL where the vulnerability was detected.
+    - `scanId` references the vulnerability scan that detected this vulnerability.
+    - `vulnerabilityId` is the unique identifier for the vulnerability (e.g., OSV ID).
+    - `cveIds` is an array of CVE identifiers associated with this vulnerability (empty array default).
+    - `ghsaIds` is an array of GitHub Security Advisory identifiers.
+    - `otherIds` is an array of other vulnerability identifiers.
+    - `severity` is the vulnerability severity level (UNKNOWN, LOW, MODERATE, HIGH, CRITICAL).
+    - `cvssScore` is the raw CVSS score (nullable, null when score is unavailable).
+    - `summary` is a short description of the vulnerability.
+    - `details` contains detailed information about the vulnerability.
+    - `packageName` is the name of the affected package.
+    - `packageVersion` is the version of the affected package.
+    - `packageEcosystem` is the ecosystem of the affected package.
+    - `sourcePath` is the file path where the vulnerability was found.
+    - `sourceType` is the type of source file.
+    - `status` is the current vulnerability status (OPEN, FIX_AVAILABLE, RESOLVED).
+    - `fixedVersion` is the version that fixes the vulnerability.
+    - `publishedAt` is when the vulnerability was publicly disclosed.
+    - `modifiedAt` is when the vulnerability record was last modified.
+    - `firstDetectedAt` is when the vulnerability was first detected in this repository.
+    - `scannedAt` is the timestamp of the scan that last detected this vulnerability.
+    - `resolvedAt` is when the vulnerability was resolved within this repository.
+
+SCHEMA >
+    `id` String `json:$.record.id`,
+    `repoUrl` String `json:$.record.repo_url`,
+    `scanId` String `json:$.record.scan_id`,
+    `vulnerabilityId` String `json:$.record.vulnerability_id`,
+    `cveIds` Array(String) `json:$.record.cve_ids[:]` DEFAULT [],
+    `ghsaIds` Array(String) `json:$.record.ghsa_ids[:]` DEFAULT [],
+    `otherIds` Array(String) `json:$.record.other_ids[:]` DEFAULT [],
+    `severity` LowCardinality(String) `json:$.record.severity` DEFAULT 'UNKNOWN',
+    `cvssScore` Nullable(Float64) `json:$.record.cvss_score`,
+    `summary` String `json:$.record.summary` DEFAULT '',
+    `details` String `json:$.record.details` DEFAULT '',
+    `packageName` String `json:$.record.package_name`,
+    `packageVersion` String `json:$.record.package_version` DEFAULT '',
+    `packageEcosystem` LowCardinality(String) `json:$.record.package_ecosystem` DEFAULT '',
+    `sourcePath` String `json:$.record.source_path` DEFAULT '',
+    `sourceType` LowCardinality(String) `json:$.record.source_type` DEFAULT '',
+    `status` LowCardinality(String) `json:$.record.status` DEFAULT 'OPEN',
+    `fixedVersion` String `json:$.record.fixed_version` DEFAULT '',
+    `publishedAt` Nullable(DateTime64(3)) `json:$.record.published_at`,
+    `modifiedAt` Nullable(DateTime64(3)) `json:$.record.modified_at`,
+    `firstDetectedAt` DateTime64(3) `json:$.record.first_detected_at`,
+    `scannedAt` DateTime64(3) `json:$.record.scanned_at`,
+    `resolvedAt` Nullable(DateTime64(3)) `json:$.record.resolved_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_SORTING_KEY repoUrl, vulnerabilityId, packageName, sourcePath
+ENGINE_VER scannedAt

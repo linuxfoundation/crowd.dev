@@ -149,7 +149,7 @@ const queueJob = async (job: IJobDefinition) => {
 
       if (err instanceof Error && err.message.includes('did not finish in time')) {
         sendSlackNotificationAsync(
-          SlackChannel.ALERTS,
+          SlackChannel.CDP_CRITICAL_ALERTS,
           SlackPersona.CRITICAL_ALERTER,
           `Cron job timed out: ${job.name}`,
           `Job \`${job.name}\` was killed after exceeding its ${job.timeout}s timeout (ran for ${diff}s).`,
