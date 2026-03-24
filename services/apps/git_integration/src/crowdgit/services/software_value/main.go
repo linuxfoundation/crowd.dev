@@ -14,17 +14,17 @@ import (
 )
 
 func main() {
-	numProcessors := flag.Int("num-processors", 0, "Number of parallel scc workers (0 = scc default, 1 = minimum for large repos)")
+	noLarge := flag.Bool("no-large", false, "Skip files larger than 100MB to avoid OOM on large repos")
 	flag.Parse()
 
-	response := processRepository(*numProcessors)
+	response := processRepository(*noLarge)
 	outputJSON(response)
 
 	// Always exit with code 0 - status details are in JSON response
 }
 
 // processRepository handles the main logic and returns a StandardResponse
-func processRepository(numProcessors int) StandardResponse {
+func processRepository(noLarge bool) StandardResponse {
 	ctx := context.Background()
 
 	// Get target path from remaining non-flag arguments
@@ -34,7 +34,7 @@ func processRepository(numProcessors int) StandardResponse {
 		targetPath = args[0]
 	} else {
 		errorCode := ErrorCodeInvalidArguments
-		errorMessage := fmt.Sprintf("Usage: %s [--num-processors N] <target-path>", os.Args[0])
+		errorMessage := fmt.Sprintf("Usage: %s [--no-large] <target-path>", os.Args[0])
 		return StandardResponse{
 			Status:       StatusFailure,
 			ErrorCode:    &errorCode,
@@ -89,7 +89,7 @@ func processRepository(numProcessors int) StandardResponse {
 	}
 
 	// Process the repository with SCC
-	report, err := getSCCReport(config.SCCPath, repoDir, numProcessors)
+	report, err := getSCCReport(config.SCCPath, repoDir, noLarge)
 	if err != nil {
 		errorCode := getErrorCodeFromSCCError(err)
 		errorMessage := fmt.Sprintf("Error processing repository '%s': %v", repoDir, err)
@@ -141,8 +141,8 @@ func processRepository(numProcessors int) StandardResponse {
 
 
 // getSCCReport analyzes a directory with scc and returns a report containing the estimated cost and language statistics.
-func getSCCReport(sccPath, dirPath string, numProcessors int) (SCCReport, error) {
-	cost, err := getCost(sccPath, dirPath, numProcessors)
+func getSCCReport(sccPath, dirPath string, noLarge bool) (SCCReport, error) {
+	cost, err := getCost(sccPath, dirPath, noLarge)
 	if err != nil {
 		return SCCReport{}, fmt.Errorf("error getting SCC report for '%s': %v", dirPath, err)
 	}
@@ -154,7 +154,7 @@ func getSCCReport(sccPath, dirPath string, numProcessors int) (SCCReport, error)
 
 	projectPath := filepath.Base(dirPath)
 
-	langStats, err := getLanguageStats(sccPath, dirPath, numProcessors)
+	langStats, err := getLanguageStats(sccPath, dirPath, noLarge)
 	if err != nil {
 		return SCCReport{}, fmt.Errorf("error getting language stats for '%s': %v", dirPath, err)
 	}
@@ -198,8 +198,8 @@ func getGitRepositoryURL(dirPath string) (string, error) {
 }
 
 // getCost runs the scc command and parses the output to get the estimated cost.
-func getCost(sccPathPath, repoPath string, numProcessors int) (float64, error) {
-	output, err := runSCC(sccPathPath, numProcessors, "--format=short", repoPath)
+func getCost(sccPathPath, repoPath string, noLarge bool) (float64, error) {
+	output, err := runSCC(sccPathPath, noLarge, "--format=short", repoPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to run scc command: %w", err)
 	}
@@ -213,8 +213,8 @@ func getCost(sccPathPath, repoPath string, numProcessors int) (float64, error) {
 }
 
 // getLanguageStats runs the scc command and parses the output to get language statistics.
-func getLanguageStats(sccPathPath, repoPath string, numProcessors int) ([]LanguageStats, error) {
-	output, err := runSCC(sccPathPath, numProcessors, "--format=json", repoPath)
+func getLanguageStats(sccPathPath, repoPath string, noLarge bool) ([]LanguageStats, error) {
+	output, err := runSCC(sccPathPath, noLarge, "--format=json", repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run scc command: %w", err)
 	}
@@ -228,15 +228,11 @@ func getLanguageStats(sccPathPath, repoPath string, numProcessors int) ([]Langua
 }
 
 // runSCC executes the scc command with the given arguments and returns the output.
-// When numProcessors > 0, scc is run with reduced parallelism to limit memory usage on large repos.
-func runSCC(sccPathPath string, numProcessors int, args ...string) (string, error) {
+// When noLarge is true, files larger than 100MB are skipped to avoid OOM on large repos.
+func runSCC(sccPathPath string, noLarge bool, args ...string) (string, error) {
 	var cmdArgs []string
-	if numProcessors > 0 {
-		n := strconv.Itoa(numProcessors)
-		cmdArgs = append(cmdArgs,
-			"--directory-walker-job-workers", n,
-			"--file-process-job-workers", n,
-		)
+	if noLarge {
+		cmdArgs = append(cmdArgs, "--no-large", "--large-file-limit", "100000000")
 	}
 	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.Command(sccPathPath, cmdArgs...)

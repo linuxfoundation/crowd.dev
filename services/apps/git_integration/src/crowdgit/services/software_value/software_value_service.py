@@ -52,9 +52,9 @@ class SoftwareValueService(BaseService):
             if repo_size >= _LARGE_REPO_THRESHOLD_BYTES:
                 self.logger.info(
                     f"Repo size {repo_size / (1024**3):.1f} GB exceeds threshold — "
-                    "running scc with num-processors=1"
+                    "running scc with no-large (skipping files >100MB)"
                 )
-                cmd += ["--num-processors", "1"]
+                cmd += ["--no-large"]
 
             cmd.append(repo_path)
 
