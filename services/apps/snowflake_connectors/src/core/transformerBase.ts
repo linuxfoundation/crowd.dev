@@ -29,6 +29,12 @@ export abstract class TransformerBase {
    */
   abstract transformRow(row: Record<string, unknown>): TransformedActivity | null
 
+  private static readonly INDIVIDUAL_NO_ACCOUNT_RE = /^individual\s*[-–?]\s*no\s+account$/i
+
+  protected isIndividualNoAccount(displayName: string): boolean {
+    return TransformerBase.INDIVIDUAL_NO_ACCOUNT_RE.test(displayName.trim())
+  }
+
   /**
    * Safe wrapper around transformRow that catches errors and returns null.
    */
