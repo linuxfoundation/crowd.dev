@@ -56,6 +56,12 @@ const defaultConfig = {
   permissions: {
     teamUserIds: import.meta.env.VUE_APP_TEAM_USER_IDS,
   },
+  intercom: {
+    appId: import.meta.env.VUE_APP_INTERCOM_APP_ID,
+    apiBase: 'https://api-iam.intercom.io',
+    auth0IntercomClaim: 'http://lfx.dev/claims/intercom',
+    auth0UsernameClaim: 'https://sso.linuxfoundation.org/claims/username',
+  },
 };
 
 const composedConfig = {
@@ -103,6 +109,12 @@ const composedConfig = {
   },
   permissions: {
     teamUserIds: 'CROWD_VUE_APP_TEAM_USER_IDS',
+  },
+  intercom: {
+    appId: 'CROWD_VUE_APP_INTERCOM_APP_ID',
+    apiBase: 'https://api-iam.intercom.io',
+    auth0IntercomClaim: 'http://lfx.dev/claims/intercom',
+    auth0UsernameClaim: 'https://sso.linuxfoundation.org/claims/username',
   },
 };
 
