@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,23 +14,27 @@ import (
 )
 
 func main() {
-	response := processRepository()
+	noLarge := flag.Bool("no-large", false, "Skip files larger than 100MB to avoid OOM on large repos")
+	flag.Parse()
+
+	response := processRepository(*noLarge)
 	outputJSON(response)
 
 	// Always exit with code 0 - status details are in JSON response
 }
 
 // processRepository handles the main logic and returns a StandardResponse
-func processRepository() StandardResponse {
+func processRepository(noLarge bool) StandardResponse {
 	ctx := context.Background()
 
-	// Get target path from command line argument
+	// Get target path from remaining non-flag arguments
+	args := flag.Args()
 	var targetPath string
-	if len(os.Args) > 1 {
-		targetPath = os.Args[1]
+	if len(args) > 0 {
+		targetPath = args[0]
 	} else {
 		errorCode := ErrorCodeInvalidArguments
-		errorMessage := fmt.Sprintf("Usage: %s <target-path>", os.Args[0])
+		errorMessage := fmt.Sprintf("Usage: %s [--no-large] <target-path>", os.Args[0])
 		return StandardResponse{
 			Status:       StatusFailure,
 			ErrorCode:    &errorCode,
@@ -51,10 +56,10 @@ func processRepository() StandardResponse {
 	// Process single repository (the target path argument)
 	repoDir := config.TargetPath
 
-	insightsDb, err := NewInsightsDB(ctx, config.InsightsDatabase)
-	if err != nil {
+	insightsDb, dbErr := NewInsightsDB(ctx, config.InsightsDatabase)
+	if dbErr != nil {
 		errorCode := ErrorCodeDatabaseConnection
-		errorMessage := fmt.Sprintf("Error connecting to insights database: %v", err)
+		errorMessage := fmt.Sprintf("Error connecting to insights database: %v", dbErr)
 		return StandardResponse{
 			Status:       StatusFailure,
 			ErrorCode:    &errorCode,
@@ -76,7 +81,7 @@ func processRepository() StandardResponse {
 	}
 
 	// Process the repository with SCC
-	report, err := getSCCReport(config.SCCPath, repoDir)
+	report, err := getSCCReport(config.SCCPath, repoDir, noLarge)
 	if err != nil {
 		errorCode := getErrorCodeFromSCCError(err)
 		errorMessage := fmt.Sprintf("Error processing repository '%s': %v", repoDir, err)
@@ -120,10 +125,10 @@ func processRepository() StandardResponse {
 
 
 // getSCCReport analyzes a directory with scc and returns a report containing the estimated cost and language statistics.
-func getSCCReport(sccPath, dirPath string) (SCCReport, error) {
-	cost, err := getCost(sccPath, dirPath)
+func getSCCReport(sccPath, dirPath string, noLarge bool) (SCCReport, error) {
+	cost, err := getCost(sccPath, dirPath, noLarge)
 	if err != nil {
-		return SCCReport{}, fmt.Errorf("error getting SCC report for '%s': %v\"", err)
+		return SCCReport{}, fmt.Errorf("error getting SCC report for '%s': %v", dirPath, err)
 	}
 
 	// Skip saving to database if cost is 0 - do we want to do this?
@@ -133,7 +138,7 @@ func getSCCReport(sccPath, dirPath string) (SCCReport, error) {
 
 	projectPath := filepath.Base(dirPath)
 
-	langStats, err := getLanguageStats(sccPath, dirPath)
+	langStats, err := getLanguageStats(sccPath, dirPath, noLarge)
 	if err != nil {
 		return SCCReport{}, fmt.Errorf("error getting language stats for '%s': %v", dirPath, err)
 	}
@@ -177,8 +182,8 @@ func getGitRepositoryURL(dirPath string) (string, error) {
 }
 
 // getCost runs the scc command and parses the output to get the estimated cost.
-func getCost(sccPathPath, repoPath string) (float64, error) {
-	output, err := runSCC(sccPathPath, "--format=short", repoPath)
+func getCost(sccPathPath, repoPath string, noLarge bool) (float64, error) {
+	output, err := runSCC(sccPathPath, noLarge, "--format=short", repoPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to run scc command: %w", err)
 	}
@@ -192,8 +197,8 @@ func getCost(sccPathPath, repoPath string) (float64, error) {
 }
 
 // getLanguageStats runs the scc command and parses the output to get language statistics.
-func getLanguageStats(sccPathPath, repoPath string) ([]LanguageStats, error) {
-	output, err := runSCC(sccPathPath, "--format=json", repoPath)
+func getLanguageStats(sccPathPath, repoPath string, noLarge bool) ([]LanguageStats, error) {
+	output, err := runSCC(sccPathPath, noLarge, "--format=json", repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run scc command: %w", err)
 	}
@@ -207,8 +212,14 @@ func getLanguageStats(sccPathPath, repoPath string) ([]LanguageStats, error) {
 }
 
 // runSCC executes the scc command with the given arguments and returns the output.
-func runSCC(sccPathPath string, args ...string) (string, error) {
-	cmd := exec.Command(sccPathPath, args...)
+// When noLarge is true, files larger than 100MB are skipped to avoid OOM on large repos.
+func runSCC(sccPathPath string, noLarge bool, args ...string) (string, error) {
+	var cmdArgs []string
+	if noLarge {
+		cmdArgs = append(cmdArgs, "--no-large", "--large-byte-count", "100000000")
+	}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.Command(sccPathPath, cmdArgs...)
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
