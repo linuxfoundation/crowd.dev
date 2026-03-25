@@ -48,7 +48,7 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
       total_found: allMemberRows.length,
       page,
       pageSize,
-      page_found: 0,
+      contributors_in_page: 0,
       contributors: [],
       notFound,
     })
@@ -83,7 +83,7 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
     total_found: allMemberRows.length,
     page,
     pageSize,
-    page_found: contributors.length,
+    contributors_in_page: contributors.length,
     contributors,
     notFound,
   })
