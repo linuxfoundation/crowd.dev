@@ -1050,6 +1050,10 @@ export default class ActivityService extends LoggerBase {
     const preparedActivities: IActivityPrepareForUpsertResult[] = []
 
     const memberService = new MemberService(this.pgStore, this.redisClient, this.temporal, this.log)
+    // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
+    // unique org per batch. Concurrent member creates that reference the same org await the
+    // same promise instead of firing redundant DB round trips.
+    const orgPromiseCache = new Map<string, Promise<string | undefined>>()
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(
@@ -1145,6 +1149,8 @@ export default class ActivityService extends LoggerBase {
               reach: value.member.reach,
             },
             value.platform,
+            undefined,
+            orgPromiseCache,
           )
           .then((memberId) => {
             // map ids for members
@@ -1288,6 +1294,8 @@ export default class ActivityService extends LoggerBase {
                 payload.dbMember,
                 dbMemberIdentities.get(payload.dbMember.id),
                 payload.platform,
+                undefined,
+                orgPromiseCache,
               )
               .then(() => {
                 payload.memberId = payload.dbMember.id
@@ -1344,6 +1352,8 @@ export default class ActivityService extends LoggerBase {
                 payload.dbObjectMember,
                 dbMemberIdentities.get(payload.dbObjectMember.id),
                 payload.platform,
+                undefined,
+                orgPromiseCache,
               )
               .then(() => {
                 payload.objectMemberId = payload.dbObjectMember.id
