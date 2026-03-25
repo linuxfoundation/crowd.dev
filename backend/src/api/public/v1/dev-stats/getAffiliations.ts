@@ -19,12 +19,16 @@ const bodySchema = z.object({
     .array(z.string().min(1))
     .min(1)
     .max(MAX_HANDLES, `Maximum ${MAX_HANDLES} handles per request`),
-  page: z.number().int().min(1).default(1),
-  pageSize: z.number().int().min(1).max(MAX_HANDLES).default(DEFAULT_PAGE_SIZE),
+})
+
+const querySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(MAX_HANDLES).default(DEFAULT_PAGE_SIZE),
 })
 
 export async function getAffiliations(req: Request, res: Response): Promise<void> {
-  const { githubHandles, page, pageSize } = validateOrThrow(bodySchema, req.body)
+  const { githubHandles } = validateOrThrow(bodySchema, req.body)
+  const { page, pageSize } = validateOrThrow(querySchema, req.query)
   const qx = optionsQx(req)
 
   const lowercasedHandles = githubHandles.map((h) => h.toLowerCase())
