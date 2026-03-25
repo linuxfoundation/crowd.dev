@@ -21,6 +21,27 @@ export abstract class TncTransformerBase extends TransformerBase {
       return undefined
     }
 
+    const displayName = (row.ORGANIZATION_NAME as string | null)?.trim() || website
+
+    if (this.isIndividualNoAccount(displayName)) {
+      return [
+        {
+          displayName,
+          source: OrganizationSource.TNC,
+          identities: website
+            ? [
+                {
+                  platform: PlatformType.TNC,
+                  value: website,
+                  type: OrganizationIdentityType.PRIMARY_DOMAIN,
+                  verified: true,
+                },
+              ]
+            : [],
+        },
+      ]
+    }
+
     const identities: IOrganizationIdentity[] = []
 
     if (website) {
@@ -48,7 +69,7 @@ export abstract class TncTransformerBase extends TransformerBase {
 
     return [
       {
-        displayName: (row.ORGANIZATION_NAME as string | null)?.trim() || website,
+        displayName,
         source: OrganizationSource.TNC,
         identities,
         logo: (row.LOGO_URL as string | null)?.trim() || undefined,
