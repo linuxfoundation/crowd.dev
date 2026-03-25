@@ -199,13 +199,13 @@ function collectBoundaries(datedRows: IWorkRow[]): Date[] {
 
 function orgsActiveAt(rows: IWorkRow[], boundaryDate: Date): IWorkRow[] {
   return rows.filter((role) => {
-    if (!role.dateStart) return true // undated: active at every boundary
+    if (!role.dateStart && !role.dateEnd) return true // truly undated: active at every boundary
 
-    const roleStart = startOfDay(role.dateStart)
+    const roleStart = role.dateStart ? startOfDay(role.dateStart) : null
     const roleEnd = role.dateEnd ? startOfDay(role.dateEnd) : null
 
     // org is active if the boundary date falls within its employment period
-    return boundaryDate >= roleStart && (!roleEnd || boundaryDate <= roleEnd)
+    return (!roleStart || boundaryDate >= roleStart) && (!roleEnd || boundaryDate <= roleEnd)
   })
 }
 
