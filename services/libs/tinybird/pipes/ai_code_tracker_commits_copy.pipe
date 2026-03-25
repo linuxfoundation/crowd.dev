@@ -1,0 +1,17 @@
+DESCRIPTION >
+    - `ai_code_tracker_commits_copy.pipe` extracts only authored-commit rows from `activities_deduplicated_ds`.
+    - Runs daily to populate `ai_code_tracker_commits_ds` with a small subset (~commits only) of the full 1B+ activities table.
+    - This intermediate datasource is then used by `ai_code_tracker_copy.pipe` for fast AI pattern matching.
+
+TAGS "Report"
+
+NODE ai_code_tracker_commits_copy_result
+SQL >
+    SELECT a.timestamp, a.title, a.body, a.attributes
+    FROM activities_deduplicated_ds a
+    WHERE a.type = 'authored-commit'
+
+TYPE COPY
+TARGET_DATASOURCE ai_code_tracker_commits_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 2 * * *
