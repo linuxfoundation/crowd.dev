@@ -1581,20 +1581,6 @@ export default class ActivityService extends LoggerBase {
         )
       }
 
-      await this.searchSyncWorkerEmitter.triggerMemberSync(
-        prepared.payload.memberId,
-        onboarding,
-        prepared.payload.segmentId,
-      )
-
-      if (prepared.payload.objectMemberId) {
-        await this.searchSyncWorkerEmitter.triggerMemberSync(
-          prepared.payload.objectMemberId,
-          onboarding,
-          prepared.payload.segmentId,
-        )
-      }
-
       if (prepared.payload.organizationId) {
         await this.redisClient.sAdd(
           'organizationIdsForAggComputation',
@@ -1602,6 +1588,28 @@ export default class ActivityService extends LoggerBase {
         )
       }
     }
+
+    // Deduplicate member sync triggers — a member may appear in many activities in the
+    // same batch. Emit once per unique (memberId, segmentId) pair.
+    const memberSyncKeys = new Set<string>()
+    const memberSyncPromises: Promise<void>[] = []
+    for (const prepared of preparedForUpsert) {
+      for (const memberId of [prepared.payload.memberId, prepared.payload.objectMemberId]) {
+        if (!memberId) continue
+        const key = `${memberId}:${prepared.payload.segmentId}`
+        if (!memberSyncKeys.has(key)) {
+          memberSyncKeys.add(key)
+          memberSyncPromises.push(
+            this.searchSyncWorkerEmitter.triggerMemberSync(
+              memberId,
+              onboarding,
+              prepared.payload.segmentId,
+            ),
+          )
+        }
+      }
+    }
+    await Promise.all(memberSyncPromises)
 
     for (const prepared of preparedActivities) {
       resultMap.set(prepared.resultId, { success: true })

@@ -229,7 +229,6 @@ export default class MemberService extends LoggerBase {
 
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
-            const orgService = new OrganizationService(this.store, this.log)
 
             const orgsToAdd = (
               await Promise.all(
@@ -451,7 +450,6 @@ export default class MemberService extends LoggerBase {
 
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
-            const orgService = new OrganizationService(this.store, this.log)
 
             this.log.trace({ memberId: id }, 'Finding member organizations!')
             const orgsToAdd = (
