@@ -1,7 +1,8 @@
 import asyncio
-import loguru
 import re
 from urllib.parse import urlparse
+
+import loguru
 
 from crowdgit.errors import (
     CommandExecutionError,
