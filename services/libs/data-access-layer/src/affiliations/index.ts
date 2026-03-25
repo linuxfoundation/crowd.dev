@@ -1,8 +1,4 @@
-import { getServiceChildLogger } from '@crowd/logging'
-
 import { QueryExecutor } from '../queryExecutor'
-
-const log = getServiceChildLogger('affiliations:resolve')
 
 const BLACKLISTED_TITLES = ['investor', 'mentor', 'board member']
 
@@ -23,10 +19,13 @@ interface IWorkRow {
   createdAt: Date | string
   isPrimaryWorkExperience: boolean
   memberCount: number
-  /** null for memberOrganizations rows; non-null for memberSegmentAffiliations rows */
   segmentId: string | null
 }
 
+/**
+ * this intentionally differs from the equivalent query in member-organization-affiliation/index.ts
+ * which uses organizationSegmentsAgg to compute memberCount. This is because the api should be faster
+ */
 export async function findWorkExperiencesBulk(
   qx: QueryExecutor,
   memberIds: string[],
@@ -39,10 +38,6 @@ export async function findWorkExperiencesBulk(
         WHERE "memberId" IN ($(memberIds:csv))
           AND "deletedAt" IS NULL
       ),
-      -- Note: this intentionally differs from the equivalent query in member-organization-affiliation/index.ts
-      -- which uses organizationSegmentsAgg to compute memberCount. That approach scans a large
-      -- aggregation table and causes timeouts in an API context. Here we count directly from
-      -- memberOrganizations which is faster and sufficient for the tiebreaker use case.
       aggs AS (
         SELECT "organizationId", COUNT(DISTINCT "memberId") AS total_count
         FROM "memberOrganizations"
@@ -104,8 +99,6 @@ export async function findManualAffiliationsBulk(
   )
 }
 
-// ─── Selection priority ───────────────────────────────────────────────────────
-
 function durationMs(org: IWorkRow): number {
   const start = new Date(org.dateStart ?? '').getTime()
   const end = new Date(org.dateEnd ?? '9999-12-31').getTime()
@@ -156,8 +149,6 @@ function selectPrimaryWorkExperience(orgs: IWorkRow[]): IWorkRow {
   // 5. Longest date range as final tiebreaker
   return longestDateRange(orgs)
 }
-
-// ─── Timeline helpers ─────────────────────────────────────────────────────────
 
 /** Returns the org used to fill gaps — primary undated wins, then earliest-created undated. */
 function findFallbackOrg(rows: IWorkRow[]): IWorkRow | null {
@@ -221,32 +212,8 @@ function dayBefore(date: Date): Date {
   return d
 }
 
-function closeAffiliationWindow(
-  memberId: string,
-  affiliations: IAffiliationPeriod[],
-  org: IWorkRow,
-  windowStart: Date,
-  windowEnd: Date,
-): void {
-  log.debug(
-    {
-      memberId,
-      org: org.organizationName,
-      windowStart: windowStart.toISOString(),
-      windowEnd: windowEnd.toISOString(),
-    },
-    'closing affiliation window',
-  )
-  affiliations.push({
-    organization: org.organizationName,
-    startDate: windowStart.toISOString(),
-    endDate: windowEnd.toISOString(),
-  })
-}
-
 /** Iterates boundary intervals and builds non-overlapping affiliation windows. */
 function buildTimeline(
-  memberId: string,
   allRows: IWorkRow[],
   fallbackOrg: IWorkRow | null,
   boundaries: Date[],
@@ -260,42 +227,20 @@ function buildTimeline(
     const boundaryDate = boundaries[i]
     const activeOrgsAtBoundary = orgsActiveAt(allRows, boundaryDate)
 
-    log.debug(
-      {
-        memberId,
-        boundaryDate: boundaryDate.toISOString(),
-        orgsAtBoundary: activeOrgsAtBoundary.map((r) => ({
-          org: r.organizationName,
-          dateStart: r.dateStart,
-          dateEnd: r.dateEnd,
-          isPrimary: r.isPrimaryWorkExperience,
-          memberCount: r.memberCount,
-          isManual: r.segmentId !== null,
-        })),
-      },
-      'processing boundary',
-    )
-
     // No orgs active at this boundary — close the current window and start tracking a gap
     if (activeOrgsAtBoundary.length === 0) {
       if (currentOrg && currentWindowStart) {
-        closeAffiliationWindow(
-          memberId,
-          affiliations,
-          currentOrg,
-          currentWindowStart,
-          dayBefore(boundaryDate),
-        )
+        affiliations.push({
+          organization: currentOrg.organizationName,
+          startDate: currentWindowStart.toISOString(),
+          endDate: dayBefore(boundaryDate).toISOString(),
+        })
         currentOrg = null
         currentWindowStart = null
       }
 
       if (uncoveredPeriodStart === null) {
         uncoveredPeriodStart = boundaryDate
-        log.debug(
-          { memberId, uncoveredPeriodStart: boundaryDate.toISOString() },
-          'uncovered period started',
-        )
       }
 
       continue
@@ -303,24 +248,12 @@ function buildTimeline(
 
     // Orgs are active again — close the uncovered period using the fallback org if available
     if (uncoveredPeriodStart !== null) {
-      log.debug(
-        {
-          memberId,
-          fallbackOrg: fallbackOrg?.organizationName ?? null,
-          uncoveredPeriodStart: uncoveredPeriodStart.toISOString(),
-          uncoveredPeriodEnd: dayBefore(boundaryDate).toISOString(),
-        },
-        'closing uncovered period with fallback org',
-      )
-
       if (fallbackOrg) {
-        closeAffiliationWindow(
-          memberId,
-          affiliations,
-          fallbackOrg,
-          uncoveredPeriodStart,
-          dayBefore(boundaryDate),
-        )
+        affiliations.push({
+          organization: fallbackOrg.organizationName,
+          startDate: uncoveredPeriodStart.toISOString(),
+          endDate: dayBefore(boundaryDate).toISOString(),
+        })
       }
 
       uncoveredPeriodStart = null
@@ -330,10 +263,6 @@ function buildTimeline(
 
     // No current window open — start a new one with the winning org
     if (!currentOrg) {
-      log.debug(
-        { memberId, org: winningAffiliation.organizationName, from: boundaryDate.toISOString() },
-        'opening affiliation window',
-      )
       currentOrg = winningAffiliation
       currentWindowStart = boundaryDate
       continue
@@ -341,22 +270,11 @@ function buildTimeline(
 
     // Winning org changed — close the current window and open a new one
     if (currentOrg.organizationId !== winningAffiliation.organizationId) {
-      log.debug(
-        {
-          memberId,
-          from: currentOrg.organizationName,
-          to: winningAffiliation.organizationName,
-          at: boundaryDate.toISOString(),
-        },
-        'affiliation changed',
-      )
-      closeAffiliationWindow(
-        memberId,
-        affiliations,
-        currentOrg,
-        currentWindowStart ?? boundaryDate,
-        dayBefore(boundaryDate),
-      )
+      affiliations.push({
+        organization: currentOrg.organizationName,
+        startDate: (currentWindowStart ?? boundaryDate).toISOString(),
+        endDate: dayBefore(boundaryDate).toISOString(),
+      })
       currentOrg = winningAffiliation
       currentWindowStart = boundaryDate
     }
@@ -364,33 +282,15 @@ function buildTimeline(
 
   // Close the last open window using the org's actual end date (null = ongoing)
   if (currentOrg && currentWindowStart) {
-    const endDate = currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null
-    log.debug(
-      {
-        memberId,
-        org: currentOrg.organizationName,
-        start: currentWindowStart.toISOString(),
-        endDate,
-      },
-      'closing final affiliation window',
-    )
     affiliations.push({
       organization: currentOrg.organizationName,
       startDate: currentWindowStart.toISOString(),
-      endDate,
+      endDate: currentOrg.dateEnd ? new Date(currentOrg.dateEnd).toISOString() : null,
     })
   }
 
   // Close a trailing uncovered period using the fallback org (ongoing, no end date)
   if (uncoveredPeriodStart !== null && fallbackOrg) {
-    log.debug(
-      {
-        memberId,
-        fallbackOrg: fallbackOrg.organizationName,
-        uncoveredPeriodStart: uncoveredPeriodStart.toISOString(),
-      },
-      'closing trailing uncovered period with fallback org',
-    )
     affiliations.push({
       organization: fallbackOrg.organizationName,
       startDate: uncoveredPeriodStart.toISOString(),
@@ -401,9 +301,7 @@ function buildTimeline(
   return affiliations
 }
 
-// ─── Per-member resolution ────────────────────────────────────────────────────
-
-function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffiliationPeriod[] {
+function resolveAffiliationsForMember(rows: IWorkRow[]): IAffiliationPeriod[] {
   // If one undated work-experience org is marked primary, drop other undated work-experience orgs
   // to avoid infinite conflicts. Manual affiliations (segmentId !== null) are never dropped.
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
@@ -414,58 +312,17 @@ function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffi
   const fallbackOrg = findFallbackOrg(cleaned)
   const datedRows = cleaned.filter((r) => r.dateStart)
 
-  log.debug(
-    {
-      memberId,
-      datedRows: datedRows.length,
-      undatedRows: cleaned.length - datedRows.length,
-      fallbackOrg: fallbackOrg?.organizationName ?? null,
-      datedRowsList: datedRows.map((r) => ({
-        org: r.organizationName,
-        dateStart: r.dateStart,
-        dateEnd: r.dateEnd,
-      })),
-    },
-    'prepared rows',
-  )
-
   if (datedRows.length === 0) {
     if (fallbackOrg) {
-      log.debug(
-        { memberId, fallbackOrg: fallbackOrg.organizationName },
-        'no dated rows — returning fallback as undated affiliation',
-      )
       return [{ organization: fallbackOrg.organizationName, startDate: null, endDate: null }]
     }
-    log.debug({ memberId }, 'no dated rows and no fallback — returning empty affiliations')
     return []
   }
 
   const boundaries = collectBoundaries(datedRows)
-  log.debug(
-    {
-      memberId,
-      boundaries: boundaries.length,
-      boundaryDates: boundaries.map((b) => b.toISOString()),
-    },
-    'collected boundaries',
-  )
 
   // Pass all cleaned rows (not just dated) so undated orgs compete at every boundary (bug 2 fix)
-  const timeline = buildTimeline(memberId, cleaned, fallbackOrg, boundaries)
-
-  log.debug(
-    {
-      memberId,
-      affiliations: timeline.length,
-      result: timeline.map((a) => ({
-        org: a.organization,
-        startDate: a.startDate,
-        endDate: a.endDate,
-      })),
-    },
-    'timeline built',
-  )
+  const timeline = buildTimeline(cleaned, fallbackOrg, boundaries)
 
   return timeline.sort((a, b) => {
     if (!a.startDate) return 1
@@ -473,8 +330,6 @@ function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffi
     return new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
   })
 }
-
-// ─── Public bulk resolver ─────────────────────────────────────────────────────
 
 export async function resolveAffiliationsByMemberIds(
   qx: QueryExecutor,
@@ -494,7 +349,7 @@ export async function resolveAffiliationsByMemberIds(
 
   const result = new Map<string, IAffiliationPeriod[]>()
   for (const id of memberIds) {
-    result.set(id, resolveAffiliationsForMember(id, byMember.get(id) ?? []))
+    result.set(id, resolveAffiliationsForMember(byMember.get(id) ?? []))
   }
   return result
 }
