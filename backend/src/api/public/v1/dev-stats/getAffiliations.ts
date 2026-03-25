@@ -32,18 +32,6 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
   const qx = optionsQx(req)
 
   const offset = (page - 1) * pageSize
-  if (offset >= githubHandles.length) {
-    ok(res, {
-      total: githubHandles.length,
-      totalFound: 0,
-      page,
-      pageSize,
-      contributorsInPage: 0,
-      contributors: [],
-      notFound: githubHandles,
-    })
-    return
-  }
 
   // Step 1: find all verified members across all handles
   const allMemberRows = await findMembersByGithubHandles(qx, githubHandles)
