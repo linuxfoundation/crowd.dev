@@ -7,11 +7,7 @@ TAGS "Report"
 
 NODE ai_code_tracker_commits_copy_result
 SQL >
-    SELECT
-        a.timestamp,
-        a.title,
-        a.body,
-        a.attributes
+    SELECT a.timestamp, a.title, a.body, a.attributes
     FROM activities_deduplicated_ds a
     WHERE a.type = 'authored-commit'
 

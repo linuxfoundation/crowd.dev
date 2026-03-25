@@ -12,12 +12,20 @@ TAGS "Report"
 NODE ai_code_tracker_total_commits_result
 DESCRIPTION >
     Aggregate pre-computed total commit counts by time period
+
 SQL >
     %
     SELECT
         formatDateTime(
             CASE
-                WHEN {{ String(granularity, description="Time aggregation: monthly or yearly", required=True) }} = 'monthly'
+                WHEN
+                    {{
+                        String(
+                            granularity,
+                            description="Time aggregation: monthly or yearly",
+                            required=True,
+                        )
+                    }} = 'monthly'
                 THEN monthStart
                 ELSE toStartOfYear(monthStart)
             END,
@@ -28,12 +36,14 @@ SQL >
     WHERE
         toolKey = '__total__'
         {% if defined(startDate) %}
-            AND monthStart >= toDate({{ DateTime(startDate, description="Filter commits after this date", required=False) }})
+            AND monthStart >= toDate(
+                {{ DateTime(startDate, description="Filter commits after this date", required=False) }}
+            )
         {% end %}
         {% if defined(endDate) %}
-            AND monthStart < toDate({{ DateTime(endDate, description="Filter commits before this date", required=False) }})
+            AND monthStart < toDate(
+                {{ DateTime(endDate, description="Filter commits before this date", required=False) }}
+            )
         {% end %}
     GROUP BY startDate
     ORDER BY startDate ASC
-
-TYPE endpoint

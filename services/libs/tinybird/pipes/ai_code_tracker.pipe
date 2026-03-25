@@ -12,27 +12,46 @@ TAGS "Report"
 NODE ai_code_tracker_result
 DESCRIPTION >
     Aggregate pre-computed AI commit counts by tool and time period
+
 SQL >
     %
     SELECT
         toolKey,
         multiIf(
-            toolKey = 'github-copilot', 'GitHub Copilot',
-            toolKey = 'chatgpt', 'ChatGPT',
-            toolKey = 'claude', 'Claude',
-            toolKey = 'cursor', 'Cursor',
-            toolKey = 'codewhisperer', 'CodeWhisperer',
-            toolKey = 'gemini', 'Gemini',
-            toolKey = 'codeium', 'Codeium',
-            toolKey = 'aider', 'Aider',
-            toolKey = 'devin', 'Devin',
-            toolKey = 'tabnine', 'Tabnine',
-            toolKey = 'other', 'Other AI',
+            toolKey = 'github-copilot',
+            'GitHub Copilot',
+            toolKey = 'chatgpt',
+            'ChatGPT',
+            toolKey = 'claude',
+            'Claude',
+            toolKey = 'cursor',
+            'Cursor',
+            toolKey = 'codewhisperer',
+            'CodeWhisperer',
+            toolKey = 'gemini',
+            'Gemini',
+            toolKey = 'codeium',
+            'Codeium',
+            toolKey = 'aider',
+            'Aider',
+            toolKey = 'devin',
+            'Devin',
+            toolKey = 'tabnine',
+            'Tabnine',
+            toolKey = 'other',
+            'Other AI',
             'Unknown'
         ) AS toolName,
         formatDateTime(
             CASE
-                WHEN {{ String(granularity, description="Time aggregation: monthly or yearly", required=True) }} = 'monthly'
+                WHEN
+                    {{
+                        String(
+                            granularity,
+                            description="Time aggregation: monthly or yearly",
+                            required=True,
+                        )
+                    }} = 'monthly'
                 THEN monthStart
                 ELSE toStartOfYear(monthStart)
             END,
@@ -40,7 +59,14 @@ SQL >
         ) AS startDate,
         formatDateTime(
             CASE
-                WHEN {{ String(granularity, description="Time aggregation: monthly or yearly", required=True) }} = 'monthly'
+                WHEN
+                    {{
+                        String(
+                            granularity,
+                            description="Time aggregation: monthly or yearly",
+                            required=True,
+                        )
+                    }} = 'monthly'
                 THEN monthStart + INTERVAL 1 MONTH - INTERVAL 1 DAY
                 ELSE toStartOfYear(monthStart) + INTERVAL 1 YEAR - INTERVAL 1 DAY
             END,
@@ -51,12 +77,14 @@ SQL >
     WHERE
         toolKey != '__total__'
         {% if defined(startDate) %}
-            AND monthStart >= toDate({{ DateTime(startDate, description="Filter commits after this date", required=False) }})
+            AND monthStart >= toDate(
+                {{ DateTime(startDate, description="Filter commits after this date", required=False) }}
+            )
         {% end %}
         {% if defined(endDate) %}
-            AND monthStart < toDate({{ DateTime(endDate, description="Filter commits before this date", required=False) }})
+            AND monthStart < toDate(
+                {{ DateTime(endDate, description="Filter commits before this date", required=False) }}
+            )
         {% end %}
     GROUP BY toolKey, startDate, endDate
     ORDER BY startDate ASC, commitCount DESC
-
-TYPE endpoint
