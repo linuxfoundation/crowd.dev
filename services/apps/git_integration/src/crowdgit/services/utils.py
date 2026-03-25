@@ -2,8 +2,6 @@ import asyncio
 import re
 from urllib.parse import urlparse
 
-import loguru
-
 from crowdgit.errors import (
     CommandExecutionError,
     CommandTimeoutError,
@@ -169,7 +167,7 @@ async def run_shell_command(
     cwd: str = None,
     timeout: float | None = None,
     input_text: str | bytes | None = None,
-    stderr_logger: loguru.Logger | None = None,
+    stderr_logger=None,
     stderr_log_level: str = "INFO",
 ) -> str:
     """
