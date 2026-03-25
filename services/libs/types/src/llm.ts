@@ -63,7 +63,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 65536,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -71,7 +71,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT_FIND_RELATED_LINKEDIN_PROFILES]: {
     modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -79,7 +79,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_MULTIPLE_VALUE_ATTRIBUTES]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 40000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -87,7 +87,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_WORK_EXPERIENCES_FROM_MULTIPLE_SOURCES]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 40000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -95,7 +95,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MATCH_MAIN_GITHUB_ORGANIZATION_AND_DESCRIPTION]: {
     modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 5000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -103,7 +103,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.REPO_CATEGORIES]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -111,7 +111,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.REPO_COLLECTIONS]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
