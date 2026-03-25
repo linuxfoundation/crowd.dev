@@ -33,30 +33,31 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
 
   const lowercasedHandles = githubHandles.map((h) => h.toLowerCase())
 
+  // Step 1: find all verified members across all handles
+  const allMemberRows = await findMembersByGithubHandles(qx, lowercasedHandles)
+
+  const foundHandles = new Set(allMemberRows.map((r) => r.githubHandle.toLowerCase()))
+  const notFound = lowercasedHandles.filter((h) => !foundHandles.has(h))
+
   const offset = (page - 1) * pageSize
-  const pageHandles = lowercasedHandles.slice(offset, offset + pageSize)
+  const pageMemberRows = allMemberRows.slice(offset, offset + pageSize)
 
-  // Step 1: find verified members by github handles
-  const memberRows = await findMembersByGithubHandles(qx, pageHandles)
-
-  const foundHandles = new Set(memberRows.map((r) => r.githubHandle.toLowerCase()))
-  const notFound = pageHandles.filter((h) => !foundHandles.has(h))
-
-  if (memberRows.length === 0) {
+  if (pageMemberRows.length === 0) {
     ok(res, {
       total: githubHandles.length,
+      total_found: allMemberRows.length,
       page,
       pageSize,
-      total_found: 0,
+      page_found: 0,
       contributors: [],
       notFound,
     })
     return
   }
 
-  const memberIds = memberRows.map((r) => r.memberId)
+  const memberIds = pageMemberRows.map((r) => r.memberId)
 
-  // Step 2: fetch verified emails
+  // Step 2: fetch verified emails for current page
   const emailRows = await findVerifiedEmailsByMemberIds(qx, memberIds)
 
   const emailsByMember = new Map<string, string[]>()
@@ -66,11 +67,11 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
     emailsByMember.set(row.memberId, list)
   }
 
-  // Step 3: resolve affiliations (conflict resolution, gap-filling, selection priority)
+  // Step 3: resolve affiliations for current page only
   const affiliationsByMember = await resolveAffiliationsByMemberIds(qx, memberIds)
 
   // Step 4: build response
-  const contributors = memberRows.map((member) => ({
+  const contributors = pageMemberRows.map((member) => ({
     githubHandle: member.githubHandle,
     name: member.displayName,
     emails: emailsByMember.get(member.memberId) ?? [],
@@ -79,9 +80,10 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
 
   ok(res, {
     total: githubHandles.length,
+    total_found: allMemberRows.length,
     page,
     pageSize,
-    total_found: contributors.length,
+    page_found: contributors.length,
     contributors,
     notFound,
   })
