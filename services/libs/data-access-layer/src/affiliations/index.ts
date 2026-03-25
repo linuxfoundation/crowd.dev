@@ -40,17 +40,11 @@ export async function findWorkExperiencesBulk(
           AND "deletedAt" IS NULL
       ),
       aggs AS (
-        SELECT
-          osa."organizationId",
-          sum(osa."memberCount") AS total_count
-        FROM "organizationSegmentsAgg" osa
-        WHERE osa."organizationId" IN (SELECT "organizationId" FROM relevant_orgs)
-          AND osa."segmentId" IN (
-            SELECT id FROM segments
-            WHERE "grandparentId" IS NOT NULL
-              AND "parentId"      IS NOT NULL
-          )
-        GROUP BY osa."organizationId"
+        SELECT "organizationId", COUNT(DISTINCT "memberId") AS total_count
+        FROM "memberOrganizations"
+        WHERE "organizationId" IN (SELECT "organizationId" FROM relevant_orgs)
+          AND "deletedAt" IS NULL
+        GROUP BY "organizationId"
       )
       SELECT
         mo.id,
