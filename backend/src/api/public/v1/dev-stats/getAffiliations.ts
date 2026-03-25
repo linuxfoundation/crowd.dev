@@ -11,29 +11,42 @@ import {
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-const MAX_HANDLES = 1000
+const MAX_HANDLES = 100
+const DEFAULT_PAGE_SIZE = 50
 
 const bodySchema = z.object({
   githubHandles: z
     .array(z.string().min(1))
     .min(1)
     .max(MAX_HANDLES, `Maximum ${MAX_HANDLES} handles per request`),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(MAX_HANDLES).default(DEFAULT_PAGE_SIZE),
 })
 
 export async function getAffiliations(req: Request, res: Response): Promise<void> {
-  const { githubHandles } = validateOrThrow(bodySchema, req.body)
+  const { githubHandles, page, pageSize } = validateOrThrow(bodySchema, req.body)
   const qx = optionsQx(req)
 
   const lowercasedHandles = githubHandles.map((h) => h.toLowerCase())
 
+  const offset = (page - 1) * pageSize
+  const pageHandles = lowercasedHandles.slice(offset, offset + pageSize)
+
   // Step 1: find verified members by github handles
-  const memberRows = await findMembersByGithubHandles(qx, lowercasedHandles)
+  const memberRows = await findMembersByGithubHandles(qx, pageHandles)
 
   const foundHandles = new Set(memberRows.map((r) => r.githubHandle.toLowerCase()))
-  const notFound = githubHandles.filter((h) => !foundHandles.has(h.toLowerCase()))
+  const notFound = pageHandles.filter((h) => !foundHandles.has(h))
 
   if (memberRows.length === 0) {
-    ok(res, { total_found: 0, contributors: [], notFound })
+    ok(res, {
+      total: githubHandles.length,
+      page,
+      pageSize,
+      total_found: 0,
+      contributors: [],
+      notFound,
+    })
     return
   }
 
@@ -60,5 +73,12 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
     affiliations: affiliationsByMember.get(member.memberId) ?? [],
   }))
 
-  ok(res, { total_found: contributors.length, contributors, notFound })
+  ok(res, {
+    total: githubHandles.length,
+    page,
+    pageSize,
+    total_found: contributors.length,
+    contributors,
+    notFound,
+  })
 }

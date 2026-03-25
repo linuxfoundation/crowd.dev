@@ -33,7 +33,6 @@ export async function findWorkExperiencesBulk(
 ): Promise<IWorkRow[]> {
   const rows: IWorkRow[] = await qx.select(
     `
-      /* TODO: re-enable memberCount tiebreaker once performance is acceptable
       WITH relevant_orgs AS (
         SELECT DISTINCT "organizationId"
         FROM "memberOrganizations"
@@ -53,7 +52,6 @@ export async function findWorkExperiencesBulk(
           )
         GROUP BY osa."organizationId"
       )
-      */
       SELECT
         mo.id,
         mo."memberId",
@@ -64,12 +62,12 @@ export async function findWorkExperiencesBulk(
         mo."dateEnd",
         mo."createdAt",
         COALESCE(ovr."isPrimaryWorkExperience", false)      AS "isPrimaryWorkExperience",
-        0                                                   AS "memberCount", -- TODO: restore COALESCE(a.total_count, 0) when re-enabling aggs
+        COALESCE(a.total_count, 0)                          AS "memberCount",
         NULL::text                                          AS "segmentId"
       FROM "memberOrganizations" mo
       JOIN organizations o ON mo."organizationId" = o.id
       LEFT JOIN "memberOrganizationAffiliationOverrides" ovr ON ovr."memberOrganizationId" = mo.id
-      -- LEFT JOIN aggs a ON a."organizationId" = mo."organizationId" -- TODO: restore when re-enabling aggs
+      LEFT JOIN aggs a ON a."organizationId" = mo."organizationId"
       WHERE mo."memberId" IN ($(memberIds:csv))
         AND mo."deletedAt" IS NULL
         AND COALESCE(ovr."allowAffiliation", true) = true

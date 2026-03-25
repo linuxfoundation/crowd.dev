@@ -14,7 +14,7 @@ export function devStatsRouter(): Router {
 
   router.use(rateLimiter)
 
-  router.post('/affiliations', requireScopes([SCOPES.READ_AFFILIATIONS]), safeWrap(getAffiliations))
+  router.post('/', requireScopes([SCOPES.READ_AFFILIATIONS]), safeWrap(getAffiliations))
 
   return router
 }
