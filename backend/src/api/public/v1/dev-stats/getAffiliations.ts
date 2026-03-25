@@ -16,7 +16,7 @@ const DEFAULT_PAGE_SIZE = 50
 
 const bodySchema = z.object({
   githubHandles: z
-    .array(z.string().min(1))
+    .array(z.string().trim().min(1).toLowerCase())
     .min(1)
     .max(MAX_HANDLES, `Maximum ${MAX_HANDLES} handles per request`),
 })
@@ -31,24 +31,35 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
   const { page, pageSize } = validateOrThrow(querySchema, req.query)
   const qx = optionsQx(req)
 
-  const lowercasedHandles = githubHandles.map((h) => h.toLowerCase())
+  const offset = (page - 1) * pageSize
+  if (offset >= githubHandles.length) {
+    ok(res, {
+      total: githubHandles.length,
+      totalFound: 0,
+      page,
+      pageSize,
+      contributorsInPage: 0,
+      contributors: [],
+      notFound: githubHandles,
+    })
+    return
+  }
 
   // Step 1: find all verified members across all handles
-  const allMemberRows = await findMembersByGithubHandles(qx, lowercasedHandles)
+  const allMemberRows = await findMembersByGithubHandles(qx, githubHandles)
 
   const foundHandles = new Set(allMemberRows.map((r) => r.githubHandle.toLowerCase()))
-  const notFound = lowercasedHandles.filter((h) => !foundHandles.has(h))
+  const notFound = githubHandles.filter((h) => !foundHandles.has(h))
 
-  const offset = (page - 1) * pageSize
   const pageMemberRows = allMemberRows.slice(offset, offset + pageSize)
 
   if (pageMemberRows.length === 0) {
     ok(res, {
       total: githubHandles.length,
-      total_found: allMemberRows.length,
+      totalFound: allMemberRows.length,
       page,
       pageSize,
-      contributors_in_page: 0,
+      contributorsInPage: 0,
       contributors: [],
       notFound,
     })
@@ -80,10 +91,10 @@ export async function getAffiliations(req: Request, res: Response): Promise<void
 
   ok(res, {
     total: githubHandles.length,
-    total_found: allMemberRows.length,
+    totalFound: allMemberRows.length,
     page,
     pageSize,
-    contributors_in_page: contributors.length,
+    contributorsInPage: contributors.length,
     contributors,
     notFound,
   })

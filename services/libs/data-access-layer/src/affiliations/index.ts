@@ -189,7 +189,7 @@ function collectBoundaries(datedRows: IWorkRow[]): Date[] {
 
     if (row.dateEnd) {
       const afterEnd = startOfDay(row.dateEnd)
-      afterEnd.setDate(afterEnd.getDate() + 1)
+      afterEnd.setUTCDate(afterEnd.getUTCDate() + 1)
       if (afterEnd <= today) ms.add(afterEnd.getTime())
     }
   }
@@ -199,9 +199,11 @@ function collectBoundaries(datedRows: IWorkRow[]): Date[] {
     .map((t) => new Date(t))
 }
 
-function orgsActiveAt(datedRows: IWorkRow[], boundaryDate: Date): IWorkRow[] {
-  return datedRows.filter((role) => {
-    const roleStart = startOfDay(role.dateStart ?? '')
+function orgsActiveAt(rows: IWorkRow[], boundaryDate: Date): IWorkRow[] {
+  return rows.filter((role) => {
+    if (!role.dateStart) return true // undated: active at every boundary
+
+    const roleStart = startOfDay(role.dateStart)
     const roleEnd = role.dateEnd ? startOfDay(role.dateEnd) : null
 
     // org is active if the boundary date falls within its employment period
@@ -211,13 +213,13 @@ function orgsActiveAt(datedRows: IWorkRow[], boundaryDate: Date): IWorkRow[] {
 
 function startOfDay(date: Date | string): Date {
   const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
+  d.setUTCHours(0, 0, 0, 0)
   return d
 }
 
 function dayBefore(date: Date): Date {
   const d = new Date(date)
-  d.setDate(d.getDate() - 1)
+  d.setUTCDate(d.getUTCDate() - 1)
   return d
 }
 
@@ -247,7 +249,7 @@ function closeAffiliationWindow(
 /** Iterates boundary intervals and builds non-overlapping affiliation windows. */
 function buildTimeline(
   memberId: string,
-  datedRows: IWorkRow[],
+  allRows: IWorkRow[],
   fallbackOrg: IWorkRow | null,
   boundaries: Date[],
 ): IAffiliationPeriod[] {
@@ -256,9 +258,9 @@ function buildTimeline(
   let currentWindowStart: Date = null
   let uncoveredPeriodStart: Date = null
 
-  for (let i = 0; i < boundaries.length - 1; i++) {
+  for (let i = 0; i < boundaries.length; i++) {
     const boundaryDate = boundaries[i]
-    const activeOrgsAtBoundary = orgsActiveAt(datedRows, boundaryDate)
+    const activeOrgsAtBoundary = orgsActiveAt(allRows, boundaryDate)
 
     log.info(
       {
@@ -420,10 +422,11 @@ function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffi
     'resolving affiliations',
   )
 
-  // If one undated org is marked primary, drop all other undated orgs to avoid infinite conflicts
+  // If one undated work-experience org is marked primary, drop other undated work-experience orgs
+  // to avoid infinite conflicts. Manual affiliations (segmentId !== null) are never dropped.
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
   const cleaned = primaryUndated
-    ? rows.filter((r) => r.dateStart || r.id === primaryUndated.id)
+    ? rows.filter((r) => r.segmentId !== null || r.dateStart || r.id === primaryUndated.id)
     : rows
 
   if (cleaned.length < rows.length) {
@@ -456,7 +459,14 @@ function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffi
   )
 
   if (datedRows.length === 0) {
-    log.debug({ memberId }, 'no dated rows — returning empty affiliations')
+    if (fallbackOrg) {
+      log.debug(
+        { memberId, fallbackOrg: fallbackOrg.organizationName },
+        'no dated rows — returning fallback as undated affiliation',
+      )
+      return [{ organization: fallbackOrg.organizationName, startDate: null, endDate: null }]
+    }
+    log.debug({ memberId }, 'no dated rows and no fallback — returning empty affiliations')
     return []
   }
 
@@ -470,7 +480,8 @@ function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffi
     'collected boundaries',
   )
 
-  const timeline = buildTimeline(memberId, datedRows, fallbackOrg, boundaries)
+  // Pass all cleaned rows (not just dated) so undated orgs compete at every boundary (bug 2 fix)
+  const timeline = buildTimeline(memberId, cleaned, fallbackOrg, boundaries)
 
   log.debug(
     {
