@@ -188,6 +188,15 @@ export default class MemberService extends LoggerBase {
           const orgService = new OrganizationService(this.store, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
+              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
+              // hot-row contention on the organizations table. Permanent fix is in
+              // tncTransformerBase.ts to stop emitting this org entirely.
+              if (
+                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
+              ) {
+                continue
+              }
+
               const id = await logExecutionTimeV2(
                 () => orgService.findOrCreate(platform, integrationId, org),
                 this.log,
@@ -398,6 +407,15 @@ export default class MemberService extends LoggerBase {
           const orgService = new OrganizationService(this.store, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
+              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
+              // hot-row contention on the organizations table. Permanent fix is in
+              // tncTransformerBase.ts to stop emitting this org entirely.
+              if (
+                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
+              ) {
+                continue
+              }
+
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
               const orgId = await logExecutionTimeV2(
