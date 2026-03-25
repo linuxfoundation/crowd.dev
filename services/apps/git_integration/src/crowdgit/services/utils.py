@@ -169,6 +169,7 @@ async def run_shell_command(
     timeout: float | None = None,
     input_text: str | bytes | None = None,
     stderr_logger: logging.Logger | None = None,
+    stderr_log_level: str = "INFO",
 ) -> str:
     """
     Run shell command asynchronously and return output on success, raise exception on failure.
@@ -179,6 +180,7 @@ async def run_shell_command(
         timeout: Command timeout in seconds
         input_text: Text (str) or bytes to send to stdin (will automatically append newline if not present)
         stderr_logger: If provided, a logger whose .info() method is called with each stderr line in real-time
+        stderr_log_level: Log level for stderr lines (default: "INFO")
 
     Returns:
         str: Command stdout output
@@ -230,7 +232,7 @@ async def run_shell_command(
                     async for raw_line in process.stderr:
                         line = _safe_decode(raw_line).rstrip()
                         if line:
-                            stderr_logger.info(line)
+                            stderr_logger.log(stderr_log_level, line)
                             stderr_lines.append(line)
 
                 stdout, _ = await asyncio.gather(process.stdout.read(), _stream())
