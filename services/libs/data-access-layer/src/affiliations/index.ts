@@ -108,14 +108,7 @@ function durationMs(org: IWorkRow): number {
 function longestDateRange(orgs: IWorkRow[]): IWorkRow {
   const withDates = orgs.filter((r) => r.dateStart)
   const candidates = withDates.length > 0 ? withDates : orgs
-
-  let best = candidates[0]
-
-  for (const org of candidates) {
-    if (durationMs(org) > durationMs(best)) best = org
-  }
-
-  return best
+  return candidates.reduce((best, org) => (durationMs(org) > durationMs(best) ? org : best))
 }
 
 function selectPrimaryWorkExperience(orgs: IWorkRow[]): IWorkRow {
@@ -130,11 +123,7 @@ function selectPrimaryWorkExperience(orgs: IWorkRow[]): IWorkRow {
 
   // 2. isPrimaryWorkExperience = true — prefer those with a dateStart
   const primary = orgs.filter((r) => r.isPrimaryWorkExperience)
-  if (primary.length > 0) {
-    const withDates = primary.filter((r) => r.dateStart)
-    if (withDates.length > 0) return withDates[0]
-    return primary[0]
-  }
+  if (primary.length > 0) return primary.find((r) => r.dateStart) ?? primary[0]
 
   // 3. Only one org has a dateStart — pick it
   const withDates = orgs.filter((r) => r.dateStart)
@@ -223,8 +212,7 @@ function buildTimeline(
   let currentWindowStart: Date = null
   let uncoveredPeriodStart: Date = null
 
-  for (let i = 0; i < boundaries.length; i++) {
-    const boundaryDate = boundaries[i]
+  for (const boundaryDate of boundaries) {
     const activeOrgsAtBoundary = orgsActiveAt(allRows, boundaryDate)
 
     // No orgs active at this boundary — close the current window and start tracking a gap
@@ -272,7 +260,7 @@ function buildTimeline(
     if (currentOrg.organizationId !== winningAffiliation.organizationId) {
       affiliations.push({
         organization: currentOrg.organizationName,
-        startDate: (currentWindowStart ?? boundaryDate).toISOString(),
+        startDate: currentWindowStart.toISOString(),
         endDate: dayBefore(boundaryDate).toISOString(),
       })
       currentOrg = winningAffiliation
