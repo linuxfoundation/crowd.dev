@@ -406,7 +406,6 @@ function buildTimeline(
 // ─── Per-member resolution ────────────────────────────────────────────────────
 
 function resolveAffiliationsForMember(memberId: string, rows: IWorkRow[]): IAffiliationPeriod[] {
-
   // If one undated work-experience org is marked primary, drop other undated work-experience orgs
   // to avoid infinite conflicts. Manual affiliations (segmentId !== null) are never dropped.
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
