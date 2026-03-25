@@ -1,5 +1,5 @@
 import asyncio
-import logging
+import loguru
 import re
 from urllib.parse import urlparse
 
@@ -168,7 +168,7 @@ async def run_shell_command(
     cwd: str = None,
     timeout: float | None = None,
     input_text: str | bytes | None = None,
-    stderr_logger: logging.Logger | None = None,
+    stderr_logger: loguru.Logger | None = None,
     stderr_log_level: str = "INFO",
 ) -> str:
     """
