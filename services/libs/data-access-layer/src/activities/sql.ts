@@ -580,10 +580,11 @@ export async function createOrUpdateRelations(
   let index = 0
 
   const activityIds = new Set<string>()
-  const checkedMembers = new Map<string, string>() // id -> resolved id (may differ if looked up via identity)
-  const checkedOrganizations = new Set<string>()
-  const checkedSegments = new Set<string>()
-  const checkedConversations = new Set<string>()
+  const checkedMembers = new Map<string, string | null>() // id -> resolved id (null if not found)
+  const checkedObjectMembers = new Map<string, string | null>() // separate cache for objectMemberId lookups
+  const checkedOrganizations = new Map<string, boolean>() // id -> exists
+  const checkedSegments = new Map<string, boolean>() // id -> exists
+  const checkedConversations = new Map<string, boolean>() // id -> exists
   const valueList: string[] = []
   for (const data of relations) {
     if (data.username === undefined || data.username === null) {
@@ -601,8 +602,8 @@ export async function createOrUpdateRelations(
     if (!skipChecks) {
       // check objectMember exists
       if (data.objectMemberId !== undefined && data.objectMemberId !== null) {
-        if (checkedMembers.has(data.objectMemberId)) {
-          data.objectMemberId = checkedMembers.get(data.objectMemberId)
+        if (checkedObjectMembers.has(data.objectMemberId)) {
+          data.objectMemberId = checkedObjectMembers.get(data.objectMemberId)
         } else {
           let objectMember = await qe.select(
             `
@@ -634,25 +635,29 @@ export async function createOrUpdateRelations(
               )
 
               if (objectMember.length === 0) {
-                checkedMembers.set(data.objectMemberId, null)
+                checkedObjectMembers.set(data.objectMemberId, null)
                 data.objectMemberId = null
               } else {
-                checkedMembers.set(data.objectMemberId, objectMember[0].memberId)
+                checkedObjectMembers.set(data.objectMemberId, objectMember[0].memberId)
                 data.objectMemberId = objectMember[0].memberId
               }
             } else {
-              checkedMembers.set(data.objectMemberId, null)
+              checkedObjectMembers.set(data.objectMemberId, null)
               data.objectMemberId = null
             }
           } else {
-            checkedMembers.set(data.objectMemberId, data.objectMemberId)
+            checkedObjectMembers.set(data.objectMemberId, data.objectMemberId)
           }
         }
       }
 
       // check conversation exists
       if (data.conversationId !== undefined && data.conversationId !== null) {
-        if (!checkedConversations.has(data.conversationId)) {
+        if (checkedConversations.has(data.conversationId)) {
+          if (!checkedConversations.get(data.conversationId)) {
+            data.conversationId = null
+          }
+        } else {
           const conversation = await qe.select(
             `
       SELECT id
@@ -665,15 +670,21 @@ export async function createOrUpdateRelations(
           )
 
           if (conversation.length === 0) {
+            checkedConversations.set(data.conversationId, false)
             data.conversationId = null
           } else {
-            checkedConversations.add(data.conversationId)
+            checkedConversations.set(data.conversationId, true)
           }
         }
       }
 
       // check segmentId exists
-      if (!checkedSegments.has(data.segmentId)) {
+      if (checkedSegments.has(data.segmentId)) {
+        if (!checkedSegments.get(data.segmentId)) {
+          // segment not found, skip adding this activity relation
+          continue
+        }
+      } else {
         const segment = await qe.select(
           `
       SELECT id
@@ -686,11 +697,12 @@ export async function createOrUpdateRelations(
         )
 
         if (segment.length === 0) {
+          checkedSegments.set(data.segmentId, false)
           // segment not found, skip adding this activity relation
           continue
         }
 
-        checkedSegments.add(data.segmentId)
+        checkedSegments.set(data.segmentId, true)
       }
 
       // check member exists
@@ -744,7 +756,11 @@ export async function createOrUpdateRelations(
       }
 
       if (data.organizationId !== undefined && data.organizationId !== null) {
-        if (!checkedOrganizations.has(data.organizationId)) {
+        if (checkedOrganizations.has(data.organizationId)) {
+          if (!checkedOrganizations.get(data.organizationId)) {
+            data.organizationId = null
+          }
+        } else {
           const organization = await qe.select(
             `
         SELECT id
@@ -757,9 +773,10 @@ export async function createOrUpdateRelations(
           )
 
           if (organization.length === 0) {
+            checkedOrganizations.set(data.organizationId, false)
             data.organizationId = null
           } else {
-            checkedOrganizations.add(data.organizationId)
+            checkedOrganizations.set(data.organizationId, true)
           }
         }
       }

@@ -378,7 +378,7 @@ export async function updateOrganization(
   columns.push('updatedAt')
 
   const updatedAtExpr = throttleUpdatedAt
-    ? `CASE WHEN "updatedAt" < now() - interval '30 minutes' THEN $(updatedAt) ELSE "updatedAt" END`
+    ? `CASE WHEN "updatedAt" < now() - interval '30 minutes' THEN now() ELSE "updatedAt" END`
     : `$(updatedAt)`
 
   const query = `
