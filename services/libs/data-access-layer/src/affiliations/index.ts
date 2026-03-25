@@ -39,14 +39,16 @@ export async function findWorkExperiencesBulk(
         WHERE "memberId" IN ($(memberIds:csv))
           AND "deletedAt" IS NULL
       ),
+      -- Note: this intentionally differs from the equivalent query in member-organization-affiliation/index.ts
+      -- which uses organizationSegmentsAgg to compute memberCount. That approach scans a large
+      -- aggregation table and causes timeouts in an API context. Here we count directly from
+      -- memberOrganizations which is faster and sufficient for the tiebreaker use case.
       aggs AS (
-        SELECT osa."organizationId", sum(osa."memberCount") AS total_count
-        FROM "organizationSegmentsAgg" osa
-        JOIN segments s ON s.id = osa."segmentId"
-          AND s."grandparentId" IS NOT NULL
-          AND s."parentId" IS NOT NULL
-        WHERE osa."organizationId" IN (SELECT "organizationId" FROM relevant_orgs)
-        GROUP BY osa."organizationId"
+        SELECT "organizationId", COUNT(DISTINCT "memberId") AS total_count
+        FROM "memberOrganizations"
+        WHERE "organizationId" IN (SELECT "organizationId" FROM relevant_orgs)
+          AND "deletedAt" IS NULL
+        GROUP BY "organizationId"
       )
       SELECT
         mo.id,

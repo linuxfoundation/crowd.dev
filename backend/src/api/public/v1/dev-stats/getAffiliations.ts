@@ -11,7 +11,7 @@ import {
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-const MAX_HANDLES = 50
+const MAX_HANDLES = 100
 const DEFAULT_PAGE_SIZE = 20
 
 const bodySchema = z.object({
