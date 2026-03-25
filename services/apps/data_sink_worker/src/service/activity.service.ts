@@ -1580,13 +1580,13 @@ export default class ActivityService extends LoggerBase {
           `${prepared.payload.platform}:${prepared.payload.channel}:${prepared.payload.segmentId}`,
         )
       }
+    }
 
-      if (prepared.payload.organizationId) {
-        await this.redisClient.sAdd(
-          'organizationIdsForAggComputation',
-          prepared.payload.organizationId,
-        )
-      }
+    const orgIds = preparedForUpsert
+      .map((p) => p.payload.organizationId)
+      .filter((id): id is string => !!id)
+    if (orgIds.length > 0) {
+      await this.redisClient.sAdd('organizationIdsForAggComputation', orgIds)
     }
 
     // Deduplicate member sync triggers — a member may appear in many activities in the
