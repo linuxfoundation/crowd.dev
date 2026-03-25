@@ -61,7 +61,7 @@ export const LLM_MODEL_PRICING_MAP: Record<LlmModelType, ILlmPricing> = {
 
 export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
       max_tokens: 200000,
       anthropic_version: 'bedrock-2023-05-31',
@@ -77,7 +77,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_MULTIPLE_VALUE_ATTRIBUTES]: {
-    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
       max_tokens: 200000,
       anthropic_version: 'bedrock-2023-05-31',
@@ -85,7 +85,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_WORK_EXPERIENCES_FROM_MULTIPLE_SOURCES]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
       max_tokens: 200000,
       anthropic_version: 'bedrock-2023-05-31',
@@ -93,7 +93,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.MATCH_MAIN_GITHUB_ORGANIZATION_AND_DESCRIPTION]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
       max_tokens: 200000,
       anthropic_version: 'bedrock-2023-05-31',
@@ -101,7 +101,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.REPO_CATEGORIES]: {
-    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
       max_tokens: 200000,
       anthropic_version: 'bedrock-2023-05-31',
@@ -109,7 +109,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.REPO_COLLECTIONS]: {
-    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
       max_tokens: 200000,
       anthropic_version: 'bedrock-2023-05-31',
@@ -117,7 +117,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
     },
   },
   [LlmQueryType.MEMBER_BOT_VALIDATION]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
