@@ -1,0 +1,17 @@
+DESCRIPTION >
+    - `ai_code_tracker_commits_ds` contains only authored-commit activities, pre-filtered from the full activities table.
+    - Populated daily by `ai_code_tracker_commits_copy.pipe`.
+    - Stores only the fields needed for AI tool detection: timestamp, title, body, attributes.
+    - Reduces the dataset from ~1B rows to only commits, with sorting keys optimized for the AI pattern matching step.
+
+TAGS "Report"
+
+SCHEMA >
+    `timestamp` DateTime,
+    `title` String DEFAULT '',
+    `body` String DEFAULT '',
+    `attributes` String DEFAULT ''
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYear(timestamp)
+ENGINE_SORTING_KEY timestamp
