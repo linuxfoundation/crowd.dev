@@ -147,7 +147,7 @@ setImmediate(async () => {
 
   app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }))
 
-  app.use((err: any, _: any, res: any, next: any) => {
+  app.use((err: any, req: any, res: any, next: any) => {
     if (err.type === 'entity.parse.failed') {
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } })
       return
