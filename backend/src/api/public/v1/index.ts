@@ -1,7 +1,5 @@
 import { Router } from 'express'
 
-import { NotFoundError } from '@crowd/common'
-
 import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
@@ -16,10 +14,6 @@ export function v1Router(): Router {
   router.use('/members', oauth2Middleware(AUTH0_CONFIG), membersRouter())
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
-
-  router.use(() => {
-    throw new NotFoundError()
-  })
 
   router.use(() => {
     throw new NotFoundError()
