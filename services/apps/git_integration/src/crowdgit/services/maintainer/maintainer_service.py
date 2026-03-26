@@ -446,8 +446,7 @@ class MaintainerService(BaseService):
         """List non-code files in the repo recursively, filtered by VALID_EXTENSIONS."""
         glob_args = ["--glob", "!.git/"]
         for ext in self.VALID_EXTENSIONS:
-            if ext:
-                glob_args.extend(["--iglob", f"*{ext}"])
+            glob_args.extend(["--iglob", f"*{ext}"])
 
         output = await run_shell_command(
             ["rg", "--files", "--hidden", *glob_args, "."], cwd=repo_path
@@ -455,7 +454,7 @@ class MaintainerService(BaseService):
         return [
             line[2:] if line.startswith("./") else line
             for line in output.strip().split("\n")
-            if line.strip() and os.path.splitext(line)[1] in self.VALID_EXTENSIONS
+            if line.strip()
         ]
 
     async def _ripgrep_search(self, repo_path: str, max_depth: int | None = None) -> list[str]:
