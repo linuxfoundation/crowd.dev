@@ -66,7 +66,7 @@ class MaintainerService(BaseService):
         ".github/maintainers.md",
         ".github/contributors.md",
         ".github/codeowners",
-        "SECURITY-INSIGHTS.md",
+        "security-insights.md",
     }
 
     # Governance stems (basename without extension, lowercased) for filename search
@@ -445,7 +445,8 @@ class MaintainerService(BaseService):
         """List non-code files in the repo recursively, filtered by VALID_EXTENSIONS."""
         glob_args = ["--glob", "!.git/"]
         for ext in self.VALID_EXTENSIONS:
-            glob_args.extend(["--iglob", f"*{ext}"])
+            if ext:
+                glob_args.extend(["--iglob", f"*{ext}"])
 
         output = await run_shell_command(
             ["rg", "--files", "--hidden", *glob_args, "."], cwd=repo_path
@@ -453,7 +454,7 @@ class MaintainerService(BaseService):
         return [
             line[2:] if line.startswith("./") else line
             for line in output.strip().split("\n")
-            if line.strip()
+            if line.strip() and os.path.splitext(line)[1] in self.VALID_EXTENSIONS
         ]
 
     async def _ripgrep_search(self, repo_path: str, max_depth: int | None = None) -> list[str]:
@@ -475,6 +476,16 @@ class MaintainerService(BaseService):
         except CommandExecutionError:
             self.logger.info("Ripgrep found no governance files by filename")
             return []
+        except FileNotFoundError as e:
+            if not os.path.isdir(repo_path):
+                self.logger.warning(
+                    f"Ripgrep search failed: repo_path does not exist: '{repo_path}'"
+                )
+            else:
+                self.logger.warning(
+                    f"Ripgrep search failed: 'rg' binary not found in PATH. Install ripgrep. ({repr(e)})"
+                )
+            return []
         except Exception as e:
             self.logger.warning(f"Ripgrep search failed: {repr(e)}")
             return []
@@ -488,9 +499,11 @@ class MaintainerService(BaseService):
                 line = line[2:]
             basename = os.path.basename(line).lower()
             if basename in self.EXCLUDED_FILENAMES:
+                self.logger.debug(f"Excluding '{line}': basename in EXCLUDED_FILENAMES")
                 continue
             ext = os.path.splitext(basename)[1]
             if ext not in self.VALID_EXTENSIONS:
+                self.logger.debug(f"Excluding '{line}': extension '{ext}' not in VALID_EXTENSIONS")
                 continue
             results.append(line)
 
@@ -547,9 +560,9 @@ class MaintainerService(BaseService):
             else:
                 subdir_scored.append(entry)
 
-            self.logger.info(
+            self.logger.debug(
                 f"Candidate: {candidate_path} "
-                f"(filename: {filename_score}, content: {content_score}, total: {total})"
+                f"(filename_score={filename_score}, content_score={content_score}, total={total})"
             )
 
         root_scored.sort(key=lambda c: c[2], reverse=True)
@@ -591,6 +604,7 @@ class MaintainerService(BaseService):
         """
         cost = 0.0
         file_path = os.path.join(repo_path, saved_maintainer_file)
+        self.logger.debug(f"Checking saved maintainer file on disk: '{file_path}'")
 
         if not await aiofiles.os.path.isfile(file_path):
             self.logger.warning(
@@ -598,6 +612,7 @@ class MaintainerService(BaseService):
             )
             return None, cost
 
+        self.logger.debug(f"Saved maintainer file exists, reading content: '{saved_maintainer_file}'")
         try:
             async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
                 content = await f.read()
@@ -645,6 +660,12 @@ class MaintainerService(BaseService):
         root_candidates, subdir_candidates = await self.find_candidate_files(repo_path)
         all_candidates = root_candidates + subdir_candidates
         candidate_files = [(path, score) for path, _, score in all_candidates][:100]
+        self.logger.debug(
+            f"Detection step 2: {len(root_candidates)} root candidate(s), "
+            f"{len(subdir_candidates)} subdir candidate(s); "
+            f"root={[p for p, _, _ in root_candidates]}, "
+            f"subdir_top={[p for p, _, _ in subdir_candidates[:3]]}"
+        )
 
         # Step 3: Try root-level files first (in score order), then top subdirectory file
         failed_candidates: set[str] = set()
@@ -656,7 +677,8 @@ class MaintainerService(BaseService):
         best_file: str | None = None
         best_file_count: int = 0
 
-        for filename, content, _ in root_candidates:
+        for filename, content, score in root_candidates:
+            self.logger.debug(f"Detection step 3: trying root candidate '{filename}' (score={score})")
             try:
                 result = await self.analyze_and_build_result(filename, content)
                 total_cost += result.total_cost
@@ -690,7 +712,8 @@ class MaintainerService(BaseService):
             self.logger.warning("All root candidates failed, trying AI file detection")
 
         if subdir_candidates:
-            filename, content, _ = subdir_candidates[0]
+            filename, content, score = subdir_candidates[0]
+            self.logger.debug(f"Detection step 3b: trying top subdir candidate '{filename}' (score={score})")
             try:
                 result = await self.analyze_and_build_result(filename, content)
                 total_cost += result.total_cost
@@ -726,10 +749,12 @@ class MaintainerService(BaseService):
             f"Passing {len(ai_input_files)} files to AI for maintainer file detection "
             f"(total repo files: {len(file_names)})"
         )
+        self.logger.debug(f"AI input files: {[f for f, _ in ai_input_files]}")
         ai_file_name, ai_cost = await self.find_maintainer_file_with_ai(ai_input_files)
         ai_suggested_file = ai_file_name
         total_cost += ai_cost
 
+        self.logger.debug(f"AI suggested file: '{ai_file_name}' (cost={ai_cost:.4f})")
         if ai_file_name:
             file_path = os.path.join(repo_path, ai_file_name)
             if not await aiofiles.os.path.isfile(file_path):
@@ -826,7 +851,7 @@ class MaintainerService(BaseService):
         ai_cost = 0.0
         maintainers_found = 0
         maintainers_skipped = 0
-        candidate_files: list[str] = []
+        candidate_files: list[tuple[str, int]] = []
         ai_suggested_file: str | None = None
 
         try:
