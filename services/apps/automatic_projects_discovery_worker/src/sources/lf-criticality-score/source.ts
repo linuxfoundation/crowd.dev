@@ -8,7 +8,7 @@ import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../ty
 
 const log = getServiceLogger()
 
-const DEFAULT_API_URL = 'https://hypervascular-nonduplicative-vern.ngrok-free.dev'
+const DEFAULT_API_URL = 'https://lf-criticality-score-api.example.com'
 const PAGE_SIZE = 100
 
 interface LfApiResponse {
