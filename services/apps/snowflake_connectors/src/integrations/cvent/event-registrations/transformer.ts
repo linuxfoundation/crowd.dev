@@ -154,9 +154,29 @@ export class CventTransformer extends TransformerBase {
       return undefined
     }
 
-    const identities: IOrganizationIdentity[] = []
-
     const accountName = (row.ACCOUNT_NAME as string | null)?.trim() || null
+    const displayName = accountName || website
+
+    if (this.isIndividualNoAccount(displayName)) {
+      return [
+        {
+          displayName,
+          source: OrganizationSource.CVENT,
+          identities: website
+            ? [
+                {
+                  platform: PlatformType.CVENT,
+                  value: website,
+                  type: OrganizationIdentityType.PRIMARY_DOMAIN,
+                  verified: true,
+                },
+              ]
+            : [],
+        },
+      ]
+    }
+
+    const identities: IOrganizationIdentity[] = []
 
     if (website) {
       identities.push({
@@ -183,7 +203,7 @@ export class CventTransformer extends TransformerBase {
 
     return [
       {
-        displayName: accountName || website,
+        displayName,
         source: OrganizationSource.CVENT,
         identities,
         logo: (row.LOGO_URL as string | null)?.trim() || undefined,

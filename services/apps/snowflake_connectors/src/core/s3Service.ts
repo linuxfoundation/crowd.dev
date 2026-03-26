@@ -41,17 +41,19 @@ export class S3Service {
     return Buffer.from(byteArray)
   }
 
-  async readParquetRows(s3Uri: string): Promise<Record<string, unknown>[]> {
-    const buffer = await this.downloadFile(s3Uri)
+  async *streamParquetRows(s3Uri: string): AsyncGenerator<Record<string, unknown>> {
+    let buffer: Buffer | null = await this.downloadFile(s3Uri)
     const reader = await ParquetReader.openBuffer(buffer)
+    buffer = null
     const cursor = reader.getCursor()
-    const rows: Record<string, unknown>[] = []
-    let row: Record<string, unknown> | null = null
-    while ((row = (await cursor.next()) as Record<string, unknown> | null) !== null) {
-      rows.push(row)
+    try {
+      let row: Record<string, unknown> | null = null
+      while ((row = (await cursor.next()) as Record<string, unknown> | null) !== null) {
+        yield row
+      }
+    } finally {
+      await reader.close()
     }
-    await reader.close()
-    return rows
   }
 
   async deleteFile(s3Uri: string): Promise<void> {

@@ -1,4 +1,4 @@
-NODE vulnerabilities_list
+NODE vulnerabilities_list_result
 SQL >
     %
     {% if Boolean(count, false) %}
@@ -6,6 +6,7 @@ SQL >
         FROM vulnerabilities as v FINAL
         WHERE
             repoUrl in (select arrayJoin(repositories) from segments_filtered)
+            {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(ecosystem) %}
                 AND v.packageEcosystem = {{ String(ecosystem, required=False) }}
             {% end %}
@@ -21,10 +22,13 @@ SQL >
             any (v.packageEcosystem) as ecosystem,
             any (v.publishedAt) as publishedAt,
             any (v.status) as status,
-            groupArray(concat(v.repoUrl, '/blob/HEAD', v.sourcePath)) as paths
+            groupArray(concat(v.repoUrl, '/blob/HEAD', v.sourcePath)) as paths,
+            max(v.fixedVersion) as fixedVersion
         FROM vulnerabilities as v FINAL
         WHERE
             repoUrl in (select arrayJoin(repositories) from segments_filtered)
+            {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels)
+            {% end %}
             {% if defined(ecosystem) %} AND v.packageEcosystem = {{ String(ecosystem, required=False) }}
             {% end %}
             {% if defined(status) %} AND v.status = {{ String(status, required=False) }}

@@ -82,6 +82,7 @@ FROM base AS runner
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     git \
+    ripgrep \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \

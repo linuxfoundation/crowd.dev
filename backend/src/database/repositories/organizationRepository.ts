@@ -8,12 +8,8 @@ import {
   organizationEditIdentitiesAction,
   organizationUpdateAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, PageData, RawQueryParser } from '@crowd/common'
-import {
-  getActiveOrganizations,
-  queryActivities,
-  queryActivityRelations,
-} from '@crowd/data-access-layer'
+import { Error400, Error404, Error409, RawQueryParser } from '@crowd/common'
+import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
   IDbOrgAttribute,
@@ -38,23 +34,15 @@ import {
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
 import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import {
-  findSegmentById,
-  isSegmentProject,
-  isSegmentProjectGroup,
-} from '@crowd/data-access-layer/src/segments'
-import { FieldTranslatorFactory, OpensearchQueryParser } from '@crowd/opensearch'
+import { findSegmentById } from '@crowd/data-access-layer/src/segments'
 import {
   IMemberRenderFriendlyRole,
   IMemberRoleWithOrganization,
   IOrganizationIdentity,
   MergeActionState,
   MergeActionType,
-  OpenSearchIndex,
   OrganizationIdentityType,
   SegmentData,
-  SegmentProjectGroupNestedData,
-  SegmentProjectNestedData,
 } from '@crowd/types'
 
 import {
@@ -66,7 +54,6 @@ import { IRepositoryOptions } from './IRepositoryOptions'
 import { OrganizationQueryCache } from './organizationsQueryCache'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
-import { IActiveOrganizationData, IActiveOrganizationFilter } from './types/organizationTypes'
 
 interface IOrganizationId {
   id: string
@@ -1255,258 +1242,6 @@ class OrganizationRepository {
       },
       transaction,
     })
-  }
-
-  static async findAndCountAllOpensearch(
-    {
-      filter = {} as any,
-      limit = 20,
-      offset = 0,
-      orderBy = 'joinedAt_DESC',
-      countOnly = false,
-      segments = [] as string[],
-      customSortFunction = undefined,
-      isProfileQuery = false,
-    },
-    options: IRepositoryOptions,
-  ): Promise<PageData<any>> {
-    if (orderBy.length === 0) {
-      orderBy = 'joinedAt_DESC'
-    }
-
-    const tenant = SequelizeRepository.getCurrentTenant(options)
-
-    const segment = segments[0]
-
-    const translator = FieldTranslatorFactory.getTranslator(OpenSearchIndex.ORGANIZATIONS)
-
-    if (!isProfileQuery && filter.and) {
-      filter.and.push({
-        or: [
-          {
-            manuallyCreated: {
-              eq: true,
-            },
-          },
-          {
-            activityCount: {
-              gt: 0,
-            },
-          },
-        ],
-      })
-    }
-
-    const parsed = OpensearchQueryParser.parse(
-      { filter, limit, offset, orderBy },
-      OpenSearchIndex.ORGANIZATIONS,
-      translator,
-    )
-
-    // add tenant filter to parsed query
-    parsed.query.bool.must.push({
-      term: {
-        uuid_tenantId: tenant.id,
-      },
-    })
-
-    if (segment) {
-      // add segment filter
-      parsed.query.bool.must.push({
-        term: {
-          uuid_segmentId: segment,
-        },
-      })
-    }
-
-    // exclude empty filters if any
-    parsed.query.bool.must = parsed.query.bool.must.filter((obj) => {
-      // Check if the object has a non-empty 'term' property
-      if (obj.term) {
-        return Object.keys(obj.term).length !== 0
-      }
-      return true
-    })
-
-    if (customSortFunction) {
-      parsed.sort = customSortFunction
-    }
-
-    const countResponse = await options.opensearch.count({
-      index: OpenSearchIndex.ORGANIZATIONS,
-      body: { query: parsed.query },
-    })
-
-    if (countOnly) {
-      return {
-        rows: [],
-        count: countResponse.body.count,
-        limit,
-        offset,
-      }
-    }
-
-    const response = await options.opensearch.search({
-      index: OpenSearchIndex.ORGANIZATIONS,
-      body: parsed,
-    })
-
-    const translatedRows = response.body.hits.hits.map((o) =>
-      translator.translateObjectToCrowd(o._source),
-    )
-
-    return { rows: translatedRows, count: countResponse.body.count, limit, offset }
-  }
-
-  static async findAndCountActiveOpensearch(
-    filter: IActiveOrganizationFilter,
-    limit: number,
-    offset: number,
-    orderBy: string,
-    options: IRepositoryOptions,
-    segments: string[] = [],
-  ): Promise<PageData<IActiveOrganizationData>> {
-    if (segments.length !== 1) {
-      throw new Error400(
-        `This operation can have exactly one segment. Found ${segments.length} segments.`,
-      )
-    }
-
-    if (segments.length !== 1) {
-      throw new Error400(
-        `This operation can have exactly one segment. Found ${segments.length} segments.`,
-      )
-    }
-
-    const originalSegment = segments[0]
-
-    const segmentRepository = new SegmentRepository(options)
-
-    const segment = await segmentRepository.findById(originalSegment)
-
-    if (segment === null) {
-      return {
-        rows: [],
-        count: 0,
-        limit,
-        offset,
-      }
-    }
-
-    if (isSegmentProjectGroup(segment)) {
-      segments = ((segment as SegmentProjectGroupNestedData).projects || []).flatMap((p) =>
-        p.subprojects ? p.subprojects.map((sp) => sp.id) : [],
-      )
-    } else if (isSegmentProject(segment)) {
-      segments = (segment as SegmentProjectNestedData).subprojects.map((sp) => sp.id)
-    } else {
-      segments = [originalSegment]
-    }
-
-    const qx = SequelizeRepository.getQueryExecutor(options)
-
-    const activeOrgsResults = await getActiveOrganizations(qx, {
-      timestampFrom: new Date(Date.parse(filter.activityTimestampFrom)),
-      timestampTo: new Date(Date.parse(filter.activityTimestampTo)),
-      platforms: filter.platforms ? filter.platforms : undefined,
-      segmentIds: segments,
-      offset: 0,
-      limit: 10000,
-      orderByDirection: orderBy.split('_')[1].toLowerCase() === 'desc' ? 'desc' : 'asc',
-      orderBy: orderBy.startsWith('activityCount') ? 'activityCount' : 'activeDaysCount',
-    })
-
-    const organizationIds = []
-    const organizationMap = {}
-
-    for (const res of activeOrgsResults) {
-      if (res.organizationId) {
-        organizationIds.push(res.organizationId)
-        organizationMap[res.organizationId] = {
-          activityCount: res.activityCount,
-          activeDaysCount: res.activeDaysCount,
-        }
-      }
-    }
-
-    if (organizationIds.length === 0) {
-      return {
-        rows: [],
-        count: 0,
-        limit,
-        offset,
-      }
-    }
-
-    const organizationQueryPayload = {
-      and: [
-        {
-          id: {
-            in: organizationIds,
-          },
-        },
-      ],
-    } as any
-
-    if (filter.isTeamOrganization === true) {
-      organizationQueryPayload.and.push({
-        isTeamOrganization: {
-          eq: true,
-        },
-      })
-    } else if (filter.isTeamOrganization === false) {
-      organizationQueryPayload.and.push({
-        isTeamOrganization: {
-          not: true,
-        },
-      })
-    }
-
-    // to retain the sort came from activity query
-    const customSortFunction = {
-      _script: {
-        type: 'number',
-        script: {
-          lang: 'painless',
-          source: `
-              def organizationId = doc['uuid_organizationId'].value;
-              return params.organizationIds.indexOf(organizationId);
-            `,
-          params: {
-            organizationIds: organizationIds.map((i) => `${i}`),
-          },
-        },
-        order: 'asc',
-      },
-    }
-
-    const organizations = await this.findAndCountAllOpensearch(
-      {
-        filter: organizationQueryPayload,
-        segments: [originalSegment],
-        countOnly: false,
-        limit,
-        offset,
-        customSortFunction,
-      },
-      options,
-    )
-
-    const lfxMemberships = await findManyLfxMemberships(qx, {
-      organizationIds,
-    })
-
-    return {
-      rows: organizations.rows.map((o) => {
-        o.activityCount = organizationMap[o.id].activityCount.value
-        o.activeDaysCount = organizationMap[o.id].activeDaysCount.value
-        o.lfxMembership = lfxMemberships.find((m) => m.organizationId === o.id)
-        return o
-      }),
-      count: organizations.count,
-      offset,
-      limit,
-    }
   }
 
   private static removeLfxMembershipFromFilters(
