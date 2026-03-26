@@ -79,7 +79,7 @@
     "aws-sdk": "2.814.0",
     "axios": "^0.27.2",
     "bcrypt": "5.0.0",
-    "body-parser": "^1.20.1",
+    "body-parser": "^2.2.1",
     "bufferutil": "^4.0.7",
     "bunyan": "^1.8.15",
     "bunyan-format": "^0.2.1",
