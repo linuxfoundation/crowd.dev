@@ -1,5 +1,6 @@
 NODE last_scan_status
 SQL >
+    %
     SELECT
         multiIf(
             max(
@@ -44,7 +45,9 @@ SQL >
             'running'
         ) as lastScanStatus
     FROM vulnerability_scans as s FINAL
-    WHERE s.repoUrl in (select arrayJoin(repositories) from segments_filtered)
+    WHERE
+        s.repoUrl in (select arrayJoin(repositories) from segments_filtered)
+        {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
 
 NODE summary
 SQL >
