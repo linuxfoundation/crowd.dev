@@ -1050,6 +1050,10 @@ export default class ActivityService extends LoggerBase {
     const preparedActivities: IActivityPrepareForUpsertResult[] = []
 
     const memberService = new MemberService(this.pgStore, this.redisClient, this.temporal, this.log)
+    // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
+    // unique org per batch. Concurrent member creates that reference the same org await the
+    // same promise instead of firing redundant DB round trips.
+    const orgPromiseCache = new Map<string, Promise<string | undefined>>()
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(
@@ -1145,6 +1149,8 @@ export default class ActivityService extends LoggerBase {
               reach: value.member.reach,
             },
             value.platform,
+            undefined,
+            orgPromiseCache,
           )
           .then((memberId) => {
             // map ids for members
@@ -1288,6 +1294,8 @@ export default class ActivityService extends LoggerBase {
                 payload.dbMember,
                 dbMemberIdentities.get(payload.dbMember.id),
                 payload.platform,
+                undefined,
+                orgPromiseCache,
               )
               .then(() => {
                 payload.memberId = payload.dbMember.id
@@ -1344,6 +1352,8 @@ export default class ActivityService extends LoggerBase {
                 payload.dbObjectMember,
                 dbMemberIdentities.get(payload.dbObjectMember.id),
                 payload.platform,
+                undefined,
+                orgPromiseCache,
               )
               .then(() => {
                 payload.objectMemberId = payload.dbObjectMember.id
@@ -1538,7 +1548,7 @@ export default class ActivityService extends LoggerBase {
       this.log.trace(
         `[ACTIVITY] Upserting ${relationsToUpsert.length} activity relations (filtered from ${preparedForUpsert.length}, skipped ${skippedCount})`,
       )
-      await createOrUpdateRelations(this.pgQx, relationsToUpsert)
+      await createOrUpdateRelations(this.pgQx, relationsToUpsert, true)
     } else {
       this.log.trace(
         `[ACTIVITY] No activity relations need updating (all ${preparedForUpsert.length} would only update updatedAt)`,
@@ -1580,28 +1590,36 @@ export default class ActivityService extends LoggerBase {
           `${prepared.payload.platform}:${prepared.payload.channel}:${prepared.payload.segmentId}`,
         )
       }
+    }
 
-      await this.searchSyncWorkerEmitter.triggerMemberSync(
-        prepared.payload.memberId,
-        onboarding,
-        prepared.payload.segmentId,
-      )
+    const orgIds = preparedForUpsert
+      .map((p) => p.payload.organizationId)
+      .filter((id): id is string => !!id)
+    if (orgIds.length > 0) {
+      await this.redisClient.sAdd('organizationIdsForAggComputation', orgIds)
+    }
 
-      if (prepared.payload.objectMemberId) {
-        await this.searchSyncWorkerEmitter.triggerMemberSync(
-          prepared.payload.objectMemberId,
-          onboarding,
-          prepared.payload.segmentId,
-        )
-      }
-
-      if (prepared.payload.organizationId) {
-        await this.redisClient.sAdd(
-          'organizationIdsForAggComputation',
-          prepared.payload.organizationId,
-        )
+    // Deduplicate member sync triggers — a member may appear in many activities in the
+    // same batch. Emit once per unique (memberId, segmentId) pair.
+    const memberSyncKeys = new Set<string>()
+    const memberSyncPromises: Promise<void>[] = []
+    for (const prepared of preparedForUpsert) {
+      for (const memberId of [prepared.payload.memberId, prepared.payload.objectMemberId]) {
+        if (!memberId) continue
+        const key = `${memberId}:${prepared.payload.segmentId}`
+        if (!memberSyncKeys.has(key)) {
+          memberSyncKeys.add(key)
+          memberSyncPromises.push(
+            this.searchSyncWorkerEmitter.triggerMemberSync(
+              memberId,
+              onboarding,
+              prepared.payload.segmentId,
+            ),
+          )
+        }
       }
     }
+    await Promise.all(memberSyncPromises)
 
     for (const prepared of preparedActivities) {
       resultMap.set(prepared.resultId, { success: true })
