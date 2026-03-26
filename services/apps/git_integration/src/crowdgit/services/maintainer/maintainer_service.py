@@ -37,6 +37,7 @@ from crowdgit.models.maintainer_info import (
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.maintainer.bedrock import invoke_bedrock
+from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
 
@@ -93,6 +94,7 @@ class MaintainerService(BaseService):
         "code_owners",
         "emeritus",
         "workgroup",
+        "readme",
     }
 
     VALID_EXTENSIONS = {
@@ -131,6 +133,12 @@ class MaintainerService(BaseService):
     FULL_PATH_SCORE = 100
     STEM_MATCH_SCORE = 50
     PARTIAL_STEM_SCORE = 25
+
+    # Files in KNOWN_PATHS that still need section filtering (contain non-governance content)
+    SECTION_FILTERED_PATHS = {"readme.md", "governance.md"}
+    SCORING_KEYWORDS_SET = frozenset(SCORING_KEYWORDS)
+
+    _section_extractor = SectionExtractor()
 
     def make_role(self, title: str):
         title = title.lower()
@@ -586,6 +594,16 @@ class MaintainerService(BaseService):
                 f"Skipping README file '{filename}': no governance keyword found in content"
             )
             raise MaintanerAnalysisError(error_code=ErrorCode.NO_MAINTAINER_FOUND)
+
+        fname = os.path.basename(filename).lower()
+        if fname not in self.KNOWN_PATHS or fname in self.SECTION_FILTERED_PATHS:
+            extracted = self._section_extractor.extract(fname, content, self.SCORING_KEYWORDS_SET)
+            if extracted:
+                self.logger.info(f"Using extracted sections for '{filename}' {extracted}")
+                content = extracted
+            else:
+                self.logger.debug(f"No sections extracted for '{filename}', using full content")
+
         result = await self.analyze_file_content(filename, content)
 
         if not result.output.info:
