@@ -1,5 +1,10 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { IMemberIdentity, MemberIdentityType, NewMemberIdentity } from '@crowd/types'
+import {
+  IMemberIdentity,
+  MemberIdentityType,
+  NewMemberIdentity,
+  UpdateMemberIdentity,
+} from '@crowd/types'
 
 import { MEMBER_SELECT_COLUMNS } from '../members/base'
 import { IDbMember } from '../old/apps/data_sink_worker/repo/member.data'
@@ -12,7 +17,7 @@ export async function fetchMemberIdentities(
 ): Promise<IMemberIdentity[]> {
   return qx.select(
     `
-      SELECT id, platform, "sourceId", source, type, value, verified
+      SELECT *
       FROM "memberIdentities"
       WHERE "memberId" = $(memberId)
         AND "deletedAt" is null
@@ -70,7 +75,7 @@ export async function findMemberIdentityById(
 ): Promise<IMemberIdentity> {
   const res = await qx.select(
     `
-        SELECT id, platform, "sourceId", source, type, value, verified
+        SELECT *
         FROM "memberIdentities"
         WHERE "id" = $(id) 
           AND "memberId" = $(memberId)
@@ -81,6 +86,7 @@ export async function findMemberIdentityById(
       memberId,
     },
   )
+
   return res.length > 0 ? res[0] : null
 }
 
@@ -107,33 +113,25 @@ export async function updateMemberIdentity(
   qx: QueryExecutor,
   memberId: string,
   id: string,
-  data: Partial<IMemberIdentity>,
-): Promise<number> {
-  return qx.result(
-    `
-          UPDATE "memberIdentities"
-          SET
-              platform = $(platform),
-              type = $(type),
-              value = $(value),
-              verified = $(verified),
-              "sourceId" = $(sourceId),
-              "integrationId" = $(integrationId)
-          WHERE "memberId" = $(memberId) 
-            AND "id" = $(id) 
-            AND "deletedAt" is null;
-      `,
-    {
-      memberId,
-      id,
-      platform: data.platform,
-      type: data.type,
-      value: data.value,
-      verified: data.verified || false,
-      sourceId: data.sourceId || null,
-      integrationId: data.integrationId || null,
-    },
-  )
+  data: Partial<UpdateMemberIdentity>,
+): Promise<IMemberIdentity> {
+  if (Object.keys(data).length === 0) return null
+
+  const setClause = Object.keys(data).map((key) => `"${key}" = $(${key})`)
+  setClause.push('"updatedAt" = now()')
+
+  const params = { memberId, id, ...data }
+
+  const query = `
+    UPDATE "memberIdentities"
+    SET ${setClause.join(', ')}
+    WHERE "memberId" = $(memberId)
+      AND "id" = $(id)
+      AND "deletedAt" IS NULL
+    RETURNING *;
+  `
+
+  return qx.selectOneOrNone(query, params)
 }
 
 export async function deleteMemberIdentity(
@@ -210,6 +208,7 @@ export async function insertManyMemberIdentities(
         'value',
         'type',
         'verified',
+        'verifiedBy',
       ],
       identities.map((i) => {
         return {
@@ -415,7 +414,7 @@ export async function findMembersByVerifiedEmails(
     return new Map()
   }
 
-  const valuesClause = emails.map((_, i) => `($(email_${i}))`).join(', ')
+  const emailsArray = emails.map((_, i) => `$(email_${i})`).join(', ')
 
   const data: Record<string, string> = {
     type: MemberIdentityType.EMAIL,
@@ -427,16 +426,13 @@ export async function findMembersByVerifiedEmails(
 
   const results = await qx.select(
     `
-    with input_emails (value_lower) as (
-      values ${valuesClause}
-    )
     select mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
     from "memberIdentities" mi
-    inner join input_emails i on lower(mi.value) = i.value_lower
     inner join "members" m on m.id = mi."memberId"
-    where mi.verified = true 
-      and mi.type = $(type) 
+    where mi.verified = true
+      and mi.type = $(type)
       and mi."deletedAt" is null
+      and lower(mi.value) = any(array[${emailsArray}])
     limit ${emails.length}
   `,
     data,
@@ -477,12 +473,12 @@ export async function findMembersByVerifiedUsernames(
       )
       select mi.platform as "identityPlatform", mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
       from "memberIdentities" mi
-      inner join input_identities i 
-        on mi.platform = i.platform 
+      inner join input_identities i
+        on mi.platform = i.platform
         and lower(mi.value) = i.value_lower
       inner join "members" m on m.id = mi."memberId"
-      where mi.verified = true 
-        and mi.type = $(type) 
+      where mi.verified = true
+        and mi.type = $(type)
         and mi."deletedAt" is null
       limit ${params.length}
     `,
@@ -569,4 +565,54 @@ export async function findIdentitiesForMembers(
   }
 
   return resultMap
+}
+
+/**
+ * Retrieve member IDs matching any of the given identities.
+ */
+export async function findMemberIdsByIdentities(
+  qx: QueryExecutor,
+  identities: Partial<IMemberIdentity>[],
+): Promise<string[]> {
+  if (!identities.length) return []
+
+  const conditions: string[] = []
+  const params: Record<string, string> = {}
+
+  identities.forEach((identity, i) => {
+    const parts: string[] = []
+
+    Object.entries(identity).forEach(([key, value]) => {
+      if (value == null) return
+
+      const paramName = `${key}_${i}`
+
+      // Special handling: lowercase 'value' for case-insensitive match
+      if (key === 'value') {
+        parts.push(`lower(mi.${key}) = $(${paramName})`)
+        params[paramName] = (value as string).toLowerCase()
+      } else {
+        parts.push(`mi.${key} = $(${paramName})`)
+        params[paramName] = value as string
+      }
+    })
+
+    if (parts.length > 0) {
+      conditions.push(`(${parts.join(' AND ')})`)
+    }
+  })
+
+  if (!conditions.length) return []
+
+  const result = await qx.select(
+    `
+      SELECT DISTINCT mi."memberId"
+      FROM "memberIdentities" mi
+      WHERE mi."deletedAt" IS NULL
+        AND (${conditions.join(' OR ')})
+  `,
+    params,
+  )
+
+  return result.map((r) => r.memberId)
 }

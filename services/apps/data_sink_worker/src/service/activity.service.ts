@@ -10,6 +10,7 @@ import {
   escapeNullByte,
   generateUUIDv1,
   isValidEmail,
+  parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
   trimUtf8ToMaxByteLength,
@@ -805,6 +806,92 @@ export default class ActivityService extends LoggerBase {
         )
       }
 
+      // Look up members by parsing noreply emails to extract platform usernames
+      // e.g. "123+john@users.noreply.github.com" -> GitHub username "john"
+      const noreplyEmailFilterMap = new Map<
+        string,
+        { platform: PlatformType; username: string; segmentId: string }
+      >()
+
+      for (const payload of payloadsNotInDb.filter((p) => !p.dbMember)) {
+        for (const identity of payload.activity.member.identities.filter(
+          (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+        )) {
+          const ghUsername = parseGitHubNoreplyEmail(identity.value)
+          if (ghUsername) {
+            const key = `${PlatformType.GITHUB}:${ghUsername}:${payload.segmentId}`
+            if (!noreplyEmailFilterMap.has(key)) {
+              noreplyEmailFilterMap.set(key, {
+                platform: PlatformType.GITHUB,
+                username: ghUsername,
+                segmentId: payload.segmentId,
+              })
+            }
+          }
+        }
+      }
+
+      for (const payload of payloadsNotInDb.filter(
+        (p) => !p.dbObjectMember && p.activity.objectMember,
+      )) {
+        for (const identity of payload.activity.objectMember.identities.filter(
+          (i) => i.verified && i.type === MemberIdentityType.EMAIL,
+        )) {
+          const ghUsername = parseGitHubNoreplyEmail(identity.value)
+          if (ghUsername) {
+            const key = `${PlatformType.GITHUB}:${ghUsername}:${payload.segmentId}`
+            if (!noreplyEmailFilterMap.has(key)) {
+              noreplyEmailFilterMap.set(key, {
+                platform: PlatformType.GITHUB,
+                username: ghUsername,
+                segmentId: payload.segmentId,
+              })
+            }
+          }
+        }
+      }
+
+      if (noreplyEmailFilterMap.size > 0) {
+        const dbMembersByNoreplyEmail = await logExecutionTimeV2(
+          async () =>
+            findMembersByVerifiedUsernames(this.pgQx, Array.from(noreplyEmailFilterMap.values())),
+          this.log,
+          'processActivities -> memberRepo.findMembersByVerifiedUsernames (noreply-email)',
+        )
+
+        mapResultsToPayloads(
+          dbMembersByNoreplyEmail,
+          (p, value) =>
+            !p.dbMember &&
+            p.activity.member.identities.some(
+              (i) =>
+                i.verified &&
+                i.type === MemberIdentityType.EMAIL &&
+                parseGitHubNoreplyEmail(i.value) === value.toLowerCase(),
+            ),
+          (p, member) => {
+            p.dbMember = member
+            p.dbMemberSource = 'email'
+          },
+        )
+
+        mapResultsToPayloads(
+          dbMembersByNoreplyEmail,
+          (p, value) =>
+            !p.dbObjectMember &&
+            p.activity.objectMember?.identities.some(
+              (i) =>
+                i.verified &&
+                i.type === MemberIdentityType.EMAIL &&
+                parseGitHubNoreplyEmail(i.value) === value.toLowerCase(),
+            ),
+          (p, member) => {
+            p.dbObjectMember = member
+            p.dbObjectMemberSource = 'email'
+          },
+        )
+      }
+
       // Look up members using cross-identity matching (different platforms)
       // we will check only on platforms that store email identities as usernames
 
@@ -963,6 +1050,10 @@ export default class ActivityService extends LoggerBase {
     const preparedActivities: IActivityPrepareForUpsertResult[] = []
 
     const memberService = new MemberService(this.pgStore, this.redisClient, this.temporal, this.log)
+    // Shared org promise cache: ensures findOrCreateOrganization is called at most once per
+    // unique org per batch. Concurrent member creates that reference the same org await the
+    // same promise instead of firing redundant DB round trips.
+    const orgPromiseCache = new Map<string, Promise<string | undefined>>()
 
     // find distinct members to create
     const payloadsWithoutDbMembers: IActivityProcessData[] = relevantPayloads.filter(
@@ -981,7 +1072,7 @@ export default class ActivityService extends LoggerBase {
         segmentIds: Set<string>
         resultIds: Set<string>
         integrationId: string
-        platform: string
+        platform: PlatformType
         username: string
         timestamp: string
       }
@@ -1058,6 +1149,8 @@ export default class ActivityService extends LoggerBase {
               reach: value.member.reach,
             },
             value.platform,
+            undefined,
+            orgPromiseCache,
           )
           .then((memberId) => {
             // map ids for members
@@ -1201,6 +1294,8 @@ export default class ActivityService extends LoggerBase {
                 payload.dbMember,
                 dbMemberIdentities.get(payload.dbMember.id),
                 payload.platform,
+                undefined,
+                orgPromiseCache,
               )
               .then(() => {
                 payload.memberId = payload.dbMember.id
@@ -1257,6 +1352,8 @@ export default class ActivityService extends LoggerBase {
                 payload.dbObjectMember,
                 dbMemberIdentities.get(payload.dbObjectMember.id),
                 payload.platform,
+                undefined,
+                orgPromiseCache,
               )
               .then(() => {
                 payload.objectMemberId = payload.dbObjectMember.id
@@ -1451,7 +1548,7 @@ export default class ActivityService extends LoggerBase {
       this.log.trace(
         `[ACTIVITY] Upserting ${relationsToUpsert.length} activity relations (filtered from ${preparedForUpsert.length}, skipped ${skippedCount})`,
       )
-      await createOrUpdateRelations(this.pgQx, relationsToUpsert)
+      await createOrUpdateRelations(this.pgQx, relationsToUpsert, true)
     } else {
       this.log.trace(
         `[ACTIVITY] No activity relations need updating (all ${preparedForUpsert.length} would only update updatedAt)`,
@@ -1493,28 +1590,36 @@ export default class ActivityService extends LoggerBase {
           `${prepared.payload.platform}:${prepared.payload.channel}:${prepared.payload.segmentId}`,
         )
       }
+    }
 
-      await this.searchSyncWorkerEmitter.triggerMemberSync(
-        prepared.payload.memberId,
-        onboarding,
-        prepared.payload.segmentId,
-      )
+    const orgIds = preparedForUpsert
+      .map((p) => p.payload.organizationId)
+      .filter((id): id is string => !!id)
+    if (orgIds.length > 0) {
+      await this.redisClient.sAdd('organizationIdsForAggComputation', orgIds)
+    }
 
-      if (prepared.payload.objectMemberId) {
-        await this.searchSyncWorkerEmitter.triggerMemberSync(
-          prepared.payload.objectMemberId,
-          onboarding,
-          prepared.payload.segmentId,
-        )
-      }
-
-      if (prepared.payload.organizationId) {
-        await this.redisClient.sAdd(
-          'organizationIdsForAggComputation',
-          prepared.payload.organizationId,
-        )
+    // Deduplicate member sync triggers — a member may appear in many activities in the
+    // same batch. Emit once per unique (memberId, segmentId) pair.
+    const memberSyncKeys = new Set<string>()
+    const memberSyncPromises: Promise<void>[] = []
+    for (const prepared of preparedForUpsert) {
+      for (const memberId of [prepared.payload.memberId, prepared.payload.objectMemberId]) {
+        if (!memberId) continue
+        const key = `${memberId}:${prepared.payload.segmentId}`
+        if (!memberSyncKeys.has(key)) {
+          memberSyncKeys.add(key)
+          memberSyncPromises.push(
+            this.searchSyncWorkerEmitter.triggerMemberSync(
+              memberId,
+              onboarding,
+              prepared.payload.segmentId,
+            ),
+          )
+        }
       }
     }
+    await Promise.all(memberSyncPromises)
 
     for (const prepared of preparedActivities) {
       resultMap.set(prepared.resultId, { success: true })

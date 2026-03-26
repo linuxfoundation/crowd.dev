@@ -1,8 +1,8 @@
 DESCRIPTION >
     Sink pipe to export Octolens mentions data to Kafka for Snowflake ingestion.
     Reads from mentions datasource using FINAL to get deduplicated data.
-    Runs daily at 00:30 UTC, exporting only data created since the last run.
-    Uses createdAt filter to get rows added the previous day (incremental sync).
+    Runs hourly at :40 UTC, exporting only data created since the last run.
+    Uses createdAt filter to get rows added in the previous hour (incremental sync).
 
 NODE octolens_mentions_select_fields
 SQL >
@@ -31,14 +31,14 @@ SQL >
         arrayStringConcat(keywords, ',') as keywords,
         authorFollowerCount,
         arrayStringConcat(tags, ',') as tags,
-        toStartOfDay(now()) as date
+        now() as date
     FROM mentions FINAL
-    WHERE createdAt >= toStartOfDay(now()) - INTERVAL 1 DAY AND createdAt < toStartOfDay(now())
+    WHERE createdAt >= toStartOfHour(now()) - INTERVAL 1 HOUR AND createdAt < toStartOfHour(now())
 
 TYPE SINK
 EXPORT_SERVICE kafka
 EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
-EXPORT_SCHEDULE 30 0 * * *
+EXPORT_SCHEDULE 40 * * * *
 EXPORT_FORMAT csv
 EXPORT_STRATEGY @new
 EXPORT_KAFKA_TOPIC octolens_mentions_sink

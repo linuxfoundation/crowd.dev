@@ -147,6 +147,16 @@ setImmediate(async () => {
 
   app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }))
 
+  app.use((req, res, next) => {
+    // @ts-ignore
+    req.userData = {
+      ip: req.ip,
+      userAgent: req.headers ? req.headers['user-agent'] : null,
+    }
+
+    next()
+  })
+
   // Public API uses its own OAuth2 auth and error flow
   // Must be mounted before internal endpoints.
   app.use('/', publicRouter())
@@ -163,16 +173,6 @@ setImmediate(async () => {
   // Configures the authentication middleware
   // to set the currentUser to the requests
   app.use(authMiddleware)
-
-  app.use((req, res, next) => {
-    // @ts-ignore
-    req.userData = {
-      ip: req.ip,
-      userAgent: req.headers ? req.headers['user-agent'] : null,
-    }
-
-    next()
-  })
 
   app.use('/health', async (req: any, res) => {
     try {

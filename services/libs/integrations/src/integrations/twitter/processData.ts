@@ -24,6 +24,7 @@ const processTweetsWithMentions: ProcessDataHandler = async (ctx) => {
         platform: PlatformType.TWITTER,
         sourceId: data.member.id,
         verified: true,
+        verifiedBy: PlatformType.TWITTER,
       },
     ],
     attributes: {
@@ -83,6 +84,7 @@ const processTweetsWithHashtags: ProcessDataHandler = async (ctx) => {
         platform: PlatformType.TWITTER,
         sourceId: data.member.id,
         verified: true,
+        verifiedBy: PlatformType.TWITTER,
       },
     ],
     attributes: {
@@ -142,6 +144,7 @@ const processMemberReachUpdate: ProcessDataHandler = async (ctx) => {
         platform: PlatformType.TWITTER,
         sourceId: data.member.id,
         verified: true,
+        verifiedBy: PlatformType.TWITTER,
       },
     ],
     attributes: {

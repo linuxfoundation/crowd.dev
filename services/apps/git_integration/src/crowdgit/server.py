@@ -11,6 +11,7 @@ from crowdgit.services import (
     MaintainerService,
     QueueService,
     SoftwareValueService,
+    VulnerabilityScannerService,
 )
 from crowdgit.settings import WORKER_SHUTDOWN_TIMEOUT_SEC
 from crowdgit.worker.repository_worker import RepositoryWorker
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     queue_service = QueueService()
     commit_service = CommitService(queue_service=queue_service)
     software_value_service = SoftwareValueService()
+    vulnerability_scanner_service = VulnerabilityScannerService()
     maintainer_service = MaintainerService()
 
     worker_task = None
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         clone_service=clone_service,
         commit_service=commit_service,
         software_value_service=software_value_service,
+        vulnerability_scanner_service=vulnerability_scanner_service,
         maintainer_service=maintainer_service,
         queue_service=queue_service,
     )

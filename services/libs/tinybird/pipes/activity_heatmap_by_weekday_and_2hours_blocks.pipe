@@ -27,9 +27,7 @@ SQL >
             AND a.timestamp
             < {{ DateTime(endDate, description="Filter activity timestamp before", required=False) }}
         {% end %}
-        {% if defined(repos) %}
-            AND a.channel IN (SELECT channel FROM repos_to_channels)
-        {% end %}
+        {% if defined(repos) %} AND a.channel IN (SELECT channel FROM repos_to_channels) {% end %}
     group by weekday, two_hours_block
 
 NODE weekday_hours

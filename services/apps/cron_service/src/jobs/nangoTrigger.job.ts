@@ -5,7 +5,7 @@ import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/da
 import {
   fetchNangoIntegrationDataForCheck,
   fetchNangoLastCheckedAt,
-  getNangoMappingsForIntegration,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
@@ -81,7 +81,8 @@ const job: IJobDefinition = {
         { owner: string; repoName: string; repositoryId: string | null }
       > = {}
       if (platform === NangoIntegration.GITHUB) {
-        nangoMapping = await getNangoMappingsForIntegration(qx, id)
+        const allNangoMappings = await getNangoMappingsForIntegrations(qx, [id])
+        nangoMapping = allNangoMappings[id] || {}
         if (Object.keys(nangoMapping).length === 0) {
           // ignore non-nango github integrations
           continue

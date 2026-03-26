@@ -5,6 +5,7 @@ import {
 } from 'express-oauth2-jwt-bearer'
 
 import { HttpError, InsufficientScopeError, InternalError, UnauthorizedError } from '@crowd/common'
+import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 
 /**
  * Converts errors to structured JSON: `{ error: { code, message } }`.
@@ -32,6 +33,35 @@ export const errorHandler: ErrorRequestHandler = (
     res.status(httpErr.status).json(httpErr.toJSON())
     return
   }
+
+  req.log.error(
+    { error, url: req.url, method: req.method, query: req.query, body: req.body },
+    'Unhandled error in public API',
+  )
+
+  sendSlackNotification(
+    SlackChannel.CDP_ALERTS,
+    SlackPersona.ERROR_REPORTER,
+    `Public API Error 500: ${req.method} ${req.url}`,
+    [
+      {
+        title: 'Request',
+        text: `*Method:* \`${req.method}\`\n*URL:* \`${req.url}\``,
+      },
+      {
+        title: 'Error',
+        text: `*Name:* \`${error?.name || 'Unknown'}\`\n*Message:* ${error?.message || 'No message'}`,
+      },
+      ...(error?.stack
+        ? [
+            {
+              title: 'Stack Trace',
+              text: `\`\`\`${error.stack.substring(0, 2700)}\`\`\``,
+            },
+          ]
+        : []),
+    ],
+  )
 
   const unknownError = new InternalError()
   res.status(unknownError.status).json(unknownError.toJSON())

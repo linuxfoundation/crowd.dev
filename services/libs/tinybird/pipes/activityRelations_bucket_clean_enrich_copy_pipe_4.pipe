@@ -40,11 +40,7 @@ SQL >
                     SELECT r.url, r.segmentId
                     FROM repositories r FINAL
                     INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
-                    WHERE
-                        isNull (r.deletedAt)
-                        AND isNull (i.deletedAt)
-                        AND r.excluded = false
-                        AND r.enabled = true
+                    WHERE isNull (r.deletedAt) AND isNull (i.deletedAt) AND r.enabled = true
                 )
             )
             OR platform NOT IN ('git', 'gerrit', 'github', 'gitlab')

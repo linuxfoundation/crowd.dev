@@ -27,6 +27,7 @@ import {
 } from '@crowd/data-access-layer/src/collections'
 import { fetchIntegrationsForSegment } from '@crowd/data-access-layer/src/integrations'
 import { QueryFilter } from '@crowd/data-access-layer/src/query'
+import { getReposForGithubIntegration } from '@crowd/data-access-layer/src/repositories'
 import {
   ICreateRepositoryGroup,
   IRepositoryGroup,
@@ -454,7 +455,9 @@ export class CollectionService extends LoggerBase {
         }
       }
 
-      await this.syncRepositoryGroupsWithDb(qx, insightsProjectId, project.repositoryGroups)
+      if (project.repositoryGroups !== undefined) {
+        await this.syncRepositoryGroupsWithDb(qx, insightsProjectId, project.repositoryGroups)
+      }
 
       const txSvc = new CollectionService({
         ...this.options,
@@ -533,13 +536,8 @@ export class CollectionService extends LoggerBase {
     return listRepositoryGroups(qx, { insightsProjectId })
   }
 
-  static isSingleRepoOrg(orgs: GithubIntegrationSettings['orgs']): boolean {
-    return (
-      Array.isArray(orgs) &&
-      orgs.length === 1 &&
-      Array.isArray(orgs[0]?.repos) &&
-      orgs[0].repos.length === 1
-    )
+  static isSingleRepoOrg(orgs: GithubIntegrationSettings['orgs'], repoCount: number): boolean {
+    return Array.isArray(orgs) && orgs.length === 1 && repoCount === 1
   }
 
   /**
@@ -613,13 +611,12 @@ export class CollectionService extends LoggerBase {
       const settings = githubIntegration.settings as GithubIntegrationSettings
 
       // The orgs must have at least one repo
-      if (
-        !settings?.orgs ||
-        !Array.isArray(settings.orgs) ||
-        settings.orgs.length === 0 ||
-        !Array.isArray(settings.orgs[0].repos) ||
-        settings.orgs[0].repos.length === 0
-      ) {
+      if (!settings?.orgs || !Array.isArray(settings.orgs) || settings.orgs.length === 0) {
+        return null
+      }
+
+      const repos = await getReposForGithubIntegration(qx, githubIntegration.id)
+      if (repos.length === 0) {
         return null
       }
 
@@ -633,11 +630,8 @@ export class CollectionService extends LoggerBase {
         return null
       }
 
-      const details = CollectionService.isSingleRepoOrg(settings.orgs)
-        ? await GithubIntegrationService.findRepoDetails(
-            mainOrg.name,
-            settings.orgs[0].repos[0].name,
-          )
+      const details = CollectionService.isSingleRepoOrg(settings.orgs, repos.length)
+        ? await GithubIntegrationService.findRepoDetails(mainOrg.name, repos[0].name)
         : {
             ...(await GithubIntegrationService.findOrgDetails(mainOrg.name)),
             topics: mainOrg.topics,

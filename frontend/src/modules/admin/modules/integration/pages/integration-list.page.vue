@@ -128,7 +128,22 @@ const { array, loadingFetch } = mapGetters('integration');
 
 const { id, grandparentId } = route.params;
 
-const useGitHubNango = ref(false); // true for v2, false for v1
+const authStore = useAuthStore();
+const userId = computed(() => authStore.user?.id);
+const teamUserIds = computed(() => config.permissions.teamUserIds);
+const env = computed(() => config.env);
+
+const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value));
+
+const useGitHubNango = computed(() => {
+  const githubIntegration = array.value.find(
+    (integration: any) => integration.platform === 'github',
+  );
+  if (githubIntegration) {
+    return !!githubIntegration.isNango;
+  }
+  return !!isTeamUser.value;
+});
 
 const subproject = ref<any>();
 
@@ -153,34 +168,15 @@ const platformsByStatus = computed(() => {
   return all.filter((platform) => matching.includes(platform));
 });
 
-const authStore = useAuthStore();
-const userId = computed(() => authStore.user?.id);
-const teamUserIds = computed(() => config.permissions.teamUserIds);
-const env = computed(() => config.env);
-
-const isTeamUser = computed(() => env.value !== 'production' || teamUserIds.value?.includes(userId.value));
-
 onMounted(() => {
   localStorage.setItem('segmentId', id as string);
   localStorage.setItem('segmentGrandparentId', grandparentId as string);
 
-  doFetch().then(() => {
-    useGitHubNango.value = updateGithubVersion();
-  });
+  doFetch();
   findSubProject(id).then((res) => {
     subproject.value = res;
   });
 });
-
-const updateGithubVersion = () => {
-  const githubIntegration = array.value.find(
-    (integration: any) => integration.platform === 'github',
-  );
-  if (githubIntegration) {
-    return !!githubIntegration.isNango;
-  }
-  return !!isTeamUser.value;
-};
 </script>
 
 <script lang="ts">

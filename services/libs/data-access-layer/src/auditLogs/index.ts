@@ -48,6 +48,8 @@ export enum ActionType {
   ORGANIZATIONS_CREATE = 'organizations-create',
   INTEGRATIONS_CONNECT = 'integrations-connect',
   INTEGRATIONS_RECONNECT = 'integrations-reconnect',
+  MEMBERS_VERIFY_IDENTITY = 'members-verify-identity',
+  MEMBERS_VERIFY_WORK_EXPERIENCE = 'members-verify-work-experience',
 }
 
 const ACTION_TYPES_ENTITY_TYPES = {
@@ -65,6 +67,8 @@ const ACTION_TYPES_ENTITY_TYPES = {
   [ActionType.ORGANIZATIONS_CREATE]: EntityType.ORGANIZATION,
   [ActionType.INTEGRATIONS_CONNECT]: EntityType.INTEGRATION,
   [ActionType.INTEGRATIONS_RECONNECT]: EntityType.INTEGRATION,
+  [ActionType.MEMBERS_VERIFY_IDENTITY]: EntityType.MEMBER,
+  [ActionType.MEMBERS_VERIFY_WORK_EXPERIENCE]: EntityType.MEMBER,
 }
 
 let qx: QueryExecutor | undefined = undefined

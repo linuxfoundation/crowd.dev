@@ -4,7 +4,7 @@ import { auth } from 'express-oauth2-jwt-bearer'
 import { UnauthorizedError } from '@crowd/common'
 
 import type { Auth0Configuration } from '@/conf/configTypes'
-import type { ApiRequest, Auth0TokenPayload } from '@/types/api'
+import type { Auth0TokenPayload } from '@/types/api'
 
 function resolveActor(req: Request, _res: Response, next: NextFunction): void {
   const payload = (req.auth?.payload ?? {}) as Auth0TokenPayload
@@ -18,11 +18,9 @@ function resolveActor(req: Request, _res: Response, next: NextFunction): void {
 
   const id = rawId.replace(/@clients$/, '')
 
-  const authReq = req as ApiRequest
-
   const scopes = typeof payload.scope === 'string' ? payload.scope.split(' ').filter(Boolean) : []
 
-  authReq.actor = { id, type: 'service', scopes }
+  req.actor = { id, type: 'service', scopes }
 
   next()
 }

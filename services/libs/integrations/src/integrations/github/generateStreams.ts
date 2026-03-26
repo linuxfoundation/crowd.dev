@@ -36,7 +36,7 @@ const objectToMap = (obj: object): Map<string, Array<GithubManualStreamType>> =>
 const handler: GenerateStreamsHandler = async (ctx) => {
   const settings = ctx.integration.settings as GithubIntegrationSettings
   let reposToCheck = [
-    ...(settings?.orgs?.flatMap((o) => o.repos) || []),
+    ...(settings?.orgs?.flatMap((o) => o.repos || []) || []),
     ...(settings?.unavailableRepos || []),
   ]
 
@@ -55,7 +55,7 @@ const handler: GenerateStreamsHandler = async (ctx) => {
     }
 
     if (manualSettings.orgs && manualSettings.manualSettingsType === 'default') {
-      for (const repo of manualSettings.orgs.flatMap((o) => o.repos)) {
+      for (const repo of manualSettings.orgs.flatMap((o) => o.repos || [])) {
         for (const endpoint of [
           GithubStreamType.STARGAZERS,
           GithubStreamType.FORKS,
@@ -82,7 +82,10 @@ const handler: GenerateStreamsHandler = async (ctx) => {
           if (!endpoint) {
             ctx.abortRunWithError(`Invalid stream type: ${stream}`)
           }
-          const repo = manualSettings.orgs.flatMap((o) => o.repos).find((r) => r.url === repoUrl)
+          const repo = manualSettings.orgs
+
+            .flatMap((o) => o.repos || [])
+            .find((r) => r.url === repoUrl)
           await ctx.publishStream<GithubBasicStream>(`${endpoint}:${repo.name}:firstPage`, {
             repo: { ...repo, owner: new URL(repo.url).pathname.split('/')[1] },
             page: '',

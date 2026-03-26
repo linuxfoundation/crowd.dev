@@ -3,13 +3,11 @@ SQL >
     SELECT i.id, r.url AS repository
     FROM insightsProjects i FINAL
     JOIN repositories r FINAL ON r.insightsProjectId = i.id
-    WHERE isNull(i.deletedAt)
-      AND isNull(r.deletedAt)
-      AND r.enabled = true
+    WHERE isNull (i.deletedAt) AND isNull (r.deletedAt) AND r.enabled = true
 
 NODE maintainers_roles_copy_member_identities_deduplicated
 SQL >
-    SELECT id, memberId FROM memberIdentities FINAL WHERE isNull(deletedAt)
+    SELECT id, memberId FROM memberIdentities FINAL WHERE isNull (deletedAt)
 
 NODE maintainers_roles_copy_maintainers_deduplicated
 SQL >

@@ -2,9 +2,10 @@ import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/da
 import {
   fetchNangoCursorRowsForIntegration,
   fetchNangoIntegrationData,
-  getNangoMappingsForIntegration,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { getReposForGithubIntegration } from '@crowd/data-access-layer/src/repositories'
 import { getServiceLogger } from '@crowd/logging'
 import { PlatformType } from '@crowd/types'
 
@@ -42,7 +43,8 @@ async function collectStats(): Promise<Stats> {
 
   for (const integration of integrations) {
     // Fetch nango mappings from the dedicated table
-    const nangoMapping = await getNangoMappingsForIntegration(qx, integration.id)
+    const allNangoMappings = await getNangoMappingsForIntegrations(qx, [integration.id])
+    const nangoMapping = allNangoMappings[integration.id] || {}
     const connectionIds = Object.keys(nangoMapping)
 
     // Track connectionIds that don't have cursors
@@ -60,36 +62,30 @@ async function collectStats(): Promise<Stats> {
       }
     }
 
-    // Loop through orgs in settings
-    if (integration.settings?.orgs) {
-      for (const org of integration.settings.orgs) {
-        // Loop through repos in each org
-        if (org.repos) {
-          for (const repo of org.repos) {
-            totalRepos++
+    // Get repos from repositories table
+    const repos = await getReposForGithubIntegration(qx, integration.id)
+    for (const repo of repos) {
+      totalRepos++
 
-            if (connectionIds.length === 0) {
-              missingConnectionCount++
-              integrationsWithoutConnections.add(integration.id)
-              continue
-            }
+      if (connectionIds.length === 0) {
+        missingConnectionCount++
+        integrationsWithoutConnections.add(integration.id)
+        continue
+      }
 
-            let found = false
-            for (const mapping of Object.values(nangoMapping)) {
-              if (mapping.owner === org.name && mapping.repoName === repo.name) {
-                found = true
-                break
-              }
-            }
-
-            if (!found) {
-              missingConnectionCount++
-              integrationsWithoutConnections.add(integration.id)
-            } else {
-              connectedRepos++
-            }
-          }
+      let found = false
+      for (const mapping of Object.values(nangoMapping)) {
+        if (mapping.owner === repo.owner && mapping.repoName === repo.name) {
+          found = true
+          break
         }
+      }
+
+      if (!found) {
+        missingConnectionCount++
+        integrationsWithoutConnections.add(integration.id)
+      } else {
+        connectedRepos++
       }
     }
   }

@@ -38,7 +38,7 @@ export async function mergeMembers(
 
 export async function unmergeMembers(
   primaryMemberId: string,
-  backup: IUnmergeBackup<IMemberUnmergeBackup>,
+  backup: IUnmergeBackup<IMemberUnmergeBackup> | IUnmergePreviewResult<IMemberUnmergePreviewResult>,
 ): Promise<void> {
   const url = `${process.env['CROWD_API_SERVICE_URL']}/member/${primaryMemberId}/unmerge`
   const requestOptions = {

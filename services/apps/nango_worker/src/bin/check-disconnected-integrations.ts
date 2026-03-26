@@ -1,7 +1,7 @@
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
   fetchNangoDeletedIntegrationData,
-  getNangoMappingsForIntegration,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -46,7 +46,8 @@ setImmediate(async () => {
 
   for (const int of deletedNangoIntegrations) {
     if (int.platform === PlatformType.GITHUB_NANGO) {
-      const nangoMapping = await getNangoMappingsForIntegration(qx, int.id)
+      const allNangoMappings = await getNangoMappingsForIntegrations(qx, [int.id])
+      const nangoMapping = allNangoMappings[int.id] || {}
       const connectionIdsForIntegration = Object.keys(nangoMapping)
       if (connectionIdsForIntegration.length > 0) {
         connectionIds.push(...connectionIdsForIntegration)

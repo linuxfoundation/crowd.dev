@@ -1,0 +1,40 @@
+{
+  "name": "@crowd/snowflake-connectors",
+  "scripts": {
+    "start": "CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker tsx src/index.ts",
+    "start:debug": "CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx src/index.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx src/index.ts",
+    "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
+    "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
+    "lint": "npx eslint --ext .ts src --max-warnings=0",
+    "format": "npx prettier --write \"src/**/*.ts\"",
+    "format-check": "npx prettier --check .",
+    "tsc-check": "tsc --noEmit",
+    "trigger-export": "SERVICE=snowflake-connectors-worker tsx src/scripts/triggerExport.ts",
+    "trigger-cleanup": "SERVICE=snowflake-connectors-worker tsx src/scripts/triggerCleanup.ts"
+  },
+  "dependencies": {
+    "@crowd/archetype-standard": "workspace:*",
+    "@crowd/common": "workspace:*",
+    "@crowd/integrations": "workspace:*",
+    "@crowd/common_services": "workspace:*",
+    "@crowd/database": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "@crowd/archetype-worker": "workspace:*",
+    "@crowd/queue": "workspace:*",
+    "@crowd/redis": "workspace:*",
+    "@crowd/slack": "workspace:*",
+    "@crowd/snowflake": "workspace:*",
+    "@crowd/temporal": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@dsnp/parquetjs": "^1.7.0",
+    "@temporalio/client": "~1.11.8",
+    "@temporalio/workflow": "~1.11.8",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

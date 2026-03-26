@@ -19,12 +19,16 @@ export interface IGithubOrg {
   url: string
   fullSync: boolean
   updatedAt: string
-  repos: IGithubRepo[]
+  /** @deprecated Repos are stored in public.repositories table for github-nango.
+   * Only used by the legacy github platform. */
+  repos?: IGithubRepo[]
 }
 
 export interface IGithubIntegrationSettings {
   orgs: IGithubOrg[]
+  /** @deprecated Only used by legacy github platform (processStream.ts) */
   repos?: IGithubRepo[]
+  /** @deprecated Only used by legacy github platform (processStream.ts) */
   unavailableRepos?: IGithubRepo[]
   updateMemberAttributes?: boolean
 }

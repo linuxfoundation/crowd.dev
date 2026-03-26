@@ -1,5 +1,5 @@
 import { OrganizationField, findOrgById, pgpQx, updateOrganization } from '@crowd/data-access-layer'
-import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
+import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member-organization-affiliation'
 import OrganizationRepository from '@crowd/data-access-layer/src/old/apps/script_executor_worker/organization.repo'
 import { IChangeAffiliationOverrideData, IMemberOrganization } from '@crowd/types'
 

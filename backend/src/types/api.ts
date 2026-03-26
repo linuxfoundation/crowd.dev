@@ -1,4 +1,3 @@
-import type { Request } from 'express'
 import type { JWTPayload } from 'express-oauth2-jwt-bearer'
 
 /**
@@ -18,12 +17,4 @@ export interface Actor {
   type: 'service' | 'user'
   id: string
   scopes: string[]
-}
-
-/**
- * Express request with authenticated actor
- * Use req.actor to check identity and permissions
- */
-export interface ApiRequest extends Request {
-  actor: Actor
 }

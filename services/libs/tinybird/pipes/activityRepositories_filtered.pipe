@@ -15,11 +15,7 @@ SQL >
     select i.id as "projectId", i.name as "projectName", i.slug as "projectSlug", r.url as repo
     from insightsProjects i final
     JOIN
-        repositories r FINAL
-        ON r.insightsProjectId = i.id
-        AND isNull (r.deletedAt)
-        AND r.enabled = true
-        AND r.excluded = false
+        repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
     where
         isNull (i.deletedAt)
         {% if defined(repos) %}

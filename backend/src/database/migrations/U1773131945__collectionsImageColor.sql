@@ -1,0 +1,2 @@
+ALTER TABLE collections DROP COLUMN IF EXISTS "imageUrl";
+ALTER TABLE collections DROP COLUMN IF EXISTS "color";

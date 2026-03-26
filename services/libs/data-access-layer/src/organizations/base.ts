@@ -367,6 +367,7 @@ export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
   data: Partial<IDbOrganizationInput>,
+  throttleUpdatedAt = false,
 ): Promise<string | null> {
   const columns = Object.keys(data)
   if (columns.length === 0) {
@@ -376,9 +377,13 @@ export async function updateOrganization(
   const updatedAt = new Date()
   columns.push('updatedAt')
 
+  const updatedAtExpr = throttleUpdatedAt
+    ? `CASE WHEN "updatedAt" < now() - interval '30 minutes' THEN now() ELSE "updatedAt" END`
+    : `$(updatedAt)`
+
   const query = `
     update organizations set
-      ${columns.map((c) => `"${c}" = $(${c})`).join(',\n')}
+      ${columns.map((c) => `"${c}" = ${c === 'updatedAt' ? updatedAtExpr : `$(${c})`}`).join(',\n')}
     where id = $(organizationId)
     returning id;
   `
@@ -443,6 +448,7 @@ export async function findOrCreateOrganization(
   source: string,
   data: IOrganization,
   integrationId?: string,
+  throttleUpdatedAt = false,
 ): Promise<string | undefined> {
   const verifiedIdentities = data.identities ? data.identities.filter((i) => i.verified) : []
 
@@ -524,7 +530,8 @@ export async function findOrCreateOrganization(
       if (Object.keys(processed.organization).length > 0) {
         log.info({ orgId: existing.id }, `Updating organization!`)
         await logExecutionTimeV2(
-          async () => updateOrganization(qe, existing.id, processed.organization),
+          async () =>
+            updateOrganization(qe, existing.id, processed.organization, throttleUpdatedAt),
           log,
           'organizationService -> findOrCreateOrganization -> updateOrganization',
         )
@@ -682,4 +689,31 @@ export async function findOrgById<T extends OrganizationField>(
   fields: T[],
 ): Promise<QueryResult<T>> {
   return queryTableById(qx, 'organizations', Object.values(OrganizationField), orgId, fields)
+}
+
+export async function findNonExistingOrganizationIds(
+  qx: QueryExecutor,
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return []
+
+  const valuesClause = ids.map((_, i) => `($(id_${i})::uuid)`).join(', ')
+  const params: Record<string, string> = {}
+  ids.forEach((id, i) => {
+    params[`id_${i}`] = id
+  })
+
+  const rows = await qx.select(
+    `
+    WITH id_list (id) AS (VALUES ${valuesClause})
+    SELECT id_list.id
+    FROM id_list
+    WHERE NOT EXISTS (
+      SELECT 1 FROM organizations o WHERE o.id = id_list.id
+    )
+    `,
+    params,
+  )
+
+  return rows.map((r: { id: string }) => r.id)
 }

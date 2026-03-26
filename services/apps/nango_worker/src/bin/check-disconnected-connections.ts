@@ -1,7 +1,7 @@
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
   fetchNangoIntegrationData,
-  getNangoMappingsForIntegration,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -40,8 +40,8 @@ setImmediate(async () => {
   const connectionIds: string[] = []
   for (const int of nangoIntegrations) {
     if (int.platform === PlatformType.GITHUB_NANGO) {
-      const nangoMapping = await getNangoMappingsForIntegration(qx, int.id)
-      connectionIds.push(...Object.keys(nangoMapping))
+      const allNangoMappings = await getNangoMappingsForIntegrations(qx, [int.id])
+      connectionIds.push(...Object.keys(allNangoMappings[int.id] || {}))
     } else {
       connectionIds.push(int.id)
     }

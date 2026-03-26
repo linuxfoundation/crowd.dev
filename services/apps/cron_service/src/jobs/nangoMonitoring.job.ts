@@ -12,9 +12,10 @@ import {
   INangoIntegrationData,
   fetchNangoCursorRowsForIntegration,
   fetchNangoIntegrationData,
-  getNangoMappingsForIntegration,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { getReposForGithubIntegration } from '@crowd/data-access-layer/src/repositories'
 import {
   ALL_NANGO_INTEGRATIONS,
   NangoIntegration,
@@ -72,29 +73,28 @@ const job: IJobDefinition = {
     for (const int of allIntegrations) {
       if (int.platform === PlatformType.GITHUB_NANGO) {
         // Fetch nango mappings from the dedicated table
-        const nangoMapping = await getNangoMappingsForIntegration(pgpQx(dbConnection), int.id)
+        const allNangoMappings = await getNangoMappingsForIntegrations(pgpQx(dbConnection), [
+          int.id,
+        ])
+        const nangoMapping = allNangoMappings[int.id] || {}
 
-        // first go through all orgs and repos and check if they are connected to nango
-        for (const org of int.settings.orgs) {
-          const orgName = org.name
-          for (const repo of org.repos) {
-            const repoName = repo.name
-            totalRepos++
+        // Check which repos are connected to nango by comparing repositories table vs nango_mapping
+        const repoRows = await getReposForGithubIntegration(pgpQx(dbConnection), int.id)
+        for (const repo of repoRows) {
+          totalRepos++
 
-            let found = false
-
-            for (const mapping of Object.values(nangoMapping)) {
-              if (mapping.owner === orgName && mapping.repoName === repoName) {
-                found = true
-              }
+          let found = false
+          for (const mapping of Object.values(nangoMapping)) {
+            if (mapping.owner === repo.owner && mapping.repoName === repo.name) {
+              found = true
             }
+          }
 
-            if (!found) {
-              if (ghNotConnectedToNangoYet.has(int.id)) {
-                ghNotConnectedToNangoYet.set(int.id, ghNotConnectedToNangoYet.get(int.id) + 1)
-              } else {
-                ghNotConnectedToNangoYet.set(int.id, 1)
-              }
+          if (!found) {
+            if (ghNotConnectedToNangoYet.has(int.id)) {
+              ghNotConnectedToNangoYet.set(int.id, ghNotConnectedToNangoYet.get(int.id) + 1)
+            } else {
+              ghNotConnectedToNangoYet.set(int.id, 1)
             }
           }
         }
@@ -326,7 +326,7 @@ const job: IJobDefinition = {
         // Queue notification for this platform
         notificationPromises.push(
           sendSlackNotificationAsync(
-            SlackChannel.NANGO_ALERTS,
+            SlackChannel.CDP_INTEGRATIONS_ALERTS,
             persona,
             `Nango Monitor: ${nangoIntegration}`,
             sections,
@@ -344,7 +344,7 @@ const job: IJobDefinition = {
     if (failedStatusChecks > 0) {
       notificationPromises.push(
         sendSlackNotificationAsync(
-          SlackChannel.NANGO_ALERTS,
+          SlackChannel.CDP_INTEGRATIONS_ALERTS,
           SlackPersona.ERROR_REPORTER,
           'Nango Monitor: API Errors',
           `Failed to retrieve status for ${failedStatusChecks} connection${failedStatusChecks > 1 ? 's' : ''} due to Nango API errors.\n\nCheck logs for details.`,

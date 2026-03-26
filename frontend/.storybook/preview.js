@@ -1,4 +1,4 @@
-/** @type { import('@storybook/vue3').Preview } */
+/** @type { import('@storybook/vue3-vite').Preview } */
 import '../src/assets/scss/index.scss';
 import './storybook.scss';
 

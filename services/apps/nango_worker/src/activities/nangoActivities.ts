@@ -7,17 +7,20 @@ import {
   fetchIntegrationById,
   findIntegrationDataForNangoWebhookProcessing,
   getNangoCursor,
-  getNangoMappingsForIntegration,
+  getNangoMappingsForIntegrations,
   linkNangoMappingToRepository,
   removeGithubNangoConnection,
   removeNangoCursorsByConnection,
-  setGithubIntegrationSettingsOrgs,
   setNangoCursor,
   updateNangoCursorLastCheckedAt,
 } from '@crowd/data-access-layer/src/integrations'
 import IntegrationStreamRepository from '@crowd/data-access-layer/src/old/apps/integration_stream_worker/integrationStream.repo'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { softDeleteRepositories, upsertRepository } from '@crowd/data-access-layer/src/repositories'
+import {
+  getReposForGithubIntegration,
+  softDeleteRepositories,
+  upsertRepository,
+} from '@crowd/data-access-layer/src/repositories'
 import { getChildLogger } from '@crowd/logging'
 import {
   ALL_NANGO_INTEGRATIONS,
@@ -294,52 +297,40 @@ export async function analyzeGithubIntegration(
   if (integration) {
     if (integration.platform === PlatformType.GITHUB_NANGO) {
       const settings = integration.settings
+      const qx = dbStoreQx(svc.postgres.writer)
 
-      // check if we need to sync org repos
-      let added = 0
+      // Build desired repos list from repositories table
+      const repoRows = await getReposForGithubIntegration(qx, integrationId)
+      const repoSet = new Map<string, IGithubRepoData>()
+      for (const row of repoRows) {
+        repoSet.set(`${row.owner}/${row.name}`, { owner: row.owner, repoName: row.name })
+      }
+
+      // For fullSync orgs, discover new repos from GitHub API
+      // New repos not yet in the repositories table will be added to the sync list
+      // (syncGithubRepo workflow will create the repositories row)
       for (const org of settings.orgs) {
         if (org.fullSync) {
           const results = await GithubIntegrationService.getOrgRepos(org.name)
           for (const result of results) {
-            // we didn't find the repo so we add it
-            if (!org.repos.some((r) => r.url === result.url)) {
-              org.repos.push(result)
-              added++
+            const parsed = parseGithubUrl(result.url)
+            const key = `${parsed.owner}/${parsed.repoName}`
+            if (!repoSet.has(key)) {
+              repoSet.set(key, parsed)
+              svc.log.info(`fullSync: discovered new repo ${result.url} for org ${org.name}`)
             }
           }
         }
       }
 
-      if (added > 0) {
-        // we need to update the integration settings in the database
-        await setGithubIntegrationSettingsOrgs(
-          dbStoreQx(svc.postgres.writer),
-          integrationId,
-          settings.orgs,
-        )
-      }
-
-      const repos = new Set<IGithubRepoData>()
-      if (settings.orgs) {
-        for (const org of settings.orgs) {
-          for (const repo of org.repos) {
-            repos.add(parseGithubUrl(repo.url))
-          }
-        }
-      }
-      if (settings.repos) {
-        for (const repo of settings.repos) {
-          repos.add(parseGithubUrl(repo.url))
-        }
-      }
-
-      const finalRepos = Array.from(repos)
+      const finalRepos = Array.from(repoSet.values())
 
       // fetch nango mappings from the dedicated table
-      const nangoMapping = await getNangoMappingsForIntegration(
+      const allNangoMappings = await getNangoMappingsForIntegrations(
         dbStoreQx(svc.postgres.writer),
-        integrationId,
+        [integrationId],
       )
+      const nangoMapping = allNangoMappings[integrationId] || {}
       const connectionIds = Object.keys(nangoMapping)
 
       // determine which connections to delete if needed

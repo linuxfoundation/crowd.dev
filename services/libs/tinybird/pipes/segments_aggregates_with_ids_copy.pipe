@@ -46,9 +46,7 @@ SQL >
     SELECT i.id, r.url AS repository
     FROM insightsProjects i FINAL
     JOIN repositories r FINAL ON r.insightsProjectId = i.id
-    WHERE isNull(i.deletedAt)
-      AND isNull(r.deletedAt)
-      AND r.enabled = true
+    WHERE isNull (i.deletedAt) AND isNull (r.deletedAt) AND r.enabled = true
 
 NODE segments_aggregates_with_ids_copy_software_value_deduplicated
 SQL >

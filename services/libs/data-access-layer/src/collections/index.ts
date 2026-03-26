@@ -15,10 +15,15 @@ import { QueryOptions } from '../utils'
 
 export interface ICreateCollection {
   categoryId: string
+  color?: string | null
   description?: string
+  imageUrl?: string | null
   name: string
   slug?: string
   starred: boolean
+  isPrivate?: boolean
+  ssoUserId?: string | null
+  logoUrl?: string | null
 }
 
 export interface ICollection extends ICreateCollection {
@@ -77,11 +82,16 @@ export interface ICollectionInsightProject {
 
 export enum CollectionField {
   CATEGORY_ID = 'categoryId',
+  COLOR = 'color',
   CREATED_AT = 'createdAt',
   DESCRIPTION = 'description',
   ID = 'id',
+  IMAGE_URL = 'imageUrl',
+  IS_PRIVATE = 'isPrivate',
+  LOGO_URL = 'logoUrl',
   NAME = 'name',
   SLUG = 'slug',
+  SSO_USER_ID = 'ssoUserId',
   STARRED = 'starred',
   UPDATED_AT = 'updatedAt',
   DELETED_AT = 'deletedAt',
@@ -130,8 +140,8 @@ export async function createCollection(
 ): Promise<ICollection> {
   return qx.selectOne(
     `
-      INSERT INTO collections (name, description, slug, "categoryId", starred)
-      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred))
+      INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color)
+      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color))
       RETURNING *
     `,
     collection,
@@ -320,6 +330,23 @@ export async function updateInsightsProject(
   if (repositories !== undefined) {
     const enabledUrls = normalizeRepositoriesToUrls(repositories)
     await syncRepositoriesEnabledStatus(qx, id, enabledUrls)
+  }
+
+  // When slug changes, ON UPDATE CASCADE propagates the new slug to securityInsights* tables
+  // but does not touch their updatedAt — update it explicitly so Tinybird picks up the change
+  if (project.slug) {
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationSuites" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluations" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationAssessments" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
   }
 
   return updated as IInsightsProject
