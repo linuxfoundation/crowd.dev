@@ -3,7 +3,8 @@ export interface IDbProjectCatalog {
   projectSlug: string
   repoName: string
   repoUrl: string
-  criticalityScore: number | null
+  ossfCriticalityScore: number | null
+  lfCriticalityScore: number | null
   syncedAt: string | null
   createdAt: string | null
   updatedAt: string | null
@@ -11,11 +12,15 @@ export interface IDbProjectCatalog {
 
 type ProjectCatalogWritable = Pick<
   IDbProjectCatalog,
-  'projectSlug' | 'repoName' | 'repoUrl' | 'criticalityScore'
+  'projectSlug' | 'repoName' | 'repoUrl' | 'ossfCriticalityScore' | 'lfCriticalityScore'
 >
 
-export type IDbProjectCatalogCreate = Omit<ProjectCatalogWritable, 'criticalityScore'> & {
-  criticalityScore?: number
+export type IDbProjectCatalogCreate = Omit<
+  ProjectCatalogWritable,
+  'ossfCriticalityScore' | 'lfCriticalityScore'
+> & {
+  ossfCriticalityScore?: number
+  lfCriticalityScore?: number
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
