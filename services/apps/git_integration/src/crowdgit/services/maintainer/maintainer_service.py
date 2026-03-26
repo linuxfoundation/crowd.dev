@@ -67,6 +67,7 @@ class MaintainerService(BaseService):
         ".github/contributors.md",
         ".github/codeowners",
         "security-insights.md",
+        "readme.md",
     }
 
     # Governance stems (basename without extension, lowercased) for filename search
@@ -579,9 +580,11 @@ class MaintainerService(BaseService):
         Raises MaintanerAnalysisError if no maintainers are found.
         """
         self.logger.info(f"Analyzing maintainer file: {filename}")
-        if "readme" in filename.lower() and "maintainer" not in content.lower():
+        if "readme" in filename.lower() and not any(
+            kw in content.lower() for kw in self.SCORING_KEYWORDS
+        ):
             self.logger.warning(
-                f"Skipping README file '{filename}': no 'maintainer' keyword found in content"
+                f"Skipping README file '{filename}': no governance keyword found in content"
             )
             raise MaintanerAnalysisError(error_code=ErrorCode.NO_MAINTAINER_FOUND)
         result = await self.analyze_file_content(filename, content)
@@ -612,7 +615,9 @@ class MaintainerService(BaseService):
             )
             return None, cost
 
-        self.logger.debug(f"Saved maintainer file exists, reading content: '{saved_maintainer_file}'")
+        self.logger.debug(
+            f"Saved maintainer file exists, reading content: '{saved_maintainer_file}'"
+        )
         try:
             async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
                 content = await f.read()
@@ -678,7 +683,9 @@ class MaintainerService(BaseService):
         best_file_count: int = 0
 
         for filename, content, score in root_candidates:
-            self.logger.debug(f"Detection step 3: trying root candidate '{filename}' (score={score})")
+            self.logger.debug(
+                f"Detection step 3: trying root candidate '{filename}' (score={score})"
+            )
             try:
                 result = await self.analyze_and_build_result(filename, content)
                 total_cost += result.total_cost
@@ -713,7 +720,9 @@ class MaintainerService(BaseService):
 
         if subdir_candidates:
             filename, content, score = subdir_candidates[0]
-            self.logger.debug(f"Detection step 3b: trying top subdir candidate '{filename}' (score={score})")
+            self.logger.debug(
+                f"Detection step 3b: trying top subdir candidate '{filename}' (score={score})"
+            )
             try:
                 result = await self.analyze_and_build_result(filename, content)
                 total_cost += result.total_cost
@@ -754,7 +763,7 @@ class MaintainerService(BaseService):
         ai_suggested_file = ai_file_name
         total_cost += ai_cost
 
-        self.logger.debug(f"AI suggested file: '{ai_file_name}' (cost={ai_cost:.4f})")
+        self.logger.info(f"AI suggested file: '{ai_file_name}' (cost={ai_cost:.4f})")
         if ai_file_name:
             file_path = os.path.join(repo_path, ai_file_name)
             if not await aiofiles.os.path.isfile(file_path):
@@ -775,7 +784,7 @@ class MaintainerService(BaseService):
                     )
 
         self.logger.error("No maintainer file found")
-        raise MaintainerFileNotFoundError(ai_cost=total_cost)
+        return _attach_metadata(MaintainerResult(total_cost=total_cost, not_found=True))
 
     async def check_if_interval_elapsed(self, repository: Repository) -> tuple[bool, float]:
         """
@@ -870,9 +879,13 @@ class MaintainerService(BaseService):
             )
             latest_maintainer_file = maintainers.maintainer_file
             ai_cost = maintainers.total_cost
-            maintainers_found = len(maintainers.maintainer_info)
             candidate_files = maintainers.candidate_files
             ai_suggested_file = maintainers.ai_suggested_file
+
+            if maintainers.not_found:
+                raise MaintainerFileNotFoundError(ai_cost=ai_cost)
+
+            maintainers_found = len(maintainers.maintainer_info)
 
             if repository.parent_repo:
                 filtered_maintainers = await self.exclude_parent_repo_maintainers(

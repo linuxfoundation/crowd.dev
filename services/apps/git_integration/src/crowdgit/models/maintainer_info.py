@@ -36,3 +36,4 @@ class MaintainerResult(BaseModel):
     total_cost: float = 0
     candidate_files: list[tuple[str, int]] = []
     ai_suggested_file: str | None = None
+    not_found: bool = False
