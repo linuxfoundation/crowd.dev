@@ -368,8 +368,10 @@ class MaintainerService(BaseService):
                 self.get_extraction_prompt(maintainer_filename, content),
                 pydantic_model=MaintainerInfo,
             )
-        self.logger.info("Maintainers file content analyzed by AI")
-        self.logger.info(f"Maintainers response: {maintainer_info}")
+        info_count = len(maintainer_info.output.info) if maintainer_info.output.info else 0
+        self.logger.info(
+            f"Maintainers file content analyzed by AI (found={info_count}, cost={maintainer_info.cost:.4f})"
+        )
         if maintainer_info.output.info is not None:
             return AggregatedMaintainerInfo(
                 output=AggregatedMaintainerInfoItems(info=maintainer_info.output.info),
@@ -381,7 +383,7 @@ class MaintainerService(BaseService):
             )
         else:
             self.logger.error(
-                f"Expected a list of maintainer info or an error message, got: {str(maintainer_info)}"
+                f"Expected a list of maintainer info or an error message, got error={maintainer_info.output.error}"
             )
             raise MaintanerAnalysisError(
                 error_message="Unexpected response from AI for Maintainers analysis",
@@ -599,7 +601,7 @@ class MaintainerService(BaseService):
         if fname not in self.KNOWN_PATHS or fname in self.SECTION_FILTERED_PATHS:
             extracted = self._section_extractor.extract(fname, content, self.SCORING_KEYWORDS_SET)
             if extracted:
-                self.logger.info(f"Using extracted sections for '{filename}' {extracted}")
+                self.logger.info(f"Using extracted sections for '{filename}'")
                 content = extracted
             else:
                 self.logger.debug(f"No sections extracted for '{filename}', using full content")
@@ -682,12 +684,6 @@ class MaintainerService(BaseService):
         root_candidates, subdir_candidates = await self.find_candidate_files(repo_path)
         all_candidates = root_candidates + subdir_candidates
         candidate_files = [(path, score) for path, _, score in all_candidates][:100]
-        self.logger.debug(
-            f"Detection step 2: {len(root_candidates)} root candidate(s), "
-            f"{len(subdir_candidates)} subdir candidate(s); "
-            f"root={[p for p, _, _ in root_candidates]}, "
-            f"subdir_top={[p for p, _, _ in subdir_candidates[:3]]}"
-        )
 
         # Step 3: Try root-level files first (in score order), then top subdirectory file
         failed_candidates: set[str] = set()
@@ -775,7 +771,6 @@ class MaintainerService(BaseService):
             f"Passing {len(ai_input_files)} files to AI for maintainer file detection "
             f"(total repo files: {len(file_names)})"
         )
-        self.logger.debug(f"AI input files: {[f for f, _ in ai_input_files]}")
         ai_file_name, ai_cost = await self.find_maintainer_file_with_ai(ai_input_files)
         ai_suggested_file = ai_file_name
         total_cost += ai_cost
