@@ -8,7 +8,8 @@ const PROJECT_CATALOG_COLUMNS = [
   'projectSlug',
   'repoName',
   'repoUrl',
-  'criticalityScore',
+  'ossfCriticalityScore',
+  'lfCriticalityScore',
   'syncedAt',
   'createdAt',
   'updatedAt',
@@ -95,7 +96,8 @@ export async function insertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "criticalityScore",
+      "ossfCriticalityScore",
+      "lfCriticalityScore",
       "createdAt",
       "updatedAt"
     )
@@ -103,7 +105,8 @@ export async function insertProjectCatalog(
       $(projectSlug),
       $(repoName),
       $(repoUrl),
-      $(criticalityScore),
+      $(ossfCriticalityScore),
+      $(lfCriticalityScore),
       NOW(),
       NOW()
     )
@@ -113,7 +116,8 @@ export async function insertProjectCatalog(
       projectSlug: data.projectSlug,
       repoName: data.repoName,
       repoUrl: data.repoUrl,
-      criticalityScore: data.criticalityScore ?? null,
+      ossfCriticalityScore: data.ossfCriticalityScore ?? null,
+      lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
   )
 }
@@ -130,7 +134,8 @@ export async function bulkInsertProjectCatalog(
     projectSlug: item.projectSlug,
     repoName: item.repoName,
     repoUrl: item.repoUrl,
-    criticalityScore: item.criticalityScore ?? null,
+    ossfCriticalityScore: item.ossfCriticalityScore ?? null,
+    lfCriticalityScore: item.lfCriticalityScore ?? null,
   }))
 
   await qx.result(
@@ -139,7 +144,8 @@ export async function bulkInsertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "criticalityScore",
+      "ossfCriticalityScore",
+      "lfCriticalityScore",
       "createdAt",
       "updatedAt"
     )
@@ -147,14 +153,16 @@ export async function bulkInsertProjectCatalog(
       v."projectSlug",
       v."repoName",
       v."repoUrl",
-      v."criticalityScore"::double precision,
+      v."ossfCriticalityScore"::double precision,
+      v."lfCriticalityScore"::double precision,
       NOW(),
       NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
       "projectSlug" text,
       "repoName" text,
       "repoUrl" text,
-      "criticalityScore" double precision
+      "ossfCriticalityScore" double precision,
+      "lfCriticalityScore" double precision
     )
     `,
     { values: JSON.stringify(values) },
@@ -171,7 +179,8 @@ export async function upsertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "criticalityScore",
+      "ossfCriticalityScore",
+      "lfCriticalityScore",
       "createdAt",
       "updatedAt"
     )
@@ -179,14 +188,16 @@ export async function upsertProjectCatalog(
       $(projectSlug),
       $(repoName),
       $(repoUrl),
-      $(criticalityScore),
+      $(ossfCriticalityScore),
+      $(lfCriticalityScore),
       NOW(),
       NOW()
     )
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "criticalityScore" = EXCLUDED."criticalityScore",
+      "ossfCriticalityScore" = EXCLUDED."ossfCriticalityScore",
+      "lfCriticalityScore" = EXCLUDED."lfCriticalityScore",
       "updatedAt" = NOW()
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
@@ -194,7 +205,8 @@ export async function upsertProjectCatalog(
       projectSlug: data.projectSlug,
       repoName: data.repoName,
       repoUrl: data.repoUrl,
-      criticalityScore: data.criticalityScore ?? null,
+      ossfCriticalityScore: data.ossfCriticalityScore ?? null,
+      lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
   )
 }
@@ -211,7 +223,8 @@ export async function bulkUpsertProjectCatalog(
     projectSlug: item.projectSlug,
     repoName: item.repoName,
     repoUrl: item.repoUrl,
-    criticalityScore: item.criticalityScore ?? null,
+    ossfCriticalityScore: item.ossfCriticalityScore ?? null,
+    lfCriticalityScore: item.lfCriticalityScore ?? null,
   }))
 
   await qx.result(
@@ -220,7 +233,8 @@ export async function bulkUpsertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "criticalityScore",
+      "ossfCriticalityScore",
+      "lfCriticalityScore",
       "createdAt",
       "updatedAt"
     )
@@ -228,19 +242,22 @@ export async function bulkUpsertProjectCatalog(
       v."projectSlug",
       v."repoName",
       v."repoUrl",
-      v."criticalityScore"::double precision,
+      v."ossfCriticalityScore"::double precision,
+      v."lfCriticalityScore"::double precision,
       NOW(),
       NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
       "projectSlug" text,
       "repoName" text,
       "repoUrl" text,
-      "criticalityScore" double precision
+      "ossfCriticalityScore" double precision,
+      "lfCriticalityScore" double precision
     )
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "criticalityScore" = EXCLUDED."criticalityScore",
+      "ossfCriticalityScore" = EXCLUDED."ossfCriticalityScore",
+      "lfCriticalityScore" = EXCLUDED."lfCriticalityScore",
       "updatedAt" = NOW()
     `,
     { values: JSON.stringify(values) },
@@ -267,9 +284,13 @@ export async function updateProjectCatalog(
     setClauses.push('"repoUrl" = $(repoUrl)')
     params.repoUrl = data.repoUrl
   }
-  if (data.criticalityScore !== undefined) {
-    setClauses.push('"criticalityScore" = $(criticalityScore)')
-    params.criticalityScore = data.criticalityScore
+  if (data.ossfCriticalityScore !== undefined) {
+    setClauses.push('"ossfCriticalityScore" = $(ossfCriticalityScore)')
+    params.ossfCriticalityScore = data.ossfCriticalityScore
+  }
+  if (data.lfCriticalityScore !== undefined) {
+    setClauses.push('"lfCriticalityScore" = $(lfCriticalityScore)')
+    params.lfCriticalityScore = data.lfCriticalityScore
   }
   if (data.syncedAt !== undefined) {
     setClauses.push('"syncedAt" = $(syncedAt)')

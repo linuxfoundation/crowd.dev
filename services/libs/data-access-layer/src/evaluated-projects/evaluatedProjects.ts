@@ -173,7 +173,7 @@ export async function bulkInsertEvaluatedProjects(
     projectCatalogId: item.projectCatalogId,
     evaluationStatus: item.evaluationStatus ?? 'pending',
     evaluationScore: item.evaluationScore ?? null,
-    evaluation: item.evaluation ? JSON.stringify(item.evaluation) : null,
+    evaluation: item.evaluation ?? null,
     evaluationReason: item.evaluationReason ?? null,
     starsCount: item.starsCount ?? null,
     forksCount: item.forksCount ?? null,
