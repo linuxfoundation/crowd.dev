@@ -5,10 +5,8 @@ import { IEnrichableMemberIdentityActivityAggregate, PageData } from '@crowd/typ
 import { QueryExecutor } from '../queryExecutor'
 
 import {
-  IActiveOrganizationData,
   IActivityRelationColumn,
   IDbActivityRelation,
-  IQueryActiveOrganizationsParameters,
   IQueryActivityRelationsParameters,
 } from './types'
 
@@ -349,57 +347,6 @@ export async function filterMembersWithActivityRelations(
   )
 
   return results.map((r) => r.memberId)
-}
-
-export async function getActiveOrganizations(
-  qx: QueryExecutor,
-  arg: IQueryActiveOrganizationsParameters,
-): Promise<IActiveOrganizationData[]> {
-  if (arg.segmentIds === undefined || arg.segmentIds.length === 0) {
-    throw new Error('segmentIds is required to query active organizations!')
-  }
-
-  const params: Record<string, unknown> = {
-    segmentIds: arg.segmentIds,
-    tsFrom: arg.timestampFrom,
-    tsTo: arg.timestampTo,
-    limit: arg.limit,
-    offset: arg.offset,
-  }
-
-  const conditions: string[] = [
-    `ar."segmentId" in ($(segmentIds:csv))`,
-    `ar.timestamp >= $(tsFrom)`,
-    `ar.timestamp <= $(tsTo)`,
-    `ar."organizationId" is not null`,
-  ]
-
-  if (arg.platforms && arg.platforms.length > 0) {
-    params.platforms = arg.platforms
-    conditions.push(`ar.platform in ($(platforms:csv))`)
-  }
-
-  let orderByString: string
-  if (arg.orderBy === 'activityCount') {
-    orderByString = `"activityCount" ${arg.orderByDirection}`
-  } else if (arg.orderBy === 'activeDaysCount') {
-    orderByString = `"activeDaysCount" ${arg.orderByDirection}`
-  } else {
-    throw new Error(`Invalid order by: ${arg.orderBy}!`)
-  }
-
-  const query = `
-  select  ar."organizationId",
-          count(distinct ar."activityId") as "activityCount",
-          count(distinct date_trunc('day', ar.timestamp)) as "activeDaysCount"
-  from "activityRelations" ar
-  where ${conditions.join(' and ')}
-  group by ar."organizationId"
-  order by ${orderByString}
-  limit $(limit) offset $(offset);
-  `
-
-  return qx.select(query, params)
 }
 
 export async function getLatestMemberActivityRelations(
