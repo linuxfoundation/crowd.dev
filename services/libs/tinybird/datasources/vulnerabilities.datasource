@@ -50,5 +50,6 @@ SCHEMA >
     `resolvedAt` Nullable(DateTime64(3)) `json:$.record.resolved_at`
 
 ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(firstDetectedAt)
 ENGINE_SORTING_KEY repoUrl, vulnerabilityId, packageName, sourcePath
 ENGINE_VER scannedAt

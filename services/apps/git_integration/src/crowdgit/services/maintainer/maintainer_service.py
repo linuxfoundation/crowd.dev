@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import os
 import time as time_module
 from datetime import datetime, time, timezone
@@ -20,6 +19,7 @@ from crowdgit.database.crud import (
 )
 from crowdgit.enums import ErrorCode, ExecutionStatus, OperationType
 from crowdgit.errors import (
+    CommandExecutionError,
     CrowdGitError,
     MaintainerFileNotFoundError,
     MaintainerIntervalNotElapsedError,
@@ -37,7 +37,7 @@ from crowdgit.models.maintainer_info import (
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.maintainer.bedrock import invoke_bedrock
-from crowdgit.services.utils import parse_repo_url
+from crowdgit.services.utils import run_shell_command
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
 
 
@@ -45,24 +45,92 @@ class MaintainerService(BaseService):
     """Service for processing maintainer data"""
 
     MAX_CHUNK_SIZE = 5000
-    MAX_CONCURRENT_CHUNKS = 3  # Maximum concurrent chunk processing
-    # List of common maintainer file names
-    MAINTAINER_FILES = [
-        "MAINTAINERS",
-        "MAINTAINERS.md",
-        "MAINTAINER.md",
-        "CODEOWNERS.md",
-        "CONTRIBUTORS",
-        "CONTRIBUTORS.md",
-        "docs/MAINTAINERS.md",
-        "OWNERS",
-        "CODEOWNERS",
-        ".github/MAINTAINERS.md",
-        ".github/CONTRIBUTORS.md",
-        "GOVERNANCE.md",
-        "README.md",
-        "SECURITY-INSIGHTS.md",
+    MAX_CONCURRENT_CHUNKS = 3
+    MAX_AI_FILE_LIST_SIZE = 300
+
+    # Full paths that get the highest score bonus when matched exactly
+    KNOWN_PATHS = {
+        "maintainers",
+        "maintainers.md",
+        "maintainer.md",
+        "codeowners",
+        "codeowners.md",
+        "contributors",
+        "contributors.md",
+        "owners",
+        "owners.md",
+        "authors",
+        "authors.md",
+        "governance.md",
+        "docs/maintainers.md",
+        ".github/maintainers.md",
+        ".github/contributors.md",
+        ".github/codeowners",
+        "security-insights.md",
+        "readme.md",
+    }
+
+    # Governance stems (basename without extension, lowercased) for filename search
+    GOVERNANCE_STEMS = {
+        "maintainers",
+        "maintainer",
+        "codeowners",
+        "codeowner",
+        "contributors",
+        "contributor",
+        "owners",
+        "owners_aliases",
+        "authors",
+        "committers",
+        "commiters",
+        "reviewers",
+        "approvers",
+        "administrators",
+        "stewards",
+        "credits",
+        "governance",
+        "core_team",
+        "code_owners",
+        "emeritus",
+        "workgroup",
+    }
+
+    VALID_EXTENSIONS = {
+        "",
+        ".md",
+        ".markdown",
+        ".txt",
+        ".rst",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".adoc",
+        ".csv",
+        ".rdoc",
+    }
+
+    SCORING_KEYWORDS = [
+        "maintainer",
+        "codeowner",
+        "owner",
+        "contributor",
+        "governance",
+        "steward",
+        "emeritus",
+        "approver",
+        "reviewer",
     ]
+
+    EXCLUDED_FILENAMES = {
+        "contributing.md",
+        "contributing",
+        "code_of_conduct.md",
+        "code-of-conduct.md",
+    }
+
+    FULL_PATH_SCORE = 100
+    STEM_MATCH_SCORE = 50
+    PARTIAL_STEM_SCORE = 25
 
     def make_role(self, title: str):
         title = title.lower()
@@ -124,14 +192,18 @@ class MaintainerService(BaseService):
         for github_username, maintainer in new_maintainers_dict.items():
             role = maintainer.normalized_title
             original_role = self.make_role(maintainer.title)
-            if github_username == "unknown":
+            if github_username == "unknown" and maintainer.email in ("unknown", None):
                 self.logger.warning(
-                    f"Skipping unkown github_username with title {maintainer.title}"
+                    f"Skipping unknown github_username & email with title {maintainer.title}"
                 )
                 continue
             elif github_username not in current_maintainers_dict:
                 # New maintainer
-                identity_id = await find_github_identity(github_username)
+                identity_id = (
+                    await find_github_identity(github_username)
+                    if github_username != "unknown"
+                    else await find_maintainer_identity_by_email(maintainer.email)
+                )
                 self.logger.info(f"Found new maintainer {github_username} to be inserted")
                 if identity_id:
                     await upsert_maintainer(
@@ -141,7 +213,7 @@ class MaintainerService(BaseService):
                         f"Successfully inserted new maintainer {github_username} with identity_id {identity_id}"
                     )
                 else:
-                    # will happend for new users if their identity isn't created yet but should fixed on the next iteration
+                    # will happen for new users if their identity isn't created yet but should be fixed on the next iteration
                     self.logger.warning(f"Identity not found for username: {github_username}")
             else:
                 # Existing maintainer
@@ -241,7 +313,6 @@ class MaintainerService(BaseService):
         """
 
     async def analyze_file_content(self, maintainer_filename: str, content: str):
-        prompt = self.get_extraction_prompt(maintainer_filename, content)
         if len(content) > self.MAX_CHUNK_SIZE:
             self.logger.info(
                 "Maintainers file content exceeded max chunk size, splitting into chunks"
@@ -285,7 +356,10 @@ class MaintainerService(BaseService):
                 aggregated_info.cost += chunk_info.cost
             maintainer_info = aggregated_info
         else:
-            maintainer_info = await invoke_bedrock(prompt, pydantic_model=MaintainerInfo)
+            maintainer_info = await invoke_bedrock(
+                self.get_extraction_prompt(maintainer_filename, content),
+                pydantic_model=MaintainerInfo,
+            )
         self.logger.info("Maintainers file content analyzed by AI")
         self.logger.info(f"Maintainers response: {maintainer_info}")
         if maintainer_info.output.info is not None:
@@ -306,33 +380,40 @@ class MaintainerService(BaseService):
                 ai_cost=maintainer_info.cost,
             )
 
-    def get_maintainer_file_prompt(self, example_files: list[str], file_names: list[str]) -> str:
+    def get_maintainer_file_prompt(
+        self, example_files: list[str], candidates: list[tuple[str, int]]
+    ) -> str:
         """
         Generates the prompt for the LLM to identify a maintainer file from a list.
+        candidates: list of (filename, score) where score reflects name-match strength.
         """
         example_files_str = "\n".join(f"- {name}" for name in example_files)
-        file_names_str = "\n".join(f"- {name}" for name in file_names)
+        candidates_str = "\n".join(f"- {name}  [score={score}]" for name, score in candidates)
 
         return f"""
-        You are an expert AI assistant specializing in identifying repository governance files. Your task is to find a maintainer file from a given list of filenames.
+        You are an expert AI assistant specializing in identifying repository governance files. Your task is to find the single best maintainer file from a given list of candidates.
 
         <instructions>
-        1.  **Analyze the Input**: Carefully review the list of filenames provided in the `<file_list>` tag.
-        2.  **Identify a Maintainer File**: Compare each filename against the characteristics of a maintainer file. These files typically define project ownership, governance, or code owners. Use the `<example_maintainer_files>` as a guide.
-        3.  **Apply Rules**: Follow all constraints listed in the `<rules>` section, especially the exclusion rule.
-        4.  **Select the First Match**: Scan the list and select the *first* filename that you identify as a maintainer file. You only need to find one. Once a match is found, stop searching.
+        1.  **Analyze the Input**: Carefully review the list of candidates in the `<file_list>` tag. Each entry shows the file path and a pre-computed name-match score.
+        2.  **Identify the Best Maintainer File**: Compare each candidate against the characteristics of a maintainer file. These files typically define project ownership, governance, or code owners. Use the `<example_maintainer_files>` as a guide.
+        3.  **Use Signals to Rank**: When multiple candidates qualify, prefer:
+            - Higher **score** — stronger filename match against known governance patterns.
+            - Fewer path separators (`/`) in the path — files closer to the repo root apply to the whole project; deeply nested files are usually component-specific.
+            - When score and nesting conflict, prefer the file most likely to be the repo-wide governance file.
+        4.  **Apply Rules**: Follow all constraints listed in the `<rules>` section.
         5.  **Format the Output**: Return your answer as a single JSON object according to the `<output_format>` specification, and nothing else.
         </instructions>
 
         <rules>
         - **Definition**: A maintainer file's name usually contains keywords like `MAINTAINERS`, `CODEOWNERS`, or `OWNERS`.
         - **Exclusion**: The filename `CONTRIBUTING.md` must ALWAYS be ignored and never selected, even if it's the only file that seems relevant.
+        - **Third-party exclusion**: Do NOT select files that are inside directories associated with vendored dependencies, third-party libraries, or packages consumed by the project (e.g. paths containing `vendor/`, `node_modules/`, `third_party/`, `external/`, `.cache/`, `dist/`, `site-packages/`). These files belong to external projects, not this repository's own governance.
         - **No Match**: If no file in the list matches the criteria after checking all of them, you must return the 'not_found' error.
         - **Empty Input**: If the `<file_list>` is empty or contains no filenames, you must return the 'not_found' error.
         </rules>
 
         <output_format>
-        - **If a maintainer file is found**: Return a JSON object in the format `{{"file_name": "<the_first_found_file_name>"}}`.
+        - **If a maintainer file is found**: Return a JSON object in the format `{{"file_name": "<the_best_matched_file_name>"}}`.
         - **If no maintainer file is found**: Return a JSON object in the format `{{"error": "not_found"}}`.
         </output_format>
 
@@ -341,15 +422,18 @@ class MaintainerService(BaseService):
         </example_maintainer_files>
 
         <file_list>
-        {file_names_str}
+        {candidates_str}
         </file_list>
 
         Return only the final JSON object.
         """
 
-    async def find_maintainer_file_with_ai(self, file_names):
+    async def find_maintainer_file_with_ai(
+        self, candidates: list[tuple[str, int]]
+    ) -> tuple[str | None, float]:
+        """Ask AI to select the best maintainer file from scored candidates."""
         self.logger.info("Using AI to find maintainer files...")
-        prompt = self.get_maintainer_file_prompt(self.MAINTAINER_FILES, file_names)
+        prompt = self.get_maintainer_file_prompt(sorted(self.KNOWN_PATHS), candidates)
         result = await invoke_bedrock(prompt, pydantic_model=MaintainerFile)
 
         if result.output.file_name is not None:
@@ -358,74 +442,348 @@ class MaintainerService(BaseService):
         else:
             return None, result.cost
 
-    async def find_maintainer_file(self, repo_path: str, owner: str, repo: str):
-        self.logger.info(f"Looking for maintainer files in {owner}/{repo}...")
+    async def _list_repo_files(self, repo_path: str) -> list[str]:
+        """List non-code files in the repo recursively, filtered by VALID_EXTENSIONS."""
+        glob_args = ["--glob", "!.git/"]
+        for ext in self.VALID_EXTENSIONS:
+            glob_args.extend(["--iglob", f"*{ext}"])
 
-        file_names = await aiofiles.os.listdir(repo_path)
-
-        for file in self.MAINTAINER_FILES:
-            file_path = os.path.join(repo_path, file)
-            if await aiofiles.os.path.isfile(file_path):
-                self.logger.info(f"maintainer file: {file_path} found in repo")
-                async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                    content = await f.read()
-
-                if file.lower() == "readme.md" and "maintainer" not in content.lower():
-                    self.logger.info(f"Skipping {file}: no maintainer-related content found")
-                    continue
-
-                return file, base64.b64encode(content.encode()).decode(), 0
-
-        self.logger.warning("No maintainer files found using the known file names.")
-
-        file_name, ai_cost = await self.find_maintainer_file_with_ai(file_names)
-
-        if file_name:
-            file_path = os.path.join(repo_path, file_name)
-            if await aiofiles.os.path.isfile(file_path):
-                async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                    content = await f.read()
-
-                if file_name.lower() == "readme.md" and "maintainer" not in content.lower():
-                    self.logger.info(
-                        f"AI suggested {file_name}, but it has no maintainer-related content. Skipping."
-                    )
-                    return None, None, ai_cost
-
-                self.logger.info(f"\nMaintainer file found: {file_name}")
-                return file_name, base64.b64encode(content.encode()).decode(), ai_cost
-
-        return None, None, ai_cost
-
-    async def extract_maintainers(self, repo_path: str, owner: str, repo: str):
-        total_cost = 0
-
-        self.logger.info("Looking for maintainer file...")
-        maintainer_file, file_content, cost = await self.find_maintainer_file(
-            repo_path, owner, repo
+        output = await run_shell_command(
+            ["rg", "--files", "--hidden", *glob_args, "."], cwd=repo_path
         )
-        total_cost += cost
+        return [
+            line[2:] if line.startswith("./") else line
+            for line in output.strip().split("\n")
+            if line.strip()
+        ]
 
-        if not maintainer_file or not file_content:
-            self.logger.error("No maintainer file found")
-            raise MaintainerFileNotFoundError(ai_cost=total_cost)
+    async def _ripgrep_search(self, repo_path: str, max_depth: int | None = None) -> list[str]:
+        """Search for files whose basename matches a governance stem.
 
-        decoded_content = base64.b64decode(file_content).decode("utf-8")
+        Args:
+            max_depth: If set, passed as --max-depth to ripgrep (1 = repo root files only).
+        """
+        glob_args = ["--glob", "!.git/"]
+        for stem in self.GOVERNANCE_STEMS:
+            glob_args.extend(["--iglob", f"*{stem}*"])
 
-        self.logger.info(f"Analyzing maintainer file: {maintainer_file}")
-        result = await self.analyze_file_content(maintainer_file, decoded_content)
-        maintainer_info = result.output.info
-        total_cost += result.cost
+        depth_args = ["--max-depth", str(max_depth)] if max_depth is not None else []
 
-        if not maintainer_info:
-            self.logger.error("Failed to analyze the maintainer file content.")
-            raise MaintanerAnalysisError(ai_cost=total_cost)
+        try:
+            output = await run_shell_command(
+                ["rg", "--files", "--hidden", *depth_args, *glob_args, "."], cwd=repo_path
+            )
+        except CommandExecutionError:
+            self.logger.info("Ripgrep found no governance files by filename")
+            return []
+        except FileNotFoundError as e:
+            if not os.path.isdir(repo_path):
+                self.logger.warning(
+                    f"Ripgrep search failed: repo_path does not exist: '{repo_path}'"
+                )
+            else:
+                self.logger.warning(
+                    f"Ripgrep search failed: 'rg' binary not found in PATH. Install ripgrep. ({repr(e)})"
+                )
+            return []
+        except Exception as e:
+            self.logger.warning(f"Ripgrep search failed: {repr(e)}")
+            return []
+
+        results = []
+        for line in output.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("./"):
+                line = line[2:]
+            basename = os.path.basename(line).lower()
+            if basename in self.EXCLUDED_FILENAMES:
+                self.logger.debug(f"Excluding '{line}': basename in EXCLUDED_FILENAMES")
+                continue
+            ext = os.path.splitext(basename)[1]
+            if ext not in self.VALID_EXTENSIONS:
+                self.logger.debug(f"Excluding '{line}': extension '{ext}' not in VALID_EXTENSIONS")
+                continue
+            results.append(line)
+
+        self.logger.info(f"Ripgrep found {len(results)} governance files by filename")
+        return results
+
+    def _score_filename(self, candidate_path: str) -> int:
+        """Score by how closely the filename matches known governance patterns."""
+        path = candidate_path.lower()
+        if path in self.KNOWN_PATHS:
+            return self.FULL_PATH_SCORE
+        stem = os.path.splitext(os.path.basename(path))[0].lstrip(".")
+        if stem in self.GOVERNANCE_STEMS:
+            return self.STEM_MATCH_SCORE
+        if any(known_stem in stem for known_stem in self.GOVERNANCE_STEMS):
+            return self.PARTIAL_STEM_SCORE
+        return 0
+
+    async def find_candidate_files(
+        self, repo_path: str
+    ) -> tuple[list[tuple[str, str, int]], list[tuple[str, str, int]]]:
+        """
+        Find governance files by filename, score them, and return (root_candidates, subdir_candidates).
+
+        Root candidates are files directly in the repo root (max-depth 0).
+        Subdir candidates are files in subdirectories.
+        Both lists are sorted by score descending.
+        Scoring: full known-path match (100) > exact stem (50) > partial stem (25) + content keywords (+1 each).
+        """
+        root_paths = set(await self._ripgrep_search(repo_path, max_depth=1))
+        all_paths = await self._ripgrep_search(repo_path)
+        if not all_paths:
+            return [], []
+
+        root_scored: list[tuple[str, str, int]] = []
+        subdir_scored: list[tuple[str, str, int]] = []
+
+        for candidate_path in all_paths:
+            file_path = os.path.join(repo_path, candidate_path)
+            try:
+                async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                    content = await f.read()
+            except Exception as e:
+                self.logger.warning(f"Failed to read candidate {candidate_path}: {repr(e)}")
+                continue
+
+            filename_score = self._score_filename(candidate_path)
+            content_score = sum(1 for kw in self.SCORING_KEYWORDS if kw in content.lower())
+            total = filename_score + content_score
+
+            entry = (candidate_path, content, total)
+            if candidate_path in root_paths:
+                root_scored.append(entry)
+            else:
+                subdir_scored.append(entry)
+
+            self.logger.debug(
+                f"Candidate: {candidate_path} "
+                f"(filename_score={filename_score}, content_score={content_score}, total={total})"
+            )
+
+        root_scored.sort(key=lambda c: c[2], reverse=True)
+        subdir_scored.sort(key=lambda c: c[2], reverse=True)
+
+        self.logger.info(
+            f"Found {len(root_scored)} root candidate(s) and {len(subdir_scored)} subdirectory candidate(s)"
+        )
+        return root_scored, subdir_scored
+
+    async def analyze_and_build_result(self, filename: str, content: str) -> MaintainerResult:
+        """
+        Analyze file content with AI and return a MaintainerResult.
+        Raises MaintanerAnalysisError if no maintainers are found.
+        """
+        self.logger.info(f"Analyzing maintainer file: {filename}")
+        if "readme" in filename.lower() and not any(
+            kw in content.lower() for kw in self.SCORING_KEYWORDS
+        ):
+            self.logger.warning(
+                f"Skipping README file '{filename}': no governance keyword found in content"
+            )
+            raise MaintanerAnalysisError(error_code=ErrorCode.NO_MAINTAINER_FOUND)
+        result = await self.analyze_file_content(filename, content)
+
+        if not result.output.info:
+            raise MaintanerAnalysisError(ai_cost=result.cost)
 
         return MaintainerResult(
-            maintainer_file=maintainer_file,
-            maintainer_info=maintainer_info,
-            total_cost=total_cost,
+            maintainer_file=filename,
+            maintainer_info=result.output.info,
+            total_cost=result.cost,
         )
+
+    async def try_saved_maintainer_file(
+        self, repo_path: str, saved_maintainer_file: str
+    ) -> tuple[MaintainerResult | None, float]:
+        """
+        Attempt to read and analyze the previously saved maintainer file.
+        Returns (result, cost) where result is None if the attempt failed.
+        """
+        cost = 0.0
+        file_path = os.path.join(repo_path, saved_maintainer_file)
+        self.logger.debug(f"Checking saved maintainer file on disk: '{file_path}'")
+
+        if not await aiofiles.os.path.isfile(file_path):
+            self.logger.warning(
+                f"Saved maintainer file '{saved_maintainer_file}' no longer exists on disk"
+            )
+            return None, cost
+
+        self.logger.debug(
+            f"Saved maintainer file exists, reading content: '{saved_maintainer_file}'"
+        )
+        try:
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+
+            result = await self.analyze_and_build_result(saved_maintainer_file, content)
+            cost += result.total_cost
+            return result, cost
+        except MaintanerAnalysisError as e:
+            cost += e.ai_cost
+            self.logger.warning(
+                f"Saved maintainer file '{saved_maintainer_file}' analysis failed: {e.error_message}"
+            )
+            return None, cost
+        except Exception as e:
+            self.logger.warning(
+                f"Saved maintainer file '{saved_maintainer_file}' processing failed: {repr(e)}"
+            )
+            return None, cost
+
+    async def extract_maintainers(
+        self,
+        repo_path: str,
+        saved_maintainer_file: str | None = None,
+    ):
+        total_cost = 0
+        candidate_files: list[tuple[str, int]] = []
+        ai_suggested_file: str | None = None
+
+        def _attach_metadata(result: MaintainerResult) -> MaintainerResult:
+            result.total_cost = total_cost
+            result.candidate_files = candidate_files
+            result.ai_suggested_file = ai_suggested_file
+            return result
+
+        # Step 1: Try the previously saved maintainer file
+        if saved_maintainer_file:
+            self.logger.info(f"Trying saved maintainer file: {saved_maintainer_file}")
+            result, cost = await self.try_saved_maintainer_file(repo_path, saved_maintainer_file)
+            total_cost += cost
+            if result:
+                return _attach_metadata(result)
+            self.logger.info("Falling back to maintainer file detection")
+
+        # Step 2: Find candidates via filename search + scoring, split by depth
+        root_candidates, subdir_candidates = await self.find_candidate_files(repo_path)
+        all_candidates = root_candidates + subdir_candidates
+        candidate_files = [(path, score) for path, _, score in all_candidates][:100]
+        self.logger.debug(
+            f"Detection step 2: {len(root_candidates)} root candidate(s), "
+            f"{len(subdir_candidates)} subdir candidate(s); "
+            f"root={[p for p, _, _ in root_candidates]}, "
+            f"subdir_top={[p for p, _, _ in subdir_candidates[:3]]}"
+        )
+
+        # Step 3: Try root-level files first (in score order), then top subdirectory file
+        failed_candidates: set[str] = set()
+
+        if not all_candidates:
+            self.logger.warning("No candidate files found via search, trying AI file detection")
+
+        combined_info: list = []
+        best_file: str | None = None
+        best_file_count: int = 0
+
+        for filename, content, score in root_candidates:
+            self.logger.debug(
+                f"Detection step 3: trying root candidate '{filename}' (score={score})"
+            )
+            try:
+                result = await self.analyze_and_build_result(filename, content)
+                total_cost += result.total_cost
+                file_info = result.maintainer_info or []
+                combined_info.extend(file_info)
+                if len(file_info) > best_file_count:
+                    best_file = filename
+                    best_file_count = len(file_info)
+            except MaintanerAnalysisError as e:
+                total_cost += e.ai_cost
+                self.logger.warning(
+                    f"AI analysis failed for root file '{filename}': {e.error_message}"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Unexpected error analyzing root file '{filename}': {repr(e)}"
+                )
+            failed_candidates.add(filename)
+
+        if combined_info:
+            return _attach_metadata(
+                MaintainerResult(
+                    maintainer_file=best_file,
+                    maintainer_info=combined_info,
+                )
+            )
+
+        if root_candidates and subdir_candidates:
+            self.logger.warning("All root candidates failed, trying top subdirectory candidate")
+        elif root_candidates:
+            self.logger.warning("All root candidates failed, trying AI file detection")
+
+        if subdir_candidates:
+            filename, content, score = subdir_candidates[0]
+            self.logger.debug(
+                f"Detection step 3b: trying top subdir candidate '{filename}' (score={score})"
+            )
+            try:
+                result = await self.analyze_and_build_result(filename, content)
+                total_cost += result.total_cost
+                return _attach_metadata(result)
+            except MaintanerAnalysisError as e:
+                total_cost += e.ai_cost
+                self.logger.warning(f"AI analysis failed for '{filename}': {e.error_message}")
+            except Exception as e:
+                self.logger.warning(f"Unexpected error analyzing '{filename}': {repr(e)}")
+            failed_candidates.add(filename)
+            self.logger.warning("Top subdirectory candidate failed, trying AI file detection")
+
+        # Step 4: AI file detection as last resort
+        file_names = await self._list_repo_files(repo_path)
+        # Pre-filter to governance-scored files to keep the AI prompt within model limits.
+        # Fall back to a hard-capped slice of the full list if nothing scores.
+        # Exclude all already-failed candidates to avoid re-suggesting them.
+        scored_tuples = [
+            (f, self._score_filename(f))
+            for f in file_names
+            if self._score_filename(f) > 0 and f not in failed_candidates
+        ]
+        ai_input_files: list[tuple[str, int]] = (
+            scored_tuples
+            if scored_tuples
+            else [
+                (f, 0)
+                for f in file_names[: self.MAX_AI_FILE_LIST_SIZE]
+                if f not in failed_candidates
+            ]
+        )
+        self.logger.info(
+            f"Passing {len(ai_input_files)} files to AI for maintainer file detection "
+            f"(total repo files: {len(file_names)})"
+        )
+        self.logger.debug(f"AI input files: {[f for f, _ in ai_input_files]}")
+        ai_file_name, ai_cost = await self.find_maintainer_file_with_ai(ai_input_files)
+        ai_suggested_file = ai_file_name
+        total_cost += ai_cost
+
+        self.logger.info(f"AI suggested file: '{ai_file_name}' (cost={ai_cost:.4f})")
+        if ai_file_name:
+            file_path = os.path.join(repo_path, ai_file_name)
+            if not await aiofiles.os.path.isfile(file_path):
+                self.logger.warning(
+                    f"AI suggested '{ai_file_name}' but file does not exist on disk"
+                )
+            else:
+                try:
+                    async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                        content = await f.read()
+                    result = await self.analyze_and_build_result(ai_file_name, content)
+                    total_cost += result.total_cost
+                    return _attach_metadata(result)
+                except MaintanerAnalysisError as e:
+                    total_cost += e.ai_cost
+                    self.logger.warning(
+                        f"AI-suggested file '{ai_file_name}' analysis failed: {e.error_message}"
+                    )
+
+        self.logger.error("No maintainer file found")
+        return _attach_metadata(MaintainerResult(total_cost=total_cost, not_found=True))
 
     async def check_if_interval_elapsed(self, repository: Repository) -> tuple[bool, float]:
         """
@@ -501,10 +859,10 @@ class MaintainerService(BaseService):
         ai_cost = 0.0
         maintainers_found = 0
         maintainers_skipped = 0
+        candidate_files: list[tuple[str, int]] = []
+        ai_suggested_file: str | None = None
 
         try:
-            owner, repo_name = parse_repo_url(batch_info.remote)
-
             has_interval_elapsed, remaining_hours = await self.check_if_interval_elapsed(
                 repository
             )
@@ -514,9 +872,18 @@ class MaintainerService(BaseService):
                 )
 
             self.logger.info(f"Starting maintainers processing for repo: {batch_info.remote}")
-            maintainers = await self.extract_maintainers(batch_info.repo_path, owner, repo_name)
+            maintainers = await self.extract_maintainers(
+                batch_info.repo_path,
+                saved_maintainer_file=repository.maintainer_file,
+            )
             latest_maintainer_file = maintainers.maintainer_file
             ai_cost = maintainers.total_cost
+            candidate_files = maintainers.candidate_files
+            ai_suggested_file = maintainers.ai_suggested_file
+
+            if maintainers.not_found:
+                raise MaintainerFileNotFoundError(ai_cost=ai_cost)
+
             maintainers_found = len(maintainers.maintainer_info)
 
             if repository.parent_repo:
@@ -572,6 +939,8 @@ class MaintainerService(BaseService):
                     "ai_cost": ai_cost,
                     "maintainers_found": maintainers_found,
                     "maintainers_skipped": maintainers_skipped,
+                    "candidate_files": candidate_files,
+                    "ai_suggested_file": ai_suggested_file,
                 },
             )
             await save_service_execution(service_execution)

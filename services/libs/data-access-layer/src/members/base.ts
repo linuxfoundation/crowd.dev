@@ -679,6 +679,7 @@ export async function createMember(qx: QueryExecutor, data: MemberCreateInput): 
   const dbData: Record<string, unknown> = {
     ...data,
     id,
+    manuallyCreated: data.manuallyCreated ?? false,
     tenantId: DEFAULT_TENANT_ID,
     createdAt: ts,
     updatedAt: ts,
