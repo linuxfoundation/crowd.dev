@@ -13,7 +13,7 @@ import { prepareBulkInsert } from '../utils'
 
 import { IMemberActivitySummary, IMemberSegmentAggregates } from './types'
 
-const log = getServiceChildLogger('organizations/segments')
+const log = getServiceChildLogger('members/segments')
 
 export async function findLastSyncDate(qx: QueryExecutor, memberId: string): Promise<Date | null> {
   const result = await qx.selectOneOrNone(
