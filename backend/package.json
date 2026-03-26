@@ -112,7 +112,7 @@
     "json2csv": "^5.0.7",
     "jsonwebtoken": "8.5.1",
     "jwks-rsa": "^3.0.1",
-    "lodash": "4.17.21",
+    "lodash": "4.17.23",
     "moment": "2.29.4",
     "moment-timezone": "^0.5.34",
     "mv": "2.1.1",

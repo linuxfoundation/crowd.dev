@@ -18,7 +18,7 @@
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",
     "html-to-text": "~9.0.5",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "lodash.clonedeep": "^4.5.0",
     "lodash.map": "^4.6.0",
     "lodash.merge": "^4.6.2",
