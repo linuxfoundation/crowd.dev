@@ -18,7 +18,7 @@ const config: Config = {
 
 const options: Options = {
   postgres: {
-    enabled: false,
+    enabled: true,
   },
   opensearch: {
     enabled: false,

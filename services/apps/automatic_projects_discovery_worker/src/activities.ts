@@ -1,1 +1,3 @@
-export * from './activities/activities'
+import { listDatasets, listSources, processDataset } from './activities/activities'
+
+export { listDatasets, listSources, processDataset }
