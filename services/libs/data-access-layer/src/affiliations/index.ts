@@ -1,6 +1,5 @@
+import { BLACKLISTED_MEMBER_TITLES } from '../members/base'
 import { QueryExecutor } from '../queryExecutor'
-
-const BLACKLISTED_TITLES = ['investor', 'mentor', 'board member']
 
 export interface IAffiliationPeriod {
   organization: string
@@ -69,7 +68,7 @@ export async function findWorkExperiencesBulk(
   )
 
   return rows.filter(
-    (r) => !r.title || !BLACKLISTED_TITLES.some((t) => r.title?.toLowerCase().includes(t)),
+    (r) => !r.title || !BLACKLISTED_MEMBER_TITLES.some((t) => r.title?.toLowerCase().includes(t)),
   )
 }
 
