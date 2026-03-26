@@ -38,10 +38,6 @@ export async function processDataset(
   const source = getSource(sourceName)
   const stream = await source.fetchDatasetStream(dataset)
 
-  stream.on('error', (err: Error) => {
-    log.error({ datasetId: dataset.id, error: err.message }, 'Stream error.')
-  })
-
   // For CSV sources: pipe through csv-parse to get Record<string, string> objects.
   // For JSON sources: the stream already emits pre-parsed objects in object mode.
   const records =
@@ -55,8 +51,17 @@ export async function processDataset(
           }),
         )
 
+  // pipe() does not forward source errors to the destination automatically, so we
+  // destroy records explicitly — this surfaces the error in the for-await loop and
+  // lets Temporal mark the activity as failed and retry it.
+  stream.on('error', (err: Error) => {
+    log.error({ datasetId: dataset.id, error: err.message }, 'Stream error.')
+    records.destroy(err)
+  })
+
   if (source.format !== 'json') {
-    ;(records as ReturnType<typeof parse>).on('error', (err) => {
+    const csvRecords = records as ReturnType<typeof parse>
+    csvRecords.on('error', (err) => {
       log.error({ datasetId: dataset.id, error: err.message }, 'CSV parser error.')
     })
   }
