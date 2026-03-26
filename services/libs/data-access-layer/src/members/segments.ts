@@ -13,8 +13,6 @@ import { prepareBulkInsert } from '../utils'
 
 import { BLACKLISTED_MEMBER_TITLES } from './base'
 import { IMemberActivitySummary, IMemberSegmentAggregates } from './types'
-import { BLACKLISTED_MEMBER_TITLES } from './base'
-
 
 const log = getServiceChildLogger('members/segments')
 
