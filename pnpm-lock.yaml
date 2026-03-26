@@ -319,8 +319,8 @@ importers:
         specifier: ^2.7.1
         version: 2.13.0
       sequelize:
-        specifier: 6.21.2
-        version: 6.21.2(pg@8.11.5)
+        specifier: 6.37.8
+        version: 6.37.8(pg@8.11.5)
       sequelize-cli-typescript:
         specifier: ^3.2.0-c
         version: 3.2.0-c
@@ -9118,9 +9118,6 @@ packages:
     resolution: {integrity: sha512-TTlYpa+OL+vMMNG24xSlQGEJ3B/RzEfUlLct7b5G/ytav+wPrplCpVMFuwzXbkecJrb6IYo1iFb0S9v37754mg==}
     engines: {node: '>=0.12'}
 
-  retry-as-promised@5.0.0:
-    resolution: {integrity: sha512-6S+5LvtTl2ggBumk04hBo/4Uf6fRJUwIgunGZ7CYEBCeufGFW1Pu6ucUf/UskHeWOIsUcLOGLFXPig5tR5V1nA==}
-
   retry-as-promised@7.1.1:
     resolution: {integrity: sha512-hMD7odLOt3LkTjcif8aRZqi/hybjpLNgSk5oF5FCowfCjok6LukpN2bDX7R5wDmbgBQFn7YoBxSagmtXHaJYJw==}
 
@@ -9263,36 +9260,6 @@ packages:
   sequelize-pool@7.1.0:
     resolution: {integrity: sha512-G9c0qlIWQSK29pR/5U2JF5dDQeqqHRragoyahj/Nx4KOOQ3CPPfzxnfqFPCSB7x5UgjOgnZ61nSxz+fjDpRlJg==}
     engines: {node: '>= 10.0.0'}
-
-  sequelize@6.21.2:
-    resolution: {integrity: sha512-K0c6j/Y6yfucBL9XYHMVWqYGFShPsj6ZzMrQcOAjqzyE+a1XMBOoTXXjRvJS+fz6cKeh2D3ZqhYDRwN8nfvOMQ==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      ibm_db: '*'
-      mariadb: '*'
-      mysql2: '*'
-      pg: '*'
-      pg-hstore: '*'
-      snowflake-sdk: '*'
-      sqlite3: '*'
-      tedious: '*'
-    peerDependenciesMeta:
-      ibm_db:
-        optional: true
-      mariadb:
-        optional: true
-      mysql2:
-        optional: true
-      pg:
-        optional: true
-      pg-hstore:
-        optional: true
-      snowflake-sdk:
-        optional: true
-      sqlite3:
-        optional: true
-      tedious:
-        optional: true
 
   sequelize@6.37.8:
     resolution: {integrity: sha512-HJ0IQFqcTsTiqbEgiuioYFMSD00TP6Cz7zoTti+zVVBwVe9fEhev9cH6WnM3XU31+ABS356durAb99ZuOthnKw==}
@@ -10461,8 +10428,8 @@ snapshots:
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sso-oidc': 3.572.0
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -10656,11 +10623,11 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sso-oidc@3.572.0':
+  '@aws-sdk/client-sso-oidc@3.572.0(@aws-sdk/client-sts@3.572.0)':
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -10699,6 +10666,7 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.6.2
     transitivePeerDependencies:
+      - '@aws-sdk/client-sts'
       - aws-crt
 
   '@aws-sdk/client-sso@3.556.0':
@@ -10874,11 +10842,11 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sts@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)':
+  '@aws-sdk/client-sts@3.572.0':
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sso-oidc': 3.572.0
+      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -10917,7 +10885,6 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.6.2
     transitivePeerDependencies:
-      - '@aws-sdk/client-sso-oidc'
       - aws-crt
 
   '@aws-sdk/client-sts@3.985.0':
@@ -11083,7 +11050,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-ini@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/credential-provider-env': 3.568.0
       '@aws-sdk/credential-provider-process': 3.572.0
       '@aws-sdk/credential-provider-sso': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
@@ -11260,7 +11227,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-web-identity@3.568.0(@aws-sdk/client-sts@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/types': 3.567.0
       '@smithy/property-provider': 2.2.0
       '@smithy/types': 2.12.0
@@ -11572,7 +11539,7 @@ snapshots:
 
   '@aws-sdk/token-providers@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sso-oidc': 3.572.0
+      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/types': 3.567.0
       '@smithy/property-provider': 2.2.0
       '@smithy/shared-ini-file-loader': 2.4.0
@@ -19276,8 +19243,6 @@ snapshots:
 
   ret@0.1.15: {}
 
-  retry-as-promised@5.0.0: {}
-
   retry-as-promised@7.1.1: {}
 
   retry-request@4.2.2:
@@ -19467,29 +19432,6 @@ snapshots:
       yargs: 8.0.2
 
   sequelize-pool@7.1.0: {}
-
-  sequelize@6.21.2(pg@8.11.5):
-    dependencies:
-      '@types/debug': 4.1.12
-      '@types/validator': 13.11.9
-      debug: 4.3.4
-      dottie: 2.0.6
-      inflection: 1.13.4
-      lodash: 4.17.21
-      moment: 2.29.4
-      moment-timezone: 0.5.45
-      pg-connection-string: 2.6.4
-      retry-as-promised: 5.0.0
-      semver: 7.6.0
-      sequelize-pool: 7.1.0
-      toposort-class: 1.0.1
-      uuid: 8.3.2
-      validator: 13.11.0
-      wkx: 0.5.0
-    optionalDependencies:
-      pg: 8.11.5
-    transitivePeerDependencies:
-      - supports-color
 
   sequelize@6.37.8(pg@8.11.5):
     dependencies:
