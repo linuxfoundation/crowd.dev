@@ -128,7 +128,7 @@
     "pg": "^8.7.3",
     "pg-promise": "^11.4.3",
     "sanitize-html": "^2.7.1",
-    "sequelize": "6.21.2",
+    "sequelize": "6.37.8",
     "sequelize-cli-typescript": "^3.2.0-c",
     "slack-block-builder": "^2.7.2",
     "socket.io": "^4.5.4",
