@@ -7,6 +7,7 @@ import * as http from 'http'
 import os from 'os'
 import { QueryTypes } from 'sequelize'
 
+import { BadRequestError } from '@crowd/common'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
 import { getOpensearchClient } from '@crowd/opensearch'
@@ -149,8 +150,7 @@ setImmediate(async () => {
 
   app.use((err: any, req: any, res: any, next: any) => {
     if (err.type === 'entity.parse.failed') {
-      res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } })
-      return
+      return next(new BadRequestError('Invalid JSON body'))
     }
     next(err)
   })

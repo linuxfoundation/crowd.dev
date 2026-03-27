@@ -9,7 +9,7 @@ import { getAffiliations } from './getAffiliations'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
-export function devStatsRouter(): Router {
+export function memberOrganizationAffiliationsRouter(): Router {
   const router = Router()
 
   router.use(rateLimiter)
