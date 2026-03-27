@@ -262,6 +262,9 @@ function buildTimeline(
       })
       currentOrg = winningAffiliation
       currentWindowStart = boundaryDate
+    } else if (currentOrg.id !== winningAffiliation.id) {
+      // Same org, different record — update so the final window closure uses the correct dateEnd
+      currentOrg = winningAffiliation
     }
   }
 
