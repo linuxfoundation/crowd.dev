@@ -48,7 +48,7 @@ export async function fetchManyMemberIdentities(
   )
 }
 
-export async function checkMemberIdentityExistance(
+export async function checkMemberIdentityExistence(
   qx: QueryExecutor,
   value: string,
   platform: string,
@@ -196,6 +196,18 @@ export async function moveIdentitiesBetweenMembers(
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<IMemberIdentity[]>
+export async function insertManyMemberIdentities(
+  qx: QueryExecutor,
+  identities: NewMemberIdentity[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<void>
+export async function insertManyMemberIdentities(
+  qx: QueryExecutor,
+  identities: NewMemberIdentity[],
   failOnConflict = false,
   returnRows = false,
 ): Promise<IMemberIdentity[] | void> {
@@ -233,14 +245,27 @@ export async function insertManyMemberIdentities(
 export async function createMemberIdentity(
   qx: QueryExecutor,
   i: NewMemberIdentity,
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<IMemberIdentity>
+export async function createMemberIdentity(
+  qx: QueryExecutor,
+  i: NewMemberIdentity,
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<void>
+export async function createMemberIdentity(
+  qx: QueryExecutor,
+  i: NewMemberIdentity,
   failOnConflict = false,
   returnRows = false,
 ): Promise<IMemberIdentity | void> {
-  const result = await insertManyMemberIdentities(qx, [i], failOnConflict, returnRows)
-
-  if (returnRows && result) {
-    return result[0]
+  if (returnRows) {
+    const rows = await insertManyMemberIdentities(qx, [i], failOnConflict, true)
+    return rows[0]
   }
+
+  await insertManyMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(

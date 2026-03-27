@@ -5,9 +5,9 @@ import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   MemberField,
-  checkMemberIdentityExistance,
-  createMemberIdentity as dalCreateMemberIdentity,
+  checkMemberIdentityExistence,
   findMemberById,
+  createMemberIdentity as insertMemberIdentity,
   optionsQx,
   touchMemberUpdatedAt,
 } from '@crowd/data-access-layer'
@@ -20,17 +20,19 @@ const paramsSchema = z.object({
   memberId: z.uuid(),
 })
 
-const bodySchema = z.object({
-  value: z.string().min(1),
-  platform: z.string().min(1),
-  type: z.enum(MemberIdentityType),
-  source: z.string().min(1),
-  verified: z.boolean(),
-  verifiedBy: z.string().optional(),
-}).refine(
-  (data) => !data.verified || data.verifiedBy,
-  { message: 'verifiedBy is required when verified is true', path: ['verifiedBy'] },
-)
+const bodySchema = z
+  .object({
+    value: z.string().min(1),
+    platform: z.string().min(1),
+    type: z.enum(MemberIdentityType),
+    source: z.string().min(1),
+    verified: z.boolean(),
+    verifiedBy: z.string().optional(),
+  })
+  .refine((data) => !data.verified || data.verifiedBy, {
+    message: 'verifiedBy is required when verified is true',
+    path: ['verifiedBy'],
+  })
 
 export async function createMemberIdentity(req: Request, res: Response): Promise<void> {
   const { memberId } = validateOrThrow(paramsSchema, req.params)
@@ -43,7 +45,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     throw new NotFoundError('Member not found')
   }
 
-  let result: IMemberIdentity | void
+  let result!: IMemberIdentity
 
   await captureApiChange(
     req,
@@ -51,19 +53,24 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await checkMemberIdentityExistance(tx, data.value, data.platform, data.type)
+        const existing = await checkMemberIdentityExistence(
+          tx,
+          data.value,
+          data.platform,
+          data.type,
+        )
 
         for (const identity of existing) {
           if (identity.memberId === memberId) {
             throw new ConflictError('Identity already exists on this member')
           }
-      
+
           if (identity.verified) {
             throw new ConflictError('Identity already verified on another member')
           }
         }
 
-        result = await dalCreateMemberIdentity(
+        result = await insertMemberIdentity(
           tx,
           {
             memberId,
@@ -86,15 +93,10 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     }),
   )
 
-  if (!result) {
-    throw new Error('Failed to create member identity')
-  }
-
   created(res, {
     id: result.id,
     value: result.value,
     platform: result.platform,
-    type: result.type,
     verified: result.verified,
     verifiedBy: result.verifiedBy ?? null,
     source: result.source ?? null,
