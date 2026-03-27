@@ -11,6 +11,7 @@ import { QueryExecutor } from '../queryExecutor'
 import { buildSegmentActivityTypes, isSegmentSubproject } from '../segments'
 import { prepareBulkInsert } from '../utils'
 
+import { BLACKLISTED_MEMBER_TITLES } from './base'
 import { IMemberActivitySummary, IMemberSegmentAggregates } from './types'
 
 const log = getServiceChildLogger('members/segments')
@@ -322,14 +323,13 @@ export async function findAllUnkownDatedOrganizations(
   return filterOutBlacklistedTitles(result)
 }
 
-const BLACKLISTED_TITLES = ['Investor', 'Mentor', 'Board Member']
 function filterOutBlacklistedTitles(experiences: IWorkExperienceData[]): IWorkExperienceData[] {
   return experiences.filter(
     (row) =>
       !row.title ||
       (row.title !== null &&
         row.title !== undefined &&
-        !BLACKLISTED_TITLES.some((t) => row.title.toLowerCase().includes(t.toLowerCase()))),
+        !BLACKLISTED_MEMBER_TITLES.some((t) => row.title.toLowerCase().includes(t))),
   )
 }
 
