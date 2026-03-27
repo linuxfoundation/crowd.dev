@@ -49,7 +49,6 @@ import {
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
-import { IActiveOrganizationFilter } from '@/database/repositories/types/organizationTypes'
 import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
 
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
@@ -1161,23 +1160,6 @@ export default class OrganizationService extends LoggerBase {
 
   async findByIds(ids: string[]) {
     return OrganizationRepository.findByIds(ids, this.options)
-  }
-
-  async findAndCountActive(
-    filters: IActiveOrganizationFilter,
-    offset: number,
-    limit: number,
-    orderBy: string,
-    segments: string[],
-  ) {
-    return OrganizationRepository.findAndCountActiveOpensearch(
-      filters,
-      limit,
-      offset,
-      orderBy,
-      this.options,
-      segments,
-    )
   }
 
   async query(data) {

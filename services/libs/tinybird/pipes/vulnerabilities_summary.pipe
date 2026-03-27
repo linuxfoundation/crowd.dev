@@ -1,5 +1,6 @@
 NODE last_scan_status
 SQL >
+    %
     SELECT
         multiIf(
             max(
@@ -44,10 +45,13 @@ SQL >
             'running'
         ) as lastScanStatus
     FROM vulnerability_scans as s FINAL
-    WHERE s.repoUrl in (select arrayJoin(repositories) from segments_filtered)
+    WHERE
+        s.repoUrl in (select arrayJoin(repositories) from segments_filtered)
+        {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
 
 NODE summary
 SQL >
+    %
     SELECT
         countIf(v.status != 'RESOLVED') as count,
         round(countIf(v.status = 'RESOLVED') * 100.0 / greatest(count(v.id), 1), 2) as fixedPercentage,
@@ -55,8 +59,10 @@ SQL >
         round(avgIf(v.cvssScore, v.status != 'RESOLVED'), 2) as avgCvssScore,
         groupUniqArray(v.packageEcosystem) as ecosystems
     FROM vulnerabilities as v FINAL
-    WHERE repoUrl in (select arrayJoin(repositories) from segments_filtered)
+    WHERE
+        repoUrl in (select arrayJoin(repositories) from segments_filtered)
+        {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
 
-NODE vulnerabilities_summary
+NODE vulnerabilities_summary_result
 SQL >
     SELECT summary.*, last_scan_status.lastScanStatus FROM summary CROSS JOIN last_scan_status

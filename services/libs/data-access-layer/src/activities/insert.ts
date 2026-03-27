@@ -114,7 +114,8 @@ export async function insertActivities(
 
   const emitter = new QueueEmitter(queueClient, ACTIVITIES_QUEUE_SETTINGS, logger)
 
-  for (const row of toInsert) {
+  const commitTimestamp = new Date().toISOString()
+  const bulk = toInsert.map((row) => {
     logger.debug(
       {
         activityId: row.id,
@@ -122,21 +123,18 @@ export async function insertActivities(
       },
       'Dispatching activity to queue!',
     )
-    const messageWithMetadata = {
-      ...row,
-      metadata: {
-        commit_timestamp: new Date().toISOString(),
-      },
+    return {
+      payload: { ...row, metadata: { commit_timestamp: commitTimestamp } },
+      groupId: generateUUIDv4(),
+      deduplicationId: generateUUIDv4(),
     }
-    logger.debug(
-      {
-        activityId: row.id,
-        commitTimestamp: messageWithMetadata.metadata.commit_timestamp,
-      },
-      'Sending activity with metadata to Kafka',
-    )
-    await emitter.sendMessage(generateUUIDv4(), messageWithMetadata, generateUUIDv4())
+  })
+
+  const chunks: (typeof bulk)[] = []
+  for (let i = 0; i < bulk.length; i += 10) {
+    chunks.push(bulk.slice(i, i + 10))
   }
+  await Promise.all(chunks.map((chunk) => emitter.sendMessages(chunk)))
   telemetry.increment('tinybird.insert_activity', activities.length)
 
   return toInsert.map((activity) => activity.id)

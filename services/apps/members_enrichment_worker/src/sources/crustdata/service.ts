@@ -146,7 +146,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       return response.credits > 5
     } catch (error) {
       this.log.error('Error while checking Crustdata account usage', error)
-      return false
+      throw error
     }
   }
 

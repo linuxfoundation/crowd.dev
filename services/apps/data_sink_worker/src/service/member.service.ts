@@ -28,6 +28,7 @@ import { Client as TemporalClient } from '@crowd/temporal'
 import {
   IMemberData,
   IMemberIdentity,
+  IOrganization,
   IOrganizationIdSource,
   MemberAttributeName,
   MemberBotDetection,
@@ -42,6 +43,22 @@ import {
 import { IMemberCreateData, IMemberUpdateData } from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
+
+/**
+ * Returns a stable cache key for an org based on its verified identities, falling back to
+ * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
+ * across members in the same batch.
+ */
+function orgCacheKey(org: IOrganization): string | null {
+  const verified = (org.identities ?? [])
+    .filter((i) => i.verified)
+    .map((i) => `${i.platform}:${i.type}:${i.value.toLowerCase()}`)
+    .sort()
+    .join('|')
+  if (verified) return verified
+  if (org.displayName) return `name:${org.displayName.toLowerCase()}`
+  return null
+}
 
 export default class MemberService extends LoggerBase {
   private readonly memberRepo: MemberRepository
@@ -67,6 +84,7 @@ export default class MemberService extends LoggerBase {
     data: IMemberCreateData,
     platform: PlatformType,
     releaseMemberLock?: () => Promise<void>,
+    orgPromiseCache?: Map<string, Promise<string | undefined>>,
   ): Promise<string> {
     return logExecutionTimeV2(
       async () => {
@@ -188,11 +206,31 @@ export default class MemberService extends LoggerBase {
           const orgService = new OrganizationService(this.store, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
-              const id = await logExecutionTimeV2(
-                () => orgService.findOrCreate(platform, integrationId, org),
-                this.log,
-                'memberService -> create -> findOrCreateOrg',
-              )
+              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
+              // hot-row contention on the organizations table. Permanent fix is in
+              // tncTransformerBase.ts to stop emitting this org entirely.
+              if (
+                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
+              ) {
+                continue
+              }
+
+              const key = orgCacheKey(org)
+              let orgIdPromise: Promise<string | undefined>
+              if (key && orgPromiseCache?.has(key)) {
+                orgIdPromise = orgPromiseCache.get(key)
+              } else {
+                orgIdPromise = logExecutionTimeV2(
+                  () => orgService.findOrCreate(platform, integrationId, org),
+                  this.log,
+                  'memberService -> create -> findOrCreateOrg',
+                )
+                if (key) {
+                  orgPromiseCache?.set(key, orgIdPromise)
+                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
+                }
+              }
+              const id = await orgIdPromise
               organizations.push({
                 id,
                 source: org.source,
@@ -209,6 +247,7 @@ export default class MemberService extends LoggerBase {
                 this.assignOrganizationByEmailDomain(
                   integrationId,
                   emailIdentities.map((i) => i.value),
+                  orgPromiseCache,
                 ),
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
@@ -220,7 +259,6 @@ export default class MemberService extends LoggerBase {
 
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
-            const orgService = new OrganizationService(this.store, this.log)
 
             const orgsToAdd = (
               await Promise.all(
@@ -266,6 +304,7 @@ export default class MemberService extends LoggerBase {
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
     releaseMemberLock?: () => Promise<void>,
+    orgPromiseCache?: Map<string, Promise<string | undefined>>,
   ): Promise<void> {
     await logExecutionTimeV2(
       async () => {
@@ -398,13 +437,33 @@ export default class MemberService extends LoggerBase {
           const orgService = new OrganizationService(this.store, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
+              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
+              // hot-row contention on the organizations table. Permanent fix is in
+              // tncTransformerBase.ts to stop emitting this org entirely.
+              if (
+                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
+              ) {
+                continue
+              }
+
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
-              const orgId = await logExecutionTimeV2(
-                () => orgService.findOrCreate(platform, integrationId, org),
-                this.log,
-                'memberService -> update -> findOrCreateOrg',
-              )
+              const key = orgCacheKey(org)
+              let orgIdPromise: Promise<string | undefined>
+              if (key && orgPromiseCache?.has(key)) {
+                orgIdPromise = orgPromiseCache.get(key)
+              } else {
+                orgIdPromise = logExecutionTimeV2(
+                  () => orgService.findOrCreate(platform, integrationId, org),
+                  this.log,
+                  'memberService -> update -> findOrCreateOrg',
+                )
+                if (key) {
+                  orgPromiseCache?.set(key, orgIdPromise)
+                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
+                }
+              }
+              const orgId = await orgIdPromise
               organizations.push({
                 id: orgId,
                 source: data.source,
@@ -422,6 +481,7 @@ export default class MemberService extends LoggerBase {
                 this.assignOrganizationByEmailDomain(
                   integrationId,
                   emailIdentities.map((i) => i.value),
+                  orgPromiseCache,
                 ),
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
@@ -433,7 +493,6 @@ export default class MemberService extends LoggerBase {
 
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
-            const orgService = new OrganizationService(this.store, this.log)
 
             this.log.trace({ memberId: id }, 'Finding member organizations!')
             const orgsToAdd = (
@@ -473,6 +532,7 @@ export default class MemberService extends LoggerBase {
   public async assignOrganizationByEmailDomain(
     integrationId: string,
     emails: string[],
+    orgPromiseCache?: Map<string, Promise<string | undefined>>,
   ): Promise<IOrganizationIdSource[]> {
     const orgService = new OrganizationService(this.store, this.log)
     const organizations: IOrganizationIdSource[] = []
@@ -494,26 +554,38 @@ export default class MemberService extends LoggerBase {
     // Assign member to organization based on email domain
     for (const domain of emailDomains) {
       const orgSource = OrganizationSource.EMAIL_DOMAIN
-      const orgId = await orgService.findOrCreate(
-        OrganizationAttributeSource.EMAIL,
-        integrationId,
-        {
-          attributes: {
-            name: {
-              integration: [domain],
-            },
+      const org: IOrganization = {
+        attributes: {
+          name: {
+            integration: [domain],
           },
-          identities: [
-            {
-              value: domain,
-              type: OrganizationIdentityType.PRIMARY_DOMAIN,
-              platform: 'email',
-              verified: true,
-              source: orgSource,
-            },
-          ],
         },
-      )
+        identities: [
+          {
+            value: domain,
+            type: OrganizationIdentityType.PRIMARY_DOMAIN,
+            platform: 'email',
+            verified: true,
+            source: orgSource,
+          },
+        ],
+      }
+      const key = orgCacheKey(org)
+      let orgIdPromise: Promise<string | undefined>
+      if (key && orgPromiseCache?.has(key)) {
+        orgIdPromise = orgPromiseCache.get(key)
+      } else {
+        orgIdPromise = orgService.findOrCreate(
+          OrganizationAttributeSource.EMAIL,
+          integrationId,
+          org,
+        )
+        if (key) {
+          orgPromiseCache?.set(key, orgIdPromise)
+          orgIdPromise.catch(() => orgPromiseCache?.delete(key))
+        }
+      }
+      const orgId = await orgIdPromise
       if (orgId) {
         organizations.push({
           id: orgId,
