@@ -13,6 +13,20 @@ from crowdgit.errors import (
 from crowdgit.logger import logger
 
 
+def normalize_gerrit_remote(url: str) -> str:
+    """Rewrite Gerrit remote URLs to their Gitea equivalents for git clone/fetch operations.
+
+    Gerrit servers don't support the git shallow protocol extension (--deepen),
+    causing HTTP 500 errors during incremental fetching. Where a Gitea mirror
+    exists with full protocol support (e.g. opendev.org mirrors review.opendev.org),
+    we rewrite the host so that shallow cloning works.
+
+    Only used for git operations, not for URLs persisted to the database or
+    passed to other services.
+    """
+    return url.replace("https://review.opendev.org", "https://opendev.org")
+
+
 def safe_decode(data: bytes) -> str:
     """
     Safely decode bytes to string, handling various encodings that might be present in git output.
