@@ -14,7 +14,7 @@ export function parseLlmJson<T>(answer: string): T {
   if (direct !== undefined) return direct
 
   // 2. Fenced ```json``` block
-  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1]
+  const fenced = raw.match(/^```(?:json)?\n([\s\S]*?)\n```$/i)?.[1]
   if (fenced) {
     const parsed = tryParse(fenced.trim())
     if (parsed !== undefined) return parsed
