@@ -343,6 +343,7 @@ async def upsert_maintainer(
         SET "originalRole" = EXCLUDED."originalRole",
             "repoUrl" = EXCLUDED."repoUrl",
             "startDate" = COALESCE("maintainersInternal"."startDate", EXCLUDED."startDate"),
+            "endDate" = NULL,
             "updatedAt" = NOW()
     """
     await execute(
