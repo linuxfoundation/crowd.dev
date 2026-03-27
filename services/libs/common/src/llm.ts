@@ -9,7 +9,11 @@ export function parseLlmJson<T>(answer: string): T {
 
   const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
   if (fenced?.[1]) {
-    return JSON.parse(fenced[1].trim()) as T
+    try {
+      return JSON.parse(fenced[1].trim()) as T
+    } catch {
+      // malformed content inside fences — fall through to balanced extraction
+    }
   }
 
   const starts = [
@@ -48,7 +52,11 @@ export function parseLlmJson<T>(answer: string): T {
         } else if (char === candidate.close) {
           depth -= 1
           if (depth === 0) {
-            return JSON.parse(raw.slice(candidate.idx, i + 1)) as T
+            try {
+              return JSON.parse(raw.slice(candidate.idx, i + 1)) as T
+            } catch {
+              break
+            }
           }
         }
       }
