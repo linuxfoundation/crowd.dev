@@ -21,9 +21,5 @@ export function v1Router(): Router {
     throw new NotFoundError()
   })
 
-  router.use(() => {
-    throw new NotFoundError()
-  })
-
   return router
 }
