@@ -1,6 +1,6 @@
 import {
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
+  checkOrganizationAffiliationPolicies,
 } from '@crowd/data-access-layer'
 import { DbStore } from '@crowd/data-access-layer/src/database'
 import {
@@ -28,7 +28,7 @@ export class OrganizationService extends LoggerBase {
   ): Promise<string> {
     const id = await this.store.transactionally(async (txStore) => {
       const qe = dbStoreQx(txStore)
-      const id = await findOrCreateOrganization(qe, source, data, integrationId)
+      const id = await findOrCreateOrganization(qe, source, data, integrationId, true)
       return id
     })
 
@@ -54,23 +54,19 @@ export class OrganizationService extends LoggerBase {
 
     const newMemberOrgs = await addOrgsToMember(qe, memberId, orgs)
 
-    for (const newMemberOrg of newMemberOrgs) {
-      // Check if organization affiliation is blocked
-      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-        qe,
-        newMemberOrg.organizationId,
-      )
-
-      if (isAffiliationBlocked) {
-        // If organization affiliation is blocked, create an affiliation override
-        await changeMemberOrganizationAffiliationOverrides(qe, [
-          {
-            memberId,
-            memberOrganizationId: newMemberOrg.memberOrganizationId,
-            allowAffiliation: false,
-          },
-        ])
-      }
+    const blockedOrgIds = await checkOrganizationAffiliationPolicies(
+      qe,
+      newMemberOrgs.map((mo) => mo.organizationId),
+    )
+    const overrides = newMemberOrgs
+      .filter((mo) => blockedOrgIds.has(mo.organizationId))
+      .map((mo) => ({
+        memberId,
+        memberOrganizationId: mo.memberOrganizationId,
+        allowAffiliation: false,
+      }))
+    if (overrides.length > 0) {
+      await changeMemberOrganizationAffiliationOverrides(qe, overrides)
     }
   }
 

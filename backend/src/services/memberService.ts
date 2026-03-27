@@ -42,7 +42,6 @@ import { MergeActionsRepository } from '../database/repositories/mergeActionsRep
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import {
   BasicMemberIdentity,
-  IActiveMemberFilter,
   IMemberMergeSuggestion,
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
@@ -959,28 +958,6 @@ export default class MemberService extends LoggerBase {
         segments: true,
       },
     })
-  }
-
-  async findAndCountActive(
-    filters: IActiveMemberFilter,
-    offset: number,
-    limit: number,
-    orderBy: string,
-    segments: string[],
-  ) {
-    const memberAttributeSettings = (
-      await MemberAttributeSettingsRepository.findAndCountAll({}, this.options)
-    ).rows
-
-    return MemberRepository.findAndCountActiveOpensearch(
-      filters,
-      limit,
-      offset,
-      orderBy,
-      this.options,
-      memberAttributeSettings,
-      segments,
-    )
   }
 
   async query(data, exportMode = false) {

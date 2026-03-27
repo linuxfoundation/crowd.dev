@@ -136,6 +136,20 @@ export async function checkOrganizationAffiliationPolicy(
   return result?.isAffiliationBlocked ?? false
 }
 
+export async function checkOrganizationAffiliationPolicies(
+  qx: QueryExecutor,
+  organizationIds: string[],
+): Promise<Set<string>> {
+  if (organizationIds.length === 0) return new Set()
+
+  const results = await qx.select(
+    `SELECT "id" FROM "organizations" WHERE "id" IN ($(organizationIds:csv)) AND "isAffiliationBlocked" = true`,
+    { organizationIds },
+  )
+
+  return new Set(results.map((r: { id: string }) => r.id))
+}
+
 export async function createMemberOrganization(
   qx: QueryExecutor,
   memberId: string,

@@ -27,24 +27,29 @@ export const logExecutionTimeV2 = async <T>(
   if (!process.env.CROWD_LOG_EXECUTION_TIME) {
     return toProcess()
   }
+
+  const minDurationMs = Number(process.env['CROWD_LOG_EXECUTION_TIME_MIN_DURATION'] || 0)
+
   const start = performance.now()
 
-  const end = () => {
-    const end = performance.now()
-    const duration = end - start
-    const durationInSeconds = duration / 1000
-    return durationInSeconds.toFixed(2)
-  }
+  const formatDuration = (durationMs: number) => (durationMs / 1000).toFixed(2)
+
   try {
     if (process.env.CROWD_LOG_EXECUTION_START) {
       log.info(`Starting process ${name}...`)
     }
 
     const result = await toProcess()
-    log.info(`Process ${name} took ${end()} seconds!`)
+    const durationMs = performance.now() - start
+    if (durationMs >= minDurationMs) {
+      log.info(`Process ${name} took ${formatDuration(durationMs)} seconds!`)
+    }
     return result
   } catch (e) {
-    log.info(`Process ${name} failed after ${end()} seconds!`)
+    const durationMs = performance.now() - start
+    if (durationMs >= minDurationMs) {
+      log.info(`Process ${name} failed after ${formatDuration(durationMs)} seconds!`)
+    }
     throw e
   }
 }
