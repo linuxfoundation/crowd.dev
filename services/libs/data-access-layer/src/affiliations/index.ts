@@ -10,7 +10,7 @@ export interface IAffiliationPeriod {
   endDate: string | null
 }
 
-interface IWorkExperience {
+interface IWorkExperienceResolution {
   id: string
   memberId: string
   organizationId: string
@@ -31,8 +31,8 @@ interface IWorkExperience {
 export async function findWorkExperiencesBulk(
   qx: QueryExecutor,
   memberIds: string[],
-): Promise<IWorkExperience[]> {
-  const rows: IWorkExperience[] = await qx.select(
+): Promise<IWorkExperienceResolution[]> {
+  const rows: IWorkExperienceResolution[] = await qx.select(
     `
       WITH relevant_orgs AS (
         SELECT DISTINCT "organizationId"
@@ -78,7 +78,7 @@ export async function findWorkExperiencesBulk(
 export async function findManualAffiliationsBulk(
   qx: QueryExecutor,
   memberIds: string[],
-): Promise<IWorkExperience[]> {
+): Promise<IWorkExperienceResolution[]> {
   return qx.select(
     `
       SELECT
@@ -101,7 +101,7 @@ export async function findManualAffiliationsBulk(
   )
 }
 
-function selectPrimaryWorkExperience(orgs: IWorkExperience[]) {
+function selectPrimaryWorkExperience(orgs: IWorkExperienceResolution[]) {
   if (orgs.length === 1) return orgs[0]
 
   // 1. Manual affiliations (segmentId non-null) always win
@@ -110,7 +110,7 @@ function selectPrimaryWorkExperience(orgs: IWorkExperience[]) {
     if (manual.length === 1) return manual[0]
     return getLongestDateRange(
       manual as unknown as IMemberOrganization[],
-    ) as unknown as IWorkExperience
+    ) as unknown as IWorkExperienceResolution
   }
 
   // 2. isPrimaryWorkExperience = true — prefer those with a dateStart
@@ -128,11 +128,13 @@ function selectPrimaryWorkExperience(orgs: IWorkExperience[]) {
   }
 
   // 5. Longest date range as final tiebreaker
-  return getLongestDateRange(orgs as unknown as IMemberOrganization[]) as unknown as IWorkExperience
+  return getLongestDateRange(
+    orgs as unknown as IMemberOrganization[],
+  ) as unknown as IWorkExperienceResolution
 }
 
 /** Returns the org used to fill gaps — primary undated wins, then earliest-created undated. */
-function findFallbackOrg(rows: IWorkExperience[]): IWorkExperience | null {
+function findFallbackOrg(rows: IWorkExperienceResolution[]): IWorkExperienceResolution | null {
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
   if (primaryUndated) return primaryUndated
 
@@ -148,7 +150,7 @@ function findFallbackOrg(rows: IWorkExperience[]): IWorkExperience | null {
  * Collects all date boundaries from the dated rows, capped at today.
  * Each dateStart and (dateEnd + 1 day) marks a point where active orgs can change.
  */
-function collectBoundaries(datedRows: IWorkExperience[]): Date[] {
+function collectBoundaries(datedRows: IWorkExperienceResolution[]): Date[] {
   const today = startOfDay(new Date())
 
   const ms = new Set<number>([today.getTime()])
@@ -169,7 +171,10 @@ function collectBoundaries(datedRows: IWorkExperience[]): Date[] {
     .map((t) => new Date(t))
 }
 
-function orgsActiveAt(rows: IWorkExperience[], boundaryDate: Date): IWorkExperience[] {
+function orgsActiveAt(
+  rows: IWorkExperienceResolution[],
+  boundaryDate: Date,
+): IWorkExperienceResolution[] {
   return rows.filter((role) => {
     if (!role.dateStart && !role.dateEnd) return true // truly undated: active at every boundary
 
@@ -195,12 +200,12 @@ function dayBefore(date: Date): Date {
 
 /** Iterates boundary intervals and builds non-overlapping affiliation windows. */
 function buildTimeline(
-  allRows: IWorkExperience[],
-  fallbackOrg: IWorkExperience | null,
+  allRows: IWorkExperienceResolution[],
+  fallbackOrg: IWorkExperienceResolution | null,
   boundaries: Date[],
 ): IAffiliationPeriod[] {
   const affiliations: IAffiliationPeriod[] = []
-  let currentOrg: IWorkExperience = null
+  let currentOrg: IWorkExperienceResolution = null
   let currentWindowStart: Date = null
   let uncoveredPeriodStart: Date = null
 
@@ -281,7 +286,7 @@ function buildTimeline(
   return affiliations
 }
 
-function resolveAffiliationsForMember(rows: IWorkExperience[]): IAffiliationPeriod[] {
+function resolveAffiliationsForMember(rows: IWorkExperienceResolution[]): IAffiliationPeriod[] {
   // If one undated work-experience org is marked primary, drop other undated work-experience orgs
   // to avoid infinite conflicts. Manual affiliations (segmentId !== null) are never dropped.
   const primaryUndated = rows.find((r) => r.isPrimaryWorkExperience && !r.dateStart && !r.dateEnd)
@@ -320,7 +325,7 @@ export async function resolveAffiliationsByMemberIds(
     findManualAffiliationsBulk(qx, memberIds),
   ])
 
-  const byMember = new Map<string, IWorkExperience[]>()
+  const byMember = new Map<string, IWorkExperienceResolution[]>()
   for (const row of [...workExperiences, ...manualAffiliations]) {
     const list = byMember.get(row.memberId) ?? []
     list.push(row)
