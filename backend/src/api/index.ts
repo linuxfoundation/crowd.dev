@@ -150,7 +150,8 @@ setImmediate(async () => {
 
   app.use((err: any, req: any, res: any, next: any) => {
     if (err.type === 'entity.parse.failed') {
-      return next(new BadRequestError('Invalid JSON body'))
+      next(new BadRequestError('Invalid JSON body'))
+      return
     }
     next(err)
   })
