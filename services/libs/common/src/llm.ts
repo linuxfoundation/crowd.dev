@@ -1,21 +1,26 @@
 export function parseLlmJson<T>(answer: string): T {
   const raw = answer.trim()
 
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    // continue with normalization
-  }
-
-  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
-  if (fenced?.[1]) {
+  const tryParse = (str: string): T | undefined => {
     try {
-      return JSON.parse(fenced[1].trim()) as T
+      return JSON.parse(str) as T
     } catch {
-      // malformed content inside fences — fall through to balanced extraction
+      return undefined
     }
   }
 
+  // 1. Direct parse
+  const direct = tryParse(raw)
+  if (direct !== undefined) return direct
+
+  // 2. Fenced ```json``` block
+  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1]
+  if (fenced) {
+    const parsed = tryParse(fenced.trim())
+    if (parsed !== undefined) return parsed
+  }
+
+  // 3. Balanced extraction
   const starts = [
     { idx: raw.indexOf('{'), open: '{', close: '}' },
     { idx: raw.indexOf('['), open: '[', close: ']' },
@@ -23,45 +28,32 @@ export function parseLlmJson<T>(answer: string): T {
     .filter((s) => s.idx >= 0)
     .sort((a, b) => a.idx - b.idx)
 
-  for (const candidate of starts) {
-    let depth = 0
-    let inString = false
-    let escaped = false
+  for (const { idx, open, close } of starts) {
+    let depth = 0,
+      inString = false,
+      escaped = false
 
-    for (let i = candidate.idx; i < raw.length; i++) {
+    for (let i = idx; i < raw.length; i++) {
       const char = raw[i]
 
-      if (escaped) {
-        escaped = false
-        continue
-      }
-
-      if (char === '\\') {
-        escaped = true
+      if (inString) {
+        if (escaped) escaped = false
+        else if (char === '\\') escaped = true
+        else if (char === '"') inString = false
         continue
       }
 
       if (char === '"') {
-        inString = !inString
-        continue
-      }
-
-      if (!inString) {
-        if (char === candidate.open) {
-          depth += 1
-        } else if (char === candidate.close) {
-          depth -= 1
-          if (depth === 0) {
-            try {
-              return JSON.parse(raw.slice(candidate.idx, i + 1)) as T
-            } catch {
-              break
-            }
-          }
-        }
+        inString = true
+      } else if (char === open) {
+        depth++
+      } else if (char === close && --depth === 0) {
+        const parsed = tryParse(raw.slice(idx, i + 1))
+        if (parsed !== undefined) return parsed
+        break
       }
     }
   }
 
-  throw new SyntaxError('LLM response does not contain valid JSON content')
+  throw new SyntaxError('LLM response does not contain valid JSON')
 }
