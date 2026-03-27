@@ -13,13 +13,13 @@ SQL >
         memberId,
         organizationId
     FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE type = 'issues-opened'
+    WHERE type = 'issues-opened' AND toYear(timestamp) >= 1971
 
 NODE issues_closed
 SQL >
     SELECT sourceParentId, MIN(timestamp) AS closedAt
     FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE type = 'issues-closed' AND sourceParentId != ''
+    WHERE type = 'issues-closed' AND sourceParentId != '' AND toYear(timestamp) >= 1971
     GROUP BY sourceParentId
 
 NODE issues_comment
