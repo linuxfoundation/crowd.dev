@@ -48,22 +48,25 @@ export async function fetchManyMemberIdentities(
   )
 }
 
-export async function checkIdentityExistance(
+export async function checkMemberIdentityExistance(
   qx: QueryExecutor,
   value: string,
   platform: string,
+  type?: MemberIdentityType,
 ): Promise<IMemberIdentity[]> {
   return await qx.select(
     `
-        SELECT id, "memberId"
+        SELECT id, "memberId", verified
         FROM "memberIdentities"
         WHERE "value" = $(value)
           AND "platform" = $(platform)
+          ${type ? 'AND "type" = $(type)' : ''}
           AND "deletedAt" is null;
     `,
     {
       value,
       platform,
+      type,
     },
   )
 }
@@ -194,39 +197,50 @@ export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
   failOnConflict = false,
-) {
-  return qx.result(
-    prepareBulkInsert(
-      'memberIdentities',
-      [
-        'memberId',
-        'tenantId',
-        'integrationId',
-        'platform',
-        'source',
-        'sourceId',
-        'value',
-        'type',
-        'verified',
-        'verifiedBy',
-      ],
-      identities.map((i) => {
-        return {
-          tenantId: DEFAULT_TENANT_ID,
-          ...i,
-        }
-      }),
-      failOnConflict ? undefined : 'DO NOTHING',
-    ),
+  returnRows = false,
+): Promise<IMemberIdentity[] | void> {
+  const query = prepareBulkInsert(
+    'memberIdentities',
+    [
+      'memberId',
+      'tenantId',
+      'integrationId',
+      'platform',
+      'source',
+      'sourceId',
+      'value',
+      'type',
+      'verified',
+      'verifiedBy',
+    ],
+    identities.map((i) => {
+      return {
+        tenantId: DEFAULT_TENANT_ID,
+        ...i,
+      }
+    }),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
   )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  await qx.result(query)
 }
 
 export async function createMemberIdentity(
   qx: QueryExecutor,
   i: NewMemberIdentity,
   failOnConflict = false,
-) {
-  return insertManyMemberIdentities(qx, [i], failOnConflict)
+  returnRows = false,
+): Promise<IMemberIdentity | void> {
+  const result = await insertManyMemberIdentities(qx, [i], failOnConflict, returnRows)
+
+  if (returnRows && result) {
+    return result[0]
+  }
 }
 
 export async function moveToNewMember(
