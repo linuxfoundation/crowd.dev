@@ -6,7 +6,7 @@ import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
 
-import { memberOrganizationAffiliationsRouter } from './dev-stats'
+import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
 
