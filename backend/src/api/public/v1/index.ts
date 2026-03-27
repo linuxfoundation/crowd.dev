@@ -16,7 +16,7 @@ export function v1Router(): Router {
   router.use('/members', oauth2Middleware(AUTH0_CONFIG), membersRouter())
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use(
-    '/member-organization-affiliations',
+    '/affiliations',
     staticApiKeyMiddleware(),
     memberOrganizationAffiliationsRouter(),
   )
