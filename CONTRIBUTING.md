@@ -8,7 +8,7 @@ Contributions are what make the open-source community such an amazing place to l
 - Help with [open issues](https://github.com/CrowdDotDev/crowd.dev/issues).
 - Add a new integration following our [framework](https://docs.crowd.dev/docs/integration-framework).
 - Help create tutorials and [blog](https://www.crowd.dev/blog) posts.
-- Improve [documentation](https://docs.crowd.dev/docs) by fixing incomplete or missing docs, bad wording, examples, or explanations.
+- Improve [documentation](./docs/self-hosting.md) by fixing incomplete or missing docs, bad wording, examples, or explanations.
 
 Any contributions you make are **greatly appreciated**. ❤️
 
@@ -106,7 +106,7 @@ cd scripts
 
 The app will be available at http://localhost:8081
 
-For more information on development, you can <a href="https://docs.crowd.dev/docs/docker-compose-single-machine-development-with-docker-images">check our docs</a>.
+For more information on development, you can [check our self-hosting guide](./docs/self-hosting.md).
 
 #### Running services individually
 

@@ -20,13 +20,8 @@
       <div class="flex flex-col gap-2 items-start mb-2">
         <span class="text-xs font-light mb-2 text-gray-900">
           Monitor mentions of your community/organization on Hacker News.
-          <br />Historical data is available after the 1st of December 2022.
-          <a
-            href="https://docs.crowd.dev/docs/hacker-news-integration"
-            target="__blank"
-          >
-            Read more</a>.
-        </span>
+          Historical data is available after the 1st of December 2022.
+</span>
         <span class="text-sm font-medium">Track posts mentioning your community/organization</span>
         <span class="text-2xs font-light mb-2 text-gray-600">
           Monitor your community/organization being mentioned in the top 500 of
