@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import { LlmQueryType } from '@crowd/types'
 
@@ -74,6 +74,12 @@ export async function processMemberBotAnalysisWithLLM(
 
   const start = llm.answer.indexOf('{')
   const end = llm.answer.lastIndexOf('}')
+
+  if (start === -1 || end === -1) {
+    throw ApplicationFailure.retryable(
+      `LLM returned no valid JSON object for member ${memberId}: ${llm.answer.substring(0, 200)}`,
+    )
+  }
 
   const { isBot, signals } = JSON.parse(
     llm.answer.substring(start, end + 1),
