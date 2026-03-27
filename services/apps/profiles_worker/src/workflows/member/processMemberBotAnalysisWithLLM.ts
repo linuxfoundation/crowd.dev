@@ -57,10 +57,9 @@ export async function processMemberBotAnalysisWithLLM(
                   OUTPUT FORMAT:
                   - Include "signals" object only when isBot: true
                   - Omit fields from signals that provide no automation evidence
-                  IMPORTANT: 
-                  - Your response must be raw JSON only. 
-                  - No markdown, no code fences, no backticks, no explanation. 
-                  - Start with { and end with }.
+                  - You must return ONLY valid JSON.
+                  - Do NOT add code fences, explanations, or extra text.
+                  - The JSON must begin with '{' and end with '}'.
                   JSON SCHEMA:
                   {
                     "isBot": boolean,
@@ -73,8 +72,12 @@ export async function processMemberBotAnalysisWithLLM(
 
   const llm = await getLLMResult(LlmQueryType.MEMBER_BOT_VALIDATION, PROMPT, memberId)
 
-  const answer = llm.answer.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
-  const { isBot, signals } = JSON.parse(answer) as MemberBotSuggestionResult
+  const start = llm.answer.indexOf('{')
+  const end = llm.answer.lastIndexOf('}')
+
+  const { isBot, signals } = JSON.parse(
+    llm.answer.substring(start, end + 1),
+  ) as MemberBotSuggestionResult
 
   if (!isBot) {
     await createMemberNoBot(memberId)
