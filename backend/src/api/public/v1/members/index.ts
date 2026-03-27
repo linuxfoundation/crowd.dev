@@ -4,6 +4,7 @@ import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
+import { createMemberIdentity } from './identities/createMemberIdentity'
 import { getMemberIdentities } from './identities/getMemberIdentities'
 import { verifyMemberIdentity } from './identities/verifyMemberIdentity'
 import { getMemberMaintainerRoles } from './maintainer-roles/getMemberMaintainerRoles'
@@ -25,6 +26,12 @@ export function membersRouter(): Router {
     '/:memberId/identities',
     requireScopes([SCOPES.READ_MEMBER_IDENTITIES]),
     safeWrap(getMemberIdentities),
+  )
+
+  router.post(
+    '/:memberId/identities',
+    requireScopes([SCOPES.WRITE_MEMBER_IDENTITIES]),
+    safeWrap(createMemberIdentity),
   )
 
   router.patch(
