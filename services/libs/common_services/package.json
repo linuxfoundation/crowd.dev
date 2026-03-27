@@ -25,7 +25,7 @@
     "@crowd/types": "workspace:*",
     "@octokit/request": "^5.6.3",
     "@octokit/rest": "^22.0.0",
-    "axios": "^1.13.1",
+    "axios": "^0.30.3",
     "jsonwebtoken": "^9.0.0",
     "lodash.isequal": "^4.5.0",
     "lodash.pick": "~4.4.0",

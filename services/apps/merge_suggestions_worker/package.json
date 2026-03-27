@@ -22,7 +22,7 @@
     "@crowd/types": "workspace:*",
     "@temporalio/client": "~1.11.8",
     "@temporalio/workflow": "~1.11.8",
-    "axios": "^1.6.8",
+    "axios": "^0.30.3",
     "fast-levenshtein": "^3.0.0",
     "lodash.uniqby": "^4.7.0",
     "tsx": "^4.7.1",

@@ -23,7 +23,7 @@
     "@gitbeaker/rest": "^43.5.0",
     "@octokit/auth-app": "^4.0.13",
     "@octokit/graphql": "^5.0.6",
-    "axios": "^1.4.0",
+    "axios": "^0.30.3",
     "he": "^1.2.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.merge": "^4.6.2",

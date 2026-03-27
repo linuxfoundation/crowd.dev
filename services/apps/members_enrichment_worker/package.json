@@ -25,7 +25,7 @@
     "@temporalio/client": "~1.11.8",
     "@temporalio/workflow": "~1.11.8",
     "auth0": "^4.3.1",
-    "axios": "~1.6.2",
+    "axios": "~0.30.3",
     "lodash": "~4.17.21",
     "moment": "~2.29.4",
     "tsx": "^4.7.1",

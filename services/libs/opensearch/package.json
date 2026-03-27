@@ -21,7 +21,7 @@
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",
     "@opensearch-project/opensearch": "^2.11.0",
-    "axios": "^1.6.0",
+    "axios": "^0.30.3",
     "lodash.merge": "^4.6.2"
   }
 }
