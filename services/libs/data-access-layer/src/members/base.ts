@@ -95,6 +95,8 @@ export interface MemberUpdateInput {
   manuallyCreated?: boolean
 }
 
+export const BLACKLISTED_MEMBER_TITLES = ['investor', 'mentor', 'board member']
+
 export const MEMBER_MERGE_FIELDS = [
   'affiliations',
   'attributes',

@@ -580,6 +580,11 @@ export async function createOrUpdateRelations(
   let index = 0
 
   const activityIds = new Set<string>()
+  const checkedMembers = new Map<string, string | null>() // id -> resolved id (null if not found)
+  const checkedObjectMembers = new Map<string, string | null>() // separate cache for objectMemberId lookups
+  const checkedOrganizations = new Map<string, boolean>() // id -> exists
+  const checkedSegments = new Map<string, boolean>() // id -> exists
+  const checkedConversations = new Map<string, boolean>() // id -> exists
   const valueList: string[] = []
   for (const data of relations) {
     if (data.username === undefined || data.username === null) {
@@ -597,132 +602,182 @@ export async function createOrUpdateRelations(
     if (!skipChecks) {
       // check objectMember exists
       if (data.objectMemberId !== undefined && data.objectMemberId !== null) {
-        let objectMember = await qe.select(
-          `
+        if (checkedObjectMembers.has(data.objectMemberId)) {
+          data.objectMemberId = checkedObjectMembers.get(data.objectMemberId)
+        } else {
+          let objectMember = await qe.select(
+            `
       SELECT id
       FROM members
       WHERE id = $(objectMemberId)
     `,
-          {
-            objectMemberId: data.objectMemberId,
-          },
-        )
+            {
+              objectMemberId: data.objectMemberId,
+            },
+          )
 
-        if (objectMember.length === 0) {
-          if (data.objectMemberUsername && data.platform) {
-            objectMember = await qe.select(
-              `
+          if (objectMember.length === 0) {
+            if (data.objectMemberUsername && data.platform) {
+              objectMember = await qe.select(
+                `
           SELECT "memberId"
           FROM "memberIdentities"
-          WHERE value = $(value) 
-            and platform = $(platform) 
+          WHERE value = $(value)
+            and platform = $(platform)
             and verified = true
             and "deletedAt" is null
           limit 1
         `,
-              {
-                value: data.objectMemberUsername,
-                platform: data.platform,
-              },
-            )
+                {
+                  value: data.objectMemberUsername,
+                  platform: data.platform,
+                },
+              )
 
-            if (objectMember.length === 0) {
-              data.objectMemberId = null
+              if (objectMember.length === 0) {
+                checkedObjectMembers.set(data.objectMemberId, null)
+                data.objectMemberId = null
+              } else {
+                checkedObjectMembers.set(data.objectMemberId, objectMember[0].memberId)
+                data.objectMemberId = objectMember[0].memberId
+              }
             } else {
-              data.objectMemberId = objectMember[0].memberId
+              checkedObjectMembers.set(data.objectMemberId, null)
+              data.objectMemberId = null
             }
           } else {
-            data.objectMemberId = null
+            checkedObjectMembers.set(data.objectMemberId, data.objectMemberId)
           }
         }
       }
 
       // check conversation exists
       if (data.conversationId !== undefined && data.conversationId !== null) {
-        const conversation = await qe.select(
-          `
+        if (checkedConversations.has(data.conversationId)) {
+          if (!checkedConversations.get(data.conversationId)) {
+            data.conversationId = null
+          }
+        } else {
+          const conversation = await qe.select(
+            `
       SELECT id
       FROM conversations
       WHERE id = $(conversationId)
     `,
-          {
-            conversationId: data.conversationId,
-          },
-        )
+            {
+              conversationId: data.conversationId,
+            },
+          )
 
-        if (conversation.length === 0) {
-          data.conversationId = null
+          if (conversation.length === 0) {
+            checkedConversations.set(data.conversationId, false)
+            data.conversationId = null
+          } else {
+            checkedConversations.set(data.conversationId, true)
+          }
         }
       }
 
       // check segmentId exists
-      const segment = await qe.select(
-        `
+      if (checkedSegments.has(data.segmentId)) {
+        if (!checkedSegments.get(data.segmentId)) {
+          // segment not found, skip adding this activity relation
+          continue
+        }
+      } else {
+        const segment = await qe.select(
+          `
       SELECT id
       FROM segments
       WHERE id = $(segmentId)
     `,
-        {
-          segmentId: data.segmentId,
-        },
-      )
+          {
+            segmentId: data.segmentId,
+          },
+        )
 
-      if (segment.length === 0) {
-        // segment not found, skip adding this activity relation
-        continue
+        if (segment.length === 0) {
+          checkedSegments.set(data.segmentId, false)
+          // segment not found, skip adding this activity relation
+          continue
+        }
+
+        checkedSegments.set(data.segmentId, true)
       }
 
       // check member exists
-      let member = await qe.select(
-        `
+      if (checkedMembers.has(data.memberId)) {
+        const resolved = checkedMembers.get(data.memberId)
+        if (resolved === null) {
+          // member not found, skip adding this activity relation
+          continue
+        }
+        data.memberId = resolved
+      } else {
+        let member = await qe.select(
+          `
       SELECT id
       FROM members
       WHERE id = $(memberId)
     `,
-        {
-          memberId: data.memberId,
-        },
-      )
+          {
+            memberId: data.memberId,
+          },
+        )
 
-      if (member.length === 0) {
-        // find member using identity
-        member = await qe.select(
-          `
+        if (member.length === 0) {
+          // find member using identity
+          member = await qe.select(
+            `
         SELECT "memberId"
         FROM "memberIdentities"
-        WHERE value = $(value) 
-          and platform = $(platform) 
+        WHERE value = $(value)
+          and platform = $(platform)
           and verified = true
           and "deletedAt" is null
         limit 1
       `,
-          {
-            value: data.username,
-            platform: data.platform,
-          },
-        )
-        if (member.length === 0) {
-          // member not found, skip adding this activity relation
-          continue
+            {
+              value: data.username,
+              platform: data.platform,
+            },
+          )
+          if (member.length === 0) {
+            checkedMembers.set(data.memberId, null)
+            // member not found, skip adding this activity relation
+            continue
+          } else {
+            checkedMembers.set(data.memberId, member[0].memberId)
+            data.memberId = member[0].memberId
+          }
         } else {
-          data.memberId = member[0].memberId
+          checkedMembers.set(data.memberId, data.memberId)
         }
       }
 
       if (data.organizationId !== undefined && data.organizationId !== null) {
-        const organization = await qe.select(
-          `
+        if (checkedOrganizations.has(data.organizationId)) {
+          if (!checkedOrganizations.get(data.organizationId)) {
+            data.organizationId = null
+          }
+        } else {
+          const organization = await qe.select(
+            `
         SELECT id
         FROM organizations
         WHERE id = $(organizationId)
       `,
-          {
-            organizationId: data.organizationId,
-          },
-        )
+            {
+              organizationId: data.organizationId,
+            },
+          )
 
-        if (organization.length === 0) {
-          data.organizationId = null
+          if (organization.length === 0) {
+            checkedOrganizations.set(data.organizationId, false)
+            data.organizationId = null
+          } else {
+            checkedOrganizations.set(data.organizationId, true)
+          }
         }
       }
     }

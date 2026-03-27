@@ -129,7 +129,9 @@ export const getDbConnection = async (
   })
 
   const profile = process.env['CROWD_POSTGRESQL_PROFILE_QUERIES'] !== undefined
-  const minQueryDuration = Number(process.env['CROWD_POSTGRESQL_PROFILE_QUERIES_MIN_DURATION'] || 0)
+  const minQueryDurationMs = Number(
+    process.env['CROWD_POSTGRESQL_PROFILE_QUERIES_MIN_DURATION'] || 0,
+  )
 
   const oldQuery = client.query
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,7 +143,7 @@ export const getDbConnection = async (
       return result
     } finally {
       const duration = performance.now() - start
-      if (profile && duration >= minQueryDuration) {
+      if (profile && duration >= minQueryDurationMs) {
         const durationSeconds = duration / 1000.0
         log.warn(
           { durationSeconds: durationSeconds.toFixed(2), query, values: options },
