@@ -23,7 +23,7 @@ SQL >
             ) AS url,
             '' AS segmentId
     {% else %}
-        SELECT r.url, r.segmentId
+        SELECT r.url AS url, r.segmentId AS segmentId
         FROM repositories r FINAL
         INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
         WHERE
@@ -37,7 +37,7 @@ DESCRIPTION >
     Identify Gerrit repositories by joining with integrations table
 
 SQL >
-    SELECT r.url, r.segmentId
+    SELECT r.url AS url, r.segmentId AS segmentId
     FROM repositories r FINAL
     JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
     INNER JOIN insightsProjects p FINAL ON r.insightsProjectId = p.id
