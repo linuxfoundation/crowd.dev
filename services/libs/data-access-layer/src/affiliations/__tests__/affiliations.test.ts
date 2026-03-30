@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { QueryExecutor } from '../../queryExecutor'
+import {
+  buildTimeline,
+  resolveAffiliationsByMemberIds,
+  selectPrimaryWorkExperience,
+} from '../index'
+import type { IWorkExperienceResolution } from '../index'
+
 // Mocks are hoisted before imports — intercept transitive dependencies that
 // require a live database or external services.
 vi.mock('@crowd/database', () => ({}))
@@ -20,14 +28,6 @@ vi.mock('@crowd/redis', () => ({}))
 vi.mock('../../members/base', () => ({
   BLACKLISTED_MEMBER_TITLES: ['investor', 'mentor', 'board member'],
 }))
-
-import type { QueryExecutor } from '../../queryExecutor'
-import {
-  buildTimeline,
-  resolveAffiliationsByMemberIds,
-  selectPrimaryWorkExperience,
-} from '../index'
-import type { IWorkExperienceResolution } from '../index'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,8 +70,16 @@ describe('selectPrimaryWorkExperience', () => {
   })
 
   it('picks the manual affiliation (segmentId != null) over work experiences', () => {
-    const workExp = makeRow({ organizationId: 'work', organizationName: 'Work Inc', segmentId: null })
-    const manual = makeRow({ organizationId: 'manual', organizationName: 'Manual Org', segmentId: 'seg-1' })
+    const workExp = makeRow({
+      organizationId: 'work',
+      organizationName: 'Work Inc',
+      segmentId: null,
+    })
+    const manual = makeRow({
+      organizationId: 'manual',
+      organizationName: 'Manual Org',
+      segmentId: 'seg-1',
+    })
     const result = selectPrimaryWorkExperience([workExp, manual])
     expect(result.organizationName).toBe('Manual Org')
   })
@@ -96,7 +104,11 @@ describe('selectPrimaryWorkExperience', () => {
   })
 
   it('picks the isPrimaryWorkExperience=true row when no manual affiliations exist', () => {
-    const plain = makeRow({ organizationId: 'plain', organizationName: 'Plain', dateStart: '2018-01-01' })
+    const plain = makeRow({
+      organizationId: 'plain',
+      organizationName: 'Plain',
+      dateStart: '2018-01-01',
+    })
     const primary = makeRow({
       organizationId: 'primary',
       organizationName: 'Primary',
@@ -126,7 +138,11 @@ describe('selectPrimaryWorkExperience', () => {
 
   it('picks the single dated org when no primary and only one has a dateStart', () => {
     const undated = makeRow({ organizationId: 'u', organizationName: 'Undated', dateStart: null })
-    const dated = makeRow({ organizationId: 'd', organizationName: 'Dated', dateStart: '2020-01-01' })
+    const dated = makeRow({
+      organizationId: 'd',
+      organizationName: 'Dated',
+      dateStart: '2020-01-01',
+    })
     const result = selectPrimaryWorkExperience([undated, dated])
     expect(result.organizationName).toBe('Dated')
   })
@@ -189,7 +205,11 @@ describe('buildTimeline', () => {
   })
 
   it('produces a single closed period for an org with both start and end dates', () => {
-    const org = makeRow({ organizationName: 'Acme', dateStart: '2020-01-01', dateEnd: '2022-12-31' })
+    const org = makeRow({
+      organizationName: 'Acme',
+      dateStart: '2020-01-01',
+      dateEnd: '2022-12-31',
+    })
     // afterEnd boundary: day after dateEnd
     const boundaries = [startOfDay('2020-01-01'), startOfDay('2023-01-01')]
 
@@ -205,10 +225,24 @@ describe('buildTimeline', () => {
   })
 
   it('produces two sequential periods when orgs share a boundary with no gap', () => {
-    const org1 = makeRow({ organizationId: 'o1', organizationName: 'Org1', dateStart: '2018-01-01', dateEnd: '2020-12-31' })
-    const org2 = makeRow({ organizationId: 'o2', organizationName: 'Org2', dateStart: '2021-01-01', dateEnd: null })
+    const org1 = makeRow({
+      organizationId: 'o1',
+      organizationName: 'Org1',
+      dateStart: '2018-01-01',
+      dateEnd: '2020-12-31',
+    })
+    const org2 = makeRow({
+      organizationId: 'o2',
+      organizationName: 'Org2',
+      dateStart: '2021-01-01',
+      dateEnd: null,
+    })
     // 2021-01-01 is both the afterEnd of org1 and the dateStart of org2
-    const boundaries = [startOfDay('2018-01-01'), startOfDay('2021-01-01'), startOfDay('2026-01-01')]
+    const boundaries = [
+      startOfDay('2018-01-01'),
+      startOfDay('2021-01-01'),
+      startOfDay('2026-01-01'),
+    ]
 
     const result = buildTimeline([org1, org2], null, boundaries)
 
@@ -227,10 +261,25 @@ describe('buildTimeline', () => {
   })
 
   it('fills a gap between two orgs with the fallback org', () => {
-    const org1 = makeRow({ organizationId: 'o1', organizationName: 'Org1', dateStart: '2018-01-01', dateEnd: '2019-12-31' })
-    const org2 = makeRow({ organizationId: 'o2', organizationName: 'Org2', dateStart: '2021-01-01', dateEnd: null })
+    const org1 = makeRow({
+      organizationId: 'o1',
+      organizationName: 'Org1',
+      dateStart: '2018-01-01',
+      dateEnd: '2019-12-31',
+    })
+    const org2 = makeRow({
+      organizationId: 'o2',
+      organizationName: 'Org2',
+      dateStart: '2021-01-01',
+      dateEnd: null,
+    })
     const fallback = makeRow({ organizationId: 'fb', organizationName: 'Fallback' })
-    const boundaries = [startOfDay('2018-01-01'), startOfDay('2020-01-01'), startOfDay('2021-01-01'), startOfDay('2026-01-01')]
+    const boundaries = [
+      startOfDay('2018-01-01'),
+      startOfDay('2020-01-01'),
+      startOfDay('2021-01-01'),
+      startOfDay('2026-01-01'),
+    ]
 
     const result = buildTimeline([org1, org2], fallback, boundaries)
 
@@ -254,9 +303,24 @@ describe('buildTimeline', () => {
   })
 
   it('leaves a gap unfilled when there is no fallback org', () => {
-    const org1 = makeRow({ organizationId: 'o1', organizationName: 'Org1', dateStart: '2018-01-01', dateEnd: '2019-12-31' })
-    const org2 = makeRow({ organizationId: 'o2', organizationName: 'Org2', dateStart: '2021-01-01', dateEnd: null })
-    const boundaries = [startOfDay('2018-01-01'), startOfDay('2020-01-01'), startOfDay('2021-01-01'), startOfDay('2026-01-01')]
+    const org1 = makeRow({
+      organizationId: 'o1',
+      organizationName: 'Org1',
+      dateStart: '2018-01-01',
+      dateEnd: '2019-12-31',
+    })
+    const org2 = makeRow({
+      organizationId: 'o2',
+      organizationName: 'Org2',
+      dateStart: '2021-01-01',
+      dateEnd: null,
+    })
+    const boundaries = [
+      startOfDay('2018-01-01'),
+      startOfDay('2020-01-01'),
+      startOfDay('2021-01-01'),
+      startOfDay('2026-01-01'),
+    ]
 
     const result = buildTimeline([org1, org2], null, boundaries)
 
@@ -275,9 +339,18 @@ describe('buildTimeline', () => {
   })
 
   it('extends the fallback org to cover a trailing gap after the last dated org ends', () => {
-    const org1 = makeRow({ organizationId: 'o1', organizationName: 'Org1', dateStart: '2018-01-01', dateEnd: '2019-12-31' })
+    const org1 = makeRow({
+      organizationId: 'o1',
+      organizationName: 'Org1',
+      dateStart: '2018-01-01',
+      dateEnd: '2019-12-31',
+    })
     const fallback = makeRow({ organizationId: 'fb', organizationName: 'Fallback' })
-    const boundaries = [startOfDay('2018-01-01'), startOfDay('2020-01-01'), startOfDay('2026-01-01')]
+    const boundaries = [
+      startOfDay('2018-01-01'),
+      startOfDay('2020-01-01'),
+      startOfDay('2026-01-01'),
+    ]
 
     const result = buildTimeline([org1], fallback, boundaries)
 
@@ -310,7 +383,12 @@ describe('buildTimeline', () => {
       dateEnd: null,
       memberCount: 100,
     })
-    const boundaries = [startOfDay('2018-01-01'), startOfDay('2020-01-01'), startOfDay('2022-01-01'), startOfDay('2026-01-01')]
+    const boundaries = [
+      startOfDay('2018-01-01'),
+      startOfDay('2020-01-01'),
+      startOfDay('2022-01-01'),
+      startOfDay('2026-01-01'),
+    ]
 
     const result = buildTimeline([low, high], null, boundaries)
 
@@ -329,9 +407,23 @@ describe('buildTimeline', () => {
   })
 
   it('undated org in allRows competes at every boundary and takes over after the dated org ends', () => {
-    const undated = makeRow({ organizationId: 'undated', organizationName: 'Undated', dateStart: null, dateEnd: null })
-    const dated = makeRow({ organizationId: 'dated', organizationName: 'Dated', dateStart: '2020-01-01', dateEnd: '2020-12-31' })
-    const boundaries = [startOfDay('2020-01-01'), startOfDay('2021-01-01'), startOfDay('2026-01-01')]
+    const undated = makeRow({
+      organizationId: 'undated',
+      organizationName: 'Undated',
+      dateStart: null,
+      dateEnd: null,
+    })
+    const dated = makeRow({
+      organizationId: 'dated',
+      organizationName: 'Dated',
+      dateStart: '2020-01-01',
+      dateEnd: '2020-12-31',
+    })
+    const boundaries = [
+      startOfDay('2020-01-01'),
+      startOfDay('2021-01-01'),
+      startOfDay('2026-01-01'),
+    ]
 
     const result = buildTimeline([undated, dated], null, boundaries)
 
@@ -447,8 +539,22 @@ describe('resolveAffiliationsByMemberIds', () => {
   })
 
   it('processes multiple members independently', async () => {
-    const m1row = makeRow({ id: 'r1', memberId: 'm1', organizationId: 'o1', organizationName: 'Acme', dateStart: '2020-01-01', dateEnd: null })
-    const m2row = makeRow({ id: 'r2', memberId: 'm2', organizationId: 'o2', organizationName: 'CERN', dateStart: '2019-01-01', dateEnd: null })
+    const m1row = makeRow({
+      id: 'r1',
+      memberId: 'm1',
+      organizationId: 'o1',
+      organizationName: 'Acme',
+      dateStart: '2020-01-01',
+      dateEnd: null,
+    })
+    const m2row = makeRow({
+      id: 'r2',
+      memberId: 'm2',
+      organizationId: 'o2',
+      organizationName: 'CERN',
+      dateStart: '2019-01-01',
+      dateEnd: null,
+    })
     mockSelect.mockResolvedValueOnce([m1row, m2row]).mockResolvedValueOnce([])
 
     const result = await resolveAffiliationsByMemberIds(mockQx, ['m1', 'm2'])
@@ -582,7 +688,7 @@ describe('resolveAffiliationsByMemberIds', () => {
     const result = await resolveAffiliationsByMemberIds(mockQx, ['m1'])
     const orgs = result.get('m1').map((a) => a.organization)
 
-    expect(orgs).toContain('ManualOrg')       // manual survived the filter
+    expect(orgs).toContain('ManualOrg') // manual survived the filter
     expect(orgs).not.toContain('ExtraUndated') // extra undated work-exp was dropped
   })
 
@@ -590,13 +696,13 @@ describe('resolveAffiliationsByMemberIds', () => {
   it('propagates errors thrown by qx.select', async () => {
     mockSelect.mockRejectedValueOnce(new Error('DB connection lost'))
 
-    await expect(resolveAffiliationsByMemberIds(mockQx, ['m1'])).rejects.toThrow('DB connection lost')
+    await expect(resolveAffiliationsByMemberIds(mockQx, ['m1'])).rejects.toThrow(
+      'DB connection lost',
+    )
   })
 
   it('propagates errors thrown by the second qx.select (manual affiliations query)', async () => {
-    mockSelect
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error('query timeout'))
+    mockSelect.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('query timeout'))
 
     await expect(resolveAffiliationsByMemberIds(mockQx, ['m1'])).rejects.toThrow('query timeout')
   })
