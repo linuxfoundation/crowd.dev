@@ -40,7 +40,13 @@ SQL >
     SELECT r.url, r.segmentId
     FROM repositories r FINAL
     JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    WHERE i.platform = 'gerrit' AND isNull (r.deletedAt) AND r.url IN (SELECT url FROM repos_to_expand)
+    INNER JOIN insightsProjects p FINAL ON r.insightsProjectId = p.id
+    WHERE
+        i.platform = 'gerrit'
+        AND isNull (r.deletedAt)
+        AND r.enabled = true
+        AND isNull (p.deletedAt)
+        AND r.url IN (SELECT url FROM repos_to_expand)
 
 NODE expanded_urls
 DESCRIPTION >
