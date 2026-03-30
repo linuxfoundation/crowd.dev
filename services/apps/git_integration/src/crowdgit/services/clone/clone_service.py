@@ -17,6 +17,7 @@ from crowdgit.services.utils import (
     get_default_branch,
     get_remote_default_branch,
     get_repo_name,
+    normalize_gerrit_remote,
     run_shell_command,
 )
 
@@ -370,6 +371,7 @@ class CloneService(BaseService):
         error_message = None
         total_execution_time = 0.0
         remote = repository.url.removesuffix(".git")
+        clone_remote = normalize_gerrit_remote(remote)
 
         batch_info = CloneBatchInfo(
             repo_path=temp_repo_path,
@@ -382,10 +384,10 @@ class CloneService(BaseService):
             batch_start_time = time.time()
 
             clone_with_batches = await self.determine_clone_strategy(
-                temp_repo_path, remote, repository.branch, repository.last_processed_commit
+                temp_repo_path, clone_remote, repository.branch, repository.last_processed_commit
             )
             if clone_with_batches:
-                batch_depth = await self._calculate_batch_depth(temp_repo_path, remote)
+                batch_depth = await self._calculate_batch_depth(temp_repo_path, clone_remote)
             await self._update_batch_info(
                 batch_info, temp_repo_path, repository.last_processed_commit, clone_with_batches
             )

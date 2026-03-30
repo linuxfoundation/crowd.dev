@@ -32,6 +32,7 @@ export const LLM_MODEL_REGION_MAP: Record<LlmModelType, string> = {
   [LlmModelType.CLAUDE_3_5_SONNET]: 'us-east-1',
   [LlmModelType.CLAUDE_3_5_SONNET_V2]: 'us-west-2',
   [LlmModelType.CLAUDE_SONNET_4]: 'us-east-1',
+  [LlmModelType.CLAUDE_HAIKU_4_5]: 'us-east-1',
 }
 
 // to estimate costs - these numbers can change
@@ -52,67 +53,71 @@ export const LLM_MODEL_PRICING_MAP: Record<LlmModelType, ILlmPricing> = {
     costPer1000InputTokens: 0.003,
     costPer1000OutputTokens: 0.015,
   },
+  [LlmModelType.CLAUDE_HAIKU_4_5]: {
+    costPer1000InputTokens: 0.001,
+    costPer1000OutputTokens: 0.005,
+  },
 }
 
 export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 65536,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_FIND_RELATED_LINKEDIN_PROFILES]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_MULTIPLE_VALUE_ATTRIBUTES]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 40000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_WORK_EXPERIENCES_FROM_MULTIPLE_SOURCES]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 40000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.MATCH_MAIN_GITHUB_ORGANIZATION_AND_DESCRIPTION]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 5000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.REPO_CATEGORIES]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.REPO_COLLECTIONS]: {
-    modelId: LlmModelType.CLAUDE_3_5_SONNET_V2,
+    modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 200000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
   },
   [LlmQueryType.MEMBER_BOT_VALIDATION]: {
-    modelId: LlmModelType.CLAUDE_SONNET_4,
+    modelId: LlmModelType.CLAUDE_HAIKU_4_5,
     arguments: {
       max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',

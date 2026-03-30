@@ -3,6 +3,7 @@ import {
   IMemberIdentity,
   MemberIdentityType,
   NewMemberIdentity,
+  PlatformType,
   UpdateMemberIdentity,
 } from '@crowd/types'
 
@@ -48,22 +49,25 @@ export async function fetchManyMemberIdentities(
   )
 }
 
-export async function checkIdentityExistance(
+export async function checkMemberIdentityExistence(
   qx: QueryExecutor,
   value: string,
   platform: string,
+  type?: MemberIdentityType,
 ): Promise<IMemberIdentity[]> {
   return await qx.select(
     `
-        SELECT id, "memberId"
+        SELECT id, "memberId", verified
         FROM "memberIdentities"
         WHERE "value" = $(value)
           AND "platform" = $(platform)
+          ${type ? 'AND "type" = $(type)' : ''}
           AND "deletedAt" is null;
     `,
     {
       value,
       platform,
+      type,
     },
   )
 }
@@ -212,40 +216,76 @@ export async function findMemberIdByVerifiedIdentity(
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<IMemberIdentity[]>
+export async function insertManyMemberIdentities(
+  qx: QueryExecutor,
+  identities: NewMemberIdentity[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<void>
+export async function insertManyMemberIdentities(
+  qx: QueryExecutor,
+  identities: NewMemberIdentity[],
   failOnConflict = false,
-) {
-  return qx.result(
-    prepareBulkInsert(
-      'memberIdentities',
-      [
-        'memberId',
-        'tenantId',
-        'integrationId',
-        'platform',
-        'source',
-        'sourceId',
-        'value',
-        'type',
-        'verified',
-        'verifiedBy',
-      ],
-      identities.map((i) => {
-        return {
-          tenantId: DEFAULT_TENANT_ID,
-          ...i,
-        }
-      }),
-      failOnConflict ? undefined : 'DO NOTHING',
-    ),
+  returnRows = false,
+): Promise<IMemberIdentity[] | void> {
+  const query = prepareBulkInsert(
+    'memberIdentities',
+    [
+      'memberId',
+      'tenantId',
+      'integrationId',
+      'platform',
+      'source',
+      'sourceId',
+      'value',
+      'type',
+      'verified',
+      'verifiedBy',
+    ],
+    identities.map((i) => {
+      return {
+        tenantId: DEFAULT_TENANT_ID,
+        ...i,
+      }
+    }),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
   )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  await qx.result(query)
 }
 
 export async function createMemberIdentity(
   qx: QueryExecutor,
   i: NewMemberIdentity,
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<IMemberIdentity>
+export async function createMemberIdentity(
+  qx: QueryExecutor,
+  i: NewMemberIdentity,
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<void>
+export async function createMemberIdentity(
+  qx: QueryExecutor,
+  i: NewMemberIdentity,
   failOnConflict = false,
-) {
-  return insertManyMemberIdentities(qx, [i], failOnConflict)
+  returnRows = false,
+): Promise<IMemberIdentity | void> {
+  if (returnRows) {
+    const rows = await insertManyMemberIdentities(qx, [i], failOnConflict, true)
+    return rows[0]
+  }
+
+  await insertManyMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(
@@ -634,4 +674,57 @@ export async function findMemberIdsByIdentities(
   )
 
   return result.map((r) => r.memberId)
+}
+
+export interface IDevStatsMemberRow {
+  githubHandle: string
+  memberId: string
+  displayName: string | null
+}
+
+export async function findMembersByGithubHandles(
+  qx: QueryExecutor,
+  lowercasedHandles: string[],
+): Promise<IDevStatsMemberRow[]> {
+  return qx.select(
+    `
+      SELECT
+        mi.value       AS "githubHandle",
+        mi."memberId",
+        m."displayName"
+      FROM "memberIdentities" mi
+      JOIN members m ON m.id = mi."memberId"
+      WHERE mi.platform = $(platform)
+        AND mi.type     = $(type)
+        AND mi.verified = true
+        AND lower(mi.value) IN ($(lowercasedHandles:csv))
+        AND mi."deletedAt" IS NULL
+        AND m."deletedAt"  IS NULL
+    `,
+    {
+      platform: PlatformType.GITHUB,
+      type: MemberIdentityType.USERNAME,
+      lowercasedHandles,
+    },
+  )
+}
+
+export async function findVerifiedEmailsByMemberIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string }[]> {
+  return qx.select(
+    `
+      SELECT "memberId", value AS email
+      FROM "memberIdentities"
+      WHERE "memberId" IN ($(memberIds:csv))
+        AND type       = $(type)
+        AND verified   = true
+        AND "deletedAt" IS NULL
+    `,
+    {
+      memberIds,
+      type: MemberIdentityType.EMAIL,
+    },
+  )
 }
