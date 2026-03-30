@@ -288,7 +288,7 @@ components:
           example:
             error:
               code: BAD_REQUEST
-              message: "githubHandles: Maximum 100 handles per request"
+              message: 'githubHandles: Maximum 100 handles per request'
 
     Unauthorized:
       description: Missing or invalid API key.
