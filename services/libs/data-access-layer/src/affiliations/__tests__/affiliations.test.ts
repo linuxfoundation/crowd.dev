@@ -564,16 +564,17 @@ describe('resolveAffiliationsByMemberIds', () => {
   })
 
   it('manual affiliation (segmentId != null) takes priority over a work experience in the overlapping period', async () => {
-    // Work experience: 2018-01-01 → 2019-12-31 (ended)
-    // Manual affiliation: 2020-01-01 → 2021-12-31 (sequential, no overlap)
-    // Both past-dated so the result is date-independent.
+    // Work experience: 2018-01-01 → 2021-12-31
+    // Manual affiliation: 2020-01-01 → 2021-12-31
+    // They overlap from 2020-01-01; in that window the manual must win.
+    // Both end in the past so the result is date-independent.
     const workExp = makeRow({
       id: 'we1',
       memberId: 'm1',
       organizationId: 'org-work',
       organizationName: 'WorkOrg',
       dateStart: '2018-01-01',
-      dateEnd: '2019-12-31',
+      dateEnd: '2021-12-31',
       segmentId: null,
     })
     const manual = makeRow({
@@ -584,17 +585,20 @@ describe('resolveAffiliationsByMemberIds', () => {
       dateStart: '2020-01-01',
       dateEnd: '2021-12-31',
       segmentId: 'seg-1',
-      isPrimaryWorkExperience: false,
     })
     mockSelect.mockResolvedValueOnce([workExp]).mockResolvedValueOnce([manual])
 
     const result = await resolveAffiliationsByMemberIds(mockQx, ['m1'])
     const affiliations = result.get('m1')
 
-    // Newest first: ManualOrg (2020), then WorkOrg (2018)
+    // Newest first:
+    //   ManualOrg  2020-01-01 → 2021-12-31  (manual won the overlap)
+    //   WorkOrg    2018-01-01 → 2019-12-31  (work exp before manual started)
     expect(affiliations).toHaveLength(2)
     expect(affiliations[0].organization).toBe('ManualOrg')
+    expect(affiliations[0].startDate).toBe(startOfDay('2020-01-01').toISOString())
     expect(affiliations[1].organization).toBe('WorkOrg')
+    expect(affiliations[1].endDate).toBe(startOfDay('2019-12-31').toISOString())
   })
 
   it('member with only an undated work experience gets a null-dated affiliation', async () => {
