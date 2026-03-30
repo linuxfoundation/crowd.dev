@@ -36,24 +36,26 @@ function resolveActor(req: Request, _res: Response, next: NextFunction): void {
 }
 
 export function oauth2Middleware(config: Auth0Configuration): RequestHandler[] {
-  const issuers = config.issuerBaseURLs.split(',').map((s) => s.trim()).filter(Boolean)
-  const handlersByIssuer = new Map(
-    issuers.map((issuerBaseURL) => [
-      issuerBaseURL.replace(/\/$/, ''),
-      auth({ issuerBaseURL, audience: config.audience }),
-    ]),
-  )
+  const issuers = config.issuerBaseURLs
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const issuerHandlers = issuers.map((issuerBaseURL) => ({
+    issuer: issuerBaseURL.replace(/\/$/, ''),
+    handler: auth({ issuerBaseURL, audience: config.audience }),
+  }))
 
   const verifyJwt: RequestHandler = (req, res, next) => {
     const iss = resolveIssuer(req)?.replace(/\/$/, '')
-    const handler = iss ? handlersByIssuer.get(iss) : undefined
+    const match = issuerHandlers.find((h) => h.issuer === iss)
 
-    if (!handler) {
+    if (!match) {
       next(new UnauthorizedError('Unknown token issuer'))
       return
     }
 
-    handler(req, res, next)
+    match.handler(req, res, next)
   }
 
   return [verifyJwt, resolveActor]
