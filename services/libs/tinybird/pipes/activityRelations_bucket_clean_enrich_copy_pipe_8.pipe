@@ -36,9 +36,8 @@ SQL >
         and (
             (
                 platform IN ('git', 'gerrit', 'github', 'gitlab')
-                AND (channel, activityRelations_bucket_MV_ds_8.segmentId) IN (
-                    SELECT channel, segmentId FROM repos_to_channels
-                )
+                AND (channel, activityRelations_bucket_MV_ds_8.segmentId)
+                IN (SELECT channel, segmentId FROM repos_to_channels)
             )
             OR platform NOT IN ('git', 'gerrit', 'github', 'gitlab')
         )
