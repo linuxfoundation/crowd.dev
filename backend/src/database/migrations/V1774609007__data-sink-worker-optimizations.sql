@@ -4,7 +4,6 @@ alter table "activityRelations" drop constraint if exists "activityRelations_act
 
 drop index concurrently if exists "ix_activityRelations_memberId_segmentId_include";
 drop index concurrently if exists "ix_activityRelations_organizationId_segmentId_include";
-drop index concurrently if exists "ix_activityRelations_platform_username";
 
 create index concurrently if not exists idx_osa_org_segment_membercount
     on "organizationSegmentsAgg" ("organizationId", "segmentId")
