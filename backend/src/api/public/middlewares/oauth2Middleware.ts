@@ -10,7 +10,8 @@ function resolveIssuer(req: Request): string | undefined {
   const token = req.headers.authorization?.split(' ')[1]
   if (!token) return undefined
   try {
-    return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).iss
+    const { iss } = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    return typeof iss === 'string' ? iss : undefined
   } catch {
     return undefined
   }
@@ -41,21 +42,32 @@ export function oauth2Middleware(config: Auth0Configuration): RequestHandler[] {
     .map((s) => s.trim())
     .filter(Boolean)
 
-  const issuerHandlers = issuers.map((issuerBaseURL) => ({
-    issuer: issuerBaseURL.replace(/\/$/, ''),
-    handler: auth({ issuerBaseURL, audience: config.audience }),
-  }))
+  if (issuers.length === 0) {
+    throw new Error('No auth0 issuers configured')
+  }
+
+  const handlersByIssuer = new Map(
+    issuers.map((issuerBaseURL) => [
+      issuerBaseURL.replace(/\/$/, ''),
+      auth({ issuerBaseURL, audience: config.audience }),
+    ]),
+  )
 
   const verifyJwt: RequestHandler = (req, res, next) => {
-    const iss = resolveIssuer(req)?.replace(/\/$/, '')
-    const match = issuerHandlers.find((h) => h.issuer === iss)
+    const iss = resolveIssuer(req)
+    if (!iss) {
+      next(new UnauthorizedError('Missing or malformed bearer token'))
+      return
+    }
 
-    if (!match) {
+    const handler = handlersByIssuer.get(iss.replace(/\/$/, ''))
+
+    if (!handler) {
       next(new UnauthorizedError('Unknown token issuer'))
       return
     }
 
-    match.handler(req, res, next)
+    handler(req, res, next)
   }
 
   return [verifyJwt, resolveActor]
