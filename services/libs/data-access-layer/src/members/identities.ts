@@ -190,6 +190,25 @@ export async function moveIdentitiesBetweenMembers(
   }
 }
 
+export async function findMemberIdByVerifiedIdentity(
+  qx: QueryExecutor,
+  platform: string,
+  value: string,
+  type: string,
+): Promise<string | null> {
+  const result = await qx.selectOneOrNone(
+    `SELECT "memberId" FROM "memberIdentities"
+     WHERE platform = $(platform)
+       AND value = $(value)
+       AND type = $(type)
+       AND verified = true
+       AND "deletedAt" IS NULL
+     LIMIT 1`,
+    { platform, value, type },
+  )
+  return result?.memberId ?? null
+}
+
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
