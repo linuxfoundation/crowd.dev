@@ -194,7 +194,7 @@ export async function findMemberIdByVerifiedIdentity(
   qx: QueryExecutor,
   platform: string,
   value: string,
-  type: string,
+  type: MemberIdentityType,
 ): Promise<string | null> {
   const result = await qx.selectOneOrNone(
     `SELECT "memberId" FROM "memberIdentities"

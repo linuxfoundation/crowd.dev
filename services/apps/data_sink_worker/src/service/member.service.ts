@@ -326,6 +326,14 @@ export default class MemberService extends LoggerBase {
                 },
                 'Identity conflict during member creation — reusing existing member, scheduling orphan deletion',
               )
+              await logExecutionTimeV2(
+                () => this.memberRepo.addToSegments(existingMemberId, segmentIds),
+                this.log,
+                'memberService -> create -> addToSegments (conflict path)',
+              )
+              if (releaseMemberLock) {
+                await releaseMemberLock()
+              }
               await this.scheduleOrphanMemberDeletion(id)
               return existingMemberId
             }
