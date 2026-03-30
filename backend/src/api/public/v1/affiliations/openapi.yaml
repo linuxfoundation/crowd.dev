@@ -86,7 +86,7 @@ paths:
                       - torvalds@linux-foundation.org
                     affiliations:
                       - organization: Linux Foundation
-                        startDate: '2007-01-01'
+                        startDate: '2007-01-01T00:00:00.000Z'
                         endDate: null
                 notFound: []
         '400':
@@ -152,9 +152,8 @@ paths:
 components:
   securitySchemes:
     ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: Authorization
+      type: http
+      scheme: bearer
       description: Static API key — pass as `Bearer <token>`.
 
   schemas:
@@ -173,14 +172,14 @@ components:
           type:
             - string
             - 'null'
-          format: date
-          description: Start date of the affiliation period (ISO 8601).
-          example: '2020-01-01'
+          format: date-time
+          description: Start date of the affiliation period (ISO 8601 datetime).
+          example: '2020-01-01T00:00:00.000Z'
         endDate:
           type:
             - string
             - 'null'
-          format: date
+          format: date-time
           description: End date of the affiliation period, or null if currently active.
           example: null
 
