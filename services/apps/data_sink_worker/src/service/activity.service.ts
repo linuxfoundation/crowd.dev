@@ -294,8 +294,8 @@ export default class ActivityService extends LoggerBase {
 
       // When activity.username is set but differs from the member's platform identity value,
       // override it so the member lookup and the identity insert use the same key.
-      // Example: git activities set activity.username to the author display name (e.g. "Doug Hellmann")
-      // while the identity stores the email (e.g. "doug@doughellmann.com"). Without this correction
+      // Example: git activities set activity.username to the author display name (e.g. "John Doe")
+      // while the identity stores the email (e.g. "john.doe@example.com"). Without this correction
       // the lookup misses the existing member, creating an unnecessary orphan member.
       if (username && member) {
         const platformIdentity = member.identities.find(
