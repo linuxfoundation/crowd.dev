@@ -130,6 +130,18 @@ export default class MemberService extends LoggerBase {
           // prevent empty identity handles
           data.identities = data.identities.filter((i) => i.value)
 
+          // deduplicate identities to avoid false-positive conflict detection from duplicate input
+          data.identities = data.identities.filter(
+            (identity, idx) =>
+              data.identities.findIndex(
+                (j) =>
+                  j.platform === identity.platform &&
+                  j.value === identity.value &&
+                  j.type === identity.type &&
+                  j.verified === identity.verified,
+              ) === idx,
+          )
+
           if (data.identities.length === 0) {
             throw new Error('Member must have at least one identity!')
           }
