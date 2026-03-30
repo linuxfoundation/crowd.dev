@@ -224,13 +224,13 @@ export async function insertManyMemberIdentities(
   identities: NewMemberIdentity[],
   failOnConflict?: boolean,
   returnRows?: false,
-): Promise<void>
+): Promise<number>
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
   failOnConflict = false,
   returnRows = false,
-): Promise<IMemberIdentity[] | void> {
+): Promise<IMemberIdentity[] | number> {
   const query = prepareBulkInsert(
     'memberIdentities',
     [
@@ -259,7 +259,7 @@ export async function insertManyMemberIdentities(
     return qx.select(query)
   }
 
-  await qx.result(query)
+  return qx.result(query)
 }
 
 export async function createMemberIdentity(
