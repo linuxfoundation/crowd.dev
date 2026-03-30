@@ -127,12 +127,10 @@ export default class MemberService extends LoggerBase {
         try {
           this.log.debug('Creating a new member!')
 
-          // prevent empty identity handles
-          data.identities = data.identities.filter((i) => i.value)
-
-          // deduplicate identities to avoid false-positive conflict detection from duplicate input
+          // filter empty handles and deduplicate by (platform, value, type, verified)
           data.identities = data.identities.filter(
             (identity, idx) =>
+              !!identity.value &&
               data.identities.findIndex(
                 (j) =>
                   j.platform === identity.platform &&
