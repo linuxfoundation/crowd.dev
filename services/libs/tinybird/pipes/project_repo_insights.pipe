@@ -1,25 +1,26 @@
 DESCRIPTION >
-    - `project_insights.pipe` serves project insights data for a specific project.
-    - Returns comprehensive metrics including project metadata (name, logoUrl, isLF), health score with category breakdowns (contributors, popularity, development, security), contributor count, software value, contributor and organization dependency metrics, leaderboard achievements, and activity metrics for both current and previous 365-day periods.
+    - `project_repo_insights.pipe` serves combined project and repository insights data.
+    - Returns the same metrics as `project_insights.pipe` but includes both project and repository records.
+    - Filtering by project IDs and repository URLs uses an OR condition to return both types.
     - Parameters:
-    - `slug`: Optional string for a single project slug (e.g., 'kubernetes')
-    - `slugs`: Optional array of project slugs for multi-project query (e.g., ['kubernetes', 'tensorflow'])
-    - `ids`: Optional array of project ids for multi-project query
-    - At least one of `slug`, `slugs`, or `ids` should be provided.
+    - `ids`: Optional array of project IDs to filter by
+    - `repoUrls`: Optional array of repository URLs to filter by
     - `isLfx`: Optional integer (1 = LFX, 0 = non-LFX) to filter by LFX project status
     - `orderByField`: Optional string specifying sort field, defaults to 'name'
     - `orderByDirection`: Optional string ('asc' or 'desc'), defaults to 'asc'
     - `pageSize`: Optional integer for result limit, defaults to 10
     - `page`: Optional integer for pagination offset calculation, defaults to 0
-    - Response: Project records with all insights metrics including achievements as array of (leaderboardType, rank, totalCount) tuples
+    - Response: Project and repository records with insights metrics
 
-TAGS "Insights, Widget", "Project"
+TAGS "Insights, Widget", "Project", "Repository"
 
-NODE project_insights_endpoint
+NODE project_repo_insights_endpoint
 SQL >
     %
     SELECT
         id,
+        type,
+        repoUrl,
         name,
         slug,
         logoUrl,
@@ -49,17 +50,17 @@ SQL >
         activeOrganizationsPrevious365Days
     FROM project_insights_copy_ds
     WHERE
-        type = 'project'
-        {% if defined(slug) %}
-            AND slug = {{ String(slug, description="Project slug", required=False) }}
-        {% end %}
-        {% if defined(slugs) %}
-            AND slug
-            IN {{ Array(slugs, 'String', description="Filter by project slug list", required=False) }}
-        {% end %}
-        {% if defined(ids) %}
-            AND id
-            IN {{ Array(ids, 'String', description="Filter by project id list", required=False) }}
+        1 = 1
+        {% if defined(ids) or defined(repoUrls) %}
+            AND (
+                1 = 0
+                {% if defined(ids) %}
+                    OR (type = 'project' AND id IN {{ Array(ids, 'String', description="Filter by project id list", required=False) }})
+                {% end %}
+                {% if defined(repoUrls) %}
+                    OR (type = 'repo' AND repoUrl IN {{ Array(repoUrls, 'String', description="Filter by repository URL list", required=False) }})
+                {% end %}
+            )
         {% end %}
         {% if defined(isLfx) %}
             AND isLF

@@ -26,24 +26,4 @@ SQL >
         {% end %}
     GROUP BY segmentId
 
-NODE health_score_merge_lead_time_with_benchmark
-SQL >
-    SELECT
-        segmentId,
-        mergeLeadTime,
-        CASE
-            WHEN mergeLeadTime >= 30
-            THEN 0
-            WHEN mergeLeadTime BETWEEN 21 AND 30
-            THEN 1
-            WHEN mergeLeadTime BETWEEN 15 AND 20
-            THEN 2
-            WHEN mergeLeadTime BETWEEN 7 AND 14
-            THEN 3
-            WHEN mergeLeadTime BETWEEN 3 AND 6
-            THEN 4
-            WHEN mergeLeadTime BETWEEN 0 AND 2
-            THEN 5
-            ELSE 0
-        END AS mergeLeadTimeBenchmark
-    FROM health_score_merge_lead_time_score
+INCLUDE "../includes/health_score_merge_lead_time.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_merge_lead_time_score"

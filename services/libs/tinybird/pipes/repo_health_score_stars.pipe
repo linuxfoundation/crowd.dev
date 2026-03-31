@@ -1,0 +1,37 @@
+DESCRIPTION >
+    - Calculates repository-level stars health score.
+    - Returns star count and benchmark (0-5) per repository.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter
+    - `endDate`: Optional DateTime filter
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_stars_score
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, count() AS stars
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            type = 'star'
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, count() AS stars
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE type = 'star' AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel
+    {% end %}
+
+INCLUDE "../includes/health_score_stars.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_stars_score"

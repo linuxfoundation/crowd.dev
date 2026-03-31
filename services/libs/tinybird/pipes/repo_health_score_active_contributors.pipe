@@ -1,18 +1,24 @@
-NODE health_score_active_contributors_score
 DESCRIPTION >
-    Returns activeContributors for previous quarter per project
+    - Calculates repository-level active contributors health score.
+    - Returns unique active contributor count and benchmark (0-5) per repository for the previous quarter.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter for contributions after timestamp
+    - `endDate`: Optional DateTime filter for contributions before timestamp
 
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_active_contributors_score
 SQL >
     %
-    {% if defined(project) %}
-        SELECT segmentId, COALESCE(uniq(memberId), 0) AS activeContributors
-        FROM activityRelations_bucket_routing
+    {% if defined(repoUrl) %}
+        SELECT channel, COALESCE(uniq(memberId), 0) AS activeContributors
+        FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
-            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -21,9 +27,9 @@ SQL >
                 AND timestamp
                 < {{ DateTime(endDate, description="Filter before date", required=False) }}
             {% end %}
-        GROUP BY segmentId
+        GROUP BY channel
     {% else %}
-        SELECT segmentId, COALESCE(uniq(memberId), 0) AS activeContributors
+        SELECT channel, COALESCE(uniq(memberId), 0) AS activeContributors
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
@@ -31,7 +37,7 @@ SQL >
             AND timestamp >= toStartOfQuarter(now() - toIntervalQuarter(1))
             AND timestamp < toStartOfQuarter(now())
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-        GROUP BY segmentId
+        GROUP BY channel
     {% end %}
 
-INCLUDE "../includes/health_score_active_contributors.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_active_contributors_score"
+INCLUDE "../includes/health_score_active_contributors.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_active_contributors_score"

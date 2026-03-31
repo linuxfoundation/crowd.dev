@@ -1,15 +1,24 @@
-NODE health_score_organization_dependency_contribution_count
+DESCRIPTION >
+    - Calculates repository-level organization dependency health score.
+    - Returns the number of organizations making up 51% of contributions, their combined percentage, and benchmark (0-5).
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter
+    - `endDate`: Optional DateTime filter
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_organization_dependency_count
 SQL >
     %
-    {% if defined(project) %}
-        SELECT segmentId, organizationId, count() AS contributionCount
-        FROM activityRelations_bucket_routing
+    {% if defined(repoUrl) %}
+        SELECT channel, organizationId, count() AS contributionCount
+        FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             organizationId != ''
             AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
-            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(startDate) %}
                 AND timestamp
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
@@ -18,9 +27,9 @@ SQL >
                 AND timestamp
                 < {{ DateTime(endDate, description="Filter before date", required=False) }}
             {% end %}
-        GROUP BY segmentId, organizationId
+        GROUP BY channel, organizationId
     {% else %}
-        SELECT segmentId, organizationId, count() AS contributionCount
+        SELECT channel, organizationId, count() AS contributionCount
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             organizationId != ''
@@ -28,7 +37,7 @@ SQL >
             AND timestamp >= toStartOfDay(now() - INTERVAL 365 DAY)
             AND timestamp < toStartOfDay(now() + INTERVAL 1 DAY)
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-        GROUP BY segmentId, organizationId
+        GROUP BY channel, organizationId
     {% end %}
 
-INCLUDE "../includes/health_score_organization_dependency.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_organization_dependency_contribution_count"
+INCLUDE "../includes/health_score_organization_dependency.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_organization_dependency_count"

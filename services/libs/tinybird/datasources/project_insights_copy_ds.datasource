@@ -2,7 +2,9 @@ DESCRIPTION >
     - `project_insights_copy_ds` contains materialized project insights data.
     - Populated by `project_insights_copy.pipe` copy pipe.
     - Includes project metadata, health score, first commit, and activity metrics for last 365 days and previous 365 days.
-    - `id` column is the primary key identifier for the project.
+    - `id` column is the primary key identifier for the project or repository.
+    - `type` column indicates the record type: 'project' for project insights or 'repo' for repository insights.
+    - `repoUrl` column is the full repository URL for repo type records (empty string for project type).
     - `name` column is the human-readable project name.
     - `slug` column is the URL-friendly identifier used in routing and filtering.
     - `logoUrl` column is the URL to the project's logo image.
@@ -35,6 +37,8 @@ TAGS "Project insights", "Metrics"
 
 SCHEMA >
     `id` String,
+    `type` String,
+    `repoUrl` String,
     `name` String,
     `slug` String,
     `logoUrl` String,
@@ -64,4 +68,4 @@ SCHEMA >
     `activeOrganizationsPrevious365Days` UInt64
 
 ENGINE MergeTree
-ENGINE_SORTING_KEY id
+ENGINE_SORTING_KEY type, id
