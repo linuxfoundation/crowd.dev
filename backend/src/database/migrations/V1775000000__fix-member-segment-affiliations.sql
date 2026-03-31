@@ -19,6 +19,6 @@ CREATE UNIQUE INDEX "uq_member_segment_affiliations" ON "memberSegmentAffiliatio
     "memberId",
     "segmentId",
     COALESCE("organizationId", '00000000-0000-0000-0000-000000000000'::uuid),
-    COALESCE("dateStart", '1970-01-01T00:00:00Z'::timestamp),
-    COALESCE("dateEnd", '1970-01-01T00:00:00Z'::timestamp)
+    COALESCE("dateStart", '1970-01-01T00:00:00Z'::timestamptz),
+    COALESCE("dateEnd", '1970-01-01T00:00:00Z'::timestamptz)
 );
