@@ -236,44 +236,6 @@ export class OrganizationService {
       .then(({ data }) => Promise.resolve(data));
   }
 
-  static async listActive({
-    platform,
-    isTeamOrganization,
-    activityTimestampFrom,
-    activityTimestampTo,
-    orderBy,
-    offset,
-    limit,
-    segments,
-  }) {
-    const params = {
-      ...(platform.length && {
-        'filter[platforms]': platform
-          .map((p) => p.value)
-          .join(','),
-      }),
-      ...(isTeamOrganization === false && {
-        'filter[isTeamOrganization]': isTeamOrganization,
-      }),
-      'filter[activityTimestampFrom]':
-        activityTimestampFrom,
-      'filter[activityTimestampTo]': activityTimestampTo,
-      orderBy,
-      offset,
-      limit,
-      segments,
-    };
-
-    const response = await authAxios.get(
-      '/organization/active',
-      {
-        params,
-      },
-    );
-
-    return response.data;
-  }
-
   static async export({
     filter,
     orderBy,

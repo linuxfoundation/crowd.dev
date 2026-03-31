@@ -68,7 +68,7 @@ export interface ApiConfiguration {
 export interface Auth0Configuration {
   clientId: string
   jwks: string
-  issuerBaseURL: string
+  issuerBaseURLs: string
   audience: string
 }
 

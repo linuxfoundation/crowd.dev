@@ -5,7 +5,7 @@ import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error409 } from '@crowd/common'
 import { createMemberIdentity, findIdentitiesForMembers, optionsQx } from '@crowd/data-access-layer'
 import {
-  checkIdentityExistance,
+  checkMemberIdentityExistence,
   deleteMemberIdentity,
   fetchMemberIdentities,
   findMemberIdentityById,
@@ -58,7 +58,11 @@ export default class MemberIdentityService extends LoggerBase {
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
           // Check if identity already exists
-          const existingIdentities = await checkIdentityExistance(qx, data.value, data.platform)
+          const existingIdentities = await checkMemberIdentityExistence(
+            qx,
+            data.value,
+            data.platform,
+          )
           if (existingIdentities.length > 0) {
             throw new Error409(
               this.options.language,
@@ -126,7 +130,7 @@ export default class MemberIdentityService extends LoggerBase {
 
           // Check if any of the identities already exist
           for (const identity of data) {
-            const existingIdentities = await checkIdentityExistance(
+            const existingIdentities = await checkMemberIdentityExistence(
               qx,
               identity.value,
               identity.platform,
@@ -200,7 +204,11 @@ export default class MemberIdentityService extends LoggerBase {
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
           // Check if identity already exists
-          const existingIdentities = await checkIdentityExistance(qx, data.value, data.platform)
+          const existingIdentities = await checkMemberIdentityExistence(
+            qx,
+            data.value,
+            data.platform,
+          )
           const filteredExistingIdentities = existingIdentities.filter((i) => i.id !== id)
           if (filteredExistingIdentities.length > 0) {
             throw new Error409(

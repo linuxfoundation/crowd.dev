@@ -29,6 +29,7 @@ DESCRIPTION >
     - `forksPrevious365Days` column is the count of forks in the previous 365 days (365-730 days ago).
     - `activeContributorsPrevious365Days` column is the unique count of active contributors in the previous 365 days (365-730 days ago).
     - `activeOrganizationsPrevious365Days` column is the unique count of active organizations in the previous 365 days (365-730 days ago).
+    - `status` column is the current status of the project (e.g., 'active', 'archived').
 
 TAGS "Project insights", "Metrics"
 
@@ -38,6 +39,7 @@ SCHEMA >
     `slug` String,
     `logoUrl` String,
     `isLF` UInt8,
+    `status` String,
     `contributorCount` UInt64,
     `organizationCount` UInt64,
     `softwareValue` UInt64,

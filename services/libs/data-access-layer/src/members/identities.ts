@@ -3,6 +3,7 @@ import {
   IMemberIdentity,
   MemberIdentityType,
   NewMemberIdentity,
+  PlatformType,
   UpdateMemberIdentity,
 } from '@crowd/types'
 
@@ -48,22 +49,25 @@ export async function fetchManyMemberIdentities(
   )
 }
 
-export async function checkIdentityExistance(
+export async function checkMemberIdentityExistence(
   qx: QueryExecutor,
   value: string,
   platform: string,
+  type?: MemberIdentityType,
 ): Promise<IMemberIdentity[]> {
   return await qx.select(
     `
-        SELECT id, "memberId"
+        SELECT id, "memberId", verified
         FROM "memberIdentities"
         WHERE "value" = $(value)
           AND "platform" = $(platform)
+          ${type ? 'AND "type" = $(type)' : ''}
           AND "deletedAt" is null;
     `,
     {
       value,
       platform,
+      type,
     },
   )
 }
@@ -193,40 +197,76 @@ export async function moveIdentitiesBetweenMembers(
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<IMemberIdentity[]>
+export async function insertManyMemberIdentities(
+  qx: QueryExecutor,
+  identities: NewMemberIdentity[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<void>
+export async function insertManyMemberIdentities(
+  qx: QueryExecutor,
+  identities: NewMemberIdentity[],
   failOnConflict = false,
-) {
-  return qx.result(
-    prepareBulkInsert(
-      'memberIdentities',
-      [
-        'memberId',
-        'tenantId',
-        'integrationId',
-        'platform',
-        'source',
-        'sourceId',
-        'value',
-        'type',
-        'verified',
-        'verifiedBy',
-      ],
-      identities.map((i) => {
-        return {
-          tenantId: DEFAULT_TENANT_ID,
-          ...i,
-        }
-      }),
-      failOnConflict ? undefined : 'DO NOTHING',
-    ),
+  returnRows = false,
+): Promise<IMemberIdentity[] | void> {
+  const query = prepareBulkInsert(
+    'memberIdentities',
+    [
+      'memberId',
+      'tenantId',
+      'integrationId',
+      'platform',
+      'source',
+      'sourceId',
+      'value',
+      'type',
+      'verified',
+      'verifiedBy',
+    ],
+    identities.map((i) => {
+      return {
+        tenantId: DEFAULT_TENANT_ID,
+        ...i,
+      }
+    }),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
   )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  await qx.result(query)
 }
 
 export async function createMemberIdentity(
   qx: QueryExecutor,
   i: NewMemberIdentity,
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<IMemberIdentity>
+export async function createMemberIdentity(
+  qx: QueryExecutor,
+  i: NewMemberIdentity,
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<void>
+export async function createMemberIdentity(
+  qx: QueryExecutor,
+  i: NewMemberIdentity,
   failOnConflict = false,
-) {
-  return insertManyMemberIdentities(qx, [i], failOnConflict)
+  returnRows = false,
+): Promise<IMemberIdentity | void> {
+  if (returnRows) {
+    const rows = await insertManyMemberIdentities(qx, [i], failOnConflict, true)
+    return rows[0]
+  }
+
+  await insertManyMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(
@@ -414,7 +454,7 @@ export async function findMembersByVerifiedEmails(
     return new Map()
   }
 
-  const valuesClause = emails.map((_, i) => `($(email_${i}))`).join(', ')
+  const emailsArray = emails.map((_, i) => `$(email_${i})`).join(', ')
 
   const data: Record<string, string> = {
     type: MemberIdentityType.EMAIL,
@@ -426,16 +466,13 @@ export async function findMembersByVerifiedEmails(
 
   const results = await qx.select(
     `
-    with input_emails (value_lower) as (
-      values ${valuesClause}
-    )
     select mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
     from "memberIdentities" mi
-    inner join input_emails i on lower(mi.value) = i.value_lower
     inner join "members" m on m.id = mi."memberId"
-    where mi.verified = true 
-      and mi.type = $(type) 
+    where mi.verified = true
+      and mi.type = $(type)
       and mi."deletedAt" is null
+      and lower(mi.value) = any(array[${emailsArray}])
     limit ${emails.length}
   `,
     data,
@@ -476,12 +513,12 @@ export async function findMembersByVerifiedUsernames(
       )
       select mi.platform as "identityPlatform", mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
       from "memberIdentities" mi
-      inner join input_identities i 
-        on mi.platform = i.platform 
+      inner join input_identities i
+        on mi.platform = i.platform
         and lower(mi.value) = i.value_lower
       inner join "members" m on m.id = mi."memberId"
-      where mi.verified = true 
-        and mi.type = $(type) 
+      where mi.verified = true
+        and mi.type = $(type)
         and mi."deletedAt" is null
       limit ${params.length}
     `,
@@ -618,4 +655,57 @@ export async function findMemberIdsByIdentities(
   )
 
   return result.map((r) => r.memberId)
+}
+
+export interface IDevStatsMemberRow {
+  githubHandle: string
+  memberId: string
+  displayName: string | null
+}
+
+export async function findMembersByGithubHandles(
+  qx: QueryExecutor,
+  lowercasedHandles: string[],
+): Promise<IDevStatsMemberRow[]> {
+  return qx.select(
+    `
+      SELECT
+        mi.value       AS "githubHandle",
+        mi."memberId",
+        m."displayName"
+      FROM "memberIdentities" mi
+      JOIN members m ON m.id = mi."memberId"
+      WHERE mi.platform = $(platform)
+        AND mi.type     = $(type)
+        AND mi.verified = true
+        AND lower(mi.value) IN ($(lowercasedHandles:csv))
+        AND mi."deletedAt" IS NULL
+        AND m."deletedAt"  IS NULL
+    `,
+    {
+      platform: PlatformType.GITHUB,
+      type: MemberIdentityType.USERNAME,
+      lowercasedHandles,
+    },
+  )
+}
+
+export async function findVerifiedEmailsByMemberIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string }[]> {
+  return qx.select(
+    `
+      SELECT "memberId", value AS email
+      FROM "memberIdentities"
+      WHERE "memberId" IN ($(memberIds:csv))
+        AND type       = $(type)
+        AND verified   = true
+        AND "deletedAt" IS NULL
+    `,
+    {
+      memberIds,
+      type: MemberIdentityType.EMAIL,
+    },
+  )
 }

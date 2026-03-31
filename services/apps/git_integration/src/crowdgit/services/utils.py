@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import re
 from urllib.parse import urlparse
 
@@ -14,7 +13,21 @@ from crowdgit.errors import (
 from crowdgit.logger import logger
 
 
-def _safe_decode(data: bytes) -> str:
+def normalize_gerrit_remote(url: str) -> str:
+    """Rewrite Gerrit remote URLs to their Gitea equivalents for git clone/fetch operations.
+
+    Gerrit servers don't support the git shallow protocol extension (--deepen),
+    causing HTTP 500 errors during incremental fetching. Where a Gitea mirror
+    exists with full protocol support (e.g. opendev.org mirrors review.opendev.org),
+    we rewrite the host so that shallow cloning works.
+
+    Only used for git operations, not for URLs persisted to the database or
+    passed to other services.
+    """
+    return url.replace("https://review.opendev.org", "https://opendev.org")
+
+
+def safe_decode(data: bytes) -> str:
     """
     Safely decode bytes to string, handling various encodings that might be present in git output.
 
@@ -168,7 +181,8 @@ async def run_shell_command(
     cwd: str = None,
     timeout: float | None = None,
     input_text: str | bytes | None = None,
-    stderr_logger: logging.Logger | None = None,
+    stderr_logger=None,
+    stderr_log_level: str = "INFO",
 ) -> str:
     """
     Run shell command asynchronously and return output on success, raise exception on failure.
@@ -179,6 +193,7 @@ async def run_shell_command(
         timeout: Command timeout in seconds
         input_text: Text (str) or bytes to send to stdin (will automatically append newline if not present)
         stderr_logger: If provided, a logger whose .info() method is called with each stderr line in real-time
+        stderr_log_level: Log level for stderr lines (default: "INFO")
 
     Returns:
         str: Command stdout output
@@ -228,9 +243,9 @@ async def run_shell_command(
             async def _run_with_stderr_logging() -> bytes:
                 async def _stream() -> None:
                     async for raw_line in process.stderr:
-                        line = _safe_decode(raw_line).rstrip()
+                        line = safe_decode(raw_line).rstrip()
                         if line:
-                            stderr_logger.info(line)
+                            stderr_logger.log(stderr_log_level, line)
                             stderr_lines.append(line)
 
                 stdout, _ = await asyncio.gather(process.stdout.read(), _stream())
@@ -239,7 +254,7 @@ async def run_shell_command(
 
             coro = _run_with_stderr_logging()
             stdout = await (asyncio.wait_for(coro, timeout=timeout) if timeout else coro)
-            stdout_text = _safe_decode(stdout).strip() if stdout else ""
+            stdout_text = safe_decode(stdout).strip() if stdout else ""
             stderr_text = "\n".join(stderr_lines)
         else:
             # Wait for completion with optional timeout
@@ -251,8 +266,8 @@ async def run_shell_command(
                 stdout, stderr = await process.communicate(input=stdin_input)
 
             # Handle potentially non-UTF-8 encoded output from git commands
-            stdout_text = _safe_decode(stdout).strip() if stdout else ""
-            stderr_text = _safe_decode(stderr).strip() if stderr else ""
+            stdout_text = safe_decode(stdout).strip() if stdout else ""
+            stderr_text = safe_decode(stderr).strip() if stderr else ""
 
         # Check return code
         if process.returncode == 0:

@@ -95,6 +95,8 @@ export interface MemberUpdateInput {
   manuallyCreated?: boolean
 }
 
+export const BLACKLISTED_MEMBER_TITLES = ['investor', 'mentor', 'board member']
+
 export const MEMBER_MERGE_FIELDS = [
   'affiliations',
   'attributes',
@@ -679,6 +681,7 @@ export async function createMember(qx: QueryExecutor, data: MemberCreateInput): 
   const dbData: Record<string, unknown> = {
     ...data,
     id,
+    manuallyCreated: data.manuallyCreated ?? false,
     tenantId: DEFAULT_TENANT_ID,
     createdAt: ts,
     updatedAt: ts,
