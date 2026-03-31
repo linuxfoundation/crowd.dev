@@ -37,7 +37,7 @@ We currently support all our integrations for self-hosting. For each one of them
 
 #### <a name="getting_started">Getting started</a>
 
-1. Get the mono repo from GitHub
+1. Get the monorepo from GitHub
 
 ```shell
 git clone git@github.com:CrowdDotDev/crowd.dev.git
