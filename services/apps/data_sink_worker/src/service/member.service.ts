@@ -200,11 +200,22 @@ export default class MemberService extends LoggerBase {
             'memberService -> create -> createMember',
           )
 
-          const insertedCount = await logExecutionTimeV2(
-            () => this.memberRepo.insertIdentities(id, integrationId, data.identities),
-            this.log,
-            'memberService -> create -> insertIdentities',
-          )
+          let insertedCount: number
+          try {
+            insertedCount = await logExecutionTimeV2(
+              () => this.memberRepo.insertIdentities(id, integrationId, data.identities),
+              this.log,
+              'memberService -> create -> insertIdentities',
+            )
+          } catch (err) {
+            this.log.error(err, { memberId: id }, 'Error inserting member identities!')
+            await logExecutionTimeV2(
+              async () => this.memberRepo.destroyMemberAfterError(id, true),
+              this.log,
+              'memberService -> create -> destroyMemberAfterError',
+            )
+            throw err
+          }
 
           if (insertedCount < data.identities.length) {
             // At least one verified identity conflicted. Walk every verified identity to:
