@@ -259,7 +259,7 @@ class RepositoryWorker:
             processing_state = RepositoryState.COMPLETED
         except StuckRepoError:
             logger.error(
-                f"Repo {repository.url} is stuck for unkown reason, marking it as stuck until manually resolved!"
+                f"Repo {repository.url} is stuck for unknown reason, marking it as stuck until manually resolved!"
             )
             processing_state = RepositoryState.STUCK
         except ReOnboardingRequiredError:
