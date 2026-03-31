@@ -44,6 +44,32 @@ class MemberSegmentAffiliationRepository extends RepositoryBase<
 
     const transaction = this.transaction
 
+    const existing = await this.options.database.sequelize.query(
+      `SELECT "id" FROM "memberSegmentAffiliations"
+       WHERE "memberId" = :memberId
+       AND "segmentId" = :segmentId
+       AND "organizationId" IS NOT DISTINCT FROM :organizationId
+       AND "dateStart" IS NOT DISTINCT FROM :dateStart
+       AND "dateEnd" IS NOT DISTINCT FROM :dateEnd
+       LIMIT 1`,
+      {
+        replacements: {
+          memberId: data.memberId,
+          segmentId: data.segmentId,
+          organizationId: data.organizationId,
+          dateStart: data.dateStart || null,
+          dateEnd: data.dateEnd || null,
+        },
+        type: QueryTypes.SELECT,
+        transaction,
+      }
+    )
+
+    if (existing.length > 0) {
+      await this.updateAffiliation(data.memberId, data.segmentId, data.organizationId)
+      return this.findById((existing[0] as any).id)
+    }
+
     const affiliationInsertResult = await this.options.database.sequelize.query(
       `INSERT INTO "memberSegmentAffiliations" ("id", "memberId", "segmentId", "organizationId", "dateStart", "dateEnd")
           VALUES
