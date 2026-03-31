@@ -2,7 +2,7 @@ import { IS_PROD_ENV } from '@crowd/common'
 
 // Main: analytics.silver_fact.certificates (certificate data)
 // Joins:
-// - analytics.silver_dim._crowd_dev_segments_union (segment resolution)
+// - ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS (segment resolution)
 // - analytics.bronze_fivetran_salesforce.bronze_salesforce_merged_user (LFID)
 // - analytics.silver_dim.users (LFID fallback)
 // - analytics.bronze_fivetran_salesforce.accounts + analytics.bronze_fivetran_salesforce_b2b.accounts (org data)
@@ -12,7 +12,7 @@ const CDP_MATCHED_SEGMENTS = `
     SELECT DISTINCT
       s.SOURCE_ID AS sourceId,
       s.slug
-    FROM ANALYTICS.SILVER_DIM._CROWD_DEV_SEGMENTS_UNION s
+    FROM ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS s
     WHERE s.PARENT_SLUG IS NOT NULL
       AND s.GRANDPARENTS_SLUG IS NOT NULL
       AND s.SOURCE_ID IS NOT NULL
@@ -79,7 +79,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     SELECT DISTINCT
       s.SOURCE_ID AS sourceId,
       s.slug
-    FROM ANALYTICS.SILVER_DIM._CROWD_DEV_SEGMENTS_UNION s
+    FROM ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS s
     WHERE s.CREATED_TS >= '${sinceTimestamp}'
       AND s.PARENT_SLUG IS NOT NULL
       AND s.GRANDPARENTS_SLUG IS NOT NULL
