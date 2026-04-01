@@ -299,7 +299,11 @@ export default class ActivityService extends LoggerBase {
       // the lookup misses the existing member, creating an unnecessary orphan member.
       if (username && member) {
         const platformIdentity = member.identities.find(
-          (i) => i.platform === platform && i.type === MemberIdentityType.USERNAME && i.value,
+          (i) =>
+            i.platform === platform &&
+            i.type === MemberIdentityType.USERNAME &&
+            i.value &&
+            i.verified,
         )
         if (platformIdentity && platformIdentity.value !== username) {
           this.log.debug(
