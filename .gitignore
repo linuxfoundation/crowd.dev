@@ -196,9 +196,13 @@ services/libs/tinybird/.diff_tmp
 # custom cursor rules
 .cursor/rules/*.local.mdc
 
-# claude code rules
-CLAUDE.md
-.claude
+# claude code
+.claude/cache/
+.claude/tmp/
+.claude/logs/
+.claude/sessions/
+.claude/todos/
+.claude/settings.local.json
 
 # git integration test repositories & output
 services/apps/git_integration/src/test/repos/
