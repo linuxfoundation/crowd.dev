@@ -1,4 +1,5 @@
 export {
+  deleteOrphanMember,
   finishMemberMerging,
   finishOrganizationMerging,
   finishMemberUnmerging,
