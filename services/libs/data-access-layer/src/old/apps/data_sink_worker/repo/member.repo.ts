@@ -86,7 +86,8 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
     memberId: string,
     integrationId: string,
     identities: IMemberIdentity[],
-  ): Promise<void> {
+    failOnConflict = false,
+  ): Promise<number> {
     const objects = identities.map((i) => {
       return {
         memberId,
@@ -100,7 +101,11 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
       }
     })
 
-    await insertManyMemberIdentities(new PgPromiseQueryExecutor(this.db()), objects, true)
+    return insertManyMemberIdentities(
+      new PgPromiseQueryExecutor(this.db()),
+      objects,
+      failOnConflict,
+    )
   }
 
   public async addToSegments(memberId: string, segmentIds: string[]): Promise<void> {
