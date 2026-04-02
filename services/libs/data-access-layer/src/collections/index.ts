@@ -139,6 +139,8 @@ export async function createCollection(
   collection: ICreateCollection,
 ): Promise<ICollection> {
   const data = {
+    description: null,
+    slug: null,
     logoUrl: null,
     imageUrl: null,
     color: null,
