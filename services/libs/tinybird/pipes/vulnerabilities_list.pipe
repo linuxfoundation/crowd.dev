@@ -23,7 +23,8 @@ SQL >
             any (v.publishedAt) as publishedAt,
             any (v.status) as status,
             groupArray(concat(v.repoUrl, '/blob/HEAD', v.sourcePath)) as paths,
-            max(v.fixedVersion) as fixedVersion
+            max(v.fixedVersion) as fixedVersion,
+            anyIf(v.referenceLink, v.referenceLink != '') as referenceLink
         FROM vulnerabilities as v FINAL
         WHERE
             repoUrl in (select arrayJoin(repositories) from segments_filtered)
