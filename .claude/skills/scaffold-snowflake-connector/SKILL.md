@@ -17,7 +17,8 @@ This skill scaffolds all code required to add a new snowflake-connector data sou
 digraph scaffold {
   "Phase 1: Initial Questions" [shape=box];
   "Phase 2: Schema Collection" [shape=box];
-  "Phase 3: Business Logic Validation" [shape=box];
+  "Pre-Analysis: Auto-Derive Mappings" [shape=box];
+  "Phase 3: Confirm / Correct Mappings" [shape=box];
   "All mappings confirmed?" [shape=diamond];
   "Phase 4: Generate & Review Files" [shape=box];
   "User approves each file?" [shape=diamond];
@@ -25,9 +26,10 @@ digraph scaffold {
   "Done" [shape=doublecircle];
 
   "Phase 1: Initial Questions" -> "Phase 2: Schema Collection";
-  "Phase 2: Schema Collection" -> "Phase 3: Business Logic Validation";
-  "Phase 3: Business Logic Validation" -> "All mappings confirmed?";
-  "All mappings confirmed?" -> "Phase 3: Business Logic Validation" [label="no, revise"];
+  "Phase 2: Schema Collection" -> "Pre-Analysis: Auto-Derive Mappings";
+  "Pre-Analysis: Auto-Derive Mappings" -> "Phase 3: Confirm / Correct Mappings";
+  "Phase 3: Confirm / Correct Mappings" -> "All mappings confirmed?";
+  "All mappings confirmed?" -> "Phase 3: Confirm / Correct Mappings" [label="no, revise"];
   "All mappings confirmed?" -> "Phase 4: Generate & Review Files" [label="yes"];
   "Phase 4: Generate & Review Files" -> "User approves each file?";
   "User approves each file?" -> "Phase 4: Generate & Review Files" [label="no, revise"];
@@ -93,41 +95,138 @@ Read `services/apps/snowflake_connectors/src/integrations/index.ts`.
 Ask:
 > "What is the name for this data source? This becomes the directory name and `DataSourceName` enum suffix (e.g., `enrollments`, `event-registrations`)."
 
-### Question 4 — Snowflake table
+### Question 4 — Snowflake tables
 
-Ask:
-> "What is the fully-qualified Snowflake table name for this source? Format: `DB.SCHEMA.TABLE`."
+Ask for the main table first, then any additional tables:
+> "What is the main Snowflake table for this source?"
 
-If there are JOIN tables needed (e.g., users, organizations), ask after the main table is confirmed — one JOIN table at a time.
+Then:
+> "Are there any additional tables needed (e.g., for user data, org data, segment matching)? For each one, provide the table name and its purpose — what data it holds and how it relates to the main table."
+
+Do not assume a direct JOIN between tables. The relation type (JOIN, subquery, CTE, lookup) must come from the user's description of each table's purpose.
 
 ---
 
 ## Phase 2: Schema Collection
 
-Ask the user to run the following in Snowflake UI and paste the output:
+Once all table names are known, generate a single query to collect schema information for every table at once. Ask the user to run it in Snowflake UI and either paste the output or provide a path to the exported file (e.g., CSV):
 
 ```sql
-DESCRIBE TABLE DB.SCHEMA.TABLE;
+SELECT DISTINCT
+  table_catalog,
+  table_schema,
+  table_name,
+  column_name,
+  data_type,
+  is_nullable,
+  ordinal_position
+FROM SNOWFLAKE.ACCOUNT_USAGE.COLUMNS
+WHERE (table_catalog, table_schema, table_name) IN (
+  ('DB1', 'SCHEMA1', 'TABLE1'),
+  ('DB2', 'SCHEMA2', 'TABLE2')
+  -- one row per confirmed table
+)
+AND DELETED IS NULL
+ORDER BY table_name, ordinal_position;
 ```
 
-Parse the output to build a column registry:
+Replace the placeholder values with the actual table names provided by the user.
+
+Ask the user to either paste the output directly or provide a path to an exported file (CSV, JSON, or TSV). If a file path is given, read the file.
+
+Parse the output to build a column registry per table:
 - Column name (exact casing from schema — this is the reference for all code)
 - Data type
-- Nullable (Y/N)
+- Nullable (YES/NO)
 
 **Store this as the canonical column reference. Every column name used in generated code must appear in this registry. Never assume or invent a column name.**
 
-For each JOIN table identified in Phase 1:
-- Ask the user to `DESCRIBE TABLE` that table too, one at a time
-- Ask: "Is this the same table used by an existing implementation (e.g., same users or orgs table as TNC or CVENT)?"
-  - If yes: read the existing transformer that uses it and follow its column mapping exactly
-  - If no: treat every column as unknown — validate each one explicitly in Phase 3
+For each JOIN table, check whether any existing transformer in `services/apps/snowflake_connectors/src/integrations/` queries from the same table. If yes, inherit its column mappings; if no, treat every column as unknown and derive it from sample data in the Pre-Analysis step below.
+
+After building the column registry, generate a sample data query using **only explicit column names from the registry** (never `*`) and ask the user to run it:
+
+```sql
+SELECT
+  main.col1, main.col2, main.col3,  -- all columns from main table registry
+  j1.col1, j1.col2,                  -- all columns from each JOIN table
+  ...
+FROM DB.SCHEMA.MAIN_TABLE main
+LEFT JOIN DB.SCHEMA.JOIN_TABLE1 j1 ON main.join_key = j1.pk
+-- ... all joins
+LIMIT 20;
+```
+
+Ask the user:
+> "Please run this query in Snowflake and paste the result or provide a path to the exported file (CSV, JSON, or TSV). I'll use the actual data values to auto-derive column mappings before asking for your confirmation."
 
 ---
 
-## Phase 3: Business Logic Validation
+## Pre-Analysis: Auto-Derive Mappings
 
-**Rule:** Every attribute is confirmed by the user individually. Never batch multiple questions into one message. Never proceed to file generation until all sub-sections are complete.
+Before asking the user any Phase 3 questions, perform this analysis using the schema registry, the pasted sample data, and existing implementations that query the same tables.
+
+### Step 1 — Inherit from existing implementations
+
+For each JOIN table, check if any existing transformer imports or queries from it. If found, inherit those column mappings directly — they are already validated.
+
+Read the relevant transformer files from `services/apps/snowflake_connectors/src/integrations/` and extract: which column maps to email, username, LFID, org name, org website, domain aliases, timestamp, sourceId.
+
+### Step 2 — Infer remaining roles from names + data values
+
+For columns not covered by an existing implementation, apply these heuristics:
+
+| Role | High-confidence signals |
+|------|------------------------|
+| Email | Name contains `EMAIL`; values match `x@y.z` pattern |
+| Platform username | Name is `USER_NAME`, `USERNAME`, `LOGIN`, `HANDLE`; values are non-email strings |
+| LFID | Name contains `LF_USERNAME`, `LFID`, `LF_ID` |
+| Timestamp (incremental) | Type is TIMESTAMP; name contains `UPDATED`, `MODIFIED`; nullable=NO |
+| sourceId | Name ends in `_ID`; values appear unique in sample |
+| Org name | Name contains `ACCOUNT_NAME`, `ORGANIZATION_NAME`, `COMPANY` |
+| Org website | Name contains `WEBSITE`, `DOMAIN`, `URL`; values start with `http` |
+| Domain aliases | Name contains `DOMAIN_ALIASES`, `ALIASES`; values are comma-separated or array |
+
+Assign each role a confidence level:
+- **HIGH** — column name + data values both match unambiguously
+- **MEDIUM** — multiple candidates exist, or name matches but data is ambiguous
+- **LOW / UNKNOWN** — no clear match
+
+### Step 3 — Present consolidated proposal
+
+Present all HIGH-confidence mappings at once (exception to the one-question-per-message rule — batching is intentional here for efficiency). For MEDIUM, offer choices. For LOW/UNKNOWN, ask open-ended:
+
+> "Based on the schema and sample data, here's what I identified:
+> - **Email**: `USER_EMAIL` (contains email values like `user@example.com`) ✅
+> - **Username**: `USER_NAME` ✅
+> - **LFID**: `LF_USERNAME` ✅
+> - **Timestamp**: `UPDATED_TS` (TIMESTAMP_NTZ, not nullable) ✅
+> - **sourceId**: `REGISTRATION_ID` (appears unique in sample) ✅
+> - **Org website**: `ORG_WEBSITE` ✅
+> - **Org name**: `ACCOUNT_NAME` or `COMPANY_NAME`? (both present)
+> - **Domain aliases format**: couldn't determine — comma-separated string or array?
+>
+> Please confirm the ✅ items and resolve the open questions."
+
+After the user responds, record all confirmed mappings. **Skip any Phase 3 sub-step whose mappings are fully resolved here.** Only enter a sub-step for fields that remain MEDIUM, LOW, or flagged by the user.
+
+---
+
+## Phase 3: Confirm / Correct Mappings
+
+**Rule:** Skip sub-sections where Pre-Analysis fully resolved the mapping. For remaining sub-sections, use the propose-then-confirm pattern — never ask open-ended questions when a proposal can be made. Present choices when multiple candidates exist. Ask open-ended only when no inference is possible.
+
+**When raising any ambiguity, always include:**
+1. **How existing data sources handle it** — read the relevant transformer(s) from `services/apps/snowflake_connectors/src/integrations/` and show the pattern. If an existing source skips or doesn't implement the feature, say so explicitly (e.g., "TNC doesn't use a logo field — it's left undefined").
+2. **A Snowflake query to resolve it** — if the ambiguity can be answered by inspecting actual data (e.g., checking uniqueness, null rate, value distribution), provide the query so the user can run it instead of guessing.
+
+Example format for an ambiguity:
+> "I see two timestamp columns: `CREATED_AT` (nullable) and `UPDATED_AT` (not nullable).
+> - Existing sources (TNC, CVENT) all use a non-nullable `updated_ts`-style column for incremental exports.
+> - To check null rates, run:
+>   ```sql
+>   SELECT COUNT(*) total, COUNT(CREATED_AT) created_not_null, COUNT(UPDATED_AT) updated_not_null FROM DB.SCHEMA.TABLE LIMIT 10000;
+>   ```
+> Which column should be used as the incremental timestamp?"
 
 ---
 
@@ -138,50 +237,38 @@ For each JOIN table identified in Phase 1:
 2. LFID column value (used as username on `PlatformType.LFID`)
 3. Email value used as the platform USERNAME (last resort)
 
-Ask one at a time:
+If Pre-Analysis resolved email, username, and LFID columns with HIGH confidence and the user confirmed them, skip to the summary step below.
 
-1. "Which column contains the member's email address? (Required — rows where this is null will be skipped.)"
-   - Verify the column is in the schema registry. If nullable=Y, note it.
+For any unresolved identity field, use this pattern:
+- **Multiple candidates found**: "I see columns `A` and `B` that could be the email — which one?" (present choices, not open-ended)
+- **One candidate found**: "I believe `USER_EMAIL` is the email column based on its values. Confirm?" (one-tap confirmation)
+- **No candidate found**: "I couldn't identify an email column — please specify."
 
-2. "Is there a platform-native username column in the schema?"
-   - If yes: "Which column?" — verify it's in the registry.
-   - If no: note that email or LFID will be used as username fallback.
+For each confirmed identity column also confirm:
+- `verified: true`? (default yes — ask only if the data suggests otherwise)
+- `verifiedBy` value (default: platform type — propose it, don't ask open-ended)
 
-3. "Is there an LFID column in the schema?"
-   - If yes: "Which column?" — verify it's in the registry.
-   - If no: note it.
+**Critical:** If a JOIN table for users is NOT the same table used by an existing implementation, validate every column explicitly regardless of Pre-Analysis confidence. Column name heuristics alone are not sufficient for unknown tables.
 
-4. "Are there any other identity-relevant columns (e.g., a separate user ID, a profile URL)?"
-
-5. For each confirmed identity column:
-   - "Should identities from this column be `verified: true`?"
-   - "What is the `verifiedBy` value?" (usually the platform type)
-
-**Critical check:** If a JOIN table for users is not the same table used by an existing implementation, validate every column explicitly. Do not infer semantics from column names.
-
-After all identity columns are confirmed, summarize the full identity-building logic and ask:
+After all identity fields are confirmed, summarize the full identity-building logic and ask:
 > "Here is how identities will be built: [summary]. Does this look correct?"
 
 ---
 
 ### 3b. Organization Mapping
 
-Ask first: "Does this source contain organization/company data?"
+If Pre-Analysis determined there is no org data (no org-related columns found in any table), confirm: "I don't see any organization columns in the schema. Does this source have org/company data?" — if yes, proceed; if no, skip to 3c.
 
-If **no**: skip to 3c.
+If Pre-Analysis identified org columns:
 
-If **yes**:
-
-Ask: "Is the org data sourced from a JOIN table already used by another platform's implementation?"
-
-- If **yes**: read that existing implementation's `buildOrganizations` method from the codebase. Follow its column mapping exactly. Show the user what columns will be used and ask for confirmation.
-- If **no** (new org table): validate each column explicitly, one at a time:
-  1. Org display name column?
-  2. Website column?
-  3. Domain aliases column? If yes: "What is the format? (comma-separated string, array, etc.)"
-  4. Logo URL column?
-  5. Industry column?
-  6. Employee count/size column?
+- If sourced from a JOIN table already used by an existing implementation: read that transformer's `buildOrganizations` method and show the user exactly which columns will be used. Ask: "The org mapping follows the existing [PLATFORM] implementation — does this look correct?"
+- If new org table: present the Pre-Analysis proposals for each field, one at a time:
+  - "Org name: I see `ACCOUNT_NAME` (values like `Acme Corp`). Confirm, or specify another column."
+  - "Website: I see `ORG_WEBSITE` (values start with `http`). Confirm?"
+  - "Domain aliases: I see `DOMAIN_ALIASES` — are these comma-separated strings or an array?"
+  - "Logo URL: I see `LOGO_URL`. Confirm, or is there no logo column?"
+  - "Industry: I see `ORGANIZATION_INDUSTRY`. Confirm?"
+  - "Size: I see `ORGANIZATION_SIZE`. Confirm?"
 
 **Critical — `isIndividualNoAccount`:**
 Read `services/apps/snowflake_connectors/src/core/transformerBase.ts` to find `isIndividualNoAccount`. The generated code MUST call this method rather than reimplementing it. Show the user the method signature and confirm it will be used identically to existing sources.
@@ -208,7 +295,7 @@ For each activity type the user provides, suggest the following **one at a time*
 | Enum key | SCREAMING_SNAKE_CASE version of the name (e.g., `ENROLLED_CERTIFICATION`) |
 | String value | The name the user provided (kebab-case) |
 | Label | Human-readable (e.g., `Enrolled in certification`) |
-| Description | One sentence describing the event (look at similar types in `backend/src/database/migrations/` for style) |
+| Description | One sentence describing the event (look at similar types in `backend/src/c/migrations/` for style) |
 | `isCodeContribution` | `false` unless it involves code (check existing platforms — almost always false for non-GitHub sources) |
 | `isCollaboration` | `false` unless it is a collaborative activity |
 
@@ -218,33 +305,29 @@ Ask: "Does this look correct for `{type_name}`? Any changes?" before moving to t
 
 ### 3d. Timestamp & sourceId
 
-Before asking, explain:
-> "The **timestamp column** is critical — it drives all incremental exports. Records updated after the last export run are re-fetched using this column. It must never be null. If it can be null, we need to find an alternative or add a `WHERE column IS NOT NULL` guard.
->
-> The **sourceId** is used as the deduplication key — if two records have the same sourceId, only one activity is kept. It must uniquely identify each logical event."
+If Pre-Analysis already proposed these with HIGH confidence, present them with this explanation before asking for confirmation (never skip the explanation — it ensures the user understands the criticality):
 
-Ask:
+> "The **timestamp column** drives all incremental exports — records updated after the last export run are re-fetched using this column. It must never be null. The **sourceId** is the deduplication key — two records with the same sourceId produce only one activity. It must uniquely identify each logical event."
 
-1. "Which column is the incremental update timestamp?"
-   - Check the schema registry nullable flag. If nullable=Y: "⚠️ This column is marked nullable. Can it actually be null in practice? If yes, we need an alternative column or a guard." Wait for resolution.
-   - Valid examples: `updated_ts`, `enrolled_at`, `created_at`
+Then confirm the Pre-Analysis proposals:
 
-2. "Which column uniquely identifies each record and will be used as `sourceId`?"
-   - Verify it's in the schema registry.
-   - Confirm: "Is this value guaranteed to be unique per logical event (not per user)?"
+1. Timestamp: "I identified `UPDATED_TS` (TIMESTAMP_NTZ, not nullable) as the incremental timestamp. Confirm?"
+   - If the proposed column is nullable=Y: "⚠️ `UPDATED_TS` is marked nullable in the schema. Can it actually be null in practice? If yes, we need an alternative or a `WHERE col IS NOT NULL` guard." Wait for resolution.
+   - If no candidate was found: "I couldn't identify an update timestamp column — please specify. Valid examples: `updated_ts`, `enrolled_at`, `created_at`."
+
+2. sourceId: "I identified `REGISTRATION_ID` as the sourceId (appears unique in sample). Confirm, and is this guaranteed unique per logical event (not just per user)?"
+   - If no candidate was found: "I couldn't identify a unique record ID — please specify which column to use as `sourceId`."
 
 ---
 
 ### 3e. Base Class Check
 
-- If this is the **first source** for this platform:
-  - If org mapping is present: propose creating `{platform}TransformerBase.ts` with shared `buildOrganizations` logic. Show the proposed class structure (modeled on `tncTransformerBase.ts`). Ask for confirmation.
-  - If no org mapping: no base class needed; transformer extends `TransformerBase` directly.
+- If this is the **first and only source** for this platform: no base class — `transformer.ts` extends `TransformerBase` directly and contains all logic inline (CVENT pattern). Do not propose a base class.
 
-- If the platform **already has sources**:
+- If the platform **will have multiple sources** (user confirmed more sources are planned or already exist):
   - Check if `services/apps/snowflake_connectors/src/integrations/{platform}/{platform}TransformerBase.ts` exists.
-  - If yes: new transformer should extend it. Confirm with user.
-  - If no: new transformer extends `TransformerBase` directly.
+  - If yes: new transformer extends it. Confirm with user.
+  - If no and shared org logic exists: propose creating the base class. Show proposed structure (modeled on `tncTransformerBase.ts`). Ask for confirmation before creating.
 
 ---
 
@@ -257,12 +340,12 @@ Ask:
 
 ## Phase 4: File Generation & Review
 
-Generate files in the order listed in the File Inventory. For **each file**:
-1. Show the complete file content in a code block
-2. Ask: "Does this look correct? Any changes before I write it?"
-3. Only write the file after the user explicitly confirms
+Before generating any files, ask the user:
+> "How would you like me to proceed with the implementation?
+> - **A — Review mode:** I show each file before writing it, you approve or request changes.
+> - **B — Auto mode:** I implement all files directly, then show a summary of everything written for a final review."
 
-Read each target file before modifying it.
+Proceed based on the user's choice. Read each target file before modifying it in both modes.
 
 ---
 
@@ -422,6 +505,7 @@ File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/t
   3. Else → push EMAIL value as USERNAME for platform (email-as-username)
 - After building platform identities, if LFID column is present and non-null → push separate LFID identity: `{ platform: PlatformType.LFID, value: lfid, type: MemberIdentityType.USERNAME, ... }`
 - `isIndividualNoAccount` must call `this.isIndividualNoAccount(displayName)` from `TransformerBase` — never reimplement
+- **Do not set member attributes** (e.g., `MemberAttributeName.JOB_TITLE`, `AVATAR_URL`, `COUNTRY`) unless: (a) the user explicitly requested them, or (b) the same table and column are already used for that attribute in an existing implementation — in which case follow the existing pattern exactly
 - Extends the platform base class if one was confirmed in Phase 3e; otherwise extends `TransformerBase` directly
 - If in doubt about any mapping: ask the user before writing
 
@@ -429,11 +513,13 @@ Show the full generated file and ask for confirmation before writing.
 
 ---
 
-**Touch point 10 — `{platform}TransformerBase.ts`** (new file, only if confirmed in Phase 3e)
+**Touch point 10 — `{platform}TransformerBase.ts`** (new file, only if platform has multiple sources AND shared org logic — confirmed in Phase 3e)
 
 File: `services/apps/snowflake_connectors/src/integrations/{platform}/{platform}TransformerBase.ts`
 
 Model on `tncTransformerBase.ts`. Contains only the shared `buildOrganizations` logic. Abstract class that extends `TransformerBase` and sets `readonly platform = PlatformType.{PLATFORM}`.
+
+If the platform has a single source, skip this file entirely — keep all logic in `transformer.ts` (CVENT pattern).
 
 Show the full generated file and ask for confirmation before writing.
 
@@ -469,6 +555,18 @@ When the user pastes results, for each row:
 - Flag immediately: null email, missing USERNAME identity, unexpected activity type, null sourceId, null timestamp
 - If any issue found: loop back to the relevant Phase 3 sub-section, fix the mapping, regenerate the affected file
 
+### Format & Lint
+
+After all files are written, run format then lint from `services/apps/snowflake_connectors`:
+
+```bash
+cd services/apps/snowflake_connectors
+pnpm run format
+pnpm run lint
+```
+
+Fix any errors or warnings and re-run `pnpm run lint` until it reports no complaints. Do not proceed to the completion checklist until lint is clean.
+
 ### Completion Checklist
 
 Before declaring the implementation complete, verify every item:
@@ -488,8 +586,8 @@ Before declaring the implementation complete, verify every item:
 
 These apply throughout the entire skill execution. They are non-negotiable.
 
-1. **Never assume a column exists.** Every column reference must come from the pasted `DESCRIBE TABLE` output or a confirmed JOIN table schema.
-2. **Never assume a JOIN table is the same as an existing one.** If a table has not been verified against an existing implementation, validate every column.
+1. **Never assume a column exists.** Every column reference must come from the schema registry or confirmed JOIN table schema. Pre-Analysis proposals are evidence-based (column names + sample values) — not assumed — but they still require user confirmation before being used in generated code.
+2. **Never assume a JOIN table is the same as an existing one.** If a table has not been verified against an existing implementation, use heuristics from sample data but treat every column mapping as MEDIUM confidence at best — require explicit user confirmation.
 3. **Never suggest activity type names or scores.** These come from the user.
 4. **Never write a file without showing it first and receiving explicit user approval.**
 5. **When in doubt, ask.** A question costs seconds. A wrong implementation costs hours.
