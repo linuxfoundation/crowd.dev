@@ -67,6 +67,41 @@ Read the current state of each file before modifying. Never modify without readi
 
 ---
 
+## Context Detection
+
+Run this **once at skill start**, before any other step.
+
+Check whether the skill is running inside the crowd.dev repository by testing for the presence of the snowflake connectors integration index:
+
+```
+services/apps/snowflake_connectors/src/integrations/index.ts
+```
+
+Use `Glob` or `Read` to check for this file relative to the current working directory.
+
+### Case A — File found (running inside crowd.dev)
+
+Set `CROWD_DEV_ROOT = "."` (current directory). All file paths in this skill are relative to CWD. Proceed to Phase 1 immediately.
+
+### Case B — File not found (running from cross-team skills repo or elsewhere)
+
+Ask the user:
+> "This skill needs access to the crowd.dev repository to read and modify files. Do you have a local clone?
+> - If yes: provide the absolute path (e.g., `/Users/you/work/crowd.dev`)
+> - If no: I'll give you the clone command first."
+
+If the user provides a path: verify it by checking `{path}/services/apps/snowflake_connectors/src/integrations/index.ts` exists. If confirmed, set `CROWD_DEV_ROOT = {path}`. Proceed to Phase 1.
+
+If the path doesn't exist or they need to clone:
+> "Run: `git clone git@github.com:linuxfoundation/crowd.dev.git`
+> Then provide the path to the cloned directory."
+
+Wait for a valid path before continuing.
+
+**For all subsequent file operations**, prefix every path in this skill with `CROWD_DEV_ROOT`. Example: `services/libs/types/src/enums/platforms.ts` becomes `{CROWD_DEV_ROOT}/services/libs/types/src/enums/platforms.ts`.
+
+---
+
 ## Phase 1: Initial Questions
 
 Ask one question at a time. Do not bundle questions.
@@ -109,7 +144,28 @@ Do not assume a direct JOIN between tables. The relation type (JOIN, subquery, C
 
 ## Phase 2: Schema Collection
 
-Once all table names are known, generate a single query to collect schema information for every table at once. Ask the user to run it in Snowflake UI and either paste the output or provide a path to the exported file (e.g., CSV):
+Once all table names are known, collect column schemas using the LFX BI Layer MCP tools. Only fall back to the manual query when BI Layer lookup fails for a specific table.
+
+### Step 0 — Check BI Layer connectivity
+
+Use `ToolSearch` with query `"LFX BI Layer get_all_sources"` to check whether the BI Layer tools are available in the current session.
+
+- **Tools found**: proceed directly to Step 1.
+- **Tools not found**: prompt the user to authenticate:
+  > "The LFX BI Layer MCP is not connected. To enable automatic schema lookup, run `/mcp` and select **'claude.ai LFX BI Layer'** to authenticate. Once done, say 'continue' and I'll proceed. Or say 'skip' to use the manual query approach instead."
+
+  Wait for the user's response. If they authenticate: re-check with `ToolSearch` and proceed to Step 1. If they skip or authentication still fails: proceed directly to Step 2 for all tables.
+
+### Step 1 — BI Layer lookup (always attempt first)
+
+1. Call `mcp__claude_ai_LFX_BI_Layer__get_all_sources`. This returns all registered dbt sources.
+2. For each user-provided table, search the results (case-insensitive match on the `name` field).
+3. For each table **found**: call `mcp__claude_ai_LFX_BI_Layer__get_source_details` using the `uniqueId` from Step 1. Extract the column registry from `catalog.columns`: each entry has `name`, `type`, and `index` (ordinal position).
+4. For each table **not found** in dbt sources: inform the user and fall back to Step 2 for that table only.
+
+### Step 2 — Manual fallback (only for tables not in dbt sources)
+
+Generate the ACCOUNT_USAGE query for the missing tables and ask the user to run it:
 
 ```sql
 SELECT DISTINCT
@@ -122,28 +178,45 @@ SELECT DISTINCT
   ordinal_position
 FROM SNOWFLAKE.ACCOUNT_USAGE.COLUMNS
 WHERE (table_catalog, table_schema, table_name) IN (
-  ('DB1', 'SCHEMA1', 'TABLE1'),
-  ('DB2', 'SCHEMA2', 'TABLE2')
-  -- one row per confirmed table
+  ('DB1', 'SCHEMA1', 'TABLE1')
+  -- one row per missing table
 )
 AND DELETED IS NULL
 ORDER BY table_name, ordinal_position;
 ```
 
-Replace the placeholder values with the actual table names provided by the user.
+Ask the user to paste the output or provide a path to an exported file (CSV, JSON, or TSV). If a file path is given, read the file.
 
-Ask the user to either paste the output directly or provide a path to an exported file (CSV, JSON, or TSV). If a file path is given, read the file.
+### Column registry
 
-Parse the output to build a column registry per table:
+After Step 1 and/or Step 2, build a column registry per table:
 - Column name (exact casing from schema — this is the reference for all code)
 - Data type
-- Nullable (YES/NO)
+- Ordinal position
 
 **Store this as the canonical column reference. Every column name used in generated code must appear in this registry. Never assume or invent a column name.**
 
 For each JOIN table, check whether any existing transformer in `services/apps/snowflake_connectors/src/integrations/` queries from the same table. If yes, inherit its column mappings; if no, treat every column as unknown and derive it from sample data in the Pre-Analysis step below.
 
-After building the column registry, generate a sample data query using **only explicit column names from the registry** (never `*`) and ask the user to run it:
+### Step 3 — Sample data
+
+Attempt to retrieve sample data via the LFX BI Layer before asking the user to run a manual query.
+
+#### Option A — query_metrics (attempt first)
+
+1. Call `mcp__claude_ai_LFX_BI_Layer__list_metrics`. Search the results for metrics whose name or description relates to the platform/source (e.g., `total_committees`, `total_committee_members`, `total_enrollments`).
+2. For each relevant metric found, call `mcp__claude_ai_LFX_BI_Layer__get_dimensions` to list available dimensions.
+3. Select all categorical dimensions that are likely to correspond to identity, org, or activity fields (email, username, name, status, type, date, project_slug, etc.).
+4. Call `mcp__claude_ai_LFX_BI_Layer__query_metrics` with those dimensions and `limit: 20`.
+5. Use the returned rows as sample data for Pre-Analysis.
+
+**Important caveat:** `query_metrics` queries semantic/transformed dbt models, not raw source tables. Column names in the result come from the semantic model and may differ from raw schema column names. Use the data to infer field roles and value patterns; map back to raw column names using the schema registry from Step 1–2.
+
+If no relevant metrics are found, or the returned dimensions don't cover the fields needed for mapping, fall through to Option B.
+
+#### Option B — manual paste (fallback)
+
+Generate a sample data query using **only explicit column names from the registry** (never `*`) and ask the user to run it in Snowflake:
 
 ```sql
 SELECT
@@ -218,6 +291,8 @@ After the user responds, record all confirmed mappings. **Skip any Phase 3 sub-s
 **When raising any ambiguity, always include:**
 1. **How existing data sources handle it** — read the relevant transformer(s) from `services/apps/snowflake_connectors/src/integrations/` and show the pattern. If an existing source skips or doesn't implement the feature, say so explicitly (e.g., "TNC doesn't use a logo field — it's left undefined").
 2. **A Snowflake query to resolve it** — if the ambiguity can be answered by inspecting actual data (e.g., checking uniqueness, null rate, value distribution), provide the query so the user can run it instead of guessing.
+
+When raising any ambiguity that can be resolved by inspecting data, first try `mcp__claude_ai_LFX_BI_Layer__query_metrics` with the relevant dimensions and a `where` filter to narrow results. Only ask the user to run a manual Snowflake query if the semantic layer doesn't have dimensions covering the ambiguous columns.
 
 Example format for an ambiguity:
 > "I see two timestamp columns: `CREATED_AT` (nullable) and `UPDATED_AT` (not nullable).
@@ -549,7 +624,9 @@ LIMIT 100;
 ```
 
 Instruct the user:
-> "Please run this query in Snowflake and paste the result (JSON or CSV). I'll walk through each row and verify the transformer logic produces the expected `IActivityData` before we consider this done."
+> "Please run this query directly in Snowflake and paste the result (JSON or CSV). I'll walk through each row and verify the transformer logic produces the expected `IActivityData` before we consider this done."
+
+Note: the LFX BI Layer MCP does not support arbitrary SQL execution — the test query must be run manually in the Snowflake UI.
 
 ### Dry-Run Validation
 
