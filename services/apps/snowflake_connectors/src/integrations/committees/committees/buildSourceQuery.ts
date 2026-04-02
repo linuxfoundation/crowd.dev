@@ -38,6 +38,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     c.ROLE__C,
     c.CREATEDDATE::TIMESTAMP_NTZ AS CREATEDDATE,
     c.LASTMODIFIEDDATE::TIMESTAMP_NTZ AS LASTMODIFIEDDATE,
+    c._FIVETRAN_SYNCED::TIMESTAMP_NTZ AS FIVETRAN_SYNCED,
     cm.COMMITTEE_ID,
     cm.COMMITTEE_NAME,
     cm.PROJECT_ID,
@@ -71,7 +72,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
 
   // Limit to a single project in non-prod to avoid exporting all project data
   if (!IS_PROD_ENV) {
-    select += ` AND cm.PROJECT_SLUG = 'ccc'`
+    select += ` AND cm.PROJECT_SLUG = 'cncf'`
   }
 
   const dedup = `

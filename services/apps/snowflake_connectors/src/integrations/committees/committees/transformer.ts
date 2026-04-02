@@ -81,10 +81,15 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
       })
     }
 
+    const activityTimestamp =
+      type === CommitteesActivityType.ADDED_TO_COMMITTEE
+        ? (row.CREATEDDATE as string | null) || null
+        : (row.FIVETRAN_SYNCED as string | null) || null
+
     const activity: IActivityData = {
       type,
       platform: PlatformType.COMMITTEES,
-      timestamp: (row.LASTMODIFIEDDATE as string | null) || null,
+      timestamp: activityTimestamp,
       score: COMMITTEES_GRID[type].score,
       sourceId: committeeId,
       sourceParentId: null,
@@ -113,7 +118,7 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
           lastName: (row.BU_LAST_NAME as string | null) || null,
           email: (row.BU_EMAIL as string | null) || null,
         },
-        activityDate: (row.CREATEDDATE as string | null) || null,
+        activityDate: activityTimestamp,
       },
     }
 
@@ -131,7 +136,9 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
     return { activity, segment: { slug: segmentSlug, sourceId: segmentSourceId } }
   }
 
-  private buildOrganizations(row: Record<string, unknown>): IActivityData['member']['organizations'] {
+  private buildOrganizations(
+    row: Record<string, unknown>,
+  ): IActivityData['member']['organizations'] {
     const website = (row.ORG_WEBSITE as string | null)?.trim() || null
     const domainAliases = (row.ORG_DOMAIN_ALIASES as string | null)?.trim() || null
 
