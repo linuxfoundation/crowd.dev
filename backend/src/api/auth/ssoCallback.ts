@@ -29,17 +29,17 @@ export default async (req, res) => {
       jwt.verify(idToken, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
         if (err) {
           req.log.error('Error verifying token', err)
-          reject(new Error401())
+          return reject(new Error401())
         }
 
         const { aud } = decoded as any
 
         if (aud !== AUTH0_CONFIG.clientId) {
           req.log.error(`Invalid audience: ${aud}`)
-          reject(new Error401())
+          return reject(new Error401())
         }
 
-        resolve(decoded)
+        return resolve(decoded)
       })
     })
     const data: any = await verifyToken
