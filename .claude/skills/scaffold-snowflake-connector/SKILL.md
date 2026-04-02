@@ -295,7 +295,7 @@ For each activity type the user provides, suggest the following **one at a time*
 | Enum key | SCREAMING_SNAKE_CASE version of the name (e.g., `ENROLLED_CERTIFICATION`) |
 | String value | The name the user provided (kebab-case) |
 | Label | Human-readable (e.g., `Enrolled in certification`) |
-| Description | One sentence describing the event (look at similar types in `backend/src/c/migrations/` for style) |
+| Description | One sentence describing the event (follow the style in `backend/src/database/migrations/V1771497876__addCventActivityTypes.sql` and `V1772556158__addTncActivityTypes.sql`) |
 | `isCodeContribution` | `false` unless it involves code (check existing platforms — almost always false for non-GitHub sources) |
 | `isCollaboration` | `false` unless it is a collaborative activity |
 
@@ -412,9 +412,9 @@ Add `OrganizationAttributeSource.{PLATFORM},` to the `ORG_DB_ATTRIBUTE_SOURCE_PR
 
 **Touch point 5 — Flyway migration** (new file)
 
-File: `backend/src/database/migrations/V{Date.now()}__add{Platform}ActivityTypes.sql`
+File: `backend/src/database/migrations/V{epoch_seconds}__add{Platform}ActivityTypes.sql`
 
-Template (use epoch timestamp for `V` prefix — run `date +%s%3N` in terminal):
+Template (use a 10-digit second-epoch for the `V` prefix, matching existing migrations — run `date +%s` in terminal):
 
 ```sql
 INSERT INTO "activityTypes" ("activityType", platform, "isCodeContribution", "isCollaboration", description, "label") VALUES
@@ -474,7 +474,7 @@ These are AI-generated from the confirmed column mappings. Apply all rules stric
 File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/buildSourceQuery.ts`
 
 **Rules (enforced — do not deviate):**
-- Use explicit column names only. Never use `table.*`
+- Use explicit column names only. Do not use `table.*` or `table.* EXCLUDE (...)` in new implementations — existing sources (TNC, CVENT) use these patterns but new sources should list columns explicitly to avoid parquet encoding/decoding issues
 - If any TIMESTAMP_TZ columns exist in the schema, exclude and re-cast them as TIMESTAMP_NTZ (see CVENT pattern)
 - Follow the CTE structure:
   1. `org_accounts` CTE (if org data present)
@@ -572,7 +572,7 @@ Fix any errors or warnings and re-run `pnpm run lint` until it reports no compla
 Before declaring the implementation complete, verify every item:
 
 - [ ] All applicable files from the File Inventory written to disk
-- [ ] No `table.*` anywhere in any generated query
+- [ ] No `table.*` or `table.* EXCLUDE (...)` in any generated query
 - [ ] No broad `else` in any transformer
 - [ ] All string comparisons are case-insensitive (`.toLowerCase()` on both sides of comparison)
 - [ ] `sourceId` confirmed unique in test data
