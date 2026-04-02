@@ -410,11 +410,11 @@ Add `OrganizationAttributeSource.{PLATFORM},` to the `ORG_DB_ATTRIBUTE_SOURCE_PR
 
 ---
 
-**Touch point 5 — Flyway migration** (new file)
+**Touch point 5 — Flyway migration** (two new files)
 
-File: `backend/src/database/migrations/V{epoch_seconds}__add{Platform}ActivityTypes.sql`
+Use a 10-digit second-epoch for the timestamp — run `date +%s` in terminal.
 
-Template (use a 10-digit second-epoch for the `V` prefix, matching existing migrations — run `date +%s` in terminal):
+**File A:** `backend/src/database/migrations/V{epoch_seconds}__add{Platform}ActivityTypes.sql`
 
 ```sql
 INSERT INTO "activityTypes" ("activityType", platform, "isCodeContribution", "isCollaboration", description, "label") VALUES
@@ -422,6 +422,10 @@ INSERT INTO "activityTypes" ("activityType", platform, "isCodeContribution", "is
 -- ... one row per confirmed activity type, last row without trailing comma
 ('{string-value}', '{platform-string}', {false|true}, {false|true}, '{description}', '{label}');
 ```
+
+**File B:** `backend/src/database/migrations/U{epoch_seconds}__add{Platform}ActivityTypes.sql`
+
+Empty file — same timestamp and name as File A, prefix `U` instead of `V`. Matches the pattern used by existing migrations (e.g., `U1771497876__addCventActivityTypes.sql`).
 
 ---
 
