@@ -136,6 +136,58 @@ SQL >
     FROM mentions FINAL
     GROUP BY projectSlug
 
+NODE last_vulnerability_scan_status
+SQL >
+    SELECT
+        insights_projects_populated_copy_flatten_projects.id as insightsProjectId,
+        multiIf(
+            max(
+                multiIf(
+                    vs.status = 'success',
+                    4,
+                    vs.status = 'no_packages_found',
+                    3,
+                    vs.status = 'failure',
+                    2,
+                    1
+                )
+            )
+            = 4,
+            'success',
+            max(
+                multiIf(
+                    vs.status = 'success',
+                    4,
+                    vs.status = 'no_packages_found',
+                    3,
+                    vs.status = 'failure',
+                    2,
+                    1
+                )
+            )
+            = 3,
+            'no_packages_found',
+            max(
+                multiIf(
+                    vs.status = 'success',
+                    4,
+                    vs.status = 'no_packages_found',
+                    3,
+                    vs.status = 'failure',
+                    2,
+                    1
+                )
+            )
+            = 2,
+            'failure',
+            'running'
+        ) as lastVulnerabilityScanStatus
+    FROM insights_projects_populated_copy_flatten_projects
+    LEFT JOIN
+        vulnerability_scans vs final
+        ON vs.repoUrl = insights_projects_populated_copy_flatten_projects.repository
+    group by insightsProjectId
+
 NODE insights_projects_populated_copy_results
 DESCRIPTION >
     Join everything together
@@ -176,7 +228,8 @@ SQL >
         insights_projects_populated_copy_mentions.communityPlatforms as communityPlatforms,
         insights_projects_populated_copy_mentions.communityKeywords as communityKeywords,
         insights_projects_populated_copy_mentions.communityLanguages as communityLanguages,
-        segments.status as status
+        segments.status as status,
+        last_vulnerability_scan_status.lastVulnerabilityScanStatus as lastVulnerabilityScanStatus
     FROM insightsProjects FINAL
     LEFT JOIN
         insights_projects_populated_copy_collections_slugs
@@ -202,6 +255,9 @@ SQL >
     LEFT JOIN
         insights_projects_populated_copy_mentions
         ON insights_projects_populated_copy_mentions.projectSlug = insightsProjects.slug
+    LEFT JOIN
+        last_vulnerability_scan_status
+        ON last_vulnerability_scan_status.insightsProjectId = insightsProjects.id
     LEFT JOIN segments ON segments.id = insightsProjects.segmentId
     WHERE isNull (insightsProjects.deletedAt)
 
