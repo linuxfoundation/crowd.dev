@@ -93,7 +93,7 @@ Ask the user:
 If the user provides a path: verify it by checking `{path}/services/apps/snowflake_connectors/src/integrations/index.ts` exists. If confirmed, set `CROWD_DEV_ROOT = {path}`. Proceed to Phase 1.
 
 If the path doesn't exist or they need to clone:
-> "Run: `git clone git@github.com:linuxfoundation/crowd.dev.git`
+> "Run: `git clone https://github.com/linuxfoundation/crowd.dev.git`
 > Then provide the path to the cloned directory."
 
 Wait for a valid path before continuing.
@@ -307,12 +307,13 @@ Example format for an ambiguity:
 
 ### 3a. Identity Mapping
 
-**Rule:** Every member record must produce at least one identity with `type: MemberIdentityType.USERNAME`. The fallback chain is (try in order):
-1. Platform-native username column from schema
-2. LFID column value (used as username on `PlatformType.LFID`)
-3. Email value used as the platform USERNAME (last resort)
+**Rule:** Every member record must produce at least one identity with `type: MemberIdentityType.USERNAME`. The standard approach is to use the unified `buildMemberIdentities()` method on `TransformerBase` (added in the identity deduplication refactor). Only fall back to inline identity construction if the user explicitly requests it and can justify why the unified method cannot be used (e.g., fundamentally different identity shape not covered by the method's logic).
 
-If Pre-Analysis resolved email, username, and LFID columns with HIGH confidence and the user confirmed them, skip to the summary step below.
+The unified method covers the standard fallback chain automatically:
+1. If `platformUsername` is non-null → EMAIL identity + USERNAME identity for the platform; if null → email value used as USERNAME fallback
+2. If `lfUsername` is non-null → additional USERNAME identity for `PlatformType.LFID`
+
+If Pre-Analysis resolved email, platformUsername, and LFID columns with HIGH confidence and the user confirmed them, skip to the summary step below.
 
 For any unresolved identity field, use this pattern:
 - **Multiple candidates found**: "I see columns `A` and `B` that could be the email — which one?" (present choices, not open-ended)
@@ -325,8 +326,10 @@ For each confirmed identity column also confirm:
 
 **Critical:** If a JOIN table for users is NOT the same table used by an existing implementation, validate every column explicitly regardless of Pre-Analysis confidence. Column name heuristics alone are not sufficient for unknown tables.
 
-After all identity fields are confirmed, summarize the full identity-building logic and ask:
-> "Here is how identities will be built: [summary]. Does this look correct?"
+After all identity fields are confirmed, summarize how `buildMemberIdentities()` will be called and ask:
+> "Here is how identities will be built:
+> `this.buildMemberIdentities({ email, sourceId, platformUsername: [col], lfUsername: [col] })`
+> Does this look correct?"
 
 ---
 
@@ -578,11 +581,13 @@ File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/t
 - All string comparisons must be case-insensitive: use `.toLowerCase()` on both sides of comparison only; preserve the original value in the output
 - No broad `else` statements — every branch must have an explicit condition
 - All column names referenced in code must exactly match the schema registry — never assumed
-- Identity fallback chain (always produces at least one USERNAME identity):
-  1. If platform-native username column present and non-null → push EMAIL + USERNAME identities for platform
-  2. Else if LFID present and non-null → push EMAIL for platform + LFID value as USERNAME for platform
-  3. Else → push EMAIL value as USERNAME for platform (email-as-username)
-- After building platform identities, if LFID column is present and non-null → push separate LFID identity: `{ platform: PlatformType.LFID, value: lfid, type: MemberIdentityType.USERNAME, ... }`
+- **Identity building — always use `this.buildMemberIdentities()` first (preferred):**
+  - Call `this.buildMemberIdentities({ email, sourceId?, platformUsername?, lfUsername? })` from `TransformerBase`
+  - `platformUsername` = the platform-native username column (null if absent)
+  - `lfUsername` = the LFID column value (null if absent)
+  - The method handles the full fallback chain automatically: EMAIL+USERNAME when platformUsername present, email-as-USERNAME fallback otherwise, plus optional LFID identity
+  - Do NOT import `IMemberData` or `MemberIdentityType` in the transformer — those are only needed if falling back to inline construction
+  - **Only use inline identity construction if the user explicitly requests it and justifies why `buildMemberIdentities()` cannot be used** (e.g., non-standard identity shape not covered by the method). Document the justification in a comment.
 - `isIndividualNoAccount` must call `this.isIndividualNoAccount(displayName)` from `TransformerBase` — never reimplement
 - **Do not set member attributes** (e.g., `MemberAttributeName.JOB_TITLE`, `AVATAR_URL`, `COUNTRY`) unless: (a) the user explicitly requested them, or (b) the same table and column are already used for that attribute in an existing implementation — in which case follow the existing pattern exactly
 - Extends the platform base class if one was confirmed in Phase 3e; otherwise extends `TransformerBase` directly
