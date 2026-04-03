@@ -1,0 +1,323 @@
+openapi: 3.1.0
+info:
+  title: LFX Member Organization Affiliations API
+  version: 1.0.0
+  description: >
+    API for querying developer affiliation periods (work experiences) linked to
+    their verified GitHub identities in the LFX platform.
+
+servers:
+  - url: /api/v1
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /affiliations:
+    post:
+      operationId: getBulkAffiliations
+      summary: Bulk contributor lookup
+      description: >
+        Look up affiliation data for up to 100 GitHub handles in a single
+        request. Handles that have no matching LFX profile are returned in the
+        `notFound` array.
+      tags:
+        - Affiliations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - githubHandles
+              properties:
+                githubHandles:
+                  type: array
+                  description: List of GitHub login handles to look up (case-insensitive).
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                    minLength: 1
+                  example:
+                    - torvalds
+                    - gvanrossum
+            example:
+              githubHandles:
+                - torvalds
+                - gvanrossum
+      parameters:
+        - name: page
+          in: query
+          description: Page number (1-based).
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Number of contributors to return per page.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Affiliations resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkAffiliationsResponse'
+              example:
+                total: 2
+                totalFound: 2
+                page: 1
+                pageSize: 20
+                contributorsInPage: 2
+                contributors:
+                  - githubHandle: torvalds
+                    name: Linus Torvalds
+                    emails:
+                      - torvalds@linux-foundation.org
+                    affiliations:
+                      - organization: Linux Foundation
+                        startDate: '2007-01-01T00:00:00.000Z'
+                        endDate: null
+                notFound: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /affiliations/{githubHandle}:
+    get:
+      operationId: getAffiliationByHandle
+      summary: Single contributor lookup
+      description: >
+        Convenience endpoint for looking up one developer by GitHub handle.
+        Useful for debugging and ad-hoc queries.
+      tags:
+        - Affiliations
+      parameters:
+        - name: githubHandle
+          in: path
+          required: true
+          description: GitHub login handle of the developer (case-insensitive).
+          schema:
+            type: string
+            minLength: 1
+          example: torvalds
+      responses:
+        '200':
+          description: Developer found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contributor'
+              example:
+                githubHandle: torvalds
+                name: Linus Torvalds
+                emails:
+                  - torvalds@linux-foundation.org
+                affiliations:
+                  - organization: Linux Foundation
+                    startDate: '2007-01-01'
+                    endDate: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No LFX profile found for the given GitHub handle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "No LFX profile found for GitHub login 'nonexistent-user'."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: Static API key — pass as `Bearer <token>`.
+
+  schemas:
+    AffiliationPeriod:
+      type: object
+      required:
+        - organization
+        - startDate
+        - endDate
+      properties:
+        organization:
+          type: string
+          description: Name of the organization.
+          example: Linux Foundation
+        startDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Start date of the affiliation period (ISO 8601 datetime).
+          example: '2020-01-01T00:00:00.000Z'
+        endDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: End date of the affiliation period, or null if currently active.
+          example: null
+
+    Contributor:
+      type: object
+      required:
+        - githubHandle
+        - name
+        - emails
+        - affiliations
+      properties:
+        githubHandle:
+          type: string
+          description: Verified GitHub login handle.
+          example: torvalds
+        name:
+          type:
+            - string
+            - 'null'
+          description: Display name from the LFX profile.
+          example: Linus Torvalds
+        emails:
+          type: array
+          description: Verified email addresses linked to the LFX profile.
+          items:
+            type: string
+            format: email
+          example:
+            - torvalds@linux-foundation.org
+        affiliations:
+          type: array
+          description: Resolved affiliation periods, ordered from most recent to oldest (null startDate last).
+          items:
+            $ref: '#/components/schemas/AffiliationPeriod'
+
+    BulkAffiliationsResponse:
+      type: object
+      required:
+        - total
+        - totalFound
+        - page
+        - pageSize
+        - contributorsInPage
+        - contributors
+        - notFound
+      properties:
+        total:
+          type: integer
+          description: Total number of handles submitted in the request.
+          example: 2
+        totalFound:
+          type: integer
+          description: Number of handles that matched an LFX profile.
+          example: 2
+        page:
+          type: integer
+          description: Current page number.
+          example: 1
+        pageSize:
+          type: integer
+          description: Maximum contributors per page.
+          example: 20
+        contributorsInPage:
+          type: integer
+          description: Number of contributors returned in this page.
+          example: 2
+        contributors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contributor'
+        notFound:
+          type: array
+          description: Handles from the request that had no matching LFX profile.
+          items:
+            type: string
+          example: []
+
+    HttpError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code.
+              example: NOT_FOUND
+            message:
+              type: string
+              description: Human-readable error description.
+              example: Not found
+
+  responses:
+    BadRequest:
+      description: Invalid request body or query parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: 'githubHandles: Maximum 100 handles per request'
+
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Invalid API key
+
+    Forbidden:
+      description: API key does not have the required scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: INSUFFICIENT_SCOPE
+              message: Insufficient scope for this operation
+
+    TooManyRequests:
+      description: Rate limit exceeded (60 requests per 60 seconds).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests, please try again later
