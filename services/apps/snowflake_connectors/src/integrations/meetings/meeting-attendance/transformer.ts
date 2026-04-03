@@ -1,6 +1,12 @@
 import { MEETINGS_GRID, MeetingsActivityType } from '@crowd/integrations'
 import { getServiceChildLogger } from '@crowd/logging'
-import { IActivityData, OrganizationSource, PlatformType } from '@crowd/types'
+import {
+  IActivityData,
+  IOrganizationIdentity,
+  OrganizationIdentityType,
+  OrganizationSource,
+  PlatformType,
+} from '@crowd/types'
 
 import { TransformedActivity, TransformerBase } from '../../../core/transformerBase'
 
@@ -106,15 +112,64 @@ export class MeetingAttendanceTransformer extends TransformerBase {
       return undefined
     }
 
+    const website = (row.ORG_WEBSITE as string | null)?.trim() || null
+    const domainAliases = (row.ORG_DOMAIN_ALIASES as string | null)?.trim() || null
+
     if (this.isIndividualNoAccount(accountName)) {
-      return undefined
+      return [
+        {
+          displayName: accountName,
+          source: OrganizationSource.MEETINGS,
+          identities: website
+            ? [
+                {
+                  platform: this.platform,
+                  value: website,
+                  type: OrganizationIdentityType.PRIMARY_DOMAIN,
+                  verified: true,
+                },
+              ]
+            : [],
+        },
+      ]
+    }
+
+    const identities: IOrganizationIdentity[] = []
+
+    if (website) {
+      identities.push({
+        platform: this.platform,
+        value: website,
+        type: OrganizationIdentityType.PRIMARY_DOMAIN,
+        verified: true,
+      })
+    }
+
+    if (domainAliases) {
+      for (const alias of domainAliases.split(',')) {
+        const trimmed = alias.trim()
+        if (trimmed) {
+          identities.push({
+            platform: this.platform,
+            value: trimmed,
+            type: OrganizationIdentityType.ALTERNATIVE_DOMAIN,
+            verified: true,
+          })
+        }
+      }
     }
 
     return [
       {
         displayName: accountName,
         source: OrganizationSource.MEETINGS,
-        identities: [],
+        identities,
+        logo: (row.LOGO_URL as string | null)?.trim() || undefined,
+        size:
+          typeof row.ORGANIZATION_SIZE === 'string'
+            ? row.ORGANIZATION_SIZE.trim() || undefined
+            : undefined,
+        industry: (row.ORGANIZATION_INDUSTRY as string | null)?.trim() || undefined,
       },
     ]
   }

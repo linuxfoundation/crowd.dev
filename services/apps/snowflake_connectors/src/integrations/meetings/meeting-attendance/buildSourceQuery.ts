@@ -11,6 +11,17 @@ const CDP_MATCHED_SEGMENTS = `
       AND s.SOURCE_ID IS NOT NULL
   )`
 
+const ORG_ACCOUNTS = `
+  org_accounts AS (
+    SELECT account_id, account_name, website, domain_aliases, LOGO_URL, INDUSTRY, N_EMPLOYEES
+    FROM analytics.bronze_fivetran_salesforce.accounts
+    WHERE website IS NOT NULL
+    UNION ALL
+    SELECT account_id, account_name, website, domain_aliases, NULL AS LOGO_URL, NULL AS INDUSTRY, NULL AS N_EMPLOYEES
+    FROM analytics.bronze_fivetran_salesforce_b2b.accounts
+    WHERE website IS NOT NULL
+  )`
+
 export const buildSourceQuery = (sinceTimestamp?: string): string => {
   let select = `
   SELECT
@@ -30,11 +41,18 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     t.INVITEE_EMAIL,
     t.INVITEE_ATTENDED,
     t.WAS_INVITED,
-    t.RAW_COMMITTEE_TYPE
+    t.RAW_COMMITTEE_TYPE,
+    org.website AS ORG_WEBSITE,
+    org.domain_aliases AS ORG_DOMAIN_ALIASES,
+    org.logo_url AS LOGO_URL,
+    org.industry AS ORGANIZATION_INDUSTRY,
+    CAST(org.n_employees AS VARCHAR) AS ORGANIZATION_SIZE
   FROM ANALYTICS.SILVER_FACT.MEETING_ATTENDANCE t
   INNER JOIN cdp_matched_segments cms
     ON cms.slug = t.PROJECT_SLUG
     AND cms.sourceId = t.PROJECT_ID
+  LEFT JOIN org_accounts org
+    ON t.ACCOUNT_ID = org.account_id
   WHERE (t.WAS_INVITED = TRUE OR t.INVITEE_ATTENDED = TRUE)`
 
   if (!IS_PROD_ENV) {
@@ -42,17 +60,19 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   }
 
   const dedup = `
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY t.PRIMARY_KEY ORDER BY t.MEETING_DATE DESC) = 1`
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY t.PRIMARY_KEY ORDER BY org.website DESC) = 1`
 
   if (!sinceTimestamp) {
     return `
-  WITH ${CDP_MATCHED_SEGMENTS}
+  WITH ${ORG_ACCOUNTS},
+  ${CDP_MATCHED_SEGMENTS}
   ${select}
   ${dedup}`.trim()
   }
 
   return `
-  WITH ${CDP_MATCHED_SEGMENTS},
+  WITH ${ORG_ACCOUNTS},
+  ${CDP_MATCHED_SEGMENTS},
   new_cdp_segments AS (
     SELECT DISTINCT
       s.SOURCE_ID AS sourceId,
