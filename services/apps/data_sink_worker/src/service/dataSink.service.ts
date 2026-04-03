@@ -97,7 +97,14 @@ export default class DataSinkService extends LoggerBase {
       }`
     }
 
-    if (errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified')) {
+    // Identity conflict errors get a long random delay to let concurrent upserts settle.
+    // Previously this called delayResult() unconditionally, bypassing maxStreamRetries and
+    // allowing retries to grow without bound. Now we respect the retry limit so the row
+    // eventually reaches ERROR state instead of cycling forever.
+    if (
+      errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified') &&
+      resultInfo.retries + 1 <= WORKER_SETTINGS().maxStreamRetries
+    ) {
       const delaySeconds = Math.floor(Math.random() * (120 - 10 + 1) + 10) * 60
       const until = addSeconds(new Date(), delaySeconds)
       this.log.warn(

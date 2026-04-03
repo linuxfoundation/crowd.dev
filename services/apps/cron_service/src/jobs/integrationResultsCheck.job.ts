@@ -1,6 +1,6 @@
 import CronTime from 'cron-time-generator'
 
-import { generateUUIDv1, partition } from '@crowd/common'
+import { IS_PROD_ENV, generateUUIDv1, partition } from '@crowd/common'
 import { DataSinkWorkerEmitter } from '@crowd/common_services'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { Logger } from '@crowd/logging'
@@ -14,6 +14,7 @@ const job: IJobDefinition = {
   name: 'integration-results-check',
   cronTime: CronTime.every(10).minutes(),
   timeout: 30 * 60, // 30 minutes
+  enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
     const topic = 'data-sink-worker-normal-production'
     const groupId = 'data-sink-worker-normal-production'
