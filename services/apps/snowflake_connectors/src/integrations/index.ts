@@ -8,6 +8,8 @@ import { PlatformType } from '@crowd/types'
 
 import { buildSourceQuery as cventBuildSourceQuery } from './cvent/event-registrations/buildSourceQuery'
 import { CventTransformer } from './cvent/event-registrations/transformer'
+import { buildSourceQuery as meetingAttendanceBuildQuery } from './meetings/meeting-attendance/buildSourceQuery'
+import { MeetingAttendanceTransformer } from './meetings/meeting-attendance/transformer'
 import { buildSourceQuery as tncCertificatesBuildQuery } from './tnc/certificates/buildSourceQuery'
 import { TncCertificatesTransformer } from './tnc/certificates/transformer'
 import { buildSourceQuery as tncCoursesBuildQuery } from './tnc/courses/buildSourceQuery'
@@ -20,6 +22,15 @@ export type { BuildSourceQuery, DataSource, PlatformDefinition } from './types'
 export { DataSourceName } from './types'
 
 const supported: Partial<Record<PlatformType, PlatformDefinition>> = {
+  [PlatformType.MEETINGS]: {
+    sources: [
+      {
+        name: DataSourceName.MEETINGS_MEETING_ATTENDANCE,
+        buildSourceQuery: meetingAttendanceBuildQuery,
+        transformer: new MeetingAttendanceTransformer(),
+      },
+    ],
+  },
   [PlatformType.CVENT]: {
     sources: [
       {
