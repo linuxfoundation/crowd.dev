@@ -42,7 +42,7 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
       : CommitteesActivityType.ADDED_TO_COMMITTEE
 
     const sourceId = (row.PRIMARY_SOURCE_USER_ID as string | null)?.trim() || undefined
-    const identities = this.buildMemberIdentities({ email, sourceId, lfUsername })
+    const identities = this.buildMemberIdentities({ email, platformUsername: null, sourceId, lfUsername })
 
     const activityTimestamp =
       type === CommitteesActivityType.ADDED_TO_COMMITTEE
