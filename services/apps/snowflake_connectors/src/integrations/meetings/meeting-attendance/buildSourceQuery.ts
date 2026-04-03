@@ -86,7 +86,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
 
   -- Updated records in existing segments
   ${select}
-    AND t.MEETING_DATE > '${sinceTimestamp}'::DATE
+    AND t.MEETING_DATE >= '${sinceTimestamp}'::DATE
   ${dedup}
 
   UNION

@@ -114,7 +114,8 @@ export abstract class TransformerBase {
       if (result === null) {
         return null
       }
-      return Array.isArray(result) ? result : [result]
+      const arr = Array.isArray(result) ? result : [result]
+      return arr.length > 0 ? arr : null
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const stack = err instanceof Error ? err.stack : undefined

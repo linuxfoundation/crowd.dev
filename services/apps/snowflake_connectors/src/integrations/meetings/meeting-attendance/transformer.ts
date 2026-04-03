@@ -71,44 +71,36 @@ export class MeetingAttendanceTransformer extends TransformerBase {
       meetingType: (row.RAW_COMMITTEE_TYPE as string | null) || null,
     }
 
-    const member = {
-      displayName,
-      identities,
-      organizations: this.buildOrganizations(row),
-    }
+    const organizations = this.buildOrganizations(row)
 
-    const segment = { slug: segmentSlug, sourceId: segmentSourceId }
+    const buildActivity = (
+      type: MeetingsActivityType,
+      sourceIdSuffix: string,
+    ): TransformedActivity => ({
+      activity: {
+        type,
+        platform: PlatformType.MEETINGS,
+        timestamp,
+        score: MEETINGS_GRID[type].score,
+        sourceId: `${primaryKey}_${sourceIdSuffix}`,
+        member: {
+          displayName,
+          identities: [...identities],
+          organizations: organizations ? [...organizations] : undefined,
+        },
+        attributes: { ...attributes },
+      } as IActivityData,
+      segment: { slug: segmentSlug, sourceId: segmentSourceId },
+    })
 
     const activities: TransformedActivity[] = []
 
     if (row.WAS_INVITED === true) {
-      activities.push({
-        activity: {
-          type: MeetingsActivityType.INVITED_MEETING,
-          platform: PlatformType.MEETINGS,
-          timestamp,
-          score: MEETINGS_GRID[MeetingsActivityType.INVITED_MEETING].score,
-          sourceId: `${primaryKey}_invited`,
-          member: { ...member },
-          attributes,
-        } as IActivityData,
-        segment,
-      })
+      activities.push(buildActivity(MeetingsActivityType.INVITED_MEETING, 'invited'))
     }
 
     if (row.INVITEE_ATTENDED === true) {
-      activities.push({
-        activity: {
-          type: MeetingsActivityType.ATTENDED_MEETING,
-          platform: PlatformType.MEETINGS,
-          timestamp,
-          score: MEETINGS_GRID[MeetingsActivityType.ATTENDED_MEETING].score,
-          sourceId: `${primaryKey}_attended`,
-          member: { ...member },
-          attributes,
-        } as IActivityData,
-        segment,
-      })
+      activities.push(buildActivity(MeetingsActivityType.ATTENDED_MEETING, 'attended'))
     }
 
     if (activities.length === 0) {
@@ -121,18 +113,20 @@ export class MeetingAttendanceTransformer extends TransformerBase {
   private buildOrganizations(
     row: Record<string, unknown>,
   ): IActivityData['member']['organizations'] {
+    const website = (row.ORG_WEBSITE as string | null)?.trim() || null
+    const domainAliases = (row.ORG_DOMAIN_ALIASES as string | null)?.trim() || null
     const accountName = (row.ACCOUNT_NAME as string | null)?.trim() || null
-    if (!accountName) {
+
+    if (!accountName && !website && !domainAliases) {
       return undefined
     }
 
-    const website = (row.ORG_WEBSITE as string | null)?.trim() || null
-    const domainAliases = (row.ORG_DOMAIN_ALIASES as string | null)?.trim() || null
+    const displayName = accountName || website
 
-    if (this.isIndividualNoAccount(accountName)) {
+    if (this.isIndividualNoAccount(displayName)) {
       return [
         {
-          displayName: accountName,
+          displayName,
           source: OrganizationSource.MEETINGS,
           identities: website
             ? [
@@ -175,7 +169,7 @@ export class MeetingAttendanceTransformer extends TransformerBase {
 
     return [
       {
-        displayName: accountName,
+        displayName,
         source: OrganizationSource.MEETINGS,
         identities,
         logo: (row.LOGO_URL as string | null)?.trim() || undefined,
