@@ -2,9 +2,7 @@ import { COMMITTEES_GRID, CommitteesActivityType } from '@crowd/integrations'
 import { getServiceChildLogger } from '@crowd/logging'
 import {
   IActivityData,
-  IMemberData,
   IOrganizationIdentity,
-  MemberIdentityType,
   OrganizationIdentityType,
   OrganizationSource,
   PlatformType,
@@ -43,43 +41,8 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
       ? CommitteesActivityType.REMOVED_FROM_COMMITTEE
       : CommitteesActivityType.ADDED_TO_COMMITTEE
 
-    const identities: IMemberData['identities'] = []
-
-    if (lfUsername) {
-      identities.push(
-        {
-          platform: PlatformType.COMMITTEES,
-          value: email,
-          type: MemberIdentityType.EMAIL,
-          verified: true,
-          verifiedBy: PlatformType.COMMITTEES,
-        },
-        {
-          platform: PlatformType.COMMITTEES,
-          value: lfUsername,
-          type: MemberIdentityType.USERNAME,
-          verified: true,
-          verifiedBy: PlatformType.COMMITTEES,
-        },
-        {
-          platform: PlatformType.LFID,
-          value: lfUsername,
-          type: MemberIdentityType.USERNAME,
-          verified: true,
-          verifiedBy: PlatformType.COMMITTEES,
-        },
-      )
-    }
-
-    if (!lfUsername) {
-      identities.push({
-        platform: PlatformType.COMMITTEES,
-        value: email,
-        type: MemberIdentityType.USERNAME,
-        verified: true,
-        verifiedBy: PlatformType.COMMITTEES,
-      })
-    }
+    const sourceId = (row.PRIMARY_SOURCE_USER_ID as string | null)?.trim() || undefined
+    const identities = this.buildMemberIdentities({ email, sourceId, lfUsername })
 
     const activityTimestamp =
       type === CommitteesActivityType.ADDED_TO_COMMITTEE
