@@ -309,9 +309,16 @@ Example format for an ambiguity:
 
 **Rule:** Every member record must produce at least one identity with `type: MemberIdentityType.USERNAME`. The standard approach is to use the unified `buildMemberIdentities()` method on `TransformerBase` (added in the identity deduplication refactor). Only fall back to inline identity construction if the user explicitly requests it and can justify why the unified method cannot be used (e.g., fundamentally different identity shape not covered by the method's logic).
 
-The unified method covers the standard fallback chain automatically:
-1. If `platformUsername` is non-null → EMAIL identity + USERNAME identity for the platform; if null → email value used as USERNAME fallback
-2. If `lfUsername` is non-null → additional USERNAME identity for `PlatformType.LFID`
+The unified method covers the standard fallback chain automatically. Full behavior by case:
+
+| `platformUsername` | `lfUsername` | Identities produced |
+|---|---|---|
+| null | null | EMAIL(platform) + USERNAME(platform, email) |
+| set | null | EMAIL(platform) + USERNAME(platform, platformUsername) |
+| null | set | EMAIL(platform) + USERNAME(LFID, lfUsername) + USERNAME(platform, lfUsername) |
+| set | set | EMAIL(platform) + USERNAME(platform, platformUsername) + USERNAME(LFID, lfUsername) |
+
+**Critical:** Never pass `lfUsername` as `platformUsername`. When a source only has an LFID column (no platform-native username), pass `platformUsername: null` — the lfUsername-only path (row 3 above) already produces the correct USERNAME identity for the platform using the lfUsername value.
 
 If Pre-Analysis resolved email, platformUsername, and LFID columns with HIGH confidence and the user confirmed them, skip to the summary step below.
 
@@ -328,7 +335,7 @@ For each confirmed identity column also confirm:
 
 After all identity fields are confirmed, summarize how `buildMemberIdentities()` will be called and ask:
 > "Here is how identities will be built:
-> `this.buildMemberIdentities({ email, sourceId, platformUsername: [col], lfUsername: [col] })`
+> `this.buildMemberIdentities({ email, sourceId: [col or null], platformUsername: [col or null], lfUsername: [col or null] })`
 > Does this look correct?"
 
 ---
@@ -582,10 +589,13 @@ File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/t
 - No broad `else` statements — every branch must have an explicit condition
 - All column names referenced in code must exactly match the schema registry — never assumed
 - **Identity building — always use `this.buildMemberIdentities()` first (preferred):**
-  - Call `this.buildMemberIdentities({ email, sourceId?, platformUsername?, lfUsername? })` from `TransformerBase`
-  - `platformUsername` = the platform-native username column (null if absent)
-  - `lfUsername` = the LFID column value (null if absent)
-  - The method handles the full fallback chain automatically: EMAIL+USERNAME when platformUsername present, email-as-USERNAME fallback otherwise, plus optional LFID identity
+  - Call `this.buildMemberIdentities({ email, sourceId, platformUsername, lfUsername })` from `TransformerBase`
+  - Always pass all 4 arguments explicitly, even when the value is `null` or `undefined` — never omit an argument
+  - `sourceId` = the user ID column from the source table (`undefined` if the table has no user ID column)
+  - `platformUsername` = the platform-native username column (`null` if absent — do NOT substitute `lfUsername` here)
+  - `lfUsername` = the LFID column value (`null` if absent)
+  - **Never pass `lfUsername` as `platformUsername`** — when a source only has an LFID column, pass `platformUsername: null`; the method's lfUsername-only path already produces the correct platform USERNAME from the lfUsername value
+  - The method handles the full fallback chain automatically (see the 4-case table in §3a)
   - Do NOT import `IMemberData` or `MemberIdentityType` in the transformer — those are only needed if falling back to inline construction
   - **Only use inline identity construction if the user explicitly requests it and justifies why `buildMemberIdentities()` cannot be used** (e.g., non-standard identity shape not covered by the method). Document the justification in a comment.
 - `isIndividualNoAccount` must call `this.isIndividualNoAccount(displayName)` from `TransformerBase` — never reimplement
