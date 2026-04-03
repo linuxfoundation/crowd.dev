@@ -86,13 +86,16 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
         ? (row.CREATEDDATE as string | null) || null
         : (row.FIVETRAN_SYNCED as string | null) || null
 
+    const committeeName = (row.COMMITTEE_NAME as string | null) || null
+
     const activity: IActivityData = {
       type,
       platform: PlatformType.COMMITTEES,
       timestamp: activityTimestamp,
       score: COMMITTEES_GRID[type].score,
-      sourceId: committeeId,
+      sourceId: `${committeeId}-${row.SFID}`,
       sourceParentId: null,
+      channel: committeeName,
       member: {
         displayName,
         identities,
@@ -100,7 +103,7 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
       },
       attributes: {
         committeeId: (row.COLLABORATION_NAME__C as string | null) || null,
-        committeeName: (row.COMMITTEE_NAME as string | null) || null,
+        committeeName,
         role: (row.ROLE__C as string | null) || null,
         projectId: (row.PROJECT_ID as string | null) || null,
         projectName: (row.PROJECT_NAME as string | null) || null,
