@@ -99,7 +99,10 @@ const job: IJobDefinition = {
     const emitter = new IntegrationStreamWorkerEmitter(queueService, ctx.log)
     await emitter.init()
 
-    await emitter.triggerWebhookProcessingBatch(webhooks.map((w) => w.id))
+    await emitter.triggerWebhookProcessingBatch(
+      webhooks.map((w) => w.id),
+      true,
+    )
 
     ctx.log.info(`Re-triggered ${webhooks.length} stuck pending webhooks in total!`)
   },

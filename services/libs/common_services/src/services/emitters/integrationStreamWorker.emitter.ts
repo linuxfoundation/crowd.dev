@@ -60,14 +60,23 @@ export class IntegrationStreamWorkerEmitter extends QueuePriorityService {
     )
   }
 
-  public async triggerWebhookProcessingBatch(webhookIds: string[]): Promise<void> {
+  // Sends in parallel batches of 10. Uses concurrent sendMessage calls (not sendMessages)
+  // so the priority context (onboarding flag) is respected — sendMessages() has no way to
+  // pass a priority override and always routes to NORMAL.
+  public async triggerWebhookProcessingBatch(
+    webhookIds: string[],
+    onboarding: boolean,
+  ): Promise<void> {
     for (const batch of partition(webhookIds, 10)) {
-      await this.sendMessages(
-        batch.map((webhookId) => ({
-          payload: new ProcessWebhookStreamQueueMessage(webhookId),
-          groupId: generateUUIDv1(),
-          deduplicationId: webhookId,
-        })),
+      await Promise.all(
+        batch.map((webhookId) =>
+          this.sendMessage(
+            generateUUIDv1(),
+            new ProcessWebhookStreamQueueMessage(webhookId),
+            webhookId,
+            { onboarding },
+          ),
+        ),
       )
     }
   }
