@@ -74,10 +74,11 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
       }
 
       if (identity.type === MemberIdentityType.EMAIL) {
+        // SQL matches case-insensitively (lower(value) = lower(?)), so mirror that here.
         const row = singleOrDefault(data, (r) => {
           return (
             r.type === identity.type &&
-            r.value === identity.value &&
+            r.value.toLowerCase() === identity.value.toLowerCase() &&
             r.platform === identity.platform
           )
         })
@@ -93,11 +94,12 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
         // (type, value) but on different platforms would both match. The previous
         // singleOrDefault call threw "Array contains more than one matching element!" in that
         // case — a deterministic crash that never self-heals.
+        // SQL matches case-insensitively (lower(value) = lower(?)), so mirror that here.
         const row =
           data.find(
             (r) =>
               r.type === identity.type &&
-              r.value === identity.value &&
+              r.value.toLowerCase() === identity.value.toLowerCase() &&
               r.platform === identity.platform,
           ) ?? null
 

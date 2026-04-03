@@ -1,4 +1,4 @@
-import { generateUUIDv1 } from '@crowd/common'
+import { generateUUIDv1, partition } from '@crowd/common'
 import { Logger } from '@crowd/logging'
 import { CrowdQueue, IQueue } from '@crowd/queue'
 import {
@@ -58,5 +58,17 @@ export class IntegrationStreamWorkerEmitter extends QueuePriorityService {
       undefined,
       { onboarding: true },
     )
+  }
+
+  public async triggerWebhookProcessingBatch(webhookIds: string[]): Promise<void> {
+    for (const batch of partition(webhookIds, 10)) {
+      await this.sendMessages(
+        batch.map((webhookId) => ({
+          payload: new ProcessWebhookStreamQueueMessage(webhookId),
+          groupId: generateUUIDv1(),
+          deduplicationId: webhookId,
+        })),
+      )
+    }
   }
 }
