@@ -12,6 +12,23 @@ import { TransformedActivity, TransformerBase } from '../../../core/transformerB
 
 const log = getServiceChildLogger('meetingAttendanceTransformer')
 
+function toISOTimestamp(rawDate: unknown, rawTime: unknown): string | null {
+  const date =
+    rawDate instanceof Date
+      ? new Date(rawDate)
+      : typeof rawDate === 'string'
+        ? new Date(rawDate)
+        : null
+  if (!date || isNaN(date.getTime())) return null
+  if (typeof rawTime === 'number') {
+    date.setTime(date.getTime() + rawTime)
+  } else if (typeof rawTime === 'string' && rawTime.trim()) {
+    const combined = new Date(`${date.toISOString().slice(0, 10)}T${rawTime.trim()}Z`)
+    if (!isNaN(combined.getTime())) return combined.toISOString()
+  }
+  return date.toISOString()
+}
+
 export class MeetingAttendanceTransformer extends TransformerBase {
   readonly platform = PlatformType.MEETINGS
 
@@ -39,10 +56,7 @@ export class MeetingAttendanceTransformer extends TransformerBase {
       return null
     }
 
-    const meetingDate = (row.MEETING_DATE as string | null) || null
-    const meetingTime = (row.MEETING_TIME as string | null) || null
-    const timestamp =
-      meetingDate && meetingTime ? `${meetingDate}T${meetingTime}` : meetingDate || null
+    const timestamp = toISOTimestamp(row.MEETING_DATE, row.MEETING_TIME)
 
     const primaryKey = (row.PRIMARY_KEY as string)?.trim()
 
