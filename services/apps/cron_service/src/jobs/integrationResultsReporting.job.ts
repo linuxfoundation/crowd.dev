@@ -1,6 +1,6 @@
 import CronTime from 'cron-time-generator'
 
-import { IS_DEV_ENV } from '@crowd/common'
+import { IS_DEV_ENV, IS_PROD_ENV } from '@crowd/common'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
   SlackChannel,
@@ -33,6 +33,7 @@ const job: IJobDefinition = {
   name: 'integration-results-reporting',
   cronTime: IS_DEV_ENV ? CronTime.everyMinute() : CronTime.everyDayAt(8, 30),
   timeout: 10 * 60, // 10 minutes
+  enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {
     ctx.log.info('Running integration-results-reporting job...')
 

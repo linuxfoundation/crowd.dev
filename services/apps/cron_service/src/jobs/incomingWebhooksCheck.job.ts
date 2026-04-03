@@ -23,7 +23,12 @@ const job: IJobDefinition = {
     const admin = kafkaClient.admin()
     await admin.connect()
 
-    const counts = await getKafkaMessageCounts(ctx.log, admin, TOPIC, GROUP_ID)
+    let counts: { total: number; consumed: number; unconsumed: number }
+    try {
+      counts = await getKafkaMessageCounts(ctx.log, admin, TOPIC, GROUP_ID)
+    } finally {
+      await admin.disconnect()
+    }
 
     if (counts.unconsumed >= MAX_UNCONSUMED) {
       ctx.log.info(
