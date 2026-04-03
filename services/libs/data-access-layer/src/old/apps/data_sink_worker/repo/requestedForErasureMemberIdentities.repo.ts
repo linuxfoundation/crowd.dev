@@ -73,30 +73,22 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
       }
 
       if (identity.type === MemberIdentityType.EMAIL) {
-        // SQL matches case-insensitively (lower(value) = lower(?)), so mirror that here.
-        // Using find instead of singleOrDefault: case-insensitive matching could produce
-        // multiple hits if the DB has rows with differing casing for the same email,
-        // causing singleOrDefault to throw.
+        // Email is platform-agnostic: the SQL query also omits the platform filter for EMAIL.
+        // Using find (not singleOrDefault) because case-insensitive matching can return
+        // multiple rows for the same email stored with different casing.
         const row =
           data.find(
             (r) =>
-              r.type === identity.type &&
-              r.value.toLowerCase() === identity.value.toLowerCase() &&
-              r.platform === identity.platform,
+              r.type === identity.type && r.value.toLowerCase() === identity.value.toLowerCase(),
           ) ?? null
 
-        if (row) {
-          results.set(identity, true)
-        } else {
-          results.set(identity, false)
-        }
+        results.set(identity, row !== null)
       } else {
-        // The SQL query above already filters non-EMAIL identities by platform, so the
-        // in-memory filter must also include platform. Without it, two identities sharing
-        // (type, value) but on different platforms would both match. The previous
-        // singleOrDefault call threw "Array contains more than one matching element!" in that
-        // case — a deterministic crash that never self-heals.
-        // SQL matches case-insensitively (lower(value) = lower(?)), so mirror that here.
+        // The SQL query filters non-EMAIL identities by platform, so the in-memory filter
+        // must also include platform. Without it, two identities sharing (type, value) but
+        // on different platforms would both match. The previous singleOrDefault call threw
+        // "Array contains more than one matching element!" in that case — a deterministic
+        // crash that never self-heals.
         const row =
           data.find(
             (r) =>
@@ -105,11 +97,7 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
               r.platform === identity.platform,
           ) ?? null
 
-        if (row) {
-          results.set(identity, true)
-        } else {
-          results.set(identity, false)
-        }
+        results.set(identity, row !== null)
       }
     }
 
