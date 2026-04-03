@@ -342,7 +342,10 @@ After all identity fields are confirmed, summarize how `buildMemberIdentities()`
 
 ### 3b. Organization Mapping
 
-If Pre-Analysis determined there is no org data (no org-related columns found in any table), confirm: "I don't see any organization columns in the schema. Does this source have org/company data?" — if yes, proceed; if no, skip to 3c.
+If Pre-Analysis determined there is no org data (no org-related columns found in any table): before asking the user, first read existing transformers in `services/apps/snowflake_connectors/src/integrations/` to check whether any of them join an org table using a key that also exists in the user's tables. If a match is found, prompt the user:
+> "I don't see org columns in the tables you provided, but [EXISTING_PLATFORM] sources org data from `{ORG_TABLE}` via `{join_key}` — which also appears in your table. Did you mean to include this? (Recommended)"
+
+If no existing pattern is joinable, ask: "I don't see any org columns. Does this source have org/company data?" — if yes, ask for the table; if no, skip to 3c.
 
 If Pre-Analysis identified org columns:
 
