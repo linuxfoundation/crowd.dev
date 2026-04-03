@@ -90,9 +90,9 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
       } else {
         // The SQL query above already filters non-EMAIL identities by platform, so the
         // in-memory filter must also include platform. Without it, two identities sharing
-        // (type, value) but on different platforms both match, causing singleOrDefault to
-        // throw "Array contains more than one matching element!" — a deterministic crash
-        // that will never self-heal since the same data triggers the same failure every time.
+        // (type, value) but on different platforms would both match. The previous
+        // singleOrDefault call threw "Array contains more than one matching element!" in that
+        // case — a deterministic crash that never self-heals.
         const row =
           data.find(
             (r) =>

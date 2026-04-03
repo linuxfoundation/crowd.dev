@@ -3,8 +3,7 @@ import CronTime from 'cron-time-generator'
 import { IS_PROD_ENV, generateUUIDv1, partition } from '@crowd/common'
 import { DataSinkWorkerEmitter } from '@crowd/common_services'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { Logger } from '@crowd/logging'
-import { KafkaAdmin, QUEUE_CONFIG, getKafkaClient } from '@crowd/queue'
+import { QUEUE_CONFIG, getKafkaClient, getKafkaMessageCounts } from '@crowd/queue'
 import { KafkaQueueService } from '@crowd/queue/src/vendors/kafka/client'
 import { DataSinkWorkerQueueMessageType, IntegrationResultState } from '@crowd/types'
 
@@ -23,7 +22,7 @@ const job: IJobDefinition = {
     const admin = kafkaClient.admin()
     await admin.connect()
 
-    const counts = await getMessageCounts(ctx.log, admin, topic, groupId)
+    const counts = await getKafkaMessageCounts(ctx.log, admin, topic, groupId)
 
     // if we have less than 50k messages in the queue we can trigger 50k oldest results (we process between 100k and 300k results per hour on average)
     if (counts.unconsumed < 50000) {
@@ -78,52 +77,6 @@ const job: IJobDefinition = {
       ctx.log.info(`We have ${counts.unconsumed} unconsumed messages in the queue, skipping!`)
     }
   },
-}
-
-async function getMessageCounts(
-  log: Logger,
-  admin: KafkaAdmin,
-  topic: string,
-  groupId: string,
-): Promise<{
-  total: number
-  consumed: number
-  unconsumed: number
-}> {
-  try {
-    const topicOffsets = await admin.fetchTopicOffsets(topic)
-    const offsetsResponse = await admin.fetchOffsets({
-      groupId: groupId,
-      topics: [topic],
-    })
-
-    const offsets = offsetsResponse[0].partitions
-
-    let totalMessages = 0
-    let consumedMessages = 0
-    let totalLeft = 0
-
-    for (const offset of offsets) {
-      const topicOffset = topicOffsets.find((p) => p.partition === offset.partition)
-      if (topicOffset) {
-        // Total messages is the latest offset
-        totalMessages += Number(topicOffset.offset)
-        // Consumed messages is the consumer group's offset
-        consumedMessages += Number(offset.offset)
-        // Unconsumed is the difference
-        totalLeft += Number(topicOffset.offset) - Number(offset.offset)
-      }
-    }
-
-    return {
-      total: totalMessages,
-      consumed: consumedMessages,
-      unconsumed: totalLeft,
-    }
-  } catch (err) {
-    log.error(err, 'Failed to get message count!')
-    throw err
-  }
 }
 
 export default job

@@ -3,8 +3,7 @@ import CronTime from 'cron-time-generator'
 import { IS_PROD_ENV } from '@crowd/common'
 import { IntegrationStreamWorkerEmitter } from '@crowd/common_services'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { Logger } from '@crowd/logging'
-import { KafkaAdmin, QUEUE_CONFIG, getKafkaClient } from '@crowd/queue'
+import { QUEUE_CONFIG, getKafkaClient, getKafkaMessageCounts } from '@crowd/queue'
 import { KafkaQueueService } from '@crowd/queue/src/vendors/kafka/client'
 import { WebhookState } from '@crowd/types'
 
@@ -24,7 +23,7 @@ const job: IJobDefinition = {
     const admin = kafkaClient.admin()
     await admin.connect()
 
-    const counts = await getMessageCounts(ctx.log, admin, TOPIC, GROUP_ID)
+    const counts = await getKafkaMessageCounts(ctx.log, admin, TOPIC, GROUP_ID)
 
     if (counts.unconsumed >= MAX_UNCONSUMED) {
       ctx.log.info(
@@ -37,7 +36,7 @@ const job: IJobDefinition = {
 
     const count = (
       await dbConnection.one(
-        `select count(*) as count from "incomingWebhooks" where state = $(state) and "createdAt" < now() - interval '1 day'`,
+        `select count(*)::int as count from "incomingWebhooks" where state = $(state) and "createdAt" < now() - interval '1 day'`,
         { state: WebhookState.PENDING },
       )
     ).count
@@ -83,37 +82,6 @@ const job: IJobDefinition = {
 
     ctx.log.info(`Re-triggered ${triggered} stuck pending webhooks in total!`)
   },
-}
-
-async function getMessageCounts(
-  log: Logger,
-  admin: KafkaAdmin,
-  topic: string,
-  groupId: string,
-): Promise<{ total: number; consumed: number; unconsumed: number }> {
-  try {
-    const topicOffsets = await admin.fetchTopicOffsets(topic)
-    const offsetsResponse = await admin.fetchOffsets({ groupId, topics: [topic] })
-    const offsets = offsetsResponse[0].partitions
-
-    let totalMessages = 0
-    let consumedMessages = 0
-    let totalLeft = 0
-
-    for (const offset of offsets) {
-      const topicOffset = topicOffsets.find((p) => p.partition === offset.partition)
-      if (topicOffset) {
-        totalMessages += Number(topicOffset.offset)
-        consumedMessages += Number(offset.offset)
-        totalLeft += Number(topicOffset.offset) - Number(offset.offset)
-      }
-    }
-
-    return { total: totalMessages, consumed: consumedMessages, unconsumed: totalLeft }
-  } catch (err) {
-    log.error(err, 'Failed to get message count!')
-    throw err
-  }
 }
 
 export default job
