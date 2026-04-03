@@ -1,4 +1,3 @@
-import { singleOrDefault } from '@crowd/common'
 import { DbStore, RepositoryBase } from '@crowd/database'
 import { Logger } from '@crowd/logging'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
@@ -75,13 +74,16 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
 
       if (identity.type === MemberIdentityType.EMAIL) {
         // SQL matches case-insensitively (lower(value) = lower(?)), so mirror that here.
-        const row = singleOrDefault(data, (r) => {
-          return (
-            r.type === identity.type &&
-            r.value.toLowerCase() === identity.value.toLowerCase() &&
-            r.platform === identity.platform
-          )
-        })
+        // Using find instead of singleOrDefault: case-insensitive matching could produce
+        // multiple hits if the DB has rows with differing casing for the same email,
+        // causing singleOrDefault to throw.
+        const row =
+          data.find(
+            (r) =>
+              r.type === identity.type &&
+              r.value.toLowerCase() === identity.value.toLowerCase() &&
+              r.platform === identity.platform,
+          ) ?? null
 
         if (row) {
           results.set(identity, true)

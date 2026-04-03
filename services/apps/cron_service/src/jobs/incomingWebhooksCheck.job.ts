@@ -34,9 +34,33 @@ const job: IJobDefinition = {
 
     const dbConnection = await getDbConnection(WRITE_DB_CONFIG())
 
+    // Clean up orphaned webhooks whose integration was deleted (hard or soft).
+    // incomingWebhooks has no FK constraint on integrationId so these accumulate silently.
+    const deleted = await dbConnection.result(
+      `
+      delete from "incomingWebhooks" iw
+      where not exists (
+        select 1 from integrations i
+        where i.id = iw."integrationId"
+          and i."deletedAt" is null
+      )
+      `,
+    )
+    if (deleted.rowCount > 0) {
+      ctx.log.info(
+        `Deleted ${deleted.rowCount} orphaned webhooks with missing or deleted integrations!`,
+      )
+    }
+
     const count = (
       await dbConnection.one(
-        `select count(*)::int as count from "incomingWebhooks" where state = $(state) and "createdAt" < now() - interval '1 day'`,
+        `
+        select count(*)::int as count
+        from "incomingWebhooks" iw
+        join integrations i on iw."integrationId" = i.id and i."deletedAt" is null
+        where iw.state = $(state)
+          and iw."createdAt" < now() - interval '1 day'
+        `,
         { state: WebhookState.PENDING },
       )
     ).count
@@ -50,7 +74,7 @@ const job: IJobDefinition = {
       `
       select iw.id, i.platform
       from "incomingWebhooks" iw
-      join integrations i on iw."integrationId" = i.id
+      join integrations i on iw."integrationId" = i.id and i."deletedAt" is null
       where iw.state = $(state)
         and iw."createdAt" < now() - interval '1 day'
       order by iw."createdAt" asc
