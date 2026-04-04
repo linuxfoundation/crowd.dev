@@ -20,6 +20,7 @@ DESCRIPTION >
     - `fixedVersion` is the version that fixes the vulnerability.
     - `publishedAt` is when the vulnerability was publicly disclosed.
     - `modifiedAt` is when the vulnerability record was last modified.
+    - `referenceLink` is the reference URL for this vulnerability.
     - `firstDetectedAt` is when the vulnerability was first detected in this repository.
     - `scannedAt` is the timestamp of the scan that last detected this vulnerability.
     - `resolvedAt` is when the vulnerability was resolved within this repository.
@@ -45,6 +46,7 @@ SCHEMA >
     `fixedVersion` String `json:$.record.fixed_version` DEFAULT '',
     `publishedAt` Nullable(DateTime64(3)) `json:$.record.published_at`,
     `modifiedAt` Nullable(DateTime64(3)) `json:$.record.modified_at`,
+    `referenceLink` String `json:$.record.reference_link` DEFAULT '',
     `firstDetectedAt` DateTime64(3) `json:$.record.first_detected_at`,
     `scannedAt` DateTime64(3) `json:$.record.scanned_at`,
     `resolvedAt` Nullable(DateTime64(3)) `json:$.record.resolved_at`

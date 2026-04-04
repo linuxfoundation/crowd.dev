@@ -24,6 +24,10 @@ const {
   startToCloseTimeout: '60 minutes',
 })
 
+export async function deleteOrphanMember(memberId: string): Promise<void> {
+  await deleteMember(memberId)
+}
+
 export async function finishMemberMerging(
   primaryId: string,
   secondaryId: string,
