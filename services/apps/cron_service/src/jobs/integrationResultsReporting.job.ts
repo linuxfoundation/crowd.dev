@@ -31,7 +31,7 @@ interface IErrorGroup {
 
 const job: IJobDefinition = {
   name: 'integration-results-reporting',
-  cronTime: IS_DEV_ENV ? CronTime.everyMinute() : CronTime.everyDayAt(8, 30),
+  cronTime: IS_DEV_ENV ? CronTime.every(15).minutes() : CronTime.everyDayAt(8, 30),
   timeout: 10 * 60, // 10 minutes
   enabled: async () => IS_PROD_ENV,
   process: async (ctx) => {

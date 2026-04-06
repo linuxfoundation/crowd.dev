@@ -57,7 +57,7 @@ const job: IJobDefinition = {
       )
     }
 
-    const count = (
+    const pendingCount = (
       await dbConnection.one(
         `
         select count(*)::int as count
@@ -70,8 +70,8 @@ const job: IJobDefinition = {
       )
     ).count
 
-    if (count <= counts.unconsumed) {
-      ctx.log.info(`All ${count} stuck pending webhooks are already in the queue, skipping!`)
+    if (pendingCount <= counts.unconsumed) {
+      ctx.log.info(`All ${pendingCount} stuck pending webhooks are already in the queue, skipping!`)
       return
     }
 
@@ -93,7 +93,9 @@ const job: IJobDefinition = {
       return
     }
 
-    ctx.log.info(`Found ${webhooks.length} stuck pending webhooks, re-triggering!`)
+    ctx.log.info(
+      `Found ${webhooks.length} of ${pendingCount} stuck pending webhooks, re-triggering!`,
+    )
 
     const queueService = new KafkaQueueService(kafkaClient, ctx.log)
     const emitter = new IntegrationStreamWorkerEmitter(queueService, ctx.log)

@@ -86,30 +86,6 @@ export default class DataSinkRepository extends RepositoryBase<DataSinkRepositor
     }
   }
 
-  public async getOldResultsToProcess(limit: number): Promise<string[]> {
-    try {
-      const results = await this.db().any(
-        `
-        select r.id
-        from integration.results r
-        where r.state = $(pendingState)
-          or (r.state = $(delayedState) and r."delayedUntil" < now())
-        limit ${limit};
-        `,
-        // ERROR rows are intentionally excluded — see getOldResultsToProcessForTenant for details.
-        {
-          pendingState: IntegrationResultState.PENDING,
-          delayedState: IntegrationResultState.DELAYED,
-        },
-      )
-
-      return results.map((s) => s.id)
-    } catch (err) {
-      this.log.error(err, 'Failed to get old results to process!')
-      throw err
-    }
-  }
-
   public async touchUpdatedAt(resultIds: string[]): Promise<void> {
     if (resultIds.length === 0) {
       return
