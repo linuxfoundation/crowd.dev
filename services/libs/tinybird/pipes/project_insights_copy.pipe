@@ -120,16 +120,16 @@ SQL >
 
 NODE project_insights_copy_repo_base
 DESCRIPTION >
-    Returns base repository information with populated metrics from repositories_populated_ds
+    Returns base repository information with populated metrics from repositories_populated_ds, enriched with project data
 
 SQL >
     SELECT
         rp.id AS id,
         rp.url AS repoUrl,
         rp.url AS name,
-        '' AS slug,
-        '' AS logoUrl,
-        toUInt8(0) AS isLF,
+        COALESCE(ip.slug, '') AS slug,
+        COALESCE(ip.logoUrl, '') AS logoUrl,
+        COALESCE(ip.isLF, toUInt8(0)) AS isLF,
         if(r.archived = true, 'archived', 'active') AS status,
         rp.contributorCount AS contributorCount,
         rp.organizationCount AS organizationCount,
@@ -137,6 +137,7 @@ SQL >
         rp.firstCommit AS firstCommit
     FROM repositories_populated_ds AS rp
     JOIN repositories r FINAL ON r.id = rp.id
+    LEFT JOIN insightsProjects ip FINAL ON r.insightsProjectId = ip.id
 
 NODE project_insights_copy_repo_period_metrics
 DESCRIPTION >
