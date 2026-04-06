@@ -5,7 +5,6 @@ import { IS_PROD_ENV } from '@crowd/common'
 // - ANALYTICS.SILVER_DIM.COMMITTEE (committee metadata + project slug)
 // - ANALYTICS.BRONZE_KAFKA_CROWD_DEV.SEGMENTS (segment resolution)
 // - ANALYTICS.SILVER_DIM.USERS (member identity: email, lf_username, name)
-// - ANALYTICS.BRONZE_FIVETRAN_SALESFORCE_B2B.USERS (actor name + email)
 // - ANALYTICS.BRONZE_FIVETRAN_SALESFORCE_B2B.ACCOUNTS (org data)
 
 const CDP_MATCHED_SEGMENTS = `
@@ -50,9 +49,6 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     su.FIRST_NAME AS SU_FIRST_NAME,
     su.LAST_NAME AS SU_LAST_NAME,
     su.FULL_NAME AS SU_FULL_NAME,
-    bu.FIRST_NAME AS BU_FIRST_NAME,
-    bu.LAST_NAME AS BU_LAST_NAME,
-    bu.EMAIL AS BU_EMAIL,
     org.account_name AS ACCOUNT_NAME,
     org.website AS ORG_WEBSITE,
     org.domain_aliases AS ORG_DOMAIN_ALIASES
@@ -64,8 +60,6 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     AND cms.sourceId = cm.PROJECT_ID
   LEFT JOIN ANALYTICS.SILVER_DIM.USERS su
     ON LOWER(c.CONTACTEMAIL__C) = LOWER(su.EMAIL)
-  LEFT JOIN ANALYTICS.BRONZE_FIVETRAN_SALESFORCE_B2B.USERS bu
-    ON c.CREATEDBYID = bu.USER_ID
   LEFT JOIN org_accounts org
     ON c.ACCOUNT__C = org.account_id
   WHERE c.LASTMODIFIEDDATE IS NOT NULL`
