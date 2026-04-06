@@ -5,7 +5,9 @@ SQL >
         $GROUP_COL,
         organizationId,
         contributionCount,
-        (contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY $GROUP_COL)) AS contributionPercentage
+        (
+            contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY $GROUP_COL)
+        ) AS contributionPercentage
     FROM $SOURCE_NODE
     ORDER BY contributionPercentage DESC
 
@@ -42,12 +44,18 @@ SQL >
         organizationDependencyCount,
         organizationDependencyPercentage,
         CASE
-            WHEN organizationDependencyCount BETWEEN 0 AND 1 THEN 0
-            WHEN organizationDependencyCount = 2 THEN 1
-            WHEN organizationDependencyCount = 3 THEN 2
-            WHEN organizationDependencyCount BETWEEN 4 AND 5 THEN 3
-            WHEN organizationDependencyCount BETWEEN 6 AND 7 THEN 4
-            WHEN organizationDependencyCount >= 8 THEN 5
+            WHEN organizationDependencyCount BETWEEN 0 AND 1
+            THEN 0
+            WHEN organizationDependencyCount = 2
+            THEN 1
+            WHEN organizationDependencyCount = 3
+            THEN 2
+            WHEN organizationDependencyCount BETWEEN 4 AND 5
+            THEN 3
+            WHEN organizationDependencyCount BETWEEN 6 AND 7
+            THEN 4
+            WHEN organizationDependencyCount >= 8
+            THEN 5
             ELSE 0
         END AS organizationDependencyBenchmark
     FROM health_score_organization_dependency_score

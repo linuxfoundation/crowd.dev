@@ -5,7 +5,9 @@ SQL >
         $GROUP_COL,
         memberId,
         contributionCount,
-        ROUND(contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY $GROUP_COL), 2) AS contributionPercentage
+        ROUND(
+            contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY $GROUP_COL), 2
+        ) AS contributionPercentage
     FROM $SOURCE_NODE
     ORDER BY contributionPercentage DESC
 
@@ -42,12 +44,18 @@ SQL >
         contributorDependencyCount,
         contributorDependencyPercentage,
         CASE
-            WHEN contributorDependencyCount BETWEEN 0 AND 1 THEN 0
-            WHEN contributorDependencyCount = 2 THEN 1
-            WHEN contributorDependencyCount BETWEEN 3 AND 4 THEN 2
-            WHEN contributorDependencyCount BETWEEN 5 AND 6 THEN 3
-            WHEN contributorDependencyCount BETWEEN 7 AND 9 THEN 4
-            WHEN contributorDependencyCount > 9 THEN 5
+            WHEN contributorDependencyCount BETWEEN 0 AND 1
+            THEN 0
+            WHEN contributorDependencyCount = 2
+            THEN 1
+            WHEN contributorDependencyCount BETWEEN 3 AND 4
+            THEN 2
+            WHEN contributorDependencyCount BETWEEN 5 AND 6
+            THEN 3
+            WHEN contributorDependencyCount BETWEEN 7 AND 9
+            THEN 4
+            WHEN contributorDependencyCount > 9
+            THEN 5
             ELSE 0
         END AS contributorDependencyBenchmark
     FROM health_score_contributor_dependency_score

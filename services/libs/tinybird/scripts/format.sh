@@ -2,6 +2,7 @@
 
 PIPES_FOLDER="../pipes"
 DATA_SOURCES_FOLDER="../datasources"
+INCLUDES_FOLDER="../includes"
 
 show_help() {
   cat << EOF
@@ -80,6 +81,7 @@ format_files_in_folder() {
 
 format_files_in_folder "$PIPES_FOLDER"
 format_files_in_folder "$DATA_SOURCES_FOLDER"
+format_files_in_folder "$INCLUDES_FOLDER"
 
 # Only wait for background processes in parallel mode
 [ "$SEQUENTIAL" = false ] && wait

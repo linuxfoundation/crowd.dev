@@ -5,12 +5,18 @@ SQL >
         $GROUP_COL,
         stars,
         CASE
-            WHEN stars BETWEEN 0 AND 9 THEN 0
-            WHEN stars BETWEEN 10 AND 49 THEN 1
-            WHEN stars BETWEEN 50 AND 199 THEN 2
-            WHEN stars BETWEEN 200 AND 499 THEN 3
-            WHEN stars BETWEEN 500 AND 999 THEN 4
-            WHEN stars >= 1000 THEN 5
+            WHEN stars BETWEEN 0 AND 9
+            THEN 0
+            WHEN stars BETWEEN 10 AND 49
+            THEN 1
+            WHEN stars BETWEEN 50 AND 199
+            THEN 2
+            WHEN stars BETWEEN 200 AND 499
+            THEN 3
+            WHEN stars BETWEEN 500 AND 999
+            THEN 4
+            WHEN stars >= 1000
+            THEN 5
             ELSE 0
         END AS starsBenchmark
     FROM $SOURCE_NODE
