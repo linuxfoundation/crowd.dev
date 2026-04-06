@@ -77,19 +77,6 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
         projectName: (row.PROJECT_NAME as string | null) || null,
         organizationId: (row.ACCOUNT__C as string | null) || null,
         organizationName: (row.ACCOUNT_NAME as string | null) || null,
-        member: {
-          userId: (row.PRIMARY_SOURCE_USER_ID as string | null) || null,
-          firstName: (row.SU_FIRST_NAME as string | null) || null,
-          lastName: (row.SU_LAST_NAME as string | null) || null,
-          email,
-        },
-        actor: {
-          userId: (row.CREATEDBYID as string | null) || null,
-          firstName: (row.BU_FIRST_NAME as string | null) || null,
-          lastName: (row.BU_LAST_NAME as string | null) || null,
-          email: (row.BU_EMAIL as string | null) || null,
-        },
-        activityDate: activityTimestamp,
       },
     }
 
