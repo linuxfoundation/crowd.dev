@@ -154,7 +154,7 @@
   "auth0": {
     "clientId": "CROWD_AUTH0_CLIENT_ID",
     "jwks": "CROWD_AUTH0_JWKS",
-    "issuerBaseURL": "CROWD_AUTH0_ISSUER_BASE_URL",
+    "issuerBaseURLs": "CROWD_AUTH0_ISSUER_BASE_URLS",
     "audience": "CROWD_AUTH0_AUDIENCE"
   },
   "sso": {

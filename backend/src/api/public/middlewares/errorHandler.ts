@@ -35,7 +35,13 @@ export const errorHandler: ErrorRequestHandler = (
   }
 
   req.log.error(
-    { error, url: req.url, method: req.method, query: req.query, body: req.body },
+    {
+      error: { name: error?.name, message: error?.message, stack: error?.stack },
+      url: req.url,
+      method: req.method,
+      query: req.query,
+      body: req.body,
+    },
     'Unhandled error in public API',
   )
 

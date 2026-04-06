@@ -1,5 +1,6 @@
 import { proxyActivities } from '@temporalio/workflow'
 
+import { parseLlmJson } from '@crowd/common/src/llm'
 import { LlmQueryType } from '@crowd/types'
 
 import * as activities from '../../activities'
@@ -72,7 +73,7 @@ export async function processMemberBotAnalysisWithLLM(
 
   const llm = await getLLMResult(LlmQueryType.MEMBER_BOT_VALIDATION, PROMPT, memberId)
 
-  const { isBot, signals } = JSON.parse(llm.answer) as MemberBotSuggestionResult
+  const { isBot, signals } = parseLlmJson<MemberBotSuggestionResult>(llm.answer)
 
   if (!isBot) {
     await createMemberNoBot(memberId)

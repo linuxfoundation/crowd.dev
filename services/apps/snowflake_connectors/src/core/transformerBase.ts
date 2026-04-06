@@ -5,7 +5,7 @@
  * how raw exported data is transformed into activities.
  */
 import { getServiceChildLogger } from '@crowd/logging'
-import { IActivityData, PlatformType } from '@crowd/types'
+import { IActivityData, IMemberData, MemberIdentityType, PlatformType } from '@crowd/types'
 
 const log = getServiceChildLogger('transformer')
 
@@ -36,6 +36,70 @@ export abstract class TransformerBase {
       return false
     }
     return TransformerBase.INDIVIDUAL_NO_ACCOUNT_RE.test(displayName.trim())
+  }
+
+  protected buildMemberIdentities(params: {
+    email: string
+    sourceId?: string
+    platformUsername?: string | null
+    lfUsername?: string | null
+  }): IMemberData['identities'] {
+    const { email, sourceId, platformUsername, lfUsername } = params
+    const identities: IMemberData['identities'] = [
+      {
+        platform: this.platform,
+        value: email,
+        type: MemberIdentityType.EMAIL,
+        verified: true,
+        verifiedBy: this.platform,
+        sourceId,
+      },
+    ]
+    if (!lfUsername && !platformUsername) {
+      identities.push({
+        platform: this.platform,
+        value: email,
+        type: MemberIdentityType.USERNAME,
+        verified: true,
+        verifiedBy: this.platform,
+        sourceId,
+      })
+      return identities
+    }
+
+    if (platformUsername) {
+      identities.push({
+        platform: this.platform,
+        value: platformUsername,
+        type: MemberIdentityType.USERNAME,
+        verified: true,
+        verifiedBy: this.platform,
+        sourceId,
+      })
+    }
+
+    if (lfUsername) {
+      identities.push({
+        platform: PlatformType.LFID,
+        value: lfUsername,
+        type: MemberIdentityType.USERNAME,
+        verified: true,
+        verifiedBy: this.platform,
+        sourceId,
+      })
+      if (!platformUsername) {
+        identities.push({
+          platform: this.platform,
+          value: lfUsername,
+          type: MemberIdentityType.USERNAME,
+          verified: true,
+          verifiedBy: this.platform,
+          sourceId,
+        })
+      }
+    }
+
+    return identities
   }
 
   /**
