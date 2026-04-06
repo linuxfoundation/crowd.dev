@@ -13,6 +13,8 @@ The codebase started as crowd.dev, an open-source startup later acquired by the 
 
 TypeScript, Node.js, Express, PostgreSQL (pg-promise), Temporal, Kafka, Redis, OpenSearch, Zod, Bunyan, AWS S3.
 
+Vue 3, Vite, Tailwind CSS, Element Plus, Pinia, TanStack Vue Query, Axios.
+
 Package manager is **pnpm**. Monorepo managed via pnpm workspaces.
 
 ## Codebase structure
