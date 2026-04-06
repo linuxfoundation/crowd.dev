@@ -126,7 +126,7 @@ SQL >
     SELECT
         rp.id AS id,
         rp.url AS repoUrl,
-        rp.url AS name,
+        COALESCE(ip.name, '') AS name,
         COALESCE(ip.slug, '') AS slug,
         COALESCE(ip.logoUrl, '') AS logoUrl,
         COALESCE(ip.isLF, toUInt8(0)) AS isLF,
