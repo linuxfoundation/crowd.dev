@@ -75,9 +75,9 @@ const job: IJobDefinition = {
       return
     }
 
-    const webhooks = await dbConnection.any<{ id: string; platform: string }>(
+    const webhooks = await dbConnection.any<{ id: string }>(
       `
-      select iw.id, i.platform
+      select iw.id
       from "incomingWebhooks" iw
       join integrations i on iw."integrationId" = i.id and i."deletedAt" is null
       where iw.state = $(state)
