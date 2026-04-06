@@ -102,7 +102,10 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
 
   -- Updated committee memberships since last export
   ${select}
-    AND c.LASTMODIFIEDDATE > '${sinceTimestamp}'
+    AND (
+      c.LASTMODIFIEDDATE > '${sinceTimestamp}'
+      OR (c._FIVETRAN_DELETED = TRUE AND c._FIVETRAN_SYNCED > '${sinceTimestamp}')
+    )
   ${dedup}
 
   UNION
