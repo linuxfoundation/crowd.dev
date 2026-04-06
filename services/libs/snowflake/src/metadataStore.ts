@@ -45,7 +45,7 @@ export class MetadataStore {
     const metrics: JobMetrics = { exportedRows: totalRows, exportedBytes: totalBytes }
     await this.db.none(
       `INSERT INTO integration."snowflakeExportJobs" (platform, "sourceName", s3_path, "exportStartedAt", metrics)
-       VALUES ($1, $2, $3, $4, $5::jsonb)
+       VALUES ($(platform), $(sourceName), $(s3Path), $(exportStartedAt), $(metrics)::jsonb)
        ON CONFLICT (s3_path) DO UPDATE SET
          "exportStartedAt" = EXCLUDED."exportStartedAt",
          "processingStartedAt" = NULL,
@@ -54,7 +54,7 @@ export class MetadataStore {
          error = NULL,
          metrics = EXCLUDED.metrics,
          "updatedAt" = NOW()`,
-      [platform, sourceName, s3Path, exportStartedAt, JSON.stringify(metrics)],
+      { platform, sourceName, s3Path, exportStartedAt, metrics: JSON.stringify(metrics) },
     )
   }
 
@@ -62,7 +62,19 @@ export class MetadataStore {
    * Atomically claim the oldest pending job by setting processingStartedAt.
    * Uses FOR UPDATE SKIP LOCKED so concurrent consumers never pick the same row.
    */
-  async claimOldestPendingJob(): Promise<SnowflakeExportJob | null> {
+  async claimOldestPendingJob(
+    platform?: string,
+    platforms?: string[],
+  ): Promise<SnowflakeExportJob | null> {
+    let platformFilter = ''
+    let params: Record<string, unknown> = {}
+    if (platform) {
+      platformFilter = 'AND platform = $(platform)'
+      params = { platform }
+    } else if (platforms && platforms.length > 0) {
+      platformFilter = 'AND platform = ANY($(platforms)::text[])'
+      params = { platforms }
+    }
     const row = await this.db.oneOrNone<{
       id: number
       platform: string
@@ -82,17 +94,38 @@ export class MetadataStore {
        WHERE id = (
          SELECT id FROM integration."snowflakeExportJobs"
          WHERE "processingStartedAt" IS NULL
+         ${platformFilter}
          ORDER BY "createdAt" ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED
        )
        RETURNING id, platform, "sourceName", s3_path, "exportStartedAt",
                  "createdAt", "updatedAt", "processingStartedAt", "completedAt", "cleanedAt", error, metrics`,
+      params,
     )
     return row ? mapRowToJob(row) : null
   }
 
-  async getCleanableJobS3Paths(intervalHours = 24): Promise<{ id: number; s3Path: string }[]> {
+  async getCleanableJobS3Paths(
+    intervalHours = 24,
+    platform?: string,
+    requireZeroSkipped = true,
+    platforms?: string[],
+  ): Promise<{ id: number; s3Path: string }[]> {
+    let platformFilter = ''
+    const params: { intervalHours: number; platform?: string; platforms?: string[] } = {
+      intervalHours,
+    }
+    if (platform) {
+      platformFilter = 'AND platform = $(platform)'
+      params.platform = platform
+    } else if (platforms && platforms.length > 0) {
+      platformFilter = 'AND platform = ANY($(platforms)::text[])'
+      params.platforms = platforms
+    }
+    const skippedFilter = requireZeroSkipped
+      ? `AND metrics ? 'skippedCount' AND (metrics->>'skippedCount')::int = 0`
+      : ''
     const rows = await this.db.manyOrNone<{ id: number; s3_path: string }>(
       `SELECT id, s3_path
        FROM integration."snowflakeExportJobs"
@@ -100,11 +133,11 @@ export class MetadataStore {
          AND "cleanedAt" IS NULL
          AND error IS NULL
          AND metrics IS NOT NULL
-         AND metrics ? 'skippedCount'
-         AND (metrics->>'skippedCount')::int = 0
-         AND "completedAt" <= NOW() - make_interval(hours => $1)
+         ${skippedFilter}
+         AND "completedAt" <= NOW() - make_interval(hours => $(intervalHours))
+         ${platformFilter}
        ORDER BY "completedAt" ASC`,
-      [intervalHours],
+      params,
     )
     return rows.map((r) => ({ id: r.id, s3Path: r.s3_path }))
   }
@@ -113,8 +146,8 @@ export class MetadataStore {
     await this.db.none(
       `UPDATE integration."snowflakeExportJobs"
        SET "cleanedAt" = NOW(), "updatedAt" = NOW()
-       WHERE id = $1`,
-      [jobId],
+       WHERE id = $(jobId)`,
+      { jobId },
     )
   }
 
@@ -122,21 +155,21 @@ export class MetadataStore {
     await this.db.none(
       `UPDATE integration."snowflakeExportJobs"
        SET "completedAt" = NOW(),
-           metrics = COALESCE(metrics, '{}'::jsonb) || COALESCE($2::jsonb, '{}'::jsonb),
+           metrics = COALESCE(metrics, '{}'::jsonb) || COALESCE($(metrics)::jsonb, '{}'::jsonb),
            "updatedAt" = NOW()
-       WHERE id = $1`,
-      [jobId, metrics ? JSON.stringify(metrics) : null],
+       WHERE id = $(jobId)`,
+      { jobId, metrics: metrics ? JSON.stringify(metrics) : null },
     )
   }
 
   async markFailed(jobId: number, error: string, metrics?: Partial<JobMetrics>): Promise<void> {
     await this.db.none(
       `UPDATE integration."snowflakeExportJobs"
-       SET error = $2, "completedAt" = NOW(),
-           metrics = COALESCE(metrics, '{}'::jsonb) || COALESCE($3::jsonb, '{}'::jsonb),
+       SET error = $(error), "completedAt" = NOW(),
+           metrics = COALESCE(metrics, '{}'::jsonb) || COALESCE($(metrics)::jsonb, '{}'::jsonb),
            "updatedAt" = NOW()
-       WHERE id = $1`,
-      [jobId, error, metrics ? JSON.stringify(metrics) : null],
+       WHERE id = $(jobId)`,
+      { jobId, error, metrics: metrics ? JSON.stringify(metrics) : null },
     )
   }
 
@@ -144,11 +177,11 @@ export class MetadataStore {
     const row = await this.db.oneOrNone<{ max: Date | null }>(
       `SELECT MAX("exportStartedAt") AS max
        FROM integration."snowflakeExportJobs"
-       WHERE platform = $1
-         AND "sourceName" = $2
+       WHERE platform = $(platform)
+         AND "sourceName" = $(sourceName)
          AND "completedAt" IS NOT NULL
          AND error IS NULL`,
-      [platform, sourceName],
+      { platform, sourceName },
     )
     return row?.max ?? null
   }

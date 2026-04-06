@@ -6,10 +6,9 @@
  */
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
+import { MetadataStore, SnowflakeExporter } from '@crowd/snowflake'
 import { PlatformType } from '@crowd/types'
 
-import { MetadataStore } from '../core/metadataStore'
-import { SnowflakeExporter } from '../core/snowflakeExporter'
 import {
   getDataSourceNames as _getDataSourceNames,
   getEnabledPlatforms as _getEnabledPlatforms,

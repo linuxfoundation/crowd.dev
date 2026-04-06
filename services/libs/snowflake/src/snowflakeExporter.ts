@@ -5,7 +5,8 @@
  * to export data into S3 as Parquet files.
  */
 import { getServiceChildLogger } from '@crowd/logging'
-import { SnowflakeClient } from '@crowd/snowflake'
+
+import { SnowflakeClient } from './client'
 
 const log = getServiceChildLogger('snowflakeExporter')
 
