@@ -26,7 +26,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   let select = `
   SELECT
     t.PRIMARY_KEY,
-    t.MEETING_ID,
+    CAST(t.MEETING_ID AS VARCHAR) AS MEETING_ID,
     t.MEETING_NAME,
     t.PROJECT_ID,
     t.PROJECT_NAME,
