@@ -67,12 +67,20 @@ SQL >
         segmentId,
         countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
-        uniqIf(memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY) AS activeContributorsLast365Days,
-        uniqIf(organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY) AS activeOrganizationsLast365Days,
+        uniqIf(
+            memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeContributorsLast365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsLast365Days,
         countIf(type = 'star' AND timestamp < now() - INTERVAL 365 DAY) AS starsPrevious365Days,
         countIf(type = 'fork' AND timestamp < now() - INTERVAL 365 DAY) AS forksPrevious365Days,
-        uniqIf(memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY) AS activeContributorsPrevious365Days,
-        uniqIf(organizationId, organizationId != '' AND timestamp < now() - INTERVAL 365 DAY) AS activeOrganizationsPrevious365Days
+        uniqIf(
+            memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeContributorsPrevious365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsPrevious365Days
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY segmentId
@@ -148,12 +156,20 @@ SQL >
         channel,
         countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
-        uniqIf(memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY) AS activeContributorsLast365Days,
-        uniqIf(organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY) AS activeOrganizationsLast365Days,
+        uniqIf(
+            memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeContributorsLast365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsLast365Days,
         countIf(type = 'star' AND timestamp < now() - INTERVAL 365 DAY) AS starsPrevious365Days,
         countIf(type = 'fork' AND timestamp < now() - INTERVAL 365 DAY) AS forksPrevious365Days,
-        uniqIf(memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY) AS activeContributorsPrevious365Days,
-        uniqIf(organizationId, organizationId != '' AND timestamp < now() - INTERVAL 365 DAY) AS activeOrganizationsPrevious365Days
+        uniqIf(
+            memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeContributorsPrevious365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsPrevious365Days
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY channel
@@ -203,9 +219,11 @@ DESCRIPTION >
     Union of project and repository insights
 
 SQL >
-    SELECT * FROM project_insights_copy_project_results
+    SELECT *
+    FROM project_insights_copy_project_results
     UNION ALL
-    SELECT * FROM project_insights_copy_repo_results
+    SELECT *
+    FROM project_insights_copy_repo_results
 
 TYPE COPY
 TARGET_DATASOURCE project_insights_copy_ds

@@ -9,42 +9,4 @@ DESCRIPTION >
 
 TAGS "Repository health", "Metrics"
 
-NODE repo_health_score_contributions_outside_work_hours_score
-SQL >
-    %
-    {% if defined(repoUrl) %}
-        SELECT
-            channel,
-            round(
-                (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
-                / count(id)
-            ) AS contributionsOutsideWorkHours
-        FROM contributions_with_local_time_ds
-        WHERE
-            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-            {% if defined(startDate) %}
-                AND timestamp
-                > {{ DateTime(startDate, description="Filter after date", required=False) }}
-            {% end %}
-            {% if defined(endDate) %}
-                AND timestamp
-                < {{ DateTime(endDate, description="Filter before date", required=False) }}
-            {% end %}
-        GROUP BY channel
-    {% else %}
-        SELECT
-            channel,
-            round(
-                (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
-                / count(id)
-            ) AS contributionsOutsideWorkHours
-        FROM contributions_with_local_time_ds
-        WHERE
-            timestamp >= toStartOfDay(now() - toIntervalDay(365))
-            AND timestamp < toStartOfDay(now() + toIntervalDay(1))
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-        GROUP BY channel
-    {% end %}
-
 INCLUDE "../includes/health_score_contributions_outside_work_hours.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_contributions_outside_work_hours_score"

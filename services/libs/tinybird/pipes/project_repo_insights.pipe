@@ -55,10 +55,32 @@ SQL >
             AND (
                 1 = 0
                 {% if defined(ids) %}
-                    OR (type = 'project' AND id IN {{ Array(ids, 'String', description="Filter by project id list", required=False) }})
+                    OR (
+                        type = 'project'
+                        AND id
+                        IN {{
+                            Array(
+                                ids,
+                                'String',
+                                description="Filter by project id list",
+                                required=False,
+                            )
+                        }}
+                    )
                 {% end %}
                 {% if defined(repoUrls) %}
-                    OR (type = 'repo' AND repoUrl IN {{ Array(repoUrls, 'String', description="Filter by repository URL list", required=False) }})
+                    OR (
+                        type = 'repo'
+                        AND repoUrl
+                        IN {{
+                            Array(
+                                repoUrls,
+                                'String',
+                                description="Filter by repository URL list",
+                                required=False,
+                            )
+                        }}
+                    )
                 {% end %}
             )
         {% end %}

@@ -5,11 +5,7 @@ DESCRIPTION >
 SQL >
     SELECT r.url AS channel
     FROM repositories r FINAL
-    WHERE
-        r.enabled = true
-        AND r.excluded = false
-        AND isNull(r.deletedAt)
-        AND r.insightsProjectId != ''
+    WHERE r.enabled = true AND r.excluded = false AND isNull (r.deletedAt) AND r.insightsProjectId != ''
 
 NODE repo_health_score_copy_data
 DESCRIPTION >
@@ -41,7 +37,9 @@ SQL >
         COALESCE(ad.activeDaysCount, 0) AS activeDaysCount,
         COALESCE(ad.activeDaysBenchmark, 0) AS activeDaysBenchmark,
         COALESCE(owh.contributionsOutsideWorkHours, 0) AS contributionsOutsideWorkHours,
-        COALESCE(owh.contributionsOutsideWorkHoursBenchmark, 0) AS contributionsOutsideWorkHoursBenchmark,
+        COALESCE(
+            owh.contributionsOutsideWorkHoursBenchmark, 0
+        ) AS contributionsOutsideWorkHoursBenchmark,
         COALESCE(sec.securityPercentage, 0) AS securityPercentage
     FROM repo_health_score_copy_repos AS repos
     LEFT JOIN repo_health_score_active_contributors AS ac USING (channel)
@@ -63,23 +61,26 @@ DESCRIPTION >
 
 SQL >
     WITH
-        arrayFilter(x -> x >= 0, [
-            activeContributorsBenchmark,
-            contributorDependencyBenchmark,
-            organizationDependencyBenchmark,
-            retentionBenchmark
-        ]) AS contributorBenchmarks,
-        arrayFilter(x -> x >= 0, [
-            starsBenchmark,
-            forksBenchmark
-        ]) AS popularityBenchmarks,
-        arrayFilter(x -> x >= 0, [
-            COALESCE(issueResolutionBenchmark, -1),
-            pullRequestsBenchmark,
-            COALESCE(mergeLeadTimeBenchmark, -1),
-            activeDaysBenchmark,
-            contributionsOutsideWorkHoursBenchmark
-        ]) AS developmentBenchmarks
+        arrayFilter(
+            x -> x >= 0,
+            [
+                activeContributorsBenchmark,
+                contributorDependencyBenchmark,
+                organizationDependencyBenchmark,
+                retentionBenchmark
+            ]
+        ) AS contributorBenchmarks,
+        arrayFilter(x -> x >= 0, [starsBenchmark, forksBenchmark]) AS popularityBenchmarks,
+        arrayFilter(
+            x -> x >= 0,
+            [
+                COALESCE(issueResolutionBenchmark, -1),
+                pullRequestsBenchmark,
+                COALESCE(mergeLeadTimeBenchmark, -1),
+                activeDaysBenchmark,
+                contributionsOutsideWorkHoursBenchmark
+            ]
+        ) AS developmentBenchmarks
     SELECT
         channel,
         activeContributors,
@@ -108,15 +109,18 @@ SQL >
         contributionsOutsideWorkHoursBenchmark,
         securityPercentage,
         round(
-            100.0 * arraySum(contributorBenchmarks)
+            100.0
+            * arraySum(contributorBenchmarks)
             / if(length(contributorBenchmarks) = 0, 1, 5 * length(contributorBenchmarks))
         ) AS contributorPercentage,
         round(
-            100.0 * arraySum(popularityBenchmarks)
+            100.0
+            * arraySum(popularityBenchmarks)
             / if(length(popularityBenchmarks) = 0, 1, 5 * length(popularityBenchmarks))
         ) AS popularityPercentage,
         round(
-            100.0 * arraySum(developmentBenchmarks)
+            100.0
+            * arraySum(developmentBenchmarks)
             / if(length(developmentBenchmarks) = 0, 1, 5 * length(developmentBenchmarks))
         ) AS developmentPercentage,
         round(

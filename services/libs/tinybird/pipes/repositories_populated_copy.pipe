@@ -3,17 +3,9 @@ DESCRIPTION >
     Returns base repository information from enabled, non-excluded repositories linked to insights projects
 
 SQL >
-    SELECT
-        r.id AS id,
-        r.url AS url,
-        r.segmentId AS segmentId,
-        r.insightsProjectId AS insightsProjectId
+    SELECT r.id AS id, r.url AS url, r.segmentId AS segmentId, r.insightsProjectId AS insightsProjectId
     FROM repositories r FINAL
-    WHERE
-        r.enabled = true
-        AND r.excluded = false
-        AND isNull(r.deletedAt)
-        AND r.insightsProjectId != ''
+    WHERE r.enabled = true AND r.excluded = false AND isNull (r.deletedAt) AND r.insightsProjectId != ''
 
 NODE repositories_populated_copy_contributor_org_counts
 DESCRIPTION >
@@ -32,9 +24,7 @@ DESCRIPTION >
     Returns timestamp of first commit per repository (channel)
 
 SQL >
-    SELECT
-        channel,
-        minOrNull(timestamp) AS firstCommit
+    SELECT channel, minOrNull(timestamp) AS firstCommit
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'authored-commit' AND platform = 'git' AND timestamp > toDateTime('1971-01-01')
     GROUP BY channel
@@ -44,9 +34,7 @@ DESCRIPTION >
     Returns software value per repository from softwareValueProjectCosts
 
 SQL >
-    SELECT
-        repoUrl,
-        sum(estimatedCost) AS softwareValue
+    SELECT repoUrl, sum(estimatedCost) AS softwareValue
     FROM softwareValueProjectCosts FINAL
     GROUP BY repoUrl
 

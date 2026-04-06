@@ -8,32 +8,4 @@ DESCRIPTION >
 
 TAGS "Repository health", "Metrics"
 
-NODE repo_health_score_active_days_score
-SQL >
-    %
-    {% if defined(repoUrl) %}
-        SELECT channel, countDistinct(DATE(timestamp)) AS activeDaysCount
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE
-            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-            {% if defined(startDate) %}
-                AND timestamp
-                > {{ DateTime(startDate, description="Filter after date", required=False) }}
-            {% end %}
-            {% if defined(endDate) %}
-                AND timestamp
-                < {{ DateTime(endDate, description="Filter before date", required=False) }}
-            {% end %}
-        GROUP BY channel
-    {% else %}
-        SELECT channel, countDistinct(DATE(timestamp)) AS activeDaysCount
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE
-            timestamp >= toStartOfDay(now() - toIntervalDay(365))
-            AND timestamp < toStartOfDay(now())
-            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
-        GROUP BY channel
-    {% end %}
-
 INCLUDE "../includes/health_score_active_days.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_active_days_score"
