@@ -47,12 +47,28 @@ interface ParsedProject {
 // Helpers
 // ---------------------------------------------------------------------------
 async function fetchProjects(yamlUrl: string): Promise<ParsedProject[]> {
-  const response = await fetch(yamlUrl)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch governance YAML (${response.status}): ${yamlUrl}`)
+  let text: string
+
+  try {
+    const response = await fetch(yamlUrl)
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`)
+    }
+    text = await response.text()
+  } catch (err) {
+    throw new Error(`Failed to fetch governance YAML from ${yamlUrl}: ${(err as Error).message}`)
   }
-  const text = await response.text()
-  const data = yaml.load(text) as GovernanceYaml
+
+  let data: GovernanceYaml
+  try {
+    data = yaml.load(text) as GovernanceYaml
+    if (!data || typeof data !== 'object') {
+      throw new Error('Parsed YAML is not an object — file format may have changed')
+    }
+  } catch (err) {
+    throw new Error(`Failed to parse governance YAML from ${yamlUrl}: ${(err as Error).message}`)
+  }
 
   return Object.entries(data).map(([project, info]) => ({
     project,
@@ -107,7 +123,15 @@ const job: IJobDefinition = {
       // 2. Fetch + parse the governance YAML
       // ------------------------------------------------------------------
       ctx.log.debug(`Fetching governance YAML...`)
-      const projects = await fetchProjects(source.yamlUrl)
+      let projects: ParsedProject[]
+
+      try {
+        projects = await fetchProjects(source.yamlUrl)
+      } catch (err) {
+        ctx.log.error({ err }, `Could not load governance YAML — skipping source`)
+        continue
+      }
+
       ctx.log.debug(`Parsed ${projects.length} projects from YAML`)
 
       // ------------------------------------------------------------------
