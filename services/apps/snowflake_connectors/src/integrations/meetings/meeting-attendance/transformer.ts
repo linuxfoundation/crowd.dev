@@ -61,10 +61,10 @@ export class MeetingAttendanceTransformer extends TransformerBase {
     const primaryKey = (row.PRIMARY_KEY as string)?.trim()
 
     const attributes = {
-      meetingID: row.MEETING_ID,
+      meetingId: row.MEETING_ID,
       scheduledTime: timestamp,
       topic: (row.MEETING_NAME as string | null) || null,
-      projectID: (row.PROJECT_ID as string | null) || null,
+      projectId: (row.PROJECT_ID as string | null) || null,
       projectName: (row.PROJECT_NAME as string | null) || null,
       organizationId: (row.ACCOUNT_ID as string | null) || null,
       organizationName: (row.ACCOUNT_NAME as string | null) || null,
