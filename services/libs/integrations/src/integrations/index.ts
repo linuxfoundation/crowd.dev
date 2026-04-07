@@ -52,4 +52,6 @@ export * from './cvent/types'
 
 export * from './tnc/types'
 
+export * from './committees/types'
+
 export * from './activityDisplayService'

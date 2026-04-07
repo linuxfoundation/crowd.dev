@@ -427,6 +427,7 @@ class CommitService(BaseService):
             "platform": self._GIT_PLATFORM,
             "channel": remote,
             "body": "\n".join(commit["message"]),
+            "username": primary_email,
             "attributes": {
                 "insertions": insertions,
                 "timezone": dt.tzname(),
@@ -539,7 +540,7 @@ class CommitService(BaseService):
 
         # Create author activity
         author = {
-            "username": author_name,
+            "username": author_email,
             "displayName": author_name,
             "emails": [author_email],
         }
@@ -567,7 +568,7 @@ class CommitService(BaseService):
             committer_source_id = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()
 
             committer = {
-                "username": committer_name,
+                "username": committer_email,
                 "displayName": committer_name,
                 "emails": [committer_email],
             }
@@ -597,7 +598,6 @@ class CommitService(BaseService):
             activity_type = activity_type.lower().replace("-by", "") + "-commit"
 
             member = {
-                "username": member_data["email"],
                 "displayName": member_data["name"],
                 "emails": [member_data["email"]],
             }

@@ -194,6 +194,25 @@ export async function moveIdentitiesBetweenMembers(
   }
 }
 
+export async function findMemberIdByVerifiedIdentity(
+  qx: QueryExecutor,
+  platform: string,
+  value: string,
+  type: MemberIdentityType,
+): Promise<string | null> {
+  const result = await qx.selectOneOrNone(
+    `SELECT "memberId" FROM "memberIdentities"
+     WHERE platform = $(platform)
+       AND value = $(value)
+       AND type = $(type)
+       AND verified = true
+       AND "deletedAt" IS NULL
+     LIMIT 1`,
+    { platform, value, type },
+  )
+  return result?.memberId ?? null
+}
+
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
@@ -205,13 +224,13 @@ export async function insertManyMemberIdentities(
   identities: NewMemberIdentity[],
   failOnConflict?: boolean,
   returnRows?: false,
-): Promise<void>
+): Promise<number>
 export async function insertManyMemberIdentities(
   qx: QueryExecutor,
   identities: NewMemberIdentity[],
   failOnConflict = false,
   returnRows = false,
-): Promise<IMemberIdentity[] | void> {
+): Promise<IMemberIdentity[] | number> {
   const query = prepareBulkInsert(
     'memberIdentities',
     [
@@ -240,7 +259,7 @@ export async function insertManyMemberIdentities(
     return qx.select(query)
   }
 
-  await qx.result(query)
+  return qx.result(query)
 }
 
 export async function createMemberIdentity(

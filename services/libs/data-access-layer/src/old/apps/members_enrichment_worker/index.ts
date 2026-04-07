@@ -29,7 +29,13 @@ export async function fetchMemberDataForLLMSquashing(
                             mo."dateStart",
                             mo."dateEnd",
                             mo.source,
-                            jsonb_agg(oi) as identities
+                            jsonb_agg(jsonb_build_object(
+                              'organizationId', oi."organizationId",
+                              'platform', oi.platform,
+                              'value', oi.value,
+                              'type', oi.type,
+                              'verified', oi.verified
+                            )) filter (where oi.type = 'primary-domain' and oi.verified = true) as identities
                         from "memberOrganizations" mo
                             inner join organizations o on mo."organizationId" = o.id
                             inner join "organizationIdentities" oi on oi."organizationId" = o.id
@@ -63,7 +69,7 @@ export async function fetchMemberDataForLLMSquashing(
                                                 mo."dateStart",
                                                 mo."dateEnd",
                                                 mo.source,
-                                                mo.identities) r)
+                                                coalesce(mo.identities, '[]'::jsonb) as identities) r)
                           )
                   from member_orgs mo
                   where mo."memberId" = m.id
@@ -174,7 +180,13 @@ export async function fetchMembersForLFIDEnrichment(db: DbStore, limit: number, 
         members."contributions",
         members."score",
         members."reach",
-        jsonb_agg(mi.*) as identities
+        jsonb_agg(jsonb_build_object(
+          'platform', mi.platform,
+          'value', mi.value,
+          'type', mi.type,
+          'verified', mi.verified,
+          'sourceId', mi."sourceId"
+        )) as identities
       FROM members
               INNER JOIN "memberIdentities" mi ON mi."memberId" = members.id
               AND mi."deletedAt" is null

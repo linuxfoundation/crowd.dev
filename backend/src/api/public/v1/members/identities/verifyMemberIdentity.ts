@@ -99,6 +99,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
             filter: {
               and: [
                 {
+                  memberId: { eq: memberId },
                   username: { eq: identity.value },
                   platform: { eq: identity.platform },
                 },

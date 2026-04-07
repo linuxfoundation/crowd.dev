@@ -6,6 +6,8 @@
  */
 import { PlatformType } from '@crowd/types'
 
+import { buildSourceQuery as committeesCommitteesBuildQuery } from './committees/committees/buildSourceQuery'
+import { CommitteesCommitteesTransformer } from './committees/committees/transformer'
 import { buildSourceQuery as cventBuildSourceQuery } from './cvent/event-registrations/buildSourceQuery'
 import { CventTransformer } from './cvent/event-registrations/transformer'
 import { buildSourceQuery as tncCertificatesBuildQuery } from './tnc/certificates/buildSourceQuery'
@@ -20,6 +22,15 @@ export type { BuildSourceQuery, DataSource, PlatformDefinition } from './types'
 export { DataSourceName } from './types'
 
 const supported: Partial<Record<PlatformType, PlatformDefinition>> = {
+  [PlatformType.COMMITTEES]: {
+    sources: [
+      {
+        name: DataSourceName.COMMITTEES_COMMITTEES,
+        buildSourceQuery: committeesCommitteesBuildQuery,
+        transformer: new CommitteesCommitteesTransformer(),
+      },
+    ],
+  },
   [PlatformType.CVENT]: {
     sources: [
       {
