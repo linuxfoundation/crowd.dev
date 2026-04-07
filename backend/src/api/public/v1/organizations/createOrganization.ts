@@ -13,7 +13,7 @@ const bodySchema = z.object({
   name: z.string().trim().min(1),
   domain: z.string().trim().min(1),
   source: z.string().trim().min(1),
-  logo: z.string().trim().optional(),
+  logo: z.string().trim().min(1).optional(),
 })
 
 export async function createOrganization(req: Request, res: Response): Promise<void> {
