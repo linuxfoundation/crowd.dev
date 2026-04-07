@@ -72,7 +72,7 @@ async function fetchProjects(yamlUrl: string): Promise<ParsedProject[]> {
 
   return Object.entries(data).map(([project, info]) => ({
     project,
-    repos: Object.values(info.deliverables ?? {}).flatMap((d) => d.repos ?? []),
+    repos: Object.values(info?.deliverables ?? {}).flatMap((d) => d.repos ?? []),
   }))
 }
 
@@ -145,7 +145,16 @@ const job: IJobDefinition = {
       let skipped = 0
 
       // ------------------------------------------------------------------
-      // 4. Upsert one repository group per YAML project
+      // 4. Bulk-fetch all repo URLs that exist in the DB (single round-trip)
+      // ------------------------------------------------------------------
+      const allCandidateUrls = projects.flatMap(({ repos }) =>
+        repos.map((r) => `${source.repoUrlBase}${r}`),
+      )
+      const foundRepos = await getRepositoriesByUrl(qx, allCandidateUrls)
+      const foundUrlSet = new Set(foundRepos.map((r) => r.url))
+
+      // ------------------------------------------------------------------
+      // 5. Upsert one repository group per YAML project
       // ------------------------------------------------------------------
       for (const { project, repos } of projects) {
         if (repos.length === 0) {
@@ -156,10 +165,7 @@ const job: IJobDefinition = {
 
         const slug = toSlug(project)
         const candidateUrls = repos.map((r) => `${source.repoUrlBase}${r}`)
-
-        // Only include repos that actually exist in public.repositories
-        const foundRepos = await getRepositoriesByUrl(qx, candidateUrls)
-        const foundUrls = foundRepos.map((r) => r.url)
+        const foundUrls = candidateUrls.filter((u) => foundUrlSet.has(u))
 
         if (foundUrls.length === 0) {
           ctx.log.debug(
@@ -169,7 +175,7 @@ const job: IJobDefinition = {
           continue
         }
 
-        const missing = candidateUrls.filter((u) => !foundUrls.includes(u))
+        const missing = candidateUrls.filter((u) => !foundUrlSet.has(u))
         if (missing.length > 0) {
           ctx.log.warn(
             `'${project}': ${missing.length}/${candidateUrls.length} repos not found in DB` +
