@@ -10,6 +10,7 @@ const log = getServiceLogger()
 // Slack message size limit (keeping it conservative at 30KB)
 const MAX_MESSAGE_SIZE = 30 * 1024 // 30KB in bytes
 const MAX_BLOCKS = 50
+const MAX_SECTION_TEXT = 2900 // Slack hard limit is 3000 chars per section block
 
 interface SlackBlock {
   type: string
@@ -25,32 +26,52 @@ interface SlackBlock {
 }
 
 /**
- * Build content blocks from either a simple string or an array of sections
+ * Split text into section blocks, respecting Slack's 3000 char per-section limit.
+ * Splits at line boundaries where possible; hard-truncates individual lines that
+ * are themselves longer than the limit.
+ */
+function splitIntoSectionBlocks(text: string): SlackBlock[] {
+  const blocks: SlackBlock[] = []
+  const lines = text.split('\n')
+  let current = ''
+
+  for (let line of lines) {
+    // Hard-truncate a single line that exceeds the limit on its own
+    if (line.length > MAX_SECTION_TEXT) {
+      line = `${line.slice(0, MAX_SECTION_TEXT - 1)}…`
+    }
+
+    const candidate = current ? `${current}\n${line}` : line
+    if (candidate.length > MAX_SECTION_TEXT && current) {
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+      current = line
+    } else {
+      current = candidate
+    }
+  }
+
+  if (current) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+  }
+
+  return blocks
+}
+
+/**
+ * Build content blocks from either a simple string or an array of sections.
+ * Splits text that exceeds Slack's 3000 char per-section limit at line boundaries.
  */
 function buildContentBlocks(content: string | SlackMessageSection[]): SlackBlock[] {
   if (typeof content === 'string') {
-    // Simple string content - single section
-    return [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: content,
-        },
-      },
-    ]
+    return splitIntoSectionBlocks(content)
   }
 
-  // Multiple sections - create a block for each section
   const blocks: SlackBlock[] = []
   for (const section of content) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*${section.title}*\n${section.text}`,
-      },
-    })
+    const fullText = `*${section.title}*\n${section.text}`
+    for (const block of splitIntoSectionBlocks(fullText)) {
+      blocks.push(block)
+    }
   }
   return blocks
 }
