@@ -26,36 +26,51 @@ interface SlackBlock {
 }
 
 /**
+ * Split text into section blocks, respecting Slack's 3000 char per-section limit.
+ * Splits at line boundaries where possible; hard-truncates individual lines that
+ * are themselves longer than the limit.
+ */
+function splitIntoSectionBlocks(text: string): SlackBlock[] {
+  const blocks: SlackBlock[] = []
+  const lines = text.split('\n')
+  let current = ''
+
+  for (let line of lines) {
+    // Hard-truncate a single line that exceeds the limit on its own
+    if (line.length > MAX_SECTION_TEXT) {
+      line = `${line.slice(0, MAX_SECTION_TEXT - 1)}…`
+    }
+
+    const candidate = current ? `${current}\n${line}` : line
+    if (candidate.length > MAX_SECTION_TEXT && current) {
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+      current = line
+    } else {
+      current = candidate
+    }
+  }
+
+  if (current) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+  }
+
+  return blocks
+}
+
+/**
  * Build content blocks from either a simple string or an array of sections.
  * Splits text that exceeds Slack's 3000 char per-section limit at line boundaries.
  */
 function buildContentBlocks(content: string | SlackMessageSection[]): SlackBlock[] {
   if (typeof content === 'string') {
-    return [{ type: 'section', text: { type: 'mrkdwn', text: content } }]
+    return splitIntoSectionBlocks(content)
   }
 
   const blocks: SlackBlock[] = []
   for (const section of content) {
     const fullText = `*${section.title}*\n${section.text}`
-    if (fullText.length <= MAX_SECTION_TEXT) {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: fullText } })
-      continue
-    }
-
-    // Split at line boundaries into multiple blocks
-    const lines = fullText.split('\n')
-    let current = ''
-    for (const line of lines) {
-      const candidate = current ? `${current}\n${line}` : line
-      if (candidate.length > MAX_SECTION_TEXT && current) {
-        blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
-        current = line
-      } else {
-        current = candidate
-      }
-    }
-    if (current) {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: current } })
+    for (const block of splitIntoSectionBlocks(fullText)) {
+      blocks.push(block)
     }
   }
   return blocks
