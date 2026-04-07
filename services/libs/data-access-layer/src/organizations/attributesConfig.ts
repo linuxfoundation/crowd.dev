@@ -233,6 +233,7 @@ export const ORG_DB_ATTRIBUTE_SOURCE_PRIORITY = [
   OrganizationAttributeSource.ENRICHMENT_PEOPLEDATALABS,
   OrganizationAttributeSource.CVENT,
   OrganizationAttributeSource.TNC,
+  OrganizationAttributeSource.COMMITTEES,
   // legacy - keeping this for backward compatibility
   OrganizationAttributeSource.ENRICHMENT,
   OrganizationAttributeSource.GITHUB,

@@ -1,4 +1,3 @@
-import { singleOrDefault } from '@crowd/common'
 import { DbStore, RepositoryBase } from '@crowd/database'
 import { Logger } from '@crowd/logging'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
@@ -74,29 +73,30 @@ export default class RequestedForErasureMemberIdentitiesRepository extends Repos
       }
 
       if (identity.type === MemberIdentityType.EMAIL) {
-        const row = singleOrDefault(data, (r) => {
-          return (
-            r.type === identity.type &&
-            r.value === identity.value &&
-            r.platform === identity.platform
-          )
-        })
+        // Email is platform-agnostic: the SQL query also omits the platform filter for EMAIL.
+        // Using find (not singleOrDefault) because case-insensitive matching can return
+        // multiple rows for the same email stored with different casing.
+        const row =
+          data.find(
+            (r) =>
+              r.type === identity.type && r.value.toLowerCase() === identity.value.toLowerCase(),
+          ) ?? null
 
-        if (row) {
-          results.set(identity, true)
-        } else {
-          results.set(identity, false)
-        }
+        results.set(identity, row !== null)
       } else {
-        const row = singleOrDefault(data, (r) => {
-          return r.type === identity.type && r.value === identity.value
-        })
+        // The SQL query filters non-EMAIL identities by platform, so the in-memory filter
+        // must also include platform. Without it, two identities sharing (type, value) but
+        // on different platforms would both match. The previous singleOrDefault-based
+        // implementation threw on multiple matches; find is safe and returns the first match.
+        const row =
+          data.find(
+            (r) =>
+              r.type === identity.type &&
+              r.value.toLowerCase() === identity.value.toLowerCase() &&
+              r.platform === identity.platform,
+          ) ?? null
 
-        if (row) {
-          results.set(identity, true)
-        } else {
-          results.set(identity, false)
-        }
+        results.set(identity, row !== null)
       }
     }
 
