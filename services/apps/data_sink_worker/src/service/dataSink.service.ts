@@ -46,7 +46,7 @@ function extractLocationFromError(error: unknown): string {
 
   const serviceDir = process.cwd()
   for (const line of (stack as string).split('\n')) {
-    if (line.includes(serviceDir)) {
+    if (line.includes(serviceDir) && !line.includes('node_modules')) {
       const match = line.match(/at\s+(?:(.+?)\s+)?\(?(.+?):(\d+):\d+\)?$/)
       if (match) {
         const fn = match[1]?.trim()
