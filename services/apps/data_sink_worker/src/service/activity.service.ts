@@ -28,7 +28,6 @@ import {
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
-import { getMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   IActivityRelationCreateOrUpdateData,
   IDbActivity,
@@ -56,7 +55,7 @@ import {
 } from '@crowd/types'
 
 import { IActivityUpdateData, ISentimentActivityInput } from './activity.data'
-import MemberService from './member.service'
+import MemberService, { mergeIfAllowed } from './member.service'
 import { IProcessActivityResult } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -267,13 +266,25 @@ export default class ActivityService extends LoggerBase {
     const results = new Map<string, { success: boolean; err?: Error }>()
 
     for (const { resultId, activity, platform } of data) {
+      // Guard against results whose data.data is missing or not an activity object.
+      // Without the !activity check, accessing activity.username throws a TypeError that
+      // propagates out of prepareMemberData and crashes the entire batch, marking all other
+      // results in the batch with the same error even though they are valid.
+      if (!activity) {
+        this.log.error({ platform }, 'Activity data is missing.')
+        results.set(resultId, {
+          success: false,
+          err: new UnrepeatableError('Activity data is missing.'),
+        })
+        continue
+      }
+
       if (!activity.username && !activity.member) {
         this.log.error({ platform, activity }, 'Activity does not have a username or member.')
         results.set(resultId, {
           success: false,
           err: new UnrepeatableError('Activity does not have a username or member.'),
         })
-
         continue
       }
 
@@ -290,6 +301,28 @@ export default class ActivityService extends LoggerBase {
               source: 'integration',
             } as IMemberIdentity,
           ],
+        }
+      }
+
+      // When activity.username is set but differs from the member's platform identity value,
+      // override it so the member lookup and the identity insert use the same key.
+      // Example: git activities set activity.username to the author display name (e.g. "John Doe")
+      // while the identity stores the email (e.g. "john.doe@example.com"). Without this correction
+      // the lookup misses the existing member, creating an unnecessary orphan member.
+      if (username && member) {
+        const platformIdentity = member.identities.find(
+          (i) =>
+            i.platform === platform &&
+            i.type === MemberIdentityType.USERNAME &&
+            i.value &&
+            i.verified,
+        )
+        if (platformIdentity && platformIdentity.value !== username) {
+          this.log.debug(
+            { platform, originalUsername: username, correctedUsername: platformIdentity.value },
+            'Overriding activity.username with member platform identity value',
+          )
+          activity.username = platformIdentity.value
         }
       }
 
@@ -1721,32 +1754,24 @@ export default class ActivityService extends LoggerBase {
         const originalId = metadata.memberWithIdentity as string
         const targetId = metadata.memberIdToUpdate as string
 
-        // but first check memberNoMerge table
-        const noMergeMemberIds = await getMemberNoMerge(this.pgQx, [originalId, targetId])
-
-        const noMerge = singleOrDefault(
-          noMergeMemberIds,
-          (m) =>
-            (m.memberId === originalId && m.noMergeId === targetId) ||
-            (m.memberId === targetId && m.noMergeId === originalId),
-        )
-
-        if (noMerge) {
-          metadata.noMerge = true
-        } else {
-          try {
-            await this.pgQx.tx(async (txPgQx) => {
-              const service = new CommonMemberService(txPgQx, this.temporal, this.log)
-              await service.merge(originalId, targetId)
-            })
-
+        try {
+          const merged = await mergeIfAllowed(
+            this.pgQx,
+            this.temporal,
+            this.log,
+            originalId,
+            targetId,
+          )
+          if (merged) {
             return originalId
-          } catch (err) {
-            metadata.mergeError = {
-              errorMessage: err?.message ?? '<no error message>',
-              errorStack: err?.stack,
-              err,
-            }
+          } else {
+            metadata.noMerge = true
+          }
+        } catch (err) {
+          metadata.mergeError = {
+            errorMessage: err?.message ?? '<no error message>',
+            errorStack: err?.stack,
+            err,
           }
         }
       }

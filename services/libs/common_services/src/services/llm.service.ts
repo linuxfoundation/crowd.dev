@@ -5,7 +5,7 @@ import {
 } from '@aws-sdk/client-bedrock-runtime'
 import { performance } from 'perf_hooks'
 
-import { IS_LLM_ENABLED } from '@crowd/common'
+import { IS_LLM_ENABLED, parseLlmJson } from '@crowd/common'
 import { insertPromptHistoryEntry } from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer'
 import { Logger, LoggerBase } from '@crowd/logging'
@@ -177,7 +177,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<LlmMemberEnrichmentResult>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<LlmMemberEnrichmentResult>(response.answer)
 
     return {
       result,
@@ -200,7 +200,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<{ profileIndex: number }>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<{ profileIndex: number }>(response.answer)
 
     return {
       result,
@@ -224,7 +224,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<T>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<T>(response.answer)
 
     return {
       result,
@@ -248,7 +248,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<T>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<T>(response.answer)
 
     return {
       result,
@@ -268,7 +268,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<T>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<T>(response.answer)
 
     return {
       result,
@@ -285,7 +285,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<T>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<T>(response.answer)
 
     return {
       result,
@@ -302,7 +302,7 @@ export class LlmService extends LoggerBase {
       } as ILlmResult<T>
     }
 
-    const result = JSON.parse(response.answer)
+    const result = parseLlmJson<T>(response.answer)
 
     return {
       result,

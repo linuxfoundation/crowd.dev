@@ -14,6 +14,7 @@ export enum OrganizationSource {
   UI = 'ui',
   CVENT = 'cvent',
   TNC = 'tnc',
+  COMMITTEES = 'committees',
 }
 
 export enum OrganizationMergeSuggestionType {
@@ -42,6 +43,7 @@ export enum OrganizationAttributeSource {
   ENRICHMENT_PEOPLEDATALABS = 'enrichment-peopledatalabs',
   CVENT = 'cvent',
   TNC = 'tnc',
+  COMMITTEES = 'committees',
   // legacy - keeping this for backward compatibility
   ENRICHMENT = 'enrichment',
   GITHUB = 'github',

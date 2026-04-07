@@ -97,7 +97,14 @@ export default class DataSinkService extends LoggerBase {
       }`
     }
 
-    if (errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified')) {
+    // Identity conflict errors get a long random delay to let concurrent upserts settle.
+    // Previously this called delayResult() unconditionally, bypassing maxStreamRetries and
+    // allowing retries to grow without bound. Now we respect the retry limit so the row
+    // eventually reaches ERROR state instead of cycling forever.
+    if (
+      errorData.errorMessage.includes('uix_memberIdentities_platform_value_type_verified') &&
+      resultInfo.retries + 1 <= WORKER_SETTINGS().maxStreamRetries
+    ) {
       const delaySeconds = Math.floor(Math.random() * (120 - 10 + 1) + 10) * 60
       const until = addSeconds(new Date(), delaySeconds)
       this.log.warn(
@@ -488,31 +495,48 @@ export default class DataSinkService extends LoggerBase {
     const end = performance.now()
     const totalTime = end - start
 
-    for (const type of types) {
-      const items = groupedByType.get(type)
-      const msPerItem = Math.floor(totalTime / items.length)
+    try {
+      for (const type of types) {
+        const items = groupedByType.get(type)
+        const msPerItem = Math.floor(totalTime / items.length)
 
-      const args = { type }
+        const args = { type }
 
-      if (type === IntegrationResultType.ACTIVITY) {
-        items.forEach((item) => {
-          const activityArgs = {
-            ...args,
-            platform: item.platform,
-            integrationId: item.integrationId,
-            onboarding:
-              item.onboarding === null || item.onboarding === undefined
-                ? '<not-set>'
-                : item.onboarding.toString(),
-            channel: (item.data.data as IActivityData).channel,
-          }
-          telemetry.distribution('data_sink_worker.process_result', msPerItem, activityArgs)
-        })
-      } else {
-        items.forEach(() => {
-          telemetry.distribution('data_sink_worker.process_result', msPerItem, args)
-        })
+        if (type === IntegrationResultType.ACTIVITY) {
+          items.forEach((item) => {
+            const activityData = item.data?.data as IActivityData | undefined
+            if (!activityData) {
+              this.log.warn(
+                {
+                  resultId: item.id,
+                  integrationId: item.integrationId,
+                  platform: item.platform,
+                  streamId: item.streamId,
+                  dataType: item.data?.type,
+                },
+                'Activity result has missing data payload (data.data is undefined)!',
+              )
+            }
+            const activityArgs = {
+              ...args,
+              platform: item.platform,
+              integrationId: item.integrationId,
+              onboarding:
+                item.onboarding === null || item.onboarding === undefined
+                  ? '<not-set>'
+                  : item.onboarding.toString(),
+              channel: activityData?.channel,
+            }
+            telemetry.distribution('data_sink_worker.process_result', msPerItem, activityArgs)
+          })
+        } else {
+          items.forEach(() => {
+            telemetry.distribution('data_sink_worker.process_result', msPerItem, args)
+          })
+        }
       }
+    } catch (telemetryErr) {
+      this.log.error(telemetryErr, 'Error while reporting telemetry for processed results!')
     }
   }
 }

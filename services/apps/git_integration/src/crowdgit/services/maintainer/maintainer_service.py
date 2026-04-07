@@ -38,7 +38,7 @@ from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.maintainer.bedrock import invoke_bedrock
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
-from crowdgit.services.utils import run_shell_command
+from crowdgit.services.utils import run_shell_command, safe_decode
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
 
 
@@ -139,6 +139,11 @@ class MaintainerService(BaseService):
     SCORING_KEYWORDS_SET = frozenset(SCORING_KEYWORDS)
 
     _section_extractor = SectionExtractor()
+
+    @staticmethod
+    async def _read_text_file(file_path: str) -> str:
+        async with aiofiles.open(file_path, "rb") as f:
+            return safe_decode(await f.read())
 
     def make_role(self, title: str):
         title = title.lower()
@@ -554,8 +559,7 @@ class MaintainerService(BaseService):
         for candidate_path in all_paths:
             file_path = os.path.join(repo_path, candidate_path)
             try:
-                async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                    content = await f.read()
+                content = await self._read_text_file(file_path)
             except Exception as e:
                 self.logger.warning(f"Failed to read candidate {candidate_path}: {repr(e)}")
                 continue
@@ -638,9 +642,7 @@ class MaintainerService(BaseService):
             f"Saved maintainer file exists, reading content: '{saved_maintainer_file}'"
         )
         try:
-            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                content = await f.read()
-
+            content = await self._read_text_file(file_path)
             result = await self.analyze_and_build_result(saved_maintainer_file, content)
             cost += result.total_cost
             return result, cost
@@ -784,8 +786,7 @@ class MaintainerService(BaseService):
                 )
             else:
                 try:
-                    async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                        content = await f.read()
+                    content = await self._read_text_file(file_path)
                     result = await self.analyze_and_build_result(ai_file_name, content)
                     total_cost += result.total_cost
                     return _attach_metadata(result)
