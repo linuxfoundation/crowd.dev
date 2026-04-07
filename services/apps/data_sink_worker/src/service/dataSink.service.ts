@@ -47,11 +47,16 @@ function extractLocationFromError(error: unknown): string {
   const serviceDir = process.cwd()
   for (const line of (stack as string).split('\n')) {
     if (line.includes(serviceDir) && !line.includes('node_modules')) {
-      const match = line.match(/at\s+(?:(.+?)\s+)?\(?(.+?):(\d+):\d+\)?$/)
-      if (match) {
-        const fn = match[1]?.trim()
-        const file = match[2].replace(`${serviceDir}/`, '')
-        return fn ? `${file}:${match[3]} (${fn})` : `${file}:${match[3]}`
+      // Named frame: "at [async] FunctionName (file:line:col)"
+      const named = line.match(/at\s+(.+)\s+\((.+):(\d+):\d+\)/)
+      if (named) {
+        const file = named[2].replace(`${serviceDir}/`, '')
+        return `${file}:${named[3]} (${named[1].trim()})`
+      }
+      // Anonymous frame: "at file:line:col"
+      const anon = line.match(/at\s+\(?(.+):(\d+):\d+\)?/)
+      if (anon) {
+        return `${anon[1].replace(`${serviceDir}/`, '')}:${anon[2]}`
       }
     }
   }
