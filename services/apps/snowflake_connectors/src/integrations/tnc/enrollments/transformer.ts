@@ -1,12 +1,6 @@
 import { TNC_GRID, TncActivityType } from '@crowd/integrations'
 import { getServiceChildLogger } from '@crowd/logging'
-import {
-  IActivityData,
-  IMemberData,
-  MemberAttributeName,
-  MemberIdentityType,
-  PlatformType,
-} from '@crowd/types'
+import { IActivityData, MemberAttributeName, PlatformType } from '@crowd/types'
 
 import { TransformedActivity } from '../../../core/transformerBase'
 import { TncTransformerBase } from '../tncTransformerBase'
@@ -27,47 +21,14 @@ export class TncEnrollmentsTransformer extends TncTransformerBase {
     const enrollmentId = (row.ENROLLMENT_ID as string)?.trim()
     const learnerName = (row.LEARNER_NAME as string | null)?.trim() || null
     const lfUsername = (row.LFID as string | null)?.trim() || null
-
-    const identities: IMemberData['identities'] = []
     const sourceId = (row.USER_ID as string | null) || undefined
 
-    if (lfUsername) {
-      identities.push(
-        {
-          platform: PlatformType.TNC,
-          value: email,
-          type: MemberIdentityType.EMAIL,
-          verified: true,
-          verifiedBy: PlatformType.TNC,
-          sourceId,
-        },
-        {
-          platform: PlatformType.TNC,
-          value: lfUsername,
-          type: MemberIdentityType.USERNAME,
-          verified: true,
-          verifiedBy: PlatformType.TNC,
-          sourceId,
-        },
-        {
-          platform: PlatformType.LFID,
-          value: lfUsername,
-          type: MemberIdentityType.USERNAME,
-          verified: true,
-          verifiedBy: PlatformType.TNC,
-          sourceId,
-        },
-      )
-    } else {
-      identities.push({
-        platform: PlatformType.TNC,
-        value: email,
-        type: MemberIdentityType.USERNAME,
-        verified: true,
-        verifiedBy: PlatformType.TNC,
-        sourceId,
-      })
-    }
+    const identities = this.buildMemberIdentities({
+      email,
+      sourceId,
+      platformUsername: null,
+      lfUsername,
+    })
 
     const productType = (row.PRODUCT_TYPE as string | null)?.trim() || null
     const instructionType = (row.INSTRUCTION_TYPE as string | null)?.trim() || null

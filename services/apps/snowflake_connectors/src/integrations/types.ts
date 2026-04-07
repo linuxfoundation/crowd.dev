@@ -8,6 +8,7 @@ export enum DataSourceName {
   TNC_ENROLLMENTS = 'enrollments',
   TNC_CERTIFICATES = 'certificates',
   TNC_COURSES = 'courses',
+  COMMITTEES_COMMITTEES = 'committees',
 }
 
 export interface DataSource {
