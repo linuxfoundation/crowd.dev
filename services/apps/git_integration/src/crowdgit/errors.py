@@ -120,3 +120,9 @@ class ReOnboardingRequiredError(CrowdGitError):
 class StuckRepoError(CrowdGitError):
     error_message = "Repos stuck in processing state for a long time"
     error_code: ErrorCode = ErrorCode.STUCK_REPO
+
+
+@dataclass
+class RepoAuthRequiredError(CrowdGitError):
+    error_message: str = "Repository requires authentication (likely private or deleted)"
+    error_code: ErrorCode = ErrorCode.REPO_AUTH_REQUIRED

@@ -152,6 +152,7 @@ async def acquire_recurrent_repo() -> Repository | None:
         RepositoryState.PROCESSING,
         RepositoryState.STUCK,
         RepositoryState.PENDING_REONBOARD,
+        RepositoryState.AUTH_REQUIRED,
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
