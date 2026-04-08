@@ -16,7 +16,7 @@ info:
     - **OAuth 2.0 Bearer (Auth0)** — used by LFX One for member, organization,
       and affiliation management endpoints.
 
-    - **Static API Key** — used for bulk contributor affiliation lookups.
+    - **Static API Key** — bearer token with scopes managed in the CDP database.
 
 servers:
   - url: https://cm.lfx.dev/api/v1
@@ -950,10 +950,10 @@ components:
       description: >
         OAuth 2.0 client credentials flow via Auth0. The consuming service
         obtains a JWT using its client ID and secret, then passes it as
-        `Authorization: Bearer <token>`.
+        `Authorization: Bearer <token>`
       flows:
         clientCredentials:
-          tokenUrl: https://sso.linuxfoundation.org/oauth/token
+          tokenUrl: https://linuxfoundation.auth0.com/oauth/token
           scopes:
             read:members: Read member profiles
             read:member-identities: Read member identities
@@ -971,8 +971,7 @@ components:
       description: >
         Static API key — pass as `Authorization: Bearer <token>`. Keys are
         managed in the CDP database with SHA-256 hashing, expiration, and
-        revocation support. Requires the `read:affiliations` scope assigned
-        to the key.
+        revocation support.
 
   parameters:
     MemberId:
