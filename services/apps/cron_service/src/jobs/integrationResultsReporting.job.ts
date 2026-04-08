@@ -20,7 +20,6 @@ interface IResultStateCount {
 interface IErrorGroup {
   errorMessage: string
   location: string
-  message: string
   count: number
   avgRetries: number
   maxRetries: number
@@ -69,7 +68,6 @@ const job: IJobDefinition = {
       SELECT
         COALESCE(r.error->>'errorMessage', '[no errorMessage]') AS "errorMessage",
         COALESCE(r.error->>'location',     '[no location]')     AS location,
-        COALESCE(r.error->>'message',      '[no message]')      AS message,
         count(*)::int                                           AS count,
         round(avg(r.retries), 1)::float                         AS "avgRetries",
         max(r.retries)::int                                     AS "maxRetries",
@@ -81,8 +79,7 @@ const job: IJobDefinition = {
       WHERE r.state = 'error'
       GROUP BY
         r.error->>'errorMessage',
-        r.error->>'location',
-        r.error->>'message'
+        r.error->>'location'
       ORDER BY count DESC
       LIMIT 20
       `,
@@ -125,7 +122,6 @@ const job: IJobDefinition = {
           `• *${group.count}x* \`${group.errorMessage}\``,
           `  _Location:_ \`${group.location}\` | _retries avg/max:_ ${group.avgRetries}/${group.maxRetries}${group.platforms ? ` | _platforms:_ \`${group.platforms}\`` : ''}`,
           `  _Age:_ ${ageLabel}`,
-          `  _Detail:_ ${group.message}`,
           '',
         )
       }
