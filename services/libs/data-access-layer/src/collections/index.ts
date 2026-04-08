@@ -138,13 +138,21 @@ export async function createCollection(
   qx: QueryExecutor,
   collection: ICreateCollection,
 ): Promise<ICollection> {
+  const data = {
+    description: null,
+    slug: null,
+    logoUrl: null,
+    imageUrl: null,
+    color: null,
+    ...collection,
+  }
   return qx.selectOne(
     `
       INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color)
       VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color))
       RETURNING *
     `,
-    collection,
+    data,
   )
 }
 

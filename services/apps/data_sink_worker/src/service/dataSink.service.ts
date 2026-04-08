@@ -35,6 +35,35 @@ import MemberService from './member.service'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * Extracts the first app-code frame from an error's stack trace as the location.
+ * Uses process.cwd() (the service root) to match only this service's own source
+ * files, skipping node_modules and shared library frames.
+ */
+function extractLocationFromError(error: unknown): string {
+  const stack = (error as any)?.stack
+  if (!stack) return 'unknown'
+
+  const serviceDir = process.cwd()
+  for (const line of (stack as string).split('\n')) {
+    if (line.includes(serviceDir) && !line.includes('node_modules')) {
+      // Named frame: "at [async] FunctionName (file:line:col)"
+      const named = line.match(/at\s+(.+)\s+\((.+):(\d+):\d+\)/)
+      if (named) {
+        const file = named[2].replace(`${serviceDir}/`, '')
+        return `${file}:${named[3]} (${named[1].trim()})`
+      }
+      // Anonymous frame: "at file:line:col"
+      const anon = line.match(/at\s+\(?(.+):(\d+):\d+\)?/)
+      if (anon) {
+        return `${anon[1].replace(`${serviceDir}/`, '')}:${anon[2]}`
+      }
+    }
+  }
+
+  return 'unknown'
+}
+
 export default class DataSinkService extends LoggerBase {
   private readonly repo: DataSinkRepository
 
@@ -55,15 +84,12 @@ export default class DataSinkService extends LoggerBase {
   private async triggerResultError(
     resultInfo: IResultData,
     resultExists: boolean,
-    location: string,
-    message: string,
     error: any,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const errorData: any = {
-      location,
-      message,
+      location: extractLocationFromError(error),
 
       metadata,
 
@@ -463,14 +489,7 @@ export default class DataSinkService extends LoggerBase {
       if (!result.success) {
         const resultInfo = single(results, (r) => r.id === resultId)
 
-        await this.triggerResultError(
-          resultInfo,
-          batchEntry.created,
-          'process-result',
-          'Error processing result.',
-          result.err,
-          result.metadata,
-        )
+        await this.triggerResultError(resultInfo, batchEntry.created, result.err, result.metadata)
 
         errors++
       } else {
