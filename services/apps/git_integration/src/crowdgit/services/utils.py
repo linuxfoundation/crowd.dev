@@ -8,6 +8,7 @@ from crowdgit.errors import (
     DiskSpaceError,
     NetworkError,
     PermissionError,
+    RateLimitError,
     RepoAuthRequiredError,
     ValidationError,
 )
@@ -183,6 +184,8 @@ NETWORK_ERROR_PATTERNS = {"Network is unreachable", "Connection refused", "Conne
 
 PERMISSION_ERROR_PATTERNS = {"Permission denied"}
 
+RATE_LIMIT_ERROR_PATTERNS = {"The requested URL returned error: 429"}
+
 REPO_AUTH_ERROR_PATTERNS = {
     "Authentication failed",
     "could not read Username",
@@ -205,6 +208,10 @@ def handle_shell_errors(returncode: int, stderr_text: str, command_str: str) -> 
     if any(pattern in stderr_text for pattern in PERMISSION_ERROR_PATTERNS):
         logger.error(f"Permission error: {stderr_text}")
         raise PermissionError(f"Permission denied while running: {command_str}")
+
+    if any(pattern in stderr_text for pattern in RATE_LIMIT_ERROR_PATTERNS):
+        logger.warning(f"Rate limited: {stderr_text}")
+        raise RateLimitError(f"Rate limited while running: {command_str} - {stderr_text}")
 
     if any(pattern in stderr_text for pattern in REPO_AUTH_ERROR_PATTERNS):
         logger.error(f"Repository auth required: {stderr_text}")

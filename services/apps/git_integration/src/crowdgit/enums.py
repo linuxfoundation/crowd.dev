@@ -23,6 +23,7 @@ class ErrorCode(str, Enum):
     REONBOARDING_REQUIRED = "reonboarding-required"
     STUCK_REPO = "stuck-repo"
     REPO_AUTH_REQUIRED = "repo-auth-required"
+    RATE_LIMITED = "rate-limited"
 
 
 class RepositoryState(str, Enum):

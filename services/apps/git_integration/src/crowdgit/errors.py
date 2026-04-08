@@ -126,3 +126,9 @@ class StuckRepoError(CrowdGitError):
 class RepoAuthRequiredError(CrowdGitError):
     error_message: str = "Repository requires authentication (likely private or deleted)"
     error_code: ErrorCode = ErrorCode.REPO_AUTH_REQUIRED
+
+
+@dataclass
+class RateLimitError(CrowdGitError):
+    error_message: str = "Rate limited by remote server"
+    error_code: ErrorCode = ErrorCode.RATE_LIMITED
