@@ -762,6 +762,7 @@ paths:
                 - name
                 - domain
                 - source
+                - logo
               properties:
                 name:
                   type: string
@@ -775,10 +776,15 @@ paths:
                   type: string
                   minLength: 1
                   description: Source system creating the organization.
+                logo:
+                  type: string
+                  format: uri
+                  description: URL of the organization's logo.
             example:
               name: Acme Corp
               domain: acme.com
               source: lfxOne
+              logo: https://example.com/logo.png
       responses:
         '201':
           description: Organization created (or existing one returned).
