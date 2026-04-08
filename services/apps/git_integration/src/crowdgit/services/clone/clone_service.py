@@ -6,11 +6,17 @@ from collections.abc import AsyncIterator
 from decimal import Decimal
 
 import aiofiles
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    wait_fixed,
+)
 
 from crowdgit.database.crud import save_service_execution
 from crowdgit.enums import ErrorCode, ExecutionStatus, OperationType
-from crowdgit.errors import CommandExecutionError, CrowdGitError
+from crowdgit.errors import CommandExecutionError, CrowdGitError, NetworkError, RateLimitError
 from crowdgit.models import CloneBatchInfo, Repository, ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.utils import (
@@ -22,6 +28,15 @@ from crowdgit.services.utils import (
 )
 
 DEFAULT_STORAGE_OPTIMIZATION_THRESHOLD_MB = 10000
+
+RETRYABLE_CLONE_ERRORS = (RateLimitError, NetworkError)
+
+retry_on_clone_error = retry(
+    retry=retry_if_exception_type(RETRYABLE_CLONE_ERRORS),
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=5, min=5, max=120),
+    reraise=True,
+)
 
 
 class CloneService(BaseService):
@@ -52,6 +67,7 @@ class CloneService(BaseService):
         except CommandExecutionError:
             return False
 
+    @retry_on_clone_error
     async def _perform_minimal_clone(self, path: str, remote: str) -> None:
         """
         Perform minimal clone of depth=1
@@ -116,11 +132,7 @@ class CloneService(BaseService):
             self.logger.error(f"Failed to perform git gc: {repr(e)}")
             # Don't raise - gc failure shouldn't stop processing
 
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_fixed(1),
-        reraise=True,
-    )
+    @retry_on_clone_error
     async def _clone_next_batch(self, repo_path: str, batch_depth: int):
         default_branch = await get_default_branch(repo_path)
         self.logger.info(
@@ -274,6 +286,7 @@ class CloneService(BaseService):
         )
         return calculated_depth
 
+    @retry_on_clone_error
     async def _perform_full_clone(self, repo_path: str, remote: str):
         """Perform full repository clone"""
         self.logger.info(f"Performing full clone for repo {remote}...")
