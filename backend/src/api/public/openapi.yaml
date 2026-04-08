@@ -1,0 +1,1494 @@
+openapi: 3.1.0
+info:
+  title: CDP Public API
+  version: 1.0.0
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: >
+    Public REST API for the Community Data Platform (CDP). Provides transactional
+    endpoints for identity verification, work experience management, project
+    affiliations, and contributor lookup.
+
+
+    Two authentication methods are supported depending on the endpoint:
+
+    - **OAuth 2.0 Bearer (Auth0)** — used by LFX One for member, organization,
+      and affiliation management endpoints.
+
+    - **Static API Key** — bearer token with scopes managed in the CDP database.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+  - url: https://lf-staging.crowd.dev/api/v1
+    description: Staging
+
+security: []
+
+tags:
+  - name: Members
+    description: Resolve member profiles by identity.
+  - name: Member Identities
+    description: Manage and verify member identities across platforms.
+  - name: Maintainer Roles
+    description: Retrieve maintainer roles for a member.
+  - name: Work Experiences
+    description: Manage and verify member work experiences (organization affiliations).
+  - name: Project Affiliations
+    description: View and override per-project affiliation data for a member.
+  - name: Organizations
+    description: Look up and create organizations.
+  - name: Affiliations
+    description: Bulk contributor affiliation lookups by GitHub handle.
+
+paths:
+  # ──────────────────────────────────────────────
+  # Members
+  # ──────────────────────────────────────────────
+  /members/resolve:
+    post:
+      operationId: resolveMember
+      summary: Resolve a CDP member profile
+      description: >
+        Resolve a `memberId` from one or more identities. LFX One should always
+        call this first to obtain the CDP member ID before using other endpoints.
+        Returns 404 if no matching profile exists, or 409 if the provided
+        identities belong to different profiles.
+      tags:
+        - Members
+      security:
+        - OAuth2Bearer:
+            - read:members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - lfids
+              properties:
+                lfids:
+                  type: array
+                  description: LFX IDs to search for.
+                  minItems: 1
+                  items:
+                    type: string
+                    minLength: 1
+                emails:
+                  type: array
+                  description: Optional email addresses to include in the lookup.
+                  items:
+                    type: string
+                    format: email
+            example:
+              lfids:
+                - abc123
+              emails:
+                - user@example.com
+      responses:
+        '200':
+          description: Member resolved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - memberId
+                properties:
+                  memberId:
+                    type: string
+                    format: uuid
+              example:
+                memberId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No matching member profile found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: Member not found
+        '409':
+          description: The provided identities belong to different member profiles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Conflicting identities
+
+  # ──────────────────────────────────────────────
+  # Member Identities
+  # ──────────────────────────────────────────────
+  /members/{memberId}/identities:
+    get:
+      operationId: getMemberIdentities
+      summary: List member identities
+      description: Retrieve all identities for a member profile.
+      tags:
+        - Member Identities
+      security:
+        - OAuth2Bearer:
+            - read:member-identities
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: Identities retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - identities
+                properties:
+                  identities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MemberIdentity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+
+    post:
+      operationId: createMemberIdentity
+      summary: Add a new identity
+      description: >
+        Add a new identity to a member profile. Returns 409 if the identity
+        already exists on this member or is verified on another member.
+      tags:
+        - Member Identities
+      security:
+        - OAuth2Bearer:
+            - write:member-identities
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - value
+                - platform
+                - type
+                - source
+                - verified
+              properties:
+                value:
+                  type: string
+                  minLength: 1
+                  description: Identity value (e.g. username, email address).
+                platform:
+                  type: string
+                  minLength: 1
+                  description: Platform name (e.g. github, linkedin).
+                type:
+                  type: string
+                  enum:
+                    - username
+                    - email
+                  description: Identity type.
+                source:
+                  type: string
+                  minLength: 1
+                  description: Source system that created this identity.
+                verified:
+                  type: boolean
+                  description: Whether the identity is verified.
+                verifiedBy:
+                  type: string
+                  description: Required when `verified` is true. Identifier of who verified.
+            example:
+              value: johndoe
+              platform: github
+              type: username
+              source: lfxOne
+              verified: true
+              verifiedBy: admin@lfx.dev
+      responses:
+        '201':
+          description: Identity created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberIdentity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '409':
+          description: Identity already exists on this member or is verified on another.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Identity already exists on this member
+
+  /members/{memberId}/identities/{identityId}:
+    patch:
+      operationId: verifyMemberIdentity
+      summary: Verify or reject an identity
+      description: >
+        Set an identity as verified or rejected. When rejected (`verified: false`),
+        the identity is either soft-deleted (no linked activities) or unmerged to
+        a new profile (has linked activities).
+      tags:
+        - Member Identities
+      security:
+        - OAuth2Bearer:
+            - write:member-identities
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+        - name: identityId
+          in: path
+          required: true
+          description: UUID of the identity to verify or reject.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - verified
+                - verifiedBy
+              properties:
+                verified:
+                  type: boolean
+                  description: >
+                    `true` to verify the identity, `false` to reject it.
+                verifiedBy:
+                  type: string
+                  description: Identifier of who performed the verification.
+            example:
+              verified: true
+              verifiedBy: admin@lfx.dev
+      responses:
+        '200':
+          description: >
+            Identity updated. Returned when verifying, or when rejecting an
+            identity that has linked activities (triggers unmerge).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/MemberIdentity'
+                  - type: object
+                    properties:
+                      unmergedToMemberId:
+                        type: string
+                        format: uuid
+                        description: >
+                          Present only when rejection triggered an unmerge. The
+                          new member profile ID that the identity was moved to.
+        '204':
+          description: >
+            Identity rejected and deleted (no linked activities). No response body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Member or identity not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+  # ──────────────────────────────────────────────
+  # Maintainer Roles
+  # ──────────────────────────────────────────────
+  /members/{memberId}/maintainer-roles:
+    get:
+      operationId: getMemberMaintainerRoles
+      summary: List maintainer roles
+      description: Retrieve all maintainer roles for a member across projects.
+      tags:
+        - Maintainer Roles
+      security:
+        - OAuth2Bearer:
+            - read:maintainer-roles
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: Maintainer roles retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - maintainerRoles
+                properties:
+                  maintainerRoles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MaintainerRole'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+
+  # ──────────────────────────────────────────────
+  # Work Experiences
+  # ──────────────────────────────────────────────
+  /members/{memberId}/work-experiences:
+    get:
+      operationId: getMemberWorkExperiences
+      summary: List work experiences
+      description: Retrieve all work experiences for a member.
+      tags:
+        - Work Experiences
+      security:
+        - OAuth2Bearer:
+            - read:work-experiences
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: Work experiences retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - memberId
+                  - workExperiences
+                properties:
+                  memberId:
+                    type: string
+                    format: uuid
+                  workExperiences:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkExperience'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+
+    post:
+      operationId: createMemberWorkExperience
+      summary: Add a work experience
+      description: >
+        Add a new work experience to a member profile. Returns 409 if a work
+        experience with the same dates already exists.
+      tags:
+        - Work Experiences
+      security:
+        - OAuth2Bearer:
+            - write:work-experiences
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkExperienceInput'
+            example:
+              organizationId: 550e8400-e29b-41d4-a716-446655440000
+              jobTitle: Senior Engineer
+              verified: true
+              verifiedBy: admin@lfx.dev
+              source: lfxOne
+              startDate: '2020-01-01T00:00:00.000Z'
+              endDate: null
+      responses:
+        '201':
+          description: Work experience created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkExperience'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '409':
+          description: A work experience with the same dates already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: CONFLICT
+                  message: A work experience with the same dates already exists
+
+  /members/{memberId}/work-experiences/{workExperienceId}:
+    put:
+      operationId: updateMemberWorkExperience
+      summary: Update a work experience
+      description: Replace all fields of an existing work experience.
+      tags:
+        - Work Experiences
+      security:
+        - OAuth2Bearer:
+            - write:work-experiences
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+        - $ref: '#/components/parameters/WorkExperienceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkExperienceInput'
+      responses:
+        '200':
+          description: Work experience updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkExperience'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Member or work experience not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+    patch:
+      operationId: verifyMemberWorkExperience
+      summary: Verify or reject a work experience
+      description: >
+        Set a work experience as verified or rejected. When rejected
+        (`verified: false`), the work experience is soft-deleted and
+        affiliations are recalculated.
+      tags:
+        - Work Experiences
+      security:
+        - OAuth2Bearer:
+            - write:work-experiences
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+        - $ref: '#/components/parameters/WorkExperienceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - verified
+                - verifiedBy
+              properties:
+                verified:
+                  type: boolean
+                  description: >
+                    `true` to verify, `false` to reject (soft-delete).
+                verifiedBy:
+                  type: string
+                  description: Identifier of who performed the verification.
+            example:
+              verified: true
+              verifiedBy: admin@lfx.dev
+      responses:
+        '200':
+          description: Work experience updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkExperience'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Member or work experience not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+    delete:
+      operationId: deleteMemberWorkExperience
+      summary: Delete a work experience
+      description: >
+        Soft-delete a work experience from a member profile. Affiliations are
+        automatically recalculated.
+      tags:
+        - Work Experiences
+      security:
+        - OAuth2Bearer:
+            - write:work-experiences
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+        - $ref: '#/components/parameters/WorkExperienceId'
+      responses:
+        '204':
+          description: Work experience deleted. No response body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Member or work experience not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+  # ──────────────────────────────────────────────
+  # Project Affiliations
+  # ──────────────────────────────────────────────
+  /members/{memberId}/project-affiliations:
+    get:
+      operationId: getMemberProjectAffiliations
+      summary: List project affiliations
+      description: >
+        Retrieve per-project affiliation data for a member, including maintainer
+        roles and resolved affiliations. Affiliations come from project-level
+        overrides when available, otherwise from work experiences.
+      tags:
+        - Project Affiliations
+      security:
+        - OAuth2Bearer:
+            - read:project-affiliations
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '200':
+          description: Project affiliations retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - projectAffiliations
+                properties:
+                  projectAffiliations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectAffiliation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+
+  /members/{memberId}/project-affiliations/{projectId}:
+    patch:
+      operationId: patchMemberProjectAffiliation
+      summary: Override project affiliations
+      description: >
+        Replace all project-level affiliation overrides for a member on a
+        specific project. Pass an empty `affiliations` array to clear overrides
+        (falling back to work experience-based affiliations).
+      tags:
+        - Project Affiliations
+      security:
+        - OAuth2Bearer:
+            - write:project-affiliations
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+        - name: projectId
+          in: path
+          required: true
+          description: UUID of the project (segment ID).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - affiliations
+              properties:
+                affiliations:
+                  type: array
+                  description: >
+                    Affiliation overrides. Pass an empty array to clear.
+                  items:
+                    type: object
+                    required:
+                      - organizationId
+                      - dateStart
+                    properties:
+                      organizationId:
+                        type: string
+                        format: uuid
+                      dateStart:
+                        type: string
+                        format: date-time
+                        description: Start date of the affiliation period.
+                      dateEnd:
+                        type:
+                          - string
+                          - 'null'
+                        format: date-time
+                        description: End date, or null if currently active.
+                verifiedBy:
+                  type: string
+                  maxLength: 255
+                  description: Required when `affiliations` is non-empty.
+            example:
+              affiliations:
+                - organizationId: 550e8400-e29b-41d4-a716-446655440000
+                  dateStart: '2020-01-01T00:00:00.000Z'
+                  dateEnd: null
+              verifiedBy: admin@lfx.dev
+      responses:
+        '200':
+          description: Project affiliations updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectAffiliation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Member or project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+
+  # ──────────────────────────────────────────────
+  # Organizations
+  # ──────────────────────────────────────────────
+  /organizations:
+    get:
+      operationId: getOrganization
+      summary: Look up an organization by domain
+      description: Find a verified organization by its primary domain.
+      tags:
+        - Organizations
+      security:
+        - OAuth2Bearer:
+            - read:organizations
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          description: Primary domain of the organization.
+          schema:
+            type: string
+            minLength: 1
+          example: linuxfoundation.org
+      responses:
+        '200':
+          description: Organization found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                name: Linux Foundation
+                logo: https://example.com/logo.png
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No verified organization found for the given domain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: Organization not found
+
+    post:
+      operationId: createOrganization
+      summary: Create an organization
+      description: >
+        Create a new organization with a verified primary domain. If an
+        organization with the same domain already exists, it returns the
+        existing one.
+      tags:
+        - Organizations
+      security:
+        - OAuth2Bearer:
+            - write:organizations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - domain
+                - source
+                - logo
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  description: Display name of the organization.
+                domain:
+                  type: string
+                  minLength: 1
+                  description: Primary domain of the organization.
+                source:
+                  type: string
+                  minLength: 1
+                  description: Source system creating the organization.
+                logo:
+                  type: string
+                  format: uri
+                  description: URL of the organization's logo.
+            example:
+              name: Acme Corp
+              domain: acme.com
+              source: lfxOne
+              logo: https://example.com/logo.png
+      responses:
+        '201':
+          description: Organization created (or existing one returned).
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - name
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                name: Acme Corp
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ──────────────────────────────────────────────
+  # Affiliations (Static API Key)
+  # ──────────────────────────────────────────────
+  /affiliations:
+    post:
+      operationId: getBulkAffiliations
+      summary: Bulk contributor lookup
+      description: >
+        Look up affiliation data for up to 100 GitHub handles in a single
+        request. Handles that have no matching LFX profile are returned in the
+        `notFound` array.
+      tags:
+        - Affiliations
+      security:
+        - StaticApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - githubHandles
+              properties:
+                githubHandles:
+                  type: array
+                  description: >
+                    List of GitHub login handles to look up (case-insensitive).
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                    minLength: 1
+            example:
+              githubHandles:
+                - torvalds
+                - gvanrossum
+      parameters:
+        - name: page
+          in: query
+          description: Page number (1-based).
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Number of contributors to return per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Affiliations resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkAffiliationsResponse'
+              example:
+                total: 2
+                totalFound: 2
+                page: 1
+                pageSize: 20
+                contributorsInPage: 2
+                contributors:
+                  - githubHandle: torvalds
+                    name: Linus Torvalds
+                    emails:
+                      - torvalds@linux-foundation.org
+                    affiliations:
+                      - organization: Linux Foundation
+                        startDate: '2007-01-01T00:00:00.000Z'
+                        endDate: null
+                notFound: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /affiliations/{githubHandle}:
+    get:
+      operationId: getAffiliationByHandle
+      summary: Single contributor lookup
+      description: >
+        Look up affiliation data for one developer by GitHub handle. Useful for
+        debugging and ad-hoc queries.
+      tags:
+        - Affiliations
+      security:
+        - StaticApiKey: []
+      parameters:
+        - name: githubHandle
+          in: path
+          required: true
+          description: GitHub login handle (case-insensitive).
+          schema:
+            type: string
+            minLength: 1
+          example: torvalds
+      responses:
+        '200':
+          description: Developer found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contributor'
+              example:
+                githubHandle: torvalds
+                name: Linus Torvalds
+                emails:
+                  - torvalds@linux-foundation.org
+                affiliations:
+                  - organization: Linux Foundation
+                    startDate: '2007-01-01T00:00:00.000Z'
+                    endDate: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No LFX profile found for the given GitHub handle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "No LFX profile found for GitHub login 'nonexistent-user'."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    OAuth2Bearer:
+      type: oauth2
+      description: >
+        OAuth 2.0 client credentials flow via Auth0. The consuming service
+        obtains a JWT using its client ID and secret, then passes it as
+        `Authorization: Bearer <token>`
+      flows:
+        clientCredentials:
+          tokenUrl: https://linuxfoundation.auth0.com/oauth/token
+          scopes:
+            read:members: Read member profiles
+            read:member-identities: Read member identities
+            write:member-identities: Create and verify member identities
+            read:maintainer-roles: Read maintainer roles
+            read:work-experiences: Read work experiences
+            write:work-experiences: Create, update, verify, and delete work experiences
+            read:project-affiliations: Read project affiliations
+            write:project-affiliations: Override project affiliations
+            read:organizations: Look up organizations
+            write:organizations: Create organizations
+    StaticApiKey:
+      type: http
+      scheme: bearer
+      description: >
+        Static API key — pass as `Authorization: Bearer <token>`. Keys are
+        managed in the CDP database with SHA-256 hashing, expiration, and
+        revocation support.
+
+  parameters:
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      description: UUID of the member.
+      schema:
+        type: string
+        format: uuid
+    WorkExperienceId:
+      name: workExperienceId
+      in: path
+      required: true
+      description: UUID of the work experience.
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    MemberIdentity:
+      type: object
+      required:
+        - id
+        - value
+        - platform
+        - verified
+        - verifiedBy
+        - source
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        value:
+          type: string
+          description: Identity value (username or email).
+        platform:
+          type: string
+          description: Platform name (e.g. github, linkedin, lfid).
+        verified:
+          type: boolean
+        verifiedBy:
+          type:
+            - string
+            - 'null'
+          description: Identifier of who verified this identity, or null.
+        source:
+          type:
+            - string
+            - 'null'
+          description: Source system that created this identity.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MaintainerRole:
+      type: object
+      required:
+        - id
+        - memberId
+        - segmentId
+        - role
+        - url
+        - repoType
+      properties:
+        id:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+        segmentId:
+          type: string
+          format: uuid
+        dateStart:
+          type:
+            - string
+            - 'null'
+          format: date
+          description: Start date of the maintainer role.
+        dateEnd:
+          type:
+            - string
+            - 'null'
+          format: date
+          description: End date of the maintainer role, or null if current.
+        url:
+          type: string
+          description: Repository URL.
+        repoType:
+          type: string
+          enum:
+            - github
+            - gitlab
+            - git
+            - gerrit
+          description: Repository platform type.
+        role:
+          type: string
+          description: Role name (e.g. maintainer, committer).
+        maintainerFile:
+          type:
+            - string
+            - 'null'
+          description: Path to the maintainer file in the repository, if applicable.
+
+    WorkExperience:
+      type: object
+      required:
+        - id
+        - organizationId
+        - organizationName
+        - jobTitle
+        - verified
+        - verifiedBy
+        - source
+        - startDate
+        - endDate
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        organizationName:
+          type:
+            - string
+            - 'null'
+          description: Display name of the organization.
+        organizationLogo:
+          type:
+            - string
+            - 'null'
+          description: URL of the organization logo.
+        jobTitle:
+          type:
+            - string
+            - 'null'
+        verified:
+          type: boolean
+        verifiedBy:
+          type:
+            - string
+            - 'null'
+        source:
+          type:
+            - string
+            - 'null'
+          description: Source system that created this work experience.
+        startDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        endDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: End date, or null if currently active.
+        createdAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        updatedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+
+    WorkExperienceInput:
+      type: object
+      required:
+        - organizationId
+        - jobTitle
+        - verified
+        - verifiedBy
+        - source
+        - startDate
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+        jobTitle:
+          type: string
+          description: Job title at the organization.
+        verified:
+          type: boolean
+        verifiedBy:
+          type: string
+          description: Identifier of who verified this work experience.
+        source:
+          type: string
+          description: Source system (e.g. lfxOne).
+        startDate:
+          type: string
+          format: date-time
+          description: Start date of the work experience.
+        endDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: End date, or null if currently active.
+
+    ProjectAffiliation:
+      type: object
+      required:
+        - id
+        - projectSlug
+        - projectName
+        - projectLogo
+        - contributionCount
+        - roles
+        - affiliations
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Segment (project) ID.
+        projectSlug:
+          type: string
+        projectName:
+          type: string
+        projectLogo:
+          type:
+            - string
+            - 'null'
+        contributionCount:
+          type: integer
+          description: Total number of contributions in this project.
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectRole'
+        affiliations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectAffiliationEntry'
+
+    ProjectRole:
+      type: object
+      required:
+        - id
+        - role
+        - startDate
+        - endDate
+        - repoUrl
+        - repoFileUrl
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+        startDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        endDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        repoUrl:
+          type:
+            - string
+            - 'null'
+        repoFileUrl:
+          type:
+            - string
+            - 'null'
+
+    ProjectAffiliationEntry:
+      type: object
+      required:
+        - id
+        - organizationId
+        - organizationName
+        - organizationLogo
+        - verified
+        - verifiedBy
+        - startDate
+        - endDate
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        organizationName:
+          type: string
+        organizationLogo:
+          type:
+            - string
+            - 'null'
+        verified:
+          type: boolean
+        verifiedBy:
+          type:
+            - string
+            - 'null'
+        startDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        endDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        type:
+          type: string
+          enum:
+            - project
+            - work-history
+          description: >
+            `project` — manually overridden at the project level.
+            `work-history` — derived from work experiences.
+        source:
+          type:
+            - string
+            - 'null'
+          description: Present only for `work-history` type affiliations.
+
+    AffiliationPeriod:
+      type: object
+      required:
+        - organization
+        - startDate
+        - endDate
+      properties:
+        organization:
+          type: string
+          description: Name of the organization.
+        startDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Start date of the affiliation period.
+        endDate:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: End date, or null if currently active.
+
+    Contributor:
+      type: object
+      required:
+        - githubHandle
+        - name
+        - emails
+        - affiliations
+      properties:
+        githubHandle:
+          type: string
+          description: Verified GitHub login handle.
+        name:
+          type:
+            - string
+            - 'null'
+          description: Display name from the LFX profile.
+        emails:
+          type: array
+          description: Verified email addresses linked to the profile.
+          items:
+            type: string
+            format: email
+        affiliations:
+          type: array
+          description: Resolved affiliation periods, most recent first.
+          items:
+            $ref: '#/components/schemas/AffiliationPeriod'
+
+    BulkAffiliationsResponse:
+      type: object
+      required:
+        - total
+        - totalFound
+        - page
+        - pageSize
+        - contributorsInPage
+        - contributors
+        - notFound
+      properties:
+        total:
+          type: integer
+          description: Total number of handles submitted in the request.
+        totalFound:
+          type: integer
+          description: Number of handles that matched an LFX profile.
+        page:
+          type: integer
+          description: Current page number.
+        pageSize:
+          type: integer
+          description: Maximum contributors per page.
+        contributorsInPage:
+          type: integer
+          description: Number of contributors returned in this page.
+        contributors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contributor'
+        notFound:
+          type: array
+          description: Handles from the request with no matching LFX profile.
+          items:
+            type: string
+
+    Organization:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Display name of the organization.
+        logo:
+          type: string
+          description: URL of the organization logo. Only present if available.
+
+    HttpError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code.
+            message:
+              type: string
+              description: Human-readable error description.
+
+  responses:
+    BadRequest:
+      description: Invalid request body or query parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Validation failed
+
+    Unauthorized:
+      description: Missing or invalid authentication credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or missing authentication
+
+    Forbidden:
+      description: Authentication valid but insufficient scopes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: INSUFFICIENT_SCOPE
+              message: Insufficient scope for this operation
+
+    MemberNotFound:
+      description: No member found with the given ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Member not found
+
+    TooManyRequests:
+      description: Rate limit exceeded (60 requests per 60 seconds).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests, please try again later

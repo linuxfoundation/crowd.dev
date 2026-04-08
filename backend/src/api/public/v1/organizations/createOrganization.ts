@@ -13,20 +13,22 @@ const bodySchema = z.object({
   name: z.string().trim().min(1),
   domain: z.string().trim().min(1),
   source: z.string().trim().min(1),
+  logo: z.string().trim().min(1).optional(),
 })
 
 export async function createOrganization(req: Request, res: Response): Promise<void> {
-  const { name, domain, source } = validateOrThrow(bodySchema, req.body)
+  const { name, domain, source, logo } = validateOrThrow(bodySchema, req.body)
 
   const qx = optionsQx(req)
 
   let organizationId: string | undefined
 
   await qx.tx(async (tx) => {
-    const orgSource = OrganizationAttributeSource.CUSTOM
+    const orgSource = OrganizationAttributeSource.LFX_SERVE
 
     organizationId = await findOrCreateOrganization(tx, orgSource, {
       displayName: name,
+      logo,
       identities: [
         {
           value: domain,
@@ -59,5 +61,5 @@ export async function createOrganization(req: Request, res: Response): Promise<v
     )
   })
 
-  created(res, { id: organizationId, name })
+  created(res, { id: organizationId, name, logo })
 }
