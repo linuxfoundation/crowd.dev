@@ -93,7 +93,7 @@ const job: IJobDefinition = {
   timeout: 30 * 60, // 30 minutes
 
   process: async (ctx) => {
-    ctx.log.debug('Starting OpenStack repository groups sync...')
+    ctx.log.info('Starting OpenStack repository groups sync...')
 
     const dbConnection = await getDbConnection(WRITE_DB_CONFIG(), 3, 0)
     const qx = pgpQx(dbConnection)
@@ -132,7 +132,7 @@ const job: IJobDefinition = {
         continue
       }
 
-      ctx.log.debug(`Parsed ${projects.length} projects from YAML`)
+      ctx.log.info(`Parsed ${projects.length} projects from YAML`)
 
       // ------------------------------------------------------------------
       // 3. Load existing repository groups so we can upsert
@@ -191,7 +191,7 @@ const job: IJobDefinition = {
             slug,
             repositories: foundUrls,
           })
-          ctx.log.debug(`Updated '${project}' — ${foundUrls.length} repos`)
+          ctx.log.info(`Updated '${project}' — ${foundUrls.length} repos`)
           updated++
         } else {
           await createRepositoryGroup(qx, {
@@ -200,7 +200,7 @@ const job: IJobDefinition = {
             insightsProjectId,
             repositories: foundUrls,
           })
-          ctx.log.debug(`Created '${project}' — ${foundUrls.length} repos`)
+          ctx.log.info(`Created '${project}' — ${foundUrls.length} repos`)
           created++
         }
       }
@@ -208,7 +208,7 @@ const job: IJobDefinition = {
       ctx.log.debug(`Source done — created: ${created}, updated: ${updated}, skipped: ${skipped}`)
     }
 
-    ctx.log.debug('OpenStack repository groups sync complete')
+    ctx.log.info('OpenStack repository groups sync complete')
   },
 }
 
