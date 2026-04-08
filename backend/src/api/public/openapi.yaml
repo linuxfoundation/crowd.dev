@@ -819,8 +819,7 @@ paths:
       tags:
         - Affiliations
       security:
-        - StaticApiKey:
-            - read:affiliations
+        - StaticApiKey: []
       requestBody:
         required: true
         content:
@@ -901,8 +900,7 @@ paths:
       tags:
         - Affiliations
       security:
-        - StaticApiKey:
-            - read:affiliations
+        - StaticApiKey: []
       parameters:
         - name: githubHandle
           in: path
@@ -948,19 +946,33 @@ paths:
 components:
   securitySchemes:
     OAuth2Bearer:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+      type: oauth2
       description: >
-        OAuth 2.0 client credentials JWT issued by Auth0. Pass as
-        `Authorization: Bearer <token>`. Token scopes control endpoint access.
+        OAuth 2.0 client credentials flow via Auth0. The consuming service
+        obtains a JWT using its client ID and secret, then passes it as
+        `Authorization: Bearer <token>`.
+      flows:
+        clientCredentials:
+          tokenUrl: https://sso.linuxfoundation.org/oauth/token
+          scopes:
+            read:members: Read member profiles
+            read:member-identities: Read member identities
+            write:member-identities: Create and verify member identities
+            read:maintainer-roles: Read maintainer roles
+            read:work-experiences: Read work experiences
+            write:work-experiences: Create, update, verify, and delete work experiences
+            read:project-affiliations: Read project affiliations
+            write:project-affiliations: Override project affiliations
+            read:organizations: Look up organizations
+            write:organizations: Create organizations
     StaticApiKey:
       type: http
       scheme: bearer
       description: >
         Static API key — pass as `Authorization: Bearer <token>`. Keys are
         managed in the CDP database with SHA-256 hashing, expiration, and
-        revocation support.
+        revocation support. Requires the `read:affiliations` scope assigned
+        to the key.
 
   parameters:
     MemberId:
