@@ -16,20 +16,25 @@ from tenacity import (
 
 from crowdgit.database.crud import save_service_execution
 from crowdgit.enums import ErrorCode, ExecutionStatus, OperationType
-from crowdgit.errors import CommandExecutionError, CrowdGitError, NetworkError, RateLimitError
+from crowdgit.errors import (
+    CommandExecutionError,
+    CrowdGitError,
+    NetworkError,
+    RateLimitError,
+    RemoteServerError,
+)
 from crowdgit.models import CloneBatchInfo, Repository, ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.utils import (
     get_default_branch,
     get_remote_default_branch,
     get_repo_name,
-    normalize_gerrit_remote,
     run_shell_command,
 )
 
 DEFAULT_STORAGE_OPTIMIZATION_THRESHOLD_MB = 10000
 
-RETRYABLE_CLONE_ERRORS = (RateLimitError, NetworkError)
+RETRYABLE_CLONE_ERRORS = (RateLimitError, NetworkError, RemoteServerError)
 
 retry_on_clone_error = retry(
     retry=retry_if_exception_type(RETRYABLE_CLONE_ERRORS),
@@ -39,11 +44,18 @@ retry_on_clone_error = retry(
 )
 
 
+GERRIT_PATTERNS = {"gerrit.", "review.", "/gerrit/"}
+
+
 class CloneService(BaseService):
     """Service for cloning repositories"""
 
     def __init__(self):
         super().__init__()
+
+    @staticmethod
+    def _is_gerrit_remote(remote: str) -> bool:
+        return any(pattern in remote for pattern in GERRIT_PATTERNS)
 
     async def _check_if_final_batch(self, path: str, target_commit_hash: str | None) -> bool:
         """
@@ -133,14 +145,24 @@ class CloneService(BaseService):
             # Don't raise - gc failure shouldn't stop processing
 
     @retry_on_clone_error
-    async def _clone_next_batch(self, repo_path: str, batch_depth: int):
+    async def _clone_next_batch(self, repo_path: str, batch_depth: int, remote: str):
         default_branch = await get_default_branch(repo_path)
         self.logger.info(
             f"Fetching an additional {batch_depth} commits from {default_branch} branch"
         )
-        await run_shell_command(
-            ["git", "fetch", "origin", default_branch, f"--deepen={batch_depth}"], cwd=repo_path
-        )
+        try:
+            await run_shell_command(
+                ["git", "fetch", "origin", default_branch, f"--deepen={batch_depth}"],
+                cwd=repo_path,
+            )
+        except RemoteServerError:
+            if self._is_gerrit_remote(remote):
+                self.logger.warning(
+                    "Gerrit server error on --deepen, falling back to unshallow fetch"
+                )
+                await run_shell_command(["git", "fetch", "--unshallow"], cwd=repo_path)
+            else:
+                raise
         # Optimize repository storage using git garbage collection
         await self._optimize_repository_storage(repo_path)
 
@@ -384,7 +406,6 @@ class CloneService(BaseService):
         error_message = None
         total_execution_time = 0.0
         remote = repository.url.removesuffix(".git")
-        clone_remote = normalize_gerrit_remote(remote)
 
         batch_info = CloneBatchInfo(
             repo_path=temp_repo_path,
@@ -397,10 +418,10 @@ class CloneService(BaseService):
             batch_start_time = time.time()
 
             clone_with_batches = await self.determine_clone_strategy(
-                temp_repo_path, clone_remote, repository.branch, repository.last_processed_commit
+                temp_repo_path, remote, repository.branch, repository.last_processed_commit
             )
             if clone_with_batches:
-                batch_depth = await self._calculate_batch_depth(temp_repo_path, clone_remote)
+                batch_depth = await self._calculate_batch_depth(temp_repo_path, remote)
             await self._update_batch_info(
                 batch_info, temp_repo_path, repository.last_processed_commit, clone_with_batches
             )
@@ -415,7 +436,7 @@ class CloneService(BaseService):
             while not batch_info.is_final_batch:
                 batch_start_time = time.time()
                 batch_info.prev_batch_edge_commit = await self._get_edge_commit(temp_repo_path)
-                await self._clone_next_batch(temp_repo_path, batch_depth)
+                await self._clone_next_batch(temp_repo_path, batch_depth, remote)
                 await self._update_batch_info(
                     batch_info,
                     temp_repo_path,

@@ -6,27 +6,15 @@ from crowdgit.errors import (
     CommandExecutionError,
     CommandTimeoutError,
     DiskSpaceError,
+    ForbiddenError,
     NetworkError,
     PermissionError,
     RateLimitError,
+    RemoteServerError,
     RepoAuthRequiredError,
     ValidationError,
 )
 from crowdgit.logger import logger
-
-
-def normalize_gerrit_remote(url: str) -> str:
-    """Rewrite Gerrit remote URLs to their Gitea equivalents for git clone/fetch operations.
-
-    Gerrit servers don't support the git shallow protocol extension (--deepen),
-    causing HTTP 500 errors during incremental fetching. Where a Gitea mirror
-    exists with full protocol support (e.g. opendev.org mirrors review.opendev.org),
-    we rewrite the host so that shallow cloning works.
-
-    Only used for git operations, not for URLs persisted to the database or
-    passed to other services.
-    """
-    return url.replace("https://review.opendev.org", "https://opendev.org")
 
 
 def safe_decode(data: bytes) -> str:
@@ -178,46 +166,32 @@ async def get_default_branch(repo_path: str) -> str:
     return "*"
 
 
-DISK_SPACE_ERROR_PATTERNS = {"No space left on device"}
-
-NETWORK_ERROR_PATTERNS = {"Network is unreachable", "Connection refused", "Connection timed out"}
-
-PERMISSION_ERROR_PATTERNS = {"Permission denied"}
-
-RATE_LIMIT_ERROR_PATTERNS = {"The requested URL returned error: 429"}
-
-REPO_AUTH_ERROR_PATTERNS = {
-    "Authentication failed",
-    "could not read Username",
-    "The requested URL returned error: 401",
-    "The requested URL returned error: 403",
-    "Repository not found",
-}
+ERROR_CLASSIFICATIONS = [
+    # (stderr_patterns, exception_class)
+    ({"No space left on device"}, DiskSpaceError),
+    ({"Network is unreachable", "Connection refused", "Connection timed out"}, NetworkError),
+    ({"Permission denied"}, PermissionError),
+    ({"The requested URL returned error: 403"}, ForbiddenError),
+    ({"The requested URL returned error: 429"}, RateLimitError),
+    ({"The requested URL returned error: 5"}, RemoteServerError),
+    (
+        {
+            "Authentication failed",
+            "could not read Username",
+            "The requested URL returned error: 401",
+            "Repository not found",
+        },
+        RepoAuthRequiredError,
+    ),
+]
 
 
 def handle_shell_errors(returncode: int, stderr_text: str, command_str: str) -> None:
     """Classify shell command stderr into specific error types and raise the appropriate exception."""
-    if any(pattern in stderr_text for pattern in DISK_SPACE_ERROR_PATTERNS):
-        logger.error(f"Disk space error: {stderr_text}")
-        raise DiskSpaceError(f"Disk space error while running: {command_str}")
-
-    if any(pattern in stderr_text for pattern in NETWORK_ERROR_PATTERNS):
-        logger.warning(f"Network error: {stderr_text}")
-        raise NetworkError(f"Network error while running: {command_str}")
-
-    if any(pattern in stderr_text for pattern in PERMISSION_ERROR_PATTERNS):
-        logger.error(f"Permission error: {stderr_text}")
-        raise PermissionError(f"Permission denied while running: {command_str}")
-
-    if any(pattern in stderr_text for pattern in RATE_LIMIT_ERROR_PATTERNS):
-        logger.warning(f"Rate limited: {stderr_text}")
-        raise RateLimitError(f"Rate limited while running: {command_str} - {stderr_text}")
-
-    if any(pattern in stderr_text for pattern in REPO_AUTH_ERROR_PATTERNS):
-        logger.error(f"Repository auth required: {stderr_text}")
-        raise RepoAuthRequiredError(
-            f"Repository requires authentication: {command_str} - {stderr_text}"
-        )
+    for patterns, error_class in ERROR_CLASSIFICATIONS:
+        if any(pattern in stderr_text for pattern in patterns):
+            logger.error(f"{error_class.__name__}: {stderr_text}")
+            raise error_class(f"{error_class.__name__} while running: {command_str}")
 
     logger.error(f"Command failed (exit {returncode}): {stderr_text}")
     raise CommandExecutionError(

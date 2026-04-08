@@ -24,6 +24,8 @@ class ErrorCode(str, Enum):
     STUCK_REPO = "stuck-repo"
     REPO_AUTH_REQUIRED = "repo-auth-required"
     RATE_LIMITED = "rate-limited"
+    ACCESS_FORBIDDEN = "access-forbidden"
+    SERVER_ERROR = "server-error-remote"
 
 
 class RepositoryState(str, Enum):

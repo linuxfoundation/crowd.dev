@@ -132,3 +132,15 @@ class RepoAuthRequiredError(CrowdGitError):
 class RateLimitError(CrowdGitError):
     error_message: str = "Rate limited by remote server"
     error_code: ErrorCode = ErrorCode.RATE_LIMITED
+
+
+@dataclass
+class ForbiddenError(CrowdGitError):
+    error_message: str = "Access to repository is forbidden"
+    error_code: ErrorCode = ErrorCode.ACCESS_FORBIDDEN
+
+
+@dataclass
+class RemoteServerError(CrowdGitError):
+    error_message: str = "Remote server returned an internal error"
+    error_code: ErrorCode = ErrorCode.SERVER_ERROR
