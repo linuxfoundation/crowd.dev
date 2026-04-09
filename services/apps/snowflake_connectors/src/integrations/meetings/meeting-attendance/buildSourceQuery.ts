@@ -22,6 +22,15 @@ const ORG_ACCOUNTS = `
     WHERE website IS NOT NULL
   )`
 
+const LF_SSO_LOOKUP = `
+  lf_sso_lookup AS (
+    SELECT INVITEE_LF_USER_ID AS LF_USER_ID, MAX(INVITEE_LF_SSO) AS LF_SSO
+    FROM ANALYTICS.SILVER_FACT.MEETING_ATTENDANCE
+    WHERE INVITEE_LF_SSO IS NOT NULL
+      AND INVITEE_LF_USER_ID IS NOT NULL
+    GROUP BY INVITEE_LF_USER_ID
+  )`
+
 export const buildSourceQuery = (sinceTimestamp?: string): string => {
   let select = `
   SELECT
@@ -36,7 +45,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     t.MEETING_DATE,
     t.MEETING_TIME,
     t.INVITEE_FULL_NAME,
-    t.INVITEE_LF_SSO,
+    COALESCE(t.INVITEE_LF_SSO, sso.LF_SSO) AS INVITEE_LF_SSO,
     t.INVITEE_LF_USER_ID,
     t.INVITEE_EMAIL,
     t.INVITEE_ATTENDED,
@@ -51,6 +60,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   INNER JOIN cdp_matched_segments cms
     ON cms.slug = t.PROJECT_SLUG
     AND cms.sourceId = t.PROJECT_ID
+  LEFT JOIN lf_sso_lookup sso
+    ON t.INVITEE_LF_USER_ID = sso.LF_USER_ID
   LEFT JOIN org_accounts org
     ON t.ACCOUNT_ID = org.account_id
   WHERE (t.WAS_INVITED = TRUE OR t.INVITEE_ATTENDED = TRUE)`
@@ -65,7 +76,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   if (!sinceTimestamp) {
     return `
   WITH ${ORG_ACCOUNTS},
-  ${CDP_MATCHED_SEGMENTS}
+  ${CDP_MATCHED_SEGMENTS},
+  ${LF_SSO_LOOKUP}
   ${select}
   ${dedup}`.trim()
   }
@@ -73,6 +85,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
   return `
   WITH ${ORG_ACCOUNTS},
   ${CDP_MATCHED_SEGMENTS},
+  ${LF_SSO_LOOKUP},
   new_cdp_segments AS (
     SELECT DISTINCT
       s.SOURCE_ID AS sourceId,
