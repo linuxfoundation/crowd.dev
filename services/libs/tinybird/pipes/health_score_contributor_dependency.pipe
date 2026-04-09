@@ -33,4 +33,64 @@ SQL >
         ORDER by contributionCount DESC
     {% end %}
 
-INCLUDE "../includes/health_score_contributor_dependency.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_contributor_dependency_contribution_count"
+NODE health_score_contributor_dependency_pct
+SQL >
+    %
+    SELECT
+        segmentId,
+        memberId,
+        contributionCount,
+        ROUND(
+            contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY segmentId), 2
+        ) AS contributionPercentage
+    FROM health_score_contributor_dependency_contribution_count
+    ORDER BY contributionPercentage DESC
+
+NODE health_score_contributor_dependency_running
+SQL >
+    %
+    SELECT
+        segmentId,
+        memberId,
+        contributionPercentage,
+        SUM(contributionPercentage) OVER (
+            PARTITION BY segmentId ORDER BY contributionPercentage DESC, memberId
+        ) AS contributionPercentageRunningTotal
+    FROM health_score_contributor_dependency_pct
+
+NODE health_score_contributor_dependency_score
+SQL >
+    %
+    SELECT
+        segmentId,
+        count() AS contributorDependencyCount,
+        round(sum(contributionPercentage)) AS contributorDependencyPercentage
+    FROM health_score_contributor_dependency_running
+    WHERE
+        contributionPercentageRunningTotal < 51
+        OR (contributionPercentageRunningTotal - contributionPercentage < 51)
+    GROUP BY segmentId
+
+NODE health_score_contributor_dependency_benchmark
+SQL >
+    %
+    SELECT
+        segmentId,
+        contributorDependencyCount,
+        contributorDependencyPercentage,
+        CASE
+            WHEN contributorDependencyCount BETWEEN 0 AND 1
+            THEN 0
+            WHEN contributorDependencyCount = 2
+            THEN 1
+            WHEN contributorDependencyCount BETWEEN 3 AND 4
+            THEN 2
+            WHEN contributorDependencyCount BETWEEN 5 AND 6
+            THEN 3
+            WHEN contributorDependencyCount BETWEEN 7 AND 9
+            THEN 4
+            WHEN contributorDependencyCount > 9
+            THEN 5
+            ELSE 0
+        END AS contributorDependencyBenchmark
+    FROM health_score_contributor_dependency_score

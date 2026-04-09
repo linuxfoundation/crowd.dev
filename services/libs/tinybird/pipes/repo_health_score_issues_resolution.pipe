@@ -24,8 +24,7 @@ SQL >
                 > {{ DateTime(startDate, description="Filter after date", required=False) }}
             {% end %}
             {% if defined(endDate) %}
-                AND openedAt
-                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+                AND openedAt < {{ DateTime(endDate, description="Filter before date", required=False) }}
             {% end %}
         GROUP BY channel
     {% else %}
@@ -39,4 +38,25 @@ SQL >
         GROUP BY channel
     {% end %}
 
-INCLUDE "../includes/health_score_issues_resolution.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_issues_resolution_score"
+NODE health_score_issues_resolution_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        issueResolution,
+        CASE
+            WHEN issueResolution >= 61
+            THEN 0
+            WHEN issueResolution BETWEEN 51 AND 60
+            THEN 1
+            WHEN issueResolution BETWEEN 36 AND 50
+            THEN 2
+            WHEN issueResolution BETWEEN 22 AND 35
+            THEN 3
+            WHEN issueResolution BETWEEN 8 AND 21
+            THEN 4
+            WHEN issueResolution BETWEEN 0 AND 7
+            THEN 5
+            ELSE 0
+        END AS issueResolutionBenchmark
+    FROM repo_health_score_issues_resolution_score

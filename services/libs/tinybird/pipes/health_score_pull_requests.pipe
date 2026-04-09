@@ -40,4 +40,25 @@ SQL >
         GROUP BY segmentId
     {% end %}
 
-INCLUDE "../includes/health_score_pull_requests.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_pull_requests_score"
+NODE health_score_pull_requests_benchmark
+SQL >
+    %
+    SELECT
+        segmentId,
+        pullRequests,
+        CASE
+            WHEN pullRequests BETWEEN 0 AND 1
+            THEN 0
+            WHEN pullRequests BETWEEN 2 AND 3
+            THEN 1
+            WHEN pullRequests BETWEEN 4 AND 7
+            THEN 2
+            WHEN pullRequests BETWEEN 8 AND 15
+            THEN 3
+            WHEN pullRequests BETWEEN 16 AND 30
+            THEN 4
+            WHEN pullRequests >= 31
+            THEN 5
+            ELSE 0
+        END AS pullRequestsBenchmark
+    FROM health_score_pull_requests_score

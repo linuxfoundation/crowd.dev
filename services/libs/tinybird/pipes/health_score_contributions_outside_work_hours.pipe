@@ -29,4 +29,25 @@ SQL >
         {% end %}
     GROUP BY segmentId
 
-INCLUDE "../includes/health_score_contributions_outside_work_hours.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_contributions_outside_work_hours_score"
+NODE health_score_contributions_outside_work_hours_benchmark
+SQL >
+    %
+    SELECT
+        segmentId,
+        contributionsOutsideWorkHours,
+        CASE
+            WHEN contributionsOutsideWorkHours >= 75
+            THEN 0
+            WHEN contributionsOutsideWorkHours BETWEEN 50 AND 74
+            THEN 1
+            WHEN contributionsOutsideWorkHours BETWEEN 40 AND 49
+            THEN 2
+            WHEN contributionsOutsideWorkHours BETWEEN 30 AND 39
+            THEN 3
+            WHEN contributionsOutsideWorkHours BETWEEN 20 AND 29
+            THEN 4
+            WHEN contributionsOutsideWorkHours BETWEEN 0 AND 19
+            THEN 5
+            ELSE 0
+        END AS contributionsOutsideWorkHoursBenchmark
+    FROM health_score_contributions_outside_work_hours_score

@@ -31,4 +31,64 @@ SQL >
         GROUP BY segmentId, organizationId
     {% end %}
 
-INCLUDE "../includes/health_score_organization_dependency.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_organization_dependency_contribution_count"
+NODE health_score_organization_dependency_pct
+SQL >
+    %
+    SELECT
+        segmentId,
+        organizationId,
+        contributionCount,
+        (
+            contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY segmentId)
+        ) AS contributionPercentage
+    FROM health_score_organization_dependency_contribution_count
+    ORDER BY contributionPercentage DESC
+
+NODE health_score_organization_dependency_running
+SQL >
+    %
+    SELECT
+        segmentId,
+        organizationId,
+        contributionPercentage,
+        SUM(contributionPercentage) OVER (
+            PARTITION BY segmentId ORDER BY contributionPercentage DESC, organizationId
+        ) AS contributionPercentageRunningTotal
+    FROM health_score_organization_dependency_pct
+
+NODE health_score_organization_dependency_score
+SQL >
+    %
+    SELECT
+        segmentId,
+        count() AS organizationDependencyCount,
+        round(sum(contributionPercentage)) AS organizationDependencyPercentage
+    FROM health_score_organization_dependency_running
+    WHERE
+        contributionPercentageRunningTotal < 51
+        OR (contributionPercentageRunningTotal - contributionPercentage < 51)
+    GROUP BY segmentId
+
+NODE health_score_organization_dependency_benchmark
+SQL >
+    %
+    SELECT
+        segmentId,
+        organizationDependencyCount,
+        organizationDependencyPercentage,
+        CASE
+            WHEN organizationDependencyCount BETWEEN 0 AND 1
+            THEN 0
+            WHEN organizationDependencyCount = 2
+            THEN 1
+            WHEN organizationDependencyCount = 3
+            THEN 2
+            WHEN organizationDependencyCount BETWEEN 4 AND 5
+            THEN 3
+            WHEN organizationDependencyCount BETWEEN 6 AND 7
+            THEN 4
+            WHEN organizationDependencyCount >= 8
+            THEN 5
+            ELSE 0
+        END AS organizationDependencyBenchmark
+    FROM health_score_organization_dependency_score

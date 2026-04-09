@@ -15,7 +15,11 @@ SQL >
         SELECT channel, count() AS pullRequests
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            (type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created')
+            (
+                type = 'pull_request-opened'
+                OR type = 'merge_request-opened'
+                OR type = 'changeset-created'
+            )
             AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
@@ -31,11 +35,36 @@ SQL >
         SELECT channel, count() AS pullRequests
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            (type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created')
+            (
+                type = 'pull_request-opened'
+                OR type = 'merge_request-opened'
+                OR type = 'changeset-created'
+            )
             AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
             AND timestamp < toStartOfDay(now() + toIntervalDay(1))
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
         GROUP BY channel
     {% end %}
 
-INCLUDE "../includes/health_score_pull_requests.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_pull_requests_score"
+NODE health_score_pull_requests_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        pullRequests,
+        CASE
+            WHEN pullRequests BETWEEN 0 AND 1
+            THEN 0
+            WHEN pullRequests BETWEEN 2 AND 3
+            THEN 1
+            WHEN pullRequests BETWEEN 4 AND 7
+            THEN 2
+            WHEN pullRequests BETWEEN 8 AND 15
+            THEN 3
+            WHEN pullRequests BETWEEN 16 AND 30
+            THEN 4
+            WHEN pullRequests >= 31
+            THEN 5
+            ELSE 0
+        END AS pullRequestsBenchmark
+    FROM repo_health_score_pull_requests_score

@@ -40,4 +40,25 @@ SQL >
         GROUP BY channel
     {% end %}
 
-INCLUDE "../includes/health_score_active_contributors.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_active_contributors_score"
+NODE health_score_active_contributors_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        activeContributors,
+        CASE
+            WHEN activeContributors BETWEEN 0 AND 1
+            THEN 0
+            WHEN activeContributors BETWEEN 2 AND 3
+            THEN 1
+            WHEN activeContributors BETWEEN 4 AND 6
+            THEN 2
+            WHEN activeContributors BETWEEN 7 AND 10
+            THEN 3
+            WHEN activeContributors BETWEEN 11 AND 20
+            THEN 4
+            WHEN activeContributors > 20
+            THEN 5
+            ELSE 0
+        END AS activeContributorsBenchmark
+    FROM repo_health_score_active_contributors_score
