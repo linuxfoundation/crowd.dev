@@ -1,1 +1,32 @@
+NODE health_score_contributions_outside_work_hours_score
+SQL >
+    %
+    SELECT
+        segmentId,
+        round(
+            (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
+            / count(id)
+        ) AS contributionsOutsideWorkHours
+    FROM contributions_with_local_time_ds AS a
+    WHERE
+        1 = 1
+        {% if defined(project) %}
+            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        {% else %}
+            AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
+            AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        {% end %}
+    GROUP BY segmentId
+
 INCLUDE "../includes/health_score_contributions_outside_work_hours.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_contributions_outside_work_hours_score"

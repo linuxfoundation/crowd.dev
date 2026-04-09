@@ -1,1 +1,112 @@
+NODE health_score_retention_current_quarter
+SQL >
+    %
+    {% if defined(project) %}
+        SELECT segmentId, groupUniqArray(memberId) AS currentQuarterMembers
+        FROM activityRelations_bucket_routing
+        WHERE
+            memberId != ''
+            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
+            {% if defined(endDate) %}
+                AND timestamp >= toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 1 QUARTER
+                )
+                AND timestamp < toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                )
+            {% else %}
+                AND timestamp >= toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+                AND timestamp < toStartOfQuarter(now())
+            {% end %}
+        GROUP BY segmentId
+    {% else %}
+        SELECT segmentId, groupUniqArray(memberId) AS currentQuarterMembers
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            {% if defined(endDate) %}
+                AND timestamp >= toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 1 QUARTER
+                )
+                AND timestamp < toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                )
+            {% else %}
+                AND timestamp >= toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+                AND timestamp < toStartOfQuarter(now())
+            {% end %}
+        GROUP BY segmentId
+    {% end %}
+
+NODE health_score_retention_previous_quarter
+SQL >
+    %
+    {% if defined(project) %}
+        SELECT segmentId, groupUniqArray(memberId) AS previousQuarterMembers
+        FROM activityRelations_bucket_routing
+        WHERE
+            memberId != ''
+            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            {% if defined(endDate) %}
+                AND timestamp >= toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 2 QUARTER
+                )
+                AND timestamp < toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 1 QUARTER
+                )
+            {% else %}
+                AND timestamp >= toStartOfQuarter(now() - INTERVAL 2 QUARTER)
+                AND timestamp < toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+            {% end %}
+        GROUP BY segmentId
+    {% else %}
+        SELECT segmentId, groupUniqArray(memberId) AS previousQuarterMembers
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            {% if defined(endDate) %}
+                AND timestamp >= toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 2 QUARTER
+                )
+                AND timestamp < toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 1 QUARTER
+                )
+            {% else %}
+                AND timestamp >= toStartOfQuarter(now() - INTERVAL 2 QUARTER)
+                AND timestamp < toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+            {% end %}
+        GROUP BY segmentId
+    {% end %}
+
 INCLUDE "../includes/health_score_retention.incl" "GROUP_COL=segmentId" "SOURCE_CURRENT=health_score_retention_current_quarter" "SOURCE_PREVIOUS=health_score_retention_previous_quarter"

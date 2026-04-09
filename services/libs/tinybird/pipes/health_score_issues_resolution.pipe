@@ -8,4 +8,34 @@ DESCRIPTION >
     - `startDate`: Optional DateTime filter for issues opened after timestamp
     - `endDate`: Optional DateTime filter for issues opened before timestamp
 
+NODE health_score_issues_resolution_score
+SQL >
+    %
+    {% if defined(project) %}
+        SELECT segmentId, round(avg(closedInSeconds) / (60 * 60 * 24)) AS issueResolution
+        FROM issues_analyzed
+        WHERE
+            segmentId = (SELECT segmentId FROM segments_filtered)
+            AND closedAt IS NOT NULL
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
+            {% if defined(startDate) %}
+                AND openedAt
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND openedAt < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY segmentId
+    {% else %}
+        SELECT segmentId, round(avg(closedInSeconds) / (60 * 60 * 24)) AS issueResolution
+        FROM issues_analyzed
+        WHERE
+            openedAt >= toStartOfDay(now()) - INTERVAL 365 DAY
+            AND openedAt < toStartOfDay(now()) + INTERVAL 1 DAY
+            AND closedAt IS NOT NULL
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY segmentId
+    {% end %}
+
 INCLUDE "../includes/health_score_issues_resolution.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_issues_resolution_score"

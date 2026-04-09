@@ -8,4 +8,36 @@ DESCRIPTION >
 
 TAGS "Repository health", "Metrics"
 
+NODE repo_health_score_active_contributors_score
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, COALESCE(uniq(memberId), 0) AS activeContributors
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, COALESCE(uniq(memberId), 0) AS activeContributors
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfQuarter(now() - toIntervalQuarter(1))
+            AND timestamp < toStartOfQuarter(now())
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel
+    {% end %}
+
 INCLUDE "../includes/health_score_active_contributors.incl" "GROUP_COL=channel" "SOURCE_NODE=repo_health_score_active_contributors_score"

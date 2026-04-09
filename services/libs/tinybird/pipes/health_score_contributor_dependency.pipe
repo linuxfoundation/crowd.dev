@@ -1,1 +1,36 @@
+NODE health_score_contributor_dependency_contribution_count
+SQL >
+    %
+    {% if defined(project) %}
+        SELECT segmentId, memberId, count() AS contributionCount, MIN(timestamp), MAX(timestamp)
+        FROM activityRelations_bucket_routing
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND segmentId = (SELECT segmentId FROM segments_filtered)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY segmentId, memberId
+        ORDER by contributionCount DESC
+    {% else %}
+        SELECT segmentId, memberId, count() AS contributionCount, MIN(timestamp), MAX(timestamp)
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfDay(now() - INTERVAL 365 DAY)
+            AND timestamp < toStartOfDay(now() + INTERVAL 1 DAY)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY segmentId, memberId
+        ORDER by contributionCount DESC
+    {% end %}
+
 INCLUDE "../includes/health_score_contributor_dependency.incl" "GROUP_COL=segmentId" "SOURCE_NODE=health_score_contributor_dependency_contribution_count"
