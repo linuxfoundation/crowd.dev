@@ -40,12 +40,14 @@ export class MeetingAttendanceTransformer extends TransformerBase {
     }
 
     const lfUsername = (row.INVITEE_LF_SSO as string | null)?.trim() || null
-    const sourceId = (row.INVITEE_LF_USER_ID as string | null)?.trim() || undefined
+    const memberSourceId = (row.INVITEE_LF_USER_ID as string | null)?.trim() || undefined
+    const generatedSourceId = (row.GENERATED_SOURCE_ID as string | null)?.trim() || undefined
+    const userId = memberSourceId ?? generatedSourceId
     const displayName = (row.INVITEE_FULL_NAME as string | null)?.trim() || email
 
     const identities = this.buildMemberIdentities({
       email,
-      sourceId,
+      sourceId: userId,
       platformUsername: null,
       lfUsername,
     })
@@ -58,10 +60,10 @@ export class MeetingAttendanceTransformer extends TransformerBase {
 
     const timestamp = toISOTimestamp(row.MEETING_DATE, row.MEETING_TIME)
 
-    const primaryKey = (row.PRIMARY_KEY as string)?.trim()
+    const meetingId = (row.MEETING_ID as string)?.trim()
 
     const attributes = {
-      meetingId: row.MEETING_ID,
+      meetingId,
       scheduledTime: timestamp,
       topic: (row.MEETING_NAME as string | null) || null,
       projectId: (row.PROJECT_ID as string | null) || null,
@@ -75,14 +77,13 @@ export class MeetingAttendanceTransformer extends TransformerBase {
 
     const buildActivity = (
       type: MeetingsActivityType,
-      sourceIdSuffix: string,
     ): TransformedActivity => ({
       activity: {
         type,
         platform: PlatformType.MEETINGS,
         timestamp,
         score: MEETINGS_GRID[type].score,
-        sourceId: `${primaryKey}_${sourceIdSuffix}`,
+        sourceId: `${meetingId}-${userId}`,
         member: {
           displayName,
           identities: [...identities],
@@ -96,11 +97,11 @@ export class MeetingAttendanceTransformer extends TransformerBase {
     const activities: TransformedActivity[] = []
 
     if (row.WAS_INVITED === true) {
-      activities.push(buildActivity(MeetingsActivityType.INVITED_MEETING, 'invited'))
+      activities.push(buildActivity(MeetingsActivityType.INVITED_MEETING))
     }
 
     if (row.INVITEE_ATTENDED === true) {
-      activities.push(buildActivity(MeetingsActivityType.ATTENDED_MEETING, 'attended'))
+      activities.push(buildActivity(MeetingsActivityType.ATTENDED_MEETING))
     }
 
     if (activities.length === 0) {

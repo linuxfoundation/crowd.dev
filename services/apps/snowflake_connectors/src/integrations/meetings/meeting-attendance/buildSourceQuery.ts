@@ -34,7 +34,7 @@ const LF_SSO_LOOKUP = `
 export const buildSourceQuery = (sinceTimestamp?: string): string => {
   let select = `
   SELECT
-    t.PRIMARY_KEY,
+    MD5(COALESCE(CAST(t.PRIMARY_KEY AS VARCHAR), '') || '|' || COALESCE(CAST(t.COMMITTEE_ID AS VARCHAR), '')) AS GENERATED_SOURCE_ID,
     CAST(t.MEETING_ID AS VARCHAR) AS MEETING_ID,
     t.MEETING_NAME,
     t.PROJECT_ID,
