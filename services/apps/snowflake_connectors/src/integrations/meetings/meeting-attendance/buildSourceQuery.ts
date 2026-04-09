@@ -51,6 +51,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     t.INVITEE_ATTENDED,
     t.WAS_INVITED,
     t.RAW_COMMITTEE_TYPE,
+    t.UPDATED_TS,
     org.website AS ORG_WEBSITE,
     org.domain_aliases AS ORG_DOMAIN_ALIASES,
     org.logo_url AS LOGO_URL,
@@ -99,7 +100,7 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
 
   -- Updated records in existing segments
   ${select}
-    AND t.MEETING_DATE >= '${sinceTimestamp}'::DATE
+    AND t.UPDATED_TS > '${sinceTimestamp}'
   ${dedup}
 
   UNION
