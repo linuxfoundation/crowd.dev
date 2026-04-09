@@ -229,11 +229,13 @@ export function findAttribute(name: string): OrgAttributeDef {
 
 export const ORG_DB_ATTRIBUTE_SOURCE_PRIORITY = [
   OrganizationAttributeSource.CUSTOM,
+  OrganizationAttributeSource.LFX_SERVE,
   OrganizationAttributeSource.ENRICHMENT_LFX_INTERNAL_API,
   OrganizationAttributeSource.ENRICHMENT_PEOPLEDATALABS,
   OrganizationAttributeSource.CVENT,
   OrganizationAttributeSource.TNC,
   OrganizationAttributeSource.MEETINGS,
+  OrganizationAttributeSource.COMMITTEES,
   // legacy - keeping this for backward compatibility
   OrganizationAttributeSource.ENRICHMENT,
   OrganizationAttributeSource.GITHUB,

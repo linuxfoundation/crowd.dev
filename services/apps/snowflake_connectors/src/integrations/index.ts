@@ -6,6 +6,8 @@
  */
 import { PlatformType } from '@crowd/types'
 
+import { buildSourceQuery as committeesCommitteesBuildQuery } from './committees/committees/buildSourceQuery'
+import { CommitteesCommitteesTransformer } from './committees/committees/transformer'
 import { buildSourceQuery as cventBuildSourceQuery } from './cvent/event-registrations/buildSourceQuery'
 import { CventTransformer } from './cvent/event-registrations/transformer'
 import { buildSourceQuery as meetingAttendanceBuildQuery } from './meetings/meeting-attendance/buildSourceQuery'
@@ -28,6 +30,12 @@ const supported: Partial<Record<PlatformType, PlatformDefinition>> = {
         name: DataSourceName.MEETINGS_MEETING_ATTENDANCE,
         buildSourceQuery: meetingAttendanceBuildQuery,
         transformer: new MeetingAttendanceTransformer(),
+  [PlatformType.COMMITTEES]: {
+    sources: [
+      {
+        name: DataSourceName.COMMITTEES_COMMITTEES,
+        buildSourceQuery: committeesCommitteesBuildQuery,
+        transformer: new CommitteesCommitteesTransformer(),
       },
     ],
   },
