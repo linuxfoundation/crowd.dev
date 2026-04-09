@@ -65,7 +65,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     ON t.INVITEE_LF_USER_ID = sso.LF_USER_ID
   LEFT JOIN org_accounts org
     ON t.ACCOUNT_ID = org.account_id
-  WHERE (t.WAS_INVITED = TRUE OR t.INVITEE_ATTENDED = TRUE)`
+  WHERE (t.WAS_INVITED = TRUE OR t.INVITEE_ATTENDED = TRUE)
+    AND NULLIF(TRIM(t.INVITEE_EMAIL), '') IS NOT NULL`
 
   if (!IS_PROD_ENV) {
     select += ` AND t.PROJECT_SLUG = 'cncf'`
