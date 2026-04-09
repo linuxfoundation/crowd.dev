@@ -1,4 +1,7 @@
-import { isSegmentSubproject, populateSegmentRelations } from '@crowd/data-access-layer/src/segments'
+import {
+  isSegmentSubproject,
+  populateSegmentRelations,
+} from '@crowd/data-access-layer/src/segments'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import SegmentRepository from '../database/repositories/segmentRepository'
