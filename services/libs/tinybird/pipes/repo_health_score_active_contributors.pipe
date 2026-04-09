@@ -12,7 +12,7 @@ NODE repo_health_score_active_contributors_score
 SQL >
     %
     {% if defined(repoUrl) %}
-        SELECT channel, COALESCE(uniq(memberId), 0) AS activeContributors
+        SELECT channel, uniq(memberId) AS activeContributors
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''
@@ -29,7 +29,7 @@ SQL >
             {% end %}
         GROUP BY channel
     {% else %}
-        SELECT channel, COALESCE(uniq(memberId), 0) AS activeContributors
+        SELECT channel, uniq(memberId) AS activeContributors
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
             memberId != ''

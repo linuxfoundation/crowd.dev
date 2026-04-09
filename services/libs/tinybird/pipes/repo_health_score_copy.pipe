@@ -40,7 +40,7 @@ SQL >
         COALESCE(
             owh.contributionsOutsideWorkHoursBenchmark, 0
         ) AS contributionsOutsideWorkHoursBenchmark,
-        COALESCE(sec.securityPercentage, 0) AS securityPercentage
+        sec.securityPercentage AS securityPercentage
     FROM repo_health_score_copy_repos AS repos
     LEFT JOIN repo_health_score_active_contributors AS ac USING (channel)
     LEFT JOIN repo_health_score_contributor_dependency AS cd USING (channel)
@@ -124,8 +124,13 @@ SQL >
             / if(length(developmentBenchmarks) = 0, 1, 5 * length(developmentBenchmarks))
         ) AS developmentPercentage,
         round(
-            (contributorPercentage + popularityPercentage + developmentPercentage + securityPercentage)
-            / 4
+            (
+                contributorPercentage
+                + popularityPercentage
+                + developmentPercentage
+                + if(isNotNull(securityPercentage), securityPercentage, 0)
+            )
+            / if(isNotNull(securityPercentage), 4, 3)
         ) AS overallScore
     FROM repo_health_score_copy_data
 

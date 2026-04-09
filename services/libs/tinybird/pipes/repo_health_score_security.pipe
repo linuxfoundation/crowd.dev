@@ -33,7 +33,7 @@ SQL >
         sum(failedAssessments) AS failed,
         sum(passedAssessments) AS passed,
         sum(failedAssessments + passedAssessments) AS total,
-        round(100 * (passed / total)) AS percentage
+        if(total = 0, 0, round(100 * (passed / total))) AS percentage
     FROM repo_health_score_security_check_pass_rate
     WHERE repo != ''
     GROUP BY repo, category
