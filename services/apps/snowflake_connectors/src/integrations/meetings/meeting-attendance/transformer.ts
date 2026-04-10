@@ -116,12 +116,12 @@ export class MeetingAttendanceTransformer extends TransformerBase {
   ): IActivityData['member']['organizations'] {
     const website = (row.ORG_WEBSITE as string | null)?.trim() || null
     const domainAliases = (row.ORG_DOMAIN_ALIASES as string | null)?.trim() || null
-    const accountName = (row.ACCOUNT_NAME as string | null)?.trim() || null
 
-    if (!accountName && !website && !domainAliases) {
+    if (!website && !domainAliases) {
       return undefined
     }
 
+    const accountName = (row.ACCOUNT_NAME as string | null)?.trim() || null
     const displayName = accountName || website
 
     if (this.isIndividualNoAccount(displayName)) {
@@ -129,16 +129,14 @@ export class MeetingAttendanceTransformer extends TransformerBase {
         {
           displayName,
           source: OrganizationSource.MEETINGS,
-          identities: website
-            ? [
-                {
-                  platform: this.platform,
-                  value: website,
-                  type: OrganizationIdentityType.PRIMARY_DOMAIN,
-                  verified: true,
-                },
-              ]
-            : [],
+          identities: [
+            {
+              platform: this.platform,
+              value: website,
+              type: OrganizationIdentityType.PRIMARY_DOMAIN,
+              verified: true,
+            },
+          ],
         },
       ]
     }
