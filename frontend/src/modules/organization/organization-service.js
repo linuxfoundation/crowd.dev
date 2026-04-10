@@ -1,7 +1,6 @@
 import authAxios from '@/shared/axios/auth-axios';
 import { AuthService } from '@/modules/auth/services/auth.service'; import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { getSegmentsFromProjectGroup } from '@/utils/segments';
 
 const getSelectedProjectGroup = () => {
   const lsSegmentsStore = useLfSegmentsStore();
@@ -216,10 +215,9 @@ export class OrganizationService {
   }
 
   static async fetchMergeSuggestions(limit, offset, query) {
-    const segments = [
-      ...getSegmentsFromProjectGroup(getSelectedProjectGroup()),
-      getSelectedProjectGroup().id,
-    ];
+    const segments = getSelectedProjectGroup()?.id
+      ? [getSelectedProjectGroup().id]
+      : [];
 
     const data = {
       limit,
