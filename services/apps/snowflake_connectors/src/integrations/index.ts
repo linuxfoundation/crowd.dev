@@ -30,6 +30,9 @@ const supported: Partial<Record<PlatformType, PlatformDefinition>> = {
         name: DataSourceName.MEETINGS_MEETING_ATTENDANCE,
         buildSourceQuery: meetingAttendanceBuildQuery,
         transformer: new MeetingAttendanceTransformer(),
+      },
+    ],
+  },
   [PlatformType.COMMITTEES]: {
     sources: [
       {
