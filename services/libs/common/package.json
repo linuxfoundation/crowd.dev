@@ -29,6 +29,6 @@
     "moment-timezone": "^0.5.34",
     "tldts": "^6.1.11",
     "uuid": "^9.0.0",
-    "validator": "^13.7.0"
+    "validator": "^13.15.22"
   }
 }

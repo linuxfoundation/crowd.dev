@@ -136,7 +136,7 @@
     "tsconfig-paths": "^4.2.0",
     "utf-8-validate": "^5.0.10",
     "uuid": "^9.0.0",
-    "validator": "^13.7.0",
+    "validator": "^13.15.22",
     "verify-github-webhook": "^1.0.1",
     "zlib-sync": "^0.1.8",
     "zod": "^4.3.6"
