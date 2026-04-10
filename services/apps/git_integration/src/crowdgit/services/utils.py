@@ -6,25 +6,15 @@ from crowdgit.errors import (
     CommandExecutionError,
     CommandTimeoutError,
     DiskSpaceError,
+    ForbiddenError,
     NetworkError,
     PermissionError,
+    RateLimitError,
+    RemoteServerError,
+    RepoAuthRequiredError,
     ValidationError,
 )
 from crowdgit.logger import logger
-
-
-def normalize_gerrit_remote(url: str) -> str:
-    """Rewrite Gerrit remote URLs to their Gitea equivalents for git clone/fetch operations.
-
-    Gerrit servers don't support the git shallow protocol extension (--deepen),
-    causing HTTP 500 errors during incremental fetching. Where a Gitea mirror
-    exists with full protocol support (e.g. opendev.org mirrors review.opendev.org),
-    we rewrite the host so that shallow cloning works.
-
-    Only used for git operations, not for URLs persisted to the database or
-    passed to other services.
-    """
-    return url.replace("https://review.opendev.org", "https://opendev.org")
 
 
 def safe_decode(data: bytes) -> str:
@@ -176,6 +166,40 @@ async def get_default_branch(repo_path: str) -> str:
     return "*"
 
 
+ERROR_CLASSIFICATIONS = [
+    # (stderr_patterns, exception_class)
+    ({"No space left on device"}, DiskSpaceError),
+    ({"Network is unreachable", "Connection refused", "Connection timed out"}, NetworkError),
+    ({"Permission denied"}, PermissionError),
+    ({"The requested URL returned error: 403"}, ForbiddenError),
+    ({"The requested URL returned error: 429"}, RateLimitError),
+    ({"The requested URL returned error: 5"}, RemoteServerError),
+    (
+        {
+            "Authentication failed",
+            "could not read Username",
+            "The requested URL returned error: 401",
+            "Repository not found",
+        },
+        RepoAuthRequiredError,
+    ),
+]
+
+
+def handle_shell_errors(returncode: int, stderr_text: str, command_str: str) -> None:
+    """Classify shell command stderr into specific error types and raise the appropriate exception."""
+    for patterns, error_class in ERROR_CLASSIFICATIONS:
+        if any(pattern in stderr_text for pattern in patterns):
+            logger.error(f"{error_class.__name__}: {stderr_text}")
+            raise error_class(f"{error_class.__name__} while running: {command_str}")
+
+    logger.error(f"Command failed (exit {returncode}): {stderr_text}")
+    raise CommandExecutionError(
+        f"Command failed (exit {returncode}): {command_str} - {stderr_text}",
+        returncode=returncode,
+    )
+
+
 async def run_shell_command(
     cmd: list[str],
     cwd: str = None,
@@ -273,24 +297,7 @@ async def run_shell_command(
         if process.returncode == 0:
             return stdout_text
 
-        if "No space left on device" in stderr_text:
-            logger.error(f"Disk space error: {stderr_text}")
-            raise DiskSpaceError(f"Disk space error while running: {command_str}")
-        elif any(
-            pattern in stderr_text
-            for pattern in ["Network is unreachable", "Connection refused", "Connection timed out"]
-        ):
-            logger.warning(f"Network error: {stderr_text}")
-            raise NetworkError(f"Network error while running: {command_str}")
-        elif "Permission denied" in stderr_text:
-            logger.error(f"Permission error: {stderr_text}")
-            raise PermissionError(f"Permission denied while running: {command_str}")
-        else:
-            logger.error(f"Command failed (exit {process.returncode}): {stderr_text}")
-            raise CommandExecutionError(
-                f"Command failed (exit {process.returncode}): {command_str} - {stderr_text}",
-                returncode=process.returncode,
-            )
+        handle_shell_errors(process.returncode, stderr_text, command_str)
 
     except asyncio.TimeoutError:
         logger.error(f"Command timed out after {timeout}s: {command_str}")

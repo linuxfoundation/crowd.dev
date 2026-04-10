@@ -10,7 +10,7 @@ export interface IAffiliationPeriod {
   endDate: string | null
 }
 
-interface IWorkExperienceResolution {
+export interface IWorkExperienceResolution {
   id: string
   memberId: string
   organizationId: string
@@ -101,7 +101,7 @@ export async function findManualAffiliationsBulk(
   )
 }
 
-function selectPrimaryWorkExperience(orgs: IWorkExperienceResolution[]) {
+export function selectPrimaryWorkExperience(orgs: IWorkExperienceResolution[]) {
   if (orgs.length === 1) return orgs[0]
 
   // 1. Manual affiliations (segmentId non-null) always win
@@ -199,7 +199,7 @@ function dayBefore(date: Date): Date {
 }
 
 /** Iterates boundary intervals and builds non-overlapping affiliation windows. */
-function buildTimeline(
+export function buildTimeline(
   allRows: IWorkExperienceResolution[],
   fallbackOrg: IWorkExperienceResolution | null,
   boundaries: Date[],

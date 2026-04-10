@@ -24,10 +24,12 @@ export abstract class TransformerBase {
   abstract readonly platform: PlatformType
 
   /**
-   * Transform a single raw row from the S3 export into an activity
+   * Transform a single raw row from the S3 export into one or more activities
    * along with routing metadata. Returns null if the row should be skipped.
    */
-  abstract transformRow(row: Record<string, unknown>): TransformedActivity | null
+  abstract transformRow(
+    row: Record<string, unknown>,
+  ): TransformedActivity | TransformedActivity[] | null
 
   private static readonly INDIVIDUAL_NO_ACCOUNT_RE = /^individual\s*(?:[-–?]|with)\s*no\s+account$/i
 
@@ -104,10 +106,16 @@ export abstract class TransformerBase {
 
   /**
    * Safe wrapper around transformRow that catches errors and returns null.
+   * Always normalizes the result to an array for consistent consumption.
    */
-  safeTransformRow(row: Record<string, unknown>): TransformedActivity | null {
+  safeTransformRow(row: Record<string, unknown>): TransformedActivity[] | null {
     try {
-      return this.transformRow(row)
+      const result = this.transformRow(row)
+      if (result === null) {
+        return null
+      }
+      const arr = Array.isArray(result) ? result : [result]
+      return arr.length > 0 ? arr : null
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const stack = err instanceof Error ? err.stack : undefined

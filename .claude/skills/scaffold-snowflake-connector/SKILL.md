@@ -196,6 +196,8 @@ After Step 1 and/or Step 2, build a column registry per table:
 
 **Store this as the canonical column reference. Every column name used in generated code must appear in this registry. Never assume or invent a column name.**
 
+**Flag non-VARCHAR column types** (e.g., `DATE`, `TIME`, `TIMESTAMP_TZ`, `BOOLEAN`, `NUMBER`) — these arrive as native JS types from the Parquet reader, not strings (see touch point 9 rules).
+
 For each JOIN table, check whether any existing transformer in `services/apps/snowflake_connectors/src/integrations/` queries from the same table. If yes, inherit its column mappings; if no, treat every column as unknown and derive it from sample data in the Pre-Analysis step below.
 
 ### Step 3 — Sample data
@@ -342,7 +344,10 @@ After all identity fields are confirmed, summarize how `buildMemberIdentities()`
 
 ### 3b. Organization Mapping
 
-If Pre-Analysis determined there is no org data (no org-related columns found in any table), confirm: "I don't see any organization columns in the schema. Does this source have org/company data?" — if yes, proceed; if no, skip to 3c.
+If Pre-Analysis determined there is no org data (no org-related columns found in any table): before asking the user, first read existing transformers in `services/apps/snowflake_connectors/src/integrations/` to check whether any of them join an org table using a key that also exists in the user's tables. If a match is found, prompt the user:
+> "I don't see org columns in the tables you provided, but [EXISTING_PLATFORM] sources org data from `{ORG_TABLE}` via `{join_key}` — which also appears in your table. Did you mean to include this? (Recommended)"
+
+If no existing pattern is joinable, ask: "I don't see any org columns. Does this source have org/company data?" — if yes, ask for the table; if no, skip to 3c.
 
 If Pre-Analysis identified org columns:
 
@@ -565,6 +570,7 @@ File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/b
 **Rules (enforced — do not deviate):**
 - Use explicit column names only. Do not use `table.*` or `table.* EXCLUDE (...)` in new implementations — existing sources (TNC, CVENT) use these patterns but new sources should list columns explicitly to avoid parquet encoding/decoding issues
 - If any TIMESTAMP_TZ columns exist in the schema, exclude and re-cast them as TIMESTAMP_NTZ (see CVENT pattern)
+- Do not concatenate or transform date/time columns in SQL — keep them as separate columns and let the transformer handle type coercion (see touch point 9 rules)
 - Follow the CTE structure:
   1. `org_accounts` CTE (if org data present)
   2. `CDP_MATCHED_SEGMENTS` CTE (always)
@@ -585,6 +591,8 @@ Show the full generated file and ask for confirmation before writing.
 File: `services/apps/snowflake_connectors/src/integrations/{platform}/{source}/transformer.ts`
 
 **Rules (enforced — do not deviate):**
+
+- **Parquet type coercion — never blindly cast `row.COLUMN as string`.** Snowflake types may arrive as native JS types after Parquet decoding (e.g., `DATE` → `Date` object, `TIME` → `number` in ms, `BOOLEAN` → `boolean`). Always check the Snowflake column type from the schema registry and handle the actual JS type the Parquet reader delivers — do not assume every column is a string.
 - All string comparisons must be case-insensitive: use `.toLowerCase()` on both sides of comparison only; preserve the original value in the output
 - No broad `else` statements — every branch must have an explicit condition
 - All column names referenced in code must exactly match the schema registry — never assumed

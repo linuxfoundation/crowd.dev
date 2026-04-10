@@ -549,9 +549,10 @@ export function doesIncomingOrgExistInExistingOrgs(
     .filter((i) => i.type === OrganizationIdentityType.PRIMARY_DOMAIN && i.verified)
     .map((i) => i.value)
 
-  const existingVerifiedPrimaryDomainIdentityValues = existingOrg.identities
-    .filter((i) => i.type === OrganizationIdentityType.PRIMARY_DOMAIN && i.verified)
-    .map((i) => i.value)
+  // existingOrg.identities is already filtered to primary-domain + verified at the query level
+  const existingVerifiedPrimaryDomainIdentityValues = (existingOrg.identities || []).map(
+    (i) => i.value,
+  )
 
   const incomingOrgStartDate = incomingOrg.startDate ? new Date(incomingOrg.startDate) : null
   const incomingOrgEndDate = incomingOrg.endDate ? new Date(incomingOrg.endDate) : null
