@@ -111,14 +111,14 @@ export class CommitteesCommitteesTransformer extends TransformerBase {
         {
           displayName,
           source: OrganizationSource.COMMITTEES,
-            identities: [
-              {
-                platform: PlatformType.COMMITTEES,
-                value: website,
-                type: OrganizationIdentityType.PRIMARY_DOMAIN,
-                verified: true,
-              },
-            ],
+          identities: [
+            {
+              platform: PlatformType.COMMITTEES,
+              value: website,
+              type: OrganizationIdentityType.PRIMARY_DOMAIN,
+              verified: true,
+            },
+          ],
         },
       ]
     }

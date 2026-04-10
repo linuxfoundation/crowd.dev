@@ -75,9 +75,7 @@ export class MeetingAttendanceTransformer extends TransformerBase {
 
     const organizations = this.buildOrganizations(row)
 
-    const buildActivity = (
-      type: MeetingsActivityType,
-    ): TransformedActivity => ({
+    const buildActivity = (type: MeetingsActivityType): TransformedActivity => ({
       activity: {
         type,
         platform: PlatformType.MEETINGS,
