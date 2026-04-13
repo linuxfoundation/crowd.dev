@@ -125,7 +125,19 @@ async def acquire_repository(query: str, params: tuple = None) -> Repository | N
 async def acquire_recurrent_repo() -> Repository | None:
     """Acquire a regular (non-onboarding) repository, that were not processed in the last x hours (REPOSITORY_UPDATE_INTERVAL_HOURS)"""
     recurrent_repo_sql_query = f"""
-    WITH selected_repo AS (
+    -- Rate-limit guard: Gerrit (automotivelinux) aggressively rate-limits concurrent connections.
+    -- This CTE checks if any automotivelinux repo is already being processed,
+    -- so we skip picking another one from the same host until the current one finishes.
+    WITH automotivelinux_processing AS (
+        SELECT 1
+        FROM git."repositoryProcessing" rp2
+        JOIN public.repositories r2 ON r2.id = rp2."repositoryId"
+        WHERE rp2.state = 'processing'
+            AND rp2."lockedAt" IS NOT NULL
+            AND r2.url LIKE '%gerrit.automotivelinux.org%'
+        LIMIT 1
+    ),
+    selected_repo AS (
         SELECT r.id
         FROM public.repositories r
         JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
@@ -133,6 +145,10 @@ async def acquire_recurrent_repo() -> Repository | None:
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
             AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * $3
+            AND NOT (
+                r.url LIKE '%gerrit.automotivelinux.org%'
+                AND EXISTS (SELECT 1 FROM automotivelinux_processing)
+            )
         ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF rp SKIP LOCKED
