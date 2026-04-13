@@ -144,3 +144,9 @@ class ForbiddenError(CrowdGitError):
 class RemoteServerError(CrowdGitError):
     error_message: str = "Remote server returned an internal error"
     error_code: ErrorCode = ErrorCode.SERVER_ERROR
+
+
+@dataclass
+class EmptyRepoError(CrowdGitError):
+    error_message: str = "Repository is empty (no branches or commits)"
+    error_code: ErrorCode = ErrorCode.EMPTY_REPO

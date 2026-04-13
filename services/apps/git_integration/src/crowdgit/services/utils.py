@@ -6,6 +6,7 @@ from crowdgit.errors import (
     CommandExecutionError,
     CommandTimeoutError,
     DiskSpaceError,
+    EmptyRepoError,
     ForbiddenError,
     NetworkError,
     PermissionError,
@@ -182,6 +183,10 @@ ERROR_CLASSIFICATIONS = [
             "Repository not found",
         },
         RepoAuthRequiredError,
+    ),
+    (
+        {"ambiguous argument 'HEAD': unknown revision or path not in the working tree"},
+        EmptyRepoError,
     ),
 ]
 

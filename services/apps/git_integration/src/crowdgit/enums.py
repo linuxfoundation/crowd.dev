@@ -26,6 +26,7 @@ class ErrorCode(str, Enum):
     RATE_LIMITED = "rate-limited"
     ACCESS_FORBIDDEN = "access-forbidden"
     SERVER_ERROR = "server-error-remote"
+    EMPTY_REPO = "empty-repo"
 
 
 class RepositoryState(str, Enum):
