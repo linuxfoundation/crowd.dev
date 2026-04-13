@@ -20,14 +20,16 @@ export async function segmentMiddleware(req, res, next) {
     // read req.params directly and ignore req.currentSegments entirely — so the
     // resolution below is harmless for those endpoints.
     if (req.query.segments) {
-      // GET requests
+      // GET requests — req.query values can be string or string[], normalize to array
+      const segmentIds = ([] as string[]).concat(req.query.segments)
       segments = {
-        rows: await resolveToLeafSegments(segmentRepository, req.query.segments, req),
+        rows: await resolveToLeafSegments(segmentRepository, segmentIds, req),
       }
     } else if (req.body.segments) {
-      // POST/PUT requests
+      // POST/PUT requests — body.segments should always be an array, but normalize defensively
+      const segmentIds = ([] as string[]).concat(req.body.segments)
       segments = {
-        rows: await resolveToLeafSegments(segmentRepository, req.body.segments, req),
+        rows: await resolveToLeafSegments(segmentRepository, segmentIds, req),
       }
     } else {
       segments = await segmentRepository.querySubprojects({ limit: 1, offset: 0 })
@@ -60,8 +62,11 @@ async function resolveToLeafSegments(
 
   const nonLeaf = fetched.filter((s) => !isSegmentSubproject(s))
 
-  const segmentLevel = (s: any) =>
-    s.grandparentSlug ? 'subproject' : s.parentSlug ? 'project' : 'projectGroup'
+  const segmentLevel = (s: any) => {
+    if (s.grandparentSlug) return 'subproject'
+    if (s.parentSlug) return 'project'
+    return 'projectGroup'
+  }
 
   if (nonLeaf.length === 0) {
     // All IDs are already leaf segments — current behavior, no change.
