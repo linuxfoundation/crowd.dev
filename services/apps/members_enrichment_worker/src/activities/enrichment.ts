@@ -288,7 +288,7 @@ export async function updateMemberUsingSquashedPayload(
   hasContributions: boolean,
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): Promise<boolean> {
-  const deletedOrgIds: string[] = []
+  const affectedOrgIds: string[] = []
 
   const updated = await svc.postgres.writer.transactionally(async (tx) => {
     let updated = false
@@ -463,7 +463,7 @@ export async function updateMemberUsingSquashedPayload(
       if (results.toDelete.length > 0) {
         for (const org of results.toDelete) {
           updated = true
-          deletedOrgIds.push(org.orgId)
+          affectedOrgIds.push(org.orgId)
           await deleteMemberOrgById(tx.transaction(), org.id)
         }
       }
@@ -474,6 +474,7 @@ export async function updateMemberUsingSquashedPayload(
             throw new Error('Organization ID is missing!')
           }
           updated = true
+          affectedOrgIds.push(org.organizationId)
 
           const newMemberOrgId = await insertWorkExperience(
             tx.transaction(),
@@ -497,6 +498,7 @@ export async function updateMemberUsingSquashedPayload(
       if (results.toUpdate.size > 0) {
         for (const [memberOrg, toUpdate] of results.toUpdate) {
           updated = true
+          affectedOrgIds.push(memberOrg.orgId)
           const updatedMemberOrgId = await updateMemberOrg(
             tx.transaction(),
             memberId,
@@ -543,13 +545,15 @@ export async function updateMemberUsingSquashedPayload(
     return updated
   })
 
-  if (deletedOrgIds.length > 0) {
+  if (affectedOrgIds.length > 0) {
     const commonMemberService = new CommonMemberService(
       pgpQx(svc.postgres.writer.connection()),
       svc.temporal,
       svc.log,
     )
-    await commonMemberService.startAffiliationRecalculation(memberId, deletedOrgIds)
+    await commonMemberService.startAffiliationRecalculation(memberId, [
+      ...new Set(affectedOrgIds),
+    ])
   }
 
   return updated
