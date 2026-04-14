@@ -170,21 +170,25 @@ export class PccProjectConsumer {
         'PCC job completed',
       )
 
-      await this.metadataStore.markCompleted(job.id, {
-        transformedCount: upsertedCount,
-        skippedCount: skippedCount + mismatchCount + schemaMismatchCount,
-        processingDurationMs: durationMs,
-      })
+      if (!this.dryRun) {
+        await this.metadataStore.markCompleted(job.id, {
+          transformedCount: upsertedCount,
+          skippedCount: skippedCount + mismatchCount + schemaMismatchCount,
+          processingDurationMs: durationMs,
+        })
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       log.error({ jobId: job.id, err }, 'PCC job failed')
 
-      try {
-        await this.metadataStore.markFailed(job.id, errorMessage, {
-          processingDurationMs: Date.now() - startTime,
-        })
-      } catch (updateErr) {
-        log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
+      if (!this.dryRun) {
+        try {
+          await this.metadataStore.markFailed(job.id, errorMessage, {
+            processingDurationMs: Date.now() - startTime,
+          })
+        } catch (updateErr) {
+          log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
+        }
       }
     }
   }

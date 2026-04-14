@@ -111,6 +111,8 @@ export function parsePccRow(raw: Record<string, unknown>): ParseResult {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
+      pccProjectId: String(projectId),
+      pccSlug: (row.SLUG ?? null) as string | null,
       details: { reason: cdpTargetResult.reason, rawDepth: depth, effectiveDepth, projectId, name },
     }
   }
