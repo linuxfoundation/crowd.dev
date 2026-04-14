@@ -11,7 +11,9 @@
     "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",
     "trigger-export": "SERVICE=pcc-sync-worker tsx src/scripts/triggerExport.ts",
-    "trigger-cleanup": "SERVICE=pcc-sync-worker tsx src/scripts/triggerCleanup.ts"
+    "trigger-export:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=pcc-sync-worker tsx src/scripts/triggerExport.ts",
+    "trigger-cleanup": "SERVICE=pcc-sync-worker tsx src/scripts/triggerCleanup.ts",
+    "trigger-cleanup:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=pcc-sync-worker tsx src/scripts/triggerCleanup.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",

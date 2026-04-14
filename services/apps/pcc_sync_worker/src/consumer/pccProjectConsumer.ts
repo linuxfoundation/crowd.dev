@@ -80,21 +80,49 @@ export class PccProjectConsumer {
     log.info({ jobId: job.id, s3Path: job.s3Path, dryRun: this.dryRun }, 'Processing PCC job')
 
     const startTime = Date.now()
+    let totalCount = 0
     let upsertedCount = 0
     let skippedCount = 0
     let mismatchCount = 0
-    let errorCount = 0
+    let schemaMismatchCount = 0
+    let schemaMismatchMatchedCount = 0 // SCHEMA_MISMATCH rows that still have a CDP segment match
 
     try {
       await this.db.tx(async (tx) => {
         for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
           const parsed = parsePccRow(raw)
 
+          totalCount++
+
           if (parsed.ok === false) {
-            errorCount++
-            log.warn({ jobId: job.id, details: parsed.details }, 'Row schema mismatch — skipping')
+            schemaMismatchCount++
+            const errorDetails: Record<string, unknown> = { ...parsed.details }
+
+            // If the row had identifiable fields (depth-range errors), attempt a segment
+            // match so the error record reflects whether a CDP segment exists for this
+            // project — useful for triage even when the depth rule is unsupported.
+            if (parsed.pccProjectId) {
+              const matched = await findSegmentBySourceId(tx, parsed.pccProjectId)
+              if (matched) {
+                schemaMismatchMatchedCount++
+                errorDetails.matchedSegmentId = matched.id
+                errorDetails.matchedSegmentName = matched.name
+                errorDetails.matchedVia = 'sourceId'
+              }
+            }
+
+            log.warn(
+              { jobId: job.id, details: errorDetails },
+              'Row schema mismatch — skipping',
+            )
             if (!this.dryRun) {
-              await insertSyncError(tx, null, null, 'SCHEMA_MISMATCH', parsed.details)
+              await insertSyncError(
+                tx,
+                parsed.pccProjectId ?? null,
+                parsed.pccSlug ?? null,
+                'SCHEMA_MISMATCH',
+                errorDetails,
+              )
             }
             continue
           }
@@ -125,13 +153,27 @@ export class PccProjectConsumer {
         }
       })
 
-      const metrics = { upsertedCount, skippedCount, mismatchCount, errorCount }
-      log.info({ jobId: job.id, ...metrics, dryRun: this.dryRun }, 'PCC job completed')
+      const durationMs = Date.now() - startTime
+      log.info(
+        {
+          jobId: job.id,
+          dryRun: this.dryRun,
+          durationMs,
+          total: totalCount,
+          upserted: upsertedCount,
+          skipped: skippedCount,
+          hierarchyMismatch: mismatchCount,
+          schemaMismatch: schemaMismatchCount,
+          schemaMismatchWithCdpMatch: schemaMismatchMatchedCount,
+          schemaMismatchNoCdpMatch: schemaMismatchCount - schemaMismatchMatchedCount,
+        },
+        'PCC job completed',
+      )
 
       await this.metadataStore.markCompleted(job.id, {
         transformedCount: upsertedCount,
-        skippedCount: skippedCount + mismatchCount + errorCount,
-        processingDurationMs: Date.now() - startTime,
+        skippedCount: skippedCount + mismatchCount + schemaMismatchCount,
+        processingDurationMs: durationMs,
       })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
@@ -169,12 +211,7 @@ export class PccProjectConsumer {
       segment = await findSegmentBySourceId(tx, project.pccProjectId)
     }
 
-    // Step 3: derived slug match
-    if (!segment && project.pccSlug) {
-      segment = await findSegmentBySlug(tx, project.pccSlug)
-    }
-
-    // Step 4: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
+    // Step 3: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
     if (!segment) {
       return { action: 'SKIPPED' }
     }
@@ -199,9 +236,32 @@ export class PccProjectConsumer {
       }
     }
 
+    // Slug drift detection: log when PCC slug differs from the CDP segment slug.
+    // We do NOT update the slug — it is a stable identifier referenced by FK from
+    // securityInsightsEvaluations and related tables. The mismatch is recorded for
+    // manual review but does not block the sync.
+    if (project.pccSlug && segment.slug && project.pccSlug !== segment.slug) {
+      log.warn(
+        { segmentId: segment.id, pccSlug: project.pccSlug, cdpSlug: segment.slug },
+        'Slug drift detected — PCC slug differs from CDP segment slug',
+      )
+      if (!this.dryRun) {
+        await insertSyncError(tx, project.pccProjectId, project.pccSlug, 'SLUG_CHANGED', {
+          segmentId: segment.id,
+          pccSlug: project.pccSlug,
+          cdpSlug: segment.slug,
+        })
+      }
+    }
+
     if (!this.dryRun) {
-      await upsertSegment(tx, segment.id, project)
-      const nameConflict = await upsertInsightsProject(tx, segment.id, project)
+      await upsertSegment(tx, project.pccProjectId, project)
+      const nameConflict = await upsertInsightsProject(
+        tx,
+        segment.id,
+        project.pccProjectId,
+        project,
+      )
       if (nameConflict) {
         log.warn(
           { segmentId: segment.id, name: project.name },
@@ -240,40 +300,27 @@ export class PccProjectConsumer {
 interface SegmentRow {
   id: string
   name: string
+  slug: string | null
   parentName: string | null
   grandparentName: string | null
 }
 
 async function findSegmentById(db: DbConnOrTx, segmentId: string): Promise<SegmentRow | null> {
   return db.oneOrNone<SegmentRow>(
-    `SELECT id, name, "parentName", "grandparentName"
+    `SELECT id, name, slug, "parentName", "grandparentName"
      FROM segments
-     WHERE id = $(segmentId) AND type = 'subproject' AND "tenantId" = $(tenantId)`,
+     WHERE id = $(segmentId) AND "tenantId" = $(tenantId)`,
     { segmentId, tenantId: DEFAULT_TENANT_ID },
   )
 }
 
 async function findSegmentBySourceId(db: DbConnOrTx, sourceId: string): Promise<SegmentRow | null> {
   return db.oneOrNone<SegmentRow>(
-    `SELECT id, name, "parentName", "grandparentName"
+    `SELECT id, name, slug, "parentName", "grandparentName"
      FROM segments
      WHERE "sourceId" = $(sourceId) AND type = 'subproject' AND "tenantId" = $(tenantId)`,
     { sourceId, tenantId: DEFAULT_TENANT_ID },
   )
-}
-
-async function findSegmentBySlug(db: DbConnOrTx, slug: string): Promise<SegmentRow | null> {
-  const rows = await db.manyOrNone<SegmentRow>(
-    `SELECT id, name, "parentName", "grandparentName"
-     FROM segments
-     WHERE slug = $(slug) AND type = 'subproject' AND "tenantId" = $(tenantId)`,
-    { slug, tenantId: DEFAULT_TENANT_ID },
-  )
-  if (rows.length === 1) return rows[0]
-  if (rows.length > 1) {
-    log.warn({ slug, count: rows.length }, 'Ambiguous slug match — skipping')
-  }
-  return null
 }
 
 function detectHierarchyMismatch(segment: SegmentRow, cdpTarget: CdpHierarchyTarget): string[] {
@@ -293,9 +340,12 @@ function detectHierarchyMismatch(segment: SegmentRow, cdpTarget: CdpHierarchyTar
 
 async function upsertSegment(
   db: DbConnOrTx,
-  segmentId: string,
+  sourceId: string,
   project: ParsedPccProject,
 ): Promise<void> {
+  // Update all segment levels (group, project, subproject) that share the same sourceId.
+  // PCC exports every level of the hierarchy with the same PROJECT_ID, so all three CDP
+  // segment levels are updated in one pass.
   await db.none(
     `UPDATE segments
      SET name        = $(name),
@@ -303,9 +353,9 @@ async function upsertSegment(
          maturity    = $(maturity),
          description = $(description),
          "updatedAt" = NOW()
-     WHERE id = $(segmentId) AND "tenantId" = $(tenantId)`,
+     WHERE "sourceId" = $(sourceId) AND "tenantId" = $(tenantId)`,
     {
-      segmentId,
+      sourceId,
       name: project.name,
       status: project.status ?? 'active',
       maturity: project.maturity,
@@ -316,49 +366,73 @@ async function upsertSegment(
 }
 
 // Returns true if a name conflict prevented creating the insightsProject row.
+// Updates insightsProject rows for ALL segment levels sharing the same sourceId
+// (group, project, subproject). The INSERT is restricted to the matched subproject
+// segment (identified by segmentId) to avoid duplicating insights projects for
+// hierarchy-only segments.
 async function upsertInsightsProject(
   db: DbConnOrTx,
   segmentId: string,
+  sourceId: string,
   project: ParsedPccProject,
 ): Promise<boolean> {
-  // Partial unique index on segmentId WHERE deletedAt IS NULL means
-  // ON CONFLICT won't fire for soft-deleted rows. Use UPDATE-then-INSERT.
-  // Slug is intentionally not updated on name changes — it is a stable identifier
-  // referenced by FK from securityInsightsEvaluations and related tables.
-  // Guard the UPDATE against the partial unique index on (name) WHERE deletedAt IS NULL.
-  // If another active row already holds the new name, the NOT EXISTS subquery causes the
-  // UPDATE to match 0 rows instead of throwing a 23505 unique violation.
-  const updated = await db.result(
-    `UPDATE "insightsProjects"
+  // Check for a name conflict upfront — an active insightsProject belonging to a segment
+  // outside this PCC project's sourceId group already holds this name.
+  // We must exclude all segments sharing the same sourceId (not just the subproject),
+  // because on repeat syncs the group/project levels already carry the same name and
+  // would produce false positives if only the subproject segmentId were excluded.
+  const conflicting = await db.oneOrNone<{ id: string }>(
+    `SELECT ip.id
+     FROM "insightsProjects" ip
+     JOIN segments s ON s.id = ip."segmentId"
+     WHERE ip.name = $(name)
+       AND ip."deletedAt" IS NULL
+       AND s."sourceId" != $(sourceId)
+       AND s."tenantId" = $(tenantId)`,
+    { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
+  )
+  if (conflicting) return true
+
+  // No conflict — update all active insightsProject rows linked to any segment that
+  // shares the PCC sourceId (group, project, subproject levels).
+  // Slug is intentionally not updated — it is a stable identifier referenced by FK from
+  // securityInsightsEvaluations and related tables.
+  await db.none(
+    `UPDATE "insightsProjects" ip
      SET name        = $(name),
          description = $(description),
          "logoUrl"   = $(logoUrl),
          "updatedAt" = NOW()
-     WHERE "segmentId" = $(segmentId) AND "deletedAt" IS NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM "insightsProjects"
-         WHERE name = $(name) AND "deletedAt" IS NULL AND "segmentId" != $(segmentId)
-       )`,
-    { segmentId, name: project.name, description: project.description, logoUrl: project.logoUrl },
+     FROM segments s
+     WHERE ip."segmentId" = s.id
+       AND s."sourceId" = $(sourceId)
+       AND s."tenantId" = $(tenantId)
+       AND ip."deletedAt" IS NULL`,
+    {
+      sourceId,
+      tenantId: DEFAULT_TENANT_ID,
+      name: project.name,
+      description: project.description,
+      logoUrl: project.logoUrl,
+    },
   )
 
-  if (updated.rowCount === 0) {
-    // Either (a) no active row exists yet → proceed to INSERT,
-    // or (b) a row exists but its name collides with another segment → return conflict.
-    const exists = await db.oneOrNone<{ id: string }>(
-      `SELECT id FROM "insightsProjects" WHERE "segmentId" = $(segmentId) AND "deletedAt" IS NULL`,
-      { segmentId },
-    )
-    if (exists) return true
+  // INSERT for the subproject segment only (the matched leaf).
+  // Partial unique index on segmentId WHERE deletedAt IS NULL means ON CONFLICT won't fire
+  // for soft-deleted rows — use UPDATE-then-INSERT pattern (UPDATE already done above).
+  const exists = await db.oneOrNone<{ id: string }>(
+    `SELECT id FROM "insightsProjects" WHERE "segmentId" = $(segmentId) AND "deletedAt" IS NULL`,
+    { segmentId },
+  )
+  if (exists) return false
 
-    const inserted = await db.result(
-      `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "logoUrl", "isLF")
-       VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), $(logoUrl), TRUE)
-       ON CONFLICT (name) WHERE "deletedAt" IS NULL DO NOTHING`,
-      { name: project.name, description: project.description, segmentId, logoUrl: project.logoUrl },
-    )
-    if (inserted.rowCount === 0) return true
-  }
+  const inserted = await db.result(
+    `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "logoUrl", "isLF")
+     VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), $(logoUrl), TRUE)
+     ON CONFLICT (name) WHERE "deletedAt" IS NULL DO NOTHING`,
+    { name: project.name, description: project.description, segmentId, logoUrl: project.logoUrl },
+  )
+  if (inserted.rowCount === 0) return true
 
   return false
 }
@@ -370,15 +444,32 @@ async function insertSyncError(
   errorType: string,
   details: Record<string, unknown>,
 ): Promise<void> {
-  await db.none(
-    `INSERT INTO pcc_projects_sync_errors
-       (external_project_id, external_project_slug, error_type, details)
-     VALUES ($(externalProjectId), $(externalProjectSlug), $(errorType), $(details)::jsonb)
-     ON CONFLICT (external_project_id, error_type)
-       WHERE NOT resolved AND external_project_id IS NOT NULL
-     DO UPDATE SET details = EXCLUDED.details, run_at = NOW()`,
-    { externalProjectId, externalProjectSlug, errorType, details: JSON.stringify(details) },
-  )
+  const serialized = JSON.stringify(details)
+  if (externalProjectId !== null) {
+    // Known project: deduplicate on (external_project_id, error_type).
+    await db.none(
+      `INSERT INTO pcc_projects_sync_errors
+         (external_project_id, external_project_slug, error_type, details)
+       VALUES ($(externalProjectId), $(externalProjectSlug), $(errorType), $(details)::jsonb)
+       ON CONFLICT (external_project_id, error_type)
+         WHERE NOT resolved AND external_project_id IS NOT NULL
+       DO UPDATE SET details = EXCLUDED.details, external_project_slug = EXCLUDED.external_project_slug, run_at = NOW()`,
+      { externalProjectId, externalProjectSlug, errorType, details: serialized },
+    )
+  } else {
+    // Unidentifiable row (no PROJECT_ID): deduplicate on (error_type, details->>'reason')
+    // so repeated daily exports don't accumulate duplicate rows for the same class of
+    // malformed input. Each distinct failure reason gets one unresolved row.
+    await db.none(
+      `INSERT INTO pcc_projects_sync_errors
+         (external_project_slug, error_type, details)
+       VALUES ($(externalProjectSlug), $(errorType), $(details)::jsonb)
+       ON CONFLICT (error_type, (details->>'reason'))
+         WHERE NOT resolved AND external_project_id IS NULL
+       DO UPDATE SET details = EXCLUDED.details, external_project_slug = EXCLUDED.external_project_slug, run_at = NOW()`,
+      { externalProjectSlug, errorType, details: serialized },
+    )
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

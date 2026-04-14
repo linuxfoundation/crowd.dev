@@ -18,3 +18,10 @@ CREATE TABLE IF NOT EXISTS pcc_projects_sync_errors (
 CREATE UNIQUE INDEX IF NOT EXISTS pcc_sync_errors_dedup_idx
   ON pcc_projects_sync_errors (external_project_id, error_type)
   WHERE NOT resolved AND external_project_id IS NOT NULL;
+
+-- Deduplication index for unidentifiable rows (no external_project_id).
+-- Keyed on (error_type, reason) so repeated daily exports don't accumulate duplicate rows
+-- for the same class of malformed input (e.g. rows missing PROJECT_ID/NAME/DEPTH).
+CREATE UNIQUE INDEX IF NOT EXISTS pcc_sync_errors_dedup_unknown_idx
+  ON pcc_projects_sync_errors (error_type, (details->>'reason'))
+  WHERE NOT resolved AND external_project_id IS NULL;

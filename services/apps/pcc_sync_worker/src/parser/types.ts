@@ -59,4 +59,12 @@ export interface ParsedPccProject {
 
 export type ParseResult =
   | { ok: true; project: ParsedPccProject }
-  | { ok: false; errorType: 'SCHEMA_MISMATCH'; details: Record<string, unknown> }
+  | {
+      ok: false
+      errorType: 'SCHEMA_MISMATCH'
+      details: Record<string, unknown>
+      /** Present when the row had a valid PROJECT_ID (depth-range errors). Used for segment lookup. */
+      pccProjectId?: string
+      /** Present when the row had a valid SLUG (depth-range errors). Used for segment lookup. */
+      pccSlug?: string | null
+    }

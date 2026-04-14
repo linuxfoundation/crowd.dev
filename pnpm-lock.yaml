@@ -1310,6 +1310,49 @@ importers:
         specifier: ^3.0.1
         version: 3.1.0
 
+  services/apps/pcc_sync_worker:
+    dependencies:
+      '@crowd/archetype-standard':
+        specifier: workspace:*
+        version: link:../../archetypes/standard
+      '@crowd/archetype-worker':
+        specifier: workspace:*
+        version: link:../../archetypes/worker
+      '@crowd/common':
+        specifier: workspace:*
+        version: link:../../libs/common
+      '@crowd/database':
+        specifier: workspace:*
+        version: link:../../libs/database
+      '@crowd/logging':
+        specifier: workspace:*
+        version: link:../../libs/logging
+      '@crowd/slack':
+        specifier: workspace:*
+        version: link:../../libs/slack
+      '@crowd/snowflake':
+        specifier: workspace:*
+        version: link:../../libs/snowflake
+      '@crowd/temporal':
+        specifier: workspace:*
+        version: link:../../libs/temporal
+      '@temporalio/client':
+        specifier: ~1.11.8
+        version: 1.11.8
+      '@temporalio/workflow':
+        specifier: ~1.11.8
+        version: 1.11.8
+      tsx:
+        specifier: ^4.7.1
+        version: 4.7.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.6.3
+    devDependencies:
+      nodemon:
+        specifier: ^3.0.1
+        version: 3.1.0
+
   services/apps/profiles_worker:
     dependencies:
       '@crowd/archetype-standard':
@@ -1572,9 +1615,6 @@ importers:
 
   services/apps/snowflake_connectors:
     dependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.700.0
-        version: 3.985.0
       '@crowd/archetype-standard':
         specifier: workspace:*
         version: link:../../archetypes/standard
@@ -1614,9 +1654,6 @@ importers:
       '@crowd/types':
         specifier: workspace:*
         version: link:../../libs/types
-      '@dsnp/parquetjs':
-        specifier: ^1.7.0
-        version: 1.8.7(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       '@temporalio/client':
         specifier: ~1.11.8
         version: 1.11.8
@@ -2360,9 +2397,18 @@ importers:
 
   services/libs/snowflake:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.700.0
+        version: 3.985.0
+      '@crowd/database':
+        specifier: workspace:*
+        version: link:../database
       '@crowd/logging':
         specifier: workspace:*
         version: link:../logging
+      '@dsnp/parquetjs':
+        specifier: ^1.7.0
+        version: 1.8.7(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       snowflake-sdk:
         specifier: ^2.3.3
         version: 2.3.4(asn1.js@5.4.1)(encoding@0.1.13)

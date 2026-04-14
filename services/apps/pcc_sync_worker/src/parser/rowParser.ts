@@ -39,6 +39,23 @@ const STATUS_MAP: Record<string, string> = {
 const TRANSPARENT_INTERMEDIATES = new Set(['LF Projects, LLC'])
 
 /**
+ * Parquet serializes Snowflake NUMBER columns as fixed-width big-endian Buffers.
+ * Handle both the plain number case and the Buffer case.
+ */
+function parseParquetInt(value: unknown): number {
+  if (typeof value === 'number') return value
+  // Parquet serializes Snowflake NUMBER as a Node.js Buffer (big-endian bytes)
+  if (Buffer.isBuffer(value)) {
+    let result = 0
+    for (const byte of value) {
+      result = result * 256 + byte
+    }
+    return result
+  }
+  return Number(value)
+}
+
+/**
  * Parse and validate a raw Parquet row from the PCC export.
  * Returns ok=false with SCHEMA_MISMATCH if the row is malformed or
  * has an unsupported depth (> 5 raw / > 4 effective).
@@ -48,13 +65,20 @@ export function parsePccRow(raw: Record<string, unknown>): ParseResult {
 
   const projectId = row.PROJECT_ID
   const name = row.NAME
-  const depth = typeof row.DEPTH === 'number' ? row.DEPTH : Number(row.DEPTH)
+  const depth = parseParquetInt(row.DEPTH)
 
   if (!projectId || !name || !Number.isFinite(depth)) {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
-      details: { reason: 'missing required fields', raw },
+      details: {
+        reason: 'missing required fields',
+        missingFields: [
+          ...(!projectId ? ['PROJECT_ID'] : []),
+          ...(!name ? ['NAME'] : []),
+          ...(!Number.isFinite(depth) ? ['DEPTH'] : []),
+        ],
+      },
     }
   }
 
@@ -64,6 +88,8 @@ export function parsePccRow(raw: Record<string, unknown>): ParseResult {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
+      pccProjectId: String(projectId),
+      pccSlug: (row.SLUG ?? null) as string | null,
       details: {
         reason: effectiveDepth < 1 ? 'unexpected root node (depth=1)' : 'unsupported depth > 5',
         rawDepth: depth,
