@@ -111,13 +111,7 @@ export class PccProjectConsumer {
               }
             }
 
-            log.warn(
-              { jobId: job.id, details: errorDetails },
-              'Row schema mismatch — skipping',
-            )
-            if (!this.dryRun) {
-              await insertSyncError(
-                tx,
+            log.warn( (!this.dryRun) { await insertSyncError(    tx,
                 parsed.pccProjectId ?? null,
                 parsed.pccSlug ?? null,
                 'SCHEMA_MISMATCH',
