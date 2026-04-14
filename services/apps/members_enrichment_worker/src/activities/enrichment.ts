@@ -551,10 +551,14 @@ export async function updateMemberUsingSquashedPayload(
       svc.temporal,
       svc.log,
     )
-    await commonMemberService.startAffiliationRecalculation(memberId, [...new Set(affectedOrgIds)], true)
+    await commonMemberService.startAffiliationRecalculation(
+      memberId,
+      [...new Set(affectedOrgIds)],
+      true,
+    )
   }
 
-  return updated
+  return wasUpdated
 }
 
 export function doesIncomingOrgExistInExistingOrgs(
