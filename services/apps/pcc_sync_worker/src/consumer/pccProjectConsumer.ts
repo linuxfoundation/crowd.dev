@@ -111,7 +111,17 @@ export class PccProjectConsumer {
               }
             }
 
-            log.warn( (!this.dryRun) { await insertSyncError(    tx,
+            log.warn(
+              {
+                pccProjectId: parsed.pccProjectId ?? null,
+                pccSlug: parsed.pccSlug ?? null,
+                ...errorDetails,
+              },
+              'Schema mismatch in PCC row',
+            )
+            if (!this.dryRun) {
+              await insertSyncError(
+                tx,
                 parsed.pccProjectId ?? null,
                 parsed.pccSlug ?? null,
                 'SCHEMA_MISMATCH',
@@ -341,9 +351,13 @@ async function upsertSegment(
   sourceId: string,
   project: ParsedPccProject,
 ): Promise<void> {
-  // Update all segment levels (group, project, subproject) that share the same sourceId.
-  // PCC exports every level of the hierarchy with the same PROJECT_ID, so all three CDP
-  // segment levels are updated in one pass.
+  // Update all CDP segments whose sourceId equals this PCC PROJECT_ID.
+  // Each PCC node has its own PROJECT_ID. In CDP, how many segment levels share this
+  // sourceId depends on the effective depth:
+  //   eff=1 → group+project+subproject all share the same PROJECT_ID (same name for all)
+  //   eff=2 → project+subproject share the leaf's PROJECT_ID; group has a different one
+  //   eff=3 or 4 → only the subproject segment carries this PROJECT_ID
+  // So this UPDATE always writes the correct name and never touches unrelated levels.
   await db.none(
     `UPDATE segments
      SET name        = $(name),
