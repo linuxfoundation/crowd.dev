@@ -8,6 +8,7 @@ import {
   replaceDoubleQuotes,
   setAttributesDefaultValues,
 } from '@crowd/common'
+import { CommonMemberService } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   checkOrganizationAffiliationPolicy,
@@ -287,7 +288,9 @@ export async function updateMemberUsingSquashedPayload(
   hasContributions: boolean,
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): Promise<boolean> {
-  return await svc.postgres.writer.transactionally(async (tx) => {
+  const deletedOrgIds: string[] = []
+
+  const updated = await svc.postgres.writer.transactionally(async (tx) => {
     let updated = false
     const qx = dbStoreQx(tx)
 
@@ -460,6 +463,7 @@ export async function updateMemberUsingSquashedPayload(
       if (results.toDelete.length > 0) {
         for (const org of results.toDelete) {
           updated = true
+          deletedOrgIds.push(org.orgId)
           await deleteMemberOrgById(tx.transaction(), org.id)
         }
       }
@@ -538,6 +542,17 @@ export async function updateMemberUsingSquashedPayload(
 
     return updated
   })
+
+  if (deletedOrgIds.length > 0) {
+    const commonMemberService = new CommonMemberService(
+      pgpQx(svc.postgres.writer.connection()),
+      svc.temporal,
+      svc.log,
+    )
+    await commonMemberService.startAffiliationRecalculation(memberId, deletedOrgIds)
+  }
+
+  return updated
 }
 
 export function doesIncomingOrgExistInExistingOrgs(
