@@ -29,8 +29,9 @@ SQL >
         {% end %}
     GROUP BY segmentId
 
-NODE health_score_contributions_outside_work_hours_with_benchmark
+NODE health_score_contributions_outside_work_hours_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         contributionsOutsideWorkHours,

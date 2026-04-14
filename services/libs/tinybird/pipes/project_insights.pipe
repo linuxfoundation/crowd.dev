@@ -49,7 +49,7 @@ SQL >
         activeOrganizationsPrevious365Days
     FROM project_insights_copy_ds
     WHERE
-        1 = 1
+        type = 'project'
         {% if defined(slug) %}
             AND slug = {{ String(slug, description="Project slug", required=False) }}
         {% end %}

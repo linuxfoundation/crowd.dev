@@ -1,4 +1,4 @@
-NODE health_score_active_contributors_score
+NODE health_score_active_contributors_score_something_else
 DESCRIPTION >
     Returns activeContributors for previous quarter per project
 
@@ -34,8 +34,9 @@ SQL >
         GROUP BY segmentId
     {% end %}
 
-NODE health_score_active_contributors_with_benchmark
+NODE health_score_active_contributors_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         activeContributors,
@@ -54,4 +55,4 @@ SQL >
             THEN 5
             ELSE 0
         END AS activeContributorsBenchmark
-    FROM health_score_active_contributors_score
+    FROM health_score_active_contributors_score_something_else

@@ -38,8 +38,9 @@ SQL >
         GROUP BY segmentId
     {% end %}
 
-NODE health_score_issues_resolution_with_benchmark
+NODE health_score_issues_resolution_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         issueResolution,

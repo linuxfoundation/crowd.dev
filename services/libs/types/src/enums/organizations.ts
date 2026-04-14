@@ -14,6 +14,7 @@ export enum OrganizationSource {
   UI = 'ui',
   CVENT = 'cvent',
   TNC = 'tnc',
+  MEETINGS = 'meetings',
   COMMITTEES = 'committees',
 }
 
@@ -44,6 +45,7 @@ export enum OrganizationAttributeSource {
   ENRICHMENT_PEOPLEDATALABS = 'enrichment-peopledatalabs',
   CVENT = 'cvent',
   TNC = 'tnc',
+  MEETINGS = 'meetings',
   COMMITTEES = 'committees',
   // legacy - keeping this for backward compatibility
   ENRICHMENT = 'enrichment',

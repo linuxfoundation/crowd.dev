@@ -40,8 +40,9 @@ SQL >
         GROUP BY segmentId
     {% end %}
 
-NODE health_score_pull_requests_with_benchmark
+NODE health_score_pull_requests_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         pullRequests,

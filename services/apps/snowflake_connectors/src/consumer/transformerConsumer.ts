@@ -89,24 +89,26 @@ export class TransformerConsumer {
       let resolveSkippedCount = 0
 
       for await (const row of this.s3Service.streamParquetRows(job.s3Path)) {
-        const result = source.transformer.safeTransformRow(row)
-        if (!result) {
+        const results = source.transformer.safeTransformRow(row)
+        if (!results) {
           transformSkippedCount++
           continue
         }
 
-        const resolved = await this.integrationResolver.resolve(platform, result.segment)
-        if (!resolved) {
-          resolveSkippedCount++
-          continue
-        }
+        for (const result of results) {
+          const resolved = await this.integrationResolver.resolve(platform, result.segment)
+          if (!resolved) {
+            resolveSkippedCount++
+            continue
+          }
 
-        await this.emitter.createAndProcessActivityResult(
-          resolved.segmentId,
-          resolved.integrationId,
-          result.activity,
-        )
-        transformedCount++
+          await this.emitter.createAndProcessActivityResult(
+            resolved.segmentId,
+            resolved.integrationId,
+            result.activity,
+          )
+          transformedCount++
+        }
       }
 
       const skippedCount = transformSkippedCount + resolveSkippedCount

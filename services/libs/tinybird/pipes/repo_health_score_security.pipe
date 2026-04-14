@@ -1,0 +1,45 @@
+DESCRIPTION >
+    - Calculates repository-level security health score.
+    - Returns security assessment pass rate percentage per repository.
+    - Uses `security_deduplicated_merged_ds` for security evaluation data.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_security_check_pass_rate
+SQL >
+    %
+    SELECT
+        repo,
+        category,
+        arrayFilter(
+            x -> x['requirementId'] not in ('OSPS-AC-01.01'), assessments
+        ) as filteredAssessments,
+        length(arrayFilter(x -> x['result'] = 'Failed', filteredAssessments)) AS failedAssessments,
+        length(arrayFilter(x -> x['result'] = 'Passed', filteredAssessments)) AS passedAssessments
+    FROM security_deduplicated_merged_ds
+    WHERE
+        category NOT IN ('Documentation', 'Vulnerability Management') AND repo != ''
+        {% if defined(repoUrl) %}
+            AND repo = {{ String(repoUrl, description="Repository URL", required=False) }}
+        {% end %}
+
+NODE repo_health_score_security_category
+SQL >
+    SELECT
+        repo,
+        category,
+        sum(failedAssessments) AS failed,
+        sum(passedAssessments) AS passed,
+        sum(failedAssessments + passedAssessments) AS total,
+        if(total = 0, 0, round(100 * (passed / total))) AS percentage
+    FROM repo_health_score_security_check_pass_rate
+    WHERE repo != ''
+    GROUP BY repo, category
+
+NODE repo_health_score_security_score
+SQL >
+    SELECT repo AS channel, round(avg(percentage)) AS securityPercentage
+    FROM repo_health_score_security_category
+    GROUP BY repo

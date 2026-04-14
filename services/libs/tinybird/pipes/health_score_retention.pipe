@@ -111,31 +111,28 @@ SQL >
 
 NODE health_score_retention_counts
 SQL >
+    %
     SELECT
-        health_score_retention_current_quarter.segmentId as segmentId,
-        length(
-            arrayIntersect(
-                coalesce(health_score_retention_current_quarter.currentQuarterMembers, []),
-                coalesce(health_score_retention_previous_quarter.previousQuarterMembers, [])
-            )
-        ) AS retained_members,
-        length(
-            coalesce(health_score_retention_previous_quarter.previousQuarterMembers, [])
-        ) AS previous_period_total
-    FROM health_score_retention_current_quarter
-    LEFT JOIN health_score_retention_previous_quarter USING (segmentId)
-
-NODE health_score_retention_score
-SQL >
-    SELECT
-        segmentId,
+        cur.segmentId AS segmentId,
         if(
-            previous_period_total > 0, round(100 * retained_members / previous_period_total), 0
-        ) AS "retentionRate"
-    FROM health_score_retention_counts
+            length(coalesce(prev.previousQuarterMembers, [])) > 0,
+            round(
+                100 * length(
+                    arrayIntersect(
+                        coalesce(cur.currentQuarterMembers, []),
+                        coalesce(prev.previousQuarterMembers, [])
+                    )
+                )
+                / length(coalesce(prev.previousQuarterMembers, []))
+            ),
+            0
+        ) AS retentionRate
+    FROM health_score_retention_current_quarter AS cur
+    LEFT JOIN health_score_retention_previous_quarter AS prev USING (segmentId)
 
-NODE health_score_retention_with_benchmark
+NODE health_score_retention_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         retentionRate,
@@ -154,4 +151,4 @@ SQL >
             THEN 5
             ELSE 0
         END AS retentionBenchmark
-    FROM health_score_retention_score
+    FROM health_score_retention_counts
