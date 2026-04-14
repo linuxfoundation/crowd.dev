@@ -292,6 +292,7 @@ export async function updateMemberUsingSquashedPayload(
 
   const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
     let didUpdate = false
+
     const qx = dbStoreQx(tx)
 
     // process identities
