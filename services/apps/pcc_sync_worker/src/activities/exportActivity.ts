@@ -1,7 +1,8 @@
 /**
- * Export activity: Execute PCC recursive CTE COPY INTO + write metadata.
+ * Export activity: Execute PCC COPY INTO + write metadata.
  *
- * Full daily export of ANALYTICS.SILVER_DIM.PROJECTS via recursive CTE.
+ * Full daily export of leaf projects from ANALYTICS.SILVER_DIM.PROJECTS joined
+ * with PROJECT_SPINE to produce one row per (leaf, hierarchy_level) pair.
  * No incremental logic — at ~1,538 leaf rows, a full daily export is simpler
  * and more reliable than incremental (a parent name change would require
  * re-exporting all descendants).
@@ -17,37 +18,29 @@ const SOURCE_NAME = 'project-hierarchy'
 
 function buildSourceQuery(): string {
   return `
-    WITH RECURSIVE project_hierarchy AS (
-      SELECT project_id, name, description, project_logo, project_status,
-             project_maturity_level, repository_url, slug, parent_id,
-             1 AS depth,
-             name AS depth_1, NULL::VARCHAR AS depth_2, NULL::VARCHAR AS depth_3,
-             NULL::VARCHAR AS depth_4, NULL::VARCHAR AS depth_5
-      FROM ANALYTICS.SILVER_DIM.PROJECTS
-      WHERE parent_id IS NULL
-      UNION ALL
-      SELECT p.project_id, p.name, p.description, p.project_logo, p.project_status,
-             p.project_maturity_level, p.repository_url, p.slug, p.parent_id,
-             h.depth + 1,
-             h.depth_1,
-             CASE WHEN h.depth + 1 = 2 THEN p.name ELSE h.depth_2 END,
-             CASE WHEN h.depth + 1 = 3 THEN p.name ELSE h.depth_3 END,
-             CASE WHEN h.depth + 1 = 4 THEN p.name ELSE h.depth_4 END,
-             CASE WHEN h.depth + 1 = 5 THEN p.name ELSE h.depth_5 END
-      FROM ANALYTICS.SILVER_DIM.PROJECTS p
-      INNER JOIN project_hierarchy h ON p.parent_id = h.project_id
-    )
-    SELECT ph.project_id, ph.name, ph.slug, ph.description, ph.project_logo, ph.repository_url,
-           ph.project_status, ph.project_maturity_level, ph.depth,
-           ph.depth_1, ph.depth_2, ph.depth_3, ph.depth_4, ph.depth_5,
-           s.segment_id
-    FROM project_hierarchy ph
+    SELECT
+      p.project_id,
+      p.name,
+      p.description,
+      p.project_logo,
+      p.project_status,
+      p.project_maturity_level,
+      ps.mapped_project_id,
+      ps.mapped_project_name,
+      ps.mapped_project_slug,
+      ps.hierarchy_level,
+      s.segment_id
+    FROM ANALYTICS.SILVER_DIM.PROJECTS p
+    LEFT JOIN ANALYTICS.SILVER_DIM.PROJECT_SPINE ps ON ps.base_project_id = p.project_id
     LEFT JOIN ANALYTICS.SILVER_DIM.ACTIVE_SEGMENTS s
-      ON s.source_id = ph.project_id AND s.project_type = 'subproject'
-    WHERE ph.project_id NOT IN (
-      SELECT DISTINCT parent_id FROM ANALYTICS.SILVER_DIM.PROJECTS
+      ON s.source_id = p.project_id
+      AND s.project_type = 'subproject'
+    WHERE p.project_id NOT IN (
+      SELECT DISTINCT parent_id
+      FROM ANALYTICS.SILVER_DIM.PROJECTS
       WHERE parent_id IS NOT NULL
     )
+    ORDER BY p.name, ps.hierarchy_level ASC
   `
 }
 

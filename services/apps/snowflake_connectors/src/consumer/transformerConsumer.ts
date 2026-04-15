@@ -40,7 +40,9 @@ export class TransformerConsumer {
 
     while (this.running) {
       try {
-        const job = await this.metadataStore.claimOldestPendingJob(buildPlatformFilter(this.enabledPlatforms))
+        const job = await this.metadataStore.claimOldestPendingJob(
+          buildPlatformFilter(this.enabledPlatforms),
+        )
         log.info('Claiming job from metadata store', { job })
 
         if (job) {

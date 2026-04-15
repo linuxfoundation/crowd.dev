@@ -20,6 +20,7 @@
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
     "@crowd/database": "workspace:*",
+    "@crowd/types": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/slack": "workspace:*",
     "@crowd/snowflake": "workspace:*",

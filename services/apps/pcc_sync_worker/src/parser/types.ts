@@ -5,22 +5,29 @@
  * so all column names are uppercase.
  */
 
-/** Raw Parquet row from the PCC recursive CTE export. */
+/**
+ * Raw Parquet row from the PCC PROJECT_SPINE export.
+ *
+ * One row is emitted per (leaf project, hierarchy level). A leaf project at
+ * depth N produces N rows: hierarchy_level=1 is the leaf itself,
+ * hierarchy_level=N is the topmost ancestor. All rows for the same leaf share
+ * the same PROJECT_ID, NAME, PROJECT_STATUS, etc.
+ */
 export interface PccParquetRow {
   PROJECT_ID: string
   NAME: string
-  SLUG: string | null
   DESCRIPTION: string | null
   PROJECT_LOGO: string | null
-  REPOSITORY_URL: string | null
   PROJECT_STATUS: string | null
   PROJECT_MATURITY_LEVEL: string | null
-  DEPTH: number
-  DEPTH_1: string | null
-  DEPTH_2: string | null
-  DEPTH_3: string | null
-  DEPTH_4: string | null
-  DEPTH_5: string | null
+  /** ID of the ancestor at this hierarchy level (hierarchy_level=1 → leaf itself). */
+  MAPPED_PROJECT_ID: string | null
+  /** Name of the ancestor at this hierarchy level. */
+  MAPPED_PROJECT_NAME: string | null
+  /** Slug of the ancestor at this hierarchy level. */
+  MAPPED_PROJECT_SLUG: string | null
+  /** 1 = leaf, N = topmost ancestor. */
+  HIERARCHY_LEVEL: number
   SEGMENT_ID: string | null
 }
 
@@ -49,7 +56,6 @@ export interface ParsedPccProject {
   maturity: string | null
   description: string | null
   logoUrl: string | null
-  repositoryUrl: string | null
   /** segment_id from Snowflake ACTIVE_SEGMENTS JOIN — used for step-1 matching. */
   segmentIdFromSnowflake: string | null
   effectiveDepth: number

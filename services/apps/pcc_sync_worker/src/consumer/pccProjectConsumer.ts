@@ -88,9 +88,21 @@ export class PccProjectConsumer {
     let schemaMismatchMatchedCount = 0 // SCHEMA_MISMATCH rows that still have a CDP segment match
 
     try {
+      // Stream all rows and group by PROJECT_ID before processing.
+      // The export emits one row per (leaf, hierarchy_level) from the PROJECT_SPINE
+      // JOIN, so each leaf project produces N rows (one per ancestor level).
+      const groups = new Map<string, Record<string, unknown>[]>()
+      for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
+        const projectId = String((raw as Record<string, unknown>).PROJECT_ID ?? '')
+        if (!projectId) continue
+        if (!groups.has(projectId)) groups.set(projectId, [])
+        const group = groups.get(projectId)
+        if (group) group.push(raw)
+      }
+
       await this.db.tx(async (tx) => {
-        for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
-          const parsed = parsePccRow(raw)
+        for (const [, rows] of groups) {
+          const parsed = parsePccRow(rows)
 
           totalCount++
 

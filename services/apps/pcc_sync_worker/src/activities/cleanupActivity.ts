@@ -12,7 +12,11 @@ export async function executeCleanup(intervalHours = 24): Promise<void> {
   const metadataStore = new MetadataStore(db)
   const s3Service = new S3Service()
 
-  const jobs = await metadataStore.getCleanableJobS3Paths(intervalHours, buildPlatformFilter([PLATFORM]), false)
+  const jobs = await metadataStore.getCleanableJobS3Paths(
+    intervalHours,
+    buildPlatformFilter([PLATFORM]),
+    false,
+  )
   log.info({ jobCount: jobs.length, intervalHours }, 'Found cleanable PCC jobs')
 
   for (const job of jobs) {

@@ -1,42 +1,36 @@
 /**
  * PCC project row parser and hierarchy mapper.
  *
- * Transforms a raw Parquet row from the PCC Snowflake export into a
- * structured ParsedPccProject, applying the CDP hierarchy mapping rules.
+ * Transforms a group of raw Parquet rows (one per hierarchy level) for a single
+ * PCC leaf project into a structured ParsedPccProject, applying the CDP hierarchy
+ * mapping rules.
  *
- * Pure function — no DB access, no I/O. Fully unit-testable against
- * CDP__PCC Integration - proposal-for-migration.csv (project root).
+ * Pure function — no DB access, no I/O.
  *
- * Mapping rules (effective_depth = raw DEPTH - 1, stripping TLF root):
- *   Rule 1 (eff=1): group=D2, project=D2, subproject=D2
- *   Rule 2 (eff=2): group=D2, project=D3, subproject=D3
- *   Rule 3 (eff=3): group=D2, project=D3, subproject=D4
- *   Rule 4 (eff=4): group=D3, project=D4, subproject=D5  (drops D2 intermediate)
+ * Mapping rules (effective_depth = max HIERARCHY_LEVEL - 1, stripping TLF root):
+ *   Rule 1 (eff=1): group=level[1], project=level[1], subproject=level[1]
+ *   Rule 2 (eff=2): group=level[2], project=level[1], subproject=level[1]
+ *   Rule 3 (eff=3): group=level[3], project=level[2], subproject=level[1]
+ *   Rule 4 (eff=4): group=level[3], project=level[2], subproject=level[1]  (level[4] intermediate dropped)
  *
- * Depth > 4 (raw > 5): SCHEMA_MISMATCH — surfaced to pcc_projects_sync_errors.
+ * Effective depth > 4: SCHEMA_MISMATCH — surfaced to pcc_projects_sync_errors.
  */
+import { SegmentStatus } from '@crowd/types'
+
 import type { MappingRule, ParseResult, PccParquetRow } from './types'
 
 /**
- * PCC PROJECT_STATUS → CDP segmentsStatus_type enum.
- * CDP enum values: active | archived | formation | prospect
+ * PCC PROJECT_STATUS → CDP SegmentStatus enum.
  */
-const STATUS_MAP: Record<string, string> = {
-  Active: 'active',
-  Archived: 'archived',
-  'Formation - Disengaged': 'formation',
-  'Formation - Engaged': 'formation',
-  'Formation - Exploratory': 'formation',
-  'Formation - On Hold': 'formation',
-  Prospect: 'prospect',
+const STATUS_MAP: Record<string, SegmentStatus> = {
+  Active: SegmentStatus.ACTIVE,
+  Archived: SegmentStatus.ARCHIVED,
+  'Formation - Disengaged': SegmentStatus.FORMATION,
+  'Formation - Engaged': SegmentStatus.FORMATION,
+  'Formation - Exploratory': SegmentStatus.FORMATION,
+  'Formation - On Hold': SegmentStatus.FORMATION,
+  Prospect: SegmentStatus.PROSPECT,
 }
-
-/**
- * Intermediate PCC nodes that are transparent in the CDP hierarchy.
- * When D2 equals one of these, it is skipped and D1 ("The Linux Foundation")
- * is used as the CDP project group instead.
- */
-const TRANSPARENT_INTERMEDIATES = new Set(['LF Projects, LLC'])
 
 /**
  * Parquet serializes Snowflake NUMBER columns as fixed-width big-endian Buffers.
@@ -56,43 +50,66 @@ function parseParquetInt(value: unknown): number {
 }
 
 /**
- * Parse and validate a raw Parquet row from the PCC export.
- * Returns ok=false with SCHEMA_MISMATCH if the row is malformed or
- * has an unsupported depth (> 5 raw / > 4 effective).
+ * Parse and validate all raw Parquet rows for a single PCC leaf project.
+ *
+ * Each call receives all rows that share the same PROJECT_ID (one row per
+ * hierarchy level from the PROJECT_SPINE JOIN). Returns ok=false with
+ * SCHEMA_MISMATCH if the group is malformed or has an unsupported depth (> 4).
  */
-export function parsePccRow(raw: Record<string, unknown>): ParseResult {
-  const row = raw as Partial<PccParquetRow>
+export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
+  if (rawRows.length === 0) {
+    return {
+      ok: false,
+      errorType: 'SCHEMA_MISMATCH',
+      details: { reason: 'empty row group' },
+    }
+  }
 
-  const projectId = row.PROJECT_ID
-  const name = row.NAME
-  const depth = parseParquetInt(row.DEPTH)
+  // All rows share the same leaf-level fields — use the first row for them.
+  const firstRaw = rawRows[0] as Partial<PccParquetRow>
+  const projectId = firstRaw.PROJECT_ID
+  const name = firstRaw.NAME
 
-  if (!projectId || !name || !Number.isFinite(depth)) {
+  if (!projectId || !name) {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
       details: {
         reason: 'missing required fields',
-        missingFields: [
-          ...(!projectId ? ['PROJECT_ID'] : []),
-          ...(!name ? ['NAME'] : []),
-          ...(!Number.isFinite(depth) ? ['DEPTH'] : []),
-        ],
+        missingFields: [...(!projectId ? ['PROJECT_ID'] : []), ...(!name ? ['NAME'] : [])],
       },
     }
   }
 
-  const effectiveDepth = depth - 1
+  // Parse HIERARCHY_LEVEL for each row and sort ascending (level=1 is the leaf).
+  const levelRows = rawRows
+    .map((r) => {
+      const row = r as Partial<PccParquetRow>
+      return {
+        level: parseParquetInt(row.HIERARCHY_LEVEL),
+        name: (row.MAPPED_PROJECT_NAME ?? null) as string | null,
+        slug: (row.MAPPED_PROJECT_SLUG ?? null) as string | null,
+      }
+    })
+    .sort((a, b) => a.level - b.level)
 
-  if (effectiveDepth < 1 || effectiveDepth > 4) {
+  const maxLevel = levelRows[levelRows.length - 1].level
+  const effectiveDepth = maxLevel - 1
+  // Slug of the leaf project itself (hierarchy_level=1 row).
+  const leafSlug = levelRows[0]?.slug ?? null
+
+  if (!Number.isFinite(effectiveDepth) || effectiveDepth < 1 || effectiveDepth > 4) {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
       pccProjectId: String(projectId),
-      pccSlug: (row.SLUG ?? null) as string | null,
+      pccSlug: leafSlug,
       details: {
-        reason: effectiveDepth < 1 ? 'unexpected root node (depth=1)' : 'unsupported depth > 5',
-        rawDepth: depth,
+        reason:
+          effectiveDepth < 1
+            ? 'unexpected root node (maxHierarchyLevel≤1)'
+            : 'unsupported depth > 4',
+        maxLevel,
         effectiveDepth,
         projectId,
         name,
@@ -100,38 +117,37 @@ export function parsePccRow(raw: Record<string, unknown>): ParseResult {
     }
   }
 
-  const d1 = row.DEPTH_1 ?? null
-  const d2 = row.DEPTH_2 ?? null
-  const d3 = row.DEPTH_3 ?? null
-  const d4 = row.DEPTH_4 ?? null
-  const d5 = row.DEPTH_5 ?? null
+  // Build hierarchy_level → MAPPED_PROJECT_NAME lookup.
+  const nameAt: Record<number, string | null> = {}
+  for (const row of levelRows) {
+    nameAt[row.level] = row.name
+  }
 
-  const cdpTargetResult = buildCdpTarget(effectiveDepth as 1 | 2 | 3 | 4, name, d1, d2, d3, d4, d5)
+  const cdpTargetResult = buildCdpTarget(effectiveDepth as MappingRule, nameAt)
   if (cdpTargetResult.ok === false) {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
       pccProjectId: String(projectId),
-      pccSlug: (row.SLUG ?? null) as string | null,
-      details: { reason: cdpTargetResult.reason, rawDepth: depth, effectiveDepth, projectId, name },
+      pccSlug: leafSlug,
+      details: { reason: cdpTargetResult.reason, maxLevel, effectiveDepth, projectId, name },
     }
   }
 
-  const rawStatus = row.PROJECT_STATUS ?? null
-  const mappedStatus = rawStatus ? (STATUS_MAP[rawStatus] ?? null) : null
+  const rawStatus = firstRaw.PROJECT_STATUS ?? null
+  const mappedStatus = rawStatus ? (STATUS_MAP[String(rawStatus)] ?? null) : null
 
   return {
     ok: true,
     project: {
-      pccProjectId: projectId,
-      pccSlug: row.SLUG ?? null,
-      name,
+      pccProjectId: String(projectId),
+      pccSlug: leafSlug,
+      name: String(name),
       status: mappedStatus,
-      maturity: row.PROJECT_MATURITY_LEVEL ?? null,
-      description: row.DESCRIPTION ?? null,
-      logoUrl: row.PROJECT_LOGO ?? null,
-      repositoryUrl: row.REPOSITORY_URL ?? null,
-      segmentIdFromSnowflake: row.SEGMENT_ID ?? null,
+      maturity: (firstRaw.PROJECT_MATURITY_LEVEL ?? null) as string | null,
+      description: (firstRaw.DESCRIPTION ?? null) as string | null,
+      logoUrl: (firstRaw.PROJECT_LOGO ?? null) as string | null,
+      segmentIdFromSnowflake: (firstRaw.SEGMENT_ID ?? null) as string | null,
       effectiveDepth,
       mappingRule: effectiveDepth as MappingRule,
       cdpTarget: cdpTargetResult.target,
@@ -140,46 +156,45 @@ export function parsePccRow(raw: Record<string, unknown>): ParseResult {
 }
 
 function buildCdpTarget(
-  effectiveDepth: 1 | 2 | 3 | 4,
-  _leafName: string,
-  d1: string | null,
-  d2: string | null,
-  d3: string | null,
-  d4: string | null,
-  d5: string | null,
+  effectiveDepth: MappingRule,
+  nameAt: Record<number, string | null>,
 ):
   | { ok: true; target: { group: string; project: string; subproject: string } }
   | { ok: false; reason: string } {
-  // When D2 is a transparent intermediate (e.g. "LF Projects, LLC"), skip it
-  // and promote D1 ("The Linux Foundation") to be the CDP project group.
-  const d2IsTransparent = !!d2 && TRANSPARENT_INTERMEDIATES.has(d2)
-  const group2 = d2IsTransparent ? d1 : d2
-
   switch (effectiveDepth) {
-    case 1:
-      // D1=TLF (stripped), leaf=D2 → all three CDP levels are the same node.
-      // Apply transparency: if D2 is a transparent intermediate, promote D1 as the group.
-      if (!group2) return { ok: false, reason: 'missing DEPTH_2 for effective_depth=1' }
-      return { ok: true, target: { group: group2, project: group2, subproject: group2 } }
-
-    case 2:
-      // D1=TLF, D2=group (or transparent→D1), leaf=D3
-      if (!group2) return { ok: false, reason: 'missing DEPTH_2 for effective_depth=2' }
-      if (!d3) return { ok: false, reason: 'missing DEPTH_3 for effective_depth=2' }
-      return { ok: true, target: { group: group2, project: d3, subproject: d3 } }
-
-    case 3:
-      // D1=TLF, D2=group (or transparent→D1), D3=project, leaf=D4
-      if (!group2) return { ok: false, reason: 'missing DEPTH_2 for effective_depth=3' }
-      if (!d3) return { ok: false, reason: 'missing DEPTH_3 for effective_depth=3' }
-      if (!d4) return { ok: false, reason: 'missing DEPTH_4 for effective_depth=3' }
-      return { ok: true, target: { group: group2, project: d3, subproject: d4 } }
-
-    case 4:
-      // D1=TLF, D2=intermediate (always dropped at this depth), D3=group, D4=project, leaf=D5
-      if (!d3) return { ok: false, reason: 'missing DEPTH_3 for effective_depth=4' }
-      if (!d4) return { ok: false, reason: 'missing DEPTH_4 for effective_depth=4' }
-      if (!d5) return { ok: false, reason: 'missing DEPTH_5 for effective_depth=4' }
-      return { ok: true, target: { group: d3, project: d4, subproject: d5 } }
+    case 1: {
+      // TLF at level 2 (stripped), leaf at level 1 → all three CDP levels share the leaf.
+      const n1 = nameAt[1]
+      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
+      return { ok: true, target: { group: n1, project: n1, subproject: n1 } }
+    }
+    case 2: {
+      // TLF at level 3, group at level 2, leaf at level 1.
+      const n2 = nameAt[2]
+      const n1 = nameAt[1]
+      if (!n2) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=2' }
+      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
+      return { ok: true, target: { group: n2, project: n1, subproject: n1 } }
+    }
+    case 3: {
+      // TLF at level 4, group at level 3, project at level 2, leaf at level 1.
+      const n3 = nameAt[3]
+      const n2 = nameAt[2]
+      const n1 = nameAt[1]
+      if (!n3) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=3' }
+      if (!n2) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=2' }
+      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
+      return { ok: true, target: { group: n3, project: n2, subproject: n1 } }
+    }
+    case 4: {
+      // TLF at level 5, intermediate at level 4 (dropped), group at level 3, project at level 2, leaf at level 1.
+      const n3 = nameAt[3]
+      const n2 = nameAt[2]
+      const n1 = nameAt[1]
+      if (!n3) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=3' }
+      if (!n2) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=2' }
+      if (!n1) return { ok: false, reason: 'missing MAPPED_PROJECT_NAME at hierarchy_level=1' }
+      return { ok: true, target: { group: n3, project: n2, subproject: n1 } }
+    }
   }
 }

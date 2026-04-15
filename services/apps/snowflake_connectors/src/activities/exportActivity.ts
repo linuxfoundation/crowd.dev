@@ -26,7 +26,6 @@ export async function getDataSourceNamesForPlatform(platform: PlatformType): Pro
 
 const log = getServiceChildLogger('exportActivity')
 
-
 export async function executeExport(
   platform: PlatformType,
   sourceName: DataSourceName,
