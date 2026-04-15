@@ -1,0 +1,112 @@
+DESCRIPTION >
+    - `project_repo_insights.pipe` serves combined project and repository insights data.
+    - Returns the same metrics as `project_insights.pipe` but includes both project and repository records.
+    - Filtering by project IDs and repository URLs uses an OR condition to return both types.
+    - Parameters:
+    - `ids`: Optional array of project IDs to filter by
+    - `repoUrls`: Optional array of repository URLs to filter by
+    - `isLfx`: Optional integer (1 = LFX, 0 = non-LFX) to filter by LFX project status
+    - `orderByField`: Optional string specifying sort field, defaults to 'name'
+    - `orderByDirection`: Optional string ('asc' or 'desc'), defaults to 'asc'
+    - `pageSize`: Optional integer for result limit, defaults to 10
+    - `page`: Optional integer for pagination offset calculation, defaults to 0
+    - Response: Project and repository records with insights metrics
+
+TAGS "Insights, Widget", "Project", "Repository"
+
+NODE project_repo_insights_endpoint
+SQL >
+    %
+    SELECT
+        id,
+        type,
+        repoUrl,
+        name,
+        slug,
+        logoUrl,
+        isLF,
+        status,
+        contributorCount,
+        organizationCount,
+        softwareValue,
+        contributorDependencyCount,
+        contributorDependencyPercentage,
+        organizationDependencyCount,
+        organizationDependencyPercentage,
+        achievements,
+        healthScore,
+        contributorHealthScore,
+        popularityHealthScore,
+        developmentHealthScore,
+        securityHealthScore,
+        firstCommit,
+        starsLast365Days,
+        forksLast365Days,
+        activeContributorsLast365Days,
+        activeOrganizationsLast365Days,
+        starsPrevious365Days,
+        forksPrevious365Days,
+        activeContributorsPrevious365Days,
+        activeOrganizationsPrevious365Days
+    FROM project_insights_copy_ds
+    WHERE
+        1 = 1
+        {% if defined(ids) or defined(repoUrls) %}
+            AND (
+                1 = 0
+                {% if defined(ids) %}
+                    OR (
+                        type = 'project'
+                        AND id
+                        IN {{
+                            Array(
+                                ids,
+                                'String',
+                                description="Filter by project id list",
+                                required=False,
+                            )
+                        }}
+                    )
+                {% end %}
+                {% if defined(repoUrls) %}
+                    OR (
+                        type = 'repo'
+                        AND repoUrl
+                        IN {{
+                            Array(
+                                repoUrls,
+                                'String',
+                                description="Filter by repository URL list",
+                                required=False,
+                            )
+                        }}
+                    )
+                {% end %}
+            )
+        {% end %}
+        {% if defined(isLfx) %}
+            AND isLF
+            = {{
+                UInt8(
+                    isLfx, description="Filter by LFX project (1 = LFX, 0 = non-LFX)", required=False
+                )
+            }}
+        {% end %}
+    ORDER BY
+        {{ column(String(orderByField, "name", description="Order by field.", required=False)) }}
+        {% if String(
+            orderByDirection,
+            'asc',
+            description="Order by direction. ASC or DESC",
+            required=False,
+        ) == 'asc' or String(
+            orderByDirection,
+            'asc',
+            description="Order by direction. ASC or DESC",
+            required=False,
+        ) == 'ASC' %} ASC
+        {% else %} DESC
+        {% end %},
+        name ASC
+    LIMIT {{ Int32(pageSize, 10) }}
+    OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}

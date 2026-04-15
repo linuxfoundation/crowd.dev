@@ -58,47 +58,42 @@ SQL >
     WHERE snapshotId = (SELECT max(snapshotId) FROM leaderboards_copy_ds)
     GROUP BY slug
 
-NODE project_insights_copy_last_365_days_metrics
+NODE project_insights_copy_period_metrics
 DESCRIPTION >
-    Calculate metrics for last 365 days: stars, forks, active contributors, active organizations
+    Calculate metrics for last 365 days and previous 365 days in a single scan
 
 SQL >
     SELECT
         segmentId,
-        countIf(type = 'star') AS starsLast365Days,
-        countIf(type = 'fork') AS forksLast365Days,
-        uniq(CASE WHEN memberId != '' THEN memberId ELSE NULL END) AS activeContributorsLast365Days,
-        uniq(
-            CASE WHEN organizationId != '' THEN organizationId ELSE NULL END
-        ) AS activeOrganizationsLast365Days
-    FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE timestamp <= now()
-    GROUP BY segmentId
-
-NODE project_insights_copy_previous_365_days_metrics
-DESCRIPTION >
-    Calculate metrics for previous 365 days (365-730 days ago): stars, forks, active contributors, active organizations
-
-SQL >
-    SELECT
-        segmentId,
-        countIf(type = 'star') AS starsPrevious365Days,
-        countIf(type = 'fork') AS forksPrevious365Days,
-        uniq(CASE WHEN memberId != '' THEN memberId ELSE NULL END) AS activeContributorsPrevious365Days,
-        uniq(
-            CASE WHEN organizationId != '' THEN organizationId ELSE NULL END
+        countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
+        countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
+        uniqIf(
+            memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeContributorsLast365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsLast365Days,
+        countIf(type = 'star' AND timestamp < now() - INTERVAL 365 DAY) AS starsPrevious365Days,
+        countIf(type = 'fork' AND timestamp < now() - INTERVAL 365 DAY) AS forksPrevious365Days,
+        uniqIf(
+            memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeContributorsPrevious365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp < now() - INTERVAL 365 DAY
         ) AS activeOrganizationsPrevious365Days
     FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE timestamp < now() - INTERVAL 365 DAY
+    WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY segmentId
 
-NODE project_insights_copy_results
+NODE project_insights_copy_project_results
 DESCRIPTION >
     Join all project insights together
 
 SQL >
     SELECT
         base.id AS id,
+        'project' AS type,
+        '' AS repoUrl,
         base.name AS name,
         base.slug AS slug,
         base.logoUrl AS logoUrl,
@@ -118,19 +113,117 @@ SQL >
         dep.developmentPercentage AS developmentHealthScore,
         dep.securityPercentage AS securityHealthScore,
         base.firstCommit AS firstCommit,
-        l365.starsLast365Days AS starsLast365Days,
-        l365.forksLast365Days AS forksLast365Days,
-        l365.activeContributorsLast365Days AS activeContributorsLast365Days,
-        l365.activeOrganizationsLast365Days AS activeOrganizationsLast365Days,
-        p365.starsPrevious365Days AS starsPrevious365Days,
-        p365.forksPrevious365Days AS forksPrevious365Days,
-        p365.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
-        p365.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days
+        pm.starsLast365Days AS starsLast365Days,
+        pm.forksLast365Days AS forksLast365Days,
+        pm.activeContributorsLast365Days AS activeContributorsLast365Days,
+        pm.activeOrganizationsLast365Days AS activeOrganizationsLast365Days,
+        pm.starsPrevious365Days AS starsPrevious365Days,
+        pm.forksPrevious365Days AS forksPrevious365Days,
+        pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
+        pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days
     FROM project_insights_copy_base_projects AS base
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
-    LEFT JOIN project_insights_copy_last_365_days_metrics AS l365 USING (segmentId)
-    LEFT JOIN project_insights_copy_previous_365_days_metrics AS p365 USING (segmentId)
+    LEFT JOIN project_insights_copy_period_metrics AS pm USING (segmentId)
+
+NODE project_insights_copy_repo_base
+DESCRIPTION >
+    Returns base repository information with populated metrics from repositories_populated_ds, enriched with project data
+
+SQL >
+    SELECT
+        rp.id AS id,
+        rp.url AS repoUrl,
+        COALESCE(ip.name, '') AS name,
+        COALESCE(ip.slug, '') AS slug,
+        COALESCE(ip.logoUrl, '') AS logoUrl,
+        COALESCE(ip.isLF, toUInt8(0)) AS isLF,
+        if(r.archived = true, 'archived', 'active') AS status,
+        rp.contributorCount AS contributorCount,
+        rp.organizationCount AS organizationCount,
+        rp.softwareValue AS softwareValue,
+        rp.firstCommit AS firstCommit
+    FROM repositories_populated_ds AS rp
+    JOIN repositories r FINAL ON r.id = rp.id
+    LEFT JOIN insightsProjects ip FINAL ON r.insightsProjectId = ip.id
+
+NODE project_insights_copy_repo_period_metrics
+DESCRIPTION >
+    Calculate repository-level metrics for last 365 days and previous 365 days in a single scan
+
+SQL >
+    SELECT
+        channel,
+        countIf(type = 'star' AND timestamp >= now() - INTERVAL 365 DAY) AS starsLast365Days,
+        countIf(type = 'fork' AND timestamp >= now() - INTERVAL 365 DAY) AS forksLast365Days,
+        uniqIf(
+            memberId, memberId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeContributorsLast365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp >= now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsLast365Days,
+        countIf(type = 'star' AND timestamp < now() - INTERVAL 365 DAY) AS starsPrevious365Days,
+        countIf(type = 'fork' AND timestamp < now() - INTERVAL 365 DAY) AS forksPrevious365Days,
+        uniqIf(
+            memberId, memberId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeContributorsPrevious365Days,
+        uniqIf(
+            organizationId, organizationId != '' AND timestamp < now() - INTERVAL 365 DAY
+        ) AS activeOrganizationsPrevious365Days
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
+    GROUP BY channel
+
+NODE project_insights_copy_repo_results
+DESCRIPTION >
+    Join all repository insights together
+
+SQL >
+    SELECT
+        base.id AS id,
+        'repo' AS type,
+        base.repoUrl AS repoUrl,
+        base.name AS name,
+        base.slug AS slug,
+        base.logoUrl AS logoUrl,
+        base.isLF AS isLF,
+        base.status AS status,
+        base.contributorCount AS contributorCount,
+        base.organizationCount AS organizationCount,
+        base.softwareValue AS softwareValue,
+        COALESCE(hs.contributorDependencyCount, 0) AS contributorDependencyCount,
+        COALESCE(hs.contributorDependencyPercentage, 0) AS contributorDependencyPercentage,
+        COALESCE(hs.organizationDependencyCount, 0) AS organizationDependencyCount,
+        COALESCE(hs.organizationDependencyPercentage, 0) AS organizationDependencyPercentage,
+        CAST([] AS Array(Tuple(String, UInt64, UInt64))) AS achievements,
+        hs.overallScore AS healthScore,
+        hs.contributorPercentage AS contributorHealthScore,
+        hs.popularityPercentage AS popularityHealthScore,
+        hs.developmentPercentage AS developmentHealthScore,
+        hs.securityPercentage AS securityHealthScore,
+        base.firstCommit AS firstCommit,
+        COALESCE(rm.starsLast365Days, 0) AS starsLast365Days,
+        COALESCE(rm.forksLast365Days, 0) AS forksLast365Days,
+        COALESCE(rm.activeContributorsLast365Days, 0) AS activeContributorsLast365Days,
+        COALESCE(rm.activeOrganizationsLast365Days, 0) AS activeOrganizationsLast365Days,
+        COALESCE(rm.starsPrevious365Days, 0) AS starsPrevious365Days,
+        COALESCE(rm.forksPrevious365Days, 0) AS forksPrevious365Days,
+        COALESCE(rm.activeContributorsPrevious365Days, 0) AS activeContributorsPrevious365Days,
+        COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days
+    FROM project_insights_copy_repo_base AS base
+    LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
+    LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
+
+NODE project_insights_copy_results
+DESCRIPTION >
+    Union of project and repository insights
+
+SQL >
+    SELECT *
+    FROM project_insights_copy_project_results
+    UNION ALL
+    SELECT *
+    FROM project_insights_copy_repo_results
 
 TYPE COPY
 TARGET_DATASOURCE project_insights_copy_ds

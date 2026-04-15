@@ -13,6 +13,7 @@ from crowdgit.errors import (
     InternalError,
     ParentRepoInvalidError,
     ReOnboardingRequiredError,
+    RepoAuthRequiredError,
     StuckRepoError,
 )
 
@@ -268,6 +269,9 @@ class RepositoryWorker:
         except ParentRepoInvalidError as e:
             logger.error(f"Parent repo validation failed: {repr(e)}")
             processing_state = RepositoryState.REQUIRES_PARENT
+        except RepoAuthRequiredError as e:
+            logger.error(f"Repository requires authentication: {repr(e)}")
+            processing_state = RepositoryState.AUTH_REQUIRED
         except Exception as e:
             logger.error(f"Processing failed with error: {repr(e)}")
             processing_state = RepositoryState.FAILED

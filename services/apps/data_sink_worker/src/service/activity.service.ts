@@ -266,13 +266,25 @@ export default class ActivityService extends LoggerBase {
     const results = new Map<string, { success: boolean; err?: Error }>()
 
     for (const { resultId, activity, platform } of data) {
+      // Guard against results whose data.data is missing or not an activity object.
+      // Without the !activity check, accessing activity.username throws a TypeError that
+      // propagates out of prepareMemberData and crashes the entire batch, marking all other
+      // results in the batch with the same error even though they are valid.
+      if (!activity) {
+        this.log.error({ platform }, 'Activity data is missing.')
+        results.set(resultId, {
+          success: false,
+          err: new UnrepeatableError('Activity data is missing.'),
+        })
+        continue
+      }
+
       if (!activity.username && !activity.member) {
         this.log.error({ platform, activity }, 'Activity does not have a username or member.')
         results.set(resultId, {
           success: false,
           err: new UnrepeatableError('Activity does not have a username or member.'),
         })
-
         continue
       }
 

@@ -1,0 +1,133 @@
+DESCRIPTION >
+    - Calculates repository-level contributor retention health score.
+    - Returns retention rate (percentage of previous quarter contributors active in current quarter) and benchmark (0-5).
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `endDate`: Optional DateTime filter to define the quarter boundary
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_retention_current_quarter
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, groupUniqArray(memberId) AS currentQuarterMembers
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            {% if defined(endDate) %}
+                AND timestamp >= toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 1 QUARTER
+                )
+                AND timestamp < toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                )
+            {% else %}
+                AND timestamp >= toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+                AND timestamp < toStartOfQuarter(now())
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, groupUniqArray(memberId) AS currentQuarterMembers
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+            AND timestamp < toStartOfQuarter(now())
+        GROUP BY channel
+    {% end %}
+
+NODE repo_health_score_retention_previous_quarter
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, groupUniqArray(memberId) AS previousQuarterMembers
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            {% if defined(endDate) %}
+                AND timestamp >= toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 2 QUARTER
+                )
+                AND timestamp < toStartOfQuarter(
+                    parseDateTimeBestEffort(
+                        {{ DateTime(endDate, description="Filter before date", required=False) }}
+                    )
+                    - INTERVAL 1 QUARTER
+                )
+            {% else %}
+                AND timestamp >= toStartOfQuarter(now() - INTERVAL 2 QUARTER)
+                AND timestamp < toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, groupUniqArray(memberId) AS previousQuarterMembers
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfQuarter(now() - INTERVAL 2 QUARTER)
+            AND timestamp < toStartOfQuarter(now() - INTERVAL 1 QUARTER)
+        GROUP BY channel
+    {% end %}
+
+NODE health_score_retention_counts
+SQL >
+    %
+    SELECT
+        cur.channel AS channel,
+        if(
+            length(coalesce(prev.previousQuarterMembers, [])) > 0,
+            round(
+                100 * length(
+                    arrayIntersect(
+                        coalesce(cur.currentQuarterMembers, []),
+                        coalesce(prev.previousQuarterMembers, [])
+                    )
+                )
+                / length(coalesce(prev.previousQuarterMembers, []))
+            ),
+            0
+        ) AS retentionRate
+    FROM repo_health_score_retention_current_quarter AS cur
+    LEFT JOIN repo_health_score_retention_previous_quarter AS prev USING (channel)
+
+NODE health_score_retention_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        retentionRate,
+        CASE
+            WHEN retentionRate BETWEEN 0 AND 2
+            THEN 0
+            WHEN retentionRate BETWEEN 3 AND 5
+            THEN 1
+            WHEN retentionRate BETWEEN 6 AND 9
+            THEN 2
+            WHEN retentionRate BETWEEN 10 AND 14
+            THEN 3
+            WHEN retentionRate BETWEEN 15 AND 19
+            THEN 4
+            WHEN retentionRate >= 20
+            THEN 5
+            ELSE 0
+        END AS retentionBenchmark
+    FROM health_score_retention_counts

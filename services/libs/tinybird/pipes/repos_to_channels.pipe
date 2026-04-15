@@ -6,7 +6,7 @@ DESCRIPTION >
     - Parameters:
     - `repos`: Optional array of repository URLs to expand. If not provided, defaults to all enabled repositories.
     - `excluded`: Optional boolean. When true, expands excluded repositories instead of enabled ones. Used to build exclusion filters.
-    - Response: `channel` - all possible channel URL formats for the given repos
+    - Response: `channel` - all possible channel URL formats for the given repos; `segmentId` - segment the repo belongs to (empty string when repos param is provided)
 
 TAGS "Repository URLs", "Gerrit"
 
@@ -20,13 +20,15 @@ SQL >
         SELECT
             arrayJoin(
                 {{ Array(repos, 'String', description="Repository URLs to expand", required=False) }}
-            ) AS url
+            ) AS url,
+            '' AS segmentId
     {% else %}
-        SELECT url
-        FROM repositories FINAL
+        SELECT r.url AS url, r.segmentId AS segmentId
+        FROM repositories r FINAL
+        INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
         WHERE
-            isNull (deletedAt) AND enabled = true
-            {% if defined(excluded) and excluded %} AND excluded = true
+            isNull (r.deletedAt) AND r.enabled = true AND isNull (i.deletedAt)
+            {% if defined(excluded) and excluded %} AND r.excluded = true
             {% end %}
     {% end %}
 
@@ -35,10 +37,16 @@ DESCRIPTION >
     Identify Gerrit repositories by joining with integrations table
 
 SQL >
-    SELECT r.url
+    SELECT r.url AS url, r.segmentId AS segmentId
     FROM repositories r FINAL
     JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    WHERE i.platform = 'gerrit' AND isNull (r.deletedAt) AND r.url IN (SELECT url FROM repos_to_expand)
+    INNER JOIN insightsProjects p FINAL ON r.insightsProjectId = p.id
+    WHERE
+        i.platform = 'gerrit'
+        AND isNull (r.deletedAt)
+        AND r.enabled = true
+        AND isNull (p.deletedAt)
+        AND r.url IN (SELECT url FROM repos_to_expand)
 
 NODE expanded_urls
 DESCRIPTION >
@@ -46,7 +54,7 @@ DESCRIPTION >
 
 SQL >
     -- Original URLs (all repos)
-    SELECT url AS channel
+    SELECT url AS channel, segmentId
     FROM repos_to_expand
     UNION ALL
     -- Gerrit channel variants: insert q/project: after the base path
@@ -67,7 +75,8 @@ SQL >
                     '/q/project:',
                     if(path(url) = '/', '', substring(path(url), 2))
                 )
-        END AS channel
+        END AS channel,
+        segmentId
     FROM gerrit_repos
 
 NODE channels_deduplicated
@@ -75,4 +84,4 @@ DESCRIPTION >
     Final deduplicated list of all possible channel URLs
 
 SQL >
-    SELECT DISTINCT channel FROM expanded_urls
+    SELECT DISTINCT channel, segmentId FROM expanded_urls
