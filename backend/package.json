@@ -8,9 +8,7 @@
     "start:job-generator": "SERVICE=job-generator TS_NODE_TRANSPILE_ONLY=true tsx src/bin/job-generator.ts",
     "start:job-generator:dev": "nodemon --watch \"src/**/*.ts\" --watch ../services/libs -e ts,json --exec \"pnpm run start:job-generator\"",
     "start:job-generator:dev:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run start:job-generator:dev",
-    "start:discord-ws": "SERVICE=discord-ws TS_NODE_TRANSPILE_ONLY=true tsx src/bin/discord-ws.ts",
-    "start:discord-ws:dev": "nodemon --watch \"src/**/*.ts\" --watch ../services/libs -e ts,json --exec \"pnpm run start:discord-ws\"",
-    "start:discord-ws:dev:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run start:discord-ws:dev",
+
     "build": "tsc && cp package*json dist/ && cp .sequelizerc dist/.sequelizerc ",
     "test": "../scripts/cli scaffold up-test && jest --clearCache && set -a && . ./.env.dist.local && . ./.env.test && set +a && NODE_ENV=test SERVICE=test jest --runInBand --verbose --forceExit",
     "sequelize-cli:source": "pnpm run build && npx sequelize --config src/database/sequelize-cli-config.ts --migrations-source-path src/database/migrations",
@@ -95,7 +93,7 @@
     "crowd-sentiment": "^1.1.7",
     "crypto-js": "^4.1.1",
     "csv-parse": "^5.5.6",
-    "discord.js": "^14.7.1",
+
     "dotenv": "8.2.0",
     "dotenv-expand": "^8.0.3",
     "emoji-dictionary": "^1.0.11",
