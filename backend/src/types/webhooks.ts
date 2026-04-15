@@ -13,7 +13,6 @@ export enum WebhookType {
   GROUPSIO = 'GROUPSIO',
 }
 
-
 export interface GithubWebhookPayload {
   signature: string
   event: string

@@ -28,7 +28,6 @@ export interface TwitterReachMessage extends IntegrationsMessage {
   }
 }
 
-
 export interface SlackIntegrationMessage extends IntegrationsMessage {
   args: {
     channels?: any

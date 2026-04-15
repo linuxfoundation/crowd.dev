@@ -22,7 +22,6 @@ export interface TwitterOutput extends BaseOutput {
 
 export interface TwitterReachOutput extends BaseOutput {}
 
-
 export interface SlackOutput extends BaseOutput {
   channels: any[]
   users: Object
