@@ -373,7 +373,7 @@ async function upsertSegment(
   await db.none(
     `UPDATE segments
      SET name        = $(name),
-         status      = $(status)::"segmentsStatus_type",
+         status      = COALESCE($(status)::"segmentsStatus_type", status),
          maturity    = $(maturity),
          description = $(description),
          "updatedAt" = NOW()
@@ -381,7 +381,7 @@ async function upsertSegment(
     {
       sourceId,
       name: project.name,
-      status: project.status ?? 'active',
+      status: project.status,
       maturity: project.maturity,
       description: project.description,
       tenantId: DEFAULT_TENANT_ID,
