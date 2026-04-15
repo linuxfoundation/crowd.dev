@@ -70,7 +70,7 @@ format_files_in_folder() {
       fi
 
       if [ "$SEQUENTIAL" = true ]; then
-        tb fmt --yes "$file"
+        tb
       else
         tb fmt --yes "$file" &
       fi

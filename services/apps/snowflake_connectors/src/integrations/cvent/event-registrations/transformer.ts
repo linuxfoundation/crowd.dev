@@ -2,10 +2,8 @@ import { CVENT_GRID, CventActivityType } from '@crowd/integrations'
 import { getServiceChildLogger } from '@crowd/logging'
 import {
   IActivityData,
-  IMemberData,
   IOrganizationIdentity,
   MemberAttributeName,
-  MemberIdentityType,
   OrganizationIdentityType,
   OrganizationSource,
   PlatformType,
@@ -34,55 +32,19 @@ export class CventTransformer extends TransformerBase {
     }
 
     const registrationId = (row.REGISTRATION_ID as string)?.trim()
+    const sourceId = (row.USER_ID as string | null) || undefined
 
     const displayName =
       fullName ||
       (firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName) ||
       userName
 
-    const identities: IMemberData['identities'] = []
-    const sourceId = (row.USER_ID as string | null) || undefined
-
-    if (userName) {
-      identities.push(
-        {
-          platform: PlatformType.CVENT,
-          value: email,
-          type: MemberIdentityType.EMAIL,
-          verified: true,
-          verifiedBy: PlatformType.CVENT,
-          sourceId,
-        },
-        {
-          platform: PlatformType.CVENT,
-          value: userName,
-          type: MemberIdentityType.USERNAME,
-          verified: true,
-          verifiedBy: PlatformType.CVENT,
-          sourceId,
-        },
-      )
-    } else {
-      identities.push({
-        platform: PlatformType.CVENT,
-        value: email,
-        type: MemberIdentityType.USERNAME,
-        verified: true,
-        verifiedBy: PlatformType.CVENT,
-        sourceId,
-      })
-    }
-
-    if (lfUsername) {
-      identities.push({
-        platform: PlatformType.LFID,
-        value: lfUsername,
-        type: MemberIdentityType.USERNAME,
-        verified: true,
-        verifiedBy: PlatformType.CVENT,
-        sourceId,
-      })
-    }
+    const identities = this.buildMemberIdentities({
+      email,
+      sourceId,
+      platformUsername: userName,
+      lfUsername,
+    })
 
     const type =
       row.USER_ATTENDED === true

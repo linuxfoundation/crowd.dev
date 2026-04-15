@@ -28,8 +28,9 @@ SQL >
         GROUP BY segmentId
     {% end %}
 
-NODE health_score_stars_with_benchmark
+NODE health_score_stars_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         stars,

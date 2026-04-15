@@ -18,7 +18,7 @@ SQL >
             any (arrayElement(v.cveIds, 1)) as cveId,
             any (v.packageName) as packageName,
             any (v.severity) as severity,
-            any (v.summary) as description,
+            coalesce(any (v.summary), any (v.details)) as description,
             any (v.packageEcosystem) as ecosystem,
             any (v.publishedAt) as publishedAt,
             any (v.status) as status,
