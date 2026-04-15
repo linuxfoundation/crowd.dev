@@ -37,12 +37,13 @@
  *   CROWD_TEMPORAL_NAMESPACE   - Temporal namespace
  *   SERVICE                    - Service identifier (used by Temporal client)
  */
+import { WorkflowIdReusePolicy } from '@temporalio/client'
+
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
-import { WorkflowIdReusePolicy } from '@temporalio/client'
 
 const ENRICHMENT_SOURCES = ['enrichment-progai', 'enrichment-clearbit', 'enrichment-crustdata']
 
@@ -181,13 +182,15 @@ async function main() {
   let totalFailed = 0
   let totalProcessed = 0
 
-  while (true) {
+  let hasMore = true
+  while (hasMore) {
     pageNum++
 
     const remaining = opts.limit !== null ? opts.limit - totalProcessed : opts.pageSize
     if (remaining <= 0) {
       log.info(`Limit of ${opts.limit} members reached.`)
-      break
+      hasMore = false
+      continue
     }
 
     const fetchSize = Math.min(opts.pageSize, remaining)
@@ -195,7 +198,8 @@ async function main() {
 
     if (membersPage.length === 0) {
       log.info('No more members to process.')
-      break
+      hasMore = false
+      continue
     }
 
     const lastMemberId = membersPage[membersPage.length - 1].memberId
@@ -238,7 +242,7 @@ async function main() {
 
     if (membersPage.length < fetchSize) {
       // Last page (fewer results than requested means no more data)
-      break
+      hasMore = false
     }
 
     if (opts.pageDelayMs > 0) {
