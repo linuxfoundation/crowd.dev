@@ -1,7 +1,7 @@
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
-import { MetadataStore, S3Service } from '@crowd/snowflake'
+import { MetadataStore, S3Service, buildPlatformFilter } from '@crowd/snowflake'
 
 const log = getServiceChildLogger('cleanupActivity')
 
@@ -12,7 +12,7 @@ export async function executeCleanup(intervalHours = 24): Promise<void> {
   const metadataStore = new MetadataStore(db)
   const s3Service = new S3Service()
 
-  const jobs = await metadataStore.getCleanableJobS3Paths(intervalHours, PLATFORM, false)
+  const jobs = await metadataStore.getCleanableJobS3Paths(intervalHours, buildPlatformFilter([PLATFORM]), false)
   log.info({ jobCount: jobs.length, intervalHours }, 'Found cleanable PCC jobs')
 
   for (const job of jobs) {

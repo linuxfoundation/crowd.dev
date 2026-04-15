@@ -9,7 +9,7 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { QUEUE_CONFIG, QueueFactory } from '@crowd/queue'
 import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
-import { MetadataStore, S3Service, SnowflakeExportJob } from '@crowd/snowflake'
+import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 import { PlatformType } from '@crowd/types'
 
 import { IntegrationResolver } from '../core/integrationResolver'
@@ -40,7 +40,7 @@ export class TransformerConsumer {
 
     while (this.running) {
       try {
-        const job = await this.metadataStore.claimOldestPendingJob(undefined, this.enabledPlatforms)
+        const job = await this.metadataStore.claimOldestPendingJob(buildPlatformFilter(this.enabledPlatforms))
         log.info('Claiming job from metadata store', { job })
 
         if (job) {

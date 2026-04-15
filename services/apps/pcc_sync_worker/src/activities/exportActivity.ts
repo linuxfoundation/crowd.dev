@@ -8,7 +8,7 @@
  */
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
-import { MetadataStore, SnowflakeExporter } from '@crowd/snowflake'
+import { MetadataStore, SnowflakeExporter, buildS3FilenamePrefix } from '@crowd/snowflake'
 
 const log = getServiceChildLogger('exportActivity')
 
@@ -51,18 +51,6 @@ function buildSourceQuery(): string {
   `
 }
 
-function buildS3FilenamePrefix(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const s3BucketPath = process.env.CROWD_SNOWFLAKE_S3_BUCKET_PATH
-  if (!s3BucketPath) {
-    throw new Error('Missing required env var CROWD_SNOWFLAKE_S3_BUCKET_PATH')
-  }
-  return `${s3BucketPath}/${PLATFORM}/${SOURCE_NAME}/${year}/${month}/${day}`
-}
-
 export async function executeExport(): Promise<void> {
   log.info({ platform: PLATFORM, sourceName: SOURCE_NAME }, 'Starting PCC export')
 
@@ -72,7 +60,7 @@ export async function executeExport(): Promise<void> {
   try {
     const metadataStore = new MetadataStore(db)
     const sourceQuery = buildSourceQuery()
-    const s3FilenamePrefix = buildS3FilenamePrefix()
+    const s3FilenamePrefix = buildS3FilenamePrefix(PLATFORM, SOURCE_NAME)
     const exportStartedAt = new Date()
 
     const onBatchComplete = async (s3Path: string, totalRows: number, totalBytes: number) => {

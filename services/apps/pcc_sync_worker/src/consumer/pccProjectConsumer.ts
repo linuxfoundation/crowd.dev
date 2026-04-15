@@ -9,7 +9,7 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
-import { MetadataStore, S3Service, SnowflakeExportJob } from '@crowd/snowflake'
+import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 
 import { parsePccRow } from '../parser'
 import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
@@ -43,7 +43,7 @@ export class PccProjectConsumer {
 
     while (this.running) {
       try {
-        const job = await this.metadataStore.claimOldestPendingJob(PLATFORM)
+        const job = await this.metadataStore.claimOldestPendingJob(buildPlatformFilter([PLATFORM]))
 
         if (job) {
           this.currentPollingIntervalMs = this.pollingIntervalMs

@@ -6,7 +6,7 @@
  */
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
-import { MetadataStore, SnowflakeExporter } from '@crowd/snowflake'
+import { MetadataStore, SnowflakeExporter, buildS3FilenamePrefix } from '@crowd/snowflake'
 import { PlatformType } from '@crowd/types'
 
 import {
@@ -26,17 +26,6 @@ export async function getDataSourceNamesForPlatform(platform: PlatformType): Pro
 
 const log = getServiceChildLogger('exportActivity')
 
-function buildS3FilenamePrefix(platform: string, sourceName: string): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  const s3BucketPath = process.env.CROWD_SNOWFLAKE_S3_BUCKET_PATH
-  if (!s3BucketPath) {
-    throw new Error('Missing required env var CROWD_SNOWFLAKE_S3_BUCKET_PATH')
-  }
-  return `${s3BucketPath}/${platform}/${sourceName}/${year}/${month}/${day}`
-}
 
 export async function executeExport(
   platform: PlatformType,

@@ -31,6 +31,27 @@ export interface SnowflakeExportJob {
   metrics: JobMetrics | null
 }
 
+export interface PlatformFilter {
+  clause: string
+  params: Record<string, unknown>
+}
+
+/**
+ * Build a SQL platform filter for use in metadataStore queries.
+ *
+ * An empty array returns `AND FALSE` (matches nothing), preventing
+ * accidental full-table scans when no platforms are configured.
+ */
+export function buildPlatformFilter(platforms: string[]): PlatformFilter {
+  if (platforms.length === 0) {
+    return { clause: 'AND FALSE', params: {} }
+  }
+  return {
+    clause: 'AND platform = ANY($(platforms)::text[])',
+    params: { platforms },
+  }
+}
+
 export class MetadataStore {
   constructor(private readonly db: DbConnection) {}
 
@@ -62,19 +83,9 @@ export class MetadataStore {
    * Atomically claim the oldest pending job by setting processingStartedAt.
    * Uses FOR UPDATE SKIP LOCKED so concurrent consumers never pick the same row.
    */
-  async claimOldestPendingJob(
-    platform?: string,
-    platforms?: string[],
-  ): Promise<SnowflakeExportJob | null> {
-    let platformFilter = ''
-    let params: Record<string, unknown> = {}
-    if (platform) {
-      platformFilter = 'AND platform = $(platform)'
-      params = { platform }
-    } else if (platforms && platforms.length > 0) {
-      platformFilter = 'AND platform = ANY($(platforms)::text[])'
-      params = { platforms }
-    }
+  async claimOldestPendingJob(filter?: PlatformFilter): Promise<SnowflakeExportJob | null> {
+    const platformFilter = filter?.clause ?? ''
+    const params: Record<string, unknown> = filter?.params ?? {}
     const row = await this.db.oneOrNone<{
       id: number
       platform: string
@@ -108,21 +119,11 @@ export class MetadataStore {
 
   async getCleanableJobS3Paths(
     intervalHours = 24,
-    platform?: string,
+    filter?: PlatformFilter,
     requireZeroSkipped = true,
-    platforms?: string[],
   ): Promise<{ id: number; s3Path: string }[]> {
-    let platformFilter = ''
-    const params: { intervalHours: number; platform?: string; platforms?: string[] } = {
-      intervalHours,
-    }
-    if (platform) {
-      platformFilter = 'AND platform = $(platform)'
-      params.platform = platform
-    } else if (platforms && platforms.length > 0) {
-      platformFilter = 'AND platform = ANY($(platforms)::text[])'
-      params.platforms = platforms
-    }
+    const platformFilter = filter?.clause ?? ''
+    const params: Record<string, unknown> = { intervalHours, ...filter?.params }
     const skippedFilter = requireZeroSkipped
       ? `AND metrics ? 'skippedCount' AND (metrics->>'skippedCount')::int = 0`
       : ''
