@@ -98,7 +98,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   // Slug of the leaf project itself (hierarchy_level=1 row).
   const leafSlug = levelRows[0]?.slug ?? null
 
-  if (!Number.isFinite(effectiveDepth) || effectiveDepth < 1 || effectiveDepth > 4) {
+  if (!Number.isFinite(effectiveDepth) || !Number.isInteger(effectiveDepth) || effectiveDepth < 1 || effectiveDepth > 4) {
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
