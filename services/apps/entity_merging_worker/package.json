@@ -1,5 +1,6 @@
 {
   "name": "@crowd/entity-merging-worker",
+  "private": true,
   "scripts": {
     "start": "CROWD_TEMPORAL_TASKQUEUE=entity-merging SERVICE=entity-merging-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=entity-merging SERVICE=entity-merging-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
