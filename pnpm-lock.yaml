@@ -153,12 +153,6 @@ importers:
       '@slack/web-api':
         specifier: ^6.7.2
         version: 6.12.0
-      '@superfaceai/one-sdk':
-        specifier: ^1.3.0
-        version: 1.5.2(encoding@0.1.13)
-      '@superfaceai/passport-twitter-oauth2':
-        specifier: ^1.0.0
-        version: 1.2.4
       analytics-node:
         specifier: ^6.2.0
         version: 6.2.0
@@ -4984,18 +4978,6 @@ packages:
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
-  '@superfaceai/ast@1.2.0':
-    resolution: {integrity: sha512-HMmdSUNzKuVgQ9g9YS/eiv3/CitSZks8eury8sAi2QbwT+n5f9SsVcmHxL2/QbkRCmlPpRqHJ6YSCqvBZ2fu1g==}
-
-  '@superfaceai/one-sdk@1.5.2':
-    resolution: {integrity: sha512-8dWrcktQBrUb3Y8M6MtbCW+0a70tbSnv7+/Oh4fKIxqdvKRTfFjJ3Bv/1LsPxLHlah0pta+cA5ZTXCBkIP6iTA==}
-
-  '@superfaceai/parser@1.2.0':
-    resolution: {integrity: sha512-8nQ4x15F8mygKg4BcWwzqgDVTaY5BXanvCcxirL/jKLgpGUxH+808t0KmVc2Ke9o2MdiYt/2UD2hyfpwwqN9DA==}
-
-  '@superfaceai/passport-twitter-oauth2@1.2.4':
-    resolution: {integrity: sha512-f2P4X1HqBHJuAnQefINpgJvMGLHx+nT9APbfJzN/CCBcazvP9NOD9IiENHMZMXEgfcHU40V3KwKiIZTBH5Q4Wg==}
-
   '@swc/core-darwin-arm64@1.4.17':
     resolution: {integrity: sha512-HVl+W4LezoqHBAYg2JCqR+s9ife9yPfgWSj37iIawLWzOmuuJ7jVdIB7Ee2B75bEisSEKyxRlTl6Y1Oq3owBgw==}
     engines: {node: '>=10'}
@@ -5239,15 +5221,6 @@ packages:
 
   '@types/node@22.19.10':
     resolution: {integrity: sha512-tF5VOugLS/EuDlTBijk0MqABfP8UxgYazTLo3uIn3b4yJgg26QRbVYJYsDtHrjdDUIRfP70+VfhTTc+CE1yskw==}
-
-  '@types/oauth@0.9.4':
-    resolution: {integrity: sha512-qk9orhti499fq5XxKCCEbd0OzdPZuancneyse3KtR+vgMiHRbh+mn8M4G6t64ob/Fg+GZGpa565MF/2dKWY32A==}
-
-  '@types/passport-oauth2@1.4.15':
-    resolution: {integrity: sha512-9cUTP/HStNSZmhxXGuRrBJfEWzIEJRub2eyJu3CvkA+8HAMc9W3aKdFhVq+Qz1hi42qn+GvSAnz3zwacDSYWpw==}
-
-  '@types/passport@1.0.16':
-    resolution: {integrity: sha512-FD0qD5hbPWQzaM0wHUnJ/T0BBCJBxCeemtnCwc/ThhTg3x9jfrAcRUmj5Dopza+MfFS9acTe3wk7rcVnRIp/0A==}
 
   '@types/q@1.5.8':
     resolution: {integrity: sha512-hroOstUScF6zhIi+5+x0dzqrHA1EJi+Irri6b1fxolMTqqHIV/Cg77EtnQcZqZCu8hR3mX2BzIxN4/GzI68Kfw==}
@@ -6325,9 +6298,6 @@ packages:
     resolution: {integrity: sha512-KZP/bMEOJEDCkDQAyRhu3RL2ZO/SUVrxQVI0G3YEQ+OLbRA3c6zgixe8Mq8a/z7+HKlNEjo8oiLUs8iRijY2Rw==}
     engines: {node: '>=10.14', npm: '>=6', yarn: '>=1'}
     hasBin: true
-
-  cross-fetch@3.1.8:
-    resolution: {integrity: sha512-cvA+JwZoU0Xq+h6WkMvAUqPEYy92Obet6UdKLfW60qn99ftItKjB5T+BkyWOFWe2pUyfQ+IJHmpOTznqk1M6Kg==}
 
   cross-spawn@5.1.0:
     resolution: {integrity: sha512-pTgQJ5KC0d2hcY8eyL1IzlBPYjTkyH72XRZPnLyKus2mBfNjQs3klqbJU2VILqZryAZUt9JOb3h/mWMy23/f5A==}
@@ -7914,9 +7884,6 @@ packages:
   isexe@3.1.1:
     resolution: {integrity: sha512-LpB/54B+/2J5hqQ7imZHfdU31OlgQqx7ZicVlkm9kzg9/w8GKLEcFfJl/t7DCEDueOyBAD6zCCwTO6Fzs0NoEQ==}
     engines: {node: '>=16'}
-
-  isomorphic-form-data@2.0.0:
-    resolution: {integrity: sha512-TYgVnXWeESVmQSg4GLVbalmQ+B4NPi/H4eWxqALKj63KsUrcu301YDjBqaOw3h+cbak7Na4Xyps3BiptHtxTfg==}
 
   isomorphic-ws@4.0.1:
     resolution: {integrity: sha512-BhBvN2MBpWTaSHdWRb/bwdZJ1WaehQ2L1KngkCkfLUGF0mAWAT1sQUQacEmQ0jXkFw/czDXPNQSL5u2/Krsz1w==}
@@ -10259,11 +10226,6 @@ packages:
   typedarray@0.0.6:
     resolution: {integrity: sha512-/aCDEGatGvZ2BIk+HmLf4ifCJFwvKFNb9/JeZPMulfgFracn9QFcAf5GO8B/mweUjSoblS5In0cWhqpfs/5PQA==}
 
-  typescript@4.9.5:
-    resolution: {integrity: sha512-1FXk9E2Hm+QzZQ7z+McJiHL4NW1F2EzMu9Nq9i3zAaGqibafqYwCVU6WyWAuyQRRzOlxou8xZSyXLEN8oKj24g==}
-    engines: {node: '>=4.2.0'}
-    hasBin: true
-
   typescript@5.6.3:
     resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
     engines: {node: '>=14.17'}
@@ -10488,12 +10450,6 @@ packages:
         optional: true
       jsdom:
         optional: true
-
-  vm2@3.9.19:
-    resolution: {integrity: sha512-J637XF0DHDMV57R6JyVsTak7nIL8gy5KH4r1HiwWLf/4GBbb5MKL5y7LpmF4A8E2nR6XmzpmMFQ7V7ppPTmUQg==}
-    engines: {node: '>=6.0'}
-    deprecated: The library contains critical security issues and should not be used for production! The maintenance of the project has been discontinued. Consider migrating your code to isolated-vm.
-    hasBin: true
 
   watchpack@2.4.4:
     resolution: {integrity: sha512-c5EGNOiyxxV5qmTtAB7rbiXxi1ooX1pQKMLX/MIabJjRA0SJBQOjKF+KSVfHkr9U1cADPon0mRiVe/riyaiDUA==}
@@ -14746,40 +14702,6 @@ snapshots:
 
   '@socket.io/component-emitter@3.1.2': {}
 
-  '@superfaceai/ast@1.2.0':
-    dependencies:
-      ajv: 8.12.0
-      ajv-formats: 2.1.1(ajv@8.12.0)
-
-  '@superfaceai/one-sdk@1.5.2(encoding@0.1.13)':
-    dependencies:
-      '@superfaceai/ast': 1.2.0
-      '@superfaceai/parser': 1.2.0
-      abort-controller: 3.0.0
-      cross-fetch: 3.1.8(encoding@0.1.13)
-      debug: 4.3.4
-      isomorphic-form-data: 2.0.0
-      vm2: 3.9.19
-    transitivePeerDependencies:
-      - encoding
-      - supports-color
-
-  '@superfaceai/parser@1.2.0':
-    dependencies:
-      '@superfaceai/ast': 1.2.0
-      '@types/debug': 4.1.12
-      debug: 4.4.0(supports-color@5.5.0)
-      typescript: 4.9.5
-    transitivePeerDependencies:
-      - supports-color
-
-  '@superfaceai/passport-twitter-oauth2@1.2.4':
-    dependencies:
-      passport-oauth2: 1.8.0
-    optionalDependencies:
-      '@types/passport': 1.0.16
-      '@types/passport-oauth2': 1.4.15
-
   '@swc/core-darwin-arm64@1.4.17':
     optional: true
 
@@ -15054,23 +14976,6 @@ snapshots:
   '@types/node@22.19.10':
     dependencies:
       undici-types: 6.21.0
-
-  '@types/oauth@0.9.4':
-    dependencies:
-      '@types/node': 20.12.7
-    optional: true
-
-  '@types/passport-oauth2@1.4.15':
-    dependencies:
-      '@types/express': 4.17.21
-      '@types/oauth': 0.9.4
-      '@types/passport': 1.0.16
-    optional: true
-
-  '@types/passport@1.0.16':
-    dependencies:
-      '@types/express': 4.17.21
-    optional: true
 
   '@types/q@1.5.8': {}
 
@@ -15487,10 +15392,6 @@ snapshots:
       - supports-color
 
   ajv-draft-04@1.0.0(ajv@8.12.0):
-    optionalDependencies:
-      ajv: 8.12.0
-
-  ajv-formats@2.1.1(ajv@8.12.0):
     optionalDependencies:
       ajv: 8.12.0
 
@@ -16386,12 +16287,6 @@ snapshots:
   cross-env@7.0.2:
     dependencies:
       cross-spawn: 7.0.3
-
-  cross-fetch@3.1.8(encoding@0.1.13):
-    dependencies:
-      node-fetch: 2.7.0(encoding@0.1.13)
-    transitivePeerDependencies:
-      - encoding
 
   cross-spawn@5.1.0:
     dependencies:
@@ -18269,10 +18164,6 @@ snapshots:
   isexe@2.0.0: {}
 
   isexe@3.1.1: {}
-
-  isomorphic-form-data@2.0.0:
-    dependencies:
-      form-data: 2.5.1
 
   isomorphic-ws@4.0.1(ws@5.2.4(bufferutil@4.0.8)(utf-8-validate@5.0.10)):
     dependencies:
@@ -20836,8 +20727,6 @@ snapshots:
 
   typedarray@0.0.6: {}
 
-  typescript@4.9.5: {}
-
   typescript@5.6.3: {}
 
   typical@4.0.0: {}
@@ -21062,11 +20951,6 @@ snapshots:
       - sugarss
       - supports-color
       - terser
-
-  vm2@3.9.19:
-    dependencies:
-      acorn: 8.11.3
-      acorn-walk: 8.3.2
 
   watchpack@2.4.4:
     dependencies:
