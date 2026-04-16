@@ -297,8 +297,12 @@ async function main() {
   log.info('Summary')
   log.info('='.repeat(80))
   log.info(`Pages processed:              ${pageNum}`)
-  log.info(`Members with active orgs:     ${totalProcessed} (active enrichment orgs: ${totalActiveOrgs})`)
-  log.info(`Members with deleted orgs:    ${totalMembersWithDeletedOrgs} (deleted enrichment orgs: ${totalDeletedOrgs})`)
+  log.info(
+    `Members with active orgs:     ${totalProcessed} (active enrichment orgs: ${totalActiveOrgs})`,
+  )
+  log.info(
+    `Members with deleted orgs:    ${totalMembersWithDeletedOrgs} (deleted enrichment orgs: ${totalDeletedOrgs})`,
+  )
   if (!opts.dryRun) {
     log.info(`Workflows succeeded:          ${totalSucceeded}`)
     log.info(`Workflows failed:             ${totalFailed}`)
