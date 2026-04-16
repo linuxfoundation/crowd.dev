@@ -21,6 +21,7 @@
     "script:fix-activity-obj-member-data": "SERVICE=script tsx src/bin/fix-activity-obj-member-data.ts",
     "script:fix-member-displayName": "SERVICE=script tsx src/bin/fix-member-displayName.ts",
     "script:fix-members-joinedAt": "SERVICE=script tsx src/bin/fix-members-joinedAt.ts",
+    "script:fix-org-identity-errors": "SERVICE=script tsx src/bin/fix-org-identity-errors.ts",
     "script:debug-process-results": "SERVICE=script tsx --inspect=0.0.0.0:9233 src/bin/debug-process-results.ts"
   },
   "dependencies": {
