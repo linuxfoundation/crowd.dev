@@ -96,6 +96,16 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
     .filter((r) => Number.isFinite(r.level) && Number.isInteger(r.level))
     .sort((a, b) => a.level - b.level)
 
+  if (levelRows.length === 0) {
+    return {
+      ok: false,
+      errorType: 'SCHEMA_MISMATCH',
+      pccProjectId: String(projectId),
+      pccSlug: null,
+      details: { reason: 'no rows with valid HIERARCHY_LEVEL', projectId, name },
+    }
+  }
+
   const maxLevel = levelRows[levelRows.length - 1].level
   const effectiveDepth = maxLevel - 1
   // Slug of the leaf project itself (hierarchy_level=1 row).
