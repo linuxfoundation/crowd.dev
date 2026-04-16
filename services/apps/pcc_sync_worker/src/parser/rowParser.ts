@@ -82,6 +82,8 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   }
 
   // Parse HIERARCHY_LEVEL for each row and sort ascending (level=1 is the leaf).
+  // Filter out rows with non-finite levels before sorting to avoid NaN in the comparator,
+  // which would violate the sort contract and produce unpredictable ordering.
   const levelRows = rawRows
     .map((r) => {
       const row = r as Partial<PccParquetRow>
@@ -91,6 +93,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
         slug: (row.MAPPED_PROJECT_SLUG ?? null) as string | null,
       }
     })
+    .filter((r) => Number.isFinite(r.level) && Number.isInteger(r.level))
     .sort((a, b) => a.level - b.level)
 
   const maxLevel = levelRows[levelRows.length - 1].level
@@ -98,12 +101,18 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   // Slug of the leaf project itself (hierarchy_level=1 row).
   const leafSlug = levelRows[0]?.slug ?? null
 
-  if (!Number.isFinite(effectiveDepth) || !Number.isInteger(effectiveDepth) || effectiveDepth < 1 || effectiveDepth > 4) {
-    const depthReason = !Number.isFinite(effectiveDepth) || !Number.isInteger(effectiveDepth)
-      ? 'invalid hierarchy level (non-finite or fractional depth)'
-      : effectiveDepth < 1
-        ? 'unexpected root node (maxHierarchyLevel≤1)'
-        : 'unsupported depth > 4'
+  if (
+    !Number.isFinite(effectiveDepth) ||
+    !Number.isInteger(effectiveDepth) ||
+    effectiveDepth < 1 ||
+    effectiveDepth > 4
+  ) {
+    const depthReason =
+      !Number.isFinite(effectiveDepth) || !Number.isInteger(effectiveDepth)
+        ? 'invalid hierarchy level (non-finite or fractional depth)'
+        : effectiveDepth < 1
+          ? 'unexpected root node (maxHierarchyLevel≤1)'
+          : 'unsupported depth > 4'
     return {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
