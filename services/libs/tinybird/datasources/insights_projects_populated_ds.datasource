@@ -23,6 +23,7 @@ DESCRIPTION >
     - `contributorCount` and `organizationCount` are computed contributor and organization statistics (UInt64).
     - `healthScore` is the overall project health score (Float64).
     - `status` is the status of the project ex: active or archived
+    - `lastVulnerabilityScanStatus` is the aggregated vulnerability scan status across all project repositories (`LowCardinality(Nullable(String))`). Possible values: `'success'` (all scans passed), `'no_packages_found'` (no dependency packages detected), `'failure'` (at least one scan failed), `'running'` (scan in progress). NULL when no scan records exist for the project's repositories.
 
 TAGS "Project metadata", "Analytics enrichment"
 
@@ -61,7 +62,8 @@ SCHEMA >
     `communityPlatforms` Array(String),
     `communityKeywords` Array(String),
     `communityLanguages` Array(String),
-    `status` String
+    `status` String,
+    `lastVulnerabilityScanStatus` LowCardinality(Nullable(String))
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

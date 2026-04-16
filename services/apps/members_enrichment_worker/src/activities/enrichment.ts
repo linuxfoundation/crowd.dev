@@ -8,6 +8,7 @@ import {
   replaceDoubleQuotes,
   setAttributesDefaultValues,
 } from '@crowd/common'
+import { CommonMemberService } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   checkOrganizationAffiliationPolicy,
@@ -287,15 +288,18 @@ export async function updateMemberUsingSquashedPayload(
   hasContributions: boolean,
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): Promise<boolean> {
-  return await svc.postgres.writer.transactionally(async (tx) => {
-    let updated = false
+  const affectedOrgIds: string[] = []
+
+  const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
+    let didUpdate = false
+
     const qx = dbStoreQx(tx)
 
     // process identities
     if (squashedPayload.identities.length > 0) {
       svc.log.debug({ memberId }, 'Adding to member identities!')
       for (const i of squashedPayload.identities) {
-        updated = true
+        didUpdate = true
         await createMemberIdentity(
           qx,
           {
@@ -327,7 +331,7 @@ export async function updateMemberUsingSquashedPayload(
           const typed = normalized as IMemberEnrichmentDataNormalized
 
           if (typed.contributions) {
-            updated = true
+            didUpdate = true
             await updateMemberContributions(qx, memberId, typed.contributions)
           }
         }
@@ -346,7 +350,7 @@ export async function updateMemberUsingSquashedPayload(
         const priorities = await getPriorityArray()
         attributes = await setAttributesDefaultValues(attributes, priorities)
       }
-      updated = true
+      didUpdate = true
       await updateMemberAttributes(qx, memberId, attributes)
     }
 
@@ -366,7 +370,7 @@ export async function updateMemberUsingSquashedPayload(
           total,
         }
 
-        updated = true
+        didUpdate = true
         await updateMemberReach(qx, memberId, reach)
       }
     }
@@ -459,7 +463,8 @@ export async function updateMemberUsingSquashedPayload(
 
       if (results.toDelete.length > 0) {
         for (const org of results.toDelete) {
-          updated = true
+          didUpdate = true
+          affectedOrgIds.push(org.orgId)
           await deleteMemberOrgById(tx.transaction(), org.id)
         }
       }
@@ -469,7 +474,8 @@ export async function updateMemberUsingSquashedPayload(
           if (!org.organizationId) {
             throw new Error('Organization ID is missing!')
           }
-          updated = true
+          didUpdate = true
+          affectedOrgIds.push(org.organizationId)
 
           const newMemberOrgId = await insertWorkExperience(
             tx.transaction(),
@@ -492,7 +498,8 @@ export async function updateMemberUsingSquashedPayload(
 
       if (results.toUpdate.size > 0) {
         for (const [memberOrg, toUpdate] of results.toUpdate) {
-          updated = true
+          didUpdate = true
+          affectedOrgIds.push(memberOrg.orgId)
           const updatedMemberOrgId = await updateMemberOrg(
             tx.transaction(),
             memberId,
@@ -527,7 +534,7 @@ export async function updateMemberUsingSquashedPayload(
       }
     }
 
-    if (updated) {
+    if (didUpdate) {
       await setMemberEnrichmentUpdatedAt(tx.transaction(), memberId)
       await syncMember(memberId)
     } else {
@@ -536,8 +543,23 @@ export async function updateMemberUsingSquashedPayload(
 
     svc.log.debug({ memberId }, 'Member sources processed successfully!')
 
-    return updated
+    return didUpdate
   })
+
+  if (affectedOrgIds.length > 0) {
+    const commonMemberService = new CommonMemberService(
+      pgpQx(svc.postgres.writer.connection()),
+      svc.temporal,
+      svc.log,
+    )
+    await commonMemberService.startAffiliationRecalculation(
+      memberId,
+      [...new Set(affectedOrgIds)],
+      true,
+    )
+  }
+
+  return wasUpdated
 }
 
 export function doesIncomingOrgExistInExistingOrgs(

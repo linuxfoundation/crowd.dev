@@ -1,54 +1,3 @@
-NODE last_scan_status
-SQL >
-    %
-    SELECT
-        multiIf(
-            max(
-                multiIf(
-                    s.status = 'success',
-                    4,
-                    s.status = 'no_packages_found',
-                    3,
-                    s.status = 'failure',
-                    2,
-                    1
-                )
-            )
-            = 4,
-            'success',
-            max(
-                multiIf(
-                    s.status = 'success',
-                    4,
-                    s.status = 'no_packages_found',
-                    3,
-                    s.status = 'failure',
-                    2,
-                    1
-                )
-            )
-            = 3,
-            'no_packages_found',
-            max(
-                multiIf(
-                    s.status = 'success',
-                    4,
-                    s.status = 'no_packages_found',
-                    3,
-                    s.status = 'failure',
-                    2,
-                    1
-                )
-            )
-            = 2,
-            'failure',
-            'running'
-        ) as lastScanStatus
-    FROM vulnerability_scans as s FINAL
-    WHERE
-        s.repoUrl in (select arrayJoin(repositories) from segments_filtered)
-        {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
-
 NODE summary
 SQL >
     %
@@ -62,7 +11,3 @@ SQL >
     WHERE
         repoUrl in (select arrayJoin(repositories) from segments_filtered)
         {% if defined(repos) %} AND repoUrl IN (SELECT channel FROM repos_to_channels) {% end %}
-
-NODE vulnerabilities_summary_result
-SQL >
-    SELECT summary.*, last_scan_status.lastScanStatus FROM summary CROSS JOIN last_scan_status
