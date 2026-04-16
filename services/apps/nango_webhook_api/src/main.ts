@@ -84,7 +84,7 @@ export const errorMiddleware = (): ErrorRequestHandler => {
       request.log.error(err, { statusCode: err.status }, 'HTTP error occurred!')
       res.status(err.status).json(err.toJSON())
     } else {
-      request.log.error(err, 'Unknown error occured!')
+      request.log.error(err, 'Unknown error occurred!')
       res.status(500).send('Internal Server Error')
     }
   }

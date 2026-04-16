@@ -275,7 +275,7 @@ const handleDoExport = async () => {
 
     if (error !== 'cancel') {
       ToastStore.error(
-        'An error has occured while trying to export the CSV file. Please try again',
+        'An error has occurred while trying to export the CSV file. Please try again',
         {
           title: 'CSV Export failed',
         },
