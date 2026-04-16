@@ -26,6 +26,7 @@
  *   --start-after <id>   Resume from a specific memberId (exclusive, for restarts)
  *   --dry-run            Log what would be processed without starting workflows
  *   --limit <n>          Stop after processing at most N members total (for testing)
+ *   --workflow-delay <ms> Milliseconds to wait after each workflow start, to avoid overwhelming Temporal (default: 0)
  *
  * Environment Variables Required:
  *   CROWD_DB_WRITE_HOST        - Postgres write host
@@ -60,6 +61,7 @@ interface ScriptOptions {
   pageSize: number
   concurrency: number
   pageDelayMs: number
+  workflowDelayMs: number
   startAfter: string | null
   dryRun: boolean
   limit: number | null
@@ -77,6 +79,7 @@ function parseArgs(): ScriptOptions {
   const pageSize = parseInt(getArg('--page-size') ?? '1000', 10)
   const concurrency = parseInt(getArg('--concurrency') ?? '20', 10)
   const pageDelayMs = parseInt(getArg('--page-delay') ?? '5000', 10)
+  const workflowDelayMs = parseInt(getArg('--workflow-delay') ?? '0', 10)
   const startAfter = getArg('--start-after') ?? null
   const dryRun = args.includes('--dry-run')
   const limitRaw = getArg('--limit')
@@ -94,12 +97,16 @@ function parseArgs(): ScriptOptions {
     log.error('--page-delay must be a non-negative integer')
     process.exit(1)
   }
+  if (isNaN(workflowDelayMs) || workflowDelayMs < 0) {
+    log.error('--workflow-delay must be a non-negative integer')
+    process.exit(1)
+  }
   if (limit !== null && (isNaN(limit) || limit <= 0)) {
     log.error('--limit must be a positive integer')
     process.exit(1)
   }
 
-  return { pageSize, concurrency, pageDelayMs, startAfter, dryRun, limit }
+  return { pageSize, concurrency, pageDelayMs, workflowDelayMs, startAfter, dryRun, limit }
 }
 
 async function fetchPage(
@@ -175,9 +182,10 @@ async function main() {
   log.info('='.repeat(80))
   log.info(`Page size:   ${opts.pageSize}`)
   log.info(`Concurrency: ${opts.concurrency}`)
-  log.info(`Page delay:  ${opts.pageDelayMs}ms`)
-  log.info(`Start after: ${opts.startAfter ?? '(beginning)'}`)
-  log.info(`Mode:        ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`)
+  log.info(`Page delay:      ${opts.pageDelayMs}ms`)
+  log.info(`Workflow delay:  ${opts.workflowDelayMs}ms`)
+  log.info(`Start after:     ${opts.startAfter ?? '(beginning)'}`)
+  log.info(`Mode:            ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`)
   log.info(`Limit:       ${opts.limit ?? '(none)'}`)
   log.info('='.repeat(80))
 
@@ -230,6 +238,11 @@ async function main() {
 
     if (opts.dryRun) {
       log.info(`[DRY RUN] Would trigger ${membersPage.length} workflows`)
+      for (const { memberId, activeOrgIds, deletedOrgCount } of membersPage) {
+        log.info(
+          `[DRY RUN] memberUpdate | memberId: ${memberId} | activeOrgs: ${activeOrgIds.length} | deletedOrgs: ${deletedOrgCount}`,
+        )
+      }
       totalProcessed += membersPage.length
     } else {
       const { succeeded, failed } = await runWithConcurrency(
@@ -255,6 +268,9 @@ async function main() {
             ],
             searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
           })
+          if (opts.workflowDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, opts.workflowDelayMs))
+          }
         },
       )
 
