@@ -51,7 +51,7 @@
     "pluralize": "^8.0.0",
     "qs": "^6.15.0",
     "socket.io-client": "^4.8.3",
-    "vite": "^7.3.1",
+    "vite": "^7.3.2",
     "vue": "^3.3.1",
     "vue-3-sanitize": "^0.1.4",
     "vue-draggable-next": "^2.2.1",
