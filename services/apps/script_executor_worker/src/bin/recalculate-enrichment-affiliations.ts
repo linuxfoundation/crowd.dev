@@ -51,7 +51,9 @@ const log = getServiceChildLogger('recalculate-enrichment-affiliations')
 
 interface MemberWithOrgs {
   memberId: string
-  organizationIds: string[]
+  activeOrgIds: string[]
+  deletedOrgCount: number
+  activeOrgCount: number
 }
 
 interface ScriptOptions {
@@ -109,11 +111,16 @@ async function fetchPage(
 
   // Selects only members that have at least one work experience created by enrichment
   // (source IN enrichment-progai, enrichment-clearbit, enrichment-crustdata).
-  // organizationIds contains only the enrichment-sourced org IDs for that member —
+  // activeOrgIds contains only the active enrichment-sourced org IDs for that member —
   // used by the memberUpdate workflow to determine which orgs to sync to OpenSearch.
+  // deletedOrgCount and activeOrgCount are used for impact logging only.
   const rows = await qx.select(
     `
-    SELECT "memberId", array_agg(DISTINCT "organizationId") AS "organizationIds"
+    SELECT
+      "memberId",
+      array_agg(DISTINCT "organizationId") FILTER (WHERE "deletedAt" IS NULL) AS "activeOrgIds",
+      COUNT(*) FILTER (WHERE "deletedAt" IS NOT NULL) AS "deletedOrgCount",
+      COUNT(*) FILTER (WHERE "deletedAt" IS NULL)     AS "activeOrgCount"
     FROM "memberOrganizations"
     WHERE source = ANY($(sources))
     ${cursorClause}
@@ -124,7 +131,12 @@ async function fetchPage(
     { sources: ENRICHMENT_SOURCES, afterMemberId, pageSize },
   )
 
-  return rows as MemberWithOrgs[]
+  return rows.map((r: Record<string, unknown>) => ({
+    memberId: r.memberId,
+    activeOrgIds: (r.activeOrgIds as string[] | null) ?? [],
+    deletedOrgCount: Number(r.deletedOrgCount),
+    activeOrgCount: Number(r.activeOrgCount),
+  })) as MemberWithOrgs[]
 }
 
 async function runWithConcurrency<T>(
@@ -181,6 +193,9 @@ async function main() {
   let totalSucceeded = 0
   let totalFailed = 0
   let totalProcessed = 0
+  let totalActiveOrgs = 0
+  let totalDeletedOrgs = 0
+  let totalMembersWithDeletedOrgs = 0
 
   let hasMore = true
   while (hasMore) {
@@ -203,7 +218,15 @@ async function main() {
     }
 
     const lastMemberId = membersPage[membersPage.length - 1].memberId
-    log.info(`Page ${pageNum}: ${membersPage.length} members | cursor: ${lastMemberId}`)
+    const pageActiveOrgs = membersPage.reduce((sum, m) => sum + m.activeOrgCount, 0)
+    const pageDeletedOrgs = membersPage.reduce((sum, m) => sum + m.deletedOrgCount, 0)
+    const membersWithDeletedOrgs = membersPage.filter((m) => m.deletedOrgCount > 0).length
+    totalActiveOrgs += pageActiveOrgs
+    totalDeletedOrgs += pageDeletedOrgs
+    totalMembersWithDeletedOrgs += membersWithDeletedOrgs
+    log.info(
+      `Page ${pageNum}: ${membersPage.length} members | active orgs: ${pageActiveOrgs} | deleted orgs: ${pageDeletedOrgs} (${membersWithDeletedOrgs} members affected) | cursor: ${lastMemberId}`,
+    )
 
     if (opts.dryRun) {
       log.info(`[DRY RUN] Would trigger ${membersPage.length} workflows`)
@@ -212,7 +235,11 @@ async function main() {
       const { succeeded, failed } = await runWithConcurrency(
         membersPage,
         opts.concurrency,
-        async ({ memberId, organizationIds }) => {
+        async ({ memberId, activeOrgIds, deletedOrgCount }) => {
+          log.debug(
+            { memberId, activeOrgs: activeOrgIds.length, deletedOrgs: deletedOrgCount },
+            'Triggering memberUpdate workflow',
+          )
           await temporal.workflow.start('memberUpdate', {
             taskQueue: 'profiles',
             workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
@@ -222,7 +249,7 @@ async function main() {
             args: [
               {
                 member: { id: memberId },
-                memberOrganizationIds: organizationIds,
+                memberOrganizationIds: activeOrgIds,
                 syncToOpensearch: true,
               },
             ],
@@ -253,10 +280,12 @@ async function main() {
   log.info('='.repeat(80))
   log.info('Summary')
   log.info('='.repeat(80))
-  log.info(`Pages processed: ${pageNum}`)
+  log.info(`Pages processed:              ${pageNum}`)
+  log.info(`Members with active orgs:     ${totalProcessed} (active enrichment orgs: ${totalActiveOrgs})`)
+  log.info(`Members with deleted orgs:    ${totalMembersWithDeletedOrgs} (deleted enrichment orgs: ${totalDeletedOrgs})`)
   if (!opts.dryRun) {
-    log.info(`Total succeeded: ${totalSucceeded}`)
-    log.info(`Total failed:    ${totalFailed}`)
+    log.info(`Workflows succeeded:          ${totalSucceeded}`)
+    log.info(`Workflows failed:             ${totalFailed}`)
   }
 
   process.exit(totalFailed > 0 ? 1 : 0)
