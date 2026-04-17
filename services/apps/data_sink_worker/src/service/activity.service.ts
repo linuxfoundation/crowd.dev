@@ -434,7 +434,10 @@ export default class ActivityService extends LoggerBase {
 
     let relevantPayloads = payloads.filter((p) => {
       if (!p.activity) {
-        this.log.warn({ platform: p.platform }, 'Activity data is missing, skipping and marking as processed.')
+        this.log.warn(
+          { platform: p.platform },
+          'Activity data is missing, skipping and marking as processed.',
+        )
         resultMap.set(p.resultId, { success: true })
         return false
       }
