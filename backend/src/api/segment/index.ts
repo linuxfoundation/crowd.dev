@@ -1,4 +1,5 @@
 import { safeWrap } from '../../middlewares/errorMiddleware'
+import { segmentByIdMiddleware } from '../../middlewares/segmentMiddleware'
 
 export default (app) => {
   app.post(`/segment/projectGroup`, safeWrap(require('./segmentCreateProjectGroup').default))
@@ -20,9 +21,10 @@ export default (app) => {
     safeWrap(require('./segmentSubprojectQueryLite').default),
   )
 
-  // get segment by id
-  app.get(`/segment/:segmentId`, safeWrap(require('./segmentFind').default))
-  app.put(`/segment/:segmentId`, safeWrap(require('./segmentUpdate').default))
+  // get/update segment by id — segmentByIdMiddleware overrides currentSegments with the target
+  // segment so that permission checks validate against the actual resource being accessed
+  app.get(`/segment/:segmentId`, segmentByIdMiddleware, safeWrap(require('./segmentFind').default))
+  app.put(`/segment/:segmentId`, segmentByIdMiddleware, safeWrap(require('./segmentUpdate').default))
   // Multiple ids
   app.post(`/segment/id`, safeWrap(require('./segmentByIds').default))
 }
