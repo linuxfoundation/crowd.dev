@@ -267,8 +267,8 @@ const query = ref('');
 const activities = ref([]);
 const limit = ref(10);
 const offset = ref(0);
-const joinedAt = dateHelper(props.entity.joinedAt);
-const timestamp = ref(joinedAt.isValid() ? joinedAt.toISOString() : dateHelper().toISOString());
+const joinedAt = dateHelper(props.entity.joinedAt ?? props.entity.createdAt);
+const timestamp = ref(joinedAt.isValid() ? joinedAt.toISOString() : new Date(0).toISOString());
 const noMore = ref(false);
 const selectedSegment = ref(props.selectedSegment || null);
 
