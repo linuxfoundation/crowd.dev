@@ -97,7 +97,7 @@ class MaintainerService(BaseService):
         "emeritus",
         "workgroup",
         "readme",
-        "contributing"
+        "contributing",
     }
 
     VALID_EXTENSIONS = {
