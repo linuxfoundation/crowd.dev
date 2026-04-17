@@ -81,9 +81,9 @@ setImmediate(async () => {
 
   for (;;) {
     const batch = await dbConnection.any<{ id: string; data: any; platform: string }>(
-      `SELECT ir.id, ir.data, i.platform
+      `SELECT ir.id, ir.data, COALESCE(i.platform, ir.data -> 'data' ->> 'platform') AS platform
        FROM integration.results ir
-       JOIN integrations i ON ir."integrationId" = i.id
+       LEFT JOIN integrations i ON ir."integrationId" = i.id
        WHERE ir.state = 'error'
          AND (ir.error ->> 'errorMessage') ILIKE $1
        ORDER BY ir."createdAt"
