@@ -146,7 +146,6 @@ const organizationsQueryKey = computed(() => [
   TanstackKey.ORGANIZATIONS_LIST,
   selectedProjectGroup.value?.id,
   queryParams.value.search,
-  filters.value, // Use filters.value directly to make it reactive
   queryParams.value.offset,
   queryParams.value.limit,
   queryParams.value.orderBy,
@@ -248,17 +247,6 @@ const onPaginationChange = ({
   pagination.value.page = page;
   pagination.value.perPage = perPage;
 };
-
-// Watch for filter changes to ensure cache invalidation
-watch(
-  filters,
-  () => {
-    // Reset to first page when filters change
-    pagination.value.page = 1;
-    queryParams.value.offset = 0;
-  },
-  { deep: true },
-);
 
 watch(
   selectedProjectGroup,
