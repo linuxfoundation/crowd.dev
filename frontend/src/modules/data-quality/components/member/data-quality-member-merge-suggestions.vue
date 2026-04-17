@@ -62,8 +62,6 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppMemberMergeSuggestionsDialog from '@/modules/member/components/member-merge-suggestions-dialog.vue';
-import { storeToRefs } from 'pinia';
-import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfMemberMergeSuggestionDropdown
   from '@/modules/member/components/suggestions/member-merge-suggestion-dropdown.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
@@ -81,23 +79,7 @@ const mergeSuggestions = ref<any[]>([]);
 const isModalOpen = ref<boolean>(false);
 const detailsOffset = ref<number>(0);
 
-const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
-
-const segments = computed(() => (selectedProjectGroup.value?.id === props.projectGroup
-  ? [
-    selectedProjectGroup.value?.id,
-    ...selectedProjectGroup.value.projects.map((p) => [
-      ...p.subprojects.map((sp) => sp.id),
-    ]).flat(),
-  ]
-  : [
-    props.projectGroup,
-    ...selectedProjectGroup.value.projects
-      .filter((p) => p.id === props.projectGroup)
-      .map((p) => [
-        ...p.subprojects.map((sp) => sp.id),
-      ]).flat(),
-  ]));
+const segments = computed(() => [props.projectGroup]);
 
 const loadMergeSuggestions = () => {
   loading.value = true;

@@ -267,7 +267,8 @@ const query = ref('');
 const activities = ref([]);
 const limit = ref(10);
 const offset = ref(0);
-const timestamp = ref(dateHelper(props.entity.joinedAt).toISOString());
+const joinedAt = dateHelper(props.entity.joinedAt);
+const timestamp = ref(joinedAt.isValid() ? joinedAt.toISOString() : dateHelper().toISOString());
 const noMore = ref(false);
 const selectedSegment = ref(props.selectedSegment || null);
 
@@ -426,7 +427,7 @@ watch(platform, async (newValue, oldValue) => {
 onMounted(async () => {
   await store.dispatch(
     'integration/doFetch',
-    segments.value.map((s: any) => s.id),
+    selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
   );
   await fetchActivities();
 });
