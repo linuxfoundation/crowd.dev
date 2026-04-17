@@ -450,7 +450,7 @@ export async function findOrCreateOrganization(
   integrationId?: string,
   throttleUpdatedAt = false,
 ): Promise<string | undefined> {
-  const verifiedIdentities = data.identities ? data.identities.filter((i) => i.verified) : []
+  let verifiedIdentities = data.identities ? data.identities.filter((i) => i.verified) : []
 
   if (verifiedIdentities.length === 0 && !data.displayName) {
     const message = `Missing organization identity or displayName while creating/updating organization!`
@@ -470,6 +470,16 @@ export async function findOrCreateOrganization(
     }
 
     data.identities = data.identities.filter((i) => i.value !== undefined)
+
+    // Re-derive after normalization may have set domain identity values to undefined
+    verifiedIdentities = data.identities.filter((i) => i.verified)
+
+    if (verifiedIdentities.length === 0 && !data.displayName) {
+      log.debug(
+        'Organization has no valid verified identities after domain normalization and no displayName, skipping.',
+      )
+      return undefined
+    }
 
     let existing
     // find existing org by sent verified identities
