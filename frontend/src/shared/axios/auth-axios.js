@@ -3,7 +3,6 @@ import { stringify } from 'qs';
 import config from '@/config';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
-import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { AuthService } from '@/modules/auth/services/auth.service';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 
@@ -47,10 +46,10 @@ authAxios.interceptors.request.use(
         segments = options.data.segments;
       } else if (hasSegmentsQueryParams) {
         segments = options.params.segments;
-        // If neither body or query params have segments
-        // Use selected project group segment ids
-      } else if (selectedProjectGroup.value.projects.length) {
-        segments = getSegmentsFromProjectGroup(selectedProjectGroup.value, options, options.method === 'get');
+        // If neither body or query params have segments, use the selected project group id.
+        // The backend segment middleware resolves it to the correct leaf sub-projects.
+      } else if (selectedProjectGroup.value?.id) {
+        segments = [selectedProjectGroup.value.id];
       }
 
       if (options.method === 'get') {
