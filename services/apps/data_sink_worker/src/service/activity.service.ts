@@ -432,7 +432,14 @@ export default class ActivityService extends LoggerBase {
   ): Promise<Map<string, IProcessActivityResult>> {
     const resultMap = new Map<string, IProcessActivityResult>()
 
-    let relevantPayloads = payloads
+    let relevantPayloads = payloads.filter((p) => {
+      if (!p.activity) {
+        this.log.warn({ platform: p.platform }, 'Activity data is missing, skipping and marking as processed.')
+        resultMap.set(p.resultId, { success: true })
+        return false
+      }
+      return true
+    })
     this.log.trace(`[ACTIVITY] Processing ${relevantPayloads.length} activities!`)
 
     const prepareMemberResults = this.prepareMemberData(relevantPayloads)
