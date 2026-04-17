@@ -380,7 +380,7 @@ const fetchActivities = async ({ reset } = { reset: false }) => {
     offset: offset.value,
     segments: selectedSegment.value
       ? [selectedSegment.value]
-      : segments.value.map((s) => s.id),
+      : [selectedProjectGroup.value.id],
   });
 
   loading.value = false;
