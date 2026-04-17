@@ -1,12 +1,13 @@
+import { NextFunction, Request, Response } from 'express'
+
 import {
   isSegmentSubproject,
   populateSegmentRelations,
 } from '@crowd/data-access-layer/src/segments'
 import { getServiceChildLogger } from '@crowd/logging'
-import { NextFunction, Request, Response } from 'express'
 
-import SegmentRepository from '../database/repositories/segmentRepository'
 import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
+import SegmentRepository from '../database/repositories/segmentRepository'
 
 const log = getServiceChildLogger('segmentMiddleware')
 
