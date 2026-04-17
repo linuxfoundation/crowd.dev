@@ -29,12 +29,12 @@ export class OrganizationApiService {
   }
 
   static async fetchMergeSuggestions(limit: number = 20, offset: number = 0, query: any = {}) {
-    const segments = getSelectedProjectGroupId() ?? [];
+    const segments = getSelectedProjectGroupId();
 
     const data = {
       limit,
       offset,
-      segments,
+      ...(segments ? { segments } : {}),
       ...query,
     };
 
@@ -46,11 +46,12 @@ export class OrganizationApiService {
   }
 
   static create(data: Partial<Organization>) {
+    const segments = getSelectedProjectGroupId();
     return authAxios.post(
       '/organization',
       {
         ...data,
-        segments: getSelectedProjectGroupId(),
+        ...(segments ? { segments } : {}),
       },
     )
       .then(({ data }) => Promise.resolve(data));
