@@ -21,7 +21,6 @@ class ErrorCode(str, Enum):
     CLEANUP_FAILED = "cleanup-failed"
     PARENT_REPO_INVALID = "parent-repo-invalid"
     REONBOARDING_REQUIRED = "reonboarding-required"
-    STUCK_REPO = "stuck-repo"
     REPO_AUTH_REQUIRED = "repo-auth-required"
     RATE_LIMITED = "rate-limited"
     ACCESS_FORBIDDEN = "access-forbidden"
@@ -37,7 +36,6 @@ class RepositoryState(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     REQUIRES_PARENT = "requires_parent"  # fork repo without valid parent repo in out system
-    STUCK = "stuck"  # requires manual resolution
     PENDING_REONBOARD = "pending_reonboard"  # re-onboarding deferred until weekend
     AUTH_REQUIRED = "auth_required"  # private repo or repo requiring authentication
 
