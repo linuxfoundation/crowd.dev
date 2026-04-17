@@ -271,11 +271,8 @@ export default class ActivityService extends LoggerBase {
       // propagates out of prepareMemberData and crashes the entire batch, marking all other
       // results in the batch with the same error even though they are valid.
       if (!activity) {
-        this.log.error({ platform }, 'Activity data is missing.')
-        results.set(resultId, {
-          success: false,
-          err: new UnrepeatableError('Activity data is missing.'),
-        })
+        this.log.warn({ platform }, 'Activity data is missing, skipping and marking as processed.')
+        results.set(resultId, { success: true })
         continue
       }
 
