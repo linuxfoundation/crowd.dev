@@ -450,7 +450,8 @@ export async function findOrCreateOrganization(
   integrationId?: string,
   throttleUpdatedAt = false,
 ): Promise<string | undefined> {
-  let verifiedIdentities = data.identities ? data.identities.filter((i) => i.verified) : []
+  data.identities = data.identities ?? []
+  let verifiedIdentities = data.identities.filter((i) => i.verified)
 
   if (verifiedIdentities.length === 0 && !data.displayName) {
     const message = `Missing organization identity or displayName while creating/updating organization!`
