@@ -86,7 +86,7 @@ const fetchFn = async ({ query, limit }) => {
   const options = await MemberService.listMembersAutocomplete({
     query,
     limit,
-    segments: [selectedProjectGroup.value.id],
+    segments: selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
   });
 
   // Remove primary member from members that can be merged with

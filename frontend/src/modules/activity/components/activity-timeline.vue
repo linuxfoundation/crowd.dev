@@ -373,14 +373,21 @@ const fetchActivities = async ({ reset } = { reset: false }) => {
 
   loading.value = true;
 
+  let querySegments: string[];
+  if (selectedSegment.value) {
+    querySegments = [selectedSegment.value];
+  } else if (selectedProjectGroup.value?.id) {
+    querySegments = [selectedProjectGroup.value.id];
+  } else {
+    querySegments = [];
+  }
+
   const data = await ActivityService.query({
     filter: filterToApply,
     orderBy: 'timestamp_DESC',
     limit: limit.value,
     offset: offset.value,
-    segments: selectedSegment.value
-      ? [selectedSegment.value]
-      : [selectedProjectGroup.value.id],
+    segments: querySegments,
   });
 
   loading.value = false;

@@ -3,15 +3,17 @@ import {
   populateSegmentRelations,
 } from '@crowd/data-access-layer/src/segments'
 import { getServiceChildLogger } from '@crowd/logging'
+import { NextFunction, Request, Response } from 'express'
 
 import SegmentRepository from '../database/repositories/segmentRepository'
+import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
 
 const log = getServiceChildLogger('segmentMiddleware')
 
-export async function segmentMiddleware(req, res, next) {
+export async function segmentMiddleware(req: Request, _res: Response, next: NextFunction) {
   try {
     let segments: any = null
-    const segmentRepository = new SegmentRepository(req)
+    const segmentRepository = new SegmentRepository(req as unknown as IRepositoryOptions)
 
     // Note: req.params is NOT available here. This middleware is registered via app.use(),
     // which runs before Express matches a specific route and populates req.params.
@@ -19,28 +21,38 @@ export async function segmentMiddleware(req, res, next) {
     // Route handlers that need a specific segment by ID (e.g. GET /segment/:segmentId)
     // read req.params directly and ignore req.currentSegments entirely — so the
     // resolution below is harmless for those endpoints.
-    if (req.query.segments) {
-      // GET requests — req.query values can be string or string[], normalize to array
-      const segmentIds = ([] as string[]).concat(req.query.segments)
+    const querySegments = toStringArray(req.query.segments)
+    const bodySegments = toStringArray((req.body as Record<string, unknown>)?.segments)
+
+    if (querySegments.length > 0) {
       segments = {
-        rows: await resolveToLeafSegments(segmentRepository, segmentIds, req),
+        rows: await resolveToLeafSegments(segmentRepository, querySegments, req),
       }
-    } else if (req.body.segments) {
-      // POST/PUT requests — body.segments should always be an array, but normalize defensively
-      const segmentIds = ([] as string[]).concat(req.body.segments)
+    } else if (bodySegments.length > 0) {
       segments = {
-        rows: await resolveToLeafSegments(segmentRepository, segmentIds, req),
+        rows: await resolveToLeafSegments(segmentRepository, bodySegments, req),
       }
     } else {
       segments = await segmentRepository.querySubprojects({ limit: 1, offset: 0 })
     }
 
-    req.currentSegments = segments.rows
+    const options = req as unknown as IRepositoryOptions
+    options.currentSegments = segments.rows
 
     next()
   } catch (error) {
     next(error)
   }
+}
+
+/**
+ * Safely extracts a string[] from an unknown query/body value.
+ * Rejects ParsedQs objects (e.g. ?segments[key]=val) that would cause type confusion.
+ */
+function toStringArray(value: unknown): string[] {
+  if (value === undefined || value === null) return []
+  const items = Array.isArray(value) ? value : [value]
+  return items.filter((v): v is string => typeof v === 'string')
 }
 
 /**
@@ -56,7 +68,7 @@ export async function segmentMiddleware(req, res, next) {
 async function resolveToLeafSegments(
   segmentRepository: SegmentRepository,
   segmentIds: string[],
-  req: any,
+  req: Request,
 ) {
   const fetched = await segmentRepository.findInIds(segmentIds)
 
@@ -69,7 +81,6 @@ async function resolveToLeafSegments(
   }
 
   if (nonLeaf.length === 0) {
-    // All IDs are already leaf segments — current behavior, no change.
     log.debug(
       {
         api: `${req.method} ${req.path}`,
@@ -82,19 +93,14 @@ async function resolveToLeafSegments(
 
   const leafRecords = await segmentRepository.getSegmentSubprojects(segmentIds)
 
-  log.warn(
+  log.debug(
     {
       api: `${req.method} ${req.path}`,
-      '⚠️  WITHOUT_RESOLUTION_would_have_used': {
-        segments: nonLeaf.map((s) => ({ id: s.id, name: s.name, level: segmentLevel(s) })),
-        count: segmentIds.length,
-      },
-      '✅ WITH_RESOLUTION_will_use': {
-        segments: leafRecords.map((s: any) => ({ id: s.id, name: (s as any).name })),
-        count: leafRecords.length,
-      },
+      input_segments: nonLeaf.map((s) => ({ id: s.id, name: s.name, level: segmentLevel(s) })),
+      resolved_leaf_segments: leafRecords.map((s: any) => ({ id: s.id, name: (s as any).name })),
+      resolved_count: leafRecords.length,
     },
-    `⚠️  NON-LEAF SEGMENT DETECTED — DB queries will use resolved leaf segments instead of the received ones`,
+    'Non-leaf segments resolved to leaf sub-projects',
   )
 
   return leafRecords.map(populateSegmentRelations)
