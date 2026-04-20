@@ -56,8 +56,6 @@ export async function segmentMiddleware(req: Request, _res: Response, next: Next
     } else if (bodySegments.length > 0) {
       const resolvedRows = await resolveToLeafSegments(segmentRepository, bodySegments, req)
       segments = { rows: resolvedRows }
-      const body = req.body as Record<string, unknown>
-      body.segments = resolvedRows.map((s: any) => s.id)
     } else {
       segments = await segmentRepository.querySubprojects({ limit: 1, offset: 0 })
     }
