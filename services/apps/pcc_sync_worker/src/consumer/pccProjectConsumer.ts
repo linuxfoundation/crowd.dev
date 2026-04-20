@@ -496,12 +496,13 @@ async function upsertInsightsProject(
   // Slug is intentionally not updated — it is a stable identifier referenced by FK from
   // securityInsightsEvaluations and related tables.
   // logoUrl won't be updated in InsightsProject until we confirm that the format is
-  // compatible with the Insights Squared standard.
+  // compatible with the Insights Squared standard. Do NOT reintroduce it as a
+  // `--`-commented SQL line: pg-promise scans placeholders textually and would still
+  // require the `logoUrl` param, triggering "Property 'logoUrl' doesn't exist".
   await db.none(
     `UPDATE "insightsProjects" ip
      SET name        = $(name),
          description = $(description),
-         -- "logoUrl"   = $(logoUrl),
          "updatedAt" = NOW()
      FROM segments s
      WHERE ip."segmentId" = s.id
