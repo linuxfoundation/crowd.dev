@@ -27,6 +27,7 @@ const MAX_POLLING_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
 export class PccProjectConsumer {
   private running = false
   private currentPollingIntervalMs: number
+  private readonly shutdownAbort = new AbortController()
 
   constructor(
     private readonly metadataStore: MetadataStore,
@@ -71,6 +72,9 @@ export class PccProjectConsumer {
 
   stop(): void {
     this.running = false
+    // Interrupt any in-flight backoff sleep so shutdown isn't delayed by
+    // the current polling interval (up to MAX_POLLING_INTERVAL_MS).
+    this.shutdownAbort.abort()
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -87,6 +91,7 @@ export class PccProjectConsumer {
     let mismatchCount = 0
     let schemaMismatchCount = 0
     let schemaMismatchMatchedCount = 0 // SCHEMA_MISMATCH rows that still have a CDP segment match
+    let missingProjectIdCount = 0
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
@@ -95,10 +100,28 @@ export class PccProjectConsumer {
       const groups = new Map<string, Record<string, unknown>[]>()
       for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
         const projectId = String((raw as Record<string, unknown>).PROJECT_ID ?? '')
-        if (!projectId) continue
+        if (!projectId) {
+          missingProjectIdCount++
+          continue
+        }
         if (!groups.has(projectId)) groups.set(projectId, [])
         const group = groups.get(projectId)
         if (group) group.push(raw)
+      }
+
+      // Record a single SCHEMA_MISMATCH row aggregating all rows dropped for
+      // missing PROJECT_ID — unidentifiable rows dedup on (error_type, reason)
+      // so repeated daily exports don't accumulate duplicates.
+      if (missingProjectIdCount > 0) {
+        schemaMismatchCount += missingProjectIdCount
+        log.warn(
+          { jobId: job.id, count: missingProjectIdCount },
+          'Dropped Parquet rows with missing PROJECT_ID',
+        )
+        await this.recordSyncError(null, null, 'SCHEMA_MISMATCH', {
+          reason: 'missing PROJECT_ID',
+          count: missingProjectIdCount,
+        })
       }
 
       await this.db.tx(async (tx) => {
@@ -169,6 +192,7 @@ export class PccProjectConsumer {
           schemaMismatch: schemaMismatchCount,
           schemaMismatchWithCdpMatch: schemaMismatchMatchedCount,
           schemaMismatchNoCdpMatch: schemaMismatchCount - schemaMismatchMatchedCount,
+          missingProjectId: missingProjectIdCount,
         },
         'PCC job completed',
       )
@@ -308,7 +332,21 @@ export class PccProjectConsumer {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
+    return new Promise<void>((resolve) => {
+      if (this.shutdownAbort.signal.aborted) {
+        resolve()
+        return
+      }
+      const timer = setTimeout(resolve, ms)
+      this.shutdownAbort.signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        { once: true },
+      )
+    })
   }
 
   // Records a sync-error row on a separate connection (`this.db`, not the job's
