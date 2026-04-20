@@ -108,8 +108,10 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
 
   const maxLevel = levelRows[levelRows.length - 1].level
   const effectiveDepth = maxLevel - 1
-  // Slug of the leaf project itself (hierarchy_level=1 row).
-  const leafSlug = levelRows[0]?.slug ?? null
+  // Slug of the leaf project itself (hierarchy_level=1 row). Select by level rather
+  // than array position — if the level-1 row was filtered out, we want null, not an
+  // ancestor's slug.
+  const leafSlug = levelRows.find((r) => r.level === 1)?.slug ?? null
 
   if (
     !Number.isFinite(effectiveDepth) ||

@@ -12,31 +12,36 @@ const log = getServiceChildLogger('main')
 const DRY_RUN = process.env.PCC_DRY_RUN === 'true'
 
 setImmediate(async () => {
-  await svc.init()
+  try {
+    await svc.init()
 
-  await schedulePccS3Export()
-  await schedulePccS3Cleanup()
+    await schedulePccS3Export()
+    await schedulePccS3Cleanup()
 
-  const consumer = await createPccProjectConsumer(DRY_RUN)
-  consumer.start().catch((err) => {
-    log.error({ err }, 'Consumer loop crashed')
-    process.exit(1)
-  })
-
-  const HARD_TIMEOUT_MS = 2 * 60 * 60 * 1000
-
-  const shutdown = () => {
-    log.info('Shutdown signal received, stopping consumer...')
-    consumer.stop()
-
-    setTimeout(() => {
-      log.warn('Graceful shutdown timed out after 2 hours, forcing exit')
+    const consumer = await createPccProjectConsumer(DRY_RUN)
+    consumer.start().catch((err) => {
+      log.error({ err }, 'Consumer loop crashed')
       process.exit(1)
-    }, HARD_TIMEOUT_MS).unref()
+    })
+
+    const HARD_TIMEOUT_MS = 2 * 60 * 60 * 1000
+
+    const shutdown = () => {
+      log.info('Shutdown signal received, stopping consumer...')
+      consumer.stop()
+
+      setTimeout(() => {
+        log.warn('Graceful shutdown timed out after 2 hours, forcing exit')
+        process.exit(1)
+      }, HARD_TIMEOUT_MS).unref()
+    }
+
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
+
+    await svc.start()
+  } catch (err) {
+    log.error({ err }, 'PCC worker startup failed')
+    process.exit(1)
   }
-
-  process.on('SIGINT', shutdown)
-  process.on('SIGTERM', shutdown)
-
-  await svc.start()
 })

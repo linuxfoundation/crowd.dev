@@ -3,8 +3,9 @@
  * streams each Parquet file, runs the matching cascade, and writes to DB.
  *
  * One DB transaction per job — all segment + insightsProject writes roll back
- * together on any failure. Errors that can't be auto-resolved are written to
- * pcc_projects_sync_errors for manual review.
+ * together on any failure. Sync error records are written on a separate
+ * connection (via `this.db`, not `tx`) so they survive a tx rollback — otherwise
+ * a single failing row would lose all diagnostic breadcrumbs for the batch.
  */
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
@@ -131,15 +132,12 @@ export class PccProjectConsumer {
               },
               'Schema mismatch in PCC row',
             )
-            if (!this.dryRun) {
-              await insertSyncError(
-                tx,
-                parsed.pccProjectId ?? null,
-                parsed.pccSlug ?? null,
-                'SCHEMA_MISMATCH',
-                errorDetails,
-              )
-            }
+            await this.recordSyncError(
+              parsed.pccProjectId ?? null,
+              parsed.pccSlug ?? null,
+              'SCHEMA_MISMATCH',
+              errorDetails,
+            )
             continue
           }
 
@@ -205,10 +203,7 @@ export class PccProjectConsumer {
   private async processRow(
     tx: DbConnOrTx,
     project: ParsedPccProject,
-  ): Promise<
-    | { action: 'UPSERTED'; hierarchyMismatch: boolean }
-    | { action: 'SKIPPED' }
-  > {
+  ): Promise<{ action: 'UPSERTED'; hierarchyMismatch: boolean } | { action: 'SKIPPED' }> {
     // Step 1: segment_id from Snowflake ACTIVE_SEGMENTS JOIN
     let segment = project.segmentIdFromSnowflake
       ? await findSegmentById(tx, project.segmentIdFromSnowflake)
@@ -242,20 +237,18 @@ export class PccProjectConsumer {
         },
         'Hierarchy mismatch — recorded for manual review, metadata still synced (Phase 1 scope)',
       )
-      if (!this.dryRun) {
-        await insertSyncError(tx, project.pccProjectId, project.pccSlug, 'HIERARCHY_MISMATCH', {
-          segmentId: segment.id,
-          segmentName: segment.name,
-          pccProjectId: project.pccProjectId,
-          mismatchFields,
-          cdpTarget: project.cdpTarget,
-          currentHierarchy: {
-            group: segment.grandparentName ?? segment.parentName ?? segment.name,
-            project: segment.parentName ?? segment.name,
-            subproject: segment.name,
-          },
-        })
-      }
+      await this.recordSyncError(project.pccProjectId, project.pccSlug, 'HIERARCHY_MISMATCH', {
+        segmentId: segment.id,
+        segmentName: segment.name,
+        pccProjectId: project.pccProjectId,
+        mismatchFields,
+        cdpTarget: project.cdpTarget,
+        currentHierarchy: {
+          group: segment.grandparentName ?? segment.parentName ?? segment.name,
+          project: segment.parentName ?? segment.name,
+          subproject: segment.name,
+        },
+      })
     }
 
     // Slug drift detection: log when PCC slug differs from the CDP segment slug.
@@ -267,13 +260,11 @@ export class PccProjectConsumer {
         { segmentId: segment.id, pccSlug: project.pccSlug, cdpSlug: segment.slug },
         'Slug drift detected — PCC slug differs from CDP segment slug',
       )
-      if (!this.dryRun) {
-        await insertSyncError(tx, project.pccProjectId, project.pccSlug, 'SLUG_CHANGED', {
-          segmentId: segment.id,
-          pccSlug: project.pccSlug,
-          cdpSlug: segment.slug,
-        })
-      }
+      await this.recordSyncError(project.pccProjectId, project.pccSlug, 'SLUG_CHANGED', {
+        segmentId: segment.id,
+        pccSlug: project.pccSlug,
+        cdpSlug: segment.slug,
+      })
     }
 
     if (!this.dryRun) {
@@ -289,10 +280,15 @@ export class PccProjectConsumer {
           { segmentId: segment.id, name: project.name },
           'insightsProject name conflict — segment synced, insights project skipped',
         )
-        await insertSyncError(tx, project.pccProjectId, project.pccSlug, 'INSIGHTS_NAME_CONFLICT', {
-          segmentId: segment.id,
-          name: project.name,
-        })
+        await this.recordSyncError(
+          project.pccProjectId,
+          project.pccSlug,
+          'INSIGHTS_NAME_CONFLICT',
+          {
+            segmentId: segment.id,
+            name: project.name,
+          },
+        )
       }
     } else {
       log.info(
@@ -313,6 +309,26 @@ export class PccProjectConsumer {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  // Records a sync-error row on a separate connection (`this.db`, not the job's
+  // tx) so the diagnostic survives a tx rollback. Wrapped in try/catch so a
+  // write failure here never cascades into the enclosing tx.
+  private async recordSyncError(
+    externalProjectId: string | null,
+    externalProjectSlug: string | null,
+    errorType: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.dryRun) return
+    try {
+      await insertSyncError(this.db, externalProjectId, externalProjectSlug, errorType, details)
+    } catch (err) {
+      log.error(
+        { err, externalProjectId, externalProjectSlug, errorType },
+        'Failed to record sync error (best-effort)',
+      )
+    }
   }
 }
 
