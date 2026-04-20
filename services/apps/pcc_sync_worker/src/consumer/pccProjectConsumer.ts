@@ -149,21 +149,10 @@ export class PccProjectConsumer {
           switch (result.action) {
             case 'UPSERTED':
               upsertedCount++
+              if (result.hierarchyMismatch) mismatchCount++
               break
             case 'SKIPPED':
               skippedCount++
-              break
-            case 'MISMATCH':
-              mismatchCount++
-              if (!this.dryRun) {
-                await insertSyncError(
-                  tx,
-                  project.pccProjectId,
-                  project.pccSlug,
-                  'HIERARCHY_MISMATCH',
-                  result.details,
-                )
-              }
               break
           }
         }
@@ -189,7 +178,7 @@ export class PccProjectConsumer {
       if (!this.dryRun) {
         await this.metadataStore.markCompleted(job.id, {
           transformedCount: upsertedCount,
-          skippedCount: skippedCount + mismatchCount + schemaMismatchCount,
+          skippedCount: skippedCount + schemaMismatchCount,
           processingDurationMs: durationMs,
         })
       }
@@ -217,9 +206,8 @@ export class PccProjectConsumer {
     tx: DbConnOrTx,
     project: ParsedPccProject,
   ): Promise<
-    | { action: 'UPSERTED' }
+    | { action: 'UPSERTED'; hierarchyMismatch: boolean }
     | { action: 'SKIPPED' }
-    | { action: 'MISMATCH'; details: Record<string, unknown> }
   > {
     // Step 1: segment_id from Snowflake ACTIVE_SEGMENTS JOIN
     let segment = project.segmentIdFromSnowflake
@@ -236,12 +224,26 @@ export class PccProjectConsumer {
       return { action: 'SKIPPED' }
     }
 
-    // Hierarchy mismatch check: segment was matched but parent/group differs
+    // Hierarchy mismatch detection: segment matched but parent/group differs.
+    // Phase 1 does NOT re-parent segments — hierarchy fields (parent/grandparent id,
+    // name, slug) are never written. We record the mismatch for manual review but
+    // still sync the metadata fields (name, status, maturity, description, logo).
     const mismatchFields = detectHierarchyMismatch(segment, project.cdpTarget)
-    if (mismatchFields.length > 0) {
-      return {
-        action: 'MISMATCH',
-        details: {
+    const hasHierarchyMismatch = mismatchFields.length > 0
+
+    if (hasHierarchyMismatch) {
+      log.warn(
+        {
+          segmentId: segment.id,
+          segmentName: segment.name,
+          pccProjectId: project.pccProjectId,
+          mismatchFields,
+          cdpTarget: project.cdpTarget,
+        },
+        'Hierarchy mismatch — recorded for manual review, metadata still synced (Phase 1 scope)',
+      )
+      if (!this.dryRun) {
+        await insertSyncError(tx, project.pccProjectId, project.pccSlug, 'HIERARCHY_MISMATCH', {
           segmentId: segment.id,
           segmentName: segment.name,
           pccProjectId: project.pccProjectId,
@@ -252,7 +254,7 @@ export class PccProjectConsumer {
             project: segment.parentName ?? segment.name,
             subproject: segment.name,
           },
-        },
+        })
       }
     }
 
@@ -300,12 +302,13 @@ export class PccProjectConsumer {
           name: project.name,
           status: project.status,
           maturity: project.maturity,
+          hierarchyMismatch: hasHierarchyMismatch,
         },
         '[dry-run] Would upsert segment',
       )
     }
 
-    return { action: 'UPSERTED' }
+    return { action: 'UPSERTED', hierarchyMismatch: hasHierarchyMismatch }
   }
 
   private sleep(ms: number): Promise<void> {
