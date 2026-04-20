@@ -31,7 +31,6 @@ REPO_SELECT_COLUMNS = """
     rp.branch,
     rp."maintainerFile",
     rp."lastMaintainerRunAt",
-    rp."stuckRequiresReOnboard",
     rp."reOnboardingCount"
 """
 
@@ -166,7 +165,6 @@ async def acquire_recurrent_repo() -> Repository | None:
     states_to_exclude = (
         RepositoryState.PENDING,
         RepositoryState.PROCESSING,
-        RepositoryState.STUCK,
         RepositoryState.PENDING_REONBOARD,
         RepositoryState.AUTH_REQUIRED,
     )

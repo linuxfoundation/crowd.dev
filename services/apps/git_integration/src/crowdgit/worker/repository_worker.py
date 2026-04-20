@@ -14,7 +14,6 @@ from crowdgit.errors import (
     ParentRepoInvalidError,
     ReOnboardingRequiredError,
     RepoAuthRequiredError,
-    StuckRepoError,
 )
 
 # Import configured loguru logger from crowdgit.logger
@@ -117,14 +116,9 @@ class RepositoryWorker:
         # handling
         if repo_stuck:
             logger.warning(
-                f"Repo {repository.url} is stuck for {processing_duration_hours} hours!"
+                f"Repo {repository.url} is stuck for {processing_duration_hours} hours — queuing for re-onboarding"
             )
-            if repository.stuck_requires_re_onboard:
-                logger.warning(
-                    f"Repo {repository.url} is stuck due to force-push or dangling commit. Will be re-onboarded"
-                )
-                raise ReOnboardingRequiredError()
-            raise StuckRepoError()
+            raise ReOnboardingRequiredError()
 
     async def _process_repositories(self):
         """
@@ -258,11 +252,6 @@ class RepositoryWorker:
 
             logger.info("Incremental processing completed successfully")
             processing_state = RepositoryState.COMPLETED
-        except StuckRepoError:
-            logger.error(
-                f"Repo {repository.url} is stuck for unkown reason, marking it as stuck until manually resolved!"
-            )
-            processing_state = RepositoryState.STUCK
         except ReOnboardingRequiredError:
             logger.info(f"Repo {repository.url} needs re-onboarding, deferring until weekend")
             processing_state = RepositoryState.PENDING_REONBOARD
