@@ -197,7 +197,12 @@ export class PccProjectConsumer {
         'PCC job completed',
       )
 
-      if (!this.dryRun) {
+      if (this.dryRun) {
+        // Dry-run must leave no trace: the job was claimed (processingStartedAt
+        // set by claimOldestPendingJob), so release it so a real run can pick
+        // it up later. Otherwise dry-run jobs are permanently stuck.
+        await this.releaseClaimBestEffort(job.id)
+      } else {
         await this.metadataStore.markCompleted(job.id, {
           transformedCount: upsertedCount,
           skippedCount: skippedCount + schemaMismatchCount,
@@ -208,7 +213,11 @@ export class PccProjectConsumer {
       const errorMessage = err instanceof Error ? err.message : String(err)
       log.error({ jobId: job.id, err }, 'PCC job failed')
 
-      if (!this.dryRun) {
+      if (this.dryRun) {
+        // Same rationale as the success path — release the claim so the job
+        // can be retried on a real run.
+        await this.releaseClaimBestEffort(job.id)
+      } else {
         try {
           await this.metadataStore.markFailed(job.id, errorMessage, {
             processingDurationMs: Date.now() - startTime,
@@ -217,6 +226,14 @@ export class PccProjectConsumer {
           log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
         }
       }
+    }
+  }
+
+  private async releaseClaimBestEffort(jobId: number): Promise<void> {
+    try {
+      await this.metadataStore.releaseClaim(jobId)
+    } catch (err) {
+      log.error({ jobId, err }, 'Failed to release dry-run claim')
     }
   }
 

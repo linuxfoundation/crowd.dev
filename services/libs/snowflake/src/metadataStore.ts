@@ -152,6 +152,20 @@ export class MetadataStore {
     )
   }
 
+  /**
+   * Release a previously claimed job by clearing processingStartedAt so it can
+   * be re-claimed. Intended for dry-run or cancellation paths where the claim
+   * should leave no trace; do not use for failures — use markFailed instead.
+   */
+  async releaseClaim(jobId: number): Promise<void> {
+    await this.db.none(
+      `UPDATE integration."snowflakeExportJobs"
+       SET "processingStartedAt" = NULL, "updatedAt" = NOW()
+       WHERE id = $(jobId)`,
+      { jobId },
+    )
+  }
+
   async markCompleted(jobId: number, metrics?: Partial<JobMetrics>): Promise<void> {
     await this.db.none(
       `UPDATE integration."snowflakeExportJobs"
