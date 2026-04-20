@@ -132,12 +132,19 @@ const pagination = ref({
 });
 
 // Reactive state for query parameters
+const { search: initialSearch, filter: initialFilter, orderBy: initialOrderBy } = buildApiFilter(
+  filters.value,
+  organizationFilters,
+  organizationSearchFilter,
+  organizationSavedViews,
+);
+
 const queryParams = ref({
-  search: '',
-  filter: filters.value,
+  search: initialSearch || '',
+  filter: initialFilter,
   offset: 0,
   limit: 20,
-  orderBy: 'activityCount_DESC',
+  orderBy: initialOrderBy || 'activityCount_DESC',
   segments: selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
 });
 
@@ -146,6 +153,7 @@ const organizationsQueryKey = computed(() => [
   TanstackKey.ORGANIZATIONS_LIST,
   selectedProjectGroup.value?.id,
   queryParams.value.search,
+  queryParams.value.filter,
   queryParams.value.offset,
   queryParams.value.limit,
   queryParams.value.orderBy,
@@ -159,25 +167,14 @@ const {
   isFetching: organizationsFetching,
 } = useQuery({
   queryKey: organizationsQueryKey,
-  queryFn: async () => {
-    const transformedFilter = buildApiFilter(
-      filters.value,
-      organizationFilters,
-      organizationSearchFilter,
-      organizationSavedViews,
-    );
-
-    const result = await OrganizationService.query({
-      search: queryParams.value.search,
-      filter: transformedFilter.filter,
-      offset: queryParams.value.offset,
-      limit: queryParams.value.limit,
-      orderBy: transformedFilter.orderBy,
-      segments: queryParams.value.segments,
-    });
-
-    return result;
-  },
+  queryFn: () => OrganizationService.query({
+    search: queryParams.value.search,
+    filter: queryParams.value.filter,
+    offset: queryParams.value.offset,
+    limit: queryParams.value.limit,
+    orderBy: queryParams.value.orderBy,
+    segments: queryParams.value.segments,
+  }),
   enabled: !!selectedProjectGroup.value?.id,
 });
 
@@ -199,12 +196,11 @@ const {
 // Watch for organizations data changes and update the store
 watch(organizationsData, (newData) => {
   if (newData) {
-    // Update the Pinia store with the new data
     organizationStore.organizations = newData.rows || [];
     organizationStore.totalOrganizations = newData.count || 0;
     organizationStore.savedFilterBody = {
       search: queryParams.value.search,
-      filter: filters.value,
+      filter: queryParams.value.filter,
       offset: queryParams.value.offset,
       limit: queryParams.value.limit,
       orderBy: queryParams.value.orderBy,
@@ -254,13 +250,20 @@ watch(
     if (newProjectGroup?.id !== oldProjectGroup?.id) {
       pagination.value.page = 1;
 
+      const { filter: resetFilter, orderBy: resetOrderBy } = buildApiFilter(
+        filters.value,
+        organizationFilters,
+        organizationSearchFilter,
+        organizationSavedViews,
+      );
+
       // Reset query params for new project group
       queryParams.value = {
         search: '',
-        filter: filters.value,
+        filter: resetFilter,
         offset: 0,
         limit: pagination.value.perPage,
-        orderBy: 'activityCount_DESC',
+        orderBy: resetOrderBy || 'activityCount_DESC',
         segments: newProjectGroup ? [newProjectGroup?.id] : [],
       };
 

@@ -135,12 +135,19 @@ const pagination = ref({
 });
 
 // Reactive state for query parameters
+const { search: initialSearch, filter: initialFilter, orderBy: initialOrderBy } = buildApiFilter(
+  filters.value,
+  { ...memberFilters, ...customAttributesFilter.value },
+  memberSearchFilter,
+  memberSavedViews,
+);
+
 const queryParams = ref({
-  search: '',
-  filter: filters.value,
+  search: initialSearch || '',
+  filter: initialFilter,
   offset: 0,
   limit: 20,
-  orderBy: 'activityCount_DESC',
+  orderBy: initialOrderBy || 'activityCount_DESC',
   segments: selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
 });
 
@@ -149,6 +156,7 @@ const membersQueryKey = computed(() => [
   TanstackKey.MEMBERS_LIST,
   selectedProjectGroup.value?.id,
   queryParams.value.search,
+  queryParams.value.filter,
   queryParams.value.offset,
   queryParams.value.limit,
   queryParams.value.orderBy,
@@ -162,25 +170,14 @@ const {
   isFetching: membersFetching,
 } = useQuery({
   queryKey: membersQueryKey,
-  queryFn: () => {
-    const transformedFilter = filters.value
-      ? buildApiFilter(
-        filters.value,
-        { ...memberFilters, ...customAttributesFilter.value },
-        memberSearchFilter,
-        memberSavedViews,
-      )
-      : { search: '', filter: {}, orderBy: 'activityCount_DESC' };
-
-    return MemberService.listMembers({
-      search: queryParams.value.search,
-      filter: transformedFilter.filter,
-      offset: queryParams.value.offset,
-      limit: queryParams.value.limit,
-      orderBy: transformedFilter.orderBy,
-      segments: queryParams.value.segments,
-    });
-  },
+  queryFn: () => MemberService.listMembers({
+    search: queryParams.value.search,
+    filter: queryParams.value.filter,
+    offset: queryParams.value.offset,
+    limit: queryParams.value.limit,
+    orderBy: queryParams.value.orderBy,
+    segments: queryParams.value.segments,
+  }),
   enabled: !!selectedProjectGroup.value?.id,
 });
 
@@ -202,26 +199,14 @@ const {
 // Watch for members data changes and update the store
 watch(membersData, (newData) => {
   if (newData) {
-    // Update the Pinia store with the new data
     memberStore.members = newData.rows || [];
     memberStore.totalMembers = newData.count || 0;
-
-    // Build the correct transformed filter for savedFilterBody
-    const transformedFilter = filters.value
-      ? buildApiFilter(
-        filters.value,
-        { ...memberFilters, ...customAttributesFilter.value },
-        memberSearchFilter,
-        memberSavedViews,
-      )
-      : { search: '', filter: {}, orderBy: 'activityCount_DESC' };
-
     memberStore.savedFilterBody = {
       search: queryParams.value.search,
-      filter: transformedFilter.filter,
+      filter: queryParams.value.filter,
       offset: queryParams.value.offset,
       limit: queryParams.value.limit,
-      orderBy: transformedFilter.orderBy,
+      orderBy: queryParams.value.orderBy,
     };
   }
 }, { immediate: true });
@@ -269,13 +254,20 @@ watch(
     if (newProjectGroup?.id !== oldProjectGroup?.id) {
       pagination.value.page = 1;
 
+      const { filter: resetFilter, orderBy: resetOrderBy } = buildApiFilter(
+        filters.value,
+        { ...memberFilters, ...customAttributesFilter.value },
+        memberSearchFilter,
+        memberSavedViews,
+      );
+
       // Reset query params for new project group
       queryParams.value = {
         search: '',
-        filter: filters.value,
+        filter: resetFilter,
         offset: 0,
         limit: pagination.value.perPage,
-        orderBy: 'activityCount_DESC',
+        orderBy: resetOrderBy || 'activityCount_DESC',
         segments: newProjectGroup ? [newProjectGroup?.id] : [],
       };
 
