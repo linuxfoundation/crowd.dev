@@ -495,11 +495,13 @@ async function upsertInsightsProject(
   // shares the PCC sourceId (group, project, subproject levels).
   // Slug is intentionally not updated — it is a stable identifier referenced by FK from
   // securityInsightsEvaluations and related tables.
+  // logoUrl won't be updated in InsightsProject until we confirm that the format is
+  // compatible with the Insights Squared standard.
   await db.none(
     `UPDATE "insightsProjects" ip
      SET name        = $(name),
          description = $(description),
-         "logoUrl"   = $(logoUrl),
+         -- "logoUrl"   = $(logoUrl),
          "updatedAt" = NOW()
      FROM segments s
      WHERE ip."segmentId" = s.id
@@ -511,7 +513,6 @@ async function upsertInsightsProject(
       tenantId: DEFAULT_TENANT_ID,
       name: project.name,
       description: project.description,
-      logoUrl: project.logoUrl,
     },
   )
 
@@ -524,11 +525,12 @@ async function upsertInsightsProject(
   )
   if (exists) return false
 
+  // logoUrl intentionally omitted from the INSERT column list — see note above.
   const inserted = await db.result(
-    `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "logoUrl", "isLF")
-     VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), $(logoUrl), TRUE)
+    `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "isLF")
+     VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)
      ON CONFLICT (name) WHERE "deletedAt" IS NULL DO NOTHING`,
-    { name: project.name, description: project.description, segmentId, logoUrl: project.logoUrl },
+    { name: project.name, description: project.description, segmentId },
   )
   if (inserted.rowCount === 0) return true
 

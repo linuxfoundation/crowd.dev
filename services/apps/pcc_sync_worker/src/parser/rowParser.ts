@@ -50,6 +50,19 @@ function parseParquetInt(value: unknown): number {
 }
 
 /**
+ * Normalize a string field from PCC: coerce to string, trim surrounding
+ * whitespace, and collapse empty results to null. PCC source data sometimes
+ * carries accidental leading/trailing whitespace — trimming here prevents
+ * spurious hierarchy mismatches, failed STATUS_MAP lookups, and padded names
+ * being persisted to segments.
+ */
+function trimOrNull(value: unknown): string | null {
+  if (value == null) return null
+  const s = String(value).trim()
+  return s === '' ? null : s
+}
+
+/**
  * Parse and validate all raw Parquet rows for a single PCC leaf project.
  *
  * Each call receives all rows that share the same PROJECT_ID (one row per
@@ -67,8 +80,8 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
 
   // All rows share the same leaf-level fields — use the first row for them.
   const firstRaw = rawRows[0] as Partial<PccParquetRow>
-  const projectId = firstRaw.PROJECT_ID
-  const name = firstRaw.NAME
+  const projectId = trimOrNull(firstRaw.PROJECT_ID)
+  const name = trimOrNull(firstRaw.NAME)
 
   if (!projectId || !name) {
     return {
@@ -89,8 +102,8 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       const row = r as Partial<PccParquetRow>
       return {
         level: parseParquetInt(row.HIERARCHY_LEVEL),
-        name: (row.MAPPED_PROJECT_NAME ?? null) as string | null,
-        slug: (row.MAPPED_PROJECT_SLUG ?? null) as string | null,
+        name: trimOrNull(row.MAPPED_PROJECT_NAME),
+        slug: trimOrNull(row.MAPPED_PROJECT_SLUG),
       }
     })
     .filter((r) => Number.isFinite(r.level) && Number.isInteger(r.level))
@@ -157,20 +170,20 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
     }
   }
 
-  const rawStatus = firstRaw.PROJECT_STATUS ?? null
-  const mappedStatus = rawStatus ? (STATUS_MAP[String(rawStatus)] ?? null) : null
+  const rawStatus = trimOrNull(firstRaw.PROJECT_STATUS)
+  const mappedStatus = rawStatus ? (STATUS_MAP[rawStatus] ?? null) : null
 
   return {
     ok: true,
     project: {
-      pccProjectId: String(projectId),
+      pccProjectId: projectId,
       pccSlug: leafSlug,
-      name: String(name),
+      name,
       status: mappedStatus,
-      maturity: (firstRaw.PROJECT_MATURITY_LEVEL ?? null) as string | null,
-      description: (firstRaw.DESCRIPTION ?? null) as string | null,
-      logoUrl: (firstRaw.PROJECT_LOGO ?? null) as string | null,
-      segmentIdFromSnowflake: (firstRaw.SEGMENT_ID ?? null) as string | null,
+      maturity: trimOrNull(firstRaw.PROJECT_MATURITY_LEVEL),
+      description: trimOrNull(firstRaw.DESCRIPTION),
+      logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
+      segmentIdFromSnowflake: trimOrNull(firstRaw.SEGMENT_ID),
       effectiveDepth,
       mappingRule: effectiveDepth as MappingRule,
       cdpTarget: cdpTargetResult.target,
