@@ -30,7 +30,7 @@ export async function executeCleanup(intervalHours = 24): Promise<void> {
         SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
         'PCC S3 Cleanup Failed',
-        `Failed to clean job \`${job.id}\` at \`${job.s3Path}\`.\n\n*Error:* ${err instanceof Error ? err.message : err}`,
+        `Failed to clean job \`${job.id}\` at \`${job.s3Path}\`.\n\n*Error:* ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }

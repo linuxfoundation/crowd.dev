@@ -28,6 +28,10 @@ export class PccProjectConsumer {
   private running = false
   private currentPollingIntervalMs: number
   private readonly shutdownAbort = new AbortController()
+  // Jobs already processed in this dry-run lifetime. Dry-run releases the
+  // claim so nothing is persisted, which means the same "oldest pending" job
+  // would otherwise be re-claimed on every loop iteration → endless reprocessing.
+  private readonly dryRunProcessedJobIds = new Set<number>()
 
   constructor(
     private readonly metadataStore: MetadataStore,
@@ -48,10 +52,18 @@ export class PccProjectConsumer {
         const job = await this.metadataStore.claimOldestPendingJob(buildPlatformFilter([PLATFORM]))
 
         if (job) {
-          this.currentPollingIntervalMs = this.pollingIntervalMs
-          await this.processJob(job)
-          await new Promise<void>((resolve) => setImmediate(resolve))
-          continue
+          if (this.dryRun && this.dryRunProcessedJobIds.has(job.id)) {
+            // Already processed in this dry-run lifetime — the claim is about to be
+            // released again; fall through to the "no pending jobs" path so we back
+            // off instead of churning the same job forever.
+            await this.releaseClaimBestEffort(job.id)
+          } else {
+            this.currentPollingIntervalMs = this.pollingIntervalMs
+            await this.processJob(job)
+            if (this.dryRun) this.dryRunProcessedJobIds.add(job.id)
+            await new Promise<void>((resolve) => setImmediate(resolve))
+            continue
+          }
         }
       } catch (err) {
         log.error({ err }, 'Error in consumer loop')
@@ -97,9 +109,13 @@ export class PccProjectConsumer {
       // Stream all rows and group by PROJECT_ID before processing.
       // The export emits one row per (leaf, hierarchy_level) from the PROJECT_SPINE
       // JOIN, so each leaf project produces N rows (one per ancestor level).
+      // PROJECT_ID is trimmed at the group-key boundary (PCC source data occasionally
+      // carries surrounding whitespace) so the same logical project never splits
+      // into multiple groups.
       const groups = new Map<string, Record<string, unknown>[]>()
       for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
-        const projectId = String((raw as Record<string, unknown>).PROJECT_ID ?? '')
+        const rawId = (raw as Record<string, unknown>).PROJECT_ID
+        const projectId = rawId == null ? '' : String(rawId).trim()
         if (!projectId) {
           missingProjectIdCount++
           continue
@@ -111,9 +127,10 @@ export class PccProjectConsumer {
 
       // Record a single SCHEMA_MISMATCH row aggregating all rows dropped for
       // missing PROJECT_ID — unidentifiable rows dedup on (error_type, reason)
-      // so repeated daily exports don't accumulate duplicates.
+      // so repeated daily exports don't accumulate duplicates. Kept as a
+      // separate counter (not folded into schemaMismatchCount) because the
+      // two track different granularities: rows vs project groups.
       if (missingProjectIdCount > 0) {
-        schemaMismatchCount += missingProjectIdCount
         log.warn(
           { jobId: job.id, count: missingProjectIdCount },
           'Dropped Parquet rows with missing PROJECT_ID',
@@ -205,7 +222,10 @@ export class PccProjectConsumer {
       } else {
         await this.metadataStore.markCompleted(job.id, {
           transformedCount: upsertedCount,
-          skippedCount: skippedCount + schemaMismatchCount,
+          // schemaMismatchCount counts project groups; missingProjectIdCount
+          // counts raw rows dropped before grouping — both are "not synced"
+          // and belong in skippedCount.
+          skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
       }
@@ -533,7 +553,28 @@ async function upsertInsightsProject(
      ON CONFLICT (name) WHERE "deletedAt" IS NULL DO NOTHING`,
     { name: project.name, description: project.description, segmentId },
   )
-  if (inserted.rowCount === 0) return true
+
+  if (inserted.rowCount === 0) {
+    // INSERT was a no-op on the partial unique index (name) WHERE "deletedAt" IS NULL.
+    // The pre-check above already ruled out cross-sourceId conflicts, so the row holding
+    // the name must be a same-sourceId sibling — shallow hierarchies (eff=1/2) where
+    // group/project/subproject share both name and sourceId. Verify before concluding
+    // it's not a conflict (guards against a hypothetical race with another writer).
+    const holder = await db.oneOrNone<{ sameFamily: boolean }>(
+      `SELECT s."sourceId" = $(sourceId) AS "sameFamily"
+       FROM "insightsProjects" ip
+       JOIN segments s ON s.id = ip."segmentId"
+       WHERE ip.name = $(name)
+         AND ip."deletedAt" IS NULL
+         AND s."tenantId" = $(tenantId)
+       LIMIT 1`,
+      { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
+    )
+    // Same-family holder (or holder vanished between INSERT and re-check) → not a real
+    // conflict; the project family is already represented via the sibling row.
+    if (!holder || holder.sameFamily) return false
+    return true
+  }
 
   return false
 }

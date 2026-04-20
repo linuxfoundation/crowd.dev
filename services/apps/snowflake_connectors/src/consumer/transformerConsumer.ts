@@ -159,7 +159,7 @@ export async function createTransformerConsumer(): Promise<TransformerConsumer> 
 
   const pollingIntervalMs = 10_000 // 10 seconds
 
-  const enabledPlatforms = getEnabledPlatforms() as string[]
+  const enabledPlatforms = getEnabledPlatforms()
 
   return new TransformerConsumer(
     metadataStore,
