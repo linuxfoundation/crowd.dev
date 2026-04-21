@@ -550,12 +550,13 @@ async function upsertInsightsProject(
   const inserted = await db.result(
     `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "isLF")
      VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)
-     ON CONFLICT (name) WHERE "deletedAt" IS NULL DO NOTHING`,
+     ON CONFLICT DO NOTHING`,
     { name: project.name, description: project.description, segmentId },
   )
 
   if (inserted.rowCount === 0) {
-    // INSERT was a no-op on the partial unique index (name) WHERE "deletedAt" IS NULL.
+    // INSERT was a no-op due to a unique constraint (expected: name index). Re-query confirms
+    // whether the existing holder is in the same sourceId family or a real cross-family conflict.
     // The pre-check above already ruled out cross-sourceId conflicts, so the row holding
     // the name must be a same-sourceId sibling — shallow hierarchies (eff=1/2) where
     // group/project/subproject share both name and sourceId. Verify before concluding
