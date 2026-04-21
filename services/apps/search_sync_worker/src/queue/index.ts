@@ -96,9 +96,24 @@ export class WorkerQueueReceiver extends PrioritizedQueueReciever {
           break
         case SearchSyncWorkerQueueMessageType.SYNC_ORGANIZATION_MEMBERS:
           if (data.organizationId) {
-            this.initMemberService()
-              .syncOrganizationMembers(data.organizationId)
-              .catch((err) => this.log.error(err, 'Error while syncing organization members!'))
+            const organizationId = data.organizationId as string
+            const memberService = this.initMemberService()
+            ;(async () => {
+              const MAX_PAGES = 2000
+              let lastId: string | undefined
+              for (let page = 0; page < MAX_PAGES; page++) {
+                const result = await memberService.syncOrganizationMembers(organizationId, {
+                  lastId,
+                })
+                if (result.lastId === null) return
+                lastId = result.lastId
+              }
+              throw new Error(
+                `syncOrganizationMembers exceeded MAX_PAGES (${MAX_PAGES}) for organization ${organizationId}`,
+              )
+            })().catch((err) =>
+              this.log.error(err, 'Error while syncing organization members!'),
+            )
           }
 
           break
