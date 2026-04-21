@@ -267,10 +267,19 @@ async function main() {
 
     if (brokenMembers.length > 0) {
       if (opts.dryRun) {
-        for (const { memberId, activeOrgIds } of brokenMembers) {
+        const loggedSoFar = totalBroken - brokenMembers.length
+        const remaining = opts.limit !== null ? opts.limit - loggedSoFar : brokenMembers.length
+        const toLog = brokenMembers.slice(0, remaining)
+        for (const { memberId, activeOrgIds } of toLog) {
           log.info(
             `[DRY RUN] memberUpdate | memberId: ${memberId} | activeOrgs: ${activeOrgIds.length}`,
           )
+        }
+        if (opts.limit !== null && loggedSoFar + toLog.length >= opts.limit) {
+          log.info(`Limit of ${opts.limit} members reached.`)
+          hasMore = false
+          cursor = lastMemberId
+          continue
         }
       } else {
         const triggeredSoFar = totalSucceeded + totalFailed
