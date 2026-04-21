@@ -9,11 +9,10 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { QUEUE_CONFIG, QueueFactory } from '@crowd/queue'
 import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
+import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 import { PlatformType } from '@crowd/types'
 
 import { IntegrationResolver } from '../core/integrationResolver'
-import { MetadataStore, SnowflakeExportJob } from '../core/metadataStore'
-import { S3Service } from '../core/s3Service'
 import { getDataSource, getEnabledPlatforms } from '../integrations'
 
 const log = getServiceChildLogger('transformerConsumer')
@@ -30,6 +29,7 @@ export class TransformerConsumer {
     private readonly integrationResolver: IntegrationResolver,
     private readonly emitter: DataSinkWorkerEmitter,
     private readonly pollingIntervalMs: number,
+    private readonly enabledPlatforms: string[],
   ) {
     this.currentPollingIntervalMs = pollingIntervalMs
   }
@@ -40,7 +40,9 @@ export class TransformerConsumer {
 
     while (this.running) {
       try {
-        const job = await this.metadataStore.claimOldestPendingJob()
+        const job = await this.metadataStore.claimOldestPendingJob(
+          buildPlatformFilter(this.enabledPlatforms),
+        )
         log.info('Claiming job from metadata store', { job })
 
         if (job) {
@@ -157,5 +159,14 @@ export async function createTransformerConsumer(): Promise<TransformerConsumer> 
 
   const pollingIntervalMs = 10_000 // 10 seconds
 
-  return new TransformerConsumer(metadataStore, s3Service, resolver, emitter, pollingIntervalMs)
+  const enabledPlatforms = getEnabledPlatforms()
+
+  return new TransformerConsumer(
+    metadataStore,
+    s3Service,
+    resolver,
+    emitter,
+    pollingIntervalMs,
+    enabledPlatforms,
+  )
 }
