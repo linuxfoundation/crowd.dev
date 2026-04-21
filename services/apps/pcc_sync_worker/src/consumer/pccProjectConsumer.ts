@@ -502,7 +502,7 @@ async function upsertInsightsProject(
      JOIN segments s ON s.id = ip."segmentId"
      WHERE ip.name = $(name)
        AND ip."deletedAt" IS NULL
-       AND s."sourceId" != $(sourceId)
+       AND s."sourceId" IS DISTINCT FROM $(sourceId)
        AND s."tenantId" = $(tenantId)`,
     { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
   )
