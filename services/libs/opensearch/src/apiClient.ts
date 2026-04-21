@@ -56,7 +56,7 @@ export class SearchSyncApiClient {
       const result: { lastId: string | null; membersSynced: number } = data
       totalSynced += result.membersSynced
 
-      if (result.lastId === null) {
+      if (result.lastId === null || result.membersSynced < pageSize) {
         return { totalSynced }
       }
 
