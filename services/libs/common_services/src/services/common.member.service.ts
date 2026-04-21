@@ -170,7 +170,16 @@ export class CommonMemberService extends LoggerBase {
     )
 
     if (triggerRecalc && affectedOrgIds.size > 0) {
+      this.log.info(
+        { memberId, affectedOrgIds: [...affectedOrgIds] },
+        'Member organizations updated — triggering affiliation recalculation',
+      )
       await this.startAffiliationRecalculation(memberId, [...affectedOrgIds], true)
+    } else {
+      this.log.info(
+        { memberId, affectedOrgIds: [...affectedOrgIds], triggerRecalc },
+        'Member organizations updated — skipping affiliation recalculation',
+      )
     }
   }
 
@@ -250,6 +259,7 @@ export class CommonMemberService extends LoggerBase {
     organizationIds: string[],
     syncToOpensearch = false,
   ): Promise<void> {
+    this.log.info({ memberId, organizationIds, syncToOpensearch }, 'Starting affiliation recalculation workflow')
     await this.temporal.workflow.start('memberUpdate', {
       taskQueue: 'profiles',
       workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
