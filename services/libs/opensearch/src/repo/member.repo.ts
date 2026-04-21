@@ -37,6 +37,10 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
     lastId?: string,
     syncFrom?: Date,
   ): Promise<string[]> {
+    if (!Number.isInteger(perPage) || perPage <= 0) {
+      throw new Error(`perPage must be a positive integer, got: ${perPage}`)
+    }
+
     const rows = await this.db().any(
       `
         SELECT
@@ -51,12 +55,13 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
             m."deletedAt" is null AND
             exists (select 1 from "memberIdentities" where "memberId" = mo."memberId" and "deletedAt" is null)
         ORDER BY mo."memberId"
-        LIMIT ${perPage};
+        LIMIT $(perPage);
       `,
       {
         organizationId,
         lastId,
         syncFrom,
+        perPage,
       },
     )
 
