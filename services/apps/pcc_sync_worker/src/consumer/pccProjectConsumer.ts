@@ -538,8 +538,24 @@ async function upsertInsightsProject(
   )
 
   // INSERT for the subproject segment only (the matched leaf).
-  // Partial unique index on segmentId WHERE deletedAt IS NULL means ON CONFLICT won't fire
-  // for soft-deleted rows — use UPDATE-then-INSERT pattern (UPDATE already done above).
+  // Before inserting, check if a same-family sibling (group/project level sharing the same
+  // sourceId) already holds this name. Shallow hierarchies (eff=1/2) have group+project+subproject
+  // all sharing the same name and sourceId — the group/project rows are written first and would
+  // cause a name conflict on the subproject INSERT. Skip the INSERT in that case; the family is
+  // already represented.
+  const sameFamilyNameHolder = await db.oneOrNone(
+    `SELECT 1
+     FROM "insightsProjects" ip
+     JOIN segments s ON s.id = ip."segmentId"
+     WHERE ip.name = $(name)
+       AND ip."deletedAt" IS NULL
+       AND s."sourceId" = $(sourceId)
+       AND s."tenantId" = $(tenantId)
+     LIMIT 1`,
+    { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
+  )
+  if (sameFamilyNameHolder) return false
+
   const exists = await db.oneOrNone<{ id: string }>(
     `SELECT id FROM "insightsProjects" WHERE "segmentId" = $(segmentId) AND "deletedAt" IS NULL`,
     { segmentId },
@@ -547,34 +563,11 @@ async function upsertInsightsProject(
   if (exists) return false
 
   // logoUrl intentionally omitted from the INSERT column list — see note above.
-  const inserted = await db.result(
+  await db.none(
     `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "isLF")
-     VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)
-     ON CONFLICT (name) WHERE "deletedAt" IS NULL DO NOTHING`,
+     VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)`,
     { name: project.name, description: project.description, segmentId },
   )
-
-  if (inserted.rowCount === 0) {
-    // INSERT was a no-op on the partial unique index (name) WHERE "deletedAt" IS NULL.
-    // The pre-check above already ruled out cross-sourceId conflicts, so the row holding
-    // the name must be a same-sourceId sibling — shallow hierarchies (eff=1/2) where
-    // group/project/subproject share both name and sourceId. Verify before concluding
-    // it's not a conflict (guards against a hypothetical race with another writer).
-    const holder = await db.oneOrNone<{ sameFamily: boolean }>(
-      `SELECT s."sourceId" = $(sourceId) AS "sameFamily"
-       FROM "insightsProjects" ip
-       JOIN segments s ON s.id = ip."segmentId"
-       WHERE ip.name = $(name)
-         AND ip."deletedAt" IS NULL
-         AND s."tenantId" = $(tenantId)
-       LIMIT 1`,
-      { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
-    )
-    // Same-family holder (or holder vanished between INSERT and re-check) → not a real
-    // conflict; the project family is already represented via the sibling row.
-    if (!holder || holder.sameFamily) return false
-    return true
-  }
 
   return false
 }
