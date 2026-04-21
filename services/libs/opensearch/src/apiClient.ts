@@ -9,7 +9,7 @@ export interface ISyncOrganizationMembersOptions {
   cursor?: string
   pageSize?: number
   maxPages?: number
-  onPageComplete?: (cursor: string, pageCount: number) => void | Promise<void>
+  onPageComplete?: (cursor: string, membersSynced: number) => void | Promise<void>
 }
 
 export class SearchSyncApiClient {
