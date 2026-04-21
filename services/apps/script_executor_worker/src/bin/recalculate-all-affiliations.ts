@@ -50,9 +50,10 @@ import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 
 const log = getServiceChildLogger('recalculate-all-affiliations')
 
-interface MemberWithActiveOrgs {
+interface BrokenMember {
   memberId: string
   activeOrgIds: string[]
+  staleOrgIds: string[]
 }
 
 interface ScriptOptions {
@@ -151,11 +152,11 @@ async function fetchMemberIdPage(
 async function findBrokenMembers(
   qx: ReturnType<typeof pgpQx>,
   memberIds: string[],
-): Promise<MemberWithActiveOrgs[]> {
+): Promise<BrokenMember[]> {
   // First reduce to distinct (memberId, organizationId) pairs — a member may have
   // thousands of activities but only a handful of distinct org attributions.
   // The NOT EXISTS then runs on the small deduplicated set, not on every activity row.
-  const brokenRows = await qx.select(
+  const staleRows = await qx.select(
     `
     WITH pairs AS (
       SELECT DISTINCT "memberId", "organizationId"
@@ -163,7 +164,7 @@ async function findBrokenMembers(
       WHERE "memberId" = ANY($(memberIds)::uuid[])
         AND "organizationId" IS NOT NULL
     )
-    SELECT DISTINCT p."memberId"
+    SELECT p."memberId", p."organizationId" AS "staleOrgId"
     FROM pairs p
     WHERE NOT EXISTS (
       SELECT 1 FROM "memberOrganizations" mo
@@ -175,11 +176,18 @@ async function findBrokenMembers(
     { memberIds },
   )
 
-  if (brokenRows.length === 0) {
+  if (staleRows.length === 0) {
     return []
   }
 
-  const brokenMemberIds = brokenRows.map((r: Record<string, unknown>) => r.memberId as string)
+  const staleMap = new Map<string, string[]>()
+  for (const r of staleRows as Record<string, string>[]) {
+    const existing = staleMap.get(r.memberId) ?? []
+    existing.push(r.staleOrgId)
+    staleMap.set(r.memberId, existing)
+  }
+
+  const brokenMemberIds = [...staleMap.keys()]
 
   // Fetch currently active org IDs to pass to memberUpdate
   const orgRows = await qx.select(
@@ -193,7 +201,7 @@ async function findBrokenMembers(
     { brokenMemberIds },
   )
 
-  const orgMap = new Map<string, string[]>(
+  const activeOrgMap = new Map<string, string[]>(
     orgRows.map((r: Record<string, unknown>) => [
       r.memberId as string,
       (r.activeOrgIds as string[] | null) ?? [],
@@ -202,7 +210,8 @@ async function findBrokenMembers(
 
   return brokenMemberIds.map((memberId: string) => ({
     memberId,
-    activeOrgIds: orgMap.get(memberId) ?? [],
+    activeOrgIds: activeOrgMap.get(memberId) ?? [],
+    staleOrgIds: staleMap.get(memberId) ?? [],
   }))
 }
 
@@ -289,9 +298,9 @@ async function main() {
         const loggedSoFar = totalBroken - brokenMembers.length
         const remaining = opts.limit !== null ? opts.limit - loggedSoFar : brokenMembers.length
         const toLog = brokenMembers.slice(0, remaining)
-        for (const { memberId, activeOrgIds } of toLog) {
+        for (const { memberId, activeOrgIds, staleOrgIds } of toLog) {
           log.info(
-            `[DRY RUN] memberUpdate | memberId: ${memberId} | activeOrgs: ${activeOrgIds.length}`,
+            `[DRY RUN] broken member: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
           )
         }
         if (opts.limit !== null && loggedSoFar + toLog.length >= opts.limit) {
@@ -313,8 +322,10 @@ async function main() {
         const { succeeded, failed } = await runWithConcurrency(
           toProcess,
           opts.concurrency,
-          async ({ memberId, activeOrgIds }) => {
-            log.info({ memberId, activeOrgs: activeOrgIds.length }, 'Triggering memberUpdate workflow')
+          async ({ memberId, activeOrgIds, staleOrgIds }) => {
+            log.info(
+            `Triggering memberUpdate for broken member: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
+          )
             await temporal.workflow.start('memberUpdate', {
               taskQueue: 'profiles',
               workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
