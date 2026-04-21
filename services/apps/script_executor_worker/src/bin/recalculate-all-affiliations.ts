@@ -143,7 +143,7 @@ async function findBrokenMembers(
     WITH pairs AS (
       SELECT DISTINCT "memberId", "organizationId"
       FROM "activityRelations"
-      WHERE "memberId" = ANY($(memberIds))
+      WHERE "memberId" = ANY($(memberIds)::uuid[])
         AND "organizationId" IS NOT NULL
     )
     SELECT DISTINCT p."memberId"
@@ -169,7 +169,7 @@ async function findBrokenMembers(
     `
     SELECT "memberId", array_agg(DISTINCT "organizationId") AS "activeOrgIds"
     FROM "memberOrganizations"
-    WHERE "memberId" = ANY($(brokenMemberIds))
+    WHERE "memberId" = ANY($(brokenMemberIds)::uuid[])
       AND "deletedAt" IS NULL
     GROUP BY "memberId"
     `,
