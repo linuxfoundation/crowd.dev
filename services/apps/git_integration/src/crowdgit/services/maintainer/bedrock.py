@@ -110,9 +110,9 @@ async def invoke_bedrock(
             # Strip markdown code fences if present (Haiku sometimes ignores the system prompt)
             if raw_text.startswith("```"):
                 raw_text = raw_text.split("\n", 1)[-1]
-                if raw_text.endswith("```"):
-                    raw_text = raw_text.rsplit("```", 1)[0]
-                raw_text = raw_text.strip()
+            if raw_text.rstrip().endswith("```"):
+                raw_text = raw_text.rstrip().rsplit("```", 1)[0]
+            raw_text = raw_text.strip()
 
             output = json.loads(raw_text)
 
