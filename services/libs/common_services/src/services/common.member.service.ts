@@ -259,7 +259,10 @@ export class CommonMemberService extends LoggerBase {
     organizationIds: string[],
     syncToOpensearch = false,
   ): Promise<void> {
-    this.log.info({ memberId, organizationIds, syncToOpensearch }, 'Starting affiliation recalculation workflow')
+    this.log.info(
+      { memberId, organizationIds, syncToOpensearch },
+      'Starting affiliation recalculation workflow',
+    )
     await this.temporal.workflow.start('memberUpdate', {
       taskQueue: 'profiles',
       workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
