@@ -22,11 +22,11 @@ export class CventTransformer extends TransformerBase {
     const fullName = (row.FULL_NAME as string | null)?.trim() || null
     const firstName = (row.FIRST_NAME as string | null)?.trim() || null
     const lastName = (row.LAST_NAME as string | null)?.trim() || null
-    const email = (row.EMAIL as string | null)?.trim() || null
+    const email = (row.EMAIL as string).trim()
     if (!email) {
-      log.debug(
+      log.warn(
         { registrationId: row.REGISTRATION_ID, userName, lfUsername },
-        'Skipping row: missing email',
+        'Skipping row: empty email',
       )
       return null
     }
