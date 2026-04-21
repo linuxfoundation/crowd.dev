@@ -38,7 +38,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
     syncFrom?: Date,
   ): Promise<string[]> {
     if (!Number.isInteger(perPage) || perPage <= 0) {
-      throw new Error(`perPage must be a positive integer, got: ${perPage}`)
+      throw new Error('perPage must be a positive integer')
     }
 
     const rows = await this.db().any(
