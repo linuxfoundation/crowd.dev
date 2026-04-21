@@ -75,6 +75,7 @@ export class CommonMemberService extends LoggerBase {
     replace: any,
     segmentIds: string[],
     options?: any,
+    triggerRecalc = true,
   ): Promise<void> {
     if (!organizations) {
       return
@@ -168,7 +169,7 @@ export class CommonMemberService extends LoggerBase {
       }),
     )
 
-    if (affectedOrgIds.size > 0) {
+    if (triggerRecalc && affectedOrgIds.size > 0) {
       await this.startAffiliationRecalculation(memberId, [...affectedOrgIds], true)
     }
   }
