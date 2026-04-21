@@ -22,11 +22,12 @@
  *                         Kept small intentionally: each page triggers an
  *                         activityRelations lookup per member via memberId index.
  *   --concurrency <n>     Max concurrent Temporal workflow starts per page (default: 20)
- *   --page-delay <ms>     Milliseconds to wait between pages (default: 5000)
+ *   --page-delay <ms>     Milliseconds to wait between pages (default: 2000)
  *   --start-after <id>    Resume from a specific memberId (exclusive, for restarts)
  *   --dry-run             Log what would be processed without starting workflows
  *   --limit <n>           Stop after triggering at most N workflows (for testing)
  *   --max-pages <n>       Stop after processing at most N pages (useful for dry-run testing)
+ *   --empty-page-delay <ms> Delay when a page has 0 broken members (default: same as --page-delay)
  *   --workflow-delay <ms> Milliseconds to wait after each workflow start (default: 0)
  *
  * Environment Variables Required:
@@ -63,6 +64,7 @@ interface ScriptOptions {
   dryRun: boolean
   limit: number | null
   maxPages: number | null
+  emptyPageDelayMs: number | null
 }
 
 function parseArgs(): ScriptOptions {
@@ -76,10 +78,17 @@ function parseArgs(): ScriptOptions {
 
   const pageSize = parseInt(getArg('--page-size') ?? '100', 10)
   const concurrency = parseInt(getArg('--concurrency') ?? '20', 10)
-  const pageDelayMs = parseInt(getArg('--page-delay') ?? '5000', 10)
+  const pageDelayMs = parseInt(getArg('--page-delay') ?? '2000', 10)
   const workflowDelayMs = parseInt(getArg('--workflow-delay') ?? '0', 10)
   const startAfter = getArg('--start-after') ?? null
   const dryRun = args.includes('--dry-run')
+  const emptyPageDelayRaw = getArg('--empty-page-delay')
+  const emptyPageDelayMs = emptyPageDelayRaw !== undefined ? parseInt(emptyPageDelayRaw, 10) : null
+
+  if (emptyPageDelayMs !== null && (isNaN(emptyPageDelayMs) || emptyPageDelayMs < 0)) {
+    log.error('--empty-page-delay must be a non-negative integer')
+    process.exit(1)
+  }
   const limitRaw = getArg('--limit')
   const limit = limitRaw !== undefined ? parseInt(limitRaw, 10) : null
   const maxPagesRaw = getArg('--max-pages')
@@ -110,7 +119,7 @@ function parseArgs(): ScriptOptions {
     process.exit(1)
   }
 
-  return { pageSize, concurrency, pageDelayMs, workflowDelayMs, startAfter, dryRun, limit, maxPages }
+  return { pageSize, concurrency, pageDelayMs, workflowDelayMs, startAfter, dryRun, limit, maxPages, emptyPageDelayMs }
 }
 
 // Returns a page of distinct memberIds from memberOrganizations, cursor-based.
@@ -239,6 +248,7 @@ async function main() {
   log.info(`Mode:            ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`)
   log.info(`Limit:           ${opts.limit ?? '(none)'}`)
   log.info(`Max pages:       ${opts.maxPages ?? '(none)'}`)
+  log.info(`Empty page delay: ${opts.emptyPageDelayMs !== null ? `${opts.emptyPageDelayMs}ms` : `same as page-delay (${opts.pageDelayMs}ms)`}`)
   log.info('='.repeat(80))
 
   const dbConnection = await getDbConnection(WRITE_DB_CONFIG())
@@ -350,8 +360,11 @@ async function main() {
       hasMore = false
     }
 
-    if (opts.pageDelayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, opts.pageDelayMs))
+    const delayMs = brokenMembers.length === 0 && opts.emptyPageDelayMs !== null
+      ? opts.emptyPageDelayMs
+      : opts.pageDelayMs
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
   }
 
