@@ -84,6 +84,8 @@ export class CommonMemberService extends LoggerBase {
       return moment(v).toISOString()
     }
 
+    const affectedOrgIds = new Set<string>()
+
     await captureApiChange(
       options,
       memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
@@ -108,6 +110,7 @@ export class CommonMemberService extends LoggerBase {
           for (const item of toDelete) {
             await deleteMemberOrganizations(this.qx, memberId, [item.id])
             ;(item as any).delete = true
+            affectedOrgIds.add(item.organizationId)
           }
         }
 
@@ -157,12 +160,17 @@ export class CommonMemberService extends LoggerBase {
 
             await addOrgsToSegments(this.qx, segmentIds, [org.id])
             newOrgs.push(newOrg)
+            affectedOrgIds.add(org.id)
           }
         }
 
         captureNewState(newOrgs)
       }),
     )
+
+    if (affectedOrgIds.size > 0) {
+      await this.startAffiliationRecalculation(memberId, [...affectedOrgIds], true)
+    }
   }
 
   public async findAffiliation(
