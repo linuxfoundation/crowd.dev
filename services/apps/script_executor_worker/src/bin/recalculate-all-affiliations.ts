@@ -26,6 +26,7 @@
  *   --start-after <id>    Resume from a specific memberId (exclusive, for restarts)
  *   --dry-run             Log what would be processed without starting workflows
  *   --limit <n>           Stop after triggering at most N workflows (for testing)
+ *   --max-pages <n>       Stop after processing at most N pages (useful for dry-run testing)
  *   --workflow-delay <ms> Milliseconds to wait after each workflow start (default: 0)
  *
  * Environment Variables Required:
@@ -61,6 +62,7 @@ interface ScriptOptions {
   startAfter: string | null
   dryRun: boolean
   limit: number | null
+  maxPages: number | null
 }
 
 function parseArgs(): ScriptOptions {
@@ -80,6 +82,8 @@ function parseArgs(): ScriptOptions {
   const dryRun = args.includes('--dry-run')
   const limitRaw = getArg('--limit')
   const limit = limitRaw !== undefined ? parseInt(limitRaw, 10) : null
+  const maxPagesRaw = getArg('--max-pages')
+  const maxPages = maxPagesRaw !== undefined ? parseInt(maxPagesRaw, 10) : null
 
   if (isNaN(pageSize) || pageSize <= 0) {
     log.error('--page-size must be a positive integer')
@@ -101,8 +105,12 @@ function parseArgs(): ScriptOptions {
     log.error('--limit must be a positive integer')
     process.exit(1)
   }
+  if (maxPages !== null && (isNaN(maxPages) || maxPages <= 0)) {
+    log.error('--max-pages must be a positive integer')
+    process.exit(1)
+  }
 
-  return { pageSize, concurrency, pageDelayMs, workflowDelayMs, startAfter, dryRun, limit }
+  return { pageSize, concurrency, pageDelayMs, workflowDelayMs, startAfter, dryRun, limit, maxPages }
 }
 
 // Returns a page of distinct memberIds from memberOrganizations, cursor-based.
@@ -230,6 +238,7 @@ async function main() {
   log.info(`Start after:     ${opts.startAfter ?? '(beginning)'}`)
   log.info(`Mode:            ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`)
   log.info(`Limit:           ${opts.limit ?? '(none)'}`)
+  log.info(`Max pages:       ${opts.maxPages ?? '(none)'}`)
   log.info('='.repeat(80))
 
   const dbConnection = await getDbConnection(WRITE_DB_CONFIG())
@@ -333,6 +342,11 @@ async function main() {
     cursor = lastMemberId
 
     if (memberIds.length < opts.pageSize) {
+      hasMore = false
+    }
+
+    if (opts.maxPages !== null && pageNum >= opts.maxPages) {
+      log.info(`Max pages of ${opts.maxPages} reached.`)
       hasMore = false
     }
 
