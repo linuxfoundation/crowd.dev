@@ -560,19 +560,23 @@ async function upsertInsightsProject(
 
     // Slug is intentionally not updated — it is a stable identifier referenced by FK from
     // securityInsightsEvaluations and related tables.
-    // logoUrl won't be updated in InsightsProject until we confirm that the format is
-    // compatible with the Insights Squared standard. Do NOT reintroduce it as a
-    // `--`-commented SQL line: pg-promise scans placeholders textually and would still
-    // require the `logoUrl` param, triggering "Property 'logoUrl' doesn't exist".
+    // description: COALESCE keeps existing when PCC sends null (CM-1131).
+    // logoUrl: COALESCE("logoUrl", …) never overrides an existing logo; only fills missing ones (CM-1131).
     try {
       await db.none(
         `UPDATE "insightsProjects"
          SET name        = $(name),
-             description = $(description),
+             description = COALESCE($(description), description),
+             "logoUrl"   = COALESCE("logoUrl", $(logoUrl)),
              "updatedAt" = NOW()
          WHERE "segmentId" = $(segmentId)
            AND "deletedAt" IS NULL`,
-        { segmentId, name: project.name, description: project.description },
+        {
+          segmentId,
+          name: project.name,
+          description: project.description,
+          logoUrl: project.logoUrl,
+        },
       )
     } catch (err) {
       if (isDuplicateKeyError(err)) return true
@@ -609,12 +613,11 @@ async function upsertInsightsProject(
   )
   if (conflicting) return true
 
-  // logoUrl intentionally omitted from the INSERT column list — see note above.
   try {
     await db.none(
-      `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "isLF")
-       VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)`,
-      { name: project.name, description: project.description, segmentId },
+      `INSERT INTO "insightsProjects" (name, slug, description, "logoUrl", "segmentId", "isLF")
+       VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(logoUrl), $(segmentId), TRUE)`,
+      { name: project.name, description: project.description, logoUrl: project.logoUrl, segmentId },
     )
   } catch (err) {
     if (isDuplicateKeyError(err)) return true
