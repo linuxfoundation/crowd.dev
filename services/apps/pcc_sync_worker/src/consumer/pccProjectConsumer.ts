@@ -156,9 +156,10 @@ export class PccProjectConsumer {
             // project — useful for triage even when the depth rule is unsupported.
             if (parsed.pccProjectId) {
               const matched = await findSegmentBySourceId(tx, parsed.pccProjectId)
-              if (matched === 'AMBIGUOUS') {
+              if (isAmbiguousMatch(matched)) {
                 errorDetails.matchedVia =
                   'sourceId (ambiguous — multiple subprojects share this sourceId)'
+                errorDetails.candidates = matched.candidates
               } else if (matched) {
                 schemaMismatchMatchedCount++
                 errorDetails.matchedSegmentId = matched.id
@@ -277,9 +278,13 @@ export class PccProjectConsumer {
     // Step 2: sourceId fallback
     if (!segment) {
       const fallback = await findSegmentBySourceId(tx, project.pccProjectId)
-      if (fallback === 'AMBIGUOUS') {
+      if (isAmbiguousMatch(fallback)) {
         log.warn(
-          { pccProjectId: project.pccProjectId, pccSlug: project.pccSlug },
+          {
+            pccProjectId: project.pccProjectId,
+            pccSlug: project.pccSlug,
+            candidates: fallback.candidates,
+          },
           'Multiple subproject segments share this sourceId — cannot determine match, skipping',
         )
         await this.recordSyncError(
@@ -288,11 +293,12 @@ export class PccProjectConsumer {
           'AMBIGUOUS_SEGMENT_MATCH',
           {
             sourceId: project.pccProjectId,
+            candidates: fallback.candidates,
           },
         )
         return { action: 'SKIPPED' }
       }
-      segment = fallback
+      segment = fallback as SegmentRow | null
     }
 
     // Step 3: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
@@ -439,6 +445,17 @@ interface SegmentRow {
   grandparentName: string | null
 }
 
+interface AmbiguousSegmentMatch {
+  ambiguous: true
+  candidates: Array<Pick<SegmentRow, 'id' | 'name'>>
+}
+
+function isAmbiguousMatch(
+  result: SegmentRow | null | AmbiguousSegmentMatch,
+): result is AmbiguousSegmentMatch {
+  return result !== null && (result as AmbiguousSegmentMatch).ambiguous === true
+}
+
 async function findSegmentById(db: DbConnOrTx, segmentId: string): Promise<SegmentRow | null> {
   return db.oneOrNone<SegmentRow>(
     `SELECT id, name, slug, "parentName", "grandparentName"
@@ -451,16 +468,17 @@ async function findSegmentById(db: DbConnOrTx, segmentId: string): Promise<Segme
 async function findSegmentBySourceId(
   db: DbConnOrTx,
   sourceId: string,
-): Promise<SegmentRow | null | 'AMBIGUOUS'> {
+): Promise<SegmentRow | null | AmbiguousSegmentMatch> {
   const rows = await db.manyOrNone<SegmentRow>(
     `SELECT id, name, slug, "parentName", "grandparentName"
      FROM segments
-     WHERE "sourceId" = $(sourceId) AND type = 'subproject' AND "tenantId" = $(tenantId)`,
+     WHERE "sourceId" = $(sourceId) AND type = 'subproject' AND "tenantId" = $(tenantId)
+     LIMIT 2`,
     { sourceId, tenantId: DEFAULT_TENANT_ID },
   )
   if (rows.length === 0) return null
   if (rows.length === 1) return rows[0]
-  return 'AMBIGUOUS'
+  return { ambiguous: true, candidates: rows.map((r) => ({ id: r.id, name: r.name })) }
 }
 
 function detectHierarchyMismatch(segment: SegmentRow, cdpTarget: CdpHierarchyTarget): string[] {
@@ -546,15 +564,20 @@ async function upsertInsightsProject(
     // compatible with the Insights Squared standard. Do NOT reintroduce it as a
     // `--`-commented SQL line: pg-promise scans placeholders textually and would still
     // require the `logoUrl` param, triggering "Property 'logoUrl' doesn't exist".
-    await db.none(
-      `UPDATE "insightsProjects"
-       SET name        = $(name),
-           description = $(description),
-           "updatedAt" = NOW()
-       WHERE "segmentId" = $(segmentId)
-         AND "deletedAt" IS NULL`,
-      { segmentId, name: project.name, description: project.description },
-    )
+    try {
+      await db.none(
+        `UPDATE "insightsProjects"
+         SET name        = $(name),
+             description = $(description),
+             "updatedAt" = NOW()
+         WHERE "segmentId" = $(segmentId)
+           AND "deletedAt" IS NULL`,
+        { segmentId, name: project.name, description: project.description },
+      )
+    } catch (err) {
+      if (isDuplicateKeyError(err)) return true
+      throw err
+    }
     return false
   }
 
@@ -587,12 +610,21 @@ async function upsertInsightsProject(
   if (conflicting) return true
 
   // logoUrl intentionally omitted from the INSERT column list — see note above.
-  await db.none(
-    `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "isLF")
-     VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)`,
-    { name: project.name, description: project.description, segmentId },
-  )
+  try {
+    await db.none(
+      `INSERT INTO "insightsProjects" (name, slug, description, "segmentId", "isLF")
+       VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)`,
+      { name: project.name, description: project.description, segmentId },
+    )
+  } catch (err) {
+    if (isDuplicateKeyError(err)) return true
+    throw err
+  }
   return false
+}
+
+function isDuplicateKeyError(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && (err as { code: unknown }).code === '23505'
 }
 
 async function insertSyncError(

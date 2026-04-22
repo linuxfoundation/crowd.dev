@@ -210,12 +210,19 @@ function serializeJobError(err: unknown): string {
         name: err.name,
         stack: err.stack,
       }
+      // cause is non-enumerable on Error instances — capture it explicitly
+      const cause = (err as { cause?: unknown }).cause
+      if (cause !== undefined) {
+        obj.cause = cause instanceof Error ? cause.message : cause
+      }
       for (const key of Object.keys(err)) {
         if (!(key in obj)) obj[key] = (err as unknown as Record<string, unknown>)[key]
       }
       return JSON.stringify(obj)
     }
-    return JSON.stringify({ message: String(err) })
+    // Non-Error throwables: preserve all fields if it's an object, otherwise wrap in {message}
+    const payload = typeof err === 'object' && err !== null ? err : { message: String(err) }
+    return JSON.stringify(payload)
   } catch {
     return JSON.stringify({ message: String(err) })
   }
