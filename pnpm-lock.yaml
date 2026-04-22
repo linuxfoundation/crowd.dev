@@ -262,8 +262,8 @@ importers:
         specifier: ^3.0.1
         version: 3.1.0
       lodash:
-        specifier: 4.17.21
-        version: 4.17.21
+        specifier: 4.18.1
+        version: 4.18.1
       moment:
         specifier: 2.29.4
         version: 2.29.4
@@ -1062,8 +1062,8 @@ importers:
         specifier: ~1.6.2
         version: 1.6.8
       lodash:
-        specifier: ~4.17.21
-        version: 4.17.21
+        specifier: ~4.18.1
+        version: 4.18.1
       moment:
         specifier: ~2.29.4
         version: 2.29.4
@@ -2101,8 +2101,8 @@ importers:
         specifier: ~9.0.5
         version: 9.0.5
       lodash:
-        specifier: ^4.17.21
-        version: 4.17.21
+        specifier: ^4.18.1
+        version: 4.18.1
       lodash.clonedeep:
         specifier: ^4.5.0
         version: 4.5.0
@@ -6627,6 +6627,7 @@ packages:
 
   dottie@2.0.6:
     resolution: {integrity: sha512-iGCHkfUc5kFekGiqhe8B/mdaurD+lakO9txNnTvKtA6PISrw86LgqHvRzWYPyoE2Ph5aMIrCw9/uko6XHTKCwA==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   dtrace-provider@0.8.8:
     resolution: {integrity: sha512-b7Z7cNtHPhH9EJhNNbbeqTcXB8LGFFZhq1PGgEvpeHlzd36bhbdTWoE/Ba/YguqpBSlAPKnARWhVlhunCMwfxg==}
@@ -8280,6 +8281,9 @@ packages:
   lodash@4.17.21:
     resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
 
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
+
   log-symbols@4.1.0:
     resolution: {integrity: sha512-8XPvpAA8uyhfteu8pIvQxpJZ7SYYdpUivZpGy6sFsBuKRY/7rQGavedeB8aK+Zkyq6upMFVL/9AW6vOYzfRyLg==}
     engines: {node: '>=10'}
@@ -8564,8 +8568,8 @@ packages:
     engines: {node: '>= 4.4.x'}
     hasBin: true
 
-  needle@https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
-    resolution: {tarball: https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b}
+  needle@git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
+    resolution: {commit: 84d28b5f2c3916db1e7eb84aeaa9d976cc40054b, repo: git@github.com:clearbit/needle.git, type: git}
     version: 0.7.10
     engines: {node: '>= 0.10.x'}
     hasBin: true
@@ -10862,8 +10866,8 @@ snapshots:
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
-      '@aws-sdk/client-sts': 3.572.0
+      '@aws-sdk/client-sso-oidc': 3.572.0
+      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -11057,11 +11061,11 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sso-oidc@3.572.0(@aws-sdk/client-sts@3.572.0)':
+  '@aws-sdk/client-sso-oidc@3.572.0':
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sts': 3.572.0
+      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -11100,7 +11104,6 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.6.2
     transitivePeerDependencies:
-      - '@aws-sdk/client-sts'
       - aws-crt
 
   '@aws-sdk/client-sso@3.556.0':
@@ -11276,11 +11279,11 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sts@3.572.0':
+  '@aws-sdk/client-sts@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)':
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
+      '@aws-sdk/client-sso-oidc': 3.572.0
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -11319,6 +11322,7 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.6.2
     transitivePeerDependencies:
+      - '@aws-sdk/client-sso-oidc'
       - aws-crt
 
   '@aws-sdk/client-sts@3.985.0':
@@ -11484,7 +11488,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-ini@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sts': 3.572.0
+      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
       '@aws-sdk/credential-provider-env': 3.568.0
       '@aws-sdk/credential-provider-process': 3.572.0
       '@aws-sdk/credential-provider-sso': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
@@ -11661,7 +11665,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-web-identity@3.568.0(@aws-sdk/client-sts@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sts': 3.572.0
+      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
       '@aws-sdk/types': 3.567.0
       '@smithy/property-provider': 2.2.0
       '@smithy/types': 2.12.0
@@ -11973,7 +11977,7 @@ snapshots:
 
   '@aws-sdk/token-providers@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
+      '@aws-sdk/client-sso-oidc': 3.572.0
       '@aws-sdk/types': 3.567.0
       '@smithy/property-provider': 2.2.0
       '@smithy/shared-ini-file-loader': 2.4.0
@@ -14894,7 +14898,7 @@ snapshots:
       '@babel/traverse': 7.23.2
       '@babel/types': 7.17.0
       javascript-natural-sort: 0.7.1
-      lodash: 4.17.21
+      lodash: 4.18.1
       prettier: 3.3.3
     transitivePeerDependencies:
       - supports-color
@@ -16070,8 +16074,8 @@ snapshots:
     dependencies:
       bluebird: 2.11.0
       create-error: 0.3.1
-      lodash: 4.17.21
-      needle: https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b
+      lodash: 4.18.1
+      needle: git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b
 
   cli-boxes@2.2.1: {}
 
@@ -18541,6 +18545,8 @@ snapshots:
 
   lodash@4.17.21: {}
 
+  lodash@4.18.1: {}
+
   log-symbols@4.1.0:
     dependencies:
       chalk: 4.1.2
@@ -18800,7 +18806,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  needle@https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
+  needle@git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
     dependencies:
       iconv-lite: 0.4.24
 
@@ -20015,7 +20021,7 @@ snapshots:
       cli-color: 1.4.0
       fs-extra: 4.0.3
       js-beautify: 1.15.1
-      lodash: 4.17.21
+      lodash: 4.18.1
       resolve: 1.22.8
       umzug: 2.3.0
       yargs: 8.0.2
@@ -20029,7 +20035,7 @@ snapshots:
       debug: 4.4.0(supports-color@5.5.0)
       dottie: 2.0.6
       inflection: 1.13.4
-      lodash: 4.17.21
+      lodash: 4.18.1
       moment: 2.30.1
       moment-timezone: 0.5.45
       pg-connection-string: 2.6.4
