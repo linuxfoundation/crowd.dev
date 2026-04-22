@@ -481,6 +481,17 @@ export default class MemberService extends LoggerBase {
                 this.log,
                 'memberService -> create -> addToMember',
               )
+
+              const commonMemberService = new CommonMemberService(
+                dbStoreQx(this.store),
+                this.temporal,
+                this.log,
+              )
+              await commonMemberService.startAffiliationRecalculation(
+                id,
+                orgsToAdd.map((o) => o.id),
+                false,
+              )
             }
           }
 
@@ -716,6 +727,17 @@ export default class MemberService extends LoggerBase {
                 () => orgService.addToMember([segmentId], id, orgsToAdd),
                 this.log,
                 'memberService -> update -> addToMember',
+              )
+
+              const commonMemberService = new CommonMemberService(
+                dbStoreQx(this.store),
+                this.temporal,
+                this.log,
+              )
+              await commonMemberService.startAffiliationRecalculation(
+                id,
+                orgsToAdd.map((o) => o.id),
+                false,
               )
             }
           }
