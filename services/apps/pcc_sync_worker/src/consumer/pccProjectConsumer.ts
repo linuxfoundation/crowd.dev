@@ -494,25 +494,24 @@ async function upsertInsightsProject(
   sourceId: string,
   project: ParsedPccProject,
 ): Promise<boolean> {
-  // Check for a name conflict upfront — an active insightsProject belonging to a segment
-  // outside this PCC project's sourceId group already holds this name.
-  // We must exclude all segments sharing the same sourceId (not just the subproject),
-  // because on repeat syncs the group/project levels already carry the same name and
-  // would produce false positives if only the subproject segmentId were excluded.
+  // Check for a cross-family name conflict — another PCC project (different sourceId)
+  // already holds this name in an active insightsProject row.
   const conflicting = await db.oneOrNone<{ id: string }>(
     `SELECT ip.id
      FROM "insightsProjects" ip
      JOIN segments s ON s.id = ip."segmentId"
      WHERE ip.name = $(name)
        AND ip."deletedAt" IS NULL
-       AND s."sourceId" != $(sourceId)
+       AND s."sourceId" IS DISTINCT FROM $(sourceId)
        AND s."tenantId" = $(tenantId)`,
     { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
   )
   if (conflicting) return true
 
-  // No conflict — update all active insightsProject rows linked to any segment that
-  // shares the PCC sourceId (group, project, subproject levels).
+  // Update the matched subproject segment's insightsProject only.
+  // Scoped to segmentId rather than all siblings sharing sourceId — the bulk-sibling
+  // approach causes unique-name constraint violations when siblings have pre-existing
+  // insightsProjects rows with different names that would all be renamed to the same value.
   // Slug is intentionally not updated — it is a stable identifier referenced by FK from
   // securityInsightsEvaluations and related tables.
   // logoUrl won't be updated in InsightsProject until we confirm that the format is
@@ -520,18 +519,14 @@ async function upsertInsightsProject(
   // `--`-commented SQL line: pg-promise scans placeholders textually and would still
   // require the `logoUrl` param, triggering "Property 'logoUrl' doesn't exist".
   await db.none(
-    `UPDATE "insightsProjects" ip
+    `UPDATE "insightsProjects"
      SET name        = $(name),
          description = $(description),
          "updatedAt" = NOW()
-     FROM segments s
-     WHERE ip."segmentId" = s.id
-       AND s."sourceId" = $(sourceId)
-       AND s."tenantId" = $(tenantId)
-       AND ip."deletedAt" IS NULL`,
+     WHERE "segmentId" = $(segmentId)
+       AND "deletedAt" IS NULL`,
     {
-      sourceId,
-      tenantId: DEFAULT_TENANT_ID,
+      segmentId,
       name: project.name,
       description: project.description,
     },
