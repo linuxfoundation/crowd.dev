@@ -116,7 +116,6 @@ export class CommonMemberService extends LoggerBase {
         }
 
         for (const org of normalizedOrgs) {
-
           // we don't need to touch exactly same existing work experiences
           if (
             !originalOrgs.some(
