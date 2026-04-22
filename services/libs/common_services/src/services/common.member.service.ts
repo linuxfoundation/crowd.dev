@@ -84,6 +84,10 @@ export class CommonMemberService extends LoggerBase {
       return moment(v).toISOString()
     }
 
+    const normalizedOrgs = organizations.map((item) =>
+      typeof item === 'string' ? { id: item } : item,
+    )
+
     await captureApiChange(
       options,
       memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
@@ -95,7 +99,7 @@ export class CommonMemberService extends LoggerBase {
         if (replace) {
           const toDelete = originalOrgs.filter(
             (originalOrg: any) =>
-              !organizations.find(
+              !normalizedOrgs.find(
                 (newOrg) =>
                   originalOrg.organizationId === newOrg.id &&
                   (originalOrg.title === (newOrg.title || null) ||
@@ -111,8 +115,7 @@ export class CommonMemberService extends LoggerBase {
           }
         }
 
-        for (const item of organizations) {
-          const org = typeof item === 'string' ? { id: item } : item
+        for (const org of normalizedOrgs) {
 
           // we don't need to touch exactly same existing work experiences
           if (

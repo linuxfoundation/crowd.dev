@@ -277,12 +277,7 @@ export default class MemberService extends LoggerBase {
       data.displayName = data.username[data.platform].username
     }
 
-    const existingOrgIds =
-      existing && data.organizations
-        ? (await fetchMemberOrganizations(optionsQx(this.options), existing.id)).map(
-            (o) => o.organizationId,
-          )
-        : []
+    let existingOrgIds: string[] = []
 
     const transaction = await SequelizeRepository.createTransaction(this.options)
 
@@ -444,6 +439,13 @@ export default class MemberService extends LoggerBase {
       let record
       if (existing) {
         const { id } = existing
+
+        if (data.organizations) {
+          existingOrgIds = (await fetchMemberOrganizations(optionsQx(this.options), id)).map(
+            (o) => o.organizationId,
+          )
+        }
+
         delete existing.id
         const toUpdate = CommonMemberService.membersMerge(existing, data)
 
@@ -521,7 +523,11 @@ export default class MemberService extends LoggerBase {
         )
         const newOrgIds = data.organizations.map((o) => o.id)
         const allAffectedOrgIds = [...new Set([...existingOrgIds, ...newOrgIds])]
-        await commonMemberService.startAffiliationRecalculation(record.id, allAffectedOrgIds, false)
+        await commonMemberService.startAffiliationRecalculation(
+          record.id,
+          allAffectedOrgIds,
+          syncToOpensearch,
+        )
       }
 
       if (syncToOpensearch) {
