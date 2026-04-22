@@ -277,11 +277,12 @@ export default class MemberService extends LoggerBase {
       data.displayName = data.username[data.platform].username
     }
 
-    const existingOrgIds = existing && data.organizations
-      ? (await fetchMemberOrganizations(optionsQx(this.options), existing.id)).map(
-          (o) => o.organizationId,
-        )
-      : []
+    const existingOrgIds =
+      existing && data.organizations
+        ? (await fetchMemberOrganizations(optionsQx(this.options), existing.id)).map(
+            (o) => o.organizationId,
+          )
+        : []
 
     const transaction = await SequelizeRepository.createTransaction(this.options)
 
@@ -819,9 +820,7 @@ export default class MemberService extends LoggerBase {
     let transaction
     try {
       const existingOrgIds = data.organizations
-        ? (await fetchMemberOrganizations(optionsQx(this.options), id)).map(
-            (o) => o.organizationId,
-          )
+        ? (await fetchMemberOrganizations(optionsQx(this.options), id)).map((o) => o.organizationId)
         : []
 
       const repoOptions = await SequelizeRepository.createTransactionalRepositoryOptions(
