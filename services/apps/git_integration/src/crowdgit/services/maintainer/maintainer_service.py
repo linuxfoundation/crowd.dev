@@ -360,11 +360,25 @@ class MaintainerService(BaseService):
 
         - **Third-Party Check (MANDATORY — evaluate FIRST)**: Examine the **full file path** and the **repository URL** below. You MUST return `{{"error": "not_found"}}` immediately if ANY of these rules match:
 
-          **Rule 1 — Repo-name check (step by step)**:
-          1. Extract the repo name and org name from the repository URL (e.g. URL `https://github.com/numworks/epsilon` → repo=`epsilon`, org=`numworks`).
-          2. For each directory in the file path, check: is this directory name a common structural directory (like `src`, `docs`, `doc`, `.github`, `lib`, `pkg`, `test`, `community`, `content`, `tools`, `web`, `app`, `config`, `deploy`, `charts`, etc.)? If yes, skip it — it's fine.
-          3. For any directory that is NOT a common structural directory AND is NOT a governance keyword (maintainer, owner, contributor, etc.), check: does it appear as a substring of the repo name or org name, or vice versa? If NOT → this directory is a submodule or bundled library name that does not belong to this repo. Return `{{"error": "not_found"}}`.
-          Example: file `mylib/README.md` in repo `orgname/myproject` → `mylib` is not structural, not a governance keyword, and `mylib` does not appear in `myproject` or `orgname` → reject. But file `myproject/README.md` in the same repo → `myproject` matches the repo name → allow.
+          **Rule 1 — Repo-name check (APPLY TO EVERY DIRECTORY)**:
+          1. Extract the repo name and org name from the repository URL (e.g. URL `https://github.com/orgname/myproject` → repo=`myproject`, org=`orgname`).
+          2. Walk the file path directory-by-directory. For EACH directory (not just the first one):
+             a. If the directory is a **structural directory**, CONTINUE to the next directory — do NOT skip the entire path. Structural directories include: `src`, `source`, `sources`, `lib`, `libs`, `libraries`, `pkg`, `packages`, `plugins`, `modules`, `components`, `crates`, `examples`, `samples`, `tests`, `test`, `testing`, `spec`, `specs`, `benchmarks`, `benchmark`, `fixtures`, `docs`, `doc`, `documentation`, `.github`, `config`, `configs`, `configuration`, `deploy`, `deployment`, `charts`, `helm`, `tools`, `scripts`, `build`, `dist`, `web`, `app`, `apps`, `cmd`, `bin`, `api`, `internal`, `server`, `client`, `shared`, `common`, `core`, `extras`, `extra`, `fonts`, `themes`, `assets`, `resources`, `public`, `static`, `data`, `infra`, `infrastructure`, `frontend`, `backend`, `community`, `content`, `site`, `website`, `blog`, `wiki`, `www`, `training`, `roadmap`, `whitepaper`, `whitepapers`, `licenses`, `archived`, `proposals`, `roles`, `dev`, `admin`, `old-docs`, `release-notes`, `product`, `models`, `orgs`, `developer-guide`, `_data`, `_sources`, `operations`, `governance`, `org`, `meta`, `steering`, `authoring`, `archive`, `about`.
+             b. If the directory name is a **governance keyword** (maintainer, maintainers, owner, owners, codeowner, codeowners, contributor, contributors, author, authors, governance, committer, committers, reviewer, reviewers, approver, approvers, emeritus, steward, stewards, credits, code_owners, core_team), CONTINUE.
+             c. Otherwise, check: does the directory name appear as a substring of the repo name or org name, or vice versa (case-insensitive)? If YES, CONTINUE. If NO → REJECT immediately with `{{"error": "not_found"}}`. This directory is a submodule, bundled library, or unrelated subcomponent.
+          3. If every directory passes, proceed to content analysis.
+
+          Examples of walking:
+          - `plugins/code-review/README.md` in repo `orgname/myproject`:
+            Walk → `plugins` (structural, CONTINUE) → `code-review` (not structural, not governance, not in "myproject" or "orgname") → REJECT.
+          - `src/qhull/README.txt` in repo `orgname/bambustudio`:
+            Walk → `src` (structural, CONTINUE) → `qhull` (not structural, not governance, not in "bambustudio" or "orgname") → REJECT.
+          - `lib/tinyusb/CONTRIBUTORS.rst` in repo `orgname/firmware`:
+            Walk → `lib` (structural, CONTINUE) → `tinyusb` (not structural, not governance, not in "firmware" or "orgname") → REJECT.
+          - `docs/developer-guide/maintainers.md` in repo `orgname/myproject`:
+            Walk → `docs` (structural, CONTINUE) → `developer-guide` (structural documentation sub-area, CONTINUE) → filename `maintainers.md` is governance → ALLOW.
+          - `.github/CODEOWNERS` in any repo:
+            Walk → `.github` (structural, CONTINUE) → filename `CODEOWNERS` is governance → ALLOW.
 
           **Rule 2 — Vendor/dependency directory**: reject if any directory in the path is one of:
           `vendor`, `node_modules`, `3rdparty`, `3rd_party`, `third_party`, `thirdparty`, `third-party`, `external`, `external_packages`, `extern`, `ext`, `deps`, `deps_src`, `dependencies`, `depend`, `bundled`, `bundled_deps`, `Pods`, `Godeps`, `bower_components`, `gems`, `submodules`, `internal-complibs`, `runtime-library`, `lib-src`, `lib-python`, `contrib`, `vendored`, or ends with `.dist-info`.
@@ -374,8 +388,14 @@ class MaintainerService(BaseService):
           **Rule 4 — Hard depth limit**: reject if the path has more than 3 segments (e.g. `a/b/c/file` is 4 segments → reject). Legitimate governance files live at the root or 1-2 directories deep. No exceptions.
 
           **Examples of paths that MUST be rejected:**
-          - `src/somelibrary/AUTHORS` in a repo that is NOT somelibrary (Rule 1)
-          - `subcomponent/README.md` in a repo with a different project name (Rule 1)
+          - `src/libname/AUTHORS` where `libname` is not related to the repo — bundled library inside a source tree (Rule 1)
+          - `lib/libname/CONTRIBUTORS.rst` where `libname` is not the repo — bundled dependency (Rule 1)
+          - `plugins/something/README.md` where `something` is not related to the repo — unrelated plugin/subcomponent (Rule 1)
+          - `packages/pkgname/README.md` where `pkgname` is not related to the repo — bundled package (Rule 1)
+          - `examples/foo/README.md` where `foo` is not related to the repo — sample documentation, not governance (Rule 1)
+          - `modules/modname/README.md` where `modname` is not related to the repo — module-specific doc (Rule 1)
+          - `libname/AUTHORS.md` at the root where `libname` does not match the repo — bundled library at root (Rule 1)
+          - `subcomponent/README.md` at the root where `subcomponent` is not related to the repo (Rule 1)
           - `vendor/some-package/MAINTAINERS.md` (Rule 2: vendor)
           - `node_modules/some-pkg/README.md` (Rule 2: node_modules)
           - `bundled/pkg-1.2.0/README.md` (Rule 2 + Rule 3: version)
