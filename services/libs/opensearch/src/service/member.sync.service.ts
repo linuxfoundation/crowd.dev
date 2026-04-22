@@ -241,14 +241,14 @@ export class MemberSyncService {
       docCount += documentsIndexed
     }
 
-    const nextLastId = memberIds[memberIds.length - 1]
+    const lastId = memberIds[memberIds.length - 1]
 
     this.log.info(
-      { organizationId, membersSynced: memberIds.length, docCount, nextLastId },
+      { organizationId, membersSynced: memberIds.length, docCount, lastId },
       `Synced page of ${memberIds.length} members (${docCount} docs indexed)`,
     )
 
-    return { lastId: nextLastId, membersSynced: memberIds.length }
+    return { lastId, membersSynced: memberIds.length }
   }
 
   public async syncMembers(memberId: string): Promise<IMemberSyncResult> {

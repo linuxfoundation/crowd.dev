@@ -22,7 +22,7 @@ export class MemberRepository extends RepositoryBase<MemberRepository> {
       return JSON.parse(cachedString)
     }
 
-    const results = await this.db().one(
+    const results = await this.db().any(
       `select type, "canDelete", show, label, name, options from "memberAttributeSettings"`,
     )
 
