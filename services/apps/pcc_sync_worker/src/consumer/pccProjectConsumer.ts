@@ -513,7 +513,7 @@ async function upsertSegment(
      SET name        = $(name),
          status      = COALESCE($(status)::"segmentsStatus_type", status),
          maturity    = $(maturity),
-         description = $(description),
+         description = COALESCE($(description), description),
          "updatedAt" = NOW()
      WHERE "sourceId" = $(sourceId) AND "tenantId" = $(tenantId)`,
     {
