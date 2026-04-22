@@ -331,8 +331,8 @@ importers:
         specifier: ^5.0.10
         version: 5.0.10
       uuid:
-        specifier: ^9.0.0
-        version: 9.0.1
+        specifier: ^14.0.0
+        version: 14.0.0
       validator:
         specifier: ^13.7.0
         version: 13.11.0
@@ -1985,8 +1985,8 @@ importers:
         specifier: ^6.1.11
         version: 6.1.18
       uuid:
-        specifier: ^9.0.0
-        version: 9.0.1
+        specifier: ^14.0.0
+        version: 14.0.0
       validator:
         specifier: ^13.7.0
         version: 13.11.0
@@ -2131,8 +2131,8 @@ importers:
         specifier: ^4.7.0
         version: 4.7.0(pg@8.11.5)
       uuid:
-        specifier: ^9.0.1
-        version: 9.0.1
+        specifier: ^14.0.0
+        version: 14.0.0
       validator:
         specifier: ^13.7.0
         version: 13.11.0
@@ -6627,6 +6627,7 @@ packages:
 
   dottie@2.0.6:
     resolution: {integrity: sha512-iGCHkfUc5kFekGiqhe8B/mdaurD+lakO9txNnTvKtA6PISrw86LgqHvRzWYPyoE2Ph5aMIrCw9/uko6XHTKCwA==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   dtrace-provider@0.8.8:
     resolution: {integrity: sha512-b7Z7cNtHPhH9EJhNNbbeqTcXB8LGFFZhq1PGgEvpeHlzd36bhbdTWoE/Ba/YguqpBSlAPKnARWhVlhunCMwfxg==}
@@ -8564,8 +8565,8 @@ packages:
     engines: {node: '>= 4.4.x'}
     hasBin: true
 
-  needle@https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
-    resolution: {tarball: https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b}
+  needle@git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
+    resolution: {commit: 84d28b5f2c3916db1e7eb84aeaa9d976cc40054b, repo: git@github.com:clearbit/needle.git, type: git}
     version: 0.7.10
     engines: {node: '>= 0.10.x'}
     hasBin: true
@@ -10409,6 +10410,10 @@ packages:
   utils-merge@1.0.1:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
     engines: {node: '>= 0.4.0'}
+
+  uuid@14.0.0:
+    resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
+    hasBin: true
 
   uuid@3.3.2:
     resolution: {integrity: sha512-yXJmeNaw3DnnKAOKJE51sL/ZaYfWJRl1pK9dr19YFCu0ObS231AB1/LbqTKRAQ5kw8A90rA6fr4riOUpTZvQZA==}
@@ -16071,7 +16076,7 @@ snapshots:
       bluebird: 2.11.0
       create-error: 0.3.1
       lodash: 4.17.21
-      needle: https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b
+      needle: git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b
 
   cli-boxes@2.2.1: {}
 
@@ -18800,7 +18805,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  needle@https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
+  needle@git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
     dependencies:
       iconv-lite: 0.4.24
 
@@ -20919,6 +20924,8 @@ snapshots:
       '@xterm/xterm': 5.5.0
 
   utils-merge@1.0.1: {}
+
+  uuid@14.0.0: {}
 
   uuid@3.3.2: {}
 
