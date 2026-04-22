@@ -483,67 +483,59 @@ async function upsertSegment(
   )
 }
 
-// Returns true if a name conflict prevented creating the insightsProject row.
-// Updates insightsProject rows for ALL segment levels sharing the same sourceId
-// (group, project, subproject). The INSERT is restricted to the matched subproject
-// segment (identified by segmentId) to avoid duplicating insights projects for
-// hierarchy-only segments.
+// Returns true if a name conflict prevented writing the insightsProject row.
+// The INSERT is restricted to the matched subproject segment (identified by segmentId)
+// to avoid duplicating insights projects for hierarchy-only segments.
 async function upsertInsightsProject(
   db: DbConnOrTx,
   segmentId: string,
   sourceId: string,
   project: ParsedPccProject,
 ): Promise<boolean> {
-  // Name-uniqueness pre-check. The partial unique index
-  //   unique_insightsProjects_name ON ("name") WHERE "deletedAt" IS NULL
-  // is global, so any active insightsProjects row with this name on a different
-  // segment will collide with either the UPDATE or the INSERT below. Surface it
-  // as INSIGHTS_NAME_CONFLICT rather than crashing the transaction with 23505.
+  // Split UPDATE vs INSERT paths upfront — each needs a different name-collision guard.
+  const exists = await db.oneOrNone<{ id: string }>(
+    `SELECT id FROM "insightsProjects" WHERE "segmentId" = $(segmentId) AND "deletedAt" IS NULL`,
+    { segmentId },
+  )
+
+  if (exists) {
+    // UPDATE path. The partial unique index unique_insightsProjects_name is global, so any
+    // other active row with the target name will collide. This includes same-sourceId duplicate
+    // subproject segments (data anomaly — e.g. FIDOPower / OpenFIDO where two CDP subprojects
+    // share one PCC project_id) as well as cross-family conflicts.
+    const conflicting = await db.oneOrNone<{ id: string }>(
+      `SELECT ip.id
+       FROM "insightsProjects" ip
+       WHERE ip.name = $(name)
+         AND ip."deletedAt" IS NULL
+         AND ip."segmentId" <> $(segmentId)`,
+      { name: project.name, segmentId },
+    )
+    if (conflicting) return true
+
+    // Slug is intentionally not updated — it is a stable identifier referenced by FK from
+    // securityInsightsEvaluations and related tables.
+    // logoUrl won't be updated in InsightsProject until we confirm that the format is
+    // compatible with the Insights Squared standard. Do NOT reintroduce it as a
+    // `--`-commented SQL line: pg-promise scans placeholders textually and would still
+    // require the `logoUrl` param, triggering "Property 'logoUrl' doesn't exist".
+    await db.none(
+      `UPDATE "insightsProjects"
+       SET name        = $(name),
+           description = $(description),
+           "updatedAt" = NOW()
+       WHERE "segmentId" = $(segmentId)
+         AND "deletedAt" IS NULL`,
+      { segmentId, name: project.name, description: project.description },
+    )
+    return false
+  }
+
+  // INSERT path. Two guards before writing:
   //
-  // This catches both cross-family conflicts (different PCC project_id already
-  // owns this name) and same-sourceId duplicate segments (data anomaly where two
-  // CDP subproject rows share one PCC project_id with different names, and the
-  // sibling already holds the PCC-canonical name — e.g. FIDOPower / OpenFIDO).
-  const conflicting = await db.oneOrNone<{ id: string }>(
-    `SELECT ip.id
-     FROM "insightsProjects" ip
-     WHERE ip.name = $(name)
-       AND ip."deletedAt" IS NULL
-       AND ip."segmentId" <> $(segmentId)`,
-    { name: project.name, segmentId },
-  )
-  if (conflicting) return true
-
-  // Update the matched subproject segment's insightsProject only.
-  // Scoped to segmentId rather than all siblings sharing sourceId — the bulk-sibling
-  // approach causes unique-name constraint violations when siblings have pre-existing
-  // insightsProjects rows with different names that would all be renamed to the same value.
-  // Slug is intentionally not updated — it is a stable identifier referenced by FK from
-  // securityInsightsEvaluations and related tables.
-  // logoUrl won't be updated in InsightsProject until we confirm that the format is
-  // compatible with the Insights Squared standard. Do NOT reintroduce it as a
-  // `--`-commented SQL line: pg-promise scans placeholders textually and would still
-  // require the `logoUrl` param, triggering "Property 'logoUrl' doesn't exist".
-  await db.none(
-    `UPDATE "insightsProjects"
-     SET name        = $(name),
-         description = $(description),
-         "updatedAt" = NOW()
-     WHERE "segmentId" = $(segmentId)
-       AND "deletedAt" IS NULL`,
-    {
-      segmentId,
-      name: project.name,
-      description: project.description,
-    },
-  )
-
-  // INSERT for the subproject segment only (the matched leaf).
-  // Before inserting, check if a same-family sibling (group/project level sharing the same
-  // sourceId) already holds this name. Shallow hierarchies (eff=1/2) have group+project+subproject
-  // all sharing the same name and sourceId — the group/project rows are written first and would
-  // cause a name conflict on the subproject INSERT. Skip the INSERT in that case; the family is
-  // already represented.
+  // 1. Same-family skip: a group/project-level segment sharing this sourceId already holds the
+  //    canonical name (shallow eff=1/2 hierarchy). The family is already represented — skip the
+  //    INSERT without recording a conflict.
   const sameFamilyNameHolder = await db.oneOrNone(
     `SELECT 1
      FROM "insightsProjects" ip
@@ -557,11 +549,18 @@ async function upsertInsightsProject(
   )
   if (sameFamilyNameHolder) return false
 
-  const exists = await db.oneOrNone<{ id: string }>(
-    `SELECT id FROM "insightsProjects" WHERE "segmentId" = $(segmentId) AND "deletedAt" IS NULL`,
-    { segmentId },
+  // 2. Cross-family conflict: a different PCC project (different sourceId) already owns this name.
+  const conflicting = await db.oneOrNone<{ id: string }>(
+    `SELECT ip.id
+     FROM "insightsProjects" ip
+     JOIN segments s ON s.id = ip."segmentId"
+     WHERE ip.name = $(name)
+       AND ip."deletedAt" IS NULL
+       AND s."sourceId" IS DISTINCT FROM $(sourceId)
+       AND s."tenantId" = $(tenantId)`,
+    { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
   )
-  if (exists) return false
+  if (conflicting) return true
 
   // logoUrl intentionally omitted from the INSERT column list — see note above.
   await db.none(
@@ -569,7 +568,6 @@ async function upsertInsightsProject(
      VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(segmentId), TRUE)`,
     { name: project.name, description: project.description, segmentId },
   )
-
   return false
 }
 
