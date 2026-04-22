@@ -494,17 +494,23 @@ async function upsertInsightsProject(
   sourceId: string,
   project: ParsedPccProject,
 ): Promise<boolean> {
-  // Check for a cross-family name conflict — another PCC project (different sourceId)
-  // already holds this name in an active insightsProject row.
+  // Name-uniqueness pre-check. The partial unique index
+  //   unique_insightsProjects_name ON ("name") WHERE "deletedAt" IS NULL
+  // is global, so any active insightsProjects row with this name on a different
+  // segment will collide with either the UPDATE or the INSERT below. Surface it
+  // as INSIGHTS_NAME_CONFLICT rather than crashing the transaction with 23505.
+  //
+  // This catches both cross-family conflicts (different PCC project_id already
+  // owns this name) and same-sourceId duplicate segments (data anomaly where two
+  // CDP subproject rows share one PCC project_id with different names, and the
+  // sibling already holds the PCC-canonical name — e.g. FIDOPower / OpenFIDO).
   const conflicting = await db.oneOrNone<{ id: string }>(
     `SELECT ip.id
      FROM "insightsProjects" ip
-     JOIN segments s ON s.id = ip."segmentId"
      WHERE ip.name = $(name)
        AND ip."deletedAt" IS NULL
-       AND s."sourceId" IS DISTINCT FROM $(sourceId)
-       AND s."tenantId" = $(tenantId)`,
-    { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
+       AND ip."segmentId" <> $(segmentId)`,
+    { name: project.name, segmentId },
   )
   if (conflicting) return true
 
