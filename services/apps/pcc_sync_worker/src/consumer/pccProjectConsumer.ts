@@ -298,7 +298,7 @@ export class PccProjectConsumer {
         )
         return { action: 'SKIPPED' }
       }
-      segment = fallback as SegmentRow | null
+      segment = fallback
     }
 
     // Step 3: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
@@ -562,22 +562,29 @@ async function upsertInsightsProject(
     // securityInsightsEvaluations and related tables.
     // description: COALESCE keeps existing when PCC sends null (CM-1131).
     // logoUrl: COALESCE("logoUrl", …) never overrides an existing logo; only fills missing ones (CM-1131).
+    //
+    // Wrapped in db.tx() so that when called inside an outer transaction (ITask), pg-promise
+    // creates a SAVEPOINT. A 23505 failure rolls back only the savepoint, leaving the outer
+    // transaction intact. Without this, a caught PG error still leaves the transaction in
+    // an aborted state and all subsequent queries on the same tx would fail.
     try {
-      await db.none(
-        `UPDATE "insightsProjects"
-         SET name        = $(name),
-             description = COALESCE($(description), description),
-             "logoUrl"   = COALESCE("logoUrl", $(logoUrl)),
-             "updatedAt" = NOW()
-         WHERE "segmentId" = $(segmentId)
-           AND "deletedAt" IS NULL`,
-        {
-          segmentId,
-          name: project.name,
-          description: project.description,
-          logoUrl: project.logoUrl,
-        },
-      )
+      await db.tx(async (t) => {
+        await t.none(
+          `UPDATE "insightsProjects"
+           SET name        = $(name),
+               description = COALESCE($(description), description),
+               "logoUrl"   = COALESCE("logoUrl", $(logoUrl)),
+               "updatedAt" = NOW()
+           WHERE "segmentId" = $(segmentId)
+             AND "deletedAt" IS NULL`,
+          {
+            segmentId,
+            name: project.name,
+            description: project.description,
+            logoUrl: project.logoUrl,
+          },
+        )
+      })
     } catch (err) {
       if (isDuplicateKeyError(err)) return true
       throw err
@@ -613,14 +620,28 @@ async function upsertInsightsProject(
   )
   if (conflicting) return true
 
+  // Same savepoint rationale as the UPDATE path above.
   try {
-    await db.none(
-      `INSERT INTO "insightsProjects" (name, slug, description, "logoUrl", "segmentId", "isLF")
-       VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(logoUrl), $(segmentId), TRUE)`,
-      { name: project.name, description: project.description, logoUrl: project.logoUrl, segmentId },
-    )
+    await db.tx(async (t) => {
+      await t.none(
+        `INSERT INTO "insightsProjects" (name, slug, description, "logoUrl", "segmentId", "isLF")
+         VALUES ($(name), generate_slug('insightsProjects', $(name)), $(description), $(logoUrl), $(segmentId), TRUE)`,
+        {
+          name: project.name,
+          description: project.description,
+          logoUrl: project.logoUrl,
+          segmentId,
+        },
+      )
+    })
   } catch (err) {
-    if (isDuplicateKeyError(err)) return true
+    if (isDuplicateKeyError(err)) {
+      // unique_project_segmentId: another worker already inserted a row for this segment
+      // concurrently — treat as "already represented", no conflict to record.
+      const constraintName = (err as { constraint?: string }).constraint
+      if (constraintName === 'unique_project_segmentId') return false
+      return true
+    }
     throw err
   }
   return false
