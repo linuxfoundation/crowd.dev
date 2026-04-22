@@ -75,7 +75,6 @@ export class CommonMemberService extends LoggerBase {
     replace: any,
     segmentIds: string[],
     options?: any,
-    triggerRecalc = true,
   ): Promise<void> {
     if (!organizations) {
       return
@@ -84,8 +83,6 @@ export class CommonMemberService extends LoggerBase {
     function iso(v) {
       return moment(v).toISOString()
     }
-
-    const affectedOrgIds = new Set<string>()
 
     await captureApiChange(
       options,
@@ -111,7 +108,6 @@ export class CommonMemberService extends LoggerBase {
           for (const item of toDelete) {
             await deleteMemberOrganizations(this.qx, memberId, [item.id])
             ;(item as any).delete = true
-            affectedOrgIds.add(item.organizationId)
           }
         }
 
@@ -122,10 +118,10 @@ export class CommonMemberService extends LoggerBase {
           if (
             !originalOrgs.some(
               (w) =>
-                w.organizationId === item.id &&
-                w.title === (item.title || null) &&
-                w.dateStart === (item.startDate || null) &&
-                w.dateEnd === (item.endDate || null),
+                w.organizationId === org.id &&
+                w.title === (org.title || null) &&
+                w.dateStart === (org.startDate || null) &&
+                w.dateEnd === (org.endDate || null),
             )
           ) {
             const newOrg = {
@@ -161,26 +157,12 @@ export class CommonMemberService extends LoggerBase {
 
             await addOrgsToSegments(this.qx, segmentIds, [org.id])
             newOrgs.push(newOrg)
-            affectedOrgIds.add(org.id)
           }
         }
 
         captureNewState(newOrgs)
       }),
     )
-
-    if (triggerRecalc && affectedOrgIds.size > 0) {
-      this.log.info(
-        { memberId, affectedOrgIds: [...affectedOrgIds] },
-        'Member organizations updated — triggering affiliation recalculation',
-      )
-      await this.startAffiliationRecalculation(memberId, [...affectedOrgIds], true)
-    } else {
-      this.log.info(
-        { memberId, affectedOrgIds: [...affectedOrgIds], triggerRecalc },
-        'Member organizations updated — skipping affiliation recalculation',
-      )
-    }
   }
 
   public async findAffiliation(

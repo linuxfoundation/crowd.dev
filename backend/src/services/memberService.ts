@@ -20,6 +20,7 @@ import {
   insertMemberSegmentAggregates,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
+import { fetchMemberOrganizations } from '@crowd/data-access-layer/src/members/organizations'
 import { QueryExecutor, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
@@ -276,6 +277,12 @@ export default class MemberService extends LoggerBase {
       data.displayName = data.username[data.platform].username
     }
 
+    const existingOrgIds = existing && data.organizations
+      ? (await fetchMemberOrganizations(optionsQx(this.options), existing.id)).map(
+          (o) => o.organizationId,
+        )
+      : []
+
     const transaction = await SequelizeRepository.createTransaction(this.options)
 
     try {
@@ -504,6 +511,17 @@ export default class MemberService extends LoggerBase {
       )
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      if (data.organizations) {
+        const commonMemberService = new CommonMemberService(
+          optionsQx(this.options),
+          this.options.temporal,
+          this.options.log,
+        )
+        const newOrgIds = data.organizations.map((o) => o.id)
+        const allAffectedOrgIds = [...new Set([...existingOrgIds, ...newOrgIds])]
+        await commonMemberService.startAffiliationRecalculation(record.id, allAffectedOrgIds, false)
+      }
 
       if (syncToOpensearch) {
         await searchSyncService.triggerMemberSync(record.id)
@@ -800,6 +818,12 @@ export default class MemberService extends LoggerBase {
   ) {
     let transaction
     try {
+      const existingOrgIds = data.organizations
+        ? (await fetchMemberOrganizations(optionsQx(this.options), id)).map(
+            (o) => o.organizationId,
+          )
+        : []
+
       const repoOptions = await SequelizeRepository.createTransactionalRepositoryOptions(
         this.options,
       )
@@ -824,9 +848,11 @@ export default class MemberService extends LoggerBase {
         this.options.temporal,
         this.options.log,
       )
+      const newOrgIds = (data.organizations || []).map((o) => o.id)
+      const allAffectedOrgIds = [...new Set([...existingOrgIds, ...newOrgIds])]
       await commonMemberService.startAffiliationRecalculation(
         id,
-        (data.organizations || []).map((o) => o.id),
+        allAffectedOrgIds,
         syncToOpensearch,
       )
 

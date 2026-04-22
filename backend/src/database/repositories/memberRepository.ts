@@ -876,7 +876,6 @@ class MemberRepository {
       data.organizationsReplace,
       options.currentSegments.map((s) => s.id),
       options,
-      false, // MemberService.update triggers startAffiliationRecalculation after commit
     )
 
     if (data.noMerge) {
