@@ -55,7 +55,8 @@ export const buildSourceQuery = (sinceTimestamp?: string): string => {
     AND u.lf_username IS NOT NULL
   LEFT JOIN org_accounts org
     ON er.account_id = org.account_id
-  WHERE ${LFID_COALESCE} IS NOT NULL`
+  WHERE er.email IS NOT NULL
+    AND ${LFID_COALESCE} IS NOT NULL`
 
   // Limit to a single project in non-prod to avoid exporting all projects data
   if (!IS_PROD_ENV) {

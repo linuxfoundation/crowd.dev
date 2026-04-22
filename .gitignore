@@ -183,7 +183,6 @@ cython_debug/
 /docker/docker-compose.yaml
 /docker/docker-compose.dev.yaml
 
-/backend/superface/**
 docker/volume
 
 services/libs/*/dist

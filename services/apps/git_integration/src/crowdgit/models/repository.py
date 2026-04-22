@@ -41,10 +41,6 @@ class Repository(BaseModel):
     parent_repo: Repository | None = Field(
         None, description="The parent repository (in case of fork) object from our database"
     )
-    stuck_requires_re_onboard: bool = Field(
-        default=False,
-        description="Indicates if the stuck repository is resolved by a re-onboarding",
-    )
     re_onboarding_count: int = Field(
         default=0,
         description="Tracks the number of times this repository has been re-onboarded. Used to identify unreachable commits via activity.attributes.cycle matching pattern onboarding-{reOnboardingCount}",
@@ -71,7 +67,6 @@ class Repository(BaseModel):
             "maintainerFile": "maintainer_file",
             "lastMaintainerRunAt": "last_maintainer_run_at",
             "forkedFrom": "forked_from",
-            "stuckRequiresReOnboard": "stuck_requires_re_onboard",
             "reOnboardingCount": "re_onboarding_count",
         }
         for db_field, model_field in field_mapping.items():

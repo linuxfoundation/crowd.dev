@@ -1,3 +1,4 @@
+import { Context, heartbeat } from '@temporalio/activity'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@temporalio/workflow'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
@@ -96,7 +97,19 @@ export async function syncOrganization(organizationId: string, syncStart: Date):
   })
 
   await syncApi.triggerOrganizationSync(organizationId)
-  await syncApi.triggerOrganizationMembersSync(organizationId, null, syncStart)
+
+  const cursor = Context.current().info.heartbeatDetails as string | undefined
+  if (cursor) {
+    svc.log.info({ organizationId, cursor }, 'Resuming organization member sync from heartbeat')
+  }
+
+  const { totalSynced } = await syncApi.syncOrganizationMembers(organizationId, {
+    syncFrom: syncStart,
+    cursor,
+    onPageComplete: (c) => heartbeat(c),
+  })
+
+  svc.log.info({ organizationId, totalSynced }, 'Finished syncing organization members')
 }
 
 export async function notifyFrontendOrganizationUnmergeSuccessful(

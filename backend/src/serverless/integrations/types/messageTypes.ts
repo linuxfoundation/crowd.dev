@@ -28,13 +28,6 @@ export interface TwitterReachMessage extends IntegrationsMessage {
   }
 }
 
-export interface DiscordIntegrationMessage extends IntegrationsMessage {
-  args: {
-    guildId: string
-    channels?: any
-  }
-}
-
 export interface SlackIntegrationMessage extends IntegrationsMessage {
   args: {
     channels?: any

@@ -1491,14 +1491,8 @@ class OrganizationRepository {
       SELECT
         ${fields}
       FROM organizations o
-      ${
-        withAggregates
-          ? ` INNER JOIN "organizationSegmentsAgg" osa ON osa."organizationId" = o.id AND ${
-              segmentId ? `osa."segmentId" = $(segmentId)` : `osa."segmentId" IS NULL`
-            }`
-          : ` LEFT JOIN "organizationSegmentsAgg" osa ON osa."organizationId" = o.id AND ${
-              segmentId ? `osa."segmentId" = $(segmentId)` : `osa."segmentId" IS NULL`
-            }`
+      LEFT JOIN "organizationSegmentsAgg" osa ON osa."organizationId" = o.id AND ${
+        segmentId ? `osa."segmentId" = $(segmentId)` : `osa."segmentId" IS NULL`
       }
       LEFT JOIN "organizationEnrichments" oe ON oe."organizationId" = o.id
       WHERE 1=1

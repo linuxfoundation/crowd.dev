@@ -195,41 +195,43 @@ DESCRIPTION >
 SQL >
     SELECT
         insightsProjects.id as id,
-        insightsProjects.name as name,
-        insightsProjects.slug as slug,
-        insightsProjects.description as description,
-        insightsProjects.segmentId as segmentId,
-        insightsProjects.createdAt as createdAt,
-        insightsProjects.updatedAt as updatedAt,
-        insightsProjects.logoUrl as logoUrl,
-        insightsProjects.organizationId as organizationId,
-        insightsProjects.website as website,
-        insightsProjects.github as github,
-        insightsProjects.linkedin as linkedin,
-        insightsProjects.twitter as twitter,
-        insightsProjects.widgets as widgets,
-        insights_projects_populated_copy_project_repo_data.repositories as repositories,
-        insightsProjects.enabled as enabled,
-        insightsProjects.isLF as isLF,
-        insightsProjects.keywords as keywords,
-        insights_projects_populated_copy_collections_slugs.collectionsSlugs as collectionsSlugs,
-        insights_projects_populated_copy_connected_platforms.connectedPlatforms as connectedPlatforms,
-        insights_projects_populated_copy_first_commit_with_url.firstCommit as firstCommit,
-        insights_projects_populated_copy_first_commit_with_url.firstCommitUrl as firstCommitUrl,
-        insights_projects_populated_copy_project_repo_data.projectScore as score,
-        insights_projects_populated_copy_project_repo_data.projectRank as rank,
-        insights_projects_populated_copy_project_repo_data.repoData as repoData,
-        insights_projects_populated_copy_aggregates.softwareValue as softwareValue,
-        insights_projects_populated_copy_aggregates.contributorCount as contributorCount,
-        insights_projects_populated_copy_aggregates.organizationCount as organizationCount,
-        insights_projects_populated_copy_health_score_deduplicated.healthScore as healthScore,
-        archived_excluded_repositories.archivedRepositories as archivedRepositories,
-        archived_excluded_repositories.excludedRepositories as excludedRepositories,
-        insights_projects_populated_copy_mentions.communityPlatforms as communityPlatforms,
-        insights_projects_populated_copy_mentions.communityKeywords as communityKeywords,
-        insights_projects_populated_copy_mentions.communityLanguages as communityLanguages,
-        segments.status as status,
-        last_vulnerability_scan_status.lastVulnerabilityScanStatus as lastVulnerabilityScanStatus
+        any (insightsProjects.name) as name,
+        any (insightsProjects.slug) as slug,
+        any (insightsProjects.description) as description,
+        any (insightsProjects.segmentId) as segmentId,
+        any (insightsProjects.createdAt) as createdAt,
+        any (insightsProjects.updatedAt) as updatedAt,
+        any (insightsProjects.logoUrl) as logoUrl,
+        any (insightsProjects.organizationId) as organizationId,
+        any (insightsProjects.website) as website,
+        any (insightsProjects.github) as github,
+        any (insightsProjects.linkedin) as linkedin,
+        any (insightsProjects.twitter) as twitter,
+        any (insightsProjects.widgets) as widgets,
+        any (insights_projects_populated_copy_project_repo_data.repositories) as repositories,
+        any (insightsProjects.enabled) as enabled,
+        any (insightsProjects.isLF) as isLF,
+        any (insightsProjects.keywords) as keywords,
+        any (insights_projects_populated_copy_collections_slugs.collectionsSlugs) as collectionsSlugs,
+        any (
+            insights_projects_populated_copy_connected_platforms.connectedPlatforms
+        ) as connectedPlatforms,
+        any (insights_projects_populated_copy_first_commit_with_url.firstCommit) as firstCommit,
+        any (insights_projects_populated_copy_first_commit_with_url.firstCommitUrl) as firstCommitUrl,
+        any (insights_projects_populated_copy_project_repo_data.projectScore) as score,
+        any (insights_projects_populated_copy_project_repo_data.projectRank) as rank,
+        any (insights_projects_populated_copy_project_repo_data.repoData) as repoData,
+        any (insights_projects_populated_copy_aggregates.softwareValue) as softwareValue,
+        any (insights_projects_populated_copy_aggregates.contributorCount) as contributorCount,
+        any (insights_projects_populated_copy_aggregates.organizationCount) as organizationCount,
+        any (insights_projects_populated_copy_health_score_deduplicated.healthScore) as healthScore,
+        any (archived_excluded_repositories.archivedRepositories) as archivedRepositories,
+        any (archived_excluded_repositories.excludedRepositories) as excludedRepositories,
+        any (insights_projects_populated_copy_mentions.communityPlatforms) as communityPlatforms,
+        any (insights_projects_populated_copy_mentions.communityKeywords) as communityKeywords,
+        any (insights_projects_populated_copy_mentions.communityLanguages) as communityLanguages,
+        any (segments.status) as status,
+        any (last_vulnerability_scan_status.lastVulnerabilityScanStatus) as lastVulnerabilityScanStatus
     FROM insightsProjects FINAL
     LEFT JOIN
         insights_projects_populated_copy_collections_slugs
@@ -260,6 +262,7 @@ SQL >
         ON last_vulnerability_scan_status.insightsProjectId = insightsProjects.id
     LEFT JOIN segments ON segments.id = insightsProjects.segmentId
     WHERE isNull (insightsProjects.deletedAt)
+    group by 1
 
 TYPE COPY
 TARGET_DATASOURCE insights_projects_populated_ds

@@ -22,10 +22,6 @@ export interface TwitterOutput extends BaseOutput {
 
 export interface TwitterReachOutput extends BaseOutput {}
 
-export interface DiscordOutput extends BaseOutput {
-  channels: any[]
-}
-
 export interface SlackOutput extends BaseOutput {
   channels: any[]
   users: Object
