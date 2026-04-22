@@ -156,7 +156,10 @@ export class PccProjectConsumer {
             // project — useful for triage even when the depth rule is unsupported.
             if (parsed.pccProjectId) {
               const matched = await findSegmentBySourceId(tx, parsed.pccProjectId)
-              if (matched) {
+              if (matched === 'AMBIGUOUS') {
+                errorDetails.matchedVia =
+                  'sourceId (ambiguous — multiple subprojects share this sourceId)'
+              } else if (matched) {
                 schemaMismatchMatchedCount++
                 errorDetails.matchedSegmentId = matched.id
                 errorDetails.matchedSegmentName = matched.name
@@ -230,7 +233,6 @@ export class PccProjectConsumer {
         })
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
       log.error({ jobId: job.id, err }, 'PCC job failed')
 
       if (this.dryRun) {
@@ -239,7 +241,9 @@ export class PccProjectConsumer {
         await this.releaseClaimBestEffort(job.id)
       } else {
         try {
-          await this.metadataStore.markFailed(job.id, errorMessage, {
+          await this.metadataStore.markFailed(job.id, err, {
+            transformedCount: upsertedCount,
+            skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
             processingDurationMs: Date.now() - startTime,
           })
         } catch (updateErr) {
@@ -272,7 +276,23 @@ export class PccProjectConsumer {
 
     // Step 2: sourceId fallback
     if (!segment) {
-      segment = await findSegmentBySourceId(tx, project.pccProjectId)
+      const fallback = await findSegmentBySourceId(tx, project.pccProjectId)
+      if (fallback === 'AMBIGUOUS') {
+        log.warn(
+          { pccProjectId: project.pccProjectId, pccSlug: project.pccSlug },
+          'Multiple subproject segments share this sourceId — cannot determine match, skipping',
+        )
+        await this.recordSyncError(
+          project.pccProjectId,
+          project.pccSlug,
+          'AMBIGUOUS_SEGMENT_MATCH',
+          {
+            sourceId: project.pccProjectId,
+          },
+        )
+        return { action: 'SKIPPED' }
+      }
+      segment = fallback
     }
 
     // Step 3: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
@@ -428,13 +448,19 @@ async function findSegmentById(db: DbConnOrTx, segmentId: string): Promise<Segme
   )
 }
 
-async function findSegmentBySourceId(db: DbConnOrTx, sourceId: string): Promise<SegmentRow | null> {
-  return db.oneOrNone<SegmentRow>(
+async function findSegmentBySourceId(
+  db: DbConnOrTx,
+  sourceId: string,
+): Promise<SegmentRow | null | 'AMBIGUOUS'> {
+  const rows = await db.manyOrNone<SegmentRow>(
     `SELECT id, name, slug, "parentName", "grandparentName"
      FROM segments
      WHERE "sourceId" = $(sourceId) AND type = 'subproject' AND "tenantId" = $(tenantId)`,
     { sourceId, tenantId: DEFAULT_TENANT_ID },
   )
+  if (rows.length === 0) return null
+  if (rows.length === 1) return rows[0]
+  return 'AMBIGUOUS'
 }
 
 function detectHierarchyMismatch(segment: SegmentRow, cdpTarget: CdpHierarchyTarget): string[] {
@@ -502,14 +528,15 @@ async function upsertInsightsProject(
     // UPDATE path. The partial unique index unique_insightsProjects_name is global, so any
     // other active row with the target name will collide. This includes same-sourceId duplicate
     // subproject segments (data anomaly — e.g. FIDOPower / OpenFIDO where two CDP subprojects
-    // share one PCC project_id) as well as cross-family conflicts.
+    // share one PCC project_id) as well as cross-family conflicts and NULL-segmentId rows.
+    // We exclude by PK (never null) rather than by segmentId to stay NULL-safe.
     const conflicting = await db.oneOrNone<{ id: string }>(
       `SELECT ip.id
        FROM "insightsProjects" ip
        WHERE ip.name = $(name)
          AND ip."deletedAt" IS NULL
-         AND ip."segmentId" <> $(segmentId)`,
-      { name: project.name, segmentId },
+         AND ip.id <> $(id)`,
+      { name: project.name, id: exists.id },
     )
     if (conflicting) return true
 
@@ -549,16 +576,13 @@ async function upsertInsightsProject(
   )
   if (sameFamilyNameHolder) return false
 
-  // 2. Cross-family conflict: a different PCC project (different sourceId) already owns this name.
+  // 2. Any remaining active row with this name is a conflict — cross-family, different PCC
+  //    project, or a NULL-segmentId orphan row. The unique index is global and includes those.
+  //    No join needed here: sameFamilyNameHolder above already cleared the same-sourceId case,
+  //    so anything found now is genuinely incompatible.
   const conflicting = await db.oneOrNone<{ id: string }>(
-    `SELECT ip.id
-     FROM "insightsProjects" ip
-     JOIN segments s ON s.id = ip."segmentId"
-     WHERE ip.name = $(name)
-       AND ip."deletedAt" IS NULL
-       AND s."sourceId" IS DISTINCT FROM $(sourceId)
-       AND s."tenantId" = $(tenantId)`,
-    { name: project.name, sourceId, tenantId: DEFAULT_TENANT_ID },
+    `SELECT id FROM "insightsProjects" WHERE name = $(name) AND "deletedAt" IS NULL LIMIT 1`,
+    { name: project.name },
   )
   if (conflicting) return true
 
