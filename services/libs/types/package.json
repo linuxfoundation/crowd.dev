@@ -1,5 +1,6 @@
 {
   "name": "@crowd/types",
+  "private": true,
   "main": "src/index.ts",
   "scripts": {
     "lint": "npx eslint --ext .ts src --max-warnings=0",

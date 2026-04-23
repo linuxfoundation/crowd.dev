@@ -126,11 +126,10 @@ export class TransformerConsumer {
 
       log.info({ jobId: job.id, ...processingMetrics }, 'Job completed')
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
       log.error({ jobId: job.id, err }, 'Job failed')
 
       try {
-        await this.metadataStore.markFailed(job.id, errorMessage, {
+        await this.metadataStore.markFailed(job.id, err, {
           processingDurationMs: Date.now() - startTime,
         })
       } catch (updateErr) {
