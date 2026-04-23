@@ -61,6 +61,18 @@ Millions of rows. Every query matters.
 - Write queries with performance in mind. Think about what indexes exist, what
   the query plan looks like, and whether you're scanning more rows than needed.
 
+## Linting
+
+After modifying files in any workspace, always run lint from the repo root using the package name (found in the workspace's `package.json`):
+
+```
+pnpm --filter <package-name> lint
+```
+
+For example: `pnpm --filter @crowd/members-enrichment-worker lint`
+
+Fix all lint errors before considering the task done. Do not leave lint failures in modified workspaces.
+
 ## Code quality
 
 - Functional and modular. Code should be easy to plug in, pull out, and test
