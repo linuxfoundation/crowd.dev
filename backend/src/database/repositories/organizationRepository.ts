@@ -1296,6 +1296,25 @@ class OrganizationRepository {
     return { lfxMembershipFilter, updatedfilter }
   }
 
+  private static handleSearchFilter(filter: any): {
+    searchTerm: string | null
+    updatedFilter: any
+  } {
+    if (!filter || typeof filter !== 'object') {
+      return { searchTerm: null, updatedFilter: filter }
+    }
+
+    const updatedFilter = { ...filter }
+    let searchTerm: string | null = null
+
+    if (typeof updatedFilter.search === 'string' && updatedFilter.search.trim()) {
+      searchTerm = updatedFilter.search.trim()
+    }
+    delete updatedFilter.search
+
+    return { searchTerm, updatedFilter }
+  }
+
   static async findAndCountAll(
     {
       countOnly = false,
@@ -1428,6 +1447,10 @@ class OrganizationRepository {
 
     const withAggregates = include.aggregates
 
+    const { searchTerm, updatedFilter: filterWithoutSearch } =
+      OrganizationRepository.handleSearchFilter(filter)
+    filter = filterWithoutSearch
+
     const { lfxMembershipFilter, updatedfilter } =
       OrganizationRepository.handleLfxMembershipFilter(filter)
     filter = updatedfilter // updated filter without lfxMembershipFilter
@@ -1458,11 +1481,17 @@ class OrganizationRepository {
       segmentId = segment.id
     }
 
-    const params = {
+    const params: Record<string, any> = {
       limit,
       offset,
       segmentId,
       tenantId: options.currentTenant.id,
+    }
+
+    let searchWhereClause = ''
+    if (searchTerm) {
+      params.searchTerm = `%${searchTerm}%`
+      searchWhereClause = `AND o."displayName" ILIKE $(searchTerm)`
     }
 
     const filterString = RawQueryParser.parseFilters(
@@ -1498,6 +1527,7 @@ class OrganizationRepository {
       WHERE 1=1
         AND o."tenantId" = $(tenantId)
         ${lfxMembershipFilterWhereClause}
+        ${searchWhereClause}
         AND (${filterString})
     `
     const countQuery = createQuery('COUNT(*)')
