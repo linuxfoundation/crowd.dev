@@ -953,7 +953,7 @@ export default class MemberService extends LoggerBase {
       offset: data.offset,
       orderBy: data.orderBy,
       limit: data.limit,
-      segmentId: data.segments?.[0],
+      segmentId: data.segments[0],
       include: {
         segments: true,
       },
@@ -965,7 +965,7 @@ export default class MemberService extends LoggerBase {
       await MemberAttributeSettingsRepository.findAndCountAll({}, this.options)
     ).rows.filter((setting) => setting.type !== MemberAttributeType.SPECIAL)
 
-    const segmentId = data.segments?.[0]
+    const segmentId = (data.segments || [])[0]
 
     if (!segmentId) {
       throw new Error400(this.options.language, 'member.segmentsRequired')
