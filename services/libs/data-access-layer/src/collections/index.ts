@@ -16,10 +16,10 @@ import { QueryOptions } from '../utils'
 export interface ICreateCollection {
   categoryId: string
   color?: string | null
-  description?: string | null
+  description?: string
   imageUrl?: string | null
   name: string
-  slug?: string | null
+  slug?: string
   starred: boolean
   isPrivate?: boolean
   ssoUserId?: string | null
@@ -139,12 +139,12 @@ export async function createCollection(
   collection: ICreateCollection,
 ): Promise<ICollection> {
   const data = {
+    description: null,
+    slug: null,
+    logoUrl: null,
+    imageUrl: null,
+    color: null,
     ...collection,
-    description: collection.description ?? null,
-    slug: collection.slug ?? null,
-    logoUrl: collection.logoUrl ?? null,
-    imageUrl: collection.imageUrl ?? null,
-    color: collection.color ?? null,
   }
   return qx.selectOne(
     `

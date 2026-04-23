@@ -11,30 +11,6 @@ import SegmentRepository from '../database/repositories/segmentRepository'
 
 const log = getServiceChildLogger('segmentMiddleware')
 
-/**
- * Route-specific middleware for endpoints with :segmentId param (e.g. PUT/GET /segment/:segmentId).
- *
- * The global segmentMiddleware runs via app.use() before Express matches routes, so req.params
- * is never populated there. This middleware is registered directly on the route handler, where
- * Express has already resolved :segmentId, and overrides req.currentSegments with the leaf
- * segments of the target segment so that permission checks validate against the actual resource
- * being accessed rather than whatever segments the caller chose to include in body/query.
- */
-export async function segmentByIdMiddleware(req: Request, _res: Response, next: NextFunction) {
-  try {
-    const segmentId = req.params.segmentId
-    if (segmentId) {
-      const segmentRepository = new SegmentRepository(req as unknown as IRepositoryOptions)
-      const resolved = await resolveToLeafSegments(segmentRepository, [segmentId], req)
-      const options = req as unknown as IRepositoryOptions
-      options.currentSegments = resolved
-    }
-    next()
-  } catch (error) {
-    next(error)
-  }
-}
-
 export async function segmentMiddleware(req: Request, _res: Response, next: NextFunction) {
   try {
     let segments: any = null

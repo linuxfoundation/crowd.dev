@@ -32,7 +32,7 @@ export default async (req, res) => {
     args: [
       {
         tenantId: req.currentTenant.id,
-        segmentIds: req.currentSegments.map((s: any) => s.id),
+        segmentIds: req.body.segments,
         criteria: req.body,
         sendTo: [req.currentUser.email],
       } as ITriggerCSVExport,
