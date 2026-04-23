@@ -150,6 +150,7 @@ import {
   watch, ref, computed, onUnmounted,
 } from 'vue';
 import { IntegrationService } from '@/modules/integration/integration-service';
+import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { isCurrentDateAfterGivenWorkingDays } from '@/utils/date';
 import { useRoute } from 'vue-router';
 import usePermissions from '@/shared/modules/permissions/helpers/usePermissions';
@@ -226,7 +227,7 @@ const showBanner = computed(() => (integrationsWithErrors.value.length
 
 const fetchIntegrations = (projectGroup) => {
   if (projectGroup) {
-    IntegrationService.list(null, null, null, null, [projectGroup.id])
+    IntegrationService.list(null, null, null, null, getSegmentsFromProjectGroup(projectGroup))
       .then((response) => {
         integrations.value = response.rows;
       })

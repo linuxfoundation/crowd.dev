@@ -58,6 +58,8 @@ import LfDataQualityOrganizationMergeSuggestionsItem
   from '@/modules/data-quality/components/organization/data-quality-organization-merge-suggestions-item.vue';
 import AppOrganizationMergeSuggestionsDialog
   from '@/modules/organization/components/organization-merge-suggestions-dialog.vue';
+import { storeToRefs } from 'pinia';
+import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
 
 const props = defineProps<{
@@ -73,7 +75,23 @@ const mergeSuggestions = ref<any[]>([]);
 const isModalOpen = ref<boolean>(false);
 const detailsOffset = ref<number>(0);
 
-const segments = computed(() => [props.projectGroup]);
+const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
+
+const segments = computed(() => (selectedProjectGroup.value?.id === props.projectGroup
+  ? [
+    selectedProjectGroup.value?.id,
+    ...selectedProjectGroup.value.projects.map((p) => [
+      ...p.subprojects.map((sp) => sp.id),
+    ]).flat(),
+  ]
+  : [
+    props.projectGroup,
+    ...selectedProjectGroup.value.projects
+      .filter((p) => p.id === props.projectGroup)
+      .map((p) => [
+        ...p.subprojects.map((sp) => sp.id),
+      ]).flat(),
+  ]));
 
 const loadMergeSuggestions = () => {
   loading.value = true;

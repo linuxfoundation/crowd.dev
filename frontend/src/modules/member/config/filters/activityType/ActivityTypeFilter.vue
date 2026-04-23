@@ -14,6 +14,7 @@ import {
 } from '@/shared/modules/filters/types/filterTypes/MultiSelectFilterConfig';
 import { CustomFilterConfig } from '@/shared/modules/filters/types/filterTypes/CustomFilterConfig';
 import { useActivityTypeStore } from '@/modules/activity/store/type';
+import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import useIntegrationsHelpers from '@/config/integrations/integrations.helpers';
 import { lfIntegrations } from '@/config/integrations';
@@ -76,6 +77,6 @@ watch([types, activeIntegrations], ([typesValue, activeIntegrationsValue]) => {
 });
 
 onMounted(async () => {
-  await store.dispatch('integration/doFetch', selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : []);
+  await store.dispatch('integration/doFetch', getSegmentsFromProjectGroup(selectedProjectGroup.value));
 });
 </script>

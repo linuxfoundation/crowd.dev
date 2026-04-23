@@ -331,8 +331,7 @@ class SegmentRepository extends RepositoryBase<
         join segment_level sl on (sl.level = 'child' and s.id = sl.id)
             or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" is not null)
             or (sl.level = 'grandparent' and s."grandparentSlug" = sl.slug)
-        where s.status = 'active'
-          and s."tenantId" = :tenantId;
+        where status = 'active';
       `,
       {
         replacements: {

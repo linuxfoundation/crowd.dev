@@ -424,6 +424,7 @@ import LfTable from '@/ui-kit/table/Table.vue';
 import LfTableCell from '@/ui-kit/table/TableCell.vue';
 import LfTableHead from '@/ui-kit/table/TableHead.vue';
 import { formatNumber } from '@/utils/number';
+import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { ClickOutside as vClickOutside } from 'element-plus';
 import { storeToRefs } from 'pinia';
 import {
@@ -678,7 +679,7 @@ const doExport = () => MemberService.export({
 onMounted(async () => {
   await store.dispatch(
     'integration/doFetch',
-    selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
+    getSegmentsFromProjectGroup(selectedProjectGroup.value),
   );
 });
 
