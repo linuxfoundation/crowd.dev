@@ -1,5 +1,6 @@
 {
   "name": "@crowd/kafka-connect-monitor",
+  "private": true,
   "scripts": {
     "start": "SERVICE=kafka-connect-monitor tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=kafka-connect-monitor LOG_LEVEL=trace tsx --inspect=0.0.0.0:9240 src/main.ts",
