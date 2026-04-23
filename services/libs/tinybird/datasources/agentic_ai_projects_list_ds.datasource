@@ -32,5 +32,5 @@ SCHEMA >
     `vulnerabilities30d` Nullable(UInt64),
     `cocomoValue` UInt64
 
-ENGINE "MergeTree"
-ENGINE_SORTING_KEY "projectId"
+ENGINE MergeTree
+ENGINE_SORTING_KEY projectId

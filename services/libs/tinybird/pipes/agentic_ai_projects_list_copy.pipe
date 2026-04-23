@@ -10,8 +10,8 @@ SQL >
     JOIN repositories r FINAL ON cr.repoId = r.id
     WHERE
         cr.collectionId = '07445cd8-763b-4d49-93fb-5d19ba4ba3e7'
-        AND isNull(cr.deletedAt)
-        AND isNull(r.deletedAt)
+        AND isNull (cr.deletedAt)
+        AND isNull (r.deletedAt)
         AND r.enabled = true
 
 NODE ai_projects
@@ -37,7 +37,9 @@ SQL >
         countIf(type = 'fork') AS forks,
         countIf(type = 'fork' AND timestamp >= now() - INTERVAL 30 DAY) AS forks30d,
         countIf(type IN ('authored-commit', 'committed-commit')) AS commits,
-        countIf(type IN ('authored-commit', 'committed-commit') AND timestamp >= now() - INTERVAL 30 DAY) AS commits30d
+        countIf(
+            type IN ('authored-commit', 'committed-commit') AND timestamp >= now() - INTERVAL 30 DAY
+        ) AS commits30d
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE
         segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
@@ -47,9 +49,7 @@ SQL >
 
 NODE contributor_counts_alltime
 SQL >
-    SELECT
-        segmentId,
-        countDistinct(memberId) AS contributors
+    SELECT segmentId, countDistinct(memberId) AS contributors
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE
         segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
@@ -63,9 +63,7 @@ SQL >
 
 NODE contributor_counts
 SQL >
-    SELECT
-        segmentId,
-        countDistinct(memberId) AS contributors30d
+    SELECT segmentId, countDistinct(memberId) AS contributors30d
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE
         segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
@@ -80,25 +78,21 @@ SQL >
 
 NODE new_contributor_counts
 SQL >
-    SELECT
-        segmentId,
-        countIf(first_activity >= now() - INTERVAL 30 DAY) AS newContributors30d
-    FROM (
-        SELECT
-            segmentId,
-            memberId,
-            min(timestamp) AS first_activity
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE
-            segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
-            AND channel IN (SELECT url FROM ai_repos)
-            AND (type, platform) IN (
-                SELECT activityType, platform
-                FROM activityTypes
-                WHERE isCodeContribution = 1 OR isCollaboration = 1
-            )
-        GROUP BY segmentId, memberId
-    )
+    SELECT segmentId, countIf(first_activity >= now() - INTERVAL 30 DAY) AS newContributors30d
+    FROM
+        (
+            SELECT segmentId, memberId, min(timestamp) AS first_activity
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+                AND channel IN (SELECT url FROM ai_repos)
+                AND (type, platform) IN (
+                    SELECT activityType, platform
+                    FROM activityTypes
+                    WHERE isCodeContribution = 1 OR isCollaboration = 1
+                )
+            GROUP BY segmentId, memberId
+        )
     GROUP BY segmentId
 
 NODE ai_package_metrics
@@ -106,9 +100,12 @@ SQL >
     SELECT
         insightsProjectId,
         max(downloadsCount) AS downloads,
-        toInt64(max(downloadsCount)) - toInt64(maxIf(downloadsCount, date <= toDate(now() - INTERVAL 30 DAY))) AS downloads30d,
+        toInt64(max(downloadsCount))
+        - toInt64(maxIf(downloadsCount, date <= toDate(now() - INTERVAL 30 DAY))) AS downloads30d,
         max(dockerDownloadsCount) AS dockerPulls,
-        toInt64(max(dockerDownloadsCount)) - toInt64(maxIf(dockerDownloadsCount, date <= toDate(now() - INTERVAL 30 DAY))) AS dockerPulls30d,
+        toInt64(max(dockerDownloadsCount)) - toInt64(
+            maxIf(dockerDownloadsCount, date <= toDate(now() - INTERVAL 30 DAY))
+        ) AS dockerPulls30d,
         max(dependentReposCount) AS dependentRepos,
         max(dependentPackagesCount) AS dependentPackages
     FROM packageDownloads FINAL
@@ -123,21 +120,23 @@ SQL >
         if(
             countIf(openedAt >= now() - INTERVAL 30 DAY) > 0,
             round(
-                countIf(isNotNull(mergedAt) AND openedAt >= now() - INTERVAL 30 DAY) * 100.0
+                countIf(isNotNull(mergedAt) AND openedAt >= now() - INTERVAL 30 DAY)
+                * 100.0
                 / countIf(openedAt >= now() - INTERVAL 30 DAY),
                 2
             ),
             NULL
         ) AS mergeRate30d,
-        medianIf(resolvedInSeconds, isNotNull(resolvedAt) AND resolvedInSeconds > 0) AS prResolveTimeSeconds,
+        medianIf(
+            resolvedInSeconds, isNotNull(resolvedAt) AND resolvedInSeconds > 0
+        ) AS prResolveTimeSeconds,
         medianIf(
             resolvedInSeconds,
             isNotNull(resolvedAt) AND resolvedInSeconds > 0 AND resolvedAt >= now() - INTERVAL 30 DAY
         ) AS prResolveTimeSeconds30d
     FROM pull_requests_analyzed
     WHERE
-        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
-        AND channel IN (SELECT url FROM ai_repos)
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos) AND channel IN (SELECT url FROM ai_repos)
     GROUP BY segmentId
 
 NODE issue_metrics
@@ -149,17 +148,22 @@ SQL >
             closedInSeconds,
             isNotNull(closedAt) AND closedInSeconds > 0 AND closedAt >= now() - INTERVAL 30 DAY
         ) AS issueCloseTimeSeconds30d,
-        medianIf(respondedInSeconds, isNotNull(respondedInSeconds) AND respondedInSeconds > 0) AS issueResponseTimeSeconds,
+        medianIf(
+            respondedInSeconds, isNotNull(respondedInSeconds) AND respondedInSeconds > 0
+        ) AS issueResponseTimeSeconds,
         medianIf(
             respondedInSeconds,
-            isNotNull(respondedInSeconds) AND respondedInSeconds > 0 AND closedAt >= now() - INTERVAL 30 DAY
+            isNotNull(respondedInSeconds)
+            AND respondedInSeconds > 0
+            AND closedAt >= now() - INTERVAL 30 DAY
         ) AS issueResponseTimeSeconds30d,
-        countIf(isNull(respondedInSeconds) AND isNull(closedAt)) AS noResponseIssues,
-        countIf(isNull(respondedInSeconds) AND openedAt >= now() - INTERVAL 30 DAY) AS noResponseIssues30d
+        countIf(isNull (respondedInSeconds) AND isNull (closedAt)) AS noResponseIssues,
+        countIf(
+            isNull (respondedInSeconds) AND openedAt >= now() - INTERVAL 30 DAY
+        ) AS noResponseIssues30d
     FROM issues_analyzed
     WHERE
-        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
-        AND channel IN (SELECT url FROM ai_repos)
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos) AND channel IN (SELECT url FROM ai_repos)
     GROUP BY segmentId
 
 NODE vulnerability_counts
@@ -167,7 +171,9 @@ SQL >
     SELECT
         r.insightsProjectId AS projectId,
         countIf(v.status != 'RESOLVED') AS vulnerabilities,
-        countIf(v.status != 'RESOLVED' AND v.firstDetectedAt >= now() - INTERVAL 30 DAY) AS vulnerabilities30d
+        countIf(
+            v.status != 'RESOLVED' AND v.firstDetectedAt >= now() - INTERVAL 30 DAY
+        ) AS vulnerabilities30d
     FROM vulnerabilities v FINAL
     JOIN repositories r FINAL ON v.repoUrl = r.url
     WHERE v.repoUrl IN (SELECT url FROM ai_repos)

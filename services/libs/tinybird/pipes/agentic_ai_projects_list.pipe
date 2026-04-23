@@ -1,6 +1,5 @@
 NODE ai_projects_list
 SQL >
-
     SELECT
         projectId as project_id,
         name,

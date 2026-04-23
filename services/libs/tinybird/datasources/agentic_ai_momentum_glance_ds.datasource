@@ -13,5 +13,5 @@ SCHEMA >
     `projectsWithGithubPrActivity` UInt64,
     `projectsWithGithubIssueActivity` UInt64
 
-ENGINE "MergeTree"
-ENGINE_SORTING_KEY "collectionId"
+ENGINE MergeTree
+ENGINE_SORTING_KEY collectionId

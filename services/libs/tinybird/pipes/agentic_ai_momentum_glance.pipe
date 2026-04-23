@@ -1,6 +1,5 @@
 NODE at_a_glance_metrics
 SQL >
-
     SELECT
         totalCount as total_count,
         totalSoftwareValue as total_software_value,
