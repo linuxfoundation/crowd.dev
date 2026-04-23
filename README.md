@@ -16,17 +16,16 @@ Key features:
 
 
 ## Getting started
-⚠️ This documentation is outdated and needs to be reviewed.
 
-To get started with self-hosting, take a look at our [self-hosting docs](https://docs.crowd.dev/docs/getting-started-with-self-hosting).
+To get started with self-hosting, please refer to our [self-hosting guide](./docs/self-hosting.md).
 
-#### Deployment with Kubernetes
+#### Deployment with Docker
 
-Our services can be deployed using Kubernetes, as well as a lightweight development environment using Docker. You can read more about it in our [self-hosting docs](https://docs.crowd.dev/docs/deployment).
+The project provides a comprehensive CLI tool for managing the platform's infrastructure and services using Docker Compose. You can find more information on how to use it in our [technical documentation](./docs/self-hosting.md).
 
 #### Integrations
 
-We currently support all our integrations for self-hosting. For each one of them, you will need to create your own application. You can see the steps for each integration in our [self-hosting integrations guide](https://docs.crowd.dev/docs/self-hosting).
+We support a wide range of integrations for self-hosting. For each integration, you will need to set up your own application credentials (e.g., via Nango). Details on configuration can be found in the [self-hosting guide](./docs/self-hosting.md).
 
 ### Development environment
 
@@ -65,7 +64,7 @@ WITH_INSIGHTS=1 ./cli scaffold up
 
 This app will be available at http://localhost:8081
 
-For more information on development, you can <a href="https://docs.crowd.dev/docs/docker-compose-single-machine-development-with-docker-images">check our docs</a>.
+For more information on development, you can [check our self-hosting guide](./docs/self-hosting.md).
 
 
 ## Contribution

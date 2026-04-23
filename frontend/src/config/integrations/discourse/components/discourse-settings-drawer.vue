@@ -61,7 +61,7 @@
           <div
             class="text-2xs text-gray-500 leading-normal mb-1"
           >
-            Create a new API key in your Discourse account's settings page. You must be an admin user to connect your acount. <a href="https://docs.crowd.dev/docs/discourse-integration#api-key" target="_blank" rel="noopener noreferrer" class="hover:underline">Read more</a>
+            Create a new API key in your Discourse account's settings page. You must be an admin user to connect your acount.
           </div>
           <el-input
             ref="focus"
@@ -87,7 +87,7 @@
         <div
           class="text-2xs text-gray-500 leading-normal mb-1"
         >
-          Create new webhooks in your Discourse account's settings page with the following credentials. <a href="https://docs.crowd.dev/docs/discourse-integration#webhooks" target="_blank" rel="noopener noreferrer" class="hover:underline">Read more</a>
+          Create new webhooks in your Discourse account's settings page with the following credentials.
         </div>
       </div>
       <el-form
