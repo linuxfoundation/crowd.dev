@@ -120,7 +120,17 @@ function parseArgs(): ScriptOptions {
     process.exit(1)
   }
 
-  return { pageSize, concurrency, pageDelayMs, workflowDelayMs, startAfter, dryRun, limit, maxPages, emptyPageDelayMs }
+  return {
+    pageSize,
+    concurrency,
+    pageDelayMs,
+    workflowDelayMs,
+    startAfter,
+    dryRun,
+    limit,
+    maxPages,
+    emptyPageDelayMs,
+  }
 }
 
 // Returns a page of distinct memberIds from memberOrganizations, cursor-based.
@@ -257,7 +267,9 @@ async function main() {
   log.info(`Mode:            ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`)
   log.info(`Limit:           ${opts.limit ?? '(none)'}`)
   log.info(`Max pages:       ${opts.maxPages ?? '(none)'}`)
-  log.info(`Empty page delay: ${opts.emptyPageDelayMs !== null ? `${opts.emptyPageDelayMs}ms` : `same as page-delay (${opts.pageDelayMs}ms)`}`)
+  log.info(
+    `Empty page delay: ${opts.emptyPageDelayMs !== null ? `${opts.emptyPageDelayMs}ms` : `same as page-delay (${opts.pageDelayMs}ms)`}`,
+  )
   log.info('='.repeat(80))
 
   const dbConnection = await getDbConnection(WRITE_DB_CONFIG())
@@ -324,8 +336,8 @@ async function main() {
           opts.concurrency,
           async ({ memberId, activeOrgIds, staleOrgIds }) => {
             log.info(
-            `Triggering memberUpdate for broken member: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
-          )
+              `Triggering memberUpdate for broken member: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
+            )
             await temporal.workflow.start('memberUpdate', {
               taskQueue: 'profiles',
               workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
@@ -371,9 +383,10 @@ async function main() {
       hasMore = false
     }
 
-    const delayMs = brokenMembers.length === 0 && opts.emptyPageDelayMs !== null
-      ? opts.emptyPageDelayMs
-      : opts.pageDelayMs
+    const delayMs =
+      brokenMembers.length === 0 && opts.emptyPageDelayMs !== null
+        ? opts.emptyPageDelayMs
+        : opts.pageDelayMs
     if (delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
