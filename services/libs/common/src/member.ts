@@ -82,7 +82,7 @@ export const calculateReach = (oldReach: any, newReach: any): { total: number } 
   return out
 }
 
-export function getMemberOrganizationSourceRank(source: string | undefined): number {
+export function getMemberOrganizationSourceRank(source: string | null | undefined): number {
   if (source === OrganizationSource.UI) return 0
   if (source === OrganizationSource.EMAIL_DOMAIN) return 1
   if (source?.startsWith('enrichment-')) return 2
