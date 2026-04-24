@@ -1,18 +1,16 @@
 import CronTime from 'cron-time-generator'
-import { 
-  inferMemberOrganizationStintChanges, 
-  MEMBER_ORG_STINT_CHANGES_DATES_PREFIX, 
-  MEMBER_ORG_STINT_CHANGES_QUEUE 
-} from '@crowd/common_services'
+
 import {
-  createMemberOrganization,
-  fetchMemberOrganizationsBySource,
-  updateMemberOrganization,
-} from '@crowd/data-access-layer'
+  MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
+  MEMBER_ORG_STINT_CHANGES_QUEUE,
+  inferMemberOrganizationStintChanges,
+} from '@crowd/common_services'
+import { fetchMemberOrganizationsBySource } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { pgpQx, QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-import { REDIS_CONFIG, RedisClient, getRedisClient } from '@crowd/redis'
-import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
+import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { REDIS_CONFIG, getRedisClient } from '@crowd/redis'
+import { OrganizationSource } from '@crowd/types'
+
 import { IJobDefinition } from '../types'
 
 const job: IJobDefinition = {
@@ -24,8 +22,8 @@ const job: IJobDefinition = {
     const db = await getDbConnection(WRITE_DB_CONFIG(), 2, 0)
     const qx = pgpQx(db)
 
-    // 1. Fetch a batch of work triggers (Member IDs)
-    const memberIds = await redis.sPop(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
+    // 1. Get a batch of work
+    const memberIds = await redis.sRandMember(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
     if (!memberIds?.length) return
 
     ctx.log.info({ count: memberIds.length }, 'Processing pending members.')
@@ -33,97 +31,73 @@ const job: IJobDefinition = {
 
     for (const memberId of memberIds) {
       try {
-        // 2. Get the activity dates for this member
-        const activityDates = await popMemberOrganizationActivityDates(redis, memberId)
-        
-        // If the member has no activity dates, move to the next member
-        if (activityDates.length === 0) continue
+        const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+        const hash = await redis.hGetAll(datesKey)
 
-        // 3. Sync with existing database state
-        const existingOrgs = await fetchMemberOrganizationsBySource(
-          qx,
-          memberId,
-          OrganizationSource.EMAIL_DOMAIN,
-        )
-
-        // 4. Calculate required stint changes
-        const stintChanges = inferMemberOrganizationStintChanges(
-          memberId,
-          existingOrgs,
-          activityDates,
-        )
-
-        if (stintChanges.length === 0) continue
-
-        const counts = {
-          inserts: stintChanges.filter((c) => c.type === 'insert').length,
-          updates: stintChanges.filter((c) => c.type === 'update').length,
+        // If no data, just remove from queue and move on
+        if (!hash || Object.keys(hash).length === 0) {
+          await redis.sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+          continue
         }
 
-        ctx.log.info({ memberId, ...counts }, 'Stint changes identified.')
+        // 2. Parse Redis data into domain objects
+        const { activityDates, orgIds } = parseMemberActivityHash(hash)
 
-        ctx.log.debug(
-          { memberId, activityDates, existingOrgs, stintChanges },
-          'Stint inference trace.',
-        )
+        if (activityDates.length > 0) {
+          // 3. Compare with DB and calculate delta
+          const existingOrgs = await fetchMemberOrganizationsBySource(
+            qx,
+            memberId,
+            OrganizationSource.EMAIL_DOMAIN,
+          )
 
-        // @todo: Enable writes after dry-run validation
-        // await applyStintChanges(qx, stintChanges) 
+          const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, activityDates)
+
+          if (changes.length > 0) {
+            ctx.log.info({ memberId, count: changes.length }, 'Stint changes identified.')
+            stats.inserts += changes.filter((c) => c.type === 'insert').length
+            stats.updates += changes.filter((c) => c.type === 'update').length
+          }
+        }
+
+        // 4. Cleanup: Remove only the fields we actually read
+        await redis
+          .multi()
+          .hDel(datesKey, ...orgIds)
+          .sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+          .exec()
 
         stats.processed++
-        stats.inserts += counts.inserts
-        stats.updates += counts.updates
       } catch (err) {
         ctx.log.error(err, { memberId }, 'Failed to process member stint inference.')
       }
     }
 
-    ctx.log.info(stats, 'Batch inference complete.')
+    ctx.log.info(stats, 'Batch complete.')
   },
 }
 
-async function popMemberOrganizationActivityDates(
-  redis: RedisClient,
-  memberId: string,
-): Promise<MemberOrgDate[]> {
-  const key = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
-  
-  // hGetAll + del in a multi block makes the "Pop" atomic for the entire Hash
-  const [hash] = (await redis.multi().hGetAll(key).del(key).exec()) as [Record<string, string> | null, number]
-
-  if (!hash || Object.keys(hash).length === 0) return []
-
-  return Object.entries(hash)
-    .flatMap(([organizationId, datesJson]) =>
-      (JSON.parse(datesJson) as string[]).map((date) => ({ organizationId, date })),
-    )
-    .sort((a, b) => a.date.localeCompare(b.date))
-}
-
-async function applyStintChanges(
-  qx: QueryExecutor,
-  stintChanges: MemberOrgStintChange[],
-): Promise<void> {
-  for (const change of stintChanges) {
-    if (change.type === 'insert') {
-      await createMemberOrganization(qx, change.memberId, {
-        organizationId: change.organizationId,
-        dateStart: change.dateStart,
-        dateEnd: change.dateEnd,
-        source: OrganizationSource.EMAIL_DOMAIN,
-      })
-      continue
-    }
-
-    if (!change.id) {
-      throw new Error('Missing id for update stint change.')
-    }
-
-    await updateMemberOrganization(qx, change.memberId, change.id, {
-      dateStart: change.dateStart,
-      dateEnd: change.dateEnd,
+/**
+ * Parses the Redis hash into a clean, typed list of activity dates.
+ */
+function parseMemberActivityHash(hash: Record<string, string>) {
+  const orgIds = Object.keys(hash)
+  const activityDates = orgIds
+    .flatMap((organizationId) => {
+      try {
+        const dates = JSON.parse(hash[organizationId])
+        return Array.isArray(dates)
+          ? dates
+              .filter((d): d is string => typeof d === 'string')
+              .map((date) => ({ organizationId, date }))
+          : []
+      } catch {
+        return []
+      }
     })
-  }
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  return { activityDates, orgIds }
 }
 
 export default job
