@@ -462,8 +462,8 @@ export function buildActivitiesParams(arg: ExtendedArgs): TBParams {
   // segments as Array(String) — cap at 500 to avoid Tinybird 400 on large project groups.
   // When an entity filter (memberId/orgId) is present this slice is a preview; users can
   // drill into a specific segment for full results.
-  const MAX_SEGMENTS = 6000
-  const allSegments = toStringArray(arg.segmentIds)
+  const MAX_SEGMENTS = 5000
+  const allSegments = toStringArray(arg.segmentIds) ?? []
   if (allSegments.length > MAX_SEGMENTS) {
     log.warn(
       { totalSegments: allSegments.length, cappedAt: MAX_SEGMENTS },
