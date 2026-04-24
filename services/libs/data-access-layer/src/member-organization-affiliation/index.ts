@@ -1,7 +1,7 @@
 import _ from 'lodash'
 import { v4 as uuid } from 'uuid'
 
-import { getLongestDateRange } from '@crowd/common'
+import { getLongestDateRange, getMemberOrganizationSourceRank } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
 import {
   IChangeAffiliationOverrideData,
@@ -81,7 +81,16 @@ async function prepareMemberOrganizationAffiliationTimeline(
         return withDates[0]
       }
 
-      // 2. get the two orgs with the most members, and return the one with the most members if there's no draw
+      // 2. among dated rows, pick the best source tier (ui > email-domain > enrichment-*)
+      if (withDates.length > 1) {
+        const sourceRank = (row: AffiliationItem) =>
+          getMemberOrganizationSourceRank((row as MemberOrganizationWithOverrides).source)
+        const bestRank = Math.min(...withDates.map(sourceRank))
+        orgs = withDates.filter((row) => sourceRank(row) === bestRank)
+        if (orgs.length === 1) return orgs[0]
+      }
+
+      // 3. get the two orgs with the most members, and return the one with the most members if there's no draw
       // only compare member orgs (manual affiliations don't have memberCount)
       const memberOrgsOnly = orgs.filter(
         (row: AffiliationItem) => 'segmentId' in row && !!row.segmentId,
@@ -93,7 +102,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
         }
       }
 
-      // 3. there's a draw, return the one with the longer date range
+      // 4. there's a draw, return the one with the longer date range
       return getLongestDateRange(orgs)
     }
   }
@@ -243,6 +252,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
         mo."dateStart",
         mo."dateEnd",
         mo."createdAt",
+        mo."source",
         coalesce(ovr."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience",
         coalesce(a.total_count, 0) as "memberCount"
       FROM "memberOrganizations" mo
