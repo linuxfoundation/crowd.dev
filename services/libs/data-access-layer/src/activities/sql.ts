@@ -312,7 +312,7 @@ export async function queryActivities(
 
   let countTb = 0
   if (!arg.noCount) {
-    const countResp = await tb.pipe<{ data: { count: number }[] }>(
+    const countResp = await tb.pipeSql<{ data: { count: number }[] }>(
       'activities_relations_filtered',
       {
         ...tbParams,
