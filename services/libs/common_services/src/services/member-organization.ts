@@ -152,7 +152,9 @@ export function inferMemberOrganizationStintChanges(
     isNew: false,
   }))
 
-  for (const { organizationId, date: targetDate } of orgDates) {
+  const sortedDates = [...orgDates].sort((a, b) => a.date.localeCompare(b.date))
+
+  for (const { organizationId, date: targetDate } of sortedDates) {
     const orgStints = stints.filter((s) => s.organizationId === organizationId)
 
     // 2. Skip if the date is already covered by an existing stint
