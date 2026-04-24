@@ -35,7 +35,7 @@
     "@vuelidate/core": "^2.0.1",
     "@vuelidate/validators": "^2.0.1",
     "@vueuse/core": "^9.13.0",
-    "axios": "^1.13.5",
+    "axios": "^1.15.0",
     "dayjs": "^1.11.13",
     "element-plus": "^2.11.0",
     "eslint-import-resolver-alias": "^1.1.2",
