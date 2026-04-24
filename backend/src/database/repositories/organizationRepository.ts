@@ -1599,19 +1599,6 @@ class OrganizationRepository {
 
     const result = { rows, count, limit, offset }
 
-    // Cache the result
-    options.log.info(
-      {
-        cacheKey,
-        segmentId,
-        rowCount: rows.length,
-        totalCount: count,
-        jsonSizeBytes: JSON.stringify(result).length,
-        limit,
-        offset,
-      },
-      `Caching organizations advanced query result: ${cacheKey}`,
-    )
     await cache.set(cacheKey, result, 21600) // 6 hours TTL
 
     return result
@@ -1656,8 +1643,6 @@ class OrganizationRepository {
     return records
   }
 
-  private static activeBackgroundRefreshes = 0
-
   private static async refreshCacheInBackground(
     cache: OrganizationQueryCache,
     cacheKey: string,
@@ -1674,21 +1659,10 @@ class OrganizationRepository {
     },
     options: IRepositoryOptions,
   ): Promise<void> {
-    OrganizationRepository.activeBackgroundRefreshes++
-    options.log.info(
-      {
-        cacheKey,
-        segmentId: params.segmentId,
-        activeBackgroundRefreshes: OrganizationRepository.activeBackgroundRefreshes,
-      },
-      `Refreshing organizations advanced query cache in background: ${cacheKey}`,
-    )
     try {
       await this.executeQuery(cache, cacheKey, params, options)
     } catch (error) {
       options.log.warn('Background cache refresh failed:', error)
-    } finally {
-      OrganizationRepository.activeBackgroundRefreshes--
     }
   }
 
