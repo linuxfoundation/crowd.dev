@@ -127,7 +127,9 @@ export function selectPrimaryWorkExperience(orgs: IWorkExperienceResolution[]) {
   // 4. Among dated rows, pick the best source tier (ui > email-domain > enrichment-*)
   if (withDates.length > 1) {
     const bestRank = Math.min(...withDates.map((r) => getMemberOrganizationSourceRank(r.source)))
-    const topSourceGroup = withDates.filter((r) => getMemberOrganizationSourceRank(r.source) === bestRank)
+    const topSourceGroup = withDates.filter(
+      (r) => getMemberOrganizationSourceRank(r.source) === bestRank,
+    )
     if (topSourceGroup.length === 1) return topSourceGroup[0]
     orgs = topSourceGroup
   }
