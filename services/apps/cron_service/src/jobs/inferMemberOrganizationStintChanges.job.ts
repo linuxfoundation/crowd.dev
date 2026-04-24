@@ -23,7 +23,7 @@ const job: IJobDefinition = {
     const qx = pgpQx(db)
 
     // 1. Get a batch of work
-    const memberIds = await redis.sRandMember(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
+    const memberIds = await redis.sRandMemberCount(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
     if (!memberIds?.length) return
 
     ctx.log.info({ count: memberIds.length }, 'Processing pending members.')
@@ -63,7 +63,7 @@ const job: IJobDefinition = {
         // 4. Cleanup: Remove only the fields we actually read
         await redis
           .multi()
-          .hDel(datesKey, ...orgIds)
+          .hDel(datesKey, orgIds)
           .sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
           .exec()
 
