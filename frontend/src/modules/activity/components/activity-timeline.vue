@@ -377,8 +377,10 @@ const fetchActivities = async ({ reset } = { reset: false }) => {
   let querySegments: string[];
   if (selectedSegment.value) {
     querySegments = [selectedSegment.value];
-  } else if (selectedProjectGroup.value?.id) {
-    querySegments = [selectedProjectGroup.value.id];
+  } else if (segments.value.length > 0) {
+    // Use entity-specific segments (e.g. member's actual repos) — avoids sending
+    // all project group leaf IDs to Tinybird which causes 400 for large groups.
+    querySegments = segments.value.map((s) => s.id);
   } else {
     querySegments = [];
   }
