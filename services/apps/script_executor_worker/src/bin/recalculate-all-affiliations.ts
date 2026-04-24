@@ -1,45 +1,3 @@
-/**
- * Recalculate All Affiliations Script
- *
- * PROBLEM:
- * activityRelations.organizationId may be stale for members who have activities
- * attributed to an organization they no longer have an active work experience for
- * (no matching memberOrganizations row with deletedAt IS NULL). This can happen
- * regardless of the source of the work experience change (enrichment, manual, etc.).
- *
- * SOLUTION:
- * Paginates over distinct memberIds from memberOrganizations. For each batch,
- * detects members with stale org attributions by checking activityRelations via
- * ix_activityRelations_memberId (no full table scan). Triggers a memberUpdate
- * Temporal workflow only for affected members.
- *
- * Usage:
- *   pnpm run recalculate-all-affiliations -- [options]
- *   npx tsx src/bin/recalculate-all-affiliations.ts [options]
- *
- * Options:
- *   --page-size <n>       Number of memberIds per page (default: 100)
- *                         Kept small intentionally: each page triggers an
- *                         activityRelations lookup per member via memberId index.
- *   --concurrency <n>     Max concurrent Temporal workflow starts per page (default: 20)
- *   --page-delay <ms>     Milliseconds to wait between pages (default: 2000)
- *   --start-after <id>    Resume from a specific memberId (exclusive, for restarts)
- *   --dry-run             Log what would be processed without starting workflows
- *   --limit <n>           Stop after triggering at most N workflows (for testing)
- *   --max-pages <n>       Stop after processing at most N pages (useful for dry-run testing)
- *   --empty-page-delay <ms> Delay when a page has 0 broken members (default: same as --page-delay)
- *   --workflow-delay <ms> Milliseconds to wait after each workflow start (default: 0)
- *
- * Environment Variables Required:
- *   CROWD_DB_WRITE_HOST        - Postgres write host
- *   CROWD_DB_PORT              - Postgres port
- *   CROWD_DB_USERNAME          - Postgres username
- *   CROWD_DB_PASSWORD          - Postgres password
- *   CROWD_DB_DATABASE          - Postgres database name
- *   CROWD_TEMPORAL_SERVER_URL  - Temporal server URL
- *   CROWD_TEMPORAL_NAMESPACE   - Temporal namespace
- *   SERVICE                    - Service identifier (used by Temporal client)
- */
 import { WorkflowIdReusePolicy } from '@temporalio/client'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
@@ -85,11 +43,6 @@ function parseArgs(): ScriptOptions {
   const dryRun = args.includes('--dry-run')
   const emptyPageDelayRaw = getArg('--empty-page-delay')
   const emptyPageDelayMs = emptyPageDelayRaw !== undefined ? parseInt(emptyPageDelayRaw, 10) : null
-
-  if (emptyPageDelayMs !== null && (isNaN(emptyPageDelayMs) || emptyPageDelayMs < 0)) {
-    log.error('--empty-page-delay must be a non-negative integer')
-    process.exit(1)
-  }
   const limitRaw = getArg('--limit')
   const limit = limitRaw !== undefined ? parseInt(limitRaw, 10) : null
   const maxPagesRaw = getArg('--max-pages')
@@ -109,6 +62,10 @@ function parseArgs(): ScriptOptions {
   }
   if (isNaN(workflowDelayMs) || workflowDelayMs < 0) {
     log.error('--workflow-delay must be a non-negative integer')
+    process.exit(1)
+  }
+  if (emptyPageDelayMs !== null && (isNaN(emptyPageDelayMs) || emptyPageDelayMs < 0)) {
+    log.error('--empty-page-delay must be a non-negative integer')
     process.exit(1)
   }
   if (limit !== null && (isNaN(limit) || limit <= 0)) {
@@ -133,7 +90,6 @@ function parseArgs(): ScriptOptions {
   }
 }
 
-// Returns a page of distinct memberIds from memberOrganizations, cursor-based.
 async function fetchMemberIdPage(
   qx: ReturnType<typeof pgpQx>,
   afterMemberId: string | null,
@@ -156,16 +112,12 @@ async function fetchMemberIdPage(
   return rows.map((r: Record<string, unknown>) => r.memberId as string)
 }
 
-// Finds members in the batch whose activityRelations.organizationId is stale —
-// i.e. attributed to an org they no longer have an active memberOrganization for.
-// Uses ix_activityRelations_memberId for the activityRelations lookup (no seq scan).
 async function findBrokenMembers(
   qx: ReturnType<typeof pgpQx>,
   memberIds: string[],
 ): Promise<BrokenMember[]> {
-  // First reduce to distinct (memberId, organizationId) pairs — a member may have
-  // thousands of activities but only a handful of distinct org attributions.
-  // The NOT EXISTS then runs on the small deduplicated set, not on every activity row.
+  // Deduplicate to (memberId, organizationId) pairs first — a member may have thousands
+  // of activities but only a handful of distinct org attributions.
   const staleRows = await qx.select(
     `
     WITH pairs AS (
@@ -199,7 +151,6 @@ async function findBrokenMembers(
 
   const brokenMemberIds = [...staleMap.keys()]
 
-  // Fetch currently active org IDs to pass to memberUpdate
   const orgRows = await qx.select(
     `
     SELECT "memberId", array_agg(DISTINCT "organizationId") AS "activeOrgIds"
@@ -225,52 +176,23 @@ async function findBrokenMembers(
   }))
 }
 
-async function runWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<void>,
-): Promise<{ succeeded: number; failed: number }> {
-  let succeeded = 0
-  let failed = 0
-  let index = 0
-
-  async function worker() {
-    while (index < items.length) {
-      const item = items[index++]
-      try {
-        await fn(item)
-        succeeded++
-      } catch (err) {
-        failed++
-        log.error({ err }, 'Failed to process member')
-      }
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, worker)
-  await Promise.all(workers)
-
-  return { succeeded, failed }
-}
-
 async function main() {
   const opts = parseArgs()
 
-  log.info('='.repeat(80))
-  log.info('Recalculate All Affiliations Script')
-  log.info('='.repeat(80))
-  log.info(`Page size:       ${opts.pageSize}`)
-  log.info(`Concurrency:     ${opts.concurrency}`)
-  log.info(`Page delay:      ${opts.pageDelayMs}ms`)
-  log.info(`Workflow delay:  ${opts.workflowDelayMs}ms`)
-  log.info(`Start after:     ${opts.startAfter ?? '(beginning)'}`)
-  log.info(`Mode:            ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`)
-  log.info(`Limit:           ${opts.limit ?? '(none)'}`)
-  log.info(`Max pages:       ${opts.maxPages ?? '(none)'}`)
   log.info(
-    `Empty page delay: ${opts.emptyPageDelayMs !== null ? `${opts.emptyPageDelayMs}ms` : `same as page-delay (${opts.pageDelayMs}ms)`}`,
+    {
+      pageSize: opts.pageSize,
+      concurrency: opts.concurrency,
+      pageDelayMs: opts.pageDelayMs,
+      workflowDelayMs: opts.workflowDelayMs,
+      startAfter: opts.startAfter,
+      dryRun: opts.dryRun,
+      limit: opts.limit,
+      maxPages: opts.maxPages,
+      emptyPageDelayMs: opts.emptyPageDelayMs,
+    },
+    'Starting recalculate-all-affiliations',
   )
-  log.info('='.repeat(80))
 
   const dbConnection = await getDbConnection(WRITE_DB_CONFIG())
   const qx = pgpQx(dbConnection)
@@ -331,37 +253,43 @@ async function main() {
         }
 
         const toProcess = brokenMembers.slice(0, remaining)
-        const { succeeded, failed } = await runWithConcurrency(
-          toProcess,
-          opts.concurrency,
-          async ({ memberId, activeOrgIds, staleOrgIds }) => {
-            log.info(
-              `Triggering memberUpdate for broken member: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
-            )
-            await temporal.workflow.start('memberUpdate', {
-              taskQueue: 'profiles',
-              workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
-              workflowIdReusePolicy:
-                WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-              retry: { maximumAttempts: 10 },
-              args: [
-                {
-                  member: { id: memberId },
-                  memberOrganizationIds: activeOrgIds,
-                  syncToOpensearch: true,
-                },
-              ],
-              searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
-            })
-            if (opts.workflowDelayMs > 0) {
-              await new Promise((resolve) => setTimeout(resolve, opts.workflowDelayMs))
-            }
-          },
-        )
 
-        totalSucceeded += succeeded
-        totalFailed += failed
-        log.info(`Page ${pageNum} done: ${succeeded} ok, ${failed} failed`)
+        let index = 0
+        const worker = async () => {
+          while (index < toProcess.length) {
+            const { memberId, activeOrgIds, staleOrgIds } = toProcess[index++]
+            try {
+              log.info(
+                `Triggering memberUpdate: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
+              )
+              await temporal.workflow.start('memberUpdate', {
+                taskQueue: 'profiles',
+                workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
+                workflowIdReusePolicy:
+                  WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
+                retry: { maximumAttempts: 10 },
+                args: [
+                  {
+                    member: { id: memberId },
+                    memberOrganizationIds: activeOrgIds,
+                    syncToOpensearch: true,
+                  },
+                ],
+                searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
+              })
+              if (opts.workflowDelayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, opts.workflowDelayMs))
+              }
+              totalSucceeded++
+            } catch (err) {
+              totalFailed++
+              log.error({ err }, 'Failed to process member')
+            }
+          }
+        }
+
+        await Promise.all(Array.from({ length: Math.min(opts.concurrency, toProcess.length) }, worker))
+        log.info(`Page ${pageNum} done: ${totalSucceeded} ok, ${totalFailed} failed`)
 
         if (opts.limit !== null && totalSucceeded + totalFailed >= opts.limit) {
           log.info(`Limit of ${opts.limit} workflows reached.`)
@@ -392,17 +320,16 @@ async function main() {
     }
   }
 
-  log.info('='.repeat(80))
-  log.info('Summary')
-  log.info('='.repeat(80))
   const brokenPct = totalScanned > 0 ? ((totalBroken / totalScanned) * 100).toFixed(2) : '0.00'
-  log.info(`Pages processed:     ${pageNum}`)
-  log.info(`Members scanned:     ${totalScanned}`)
-  log.info(`Members broken:      ${totalBroken} (${brokenPct}%)`)
-  if (!opts.dryRun) {
-    log.info(`Workflows succeeded: ${totalSucceeded}`)
-    log.info(`Workflows failed:    ${totalFailed}`)
-  }
+  log.info(
+    {
+      pagesProcessed: pageNum,
+      membersScanned: totalScanned,
+      membersBroken: `${totalBroken} (${brokenPct}%)`,
+      ...(opts.dryRun ? {} : { workflowsSucceeded: totalSucceeded, workflowsFailed: totalFailed }),
+    },
+    'Done',
+  )
 
   process.exit(totalFailed > 0 ? 1 : 0)
 }
