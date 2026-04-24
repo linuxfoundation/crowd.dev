@@ -14,4 +14,3 @@ SQL >
         projectsWithGithubPrActivity as projects_with_github_pr_activity,
         projectsWithGithubIssueActivity as projects_with_github_issue_activity
     FROM agentic_ai_momentum_glance_ds
-    WHERE collectionId = '07445cd8-763b-4d49-93fb-5d19ba4ba3e7'

@@ -9,7 +9,7 @@ SQL >
     FROM collectionsRepositories cr FINAL
     JOIN repositories r FINAL ON cr.repoId = r.id
     WHERE
-        cr.collectionId = '07445cd8-763b-4d49-93fb-5d19ba4ba3e7'
+        cr.collectionId = '3cf46a5d-abd0-440e-95f9-4ae9458903a8'
         AND isNull (cr.deletedAt)
         AND isNull (r.deletedAt)
         AND r.enabled = true
@@ -99,12 +99,13 @@ NODE ai_package_metrics
 SQL >
     SELECT
         insightsProjectId,
-        max(downloadsCount) AS downloads,
-        toInt64(max(downloadsCount))
-        - toInt64(maxIf(downloadsCount, date <= toDate(now() - INTERVAL 30 DAY))) AS downloads30d,
-        max(dockerDownloadsCount) AS dockerPulls,
-        toInt64(max(dockerDownloadsCount)) - toInt64(
-            maxIf(dockerDownloadsCount, date <= toDate(now() - INTERVAL 30 DAY))
+        argMax(downloadsCount, date) AS downloads,
+        toInt64(argMax(downloadsCount, date)) - toInt64(
+            argMaxIf(downloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
+        ) AS downloads30d,
+        argMax(dockerDownloadsCount, date) AS dockerPulls,
+        toInt64(argMax(dockerDownloadsCount, date)) - toInt64(
+            argMaxIf(dockerDownloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
         ) AS dockerPulls30d,
         max(dependentReposCount) AS dependentRepos,
         max(dependentPackagesCount) AS dependentPackages
@@ -155,7 +156,7 @@ SQL >
             respondedInSeconds,
             isNotNull(respondedInSeconds)
             AND respondedInSeconds > 0
-            AND closedAt >= now() - INTERVAL 30 DAY
+            AND openedAt >= now() - INTERVAL 30 DAY
         ) AS issueResponseTimeSeconds30d,
         countIf(isNull (respondedInSeconds) AND isNull (closedAt)) AS noResponseIssues,
         countIf(

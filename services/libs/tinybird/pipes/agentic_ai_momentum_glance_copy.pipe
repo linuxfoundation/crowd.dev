@@ -9,7 +9,7 @@ SQL >
     FROM collectionsRepositories cr FINAL
     JOIN repositories r FINAL ON cr.repoId = r.id
     WHERE
-        cr.collectionId = '07445cd8-763b-4d49-93fb-5d19ba4ba3e7'
+        cr.collectionId = '3cf46a5d-abd0-440e-95f9-4ae9458903a8'
         AND isNull (cr.deletedAt)
         AND isNull (r.deletedAt)
         AND r.enabled = true
@@ -79,27 +79,30 @@ SQL >
 NODE most_active_projects
 SQL >
     SELECT
-        arrayStringConcat(
-            arrayMap(
-                x -> concat(
-                    '{"name":"', x .1, '","slug":"', x .2, '","newContributors":', toString(x .3), '}'
+        coalesce(
+            arrayStringConcat(
+                arrayMap(
+                    x
+                    -> toJSONString(map('name', x .1, 'slug', x .2, 'newContributors', toString(x .3))),
+                    arraySlice(
+                        arrayReverseSort(x -> x .3, groupArray((p.name, p.slug, ncp.newContributors))),
+                        1,
+                        3
+                    )
                 ),
-                arraySlice(
-                    arrayReverseSort(x -> x .3, groupArray((p.name, p.slug, ncp.newContributors))), 1, 3
-                )
+                ','
             ),
-            ','
+            ''
         ) AS mostActiveProjects
     FROM new_contributors_per_project ncp
-    JOIN
+    LEFT JOIN
         (
             SELECT segmentId, any (insightsProjectId) AS insightsProjectId
             FROM ai_repos
             GROUP BY segmentId
         ) ar
         ON ar.segmentId = ncp.segmentId
-    JOIN ai_projects p ON p.id = ar.insightsProjectId
-    WHERE ncp.newContributors > 0
+    LEFT JOIN ai_projects p ON p.id = ar.insightsProjectId
 
 NODE median_issue_close_time
 SQL >
@@ -164,7 +167,7 @@ SQL >
 NODE at_a_glance_metrics
 SQL >
     SELECT
-        '07445cd8-763b-4d49-93fb-5d19ba4ba3e7' AS collectionId,
+        '3cf46a5d-abd0-440e-95f9-4ae9458903a8' AS collectionId,
         count(*) AS totalCount,
         sum(softwareValue) AS totalSoftwareValue,
         any (total_contributor_count.totalContributorCount) AS totalContributorCount,
