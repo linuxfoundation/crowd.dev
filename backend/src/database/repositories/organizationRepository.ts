@@ -1599,7 +1599,6 @@ class OrganizationRepository {
 
     const result = { rows, count, limit, offset }
 
-    // Cache the result
     await cache.set(cacheKey, result, 21600) // 6 hours TTL
 
     return result
@@ -1661,7 +1660,6 @@ class OrganizationRepository {
     options: IRepositoryOptions,
   ): Promise<void> {
     try {
-      options.log.info(`Refreshing organizations advanced query cache in background: ${cacheKey}`)
       await this.executeQuery(cache, cacheKey, params, options)
     } catch (error) {
       options.log.warn('Background cache refresh failed:', error)

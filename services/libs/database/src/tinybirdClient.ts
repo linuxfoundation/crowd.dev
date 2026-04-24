@@ -199,6 +199,12 @@ export class TinybirdClient {
         }
 
         // If it's not a retryable error or we've exhausted retries, throw the error
+        if (statusCode) {
+          log.error(
+            { statusCode, responseBody: error.response?.data },
+            'Tinybird non-retriable error',
+          )
+        }
         throw error
       }
     }

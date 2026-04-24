@@ -537,8 +537,6 @@ export async function executeQuery(
 
   const result = { rows, count, limit, offset }
 
-  // Cache the result
-  log.info(`Caching members advanced query result: ${cacheKey}`)
   await cache.set(cacheKey, result, 21600) // 6 hours TTL
 
   return result
@@ -551,7 +549,6 @@ async function refreshCacheInBackground(
   params: IQueryMembersAdvancedParams,
 ): Promise<void> {
   try {
-    log.info(`Refreshing members advanced query cache in background: ${cacheKey}`)
     await executeQuery(qx, redis, cacheKey, params)
   } catch (error) {
     log.warn('Background cache refresh failed:', error)

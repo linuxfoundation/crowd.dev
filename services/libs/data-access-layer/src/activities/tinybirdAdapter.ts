@@ -1,4 +1,8 @@
+import { getServiceLogger } from '@crowd/logging'
+
 import { IQueryActivitiesParameters } from './types'
+
+const log = getServiceLogger()
 
 /* =========================
  * Constants & basic helpers
@@ -455,9 +459,19 @@ const emitGroup = (params: TBParams, n: number, g: GroupFilter): void => {
 export function buildActivitiesParams(arg: ExtendedArgs): TBParams {
   const params: TBParams = {}
 
-  // segments as Array(String)
-  const segments = toStringArray(arg.segmentIds)
-  if (segments && segments.length) params.segments = segments
+  // segments as Array(String) — cap at 500 to avoid Tinybird 400 on large project groups.
+  // When an entity filter (memberId/orgId) is present this slice is a preview; users can
+  // drill into a specific segment for full results.
+  const MAX_SEGMENTS = 600
+  const allSegments = toStringArray(arg.segmentIds) ?? []
+  if (allSegments.length > MAX_SEGMENTS) {
+    log.warn(
+      { totalSegments: allSegments.length, cappedAt: MAX_SEGMENTS },
+      'Tinybird segment list truncated — pass a specific segmentId to see full results',
+    )
+  }
+  const segments = allSegments.slice(0, MAX_SEGMENTS)
+  if (segments.length) params.segments = segments
 
   // Optional pass-throughs (arrays, strings, booleans)
   const repos = toStringArray(arg.repos)

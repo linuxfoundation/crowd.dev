@@ -1,0 +1,20 @@
+DESCRIPTION >
+    - `collectionsRepositories` contains junction table linking collections to repositories.
+    - `id` is the primary key identifier for the collection-repository relationship record.
+    - `collectionId` links to the collection this relationship belongs to.
+    - `repoId` links to the repository in this relationship.
+    - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
+    - `deletedAt` is used for soft delete functionality - null means active record, timestamp means logically deleted.
+
+SCHEMA >
+    `id` String `json:$.record.id`,
+    `collectionId` String `json:$.record.collectionId`,
+    `repoId` String `json:$.record.repoId`,
+    `createdAt` DateTime64(3) `json:$.record.createdAt`,
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
+    `deletedAt` Nullable(DateTime64(3)) `json:$.record.deletedAt`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY repoId, collectionId
+ENGINE_VER updatedAt

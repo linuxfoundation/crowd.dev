@@ -40,7 +40,7 @@ SQL >
         opened.memberId,
         opened.organizationId,
         opened.openedAt,
-        comment.commentedAt,
+        IF(comment.commentedAt = toDateTime(0), NULL, comment.commentedAt) AS commentedAt,
         IF(closed.closedAt = toDateTime(0), NULL, closed.closedAt) AS closedAt,
         IF(
             closedAt IS NULL,
