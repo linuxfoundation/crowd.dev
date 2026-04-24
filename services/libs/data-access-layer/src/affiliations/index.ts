@@ -22,7 +22,7 @@ export interface IWorkExperienceResolution {
   isPrimaryWorkExperience: boolean
   memberCount: number
   segmentId: string | null
-  source: string | null
+  source?: string | null
 }
 
 /**
