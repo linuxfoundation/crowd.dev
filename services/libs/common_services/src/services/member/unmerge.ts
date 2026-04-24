@@ -58,7 +58,7 @@ import {
 } from '@crowd/types'
 
 import { BotDetectionService } from '../bot.service'
-import { unmergeRoles } from '../memberOrganization'
+import { unmergeRoles } from '../member-organization'
 
 const logger = getServiceLogger()
 

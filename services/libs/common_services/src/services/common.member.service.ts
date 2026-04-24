@@ -51,6 +51,7 @@ import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
+import { OrganizationSource } from '@crowd/types'
 import {
   MergeActionState,
   MergeActionStep,
@@ -169,6 +170,7 @@ export class CommonMemberService extends LoggerBase {
     memberId: string,
     segmentId: string,
     timestamp: string,
+    emailDomain?: string,
   ): Promise<string | null> {
     const manualAffiliation = await findMemberManualAffiliation(
       this.qx,
@@ -180,7 +182,12 @@ export class CommonMemberService extends LoggerBase {
       return manualAffiliation.organizationId
     }
 
-    const currentEmployments = await findMemberWorkExperience(this.qx, memberId, timestamp)
+    const currentEmployments = await findMemberWorkExperience(
+      this.qx,
+      memberId,
+      timestamp,
+      emailDomain,
+    )
     if (currentEmployments.length > 0) {
       return this.decidePrimaryOrganizationId(currentEmployments)
     }
@@ -217,10 +224,37 @@ export class CommonMemberService extends LoggerBase {
         return primaryEmployment.organizationId
       }
 
+      // Filter by source priority
+      // Source rank: ui > email-domain > enrichment-* > Other
+      const rankSource = (source?: string) => {
+        if (source === OrganizationSource.UI) return 0
+        if (source === OrganizationSource.EMAIL_DOMAIN) return 1
+        if (source?.startsWith('enrichment-')) return 2
+        return 3
+      }
+
+      let bestRank = 4
+      let highestPrioritySourceExperiences: IWorkExperienceData[] = []
+
+      for (const exp of experiences) {
+        const rank = rankSource(exp.source)
+        if (rank < bestRank) {
+          bestRank = rank
+          highestPrioritySourceExperiences = [exp]
+        } else if (rank === bestRank) {
+          highestPrioritySourceExperiences.push(exp)
+        }
+      }
+
+      // Keep only candidates from the highest-priority source tier
+      if (highestPrioritySourceExperiences.length === 1) {
+        return highestPrioritySourceExperiences[0].organizationId
+      }
+
       // decide based on the member count in the organizations
       const memberCounts = await findMemberCountEstimateOfOrganizations(
         this.qx,
-        experiences.map((e) => e.organizationId),
+        highestPrioritySourceExperiences.map((e) => e.organizationId),
       )
 
       if (memberCounts[0].memberCount > memberCounts[1].memberCount) {
@@ -230,7 +264,7 @@ export class CommonMemberService extends LoggerBase {
       }
 
       // if there's a draw in the member count, use the one with the longer period
-      return getLongestDateRange(experiences).organizationId
+      return getLongestDateRange(highestPrioritySourceExperiences).organizationId
     }
 
     return null

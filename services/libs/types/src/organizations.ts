@@ -92,6 +92,22 @@ export interface IMemberRoleWithOrganization extends IMemberOrganization {
   organizationLogo: string
 }
 
+export interface MemberOrgDate {
+  organizationId: string
+  date: string // YYYY-MM-DD
+}
+
+interface MemberOrgStintChangeBase {
+  memberId: string
+  organizationId: string
+  dateStart: string
+  dateEnd: string
+}
+
+export type MemberOrgStintChange =
+  | ({ type: 'insert' } & MemberOrgStintChangeBase)
+  | ({ type: 'update'; id: string } & MemberOrgStintChangeBase)
+
 export interface IExecutiveChange {
   joined_date?: string
   pdl_id?: string

@@ -12,7 +12,12 @@ import {
   isObjectEmpty,
   singleOrDefault,
 } from '@crowd/common'
-import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
+import {
+  BotDetectionService,
+  CommonMemberService,
+  MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
+  MEMBER_ORG_STINT_CHANGES_QUEUE,
+} from '@crowd/common_services'
 import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
@@ -121,6 +126,7 @@ export default class MemberService extends LoggerBase {
     platform: PlatformType,
     releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
   ): Promise<string> {
     return logExecutionTimeV2(
       async () => {
@@ -448,6 +454,8 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
+                  id,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
@@ -505,6 +513,7 @@ export default class MemberService extends LoggerBase {
     platform: PlatformType,
     releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
   ): Promise<void> {
     await logExecutionTimeV2(
       async () => {
@@ -682,6 +691,8 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
+                  id,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
@@ -733,6 +744,8 @@ export default class MemberService extends LoggerBase {
     integrationId: string,
     emails: string[],
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    memberId?: string,
+    activityTimestamp?: string,
   ): Promise<IOrganizationIdSource[]> {
     const orgService = new OrganizationService(this.store, this.log)
     const organizations: IOrganizationIdSource[] = []
@@ -791,6 +804,9 @@ export default class MemberService extends LoggerBase {
           id: orgId,
           source: orgSource,
         })
+        if (memberId && activityTimestamp) {
+          await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
+        }
       }
     }
 
@@ -1046,5 +1062,43 @@ export default class MemberService extends LoggerBase {
         TenantId: [DEFAULT_TENANT_ID],
       },
     })
+  }
+
+  /**
+   * Queues member activity dates in Redis as raw input for stint inference.
+   *
+   * To maximize throughput, this uses a non-atomic HGET/HSET pattern. While
+   * concurrent writes may occasionally drop a date, the system is self-healing
+   * as future activity will re-populate the buffer.
+   */
+  private async bufferMemberOrganizationActivityDates(
+    memberId: string,
+    organizationId: string,
+    activityTimestamp: string,
+  ): Promise<void> {
+    // 1. Normalize the timestamp to a simple YYYY-MM-DD string
+    const date = new Date(activityTimestamp).toISOString().slice(0, 10)
+    const key = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+
+    // 2. Fetch and de-duplicate the date within the organization's buffer
+    const existing = await this.redisClient.hGet(key, organizationId)
+    const dates: string[] = existing ? JSON.parse(existing) : []
+
+    if (dates.includes(date)) {
+      this.log.trace({ memberId, organizationId, date }, 'Date already buffered, skipping.')
+    } else {
+      dates.push(date)
+      dates.sort()
+
+      // 3. Update the buffer with the new sorted date list
+      await this.redisClient.hSet(key, organizationId, JSON.stringify(dates))
+      this.log.debug(
+        { memberId, organizationId, date, totalDates: dates.length },
+        'Buffered activity date for stint inference.',
+      )
+    }
+
+    // 4. add the member to the inference queue
+    await this.redisClient.sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
   }
 }
