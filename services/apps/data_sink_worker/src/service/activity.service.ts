@@ -1197,6 +1197,7 @@ export default class ActivityService extends LoggerBase {
             value.platform,
             undefined,
             orgPromiseCache,
+            value.timestamp,
           )
           .then((memberId) => {
             // map ids for members
@@ -1342,6 +1343,7 @@ export default class ActivityService extends LoggerBase {
                 payload.platform,
                 undefined,
                 orgPromiseCache,
+                payload.activity.timestamp,
               )
               .then(() => {
                 payload.memberId = payload.dbMember.id
@@ -1400,6 +1402,7 @@ export default class ActivityService extends LoggerBase {
                 payload.platform,
                 undefined,
                 orgPromiseCache,
+                payload.activity.timestamp,
               )
               .then(() => {
                 payload.objectMemberId = payload.dbObjectMember.id
@@ -1447,11 +1450,19 @@ export default class ActivityService extends LoggerBase {
       ) as boolean
 
       if (!isBot) {
+        const verifiedEmailIdentity = payload.activity.member.identities?.find(
+          (i) => i.type === MemberIdentityType.EMAIL && i.verified,
+        )
+        const emailDomain = verifiedEmailIdentity
+          ? verifiedEmailIdentity.value.split('@')[1]
+          : undefined
+
         // associate activity with organization
         payload.organizationId = await this.commonMemberService.findAffiliation(
           payload.memberId,
           payload.segmentId,
           payload.activity.timestamp,
+          emailDomain,
         )
       } else {
         // for bot members, we don't want to affiliate the activity with an organization

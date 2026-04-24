@@ -42,6 +42,23 @@ export async function fetchMemberOrganizations(
   )
 }
 
+export async function fetchMemberOrganizationsBySource(
+  qx: QueryExecutor,
+  memberId: string,
+  source: OrganizationSource,
+): Promise<IMemberOrganization[]> {
+  return qx.select(
+    `
+      SELECT "id", "organizationId", "dateStart", "dateEnd", "title", "memberId", "source"
+      FROM "memberOrganizations"
+      WHERE "memberId" = $(memberId)
+        AND "source" = $(source)
+        AND "deletedAt" IS NULL
+    `,
+    { memberId, source },
+  )
+}
+
 export async function fetchOrganizationMemberIds(
   qx: QueryExecutor,
   organizationId: string,
