@@ -8,6 +8,15 @@ class MaintainerFile(BaseModel):
     error: str | None = None
 
 
+class FileClassification(BaseModel):
+    path: str
+    accept: bool
+
+
+class FileClassificationResult(BaseModel):
+    classifications: list[FileClassification]
+
+
 class MaintainerInfoItem(BaseModel):
     github_username: str | None = None
     name: str | None = None
