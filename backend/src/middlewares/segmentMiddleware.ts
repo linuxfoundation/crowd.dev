@@ -1,6 +1,9 @@
 import { NextFunction, Request, Response } from 'express'
 
-import { isSegmentSubproject } from '@crowd/data-access-layer/src/segments'
+import {
+  buildSegmentActivityTypes,
+  isSegmentSubproject,
+} from '@crowd/data-access-layer/src/segments'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
@@ -77,14 +80,15 @@ async function resolveToLeafSegments(
     return 'projectGroup'
   }
 
-  // nullActivityTypes: strips the eagerly deep-cloned activityTypes from each record.
-  // findInIds() and populateSegmentRelations() call cloneDeep(DEFAULT_ACTIVITY_TYPE_SETTINGS)
-  // for every leaf segment. With 10K+ segments per request (e.g. merge endpoint) this
-  // allocates gigabytes and causes OOM. Downstream code (getActivityTypes) was already
-  // receiving null here before this PR, so null is the safe value to return.
   const nullActivityTypes = (record: any) => ({ ...record, activityTypes: null })
 
   if (nonLeaf.length === 0) {
+    // All inputs are already leaf subprojects. findInIds() already called populateSegmentRelations
+    // on each record, which includes a cloneDeep(DEFAULT_ACTIVITY_TYPE_SETTINGS) per segment.
+    // Keep activityTypes on the first record only; null the rest to release those clones.
+    // getSegmentActivityTypes merges with lodash.merge which skips null values, so the first
+    // record's activityTypes (default + its custom types) is sufficient for display purposes.
+    const [first, ...rest] = fetched
     log.debug(
       {
         api: `${req.method} ${req.path}`,
@@ -92,7 +96,7 @@ async function resolveToLeafSegments(
       },
       `All segments are already leaf — used as-is in DB queries`,
     )
-    return fetched.map(nullActivityTypes)
+    return first ? [first, ...rest.map(nullActivityTypes)] : []
   }
 
   const leafRecords = await segmentRepository.getSegmentSubprojects(segmentIds)
@@ -101,11 +105,19 @@ async function resolveToLeafSegments(
     {
       api: `${req.method} ${req.path}`,
       input_segments: nonLeaf.map((s) => ({ id: s.id, name: s.name, level: segmentLevel(s) })),
-      resolved_leaf_segments: leafRecords.map((s: any) => ({ id: s.id, name: (s as any).name })),
       resolved_count: leafRecords.length,
     },
     'Non-leaf segments resolved to leaf sub-projects',
   )
 
-  return leafRecords.map(nullActivityTypes)
+  if (leafRecords.length === 0) return []
+
+  // getSegmentSubprojects returns raw DB rows (no populateSegmentRelations/cloneDeep).
+  // Build activityTypes from the first leaf only (one cloneDeep of DEFAULT_ACTIVITY_TYPE_SETTINGS).
+  // null the rest — getSegmentActivityTypes merges all and lodash.merge skips null sources.
+  const [first, ...rest] = leafRecords
+  return [
+    { ...first, activityTypes: buildSegmentActivityTypes(first) },
+    ...rest.map(nullActivityTypes),
+  ]
 }
