@@ -97,7 +97,7 @@ import { TanstackKey } from '@/shared/types/tanstack';
 import { mapGetters } from '@/shared/vuex/vuex.helpers';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { useQuery, useQueryClient } from '@tanstack/vue-query';
+import { useQuery } from '@tanstack/vue-query';
 import { storeToRefs } from 'pinia';
 import {
   computed,
@@ -126,8 +126,6 @@ const { hasPermission } = usePermissions();
 const memberFilter = ref<InstanceType<typeof LfFilter> | null>(null);
 
 const hasIntegrations = computed(() => !!Object.keys(listByPlatform.value || {}).length);
-
-const queryClient = useQueryClient();
 
 const pagination = ref({
   page: 1,
@@ -270,14 +268,6 @@ watch(
         orderBy: resetOrderBy || 'activityCount_DESC',
         segments: newProjectGroup ? [newProjectGroup?.id] : [],
       };
-
-      // Invalidate all related caches
-      queryClient.invalidateQueries({
-        queryKey: [TanstackKey.MEMBERS_LIST],
-      });
-      queryClient.invalidateQueries({
-        queryKey: [TanstackKey.MEMBER_MERGE_SUGGESTIONS_COUNT],
-      });
     }
   },
 );

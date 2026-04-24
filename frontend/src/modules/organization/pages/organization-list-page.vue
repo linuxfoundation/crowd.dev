@@ -104,7 +104,7 @@ import LfSavedViews from '@/shared/modules/saved-views/components/SavedViews.vue
 import { TanstackKey } from '@/shared/types/tanstack';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import { useQuery, useQueryClient } from '@tanstack/vue-query';
+import { useQuery } from '@tanstack/vue-query';
 import { storeToRefs } from 'pinia';
 import {
   computed, onMounted, ref, watch,
@@ -123,8 +123,6 @@ const lsSegmentsStore = useLfSegmentsStore();
 const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
 const { hasPermission } = usePermissions();
-
-const queryClient = useQueryClient();
 
 const pagination = ref({
   page: 1,
@@ -266,14 +264,6 @@ watch(
         orderBy: resetOrderBy || 'activityCount_DESC',
         segments: newProjectGroup ? [newProjectGroup?.id] : [],
       };
-
-      // Invalidate all related caches
-      queryClient.invalidateQueries({
-        queryKey: [TanstackKey.ORGANIZATIONS_LIST],
-      });
-      queryClient.invalidateQueries({
-        queryKey: [TanstackKey.ORGANIZATION_MERGE_SUGGESTIONS_COUNT],
-      });
     }
   },
 );
