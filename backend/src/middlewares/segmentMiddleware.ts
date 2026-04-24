@@ -1,9 +1,6 @@
 import { NextFunction, Request, Response } from 'express'
 
-import {
-  isSegmentSubproject,
-  populateSegmentRelations,
-} from '@crowd/data-access-layer/src/segments'
+import { isSegmentSubproject } from '@crowd/data-access-layer/src/segments'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
@@ -80,6 +77,13 @@ async function resolveToLeafSegments(
     return 'projectGroup'
   }
 
+  // nullActivityTypes: strips the eagerly deep-cloned activityTypes from each record.
+  // findInIds() and populateSegmentRelations() call cloneDeep(DEFAULT_ACTIVITY_TYPE_SETTINGS)
+  // for every leaf segment. With 10K+ segments per request (e.g. merge endpoint) this
+  // allocates gigabytes and causes OOM. Downstream code (getActivityTypes) was already
+  // receiving null here before this PR, so null is the safe value to return.
+  const nullActivityTypes = (record: any) => ({ ...record, activityTypes: null })
+
   if (nonLeaf.length === 0) {
     log.debug(
       {
@@ -88,7 +92,7 @@ async function resolveToLeafSegments(
       },
       `All segments are already leaf — used as-is in DB queries`,
     )
-    return fetched
+    return fetched.map(nullActivityTypes)
   }
 
   const leafRecords = await segmentRepository.getSegmentSubprojects(segmentIds)
@@ -103,5 +107,5 @@ async function resolveToLeafSegments(
     'Non-leaf segments resolved to leaf sub-projects',
   )
 
-  return leafRecords.map(populateSegmentRelations)
+  return leafRecords.map(nullActivityTypes)
 }
