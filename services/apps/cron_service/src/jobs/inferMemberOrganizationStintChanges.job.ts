@@ -82,21 +82,18 @@ const job: IJobDefinition = {
  */
 function parseMemberActivityHash(hash: Record<string, string>) {
   const orgIds = Object.keys(hash)
-  const activityDates = orgIds
-    .flatMap((organizationId) => {
-      try {
-        const dates = JSON.parse(hash[organizationId])
-        return Array.isArray(dates)
-          ? dates
-              .filter((d): d is string => typeof d === 'string')
-              .map((date) => ({ organizationId, date }))
-          : []
-      } catch {
-        return []
-      }
-    })
-    .sort((a, b) => a.date.localeCompare(b.date))
-
+  const activityDates = orgIds.flatMap((organizationId) => {
+    try {
+      const dates = JSON.parse(hash[organizationId])
+      return Array.isArray(dates)
+        ? dates
+            .filter((d): d is string => typeof d === 'string')
+            .map((date) => ({ organizationId, date }))
+        : []
+    } catch {
+      return []
+    }
+  })
   return { activityDates, orgIds }
 }
 
