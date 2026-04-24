@@ -1087,7 +1087,10 @@ export default class MemberService extends LoggerBase {
         const parsed = JSON.parse(value)
         return Array.isArray(parsed) ? parsed.filter((d): d is string => typeof d === 'string') : []
       } catch {
-        this.log.warn('Corrupt dates buffer value detected during buffering.')
+        this.log.warn(
+          { memberId, organizationId, key },
+          'Corrupt dates buffer value detected during buffering for member organization activity dates.',
+        )
         return []
       }
     }
