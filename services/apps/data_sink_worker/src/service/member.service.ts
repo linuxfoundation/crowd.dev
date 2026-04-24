@@ -1076,29 +1076,42 @@ export default class MemberService extends LoggerBase {
     organizationId: string,
     activityTimestamp: string,
   ): Promise<void> {
-    // 1. Normalize the timestamp to a simple YYYY-MM-DD string
-    const date = new Date(activityTimestamp).toISOString().slice(0, 10)
+    const date = new Date(activityTimestamp).toISOString().split('T')[0]
     const key = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
 
-    // 2. Fetch and de-duplicate the date within the organization's buffer
-    const existing = await this.redisClient.hGet(key, organizationId)
-    const dates: string[] = existing ? JSON.parse(existing) : []
+    // Safe parser for existing Redis strings.
+    // Returns a valid string array even if data is corrupt or missing.
+    const parseExistingDates = (value: string | null | undefined): string[] => {
+      if (!value) return []
+      try {
+        const parsed = JSON.parse(value)
+        return Array.isArray(parsed) ? parsed.filter((d): d is string => typeof d === 'string') : []
+      } catch {
+        this.log.warn('Corrupt dates buffer value detected during buffering.')
+        return []
+      }
+    }
 
-    if (dates.includes(date)) {
-      this.log.trace({ memberId, organizationId, date }, 'Date already buffered, skipping.')
-    } else {
+    // 1. Fetch current dates for this specific organization
+    const existing = await this.redisClient.hGet(key, organizationId)
+    const dates: string[] = parseExistingDates(existing)
+
+    // 2. If the date is new, update the set and the queue
+    if (!dates.includes(date)) {
       dates.push(date)
       dates.sort()
 
-      // 3. Update the buffer with the new sorted date list
-      await this.redisClient.hSet(key, organizationId, JSON.stringify(dates))
+      await Promise.all([
+        // Update the specific org field in the hash
+        this.redisClient.hSet(key, organizationId, JSON.stringify(dates)),
+        // Ensure the member is in the processing queue
+        this.redisClient.sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId),
+      ])
+
       this.log.debug(
-        { memberId, organizationId, date, totalDates: dates.length },
-        'Buffered activity date for stint inference.',
+        { memberId, organizationId, date, count: dates.length },
+        'Buffered activity date and queued member.',
       )
     }
-
-    // 4. add the member to the inference queue
-    await this.redisClient.sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
   }
 }

@@ -1,4 +1,3 @@
-import { RedisClient } from '@crowd/redis'
 import {
   IMemberOrganization,
   MemberOrgDate,
@@ -130,6 +129,8 @@ interface Stint {
   isNew: boolean
 }
 
+type DatedStint = Stint & { dateStart: string; dateEnd: string }
+
 /**
  * Core logic to determine if activity dates should expand existing stints or create new ones
  */
@@ -163,7 +164,9 @@ export function inferMemberOrganizationStintChanges(
       continue
 
     // 3. Fill undated placeholder only when no dated stint exists yet (Rule 2)
-    const dated = orgStints.filter((s) => s.dateStart && s.dateEnd)
+    const dated = orgStints.filter(
+      (s): s is DatedStint => s.dateStart !== null && s.dateEnd !== null,
+    )
     const placeholder = orgStints.find((s) => !s.dateStart && !s.dateEnd)
     if (placeholder && dated.length === 0) {
       placeholder.dateStart = placeholder.dateEnd = targetDate
@@ -172,12 +175,12 @@ export function inferMemberOrganizationStintChanges(
     }
 
     // 4. Find the closest neighbor stint to see if expansion is possible
-    let neighbor: Stint | null = null
+    let neighbor: DatedStint | null = null
     let minGap = Infinity
 
     for (const s of dated) {
       const gap =
-        targetDate > s.dateEnd! ? diff(s.dateEnd!, targetDate) : diff(targetDate, s.dateStart!)
+        targetDate > s.dateEnd ? diff(s.dateEnd, targetDate) : diff(targetDate, s.dateStart)
       if (gap < minGap) {
         minGap = gap
         neighbor = s
@@ -198,8 +201,9 @@ export function inferMemberOrganizationStintChanges(
 
     // 5. Determine the gap window between neighbor and targetDate, then check if another org
     // holds a significant (>= 30 day) dated stint that overlaps that window (multi-stint guard)
-    const gapStart = targetDate > neighbor.dateEnd! ? neighbor.dateEnd! : targetDate
-    const gapEnd = targetDate > neighbor.dateEnd! ? targetDate : neighbor.dateStart!
+    const isForward = targetDate > neighbor.dateEnd
+    const gapStart = isForward ? neighbor.dateEnd : targetDate
+    const gapEnd = isForward ? targetDate : neighbor.dateStart
     const hasConflict = stints.some(
       (s) =>
         s.organizationId !== organizationId &&
@@ -209,8 +213,6 @@ export function inferMemberOrganizationStintChanges(
         s.dateEnd > gapStart &&
         diff(s.dateStart, s.dateEnd) >= 30,
     )
-
-    const isForward = targetDate > neighbor.dateEnd!
 
     if (hasConflict) {
       // 6a. Another org owns the gap — start a fresh stint rather than bridging
