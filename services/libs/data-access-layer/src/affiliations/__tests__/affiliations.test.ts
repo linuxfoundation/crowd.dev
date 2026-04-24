@@ -196,7 +196,9 @@ describe('selectPrimaryWorkExperience', () => {
       dateStart: '2020-01-01',
       source: 'email-domain',
     })
-    expect(selectPrimaryWorkExperience([enrichment, emailDomain]).organizationName).toBe('Email Org')
+    expect(selectPrimaryWorkExperience([enrichment, emailDomain]).organizationName).toBe(
+      'Email Org',
+    )
   })
 
   it('ui beats email-domain when both are dated', () => {
@@ -262,9 +264,9 @@ describe('selectPrimaryWorkExperience', () => {
       dateStart: '2020-01-01',
       source: 'enrichment-progai',
     })
-    expect(selectPrimaryWorkExperience([undatedEmailDomain, datedEnrichment]).organizationName).toBe(
-      'Enrichment Org',
-    )
+    expect(
+      selectPrimaryWorkExperience([undatedEmailDomain, datedEnrichment]).organizationName,
+    ).toBe('Enrichment Org')
   })
 })
 
