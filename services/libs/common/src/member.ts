@@ -82,6 +82,9 @@ export const calculateReach = (oldReach: any, newReach: any): { total: number } 
   return out
 }
 
+/**
+ * Lower rank wins when multiple member-organization sources overlap.
+ */
 export function getMemberOrganizationSourceRank(source: string | null | undefined): number {
   if (source === OrganizationSource.UI) return 0
   if (source === OrganizationSource.EMAIL_DOMAIN) return 1
