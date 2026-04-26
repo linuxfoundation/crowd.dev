@@ -13,6 +13,7 @@ import {
   calculateReach,
   getEarliestValidDate,
   getLongestDateRange,
+  getMemberOrganizationSourceRank,
   mergeObjects,
   safeObjectMerge,
 } from '@crowd/common'
@@ -51,7 +52,6 @@ import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
-import { OrganizationSource } from '@crowd/types'
 import {
   MergeActionState,
   MergeActionStep,
@@ -224,20 +224,11 @@ export class CommonMemberService extends LoggerBase {
         return primaryEmployment.organizationId
       }
 
-      // Filter by source priority
-      // Source rank: ui > email-domain > enrichment-* > Other
-      const rankSource = (source?: string) => {
-        if (source === OrganizationSource.UI) return 0
-        if (source === OrganizationSource.EMAIL_DOMAIN) return 1
-        if (source?.startsWith('enrichment-')) return 2
-        return 3
-      }
-
       let bestRank = 4
       let highestPrioritySourceExperiences: IWorkExperienceData[] = []
 
       for (const exp of experiences) {
-        const rank = rankSource(exp.source)
+        const rank = getMemberOrganizationSourceRank(exp.source)
         if (rank < bestRank) {
           bestRank = rank
           highestPrioritySourceExperiences = [exp]
