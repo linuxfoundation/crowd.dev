@@ -1,6 +1,8 @@
 import merge from 'lodash.merge'
 import ldSum from 'lodash.sum'
 
+import { OrganizationSource } from '@crowd/types'
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function setAttributesDefaultValues(
@@ -78,4 +80,11 @@ export const calculateReach = (oldReach: any, newReach: any): { total: number } 
   // Total is the sum of all attributes
   out.total = ldSum(Object.values(out))
   return out
+}
+
+export function getMemberOrganizationSourceRank(source: string | null | undefined): number {
+  if (source === OrganizationSource.UI) return 0
+  if (source === OrganizationSource.EMAIL_DOMAIN) return 1
+  if (source?.startsWith('enrichment-')) return 2
+  return 3
 }
