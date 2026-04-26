@@ -19,6 +19,13 @@ const logger = getServiceChildLogger('member-affiliations')
 
 type AffiliationItem = MemberOrganizationWithOverrides | IManualAffiliationData
 
+const isManualAffiliation = (row: AffiliationItem): row is IManualAffiliationData =>
+  'segmentId' in row && !!row.segmentId
+
+const isMemberOrganizationWithOverrides = (
+  row: AffiliationItem,
+): row is MemberOrganizationWithOverrides => !isManualAffiliation(row)
+
 async function prepareMemberOrganizationAffiliationTimeline(
   qx: QueryExecutor,
   memberId: string,
@@ -53,7 +60,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
     }
 
     // manual affiliations (identified by segmentId) always take highest precedence
-    const manualAffiliations = orgs.filter((row) => 'segmentId' in row && !!row.segmentId)
+    const manualAffiliations = orgs.filter(isManualAffiliation)
     if (manualAffiliations.length > 0) {
       if (manualAffiliations.length === 1) return manualAffiliations[0]
       // if multiple manual affiliations, pick the one with the longest date range
@@ -83,18 +90,20 @@ async function prepareMemberOrganizationAffiliationTimeline(
 
       // 2. among dated rows, pick the best source tier (ui > email-domain > enrichment-*)
       if (withDates.length > 1) {
-        const sourceRank = (row: AffiliationItem) =>
-          getMemberOrganizationSourceRank((row as MemberOrganizationWithOverrides).source)
-        const bestRank = Math.min(...withDates.map(sourceRank))
-        orgs = withDates.filter((row) => sourceRank(row) === bestRank)
+        const ranked = withDates.map((row) => ({
+          row,
+          rank: getMemberOrganizationSourceRank(
+            isMemberOrganizationWithOverrides(row) ? row.source : undefined,
+          ),
+        }))
+        const bestRank = Math.min(...ranked.map((r) => r.rank))
+        orgs = ranked.filter((r) => r.rank === bestRank).map((r) => r.row)
         if (orgs.length === 1) return orgs[0]
       }
 
       // 3. get the two orgs with the most members, and return the one with the most members if there's no draw
       // only compare member orgs (manual affiliations don't have memberCount)
-      const memberOrgsOnly = orgs.filter(
-        (row: AffiliationItem) => 'segmentId' in row && !!row.segmentId,
-      ) as MemberOrganizationWithOverrides[]
+      const memberOrgsOnly = orgs.filter(isMemberOrganizationWithOverrides)
       if (memberOrgsOnly.length >= 2) {
         const sortedByMembers = memberOrgsOnly.sort((a, b) => b.memberCount - a.memberCount)
         if (sortedByMembers[0].memberCount > sortedByMembers[1].memberCount) {
