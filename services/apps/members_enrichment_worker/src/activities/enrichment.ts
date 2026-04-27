@@ -34,6 +34,7 @@ import {
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
 import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
 import {
+  addOrgIdentity,
   findOrCreateOrganization,
   findOrgByVerifiedIdentity,
 } from '@crowd/data-access-layer/src/organizations'
@@ -459,45 +460,91 @@ export async function updateMemberUsingSquashedPayload(
                 verified: true,
               }
 
-              const owner = await findOrgByVerifiedIdentity(qx, erroredIdentity)
-              if (!owner) throw error
+              const identityOwners = []
+              const erroredIdentityOwner = await findOrgByVerifiedIdentity(qx, erroredIdentity)
+              if (!erroredIdentityOwner) throw error
 
-              // Keep the enriched org identity as an unverified signal. The verified version stays
-              // with the existing owner, preserving the unique identity invariant.
-              const demotedIdentities = identities.map((identity) => {
-                const isMatch =
+              identityOwners.push({
+                identity: erroredIdentity,
+                organizationId: erroredIdentityOwner.id,
+              })
+
+              // The first write normalizes domain identities before failing. Use that normalized
+              // payload when checking the rest, so the retry won't hit the same index again.
+              for (const identity of orgPayload.identities.filter((i) => i.verified)) {
+                const isErroredIdentity =
                   identity.platform === erroredIdentity.platform &&
                   identity.type === erroredIdentity.type &&
                   identity.value.toLowerCase() === erroredIdentity.value.toLowerCase()
 
-                return isMatch
-                  ? { ...identity, verified: false, source: orgSource }
-                  : { ...identity, source: orgSource }
-              })
+                if (!isErroredIdentity) {
+                  const owner = await findOrgByVerifiedIdentity(qx, identity)
+
+                  if (owner) {
+                    identityOwners.push({ identity, organizationId: owner.id })
+                  }
+                }
+              }
+
+              // Keep the enriched org identity as an unverified signal. The verified version stays
+              // with the existing owner, preserving the unique identity invariant.
+              const identitiesToAddAsUnverified = identityOwners.map((owner) => owner.identity)
+              const retryIdentities = orgPayload.identities.filter(
+                (identity) =>
+                  !identitiesToAddAsUnverified.some(
+                    (identityToAddAsUnverified) =>
+                      identity.platform === identityToAddAsUnverified.platform &&
+                      identity.type === identityToAddAsUnverified.type &&
+                      identity.value.toLowerCase() ===
+                        identityToAddAsUnverified.value.toLowerCase(),
+                  ),
+              )
 
               orgId = await qx.tx((trnx) =>
                 findOrCreateOrganization(trnx, orgSource, {
                   ...orgPayload,
-                  identities: demotedIdentities,
+                  identities: retryIdentities,
                 }),
               )
 
-              if (orgId && owner.id !== orgId) {
+              if (orgId) {
                 const mergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
                   tx.transaction(),
                   svc.log,
                 )
-                const noMergeIds = await mergeSuggestionsRepo.findNoMergeIds(owner.id)
-                if (!noMergeIds.includes(orgId)) {
+                const mergeSuggestions = []
+                const suggestedOwnerIds = new Set<string>()
+
+                for (const identityOwner of identityOwners) {
+                  if (identityOwner.organizationId !== orgId) {
+                    await addOrgIdentity(qx, {
+                      organizationId: orgId,
+                      platform: identityOwner.identity.platform,
+                      value: identityOwner.identity.value,
+                      type: identityOwner.identity.type,
+                      verified: false,
+                      source: orgSource,
+                    })
+
+                    const noMergeIds = await mergeSuggestionsRepo.findNoMergeIds(
+                      identityOwner.organizationId,
+                    )
+                    if (
+                      !noMergeIds.includes(orgId) &&
+                      !suggestedOwnerIds.has(identityOwner.organizationId)
+                    ) {
+                      suggestedOwnerIds.add(identityOwner.organizationId)
+                      mergeSuggestions.push({
+                        similarity: 0.95,
+                        organizations: [identityOwner.organizationId, orgId] as [string, string],
+                      })
+                    }
+                  }
+                }
+
+                if (mergeSuggestions.length > 0) {
                   // A shared verified identity is a strong merge signal, unless the pair was
                   // explicitly marked as no-merge by a reviewer.
-                  const mergeSuggestions = [
-                    {
-                      similarity: 0.95,
-                      organizations: [owner.id, orgId] as [string, string],
-                    },
-                  ]
-
                   await mergeSuggestionsRepo.addToMerge(
                     mergeSuggestions,
                     OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
