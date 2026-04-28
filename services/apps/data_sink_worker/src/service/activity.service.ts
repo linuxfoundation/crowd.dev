@@ -9,6 +9,7 @@ import {
   distinctBy,
   escapeNullByte,
   generateUUIDv1,
+  isDomainExcluded,
   isValidEmail,
   parseGitHubNoreplyEmail,
   single,
@@ -1450,12 +1451,10 @@ export default class ActivityService extends LoggerBase {
       ) as boolean
 
       if (!isBot) {
-        const verifiedEmailIdentity = payload.activity.member.identities?.find(
-          (i) => i.type === MemberIdentityType.EMAIL && i.verified,
-        )
-        const emailDomain = verifiedEmailIdentity
-          ? verifiedEmailIdentity.value.split('@')[1]
-          : undefined
+        const emailDomain = payload.activity.member.identities
+          ?.filter((i) => i.type === MemberIdentityType.EMAIL && i.verified)
+          .map((i) => i.value.split('@')[1]?.toLowerCase())
+          .find((domain) => domain && !isDomainExcluded(domain))
 
         // associate activity with organization
         payload.organizationId = await this.commonMemberService.findAffiliation(
