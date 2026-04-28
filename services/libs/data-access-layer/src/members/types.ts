@@ -1,4 +1,4 @@
-import { IAttributes, IMemberAttribute, MemberAttributeType, MemberOrgDate } from '@crowd/types'
+import { IAttributes, IMemberAttribute, MemberAttributeType } from '@crowd/types'
 
 export interface IQueryNumberOfNewMembers {
   segmentIds?: string[]
@@ -92,8 +92,4 @@ export interface IDbMemberBotSuggestionBySegment {
   displayName: string
   avatarUrl: string
   attributes: IAttributes
-}
-
-export interface EmailDomainMemberOrganizationActivityDate extends MemberOrgDate {
-  memberId: string
 }
