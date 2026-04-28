@@ -325,6 +325,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Identity already verified on another member
 
   # ──────────────────────────────────────────────
   # Maintainer Roles

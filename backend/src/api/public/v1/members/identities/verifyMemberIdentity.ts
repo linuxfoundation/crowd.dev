@@ -15,7 +15,6 @@ import {
 } from '@crowd/common_services'
 import {
   MemberField,
-  checkMemberIdentityExistence,
   deleteMemberIdentity,
   findMemberById,
   findMemberIdentityById,
@@ -86,23 +85,21 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       captureOldState(identity)
 
       await qx.tx(async (tx) => {
-        if (verified) {
-          const existingIdentities = await checkMemberIdentityExistence(
-            tx,
-            identity.value,
-            identity.platform,
-            identity.type,
-          )
+        try {
+          updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
+            verified,
+            verifiedBy,
+          })
+        } catch (error) {
+          const constraint =
+            error.constraint ?? error.original?.constraint ?? error.parent?.constraint
 
-          if (existingIdentities.some((i) => i.memberId !== memberId && i.verified)) {
+          if (verified && constraint === 'uix_memberIdentities_platform_value_type_verified') {
             throw new ConflictError('Identity already verified on another member')
           }
-        }
 
-        updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
-          verified,
-          verifiedBy,
-        })
+          throw error
+        }
 
         if (!updatedIdentity) {
           throw new InternalError('Failed to update member identity')
