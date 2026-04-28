@@ -6,7 +6,7 @@ import {
   memberUnmergeAction,
   memberVerifyIdentityAction,
 } from '@crowd/audit-logs'
-import { InternalError, NotFoundError } from '@crowd/common'
+import { ConflictError, InternalError, NotFoundError } from '@crowd/common'
 import {
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
@@ -15,6 +15,7 @@ import {
 } from '@crowd/common_services'
 import {
   MemberField,
+  checkMemberIdentityExistence,
   deleteMemberIdentity,
   findMemberById,
   findMemberIdentityById,
@@ -85,6 +86,19 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       captureOldState(identity)
 
       await qx.tx(async (tx) => {
+        if (verified) {
+          const existingIdentities = await checkMemberIdentityExistence(
+            tx,
+            identity.value,
+            identity.platform,
+            identity.type,
+          )
+
+          if (existingIdentities.some((i) => i.memberId !== memberId && i.verified)) {
+            throw new ConflictError('Identity already verified on another member')
+          }
+        }
+
         updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
           verified,
           verifiedBy,
