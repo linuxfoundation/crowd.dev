@@ -42,6 +42,16 @@ export async function fetchMemberOrganizations(
   )
 }
 
+export async function fetchMemberOrganizationById(
+  qx: QueryExecutor,
+  id: string,
+): Promise<IMemberOrganization | undefined> {
+  return qx.selectOneOrNone(
+    `SELECT * FROM "memberOrganizations" WHERE "id" = $(id) AND "deletedAt" IS NULL`,
+    { id },
+  )
+}
+
 export async function fetchOrganizationMemberIds(
   qx: QueryExecutor,
   organizationId: string,

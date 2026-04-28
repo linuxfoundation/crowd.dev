@@ -1,4 +1,5 @@
 /* eslint-disable no-continue */
+import lodash from 'lodash'
 import { Transaction } from 'sequelize'
 
 import { Error404, sanitizeMemberOrganizationDateRange } from '@crowd/common'
@@ -10,6 +11,7 @@ import {
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
   deleteMemberOrganizations,
+  fetchMemberOrganizationById,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
   optionsQx,
@@ -218,27 +220,42 @@ export default class MemberOrganizationsService extends LoggerBase {
 
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
-      const hasDateUpdate = 'dateStart' in data || 'dateEnd' in data
-      const dates = hasDateUpdate
-        ? sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
-        : undefined
 
-      const update: MemberOrganizationUpdate = Object.fromEntries(
-        Object.entries({
+      const existing = await fetchMemberOrganizationById(qx, id)
+      if (!existing || existing.memberId !== memberId) {
+        throw new Error404(`Member organization with id ${id} not found!`)
+      }
+
+      const hasDateStart = data.dateStart !== undefined
+      const hasDateEnd = data.dateEnd !== undefined
+      const targetDateRange = sanitizeMemberOrganizationDateRange(
+        hasDateStart ? data.dateStart : existing.dateStart,
+        hasDateEnd ? data.dateEnd : existing.dateEnd,
+        true,
+      )
+
+      const update = lodash.pickBy(
+        {
           organizationId: data.organizationId,
           title: data.title,
-          dateStart: dates?.dateStart,
-          dateEnd: dates?.dateEnd,
+          dateStart: hasDateStart ? targetDateRange.dateStart : undefined,
+          dateEnd: hasDateEnd ? targetDateRange.dateEnd : undefined,
           source: data.source,
           verified: data.verified,
           verifiedBy: data.verifiedBy,
-        }).filter(([, v]) => v !== undefined),
-      )
+        },
+        (v) => v !== undefined,
+      ) as MemberOrganizationUpdate
 
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)
       await updateMemberOrganization(qx, memberId, id, update)
 
-      await this.commonMemberService.startAffiliationRecalculation(memberId, [data.organizationId])
+      // Trigger recalculation for old and new orgs if changed
+      const orgsToRecalculate = Array.from(
+        new Set([existing.organizationId, data.organizationId]),
+      ).filter((orgId): orgId is string => Boolean(orgId))
+
+      await this.commonMemberService.startAffiliationRecalculation(memberId, orgsToRecalculate)
 
       const result = await this.list(memberId, transaction)
 
