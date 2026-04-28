@@ -14,6 +14,8 @@ import {
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
 
+import { EmailDomainMemberOrganizationActivityDate } from './types'
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function fetchMemberOrganizations(
@@ -56,6 +58,71 @@ export async function fetchMemberOrganizationsBySource(
         AND "deletedAt" IS NULL
     `,
     { memberId, source },
+  )
+}
+
+export async function fetchEmailDomainMemberOrganizationsWithoutDates(
+  qx: QueryExecutor,
+  limit: number,
+  afterMemberId?: string,
+): Promise<string[]> {
+  const rows = await qx.select(
+    `
+      SELECT DISTINCT "memberId"
+      FROM "memberOrganizations"
+      WHERE "source" = 'email-domain'
+        AND "dateStart" IS NULL
+        AND "dateEnd" IS NULL
+        AND "deletedAt" IS NULL
+        ${afterMemberId ? `AND "memberId" > $(afterMemberId)` : ''}
+      ORDER BY "memberId"
+      LIMIT $(limit)
+    `,
+    { limit, afterMemberId },
+  )
+
+  return rows.map((r) => r.memberId)
+}
+
+export async function fetchEmailDomainMemberOrganizationActivityDates(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<EmailDomainMemberOrganizationActivityDate[]> {
+  return qx.select(
+    `
+      WITH email_domain_member_orgs AS (
+        SELECT DISTINCT
+          mo."memberId",
+          mo."organizationId",
+          lower(oi.value) AS domain
+        FROM "memberOrganizations" mo
+        INNER JOIN "organizationIdentities" oi
+          ON oi."organizationId" = mo."organizationId"
+          AND oi.type = 'primary-domain'
+          AND oi.verified = true
+        WHERE mo."memberId" = $(memberId)
+          AND mo."source" = 'email-domain'
+          AND mo."deletedAt" IS NULL
+      )
+      SELECT DISTINCT
+        edmo."memberId",
+        edmo."organizationId",
+        ar."timestamp"::date::text AS date
+      FROM email_domain_member_orgs edmo
+      INNER JOIN "memberIdentities" mi
+        ON mi."memberId" = edmo."memberId"
+        AND mi.verified = true
+        AND mi.type = 'email'
+        AND mi."deletedAt" IS NULL
+        AND lower(split_part(mi.value, '@', 2)) = edmo.domain
+      INNER JOIN "activityRelations" ar
+        ON ar."memberId" = mi."memberId"
+        AND ar.platform = mi.platform
+        AND lower(ar.username) = lower(mi.value)
+        AND ar."timestamp" IS NOT NULL
+      ORDER BY edmo."memberId", edmo."organizationId", date
+    `,
+    { memberId },
   )
 }
 
