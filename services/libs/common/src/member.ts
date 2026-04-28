@@ -1,7 +1,11 @@
 import merge from 'lodash.merge'
 import ldSum from 'lodash.sum'
 
-import { OrganizationSource } from '@crowd/types'
+import {
+  MemberOrganizationDateInput,
+  MemberOrganizationDateRange,
+  OrganizationSource,
+} from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -87,4 +91,45 @@ export function getMemberOrganizationSourceRank(source: string | null | undefine
   if (source === OrganizationSource.EMAIL_DOMAIN) return 1
   if (source?.startsWith('enrichment-')) return 2
   return 3
+}
+
+/**
+ * Normalizes and validates a member's date range.
+ * If throwError is true, it throws descriptive errors on failure.
+ * Otherwise, it returns nulls for invalid ranges.
+ */
+export function sanitizeMemberOrganizationDateRange(
+  dateStart: MemberOrganizationDateInput,
+  dateEnd: MemberOrganizationDateInput,
+  throwError = false,
+): MemberOrganizationDateRange {
+  const normalize = (d: MemberOrganizationDateInput) =>
+    d === undefined || d === null || d === '' ? null : d
+
+  const s = normalize(dateStart)
+  const e = normalize(dateEnd)
+
+  const handleError = (message: string): MemberOrganizationDateRange => {
+    if (throwError) throw new Error(message)
+    return { dateStart: null, dateEnd: null }
+  }
+
+  if (e && !s) {
+    return handleError('Member organization with dateEnd and without dateStart!')
+  }
+
+  if (s && e) {
+    const startTime = new Date(s).getTime()
+    const endTime = new Date(e).getTime()
+
+    if (isNaN(startTime) || isNaN(endTime)) {
+      return handleError('Invalid member organization date format!')
+    }
+
+    if (endTime < startTime) {
+      return handleError('Member organization with dateEnd before dateStart!')
+    }
+  }
+
+  return { dateStart: s, dateEnd: e }
 }

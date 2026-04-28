@@ -1,7 +1,7 @@
 /* eslint-disable no-continue */
 import { Transaction } from 'sequelize'
 
-import { Error404 } from '@crowd/common'
+import { Error404, sanitizeMemberOrganizationDateRange } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
@@ -166,12 +166,18 @@ export default class MemberOrganizationsService extends LoggerBase {
 
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
+      const dates = sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
+      const memberOrgData: Partial<IMemberOrganization> = {
+        ...data,
+        dateStart: dates.dateStart,
+        dateEnd: dates.dateEnd,
+      }
 
       // Clean up any soft-deleted entries
-      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, data)
+      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, memberOrgData)
 
       // Create new member organization
-      const newMemberOrgId = await createMemberOrganization(qx, memberId, data)
+      const newMemberOrgId = await createMemberOrganization(qx, memberId, memberOrgData)
 
       // Check if organization affiliation is blocked
       const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(qx, data.organizationId)
@@ -212,20 +218,24 @@ export default class MemberOrganizationsService extends LoggerBase {
 
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
+      const hasDateUpdate = 'dateStart' in data || 'dateEnd' in data
+      const dates = hasDateUpdate
+        ? sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
+        : undefined
 
       const update: MemberOrganizationUpdate = Object.fromEntries(
         Object.entries({
           organizationId: data.organizationId,
           title: data.title,
-          dateStart: data.dateStart,
-          dateEnd: data.dateEnd,
+          dateStart: dates?.dateStart,
+          dateEnd: dates?.dateEnd,
           source: data.source,
           verified: data.verified,
           verifiedBy: data.verifiedBy,
         }).filter(([, v]) => v !== undefined),
       )
 
-      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, data)
+      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)
       await updateMemberOrganization(qx, memberId, id, update)
 
       await this.commonMemberService.startAffiliationRecalculation(memberId, [data.organizationId])

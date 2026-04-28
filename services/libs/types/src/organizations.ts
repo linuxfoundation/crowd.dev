@@ -52,8 +52,8 @@ export interface IOrganization {
 export interface IMemberOrganization {
   id?: string
   title?: string
-  dateStart: Date | string
-  dateEnd: Date | string
+  dateStart: Date | string | null
+  dateEnd: Date | string | null
   memberId: string
   organizationId: string
   updatedAt?: string
@@ -65,6 +65,10 @@ export interface IMemberOrganization {
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }
+
+export type MemberOrganizationDateRange = Pick<IMemberOrganization, 'dateStart' | 'dateEnd'>
+
+export type MemberOrganizationDateInput = Date | string | null | undefined
 
 type MemberOrganizationEditableFields = Pick<
   IMemberOrganization,

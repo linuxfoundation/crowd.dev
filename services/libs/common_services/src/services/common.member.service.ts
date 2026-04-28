@@ -15,6 +15,7 @@ import {
   getLongestDateRange,
   mergeObjects,
   safeObjectMerge,
+  sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
   MEMBER_MERGE_FIELDS,
@@ -113,23 +114,24 @@ export class CommonMemberService extends LoggerBase {
 
         for (const item of organizations) {
           const org = typeof item === 'string' ? { id: item } : item
+          const dates = sanitizeMemberOrganizationDateRange(org.startDate, org.endDate, true)
 
           // we don't need to touch exactly same existing work experiences
           if (
             !originalOrgs.some(
               (w) =>
-                w.organizationId === item.id &&
-                w.title === (item.title || null) &&
-                w.dateStart === (item.startDate || null) &&
-                w.dateEnd === (item.endDate || null),
+                w.organizationId === org.id &&
+                w.title === (org.title || null) &&
+                w.dateStart === dates.dateStart &&
+                w.dateEnd === dates.dateEnd,
             )
           ) {
             const newOrg = {
               memberId,
               organizationId: org.id,
               title: org.title,
-              dateStart: org.startDate,
-              dateEnd: org.endDate,
+              dateStart: dates.dateStart,
+              dateEnd: dates.dateEnd,
               source: org.source,
             }
 
@@ -139,8 +141,8 @@ export class CommonMemberService extends LoggerBase {
               org.id,
               org.source,
               org.title,
-              org.startDate,
-              org.endDate,
+              dates.dateStart as string | null,
+              dates.dateEnd as string | null,
             )
 
             const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(this.qx, org.id)

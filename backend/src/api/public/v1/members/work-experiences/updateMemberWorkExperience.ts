@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
-import { NotFoundError } from '@crowd/common'
+import { NotFoundError, sanitizeMemberOrganizationDateRange } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
@@ -52,14 +52,16 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
+  const dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
+
   const update: MemberOrganizationUpdate = {
     organizationId: data.organizationId,
     title: data.jobTitle,
     verified: data.verified,
     verifiedBy: data.verifiedBy,
     source: data.source,
-    dateStart: data.startDate,
-    dateEnd: data.endDate,
+    dateStart: dates.dateStart,
+    dateEnd: dates.dateEnd,
   }
 
   let updated: ReturnType<typeof toMemberWorkExperience> | undefined
