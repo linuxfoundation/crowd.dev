@@ -6,7 +6,7 @@ import {
   memberUnmergeAction,
   memberVerifyIdentityAction,
 } from '@crowd/audit-logs'
-import { InternalError, NotFoundError } from '@crowd/common'
+import { ConflictError, InternalError, NotFoundError } from '@crowd/common'
 import {
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
@@ -85,10 +85,21 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       captureOldState(identity)
 
       await qx.tx(async (tx) => {
-        updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
-          verified,
-          verifiedBy,
-        })
+        try {
+          updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
+            verified,
+            verifiedBy,
+          })
+        } catch (error) {
+          const constraint =
+            error.constraint ?? error.original?.constraint ?? error.parent?.constraint
+
+          if (verified && constraint === 'uix_memberIdentities_platform_value_type_verified') {
+            throw new ConflictError('Identity already verified on another member')
+          }
+
+          throw error
+        }
 
         if (!updatedIdentity) {
           throw new InternalError('Failed to update member identity')
