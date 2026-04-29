@@ -18,8 +18,6 @@ import { MemberOrgStintChange, OrganizationSource } from '@crowd/types'
 
 import { IJobDefinition } from '../types'
 
-const APPLY_STINT_CHANGES = false
-
 const job: IJobDefinition = {
   name: 'infer-member-organization-stint-changes',
   cronTime: CronTime.every(5).minutes(),
@@ -61,6 +59,7 @@ const job: IJobDefinition = {
 
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
+            // TODO: Uncomment after validating preview logs.
             // await applyStintChanges(qx, changes)
           }
         }
