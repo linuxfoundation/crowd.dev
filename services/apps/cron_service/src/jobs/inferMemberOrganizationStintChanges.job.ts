@@ -19,8 +19,10 @@ const job: IJobDefinition = {
   timeout: 10 * 60,
   process: async (ctx) => {
     const redis = await getRedisClient(REDIS_CONFIG())
-    const db = await getDbConnection(WRITE_DB_CONFIG(), 2, 0)
+    const db = await getDbConnection(WRITE_DB_CONFIG())
     const qx = pgpQx(db)
+
+    ctx.log.info('Starting member organization stint inference job!')
 
     // 1. Get a batch of work
     const memberIds = await redis.sRandMemberCount(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
