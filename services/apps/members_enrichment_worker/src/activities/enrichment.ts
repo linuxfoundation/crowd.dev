@@ -759,7 +759,7 @@ interface IWorkExperienceChanges {
   toUpdate: Map<IMemberOrganizationData, Record<string, any>>
 }
 
-export function sanitizeWorkExperienceDateRanges(
+function sanitizeWorkExperienceDateRanges(
   organizations: IMemberEnrichmentDataNormalizedOrganization[],
 ): IMemberEnrichmentDataNormalizedOrganization[] {
   return organizations.map((org) => {
