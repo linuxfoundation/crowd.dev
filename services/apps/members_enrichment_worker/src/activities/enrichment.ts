@@ -767,8 +767,8 @@ export function sanitizeWorkExperienceDateRanges(
 
     return {
       ...org,
-      startDate: dates.dateStart as string | null,
-      endDate: dates.dateEnd as string | null,
+      startDate: dates.dateStart ? String(dates.dateStart) : null,
+      endDate: dates.dateEnd ? String(dates.dateEnd) : null,
     }
   })
 }

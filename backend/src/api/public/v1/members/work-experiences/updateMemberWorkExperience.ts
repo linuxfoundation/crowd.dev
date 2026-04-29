@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
-import { NotFoundError, sanitizeMemberOrganizationDateRange } from '@crowd/common'
+import { BadRequestError, NotFoundError, sanitizeMemberOrganizationDateRange } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
@@ -12,7 +12,7 @@ import {
   optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
-import type { MemberOrganizationUpdate } from '@crowd/types'
+import type { MemberOrganizationDateRange, MemberOrganizationUpdate } from '@crowd/types'
 
 import { ok } from '@/utils/api'
 import { toMemberWorkExperience } from '@/utils/mapper'
@@ -52,7 +52,13 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
-  const dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
+  let dates: MemberOrganizationDateRange
+
+  try {
+    dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
+  } catch (error) {
+    throw new BadRequestError('Invalid work experience date range')
+  }
 
   const update: MemberOrganizationUpdate = {
     organizationId: data.organizationId,

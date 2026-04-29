@@ -2,7 +2,12 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
-import { ConflictError, NotFoundError, sanitizeMemberOrganizationDateRange } from '@crowd/common'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  sanitizeMemberOrganizationDateRange,
+} from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
@@ -14,7 +19,7 @@ import {
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
-import type { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
+import type { IMemberOrganization, IMemberRoleWithOrganization, MemberOrganizationDateRange } from '@crowd/types'
 
 import { created } from '@/utils/api'
 import { toMemberWorkExperience } from '@/utils/mapper'
@@ -53,7 +58,17 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
     memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState({})
 
-      const dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
+      let dates: MemberOrganizationDateRange
+
+      try {
+        dates = sanitizeMemberOrganizationDateRange(
+          data.startDate,
+          data.endDate,
+          true,
+        )
+      } catch (error) {
+        throw new BadRequestError('Invalid work experience date range')
+      }
 
       const memberOrgData: IMemberOrganization = {
         memberId,
