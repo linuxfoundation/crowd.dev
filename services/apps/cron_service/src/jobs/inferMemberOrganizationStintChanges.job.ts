@@ -5,13 +5,20 @@ import {
   MEMBER_ORG_STINT_CHANGES_QUEUE,
   inferMemberOrganizationStintChanges,
 } from '@crowd/common_services'
-import { fetchMemberOrganizationsBySource } from '@crowd/data-access-layer'
+import {
+  QueryExecutor,
+  createMemberOrganization,
+  fetchMemberOrganizationsBySource,
+  updateMemberOrganization,
+} from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { REDIS_CONFIG, getRedisClient } from '@crowd/redis'
-import { OrganizationSource } from '@crowd/types'
+import { MemberOrgStintChange, OrganizationSource } from '@crowd/types'
 
 import { IJobDefinition } from '../types'
+
+const APPLY_STINT_CHANGES = false
 
 const job: IJobDefinition = {
   name: 'infer-member-organization-stint-changes',
@@ -22,31 +29,28 @@ const job: IJobDefinition = {
     const db = await getDbConnection(WRITE_DB_CONFIG())
     const qx = pgpQx(db)
 
-    ctx.log.info('Starting member organization stint inference job!')
+    ctx.log.info('Starting member organization stint inference job.')
 
-    // 1. Get a batch of work
     const memberIds = await redis.sRandMemberCount(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
     if (!memberIds?.length) return
 
-    ctx.log.info({ count: memberIds.length }, 'Processing pending members.')
-    const stats = { processed: 0, inserts: 0, updates: 0 }
+    ctx.log.info({ count: memberIds.length }, 'Processing members from queue.')
+
+    let processed = 0
 
     for (const memberId of memberIds) {
       try {
         const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
         const hash = await redis.hGetAll(datesKey)
 
-        // If no data, just remove from queue and move on
         if (!hash || Object.keys(hash).length === 0) {
           await redis.sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
           continue
         }
 
-        // 2. Parse Redis data into domain objects
         const { activityDates, orgIds } = parseMemberActivityHash(hash)
 
         if (activityDates.length > 0) {
-          // 3. Compare with DB and calculate delta
           const existingOrgs = await fetchMemberOrganizationsBySource(
             qx,
             memberId,
@@ -56,26 +60,25 @@ const job: IJobDefinition = {
           const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, activityDates)
 
           if (changes.length > 0) {
-            ctx.log.info({ memberId, count: changes.length }, 'Stint changes identified.')
-            stats.inserts += changes.filter((c) => c.type === 'insert').length
-            stats.updates += changes.filter((c) => c.type === 'update').length
+            ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
+            // await applyStintChanges(qx, changes)
           }
         }
 
-        // 4. Cleanup: Remove only the fields we actually read
+        // Remove only the fields we actually read
         await redis
           .multi()
           .hDel(datesKey, orgIds)
           .sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
           .exec()
 
-        stats.processed++
+        processed++
       } catch (err) {
         ctx.log.error(err, { memberId }, 'Failed to process member stint inference.')
       }
     }
 
-    ctx.log.info(stats, 'Batch complete.')
+    ctx.log.info({ processed }, 'Batch complete.')
   },
 }
 
@@ -97,6 +100,27 @@ function parseMemberActivityHash(hash: Record<string, string>) {
     }
   })
   return { activityDates, orgIds }
+}
+
+/**
+ * Applies the stint changes to the database.
+ */
+async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChange[]) {
+  for (const change of changes) {
+    if (change.type === 'insert') {
+      await createMemberOrganization(qx, change.memberId, {
+        organizationId: change.organizationId,
+        dateStart: change.dateStart,
+        dateEnd: change.dateEnd,
+        source: OrganizationSource.EMAIL_DOMAIN,
+      })
+    } else {
+      await updateMemberOrganization(qx, change.memberId, change.id, {
+        dateStart: change.dateStart,
+        dateEnd: change.dateEnd,
+      })
+    }
+  }
 }
 
 export default job
