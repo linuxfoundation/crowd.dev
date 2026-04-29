@@ -19,7 +19,11 @@ import {
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
-import type { IMemberOrganization, IMemberRoleWithOrganization, MemberOrganizationDateRange } from '@crowd/types'
+import type {
+  IMemberOrganization,
+  IMemberRoleWithOrganization,
+  MemberOrganizationDateRange,
+} from '@crowd/types'
 
 import { created } from '@/utils/api'
 import { toMemberWorkExperience } from '@/utils/mapper'
@@ -61,11 +65,7 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
       let dates: MemberOrganizationDateRange
 
       try {
-        dates = sanitizeMemberOrganizationDateRange(
-          data.startDate,
-          data.endDate,
-          true,
-        )
+        dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
       } catch (error) {
         throw new BadRequestError('Invalid work experience date range')
       }
