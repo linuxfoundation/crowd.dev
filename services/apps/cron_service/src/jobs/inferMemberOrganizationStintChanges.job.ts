@@ -7,6 +7,8 @@ import {
 } from '@crowd/common_services'
 import {
   QueryExecutor,
+  changeMemberOrganizationAffiliationOverrides,
+  checkOrganizationAffiliationPolicy,
   createMemberOrganization,
   fetchMemberOrganizationsBySource,
   updateMemberOrganization,
@@ -59,8 +61,7 @@ const job: IJobDefinition = {
 
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
-            // TODO: Uncomment after validating preview logs.
-            // await applyStintChanges(qx, changes)
+            await applyStintChanges(qx, changes)
           }
         }
 
@@ -107,12 +108,27 @@ function parseMemberActivityHash(hash: Record<string, string>) {
 async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChange[]) {
   for (const change of changes) {
     if (change.type === 'insert') {
-      await createMemberOrganization(qx, change.memberId, {
+      const memberOrganizationId = await createMemberOrganization(qx, change.memberId, {
         organizationId: change.organizationId,
         dateStart: change.dateStart,
         dateEnd: change.dateEnd,
         source: OrganizationSource.EMAIL_DOMAIN,
       })
+
+      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
+        qx,
+        change.organizationId,
+      )
+
+      if (memberOrganizationId && isAffiliationBlocked) {
+        await changeMemberOrganizationAffiliationOverrides(qx, [
+          {
+            memberId: change.memberId,
+            memberOrganizationId,
+            allowAffiliation: false,
+          },
+        ])
+      }
     } else {
       await updateMemberOrganization(qx, change.memberId, change.id, {
         dateStart: change.dateStart,
