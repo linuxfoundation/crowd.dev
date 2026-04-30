@@ -218,9 +218,12 @@ return cjson.encode(results)`
     // Guard clause: Redis errors if you call SREM with no members
     if (members.length === 0) return 0
 
-    // Uses 'unpack' for O(1) script execution instead of a loop
     const script = `
-      redis.call('SREM', KEYS[1], unpack(ARGV, 2))
+      local chunkSize = 500
+      for i = 2, #ARGV, chunkSize do
+        redis.call('SREM', KEYS[1], unpack(ARGV, i, math.min(i + chunkSize - 1, #ARGV)))
+      end
+
       if redis.call('SCARD', KEYS[1]) == 0 then
         return redis.call('SREM', KEYS[2], ARGV[1])
       end
