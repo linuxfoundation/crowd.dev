@@ -22,6 +22,7 @@ import {
   IOrganization,
   IRenderFriendlyMemberOrganization,
   MemberOrganizationUpdate,
+  OrganizationSource,
 } from '@crowd/types'
 
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
@@ -219,14 +220,18 @@ export default class MemberOrganizationsService extends LoggerBase {
           title: data.title,
           dateStart: data.dateStart,
           dateEnd: data.dateEnd,
-          source: data.source,
           verified: data.verified,
           verifiedBy: data.verifiedBy,
         }).filter(([, v]) => v !== undefined),
       )
 
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, data)
-      await updateMemberOrganization(qx, memberId, id, update)
+      // Any manual edit from the frontend promotes ownership to UI so automated
+      // sources (e.g. email-domain inference) no longer overwrite user intent.
+      await updateMemberOrganization(qx, memberId, id, {
+        ...update,
+        source: OrganizationSource.UI,
+      })
 
       await this.commonMemberService.startAffiliationRecalculation(memberId, [data.organizationId])
 
