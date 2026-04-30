@@ -2,6 +2,8 @@ import commandLineArgs from 'command-line-args'
 
 import { inferMemberOrganizationStintChanges } from '@crowd/common_services'
 import {
+  changeMemberOrganizationAffiliationOverrides,
+  checkOrganizationAffiliationPolicy,
   createMemberOrganization,
   fetchEmailDomainMemberOrganizationActivityDates,
   fetchEmailDomainMemberOrganizationsWithoutDates,
@@ -106,12 +108,27 @@ setImmediate(async () => {
                 await qx.tx(async (tx) => {
                   for (const change of changes) {
                     if (change.type === 'insert') {
-                      await createMemberOrganization(tx, memberId, {
+                      const memberOrganizationId = await createMemberOrganization(tx, memberId, {
                         organizationId: change.organizationId,
                         dateStart: change.dateStart,
                         dateEnd: change.dateEnd,
                         source: OrganizationSource.EMAIL_DOMAIN,
                       })
+
+                      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
+                        tx,
+                        change.organizationId,
+                      )
+
+                      if (memberOrganizationId && isAffiliationBlocked) {
+                        await changeMemberOrganizationAffiliationOverrides(tx, [
+                          {
+                            memberId,
+                            memberOrganizationId,
+                            allowAffiliation: false,
+                          },
+                        ])
+                      }
                     } else if (change.type === 'update') {
                       await updateMemberOrganization(tx, memberId, change.id, {
                         dateStart: change.dateStart,
