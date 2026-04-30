@@ -1,5 +1,3 @@
-import commandLineArgs from 'command-line-args'
-
 import {
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
@@ -11,71 +9,28 @@ import { REDIS_CONFIG } from '@/conf'
 
 const log = getServiceLogger()
 
-const options = [
-  {
-    name: 'confirm',
-    alias: 'c',
-    type: Boolean,
-    description: 'Actually delete old hash keys. Defaults to dry-run.',
-  },
-  {
-    name: 'count',
-    type: Number,
-    defaultValue: 500,
-    description: 'SCAN count hint.',
-  },
-]
-
-const parameters = commandLineArgs(options)
-
-function memberIdFromDatesKey(key: string): string {
-  return key.slice(`${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:`.length)
-}
-
 setImmediate(async () => {
-  const dryRun = !parameters.confirm
-  const scanCount = parameters.count
   const redis = await getRedisClient(REDIS_CONFIG, true)
-  const pattern = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:*`
-
-  let scanned = 0
-  let hashKeys = 0
-  let deleted = 0
-  let cursor = 0
-
-  log.info({ dryRun, pattern, scanCount }, 'Removing old member organization stint hash keys.')
+  const prefixes = [MEMBER_ORG_STINT_CHANGES_QUEUE, `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:*`]
 
   try {
-    do {
-      const result = await redis.scan(cursor, {
-        MATCH: pattern,
-        COUNT: scanCount,
-      })
+    for (const pattern of prefixes) {
+      let cursor = 0
+      log.info({ pattern }, 'Nuking keys matching pattern.')
 
-      cursor = Number(result.cursor)
-      scanned += result.keys.length
+      do {
+        const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 1000 })
+        cursor = Number(result.cursor)
 
-      for (const key of result.keys) {
-        const type = await redis.type(key)
-        if (type === 'hash') {
-          hashKeys++
-          const memberId = memberIdFromDatesKey(key)
-
-          if (dryRun) {
-            log.info({ key, memberId }, 'Would remove old hash key and queue member.')
-          } else {
-            await redis.multi().del(key).sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId).exec()
-
-            deleted++
-          }
+        if (result.keys.length > 0) {
+          await redis.del(result.keys)
+          log.info({ count: result.keys.length }, 'Deleted batch of keys.')
         }
-      }
-    } while (cursor !== 0)
+      } while (cursor !== 0)
+    }
 
-    log.info({ dryRun, scanned, hashKeys, deleted }, 'Finished removing old hash keys.')
+    log.info('Cleanup complete.')
   } finally {
     await stopClient(redis)
   }
-
-  process.exit(0)
 })
