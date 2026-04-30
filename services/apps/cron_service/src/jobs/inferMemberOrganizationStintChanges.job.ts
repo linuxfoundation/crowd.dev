@@ -15,8 +15,8 @@ import {
 } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { REDIS_CONFIG, getRedisClient } from '@crowd/redis'
-import { MemberOrgStintChange, OrganizationSource } from '@crowd/types'
+import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
+import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
 
 import { IJobDefinition } from '../types'
 
@@ -41,40 +41,44 @@ const job: IJobDefinition = {
     for (const memberId of memberIds) {
       try {
         const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
-        const hash = await redis.hGetAll(datesKey)
+        const rawMembers = await redis.sMembers(datesKey)
 
-        if (!hash || Object.keys(hash).length === 0) {
+        if (!rawMembers?.length) {
           await redis.sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
           continue
         }
 
-        const { activityDates, orgIds } = parseMemberActivityHash(hash)
+        const orgDates = parseSetMembers(rawMembers)
 
-        if (activityDates.length > 0) {
+        if (orgDates.length > 0) {
           const existingOrgs = await fetchMemberOrganizationsBySource(
             qx,
             memberId,
             OrganizationSource.EMAIL_DOMAIN,
           )
 
-          const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, activityDates)
+          const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, orgDates)
 
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
-            await applyStintChanges(qx, changes)
+            await qx.tx((tx) => applyStintChanges(tx, changes))
           }
         }
 
-        // Remove only the fields we actually read
-        await redis
-          .multi()
-          .hDel(datesKey, orgIds)
-          .sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
-          .exec()
+        // Atomically remove only the values we read.
+        // If no new values were added, remove the member from the queue.
+        await RedisCache.ackSetMembers(
+          redis,
+          datesKey,
+          MEMBER_ORG_STINT_CHANGES_QUEUE,
+          memberId,
+          rawMembers,
+        )
 
         processed++
       } catch (err) {
         ctx.log.error(err, { memberId }, 'Failed to process member stint inference.')
+        throw err
       }
     }
 
@@ -83,23 +87,19 @@ const job: IJobDefinition = {
 }
 
 /**
- * Parses the Redis hash into a clean, typed list of activity dates.
+ * Parses set members of the form "orgId|date" into typed activity dates.
  */
-function parseMemberActivityHash(hash: Record<string, string>) {
-  const orgIds = Object.keys(hash)
-  const activityDates = orgIds.flatMap((organizationId) => {
-    try {
-      const dates = JSON.parse(hash[organizationId])
-      return Array.isArray(dates)
-        ? dates
-            .filter((d): d is string => typeof d === 'string')
-            .map((date) => ({ organizationId, date }))
-        : []
-    } catch {
-      return []
+function parseSetMembers(members: string[]): MemberOrgDate[] {
+  const results: MemberOrgDate[] = []
+
+  for (const m of members) {
+    const idx = m.indexOf('|')
+    if (idx > 0) {
+      results.push({ organizationId: m.slice(0, idx), date: m.slice(idx + 1) })
     }
-  })
-  return { activityDates, orgIds }
+  }
+
+  return results
 }
 
 /**

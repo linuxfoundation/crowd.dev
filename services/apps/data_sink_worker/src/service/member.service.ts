@@ -1065,11 +1065,8 @@ export default class MemberService extends LoggerBase {
   }
 
   /**
-   * Queues member activity dates in Redis as raw input for stint inference.
-   *
-   * To maximize throughput, this uses a non-atomic HGET/HSET pattern. While
-   * concurrent writes may occasionally drop a date, the system is self-healing
-   * as future activity will re-populate the buffer.
+   * Queues a member activity date in Redis for stint inference.
+   * Uses SADD for natural concurrency safety and deduplication.
    */
   private async bufferMemberOrganizationActivityDates(
     memberId: string,
@@ -1077,44 +1074,17 @@ export default class MemberService extends LoggerBase {
     activityTimestamp: string,
   ): Promise<void> {
     const date = new Date(activityTimestamp).toISOString().split('T')[0]
-    const key = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
 
-    // Safe parser for existing Redis strings.
-    // Returns a valid string array even if data is corrupt or missing.
-    const parseExistingDates = (value: string | null | undefined): string[] => {
-      if (!value) return []
-      try {
-        const parsed = JSON.parse(value)
-        return Array.isArray(parsed) ? parsed.filter((d): d is string => typeof d === 'string') : []
-      } catch {
-        this.log.warn(
-          { memberId, organizationId, key },
-          'Corrupt dates buffer value detected during buffering for member organization activity dates.',
-        )
-        return []
-      }
-    }
+    // Each member gets one flat set: values are "orgId|date"
+    const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+    const value = `${organizationId}|${date}`
 
-    // 1. Fetch current dates for this specific organization
-    const existing = await this.redisClient.hGet(key, organizationId)
-    const dates: string[] = parseExistingDates(existing)
+    await this.redisClient
+      .multi()
+      .sAdd(datesKey, value)
+      .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+      .exec()
 
-    // 2. If the date is new, update the set and the queue
-    if (!dates.includes(date)) {
-      dates.push(date)
-      dates.sort()
-
-      await Promise.all([
-        // Update the specific org field in the hash
-        this.redisClient.hSet(key, organizationId, JSON.stringify(dates)),
-        // Ensure the member is in the processing queue
-        this.redisClient.sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId),
-      ])
-
-      this.log.debug(
-        { memberId, organizationId, date, count: dates.length },
-        'Buffered activity date and queued member.',
-      )
-    }
+    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
   }
 }

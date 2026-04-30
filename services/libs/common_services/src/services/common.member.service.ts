@@ -248,13 +248,12 @@ export class CommonMemberService extends LoggerBase {
         highestPrioritySourceExperiences.map((e) => e.organizationId),
       )
 
-      if (memberCounts[0].memberCount > memberCounts[1].memberCount) {
+      // memberCounts is sorted desc by memberCount — pick the winner if it's strictly highest
+      if (memberCounts?.length >= 2 && memberCounts[0].memberCount > memberCounts[1].memberCount) {
         return memberCounts[0].organizationId
-      } else if (memberCounts[0].memberCount < memberCounts[1].memberCount) {
-        return memberCounts[1].organizationId
       }
 
-      // if there's a draw in the member count, use the one with the longer period
+      // tie or no data — fall back to longest date range
       return getLongestDateRange(highestPrioritySourceExperiences).organizationId
     }
 
