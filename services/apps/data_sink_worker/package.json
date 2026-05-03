@@ -2,7 +2,7 @@
   "name": "@crowd/data-sink-worker",
   "private": true,
   "scripts": {
-    "start": "SERVICE=data-sink-worker LOG_LEVEL=trace tsx src/main.ts",
+    "start": "SERVICE=data-sink-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=data-sink-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9233 src/main.ts",
     "start:debug": "SERVICE=data-sink-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9233 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
