@@ -1316,6 +1316,7 @@ class OrganizationRepository {
       limit = 20,
       offset = 0,
       orderBy = undefined,
+      search = undefined as string | undefined,
       segmentId = undefined,
     },
     options: IRepositoryOptions,
@@ -1332,6 +1333,7 @@ class OrganizationRepository {
       limit,
       offset,
       orderBy,
+      search,
       segmentId,
     })
 
@@ -1345,6 +1347,7 @@ class OrganizationRepository {
         cacheKey,
         {
           filter,
+          search,
           limit,
           offset,
           orderBy,
@@ -1366,6 +1369,7 @@ class OrganizationRepository {
         cacheKey,
         {
           filter,
+          search,
           segmentId,
           include,
         },
@@ -1386,6 +1390,7 @@ class OrganizationRepository {
       cacheKey,
       {
         filter,
+        search,
         limit,
         offset,
         orderBy,
@@ -1403,6 +1408,7 @@ class OrganizationRepository {
     cacheKey: string,
     {
       filter = {} as any,
+      search = undefined as string | undefined,
       limit = 20,
       offset = 0,
       orderBy = undefined,
@@ -1458,11 +1464,17 @@ class OrganizationRepository {
       segmentId = segment.id
     }
 
-    const params = {
+    const params: Record<string, any> = {
       limit,
       offset,
       segmentId,
       tenantId: options.currentTenant.id,
+    }
+
+    let searchWhereClause = ''
+    if (search) {
+      params.searchTerm = `%${search}%`
+      searchWhereClause = `AND o."displayName" ILIKE $(searchTerm)`
     }
 
     const filterString = RawQueryParser.parseFilters(
@@ -1498,6 +1510,7 @@ class OrganizationRepository {
       WHERE 1=1
         AND o."tenantId" = $(tenantId)
         ${lfxMembershipFilterWhereClause}
+        ${searchWhereClause}
         AND (${filterString})
     `
     const countQuery = createQuery('COUNT(*)')
@@ -1649,6 +1662,7 @@ class OrganizationRepository {
     params: {
       // TODO: REMOVE this any
       filter?: any
+      search?: string
       limit: number
       offset: number
       orderBy?: string
@@ -1671,6 +1685,7 @@ class OrganizationRepository {
     cacheKey: string,
     params: {
       filter?: any
+      search?: string
       segmentId?: string
       include: any
     },

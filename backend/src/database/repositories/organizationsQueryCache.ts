@@ -38,6 +38,7 @@ export class OrganizationQueryCache {
     limit: number
     offset: number
     orderBy?: string
+    search?: string
     segmentId?: string
   }): string {
     const cleanParams = Object.fromEntries(
@@ -49,6 +50,7 @@ export class OrganizationQueryCache {
         limit: params.limit,
         offset: params.offset,
         orderBy: params.orderBy,
+        search: params.search,
         segmentId: params.segmentId,
       }).filter(([, value]) => value !== null && value !== undefined),
     )
