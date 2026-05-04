@@ -1296,25 +1296,6 @@ class OrganizationRepository {
     return { lfxMembershipFilter, updatedfilter }
   }
 
-  private static handleSearchFilter(filter: any): {
-    searchTerm: string | null
-    updatedFilter: any
-  } {
-    if (!filter || typeof filter !== 'object') {
-      return { searchTerm: null, updatedFilter: filter }
-    }
-
-    const updatedFilter = { ...filter }
-    let searchTerm: string | null = null
-
-    if (typeof updatedFilter.search === 'string' && updatedFilter.search.trim()) {
-      searchTerm = updatedFilter.search.trim()
-    }
-    delete updatedFilter.search
-
-    return { searchTerm, updatedFilter }
-  }
-
   static async findAndCountAll(
     {
       countOnly = false,
@@ -1335,6 +1316,7 @@ class OrganizationRepository {
       limit = 20,
       offset = 0,
       orderBy = undefined,
+      search = undefined as string | undefined,
       segmentId = undefined,
     },
     options: IRepositoryOptions,
@@ -1351,6 +1333,7 @@ class OrganizationRepository {
       limit,
       offset,
       orderBy,
+      search,
       segmentId,
     })
 
@@ -1364,6 +1347,7 @@ class OrganizationRepository {
         cacheKey,
         {
           filter,
+          search,
           limit,
           offset,
           orderBy,
@@ -1385,6 +1369,7 @@ class OrganizationRepository {
         cacheKey,
         {
           filter,
+          search,
           segmentId,
           include,
         },
@@ -1405,6 +1390,7 @@ class OrganizationRepository {
       cacheKey,
       {
         filter,
+        search,
         limit,
         offset,
         orderBy,
@@ -1422,6 +1408,7 @@ class OrganizationRepository {
     cacheKey: string,
     {
       filter = {} as any,
+      search = undefined as string | undefined,
       limit = 20,
       offset = 0,
       orderBy = undefined,
@@ -1446,10 +1433,6 @@ class OrganizationRepository {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
     const withAggregates = include.aggregates
-
-    const { searchTerm, updatedFilter: filterWithoutSearch } =
-      OrganizationRepository.handleSearchFilter(filter)
-    filter = filterWithoutSearch
 
     const { lfxMembershipFilter, updatedfilter } =
       OrganizationRepository.handleLfxMembershipFilter(filter)
@@ -1489,8 +1472,8 @@ class OrganizationRepository {
     }
 
     let searchWhereClause = ''
-    if (searchTerm) {
-      params.searchTerm = `%${searchTerm}%`
+    if (search) {
+      params.searchTerm = `%${search}%`
       searchWhereClause = `AND o."displayName" ILIKE $(searchTerm)`
     }
 
@@ -1679,6 +1662,7 @@ class OrganizationRepository {
     params: {
       // TODO: REMOVE this any
       filter?: any
+      search?: string
       limit: number
       offset: number
       orderBy?: string
@@ -1701,6 +1685,7 @@ class OrganizationRepository {
     cacheKey: string,
     params: {
       filter?: any
+      search?: string
       segmentId?: string
       include: any
     },
