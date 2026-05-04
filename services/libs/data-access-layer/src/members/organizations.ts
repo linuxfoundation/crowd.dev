@@ -491,18 +491,36 @@ export async function deleteUndatedMemberOrganizations(
     return
   }
 
-  await qx.result(
-    `
-      UPDATE "memberOrganizations"
-      SET "deletedAt" = NOW()
-      WHERE "memberId" = $(memberId)
-        AND "organizationId" IN ($(organizationIds:csv))
-        AND "dateStart" IS NULL
-        AND "dateEnd" IS NULL
-        AND "deletedAt" IS NULL
-    `,
-    { memberId, organizationIds },
-  )
+  const whereClause = `
+    "memberId" = $(memberId)
+    AND "organizationId" IN ($(organizationIds:csv))
+    AND "dateStart" IS NULL
+    AND "dateEnd" IS NULL
+    AND "deletedAt" IS NULL
+  `
+
+  const params = { memberId, organizationIds }
+
+  await qx.tx(async (tx) => {
+    await tx.result(
+      `
+        DELETE FROM "memberOrganizationAffiliationOverrides"
+        WHERE "memberOrganizationId" IN (
+          SELECT "id" FROM "memberOrganizations" WHERE ${whereClause}
+        )
+      `,
+      params,
+    )
+
+    await tx.result(
+      `
+        UPDATE "memberOrganizations"
+        SET "deletedAt" = NOW()
+        WHERE ${whereClause}
+      `,
+      params,
+    )
+  })
 }
 
 export async function cleanSoftDeletedMemberOrganization(
