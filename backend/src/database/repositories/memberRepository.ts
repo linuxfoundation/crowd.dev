@@ -291,6 +291,12 @@ class MemberRepository {
       await new SegmentRepository(options).getSegmentSubprojects(currentSegments)
     ).map((s) => s.id)
 
+    if (segmentIds.length === 0) {
+      return args.countOnly
+        ? { count: 0 }
+        : { rows: [], count: 0, limit: args.limit, offset: args.offset }
+    }
+
     let similarityFilter = ''
     const similarityConditions = []
 
