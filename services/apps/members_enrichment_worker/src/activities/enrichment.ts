@@ -767,8 +767,8 @@ function sanitizeWorkExperienceDateRanges(
 
     return {
       ...org,
-      startDate: dates.dateStart ? String(dates.dateStart) : null,
-      endDate: dates.dateEnd ? String(dates.dateEnd) : null,
+      startDate: dates.dateStart instanceof Date ? dates.dateStart.toISOString() : dates.dateStart,
+      endDate: dates.dateEnd instanceof Date ? dates.dateEnd.toISOString() : dates.dateEnd,
     }
   })
 }
