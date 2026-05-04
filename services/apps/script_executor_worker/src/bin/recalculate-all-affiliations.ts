@@ -288,7 +288,9 @@ async function main() {
           }
         }
 
-        await Promise.all(Array.from({ length: Math.min(opts.concurrency, toProcess.length) }, worker))
+        await Promise.all(
+          Array.from({ length: Math.min(opts.concurrency, toProcess.length) }, worker),
+        )
         log.info(`Page ${pageNum} done: ${totalSucceeded} ok, ${totalFailed} failed`)
 
         if (opts.limit !== null && totalSucceeded + totalFailed >= opts.limit) {
