@@ -1163,9 +1163,8 @@ export default class OrganizationService extends LoggerBase {
   }
 
   async query(data) {
-    const { filter: rawFilter, orderBy, limit, offset, segments } = data
-    const { search, ...filter } = rawFilter ?? {}
-    const searchTerm = typeof search === 'string' && search.trim() ? search.trim() : undefined
+    const { filter, orderBy, limit, offset, segments, search: rawSearch } = data
+    const searchTerm = typeof rawSearch === 'string' && rawSearch.trim() ? rawSearch.trim() : undefined
     return OrganizationRepository.findAndCountAll(
       {
         filter,
