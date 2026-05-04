@@ -482,6 +482,29 @@ export async function deleteMemberOrganizations(
   })
 }
 
+export async function deleteUndatedMemberOrganizations(
+  qx: QueryExecutor,
+  memberId: string,
+  organizationIds: string[],
+): Promise<void> {
+  if (organizationIds.length === 0) {
+    return
+  }
+
+  await qx.result(
+    `
+      UPDATE "memberOrganizations"
+      SET "deletedAt" = NOW()
+      WHERE "memberId" = $(memberId)
+        AND "organizationId" IN ($(organizationIds:csv))
+        AND "dateStart" IS NULL
+        AND "dateEnd" IS NULL
+        AND "deletedAt" IS NULL
+    `,
+    { memberId, organizationIds },
+  )
+}
+
 export async function cleanSoftDeletedMemberOrganization(
   qx: QueryExecutor,
   memberId: string,
