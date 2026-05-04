@@ -106,33 +106,31 @@ export function sanitizeMemberOrganizationDateRange(
   dateEnd: MemberOrganizationDateInput,
   throwError = false,
 ): MemberOrganizationDateRange {
-  const normalize = (d: MemberOrganizationDateInput) =>
-    d === undefined || d === null || d === '' ? null : d
+  const normalize = (date: MemberOrganizationDateInput) =>
+    date === undefined || date === null || date === '' ? null : date
 
-  const s = normalize(dateStart)
-  const e = normalize(dateEnd)
+  const start = normalize(dateStart)
+  const end = normalize(dateEnd)
 
   const handleError = (message: string): MemberOrganizationDateRange => {
     if (throwError) throw new Error(message)
     return { dateStart: null, dateEnd: null }
   }
 
-  if (e && !s) {
+  if (end && !start) {
     return handleError('Member organization with dateEnd and without dateStart!')
   }
 
-  if (s && e) {
-    const startTime = new Date(s).getTime()
-    const endTime = new Date(e).getTime()
+  const startTime = start ? new Date(start).getTime() : null
+  const endTime = end ? new Date(end).getTime() : null
 
-    if (isNaN(startTime) || isNaN(endTime)) {
-      return handleError('Invalid member organization date format!')
-    }
-
-    if (endTime < startTime) {
-      return handleError('Member organization with dateEnd before dateStart!')
-    }
+  if ((start && Number.isNaN(startTime)) || (end && Number.isNaN(endTime))) {
+    return handleError('Invalid member organization date format!')
   }
 
-  return { dateStart: s, dateEnd: e }
+  if (startTime !== null && endTime !== null && endTime < startTime) {
+    return handleError('Member organization with dateEnd before dateStart!')
+  }
+
+  return { dateStart: start, dateEnd: end }
 }
