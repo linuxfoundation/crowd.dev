@@ -218,7 +218,7 @@ export default class MemberOrganizationsService extends LoggerBase {
   ): Promise<IRenderFriendlyMemberOrganization[]> {
     const transaction = await SequelizeRepository.createTransaction(this.options)
     const repositoryOptions = { ...this.options, transaction }
-  
+
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
 
@@ -226,7 +226,7 @@ export default class MemberOrganizationsService extends LoggerBase {
       if (!existing || existing.memberId !== memberId) {
         throw new Error404(`Member organization with id ${id} not found!`)
       }
-  
+
       const hasDateStart = data.dateStart !== undefined
       const hasDateEnd = data.dateEnd !== undefined
       const targetDateRange = sanitizeMemberOrganizationDateRange(
@@ -234,7 +234,7 @@ export default class MemberOrganizationsService extends LoggerBase {
         hasDateEnd ? data.dateEnd : existing.dateEnd,
         true,
       )
-  
+
       const update = lodash.pickBy(
         {
           organizationId: data.organizationId,
@@ -251,16 +251,16 @@ export default class MemberOrganizationsService extends LoggerBase {
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)
       await updateMemberOrganization(qx, memberId, id, {
         ...update,
-        source: OrganizationSource.UI
+        source: OrganizationSource.UI,
       })
-  
+
       // Trigger recalculation for old and new orgs if changed
       const orgsToRecalculate = Array.from(
         new Set([existing.organizationId, data.organizationId]),
       ).filter((orgId): orgId is string => Boolean(orgId))
 
       await this.commonMemberService.startAffiliationRecalculation(memberId, orgsToRecalculate)
-  
+
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
