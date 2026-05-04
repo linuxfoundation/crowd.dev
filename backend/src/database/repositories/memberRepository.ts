@@ -294,7 +294,12 @@ class MemberRepository {
     if (segmentIds.length === 0) {
       return args.countOnly
         ? { count: 0 }
-        : { rows: [], count: 0, limit: args.limit, offset: args.offset }
+        : {
+            rows: [{ members: [], similarity: 0 }],
+            count: 0,
+            limit: args.limit,
+            offset: args.offset,
+          }
     }
 
     let similarityFilter = ''
