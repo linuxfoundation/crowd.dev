@@ -5,7 +5,6 @@ import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   MemberField,
-  checkMemberIdentityExistence,
   findMemberById,
   createMemberIdentity as insertMemberIdentity,
   optionsQx,
@@ -53,37 +52,35 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await checkMemberIdentityExistence(
-          tx,
-          data.value,
-          data.platform,
-          data.type,
-        )
+        try {
+          result = await insertMemberIdentity(
+            tx,
+            {
+              memberId,
+              platform: data.platform,
+              value: data.value,
+              type: data.type,
+              source: data.source,
+              verified: data.verified,
+              verifiedBy: data.verifiedBy,
+            },
+            true,
+            true,
+          )
+        } catch (error) {
+          const constraint =
+            error.constraint ?? error.original?.constraint ?? error.parent?.constraint
 
-        for (const identity of existing) {
-          if (identity.memberId === memberId) {
+          if (constraint === 'uix_memberIdentities_memberId_platform_value_type') {
             throw new ConflictError('Identity already exists on this member')
           }
 
-          if (identity.verified) {
+          if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
             throw new ConflictError('Identity already verified on another member')
           }
-        }
 
-        result = await insertMemberIdentity(
-          tx,
-          {
-            memberId,
-            platform: data.platform,
-            value: data.value,
-            type: data.type,
-            source: data.source,
-            verified: data.verified,
-            verifiedBy: data.verifiedBy,
-          },
-          true,
-          true,
-        )
+          throw error
+        }
 
         // touch member updated at to trigger merge suggestion
         await touchMemberUpdatedAt(tx, memberId)

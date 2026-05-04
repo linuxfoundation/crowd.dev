@@ -12,7 +12,12 @@ import {
   isObjectEmpty,
   singleOrDefault,
 } from '@crowd/common'
-import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
+import {
+  BotDetectionService,
+  CommonMemberService,
+  MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
+  MEMBER_ORG_STINT_CHANGES_QUEUE,
+} from '@crowd/common_services'
 import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
@@ -121,6 +126,7 @@ export default class MemberService extends LoggerBase {
     platform: PlatformType,
     releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
   ): Promise<string> {
     return logExecutionTimeV2(
       async () => {
@@ -448,6 +454,8 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
+                  id,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
@@ -505,6 +513,7 @@ export default class MemberService extends LoggerBase {
     platform: PlatformType,
     releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
   ): Promise<void> {
     await logExecutionTimeV2(
       async () => {
@@ -682,6 +691,8 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
+                  id,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
@@ -733,6 +744,8 @@ export default class MemberService extends LoggerBase {
     integrationId: string,
     emails: string[],
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    memberId?: string,
+    activityTimestamp?: string,
   ): Promise<IOrganizationIdSource[]> {
     const orgService = new OrganizationService(this.store, this.log)
     const organizations: IOrganizationIdSource[] = []
@@ -791,6 +804,9 @@ export default class MemberService extends LoggerBase {
           id: orgId,
           source: orgSource,
         })
+        if (memberId && activityTimestamp) {
+          await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
+        }
       }
     }
 
@@ -1046,5 +1062,29 @@ export default class MemberService extends LoggerBase {
         TenantId: [DEFAULT_TENANT_ID],
       },
     })
+  }
+
+  /**
+   * Queues a member activity date in Redis for stint inference.
+   * Uses SADD for natural concurrency safety and deduplication.
+   */
+  private async bufferMemberOrganizationActivityDates(
+    memberId: string,
+    organizationId: string,
+    activityTimestamp: string,
+  ): Promise<void> {
+    const date = new Date(activityTimestamp).toISOString().split('T')[0]
+
+    // Each member gets one flat set: values are "orgId|date"
+    const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+    const value = `${organizationId}|${date}`
+
+    await this.redisClient
+      .multi()
+      .sAdd(datesKey, value)
+      .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+      .exec()
+
+    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
   }
 }
