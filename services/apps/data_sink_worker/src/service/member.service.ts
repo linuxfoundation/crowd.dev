@@ -84,8 +84,7 @@ export async function mergeIfAllowed(
   secondaryId: string,
 ): Promise<boolean> {
   const noMergeMemberIds = await getMemberNoMerge(pgQx, [primaryId, secondaryId])
-  const noMerge = singleOrDefault(
-    noMergeMemberIds,
+  const noMerge = noMergeMemberIds.some(
     (m) =>
       (m.memberId === primaryId && m.noMergeId === secondaryId) ||
       (m.memberId === secondaryId && m.noMergeId === primaryId),

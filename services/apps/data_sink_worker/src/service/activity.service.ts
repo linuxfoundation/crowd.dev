@@ -1771,6 +1771,20 @@ export default class ActivityService extends LoggerBase {
       if (
         metadata.memberWithIdentity &&
         metadata.memberIdToUpdate &&
+        metadata.memberWithIdentity === metadata.memberIdToUpdate
+      ) {
+        // The member already owns the conflicting identity — stale prefetch race.
+        // The identity is already present so treat this as a no-op success.
+        this.log.warn(
+          { memberId: metadata.memberIdToUpdate, identity: metadata.erroredVerifiedIdentity },
+          'Verified identity already belongs to this member (stale prefetch) — treating as success',
+        )
+        return metadata.memberIdToUpdate as string
+      }
+
+      if (
+        metadata.memberWithIdentity &&
+        metadata.memberIdToUpdate &&
         metadata.memberWithIdentity !== metadata.memberIdToUpdate
       ) {
         // lets just merge the members
@@ -1789,6 +1803,7 @@ export default class ActivityService extends LoggerBase {
             return originalId
           } else {
             metadata.noMerge = true
+            metadata.errorMessage = 'noMerge blocked — verified identity conflict'
           }
         } catch (err) {
           metadata.mergeError = {
@@ -1796,7 +1811,12 @@ export default class ActivityService extends LoggerBase {
             errorStack: err?.stack,
             err,
           }
+          metadata.errorMessage = 'merge failed — auto-merge threw an error'
         }
+      }
+
+      if (!metadata.errorMessage) {
+        metadata.errorMessage = 'verified identity conflict — identity owner not found'
       }
 
       return metadata
