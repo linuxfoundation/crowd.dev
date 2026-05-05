@@ -201,23 +201,26 @@ export function inferMemberOrganizationStintChanges(
       continue
     }
 
-    // 5. Determine the gap window between neighbor and targetDate, then check if another org
-    // holds a significant (>= 30 day) dated stint that overlaps that window (multi-stint guard)
+    // Only split when another org clearly sits between this stint and the new date.
+    // Overlapping orgs are treated as concurrent evidence, not a break in the stint.
     const isForward = targetDate > neighbor.dateEnd
-    const gapStart = isForward ? neighbor.dateEnd : targetDate
-    const gapEnd = isForward ? targetDate : neighbor.dateStart
-    const hasConflict = stints.some(
-      (s) =>
-        s.organizationId !== organizationId &&
-        s.dateStart &&
-        s.dateEnd &&
-        s.dateStart < gapEnd &&
-        s.dateEnd > gapStart &&
-        diff(s.dateStart, s.dateEnd) >= 30,
-    )
+    const hasSeparator = stints.some((s) => {
+      if (
+        s.organizationId === organizationId ||
+        !s.dateStart ||
+        !s.dateEnd ||
+        diff(s.dateStart, s.dateEnd) < 30
+      ) {
+        return false
+      }
 
-    if (hasConflict) {
-      // 6a. Another org owns the gap — start a fresh stint rather than bridging
+      return isForward
+        ? s.dateStart > neighbor.dateEnd && s.dateStart <= targetDate
+        : s.dateEnd < neighbor.dateStart && s.dateEnd >= targetDate
+    })
+
+    if (hasSeparator) {
+      // 6a. Another org clearly sits in between — start a fresh stint rather than bridging
       stints.push({
         id: null,
         organizationId,
