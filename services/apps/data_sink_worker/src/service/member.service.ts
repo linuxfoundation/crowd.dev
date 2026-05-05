@@ -191,36 +191,73 @@ export default class MemberService extends LoggerBase {
    * is reached so the error surfaces in integration.results.
    */
   private async syncIdentitiesAfterRedirect(
-    survivingId: string,
+    initialSurvivingId: string,
     integrationId: string,
     incomingIdentities: IMemberIdentity[],
     maxMerges = 2,
   ): Promise<string> {
+    let survivingId = initialSurvivingId
+
     for (let mergeCount = 0; ; mergeCount++) {
       const freshMap = await findIdentitiesForMembers(this.pgQx, [survivingId])
       const freshIdentities = freshMap.get(survivingId) ?? []
 
+      // Match on (platform, value, type) only — per-member unique index excludes verified.
+      // Inserting an identity that already exists with a different verified flag would hit
+      // uix_memberIdentities_memberId_platform_value_type.
       const toInsert = incomingIdentities.filter(
         (incoming) =>
           !freshIdentities.some(
             (existing) =>
               existing.platform === incoming.platform &&
               existing.value === incoming.value &&
-              existing.type === incoming.type &&
-              existing.verified === incoming.verified,
+              existing.type === incoming.type,
           ),
       )
+
+      // Promote verified=false → true for identities already on the surviving member
+      // where the incoming payload asserts verified=true.
+      const toVerify = incomingIdentities.filter(
+        (incoming) =>
+          incoming.verified &&
+          freshIdentities.some(
+            (existing) =>
+              existing.platform === incoming.platform &&
+              existing.value === incoming.value &&
+              existing.type === incoming.type &&
+              !existing.verified,
+          ),
+      )
+
+      if (toVerify.length > 0) {
+        await this.memberRepo.updateIdentities(survivingId, toVerify)
+      }
 
       if (toInsert.length === 0) {
         return survivingId
       }
 
-      const nextRedirectId = await this.insertIdentitiesWithConflictResolution(
-        survivingId,
-        integrationId,
-        toInsert,
-        true,
-      )
+      let nextRedirectId: string | void
+      try {
+        nextRedirectId = await this.insertIdentitiesWithConflictResolution(
+          survivingId,
+          integrationId,
+          toInsert,
+          true,
+        )
+      } catch (err) {
+        // If we've already followed at least one redirect the original member id is stale.
+        // Wrap the error so handleMemberIdentityError uses survivingId as the merge target
+        // instead of the already-absorbed original member.
+        if (survivingId !== initialSurvivingId) {
+          throw new ApplicationError(
+            'identity conflict after redirect sync',
+            err instanceof Error ? err : undefined,
+            { survivingId },
+          )
+        }
+        throw err
+      }
 
       if (!nextRedirectId) {
         return survivingId
@@ -601,11 +638,11 @@ export default class MemberService extends LoggerBase {
             }
           }
 
-          if (effectiveMemberId === id && identitiesToUpdate) {
-            this.log.trace({ memberId: id }, 'Updating identities!')
+          if (identitiesToUpdate) {
+            this.log.trace({ memberId: effectiveMemberId }, 'Updating identities!')
             try {
               await logExecutionTimeV2(
-                () => this.memberRepo.updateIdentities(id, identitiesToUpdate),
+                () => this.memberRepo.updateIdentities(effectiveMemberId, identitiesToUpdate),
                 this.log,
                 'memberService -> update -> updateIdentities',
               )

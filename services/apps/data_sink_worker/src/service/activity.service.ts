@@ -1836,6 +1836,25 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
+    // syncIdentitiesAfterRedirect wraps constraint errors with the current survivingId when the
+    // original member has already been absorbed by a prior merge. Unwrap and re-handle using a
+    // synthetic dbMember with the surviving ID so mergeIfAllowed targets the right member.
+    if (
+      error instanceof ApplicationError &&
+      error.metadata?.survivingId !== undefined &&
+      error.originalError
+    ) {
+      const survivingDbMember = dbMember
+        ? { ...dbMember, id: error.metadata.survivingId as string }
+        : undefined
+      return this.handleMemberIdentityError(
+        error.originalError,
+        payload,
+        memberType,
+        survivingDbMember,
+      )
+    }
+
     if (error instanceof ApplicationError) {
       let nextError: any = error.originalError
 
