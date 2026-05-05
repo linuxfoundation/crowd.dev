@@ -1333,6 +1333,7 @@ export default class ActivityService extends LoggerBase {
       if (payload.dbMember) {
         if (memberMap.has(memberKey)) {
           payload.memberId = memberMap.get(memberKey)
+          payload.dbMember = undefined
         } else {
           promises.push(
             memberService
@@ -1393,6 +1394,7 @@ export default class ActivityService extends LoggerBase {
       if (payload.dbObjectMember && !sameActorKey) {
         if (memberMap.has(objectMemberKey)) {
           payload.objectMemberId = memberMap.get(objectMemberKey)
+          payload.dbObjectMember = undefined
         } else {
           promises.push(
             memberService
@@ -1751,7 +1753,10 @@ export default class ActivityService extends LoggerBase {
           if (
             key.slice(0, sep1) === id.platform &&
             key.slice(sep1 + 1, sep2) === id.type &&
-            key.slice(sep2 + 1).toLowerCase() === id.value.toLowerCase() &&
+            key
+              .slice(sep2 + 1)
+              .trim()
+              .toLowerCase() === id.value.trim().toLowerCase() &&
             oid !== dbMember?.id
           ) {
             conflictIdentity = id

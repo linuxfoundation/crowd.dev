@@ -574,7 +574,7 @@ export async function findMembersByIdentities(
 
   const identityTuples = identities.map((identity, i) => {
     params[`ip${i}`] = identity.platform
-    params[`iv${i}`] = identity.value
+    params[`iv${i}`] = identity.value.trim()
     params[`it${i}`] = identity.type
     return `($(ip${i}), $(iv${i}), $(it${i}))`
   })

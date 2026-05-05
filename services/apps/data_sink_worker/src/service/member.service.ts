@@ -225,7 +225,7 @@ export default class MemberService extends LoggerBase {
           !freshIdentities.some(
             (existing) =>
               existing.platform === incoming.platform &&
-              existing.value === incoming.value &&
+              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
               existing.type === incoming.type,
           ),
       )
@@ -238,7 +238,7 @@ export default class MemberService extends LoggerBase {
           freshIdentities.some(
             (existing) =>
               existing.platform === incoming.platform &&
-              existing.value === incoming.value &&
+              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
               existing.type === incoming.type &&
               !existing.verified,
           ),
