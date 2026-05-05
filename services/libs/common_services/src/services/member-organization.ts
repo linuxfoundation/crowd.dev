@@ -214,9 +214,17 @@ export function inferMemberOrganizationStintChanges(
         return false
       }
 
-      return isForward
-        ? s.dateStart > neighbor.dateEnd && s.dateStart <= targetDate
-        : s.dateEnd < neighbor.dateStart && s.dateEnd >= targetDate
+      if (isForward) {
+        return (
+          (s.dateStart > neighbor.dateEnd && s.dateStart <= targetDate) ||
+          (s.dateEnd > neighbor.dateEnd && s.dateEnd <= targetDate)
+        )
+      }
+
+      return (
+        (s.dateStart >= targetDate && s.dateStart < neighbor.dateStart) ||
+        (s.dateEnd >= targetDate && s.dateEnd < neighbor.dateStart)
+      )
     })
 
     if (hasSeparator) {
