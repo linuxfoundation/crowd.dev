@@ -1196,7 +1196,6 @@ export default class ActivityService extends LoggerBase {
               reach: value.member.reach,
             },
             value.platform,
-            undefined,
             orgPromiseCache,
             value.timestamp,
           )
@@ -1342,7 +1341,6 @@ export default class ActivityService extends LoggerBase {
                 payload.dbMember,
                 dbMemberIdentities.get(payload.dbMember.id),
                 payload.platform,
-                undefined,
                 orgPromiseCache,
                 payload.activity.timestamp,
               )
@@ -1404,7 +1402,6 @@ export default class ActivityService extends LoggerBase {
                 payload.dbObjectMember,
                 dbMemberIdentities.get(payload.dbObjectMember.id),
                 payload.platform,
-                undefined,
                 orgPromiseCache,
                 payload.activity.timestamp,
               )
@@ -1826,6 +1823,17 @@ export default class ActivityService extends LoggerBase {
       }
 
       return metadata
+    }
+
+    if (error instanceof ApplicationError && error.metadata?.mergeCount !== undefined) {
+      return {
+        ...error.metadata,
+        errorMessage: error.message,
+        memberType,
+        memberIdToUpdate: dbMember?.id,
+        memberSource:
+          memberType === 'member' ? payload.dbMemberSource : payload.dbObjectMemberSource,
+      }
     }
 
     if (error instanceof ApplicationError) {

@@ -184,12 +184,65 @@ export default class MemberService extends LoggerBase {
     }
   }
 
+  /**
+   * After an initial identity conflict redirects to a surviving member, inserts all incoming
+   * identities that the surviving member doesn't already have. If a further conflict triggers
+   * another merge the loop follows the new survivor. Throws ApplicationError once maxMerges
+   * is reached so the error surfaces in integration.results.
+   */
+  private async syncIdentitiesAfterRedirect(
+    survivingId: string,
+    integrationId: string,
+    incomingIdentities: IMemberIdentity[],
+    maxMerges = 2,
+  ): Promise<string> {
+    for (let mergeCount = 0; ; mergeCount++) {
+      const freshMap = await findIdentitiesForMembers(this.pgQx, [survivingId])
+      const freshIdentities = freshMap.get(survivingId) ?? []
+
+      const toInsert = incomingIdentities.filter(
+        (incoming) =>
+          !freshIdentities.some(
+            (existing) =>
+              existing.platform === incoming.platform &&
+              existing.value === incoming.value &&
+              existing.type === incoming.type &&
+              existing.verified === incoming.verified,
+          ),
+      )
+
+      if (toInsert.length === 0) {
+        return survivingId
+      }
+
+      const nextRedirectId = await this.insertIdentitiesWithConflictResolution(
+        survivingId,
+        integrationId,
+        toInsert,
+        true,
+      )
+
+      if (!nextRedirectId) {
+        return survivingId
+      }
+
+      if (mergeCount >= maxMerges) {
+        throw new ApplicationError('identity sync exceeded merge limit', undefined, {
+          mergeCount: mergeCount + 1,
+          survivingId,
+          maxMerges,
+        })
+      }
+
+      survivingId = nextRedirectId
+    }
+  }
+
   public async create(
     segmentIds: string[],
     integrationId: string,
     data: IMemberCreateData,
     platform: PlatformType,
-    releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
     activityTimestamp?: string,
   ): Promise<string> {
@@ -295,16 +348,18 @@ export default class MemberService extends LoggerBase {
           }
 
           if (redirectId) {
+            await this.scheduleOrphanMemberDeletion(id)
+            const finalMemberId = await this.syncIdentitiesAfterRedirect(
+              redirectId,
+              integrationId,
+              data.identities,
+            )
             await logExecutionTimeV2(
-              () => this.memberRepo.addToSegments(redirectId, segmentIds),
+              () => this.memberRepo.addToSegments(finalMemberId, segmentIds),
               this.log,
               'memberService -> create -> addToSegments (conflict redirect)',
             )
-            if (releaseMemberLock) {
-              await releaseMemberLock()
-            }
-            await this.scheduleOrphanMemberDeletion(id)
-            return redirectId
+            return finalMemberId
           }
 
           try {
@@ -321,10 +376,6 @@ export default class MemberService extends LoggerBase {
               'memberService -> create -> destroyMemberAfterError',
             )
             throw err
-          }
-
-          if (releaseMemberLock) {
-            await releaseMemberLock()
           }
 
           // we should prevent organization creation for bot members
@@ -442,7 +493,6 @@ export default class MemberService extends LoggerBase {
     original: IDbMember,
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
-    releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
     activityTimestamp?: string,
   ): Promise<string | void> {
@@ -543,7 +593,11 @@ export default class MemberService extends LoggerBase {
               'memberService -> update -> insertIdentitiesWithConflictResolution',
             )
             if (redirectId) {
-              effectiveMemberId = redirectId
+              effectiveMemberId = await this.syncIdentitiesAfterRedirect(
+                redirectId,
+                integrationId,
+                identitiesToCreate,
+              )
             }
           }
 
@@ -561,10 +615,6 @@ export default class MemberService extends LoggerBase {
                 err,
               )
             }
-          }
-
-          if (releaseMemberLock) {
-            await releaseMemberLock()
           }
 
           if (this.botDetectionService.isFlaggedAsBot(toUpdate.attributes)) {
