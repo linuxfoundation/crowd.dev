@@ -11,7 +11,7 @@ RUN confluent-hub install confluentinc/kafka-connect-jdbc:10.8.4 --no-prompt
 # -----------------------------------------------------------------------------
 # Tinybird Append Schema SMT
 # Download from:
-# https://github.com/CrowdDotDev/tinybird-append-schema-smt/releases
+# https://github.com/linuxfoundation/tinybird-append-schema-smt/releases
 # -----------------------------------------------------------------------------
 COPY tmp/custom-plugins/tinybird-append-schema-SMT/tinybird-append-schema-SMT-1.0.8.jar /usr/share/java/tinybird-append-schema-SMT/tinybird-append-schema-SMT-1.0.8.jar
 

@@ -32,7 +32,7 @@ We currently support all our integrations for self-hosting. For each one of them
 
 #### <a name="requirements">Requirements</a>
 
-- [Node](https://nodejs.org/en) v16.16.0
+- [Node](https://nodejs.org/en) v20+
 - [Docker](https://docs.docker.com/get-docker/) and [docker-compose](https://docs.docker.com/compose/install/)
 
 #### <a name="getting_started">Getting started</a>
@@ -40,7 +40,7 @@ We currently support all our integrations for self-hosting. For each one of them
 1. Get the mono repo from GitHub
 
 ```shell
-git clone git@github.com:CrowdDotDev/crowd.dev.git
+git clone git@github.com:linuxfoundation/crowd.dev.git
 ```
 
 2. Run the start script
@@ -76,7 +76,7 @@ There are many ways you can contribute to crowd.dev! Here are a few options:
 - Create issues every time you feel something is missing or goes wrong
 - Upvote issues with 👍 reaction so we know what's the demand for a particular issue to prioritize it within the roadmap
 
-If you would like to contribute to the development of the project, please refer to our [Contributing guide](https://github.com/CrowdDotDev/crowd.dev/blob/main/CONTRIBUTING.md).
+If you would like to contribute to the development of the project, please refer to our [Contributing guide](https://github.com/linuxfoundation/crowd.dev/blob/main/CONTRIBUTING.md).
 
 All contributions are highly appreciated. 🙏
 

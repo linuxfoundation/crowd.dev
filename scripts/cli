@@ -250,7 +250,7 @@ function select_services() {
 }
 
 function deploy_staging() {
-    REPOSITORY="CrowdDotDev/crowd.dev"
+    REPOSITORY="linuxfoundation/crowd.dev"
     WORKFLOW_FILE="lf-staging-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
@@ -262,7 +262,7 @@ function deploy_staging() {
 }
 
 function deploy_production() {
-    REPOSITORY="CrowdDotDev/crowd.dev"
+    REPOSITORY="linuxfoundation/crowd.dev"
     WORKFLOW_FILE="lf-production-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
