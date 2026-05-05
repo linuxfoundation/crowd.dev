@@ -201,7 +201,7 @@ export function inferMemberOrganizationStintChanges(
       continue
     }
 
-    // Only split when another org clearly sits between this stint and the new date.
+    // 5. Only split when another org clearly sits between this stint and the new date.
     // Overlapping orgs are treated as concurrent evidence, not a break in the stint.
     const isForward = targetDate > neighbor.dateEnd
     const hasSeparator = stints.some((s) => {
