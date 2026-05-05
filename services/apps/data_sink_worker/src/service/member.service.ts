@@ -399,47 +399,52 @@ export default class MemberService extends LoggerBase {
             throw err
           }
 
+          let effectiveMemberId: string
+
           if (redirectId) {
             await this.scheduleOrphanMemberDeletion(id)
-            const finalMemberId = await this.syncIdentitiesAfterRedirect(
+            effectiveMemberId = await this.syncIdentitiesAfterRedirect(
               redirectId,
               integrationId,
               data.identities,
             )
             await logExecutionTimeV2(
-              () => this.memberRepo.addToSegments(finalMemberId, segmentIds),
+              () => this.memberRepo.addToSegments(effectiveMemberId, segmentIds),
               this.log,
               'memberService -> create -> addToSegments (conflict redirect)',
             )
-            return finalMemberId
-          }
-
-          try {
-            await logExecutionTimeV2(
-              () => this.memberRepo.addToSegments(id, segmentIds),
-              this.log,
-              'memberService -> create -> addToSegments',
-            )
-          } catch (err) {
-            this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
-            await logExecutionTimeV2(
-              async () => this.memberRepo.destroyMemberAfterError(id, true),
-              this.log,
-              'memberService -> create -> destroyMemberAfterError',
-            )
-            throw err
+          } else {
+            effectiveMemberId = id
+            try {
+              await logExecutionTimeV2(
+                () => this.memberRepo.addToSegments(id, segmentIds),
+                this.log,
+                'memberService -> create -> addToSegments',
+              )
+            } catch (err) {
+              this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
+              await logExecutionTimeV2(
+                async () => this.memberRepo.destroyMemberAfterError(id, true),
+                this.log,
+                'memberService -> create -> destroyMemberAfterError',
+              )
+              throw err
+            }
           }
 
           // we should prevent organization creation for bot members
           if (botDetection === MemberBotDetection.CONFIRMED_BOT) {
             this.log.debug('Skipping organization creation for bot member')
-            return id
+            return effectiveMemberId
           }
 
           // trigger LLM validation if the member is suspected as a bot
           if (botDetection === MemberBotDetection.SUSPECTED_BOT) {
-            this.log.debug({ memberId: id }, 'Member suspected as bot. Triggering LLM validation.')
-            await this.startMemberBotAnalysisWithLLMWorkflow(id)
+            this.log.debug(
+              { memberId: effectiveMemberId },
+              'Member suspected as bot. Triggering LLM validation.',
+            )
+            await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
           const organizations = []
@@ -470,9 +475,9 @@ export default class MemberService extends LoggerBase {
                   orgIdPromise.catch(() => orgPromiseCache?.delete(key))
                 }
               }
-              const id = await orgIdPromise
+              const orgId = await orgIdPromise
               organizations.push({
-                id,
+                id: orgId,
                 source: org.source,
               })
             }
@@ -488,7 +493,7 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
-                  id,
+                  effectiveMemberId,
                   activityTimestamp,
                 ),
               this.log,
@@ -508,7 +513,7 @@ export default class MemberService extends LoggerBase {
                   // Check if the org was already added to the member in the past, including deleted ones.
                   // If it was, we ignore this org to prevent from adding it again.
                   const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(id, org.id),
+                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
                     'memberService -> create -> findMemberOrganizations',
                   )
@@ -519,14 +524,14 @@ export default class MemberService extends LoggerBase {
 
             if (orgsToAdd.length > 0) {
               await logExecutionTimeV2(
-                () => orgService.addToMember(segmentIds, id, orgsToAdd),
+                () => orgService.addToMember(segmentIds, effectiveMemberId, orgsToAdd),
                 this.log,
                 'memberService -> create -> addToMember',
               )
             }
           }
 
-          return id
+          return effectiveMemberId
         } catch (err) {
           this.log.error(err, 'Error while creating a new member!')
           throw err

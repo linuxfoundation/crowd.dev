@@ -1312,16 +1312,27 @@ export default class ActivityService extends LoggerBase {
       dbMemberIdentities = await findIdentitiesForMembers(this.pgQx, Array.from(memberIds))
     }
 
+    // Tracks merge redirects across payloads in this batch. When a member update redirects
+    // X→Y (merge), subsequent payloads for the same platform:username skip the update and
+    // reuse Y — avoids calling update() on an already-absorbed member row.
+    const memberMap = new Map<string, string>()
+
     for (const payload of relevantPayloads) {
-      // contains the merged member ids
-      const memberMap = new Map<string, string>()
+      const memberKey = `${payload.platform}:${payload.activity.username}`
+      const objectMemberKey = `${payload.platform}:${payload.activity.objectMemberUsername}`
+      // When actor and objectActor are the same person, skip the objectMember update and
+      // copy memberId after Promise.all resolves.
+      const sameActorKey = !!(
+        payload.dbMember &&
+        payload.dbObjectMember &&
+        memberKey === objectMemberKey
+      )
 
       const promises = []
       // update members and orgs with them
       if (payload.dbMember) {
-        const key = `${payload.platform}:${payload.activity.username}`
-        if (memberMap.has(key)) {
-          payload.memberId = memberMap.get(key)
+        if (memberMap.has(memberKey)) {
+          payload.memberId = memberMap.get(memberKey)
         } else {
           promises.push(
             memberService
@@ -1347,7 +1358,7 @@ export default class ActivityService extends LoggerBase {
               .then((redirectId?: string) => {
                 payload.memberId = redirectId ?? payload.dbMember.id
                 if (redirectId) {
-                  memberMap.set(key, redirectId)
+                  memberMap.set(memberKey, redirectId)
                 }
               })
               .catch(async (err) => {
@@ -1360,7 +1371,7 @@ export default class ActivityService extends LoggerBase {
                 if (result) {
                   if (typeof result === 'string') {
                     payload.memberId = result
-                    memberMap.set(key, result)
+                    memberMap.set(memberKey, result)
                   } else {
                     resultMap.set(payload.resultId, {
                       success: false,
@@ -1379,10 +1390,9 @@ export default class ActivityService extends LoggerBase {
         }
       }
 
-      if (payload.dbObjectMember) {
-        const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
-        if (memberMap.has(key)) {
-          payload.objectMemberId = memberMap.get(key)
+      if (payload.dbObjectMember && !sameActorKey) {
+        if (memberMap.has(objectMemberKey)) {
+          payload.objectMemberId = memberMap.get(objectMemberKey)
         } else {
           promises.push(
             memberService
@@ -1408,7 +1418,7 @@ export default class ActivityService extends LoggerBase {
               .then((redirectId?: string) => {
                 payload.objectMemberId = redirectId ?? payload.dbObjectMember.id
                 if (redirectId) {
-                  memberMap.set(key, redirectId)
+                  memberMap.set(objectMemberKey, redirectId)
                 }
               })
               .catch(async (err) => {
@@ -1421,7 +1431,7 @@ export default class ActivityService extends LoggerBase {
                 if (result) {
                   if (typeof result === 'string') {
                     payload.objectMemberId = result
-                    memberMap.set(key, result)
+                    memberMap.set(objectMemberKey, result)
                   } else {
                     resultMap.set(payload.resultId, {
                       success: false,
@@ -1441,6 +1451,10 @@ export default class ActivityService extends LoggerBase {
       }
 
       await Promise.all(promises)
+
+      if (sameActorKey) {
+        payload.objectMemberId = payload.memberId
+      }
 
       if (resultMap.has(payload.resultId)) {
         continue
