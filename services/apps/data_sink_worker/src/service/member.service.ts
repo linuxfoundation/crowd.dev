@@ -21,7 +21,7 @@ import {
 import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
-  findMemberIdByVerifiedIdentity,
+  findMembersByIdentities,
   findMembersByVerifiedUsernames,
 } from '@crowd/data-access-layer'
 import { DbStore } from '@crowd/data-access-layer/src/database'
@@ -137,44 +137,59 @@ export default class MemberService extends LoggerBase {
     } catch (err) {
       if (
         !err?.constraint ||
-        err.constraint !== 'uix_memberIdentities_platform_value_type_verified' ||
-        !err.detail
+        err.constraint !== 'uix_memberIdentities_platform_value_type_verified'
       ) {
         throw err
       }
-      const match = (err.detail as string).match(/\(platform, value, type\)=\((.*?)\)/)
-      if (!match) throw err
-      const [platform, value, type] = match[1].split(',').map((s: string) => s.trim())
 
-      const owner = await findMemberIdByVerifiedIdentity(
-        this.pgQx,
-        platform,
-        value,
-        type as MemberIdentityType,
-      )
+      const verifiedIncoming = identities.filter((i) => i.verified)
+      if (verifiedIncoming.length === 0) throw err
 
-      if (owner && owner !== memberId) {
-        if (!attemptMerge) {
-          return owner
+      // Use the structured identities array to find the owner — avoids fragile Postgres
+      // Detail text parsing (format not stable; breaks if value contains a comma).
+      const owners = await findMembersByIdentities(this.pgQx, verifiedIncoming, undefined, true)
+
+      // Map keys are `${platform}:${type}:${value}` (from db rows). Match case-insensitively.
+      let owner: string | undefined
+      outer: for (const id of verifiedIncoming) {
+        for (const [key, ownerId] of owners) {
+          const sep1 = key.indexOf(':')
+          const sep2 = key.indexOf(':', sep1 + 1)
+          if (sep1 < 0 || sep2 < 0) continue
+          if (
+            key.slice(0, sep1) === id.platform &&
+            key.slice(sep1 + 1, sep2) === id.type &&
+            key.slice(sep2 + 1).toLowerCase() === id.value.toLowerCase() &&
+            ownerId !== memberId
+          ) {
+            owner = ownerId
+            break outer
+          }
         }
-
-        let merged: boolean
-        try {
-          merged = await mergeIfAllowed(this.pgQx, this.temporal, this.log, owner, memberId)
-        } catch (mergeErr) {
-          // Re-throw the original constraint error, not the merge error. If we let the merge
-          // error propagate, handleMemberIdentityError's checkForIdentityConstraint would
-          // return false and no metadata would be stored in integration.results.error.
-          // Re-throwing the constraint error lets handleMemberIdentityError retry the merge.
-          this.log.warn(
-            mergeErr,
-            { memberId, owner, platform, value, type },
-            'merge threw during identity conflict — re-throwing constraint error for retry',
-          )
-          throw err
-        }
-        if (merged) return owner
       }
+
+      if (!owner) throw err
+
+      if (!attemptMerge) {
+        return owner
+      }
+
+      let merged: boolean
+      try {
+        merged = await mergeIfAllowed(this.pgQx, this.temporal, this.log, owner, memberId)
+      } catch (mergeErr) {
+        // Re-throw the original constraint error, not the merge error. If we let the merge
+        // error propagate, handleMemberIdentityError's checkForIdentityConstraint would
+        // return false and no metadata would be stored in integration.results.error.
+        // Re-throwing the constraint error lets handleMemberIdentityError retry the merge.
+        this.log.warn(
+          mergeErr,
+          { memberId, owner },
+          'merge threw during identity conflict — re-throwing constraint error for retry',
+        )
+        throw err
+      }
+      if (merged) return owner
 
       // noMerge, owner not found, or stale prefetch (owner === memberId):
       // Re-throw original constraint DatabaseError. handleMemberIdentityError will call

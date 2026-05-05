@@ -1708,56 +1708,55 @@ export default class ActivityService extends LoggerBase {
       return false
     }
 
-    const extractMetadata = async (
-      error: any,
-    ): Promise<string | Record<string, unknown> | undefined> => {
+    const extractMetadata = async (): Promise<string | Record<string, unknown> | undefined> => {
       const metadata: Record<string, unknown> = {}
 
-      // extract the platform, value, type from the detail
-      const detail = error.detail
-      const regex = /\(platform, value, type\)=\((.*?)\)/
-      const match = detail.match(regex)
+      const incomingIdentities =
+        memberType === 'member'
+          ? payload.activity.member.identities
+          : payload.activity.objectMember.identities
+      const verifiedIncoming = incomingIdentities.filter((i) => i.verified)
 
-      if (!match || match.length < 2) {
-        return
+      metadata.verifiedIdentities = verifiedIncoming
+
+      if (verifiedIncoming.length === 0) {
+        return undefined
       }
 
-      // Split the matched string by commas
-      const values = match[1].split(',').map((val) => val.trim())
+      // Use the structured identities array to find the owner — avoids fragile Postgres
+      // Detail text parsing (format not stable; breaks if value contains a comma).
+      const owners = await findMembersByIdentities(this.pgQx, verifiedIncoming, undefined, true)
 
-      // Extract platform, value, and type
-      const [platform, value, type] = values
-
-      metadata.erroredVerifiedIdentity = {
-        platform,
-        value,
-        type,
+      // Map keys are `${platform}:${type}:${value}` (from db rows). Match case-insensitively.
+      let conflictIdentity: IMemberIdentity | undefined
+      let ownerId: string | undefined
+      outer: for (const id of verifiedIncoming) {
+        for (const [key, oid] of owners) {
+          const sep1 = key.indexOf(':')
+          const sep2 = key.indexOf(':', sep1 + 1)
+          if (sep1 < 0 || sep2 < 0) continue
+          if (
+            key.slice(0, sep1) === id.platform &&
+            key.slice(sep1 + 1, sep2) === id.type &&
+            key.slice(sep2 + 1).toLowerCase() === id.value.toLowerCase()
+          ) {
+            conflictIdentity = id
+            ownerId = oid
+            break outer
+          }
+        }
       }
 
-      const membersWithIdentity = await findMembersByIdentities(
-        this.pgQx,
-        [
-          {
-            platform,
-            value,
-            type,
-            verified: true,
-          } as IMemberIdentity,
-        ],
-        undefined,
-        true,
-      )
-
-      if (memberType === 'member') {
-        metadata.verifiedIdentities = payload.activity.member.identities.filter((i) => i.verified)
-      } else {
-        metadata.verifiedIdentities = payload.activity.objectMember.identities.filter(
-          (i) => i.verified,
-        )
+      if (conflictIdentity) {
+        metadata.erroredVerifiedIdentity = {
+          platform: conflictIdentity.platform,
+          value: conflictIdentity.value,
+          type: conflictIdentity.type,
+        }
       }
 
-      if (membersWithIdentity.size > 0) {
-        metadata.memberWithIdentity = membersWithIdentity.values().next().value
+      if (ownerId) {
+        metadata.memberWithIdentity = ownerId
       }
 
       if (dbMember) {
@@ -1860,7 +1859,7 @@ export default class ActivityService extends LoggerBase {
 
       while (nextError) {
         if (checkForIdentityConstraint(nextError)) {
-          return extractMetadata(nextError)
+          return extractMetadata()
         } else if (nextError instanceof ApplicationError) {
           nextError = nextError.originalError
         } else {
@@ -1868,7 +1867,7 @@ export default class ActivityService extends LoggerBase {
         }
       }
     } else if (checkForIdentityConstraint(error)) {
-      return extractMetadata(error)
+      return extractMetadata()
     }
 
     return undefined
