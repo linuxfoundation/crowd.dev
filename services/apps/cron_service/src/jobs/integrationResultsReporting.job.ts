@@ -63,9 +63,9 @@ const job: IJobDefinition = {
     ).count
 
     // Break down errors by errorMessage + location, enriched with platform info.
-    // When a mergeError is present in metadata, prefer its errorMessage for grouping
-    // so merge crashes surface as distinct groups rather than collapsing into the
-    // generic outer errorMessage.
+    // Prefer metadata.errorMessage when set — the data sink worker writes specific
+    // values there (e.g. "noMerge blocked", "merge failed") so those surface as
+    // distinct groups rather than collapsing into the generic outer errorMessage.
     const errorGroups = await dbConnection.any<IErrorGroup>(
       `
       SELECT

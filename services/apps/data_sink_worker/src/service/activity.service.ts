@@ -1346,8 +1346,11 @@ export default class ActivityService extends LoggerBase {
                 orgPromiseCache,
                 payload.activity.timestamp,
               )
-              .then(() => {
-                payload.memberId = payload.dbMember.id
+              .then((redirectId?: string) => {
+                payload.memberId = redirectId ?? payload.dbMember.id
+                if (redirectId) {
+                  memberMap.set(key, redirectId)
+                }
               })
               .catch(async (err) => {
                 const result = await this.handleMemberIdentityError(
@@ -1405,8 +1408,11 @@ export default class ActivityService extends LoggerBase {
                 orgPromiseCache,
                 payload.activity.timestamp,
               )
-              .then(() => {
-                payload.objectMemberId = payload.dbObjectMember.id
+              .then((redirectId?: string) => {
+                payload.objectMemberId = redirectId ?? payload.dbObjectMember.id
+                if (redirectId) {
+                  memberMap.set(key, redirectId)
+                }
               })
               .catch(async (err) => {
                 const result = await this.handleMemberIdentityError(
