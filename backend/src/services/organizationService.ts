@@ -1163,10 +1163,19 @@ export default class OrganizationService extends LoggerBase {
   }
 
   async query(data) {
-    const { filter, orderBy, limit, offset, segments } = data
+    const { filter: rawFilter, orderBy, limit, offset, segments, search: rawSearch } = data
+    const searchTerm =
+      typeof rawSearch === 'string' && rawSearch.trim() ? rawSearch.trim() : undefined
+
+    // Strip frontend-state keys that are never valid filter columns or operators.
+    // These can appear when the raw Pinia filter state is sent instead of the
+    // processed output of buildApiFilter.
+    const { search: _s, relation: _r, order: _o, settings: _st, ...filter } = rawFilter ?? {}
+
     return OrganizationRepository.findAndCountAll(
       {
         filter,
+        search: searchTerm,
         orderBy,
         limit,
         offset,

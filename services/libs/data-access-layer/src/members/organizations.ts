@@ -44,6 +44,16 @@ export async function fetchMemberOrganizations(
   )
 }
 
+export async function fetchMemberOrganizationById(
+  qx: QueryExecutor,
+  id: string,
+): Promise<IMemberOrganization | undefined> {
+  return qx.selectOneOrNone(
+    `SELECT * FROM "memberOrganizations" WHERE "id" = $(id) AND "deletedAt" IS NULL`,
+    { id },
+  )
+}
+
 export async function fetchMemberOrganizationsBySource(
   qx: QueryExecutor,
   memberId: string,
@@ -469,6 +479,47 @@ export async function deleteMemberOrganizations(
         { memberId, orgIds: affectedOrgIds },
       )
     }
+  })
+}
+
+export async function deleteUndatedMemberOrganizations(
+  qx: QueryExecutor,
+  memberId: string,
+  organizationIds: string[],
+): Promise<void> {
+  if (organizationIds.length === 0) {
+    return
+  }
+
+  const whereClause = `
+    "memberId" = $(memberId)
+    AND "organizationId" IN ($(organizationIds:csv))
+    AND "dateStart" IS NULL
+    AND "dateEnd" IS NULL
+    AND "deletedAt" IS NULL
+  `
+
+  const params = { memberId, organizationIds }
+
+  await qx.tx(async (tx) => {
+    await tx.result(
+      `
+        DELETE FROM "memberOrganizationAffiliationOverrides"
+        WHERE "memberOrganizationId" IN (
+          SELECT "id" FROM "memberOrganizations" WHERE ${whereClause}
+        )
+      `,
+      params,
+    )
+
+    await tx.result(
+      `
+        UPDATE "memberOrganizations"
+        SET "deletedAt" = NOW()
+        WHERE ${whereClause}
+      `,
+      params,
+    )
   })
 }
 

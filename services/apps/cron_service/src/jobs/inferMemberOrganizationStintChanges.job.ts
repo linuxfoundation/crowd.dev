@@ -10,6 +10,7 @@ import {
   changeMemberOrganizationAffiliationOverrides,
   checkOrganizationAffiliationPolicy,
   createMemberOrganization,
+  deleteUndatedMemberOrganizations,
   fetchMemberOrganizationsBySource,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
@@ -136,6 +137,10 @@ async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChang
       })
     }
   }
+
+  await deleteUndatedMemberOrganizations(qx, changes[0].memberId, [
+    ...new Set(changes.map((c) => c.organizationId)),
+  ])
 }
 
 export default job

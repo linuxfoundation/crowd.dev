@@ -6,6 +6,7 @@ import {
   generateUUIDv1,
   hasIntersection,
   replaceDoubleQuotes,
+  sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
@@ -383,6 +384,10 @@ export async function updateMemberUsingSquashedPayload(
 
     const newOrUpdatedMemberOrgs = []
 
+    squashedPayload.memberOrganizations = sanitizeWorkExperienceDateRanges(
+      squashedPayload.memberOrganizations,
+    )
+
     if (squashedPayload.memberOrganizations.length > 0) {
       const orgPromises = []
 
@@ -752,6 +757,20 @@ interface IWorkExperienceChanges {
   toDelete: IMemberOrganizationData[]
   toCreate: IMemberEnrichmentDataNormalizedOrganization[]
   toUpdate: Map<IMemberOrganizationData, Record<string, any>>
+}
+
+function sanitizeWorkExperienceDateRanges(
+  organizations: IMemberEnrichmentDataNormalizedOrganization[],
+): IMemberEnrichmentDataNormalizedOrganization[] {
+  return organizations.map((org) => {
+    const dates = sanitizeMemberOrganizationDateRange(org.startDate, org.endDate)
+
+    return {
+      ...org,
+      startDate: dates.dateStart instanceof Date ? dates.dateStart.toISOString() : dates.dateStart,
+      endDate: dates.dateEnd instanceof Date ? dates.dateEnd.toISOString() : dates.dateEnd,
+    }
+  })
 }
 
 function prepareWorkExperiences(
