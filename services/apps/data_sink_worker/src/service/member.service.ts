@@ -226,7 +226,7 @@ export default class MemberService extends LoggerBase {
         return survivingId
       }
 
-      if (mergeCount >= maxMerges) {
+      if (mergeCount + 1 >= maxMerges) {
         throw new ApplicationError('identity sync exceeded merge limit', undefined, {
           mergeCount: mergeCount + 1,
           survivingId,
