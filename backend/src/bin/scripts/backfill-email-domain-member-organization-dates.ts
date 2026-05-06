@@ -4,9 +4,9 @@ import { inferMemberOrganizationStintChanges } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   createMemberOrganization,
-  fetchManyOrganizationAffiliationPolicies,
   fetchEmailDomainMemberOrganizationActivityDates,
   fetchEmailDomainMemberOrganizationsWithoutDates,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationsBySource,
   pgpQx,
   updateMemberOrganization,

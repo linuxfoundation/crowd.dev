@@ -539,6 +539,12 @@ export async function unmergeMember(
       Array.from(new Set(rolesToRestore.map((r) => r.organizationId))),
     )
 
+    const overridesToCreate: {
+      memberId: string
+      memberOrganizationId: string
+      allowAffiliation: false
+    }[] = []
+
     for (const role of rolesToRestore) {
       const newRoleId = await addMemberRole(tx, { ...role, memberId: secondaryId })
       if (newRoleId) {
@@ -547,15 +553,17 @@ export async function unmergeMember(
         // blocks and isPrimaryWorkExperience flags are not restored because the unmerge
         // backup does not carry override data.
         if (isBlocked) {
-          await changeMemberOrganizationAffiliationOverrides(tx, [
-            {
-              memberId: secondaryId,
-              memberOrganizationId: newRoleId,
-              allowAffiliation: false,
-            },
-          ])
+          overridesToCreate.push({
+            memberId: secondaryId,
+            memberOrganizationId: newRoleId,
+            allowAffiliation: false,
+          })
         }
       }
+    }
+
+    if (overridesToCreate.length > 0) {
+      await changeMemberOrganizationAffiliationOverrides(tx, overridesToCreate)
     }
 
     // Delete stale roles from primary that aren't in the preview
