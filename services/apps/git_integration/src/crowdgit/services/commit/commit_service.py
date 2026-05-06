@@ -540,9 +540,7 @@ class CommitService(BaseService):
 
         # Create author activity — skip if email is empty (no identity to attach to)
         if not author_email:
-            self.logger.warning(
-                f"Skipping authored-commit for {commit_hash} — empty author email"
-            )
+            self.logger.warning(f"Skipping authored-commit for {commit_hash} — empty author email")
         else:
             author = {
                 "username": author_email,
