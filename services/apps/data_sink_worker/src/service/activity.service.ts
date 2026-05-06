@@ -343,17 +343,13 @@ export default class ActivityService extends LoggerBase {
           if (emailFallback) {
             activity.username = emailFallback.value
           } else {
-            this.log.error(
-              { platform, activity },
-              `Activity's member does not have an identity for the platform!`,
+            // No usable identity at all (e.g. git commit with empty author email).
+            // Nothing to attribute — skip silently rather than error.
+            this.log.warn(
+              { platform, resultId },
+              `Activity's member has no usable identity for the platform, skipping.`,
             )
-            results.set(resultId, {
-              success: false,
-              err: new UnrepeatableError(
-                `Activity's member does not have an identity for the platform: ${platform}!`,
-              ),
-            })
-
+            results.set(resultId, { success: true })
             continue
           }
         } else {

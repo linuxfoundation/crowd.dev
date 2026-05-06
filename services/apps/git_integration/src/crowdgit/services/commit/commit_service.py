@@ -538,47 +538,23 @@ class CommitService(BaseService):
         committer_name = commit["committer_name"]
         committer_email = commit["committer_email"]
 
-        # Create author activity
-        author = {
-            "username": author_email,
-            "displayName": author_name,
-            "emails": [author_email],
-        }
-        activity = self.create_activity(
-            remote=remote,
-            commit=commit,
-            activity_type="authored-commit",
-            member=author,
-            source_id=commit_hash,
-            segment_id=segment_id,
-            re_onboarding_count=re_onboarding_count,
-        )
-        activity_db, activity_kafka = self.prepare_activity_for_db_and_queue(
-            activity, segment_id, integration_id
-        )
-        activities_db.append(activity_db)
-        activities_queue.append(activity_kafka)
-
-        # Only create committer activity if author and committer are different
-        if author_name != committer_name or author_email != committer_email:
-            # IMPORTANT: hash_input has a typo in "commited" instead of "committed"
-            # however fixing it requires recalculating sourceId/parentSourceId for ALL git activities in db
-            # so far the typo doesn't have any major effect, since the activity type "committed-commit" is correct
-            hash_input = f"{commit_hash}commited-commit{committer_email}"
-            committer_source_id = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()
-
-            committer = {
-                "username": committer_email,
-                "displayName": committer_name,
-                "emails": [committer_email],
+        # Create author activity — skip if email is empty (no identity to attach to)
+        if not author_email:
+            self.logger.warning(
+                f"Skipping authored-commit for {commit_hash} — empty author email"
+            )
+        else:
+            author = {
+                "username": author_email,
+                "displayName": author_name,
+                "emails": [author_email],
             }
             activity = self.create_activity(
                 remote=remote,
                 commit=commit,
-                activity_type="committed-commit",
-                member=committer,
-                source_id=committer_source_id,
-                source_parent_id=commit_hash,
+                activity_type="authored-commit",
+                member=author,
+                source_id=commit_hash,
                 segment_id=segment_id,
                 re_onboarding_count=re_onboarding_count,
             )
@@ -587,6 +563,40 @@ class CommitService(BaseService):
             )
             activities_db.append(activity_db)
             activities_queue.append(activity_kafka)
+
+        # Only create committer activity if author and committer are different
+        if author_name != committer_name or author_email != committer_email:
+            if not committer_email:
+                self.logger.warning(
+                    f"Skipping committed-commit for {commit_hash} — empty committer email"
+                )
+            else:
+                # IMPORTANT: hash_input has a typo in "commited" instead of "committed"
+                # however fixing it requires recalculating sourceId/parentSourceId for ALL git activities in db
+                # so far the typo doesn't have any major effect, since the activity type "committed-commit" is correct
+                hash_input = f"{commit_hash}commited-commit{committer_email}"
+                committer_source_id = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()
+
+                committer = {
+                    "username": committer_email,
+                    "displayName": committer_name,
+                    "emails": [committer_email],
+                }
+                activity = self.create_activity(
+                    remote=remote,
+                    commit=commit,
+                    activity_type="committed-commit",
+                    member=committer,
+                    source_id=committer_source_id,
+                    source_parent_id=commit_hash,
+                    segment_id=segment_id,
+                    re_onboarding_count=re_onboarding_count,
+                )
+                activity_db, activity_kafka = self.prepare_activity_for_db_and_queue(
+                    activity, segment_id, integration_id
+                )
+                activities_db.append(activity_db)
+                activities_queue.append(activity_kafka)
 
         # Process extracted activities from commit message
         extracted_activities = self.extract_activities(commit["message"])
