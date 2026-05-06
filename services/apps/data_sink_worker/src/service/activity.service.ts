@@ -342,6 +342,12 @@ export default class ActivityService extends LoggerBase {
           )
           if (emailFallback) {
             activity.username = emailFallback.value
+            activity.member.identities.push({
+              platform,
+              type: MemberIdentityType.USERNAME,
+              value: emailFallback.value,
+              verified: emailFallback.verified,
+            })
           } else {
             // No usable identity at all (e.g. git commit with empty author email).
             // Nothing to attribute — skip silently rather than error.
