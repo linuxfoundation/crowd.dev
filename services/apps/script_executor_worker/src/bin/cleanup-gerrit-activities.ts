@@ -205,16 +205,17 @@ async function deletePostgresInChunks(
 
   let total = 0
   let batch = 0
+  let deleted = 0
 
-  while (true) {
-    const deleted = await postgres.result(query, values)
+  do {
+    deleted = await postgres.result(query, values)
     if (deleted === 0) break
     total += deleted
     batch++
     if (batch % 10 === 0) {
       log.info(`  … deleted ${total.toLocaleString()} rows so far (batch ${batch})`)
     }
-  }
+  } while (deleted > 0)
 
   return total
 }
