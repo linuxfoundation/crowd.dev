@@ -347,6 +347,7 @@ export default class ActivityService extends LoggerBase {
               type: MemberIdentityType.USERNAME,
               value: emailFallback.value,
               verified: emailFallback.verified,
+              source: emailFallback.source,
             })
           } else {
             // No usable identity at all (e.g. git commit with empty author email).
