@@ -334,18 +334,28 @@ export default class ActivityService extends LoggerBase {
         if (identities.length === 1) {
           activity.username = identities[0].value
         } else if (identities.length === 0) {
-          this.log.error(
-            { platform, activity },
-            `Activity's member does not have an identity for the platform!`,
+          // Fall back to same-platform email identity — handles old gerrit records where
+          // only a type:email identity was stored (before parse-member.ts gained the
+          // email-as-username fallback).
+          const emailFallback = activity.member.identities.find(
+            (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
-          results.set(resultId, {
-            success: false,
-            err: new UnrepeatableError(
-              `Activity's member does not have an identity for the platform: ${platform}!`,
-            ),
-          })
+          if (emailFallback) {
+            activity.username = emailFallback.value
+          } else {
+            this.log.error(
+              { platform, activity },
+              `Activity's member does not have an identity for the platform!`,
+            )
+            results.set(resultId, {
+              success: false,
+              err: new UnrepeatableError(
+                `Activity's member does not have an identity for the platform: ${platform}!`,
+              ),
+            })
 
-          continue
+            continue
+          }
         } else {
           this.log.error(
             { platform, activity },
