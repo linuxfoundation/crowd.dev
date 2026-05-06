@@ -159,7 +159,10 @@ export default class MemberService extends LoggerBase {
           if (
             key.slice(0, sep1) === id.platform &&
             key.slice(sep1 + 1, sep2) === id.type &&
-            key.slice(sep2 + 1).toLowerCase() === id.value.toLowerCase() &&
+            key
+              .slice(sep2 + 1)
+              .trim()
+              .toLowerCase() === id.value.trim().toLowerCase() &&
             ownerId !== memberId
           ) {
             owner = ownerId
