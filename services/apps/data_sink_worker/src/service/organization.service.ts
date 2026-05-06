@@ -25,18 +25,11 @@ export class OrganizationService extends LoggerBase {
     source: string,
     integrationId: string,
     data: IOrganization,
-  ): Promise<string> {
-    const id = await this.store.transactionally(async (txStore) => {
+  ): Promise<string | undefined> {
+    return this.store.transactionally(async (txStore) => {
       const qe = dbStoreQx(txStore)
-      const id = await findOrCreateOrganization(qe, source, data, integrationId, true)
-      return id
+      return findOrCreateOrganization(qe, source, data, integrationId, true)
     })
-
-    if (!id) {
-      throw new Error('Organization not found or created!')
-    }
-
-    return id
   }
 
   public async addToMember(
