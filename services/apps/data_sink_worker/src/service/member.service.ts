@@ -12,13 +12,17 @@ import {
   isObjectEmpty,
   singleOrDefault,
 } from '@crowd/common'
-import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
+import {
+  BotDetectionService,
+  CommonMemberService,
+  MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
+  MEMBER_ORG_STINT_CHANGES_QUEUE,
+} from '@crowd/common_services'
 import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
-  findMemberIdByVerifiedIdentity,
+  findMembersByIdentities,
   findMembersByVerifiedUsernames,
-  moveToNewMember,
 } from '@crowd/data-access-layer'
 import { DbStore } from '@crowd/data-access-layer/src/database'
 import { getMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
@@ -79,8 +83,7 @@ export async function mergeIfAllowed(
   secondaryId: string,
 ): Promise<boolean> {
   const noMergeMemberIds = await getMemberNoMerge(pgQx, [primaryId, secondaryId])
-  const noMerge = singleOrDefault(
-    noMergeMemberIds,
+  const noMerge = noMergeMemberIds.some(
     (m) =>
       (m.memberId === primaryId && m.noMergeId === secondaryId) ||
       (m.memberId === secondaryId && m.noMergeId === primaryId),
@@ -114,13 +117,202 @@ export default class MemberService extends LoggerBase {
     this.pgQx = dbStoreQx(this.store)
   }
 
+  /**
+   * Inserts identities with failOnConflict=true. On a unique constraint violation: finds the
+   * owner and, when attemptMerge=true (update path), attempts mergeIfAllowed. On merge success
+   * returns the owner's memberId as a redirect signal. On failure re-throws the original
+   * DatabaseError so handleMemberIdentityError in activity.service.ts can extract metadata and
+   * write to integration.results.error. When attemptMerge=false (create path) the orphan has no
+   * data (INSERT was atomic — nothing committed), so we skip the full merge and just return the
+   * owner; the caller handles orphan cleanup via scheduleOrphanMemberDeletion.
+   */
+  private async insertIdentitiesWithConflictResolution(
+    memberId: string,
+    integrationId: string,
+    identities: IMemberIdentity[],
+    attemptMerge = true,
+  ): Promise<string | void> {
+    // Deduplicate by (platform, value, type) — prefer verified=true when the same
+    // identity appears with both flags. Prevents uix_memberIdentities_memberId_platform_value_type
+    // from firing when a payload contains the same identity twice with different verified values.
+    const seen = new Map<string, IMemberIdentity>()
+    for (const id of identities) {
+      const key = `${id.platform}:${id.type}:${id.value.trim().toLowerCase()}`
+      const existing = seen.get(key)
+      if (!existing || (!existing.verified && id.verified)) {
+        seen.set(key, id)
+      }
+    }
+    const deduped = Array.from(seen.values())
+
+    try {
+      await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
+    } catch (err) {
+      if (
+        !err?.constraint ||
+        err.constraint !== 'uix_memberIdentities_platform_value_type_verified'
+      ) {
+        throw err
+      }
+
+      const verifiedIncoming = deduped.filter((i) => i.verified)
+      if (verifiedIncoming.length === 0) throw err
+
+      // Use the structured identities array to find the owner — avoids fragile Postgres
+      // Detail text parsing (format not stable; breaks if value contains a comma).
+      const owners = await findMembersByIdentities(this.pgQx, verifiedIncoming, undefined, true)
+
+      // Map keys are `${platform}:${type}:${value}` (from db rows). Match case-insensitively.
+      let owner: string | undefined
+      outer: for (const id of verifiedIncoming) {
+        for (const [key, ownerId] of owners) {
+          const sep1 = key.indexOf(':')
+          const sep2 = key.indexOf(':', sep1 + 1)
+          if (sep1 < 0 || sep2 < 0) continue
+          if (
+            key.slice(0, sep1) === id.platform &&
+            key.slice(sep1 + 1, sep2) === id.type &&
+            key
+              .slice(sep2 + 1)
+              .trim()
+              .toLowerCase() === id.value.trim().toLowerCase() &&
+            ownerId !== memberId
+          ) {
+            owner = ownerId
+            break outer
+          }
+        }
+      }
+
+      if (!owner) throw err
+
+      if (!attemptMerge) {
+        return owner
+      }
+
+      let merged: boolean
+      try {
+        merged = await mergeIfAllowed(this.pgQx, this.temporal, this.log, owner, memberId)
+      } catch (mergeErr) {
+        // Re-throw the original constraint error, not the merge error. If we let the merge
+        // error propagate, handleMemberIdentityError's checkForIdentityConstraint would
+        // return false and no metadata would be stored in integration.results.error.
+        // Re-throwing the constraint error lets handleMemberIdentityError retry the merge.
+        this.log.warn(
+          mergeErr,
+          { memberId, owner },
+          'merge threw during identity conflict — re-throwing constraint error for retry',
+        )
+        throw err
+      }
+      if (merged) return owner
+
+      // noMerge, owner not found, or stale prefetch (owner === memberId):
+      // Re-throw original constraint DatabaseError. handleMemberIdentityError will call
+      // mergeIfAllowed again — for noMerge this is idempotent (one extra getMemberNoMerge
+      // query); for merge errors it provides a natural retry.
+      throw err
+    }
+  }
+
+  /**
+   * After an initial identity conflict redirects to a surviving member, inserts all incoming
+   * identities that the surviving member doesn't already have. If a further conflict triggers
+   * another merge the loop follows the new survivor. Throws ApplicationError once maxMerges
+   * is reached so the error surfaces in integration.results.
+   */
+  private async syncIdentitiesAfterRedirect(
+    initialSurvivingId: string,
+    integrationId: string,
+    incomingIdentities: IMemberIdentity[],
+    maxMerges = 2,
+  ): Promise<string> {
+    let survivingId = initialSurvivingId
+
+    for (let mergeCount = 0; ; mergeCount++) {
+      const freshMap = await findIdentitiesForMembers(this.pgQx, [survivingId])
+      const freshIdentities = freshMap.get(survivingId) ?? []
+
+      // Match on (platform, value, type) only — per-member unique index excludes verified.
+      // Inserting an identity that already exists with a different verified flag would hit
+      // uix_memberIdentities_memberId_platform_value_type.
+      const toInsert = incomingIdentities.filter(
+        (incoming) =>
+          !freshIdentities.some(
+            (existing) =>
+              existing.platform === incoming.platform &&
+              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
+              existing.type === incoming.type,
+          ),
+      )
+
+      // Promote verified=false → true for identities already on the surviving member
+      // where the incoming payload asserts verified=true.
+      const toVerify = incomingIdentities.filter(
+        (incoming) =>
+          incoming.verified &&
+          freshIdentities.some(
+            (existing) =>
+              existing.platform === incoming.platform &&
+              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
+              existing.type === incoming.type &&
+              !existing.verified,
+          ),
+      )
+
+      if (toVerify.length > 0) {
+        await this.memberRepo.updateIdentities(survivingId, toVerify)
+      }
+
+      if (toInsert.length === 0) {
+        return survivingId
+      }
+
+      let nextRedirectId: string | void
+      try {
+        nextRedirectId = await this.insertIdentitiesWithConflictResolution(
+          survivingId,
+          integrationId,
+          toInsert,
+          true,
+        )
+      } catch (err) {
+        // If we've already followed at least one redirect the original member id is stale.
+        // Wrap the error so handleMemberIdentityError uses survivingId as the merge target
+        // instead of the already-absorbed original member.
+        if (survivingId !== initialSurvivingId) {
+          throw new ApplicationError(
+            'identity conflict after redirect sync',
+            err instanceof Error ? err : undefined,
+            { survivingId },
+          )
+        }
+        throw err
+      }
+
+      if (!nextRedirectId) {
+        return survivingId
+      }
+
+      if (mergeCount + 1 >= maxMerges) {
+        throw new ApplicationError('identity sync exceeded merge limit', undefined, {
+          mergeCount: mergeCount + 1,
+          survivingId,
+          maxMerges,
+        })
+      }
+
+      survivingId = nextRedirectId
+    }
+  }
+
   public async create(
     segmentIds: string[],
     integrationId: string,
     data: IMemberCreateData,
     platform: PlatformType,
-    releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
   ): Promise<string> {
     return logExecutionTimeV2(
       async () => {
@@ -200,12 +392,18 @@ export default class MemberService extends LoggerBase {
             'memberService -> create -> createMember',
           )
 
-          let insertedCount: number
+          let redirectId: string | void
           try {
-            insertedCount = await logExecutionTimeV2(
-              () => this.memberRepo.insertIdentities(id, integrationId, data.identities),
+            redirectId = await logExecutionTimeV2(
+              () =>
+                this.insertIdentitiesWithConflictResolution(
+                  id,
+                  integrationId,
+                  data.identities,
+                  false,
+                ),
               this.log,
-              'memberService -> create -> insertIdentities',
+              'memberService -> create -> insertIdentitiesWithConflictResolution',
             )
           } catch (err) {
             this.log.error(err, { memberId: id }, 'Error inserting member identities!')
@@ -217,189 +415,52 @@ export default class MemberService extends LoggerBase {
             throw err
           }
 
-          if (insertedCount < data.identities.length) {
-            // At least one verified identity conflicted. Walk every verified identity to:
-            //  (a) find the existing member(s) that own the conflicting ones, and
-            //  (b) collect identities that were successfully inserted for the orphan.
-            let existingMemberId: string | null = null
-            const orphanVerifiedIdentities: IMemberIdentity[] = []
+          let effectiveMemberId: string
 
-            for (const identity of data.identities.filter((i) => i.verified)) {
-              const owner = await findMemberIdByVerifiedIdentity(
-                this.pgQx,
-                identity.platform,
-                identity.value,
-                identity.type,
-              )
-
-              if (!owner) {
-                // The identity disappeared between INSERT and SELECT — unusual race condition.
-                // Cannot safely resolve; schedule orphan deletion and throw.
-                this.log.error(
-                  { orphanMemberId: id, identity },
-                  'Verified identity not found after conflict detection — scheduling orphan deletion',
-                )
-                await this.scheduleOrphanMemberDeletion(id)
-                throw new ApplicationError(
-                  `Identity conflict during member creation: owner not found for identity (${identity.platform}, ${identity.value}, ${identity.type})`,
-                )
-              } else if (owner === id) {
-                // Successfully inserted for the orphan — will be moved to the existing member below
-                orphanVerifiedIdentities.push(identity)
-              } else if (!existingMemberId) {
-                // First conflicting owner found
-                existingMemberId = owner
-              } else if (existingMemberId !== owner) {
-                // A second conflicting owner — two existing members each own a different verified
-                // identity of this incoming member, so the data source asserts they are the same
-                // person. Auto-merge the second into the first.
-                this.log.warn(
-                  {
-                    orphanMemberId: id,
-                    primaryMemberId: existingMemberId,
-                    secondaryMemberId: owner,
-                    identity,
-                  },
-                  'Multiple conflicting verified identities belong to different existing members — merging automatically',
-                )
-                let merged: boolean
-                try {
-                  merged = await mergeIfAllowed(
-                    this.pgQx,
-                    this.temporal,
-                    this.log,
-                    existingMemberId,
-                    owner,
-                  )
-                } catch (mergeErr) {
-                  this.log.error(
-                    mergeErr,
-                    {
-                      orphanMemberId: id,
-                      primaryMemberId: existingMemberId,
-                      secondaryMemberId: owner,
-                    },
-                    'Auto-merge of conflicting members failed — scheduling orphan deletion',
-                  )
-                  await this.scheduleOrphanMemberDeletion(id)
-                  throw new ApplicationError(
-                    `Identity conflict during member creation: auto-merge of members ${existingMemberId} and ${owner} failed for identity (${identity.platform}, ${identity.value}, ${identity.type})`,
-                  )
-                }
-                if (!merged) {
-                  this.log.error(
-                    {
-                      orphanMemberId: id,
-                      primaryMemberId: existingMemberId,
-                      secondaryMemberId: owner,
-                    },
-                    'Auto-merge prevented by noMerge record — scheduling orphan deletion',
-                  )
-                  await this.scheduleOrphanMemberDeletion(id)
-                  throw new ApplicationError(
-                    `Identity conflict during member creation: members ${existingMemberId} and ${owner} are marked as no-merge but share identity (${identity.platform}, ${identity.value}, ${identity.type})`,
-                  )
-                }
-                // existingMemberId (primary) survives; owner (secondary) was absorbed
-                this.log.info(
-                  {
-                    orphanMemberId: id,
-                    survivingMemberId: existingMemberId,
-                    mergedMemberId: owner,
-                    identity,
-                  },
-                  'Auto-merge of conflicting members succeeded',
-                )
-              }
-              // else: owner === existingMemberId — same member owns this identity too, nothing to do
-            }
-
-            if (existingMemberId) {
-              // Move any verified identities that were inserted for the orphan to the existing
-              // member so they are not lost when the orphan is cascade-deleted.
-              // UPDATE memberId rather than INSERT to avoid unique constraint violations.
-              for (const identity of orphanVerifiedIdentities) {
-                try {
-                  await moveToNewMember(this.pgQx, {
-                    oldMemberId: id,
-                    newMemberId: existingMemberId,
-                    platform: identity.platform,
-                    value: identity.value,
-                    type: identity.type,
-                  })
-                } catch (moveErr) {
-                  this.log.error(
-                    moveErr,
-                    { orphanMemberId: id, existingMemberId, identity },
-                    'Failed to move orphan verified identity to existing member — scheduling orphan deletion',
-                  )
-                  await this.scheduleOrphanMemberDeletion(id)
-                  throw new ApplicationError(
-                    `Failed to move identity (${identity.platform}, ${identity.value}, ${identity.type}) from orphan ${id} to existing member ${existingMemberId}`,
-                  )
-                }
-              }
-              this.log.warn(
-                {
-                  orphanMemberId: id,
-                  existingMemberId,
-                  transferredIdentities: orphanVerifiedIdentities.length,
-                },
-                'Identity conflict during member creation — reusing existing member, scheduling orphan deletion',
-              )
-              await logExecutionTimeV2(
-                () => this.memberRepo.addToSegments(existingMemberId, segmentIds),
-                this.log,
-                'memberService -> create -> addToSegments (conflict path)',
-              )
-              if (releaseMemberLock) {
-                await releaseMemberLock()
-              }
-              await this.scheduleOrphanMemberDeletion(id)
-              return existingMemberId
-            }
-
-            // insertedCount < data.identities.length but no conflicting owner found — unexpected
-            this.log.error(
-              { memberId: id },
-              'Identity conflict during member creation but existing member not found — scheduling orphan deletion',
-            )
+          if (redirectId) {
             await this.scheduleOrphanMemberDeletion(id)
-            throw new ApplicationError(
-              `Identity conflict during member creation for member ${id}: inserted ${insertedCount} of ${data.identities.length} identities but found no conflicting owner`,
+            effectiveMemberId = await this.syncIdentitiesAfterRedirect(
+              redirectId,
+              integrationId,
+              data.identities,
             )
-          }
-
-          try {
             await logExecutionTimeV2(
-              () => this.memberRepo.addToSegments(id, segmentIds),
+              () => this.memberRepo.addToSegments(effectiveMemberId, segmentIds),
               this.log,
-              'memberService -> create -> addToSegments',
+              'memberService -> create -> addToSegments (conflict redirect)',
             )
-          } catch (err) {
-            this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
-            await logExecutionTimeV2(
-              async () => this.memberRepo.destroyMemberAfterError(id, true),
-              this.log,
-              'memberService -> create -> destroyMemberAfterError',
-            )
-            throw err
-          }
-
-          if (releaseMemberLock) {
-            await releaseMemberLock()
+          } else {
+            effectiveMemberId = id
+            try {
+              await logExecutionTimeV2(
+                () => this.memberRepo.addToSegments(id, segmentIds),
+                this.log,
+                'memberService -> create -> addToSegments',
+              )
+            } catch (err) {
+              this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
+              await logExecutionTimeV2(
+                async () => this.memberRepo.destroyMemberAfterError(id, true),
+                this.log,
+                'memberService -> create -> destroyMemberAfterError',
+              )
+              throw err
+            }
           }
 
           // we should prevent organization creation for bot members
           if (botDetection === MemberBotDetection.CONFIRMED_BOT) {
             this.log.debug('Skipping organization creation for bot member')
-            return id
+            return effectiveMemberId
           }
 
           // trigger LLM validation if the member is suspected as a bot
           if (botDetection === MemberBotDetection.SUSPECTED_BOT) {
-            this.log.debug({ memberId: id }, 'Member suspected as bot. Triggering LLM validation.')
-            await this.startMemberBotAnalysisWithLLMWorkflow(id)
+            this.log.debug(
+              { memberId: effectiveMemberId },
+              'Member suspected as bot. Triggering LLM validation.',
+            )
+            await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
           const organizations = []
@@ -430,9 +491,9 @@ export default class MemberService extends LoggerBase {
                   orgIdPromise.catch(() => orgPromiseCache?.delete(key))
                 }
               }
-              const id = await orgIdPromise
+              const orgId = await orgIdPromise
               organizations.push({
-                id,
+                id: orgId,
                 source: org.source,
               })
             }
@@ -448,6 +509,8 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
+                  effectiveMemberId,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
@@ -466,7 +529,7 @@ export default class MemberService extends LoggerBase {
                   // Check if the org was already added to the member in the past, including deleted ones.
                   // If it was, we ignore this org to prevent from adding it again.
                   const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(id, org.id),
+                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
                     'memberService -> create -> findMemberOrganizations',
                   )
@@ -477,14 +540,14 @@ export default class MemberService extends LoggerBase {
 
             if (orgsToAdd.length > 0) {
               await logExecutionTimeV2(
-                () => orgService.addToMember(segmentIds, id, orgsToAdd),
+                () => orgService.addToMember(segmentIds, effectiveMemberId, orgsToAdd),
                 this.log,
                 'memberService -> create -> addToMember',
               )
             }
           }
 
-          return id
+          return effectiveMemberId
         } catch (err) {
           this.log.error(err, 'Error while creating a new member!')
           throw err
@@ -503,10 +566,10 @@ export default class MemberService extends LoggerBase {
     original: IDbMember,
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
-    releaseMemberLock?: () => Promise<void>,
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
-  ): Promise<void> {
-    await logExecutionTimeV2(
+    activityTimestamp?: string,
+  ): Promise<string | void> {
+    return logExecutionTimeV2(
       async () => {
         this.log.trace({ memberId: id }, 'Updating a member!')
 
@@ -592,27 +655,30 @@ export default class MemberService extends LoggerBase {
             )
           }
 
+          let effectiveMemberId = id
+
           if (identitiesToCreate) {
             this.log.trace({ memberId: id }, 'Inserting new identities!')
-            try {
-              await logExecutionTimeV2(
-                () => this.memberRepo.insertIdentities(id, integrationId, identitiesToCreate, true),
-                this.log,
-                'memberService -> update -> insertIdentities',
-              )
-            } catch (err) {
-              throw new ApplicationError(
-                'Error while inserting member identities for an existing member!',
-                err,
+            const redirectId = await logExecutionTimeV2(
+              () =>
+                this.insertIdentitiesWithConflictResolution(id, integrationId, identitiesToCreate),
+              this.log,
+              'memberService -> update -> insertIdentitiesWithConflictResolution',
+            )
+            if (redirectId) {
+              effectiveMemberId = await this.syncIdentitiesAfterRedirect(
+                redirectId,
+                integrationId,
+                identitiesToCreate,
               )
             }
           }
 
           if (identitiesToUpdate) {
-            this.log.trace({ memberId: id }, 'Updating identities!')
+            this.log.trace({ memberId: effectiveMemberId }, 'Updating identities!')
             try {
               await logExecutionTimeV2(
-                () => this.memberRepo.updateIdentities(id, identitiesToUpdate),
+                () => this.memberRepo.updateIdentities(effectiveMemberId, identitiesToUpdate),
                 this.log,
                 'memberService -> update -> updateIdentities',
               )
@@ -624,13 +690,9 @@ export default class MemberService extends LoggerBase {
             }
           }
 
-          if (releaseMemberLock) {
-            await releaseMemberLock()
-          }
-
           if (this.botDetectionService.isFlaggedAsBot(toUpdate.attributes)) {
             this.log.debug({ memberId: id }, 'Skipping organization creation for bot member')
-            return
+            return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
 
           const organizations = []
@@ -682,6 +744,8 @@ export default class MemberService extends LoggerBase {
                   integrationId,
                   emailIdentities.map((i) => i.value),
                   orgPromiseCache,
+                  effectiveMemberId,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
@@ -694,14 +758,14 @@ export default class MemberService extends LoggerBase {
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
 
-            this.log.trace({ memberId: id }, 'Finding member organizations!')
+            this.log.trace({ memberId: effectiveMemberId }, 'Finding member organizations!')
             const orgsToAdd = (
               await Promise.all(
                 uniqOrgs.map(async (org) => {
                   // Check if the org was already added to the member in the past, including deleted ones.
                   // If it was, we ignore this org to prevent from adding it again.
                   const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(id, org.id),
+                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
                     'memberService -> update -> findMemberOrganizations',
                   )
@@ -711,14 +775,16 @@ export default class MemberService extends LoggerBase {
             ).filter((org) => org !== null)
 
             if (orgsToAdd.length > 0) {
-              this.log.trace({ memberId: id }, 'Adding organizations to member!')
+              this.log.trace({ memberId: effectiveMemberId }, 'Adding organizations to member!')
               await logExecutionTimeV2(
-                () => orgService.addToMember([segmentId], id, orgsToAdd),
+                () => orgService.addToMember([segmentId], effectiveMemberId, orgsToAdd),
                 this.log,
                 'memberService -> update -> addToMember',
               )
             }
           }
+
+          return effectiveMemberId !== id ? effectiveMemberId : undefined
         } catch (err) {
           this.log.error(err, { memberId: id }, 'Error while updating a member!')
           throw err
@@ -733,6 +799,8 @@ export default class MemberService extends LoggerBase {
     integrationId: string,
     emails: string[],
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    memberId?: string,
+    activityTimestamp?: string,
   ): Promise<IOrganizationIdSource[]> {
     const orgService = new OrganizationService(this.store, this.log)
     const organizations: IOrganizationIdSource[] = []
@@ -791,6 +859,9 @@ export default class MemberService extends LoggerBase {
           id: orgId,
           source: orgSource,
         })
+        if (memberId && activityTimestamp) {
+          await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
+        }
       }
     }
 
@@ -1046,5 +1117,29 @@ export default class MemberService extends LoggerBase {
         TenantId: [DEFAULT_TENANT_ID],
       },
     })
+  }
+
+  /**
+   * Queues a member activity date in Redis for stint inference.
+   * Uses SADD for natural concurrency safety and deduplication.
+   */
+  private async bufferMemberOrganizationActivityDates(
+    memberId: string,
+    organizationId: string,
+    activityTimestamp: string,
+  ): Promise<void> {
+    const date = new Date(activityTimestamp).toISOString().split('T')[0]
+
+    // Each member gets one flat set: values are "orgId|date"
+    const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+    const value = `${organizationId}|${date}`
+
+    await this.redisClient
+      .multi()
+      .sAdd(datesKey, value)
+      .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+      .exec()
+
+    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
   }
 }

@@ -4,6 +4,14 @@ export interface ISearchSyncApiConfig {
   baseUrl: string
 }
 
+export interface ISyncOrganizationMembersOptions {
+  syncFrom?: Date | null
+  cursor?: string
+  pageSize?: number
+  maxPages?: number
+  onPageComplete?: (cursor: string, membersSynced: number) => void | Promise<void>
+}
+
 export class SearchSyncApiClient {
   private searchSyncApi
 
@@ -23,19 +31,43 @@ export class SearchSyncApiClient {
     })
   }
 
-  public async triggerOrganizationMembersSync(
+  public async syncOrganizationMembers(
     organizationId: string,
-    onboarding?: boolean,
-    syncFrom: Date | null = null,
-  ): Promise<void> {
+    opts: ISyncOrganizationMembersOptions = {},
+  ): Promise<{ totalSynced: number }> {
     if (!organizationId) {
       throw new Error('organizationId is required!')
     }
 
-    await this.searchSyncApi.post('/sync/organization/members', {
-      organizationId,
-      syncFrom,
-    })
+    const pageSize = opts.pageSize ?? 500
+    const maxPages = opts.maxPages ?? 2000
+
+    let cursor = opts.cursor
+    let totalSynced = 0
+
+    for (let i = 0; i < maxPages; i++) {
+      const { data } = await this.searchSyncApi.post('/sync/organization/members', {
+        organizationId,
+        lastId: cursor ?? null,
+        batchSize: pageSize,
+        syncFrom: opts.syncFrom ?? null,
+      })
+
+      const result: { lastId: string | null; membersSynced: number } = data
+      totalSynced += result.membersSynced
+
+      if (result.lastId === null || result.membersSynced < pageSize) {
+        return { totalSynced }
+      }
+
+      cursor = result.lastId
+      await opts.onPageComplete?.(cursor, result.membersSynced)
+    }
+
+    throw new Error(
+      `syncOrganizationMembers exceeded maxPages (${maxPages}) for organization ${organizationId}. ` +
+        `Synced ${totalSynced} members before aborting.`,
+    )
   }
 
   public async triggerRemoveMember(memberId: string): Promise<void> {

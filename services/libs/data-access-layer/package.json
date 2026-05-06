@@ -1,5 +1,6 @@
 {
   "name": "@crowd/data-access-layer",
+  "private": true,
   "main": "src/index.ts",
   "scripts": {
     "test": "vitest run",

@@ -1,5 +1,6 @@
 {
   "name": "repository-archive-checker",
+  "private": true,
   "scripts": {
     "build": "tsc",
     "start-main": "pnpm run build && node dist/main.js",

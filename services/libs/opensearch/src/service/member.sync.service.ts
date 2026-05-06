@@ -207,64 +207,48 @@ export class MemberSyncService {
 
   public async syncOrganizationMembers(
     organizationId: string,
-    opts: { syncFrom: Date | null } = { syncFrom: null },
-  ): Promise<void> {
-    this.log.debug({ organizationId }, 'Syncing all organization members!')
-    const batchSize = 500
+    opts: {
+      lastId?: string
+      batchSize?: number
+      syncFrom?: Date | null
+    } = {},
+  ): Promise<{ lastId: string | null; membersSynced: number }> {
+    const batchSize = opts.batchSize ?? 500
+
+    const memberIds = await logExecutionTimeV2(
+      () =>
+        this.memberRepo.getOrganizationMembersForSync(
+          organizationId,
+          batchSize,
+          opts.lastId,
+          opts.syncFrom ?? undefined,
+        ),
+      this.log,
+      'getOrganizationMembersForSync',
+    )
+
+    if (memberIds.length === 0) {
+      return { lastId: null, membersSynced: 0 }
+    }
+
     let docCount = 0
-    const memberCount = 0
-
-    const now = new Date()
-
-    const loadNextPage = async (lastId?: string): Promise<string[]> => {
-      this.log.info('Loading next page of organization members!', { organizationId, lastId })
-      const memberIds = await logExecutionTimeV2(
-        () =>
-          this.memberRepo.getOrganizationMembersForSync(
-            organizationId,
-            batchSize,
-            lastId,
-            opts.syncFrom,
-          ),
+    for (let i = 0; i < memberIds.length; i++) {
+      const { documentsIndexed } = await logExecutionTimeV2(
+        () => this.syncMembers(memberIds[i]),
         this.log,
-        `getOrganizationMembersForSync`,
+        `syncMembers (${i + 1}/${memberIds.length})`,
       )
-
-      if (memberIds.length === 0) {
-        return []
-      }
-
-      return memberIds
+      docCount += documentsIndexed
     }
 
-    let memberIds: string[] = await loadNextPage()
-
-    while (memberIds.length > 0) {
-      for (let i = 0; i < memberIds.length; i++) {
-        const memberId = memberIds[i]
-        const { documentsIndexed } = await logExecutionTimeV2(
-          () => this.syncMembers(memberId),
-          this.log,
-          `syncMembers (${i}/${memberIds.length})`,
-        )
-
-        docCount += documentsIndexed
-      }
-
-      const diffInSeconds = (new Date().getTime() - now.getTime()) / 1000
-      this.log.info(
-        { organizationId },
-        `Synced ${memberCount} members! Speed: ${Math.round(
-          memberCount / diffInSeconds,
-        )} members/second!`,
-      )
-      memberIds = await loadNextPage(memberIds[memberIds.length - 1])
-    }
+    const lastId = memberIds[memberIds.length - 1]
 
     this.log.info(
-      { organizationId },
-      `Synced total of ${memberCount} members with ${docCount} documents!`,
+      { organizationId, membersSynced: memberIds.length, docCount, lastId },
+      `Synced page of ${memberIds.length} members (${docCount} docs indexed)`,
     )
+
+    return { lastId, membersSynced: memberIds.length }
   }
 
   public async syncMembers(memberId: string): Promise<IMemberSyncResult> {

@@ -9,6 +9,7 @@ import {
   distinctBy,
   escapeNullByte,
   generateUUIDv1,
+  isDomainExcluded,
   isValidEmail,
   parseGitHubNoreplyEmail,
   single,
@@ -1195,8 +1196,8 @@ export default class ActivityService extends LoggerBase {
               reach: value.member.reach,
             },
             value.platform,
-            undefined,
             orgPromiseCache,
+            value.timestamp,
           )
           .then((memberId) => {
             // map ids for members
@@ -1311,16 +1312,28 @@ export default class ActivityService extends LoggerBase {
       dbMemberIdentities = await findIdentitiesForMembers(this.pgQx, Array.from(memberIds))
     }
 
+    // Tracks merge redirects across payloads in this batch. When a member update redirects
+    // X→Y (merge), subsequent payloads for the same platform:username skip the update and
+    // reuse Y — avoids calling update() on an already-absorbed member row.
+    const memberMap = new Map<string, string>()
+
     for (const payload of relevantPayloads) {
-      // contains the merged member ids
-      const memberMap = new Map<string, string>()
+      const memberKey = `${payload.platform}:${payload.activity.username}`
+      const objectMemberKey = `${payload.platform}:${payload.activity.objectMemberUsername}`
+      // When actor and objectActor are the same person, skip the objectMember update and
+      // copy memberId after Promise.all resolves.
+      const sameActorKey = !!(
+        payload.dbMember &&
+        payload.dbObjectMember &&
+        memberKey === objectMemberKey
+      )
 
       const promises = []
       // update members and orgs with them
       if (payload.dbMember) {
-        const key = `${payload.platform}:${payload.activity.username}`
-        if (memberMap.has(key)) {
-          payload.memberId = memberMap.get(key)
+        if (memberMap.has(memberKey)) {
+          payload.memberId = memberMap.get(memberKey)
+          payload.dbMember = undefined
         } else {
           promises.push(
             memberService
@@ -1340,11 +1353,14 @@ export default class ActivityService extends LoggerBase {
                 payload.dbMember,
                 dbMemberIdentities.get(payload.dbMember.id),
                 payload.platform,
-                undefined,
                 orgPromiseCache,
+                payload.activity.timestamp,
               )
-              .then(() => {
-                payload.memberId = payload.dbMember.id
+              .then((redirectId?: string) => {
+                payload.memberId = redirectId ?? payload.dbMember.id
+                if (redirectId) {
+                  memberMap.set(memberKey, redirectId)
+                }
               })
               .catch(async (err) => {
                 const result = await this.handleMemberIdentityError(
@@ -1356,7 +1372,11 @@ export default class ActivityService extends LoggerBase {
                 if (result) {
                   if (typeof result === 'string') {
                     payload.memberId = result
-                    memberMap.set(key, result)
+                    // Only cache real redirects — stale-prefetch returns the member's own ID
+                    // and the member still exists, so subsequent payloads must still call update().
+                    if (result !== payload.dbMember.id) {
+                      memberMap.set(memberKey, result)
+                    }
                   } else {
                     resultMap.set(payload.resultId, {
                       success: false,
@@ -1375,10 +1395,10 @@ export default class ActivityService extends LoggerBase {
         }
       }
 
-      if (payload.dbObjectMember) {
-        const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
-        if (memberMap.has(key)) {
-          payload.objectMemberId = memberMap.get(key)
+      if (payload.dbObjectMember && !sameActorKey) {
+        if (memberMap.has(objectMemberKey)) {
+          payload.objectMemberId = memberMap.get(objectMemberKey)
+          payload.dbObjectMember = undefined
         } else {
           promises.push(
             memberService
@@ -1398,11 +1418,14 @@ export default class ActivityService extends LoggerBase {
                 payload.dbObjectMember,
                 dbMemberIdentities.get(payload.dbObjectMember.id),
                 payload.platform,
-                undefined,
                 orgPromiseCache,
+                payload.activity.timestamp,
               )
-              .then(() => {
-                payload.objectMemberId = payload.dbObjectMember.id
+              .then((redirectId?: string) => {
+                payload.objectMemberId = redirectId ?? payload.dbObjectMember.id
+                if (redirectId) {
+                  memberMap.set(objectMemberKey, redirectId)
+                }
               })
               .catch(async (err) => {
                 const result = await this.handleMemberIdentityError(
@@ -1414,7 +1437,11 @@ export default class ActivityService extends LoggerBase {
                 if (result) {
                   if (typeof result === 'string') {
                     payload.objectMemberId = result
-                    memberMap.set(key, result)
+                    // Only cache real redirects — stale-prefetch returns the member's own ID
+                    // and the member still exists, so subsequent payloads must still call update().
+                    if (result !== payload.dbObjectMember.id) {
+                      memberMap.set(objectMemberKey, result)
+                    }
                   } else {
                     resultMap.set(payload.resultId, {
                       success: false,
@@ -1435,6 +1462,10 @@ export default class ActivityService extends LoggerBase {
 
       await Promise.all(promises)
 
+      if (sameActorKey) {
+        payload.objectMemberId = payload.memberId
+      }
+
       if (resultMap.has(payload.resultId)) {
         continue
       }
@@ -1447,11 +1478,17 @@ export default class ActivityService extends LoggerBase {
       ) as boolean
 
       if (!isBot) {
+        const emailDomain = payload.activity.member.identities
+          ?.filter((i) => i.type === MemberIdentityType.EMAIL && i.verified)
+          .map((i) => i.value.split('@')[1]?.toLowerCase())
+          .find((domain) => domain && !isDomainExcluded(domain))
+
         // associate activity with organization
         payload.organizationId = await this.commonMemberService.findAffiliation(
           payload.memberId,
           payload.segmentId,
           payload.activity.timestamp,
+          emailDomain,
         )
       } else {
         // for bot members, we don't want to affiliate the activity with an organization
@@ -1686,8 +1723,7 @@ export default class ActivityService extends LoggerBase {
         error.constructor &&
         error.constructor.name === 'DatabaseError' &&
         error.constraint &&
-        error.constraint === 'uix_memberIdentities_platform_value_type_verified' &&
-        error.detail
+        error.constraint === 'uix_memberIdentities_platform_value_type_verified'
       ) {
         return true
       }
@@ -1695,56 +1731,86 @@ export default class ActivityService extends LoggerBase {
       return false
     }
 
-    const extractMetadata = async (
-      error: any,
-    ): Promise<string | Record<string, unknown> | undefined> => {
+    const extractMetadata = async (): Promise<string | Record<string, unknown> | undefined> => {
       const metadata: Record<string, unknown> = {}
 
-      // extract the platform, value, type from the detail
-      const detail = error.detail
-      const regex = /\(platform, value, type\)=\((.*?)\)/
-      const match = detail.match(regex)
+      const incomingIdentities =
+        memberType === 'member'
+          ? payload.activity.member.identities
+          : payload.activity.objectMember.identities
+      const verifiedIncoming = incomingIdentities.filter((i) => i.verified)
 
-      if (!match || match.length < 2) {
-        return
+      metadata.verifiedIdentities = verifiedIncoming
+
+      if (verifiedIncoming.length === 0) {
+        return undefined
       }
 
-      // Split the matched string by commas
-      const values = match[1].split(',').map((val) => val.trim())
+      // Use the structured identities array to find the owner — avoids fragile Postgres
+      // Detail text parsing (format not stable; breaks if value contains a comma).
+      const owners = await findMembersByIdentities(this.pgQx, verifiedIncoming, undefined, true)
 
-      // Extract platform, value, and type
-      const [platform, value, type] = values
+      // Map keys are `${platform}:${type}:${value}` (from db rows). Match case-insensitively.
+      let conflictIdentity: IMemberIdentity | undefined
+      let ownerId: string | undefined
 
-      metadata.erroredVerifiedIdentity = {
-        platform,
-        value,
-        type,
+      // Pass 1: find an identity owned by a different member (real conflict).
+      outer: for (const id of verifiedIncoming) {
+        for (const [key, oid] of owners) {
+          const sep1 = key.indexOf(':')
+          const sep2 = key.indexOf(':', sep1 + 1)
+          if (sep1 < 0 || sep2 < 0) continue
+          if (
+            key.slice(0, sep1) === id.platform &&
+            key.slice(sep1 + 1, sep2) === id.type &&
+            key
+              .slice(sep2 + 1)
+              .trim()
+              .toLowerCase() === id.value.trim().toLowerCase() &&
+            oid !== dbMember?.id
+          ) {
+            conflictIdentity = id
+            ownerId = oid
+            break outer
+          }
+        }
       }
 
-      const membersWithIdentity = await findMembersByIdentities(
-        this.pgQx,
-        [
-          {
-            platform,
-            value,
-            type,
-            verified: true,
-          } as IMemberIdentity,
-        ],
-        undefined,
-        true,
-      )
-
-      if (memberType === 'member') {
-        metadata.verifiedIdentities = payload.activity.member.identities.filter((i) => i.verified)
-      } else {
-        metadata.verifiedIdentities = payload.activity.objectMember.identities.filter(
-          (i) => i.verified,
-        )
+      // Pass 2: if no external conflict, check whether this member already owns the
+      // identity (stale-prefetch race). Re-uses the owners map — no extra DB query.
+      if (!ownerId && dbMember) {
+        selfCheck: for (const id of verifiedIncoming) {
+          for (const [key, oid] of owners) {
+            const sep1 = key.indexOf(':')
+            const sep2 = key.indexOf(':', sep1 + 1)
+            if (sep1 < 0 || sep2 < 0) continue
+            if (
+              key.slice(0, sep1) === id.platform &&
+              key.slice(sep1 + 1, sep2) === id.type &&
+              key
+                .slice(sep2 + 1)
+                .trim()
+                .toLowerCase() === id.value.trim().toLowerCase() &&
+              oid === dbMember.id
+            ) {
+              conflictIdentity = id
+              ownerId = oid
+              break selfCheck
+            }
+          }
+        }
       }
 
-      if (membersWithIdentity.size > 0) {
-        metadata.memberWithIdentity = membersWithIdentity.values().next().value
+      if (conflictIdentity) {
+        metadata.erroredVerifiedIdentity = {
+          platform: conflictIdentity.platform,
+          value: conflictIdentity.value,
+          type: conflictIdentity.type,
+        }
+      }
+
+      if (ownerId) {
+        metadata.memberWithIdentity = ownerId
       }
 
       if (dbMember) {
@@ -1756,6 +1822,20 @@ export default class ActivityService extends LoggerBase {
         } else {
           metadata.memberSource = payload.dbObjectMemberSource
         }
+      }
+
+      if (
+        metadata.memberWithIdentity &&
+        metadata.memberIdToUpdate &&
+        metadata.memberWithIdentity === metadata.memberIdToUpdate
+      ) {
+        // The member already owns the conflicting identity — stale prefetch race.
+        // The identity is already present so treat this as a no-op success.
+        this.log.warn(
+          { memberId: metadata.memberIdToUpdate, identity: metadata.erroredVerifiedIdentity },
+          'Verified identity already belongs to this member (stale prefetch) — treating as success',
+        )
+        return metadata.memberIdToUpdate as string
       }
 
       if (
@@ -1779,6 +1859,7 @@ export default class ActivityService extends LoggerBase {
             return originalId
           } else {
             metadata.noMerge = true
+            metadata.errorMessage = 'noMerge blocked — verified identity conflict'
           }
         } catch (err) {
           metadata.mergeError = {
@@ -1786,10 +1867,45 @@ export default class ActivityService extends LoggerBase {
             errorStack: err?.stack,
             err,
           }
+          metadata.errorMessage = 'merge failed — auto-merge threw an error'
         }
       }
 
+      if (!metadata.errorMessage) {
+        metadata.errorMessage = 'verified identity conflict — identity owner not found'
+      }
+
       return metadata
+    }
+
+    if (error instanceof ApplicationError && error.metadata?.mergeCount !== undefined) {
+      return {
+        ...error.metadata,
+        errorMessage: error.message,
+        memberType,
+        memberIdToUpdate: dbMember?.id,
+        memberSource:
+          memberType === 'member' ? payload.dbMemberSource : payload.dbObjectMemberSource,
+      }
+    }
+
+    // syncIdentitiesAfterRedirect wraps constraint errors with the current survivingId when the
+    // original member has already been absorbed by a prior merge. Unwrap and re-handle using a
+    // synthetic dbMember with the surviving ID so mergeIfAllowed targets the right member.
+    if (
+      error instanceof ApplicationError &&
+      error.metadata?.survivingId !== undefined &&
+      error.originalError
+    ) {
+      const survivingDbMember = dbMember
+        ? { ...dbMember, id: error.metadata.survivingId as string }
+        : undefined
+      return this.handleMemberIdentityError(
+        error.originalError,
+        payload,
+        memberType,
+        survivingDbMember,
+      )
     }
 
     if (error instanceof ApplicationError) {
@@ -1797,7 +1913,7 @@ export default class ActivityService extends LoggerBase {
 
       while (nextError) {
         if (checkForIdentityConstraint(nextError)) {
-          return extractMetadata(nextError)
+          return extractMetadata()
         } else if (nextError instanceof ApplicationError) {
           nextError = nextError.originalError
         } else {
@@ -1805,7 +1921,7 @@ export default class ActivityService extends LoggerBase {
         }
       }
     } else if (checkForIdentityConstraint(error)) {
-      return extractMetadata(error)
+      return extractMetadata()
     }
 
     return undefined

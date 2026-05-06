@@ -1,5 +1,6 @@
 {
   "name": "@crowd/cron-service",
+  "private": true,
   "scripts": {
     "start": "SERVICE=cron-service tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=cron-service LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",

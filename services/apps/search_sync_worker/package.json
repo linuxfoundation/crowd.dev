@@ -1,5 +1,6 @@
 {
   "name": "@crowd/search-sync-worker",
+  "private": true,
   "scripts": {
     "start": "SERVICE=search-sync-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=search-sync-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9234 src/main.ts",

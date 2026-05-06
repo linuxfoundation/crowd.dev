@@ -1,5 +1,6 @@
 {
   "name": "@crowd/template-consumer",
+  "private": true,
   "scripts": {
     "start": "SERVICE=template-consumer tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=template-consumer LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",

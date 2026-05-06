@@ -206,7 +206,21 @@ export async function findMemberWorkExperience(
   qx: QueryExecutor,
   memberId: string,
   timestamp: string,
+  emailDomain?: string,
 ): Promise<IWorkExperienceData[] | null> {
+  let domainOrClause = ''
+  if (emailDomain) {
+    domainOrClause = `
+          OR (mo."source" = 'email-domain' AND EXISTS (
+            SELECT 1 FROM "organizationIdentities" oi
+            WHERE oi."organizationId" = mo."organizationId"
+              AND oi.type = 'primary-domain'
+              AND oi.verified = true
+              AND LOWER(oi.value) = LOWER($(emailDomain))
+          ))
+    `
+  }
+
   const result = await qx.select(
     `
       SELECT
@@ -215,17 +229,19 @@ export async function findMemberWorkExperience(
       FROM "memberOrganizations" mo
       LEFT JOIN "memberOrganizationAffiliationOverrides" ovr on ovr."memberOrganizationId" = mo."id"
       WHERE mo."memberId" = $(memberId)
+        AND mo."deletedAt" IS NULL
+        AND coalesce(ovr."allowAffiliation", true) = true
         AND (
           (mo."dateStart" <= $(timestamp) AND mo."dateEnd" >= $(timestamp))
           OR (mo."dateStart" <= $(timestamp) AND mo."dateEnd" IS NULL)
+          ${domainOrClause}
         )
-        AND mo."deletedAt" IS NULL
-        AND coalesce(ovr."allowAffiliation", true) = true
       ORDER BY mo."dateStart" DESC, mo.id
     `,
     {
       memberId,
       timestamp,
+      emailDomain,
     },
   )
 

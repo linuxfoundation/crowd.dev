@@ -319,6 +319,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HttpError'
+        '409':
+          description: Identity is already verified on another member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Identity already verified on another member
 
   # ──────────────────────────────────────────────
   # Maintainer Roles

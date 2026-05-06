@@ -182,6 +182,92 @@ describe('selectPrimaryWorkExperience', () => {
     const result = selectPrimaryWorkExperience([shortRange, longRange])
     expect(result.organizationName).toBe('LongRange')
   })
+
+  it('email-domain beats enrichment when both are dated', () => {
+    const enrichment = makeRow({
+      organizationId: 'enrichment',
+      organizationName: 'Enrichment Org',
+      dateStart: '2020-01-01',
+      source: 'enrichment-progai',
+    })
+    const emailDomain = makeRow({
+      organizationId: 'email',
+      organizationName: 'Email Org',
+      dateStart: '2020-01-01',
+      source: 'email-domain',
+    })
+    expect(selectPrimaryWorkExperience([enrichment, emailDomain]).organizationName).toBe(
+      'Email Org',
+    )
+  })
+
+  it('ui beats email-domain when both are dated', () => {
+    const emailDomain = makeRow({
+      organizationId: 'email',
+      organizationName: 'Email Org',
+      dateStart: '2020-01-01',
+      source: 'email-domain',
+    })
+    const ui = makeRow({
+      organizationId: 'ui',
+      organizationName: 'UI Org',
+      dateStart: '2020-01-01',
+      source: 'ui',
+    })
+    expect(selectPrimaryWorkExperience([emailDomain, ui]).organizationName).toBe('UI Org')
+  })
+
+  it('ui beats enrichment when both are dated', () => {
+    const enrichment = makeRow({
+      organizationId: 'enrichment',
+      organizationName: 'Enrichment Org',
+      dateStart: '2020-01-01',
+      source: 'enrichment-clearbit',
+    })
+    const ui = makeRow({
+      organizationId: 'ui',
+      organizationName: 'UI Org',
+      dateStart: '2020-01-01',
+      source: 'ui',
+    })
+    expect(selectPrimaryWorkExperience([enrichment, ui]).organizationName).toBe('UI Org')
+  })
+
+  it('falls through to member count when source tiers are equal', () => {
+    const small = makeRow({
+      organizationId: 'small',
+      organizationName: 'Small Enrichment',
+      dateStart: '2020-01-01',
+      memberCount: 10,
+      source: 'enrichment-progai',
+    })
+    const large = makeRow({
+      organizationId: 'large',
+      organizationName: 'Large Enrichment',
+      dateStart: '2020-01-01',
+      memberCount: 100,
+      source: 'enrichment-progai',
+    })
+    expect(selectPrimaryWorkExperience([small, large]).organizationName).toBe('Large Enrichment')
+  })
+
+  it('undated rows are not affected by source priority — dated enrichment beats undated email-domain', () => {
+    const undatedEmailDomain = makeRow({
+      organizationId: 'email',
+      organizationName: 'Email Org',
+      dateStart: null,
+      source: 'email-domain',
+    })
+    const datedEnrichment = makeRow({
+      organizationId: 'enrichment',
+      organizationName: 'Enrichment Org',
+      dateStart: '2020-01-01',
+      source: 'enrichment-progai',
+    })
+    expect(
+      selectPrimaryWorkExperience([undatedEmailDomain, datedEnrichment]).organizationName,
+    ).toBe('Enrichment Org')
+  })
 })
 
 // ---------------------------------------------------------------------------

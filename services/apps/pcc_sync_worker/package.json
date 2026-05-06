@@ -1,5 +1,6 @@
 {
   "name": "@crowd/pcc-sync-worker",
+  "private": true,
   "scripts": {
     "start": "CROWD_TEMPORAL_TASKQUEUE=pccSync SERVICE=pcc-sync-worker tsx src/index.ts",
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=pccSync SERVICE=pcc-sync-worker LOG_LEVEL=debug tsx src/index.ts",

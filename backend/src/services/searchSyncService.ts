@@ -66,11 +66,13 @@ export default class SearchSyncService extends LoggerBase {
   async triggerOrganizationMembersSync(organizationId: string) {
     const client = await this.getSearchSyncClient()
 
-    if (client instanceof SearchSyncApiClient || client instanceof SearchSyncWorkerEmitter) {
+    if (client instanceof SearchSyncApiClient) {
       await this.logExecutionTime(
-        () => client.triggerOrganizationMembersSync(organizationId, false),
+        () => client.syncOrganizationMembers(organizationId),
         `triggerOrganizationMembersSync: organization:${organizationId}`,
       )
+    } else if (client instanceof SearchSyncWorkerEmitter) {
+      await client.triggerOrganizationMembersSync(organizationId, false)
     } else {
       throw new Error('Unexpected search client type!')
     }

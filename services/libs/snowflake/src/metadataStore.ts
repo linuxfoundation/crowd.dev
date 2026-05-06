@@ -177,14 +177,14 @@ export class MetadataStore {
     )
   }
 
-  async markFailed(jobId: number, error: string, metrics?: Partial<JobMetrics>): Promise<void> {
+  async markFailed(jobId: number, error: unknown, metrics?: Partial<JobMetrics>): Promise<void> {
     await this.db.none(
       `UPDATE integration."snowflakeExportJobs"
        SET error = $(error), "completedAt" = NOW(),
            metrics = COALESCE(metrics, '{}'::jsonb) || COALESCE($(metrics)::jsonb, '{}'::jsonb),
            "updatedAt" = NOW()
        WHERE id = $(jobId)`,
-      { jobId, error, metrics: metrics ? JSON.stringify(metrics) : null },
+      { jobId, error: serializeJobError(error), metrics: metrics ? JSON.stringify(metrics) : null },
     )
   }
 
@@ -199,6 +199,32 @@ export class MetadataStore {
       { platform, sourceName },
     )
     return row?.max ?? null
+  }
+}
+
+function serializeJobError(err: unknown): string {
+  try {
+    if (err instanceof Error) {
+      const obj: Record<string, unknown> = {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+      }
+      // cause is non-enumerable on Error instances — capture it explicitly
+      const cause = (err as { cause?: unknown }).cause
+      if (cause !== undefined) {
+        obj.cause = cause instanceof Error ? cause.message : cause
+      }
+      for (const key of Object.keys(err)) {
+        if (!(key in obj)) obj[key] = (err as unknown as Record<string, unknown>)[key]
+      }
+      return JSON.stringify(obj)
+    }
+    // Non-Error throwables: preserve all fields if it's an object, otherwise wrap in {message}
+    const payload = typeof err === 'object' && err !== null ? err : { message: String(err) }
+    return JSON.stringify(payload)
+  } catch {
+    return JSON.stringify({ message: String(err) })
   }
 }
 

@@ -1,5 +1,6 @@
 {
   "name": "@crowd/script-executor-worker",
+  "private": true,
   "scripts": {
     "start": "CROWD_TEMPORAL_TASKQUEUE=script-executor SERVICE=script-executor-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=script-executor SERVICE=script-executor-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9232 src/main.ts",
@@ -9,6 +10,7 @@
     "cleanup-fork-activities": "npx tsx src/bin/cleanup-fork-activities-and-maintainers.ts",
     "cleanup-member-aggregates": "npx tsx src/bin/cleanup-member-aggregates.ts",
     "recalculate-enrichment-affiliations": "npx tsx src/bin/recalculate-enrichment-affiliations.ts",
+    "recalculate-all-affiliations": "npx tsx src/bin/recalculate-all-affiliations.ts",
     "add-lf-projects-to-collection": "npx tsx src/bin/add-lf-projects-to-collection.ts",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",

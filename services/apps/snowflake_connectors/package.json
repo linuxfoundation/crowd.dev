@@ -1,5 +1,6 @@
 {
   "name": "@crowd/snowflake-connectors",
+  "private": true,
   "scripts": {
     "start": "CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker tsx src/index.ts",
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx src/index.ts",

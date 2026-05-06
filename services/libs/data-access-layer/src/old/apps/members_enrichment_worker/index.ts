@@ -548,8 +548,8 @@ export async function insertWorkExperience(
   memberId: string,
   orgId: string,
   title: string,
-  dateStart: string,
-  dateEnd: string,
+  dateStart: string | null,
+  dateEnd: string | null,
   source: OrganizationSource,
 ): Promise<string | null> {
   let conflictCondition = `("memberId", "organizationId", "dateStart", "dateEnd")`

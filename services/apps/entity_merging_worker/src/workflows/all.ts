@@ -14,14 +14,18 @@ const {
   recalculateActivityAffiliationsOfOrganizationAsync,
   setMergeAction,
   syncMember,
-  syncOrganization,
   notifyFrontendMemberMergeSuccessful,
   notifyFrontendMemberUnmergeSuccessful,
   syncRemoveMember,
   finishMemberMergingUpdateActivities,
   finishMemberUnmergingUpdateActivities,
 } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '60 minutes',
+  startToCloseTimeout: '2 hours',
+})
+
+const { syncOrganization } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '2 hours',
+  heartbeatTimeout: '5 minutes',
 })
 
 export async function deleteOrphanMember(memberId: string): Promise<void> {
