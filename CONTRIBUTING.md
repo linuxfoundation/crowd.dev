@@ -72,11 +72,11 @@ We welcome any contribution to crowd.dev. Before you start with your first issue
 - For your first contribution, we recommend taking a look at our ["good first issues" 🥂](https://github.com/linuxfoundation/crowd.dev/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue+%F0%9F%A5%82%22).
 - Other issues that are well suited for contribution have the tag ["help wanted" 🙏](https://github.com/linuxfoundation/crowd.dev/labels/help%20wanted%20%F0%9F%99%8F).
 - If you want to contribute to our codebase, you have to first [sign our Contributor License Agreement](https://cla-assistant.io/linuxfoundation/crowd.dev).
-- If you need help, you can reach us either via [Discord](http://crowd.dev/discord) or [Book a 15-min Contributor Onboarding Call](https://cal.com/team/linuxfoundation/contributor-onboarding?duration=15).
+- If you need help, you can reach us either via [Discord](http://crowd.dev/discord) or [Book a 15-min Contributor Onboarding Call](https://cal.com/team/CrowdDotDev/contributor-onboarding?duration=15).
 
 #### Requirements
 
-- Node v16.16.0
+- Node v20+
 - Docker and docker-compose
 
 #### Setup the project
@@ -86,7 +86,7 @@ The project is a monorepo, meaning that it is a collection of multiple packages 
 1. Get the mono repo from GitHub
 
 ```shell
-git clone git@github.com:CrowdDotDev/crowd.dev.git
+git clone git@github.com:linuxfoundation/crowd.dev.git
 ```
 
 2. Run the start script:
@@ -198,4 +198,4 @@ The Linux Foundation provides guidelines and best practices for using AI in deve
 
 ## Need help? 🛟
 
-If you need help with any sort of contribution, please feel free to reach out on [Discord](https://go.crowd.dev/discord) or book a [contributor onboarding call](https://cal.com/team/linuxfoundation/contributor-onboarding?duration=15).
+If you need help with any sort of contribution, please feel free to reach out on [Discord](https://go.crowd.dev/discord) or book a [contributor onboarding call](https://cal.com/team/CrowdDotDev/contributor-onboarding?duration=15).
