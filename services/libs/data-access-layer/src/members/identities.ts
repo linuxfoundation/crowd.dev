@@ -572,9 +572,13 @@ export async function findMembersByIdentities(
     conditions.push('mi.verified = true')
   }
 
-  const identityParams = identities
-    .map((identity) => `('${identity.platform}', '${identity.value}', '${identity.type}')`)
-    .join(', ')
+  const identityTuples = identities.map((identity, i) => {
+    params[`ip${i}`] = identity.platform
+    params[`iv${i}`] = identity.value.trim()
+    params[`it${i}`] = identity.type
+    return `($(ip${i}), $(iv${i}), $(it${i}))`
+  })
+  const identityParams = identityTuples.join(', ')
 
   const result = await qx.select(
     `
@@ -583,8 +587,8 @@ export async function findMembersByIdentities(
     )
     select "memberId", i.platform, i.value, i.type
     from "memberIdentities" mi
-      inner join input_identities i 
-        on mi.platform = i.platform 
+      inner join input_identities i
+        on mi.platform = i.platform
         and lower(mi.value) = lower(i.value)
         and mi.type = i.type
         and mi."deletedAt" is null
