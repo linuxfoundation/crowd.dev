@@ -603,6 +603,12 @@ class CommitService(BaseService):
         for extracted_activity in extracted_activities:
             activity_type, member_data = list(extracted_activity.items())[0]
 
+            if not member_data.get("email"):
+                self.logger.warning(
+                    f"Skipping {activity_type} for {commit_hash} — empty email in commit trailer"
+                )
+                continue
+
             # Convert activity type to lowercase and add "-commit" suffix
             # This matches the legacy behavior: "signed-off-by" -> "signed-off-commit"
             activity_type = activity_type.lower().replace("-by", "") + "-commit"
