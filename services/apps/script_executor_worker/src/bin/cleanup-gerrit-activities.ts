@@ -2,29 +2,34 @@
  * Gerrit Activities Cleanup Script
  *
  * PROBLEM:
- * Gerrit activities need to be cleaned up from both PostgreSQL and Tinybird
- * based on specific platform and type filters with a date cutoff.
+ * Gerrit activities need to be cleaned up from both PostgreSQL and Tinybird.
  *
  * SOLUTION:
- * This script deletes activities from Gerrit platform across:
+ * This script deletes activities from the Gerrit platform across:
  * - PostgreSQL (activityRelations table only)
- * - Tinybird (activities and activityRelations tables)
+ * - Tinybird (activities and activityRelations datasources)
  *
- * Filters:
- * - platform = 'gerrit'
- * - type in ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created')
- * - updatedAt < '2025-12-15'
+ * Filters (all optional):
+ * - platform = 'gerrit'  (always applied)
+ * - --type <types>       (optional) restrict to specific activity type(s)
+ * - --before-date <date> (optional) restrict to records with updatedAt < date
+ *
+ * WARNING: Running with no --type and no --before-date will delete ALL gerrit
+ * activities regardless of type or age.
  *
  * Usage:
  *   # Via package.json script (recommended):
- *   pnpm run cleanup-gerrit-activities -- [--dry-run] [--tb-token <token>]
+ *   pnpm run cleanup-gerrit-activities -- [options]
  *
  *   # Or directly with tsx:
- *   npx tsx src/bin/cleanup-gerrit-activities.ts [--dry-run] [--tb-token <token>]
+ *   npx tsx src/bin/cleanup-gerrit-activities.ts [options]
  *
  * Options:
- *   --dry-run          Display what would be deleted without actually deleting anything
- *   --tb-token         Tinybird API token to use (overrides CROWD_TINYBIRD_ACTIVITIES_TOKEN environment variable)
+ *   --dry-run                  Display what would be deleted without actually deleting anything
+ *   --tb-token <token>         Tinybird API token (overrides CROWD_TINYBIRD_ACTIVITIES_TOKEN)
+ *   --before-date <YYYY-MM-DD> Only delete records with updatedAt before this date
+ *   --type <types>             Only delete activities of these types (comma-separated).
+ *                              Valid values: changeset-created, changeset-merged, changeset-closed, changeset-abandoned, changeset_comment-created, patchset-created, patchset_comment-created, patchset_approval-created
  *
  * Environment Variables Required:
  *   CROWD_DB_WRITE_HOST - Postgres write host
@@ -47,6 +52,34 @@ import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor
 import { getServiceChildLogger } from '@crowd/logging'
 
 const log = getServiceChildLogger('cleanup-gerrit-activities-script')
+
+const VALID_GERRIT_TYPES = [
+  'changeset-created',
+  'changeset-merged',
+  'changeset-closed',
+  'changeset-abandoned',
+  'changeset_comment-created',
+  'patchset-created',
+  'patchset_comment-created',
+  'patchset_approval-created',
+] as const
+
+interface Filters {
+  beforeDate?: string
+  types?: string[]
+}
+
+function buildGerritFilterClause(filters: Filters): string {
+  const parts = [`platform = 'gerrit'`]
+  if (filters.types?.length) {
+    const list = filters.types.map((t) => `'${t}'`).join(', ')
+    parts.push(`type IN (${list})`)
+  }
+  if (filters.beforeDate) {
+    parts.push(`updatedAt < '${filters.beforeDate}'`)
+  }
+  return parts.join(' AND ')
+}
 
 interface DeletionStatus {
   success: boolean
@@ -90,6 +123,7 @@ async function queryAndProcessActivityIdsInBatches(
   tinybird: TinybirdClient,
   postgres: QueryExecutor,
   dryRun: boolean,
+  filters: Filters,
   onBatchProcessed: () => void,
 ): Promise<number> {
   log.info('Querying activity IDs from Tinybird for Gerrit cleanup...')
@@ -99,10 +133,11 @@ async function queryAndProcessActivityIdsInBatches(
   let hasMore = true
   let totalProcessed = 0
   let batchNumber = 0
+  const whereClause = buildGerritFilterClause(filters)
 
   try {
     while (hasMore) {
-      const query = `SELECT DISTINCT activityId FROM activityRelations WHERE platform = 'gerrit' AND type IN ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created') AND updatedAt < '2025-12-15' ORDER BY activityId LIMIT ${BATCH_SIZE} OFFSET ${offset} FORMAT JSON`
+      const query = `SELECT DISTINCT activityId FROM activityRelations WHERE ${whereClause} ORDER BY activityId LIMIT ${BATCH_SIZE} OFFSET ${offset} FORMAT JSON`
       log.info(`Querying batch: offset=${offset}, limit=${BATCH_SIZE}`)
 
       const result = await tinybird.executeSql<{ data: Array<{ activityId: string }> }>(query)
@@ -199,6 +234,7 @@ async function deleteActivityRelationsFromPostgres(
 async function deleteActivitiesFromTinybird(
   tinybird: TinybirdClient,
   dryRun = false,
+  filters: Filters = {},
 ): Promise<{
   activities: DeletionStatus
   activityRelations: DeletionStatus
@@ -209,11 +245,11 @@ async function deleteActivitiesFromTinybird(
     activityRelations: { success: false } as DeletionStatus,
   }
 
+  const deleteCondition = buildGerritFilterClause(filters)
+
   if (dryRun) {
     log.info('[DRY RUN] Would delete activities from Tinybird using Gerrit filters...')
-    log.info(
-      `[DRY RUN] Filters: platform='gerrit', type in ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created'), updatedAt < '2025-12-15'`,
-    )
+    log.info(`[DRY RUN] Condition: ${deleteCondition}`)
     log.info(`[DRY RUN] Would delete from 'activities' datasource`)
     log.info(`[DRY RUN] Would delete from 'activityRelations' datasource`)
     return {
@@ -228,8 +264,8 @@ async function deleteActivitiesFromTinybird(
   const triggeredJobIds: string[] = []
 
   // Define deletion conditions
-  const activitiesDeleteCondition = `platform = 'gerrit' AND type IN ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created') AND updatedAt < '2025-12-15'`
-  const activityRelationsDeleteCondition = `platform = 'gerrit' AND type IN ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created') AND updatedAt < '2025-12-15'`
+  const activitiesDeleteCondition = deleteCondition
+  const activityRelationsDeleteCondition = deleteCondition
 
   // Delete from activities datasource
   try {
@@ -290,7 +326,7 @@ async function deleteActivitiesFromTinybird(
 /**
  * Main cleanup process
  */
-async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
+async function runCleanup(dryRun = false, tbToken?: string, filters: Filters = {}): Promise<void> {
   const startTime = new Date().toISOString()
   let failedBatches = 0
   let totalBatches = 0
@@ -304,6 +340,8 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
     log.info(`Gerrit Activities Cleanup`)
     log.info(`${'='.repeat(80)}`)
   }
+
+  log.info(`Active filters: ${buildGerritFilterClause(filters)}`)
 
   try {
     // Initialize database clients
@@ -327,6 +365,7 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
       tinybird,
       postgres,
       dryRun,
+      filters,
       () => {
         totalBatches++
       },
@@ -342,7 +381,7 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
 
     // Step 2: Delete from Tinybird in a single operation per datasource
     log.info('Step 2: Triggering Tinybird deletions...')
-    const tinybirdStatuses = await deleteActivitiesFromTinybird(tinybird, dryRun)
+    const tinybirdStatuses = await deleteActivitiesFromTinybird(tinybird, dryRun, filters)
 
     // Track failures from Tinybird
     if (!tinybirdStatuses.activities.success) {
@@ -437,6 +476,8 @@ async function main() {
   // Parse flags
   const dryRunIndex = args.indexOf('--dry-run')
   const tbTokenIndex = args.indexOf('--tb-token')
+  const beforeDateIndex = args.indexOf('--before-date')
+  const typeIndex = args.indexOf('--type')
   const dryRun = dryRunIndex !== -1
 
   // Extract tb-token value if provided
@@ -449,49 +490,95 @@ async function main() {
     tbToken = args[tbTokenIndex + 1]
   }
 
+  // Extract and validate --before-date
+  let beforeDate: string | undefined
+  if (beforeDateIndex !== -1) {
+    if (beforeDateIndex + 1 >= args.length) {
+      log.error('Error: --before-date requires a value (YYYY-MM-DD)')
+      process.exit(1)
+    }
+    const raw = args[beforeDateIndex + 1]
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || !isFinite(Date.parse(raw))) {
+      log.error(`Error: --before-date value "${raw}" is not a valid date (expected YYYY-MM-DD)`)
+      process.exit(1)
+    }
+    beforeDate = raw
+  }
+
+  // Extract and validate --type
+  let types: string[] | undefined
+  if (typeIndex !== -1) {
+    if (typeIndex + 1 >= args.length) {
+      log.error('Error: --type requires a value (comma-separated list of activity types)')
+      process.exit(1)
+    }
+    const raw = args[typeIndex + 1]
+    const parsed = raw.split(',').map((t) => t.trim()).filter(Boolean)
+    if (parsed.length === 0) {
+      log.error('Error: --type received an empty value')
+      process.exit(1)
+    }
+    const invalid = parsed.filter((t) => !(VALID_GERRIT_TYPES as readonly string[]).includes(t))
+    if (invalid.length > 0) {
+      log.error(
+        `Error: --type contains invalid value(s): ${invalid.join(', ')}. Valid values: ${VALID_GERRIT_TYPES.join(', ')}`,
+      )
+      process.exit(1)
+    }
+    types = parsed
+  }
+
+  const filters: Filters = { beforeDate, types }
+
   // Check for help flag or no valid arguments
   if (args.includes('--help') || args.includes('-h')) {
     log.info(`
       Usage:
         # Via package.json script (recommended):
-        pnpm run cleanup-gerrit-activities -- [--dry-run] [--tb-token <token>]
-        
+        pnpm run cleanup-gerrit-activities -- [options]
+
         # Or directly with tsx:
-        npx tsx src/bin/cleanup-gerrit-activities.ts [--dry-run] [--tb-token <token>]
-      
+        npx tsx src/bin/cleanup-gerrit-activities.ts [options]
+
       Options:
-        --dry-run: (optional) Display what would be deleted without actually deleting anything
-        --tb-token: (optional) Tinybird API token to use (overrides CROWD_TINYBIRD_ACTIVITIES_TOKEN environment variable)
-      
+        --dry-run                  (optional) Display what would be deleted without actually deleting anything
+        --tb-token <token>         (optional) Tinybird API token (overrides CROWD_TINYBIRD_ACTIVITIES_TOKEN)
+        --before-date <YYYY-MM-DD> (optional) Only delete records with updatedAt before this date
+        --type <types>             (optional) Comma-separated list of activity types to delete.
+                                   Valid values: ${VALID_GERRIT_TYPES.join(', ')}
+
+      WARNING: Running with no --type and no --before-date deletes ALL gerrit activities.
+
       Examples:
-        # Run cleanup
+        # Delete all gerrit activities (no filters)
         pnpm run cleanup-gerrit-activities
-        
+
+        # Delete only activities before 2025-12-15
+        pnpm run cleanup-gerrit-activities -- --before-date 2025-12-15
+
+        # Delete only changeset-merged activities
+        pnpm run cleanup-gerrit-activities -- --type changeset-merged
+
+        # Combine filters
+        pnpm run cleanup-gerrit-activities -- --type changeset-merged,changeset-abandoned --before-date 2025-06-01
+
         # Dry run to preview what would be deleted
-        pnpm run cleanup-gerrit-activities -- --dry-run
-        
-        # Use custom Tinybird token
-        pnpm run cleanup-gerrit-activities -- --tb-token your-token-here
-      
-      Filters applied:
-        - platform = 'gerrit'
-        - type in ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created')
-        - updatedAt < '2025-12-15'
+        pnpm run cleanup-gerrit-activities -- --dry-run --before-date 2025-12-15
     `)
     process.exit(0)
   }
 
   if (dryRun) {
     log.info(`\n${'='.repeat(80)}`)
-    log.info('🧪 DRY RUN MODE - No data will be deleted')
+    log.info('DRY RUN MODE - No data will be deleted')
     log.info(`${'='.repeat(80)}\n`)
   }
 
   try {
-    await runCleanup(dryRun, tbToken)
+    await runCleanup(dryRun, tbToken, filters)
   } catch (error) {
     log.error(error, 'Failed to run Gerrit cleanup script')
-    log.error(`\n❌ Error: ${error.message}`)
+    log.error(`\nError: ${error.message}`)
     process.exit(1)
   }
 }
