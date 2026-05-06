@@ -36,6 +36,11 @@ export class ContributorIdentitiesApiService {
     return authAxios.patch(
       `/member/${memberId}/identity/${id}`,
       payload,
+      {
+        params: {
+          segments: getSegments(),
+        },
+      },
     ).then(({ data }) => Promise.resolve(data));
   }
 
