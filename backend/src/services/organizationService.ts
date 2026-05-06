@@ -502,7 +502,7 @@ export default class OrganizationService extends LoggerBase {
       throw new Error409(this.options.language, 'merge.errors.multiple', mergeActions[0].state)
     }
 
-    let blockAffiliations = false
+    let orgAffiliationChanges = false
 
     try {
       const { original, toMerge } = await captureApiChange(
@@ -681,8 +681,15 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Moving members to original organisation!',
           )
 
-          // update members that belong to source organization to destinati
-          await moveMembersBetweenOrganizations(optionsQx(repoOptions), toMergeId, originalId)
+          const { shouldRecalculateAffiliations } = await moveMembersBetweenOrganizations(
+            optionsQx(repoOptions),
+            toMergeId,
+            originalId,
+          )
+
+          if (shouldRecalculateAffiliations) {
+            orgAffiliationChanges = true
+          }
 
           this.log.info(
             { originalId, toMergeId },
@@ -711,21 +718,6 @@ export default class OrganizationService extends LoggerBase {
             { originalId, toMergeId },
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
-
-          if (toUpdate.isAffiliationBlocked) {
-            this.log.info(
-              { originalId, toMergeId },
-              '[Merge Organizations] - Organization wide affiliation block detected!',
-            )
-
-            await applyOrganizationAffiliationPolicyToMembers(
-              optionsQx(repoOptions),
-              originalId,
-              false,
-            )
-
-            blockAffiliations = true
-          }
 
           await SequelizeRepository.commitTransaction(tx)
 
@@ -756,7 +748,7 @@ export default class OrganizationService extends LoggerBase {
           toMergeId,
           original.displayName,
           toMerge.displayName,
-          blockAffiliations,
+          orgAffiliationChanges,
           this.options.currentUser.id,
         ],
       })
