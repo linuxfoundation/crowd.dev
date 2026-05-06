@@ -3,8 +3,8 @@ import commandLineArgs from 'command-line-args'
 import { inferMemberOrganizationStintChanges } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   createMemberOrganization,
+  fetchManyOrganizationAffiliationPolicies,
   fetchEmailDomainMemberOrganizationActivityDates,
   fetchEmailDomainMemberOrganizationsWithoutDates,
   fetchMemberOrganizationsBySource,
@@ -115,12 +115,13 @@ setImmediate(async () => {
                         source: OrganizationSource.EMAIL_DOMAIN,
                       })
 
-                      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-                        tx,
-                        change.organizationId,
-                      )
+                      const orgAffiliationPolicyById =
+                        await fetchManyOrganizationAffiliationPolicies(tx, [change.organizationId])
 
-                      if (memberOrganizationId && isAffiliationBlocked) {
+                      if (
+                        memberOrganizationId &&
+                        orgAffiliationPolicyById.get(change.organizationId)
+                      ) {
                         await changeMemberOrganizationAffiliationOverrides(tx, [
                           {
                             memberId,

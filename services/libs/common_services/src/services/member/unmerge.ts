@@ -8,10 +8,12 @@ import {
   MemberField,
   QueryExecutor,
   addMemberRole,
+  changeMemberOrganizationAffiliationOverrides,
   createMember,
   createMemberIdentity,
   deleteManyMemberIdentities,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberIdentities,
   findAlreadyExistingVerifiedIdentities,
   findMemberById,
@@ -529,10 +531,28 @@ export async function unmergeMember(
       secondary.memberOrganizations.map((o) => o.organizationId),
     )
 
-    for (const role of secondary.memberOrganizations.filter(
+    const rolesToRestore = secondary.memberOrganizations.filter(
       (r) => !nonExistingOrgIds.includes(r.organizationId),
-    )) {
-      await addMemberRole(tx, { ...role, memberId: secondaryId })
+    )
+    const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(
+      tx,
+      Array.from(new Set(rolesToRestore.map((r) => r.organizationId))),
+    )
+
+    for (const role of rolesToRestore) {
+      const newRoleId = await addMemberRole(tx, { ...role, memberId: secondaryId })
+      if (newRoleId) {
+        const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
+        if (isBlocked) {
+          await changeMemberOrganizationAffiliationOverrides(tx, [
+            {
+              memberId: secondaryId,
+              memberOrganizationId: newRoleId,
+              allowAffiliation: false,
+            },
+          ])
+        }
+      }
     }
 
     // Delete stale roles from primary that aren't in the preview

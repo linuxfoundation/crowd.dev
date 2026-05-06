@@ -12,7 +12,7 @@ import {
 import { CommonMemberService } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
+  fetchManyOrganizationAffiliationPolicies,
   updateMemberAttributes,
   updateMemberContributions,
   updateMemberReach,
@@ -636,21 +636,21 @@ export async function updateMemberUsingSquashedPayload(
         }
       }
 
-      for (const mo of newOrUpdatedMemberOrgs) {
-        const isOrganizationAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-          qx,
-          mo.organizationId,
-        )
+      const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(
+        qx,
+        newOrUpdatedMemberOrgs.map((mo) => mo.organizationId),
+      )
 
-        if (isOrganizationAffiliationBlocked) {
-          await changeMemberOrganizationAffiliationOverrides(qx, [
-            {
-              memberId,
-              memberOrganizationId: mo.id,
-              allowAffiliation: false,
-            },
-          ])
-        }
+      const overrides = newOrUpdatedMemberOrgs
+        .filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
+        .map((mo) => ({
+          memberId,
+          memberOrganizationId: mo.id,
+          allowAffiliation: false,
+        }))
+
+      if (overrides.length > 0) {
+        await changeMemberOrganizationAffiliationOverrides(qx, overrides)
       }
     }
 
