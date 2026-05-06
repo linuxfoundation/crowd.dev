@@ -8,6 +8,7 @@
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "cleanup-fork-activities": "npx tsx src/bin/cleanup-fork-activities-and-maintainers.ts",
+    "cleanup-gerrit-activities": "npx tsx src/bin/cleanup-gerrit-activities.ts",
     "cleanup-member-aggregates": "npx tsx src/bin/cleanup-member-aggregates.ts",
     "recalculate-enrichment-affiliations": "npx tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "npx tsx src/bin/recalculate-all-affiliations.ts",
