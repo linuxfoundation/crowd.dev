@@ -539,6 +539,7 @@ class CommitService(BaseService):
         committer_email = commit["committer_email"]
 
         # Create author activity — skip if email is empty (no identity to attach to)
+        author_email = author_email.strip() if author_email else ""
         if not author_email:
             self.logger.warning(f"Skipping authored-commit for {commit_hash} — empty author email")
         else:
@@ -563,6 +564,7 @@ class CommitService(BaseService):
             activities_queue.append(activity_kafka)
 
         # Only create committer activity if author and committer are different
+        committer_email = committer_email.strip() if committer_email else ""
         if author_name != committer_name or author_email != committer_email:
             if not committer_email:
                 self.logger.warning(
@@ -601,7 +603,8 @@ class CommitService(BaseService):
         for extracted_activity in extracted_activities:
             activity_type, member_data = list(extracted_activity.items())[0]
 
-            if not member_data.get("email"):
+            trailer_email = (member_data.get("email") or "").strip()
+            if not trailer_email:
                 self.logger.warning(
                     f"Skipping {activity_type} for {commit_hash} — empty email in commit trailer"
                 )
@@ -613,12 +616,12 @@ class CommitService(BaseService):
 
             member = {
                 "displayName": member_data["name"],
-                "emails": [member_data["email"]],
+                "emails": [trailer_email],
             }
 
             # Generate unique source ID for extracted activity
             source_id = hashlib.sha1(
-                (commit_hash + activity_type + member_data["email"]).encode("utf-8")
+                (commit_hash + activity_type + trailer_email).encode("utf-8")
             ).hexdigest()
             activity = self.create_activity(
                 remote=remote,

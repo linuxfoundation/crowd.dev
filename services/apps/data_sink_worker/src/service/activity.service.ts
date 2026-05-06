@@ -466,7 +466,7 @@ export default class ActivityService extends LoggerBase {
         resultMap.set(resultId, { success: false, err })
       } else {
         const payload = single(payloads, (a) => a.resultId === resultId)
-        if (!payload.activity.username) {
+        if (!payload.activity.username?.trim()) {
           // prepareMemberData found no usable identity — mark as processed and skip.
           resultMap.set(resultId, { success: true })
         } else {
