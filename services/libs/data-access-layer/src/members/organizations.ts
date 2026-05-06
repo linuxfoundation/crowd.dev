@@ -1102,11 +1102,13 @@ export async function mergeRoles(
       secondaryAffiliationOverrides.some((s) => s.memberOrganizationId === r.role.id),
     )
     if (!newRoleId) {
+      // Use targetOrganizationId so the comparison works in both member-merge
+      // (org unchanged) and org-merge (secondary org -> primary org) contexts.
       const directSecondaryRole = secondaryRoles.find((role) =>
         secondaryAffiliationOverrides.some(
           (override) =>
             override.memberOrganizationId === role.id &&
-            role.organizationId === addRole.organizationId &&
+            mergeStrat.targetOrganizationId(role) === addRole.organizationId &&
             role.title === addRole.title,
         ),
       )

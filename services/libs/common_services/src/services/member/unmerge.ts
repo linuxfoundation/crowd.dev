@@ -543,6 +543,9 @@ export async function unmergeMember(
       const newRoleId = await addMemberRole(tx, { ...role, memberId: secondaryId })
       if (newRoleId) {
         const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
+        // Only org-level policy blocks are restored here. Pre-merge manual row-level
+        // blocks and isPrimaryWorkExperience flags are not restored because the unmerge
+        // backup does not carry override data.
         if (isBlocked) {
           await changeMemberOrganizationAffiliationOverrides(tx, [
             {
