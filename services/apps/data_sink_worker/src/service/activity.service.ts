@@ -340,15 +340,24 @@ export default class ActivityService extends LoggerBase {
           const emailFallback = activity.member.identities.find(
             (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
-          if (emailFallback) {
+          if (emailFallback && emailFallback.verified) {
             activity.username = emailFallback.value
             activity.member.identities.push({
               platform,
               type: MemberIdentityType.USERNAME,
               value: emailFallback.value,
-              verified: emailFallback.verified,
+              verified: true,
               source: emailFallback.source,
             })
+          } else if (emailFallback) {
+            // Email identity exists but is unverified — cannot safely use as username key.
+            results.set(resultId, {
+              success: false,
+              err: new UnrepeatableError(
+                `Activity's member has no verified username or email identity for platform: ${platform}!`,
+              ),
+            })
+            continue
           } else {
             // No usable identity at all (e.g. git commit with empty author email).
             // Nothing to attribute — skip silently rather than error.
