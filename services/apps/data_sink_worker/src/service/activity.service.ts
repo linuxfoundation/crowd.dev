@@ -335,8 +335,8 @@ export default class ActivityService extends LoggerBase {
           activity.username = identities[0].value
         } else if (identities.length === 0) {
           // Fall back to same-platform email identity — handles old gerrit records where
-          // only a type:email identity was stored (before parse-member.ts gained the
-          // email-as-username fallback).
+          // only a type:email identity was stored (before the gerrit integration
+          // gained the email-as-username fallback).
           const emailFallback = activity.member.identities.find(
             (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
@@ -465,7 +465,13 @@ export default class ActivityService extends LoggerBase {
       if (!success) {
         resultMap.set(resultId, { success: false, err })
       } else {
-        relevantPayloads.push(single(payloads, (a) => a.resultId === resultId))
+        const payload = single(payloads, (a) => a.resultId === resultId)
+        if (!payload.activity.username) {
+          // prepareMemberData found no usable identity — mark as processed and skip.
+          resultMap.set(resultId, { success: true })
+        } else {
+          relevantPayloads.push(payload)
+        }
       }
     }
 
