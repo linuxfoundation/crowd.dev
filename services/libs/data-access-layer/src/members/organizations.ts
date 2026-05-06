@@ -1152,7 +1152,7 @@ export async function mergeRoles(
       finalAllowAffiliation = false
     }
 
-    // 4. Update Database
+    // 4. Update db
     const needsUpdate =
       isTargetBlocked ||
       primaryOverride?.allowAffiliation === false ||
@@ -1160,10 +1160,7 @@ export async function mergeRoles(
       finalIsPrimaryWorkExp
 
     if (needsUpdate) {
-      // For duplicate roles (upsert), undefined allowAffiliation won't clear a stale false
-      // due to COALESCE in the ON CONFLICT clause. Explicitly set true when not blocked.
-      const effectiveAllowAffiliation =
-        finalAllowAffiliation === false ? false : !newRoleId ? true : finalAllowAffiliation
+      const effectiveAllowAffiliation = finalAllowAffiliation
 
       await changeMemberOrganizationAffiliationOverrides(qx, [
         {
