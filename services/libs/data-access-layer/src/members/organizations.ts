@@ -18,6 +18,9 @@ import { EmailDomainMemberOrganizationActivityDate } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const toIsoString = (v: Date | string): string =>
+  v instanceof Date ? v.toISOString() : new Date(v).toISOString()
+
 export async function fetchMemberOrganizations(
   qx: QueryExecutor,
   memberId: string,
@@ -689,14 +692,14 @@ export async function removeMemberRole(qx: QueryExecutor, role: IMemberOrganizat
     conditions.push('"dateStart" IS NULL')
   } else {
     conditions.push('"dateStart" = $(dateStart)')
-    replacements.dateStart = (role.dateStart as Date).toISOString()
+    replacements.dateStart = toIsoString(role.dateStart)
   }
 
   if (role.dateEnd === null) {
     conditions.push('"dateEnd" IS NULL')
   } else {
     conditions.push('"dateEnd" = $(dateEnd)')
-    replacements.dateEnd = (role.dateEnd as Date).toISOString()
+    replacements.dateEnd = toIsoString(role.dateEnd)
   }
 
   const whereClause = conditions.join(' AND ')
@@ -991,7 +994,7 @@ export async function mergeRoles(
         if (new Date(memberOrganization.dateStart) <= new Date(currentRoles[0].dateStart)) {
           addRoles.push({
             id: currentRole.id,
-            dateStart: (memberOrganization.dateStart as Date).toISOString(),
+            dateStart: toIsoString(memberOrganization.dateStart as Date | string),
             dateEnd: null,
             memberId: currentRole.memberId,
             organizationId: currentRole.organizationId,
