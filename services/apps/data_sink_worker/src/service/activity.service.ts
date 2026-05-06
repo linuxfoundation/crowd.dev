@@ -1372,7 +1372,11 @@ export default class ActivityService extends LoggerBase {
                 if (result) {
                   if (typeof result === 'string') {
                     payload.memberId = result
-                    memberMap.set(memberKey, result)
+                    // Only cache real redirects — stale-prefetch returns the member's own ID
+                    // and the member still exists, so subsequent payloads must still call update().
+                    if (result !== payload.dbMember.id) {
+                      memberMap.set(memberKey, result)
+                    }
                   } else {
                     resultMap.set(payload.resultId, {
                       success: false,
@@ -1433,7 +1437,11 @@ export default class ActivityService extends LoggerBase {
                 if (result) {
                   if (typeof result === 'string') {
                     payload.objectMemberId = result
-                    memberMap.set(objectMemberKey, result)
+                    // Only cache real redirects — stale-prefetch returns the member's own ID
+                    // and the member still exists, so subsequent payloads must still call update().
+                    if (result !== payload.dbObjectMember.id) {
+                      memberMap.set(objectMemberKey, result)
+                    }
                   } else {
                     resultMap.set(payload.resultId, {
                       success: false,
@@ -1745,6 +1753,8 @@ export default class ActivityService extends LoggerBase {
       // Map keys are `${platform}:${type}:${value}` (from db rows). Match case-insensitively.
       let conflictIdentity: IMemberIdentity | undefined
       let ownerId: string | undefined
+
+      // Pass 1: find an identity owned by a different member (real conflict).
       outer: for (const id of verifiedIncoming) {
         for (const [key, oid] of owners) {
           const sep1 = key.indexOf(':')
@@ -1762,6 +1772,31 @@ export default class ActivityService extends LoggerBase {
             conflictIdentity = id
             ownerId = oid
             break outer
+          }
+        }
+      }
+
+      // Pass 2: if no external conflict, check whether this member already owns the
+      // identity (stale-prefetch race). Re-uses the owners map — no extra DB query.
+      if (!ownerId && dbMember) {
+        selfCheck: for (const id of verifiedIncoming) {
+          for (const [key, oid] of owners) {
+            const sep1 = key.indexOf(':')
+            const sep2 = key.indexOf(':', sep1 + 1)
+            if (sep1 < 0 || sep2 < 0) continue
+            if (
+              key.slice(0, sep1) === id.platform &&
+              key.slice(sep1 + 1, sep2) === id.type &&
+              key
+                .slice(sep2 + 1)
+                .trim()
+                .toLowerCase() === id.value.trim().toLowerCase() &&
+              oid === dbMember.id
+            ) {
+              conflictIdentity = id
+              ownerId = oid
+              break selfCheck
+            }
           }
         }
       }

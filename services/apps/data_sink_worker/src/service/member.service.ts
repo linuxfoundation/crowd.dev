@@ -132,8 +132,21 @@ export default class MemberService extends LoggerBase {
     identities: IMemberIdentity[],
     attemptMerge = true,
   ): Promise<string | void> {
+    // Deduplicate by (platform, value, type) — prefer verified=true when the same
+    // identity appears with both flags. Prevents uix_memberIdentities_memberId_platform_value_type
+    // from firing when a payload contains the same identity twice with different verified values.
+    const seen = new Map<string, IMemberIdentity>()
+    for (const id of identities) {
+      const key = `${id.platform}:${id.type}:${id.value.trim().toLowerCase()}`
+      const existing = seen.get(key)
+      if (!existing || (!existing.verified && id.verified)) {
+        seen.set(key, id)
+      }
+    }
+    const deduped = Array.from(seen.values())
+
     try {
-      await this.memberRepo.insertIdentities(memberId, integrationId, identities, true)
+      await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
     } catch (err) {
       if (
         !err?.constraint ||
@@ -142,7 +155,7 @@ export default class MemberService extends LoggerBase {
         throw err
       }
 
-      const verifiedIncoming = identities.filter((i) => i.verified)
+      const verifiedIncoming = deduped.filter((i) => i.verified)
       if (verifiedIncoming.length === 0) throw err
 
       // Use the structured identities array to find the owner — avoids fragile Postgres
