@@ -113,18 +113,35 @@ export async function findMemberIdentitiesByValue(
   )
 }
 
+const UPDATABLE_IDENTITY_FIELDS: ReadonlyArray<keyof UpdateMemberIdentity> = [
+  'platform',
+  'value',
+  'type',
+  'verified',
+  'verifiedBy',
+  'source',
+  'sourceId',
+  'integrationId',
+]
+
 export async function updateMemberIdentity(
   qx: QueryExecutor,
   memberId: string,
   id: string,
   data: Partial<UpdateMemberIdentity>,
 ): Promise<IMemberIdentity> {
-  if (Object.keys(data).length === 0) return null
+  const filtered = Object.fromEntries(
+    Object.entries(data).filter(
+      ([k, v]) => (UPDATABLE_IDENTITY_FIELDS as readonly string[]).includes(k) && v !== undefined,
+    ),
+  )
 
-  const setClause = Object.keys(data).map((key) => `"${key}" = $(${key})`)
+  if (Object.keys(filtered).length === 0) return null
+
+  const setClause = Object.keys(filtered).map((key) => `"${key}" = $(${key})`)
   setClause.push('"updatedAt" = now()')
 
-  const params = { memberId, id, ...data }
+  const params = { memberId, id, ...filtered }
 
   const query = `
     UPDATE "memberIdentities"
