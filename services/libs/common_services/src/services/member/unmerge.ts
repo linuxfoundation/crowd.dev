@@ -8,10 +8,12 @@ import {
   MemberField,
   QueryExecutor,
   addMemberRole,
+  changeMemberOrganizationAffiliationOverrides,
   createMember,
   createMemberIdentity,
   deleteManyMemberIdentities,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberIdentities,
   findAlreadyExistingVerifiedIdentities,
   findMemberById,
@@ -529,10 +531,39 @@ export async function unmergeMember(
       secondary.memberOrganizations.map((o) => o.organizationId),
     )
 
-    for (const role of secondary.memberOrganizations.filter(
+    const rolesToRestore = secondary.memberOrganizations.filter(
       (r) => !nonExistingOrgIds.includes(r.organizationId),
-    )) {
-      await addMemberRole(tx, { ...role, memberId: secondaryId })
+    )
+    const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(
+      tx,
+      Array.from(new Set(rolesToRestore.map((r) => r.organizationId))),
+    )
+
+    const overridesToCreate: {
+      memberId: string
+      memberOrganizationId: string
+      allowAffiliation: false
+    }[] = []
+
+    for (const role of rolesToRestore) {
+      const newRoleId = await addMemberRole(tx, { ...role, memberId: secondaryId })
+      if (newRoleId) {
+        const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
+        // Only org-level policy blocks are restored here. Pre-merge manual row-level
+        // blocks and isPrimaryWorkExperience flags are not restored because the unmerge
+        // backup does not carry override data.
+        if (isBlocked) {
+          overridesToCreate.push({
+            memberId: secondaryId,
+            memberOrganizationId: newRoleId,
+            allowAffiliation: false,
+          })
+        }
+      }
+    }
+
+    if (overridesToCreate.length > 0) {
+      await changeMemberOrganizationAffiliationOverrides(tx, overridesToCreate)
     }
 
     // Delete stale roles from primary that aren't in the preview
