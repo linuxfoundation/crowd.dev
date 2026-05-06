@@ -1062,6 +1062,8 @@ Uses `Sequin.Databases.ConnectionCache` to pool connections:
 - Configurable pool size (default 10)
 - Connections are lazily created
 
+In production, the metadata-DB pool (`PG_POOL_SIZE`) runs at `125` rather than the default `10` — see [10.7](#107-pg_pool_size-saturation--slotprocessorserver-crash) for the rationale and the underlying `SlotProcessorServer` crash bug it mitigates.
+
 **Sink Connections:**
 - Kafka: `Sequin.Sinks.Kafka.ConnectionCache`
 - Redis: `Sequin.Sinks.Redis.ConnectionCache`
@@ -1268,6 +1270,30 @@ FROM pg_replication_slots;
 ```elixir
 Sequin.Runtime.Supervisor.restart_replication(slot_supervisor(), pg_replication)
 ```
+
+### 10.7 PG_POOL_SIZE Saturation & SlotProcessorServer Crash
+
+**Symptom:** `SlotProcessorServer` for a replication slot crashes with a `MatchError`; replication slot freezes for tens of seconds to several minutes; WAL backs up on the source PostgreSQL
+
+**Root cause:** In `lib/sequin/runtime/slot_message_store.ex:921-923`, `upsert_consumer_messages/2` is called inside an `Enum.each` with a hard `{:ok, _count} = ...` match. Any transient error from the metadata DB (pool `:queue_timeout`, connection drop, lock contention, statement timeout) raises a `MatchError` that propagates up through `SlotMessageStore.handle_call` and terminates the `SlotProcessorServer` for the entire replication slot. Because that GenServer is supervised with exponential backoff, each crash freezes the slot — during which Postgres cannot release WAL — turning a routine, recoverable database blip into operational pressure on the source: replication lag accumulates, disk fills, and other sinks sharing the slot stall as collateral.
+
+**Workaround in production:** `PG_POOL_SIZE` is raised from the default `10` to `125` to prevent Sequin's metadata-DB connection pool from saturating during burst writes — particularly the cold-start ack rush from many `SlotMessageStore`s after a restart. When the pool saturates, Ecto returns `:queue_timeout` from `upsert_consumer_events`, which triggers the `MatchError` path described above.
+
+`125` was chosen because the source databases share the same Postgres instance (`max_connections=450`). Sequin's full footprint at this pool size is approximately:
+
+- ~125 metadata-DB pool
+- ~30 source-DB pools
+- 3 replication-slot connections
+
+≈ 160 connections total, leaving comfortable headroom for application traffic and ad-hoc clients on that shared instance.
+
+**Proper fix (not yet applied):** Surface the `{:error, _}` return from `upsert_consumer_messages/2` and let the caller retry/backoff at the message level, so a brief pool stall delays a single batch of acks instead of taking down the entire slot processor. Until that is done, the pool bump is a mitigation, not a fix — it shrinks the probability of the crash, but does not eliminate the underlying fragility.
+
+**Debug:**
+1. Check `SlotProcessorServer` crash logs for `MatchError` referencing `upsert_consumer_messages` or `upsert_consumer_events`.
+2. Check Ecto pool metrics for `:queue_timeout` errors against the metadata DB.
+3. Check `pg_replication_slots.confirmed_flush_lsn` — if it stops advancing for tens of seconds while the source keeps writing, the slot is frozen.
+4. Check WAL size on the source (`pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)`).
 
 ---
 
