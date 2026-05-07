@@ -116,6 +116,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
     }
   }
 
+  // solves conflicts in timeranges, always decides on one org when there are overlapping ranges
   const buildTimeline = (
     affiliations: AffiliationItem[],
     fallbackOrganizationId: string | null,
@@ -224,7 +225,8 @@ async function prepareMemberOrganizationAffiliationTimeline(
     }
 
     if (includeFallback) {
-      // Covers activity before the first dated stint (and empty-timeline edge cases). Manual passes omit this.
+      // prepend range to cover all activities before the earliest affiliation date
+      // also handles edge case where fallback org is null and the timeline is empty.
       timeline.unshift({
         organizationId: fallbackOrganizationId,
         dateStart: fallbackStart.toISOString(),
