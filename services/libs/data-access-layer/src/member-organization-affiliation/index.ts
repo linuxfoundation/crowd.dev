@@ -375,6 +375,7 @@ async function processAffiliationActivities(
         FROM "memberSegmentAffiliations" msa
         WHERE msa."memberId" = $(memberId)
           AND msa."segmentId" = ar."segmentId"
+          AND msa."organizationId" IS NOT NULL
           AND (msa."dateStart" IS NULL OR ar."timestamp" >= msa."dateStart"::date)
           AND (msa."dateEnd" IS NULL OR ar."timestamp" < msa."dateEnd"::date + interval '1 day')
       )
