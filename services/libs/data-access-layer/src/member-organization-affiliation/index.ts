@@ -330,7 +330,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
         items.push({
           organizationId: primary.organizationId,
           dateStart: new Date('1970-01-01').toISOString(),
-          dateEnd: null,
+          dateEnd: primary.dateEnd ? new Date(primary.dateEnd).toISOString() : null,
           segmentId,
         })
       }
