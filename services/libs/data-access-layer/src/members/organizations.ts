@@ -1012,6 +1012,18 @@ export async function mergeRoles(
           })
 
           queueRoleRemoval(currentRole)
+        } else {
+          // Primary started earlier — keep it, but track secondary for override transfer.
+          // Insert is a no-op (ON CONFLICT), Phase 3 resolves via isSamePrimaryRole.
+          addRoles.push({
+            dateStart: toIsoString(currentRole.dateStart as Date | string),
+            dateEnd: null,
+            memberId: currentRole.memberId,
+            organizationId: currentRole.organizationId,
+            title: currentRole.title,
+            source: currentRole.source,
+            originalRoleIds: [currentRole.id, memberOrganization.id].filter(Boolean),
+          })
         }
 
         queueRoleRemoval(memberOrganization)
@@ -1034,7 +1046,9 @@ export async function mergeRoles(
           ((secondaryStart < primaryStart && secondaryEnd > primaryStart) ||
             (primaryStart < secondaryStart && secondaryEnd < primaryEnd) ||
             (secondaryStart < primaryStart && secondaryEnd > primaryEnd) ||
-            (primaryStart < secondaryStart && secondaryEnd > primaryEnd))
+            (primaryStart < secondaryStart &&
+              secondaryStart < primaryEnd &&
+              secondaryEnd > primaryEnd))
         )
       })
 
