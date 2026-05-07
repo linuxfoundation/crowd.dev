@@ -27,19 +27,22 @@ jobs:
             console.log(`PR Title: ${prTitle}`);
 
             const existingComment = await (async () => {
-              const iterator = github.paginate.iterator(github.rest.issues.listComments, {
-                owner,
-                repo,
-                issue_number: prNumber,
-                per_page: 100,
-              });
-              for await (const { data: comments } of iterator) {
+              const perPage = 100;
+              for (let page = 1; ; page += 1) {
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  per_page: perPage,
+                  page,
+                });
+
                 const found = comments.find(
                   (c) => c.user?.type === 'Bot' && c.body?.includes(COMMENT_MARKER),
                 );
                 if (found) return found;
+                if (comments.length < perPage) return null;
               }
-              return null;
             })();
 
             if (!jiraKeyRegex.test(prTitle)) {
