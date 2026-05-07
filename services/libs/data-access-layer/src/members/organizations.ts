@@ -578,7 +578,7 @@ export interface IMergeStrat {
   targetOrganizationId(role: IMemberOrganization): string
 }
 
-type RoleToAdd = IMemberOrganization & { originalRoleIds?: string[] }
+type RoleToAdd = IMemberOrganization & { originalRoleIds: string[] }
 
 const MemberMergeStrat = (primaryMemberId: string): IMergeStrat => ({
   entityIdField: EntityField.memberId,
@@ -958,7 +958,7 @@ export async function mergeRoles(
     memberId: mergeStrat.targetMemberId(role),
     organizationId: mergeStrat.targetOrganizationId(role),
     source: role.source,
-    originalRoleIds: role.id ? [role.id] : undefined,
+    originalRoleIds: role.id ? [role.id] : [],
   })
 
   let shouldRecalculateAffiliations = false
@@ -1032,13 +1032,13 @@ export async function mergeRoles(
           if (new Date(secondary.dateStart) < new Date(existingCurrentAdd.dateStart)) {
             existingCurrentAdd.dateStart = new Date(secondary.dateStart).toISOString()
           }
-          if (secondary.id) existingCurrentAdd.originalRoleIds?.push(secondary.id)
+          if (secondary.id) existingCurrentAdd.originalRoleIds.push(secondary.id)
         } else {
           addRoles.push(toTargetEntity(secondary))
         }
       } else {
         const existingAdd = addRoles.find((r) =>
-          currentPrimaries.some((p) => p.id && r.originalRoleIds?.includes(p.id)),
+          currentPrimaries.some((p) => p.id && r.originalRoleIds.includes(p.id)),
         )
 
         const earliestStart = new Date(
@@ -1049,10 +1049,10 @@ export async function mergeRoles(
           if (!existingAdd.dateStart || new Date(earliestStart) < new Date(existingAdd.dateStart)) {
             existingAdd.dateStart = earliestStart
           }
-          if (secondary.id) existingAdd.originalRoleIds?.push(secondary.id)
+          if (secondary.id) existingAdd.originalRoleIds.push(secondary.id)
           for (const p of currentPrimaries) {
-            if (p.id && !existingAdd.originalRoleIds?.includes(p.id)) {
-              existingAdd.originalRoleIds?.push(p.id)
+            if (p.id && !existingAdd.originalRoleIds.includes(p.id)) {
+              existingAdd.originalRoleIds.push(p.id)
               queueRoleRemoval(p)
             }
           }
@@ -1096,7 +1096,7 @@ export async function mergeRoles(
         existingAdd.dateStart = new Date(minStart).toISOString()
         existingAdd.dateEnd = new Date(maxEnd).toISOString()
         for (const r of allNew) {
-          if (r.id) existingAdd.originalRoleIds?.push(r.id)
+          if (r.id) existingAdd.originalRoleIds.push(r.id)
         }
       } else {
         const allMatching = [...intersecting, secondary]
@@ -1139,7 +1139,7 @@ export async function mergeRoles(
     if (!targetRoleId) continue
 
     const relevant = overridesToRecreate.filter((item) =>
-      item.role.id ? addData.originalRoleIds?.includes(item.role.id) : false,
+      item.role.id ? addData.originalRoleIds.includes(item.role.id) : false,
     )
     const targetOrgBlocked = orgAffiliationPolicyById.get(addData.organizationId) ?? false
 
