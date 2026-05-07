@@ -1043,12 +1043,12 @@ export async function mergeRoles(
           mergeStrat.intersectBasedOn(mo) === mergeStrat.intersectBasedOn(memberOrganization) &&
           mo.dateStart !== null &&
           mo.dateEnd !== null &&
-          ((secondaryStart < primaryStart && secondaryEnd > primaryStart) ||
-            (primaryStart < secondaryStart && secondaryEnd < primaryEnd) ||
-            (secondaryStart < primaryStart && secondaryEnd > primaryEnd) ||
-            (primaryStart < secondaryStart &&
+          ((secondaryStart <= primaryStart && secondaryEnd > primaryStart) ||
+            (primaryStart <= secondaryStart && secondaryEnd <= primaryEnd) ||
+            (secondaryStart <= primaryStart && secondaryEnd >= primaryEnd) ||
+            (primaryStart <= secondaryStart &&
               secondaryStart < primaryEnd &&
-              secondaryEnd > primaryEnd))
+              secondaryEnd >= primaryEnd))
         )
       })
 
