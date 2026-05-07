@@ -12,10 +12,10 @@ import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
@@ -92,12 +92,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
           throw new ConflictError('A work experience with the same dates already exists')
         }
 
-        const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-          tx,
+        const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
           data.organizationId,
-        )
+        ])
 
-        if (newMemberOrgId && isAffiliationBlocked) {
+        if (newMemberOrgId && orgAffiliationPolicyById.get(data.organizationId)) {
           await changeMemberOrganizationAffiliationOverrides(tx, [
             {
               memberId,

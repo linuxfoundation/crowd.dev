@@ -7,10 +7,10 @@ import { CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
   deleteMemberOrganizations,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationById,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
@@ -182,11 +182,11 @@ export default class MemberOrganizationsService extends LoggerBase {
       // Create new member organization
       const newMemberOrgId = await createMemberOrganization(qx, memberId, memberOrgData)
 
-      // Check if organization affiliation is blocked
-      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(qx, data.organizationId)
+      const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(qx, [
+        data.organizationId,
+      ])
 
-      // If organization affiliation is blocked, create an affiliation override
-      if (newMemberOrgId && isAffiliationBlocked) {
+      if (newMemberOrgId && orgAffiliationPolicyById.get(data.organizationId)) {
         await changeMemberOrganizationAffiliationOverrides(qx, [
           {
             memberId,

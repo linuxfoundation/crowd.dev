@@ -18,6 +18,9 @@ import { EmailDomainMemberOrganizationActivityDate } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const toIsoString = (v: Date | string): string =>
+  v instanceof Date ? v.toISOString() : new Date(v).toISOString()
+
 export async function fetchMemberOrganizations(
   qx: QueryExecutor,
   memberId: string,
@@ -218,30 +221,25 @@ export async function fetchManyMemberOrgsWithOrgData(
   return resultMap
 }
 
-export async function checkOrganizationAffiliationPolicy(
-  qx: QueryExecutor,
-  organizationId: string,
-): Promise<boolean> {
-  const result = await qx.selectOneOrNone(
-    `SELECT "isAffiliationBlocked" FROM "organizations" WHERE "id" = $(organizationId)`,
-    { organizationId },
-  )
-
-  return result?.isAffiliationBlocked ?? false
-}
-
-export async function checkOrganizationAffiliationPolicies(
+export async function fetchManyOrganizationAffiliationPolicies(
   qx: QueryExecutor,
   organizationIds: string[],
-): Promise<Set<string>> {
-  if (organizationIds.length === 0) return new Set()
+): Promise<Map<string, boolean>> {
+  if (organizationIds.length === 0) return new Map()
 
   const results = await qx.select(
-    `SELECT "id" FROM "organizations" WHERE "id" IN ($(organizationIds:csv)) AND "isAffiliationBlocked" = true`,
+    `SELECT id, "isAffiliationBlocked"
+     FROM organizations
+     WHERE id IN ($(organizationIds:csv))`,
     { organizationIds },
   )
 
-  return new Set(results.map((r: { id: string }) => r.id))
+  return new Map(
+    results.map((r: { id: string; isAffiliationBlocked: boolean }) => [
+      r.id,
+      r.isAffiliationBlocked ?? false,
+    ]),
+  )
 }
 
 export async function createMemberOrganization(
@@ -694,14 +692,14 @@ export async function removeMemberRole(qx: QueryExecutor, role: IMemberOrganizat
     conditions.push('"dateStart" IS NULL')
   } else {
     conditions.push('"dateStart" = $(dateStart)')
-    replacements.dateStart = (role.dateStart as Date).toISOString()
+    replacements.dateStart = toIsoString(role.dateStart)
   }
 
   if (role.dateEnd === null) {
     conditions.push('"dateEnd" IS NULL')
   } else {
     conditions.push('"dateEnd" = $(dateEnd)')
-    replacements.dateEnd = (role.dateEnd as Date).toISOString()
+    replacements.dateEnd = toIsoString(role.dateEnd)
   }
 
   const whereClause = conditions.join(' AND ')
@@ -758,9 +756,9 @@ async function moveRolesBetweenEntities(
   secondaryId: string,
   mergeStrat: IMergeStrat,
   entityType: EntityType,
-) {
-  // first, handle members that belong to both organizations,
-  // then make a full update on remaining org2 members (that doesn't belong to o1)
+): Promise<{ shouldRecalculateAffiliations: boolean }> {
+  let shouldRecalculateAffiliations = false
+
   const rolesForBothEntities = await findRolesBelongingToBothEntities(
     qx,
     primaryId,
@@ -780,16 +778,41 @@ async function moveRolesBetweenEntities(
   const primaryAffiliationOverrides = await findAffiliationOverrides(qx, primaryId)
   const secondaryAffiliationOverrides = await findAffiliationOverrides(qx, secondaryId)
 
-  await mergeRoles(
+  const organizationIds = new Set<string>()
+  for (const role of rolesForBothEntities) {
+    organizationIds.add(role.organizationId)
+    organizationIds.add(mergeStrat.targetOrganizationId(role))
+  }
+
+  if (entityType === EntityType.ORGANIZATION) {
+    organizationIds.add(primaryId)
+    organizationIds.add(secondaryId)
+  }
+
+  const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(qx, [
+    ...organizationIds,
+  ])
+
+  if (
+    entityType === EntityType.ORGANIZATION &&
+    (orgAffiliationPolicyById.get(primaryId) || orgAffiliationPolicyById.get(secondaryId))
+  ) {
+    shouldRecalculateAffiliations = true
+  }
+
+  const mergeResult = await mergeRoles(
     qx,
     primaryRoles,
     secondaryRoles,
     primaryAffiliationOverrides,
     secondaryAffiliationOverrides,
     mergeStrat,
+    orgAffiliationPolicyById,
   )
+  if (mergeResult.shouldRecalculateAffiliations) {
+    shouldRecalculateAffiliations = true
+  }
 
-  // update rest of the o2 members
   const remainingRoles = await findNonIntersectingRoles(
     qx,
     primaryId,
@@ -798,18 +821,28 @@ async function moveRolesBetweenEntities(
     mergeStrat.intersectBasedOnField,
   )
 
-  // Process non-intersecting roles: these are roles that exist only in secondary entity
-  // We need to move them to primary entity and preserve their overrides
+  // Fetch policies for org IDs not yet in the map (member merge edge case)
+  const missingOrgIds = [
+    ...new Set(
+      remainingRoles
+        .flatMap((r) => [r.organizationId, mergeStrat.targetOrganizationId(r)])
+        .filter((id) => !orgAffiliationPolicyById.has(id)),
+    ),
+  ]
+  if (missingOrgIds.length > 0) {
+    const additional = await fetchManyOrganizationAffiliationPolicies(qx, missingOrgIds)
+    for (const [id, blocked] of additional) {
+      orgAffiliationPolicyById.set(id, blocked)
+    }
+  }
+
   for (const role of remainingRoles) {
-    // Check if this role has an affiliation override
     const existingOverride = secondaryAffiliationOverrides.find(
       (o) => o.memberOrganizationId === role.id,
     )
 
-    // Remove the old role (this will also clean up its override via removeMemberRole)
     await removeMemberRole(qx, role)
 
-    // Add the role to the primary entity
     const newRoleId = await addMemberRole(qx, {
       title: role.title,
       dateStart: role.dateStart,
@@ -820,41 +853,56 @@ async function moveRolesBetweenEntities(
       deletedAt: role.deletedAt,
     })
 
-    // If the old role had an override and we successfully created the new role, recreate the override
-    if (existingOverride && newRoleId) {
-      let overrideToApply = existingOverride
+    if (!newRoleId) continue
 
-      // Only keep isPrimaryWorkExperience if primary doesn't already have one
-      if (existingOverride.isPrimaryWorkExperience) {
-        const primaryHasPrimaryWorkExp = primaryAffiliationOverrides.some(
-          (o) => o.isPrimaryWorkExperience,
-        )
+    const targetOrgId = mergeStrat.targetOrganizationId(role)
+    const isTargetBlocked = orgAffiliationPolicyById.get(targetOrgId) ?? false
+    const isSourceBlocked = orgAffiliationPolicyById.get(role.organizationId) ?? false
 
-        if (primaryHasPrimaryWorkExp) {
-          overrideToApply = {
-            ...existingOverride,
-            isPrimaryWorkExperience: false,
-          }
-        }
-      }
+    let isPrimaryWorkExp = existingOverride?.isPrimaryWorkExperience ?? false
+    if (isPrimaryWorkExp) {
+      const alreadyHasIt = primaryAffiliationOverrides.some((o) => o.isPrimaryWorkExperience)
+      if (alreadyHasIt) isPrimaryWorkExp = false
+    }
 
+    const preserveManualBlock = existingOverride?.allowAffiliation === false && !isSourceBlocked
+
+    if (isTargetBlocked) {
       await changeMemberOrganizationAffiliationOverrides(qx, [
         {
-          ...overrideToApply,
           memberId: mergeStrat.targetMemberId(role),
           memberOrganizationId: newRoleId,
+          allowAffiliation: false,
+          isPrimaryWorkExperience: isPrimaryWorkExp || undefined,
         },
       ])
+      shouldRecalculateAffiliations = true
+    } else if (preserveManualBlock || isPrimaryWorkExp) {
+      await changeMemberOrganizationAffiliationOverrides(qx, [
+        {
+          memberId: mergeStrat.targetMemberId(role),
+          memberOrganizationId: newRoleId,
+          allowAffiliation: preserveManualBlock ? false : undefined,
+          isPrimaryWorkExperience: isPrimaryWorkExp || undefined,
+        },
+      ])
+      shouldRecalculateAffiliations = true
+    }
+
+    if (!isTargetBlocked && existingOverride?.allowAffiliation === false && isSourceBlocked) {
+      shouldRecalculateAffiliations = true
     }
   }
+
+  return { shouldRecalculateAffiliations }
 }
 
 export async function moveMembersBetweenOrganizations(
   qx: QueryExecutor,
   secondaryOrganizationId: string,
   primaryOrganizationId: string,
-): Promise<void> {
-  await moveRolesBetweenEntities(
+): Promise<{ shouldRecalculateAffiliations: boolean }> {
+  return moveRolesBetweenEntities(
     qx,
     primaryOrganizationId,
     secondaryOrganizationId,
@@ -867,8 +915,8 @@ export async function moveOrgsBetweenMembers(
   qx: QueryExecutor,
   primaryMemberId: string,
   secondaryMemberId: string,
-): Promise<void> {
-  await moveRolesBetweenEntities(
+): Promise<{ shouldRecalculateAffiliations: boolean }> {
+  return moveRolesBetweenEntities(
     qx,
     primaryMemberId,
     secondaryMemberId,
@@ -915,7 +963,9 @@ export async function mergeRoles(
   primaryAffiliationOverrides: IMemberOrganizationAffiliationOverride[],
   secondaryAffiliationOverrides: IMemberOrganizationAffiliationOverride[],
   mergeStrat: IMergeStrat,
-) {
+  orgAffiliationPolicyById: Map<string, boolean>,
+): Promise<{ shouldRecalculateAffiliations: boolean }> {
+  let shouldRecalculateAffiliations = false
   const allExistingOverrides = [...primaryAffiliationOverrides, ...secondaryAffiliationOverrides]
   const removeRoles: IMemberOrganization[] = []
   const addRoles: (IMemberOrganization & { originalRoleId?: string })[] = []
@@ -926,12 +976,9 @@ export async function mergeRoles(
 
   // Phase 1: Analyze all secondary roles and build the complete plan
   for (const memberOrganization of secondaryRoles) {
-    // if dateEnd and dateStart isn't available, we don't need to move but delete it from org2
     if (memberOrganization.dateStart === null && memberOrganization.dateEnd === null) {
       removeRoles.push(memberOrganization)
-    }
-    // it's a current role, also check org1 to see which one starts earlier
-    else if (memberOrganization.dateStart !== null && memberOrganization.dateEnd === null) {
+    } else if (memberOrganization.dateStart !== null && memberOrganization.dateEnd === null) {
       const currentRoles = primaryRoles.filter(
         (mo) =>
           mergeStrat.worthMerging(mo, memberOrganization) &&
@@ -940,16 +987,14 @@ export async function mergeRoles(
       )
 
       if (currentRoles.length === 0) {
-        // no current role in org1, add the memberOrganization to org1
         addRoles.push(transformRoleToTargetEntity(memberOrganization, mergeStrat))
         removeRoles.push(memberOrganization)
       } else if (currentRoles.length === 1) {
         const currentRole = currentRoles[0]
         if (new Date(memberOrganization.dateStart) <= new Date(currentRoles[0].dateStart)) {
-          // add a new role with earlier dateStart
           addRoles.push({
             id: currentRole.id,
-            dateStart: (memberOrganization.dateStart as Date).toISOString(),
+            dateStart: toIsoString(memberOrganization.dateStart as Date | string),
             dateEnd: null,
             memberId: currentRole.memberId,
             organizationId: currentRole.organizationId,
@@ -957,11 +1002,9 @@ export async function mergeRoles(
             source: currentRole.source,
           })
 
-          // remove current role
           removeRoles.push(currentRole)
         }
 
-        // delete role from org2
         removeRoles.push(memberOrganization)
       } else {
         throw new Error(`Member ${memberOrganization.memberId} has more than one current roles.`)
@@ -969,7 +1012,6 @@ export async function mergeRoles(
     } else if (memberOrganization.dateStart === null && memberOrganization.dateEnd !== null) {
       throw new Error(`Member organization with dateEnd and without dateStart!`)
     } else {
-      // both dateStart and dateEnd exists
       const foundIntersectingRoles = primaryRoles.filter((mo) => {
         const primaryStart = new Date(mo.dateStart)
         const primaryEnd = new Date(mo.dateEnd)
@@ -987,7 +1029,6 @@ export async function mergeRoles(
         )
       })
 
-      // rebuild dateRanges using intersecting roles coming from primary and secondary organizations
       const startDates = [...foundIntersectingRoles, memberOrganization].map((org) =>
         new Date(org.dateStart).getTime(),
       )
@@ -1010,7 +1051,6 @@ export async function mergeRoles(
             : memberOrganization.source,
       })
 
-      // we'll delete all roles that intersect with incoming org member roles and create a merged role
       for (const r of foundIntersectingRoles) {
         removeRoles.push(r)
       }
@@ -1019,148 +1059,140 @@ export async function mergeRoles(
 
   // Phase 2: Execute batch removal of roles
   for (const removeRole of removeRoles) {
-    // Track if this role has an override that we need to recreate later
     const existingOverride = allExistingOverrides.find(
       (o) => o.memberOrganizationId === removeRole.id,
     )
 
     if (existingOverride) {
-      // Store the override so we can recreate it for the new merged role
       affiliationOverridesToRecreate.push({
         role: removeRole,
         override: existingOverride,
       })
     }
 
-    // Remove the role (this will also clean up its override via removeMemberRole)
     await removeMemberRole(qx, removeRole)
   }
 
-  // Phase 3: Execute batch addition of roles and recreate overrides
+  // Phase 3: Execute additions and resolve overrides
   for (const addRole of addRoles) {
     const newRoleId = await addMemberRole(qx, addRole)
+    const targetOrgId = mergeStrat.targetOrganizationId(addRole)
+    const isTargetBlocked = orgAffiliationPolicyById.get(targetOrgId) ?? false
 
-    if (newRoleId) {
-      // Role was successfully created, apply affiliation overrides
-      // Find overrides by matching the original role ID if available, otherwise fallback to member + title matching
-      const relevantOverrides = affiliationOverridesToRecreate.filter((item) => {
-        // If we tracked the original role ID, use exact matching
-        if (addRole.originalRoleId) {
-          return item.role.id === addRole.originalRoleId
-        }
-        // Otherwise, fallback to member + title matching (for merged roles with date changes)
-        return item.role.memberId === addRole.memberId && item.role.title === addRole.title
-      })
+    // Identify the target ID: either the new one or the existing primary it merged into
+    const existingPrimaryRole = !newRoleId
+      ? primaryRoles.find((pr) => isSamePrimaryRole(pr, addRole))
+      : null
+    const targetRoleId = newRoleId || existingPrimaryRole?.id
 
-      if (relevantOverrides.length > 0) {
-        // Prefer the override from the primary role if it exists
-        const primaryOverride = relevantOverrides.find((item) =>
-          primaryRoles.some((primaryRole) => primaryRole.id === item.role.id),
-        )
+    if (!targetRoleId) continue
 
-        // If we found a primary override, use it, otherwise, use the first one
-        const overrideToApply = primaryOverride?.override || relevantOverrides[0]?.override
+    // 1. Gather all overrides relevant to this specific role merge
+    const relevantOverrides = affiliationOverridesToRecreate.filter((item) => {
+      return addRole.originalRoleId
+        ? item.role.id === addRole.originalRoleId
+        : item.role.memberId === addRole.memberId && item.role.title === addRole.title
+    })
 
-        if (overrideToApply) {
-          await changeMemberOrganizationAffiliationOverrides(qx, [
-            {
-              ...overrideToApply,
-              memberId: mergeStrat.targetMemberId(addRole),
-              memberOrganizationId: newRoleId,
-            },
-          ])
-        }
-      }
-    } else {
-      // Role already exists (duplicate), need to transfer override to existing role
-
-      // Find the existing role in primary that matches this addRole
-      const existingPrimaryRole = primaryRoles.find((pr) => isSamePrimaryRole(pr, addRole))
-
-      if (existingPrimaryRole) {
-        // Find overrides from secondary roles that should be transferred
-        // Use original role ID if available for exact matching
-        const secondaryOverridesToTransfer = affiliationOverridesToRecreate.filter((item) => {
-          const isSecondaryOverride = secondaryAffiliationOverrides.some(
-            (so) => so.memberOrganizationId === item.role.id,
+    const removedPrimaryOverride = relevantOverrides.find((item) =>
+      primaryAffiliationOverrides.some((o) => o.memberOrganizationId === item.role.id),
+    )?.override
+    const existingPrimaryOverride = primaryAffiliationOverrides.find(
+      (o) => o.memberOrganizationId === targetRoleId,
+    )
+    const primaryOverride = existingPrimaryOverride ?? removedPrimaryOverride
+    const incomingSecondaries = relevantOverrides.filter((r) =>
+      secondaryAffiliationOverrides.some((s) => s.memberOrganizationId === r.role.id),
+    )
+    if (!newRoleId) {
+      // Use targetOrganizationId so the comparison works in both member-merge
+      // (org unchanged) and org-merge (secondary org -> primary org) contexts.
+      const directSecondaryRole = secondaryRoles.find((role) =>
+        secondaryAffiliationOverrides.some(
+          (override) =>
+            override.memberOrganizationId === role.id &&
+            mergeStrat.targetOrganizationId(role) === addRole.organizationId &&
+            role.title === addRole.title,
+        ),
+      )
+      const directSecondaryOverride = directSecondaryRole
+        ? secondaryAffiliationOverrides.find(
+            (override) => override.memberOrganizationId === directSecondaryRole.id,
           )
+        : undefined
 
-          if (!isSecondaryOverride) return false
-
-          // If we have original role ID, use exact match
-          if (addRole.originalRoleId) {
-            return item.role.id === addRole.originalRoleId
-          }
-
-          // Otherwise fallback to member + title matching
-          return item.role.memberId === addRole.memberId && item.role.title === addRole.title
+      if (
+        directSecondaryRole &&
+        directSecondaryOverride &&
+        !incomingSecondaries.some((item) => item.role.id === directSecondaryRole.id)
+      ) {
+        incomingSecondaries.push({
+          role: directSecondaryRole,
+          override: directSecondaryOverride,
         })
+      }
+    }
 
-        // Also check if there's a direct override on the secondary role we're trying to add
-        const directSecondaryOverride = secondaryAffiliationOverrides.find((so) =>
-          secondaryRoles.some(
-            (sr) =>
-              sr.id === so.memberOrganizationId &&
-              sr.organizationId === addRole.organizationId &&
-              sr.title === addRole.title,
-          ),
+    // 2. Resolve "Primary Work Experience"
+    // Keep it if the primary had it, or if a secondary had it and no other primary role claims it.
+    const secondaryHasExp = incomingSecondaries.some((s) => s.override.isPrimaryWorkExperience)
+    const otherPrimaryHasExp = primaryAffiliationOverrides.some(
+      (o) => o.isPrimaryWorkExperience && o.memberOrganizationId !== targetRoleId,
+    )
+    const finalIsPrimaryWorkExp = !!(
+      primaryOverride?.isPrimaryWorkExperience ||
+      (secondaryHasExp && !otherPrimaryHasExp)
+    )
+
+    // 3. Resolve "Allow Affiliation"
+    // Block if the target org is blocked, or preserve row-level manual blocks.
+    let finalAllowAffiliation: boolean | undefined = undefined
+    const secondaryManualBlock = incomingSecondaries.some(
+      (s) =>
+        s.override.allowAffiliation === false &&
+        !(orgAffiliationPolicyById.get(s.role.organizationId) ?? false),
+    )
+
+    if (isTargetBlocked || primaryOverride?.allowAffiliation === false || secondaryManualBlock) {
+      finalAllowAffiliation = false
+    }
+
+    // 4. Update db
+    const needsUpdate =
+      isTargetBlocked ||
+      primaryOverride?.allowAffiliation === false ||
+      secondaryManualBlock ||
+      finalIsPrimaryWorkExp
+
+    if (needsUpdate) {
+      const effectiveAllowAffiliation = finalAllowAffiliation
+
+      await changeMemberOrganizationAffiliationOverrides(qx, [
+        {
+          memberId: mergeStrat.targetMemberId(addRole),
+          memberOrganizationId: targetRoleId,
+          allowAffiliation: effectiveAllowAffiliation,
+          isPrimaryWorkExperience: finalIsPrimaryWorkExp || undefined,
+        },
+      ])
+      shouldRecalculateAffiliations = true
+    }
+
+    // 5. Recalculate if we intentionally dropped a stale block from a blocked source org.
+    if (!shouldRecalculateAffiliations && !isTargetBlocked) {
+      if (
+        incomingSecondaries.some(
+          (s) =>
+            s.override.allowAffiliation === false &&
+            (orgAffiliationPolicyById.get(s.role.organizationId) ?? false),
         )
-
-        if (directSecondaryOverride) {
-          secondaryOverridesToTransfer.push({
-            role: addRole as IMemberOrganization,
-            override: directSecondaryOverride,
-          })
-        }
-
-        if (secondaryOverridesToTransfer.length > 0) {
-          // Get existing override on primary role if any
-          const existingPrimaryOverride = primaryAffiliationOverrides.find(
-            (po) => po.memberOrganizationId === existingPrimaryRole.id,
-          )
-
-          // Merge override properties intelligently
-          let finalOverride = secondaryOverridesToTransfer[0].override
-
-          // If primary has isPrimaryWorkExperience, keep it; otherwise use secondary's value
-          if (existingPrimaryOverride?.isPrimaryWorkExperience) {
-            finalOverride = {
-              ...finalOverride,
-              isPrimaryWorkExperience: true,
-            }
-          } else if (secondaryOverridesToTransfer.some((o) => o.override.isPrimaryWorkExperience)) {
-            // Only set isPrimaryWorkExperience if no other primary role has it
-            const primaryHasPrimaryWorkExp = primaryAffiliationOverrides.some(
-              (o) => o.isPrimaryWorkExperience && o.memberOrganizationId !== existingPrimaryRole.id,
-            )
-
-            if (!primaryHasPrimaryWorkExp) {
-              finalOverride = {
-                ...finalOverride,
-                isPrimaryWorkExperience: true,
-              }
-            }
-          }
-
-          // Prefer allowAffiliation: true from either side
-          if (existingPrimaryOverride?.allowAffiliation || finalOverride.allowAffiliation) {
-            finalOverride = {
-              ...finalOverride,
-              allowAffiliation: true,
-            }
-          }
-
-          await changeMemberOrganizationAffiliationOverrides(qx, [
-            {
-              ...finalOverride,
-              memberId: existingPrimaryRole.memberId,
-              memberOrganizationId: existingPrimaryRole.id,
-            },
-          ])
-        }
+      ) {
+        shouldRecalculateAffiliations = true
       }
     }
   }
+
+  return { shouldRecalculateAffiliations }
 }
 
 export async function fetchMemberWorkExperienceWithEpochDates(

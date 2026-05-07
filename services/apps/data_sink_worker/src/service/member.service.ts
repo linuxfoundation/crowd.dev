@@ -477,9 +477,10 @@ export default class MemberService extends LoggerBase {
               }
 
               const key = orgCacheKey(org)
+              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
               let orgIdPromise: Promise<string | undefined>
-              if (key && orgPromiseCache?.has(key)) {
-                orgIdPromise = orgPromiseCache.get(key)
+              if (cachedOrgPromise) {
+                orgIdPromise = cachedOrgPromise
               } else {
                 orgIdPromise = logExecutionTimeV2(
                   () => orgService.findOrCreate(platform, integrationId, org),
@@ -492,10 +493,12 @@ export default class MemberService extends LoggerBase {
                 }
               }
               const orgId = await orgIdPromise
-              organizations.push({
-                id: orgId,
-                source: org.source,
-              })
+              if (orgId) {
+                organizations.push({
+                  id: orgId,
+                  source: org.source,
+                })
+              }
             }
           }
 
@@ -711,9 +714,10 @@ export default class MemberService extends LoggerBase {
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
               const key = orgCacheKey(org)
+              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
               let orgIdPromise: Promise<string | undefined>
-              if (key && orgPromiseCache?.has(key)) {
-                orgIdPromise = orgPromiseCache.get(key)
+              if (cachedOrgPromise) {
+                orgIdPromise = cachedOrgPromise
               } else {
                 orgIdPromise = logExecutionTimeV2(
                   () => orgService.findOrCreate(platform, integrationId, org),
@@ -726,10 +730,12 @@ export default class MemberService extends LoggerBase {
                 }
               }
               const orgId = await orgIdPromise
-              organizations.push({
-                id: orgId,
-                source: data.source,
-              })
+              if (orgId) {
+                organizations.push({
+                  id: orgId,
+                  source: data.source,
+                })
+              }
             }
           }
 
@@ -839,9 +845,10 @@ export default class MemberService extends LoggerBase {
         ],
       }
       const key = orgCacheKey(org)
+      const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
       let orgIdPromise: Promise<string | undefined>
-      if (key && orgPromiseCache?.has(key)) {
-        orgIdPromise = orgPromiseCache.get(key)
+      if (cachedOrgPromise) {
+        orgIdPromise = cachedOrgPromise
       } else {
         orgIdPromise = orgService.findOrCreate(
           OrganizationAttributeSource.EMAIL,

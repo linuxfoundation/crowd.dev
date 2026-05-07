@@ -8,9 +8,9 @@ import {
 import {
   QueryExecutor,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   createMemberOrganization,
   deleteUndatedMemberOrganizations,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationsBySource,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
@@ -116,12 +116,11 @@ async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChang
         source: OrganizationSource.EMAIL_DOMAIN,
       })
 
-      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-        qx,
+      const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(qx, [
         change.organizationId,
-      )
+      ])
 
-      if (memberOrganizationId && isAffiliationBlocked) {
+      if (memberOrganizationId && orgAffiliationPolicies.get(change.organizationId)) {
         await changeMemberOrganizationAffiliationOverrides(qx, [
           {
             memberId: change.memberId,
