@@ -83,10 +83,13 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     git \
     ripgrep \
+    ruby \
+    ruby-dev \
+    build-essential \
     --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
-    && apt-get autoremove -y
+    && gem install licensee -v '10.0.0' --no-document \
+    && apt-get remove --autoremove -y ruby-dev build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

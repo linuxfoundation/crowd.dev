@@ -283,6 +283,17 @@ async def update_last_processed_commit(repo_id: str, commit_hash: str, branch: s
     return str(result)
 
 
+async def update_repository_license(repository_id: str, license_spdx: str | None) -> None:
+    sql_query = """
+    UPDATE public.repositories
+        SET license = $1,
+        "updatedAt" = NOW()
+    WHERE id = $2
+      AND ($1 IS NOT NULL OR license IS NULL)
+    """
+    await execute(sql_query, (license_spdx, repository_id))
+
+
 async def mark_repo_as_processed(repo_id: str, repo_state: RepositoryState):
     sql_query = """
     UPDATE git."repositoryProcessing"
