@@ -83,7 +83,7 @@ export async function getIdentitiesExistInOtherMembers(
     const db = svc.postgres.reader
     rows = await getIdentitiesExistInOthers(db, excludeMemberId, identities)
   } catch (err) {
-    throw new Error(err)
+    throw err
   }
 
   return rows
@@ -111,7 +111,7 @@ export async function updateMemberWithEnrichmentData(
       }
     })
   } catch (err) {
-    throw new Error(err)
+    throw err
   }
 }
 
