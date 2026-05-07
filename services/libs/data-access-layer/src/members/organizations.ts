@@ -949,13 +949,12 @@ function areDatesEqual(dateA: Date | string | null, dateB: Date | string | null)
 }
 
 function isSamePrimaryRole(a: IMemberOrganization, b: IMemberOrganization): boolean {
-  const isSameMember = a.memberId === b.memberId
-  const isSameOrganization = a.organizationId === b.organizationId
-  const isSameTitle = a.title === b.title
-  const hasSameStartDate = areDatesEqual(a.dateStart, b.dateStart)
-  const hasSameEndDate = areDatesEqual(a.dateEnd, b.dateEnd)
-
-  return isSameMember && isSameOrganization && isSameTitle && hasSameStartDate && hasSameEndDate
+  return (
+    a.memberId === b.memberId &&
+    a.organizationId === b.organizationId &&
+    areDatesEqual(a.dateStart, b.dateStart) &&
+    areDatesEqual(a.dateEnd, b.dateEnd)
+  )
 }
 
 export async function mergeRoles(
