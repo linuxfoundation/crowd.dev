@@ -17,62 +17,99 @@ jobs:
         with:
           script: |
             const prTitle = context.payload.pull_request.title;
-            console.log(`PR Title: ${prTitle}`);
-            
-            // Regex to match Jira issue keys (CM-123 format)
-            // Supports conventional commits format: type(CM-123): description
+            const prNumber = context.issue.number;
+            const { owner, repo } = context.repo;
+            const headSha = context.payload.pull_request.head.sha;
+
+            const COMMENT_MARKER = '<!-- jira-key-validation-comment -->';
             const jiraKeyRegex = /\b[A-Z]+-\d+\b/;
-            
-            if (!jiraKeyRegex.test(prTitle)) {
-              const warningMessage = `⚠️ **Jira Issue Key Missing**
-              
-              Your PR title doesn't contain a Jira issue key. Consider adding it for better traceability.
-              
-              **Example:**
-              - \`feat: add user authentication (CM-123)\`
-              - \`feat: add user authentication (IN-123)\`
 
-              **Projects:**
-              - CM: Community Data Platform
-              - IN: Insights
+            console.log(`PR Title: ${prTitle}`);
 
-              Please add a Jira issue key to your PR title.`;
-              
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: warningMessage
+            const existingComment = await (async () => {
+              const iterator = github.paginate.iterator(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: prNumber,
+                per_page: 100,
               });
-              
-              // Create check run with failure conclusion
-              github.rest.checks.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                head_sha: context.payload.pull_request.head.sha,
+              for await (const { data: comments } of iterator) {
+                const found = comments.find(
+                  (c) => c.user?.type === 'Bot' && c.body?.includes(COMMENT_MARKER),
+                );
+                if (found) return found;
+              }
+              return null;
+            })();
+
+            if (!jiraKeyRegex.test(prTitle)) {
+              const warningMessage = `${COMMENT_MARKER}
+            ⚠️ **Jira Issue Key Missing**
+
+            Your PR title doesn't contain a Jira issue key. Consider adding it for better traceability.
+
+            **Example:**
+            - \`feat: add user authentication (CM-123)\`
+            - \`feat: add user authentication (IN-123)\`
+
+            **Projects:**
+            - CM: Community Data Platform
+            - IN: Insights
+
+            Please add a Jira issue key to your PR title.`;
+
+              if (existingComment) {
+                if (existingComment.body !== warningMessage) {
+                  await github.rest.issues.updateComment({
+                    owner,
+                    repo,
+                    comment_id: existingComment.id,
+                    body: warningMessage,
+                  });
+                }
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  body: warningMessage,
+                });
+              }
+
+              await github.rest.checks.create({
+                owner,
+                repo,
+                head_sha: headSha,
                 name: 'Jira PR Validation',
                 status: 'completed',
                 conclusion: 'neutral',
                 output: {
                   title: 'Jira Issue Key Missing',
-                  summary: 'PR title does not contain a Jira issue key'
-                }
+                  summary: 'PR title does not contain a Jira issue key',
+                },
               });
             } else {
               const match = prTitle.match(jiraKeyRegex);
               console.log(`✅ Found Jira issue key: ${match[0]}`);
-              
-              // Create check run with success conclusion
-              github.rest.checks.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                head_sha: context.payload.pull_request.head.sha,
+
+              if (existingComment) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: existingComment.id,
+                });
+              }
+
+              await github.rest.checks.create({
+                owner,
+                repo,
+                head_sha: headSha,
                 name: 'Jira PR Validation',
                 status: 'completed',
                 conclusion: 'success',
                 output: {
                   title: 'Jira Issue Key Found',
-                  summary: `Found Jira issue key: ${match[0]}`
-                }
+                  summary: `Found Jira issue key: ${match[0]}`,
+                },
               });
             }
