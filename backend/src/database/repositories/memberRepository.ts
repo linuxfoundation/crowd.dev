@@ -952,7 +952,7 @@ class MemberRepository {
             },
           )) as any[]
 
-          if (!memberSegment) {
+          if (memberSegment.length === 0) {
             throw new Error('Member with same identity already exists!')
           }
 
