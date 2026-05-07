@@ -217,8 +217,7 @@ export function inferMemberOrganizationStintChanges(
       const overlapEnd = s.dateEnd < gapEnd ? s.dateEnd : gapEnd
       if (overlapStart >= overlapEnd) return false
 
-      // Pre-existing orgs that wrap the neighbor naturally have gap presence just by existing,
-      // so require 90d (vs 30d) of exclusive gap overlap to count as a real career break.
+      // Wrapping orgs were already concurrent, so need >90d (vs >30d) to separate
       const isUmbrella = s.dateStart <= neighbor.dateStart && s.dateEnd >= neighbor.dateEnd
       const threshold = isUmbrella ? 90 : 30
 
