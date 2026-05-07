@@ -116,15 +116,12 @@ async function prepareMemberOrganizationAffiliationTimeline(
     }
   }
 
-  // solves conflicts in timeranges, always decides on one org when there are overlapping ranges
   const buildTimeline = (
-    memberOrganizations: MemberOrganizationWithOverrides[],
-    manualAffiliations: IManualAffiliationData[],
+    affiliations: AffiliationItem[],
     fallbackOrganizationId: string | null,
+    includeFallback = true,
   ): TimelineItem[] => {
-    const allAffiliationsWithDates = [...memberOrganizations, ...manualAffiliations].filter(
-      (row) => !!row.dateStart,
-    )
+    const allAffiliationsWithDates = affiliations.filter((row) => !!row.dateStart)
 
     const earliestStartDate =
       allAffiliationsWithDates.length > 0
@@ -148,7 +145,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
       let gapStartDate = null
 
       for (let date = new Date(earliestStartDate); date <= now; date.setDate(date.getDate() + 1)) {
-        const orgs = findOrgsWithRolesInDate(date, [...memberOrganizations, ...manualAffiliations])
+        const orgs = findOrgsWithRolesInDate(date, affiliations)
 
         if (orgs.length === 0) {
           // means there's a gap in the timeline, close the current range if there's one
@@ -226,13 +223,14 @@ async function prepareMemberOrganizationAffiliationTimeline(
       fallbackEnd = oneDayBefore(earliestStartDate)
     }
 
-    // prepend range to cover all activities before the earliest affiliation date
-    // also handles edge case where fallback org is null and the timeline is empty.
-    timeline.unshift({
-      organizationId: fallbackOrganizationId,
-      dateStart: fallbackStart.toISOString(),
-      dateEnd: fallbackEnd.toISOString(),
-    })
+    if (includeFallback) {
+      // Covers activity before the first dated stint (and empty-timeline edge cases). Manual passes omit this.
+      timeline.unshift({
+        organizationId: fallbackOrganizationId,
+        dateStart: fallbackStart.toISOString(),
+        dateEnd: fallbackEnd.toISOString(),
+      })
+    }
 
     return timeline
   }
@@ -308,7 +306,23 @@ async function prepareMemberOrganizationAffiliationTimeline(
         .value() ?? null
   }
 
-  return buildTimeline(memberOrganizations, manualAffiliations, fallbackOrganizationId)
+  // we separate global and manual timelines to prevent 'stale' organizationIds.
+  // member organizations apply globally, while member segment affiliations only override specific segments.
+  const baseTimeline = buildTimeline(memberOrganizations, fallbackOrganizationId).map((item) => ({
+    ...item,
+    skipManualAffiliationSegments: manualAffiliations.length > 0,
+  }))
+
+  // Only keep items with an actual org. Gaps (null org) are already handled by the base timeline.
+  const manualTimeline = _.flatMap(
+    _.groupBy(manualAffiliations, 'segmentId'),
+    (affiliations, segmentId) =>
+      buildTimeline(affiliations, null, false)
+        .filter((item) => item.organizationId !== null)
+        .map((item) => ({ ...item, segmentId })),
+  )
+
+  return [...baseTimeline, ...manualTimeline]
 }
 
 async function processAffiliationActivities(
@@ -327,29 +341,44 @@ async function processAffiliationActivities(
   }
 
   // Build the where conditions for the subquery
-  const conditions = [`"memberId" = $(memberId)`]
+  const conditions = [`ar."memberId" = $(memberId)`]
 
   // Organization filtering
   if (affiliation.organizationId) {
-    conditions.push(`("organizationId" is null or "organizationId" <> $(organizationId))`)
+    conditions.push(`(ar."organizationId" is null or ar."organizationId" <> $(organizationId))`)
   } else {
-    conditions.push(`"organizationId" is not null`)
+    conditions.push(`ar."organizationId" is not null`)
   }
 
   // Date filtering
   if (affiliation.dateStart) {
-    conditions.push(`"timestamp" >= $(dateStart)::date`)
+    conditions.push(`ar."timestamp" >= $(dateStart)::date`)
     params.dateStart = affiliation.dateStart
   }
   if (affiliation.dateEnd) {
-    conditions.push(`"timestamp" < $(dateEnd)::date + interval '1 day'`)
+    conditions.push(`ar."timestamp" < $(dateEnd)::date + interval '1 day'`)
     params.dateEnd = affiliation.dateEnd
   }
 
   // Segment filtering (for manual affiliations)
   if (affiliation.segmentId) {
-    conditions.push(`"segmentId" = $(segmentId)`)
+    conditions.push(`ar."segmentId" = $(segmentId)`)
     params.segmentId = affiliation.segmentId
+  }
+
+  // Don't overwrite activities that an member segment affiliation covers
+  // Those are handled in the manual timeline.
+  if (affiliation.skipManualAffiliationSegments) {
+    conditions.push(`
+      NOT EXISTS (
+        SELECT 1
+        FROM "memberSegmentAffiliations" msa
+        WHERE msa."memberId" = $(memberId)
+          AND msa."segmentId" = ar."segmentId"
+          AND (msa."dateStart" IS NULL OR ar."timestamp" >= msa."dateStart"::date)
+          AND (msa."dateEnd" IS NULL OR ar."timestamp" < msa."dateEnd"::date + interval '1 day')
+      )
+    `)
   }
 
   const whereClause = conditions.join(' and ')
@@ -360,7 +389,7 @@ async function processAffiliationActivities(
         UPDATE "activityRelations"
         SET "organizationId" = $(organizationId), "updatedAt" = CURRENT_TIMESTAMP
         WHERE "activityId" in (
-          select "activityId" from "activityRelations"
+          select ar."activityId" from "activityRelations" ar
           where ${whereClause}
           limit $(batchSize)
         )
