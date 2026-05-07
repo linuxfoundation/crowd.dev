@@ -1028,7 +1028,7 @@ export async function mergeRoles(
 
         queueRoleRemoval(memberOrganization)
       } else {
-        throw new Error(`Member ${memberOrganization.memberId} has more than one current roles.`)
+        throw new Error(`Member ${memberOrganization.memberId} has more than one current role.`)
       }
     } else if (memberOrganization.dateStart === null && memberOrganization.dateEnd !== null) {
       throw new Error(`Member organization with dateEnd and without dateStart!`)
