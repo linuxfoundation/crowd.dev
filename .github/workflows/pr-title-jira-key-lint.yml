@@ -26,57 +26,63 @@ jobs:
 
             console.log(`PR Title: ${prTitle}`);
 
-            const existingComment = await (async () => {
-              const perPage = 100;
-              for (let page = 1; ; page += 1) {
-                const { data: comments } = await github.rest.issues.listComments({
-                  owner,
-                  repo,
-                  issue_number: prNumber,
-                  per_page: perPage,
-                  page,
-                });
+            const matchingComments = [];
+            const perPage = 100;
+            for (let page = 1; ; page += 1) {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number: prNumber,
+                per_page: perPage,
+                page,
+              });
 
-                const found = comments.find(
-                  (c) => c.user?.type === 'Bot' && c.body?.includes(COMMENT_MARKER),
-                );
-                if (found) return found;
-                if (comments.length < perPage) return null;
+              for (const c of comments) {
+                if (c.user?.type === 'Bot' && c.body?.includes(COMMENT_MARKER)) {
+                  matchingComments.push(c);
+                }
               }
-            })();
+              if (comments.length < perPage) break;
+            }
 
             if (!jiraKeyRegex.test(prTitle)) {
-              const warningMessage = `${COMMENT_MARKER}
-            ⚠️ **Jira Issue Key Missing**
+              const warningMessage = [
+                COMMENT_MARKER,
+                '⚠️ **Jira Issue Key Missing**',
+                '',
+                "Your PR title doesn't contain a Jira issue key. Consider adding it for better traceability.",
+                '',
+                '**Example:**',
+                '- `feat: add user authentication (CM-123)`',
+                '- `feat: add user authentication (IN-123)`',
+                '',
+                '**Projects:**',
+                '- CM: Community Data Platform',
+                '- IN: Insights',
+                '',
+                'Please add a Jira issue key to your PR title.',
+              ].join('\n');
 
-            Your PR title doesn't contain a Jira issue key. Consider adding it for better traceability.
-
-            **Example:**
-            - \`feat: add user authentication (CM-123)\`
-            - \`feat: add user authentication (IN-123)\`
-
-            **Projects:**
-            - CM: Community Data Platform
-            - IN: Insights
-
-            Please add a Jira issue key to your PR title.`;
-
-              if (existingComment) {
-                if (existingComment.body !== warningMessage) {
-                  await github.rest.issues.updateComment({
-                    owner,
-                    repo,
-                    comment_id: existingComment.id,
-                    body: warningMessage,
-                  });
-                }
-              } else {
+              if (matchingComments.length === 0) {
                 await github.rest.issues.createComment({
                   owner,
                   repo,
                   issue_number: prNumber,
                   body: warningMessage,
                 });
+              } else {
+                const [keep, ...extras] = matchingComments;
+                if (keep.body !== warningMessage) {
+                  await github.rest.issues.updateComment({
+                    owner,
+                    repo,
+                    comment_id: keep.id,
+                    body: warningMessage,
+                  });
+                }
+                for (const extra of extras) {
+                  await github.rest.issues.deleteComment({ owner, repo, comment_id: extra.id });
+                }
               }
 
               await github.rest.checks.create({
@@ -95,12 +101,8 @@ jobs:
               const match = prTitle.match(jiraKeyRegex);
               console.log(`✅ Found Jira issue key: ${match[0]}`);
 
-              if (existingComment) {
-                await github.rest.issues.deleteComment({
-                  owner,
-                  repo,
-                  comment_id: existingComment.id,
-                });
+              for (const c of matchingComments) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: c.id });
               }
 
               await github.rest.checks.create({
