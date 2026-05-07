@@ -129,12 +129,13 @@ const updateIdentity = () => {
   sending.value = true;
 
   updateContributorIdentity(props.contributor.id, props.modelValue.id, {
-    ...form,
+    value: form.value,
+    type: form.type,
+    platform: form.type === 'email' ? 'custom' : form.platform,
     verified: false,
     source: 'ui',
-    integrationId: null,
     sourceId: null,
-    platform: form.type === 'email' ? 'custom' : form.platform,
+    integrationId: null,
   })
     .then(() => {
       ToastStore.success('Identity updated successfully');
