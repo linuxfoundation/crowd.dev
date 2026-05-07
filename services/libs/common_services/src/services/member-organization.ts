@@ -213,15 +213,15 @@ export function inferMemberOrganizationStintChanges(
         return false
       }
 
-      // Wide umbrella orgs that fully wrap the neighbor are concurrent, not career breaks
-      if (s.dateStart <= neighbor.dateStart && s.dateEnd >= neighbor.dateEnd) {
-        return false
-      }
-
       const overlapStart = s.dateStart > gapStart ? s.dateStart : gapStart
       const overlapEnd = s.dateEnd < gapEnd ? s.dateEnd : gapEnd
+      if (overlapStart >= overlapEnd) return false
 
-      return overlapStart < overlapEnd && diff(overlapStart, overlapEnd) > 30
+      // Wrapping orgs were already concurrent, so need >90d (vs >30d) to separate
+      const isUmbrella = s.dateStart <= neighbor.dateStart && s.dateEnd >= neighbor.dateEnd
+      const threshold = isUmbrella ? 90 : 30
+
+      return diff(overlapStart, overlapEnd) > threshold
     })
 
     if (hasSeparator) {
