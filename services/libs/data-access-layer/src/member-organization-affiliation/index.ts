@@ -306,8 +306,8 @@ async function prepareMemberOrganizationAffiliationTimeline(
         .value() ?? null
   }
 
-  // we separate global and manual timelines to prevent 'stale' organizationIds.
-  // member organizations apply globally, while member segment affiliations only override specific segments.
+  // We separate global and manual timelines to prevent 'stale' organizationIds
+  // Member organizations apply globally, while member segment affiliations only override specific segments.
   const baseTimeline = buildTimeline(memberOrganizations, fallbackOrganizationId).map((item) => ({
     ...item,
     skipManualAffiliationSegments: manualAffiliations.length > 0,
@@ -316,10 +316,25 @@ async function prepareMemberOrganizationAffiliationTimeline(
   // Only keep items with an actual org. Gaps (null org) are already handled by the base timeline.
   const manualTimeline = _.flatMap(
     _.groupBy(manualAffiliations, 'segmentId'),
-    (affiliations, segmentId) =>
-      buildTimeline(affiliations, null, false)
+    (affiliations, segmentId) => {
+      const items = buildTimeline(affiliations, null, false)
         .filter((item) => item.organizationId !== null)
-        .map((item) => ({ ...item, segmentId })),
+        .map((item) => ({ ...item, segmentId }))
+
+      // Undated MSAs are invisible to buildTimeline (no dateStart to anchor the loop).
+      // Create a catch-all so the base pass's NOT EXISTS still has a matching manual item.
+      if (items.length === 0) {
+        const primary = selectPrimaryWorkExperience(affiliations)
+        items.push({
+          organizationId: primary.organizationId,
+          dateStart: new Date('1970-01-01').toISOString(),
+          dateEnd: null,
+          segmentId,
+        })
+      }
+
+      return items
+    },
   )
 
   return [...baseTimeline, ...manualTimeline]
@@ -366,7 +381,7 @@ async function processAffiliationActivities(
     params.segmentId = affiliation.segmentId
   }
 
-  // Don't overwrite activities that an member segment affiliation covers
+  // Don't overwrite activities that a member segment affiliation covers
   // Those are handled in the manual timeline.
   if (affiliation.skipManualAffiliationSegments) {
     conditions.push(`
