@@ -34,6 +34,7 @@ SQL >
         insights_projects_populated_ds.communityKeywords,
         insights_projects_populated_ds.communityLanguages,
         insights_projects_populated_ds.status,
+        insights_projects_populated_ds.maturity,
         insights_projects_populated_ds.lastVulnerabilityScanStatus
     FROM insights_projects_populated_ds
     where

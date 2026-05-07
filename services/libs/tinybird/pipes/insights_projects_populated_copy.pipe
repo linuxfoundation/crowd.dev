@@ -231,6 +231,7 @@ SQL >
         any (insights_projects_populated_copy_mentions.communityKeywords) as communityKeywords,
         any (insights_projects_populated_copy_mentions.communityLanguages) as communityLanguages,
         any (segments.status) as status,
+        any (segments.maturity) as maturity,
         any (last_vulnerability_scan_status.lastVulnerabilityScanStatus) as lastVulnerabilityScanStatus
     FROM insightsProjects FINAL
     LEFT JOIN
