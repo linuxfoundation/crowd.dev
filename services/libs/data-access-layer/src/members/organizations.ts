@@ -578,6 +578,8 @@ export interface IMergeStrat {
   targetOrganizationId(role: IMemberOrganization): string
 }
 
+type RoleToAdd = IMemberOrganization & { originalRoleIds?: string[] }
+
 const MemberMergeStrat = (primaryMemberId: string): IMergeStrat => ({
   entityIdField: EntityField.memberId,
   intersectBasedOnField: EntityField.organizationId,
@@ -588,7 +590,7 @@ const MemberMergeStrat = (primaryMemberId: string): IMergeStrat => ({
     return role.organizationId
   },
   worthMerging(a: IMemberOrganization, b: IMemberOrganization): boolean {
-    return a.memberId === b.memberId
+    return a.organizationId === b.organizationId
   },
   targetMemberId(): string {
     return primaryMemberId
@@ -608,7 +610,7 @@ const OrgMergeStrat = (primaryOrganizationId: string): IMergeStrat => ({
     return role.memberId
   },
   worthMerging(a: IMemberOrganization, b: IMemberOrganization): boolean {
-    return a.organizationId === b.organizationId
+    return a.memberId === b.memberId
   },
   targetMemberId(role: IMemberOrganization): string {
     return role.memberId
@@ -928,7 +930,7 @@ export async function moveOrgsBetweenMembers(
 function transformRoleToTargetEntity(
   role: IMemberOrganization,
   mergeStrat: IMergeStrat,
-): IMemberOrganization & { originalRoleId?: string } {
+): RoleToAdd {
   return {
     title: role.title,
     dateStart: role.dateStart,
@@ -936,7 +938,7 @@ function transformRoleToTargetEntity(
     memberId: mergeStrat.targetMemberId(role),
     organizationId: mergeStrat.targetOrganizationId(role),
     source: role.source,
-    originalRoleId: role.id,
+    originalRoleIds: role.id ? [role.id] : undefined,
   }
 }
 
@@ -968,16 +970,23 @@ export async function mergeRoles(
   let shouldRecalculateAffiliations = false
   const allExistingOverrides = [...primaryAffiliationOverrides, ...secondaryAffiliationOverrides]
   const removeRoles: IMemberOrganization[] = []
-  const addRoles: (IMemberOrganization & { originalRoleId?: string })[] = []
+  const addRoles: RoleToAdd[] = []
   const affiliationOverridesToRecreate: {
     role: IMemberOrganization
     override: IMemberOrganizationAffiliationOverride
   }[] = []
+  const queueRoleRemoval = (role: IMemberOrganization) => {
+    if (role.id && removeRoles.some((r) => r.id === role.id)) {
+      return
+    }
+
+    removeRoles.push(role)
+  }
 
   // Phase 1: Analyze all secondary roles and build the complete plan
   for (const memberOrganization of secondaryRoles) {
     if (memberOrganization.dateStart === null && memberOrganization.dateEnd === null) {
-      removeRoles.push(memberOrganization)
+      queueRoleRemoval(memberOrganization)
     } else if (memberOrganization.dateStart !== null && memberOrganization.dateEnd === null) {
       const currentRoles = primaryRoles.filter(
         (mo) =>
@@ -988,7 +997,7 @@ export async function mergeRoles(
 
       if (currentRoles.length === 0) {
         addRoles.push(transformRoleToTargetEntity(memberOrganization, mergeStrat))
-        removeRoles.push(memberOrganization)
+        queueRoleRemoval(memberOrganization)
       } else if (currentRoles.length === 1) {
         const currentRole = currentRoles[0]
         if (new Date(memberOrganization.dateStart) <= new Date(currentRoles[0].dateStart)) {
@@ -1000,12 +1009,13 @@ export async function mergeRoles(
             organizationId: currentRole.organizationId,
             title: currentRole.title,
             source: currentRole.source,
+            originalRoleIds: [currentRole.id, memberOrganization.id].filter(Boolean),
           })
 
-          removeRoles.push(currentRole)
+          queueRoleRemoval(currentRole)
         }
 
-        removeRoles.push(memberOrganization)
+        queueRoleRemoval(memberOrganization)
       } else {
         throw new Error(`Member ${memberOrganization.memberId} has more than one current roles.`)
       }
@@ -1019,7 +1029,7 @@ export async function mergeRoles(
         const secondaryEnd = new Date(memberOrganization.dateEnd)
 
         return (
-          mo.memberId === memberOrganization.memberId &&
+          mergeStrat.intersectBasedOn(mo) === mergeStrat.intersectBasedOn(memberOrganization) &&
           mo.dateStart !== null &&
           mo.dateEnd !== null &&
           ((secondaryStart < primaryStart && secondaryEnd > primaryStart) ||
@@ -1049,11 +1059,15 @@ export async function mergeRoles(
           foundIntersectingRoles.length > 0
             ? foundIntersectingRoles[0].source
             : memberOrganization.source,
+        originalRoleIds: [...foundIntersectingRoles.map((r) => r.id), memberOrganization.id].filter(
+          Boolean,
+        ),
       })
 
       for (const r of foundIntersectingRoles) {
-        removeRoles.push(r)
+        queueRoleRemoval(r)
       }
+      queueRoleRemoval(memberOrganization)
     }
   }
 
@@ -1089,8 +1103,8 @@ export async function mergeRoles(
 
     // 1. Gather all overrides relevant to this specific role merge
     const relevantOverrides = affiliationOverridesToRecreate.filter((item) => {
-      return addRole.originalRoleId
-        ? item.role.id === addRole.originalRoleId
+      return addRole.originalRoleIds?.length
+        ? !!item.role.id && addRole.originalRoleIds.includes(item.role.id)
         : item.role.memberId === addRole.memberId && item.role.title === addRole.title
     })
 
@@ -1104,34 +1118,6 @@ export async function mergeRoles(
     const incomingSecondaries = relevantOverrides.filter((r) =>
       secondaryAffiliationOverrides.some((s) => s.memberOrganizationId === r.role.id),
     )
-    if (!newRoleId) {
-      // Use targetOrganizationId so the comparison works in both member-merge
-      // (org unchanged) and org-merge (secondary org -> primary org) contexts.
-      const directSecondaryRole = secondaryRoles.find((role) =>
-        secondaryAffiliationOverrides.some(
-          (override) =>
-            override.memberOrganizationId === role.id &&
-            mergeStrat.targetOrganizationId(role) === addRole.organizationId &&
-            role.title === addRole.title,
-        ),
-      )
-      const directSecondaryOverride = directSecondaryRole
-        ? secondaryAffiliationOverrides.find(
-            (override) => override.memberOrganizationId === directSecondaryRole.id,
-          )
-        : undefined
-
-      if (
-        directSecondaryRole &&
-        directSecondaryOverride &&
-        !incomingSecondaries.some((item) => item.role.id === directSecondaryRole.id)
-      ) {
-        incomingSecondaries.push({
-          role: directSecondaryRole,
-          override: directSecondaryOverride,
-        })
-      }
-    }
 
     // 2. Resolve "Primary Work Experience"
     // Keep it if the primary had it, or if a secondary had it and no other primary role claims it.
