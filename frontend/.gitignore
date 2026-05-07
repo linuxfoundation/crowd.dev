@@ -2,6 +2,9 @@
 node_modules
 dist
 
+.claude
+*.local.md
+
 # local env files
 .env*
 .env.local
