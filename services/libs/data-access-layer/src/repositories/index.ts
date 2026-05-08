@@ -21,6 +21,7 @@ export interface IRepository {
   updatedAt: string
   deletedAt: string | null
   lastArchivedCheckAt: string | null
+  license: string | null
 }
 
 export interface ICreateRepository {
