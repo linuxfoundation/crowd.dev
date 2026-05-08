@@ -77,14 +77,8 @@ export async function getIdentitiesExistInOtherMembers(
   excludeMemberId: string,
   identities: IMemberIdentity[],
 ): Promise<IMemberIdentity[]> {
-  let rows: IMemberIdentity[] = []
-
-  try {
-    const db = svc.postgres.reader
-    rows = await getIdentitiesExistInOthers(db, excludeMemberId, identities)
-  } catch (err) {
-    throw err
-  }
+  const db = svc.postgres.reader
+  const rows = await getIdentitiesExistInOthers(db, excludeMemberId, identities)
 
   return rows
 }
@@ -94,25 +88,21 @@ export async function updateMemberWithEnrichmentData(
   identities: IMemberIdentity[],
   attributes?: IAttributes,
 ): Promise<void> {
-  try {
-    await svc.postgres.writer.connection().tx(async (tx) => {
-      for (const identity of identities) {
-        await createMemberIdentity(new PgPromiseQueryExecutor(tx), {
-          memberId,
-          platform: identity.platform,
-          value: identity.value,
-          type: identity.type,
-          verified: identity.verified || false,
-          source: 'enrichment',
-        })
-      }
-      if (attributes) {
-        await updateMemberAttributes(tx, memberId, attributes)
-      }
-    })
-  } catch (err) {
-    throw err
-  }
+  await svc.postgres.writer.connection().tx(async (tx) => {
+    for (const identity of identities) {
+      await createMemberIdentity(new PgPromiseQueryExecutor(tx), {
+        memberId,
+        platform: identity.platform,
+        value: identity.value,
+        type: identity.type,
+        verified: identity.verified || false,
+        source: 'enrichment',
+      })
+    }
+    if (attributes) {
+      await updateMemberAttributes(tx, memberId, attributes)
+    }
+  })
 }
 
 export async function mergeMembers(
