@@ -4,7 +4,7 @@ import { SlackChannel, SlackChannelConfig } from './types'
 
 const log = getServiceLogger()
 
-const CHANNEL_WEBHOOK_URLS: Record = {
+const CHANNEL_WEBHOOK_URLS: Record<SlackChannel, string | undefined> = {
   [SlackChannel.CDP_ALERTS]: process.env.CDP_ALERTS_SLACK_WEBHOOK_URL,
   [SlackChannel.CDP_CRITICAL_ALERTS]: process.env.CDP_CRITICAL_ALERTS_SLACK_WEBHOOK_URL,
   [SlackChannel.CDP_DATA_QUALITY_ALERTS]: process.env.CDP_DATA_QUALITY_ALERTS_SLACK_WEBHOOK_URL,
