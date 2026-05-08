@@ -11,7 +11,9 @@ class LicenseService(BaseService):
     async def detect(self, repo_path: str) -> str | None:
         """Run licensee against repo_path and return the SPDX identifier, or None."""
         try:
-            output = await run_shell_command(["licensee", "detect", "--json", repo_path], timeout=60)
+            output = await run_shell_command(
+                ["licensee", "detect", "--json", repo_path], timeout=60
+            )
         except CommandExecutionError:
             self.logger.info(f"licensee found no license in {repo_path}")
             return None
