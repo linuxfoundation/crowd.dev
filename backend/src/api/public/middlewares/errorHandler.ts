@@ -39,9 +39,7 @@ export const errorHandler: ErrorRequestHandler = (
           title: 'Conflict',
           text: `*Message:* ${error.message}`,
         },
-        ...(memberIds
-          ? [{ title: 'Member IDs', text: memberIds.join(', ') }]
-          : []),
+        ...(memberIds ? [{ title: 'Member IDs', text: memberIds.join(', ') }] : []),
       ],
     )
     res.status(error.status).json(error.toJSON())
