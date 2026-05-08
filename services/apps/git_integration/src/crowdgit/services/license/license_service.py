@@ -27,9 +27,10 @@ class LicenseService(BaseService):
 
         try:
             data = json.loads(output)
-            matched = data.get("matched_license") or {}
-            spdx_id = matched.get("spdx_id")
-            confidence = matched.get("confidence")
+            licenses = data.get("licenses") or []
+            matched_files = data.get("matched_files") or []
+            spdx_id = licenses[0].get("spdx_id") if licenses else None
+            confidence = (matched_files[0].get("matcher") or {}).get("confidence") if matched_files else None
             if spdx_id:
                 self.logger.info(f"License detected: {spdx_id} (confidence={confidence}) in {repo_path}")
             else:

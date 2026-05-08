@@ -84,11 +84,15 @@ RUN apt-get update && apt-get install -y \
     git \
     ripgrep \
     ruby \
+    libgit2-1.1 \
     ruby-dev \
     build-essential \
+    libgit2-dev \
+    cmake \
+    pkg-config \
     --no-install-recommends \
-    && gem install licensee -v '10.0.0' --no-document \
-    && apt-get remove --autoremove -y ruby-dev build-essential \
+    && gem install licensee -v '9.15.3' --no-document \
+    && apt-get remove --autoremove -y ruby-dev build-essential libgit2-dev cmake pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
