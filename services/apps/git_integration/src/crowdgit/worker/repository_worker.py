@@ -163,6 +163,7 @@ class RepositoryWorker:
             (self.maintainer_service, "maintainer_processing"),
             (self.software_value_service, "software_value_processing"),
             (self.vulnerability_scanner_service, "vulnerability_scan_processing"),
+            (self.license_service, "license_detection"),
             (self.queue_service, "queue_service"),
         ]
 
@@ -178,6 +179,7 @@ class RepositoryWorker:
             self.maintainer_service,
             self.software_value_service,
             self.vulnerability_scanner_service,
+            self.license_service,
             self.queue_service,
         ]
 

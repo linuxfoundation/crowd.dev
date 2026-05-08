@@ -149,7 +149,8 @@ export async function getRepositoriesBySourceIntegrationId(
       "createdAt",
       "updatedAt",
       "deletedAt",
-      "lastArchivedCheckAt"
+      "lastArchivedCheckAt",
+      license
     FROM public.repositories
     WHERE "sourceIntegrationId" = $(sourceIntegrationId)
       AND "deletedAt" IS NULL
@@ -191,7 +192,8 @@ export async function getRepositoriesByUrl(
       "createdAt",
       "updatedAt",
       "deletedAt",
-      "lastArchivedCheckAt"
+      "lastArchivedCheckAt",
+      license
     FROM public.repositories
     WHERE url IN ($(repoUrls:csv))
     ${deletedFilter}

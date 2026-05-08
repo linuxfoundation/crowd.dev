@@ -289,7 +289,7 @@ async def update_repository_license(repository_id: str, license_spdx: str | None
         SET license = $1::varchar,
         "updatedAt" = NOW()
     WHERE id = $2
-      AND ($1::varchar IS NOT NULL OR license IS NULL)
+      AND license IS DISTINCT FROM $1::varchar
     """
     await execute(sql_query, (license_spdx, repository_id))
 
