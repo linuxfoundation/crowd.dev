@@ -201,30 +201,27 @@ export function inferMemberOrganizationStintChanges(
       continue
     }
 
-    // 5. Only split when another org clearly sits between this stint and the new date.
-    // Overlapping orgs are treated as concurrent evidence, not a break in the stint.
+    // 5. Only split when another org has meaningful exclusive presence in the gap
+    // between the closest same-org stint and the new date (>30 days).
+    // Concurrent/overlapping orgs that barely extend into the gap are not career breaks.
     const isForward = targetDate > neighbor.dateEnd
+    const gapStart = isForward ? neighbor.dateEnd : targetDate
+    const gapEnd = isForward ? targetDate : neighbor.dateStart
+
     const hasSeparator = stints.some((s) => {
-      if (
-        s.organizationId === organizationId ||
-        !s.dateStart ||
-        !s.dateEnd ||
-        diff(s.dateStart, s.dateEnd) < 30
-      ) {
+      if (s.organizationId === organizationId || !s.dateStart || !s.dateEnd) {
         return false
       }
 
-      if (isForward) {
-        return (
-          (s.dateStart > neighbor.dateEnd && s.dateStart <= targetDate) ||
-          (s.dateEnd > neighbor.dateEnd && s.dateEnd <= targetDate)
-        )
-      }
+      const overlapStart = s.dateStart > gapStart ? s.dateStart : gapStart
+      const overlapEnd = s.dateEnd < gapEnd ? s.dateEnd : gapEnd
+      if (overlapStart >= overlapEnd) return false
 
-      return (
-        (s.dateStart >= targetDate && s.dateStart < neighbor.dateStart) ||
-        (s.dateEnd >= targetDate && s.dateEnd < neighbor.dateStart)
-      )
+      // Wrapping orgs were already concurrent, so need >90d (vs >30d) to separate
+      const isUmbrella = s.dateStart <= neighbor.dateStart && s.dateEnd >= neighbor.dateEnd
+      const threshold = isUmbrella ? 90 : 30
+
+      return diff(overlapStart, overlapEnd) > threshold
     })
 
     if (hasSeparator) {
