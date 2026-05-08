@@ -32,7 +32,13 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
   if (memberIds.length === 0) {
     throw new NotFoundError('Member not found')
   } else if (memberIds.length > 1) {
-    throw new ConflictError(`Conflicting identities for these users: ${memberIds.join(', ')}`)
+    const error = new ConflictError('Conflicting identities')
+    Object.defineProperty(error, 'memberIds', {
+      value: memberIds,
+      enumerable: false,
+      configurable: true,
+    })
+    throw error
   }
 
   const memberId = memberIds[0]
