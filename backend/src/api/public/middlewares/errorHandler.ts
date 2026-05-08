@@ -33,22 +33,6 @@ export const errorHandler: ErrorRequestHandler = (
           title: 'Request',
           text: `*Method:* \`${req.method}\`\n*URL:* \`${req.url}\``,
         },
-        ...(Object.keys(req.params).length > 0
-          ? [
-              {
-                title: 'Params',
-                text: `\`\`\`${JSON.stringify(req.params, null, 2)}\`\`\``,
-              },
-            ]
-          : []),
-        ...(req.body && Object.keys(req.body).length > 0
-          ? [
-              {
-                title: 'Body',
-                text: `\`\`\`${JSON.stringify(req.body, null, 2).substring(0, 1500)}\`\`\``,
-              },
-            ]
-          : []),
         {
           title: 'Conflict',
           text: `*Message:* ${error.message}`,
