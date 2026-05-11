@@ -12,10 +12,3 @@ export interface IntegrationRun {
   createdAt: string
   updatedAt: string
 }
-
-export interface DbIntegrationRunCreateData {
-  tenantId: string
-  integrationId?: string
-  onboarding: boolean
-  state: IntegrationRunState
-}
