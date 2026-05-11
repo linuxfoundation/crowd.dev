@@ -3,7 +3,7 @@ services:
     image: sequin/sequin:latest
     restart: unless-stopped
     ports:
-      - '7376:7376'
+      - '7376:7376' # Sequin CDC dashboard — http://localhost:7376
     environment:
       - PG_HOSTNAME=db
       - PG_DATABASE=sequin

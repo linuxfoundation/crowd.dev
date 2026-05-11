@@ -7,7 +7,7 @@ services:
       - POSTGRES_PASSWORD=example
       - POSTGRES_DB=crowd-web
     ports:
-      - 5432:5432
+      - 5432:5432 # PostgreSQL main DB (crowd-web) — psql -h localhost -U postgres crowd-web (pw: example)
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
       - ./scaffold/sequin/postgres-docker-entrypoint-initdb.d/create-sequin-database.sql:/docker-entrypoint-initdb.d/create-sequin-database.sql
@@ -23,7 +23,7 @@ services:
       - POSTGRES_PASSWORD=example
       - POSTGRES_DB=product-db
     ports:
-      - 5433:5432
+      - 5433:5432 # PostgreSQL product DB — psql -h localhost -p 5433 -U postgres product-db (pw: example)
     volumes:
       - pgdata-product-dev:/var/lib/postgresql/data
     shm_size: 1gb
@@ -47,8 +47,8 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - 9200:9200
-      - 9600:9600
+      - 9200:9200 # OpenSearch HTTP API — curl http://localhost:9200
+      - 9600:9600 # OpenSearch Performance Analyzer API
     volumes:
       - opensearch-dev:/usr/share/opensearch/data
     networks:
@@ -70,7 +70,7 @@ services:
     image: scireum/s3-ninja:8.0.0
     restart: unless-stopped
     ports:
-      - 9000:9000
+      - 9000:9000 # S3-ninja UI + API — http://localhost:9000/ui
     volumes:
       - s3-dev:/home/sirius/data
     networks:
@@ -83,7 +83,7 @@ services:
       - ./scaffold/nginx/templates:/etc/nginx/templates
       - ./scaffold/nginx/ssl:/etc/nginx/ssl
     ports:
-      - '443:443'
+      - '443:443' # Nginx HTTPS reverse proxy (frontend + API gateway)
     environment:
       - NGINX_HOST=localhost
       - NGINX_PORT=443
@@ -100,7 +100,7 @@ services:
     volumes:
       - redis-dev:/data
     ports:
-      - 6379:6379
+      - 6379:6379 # Redis — redis-cli -h localhost -a crowdtest
     networks:
       - crowd-bridge
 
@@ -118,7 +118,7 @@ services:
       - NANGO_SERVER_URL=http://localhost:3003
       - SERVER_PORT=3003
     ports:
-      - '3003:3003'
+      - '3003:3003' # Nango OAuth service — http://localhost:3003
     networks:
       - crowd-bridge
 
@@ -139,9 +139,9 @@ services:
       - KAFKA_KRAFT_CLUSTER_ID=OTMwNzFhYTY1ODNiNGE5OT
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
     ports:
-      - '9092:9092'
-      - '9093:9093'
-      - '9094:9094'
+      - '9092:9092' # Kafka broker (Docker-internal PLAINTEXT listener)
+      - '9093:9093' # Kafka broker (host access) — bootstrap: localhost:9093
+      - '9094:9094' # Kafka KRaft controller (internal only)
     networks:
       - crowd-bridge
 
@@ -167,8 +167,8 @@ services:
       context: scaffold/temporal
     restart: unless-stopped
     ports:
-      - '7233:7233'
-      - '8233:8233'
+      - '7233:7233' # Temporal gRPC frontend — used by workers and CLI (temporal server)
+      - '8233:8233' # Temporal Web UI — http://localhost:8233
     networks:
       - crowd-bridge
 
@@ -179,8 +179,8 @@ services:
     environment:
       - COMPATIBILITY_MODE=1 # <— force Classic version
     ports:
-      - '80:80'
-      - '7181:7181'
+      - '80:80'     # Tinybird HTTP API — http://localhost:80
+      - '7181:7181' # Tinybird local dashboard — http://localhost:7181
     networks:
       - crowd-bridge
 
