@@ -13,12 +13,10 @@ const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>(
   heartbeatTimeout: '2 minutes',
 })
 
-/*
-organizationUpdate can do the following:
-  - Update all affiliations of members in a given organization in the database, if recalculateAffiliations is true.
-  - Sync organization to OpenSearch, if syncOptions.doSync is true.
-  - Also sync organization aggregates to postgres (organizationSegmentsAgg table), if syncOptions.doSync is true AND syncOptions.withAggs is true.
-*/
+/**
+ * Refreshes affiliations for all members in an organization, then optionally syncs the org
+ * to OpenSearch. Paginates members in batches via continueAsNew.
+ */
 export async function organizationUpdate(input: IOrganizationProfileSyncInput): Promise<void> {
   // End early if recalculateAffiliations is false, only do syncing if necessary.
   if (!input.recalculateAffiliations) {
