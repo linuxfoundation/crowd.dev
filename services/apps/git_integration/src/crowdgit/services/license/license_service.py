@@ -37,6 +37,18 @@ class LicenseService(BaseService):
                 if matched_files
                 else None
             )
+
+            # Mirror GitHub's threshold — below 98% similarity the match is unreliable.
+            # Downgrade low-confidence matches to NOASSERTION so the distinction is clean:
+            #   NULL         = no license file found
+            #   NOASSERTION  = found a license file but couldn't reliably identify it
+            # The UI should display NOASSERTION as "Other".
+            if spdx_id and spdx_id != "NOASSERTION" and confidence is not None and confidence < 98:
+                self.logger.info(
+                    f"License downgraded to NOASSERTION: confidence {confidence}% below threshold in {repo_path}"
+                )
+                return "NOASSERTION"
+
             if spdx_id:
                 self.logger.info(
                     f"License detected: {spdx_id} (confidence={confidence}) in {repo_path}"
