@@ -9,8 +9,7 @@ const { syncOrganization, findMembersInOrganization } = proxyActivities<typeof a
 })
 
 const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '65 minutes',
-  heartbeatTimeout: '2 minutes',
+  startToCloseTimeout: '5 minutes',
 })
 
 /**
@@ -45,7 +44,7 @@ export async function organizationUpdate(input: IOrganizationProfileSyncInput): 
 
   for (const memberId of memberIds) {
     // Routes through signalWithStart so concurrent org updates coalesce on the same member slot.
-    await triggerMemberAffiliationsRefresh(memberId, [], false, true)
+    await triggerMemberAffiliationsRefresh(memberId, [], false)
   }
 
   await continueAsNew<typeof organizationUpdate>({

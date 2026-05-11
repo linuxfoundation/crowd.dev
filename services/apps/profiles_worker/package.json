@@ -20,7 +20,6 @@
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/opensearch": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@temporalio/activity": "~1.11.8",
     "@temporalio/client": "~1.11.8",
     "@temporalio/workflow": "~1.11.8",
     "axios": "^1.6.8",

@@ -23,8 +23,7 @@ const {
 })
 
 const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '65 minutes',
-  heartbeatTimeout: '2 minutes',
+  startToCloseTimeout: '5 minutes',
 })
 
 export async function processMemberBotAnalysisWithLLM(
@@ -90,7 +89,7 @@ export async function processMemberBotAnalysisWithLLM(
   if (confidence >= THRESHOLD) {
     await updateMemberAttributes(memberId, { isBot: { default: true, system: true } })
     await removeMemberOrganizations(memberId)
-    await triggerMemberAffiliationsRefresh(memberId, [], false, true)
+    await triggerMemberAffiliationsRefresh(memberId, [], false)
     await syncMember(memberId)
   } else {
     // Otherwise, record a bot suggestion for further review

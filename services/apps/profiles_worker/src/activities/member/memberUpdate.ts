@@ -1,4 +1,3 @@
-import { heartbeat } from '@temporalio/activity'
 import { WorkflowIdConflictPolicy } from '@temporalio/client'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
@@ -18,9 +17,8 @@ export async function triggerMemberAffiliationsRefresh(
   memberId: string,
   memberOrganizationIds: string[] = [],
   syncToOpensearch = false,
-  waitForCompletion = false,
 ): Promise<void> {
-  const handle = await svc.temporal.workflow.signalWithStart('memberUpdate', {
+  await svc.temporal.workflow.signalWithStart('memberUpdate', {
     taskQueue: 'profiles',
     workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
     workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
@@ -34,15 +32,6 @@ export async function triggerMemberAffiliationsRefresh(
       TenantId: [DEFAULT_TENANT_ID],
     },
   })
-
-  if (waitForCompletion) {
-    const heartbeatInterval = setInterval(() => heartbeat({ memberId }), 30_000)
-    try {
-      await handle.result()
-    } finally {
-      clearInterval(heartbeatInterval)
-    }
-  }
 }
 
 export async function syncMember(memberId: string): Promise<void> {

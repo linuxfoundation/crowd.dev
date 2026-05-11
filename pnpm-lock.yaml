@@ -1373,9 +1373,6 @@ importers:
       '@crowd/types':
         specifier: workspace:*
         version: link:../../libs/types
-      '@temporalio/activity':
-        specifier: ~1.11.8
-        version: 1.11.8
       '@temporalio/client':
         specifier: ~1.11.8
         version: 1.11.8
