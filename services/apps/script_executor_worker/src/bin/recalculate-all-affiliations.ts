@@ -1,4 +1,4 @@
-import { WorkflowIdReusePolicy } from '@temporalio/client'
+import { WorkflowIdConflictPolicy } from '@temporalio/client'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
@@ -262,19 +262,20 @@ async function main() {
               log.info(
                 `Triggering memberUpdate: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
               )
-              await temporal.workflow.start('memberUpdate', {
+              await temporal.workflow.signalWithStart('memberUpdate', {
                 taskQueue: 'profiles',
                 workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
-                workflowIdReusePolicy:
-                  WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-                retry: { maximumAttempts: 10 },
-                args: [
+                workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+                signal: 'refreshAffiliations',
+                signalArgs: [
                   {
                     member: { id: memberId },
                     memberOrganizationIds: activeOrgIds,
                     syncToOpensearch: true,
                   },
                 ],
+                retry: { maximumAttempts: 10 },
+                args: [],
                 searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
               })
               if (opts.workflowDelayMs > 0) {

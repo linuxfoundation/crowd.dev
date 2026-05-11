@@ -1,12 +1,20 @@
-import { continueAsNew, proxyActivities } from '@temporalio/workflow'
+import {
+  ParentClosePolicy,
+  WorkflowIdConflictPolicy,
+  continueAsNew,
+  proxyActivities,
+  startChild,
+} from '@temporalio/workflow'
+
+import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { TemporalWorkflowId } from '@crowd/types'
 
 import * as activities from '../../activities'
+import { MemberUpdateInput } from '../../types/member'
 import { IOrganizationProfileSyncInput } from '../../types/organization'
 
 // Configure timeouts and retry policies to update a member in the database.
-const { updateMemberAffiliations, syncOrganization, findMembersInOrganization } = proxyActivities<
-  typeof activities
->({
+const { syncOrganization, findMembersInOrganization } = proxyActivities<typeof activities>({
   startToCloseTimeout: '5 minutes',
 })
 
@@ -43,7 +51,20 @@ export async function organizationUpdate(input: IOrganizationProfileSyncInput): 
   }
 
   for (const memberId of memberIds) {
-    await updateMemberAffiliations(memberId)
+    const memberInput: MemberUpdateInput = {
+      member: { id: memberId },
+      memberOrganizationIds: [],
+      syncToOpensearch: false,
+    }
+    const handle = await startChild('memberUpdate', {
+      workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON,
+      taskQueue: 'profiles',
+      args: [],
+      searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
+    })
+    await handle.signal('refreshAffiliations', memberInput)
   }
 
   await continueAsNew<typeof organizationUpdate>({

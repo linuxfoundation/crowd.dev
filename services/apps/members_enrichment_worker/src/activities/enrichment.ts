@@ -297,6 +297,7 @@ export async function updateMemberUsingSquashedPayload(
 ): Promise<boolean> {
   const affectedOrgIds: string[] = []
   const orgIdsToSync: string[] = []
+  let affiliationNeedsRefresh = false
 
   const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
     let didUpdate = false
@@ -581,6 +582,10 @@ export async function updateMemberUsingSquashedPayload(
         isHighConfidenceSourceSelectedForWorkExperiences,
       )
 
+      affiliationNeedsRefresh =
+        results.toUpdate.size > 0 ||
+        hasMemberOrganizationTimelineChange(results.toDelete, results.toCreate)
+
       if (results.toDelete.length > 0) {
         for (const org of results.toDelete) {
           didUpdate = true
@@ -676,7 +681,7 @@ export async function updateMemberUsingSquashedPayload(
     )
   }
 
-  if (affectedOrgIds.length > 0) {
+  if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
     const commonMemberService = new CommonMemberService(
       pgpQx(svc.postgres.writer.connection()),
       svc.temporal,
@@ -772,6 +777,23 @@ function sanitizeWorkExperienceDateRanges(
       endDate: dates.dateEnd instanceof Date ? dates.dateEnd.toISOString() : dates.dateEnd,
     }
   })
+}
+
+function hasMemberOrganizationTimelineChange(
+  toDelete: IMemberOrganizationData[],
+  toCreate: IMemberEnrichmentDataNormalizedOrganization[],
+): boolean {
+  const toKey = (orgId: string, start: string | null | undefined, end: string | null | undefined) =>
+    `${orgId}|${start ? start.substring(0, 10) : ''}|${end ? end.substring(0, 10) : ''}`
+
+  const deletedKeys = new Set(toDelete.map((d) => toKey(d.orgId, d.dateStart, d.dateEnd)))
+  const createdKeys = new Set(toCreate.map((c) => toKey(c.organizationId, c.startDate, c.endDate)))
+
+  if (deletedKeys.size !== createdKeys.size) return true
+  for (const key of deletedKeys) {
+    if (!createdKeys.has(key)) return true
+  }
+  return false
 }
 
 function prepareWorkExperiences(

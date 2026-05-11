@@ -52,7 +52,7 @@ import {
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
-import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
+import { Client as TemporalClient, WorkflowIdConflictPolicy } from '@crowd/temporal'
 import {
   MergeActionState,
   MergeActionStep,
@@ -270,22 +270,21 @@ export class CommonMemberService extends LoggerBase {
     organizationIds: string[],
     syncToOpensearch = false,
   ): Promise<void> {
-    await this.temporal.workflow.start('memberUpdate', {
+    const input = {
+      member: { id: memberId },
+      memberOrganizationIds: organizationIds,
+      syncToOpensearch,
+    }
+    await this.temporal.workflow.signalWithStart('memberUpdate', {
       taskQueue: 'profiles',
       workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      signal: 'refreshAffiliations',
+      signalArgs: [input],
       retry: {
         maximumAttempts: 10,
       },
-      args: [
-        {
-          member: {
-            id: memberId,
-          },
-          memberOrganizationIds: organizationIds,
-          syncToOpensearch,
-        },
-      ],
+      args: [],
       searchAttributes: {
         TenantId: [DEFAULT_TENANT_ID],
       },

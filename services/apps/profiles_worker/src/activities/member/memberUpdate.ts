@@ -4,10 +4,6 @@ import { SearchSyncApiClient } from '@crowd/opensearch'
 
 import { svc } from '../../main'
 
-/*
-updateMemberAffiliations is a Temporal activity that updates all affiliations for
-a given member.
-*/
 export async function updateMemberAffiliations(memberId: string): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   await refreshMemberOrganizationAffiliations(qx, memberId)

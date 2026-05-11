@@ -1,14 +1,15 @@
 import axios from 'axios'
 
-import { pgpQx } from '@crowd/data-access-layer'
-import { refreshMemberOrganizationAffiliations } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { findOrganizationSegments } from '@crowd/data-access-layer/src/old/apps/entity_merging_worker'
+import { WorkflowIdConflictPolicy } from '@crowd/temporal'
 import {
   IMemberIdentity,
   IMemberUnmergeBackup,
   IMemberUnmergePreviewResult,
   IUnmergeBackup,
   IUnmergePreviewResult,
+  TemporalWorkflowId,
 } from '@crowd/types'
 
 import { svc } from '../main'
@@ -159,10 +160,14 @@ export async function getWorkflowsCount(workflowType: string, status: string): P
 }
 
 export async function calculateMemberAffiliations(memberId: string): Promise<void> {
-  try {
-    const qx = pgpQx(svc.postgres.writer.connection())
-    await refreshMemberOrganizationAffiliations(qx, memberId)
-  } catch (err) {
-    throw new Error(err)
-  }
+  await svc.temporal.workflow.signalWithStart('memberUpdate', {
+    taskQueue: 'profiles',
+    workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
+    workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+    signal: 'refreshAffiliations',
+    signalArgs: [{ member: { id: memberId }, memberOrganizationIds: [], syncToOpensearch: false }],
+    retry: { maximumAttempts: 10 },
+    args: [],
+    searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
+  })
 }
