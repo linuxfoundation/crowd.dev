@@ -1,0 +1,48 @@
+{
+  "name": "@crowd/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "crowd": "./bin/run.mjs" },
+  "oclif": {
+    "bin": "crowd",
+    "dirname": "crowd-cli",
+    "commands": {
+      "strategy": "pattern",
+      "target": "./src/commands"
+    },
+    "plugins": ["@oclif/plugin-help", "@oclif/plugin-autocomplete"],
+    "topicSeparator": " ",
+    "default": "dashboard",
+    "topics": {
+      "scaffold": { "description": "Manage local infrastructure (postgres, kafka, tinybird, temporal, ...)" },
+      "service": { "description": "Manage application microservices" },
+      "db": { "description": "Database backup, restore, and migration" },
+      "deploy": { "description": "Deploy services to staging or production via GitHub Actions" },
+      "lint": { "description": "Code quality checks (eslint, prettier, tsc)" },
+      "build": { "description": "Build and push Docker images" }
+    }
+  },
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').copyFileSync('bin/run.mjs','dist/bin/run.mjs')\"",
+    "tsc-check": "tsc --noEmit",
+    "postinstall": "node -e \"console.log('Run: crowd autocomplete install')\""
+  },
+  "dependencies": {
+    "@oclif/core": "^4",
+    "@oclif/plugin-autocomplete": "^3",
+    "@oclif/plugin-help": "^6",
+    "@clack/prompts": "^0.7",
+    "ink": "^4",
+    "ink-spinner": "^5",
+    "react": "^18",
+    "execa": "^9",
+    "dotenv": "^16",
+    "tsx": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "typescript": "^5.6"
+  }
+}

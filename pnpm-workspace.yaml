@@ -5,4 +5,5 @@ packages:
   - '!services/cronjobs'
   - 'services'
   - 'backend'
+  - 'tools/*'
   - '.github/actions/node'

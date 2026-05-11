@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd)"
+CLI_DIR="$REPO_ROOT/tools/crowd-cli"
+
+if [[ -z "$SCRIPT_DIR" || -z "$REPO_ROOT" ]]; then
+  echo "error: could not resolve script directory" >&2
+  exit 1
+fi
+
+exec "$CLI_DIR/node_modules/.bin/tsx" --tsconfig "$CLI_DIR/tsconfig.json" "$CLI_DIR/bin/run.mjs" "$@"
