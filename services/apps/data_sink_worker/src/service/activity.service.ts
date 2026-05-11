@@ -334,18 +334,40 @@ export default class ActivityService extends LoggerBase {
         if (identities.length === 1) {
           activity.username = identities[0].value
         } else if (identities.length === 0) {
-          this.log.error(
-            { platform, activity },
-            `Activity's member does not have an identity for the platform!`,
+          // Fall back to same-platform email identity — handles old gerrit records where
+          // only a type:email identity was stored (before the gerrit integration
+          // gained the email-as-username fallback).
+          const emailFallback = activity.member.identities.find(
+            (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
-          results.set(resultId, {
-            success: false,
-            err: new UnrepeatableError(
-              `Activity's member does not have an identity for the platform: ${platform}!`,
-            ),
-          })
-
-          continue
+          if (emailFallback && emailFallback.verified) {
+            activity.username = emailFallback.value
+            activity.member.identities.push({
+              platform,
+              type: MemberIdentityType.USERNAME,
+              value: emailFallback.value,
+              verified: true,
+              source: emailFallback.source,
+            })
+          } else if (emailFallback) {
+            // Email identity exists but is unverified — cannot safely use as username key.
+            results.set(resultId, {
+              success: false,
+              err: new UnrepeatableError(
+                `Activity's member has no verified username or email identity for platform: ${platform}!`,
+              ),
+            })
+            continue
+          } else {
+            // No usable identity at all (e.g. git commit with empty author email).
+            // Nothing to attribute — skip silently rather than error.
+            this.log.warn(
+              { platform, resultId },
+              `Activity's member has no usable identity for the platform, skipping.`,
+            )
+            results.set(resultId, { success: true })
+            continue
+          }
         } else {
           this.log.error(
             { platform, activity },
@@ -459,7 +481,13 @@ export default class ActivityService extends LoggerBase {
       if (!success) {
         resultMap.set(resultId, { success: false, err })
       } else {
-        relevantPayloads.push(single(payloads, (a) => a.resultId === resultId))
+        const payload = single(payloads, (a) => a.resultId === resultId)
+        if (!payload.activity.username?.trim()) {
+          // prepareMemberData found no usable identity — mark as processed and skip.
+          resultMap.set(resultId, { success: true })
+        } else {
+          relevantPayloads.push(payload)
+        }
       }
     }
 

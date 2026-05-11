@@ -23,10 +23,10 @@ import {
   MemberField,
   QueryExecutor,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   createOrUpdateMemberOrganizations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
   findIdentitiesForMembers,
@@ -146,9 +146,12 @@ export class CommonMemberService extends LoggerBase {
               dates.dateEnd as string | null,
             )
 
-            const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(this.qx, org.id)
+            const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(
+              this.qx,
+              [org.id],
+            )
 
-            if (newMemberOrgId && isAffiliationBlocked) {
+            if (newMemberOrgId && orgAffiliationPolicyById.get(org.id)) {
               await changeMemberOrganizationAffiliationOverrides(this.qx, [
                 {
                   memberId,
