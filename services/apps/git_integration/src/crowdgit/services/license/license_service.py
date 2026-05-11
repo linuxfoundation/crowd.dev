@@ -46,7 +46,12 @@ class LicenseService(BaseService):
             #   NULL         = licensee didn't run, timed out, or found no license file
             #   NOASSERTION  = found a license file but couldn't reliably identify it
             # The UI should display NOASSERTION as "Other".
-            if spdx_id and spdx_id != "NOASSERTION" and confidence is not None and confidence < LICENSE_CONFIDENCE_THRESHOLD:
+            if (
+                spdx_id
+                and spdx_id != "NOASSERTION"
+                and confidence is not None
+                and confidence < LICENSE_CONFIDENCE_THRESHOLD
+            ):
                 self.logger.info(
                     f"License downgraded to NOASSERTION: confidence {confidence}% below threshold in {repo_path}"
                 )
