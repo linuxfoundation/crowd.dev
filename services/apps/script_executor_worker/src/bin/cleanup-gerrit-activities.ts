@@ -192,9 +192,10 @@ async function deletePostgresInChunks(
   let total = 0
   let batch = 0
   let failedBatches = 0
+  let rows: Array<{ activityId: string }>
 
-  while (true) {
-    const rows = (await postgres.select(fetchQuery, values)) as Array<{ activityId: string }>
+  do {
+    rows = (await postgres.select(fetchQuery, values)) as Array<{ activityId: string }>
     if (rows.length === 0) break
 
     const ids = rows.map((r) => r.activityId)
@@ -210,12 +211,14 @@ async function deletePostgresInChunks(
         `  Batch ${batch} delete failed (sample IDs: ${ids.slice(0, 3).join(', ')}): ${error.message}`,
       )
       failedBatches++
+      // Stop to prevent re-fetching the same undeleted rows on the next iteration
+      break
     }
 
     if (batch % 10 === 0) {
       log.info(`  … deleted ${total.toLocaleString()} rows so far (batch ${batch})`)
     }
-  }
+  } while (rows.length === batchSize)
 
   return { deleted: total, failedBatches }
 }
