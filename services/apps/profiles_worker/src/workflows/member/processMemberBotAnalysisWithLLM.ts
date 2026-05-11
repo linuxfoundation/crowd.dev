@@ -16,7 +16,6 @@ const {
   updateMemberAttributes,
   createMemberBotSuggestion,
   removeMemberOrganizations,
-  syncMember,
   createMemberNoBot,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
@@ -89,8 +88,7 @@ export async function processMemberBotAnalysisWithLLM(
   if (confidence >= THRESHOLD) {
     await updateMemberAttributes(memberId, { isBot: { default: true, system: true } })
     await removeMemberOrganizations(memberId)
-    await triggerMemberAffiliationsRefresh(memberId, [], false)
-    await syncMember(memberId)
+    await triggerMemberAffiliationsRefresh(memberId, [], true)
   } else {
     // Otherwise, record a bot suggestion for further review
     await createMemberBotSuggestion({ memberId, confidence })
