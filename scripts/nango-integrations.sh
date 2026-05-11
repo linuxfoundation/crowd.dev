@@ -16,9 +16,9 @@ function create_nango_integration() {
     exportEnv "$KEY"
 
     # We need the client ID, secret and scopes to be set to create the integration
-    clientId=$(env | grep -i CROWD_${KEY}_CLIENT_ID | awk -F '=' '{print $2}')
-    clientSecret=$(env | grep -i CROWD_${KEY}_CLIENT_SECRET | awk -F '=' '{print $2}')
-    scopes=$(env | grep -i CROWD_${KEY}_SCOPES | awk -F '=' '{print $2}')
+    clientId=$(env | grep -i "^CROWD_${KEY}_CLIENT_ID=" | cut -d'=' -f2-)
+    clientSecret=$(env | grep -i "^CROWD_${KEY}_CLIENT_SECRET=" | cut -d'=' -f2-)
+    scopes=$(env | grep -i "^CROWD_${KEY}_SCOPES=" | cut -d'=' -f2-)
     if [[ -z $clientId || -z $clientSecret || -z $scopes ]]; then
         printf "\nNot all $1 variables are set. Skipping Nango integration creation.\n"
         printf "The variables needed are: \n- CROWD_${KEY}_CLIENT_ID \n- CROWD_${KEY}_CLIENT_SECRET \n- CROWD_${KEY}_SCOPES"

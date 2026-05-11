@@ -174,7 +174,7 @@ function multiselect {
             else
                 print_inactive "$option" "$prefix"
             fi
-            ((idx++))
+            idx=$((idx + 1))
         done
     }
 
@@ -189,11 +189,11 @@ function multiselect {
             break
             ;;
         up)
-            ((active--))
+            active=$((active - 1))
             if [ $active -lt 0 ]; then active=$((${#options[@]} - 1)); fi
             ;;
         down)
-            ((active++))
+            active=$((active + 1))
             if [ $active -ge ${#options[@]} ]; then active=0; fi
             ;;
         esac
@@ -258,7 +258,7 @@ function deploy_staging() {
         echo "${SELECTED_SERVICES[*]}"
     )"
 
-    gh workflow run $WORKFLOW_FILE --repo $REPOSITORY --ref $CURRENT_BRANCH -f services="$SERVICES"
+    gh workflow run "$WORKFLOW_FILE" --repo "$REPOSITORY" --ref "$CURRENT_BRANCH" -f services="$SERVICES"
 }
 
 function deploy_production() {
@@ -270,13 +270,13 @@ function deploy_production() {
         echo "${SELECTED_SERVICES[*]}"
     )"
 
-    gh workflow run $WORKFLOW_FILE --repo $REPOSITORY --ref $CURRENT_BRANCH -f services="$SERVICES"
+    gh workflow run "$WORKFLOW_FILE" --repo "$REPOSITORY" --ref "$CURRENT_BRANCH" -f services="$SERVICES"
 }
 
 function reset_selected_services() {
     for SERVICE in "${SELECTED_SERVICES[@]}"; do
         echo "Restarting service $SERVICE."
-        kill_containers $SERVICE && start_service $SERVICE
+        kill_containers "$SERVICE" && start_service "$SERVICE"
     done
 }
 
@@ -297,9 +297,9 @@ function create_migration() {
     MIG_VERSION=$(date +%s)
     UP_MIG_FILE="${CLI_HOME}/../backend/src/database/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
     DOWN_MIG_FILE="${CLI_HOME}/../backend/src/database/migrations/U${MIG_VERSION}__${MIG_NAME}.sql"
-    touch $UP_MIG_FILE
-    touch $DOWN_MIG_FILE
-    yell "Created ${MIG_FILE}"
+    touch "$UP_MIG_FILE"
+    touch "$DOWN_MIG_FILE"
+    yell "Created ${UP_MIG_FILE} and ${DOWN_MIG_FILE}"
 }
 
 function create_product_migration() {
@@ -307,9 +307,9 @@ function create_product_migration() {
     MIG_VERSION=$(date +%s)
     UP_MIG_FILE="${CLI_HOME}/../backend/src/product/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
     DOWN_MIG_FILE="${CLI_HOME}/../backend/src/product/migrations/U${MIG_VERSION}__${MIG_NAME}.sql"
-    touch $UP_MIG_FILE
-    touch $DOWN_MIG_FILE
-    yell "Created ${MIG_FILE}"
+    touch "$UP_MIG_FILE"
+    touch "$DOWN_MIG_FILE"
+    yell "Created ${UP_MIG_FILE} and ${DOWN_MIG_FILE}"
 }
 
 function build_and_publish() {
@@ -350,7 +350,12 @@ function restore_db_backup() {
     [[ -z "$1" ]] && error "Dump name has to be provided as first parameter!" && exit 1
 
     say "First we need to clean up the scaffold!"
+    SCAFFOLD_DESTROYED=0
     scaffold_destroy
+    if [[ $SCAFFOLD_DESTROYED -eq 0 ]]; then
+        say "Scaffold destroy canceled — aborting restore."
+        return
+    fi
     up_scaffold
 
     say "Sleeping for 5 seconds for the database container to start up!"
@@ -391,11 +396,11 @@ function scaffold() {
             exit
             ;;
         create-migration)
-            create_migration $2
+            create_migration "$2"
             exit
             ;;
         create-product-migration)
-            create_product_migration $2
+            create_product_migration "$2"
             exit
             ;;
         migrate-up)
@@ -431,7 +436,7 @@ function service() {
             ;;
         *)
             if [[ $CONTAINERS =~ (^|[[:space:]])"$1"($|[[:space:]]) ]]; then
-                service_manipulator $1 $2 $3
+                service_manipulator "$1" "$2" "$3"
                 exit
             else
                 error "Invalid command '$1'" && say "$HELP"
@@ -499,11 +504,17 @@ function kill_containers() {
 }
 
 function get_logs() {
+    local cid
     if [[ ${DEV} ]]; then
-        docker container logs -f $(get_container_id "$1-dev")
+        cid=$(get_container_id "$1-dev")
     else
-        docker container logs -f $(get_container_id "$1")
+        cid=$(get_container_id "$1")
     fi
+    if [[ -z "$cid" ]]; then
+        error "Container not found for service: $1"
+        exit 1
+    fi
+    docker container logs -f "$cid"
 }
 
 function print_container_status() {
@@ -531,9 +542,9 @@ function scaffold_set_up_network() {
     NETWORK_SUBNET="$2"
     NETWORK_GATEWAY="$3"
 
-    set +e pipefail
+    set +eo pipefail
     NETWORK_ID=$(docker network ls | grep -F -e "$NETWORK_NAME " | tr " " "\n" | head -n 1)
-    set -e pipefail
+    set -eo pipefail
 
     if [[ ${NETWORK_ID} ]]; then
         say "The $NETWORK_NAME network is up and running."
@@ -571,7 +582,7 @@ function wait_for_tinybird() {
     while [ $attempt -le $MAX_RETRIES ]; do
         CROWD_TINYBIRD_WORKSPACE_ADMIN_TOKEN=$(curl -s "$TB_HOST/tokens" | jq -r '.workspace_admin_token')
 
-        if [ -n "$CROWD_TINYBIRD_WORKSPACE_ADMIN_TOKEN" ]; then
+        if [ -n "$CROWD_TINYBIRD_WORKSPACE_ADMIN_TOKEN" ] && [ "$CROWD_TINYBIRD_WORKSPACE_ADMIN_TOKEN" != "null" ]; then
             say "Tinybird tokens endpoint is ready!"
             break
         fi
@@ -630,7 +641,11 @@ function set_tinybird_token_in_env() {
 function migrate_tinybird_local() {
     set +eo pipefail
 
-    wait_for_tinybird
+    if ! wait_for_tinybird; then
+        error "Tinybird not ready — skipping Tinybird migration."
+        set -eo pipefail
+        return 1
+    fi
     set_tinybird_token_in_env
 
     activate_tinybird_cli
@@ -661,6 +676,14 @@ function migrate_tinybird_local() {
             fi
         fi
     done
+
+    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+        error "Tinybird auth failed — skipping push steps."
+        popd > /dev/null
+        deactivate_tinybird_cli
+        set -eo pipefail
+        return 1
+    fi
 
     tb push datasources/activityRelations_deduplicated_ds.datasource
     tb push datasources/activities_deduplicated_ds.datasource
@@ -795,11 +818,13 @@ function down_scaffold() {
 }
 
 function scaffold_destroy() {
+    SCAFFOLD_DESTROYED=0
     say "\nWill delete all local crowd state data (docker volumes) if you have any. Are you sure?"
     select reset_system_condition in "Yes" "No"; do
         case $reset_system_condition in
         'Yes')
             scaffold_destroy_confirmed
+            SCAFFOLD_DESTROYED=1
             break
             ;;
         'No')
@@ -811,7 +836,9 @@ function scaffold_destroy() {
 }
 
 function scaffold_reset() {
+    SCAFFOLD_DESTROYED=0
     scaffold_destroy
+    if [[ $SCAFFOLD_DESTROYED -eq 0 ]]; then return; fi
     up_scaffold
     post_up_scaffold
 }
@@ -847,7 +874,13 @@ function reset_and_restart() {
 
     nl
     say "Resetting scaffold..."
+    SCAFFOLD_DESTROYED=0
     scaffold_reset
+
+    if [[ $SCAFFOLD_DESTROYED -eq 0 ]]; then
+        say "Reset canceled."
+        return
+    fi
 
     say "Restarting previously running services..."
     for service in "${RUNNING_SERVICES[@]}"; do
@@ -864,15 +897,26 @@ function reset_and_restart() {
 }
 
 function kill_all_containers() {
+    local cid
     for i in $CONTAINERS; do
         say "Killing service $i."
 
-        if [[ $(check_container_status ${i}) ]]; then
-            docker rm -f $(get_container_id ${i})
-            yell "Service $i killed."
-        elif [[ $(check_container_status ${i}-dev) ]]; then
-            docker rm -f $(get_container_id ${i}-dev)
-            yell "Service $i-dev killed."
+        if [[ $(check_container_status "${i}") ]]; then
+            cid=$(get_container_id "${i}")
+            if [[ -n "$cid" ]]; then
+                docker rm -f "$cid"
+                yell "Service $i killed."
+            else
+                error "Service $i: container vanished before removal."
+            fi
+        elif [[ $(check_container_status "${i}-dev") ]]; then
+            cid=$(get_container_id "${i}-dev")
+            if [[ -n "$cid" ]]; then
+                docker rm -f "$cid"
+                yell "Service $i-dev killed."
+            else
+                error "Service $i-dev: container vanished before removal."
+            fi
         else
             error "Service $i not running."
         fi
@@ -893,7 +937,7 @@ function service_start() {
 
         if [[ -z "$SKIP" ]]; then
             say "Starting service $SERVICE."
-            start_service $SERVICE
+            start_service "$SERVICE"
             nl
         fi
         unset SKIP
@@ -906,7 +950,7 @@ function scaffold_destroy_confirmed() {
 
     # needed because if there are no volumes this might cause the script to exit
     set +eo pipefail
-    VOLUMES=$(docker volume ls | tail -n +2 | tr -s " " | cut -d' ' -f2 | grep $PROJECT_NAME)
+    VOLUMES=$(docker volume ls | tail -n +2 | tr -s " " | cut -d' ' -f2 | grep "^${PROJECT_NAME}_")
     set -eo pipefail
     if [[ ${VOLUMES} ]]; then
         _IFS=$IFS
@@ -937,7 +981,12 @@ function start() {
         up_scaffold
         post_up_scaffold
     else
+        SCAFFOLD_DESTROYED=0
         scaffold_reset
+        if [[ $SCAFFOLD_DESTROYED -eq 0 ]]; then
+            say "Reset canceled."
+            return
+        fi
     fi
 
     service_start
@@ -966,15 +1015,15 @@ ${YELLOW}Lint:${RESET}
 while test $# -gt 0; do
     case "$1" in
     scaffold)
-        scaffold $2 $3 $4 $5
+        scaffold "$2" "$3" "$4" "$5"
         exit
         ;;
     service)
-        service $2 $3 $4 $5
+        service "$2" "$3" "$4" "$5"
         exit
         ;;
     services)
-        service $2 $3 $4 $5
+        service "$2" "$3" "$4" "$5"
         exit
         ;;
     start)
@@ -1087,13 +1136,13 @@ while test $# -gt 0; do
         ;;
     build)
         BUILD=1
-        build $2 $3
+        build "$2" "$3"
         exit
         ;;
     build-and-push)
         BUILD=1
         PUSH=1
-        build $2 $3
+        build "$2" "$3"
         exit
         ;;
     build-and-push-multiple)
@@ -1108,14 +1157,14 @@ while test $# -gt 0; do
 
         shift
         for IMAGE in "$@"; do
-            build $IMAGE $VERSION
+            build "$IMAGE" "$VERSION"
         done
 
         exit
         ;;
     push)
         PUSH=1
-        build $2 $3
+        build "$2" "$3"
         exit
         ;;
     migrate-env)
@@ -1123,11 +1172,11 @@ while test $# -gt 0; do
         exit
         ;;
     db-backup)
-        db_backup $2
+        db_backup "$2"
         exit
         ;;
     db-restore)
-        restore_db_backup $2
+        restore_db_backup "$2"
         exit
         ;;
     reset-and-restart)

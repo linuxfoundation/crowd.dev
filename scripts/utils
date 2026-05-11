@@ -17,23 +17,23 @@ fi
 USER_NAME=`whoami`
 
 yell () {
-    printf "${YELLOW}$1\n${RESET}"
+    printf "${YELLOW}%s\n${RESET}" "$1"
 }
 
 say () {
-    printf "${GREEN}$1\n${RESET}"
+    printf "${GREEN}%s\n${RESET}" "$1"
 }
 
 whisper () {
-    printf "${GREY}$1\n${RESET}"
+    printf "${GREY}%s\n${RESET}" "$1"
 }
 
 error () {
-    printf "${RED}$1\n${RESET}"
+    printf "${RED}%s\n${RESET}" "$1"
 }
 
 progress () {
-    printf "  > $1\n"
+    printf "  > %s\n" "$1"
 }
 
 nl () {
