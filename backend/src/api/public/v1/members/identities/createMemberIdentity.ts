@@ -94,6 +94,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     id: result.id,
     value: result.value,
     platform: result.platform,
+    type: result.type,
     verified: result.verified,
     verifiedBy: result.verifiedBy ?? null,
     source: result.source ?? null,

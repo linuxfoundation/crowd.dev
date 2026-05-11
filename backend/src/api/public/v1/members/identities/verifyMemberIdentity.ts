@@ -53,6 +53,7 @@ function toReturn(identity: IMemberIdentity) {
     id: identity.id,
     value: identity.value,
     platform: identity.platform,
+    type: identity.type,
     verified: identity.verified,
     verifiedBy: identity.verifiedBy ?? null,
     source: identity.source,
