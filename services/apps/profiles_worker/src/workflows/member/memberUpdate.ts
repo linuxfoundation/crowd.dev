@@ -19,16 +19,10 @@ const { updateMemberAffiliations, syncOrganization, syncMember } = proxyActiviti
 
 export const refreshAffiliationsSignal = defineSignal<[MemberUpdateInput]>('refreshAffiliations')
 
-/*
-memberUpdate is a Temporal workflow that:
-  - [Signal]: accepts 'refreshAffiliations' signals to queue affiliation refresh requests
-  - [Activity]: Refresh all affiliations for a given member in the database.
-  - [Activity]: Sync member and memberOrganizations to OpenSearch if specified.
-
-Signals are coalesced: if N requests arrive while a refresh is in progress,
-they are merged into one follow-up pass. This eliminates the TERMINATE_IF_RUNNING
-race where concurrent callers killed mid-flight refreshes.
-*/
+/**
+ * Per-member workflow that serializes async member operations (affiliations, sync, etc).
+ * Concurrent signals are coalesced into one follow-up pass instead of racing.
+ */
 export async function memberUpdate(input?: MemberUpdateInput): Promise<void> {
   let queued: MemberUpdateInput | null = input ?? null
 
@@ -50,12 +44,14 @@ export async function memberUpdate(input?: MemberUpdateInput): Promise<void> {
   })
 
   if (!queued) {
+    // signalWithStart starts with no args, so wait for the first signal to arrive
     const received = await condition(() => queued !== null, '5 minutes')
     if (!received) return
   }
 
   while (queued) {
     const pending = queued
+    // Clear before awaiting so new signals accumulate into the next pass
     queued = null
 
     const memberId = pending.member.id

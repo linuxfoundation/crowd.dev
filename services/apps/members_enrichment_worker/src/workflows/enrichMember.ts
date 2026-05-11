@@ -43,7 +43,8 @@ export async function enrichMember(
   // skip enrichment if member no longer exists
   if (!member) return
 
-  // Run all sources in parallel
+  // Fetch all sources in parallel so one slow or rate-limited source doesn't block the rest.
+  // If any source fails, the member's enrichment fails immediately.
   const sourceResults = await Promise.all(
     sources.map(async (source): Promise<boolean> => {
       const caches = await findMemberEnrichmentCache([source], input.id)

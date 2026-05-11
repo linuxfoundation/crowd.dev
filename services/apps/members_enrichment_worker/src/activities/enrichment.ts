@@ -582,6 +582,8 @@ export async function updateMemberUsingSquashedPayload(
         isHighConfidenceSourceSelectedForWorkExperiences,
       )
 
+      // Enrichment often deletes and recreates the same orgs with identical dates.
+      // Skip the refresh when the timeline that drives activityRelations hasn't changed.
       affiliationNeedsRefresh =
         results.toUpdate.size > 0 ||
         hasMemberOrganizationTimelineChange(results.toDelete, results.toCreate)
@@ -779,6 +781,11 @@ function sanitizeWorkExperienceDateRanges(
   })
 }
 
+/**
+ * Returns true when the set of (orgId, startDate, endDate) tuples differs
+ * between deletes and creates. Fields like title or source don't affect
+ * the affiliation timeline, so they're intentionally ignored.
+ */
 function hasMemberOrganizationTimelineChange(
   toDelete: IMemberOrganizationData[],
   toCreate: IMemberEnrichmentDataNormalizedOrganization[],

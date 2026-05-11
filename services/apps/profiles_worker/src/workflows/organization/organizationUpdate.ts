@@ -56,6 +56,9 @@ export async function organizationUpdate(input: IOrganizationProfileSyncInput): 
       memberOrganizationIds: [],
       syncToOpensearch: false,
     }
+    // Routes through the per-member workflow so concurrent org updates coalesce.
+    // ABANDON is needed because continueAsNew closes this execution, and without it
+    // Temporal would terminate the child refreshes we just kicked off.
     const handle = await startChild('memberUpdate', {
       workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
       workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
