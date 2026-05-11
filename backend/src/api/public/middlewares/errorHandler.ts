@@ -24,8 +24,7 @@ export const errorHandler: ErrorRequestHandler = (
   _next: NextFunction,
 ) => {
   if (error instanceof ConflictError) {
-    const memberIds = (error as ConflictError & { memberIds?: string[] }).memberIds
-    req.log.warn({ memberIds }, 'Public API conflict')
+    req.log.warn({ context: error.context }, 'Public API conflict')
     sendSlackNotification(
       SlackChannel.CDP_LFX_SELF_SERVE_ALERTS,
       SlackPersona.WARNING_PROPAGATOR,
@@ -39,7 +38,9 @@ export const errorHandler: ErrorRequestHandler = (
           title: 'Conflict',
           text: `*Message:* ${error.message}`,
         },
-        ...(memberIds ? [{ title: 'Member IDs', text: memberIds.join(', ') }] : []),
+        ...(error.context
+          ? [{ title: 'Context', text: `\`\`\`${JSON.stringify(error.context, null, 2)}\`\`\`` }]
+          : []),
       ],
     )
     res.status(error.status).json(error.toJSON())

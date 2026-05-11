@@ -4,7 +4,6 @@ import { z } from 'zod'
 import { ConflictError, NotFoundError } from '@crowd/common'
 import { findMemberIdsByIdentities, optionsQx } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
-
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
@@ -32,13 +31,7 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
   if (memberIds.length === 0) {
     throw new NotFoundError('Member not found')
   } else if (memberIds.length > 1) {
-    const error = new ConflictError('Conflicting identities')
-    Object.defineProperty(error, 'memberIds', {
-      value: memberIds,
-      enumerable: false,
-      configurable: true,
-    })
-    throw error
+    throw new ConflictError('Conflicting identities', { memberIds })
   }
 
   const memberId = memberIds[0]
