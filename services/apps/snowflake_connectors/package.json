@@ -4,7 +4,7 @@
   "scripts": {
     "start": "CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker tsx src/index.ts",
     "start:debug": "CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx src/index.ts",
-    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx src/index.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=snowflakeConnectors SERVICE=snowflake-connectors-worker LOG_LEVEL=debug tsx --inspect=0.0.0.0:9252 src/index.ts",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "lint": "npx eslint --ext .ts src --max-warnings=0",

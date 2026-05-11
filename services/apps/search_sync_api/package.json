@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "start": "SERVICE=search-sync-api tsx src/main.ts",
-    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=search-sync-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9236 src/main.ts",
+    "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=search-sync-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9235 src/main.ts",
     "start:debug": "SERVICE=search-sync-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9236 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
