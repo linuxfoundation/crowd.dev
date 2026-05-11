@@ -78,8 +78,7 @@ export async function getIdentitiesExistInOtherMembers(
   identities: IMemberIdentity[],
 ): Promise<IMemberIdentity[]> {
   const db = svc.postgres.reader
-  const rows = await getIdentitiesExistInOthers(db, excludeMemberId, identities)
-  return rows
+  return getIdentitiesExistInOthers(db, excludeMemberId, identities)
 }
 
 export async function updateMemberWithEnrichmentData(
