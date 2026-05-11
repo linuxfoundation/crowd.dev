@@ -90,6 +90,7 @@ interface CleanupResult {
   startTime: string
   endTime: string
   postgresDeleted: number
+  postgresFailedBatches: number
   tinybirdJobIds: string[]
   deletions: {
     postgres: DeletionStatus
@@ -141,15 +142,6 @@ function buildPostgresFilter(filters: Filters): { where: string; values: Record<
 // Count helpers
 // ---------------------------------------------------------------------------
 
-async function countPostgresRows(postgres: QueryExecutor, filters: Filters): Promise<number> {
-  const { where, values } = buildPostgresFilter(filters)
-  const result = (await postgres.selectOne(
-    `SELECT COUNT(*) AS count FROM "activityRelations" WHERE ${where}`,
-    values,
-  )) as { count: string }
-  return parseInt(result.count, 10)
-}
-
 async function countTinybirdRows(
   tinybird: TinybirdClient,
   datasource: string,
@@ -184,40 +176,48 @@ async function confirmOrAbort(message: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Delete matching rows from activityRelations in 10k batches.
- * Each batch is its own transaction so lock duration and WAL stays bounded.
- * Returns total rows deleted.
+ * Delete matching rows from activityRelations in batches by fetching IDs first.
+ * Each iteration: fetch up to batchSize IDs matching the filter, then delete by PK.
+ * PK deletes are cheap index lookups; the filter scan happens once per batch (not twice).
+ * Returns { deleted, failedBatches }.
  */
 async function deletePostgresInChunks(
   postgres: QueryExecutor,
   filters: Filters,
   batchSize = 10000,
-): Promise<number> {
+): Promise<{ deleted: number; failedBatches: number }> {
   const { where, values } = buildPostgresFilter(filters)
-  const query = `
-    DELETE FROM "activityRelations"
-    WHERE "activityId" IN (
-      SELECT "activityId" FROM "activityRelations"
-      WHERE ${where}
-      LIMIT ${batchSize}
-    )
-  `
+  const fetchQuery = `SELECT "activityId" FROM "activityRelations" WHERE ${where} LIMIT ${batchSize}`
 
   let total = 0
   let batch = 0
-  let deleted = 0
+  let failedBatches = 0
 
-  do {
-    deleted = await postgres.result(query, values)
-    if (deleted === 0) break
-    total += deleted
+  while (true) {
+    const rows = (await postgres.select(fetchQuery, values)) as Array<{ activityId: string }>
+    if (rows.length === 0) break
+
+    const ids = rows.map((r) => r.activityId)
     batch++
+
+    try {
+      await postgres.result(`DELETE FROM "activityRelations" WHERE "activityId" IN ($(ids:csv))`, {
+        ids,
+      })
+      total += ids.length
+    } catch (error) {
+      log.error(
+        `  Batch ${batch} delete failed (sample IDs: ${ids.slice(0, 3).join(', ')}): ${error.message}`,
+      )
+      failedBatches++
+    }
+
     if (batch % 10 === 0) {
       log.info(`  … deleted ${total.toLocaleString()} rows so far (batch ${batch})`)
     }
-  } while (deleted > 0)
+  }
 
-  return total
+  return { deleted: total, failedBatches }
 }
 
 // ---------------------------------------------------------------------------
@@ -284,45 +284,57 @@ async function runCleanup(
   const postgres = await initPostgresClient()
   const tinybird = new TinybirdClient(tbToken)
 
-  // Pre-flight counts (all three stores in parallel)
-  log.info('Counting affected rows across all stores...')
-  const [pgCount, tbActivitiesCount, tbRelationsCount] = await Promise.all([
-    countPostgresRows(postgres, filters),
+  // Pre-flight counts — Tinybird only (ClickHouse COUNT is cheap; PG COUNT over 1M+ rows is not)
+  log.info('Counting affected rows in Tinybird...')
+  const [tbActivitiesCount, tbRelationsCount] = await Promise.all([
     countTinybirdRows(tinybird, 'activities', filters),
     countTinybirdRows(tinybird, 'activityRelations', filters),
   ])
 
-  log.info(`  PostgreSQL activityRelations : ${pgCount.toLocaleString()} rows`)
   log.info(`  Tinybird   activities        : ${tbActivitiesCount.toLocaleString()} rows`)
   log.info(`  Tinybird   activityRelations : ${tbRelationsCount.toLocaleString()} rows`)
+  log.info(`  PostgreSQL activityRelations : will be deleted by streaming batches (no pre-count)`)
 
   if (dryRun) {
     log.info(`\n[DRY RUN] Would delete:`)
-    log.info(`  ${pgCount.toLocaleString()} rows from PostgreSQL activityRelations`)
+    log.info(
+      `  PostgreSQL activityRelations matching filter: ${buildTinybirdFilterClause(filters).replace(/'/g, '"')} — actual count reported during real execution`,
+    )
     log.info(`  ${tbActivitiesCount.toLocaleString()} rows from Tinybird activities`)
     log.info(`  ${tbRelationsCount.toLocaleString()} rows from Tinybird activityRelations`)
     log.info('[DRY RUN] No data was deleted.')
     return
   }
 
-  if (pgCount === 0 && tbActivitiesCount === 0 && tbRelationsCount === 0) {
-    log.info('No matching rows found. Nothing to delete.')
+  if (tbActivitiesCount === 0 && tbRelationsCount === 0) {
+    log.info('No matching rows found in Tinybird. Nothing to delete.')
     return
   }
 
   if (!skipConfirm) {
     await confirmOrAbort(
-      `\nAbout to permanently delete ${pgCount.toLocaleString()} PG rows, ${tbActivitiesCount.toLocaleString()} TB activities, ${tbRelationsCount.toLocaleString()} TB activityRelations.`,
+      `\nAbout to permanently delete PG rows matching filter, ${tbActivitiesCount.toLocaleString()} TB activities, ${tbRelationsCount.toLocaleString()} TB activityRelations.`,
     )
   }
 
-  // Step 1: Delete from Postgres in chunks
-  log.info(`\nStep 1: Deleting ${pgCount.toLocaleString()} rows from PostgreSQL in 10k batches...`)
+  // Step 1: Delete from Postgres in chunks (fetch IDs then delete by PK, 10k at a time)
+  log.info(`\nStep 1: Deleting matching rows from PostgreSQL in 10k batches...`)
   const postgresStatus: DeletionStatus = { success: true }
   let postgresDeleted = 0
+  let postgresFailedBatches = 0
   try {
-    postgresDeleted = await deletePostgresInChunks(postgres, filters)
-    log.info(`✓ Deleted ${postgresDeleted.toLocaleString()} row(s) from PostgreSQL`)
+    const pgResult = await deletePostgresInChunks(postgres, filters)
+    postgresDeleted = pgResult.deleted
+    postgresFailedBatches = pgResult.failedBatches
+    if (postgresFailedBatches > 0) {
+      log.warn(
+        `  ${postgresFailedBatches} batch(es) failed — ${postgresDeleted.toLocaleString()} rows deleted successfully`,
+      )
+      postgresStatus.success = false
+      postgresStatus.error = `${postgresFailedBatches} batch(es) failed`
+    } else {
+      log.info(`✓ Deleted ${postgresDeleted.toLocaleString()} row(s) from PostgreSQL`)
+    }
   } catch (error) {
     log.error(`Failed to delete from PostgreSQL: ${error.message}`)
     postgresStatus.success = false
@@ -345,6 +357,7 @@ async function runCleanup(
     startTime,
     endTime,
     postgresDeleted,
+    postgresFailedBatches,
     tinybirdJobIds: tinybirdStatuses.jobIds,
     deletions: {
       postgres: postgresStatus,
@@ -388,7 +401,13 @@ async function runCleanup(
   log.info(`\n${'='.repeat(80)}`)
   log.info('Cleanup Summary')
   log.info(`${'='.repeat(80)}`)
-  log.info(`✓ PostgreSQL rows deleted : ${postgresDeleted.toLocaleString()}`)
+  if (postgresStatus.success) {
+    log.info(`✓ PostgreSQL rows deleted : ${postgresDeleted.toLocaleString()}`)
+  } else {
+    log.warn(
+      `⚠ PostgreSQL rows deleted : ${postgresDeleted.toLocaleString()} (${postgresFailedBatches} batch(es) failed)`,
+    )
+  }
   if (tinybirdStatuses.activities.success) {
     log.info(`✓ Tinybird activities job  : ${tinybirdStatuses.activities.jobId}`)
   } else {
