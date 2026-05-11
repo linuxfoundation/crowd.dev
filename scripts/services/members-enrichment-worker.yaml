@@ -58,6 +58,8 @@ services:
       - ../../services/libs/telemetry/src:/usr/crowd/app/services/libs/telemetry/src
       - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
       - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
+      - ../../services/archetypes/standard/src:/usr/crowd/app/services/archetypes/standard/src
+      - ../../services/archetypes/worker/src:/usr/crowd/app/services/archetypes/worker/src
       - ../../services/apps/members_enrichment_worker/src:/usr/crowd/app/services/apps/members_enrichment_worker/src
 
 networks:

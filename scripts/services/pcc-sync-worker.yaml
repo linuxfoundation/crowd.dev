@@ -43,9 +43,14 @@ services:
       - crowd-bridge
     volumes:
       - ../../services/libs/common/src:/usr/crowd/app/services/libs/common/src
+      - ../../services/libs/database/src:/usr/crowd/app/services/libs/database/src
       - ../../services/libs/logging/src:/usr/crowd/app/services/libs/logging/src
+      - ../../services/libs/slack/src:/usr/crowd/app/services/libs/slack/src
       - ../../services/libs/snowflake/src:/usr/crowd/app/services/libs/snowflake/src
       - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
+      - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
+      - ../../services/archetypes/standard/src:/usr/crowd/app/services/archetypes/standard/src
+      - ../../services/archetypes/worker/src:/usr/crowd/app/services/archetypes/worker/src
       - ../../services/apps/pcc_sync_worker/src:/usr/crowd/app/services/apps/pcc_sync_worker/src
 
 networks:

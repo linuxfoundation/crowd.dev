@@ -21,7 +21,7 @@ services:
     environment:
       <<: *env-args
     ports:
-      - '8084:8084'
+      - '8084:8084' # Nango integration webhook handler (OAuth callbacks + integration events) — http://localhost:8084
     restart: always
     networks:
       - crowd-bridge
@@ -42,7 +42,7 @@ services:
       <<: *env-args
     hostname: nango-webhook-api
     ports:
-      - '8084:8084'
+      - '8084:8084' # Nango integration webhook handler (OAuth callbacks + integration events) — http://localhost:8084
     networks:
       - crowd-bridge
     volumes:

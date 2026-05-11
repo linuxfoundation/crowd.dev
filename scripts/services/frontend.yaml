@@ -15,7 +15,7 @@ services:
       - DOCKER_BUILDKIT=1
       - BACKEND_URL=http://api:8080
     ports:
-      - '8081:8081'
+      - '8081:8081' # Frontend UI — http://localhost:8081
     restart: always
     networks:
       - crowd-bridge
@@ -34,7 +34,7 @@ services:
       - DOCKER_BUILDKIT=1
       - BACKEND_URL=http://api:8080
     ports:
-      - '8081:8081'
+      - '8081:8081' # Frontend UI — http://localhost:8081
     networks:
       - crowd-bridge
     hostname: frontend

@@ -53,9 +53,12 @@ services:
       - ../../services/libs/opensearch/src:/usr/crowd/app/services/libs/opensearch/src
       - ../../services/libs/queue/src:/usr/crowd/app/services/libs/queue/src
       - ../../services/libs/redis/src:/usr/crowd/app/services/libs/redis/src
+      - ../../services/libs/snowflake/src:/usr/crowd/app/services/libs/snowflake/src
       - ../../services/libs/telemetry/src:/usr/crowd/app/services/libs/telemetry/src
       - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
       - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
+      - ../../services/archetypes/standard/src:/usr/crowd/app/services/archetypes/standard/src
+      - ../../services/archetypes/worker/src:/usr/crowd/app/services/archetypes/worker/src
       - ../../services/apps/script_executor_worker/src:/usr/crowd/app/services/apps/script_executor_worker/src
 
 networks:

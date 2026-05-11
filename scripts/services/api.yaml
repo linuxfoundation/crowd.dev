@@ -21,7 +21,7 @@ services:
     environment:
       <<: *env-args
     ports:
-      - '8080:8080'
+      - '8080:8080' # Backend REST API — http://localhost:8080
     restart: always
     networks:
       - crowd-bridge
@@ -42,7 +42,7 @@ services:
       <<: *env-args
     hostname: api
     ports:
-      - '8080:8080'
+      - '8080:8080' # Backend REST API — http://localhost:8080
     networks:
       - crowd-bridge
     volumes:
@@ -57,6 +57,7 @@ services:
       - ../../services/libs/opensearch/src:/usr/crowd/app/services/libs/opensearch/src
       - ../../services/libs/queue/src:/usr/crowd/app/services/libs/queue/src
       - ../../services/libs/redis/src:/usr/crowd/app/services/libs/redis/src
+      - ../../services/libs/slack/src:/usr/crowd/app/services/libs/slack/src
       - ../../services/libs/snowflake/src:/usr/crowd/app/services/libs/snowflake/src
       - ../../services/libs/telemetry/src:/usr/crowd/app/services/libs/telemetry/src
       - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src

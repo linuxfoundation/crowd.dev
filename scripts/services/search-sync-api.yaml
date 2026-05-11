@@ -21,7 +21,7 @@ services:
     environment:
       <<: *env-args
     ports:
-      - '8083:8083'
+      - '8083:8083' # OpenSearch sync API (member + org index management) — http://localhost:8083
     restart: always
     networks:
       - crowd-bridge
@@ -42,7 +42,7 @@ services:
       <<: *env-args
     hostname: search-sync-api
     ports:
-      - '8083:8083'
+      - '8083:8083' # OpenSearch sync API (member + org index management) — http://localhost:8083
     networks:
       - crowd-bridge
     volumes:

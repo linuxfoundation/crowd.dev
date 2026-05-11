@@ -22,7 +22,7 @@ services:
     networks:
       - crowd-bridge
     ports:
-      - '8085:8085'
+      - '8085:8085' # Git integration worker API (Python FastAPI, health + repo processing) — http://localhost:8085
 
   git-integration-dev:
     build:
@@ -39,7 +39,7 @@ services:
       <<: *env-args
     hostname: git-integration
     ports:
-      - '8085:8085'
+      - '8085:8085' # Git integration worker API (Python FastAPI, health + repo processing) — http://localhost:8085
     networks:
       - crowd-bridge
     volumes:

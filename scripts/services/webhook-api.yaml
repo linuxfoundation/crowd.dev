@@ -21,7 +21,7 @@ services:
     environment:
       <<: *env-args
     ports:
-      - '8082:8082'
+      - '8082:8082' # Inbound webhook receiver (GitHub, GitLab, Discourse, GroupsIO) — http://localhost:8082
     restart: always
     networks:
       - crowd-bridge
@@ -42,7 +42,7 @@ services:
       <<: *env-args
     hostname: webhook-api
     ports:
-      - '8082:8082'
+      - '8082:8082' # Inbound webhook receiver (GitHub, GitLab, Discourse, GroupsIO) — http://localhost:8082
     networks:
       - crowd-bridge
     volumes:
