@@ -44,7 +44,7 @@ export async function enrichMember(
   if (!member) return
 
   // Fetch all sources in parallel so one slow or rate-limited source doesn't block the rest.
-  // If any source fails, the member's enrichment fails immediately.
+  // The workflow fails fast, but source activities already in flight may still update cache.
   const sourceResults = await Promise.all(
     sources.map(async (source): Promise<boolean> => {
       const caches = await findMemberEnrichmentCache([source], input.id)

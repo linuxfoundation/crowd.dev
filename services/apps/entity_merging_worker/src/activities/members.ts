@@ -1,4 +1,4 @@
-import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@temporalio/workflow'
+import { WorkflowIdConflictPolicy } from '@temporalio/workflow'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import {
@@ -27,47 +27,20 @@ export async function deleteMember(memberId: string): Promise<void> {
 export async function recalculateActivityAffiliationsOfMemberAsync(
   memberId: string,
 ): Promise<void> {
-  const workflowId = `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`
-
-  try {
-    const handle = svc.temporal.workflow.getHandle(workflowId)
-    const { status } = await handle.describe()
-
-    if (status.name === 'RUNNING') {
-      await handle.result()
-    }
-  } catch (err) {
-    if (err.name !== 'WorkflowNotFoundError') {
-      svc.log.error({ err }, 'Failed to check workflow state')
-      throw err
-    }
-  }
-
-  try {
-    await svc.temporal.workflow.start('memberUpdate', {
-      taskQueue: 'profiles',
-      workflowId,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
-      workflowIdConflictPolicy: WorkflowIdConflictPolicy.FAIL,
-      retry: {
-        maximumAttempts: 10,
-      },
-      args: [
-        {
-          member: {
-            id: memberId,
-          },
-        },
-      ],
-    })
-  } catch (err) {
-    if (err.name === 'WorkflowExecutionAlreadyStartedError') {
-      svc.log.info({ workflowId }, 'Workflow already started, skipping')
-      return
-    }
-
-    throw err
-  }
+  await svc.temporal.workflow.signalWithStart('memberUpdate', {
+    taskQueue: 'profiles',
+    workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
+    workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+    signal: 'refreshAffiliations',
+    signalArgs: [{ member: { id: memberId }, memberOrganizationIds: [], syncToOpensearch: false }],
+    retry: {
+      maximumAttempts: 10,
+    },
+    args: [],
+    searchAttributes: {
+      TenantId: [DEFAULT_TENANT_ID],
+    },
+  })
 }
 
 export async function syncMember(memberId: string): Promise<void> {

@@ -162,7 +162,7 @@ export async function getWorkflowsCount(workflowType: string, status: string): P
 export async function calculateMemberAffiliations(memberId: string): Promise<void> {
   await svc.temporal.workflow.signalWithStart('memberUpdate', {
     taskQueue: 'profiles',
-    workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
+    workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
     workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
     signal: 'refreshAffiliations',
     signalArgs: [{ member: { id: memberId }, memberOrganizationIds: [], syncToOpensearch: false }],

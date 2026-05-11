@@ -1,9 +1,10 @@
 import commandLineArgs from 'command-line-args'
-import { randomUUID } from 'crypto'
 
+import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
-import { getTemporalClient } from '@crowd/temporal'
+import { WorkflowIdConflictPolicy, getTemporalClient } from '@crowd/temporal'
+import { TemporalWorkflowId } from '@crowd/types'
 
 import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 
@@ -99,25 +100,24 @@ setImmediate(async () => {
       try {
         log.info(`Processing member: ${member.id}`)
 
-        const uuid = randomUUID()
-
-        await temporal.workflow.start('memberUpdate', {
+        await temporal.workflow.signalWithStart('memberUpdate', {
           taskQueue: 'profiles',
-          workflowId: `member-update-fix-unaffiliation/${organizationId}/${member.id}/${uuid}`,
-          retry: {
-            maximumAttempts: 10,
-          },
-          args: [
+          workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${member.id}`,
+          workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+          signal: 'refreshAffiliations',
+          signalArgs: [
             {
-              member: {
-                id: member.id,
-              },
+              member: { id: member.id },
               memberOrganizationIds: [organizationId],
               syncToOpensearch: false,
             },
           ],
+          retry: {
+            maximumAttempts: 10,
+          },
+          args: [],
           searchAttributes: {
-            TenantId: ['875c38bd-2b1b-4e91-ad07-0cfbabb4c49f'], // default tenantId
+            TenantId: [DEFAULT_TENANT_ID],
           },
         })
 

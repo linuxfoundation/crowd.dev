@@ -45,6 +45,7 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/d
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
+import { TemporalWorkflowId } from '@crowd/types'
 
 const ENRICHMENT_SOURCES = ['enrichment-progai', 'enrichment-clearbit', 'enrichment-crustdata']
 
@@ -255,7 +256,7 @@ async function main() {
           )
           await temporal.workflow.signalWithStart('memberUpdate', {
             taskQueue: 'profiles',
-            workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
+            workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
             workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
             signal: 'refreshAffiliations',
             signalArgs: [
