@@ -10,7 +10,6 @@ import { findAndMergeMembersWithSameVerifiedEmailsInDifferentPlatforms } from '.
 import { fixBotMembersAffiliation } from './workflows/fix-bot-members-affiliation'
 import { fixWorkExperienceEpochDates } from './workflows/fix-work-experience-epoch-dates'
 import { fixOrgIdentitiesWithWrongUrls } from './workflows/fixOrgIdentitiesWithWrongUrls'
-import { processLLMVerifiedMerges } from './workflows/processLLMVerifiedMerges'
 import { recalculateMemberAffiliations } from './workflows/recalculate-member-affiliations'
 
 export {
@@ -22,7 +21,6 @@ export {
   cleanupOrganizations,
   cleanupMemberSegmentsAgg,
   cleanupOrganizationSegmentAgg,
-  processLLMVerifiedMerges,
   cleanupDuplicateMembers,
   fixBotMembersAffiliation,
   blockProjectOrganizationAffiliations,
