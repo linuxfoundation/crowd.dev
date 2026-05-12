@@ -4,6 +4,9 @@ from crowdgit.errors import CommandExecutionError, CommandTimeoutError
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.utils import run_shell_command
 
+# Mirrors GitHub's internal licensee threshold — matches below this are too uncertain.
+LICENSE_CONFIDENCE_THRESHOLD = 98
+
 
 class LicenseService(BaseService):
     """Detects SPDX license from a cloned repository using the licensee gem."""
@@ -37,6 +40,23 @@ class LicenseService(BaseService):
                 if matched_files
                 else None
             )
+
+            # Mirror GitHub's threshold — below LICENSE_CONFIDENCE_THRESHOLD the match is unreliable.
+            # Downgrade low-confidence matches to NOASSERTION so the distinction is clean:
+            #   NULL         = licensee didn't run, timed out, or found no license file
+            #   NOASSERTION  = found a license file but couldn't reliably identify it
+            # The UI should display NOASSERTION as "Other".
+            if (
+                spdx_id
+                and spdx_id != "NOASSERTION"
+                and confidence is not None
+                and confidence < LICENSE_CONFIDENCE_THRESHOLD
+            ):
+                self.logger.info(
+                    f"License downgraded to NOASSERTION: confidence {confidence}% below threshold in {repo_path}"
+                )
+                return "NOASSERTION"
+
             if spdx_id:
                 self.logger.info(
                     f"License detected: {spdx_id} (confidence={confidence}) in {repo_path}"
