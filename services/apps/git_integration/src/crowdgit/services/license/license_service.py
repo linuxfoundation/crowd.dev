@@ -43,7 +43,9 @@ class LicenseService(BaseService):
             # licensee puts per-file confidence inside each matched_file's matcher object.
             confidence_by_spdx: dict[str, float] = {}
             for mf in matched_files:
-                spdx = (mf.get("matched_license") or {}).get("spdx_id") or ""
+                ml = mf.get("matched_license")
+                # licensee JSON emits matched_license as a plain string (SPDX id), not a dict
+                spdx = ml if isinstance(ml, str) else ((ml or {}).get("spdx_id") or "")
                 conf = (mf.get("matcher") or {}).get("confidence")
                 if spdx and conf is not None:
                     confidence_by_spdx[spdx] = max(confidence_by_spdx.get(spdx, 0), conf)
