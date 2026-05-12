@@ -349,15 +349,18 @@ export async function getOrganizationMergeSuggestions(
 
     const secondaryOrg = opensearchToFullOrg(organizationToMerge._source)
 
+    const similarityConfidenceScore = OrganizationSimilarityCalculator.calculateSimilarity(
+      fullOrg,
+      secondaryOrg,
+    )
+
     let organizationsSorted: IOrganizationFullAggregatesOpensearch[]
     if (secondaryOrgWithLfxMembership && !primaryOrgWithLfxMembership) {
-      // Secondary is LFX — swap so LFX org is always primary.
       organizationsSorted = [secondaryOrg, fullOrg]
     } else if (primaryOrgWithLfxMembership && !secondaryOrgWithLfxMembership) {
-      // Primary is LFX — keep order as-is to prevent sort from pushing it into secondary.
       organizationsSorted = [fullOrg, secondaryOrg]
     } else {
-      // Neither has LFX — sort by identity count and activity.
+      // Sort organizations: primary has more identities/activity, secondary is the one to merge
       organizationsSorted = [fullOrg, secondaryOrg].sort((a, b) => {
         if (
           a.identities.length > b.identities.length ||
@@ -373,11 +376,6 @@ export async function getOrganizationMergeSuggestions(
         return 0
       })
     }
-
-    const similarityConfidenceScore = OrganizationSimilarityCalculator.calculateSimilarity(
-      organizationsSorted[0],
-      organizationsSorted[1],
-    )
 
     mergeSuggestions.push({
       similarity: similarityConfidenceScore,
