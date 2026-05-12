@@ -349,12 +349,6 @@ export async function getOrganizationMergeSuggestions(
 
     const secondaryOrg = opensearchToFullOrg(organizationToMerge._source)
 
-    // Calculate similarity score between organizations
-    const similarityConfidenceScore = OrganizationSimilarityCalculator.calculateSimilarity(
-      fullOrg,
-      secondaryOrg,
-    )
-
     let organizationsSorted: IOrganizationFullAggregatesOpensearch[]
     if (secondaryOrgWithLfxMembership && !primaryOrgWithLfxMembership) {
       // Secondary is LFX — swap so LFX org is always primary.
@@ -379,6 +373,11 @@ export async function getOrganizationMergeSuggestions(
         return 0
       })
     }
+
+    const similarityConfidenceScore = OrganizationSimilarityCalculator.calculateSimilarity(
+      organizationsSorted[0],
+      organizationsSorted[1],
+    )
 
     mergeSuggestions.push({
       similarity: similarityConfidenceScore,
