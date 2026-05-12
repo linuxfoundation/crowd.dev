@@ -32,6 +32,12 @@ const options = [
     description: 'Number of candidates to fetch per batch.',
   },
   {
+    name: 'parallelism',
+    alias: 'p',
+    type: Number,
+    description: 'Number of member merges to run at once. Defaults to 1.',
+  },
+  {
     name: 'help',
     alias: 'h',
     type: Boolean,
@@ -125,13 +131,13 @@ async function fetchLlmVerifiedMemberMergeCandidates(
 setImmediate(async () => {
   const testRun = parameters.testRun ?? false
   const BATCH_SIZE = parameters.batchSize ?? (testRun ? 10 : 100)
-  const PARALLEL_MERGES = 10
+  const PARALLEL_MERGES = parameters.parallelism ?? 1
 
   const options = await SequelizeRepository.getDefaultIRepositoryOptions()
   const qx = SequelizeRepository.getQueryExecutor(options)
   const service = new CommonMemberService(optionsQx(options), options.temporal, log)
 
-  log.info({ testRun, BATCH_SIZE }, 'Running script with the following parameters!')
+  log.info({ testRun, BATCH_SIZE, PARALLEL_MERGES }, 'Running script with the following parameters!')
 
   let candidates: LlmVerifiedMemberMergeCandidate[] = []
 
