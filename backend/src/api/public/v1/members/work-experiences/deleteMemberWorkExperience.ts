@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   deleteMemberOrganizations,
@@ -46,10 +46,9 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
 
       await qx.tx(async (tx) => {
         await deleteMemberOrganizations(tx, memberId, [workExperienceId])
-        const commonMemberService = new CommonMemberService(tx, req.temporal, req.log)
-        await commonMemberService.startAffiliationRecalculation(memberId, [
-          memberOrg.organizationId,
-        ])
+        await signalMemberUpdate(req.temporal, memberId, {
+          memberOrganizationIds: [memberOrg.organizationId],
+        })
       })
 
       captureNewState(null)

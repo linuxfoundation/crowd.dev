@@ -9,7 +9,7 @@ import {
   sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
 } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
@@ -684,16 +684,10 @@ export async function updateMemberUsingSquashedPayload(
   }
 
   if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
-    const commonMemberService = new CommonMemberService(
-      pgpQx(svc.postgres.writer.connection()),
-      svc.temporal,
-      svc.log,
-    )
-    await commonMemberService.startAffiliationRecalculation(
-      memberId,
-      [...new Set(affectedOrgIds)],
-      true,
-    )
+    await signalMemberUpdate(svc.temporal, memberId, {
+      memberOrganizationIds: [...new Set(affectedOrgIds)],
+      syncToOpensearch: true,
+    })
   }
 
   return wasUpdated

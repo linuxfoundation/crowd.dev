@@ -10,7 +10,6 @@ import {
 import * as activities from '../../activities'
 import { MemberUpdateInput } from '../../types/member'
 
-// Configure timeouts and retry policies to update a member in the database.
 const { updateMemberAffiliations, syncOrganization, syncMember } = proxyActivities<
   typeof activities
 >({

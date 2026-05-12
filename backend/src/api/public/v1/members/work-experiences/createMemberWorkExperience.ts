@@ -8,7 +8,7 @@ import {
   NotFoundError,
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   changeMemberOrganizationAffiliationOverrides,
@@ -106,8 +106,9 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
           ])
         }
 
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, [data.organizationId])
+        await signalMemberUpdate(req.temporal, memberId, {
+          memberOrganizationIds: [data.organizationId],
+        })
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])

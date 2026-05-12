@@ -52,13 +52,8 @@ import {
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
-import { Client as TemporalClient, WorkflowIdConflictPolicy } from '@crowd/temporal'
-import {
-  MergeActionState,
-  MergeActionStep,
-  MergeActionType,
-  TemporalWorkflowId,
-} from '@crowd/types'
+import { Client as TemporalClient } from '@crowd/temporal'
+import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -263,32 +258,6 @@ export class CommonMemberService extends LoggerBase {
     }
 
     return null
-  }
-
-  public async startAffiliationRecalculation(
-    memberId: string,
-    organizationIds: string[],
-    syncToOpensearch = false,
-  ): Promise<void> {
-    const input = {
-      member: { id: memberId },
-      memberOrganizationIds: organizationIds,
-      syncToOpensearch,
-    }
-    await this.temporal.workflow.signalWithStart('memberUpdate', {
-      taskQueue: 'profiles',
-      workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
-      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
-      signal: 'refreshAffiliations',
-      signalArgs: [input],
-      retry: {
-        maximumAttempts: 10,
-      },
-      args: [],
-      searchAttributes: {
-        TenantId: [DEFAULT_TENANT_ID],
-      },
-    })
   }
 
   public async merge(

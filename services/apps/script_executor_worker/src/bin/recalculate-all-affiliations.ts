@@ -1,11 +1,8 @@
-import { WorkflowIdConflictPolicy } from '@temporalio/client'
-
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
-import { TemporalWorkflowId } from '@crowd/types'
 
 const log = getServiceChildLogger('recalculate-all-affiliations')
 
@@ -263,21 +260,9 @@ async function main() {
               log.info(
                 `Triggering memberUpdate: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
               )
-              await temporal.workflow.signalWithStart('memberUpdate', {
-                taskQueue: 'profiles',
-                workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
-                workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
-                signal: 'refreshAffiliations',
-                signalArgs: [
-                  {
-                    member: { id: memberId },
-                    memberOrganizationIds: activeOrgIds,
-                    syncToOpensearch: true,
-                  },
-                ],
-                retry: { maximumAttempts: 10 },
-                args: [],
-                searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
+              await signalMemberUpdate(temporal, memberId, {
+                memberOrganizationIds: activeOrgIds,
+                syncToOpensearch: true,
               })
               if (opts.workflowDelayMs > 0) {
                 await new Promise((resolve) => setTimeout(resolve, opts.workflowDelayMs))

@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   deleteAllMemberSegmentAffiliationsForProject,
@@ -96,8 +96,9 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
         const newOrgIds = affiliations.map((a) => a.organizationId)
         const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
 
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, orgIdsToRecalculate)
+        await signalMemberUpdate(req.temporal, memberId, {
+          memberOrganizationIds: orgIdsToRecalculate,
+        })
       })
 
       updatedAffiliations = await fetchMemberSegmentAffiliationsForProject(qx, memberId, projectId)

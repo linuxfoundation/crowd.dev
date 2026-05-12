@@ -3,14 +3,10 @@ import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 import * as activities from '../../activities'
 import { IOrganizationProfileSyncInput } from '../../types/organization'
 
-// Configure timeouts and retry policies to update a member in the database.
-const { syncOrganization, findMembersInOrganization } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '5 minutes',
-})
-
-const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '5 minutes',
-})
+const { syncOrganization, findMembersInOrganization, triggerMemberAffiliationsRefresh } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '5 minutes',
+  })
 
 /*
 organizationUpdate can do the following:

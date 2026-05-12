@@ -1,10 +1,9 @@
 import commandLineArgs from 'command-line-args'
 
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
-import { WorkflowIdConflictPolicy, getTemporalClient } from '@crowd/temporal'
-import { TemporalWorkflowId } from '@crowd/types'
+import { getTemporalClient } from '@crowd/temporal'
 
 import { DB_CONFIG, TEMPORAL_CONFIG } from '@/conf'
 
@@ -100,25 +99,8 @@ setImmediate(async () => {
       try {
         log.info(`Processing member: ${member.id}`)
 
-        await temporal.workflow.signalWithStart('memberUpdate', {
-          taskQueue: 'profiles',
-          workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${member.id}`,
-          workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
-          signal: 'refreshAffiliations',
-          signalArgs: [
-            {
-              member: { id: member.id },
-              memberOrganizationIds: [organizationId],
-              syncToOpensearch: false,
-            },
-          ],
-          retry: {
-            maximumAttempts: 10,
-          },
-          args: [],
-          searchAttributes: {
-            TenantId: [DEFAULT_TENANT_ID],
-          },
+        await signalMemberUpdate(temporal, member.id, {
+          memberOrganizationIds: [organizationId],
         })
 
         processedCount++

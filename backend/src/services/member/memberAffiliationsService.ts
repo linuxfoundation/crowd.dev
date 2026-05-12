@@ -2,8 +2,7 @@
 import { uniq } from 'lodash'
 
 import { Error400, dateIntersects, groupBy } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
-import { optionsQx } from '@crowd/data-access-layer'
+import { signalMemberUpdate } from '@crowd/common_services'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
 import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
@@ -108,12 +107,8 @@ export default class MemberAffiliationsService extends LoggerBase {
       this.options,
     )
 
-    const commonMemberService = new CommonMemberService(
-      optionsQx(this.options),
-      this.options.temporal,
-      this.options.log,
-    )
-    await commonMemberService.startAffiliationRecalculation(data.memberId, [])
+    await signalMemberUpdate(this.options.temporal, data.memberId)
+
     return override
   }
 }

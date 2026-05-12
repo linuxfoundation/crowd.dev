@@ -1,6 +1,5 @@
-import { WorkflowIdConflictPolicy } from '@temporalio/workflow'
-
 import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   moveActivityRelationsToAnotherMember,
   moveActivityRelationsWithIdentityToAnotherMember,
@@ -13,7 +12,7 @@ import {
 import { dbStoreQx, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { SearchSyncApiClient } from '@crowd/opensearch'
 import { RedisPubSubEmitter } from '@crowd/redis'
-import { ApiWebsocketMessage, IMemberIdentity, TemporalWorkflowId } from '@crowd/types'
+import { ApiWebsocketMessage, IMemberIdentity } from '@crowd/types'
 
 import { svc } from '../main'
 
@@ -27,20 +26,7 @@ export async function deleteMember(memberId: string): Promise<void> {
 export async function recalculateActivityAffiliationsOfMemberAsync(
   memberId: string,
 ): Promise<void> {
-  await svc.temporal.workflow.signalWithStart('memberUpdate', {
-    taskQueue: 'profiles',
-    workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`,
-    workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
-    signal: 'refreshAffiliations',
-    signalArgs: [{ member: { id: memberId }, memberOrganizationIds: [], syncToOpensearch: false }],
-    retry: {
-      maximumAttempts: 10,
-    },
-    args: [],
-    searchAttributes: {
-      TenantId: [DEFAULT_TENANT_ID],
-    },
-  })
+  await signalMemberUpdate(svc.temporal, memberId)
 }
 
 export async function syncMember(memberId: string): Promise<void> {
