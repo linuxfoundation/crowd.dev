@@ -35,7 +35,8 @@ SQL >
         insights_projects_populated_ds.communityLanguages,
         insights_projects_populated_ds.status,
         insights_projects_populated_ds.maturity,
-        insights_projects_populated_ds.lastVulnerabilityScanStatus
+        insights_projects_populated_ds.lastVulnerabilityScanStatus,
+        insights_projects_populated_ds.licenses
     FROM insights_projects_populated_ds
     where
         insights_projects_populated_ds.enabled = 1

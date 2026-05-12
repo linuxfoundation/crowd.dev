@@ -65,7 +65,8 @@ SCHEMA >
     `communityLanguages` Array(String),
     `status` String,
     `maturity` LowCardinality(String),
-    `lastVulnerabilityScanStatus` Nullable(String)
+    `lastVulnerabilityScanStatus` Nullable(String),
+    `licenses` Array(Array(String))
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

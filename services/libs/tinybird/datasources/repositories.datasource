@@ -31,7 +31,8 @@ SCHEMA >
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
     `deletedAt` Nullable(DateTime64(3)) `json:$.record.deletedAt`,
-    `lastArchivedCheckAt` Nullable(DateTime64(3)) `json:$.record.lastArchivedCheckAt`
+    `lastArchivedCheckAt` Nullable(DateTime64(3)) `json:$.record.lastArchivedCheckAt`,
+    `licenses` Array(String) `json:$.record.licenses` DEFAULT []
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)
