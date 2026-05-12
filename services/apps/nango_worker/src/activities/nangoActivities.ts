@@ -123,12 +123,12 @@ export async function canCreateGithubConnection(): Promise<boolean> {
 
   const lastConnectDate = await getLastConnectTs()
 
-  svc.log.info(`[GITHUB] Last connect date: ${lastConnectDate.toISOString()}`)
-
   if (!lastConnectDate) {
     svc.log.info('[GITHUB] no last connect date found - we can create a connection!')
     return true
   }
+
+  svc.log.info(`[GITHUB] Last connect date: ${lastConnectDate.toISOString()}`)
 
   const now = new Date()
   svc.log.info(`[GITHUB] Now: ${now.toISOString()}`)
