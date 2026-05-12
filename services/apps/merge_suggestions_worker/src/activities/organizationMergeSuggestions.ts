@@ -357,10 +357,13 @@ export async function getOrganizationMergeSuggestions(
 
     let organizationsSorted: IOrganizationFullAggregatesOpensearch[]
     if (secondaryOrgWithLfxMembership && !primaryOrgWithLfxMembership) {
-      // LFX membership organizations can't be merged as secondary.
+      // Secondary is LFX — swap so LFX org is always primary.
       organizationsSorted = [secondaryOrg, fullOrg]
+    } else if (primaryOrgWithLfxMembership && !secondaryOrgWithLfxMembership) {
+      // Primary is LFX — keep order as-is to prevent sort from pushing it into secondary.
+      organizationsSorted = [fullOrg, secondaryOrg]
     } else {
-      // Sort organizations: primary has more identities/activity, secondary is the one to merge
+      // Neither has LFX — sort by identity count and activity.
       organizationsSorted = [fullOrg, secondaryOrg].sort((a, b) => {
         if (
           a.identities.length > b.identities.length ||
