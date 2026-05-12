@@ -66,7 +66,7 @@ SCHEMA >
     `status` String,
     `maturity` LowCardinality(String),
     `lastVulnerabilityScanStatus` Nullable(String),
-    `licenses` Array(Array(String))
+    `repoLicenses` Array(Tuple(String, String))
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

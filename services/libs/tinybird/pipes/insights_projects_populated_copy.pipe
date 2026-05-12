@@ -94,7 +94,7 @@ SQL >
         argMax(rank, score) AS projectRank,
         groupArray((repository, score, rank)) as repoData,
         groupArray(repository) as repositories,
-        groupArray(licenses) as licenses
+        arrayFlatten(groupArray(arrayMap(l -> tuple(repository, l), licenses))) as repoLicenses
     FROM insights_projects_populated_copy_repository_criticality
     GROUP BY id
 
@@ -211,7 +211,7 @@ SQL >
         any (insightsProjects.twitter) as twitter,
         any (insightsProjects.widgets) as widgets,
         any (insights_projects_populated_copy_project_repo_data.repositories) as repositories,
-        any (insights_projects_populated_copy_project_repo_data.licenses) as licenses,
+        any (insights_projects_populated_copy_project_repo_data.repoLicenses) as repoLicenses,
         any (insightsProjects.enabled) as enabled,
         any (insightsProjects.isLF) as isLF,
         any (insightsProjects.keywords) as keywords,

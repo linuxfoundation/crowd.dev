@@ -36,7 +36,7 @@ SQL >
         insights_projects_populated_ds.status,
         insights_projects_populated_ds.maturity,
         insights_projects_populated_ds.lastVulnerabilityScanStatus,
-        insights_projects_populated_ds.licenses
+        insights_projects_populated_ds.repoLicenses
     FROM insights_projects_populated_ds
     where
         insights_projects_populated_ds.enabled = 1
