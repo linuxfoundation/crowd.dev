@@ -5,6 +5,7 @@ import { QueryExecutor } from '@crowd/data-access-layer'
 import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/utils'
 import { getServiceLogger } from '@crowd/logging'
 
+import { randomUUID } from 'crypto'
 import OrganizationService from '@/services/organizationService'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
@@ -41,6 +42,12 @@ const options = [
     alias: 'p',
     type: Number,
     description: 'Number of organization merges to run at once. Defaults to 1.',
+  },
+  {
+    name: 'agentUserId',
+    alias: 'a',
+    type: String,
+    description: 'LF Agent user id to use as the audit log actor.',
   },
   {
     name: 'help',
@@ -248,12 +255,21 @@ setImmediate(async () => {
   const testRun = parameters.testRun ?? false
   const BATCH_SIZE = parameters.batchSize ?? (testRun ? 10 : 100)
   const PARALLEL_MERGES = parameters.parallelism ?? 1
+  const agentUserId = parameters.agentUserId ?? null
 
-  const options = await SequelizeRepository.getDefaultIRepositoryOptions()
+  if (!agentUserId) {
+    log.error('LF Agent user id is required. Pass --agentUserId=<user-id>.')
+    process.exit(1)
+  }
+
+  const options = await SequelizeRepository.getDefaultIRepositoryOptions({ id: agentUserId })
   const qx = SequelizeRepository.getQueryExecutor(options)
   const processedOrganizationIds = new Set<string>()
 
-  log.info({ testRun, BATCH_SIZE, PARALLEL_MERGES }, 'Running script with the following parameters!')
+  log.info(
+    { testRun, BATCH_SIZE, PARALLEL_MERGES, agentUserId },
+    'Running script with the following parameters!',
+  )
 
   let candidates: LlmVerifiedOrganizationMergeCandidate[] = []
 
@@ -294,6 +310,7 @@ setImmediate(async () => {
             const candidateOptions = {
               ...options,
               currentTenant: { id: DEFAULT_TENANT_ID },
+              requestId: randomUUID(),
             }
             const service = new OrganizationService(candidateOptions)
 
