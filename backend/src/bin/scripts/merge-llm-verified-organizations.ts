@@ -1,5 +1,6 @@
 import commandLineArgs from 'command-line-args'
 
+import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { QueryExecutor } from '@crowd/data-access-layer'
 import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/utils'
 import { getServiceLogger } from '@crowd/logging'
@@ -13,7 +14,6 @@ const log = getServiceLogger()
 interface LlmVerifiedOrganizationMergeCandidate {
   primaryId: string
   secondaryId: string
-  tenantId: string
   mergeState: string | null
   mergeStep: string | null
   verdictCreatedAt: Date
@@ -59,10 +59,11 @@ function selectIndependentCandidates(
   const selected: LlmVerifiedOrganizationMergeCandidate[] = []
 
   for (const candidate of candidates) {
-    if (
+    const isConflicting =
       selectedOrganizationIds.has(candidate.primaryId) ||
       selectedOrganizationIds.has(candidate.secondaryId)
-    ) {
+
+    if (isConflicting) {
       log.info(
         {
           primaryId: candidate.primaryId,
@@ -70,12 +71,11 @@ function selectIndependentCandidates(
         },
         'Skipping LLM verified organization merge because one org is already selected in this batch!',
       )
-      continue
+    } else {
+      selectedOrganizationIds.add(candidate.primaryId)
+      selectedOrganizationIds.add(candidate.secondaryId)
+      selected.push(candidate)
     }
-
-    selectedOrganizationIds.add(candidate.primaryId)
-    selectedOrganizationIds.add(candidate.secondaryId)
-    selected.push(candidate)
   }
 
   return selected
@@ -142,7 +142,6 @@ async function fetchLlmVerifiedOrganizationMergeCandidates(
       SELECT
         v."organizationId",
         v."toMergeId",
-        o1."tenantId",
         ma.state AS "mergeState",
         ma.step AS "mergeStep",
         v."verdictCreatedAt",
@@ -167,7 +166,8 @@ async function fetchLlmVerifiedOrganizationMergeCandidates(
         ON ma."organizationId" = v."organizationId"
        AND ma."toMergeId" = v."toMergeId"
       WHERE (ma.state = 'error' OR ma.state IS NULL)
-        AND o1."tenantId" = o2."tenantId"
+        AND o1."tenantId" = $(tenantId)
+        AND o2."tenantId" = $(tenantId)
         AND NOT EXISTS (
           SELECT 1
           FROM "organizationNoMerge" n
@@ -219,7 +219,6 @@ async function fetchLlmVerifiedOrganizationMergeCandidates(
         WHEN c."secondaryLfx" AND NOT c."primaryLfx" THEN c."organizationId"
         ELSE c."toMergeId"
       END AS "secondaryId",
-      c."tenantId",
       c."mergeState",
       c."mergeStep",
       c."verdictCreatedAt",
@@ -234,6 +233,7 @@ async function fetchLlmVerifiedOrganizationMergeCandidates(
     {
       batchSize,
       excludedOrganizationIds,
+      tenantId: DEFAULT_TENANT_ID,
     },
   )
 }
@@ -279,15 +279,17 @@ setImmediate(async () => {
             {
               primaryId: candidate.primaryId,
               secondaryId: candidate.secondaryId,
-              tenantId: candidate.tenantId,
               reorderedForLfx: candidate.reorderedForLfx,
             },
             'Retrying LLM verified organization merge!',
           )
 
           try {
-            options.currentTenant = { id: candidate.tenantId }
-            const service = new OrganizationService(options)
+            const candidateOptions = {
+              ...options,
+              currentTenant: { id: DEFAULT_TENANT_ID },
+            }
+            const service = new OrganizationService(candidateOptions)
 
             await service.mergeSync(candidate.primaryId, candidate.secondaryId, null)
 
@@ -298,7 +300,6 @@ setImmediate(async () => {
               {
                 primaryId: candidate.primaryId,
                 secondaryId: candidate.secondaryId,
-                tenantId: candidate.tenantId,
                 err,
               },
               'Failed retrying LLM verified organization merge!',
