@@ -223,8 +223,14 @@ async function fetchLlmVerifiedOrganizationMergeCandidates(
       c."mergeStep",
       c."verdictCreatedAt",
       c."suggestionCreatedAt",
-      c."primaryLfx",
-      c."secondaryLfx",
+      CASE
+        WHEN c."secondaryLfx" AND NOT c."primaryLfx" THEN c."secondaryLfx"
+        ELSE c."primaryLfx"
+      END AS "primaryLfx",
+      CASE
+        WHEN c."secondaryLfx" AND NOT c."primaryLfx" THEN c."primaryLfx"
+        ELSE c."secondaryLfx"
+      END AS "secondaryLfx",
       c."secondaryLfx" AND NOT c."primaryLfx" AS "reorderedForLfx"
     FROM candidates c
     ORDER BY c."verdictCreatedAt" ASC
