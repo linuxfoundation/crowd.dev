@@ -86,17 +86,6 @@ export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
   return parseInt(result.count, 10)
 }
 
-export async function findLatestProjectCatalogSyncedAt(qx: QueryExecutor): Promise<string | null> {
-  const result = await qx.selectOneOrNone(
-    `
-    SELECT MAX("syncedAt") AS "latestSyncedAt"
-    FROM "projectCatalog"
-    WHERE "lfCriticalityScore" IS NOT NULL
-    `,
-  )
-  return result?.latestSyncedAt ?? null
-}
-
 export async function insertProjectCatalog(
   qx: QueryExecutor,
   data: IDbProjectCatalogCreate,
@@ -175,6 +164,7 @@ export async function bulkInsertProjectCatalog(
       "ossfCriticalityScore" double precision,
       "lfCriticalityScore" double precision
     )
+    ON CONFLICT ("repoUrl") DO NOTHING
     `,
     { values: JSON.stringify(values) },
   )

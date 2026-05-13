@@ -1,9 +1,6 @@
 import { parse } from 'csv-parse'
 
-import {
-  bulkUpsertProjectCatalog,
-  findLatestProjectCatalogSyncedAt,
-} from '@crowd/data-access-layer'
+import { bulkInsertProjectCatalog } from '@crowd/data-access-layer'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -23,13 +20,9 @@ export async function listSources(): Promise<string[]> {
 export async function listDatasets(sourceName: string): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
 
-  const qx = pgpQx(svc.postgres.reader.connection())
-  const latestSyncedAt = await findLatestProjectCatalogSyncedAt(qx)
-  const scoredAfter = latestSyncedAt ? latestSyncedAt.slice(0, 10) : undefined
+  log.info({ sourceName }, 'Listing datasets.')
 
-  log.info({ sourceName, scoredAfter: scoredAfter ?? 'none (full fetch)' }, 'Listing datasets.')
-
-  const datasets = await source.listAvailableDatasets({ scoredAfter })
+  const datasets = await source.listAvailableDatasets()
 
   log.info({ sourceName, count: datasets.length, newest: datasets[0]?.id }, 'Datasets listed.')
 
@@ -104,7 +97,7 @@ export async function processDataset(
     if (batch.length >= BATCH_SIZE) {
       batchNumber++
 
-      await bulkUpsertProjectCatalog(qx, batch)
+      await bulkInsertProjectCatalog(qx, batch)
       totalProcessed += batch.length
       batch = []
 
@@ -119,7 +112,7 @@ export async function processDataset(
       { sourceName, datasetId: dataset.id, batchSize: batch.length },
       'Flushing final batch...',
     )
-    await bulkUpsertProjectCatalog(qx, batch)
+    await bulkInsertProjectCatalog(qx, batch)
     totalProcessed += batch.length
   }
 
