@@ -12,6 +12,7 @@ const CHANNEL_WEBHOOK_URLS: Record<SlackChannel, string | undefined> = {
   [SlackChannel.CDP_PROJECTS_ALERTS]: process.env.CDP_PROJECTS_ALERTS_SLACK_WEBHOOK_URL,
   [SlackChannel.INSIGHTS_ALERTS]: process.env.INSIGHTS_ALERTS_SLACK_WEBHOOK_URL,
   [SlackChannel.INSIGHTS_CRITICAL_ALERTS]: process.env.INSIGHTS_CRITICAL_ALERTS_SLACK_WEBHOOK_URL,
+  [SlackChannel.CDP_LFX_SELF_SERVE_ALERTS]: process.env.CDP_LFX_SELF_SERVE_ALERTS_SLACK_WEBHOOK_URL,
 }
 
 // Check for missing webhook URLs on initialization
