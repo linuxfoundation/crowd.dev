@@ -38,7 +38,7 @@ function getApiBaseUrl(): string {
   if (process.env.LF_CRITICALITY_SCORE_API_URL) {
     return process.env.LF_CRITICALITY_SCORE_API_URL.replace(/\/$/, '')
   }
-  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST).replace(/\/$/, '')
+  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST).trim().replace(/\/$/, '')
   const port = parseInt(process.env.LF_CRITICALITY_SCORE_API_PORT ?? String(DEFAULT_API_PORT), 10)
   const scheme = port === 443 ? 'https' : 'http'
   return `${scheme}://${host}:${port}`
