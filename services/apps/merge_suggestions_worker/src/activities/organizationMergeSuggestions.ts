@@ -347,15 +347,21 @@ export async function getOrganizationMergeSuggestions(
       continue
     }
 
-    // Calculate similarity score between organizations
+    const secondaryOrg = opensearchToFullOrg(organizationToMerge._source)
+
     const similarityConfidenceScore = OrganizationSimilarityCalculator.calculateSimilarity(
       fullOrg,
-      opensearchToFullOrg(organizationToMerge._source),
+      secondaryOrg,
     )
 
-    // Sort organizations: primary has more identities/activity, secondary is the one to merge
-    const organizationsSorted = [fullOrg, opensearchToFullOrg(organizationToMerge._source)].sort(
-      (a, b) => {
+    let organizationsSorted: IOrganizationFullAggregatesOpensearch[]
+    if (secondaryOrgWithLfxMembership && !primaryOrgWithLfxMembership) {
+      organizationsSorted = [secondaryOrg, fullOrg]
+    } else if (primaryOrgWithLfxMembership && !secondaryOrgWithLfxMembership) {
+      organizationsSorted = [fullOrg, secondaryOrg]
+    } else {
+      // Sort organizations: primary has more identities/activity, secondary is the one to merge
+      organizationsSorted = [fullOrg, secondaryOrg].sort((a, b) => {
         if (
           a.identities.length > b.identities.length ||
           (a.identities.length === b.identities.length && a.activityCount > b.activityCount)
@@ -368,8 +374,8 @@ export async function getOrganizationMergeSuggestions(
           return 1
         }
         return 0
-      },
-    )
+      })
+    }
 
     mergeSuggestions.push({
       similarity: similarityConfidenceScore,

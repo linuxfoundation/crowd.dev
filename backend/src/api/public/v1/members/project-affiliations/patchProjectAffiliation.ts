@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   deleteAllMemberSegmentAffiliationsForProject,
@@ -75,6 +75,10 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
     memberEditAffiliationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState(existingAffiliations)
 
+      const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
+      const newOrgIds = affiliations.map((a) => a.organizationId)
+      const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
+
       await qx.tx(async (tx) => {
         await deleteAllMemberSegmentAffiliationsForProject(tx, memberId, projectId)
 
@@ -91,13 +95,11 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
             })),
           )
         }
+      })
 
-        const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
-        const newOrgIds = affiliations.map((a) => a.organizationId)
-        const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
-
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, orgIdsToRecalculate)
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: orgIdsToRecalculate,
       })
 
       updatedAffiliations = await fetchMemberSegmentAffiliationsForProject(qx, memberId, projectId)

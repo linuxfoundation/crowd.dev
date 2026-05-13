@@ -1,12 +1,7 @@
 import { LfCriticalityScoreSource } from './lf-criticality-score/source'
-import { OssfCriticalityScoreSource } from './ossf-criticality-score/source'
 import { IDiscoverySource } from './types'
 
-// To add a new source: instantiate it here.
-const sources: IDiscoverySource[] = [
-  new OssfCriticalityScoreSource(),
-  new LfCriticalityScoreSource(),
-]
+const sources: IDiscoverySource[] = [new LfCriticalityScoreSource()]
 
 export function getSource(name: string): IDiscoverySource {
   const source = sources.find((s) => s.name === name)
