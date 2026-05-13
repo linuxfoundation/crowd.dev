@@ -25,6 +25,10 @@ const { triggerMemberAffiliationsRefresh } = proxyActivities<typeof activities>(
   startToCloseTimeout: '5 minutes',
 })
 
+/**
+ * Detects bot members via LLM. High-confidence bots are marked and queued for
+ * async affiliation refresh and OpenSearch sync. Returns immediately; consistency is eventual.
+ */
 export async function processMemberBotAnalysisWithLLM(
   args: ProcessMemberBotSuggestionWithLLMInput,
 ): Promise<void> {

@@ -75,6 +75,10 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
     memberEditAffiliationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState(existingAffiliations)
 
+      const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
+      const newOrgIds = affiliations.map((a) => a.organizationId)
+      const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
+
       await qx.tx(async (tx) => {
         await deleteAllMemberSegmentAffiliationsForProject(tx, memberId, projectId)
 
@@ -91,14 +95,11 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
             })),
           )
         }
+      })
 
-        const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
-        const newOrgIds = affiliations.map((a) => a.organizationId)
-        const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
-
-        await signalMemberUpdate(req.temporal, memberId, {
-          memberOrganizationIds: orgIdsToRecalculate,
-        })
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: orgIdsToRecalculate,
       })
 
       updatedAffiliations = await fetchMemberSegmentAffiliationsForProject(qx, memberId, projectId)

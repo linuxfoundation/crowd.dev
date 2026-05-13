@@ -188,15 +188,16 @@ export default class MemberOrganizationsService extends LoggerBase {
         ])
       }
 
-      // Start affiliation recalculation within the same transaction
-      await signalMemberUpdate(this.options.temporal, memberId, {
-        memberOrganizationIds: [data.organizationId],
-      })
-
       // Fetch updated list
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
@@ -253,13 +254,15 @@ export default class MemberOrganizationsService extends LoggerBase {
         new Set([existing.organizationId, data.organizationId]),
       ).filter((orgId): orgId is string => Boolean(orgId))
 
+      const result = await this.list(memberId, transaction)
+
+      await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
       await signalMemberUpdate(this.options.temporal, memberId, {
         memberOrganizationIds: orgsToRecalculate,
       })
 
-      const result = await this.list(memberId, transaction)
-
-      await SequelizeRepository.commitTransaction(transaction)
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
@@ -284,14 +287,16 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       await deleteMemberOrganizations(qx, memberId, [id], true)
 
+      const result = await this.list(memberId, transaction)
+
+      await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
       await signalMemberUpdate(this.options.temporal, memberId, {
         memberOrganizationIds: [memberOrganizationToBeDeleted.organizationId],
         syncToOpensearch: true,
       })
 
-      const result = await this.list(memberId, transaction)
-
-      await SequelizeRepository.commitTransaction(transaction)
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)

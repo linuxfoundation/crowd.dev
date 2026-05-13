@@ -105,10 +105,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
             },
           ])
         }
+      })
 
-        await signalMemberUpdate(req.temporal, memberId, {
-          memberOrganizationIds: [data.organizationId],
-        })
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])

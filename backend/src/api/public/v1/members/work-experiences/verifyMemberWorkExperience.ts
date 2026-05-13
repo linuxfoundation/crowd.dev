@@ -62,12 +62,15 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
           })
         } else {
           await deleteMemberOrganizations(tx, memberId, [workExperienceId], true)
-
-          await signalMemberUpdate(req.temporal, memberId, {
-            memberOrganizationIds: [memberOrg.organizationId],
-          })
         }
       })
+
+      // Signal after commit so the workflow sees persisted changes
+      if (!verified) {
+        await signalMemberUpdate(req.temporal, memberId, {
+          memberOrganizationIds: [memberOrg.organizationId],
+        })
+      }
 
       captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
     }),
