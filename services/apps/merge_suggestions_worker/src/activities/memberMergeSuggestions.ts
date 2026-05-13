@@ -113,8 +113,8 @@ export async function getMemberMergeSuggestions(
       targetLists.usernameEmail.push({ value })
     }
 
-    // Noreply email -> platform username extraction
-    if (isEmail && verified) {
+    // No type check — git ingest stores noreply addresses as type=username, not type=email.
+    if (verified) {
       const ghUsername = parseGitHubNoreplyEmail(value)
       if (ghUsername) {
         noreplyEmailUsernameMatches.push({ value: ghUsername, platform: PlatformType.GITHUB })

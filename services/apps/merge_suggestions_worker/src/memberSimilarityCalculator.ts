@@ -213,14 +213,14 @@ class MemberSimilarityCalculator {
   }
 
   /**
-   * Checks if a noreply email in one member matches a username in the other (e.g. GitHub noreply email -> GitHub username)
-   * Works bidirectionally: primary email -> similar username, and similar email -> primary username.
+   * Checks bidirectionally if a noreply address on one member resolves to a platform username on the other.
+   * No identity type filter — git ingest stores noreply addresses as type=username, not type=email.
    */
   static hasMatchingUsernameFromNoreplyEmail(
     primaryMember: IMemberWithAggregatesForMergeSuggestions,
     similarMember: IMemberOpensearch,
   ): boolean {
-    // Primary member's noreply emails -> similar member's platform usernames
+    // Primary member's noreply -> similar member's platform usernames
     const similarUsernamesByPlatform = {
       [PlatformType.GITHUB]: new Set(
         similarMember.nested_identities
@@ -234,7 +234,7 @@ class MemberSimilarityCalculator {
     }
 
     for (const identity of primaryMember.identities) {
-      if (!identity.verified || identity.type !== MemberIdentityType.EMAIL) continue
+      if (!identity.verified) continue
 
       const ghUsername = parseGitHubNoreplyEmail(identity.value)
       if (ghUsername && similarUsernamesByPlatform[PlatformType.GITHUB].has(ghUsername)) {
@@ -242,7 +242,7 @@ class MemberSimilarityCalculator {
       }
     }
 
-    // Similar member's noreply emails -> primary member's platform usernames
+    // Similar member's noreply -> primary member's platform usernames
     const primaryUsernamesByPlatform = {
       [PlatformType.GITHUB]: new Set(
         primaryMember.identities
@@ -254,7 +254,7 @@ class MemberSimilarityCalculator {
     }
 
     for (const identity of similarMember.nested_identities) {
-      if (!identity.bool_verified || identity.keyword_type !== MemberIdentityType.EMAIL) continue
+      if (!identity.bool_verified) continue
 
       const ghUsername = parseGitHubNoreplyEmail(identity.string_value)
       if (ghUsername && primaryUsernamesByPlatform[PlatformType.GITHUB].has(ghUsername)) {
