@@ -10,10 +10,12 @@ import {
 import * as activities from '../../activities'
 import { MemberUpdateInput } from '../../types/member'
 
-const { updateMemberAffiliations, syncOrganization, syncMember } = proxyActivities<
-  typeof activities
->({
+const { syncOrganization, syncMember } = proxyActivities<typeof activities>({
   startToCloseTimeout: '60 minutes',
+})
+
+const { updateMemberAffiliations } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '3 hours',
 })
 
 export const refreshAffiliationsSignal = defineSignal<[MemberUpdateInput]>('refreshAffiliations')
