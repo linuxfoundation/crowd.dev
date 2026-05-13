@@ -1,6 +1,6 @@
 import { parse } from 'csv-parse'
 
-import { bulkInsertProjectCatalog } from '@crowd/data-access-layer'
+import { bulkUpsertProjectCatalog } from '@crowd/data-access-layer'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -97,7 +97,7 @@ export async function processDataset(
     if (batch.length >= BATCH_SIZE) {
       batchNumber++
 
-      await bulkInsertProjectCatalog(qx, batch)
+      await bulkUpsertProjectCatalog(qx, batch)
       totalProcessed += batch.length
       batch = []
 
@@ -112,7 +112,7 @@ export async function processDataset(
       { sourceName, datasetId: dataset.id, batchSize: batch.length },
       'Flushing final batch...',
     )
-    await bulkInsertProjectCatalog(qx, batch)
+    await bulkUpsertProjectCatalog(qx, batch)
     totalProcessed += batch.length
   }
 

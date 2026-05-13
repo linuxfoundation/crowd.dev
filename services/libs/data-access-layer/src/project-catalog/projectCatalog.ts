@@ -99,7 +99,8 @@ export async function insertProjectCatalog(
       "ossfCriticalityScore",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     VALUES (
       $(projectSlug),
@@ -107,6 +108,7 @@ export async function insertProjectCatalog(
       $(repoUrl),
       $(ossfCriticalityScore),
       $(lfCriticalityScore),
+      NOW(),
       NOW(),
       NOW()
     )
@@ -147,7 +149,8 @@ export async function bulkInsertProjectCatalog(
       "ossfCriticalityScore",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     SELECT
       v."projectSlug",
@@ -155,6 +158,7 @@ export async function bulkInsertProjectCatalog(
       v."repoUrl",
       v."ossfCriticalityScore"::double precision,
       v."lfCriticalityScore"::double precision,
+      NOW(),
       NOW(),
       NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
@@ -183,7 +187,8 @@ export async function upsertProjectCatalog(
       "ossfCriticalityScore",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     VALUES (
       $(projectSlug),
@@ -192,6 +197,7 @@ export async function upsertProjectCatalog(
       $(ossfCriticalityScore),
       $(lfCriticalityScore),
       NOW(),
+      NOW(),
       NOW()
     )
     ON CONFLICT ("repoUrl") DO UPDATE SET
@@ -199,7 +205,8 @@ export async function upsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "ossfCriticalityScore" = COALESCE(EXCLUDED."ossfCriticalityScore", "projectCatalog"."ossfCriticalityScore"),
       "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
-      "updatedAt" = NOW()
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     {
@@ -237,7 +244,8 @@ export async function bulkUpsertProjectCatalog(
       "ossfCriticalityScore",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     SELECT
       v."projectSlug",
@@ -245,6 +253,7 @@ export async function bulkUpsertProjectCatalog(
       v."repoUrl",
       v."ossfCriticalityScore"::double precision,
       v."lfCriticalityScore"::double precision,
+      NOW(),
       NOW(),
       NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
@@ -259,7 +268,8 @@ export async function bulkUpsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "ossfCriticalityScore" = COALESCE(EXCLUDED."ossfCriticalityScore", "projectCatalog"."ossfCriticalityScore"),
       "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
-      "updatedAt" = NOW()
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
     `,
     { values: JSON.stringify(values) },
   )
