@@ -116,13 +116,21 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
       let totalPages = 1
 
       do {
-        log.info({ datasetId: dataset.id, page, totalPages }, 'LF Criticality Score: fetching page...')
+        log.info(
+          { datasetId: dataset.id, page, totalPages },
+          'LF Criticality Score: fetching page...',
+        )
         const response = await fetchPage(baseUrl, page, scoredAfter)
         totalPages = response.totalPages
 
         if (page === 1) {
           log.info(
-            { datasetId: dataset.id, total: response.total, totalPages, pageSize: response.pageSize },
+            {
+              datasetId: dataset.id,
+              total: response.total,
+              totalPages,
+              pageSize: response.pageSize,
+            },
             'LF Criticality Score: first page received — total records available.',
           )
         }

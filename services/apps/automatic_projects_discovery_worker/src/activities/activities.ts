@@ -1,6 +1,9 @@
 import { parse } from 'csv-parse'
 
-import { bulkUpsertProjectCatalog, findLatestProjectCatalogSyncedAt } from '@crowd/data-access-layer'
+import {
+  bulkUpsertProjectCatalog,
+  findLatestProjectCatalogSyncedAt,
+} from '@crowd/data-access-layer'
 import { IDbProjectCatalogCreate } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -112,7 +115,10 @@ export async function processDataset(
   // Flush remaining rows that didn't fill a complete batch
   if (batch.length > 0) {
     batchNumber++
-    log.info({ sourceName, datasetId: dataset.id, batchSize: batch.length }, 'Flushing final batch...')
+    log.info(
+      { sourceName, datasetId: dataset.id, batchSize: batch.length },
+      'Flushing final batch...',
+    )
     await bulkUpsertProjectCatalog(qx, batch)
     totalProcessed += batch.length
   }
