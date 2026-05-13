@@ -75,7 +75,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             throw new ConflictError('Identity already exists on this member', {
               platform: data.platform,
               value: data.value,
-              type: data.type
+              type: data.type,
             })
           }
 
