@@ -13,7 +13,7 @@ export interface IDiscoverySource {
    * 'json': fetchDatasetStream returns an object-mode Readable that emits pre-parsed records.
    */
   format?: 'csv' | 'json'
-  listAvailableDatasets(): Promise<IDatasetDescriptor[]>
+  listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]>
   fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable>
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null
 }
