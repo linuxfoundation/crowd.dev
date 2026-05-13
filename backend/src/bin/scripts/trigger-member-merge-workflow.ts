@@ -1,7 +1,7 @@
 import commandLineArgs from 'command-line-args'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { MemberField, fetchMemberIdentities, findMemberById, pgpQx } from '@crowd/data-access-layer'
+import { MemberField, findMemberById, pgpQx } from '@crowd/data-access-layer'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { queryMergeActions } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { getServiceLogger } from '@crowd/logging'
@@ -57,7 +57,7 @@ setImmediate(async () => {
   const qx = pgpQx(db)
   const temporal = await getTemporalClient(TEMPORAL_CONFIG)
 
-  log.info({ primaryId, secondaryId }, 'Triggering member unmerge workflow!')
+  log.info({ primaryId, secondaryId }, 'Triggering member merge workflow!')
 
   try {
     const primary = await findMemberById(qx, primaryId, [MemberField.ID, MemberField.DISPLAY_NAME])
@@ -70,8 +70,6 @@ setImmediate(async () => {
       log.error('Primary or secondary member not found!')
       process.exit(1)
     }
-
-    const secondaryMemberIdentities = await fetchMemberIdentities(qx, secondaryId)
 
     // check if any ongoing merge action exists
     const mergeActions = await queryMergeActions(qx, {
@@ -101,16 +99,15 @@ setImmediate(async () => {
       process.exit(1)
     }
 
-    await temporal.workflow.start('finishMemberUnmerging', {
+    await temporal.workflow.start('finishMemberMerging', {
       taskQueue: 'entity-merging',
-      workflowId: `finishMemberUnmerging/${primaryId}/${secondaryId}`,
+      workflowId: `finishMemberMerging/${primaryId}/${secondaryId}`,
       retry: {
         maximumAttempts: 10,
       },
       args: [
         primary.id,
         secondary.id,
-        secondaryMemberIdentities,
         primary.displayName,
         secondary.displayName,
         '00000000-0000-0000-0000-000000000000',
@@ -120,7 +117,7 @@ setImmediate(async () => {
       },
     })
   } catch (err) {
-    log.error({ primaryId, secondaryId, err }, 'Failed to trigger member unmerge workflow!')
+    log.error({ primaryId, secondaryId, err }, 'Failed to trigger member merge workflow!')
     process.exit(1)
   }
 
