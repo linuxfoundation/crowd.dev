@@ -25,7 +25,7 @@ export async function listDatasets(sourceName: string): Promise<IDatasetDescript
 
   const qx = pgpQx(svc.postgres.reader.connection())
   const latestSyncedAt = await findLatestProjectCatalogSyncedAt(qx)
-  const scoredAfter = latestSyncedAt ? latestSyncedAt.toISOString().slice(0, 10) : undefined
+  const scoredAfter = latestSyncedAt ? latestSyncedAt.slice(0, 10) : undefined
 
   log.info({ sourceName, scoredAfter: scoredAfter ?? 'none (full fetch)' }, 'Listing datasets.')
 

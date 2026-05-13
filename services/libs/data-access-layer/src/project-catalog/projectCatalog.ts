@@ -86,7 +86,7 @@ export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
   return parseInt(result.count, 10)
 }
 
-export async function findLatestProjectCatalogSyncedAt(qx: QueryExecutor): Promise<Date | null> {
+export async function findLatestProjectCatalogSyncedAt(qx: QueryExecutor): Promise<string | null> {
   const result = await qx.selectOneOrNone(
     `
     SELECT MAX("syncedAt") AS "latestSyncedAt"
