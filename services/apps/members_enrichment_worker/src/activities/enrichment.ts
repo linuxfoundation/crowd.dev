@@ -658,6 +658,9 @@ export async function updateMemberUsingSquashedPayload(
 
       if (overrides.length > 0) {
         await changeMemberOrganizationAffiliationOverrides(qx, overrides)
+        // When we write allowAffiliation=false, activityRelations must refresh
+        // to respect the newly created override, even if timeline hasn't changed.
+        affiliationNeedsRefresh = true
       }
     }
 
