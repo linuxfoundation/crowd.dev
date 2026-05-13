@@ -65,13 +65,19 @@ async function triggerMerge(
     MemberField.DISPLAY_NAME,
   ])
 
-  if (!primary || !secondary) {
-    throw new Error(`Member not found: primary=${primaryId}, secondary=${secondaryId}`)
+  if (!primary) {
+    throw new Error(`Primary member not found: ${primaryId}`)
   }
+  if (!secondary) {
+    throw new Error(`Secondary member not found: ${secondaryId} - may have been deleted during previous merge attempt`)
+  }
+
+  // Use unique workflow ID to avoid conflict with terminated workflows
+  const workflowId = `finishMemberMerging/${primaryId}/${secondaryId}/retry-${Date.now()}`
 
   await temporal.workflow.start('finishMemberMerging', {
     taskQueue: 'entity-merging',
-    workflowId: `finishMemberMerging/${primaryId}/${secondaryId}`,
+    workflowId,
     retry: {
       maximumAttempts: 10,
     },
@@ -136,7 +142,13 @@ setImmediate(async () => {
 
         successCount++
       } catch (err) {
-        log.error({ primaryId, secondaryId, err }, 'Failed to process stuck merge!')
+        const errorDetails = {
+          primaryId,
+          secondaryId,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        }
+        log.error(errorDetails, 'Failed to process stuck merge!')
         errorCount++
       }
     }
