@@ -8,12 +8,8 @@ import {
   organizationEditIdentitiesAction,
   organizationUpdateAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, PageData, RawQueryParser } from '@crowd/common'
-import {
-  getActiveOrganizations,
-  queryActivities,
-  queryActivityRelations,
-} from '@crowd/data-access-layer'
+import { Error400, Error404, Error409, RawQueryParser } from '@crowd/common'
+import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
   IDbOrgAttribute,
@@ -38,23 +34,15 @@ import {
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
 import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import {
-  findSegmentById,
-  isSegmentProject,
-  isSegmentProjectGroup,
-} from '@crowd/data-access-layer/src/segments'
-import { FieldTranslatorFactory, OpensearchQueryParser } from '@crowd/opensearch'
+import { findSegmentById } from '@crowd/data-access-layer/src/segments'
 import {
   IMemberRenderFriendlyRole,
   IMemberRoleWithOrganization,
   IOrganizationIdentity,
   MergeActionState,
   MergeActionType,
-  OpenSearchIndex,
   OrganizationIdentityType,
   SegmentData,
-  SegmentProjectGroupNestedData,
-  SegmentProjectNestedData,
 } from '@crowd/types'
 
 import {
@@ -63,11 +51,9 @@ import {
 } from '@/types/mergeSuggestionTypes'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import { OrganizationQueryCache } from './organizationsQueryCache'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
-import { IActiveOrganizationData, IActiveOrganizationFilter } from './types/organizationTypes'
 
 interface IOrganizationId {
   id: string
@@ -182,8 +168,6 @@ class OrganizationRepository {
       options.currentSegments.map((s) => s.id),
       [record.id],
     )
-
-    await this._createAuditLog(AuditLogRepository.CREATE, record, data, options)
 
     return this.findById(record.id, options)
   }
@@ -504,8 +488,6 @@ class OrganizationRepository {
       }),
     )
 
-    await this._createAuditLog(AuditLogRepository.UPDATE, record, data, options)
-
     return this.findById(record.id, options)
   }
 
@@ -575,8 +557,6 @@ class OrganizationRepository {
       transaction,
       force,
     })
-
-    await this._createAuditLog(AuditLogRepository.DELETE, record, record, options)
   }
 
   static async setIdentities(
@@ -627,6 +607,7 @@ class OrganizationRepository {
     await addOrgIdentity(qx, {
       organizationId,
       platform: identity.platform,
+      source: identity.source,
       sourceId: identity.sourceId || null,
       value: identity.value,
       type: identity.type,
@@ -644,7 +625,7 @@ class OrganizationRepository {
 
     const results = await sequelize.query(
       `
-      select "sourceId", platform, value, type, verified, "integrationId", "organizationId" from "organizationIdentities"
+      select "sourceId", "source", platform, value, type, verified, "integrationId", "organizationId" from "organizationIdentities"
       where "organizationId" in (:organizationIds)
     `,
       {
@@ -813,37 +794,37 @@ class OrganizationRepository {
     },
     options: IRepositoryOptions,
   ): Promise<number> {
+    const organizationsJoin = displayNameFilter
+      ? `JOIN organizations o1 ON o1.id = otm."organizationId"
+         JOIN organizations o2 ON o2.id = otm."toMergeId"`
+      : ''
+
     const result = await options.database.sequelize.query(
       `
-      WITH
-      cte AS (
-        SELECT
-          Greatest(Hashtext(Concat(org.id, otm."toMergeId")), Hashtext(Concat(otm."toMergeId", org.id))) as hash,
-          org.id,
-          otm."toMergeId",
-          org."createdAt",
-          otm."similarity"
-        FROM organizations org
-        JOIN "organizationToMerge" otm ON org.id = otm."organizationId"
-        JOIN "organization_segments_mv" os1 ON os1."organizationId" = org.id
-        JOIN "organization_segments_mv" os2 ON os2."organizationId" = otm."toMergeId"
-        join organizations o1 on o1.id = org.id
-        join organizations o2 on o2.id = otm."toMergeId"
-        LEFT JOIN "mergeActions" ma
-          ON ma.type = :mergeActionType
-          AND (
-            (ma."primaryId" = org.id AND ma."secondaryId" = otm."toMergeId")
-            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = org.id)
-          )
-        WHERE os1."segmentId" IN (:segmentIds)
-          AND os2."segmentId" IN (:segmentIds)
-          AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
-          ${organizationFilter}
-          ${similarityFilter}
-          ${displayNameFilter}
+      SELECT COUNT(DISTINCT Greatest(
+        Hashtext(Concat(otm."organizationId", otm."toMergeId")),
+        Hashtext(Concat(otm."toMergeId", otm."organizationId"))
+      )) AS total_count
+      FROM "organizationToMerge" otm
+      ${organizationsJoin}
+      LEFT JOIN "mergeActions" ma
+        ON ma.type = :mergeActionType
+        AND (
+          (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+          OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
+        )
+      WHERE EXISTS (
+          SELECT 1 FROM "organizationSegmentsAgg" os1
+          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
       )
-      SELECT COUNT(DISTINCT hash) AS total_count
-      FROM cte
+      AND EXISTS (
+          SELECT 1 FROM "organizationSegmentsAgg" os2
+          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+      )
+      AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
+        ${organizationFilter}
+        ${similarityFilter}
+        ${displayNameFilter}
       `,
       {
         replacements,
@@ -930,32 +911,39 @@ class OrganizationRepository {
       `WITH
       cte AS (
         SELECT
-          Greatest(Hashtext(Concat(org.id, otm."toMergeId")), Hashtext(Concat(otm."toMergeId", org.id))) as hash,
-          org.id,
+          Greatest(Hashtext(Concat(otm."organizationId", otm."toMergeId")), Hashtext(Concat(otm."toMergeId", otm."organizationId"))) as hash,
+          otm."organizationId" as id,
           otm."toMergeId",
-          org."createdAt",
+          o1."createdAt",
           otm."similarity",
           o1."displayName" as "primaryDisplayName",
           o1.logo as "primaryLogo",
           o2."displayName" as "secondaryDisplayName",
           o2.logo as "secondaryLogo",
-          os1."segmentId" as "primarySegmentId",
-          os2."segmentId" as "secondarySegmentId"
-        FROM organizations org
-        JOIN "organizationToMerge" otm ON org.id = otm."organizationId"
-        JOIN "organization_segments_mv" os1 ON os1."organizationId" = org.id
-        JOIN "organization_segments_mv" os2 ON os2."organizationId" = otm."toMergeId"
-        join organizations o1 on o1.id = org.id
-        join organizations o2 on o2.id = otm."toMergeId"
+          (SELECT os1."segmentId" FROM "organizationSegmentsAgg" os1
+           WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+           LIMIT 1) as "primarySegmentId",
+          (SELECT os2."segmentId" FROM "organizationSegmentsAgg" os2
+           WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+           LIMIT 1) as "secondarySegmentId"
+        FROM "organizationToMerge" otm
+        JOIN organizations o1 ON o1.id = otm."organizationId"
+        JOIN organizations o2 ON o2.id = otm."toMergeId"
         LEFT JOIN "mergeActions" ma
           ON ma.type = :mergeActionType
           AND (
-            (ma."primaryId" = org.id AND ma."secondaryId" = otm."toMergeId")
-            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = org.id)
+            (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
           )
-        WHERE os1."segmentId" IN (:segmentIds)
-          AND os2."segmentId" IN (:segmentIds)
-          AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
+        WHERE EXISTS (
+            SELECT 1 FROM "organizationSegmentsAgg" os1
+            WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+        )
+        AND EXISTS (
+            SELECT 1 FROM "organizationSegmentsAgg" os2
+            WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+        )
+        AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
           ${organizationFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -1256,258 +1244,6 @@ class OrganizationRepository {
     })
   }
 
-  static async findAndCountAllOpensearch(
-    {
-      filter = {} as any,
-      limit = 20,
-      offset = 0,
-      orderBy = 'joinedAt_DESC',
-      countOnly = false,
-      segments = [] as string[],
-      customSortFunction = undefined,
-      isProfileQuery = false,
-    },
-    options: IRepositoryOptions,
-  ): Promise<PageData<any>> {
-    if (orderBy.length === 0) {
-      orderBy = 'joinedAt_DESC'
-    }
-
-    const tenant = SequelizeRepository.getCurrentTenant(options)
-
-    const segment = segments[0]
-
-    const translator = FieldTranslatorFactory.getTranslator(OpenSearchIndex.ORGANIZATIONS)
-
-    if (!isProfileQuery && filter.and) {
-      filter.and.push({
-        or: [
-          {
-            manuallyCreated: {
-              eq: true,
-            },
-          },
-          {
-            activityCount: {
-              gt: 0,
-            },
-          },
-        ],
-      })
-    }
-
-    const parsed = OpensearchQueryParser.parse(
-      { filter, limit, offset, orderBy },
-      OpenSearchIndex.ORGANIZATIONS,
-      translator,
-    )
-
-    // add tenant filter to parsed query
-    parsed.query.bool.must.push({
-      term: {
-        uuid_tenantId: tenant.id,
-      },
-    })
-
-    if (segment) {
-      // add segment filter
-      parsed.query.bool.must.push({
-        term: {
-          uuid_segmentId: segment,
-        },
-      })
-    }
-
-    // exclude empty filters if any
-    parsed.query.bool.must = parsed.query.bool.must.filter((obj) => {
-      // Check if the object has a non-empty 'term' property
-      if (obj.term) {
-        return Object.keys(obj.term).length !== 0
-      }
-      return true
-    })
-
-    if (customSortFunction) {
-      parsed.sort = customSortFunction
-    }
-
-    const countResponse = await options.opensearch.count({
-      index: OpenSearchIndex.ORGANIZATIONS,
-      body: { query: parsed.query },
-    })
-
-    if (countOnly) {
-      return {
-        rows: [],
-        count: countResponse.body.count,
-        limit,
-        offset,
-      }
-    }
-
-    const response = await options.opensearch.search({
-      index: OpenSearchIndex.ORGANIZATIONS,
-      body: parsed,
-    })
-
-    const translatedRows = response.body.hits.hits.map((o) =>
-      translator.translateObjectToCrowd(o._source),
-    )
-
-    return { rows: translatedRows, count: countResponse.body.count, limit, offset }
-  }
-
-  static async findAndCountActiveOpensearch(
-    filter: IActiveOrganizationFilter,
-    limit: number,
-    offset: number,
-    orderBy: string,
-    options: IRepositoryOptions,
-    segments: string[] = [],
-  ): Promise<PageData<IActiveOrganizationData>> {
-    if (segments.length !== 1) {
-      throw new Error400(
-        `This operation can have exactly one segment. Found ${segments.length} segments.`,
-      )
-    }
-
-    if (segments.length !== 1) {
-      throw new Error400(
-        `This operation can have exactly one segment. Found ${segments.length} segments.`,
-      )
-    }
-
-    const originalSegment = segments[0]
-
-    const segmentRepository = new SegmentRepository(options)
-
-    const segment = await segmentRepository.findById(originalSegment)
-
-    if (segment === null) {
-      return {
-        rows: [],
-        count: 0,
-        limit,
-        offset,
-      }
-    }
-
-    if (isSegmentProjectGroup(segment)) {
-      segments = ((segment as SegmentProjectGroupNestedData).projects || []).flatMap((p) =>
-        p.subprojects ? p.subprojects.map((sp) => sp.id) : [],
-      )
-    } else if (isSegmentProject(segment)) {
-      segments = (segment as SegmentProjectNestedData).subprojects.map((sp) => sp.id)
-    } else {
-      segments = [originalSegment]
-    }
-
-    const qx = SequelizeRepository.getQueryExecutor(options)
-
-    const activeOrgsResults = await getActiveOrganizations(qx, {
-      timestampFrom: new Date(Date.parse(filter.activityTimestampFrom)),
-      timestampTo: new Date(Date.parse(filter.activityTimestampTo)),
-      platforms: filter.platforms ? filter.platforms : undefined,
-      segmentIds: segments,
-      offset: 0,
-      limit: 10000,
-      orderByDirection: orderBy.split('_')[1].toLowerCase() === 'desc' ? 'desc' : 'asc',
-      orderBy: orderBy.startsWith('activityCount') ? 'activityCount' : 'activeDaysCount',
-    })
-
-    const organizationIds = []
-    const organizationMap = {}
-
-    for (const res of activeOrgsResults) {
-      if (res.organizationId) {
-        organizationIds.push(res.organizationId)
-        organizationMap[res.organizationId] = {
-          activityCount: res.activityCount,
-          activeDaysCount: res.activeDaysCount,
-        }
-      }
-    }
-
-    if (organizationIds.length === 0) {
-      return {
-        rows: [],
-        count: 0,
-        limit,
-        offset,
-      }
-    }
-
-    const organizationQueryPayload = {
-      and: [
-        {
-          id: {
-            in: organizationIds,
-          },
-        },
-      ],
-    } as any
-
-    if (filter.isTeamOrganization === true) {
-      organizationQueryPayload.and.push({
-        isTeamOrganization: {
-          eq: true,
-        },
-      })
-    } else if (filter.isTeamOrganization === false) {
-      organizationQueryPayload.and.push({
-        isTeamOrganization: {
-          not: true,
-        },
-      })
-    }
-
-    // to retain the sort came from activity query
-    const customSortFunction = {
-      _script: {
-        type: 'number',
-        script: {
-          lang: 'painless',
-          source: `
-              def organizationId = doc['uuid_organizationId'].value;
-              return params.organizationIds.indexOf(organizationId);
-            `,
-          params: {
-            organizationIds: organizationIds.map((i) => `${i}`),
-          },
-        },
-        order: 'asc',
-      },
-    }
-
-    const organizations = await this.findAndCountAllOpensearch(
-      {
-        filter: organizationQueryPayload,
-        segments: [originalSegment],
-        countOnly: false,
-        limit,
-        offset,
-        customSortFunction,
-      },
-      options,
-    )
-
-    const lfxMemberships = await findManyLfxMemberships(qx, {
-      organizationIds,
-    })
-
-    return {
-      rows: organizations.rows.map((o) => {
-        o.activityCount = organizationMap[o.id].activityCount.value
-        o.activeDaysCount = organizationMap[o.id].activeDaysCount.value
-        o.lfxMembership = lfxMemberships.find((m) => m.organizationId === o.id)
-        return o
-      }),
-      count: organizations.count,
-      offset,
-      limit,
-    }
-  }
-
   private static removeLfxMembershipFromFilters(
     filtersArray: [],
     index: number,
@@ -1580,6 +1316,7 @@ class OrganizationRepository {
       limit = 20,
       offset = 0,
       orderBy = undefined,
+      search = undefined as string | undefined,
       segmentId = undefined,
     },
     options: IRepositoryOptions,
@@ -1596,6 +1333,7 @@ class OrganizationRepository {
       limit,
       offset,
       orderBy,
+      search,
       segmentId,
     })
 
@@ -1609,6 +1347,7 @@ class OrganizationRepository {
         cacheKey,
         {
           filter,
+          search,
           limit,
           offset,
           orderBy,
@@ -1630,6 +1369,7 @@ class OrganizationRepository {
         cacheKey,
         {
           filter,
+          search,
           segmentId,
           include,
         },
@@ -1650,6 +1390,7 @@ class OrganizationRepository {
       cacheKey,
       {
         filter,
+        search,
         limit,
         offset,
         orderBy,
@@ -1667,6 +1408,7 @@ class OrganizationRepository {
     cacheKey: string,
     {
       filter = {} as any,
+      search = undefined as string | undefined,
       limit = 20,
       offset = 0,
       orderBy = undefined,
@@ -1722,11 +1464,17 @@ class OrganizationRepository {
       segmentId = segment.id
     }
 
-    const params = {
+    const params: Record<string, any> = {
       limit,
       offset,
       segmentId,
       tenantId: options.currentTenant.id,
+    }
+
+    let searchWhereClause = ''
+    if (search) {
+      params.searchTerm = `%${search}%`
+      searchWhereClause = `AND o."displayName" ILIKE $(searchTerm)`
     }
 
     const filterString = RawQueryParser.parseFilters(
@@ -1755,19 +1503,14 @@ class OrganizationRepository {
       SELECT
         ${fields}
       FROM organizations o
-      ${
-        withAggregates
-          ? ` INNER JOIN "organizationSegmentsAgg" osa ON osa."organizationId" = o.id AND ${
-              segmentId ? `osa."segmentId" = $(segmentId)` : `osa."segmentId" IS NULL`
-            }`
-          : ` LEFT JOIN "organizationSegmentsAgg" osa ON osa."organizationId" = o.id AND ${
-              segmentId ? `osa."segmentId" = $(segmentId)` : `osa."segmentId" IS NULL`
-            }`
+      LEFT JOIN "organizationSegmentsAgg" osa ON osa."organizationId" = o.id AND ${
+        segmentId ? `osa."segmentId" = $(segmentId)` : `osa."segmentId" IS NULL`
       }
       LEFT JOIN "organizationEnrichments" oe ON oe."organizationId" = o.id
       WHERE 1=1
         AND o."tenantId" = $(tenantId)
         ${lfxMembershipFilterWhereClause}
+        ${searchWhereClause}
         AND (${filterString})
     `
     const countQuery = createQuery('COUNT(*)')
@@ -1869,7 +1612,6 @@ class OrganizationRepository {
 
     const result = { rows, count, limit, offset }
 
-    // Cache the result
     await cache.set(cacheKey, result, 21600) // 6 hours TTL
 
     return result
@@ -1920,6 +1662,7 @@ class OrganizationRepository {
     params: {
       // TODO: REMOVE this any
       filter?: any
+      search?: string
       limit: number
       offset: number
       orderBy?: string
@@ -1931,7 +1674,6 @@ class OrganizationRepository {
     options: IRepositoryOptions,
   ): Promise<void> {
     try {
-      options.log.info(`Refreshing organizations advanced query cache in background: ${cacheKey}`)
       await this.executeQuery(cache, cacheKey, params, options)
     } catch (error) {
       options.log.warn('Background cache refresh failed:', error)
@@ -1943,6 +1685,7 @@ class OrganizationRepository {
     cacheKey: string,
     params: {
       filter?: any
+      search?: string
       segmentId?: string
       include: any
     },
@@ -1987,27 +1730,6 @@ class OrganizationRepository {
     )
 
     return records
-  }
-
-  static async _createAuditLog(action, record, data, options: IRepositoryOptions) {
-    let values = {}
-
-    if (data) {
-      values = {
-        ...record.get({ plain: true }),
-        memberIds: data.members,
-      }
-    }
-
-    await AuditLogRepository.log(
-      {
-        entityName: 'organization',
-        entityId: record.id,
-        action,
-        values,
-      },
-      options,
-    )
   }
 
   static calculateRenderFriendlyOrganizations(

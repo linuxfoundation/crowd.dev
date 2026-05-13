@@ -27,16 +27,10 @@ const defaultConfig = {
   env: import.meta.env.VUE_APP_ENV,
   hotjarKey: import.meta.env.VUE_APP_HOTJAR_KEY,
   nangoUrl: import.meta.env.VUE_APP_NANGO_URL,
-  formbricks: {
-    url: import.meta.env.VUE_APP_FORMBRICKS_URL,
-    environmentId: import.meta.env.VUE_APP_FORMBRICKS_ENVIRONMENT_ID,
-  },
   stripe: {
     publishableKey: import.meta.env.VUE_APP_STRIPE_PUBLISHABLE_KEY || '',
     growthPlanPaymentLink:
       import.meta.env.VUE_APP_STRIPE_GROWTH_PLAN_PAYMENT_LINK || '',
-    eagleEyePlanPaymentLink:
-      import.meta.env.VUE_APP_STRIPE_EAGLE_EYE_PLAN_PAYMENT_LINK || '',
     customerPortalLink:
       import.meta.env.VUE_APP_STRIPE_CUSTOMER_PORTAL_LINK || '',
   },
@@ -62,6 +56,12 @@ const defaultConfig = {
   permissions: {
     teamUserIds: import.meta.env.VUE_APP_TEAM_USER_IDS,
   },
+  intercom: {
+    appId: import.meta.env.VUE_APP_INTERCOM_APP_ID,
+    apiBase: 'https://api-iam.intercom.io',
+    auth0IntercomClaim: 'http://lfx.dev/claims/intercom',
+    auth0UsernameClaim: 'https://sso.linuxfoundation.org/claims/username',
+  },
 };
 
 const composedConfig = {
@@ -82,16 +82,10 @@ const composedConfig = {
   nangoUrl: 'CROWD_VUE_APP_NANGO_URL',
   typeformId: 'CROWD_VUE_APP_TYPEFORM_ID',
   typeformTitle: 'CROWD_VUE_APP_TYPEFORM_TITLE',
-  formbricks: {
-    url: 'CROWD_VUE_APP_FORMBRICKS_URL',
-    environmentId: 'CROWD_VUE_APP_FORMBRICKS_ENVIRONMENT_ID',
-  },
   stripe: {
     publishableKey: 'CROWD_VUE_APP_STRIPE_PUBLISHABLE_KEY' || '',
     growthPlanPaymentLink:
       'CROWD_VUE_APP_STRIPE_GROWTH_PLAN_PAYMENT_LINK' || '',
-    eagleEyePlanPaymentLink:
-      'CROWD_VUE_APP_STRIPE_EAGLE_EYE_PLAN_PAYMENT_LINK' || '',
     customerPortalLink: 'CROWD_VUE_APP_STRIPE_CUSTOMER_PORTAL_LINK' || '',
   },
   auth0: {
@@ -115,6 +109,12 @@ const composedConfig = {
   },
   permissions: {
     teamUserIds: 'CROWD_VUE_APP_TEAM_USER_IDS',
+  },
+  intercom: {
+    appId: 'CROWD_VUE_APP_INTERCOM_APP_ID',
+    apiBase: 'https://api-iam.intercom.io',
+    auth0IntercomClaim: 'http://lfx.dev/claims/intercom',
+    auth0UsernameClaim: 'https://sso.linuxfoundation.org/claims/username',
   },
 };
 

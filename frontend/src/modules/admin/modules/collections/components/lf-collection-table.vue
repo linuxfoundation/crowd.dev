@@ -21,6 +21,12 @@
             <lf-icon name="rectangle-history" :size="16" class="text-gray-400 mr-2" />
             {{ collection.name }}
             <lf-icon v-if="collection.starred" name="star" type="solid" :size="16" class="text-yellow-300 ml-2" />
+            <span
+              v-if="collection.ssoUserId"
+              class="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-700"
+            >
+              Community
+            </span>
           </div>
         </lf-table-cell>
 

@@ -139,6 +139,7 @@ export default class EnrichmentServiceClearbit extends LoggerBase implements IEn
         type: MemberIdentityType.EMAIL,
         platform: this.platform,
         verified: false,
+        source: 'enrichment',
       })
     }
 
@@ -203,6 +204,7 @@ export default class EnrichmentServiceClearbit extends LoggerBase implements IEn
           value: data.employment.domain,
           type: OrganizationIdentityType.PRIMARY_DOMAIN,
           verified: true,
+          source: 'enrichment',
         })
       }
 

@@ -1,26 +1,5 @@
 import { DEFAULT_TENANT_ID, generateUUIDv4 } from '@crowd/common'
 import { DbTransaction } from '@crowd/database'
-import { MemberIdentityType } from '@crowd/types'
-
-import { upsertMemberIdentity } from '../../../member_identities'
-import { PgPromiseQueryExecutor } from '../../../queryExecutor'
-
-export async function insertMemberIdentity(
-  tx: DbTransaction,
-  platform: string,
-  memberId: string,
-  value: string,
-  type: MemberIdentityType,
-  verified: boolean,
-) {
-  return upsertMemberIdentity(new PgPromiseQueryExecutor(tx), {
-    memberId,
-    platform,
-    value,
-    type,
-    verified,
-  })
-}
 
 export async function setMemberAttributeSettings(tx: DbTransaction, options: string[], id: string) {
   return tx.query(

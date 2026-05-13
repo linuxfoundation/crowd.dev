@@ -52,17 +52,37 @@ export interface IOrganization {
 export interface IMemberOrganization {
   id?: string
   title?: string
-  dateStart: Date | string
-  dateEnd: Date | string
+  dateStart: Date | string | null
+  dateEnd: Date | string | null
   memberId: string
   organizationId: string
   updatedAt?: string
   createdAt?: string
   source?: string
+  verified?: boolean
+  verifiedBy?: string
   deletedAt?: string
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }
+
+export type MemberOrganizationDateRange = Pick<IMemberOrganization, 'dateStart' | 'dateEnd'>
+
+export type MemberOrganizationDateInput = Date | string | null | undefined
+
+type MemberOrganizationEditableFields = Pick<
+  IMemberOrganization,
+  | 'organizationId'
+  | 'memberId'
+  | 'title'
+  | 'dateStart'
+  | 'dateEnd'
+  | 'source'
+  | 'verified'
+  | 'verifiedBy'
+>
+
+export type MemberOrganizationUpdate = Partial<MemberOrganizationEditableFields>
 
 export interface IRenderFriendlyMemberOrganization {
   id: string
@@ -75,6 +95,22 @@ export interface IMemberRoleWithOrganization extends IMemberOrganization {
   organizationName: string
   organizationLogo: string
 }
+
+export interface MemberOrgDate {
+  organizationId: string
+  date: string // YYYY-MM-DD
+}
+
+interface MemberOrgStintChangeBase {
+  memberId: string
+  organizationId: string
+  dateStart: string
+  dateEnd: string
+}
+
+export type MemberOrgStintChange =
+  | ({ type: 'insert' } & MemberOrgStintChangeBase)
+  | ({ type: 'update'; id: string } & MemberOrgStintChangeBase)
 
 export interface IExecutiveChange {
   joined_date?: string
@@ -105,14 +141,26 @@ export interface IOrganizationSyncRemoteData {
   lastSyncedAt?: string
 }
 
-export interface IOrganizationIdentity {
-  organizationId?: string
-  integrationId?: string
+export interface NewOrganizationIdentity {
+  organizationId: string
   platform: string
   value: string
   type: OrganizationIdentityType
   verified: boolean
+  source: string
+  sourceId?: string | null
+  integrationId?: string | null
+}
+
+export interface IOrganizationIdentity {
+  organizationId?: string
+  platform: string
+  value: string
+  type: OrganizationIdentityType
+  verified: boolean
+  source?: string
   sourceId?: string
+  integrationId?: string
 }
 
 export interface IOrganizationMergeSuggestion {
@@ -207,6 +255,7 @@ export interface IOrganizationIdentityOpensearch {
   keyword_type: string
   string_value: string
   bool_verified: boolean
+  string_source: string
 }
 
 export interface IOrganizationFullAggregatesOpensearch

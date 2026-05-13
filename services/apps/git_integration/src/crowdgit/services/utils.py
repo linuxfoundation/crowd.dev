@@ -6,14 +6,19 @@ from crowdgit.errors import (
     CommandExecutionError,
     CommandTimeoutError,
     DiskSpaceError,
+    EmptyRepoError,
+    ForbiddenError,
     NetworkError,
     PermissionError,
+    RateLimitError,
+    RemoteServerError,
+    RepoAuthRequiredError,
     ValidationError,
 )
 from crowdgit.logger import logger
 
 
-def _safe_decode(data: bytes) -> str:
+def safe_decode(data: bytes) -> str:
     """
     Safely decode bytes to string, handling various encodings that might be present in git output.
 
@@ -162,11 +167,51 @@ async def get_default_branch(repo_path: str) -> str:
     return "*"
 
 
+ERROR_CLASSIFICATIONS = [
+    # (stderr_patterns, exception_class)
+    ({"No space left on device"}, DiskSpaceError),
+    ({"Network is unreachable", "Connection refused", "Connection timed out"}, NetworkError),
+    ({"Permission denied"}, PermissionError),
+    ({"The requested URL returned error: 403"}, ForbiddenError),
+    ({"The requested URL returned error: 429"}, RateLimitError),
+    ({"The requested URL returned error: 5"}, RemoteServerError),
+    (
+        {
+            "Authentication failed",
+            "could not read Username",
+            "The requested URL returned error: 401",
+            "Repository not found",
+        },
+        RepoAuthRequiredError,
+    ),
+    (
+        {"ambiguous argument 'HEAD': unknown revision or path not in the working tree"},
+        EmptyRepoError,
+    ),
+]
+
+
+def handle_shell_errors(returncode: int, stderr_text: str, command_str: str) -> None:
+    """Classify shell command stderr into specific error types and raise the appropriate exception."""
+    for patterns, error_class in ERROR_CLASSIFICATIONS:
+        if any(pattern in stderr_text for pattern in patterns):
+            logger.error(f"{error_class.__name__}: {stderr_text}")
+            raise error_class(f"{error_class.__name__} while running: {command_str}")
+
+    logger.error(f"Command failed (exit {returncode}): {stderr_text}")
+    raise CommandExecutionError(
+        f"Command failed (exit {returncode}): {command_str} - {stderr_text}",
+        returncode=returncode,
+    )
+
+
 async def run_shell_command(
     cmd: list[str],
     cwd: str = None,
     timeout: float | None = None,
     input_text: str | bytes | None = None,
+    stderr_logger=None,
+    stderr_log_level: str = "INFO",
 ) -> str:
     """
     Run shell command asynchronously and return output on success, raise exception on failure.
@@ -176,6 +221,8 @@ async def run_shell_command(
         cwd: Working directory
         timeout: Command timeout in seconds
         input_text: Text (str) or bytes to send to stdin (will automatically append newline if not present)
+        stderr_logger: If provided, a logger whose .info() method is called with each stderr line in real-time
+        stderr_log_level: Log level for stderr lines (default: "INFO")
 
     Returns:
         str: Command stdout output
@@ -219,37 +266,43 @@ async def run_shell_command(
                     input_text += "\n"
                 stdin_input = input_text.encode("utf-8")
 
-        # Wait for completion with optional timeout
-        if timeout:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(input=stdin_input), timeout=timeout
-            )
-        else:
-            stdout, stderr = await process.communicate(input=stdin_input)
+        if stderr_logger:
+            stderr_lines: list[str] = []
 
-        # Handle potentially non-UTF-8 encoded output from git commands
-        stdout_text = _safe_decode(stdout).strip() if stdout else ""
-        stderr_text = _safe_decode(stderr).strip() if stderr else ""
+            async def _run_with_stderr_logging() -> bytes:
+                async def _stream() -> None:
+                    async for raw_line in process.stderr:
+                        line = safe_decode(raw_line).rstrip()
+                        if line:
+                            stderr_logger.log(stderr_log_level, line)
+                            stderr_lines.append(line)
+
+                stdout, _ = await asyncio.gather(process.stdout.read(), _stream())
+                await process.wait()
+                return stdout
+
+            coro = _run_with_stderr_logging()
+            stdout = await (asyncio.wait_for(coro, timeout=timeout) if timeout else coro)
+            stdout_text = safe_decode(stdout).strip() if stdout else ""
+            stderr_text = "\n".join(stderr_lines)
+        else:
+            # Wait for completion with optional timeout
+            if timeout:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(input=stdin_input), timeout=timeout
+                )
+            else:
+                stdout, stderr = await process.communicate(input=stdin_input)
+
+            # Handle potentially non-UTF-8 encoded output from git commands
+            stdout_text = safe_decode(stdout).strip() if stdout else ""
+            stderr_text = safe_decode(stderr).strip() if stderr else ""
 
         # Check return code
         if process.returncode == 0:
             return stdout_text
 
-        if "No space left on device" in stderr_text:
-            logger.error(f"Disk space error: {stderr_text}")
-            raise DiskSpaceError(f"Disk space error while running: {command_str}")
-        elif any(
-            pattern in stderr_text
-            for pattern in ["Network is unreachable", "Connection refused", "Connection timed out"]
-        ):
-            logger.warning(f"Network error: {stderr_text}")
-            raise NetworkError(f"Network error while running: {command_str}")
-        elif "Permission denied" in stderr_text:
-            logger.error(f"Permission error: {stderr_text}")
-            raise PermissionError(f"Permission denied while running: {command_str}")
-        else:
-            logger.error(f"Command error: {stderr_text}")
-            raise CommandExecutionError(f"Command failed: {command_str} - {stderr_text}")
+        handle_shell_errors(process.returncode, stderr_text, command_str)
 
     except asyncio.TimeoutError:
         logger.error(f"Command timed out after {timeout}s: {command_str}")

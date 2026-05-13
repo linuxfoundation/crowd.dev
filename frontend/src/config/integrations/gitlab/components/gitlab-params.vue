@@ -4,7 +4,7 @@
       <el-popover trigger="hover" placement="top" popper-class="!w-auto">
         <template #reference>
           <div
-            class="text-gray-600 text-2xs flex items-center leading-5 font-medium"
+            class="text-gray-600 text-2xs flex items-center leading-5 font-semibold"
           >
             <lf-svg name="git-repository" class="w-4 h-4 !text-gray-600 mr-1 flex items-center" />
             {{ pluralize("repository", Object.keys(mappings).length, true) }}

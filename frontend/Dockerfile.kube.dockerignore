@@ -1,9 +1,5 @@
 dist/
 node_modules/
-tests/
-workers-site/
 .env
 .env.*
-cypress.config.js
 Makefile
-wrangler.toml

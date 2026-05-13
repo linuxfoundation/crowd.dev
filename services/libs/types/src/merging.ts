@@ -60,7 +60,6 @@ export interface IMemberUnmergePreviewResult {
   id: string
   reach: IMemberReach
   joinedAt: string
-  tenantId: string
   username: IMemberUsername
   attributes: IAttributes
   displayName: string
@@ -83,6 +82,27 @@ export interface IOrganizationUnmergeBackup extends IOrganization {
 export interface IOrganizationUnmergePreviewResult extends IOrganization {
   memberCount: number
   activityCount: number
+}
+
+export interface MemberRow {
+  id: string
+  displayName: string
+  joinedAt: string
+  attributes: Record<string, unknown>
+  reach: Record<string, number>
+  contributions: IMemberContribution[] | null
+  manuallyCreated: boolean
+  manuallyChangedFields: string[] | null
+  score: number | null
+  tenantId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MemberUnmergeResult {
+  primary: IMemberUnmergePreviewResult
+  secondary: IMemberUnmergePreviewResult
+  movedIdentities: IMemberIdentity[]
 }
 
 export interface ILLMSuggestionVerdict {

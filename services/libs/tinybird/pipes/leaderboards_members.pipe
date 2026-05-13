@@ -8,7 +8,7 @@ DESCRIPTION >
     Retrieves all members from the populated datasource
 
 SQL >
-    SELECT id, displayName, avatar, githubHandle FROM members_sorted
+    SELECT id, displayName, avatar, githubHandleArray FROM members_sorted
 
 NODE leaderboards_member_activity_types
 DESCRIPTION >
@@ -69,7 +69,7 @@ SQL >
         cast(coalesce(pp.memberActivityCount, 0) as Float64) as previousPeriodValue,
         arrayDistinct(arrayFlatten(groupArray(proj.collectionsSlugs))) as collectionsSlugs,
         toUInt8(0) as isLF,
-        p.githubHandle as githubHandle,
+        p.githubHandleArray as githubHandleArray,
         '' as status,
         count() OVER () as totalCount
     FROM leaderboards_members_data p
@@ -79,7 +79,12 @@ SQL >
     LEFT JOIN leaderboards_members_projects proj ON proj.segmentId = sid
     WHERE c.memberActivityCount > 0
     GROUP BY
-        p.id, p.displayName, p.avatar, p.githubHandle, c.memberActivityCount, pp.memberActivityCount
+        p.id,
+        p.displayName,
+        p.avatar,
+        p.githubHandleArray,
+        c.memberActivityCount,
+        pp.memberActivityCount
     ORDER BY value DESC
     LIMIT 100
 

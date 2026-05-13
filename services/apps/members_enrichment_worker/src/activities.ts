@@ -3,9 +3,9 @@ import {
   fetchMemberDataForLLMSquashing,
   findMemberEnrichmentCache,
   findMemberIdentityWithTheMostActivityInPlatform,
-  findWhichLinkedinProfileToUseAmongScraperResult,
   getEnrichmentData,
   getEnrichmentInput,
+  getMaxConcurrentRequests,
   getObsoleteSourcesOfMember,
   getPriorityArray,
   hasRemainingCredits,
@@ -13,24 +13,12 @@ import {
   isCacheObsolete,
   normalizeEnrichmentData,
   refreshMemberEnrichmentMaterializedView,
-  squashMultipleValueAttributesWithLLM,
-  squashWorkExperiencesWithLLM,
   touchMemberEnrichmentCacheUpdatedAt,
   touchMemberEnrichmentLastTriedAt,
   updateMemberEnrichmentCache,
   updateMemberUsingSquashedPayload,
 } from './activities/enrichment'
-import {
-  getEnrichableMembers,
-  getMaxConcurrentRequests,
-  getMemberById,
-} from './activities/getMembers'
 import { refreshToken } from './activities/lf-auth0/authenticateLFAuth0'
-import {
-  getIdentitiesExistInOtherMembers,
-  mergeMembers,
-  updateMemberWithEnrichmentData,
-} from './activities/lf-auth0/enrichLFAuth0'
 import { getEnrichmentLFAuth0 } from './activities/lf-auth0/getEnrichmentLFAuth0'
 import { getLFIDEnrichableMembers } from './activities/lf-auth0/getLFIDEnrichableMembers'
 import {
@@ -40,9 +28,19 @@ import {
   updateIdentitySourceId,
 } from './activities/lf-auth0/githubIdentities'
 import {
+  findWhichLinkedinProfileToUseAmongScraperResult,
+  squashMultipleValueAttributesWithLLM,
+  squashWorkExperiencesWithLLM,
+} from './activities/llm'
+import {
+  getEnrichableMembers,
+  getIdentitiesExistInOtherMembers,
+  getMemberById,
+  mergeMembers,
   syncMembersToOpensearch,
   syncOrganizationsToOpensearch,
-} from './activities/syncEnrichedData'
+  updateMemberWithEnrichmentData,
+} from './activities/member'
 
 export {
   touchMemberEnrichmentLastTriedAt,

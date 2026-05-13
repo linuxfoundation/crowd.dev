@@ -73,6 +73,7 @@ const parseMembers = async (ctx: IProcessDataContext) => {
               value: username,
               type: MemberIdentityType.USERNAME,
               verified: true,
+              verifiedBy: PlatformType.DISCORD,
             },
           ],
           attributes: {
@@ -134,6 +135,7 @@ const parseMessage = async (ctx: IProcessDataContext) => {
             value: record.author.username,
             type: MemberIdentityType.USERNAME,
             verified: true,
+            verifiedBy: PlatformType.DISCORD,
           },
         ],
         attributes: {

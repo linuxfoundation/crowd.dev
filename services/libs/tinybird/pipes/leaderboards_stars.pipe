@@ -39,7 +39,7 @@ SQL >
         cast(coalesce(m.previousStars, 0) as Float64) as previousPeriodValue,
         p.collectionsSlugs as collectionsSlugs,
         p.isLF as isLF,
-        '' as githubHandle,
+        [] as githubHandleArray,
         p.status as status,
         count() OVER () as totalCount
     FROM leaderboards_stars_projects p

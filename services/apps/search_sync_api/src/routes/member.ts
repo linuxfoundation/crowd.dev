@@ -30,17 +30,14 @@ router.post(
 router.post(
   '/sync/organization/members',
   asyncWrap(async (req: ApiRequest, res) => {
-    const memberSyncService = syncService(req)
-
-    const { organizationId, syncFrom } = req.body
+    const { organizationId, lastId, batchSize, syncFrom } = req.body
     try {
-      req.log.trace(
-        `Calling memberSyncService.syncOrganizationMembers for organization ${organizationId}`,
-      )
-      await memberSyncService.syncOrganizationMembers(organizationId, {
+      const result = await syncService(req).syncOrganizationMembers(organizationId, {
+        lastId: lastId ?? undefined,
+        batchSize: batchSize ?? undefined,
         syncFrom: syncFrom ? new Date(syncFrom) : null,
       })
-      res.sendStatus(200)
+      res.json(result)
     } catch (error) {
       req.log.error(error)
       res.status(500).send(error.message)

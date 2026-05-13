@@ -78,18 +78,10 @@ export interface GroupsioPublishData<T> {
   data: T
 }
 
-export interface GroupsioIntegrationSettings {
-  email: string
-  token: string
-  groups: GroupDetails[]
-}
-
-export interface GroupDetails {
-  id: number
-  name: string
-  slug: string
-  groupAddedOn: string
-}
+export {
+  IGroupsioIntegrationSettings as GroupsioIntegrationSettings,
+  IGroupsioGroupDetails as GroupDetails,
+} from '@crowd/types'
 
 export interface ActivityLog {
   id: number

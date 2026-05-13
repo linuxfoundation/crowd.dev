@@ -6,6 +6,8 @@
     size="600px"
     pre-title="Integration"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="isVisible = false"
   >
     <template #beforeTitle>
@@ -14,6 +16,9 @@
         :src="logoUrl"
         alt="LinkedIn logo"
       />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="linkedin" />
     </template>
     <template #content>
       <div
@@ -64,45 +69,19 @@
     </template>
 
     <template #footer>
-      <div
-        class="flex grow items-center"
-        :class="
-          hasFormChanged ? 'justify-between' : 'justify-end'
-        "
-      >
-        <lf-button
-          v-if="hasFormChanged"
-          type="primary-link"
-          @click="doReset"
-        >
-          <lf-icon name="arrow-turn-left" :size="16" />
-          <span>Reset changes</span>
-        </lf-button>
-        <div class="flex gap-4">
-          <lf-button
-            type="secondary-gray"
-            size="medium"
-            @click="isVisible = false"
-          >
-            Cancel
-          </lf-button>
-          <lf-button
-            type="primary"
-            size="medium"
-            :disabled="!hasFormChanged || loading"
-            :loading="loading"
-            @click="hasFormChanged ? connect() : undefined"
-          >
-            {{
-              integration.settings?.organizations.length > 0
-                ? 'Update'
-                : 'Connect'
-            }}
-          </lf-button>
-        </div>
-      </div>
+      <drawer-footer-buttons
+        :integration="integration"
+        :is-edit-mode="integration.settings?.organizations.length > 0"
+        :has-form-changed="hasFormChanged"
+        :is-loading="loading"
+        :is-submit-disabled="!hasFormChanged || loading"
+        :cancel="() => (isVisible = false)"
+        :revert-changes="doReset"
+        :connect="hasFormChanged ? connect : () => {}"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup lang="ts">
@@ -119,7 +98,9 @@ import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
-import LfButton from '@/ui-kit/button/Button.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const store = useStore();
 
@@ -131,6 +112,7 @@ const props = defineProps<{
 }>();
 
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const emit = defineEmits(['update:modelValue']);
 const organizations = computed(
@@ -165,6 +147,21 @@ const doReset = () => {
   model.value = selectedOrg.value
     ? selectedOrg.value.id
     : null;
+};
+
+const canClose = (done: (value: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        doReset();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
 };
 
 const connect = async () => {

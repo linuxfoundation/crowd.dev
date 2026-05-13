@@ -74,7 +74,7 @@ SQL >
         cast(coalesce(pp.organizationActivityCount, 0) as Float64) as previousPeriodValue,
         arrayDistinct(arrayFlatten(groupArray(proj.collectionsSlugs))) as collectionsSlugs,
         toUInt8(0) as isLF,
-        '' as githubHandle,
+        [] as githubHandleArray,
         '' as status,
         count() OVER () as totalCount
     FROM leaderboards_organizations_data p

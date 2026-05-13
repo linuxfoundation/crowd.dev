@@ -7,7 +7,6 @@ import {
   scheduleRefreshMemberDisplayAggregates,
   scheduleRefreshOrganizationDisplayAggregates,
 } from './schedules/refreshDisplayAggregates'
-import { scheduleRecalculateAffiliationsOfNewRoles } from './schedules/triggerRecalculateAffiliationsOfNewRoles'
 
 const config: Config = {
   producer: {
@@ -37,8 +36,6 @@ export const svc = new ServiceWorker(config, options)
 
 setImmediate(async () => {
   await svc.init()
-
-  await scheduleRecalculateAffiliationsOfNewRoles()
 
   // Aggregate calculation schedules
   if (IS_DEV_ENV) {

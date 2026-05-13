@@ -3,6 +3,8 @@ import {
   IntegrationState,
   IntegrationStreamType,
 } from './enums/integrations'
+import { PlatformType } from './enums/platforms'
+import { IntegrationSettingsMap } from './integrationSettings'
 
 export interface IIntegrationStream {
   identifier: string
@@ -17,12 +19,12 @@ export interface IIntegrationResult {
   data: unknown
 }
 
-export interface IIntegration {
+export interface IIntegration<P extends PlatformType = PlatformType> {
   id: string
   identifier: string
-  platform: string
+  platform: P
   status: IntegrationState
-  settings: unknown
+  settings: P extends keyof IntegrationSettingsMap ? IntegrationSettingsMap[P] : unknown
   token: string | null
   refreshToken: string | null
 }

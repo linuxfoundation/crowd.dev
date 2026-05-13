@@ -7,10 +7,15 @@
     pre-title="Integration"
     :show-footer="true"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="handleCancel()"
   >
     <template #beforeTitle>
       <img class="min-w-6 h-6 mr-2" :src="logoUrl" alt="Groups.io logo" />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="groupsio" />
     </template>
     <template #content>
       <div class="w-full flex flex-col mb-6">
@@ -241,28 +246,19 @@
     </template>
 
     <template #footer>
-      <div style="flex: auto">
-        <lf-button
-          type="secondary-gray"
-          size="medium"
-          class="mr-3"
-          :disabled="loading"
-          @click="handleCancel"
-        >
-          Cancel
-        </lf-button>
-        <lf-button
-          type="primary"
-          size="medium"
-          :disabled="cantConnect || !hasSelectedGroups"
-          :loading="loading"
-          @click="connect()"
-        >
-          {{ integration?.settings?.email ? "Update" : "Connect" }}
-        </lf-button>
-      </div>
+      <drawer-footer-buttons
+        :integration="props.integration"
+        :is-edit-mode="!!integration?.settings?.email"
+        :has-form-changed="hasFormChanged"
+        :is-loading="loading"
+        :is-submit-disabled="cantConnect || !hasSelectedGroups"
+        :cancel="handleCancel"
+        :revert-changes="revertChanges"
+        :connect="connect"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup>
@@ -287,6 +283,9 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import LfCheckbox from '@/ui-kit/checkbox/Checkbox.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const { doGroupsioConnect } = mapActions('integration');
 
@@ -322,6 +321,7 @@ const form = reactive({
 });
 
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref(null);
 
 const isValidating = ref(false);
 const isVerificationEnabled = ref(false);
@@ -494,6 +494,21 @@ const isVisible = computed({
   },
 });
 
+const canClose = (done) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
+};
+
 const handleCancel = () => {
   formSnapshot();
   emit('update:modelValue', false);
@@ -510,21 +525,25 @@ const handleCancel = () => {
     errorMessage.value = '';
     $v.value.$reset();
   } else {
-    form.email = props.integration?.settings?.email;
-    form.password = '';
-    form.twoFactorCode = '';
-    form.groups = props?.integration?.settings?.groups
-      ? [...(props.integration?.settings.groups || [])]
-      : [{}];
-    form.groupsValidationState = new Array(form.groups.length).fill(true);
-    cookie.value = props?.integration?.settings?.token;
-    isAPIConnectionValid.value = true;
-    isVerifyingAccount.value = false;
-    accountVerificationFailed.value = false;
-    errorMessage.value = '';
-    $v.value.$reset();
+    revertChanges();
   }
   userSubscriptions.value = [];
+};
+
+const revertChanges = () => {
+  form.email = props.integration?.settings?.email;
+  form.password = '';
+  form.twoFactorCode = '';
+  form.groups = props?.integration?.settings?.groups
+    ? [...(props.integration?.settings.groups || [])]
+    : [{}];
+  form.groupsValidationState = new Array(form.groups.length).fill(true);
+  cookie.value = props?.integration?.settings?.token;
+  isAPIConnectionValid.value = true;
+  isVerifyingAccount.value = false;
+  accountVerificationFailed.value = false;
+  errorMessage.value = '';
+  $v.value.$reset();
 };
 
 onMounted(() => {

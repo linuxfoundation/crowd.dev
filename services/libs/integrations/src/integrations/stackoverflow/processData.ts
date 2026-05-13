@@ -16,6 +16,7 @@ function parseMember(user: StackOverflowUser): IMemberData {
         type: MemberIdentityType.USERNAME,
         sourceId: user.user_id.toString(),
         verified: true,
+        verifiedBy: PlatformType.STACKOVERFLOW,
       },
     ],
     attributes: {
@@ -70,6 +71,7 @@ async function parseQuestion(ctx: IProcessDataContext) {
           value: question.owner.display_name,
           type: MemberIdentityType.USERNAME,
           verified: true,
+          verifiedBy: PlatformType.STACKOVERFLOW,
         },
       ],
     }
@@ -115,6 +117,7 @@ async function parseAnswer(ctx: IProcessDataContext) {
           value: answer.owner.display_name,
           type: MemberIdentityType.USERNAME,
           verified: true,
+          verifiedBy: PlatformType.STACKOVERFLOW,
         },
       ],
     }

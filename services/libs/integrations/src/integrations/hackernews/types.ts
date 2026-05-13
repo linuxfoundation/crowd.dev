@@ -87,10 +87,7 @@ export interface HackerNewsResponse extends HackerNewsPost {
   user: HackerNewsUser
 }
 
-export interface HackerNewsIntegrationSettings {
-  keywords: string[]
-  urls: string[]
-}
+export { IHackernewsIntegrationSettings as HackerNewsIntegrationSettings } from '@crowd/types'
 
 export interface HackerNewsKeywordSearchInput {
   keywords: string[]

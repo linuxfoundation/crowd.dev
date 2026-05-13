@@ -4,7 +4,6 @@ import Sequelize from 'sequelize'
 import { Error404 } from '@crowd/common'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import SequelizeRepository from './sequelizeRepository'
 
 const Op = Sequelize.Op
@@ -39,9 +38,6 @@ class CustomViewRepository {
         transaction,
       },
     )
-
-    // adds event to audit log
-    await this._createAuditLog(AuditLogRepository.CREATE, record, data, options)
 
     return this.findById(record.id, options)
   }
@@ -95,8 +91,6 @@ class CustomViewRepository {
       )
     }
 
-    await this._createAuditLog(AuditLogRepository.UPDATE, record, data, options)
-
     return this.findById(record.id, options)
   }
 
@@ -145,8 +139,6 @@ class CustomViewRepository {
       },
       transaction,
     })
-
-    await this._createAuditLog(AuditLogRepository.DELETE, record, record, options)
   }
 
   static async findById(id, options: IRepositoryOptions) {
@@ -224,24 +216,6 @@ class CustomViewRepository {
     }
 
     return customViewRecords
-  }
-
-  static async _createAuditLog(action, record, data, options: IRepositoryOptions) {
-    let values = {}
-
-    if (data) {
-      values = record.get({ plain: true })
-    }
-
-    await AuditLogRepository.log(
-      {
-        entityName: 'customView',
-        entityId: record.id,
-        action,
-        values,
-      },
-      options,
-    )
   }
 }
 

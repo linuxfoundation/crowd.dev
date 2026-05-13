@@ -12,6 +12,10 @@ module.exports = {
     'prefer-destructuring': ['error', { object: false, array: false }],
     'no-param-reassign': 0,
     'no-underscore-dangle': 0,
+    'no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' },
+    ],
     '@typescript-eslint/naming-convention': [
       'error',
       {
@@ -46,6 +50,14 @@ module.exports = {
         'prefer-destructuring': ['error', { object: false, array: false }],
         'no-param-reassign': 0,
         'no-underscore-dangle': 0,
+        '@typescript-eslint/no-unused-vars': [
+          'error',
+          {
+            argsIgnorePattern: '^_',
+            varsIgnorePattern: '^_',
+            destructuredArrayIgnorePattern: '^_',
+          },
+        ],
         '@typescript-eslint/naming-convention': [
           'error',
           {

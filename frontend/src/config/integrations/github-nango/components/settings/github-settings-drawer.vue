@@ -1,38 +1,43 @@
 <template>
-  <lf-drawer v-model="isDrawerVisible">
-    <div class="flex flex-col justify-between h-full">
-      <section class="pt-4 px-6 pb-6 border-b border-gray-100">
-        <div class="flex justify-between pb-3">
-          <div>
-            <p class="text-tiny text-gray-500 mb-1.5">
-              Integration
-            </p>
-            <div class="flex items-center gap-2">
-              <img :src="githubImage" alt="GitHub" class="h-6 min-w-6" />
-              <h5 class="text-black">
-                GitHub
-              </h5>
-            </div>
-          </div>
-          <lf-button
-            type="secondary-ghost"
-            icon-only
-            @click="isDrawerVisible = false"
-          >
-            <lf-icon name="xmark" />
-          </lf-button>
+  <app-drawer
+    v-model="isDrawerVisible"
+    title="GitHub"
+    size="600px"
+    pre-title="Integration"
+    :show-footer="true"
+    has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
+  >
+    <template #beforeTitle>
+      <img
+        :src="githubImage"
+        class="min-w-6 h-6 mr-2"
+        alt="GitHub logo"
+      />
+    </template>
+    <template #afterTitle>
+      <lf-github-version-tag version="v2" tooltip-content="New integration" class="ml-2" />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="github" />
+    </template>
+    <template #content>
+      <div class="flex gap-2 bg-brand-50 -mt-5 -mx-6 py-3 px-6 mb-5">
+        <div>
+          <lf-icon name="circle-info" type="solid" class="text-brand-500" :size="20" />
         </div>
-        <p class="text-small text-gray-500">
-          Sync GitHub repositories to track profile information and all relevant
-          activities like commits, pull requests, discussions, and more.
-        </p>
-      </section>
+        <div class="text-xs text-brand-800">
+          Connected repositories are also synced through Git, which automatically mirrors your
+          GitHub settings for adding, updating, and deleting repositories.
+        </div>
+      </div>
       <div class="flex-grow overflow-auto">
         <lf-github-settings-empty
           v-if="repositories.length === 0"
           @add="isAddRepositoryModalOpen = true"
         />
-        <div v-else class="px-6 pt-5">
+        <div v-else>
           <lf-github-settings-mapping
             v-model:repositories="repositories"
             v-model:organizations="organizations"
@@ -42,31 +47,21 @@
           />
         </div>
       </div>
-      <div
-        class="border-t border-gray-100 py-5 px-6 flex justify-end gap-4"
-        style="box-shadow: 0 -4px 4px 0 rgba(0, 0, 0, 0.05)"
-      >
-        <lf-button
-          type="secondary-ghost-light"
-          @click="isDrawerVisible = false"
-        >
-          Cancel
-        </lf-button>
-        <span>
-          <lf-button
-            type="primary"
-            :disabled="
-              $v.$invalid
-                || !repositories.length
-            "
-            @click="connect()"
-          >
-            {{ props.integration ? 'Update settings' : 'Connect' }}
-          </lf-button>
-        </span>
-      </div>
-    </div>
-  </lf-drawer>
+    </template>
+
+    <template #footer>
+      <drawer-footer-buttons
+        :integration="props.integration"
+        :is-edit-mode="!!props.integration"
+        :has-form-changed="hasChanges"
+        :is-loading="loading"
+        :is-submit-disabled="sending || $v.$invalid || !repositories.length"
+        :cancel="() => (isDrawerVisible = false)"
+        :revert-changes="revertChanges"
+        :connect="connect"
+      />
+    </template>
+  </app-drawer>
   <lf-github-settings-add-repository-modal
     v-if="isAddRepositoryModalOpen"
     v-model="isAddRepositoryModalOpen"
@@ -74,15 +69,15 @@
     v-model:repositories="repositories"
     :integration="props.integration"
   />
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script lang="ts" setup>
 import {
   computed, onMounted, ref, watch,
 } from 'vue';
+import isEqual from 'lodash/isEqual';
 import useVuelidate from '@vuelidate/core';
-import LfDrawer from '@/ui-kit/drawer/Drawer.vue';
-import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfGithubSettingsEmpty from '@/config/integrations/github-nango/components/settings/github-settings-empty.vue';
 import LfGithubSettingsAddRepositoryModal from '@/config/integrations/github-nango/components/settings/github-settings-add-repository-modal.vue';
@@ -99,6 +94,7 @@ import { IntegrationService } from '@/modules/integration/integration-service';
 import { ToastStore } from '@/shared/message/notification';
 import { mapActions } from '@/shared/vuex/vuex.helpers';
 import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
+import AppDrawer from '@/shared/drawer/drawer.vue';
 import {
   EventType,
   FeatureEventKey,
@@ -107,6 +103,10 @@ import { Platform } from '@/shared/modules/platform/types/Platform';
 import { showIntegrationProgressNotification } from '@/modules/integration/helpers/integration-progress-notification';
 import { dateHelper } from '@/shared/date-helper/date-helper';
 import { parseDuplicateRepoError, customRepoErrorMessage } from '@/shared/helpers/error-message.helper';
+import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -119,6 +119,7 @@ const emit = defineEmits<{(e: 'update:modelValue', value: boolean): void }>();
 
 const { doFetch } = mapActions('integration');
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const isAddRepositoryModalOpen = ref(false);
 
@@ -126,7 +127,15 @@ const subprojects = ref([]);
 const organizations = ref<GitHubOrganization[]>([]);
 const repositories = ref<GitHubSettingsRepository[]>([]);
 const repoMappings = ref<Record<string, string>>({});
+const initialRepositories = ref<GitHubSettingsRepository[]>([]);
+const initialOrganizations = ref<GitHubOrganization[]>([]);
 const initialRepoMappings = ref<Record<string, string>>({});
+
+const hasChanges = computed(() => repositories.value.length !== initialRepositories.value.length
+    || !isEqual(repoMappings.value, initialRepoMappings.value));
+
+const loading = ref(false);
+const sending = ref(false);
 
 // Drawer visibility
 const isDrawerVisible = computed({
@@ -191,6 +200,7 @@ const buildSettings = (): GitHubSettings => {
 };
 
 const connect = () => {
+  sending.value = true;
   const settings: GitHubSettings = buildSettings();
 
   IntegrationService.githubNangoConnect(
@@ -224,6 +234,9 @@ const connect = () => {
     })
     .catch((error) => {
       errorHandler(error);
+    })
+    .finally(() => {
+      sending.value = false;
     });
 };
 
@@ -246,6 +259,27 @@ const errorHandler = (error: any) => {
   }
 };
 
+const revertChanges = () => {
+  repositories.value = [...initialRepositories.value];
+  organizations.value = [...initialOrganizations.value];
+  repoMappings.value = { ...initialRepoMappings.value };
+};
+
+const canClose = (done: (value: boolean) => void) => {
+  if (hasChanges.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
+};
+
 const fetchGithubMappings = () => {
   if (!props.integration) return;
   IntegrationService.fetchGitHubMappings(props.integration).then(
@@ -260,6 +294,7 @@ const fetchGithubMappings = () => {
       // Create new objects to ensure no reference sharing
       repoMappings.value = { ...mappings };
       initialRepoMappings.value = { ...mappings };
+      loading.value = false;
     },
   );
 };
@@ -268,6 +303,7 @@ watch(
   () => props.integration,
   (value?: Integration<GitHubSettings>) => {
     if (value) {
+      loading.value = true;
       fetchGithubMappings();
       const { orgs } = value.settings;
       organizations.value = orgs
@@ -293,6 +329,9 @@ watch(
         ],
         [],
       );
+
+      initialRepositories.value = [...repositories.value];
+      initialOrganizations.value = [...organizations.value];
     }
   },
   { immediate: true },

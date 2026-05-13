@@ -19,8 +19,6 @@ SQL >
     INNER JOIN activityTypes at ON a.type = at.activityType AND a.platform = at.platform
     WHERE
         a.segmentId = (SELECT segmentId FROM segments_filtered)
-        {% if defined(repos) %}
-            AND a.channel IN (SELECT channel FROM repos_to_channels)
-        {% end %}
+        {% if defined(repos) %} AND a.channel IN (SELECT channel FROM repos_to_channels) {% end %}
         AND (a.type, a.platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
     ORDER BY activityType, platform

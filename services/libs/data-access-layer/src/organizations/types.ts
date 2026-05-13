@@ -94,16 +94,6 @@ export interface IDbOrgIdentity {
   integrationId?: string
 }
 
-export interface IDbOrgIdentityInsertInput {
-  organizationId: string
-  platform: string
-  value: string
-  type: OrganizationIdentityType
-  verified: boolean
-  sourceId?: string
-  integrationId?: string
-}
-
 export interface IDbOrgIdentityUpdateInput {
   organizationId: string
   platform: string

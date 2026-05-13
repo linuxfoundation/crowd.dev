@@ -4,17 +4,17 @@ from datetime import datetime, timezone
 from crowdgit.database.crud import (
     acquire_repo_for_processing,
     get_recently_processed_repository_by_url,
-    increase_re_onboarding_count,
     mark_repo_as_processed,
     release_repo,
     update_last_processed_commit,
+    update_repository_license,
 )
 from crowdgit.enums import RepositoryState
 from crowdgit.errors import (
     InternalError,
     ParentRepoInvalidError,
     ReOnboardingRequiredError,
-    StuckRepoError,
+    RepoAuthRequiredError,
 )
 
 # Import configured loguru logger from crowdgit.logger
@@ -23,9 +23,11 @@ from crowdgit.models import Repository
 from crowdgit.services import (
     CloneService,
     CommitService,
+    LicenseService,
     MaintainerService,
     QueueService,
     SoftwareValueService,
+    VulnerabilityScannerService,
 )
 from crowdgit.services.utils import get_default_branch, get_repo_name
 from crowdgit.settings import (
@@ -44,13 +46,17 @@ class RepositoryWorker:
         clone_service: CloneService,
         commit_service: CommitService,
         software_value_service: SoftwareValueService,
+        vulnerability_scanner_service: VulnerabilityScannerService,
         maintainer_service: MaintainerService,
+        license_service: LicenseService,
         queue_service: QueueService,
     ):
         self.clone_service = clone_service
         self.commit_service = commit_service
         self.software_value_service = software_value_service
+        self.vulnerability_scanner_service = vulnerability_scanner_service
         self.maintainer_service = maintainer_service
+        self.license_service = license_service
         self.queue_service = queue_service
         self._shutdown = False
 
@@ -114,14 +120,9 @@ class RepositoryWorker:
         # handling
         if repo_stuck:
             logger.warning(
-                f"Repo {repository.url} is stuck for {processing_duration_hours} hours!"
+                f"Repo {repository.url} is stuck for {processing_duration_hours} hours — queuing for re-onboarding"
             )
-            if repository.stuck_requires_re_onboard:
-                logger.warning(
-                    f"Repo {repository.url} is stuck due to force-push or dangling commit. Will be re-onboarded"
-                )
-                raise ReOnboardingRequiredError()
-            raise StuckRepoError()
+            raise ReOnboardingRequiredError()
 
     async def _process_repositories(self):
         """
@@ -161,6 +162,8 @@ class RepositoryWorker:
             (self.commit_service, "commit_processing"),
             (self.maintainer_service, "maintainer_processing"),
             (self.software_value_service, "software_value_processing"),
+            (self.vulnerability_scanner_service, "vulnerability_scan_processing"),
+            (self.license_service, "license_detection"),
             (self.queue_service, "queue_service"),
         ]
 
@@ -175,6 +178,8 @@ class RepositoryWorker:
             self.commit_service,
             self.maintainer_service,
             self.software_value_service,
+            self.vulnerability_scanner_service,
+            self.license_service,
             self.queue_service,
         ]
 
@@ -233,7 +238,12 @@ class RepositoryWorker:
                 logger.info(f"Clone batch info: {batch_info}")
                 if batch_info.is_first_batch:
                     await self.software_value_service.run(repository.id, batch_info.repo_path)
+                    await self.vulnerability_scanner_service.run(
+                        repository.id, batch_info.repo_path, repository.url
+                    )
                     await self.maintainer_service.process_maintainers(repository, batch_info)
+                    license_spdx = await self.license_service.detect(batch_info.repo_path)
+                    await update_repository_license(repository.id, license_spdx)
                 await self.commit_service.process_single_batch_commits(
                     repository,
                     batch_info,
@@ -250,23 +260,15 @@ class RepositoryWorker:
 
             logger.info("Incremental processing completed successfully")
             processing_state = RepositoryState.COMPLETED
-        except StuckRepoError:
-            logger.error(
-                f"Repo {repository.url} is stuck for unkown reason, marking it as stuck until manually resolved!"
-            )
-            processing_state = RepositoryState.STUCK
         except ReOnboardingRequiredError:
-            logger.info(f"Resetting and queueing {repository.url} for re-onboarding")
-            await update_last_processed_commit(
-                repo_id=repository.id,
-                commit_hash=None,
-                branch=None,
-            )
-            processing_state = RepositoryState.PENDING
-            await increase_re_onboarding_count(repository.id)
+            logger.info(f"Repo {repository.url} needs re-onboarding, deferring until weekend")
+            processing_state = RepositoryState.PENDING_REONBOARD
         except ParentRepoInvalidError as e:
             logger.error(f"Parent repo validation failed: {repr(e)}")
             processing_state = RepositoryState.REQUIRES_PARENT
+        except RepoAuthRequiredError as e:
+            logger.error(f"Repository requires authentication: {repr(e)}")
+            processing_state = RepositoryState.AUTH_REQUIRED
         except Exception as e:
             logger.error(f"Processing failed with error: {repr(e)}")
             processing_state = RepositoryState.FAILED

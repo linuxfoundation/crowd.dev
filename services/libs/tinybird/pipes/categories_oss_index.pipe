@@ -43,7 +43,9 @@ DESCRIPTION >
     Returns only needed columns from collections
 
 SQL >
-    SELECT collections.id, collections.name FROM collections FINAL where isNull (deletedAt)
+    SELECT collections.id, collections.name
+    FROM collections FINAL
+    where isNull (deletedAt) AND isNull (ssoUserId)
 
 NODE categories_oss_index_projects_ranked_by_category
 DESCRIPTION >

@@ -172,6 +172,7 @@ const platformList: ContributorAddIdentity[] = memberIdentities
     type: 'username',
     value: '',
     verified: true,
+    source: 'ui',
     sourceId: null,
   }));
 
@@ -230,6 +231,7 @@ const createContributor = () => {
           platform: i.platform,
           value: i.value,
           verified: true,
+          source: 'ui',
           sourceId: null,
         })),
       ...form.email
@@ -239,6 +241,7 @@ const createContributor = () => {
           platform: 'custom',
           value: email,
           verified: true,
+          source: 'ui',
           sourceId: null,
         })),
     ],

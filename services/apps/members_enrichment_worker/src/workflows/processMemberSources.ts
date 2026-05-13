@@ -2,7 +2,7 @@ import { proxyActivities } from '@temporalio/workflow'
 
 import { MemberEnrichmentSource, PlatformType } from '@crowd/types'
 
-import * as activities from '../activities/enrichment'
+import * as activities from '../activities'
 import { IMemberEnrichmentDataNormalized, IProcessMemberSourcesArgs } from '../types'
 
 const {
@@ -10,8 +10,6 @@ const {
   normalizeEnrichmentData,
   fetchMemberDataForLLMSquashing,
   findWhichLinkedinProfileToUseAmongScraperResult,
-  squashMultipleValueAttributesWithLLM,
-  squashWorkExperiencesWithLLM,
   updateMemberUsingSquashedPayload,
   cleanAttributeValue,
   touchMemberEnrichmentLastTriedAt,
@@ -22,6 +20,18 @@ const {
     backoffCoefficient: 2.0,
     maximumInterval: '60s',
     maximumAttempts: 4,
+  },
+})
+
+const { squashMultipleValueAttributesWithLLM, squashWorkExperiencesWithLLM } = proxyActivities<
+  typeof activities
+>({
+  startToCloseTimeout: '10 minutes',
+  retry: {
+    initialInterval: '30s',
+    backoffCoefficient: 2.0,
+    maximumInterval: '5 minutes',
+    maximumAttempts: 6,
   },
 })
 

@@ -7,7 +7,6 @@ import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
 import { isUserInTenant } from '../utils/userTenantUtils'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import SequelizeRepository from './sequelizeRepository'
 
 const { Op } = Sequelize
@@ -56,11 +55,6 @@ class TenantRepository {
         transaction,
       },
     )
-
-    await this._createAuditLog(AuditLogRepository.CREATE, record, data, {
-      ...options,
-      currentTenant: record,
-    })
 
     return this.findById(record.id, {
       ...options,
@@ -159,8 +153,6 @@ class TenantRepository {
       },
     )
 
-    await this._createAuditLog(AuditLogRepository.UPDATE, record, data, options)
-
     return this.findById(record.id, options)
   }
 
@@ -180,8 +172,6 @@ class TenantRepository {
     await record.destroy({
       transaction,
     })
-
-    await this._createAuditLog(AuditLogRepository.DELETE, record, record, options)
   }
 
   static async findById(id, options: IRepositoryOptions) {
@@ -346,26 +336,6 @@ class TenantRepository {
       id: record.id,
       label: record.name,
     }))
-  }
-
-  static async _createAuditLog(action, record, data, options: IRepositoryOptions) {
-    let values = {}
-
-    if (data) {
-      values = {
-        ...record.get({ plain: true }),
-      }
-    }
-
-    await AuditLogRepository.log(
-      {
-        entityName: 'tenant',
-        entityId: record.id,
-        action,
-        values,
-      },
-      options,
-    )
   }
 
   /**

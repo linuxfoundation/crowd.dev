@@ -12,13 +12,20 @@ import {
   isObjectEmpty,
   singleOrDefault,
 } from '@crowd/common'
-import { BotDetectionService } from '@crowd/common_services'
+import {
+  BotDetectionService,
+  CommonMemberService,
+  MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
+  MEMBER_ORG_STINT_CHANGES_QUEUE,
+} from '@crowd/common_services'
 import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
-import { DbStore } from '@crowd/data-access-layer/src/database'
 import {
   findIdentitiesForMembers,
+  findMembersByIdentities,
   findMembersByVerifiedUsernames,
-} from '@crowd/data-access-layer/src/member_identities'
+} from '@crowd/data-access-layer'
+import { DbStore } from '@crowd/data-access-layer/src/database'
+import { getMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import IntegrationRepository from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/integration.repo'
 import {
   IDbMember,
@@ -31,6 +38,7 @@ import { Client as TemporalClient } from '@crowd/temporal'
 import {
   IMemberData,
   IMemberIdentity,
+  IOrganization,
   IOrganizationIdSource,
   MemberAttributeName,
   MemberBotDetection,
@@ -45,6 +53,51 @@ import {
 import { IMemberCreateData, IMemberUpdateData } from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
+
+/**
+ * Returns a stable cache key for an org based on its verified identities, falling back to
+ * displayName. Used by the org promise cache to deduplicate `findOrCreateOrganization` calls
+ * across members in the same batch.
+ */
+function orgCacheKey(org: IOrganization): string | null {
+  const verified = (org.identities ?? [])
+    .filter((i) => i.verified)
+    .map((i) => `${i.platform}:${i.type}:${i.value.toLowerCase()}`)
+    .sort()
+    .join('|')
+  if (verified) return verified
+  if (org.displayName) return `name:${org.displayName.toLowerCase()}`
+  return null
+}
+
+/**
+ * Checks the memberNoMerge table and, if allowed, merges secondaryId into primaryId
+ * using CommonMemberService. Returns true if the merge was performed, false if a noMerge
+ * record prevents it. Throws if the merge itself fails.
+ */
+export async function mergeIfAllowed(
+  pgQx: QueryExecutor,
+  temporal: TemporalClient,
+  log: Logger,
+  primaryId: string,
+  secondaryId: string,
+): Promise<boolean> {
+  const noMergeMemberIds = await getMemberNoMerge(pgQx, [primaryId, secondaryId])
+  const noMerge = noMergeMemberIds.some(
+    (m) =>
+      (m.memberId === primaryId && m.noMergeId === secondaryId) ||
+      (m.memberId === secondaryId && m.noMergeId === primaryId),
+  )
+  if (noMerge) {
+    log.warn({ primaryId, secondaryId }, 'Members are marked as no-merge — skipping merge')
+    return false
+  }
+  await pgQx.tx(async (txPgQx) => {
+    const service = new CommonMemberService(txPgQx, temporal, log)
+    await service.merge(primaryId, secondaryId)
+  })
+  return true
+}
 
 export default class MemberService extends LoggerBase {
   private readonly memberRepo: MemberRepository
@@ -64,20 +117,220 @@ export default class MemberService extends LoggerBase {
     this.pgQx = dbStoreQx(this.store)
   }
 
+  /**
+   * Inserts identities with failOnConflict=true. On a unique constraint violation: finds the
+   * owner and, when attemptMerge=true (update path), attempts mergeIfAllowed. On merge success
+   * returns the owner's memberId as a redirect signal. On failure re-throws the original
+   * DatabaseError so handleMemberIdentityError in activity.service.ts can extract metadata and
+   * write to integration.results.error. When attemptMerge=false (create path) the orphan has no
+   * data (INSERT was atomic — nothing committed), so we skip the full merge and just return the
+   * owner; the caller handles orphan cleanup via scheduleOrphanMemberDeletion.
+   */
+  private async insertIdentitiesWithConflictResolution(
+    memberId: string,
+    integrationId: string,
+    identities: IMemberIdentity[],
+    attemptMerge = true,
+  ): Promise<string | void> {
+    // Deduplicate by (platform, value, type) — prefer verified=true when the same
+    // identity appears with both flags. Prevents uix_memberIdentities_memberId_platform_value_type
+    // from firing when a payload contains the same identity twice with different verified values.
+    const seen = new Map<string, IMemberIdentity>()
+    for (const id of identities) {
+      const key = `${id.platform}:${id.type}:${id.value.trim().toLowerCase()}`
+      const existing = seen.get(key)
+      if (!existing || (!existing.verified && id.verified)) {
+        seen.set(key, id)
+      }
+    }
+    const deduped = Array.from(seen.values())
+
+    try {
+      await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
+    } catch (err) {
+      if (
+        !err?.constraint ||
+        err.constraint !== 'uix_memberIdentities_platform_value_type_verified'
+      ) {
+        throw err
+      }
+
+      const verifiedIncoming = deduped.filter((i) => i.verified)
+      if (verifiedIncoming.length === 0) throw err
+
+      // Use the structured identities array to find the owner — avoids fragile Postgres
+      // Detail text parsing (format not stable; breaks if value contains a comma).
+      const owners = await findMembersByIdentities(this.pgQx, verifiedIncoming, undefined, true)
+
+      // Map keys are `${platform}:${type}:${value}` (from db rows). Match case-insensitively.
+      let owner: string | undefined
+      outer: for (const id of verifiedIncoming) {
+        for (const [key, ownerId] of owners) {
+          const sep1 = key.indexOf(':')
+          const sep2 = key.indexOf(':', sep1 + 1)
+          if (sep1 < 0 || sep2 < 0) continue
+          if (
+            key.slice(0, sep1) === id.platform &&
+            key.slice(sep1 + 1, sep2) === id.type &&
+            key
+              .slice(sep2 + 1)
+              .trim()
+              .toLowerCase() === id.value.trim().toLowerCase() &&
+            ownerId !== memberId
+          ) {
+            owner = ownerId
+            break outer
+          }
+        }
+      }
+
+      if (!owner) throw err
+
+      if (!attemptMerge) {
+        return owner
+      }
+
+      let merged: boolean
+      try {
+        merged = await mergeIfAllowed(this.pgQx, this.temporal, this.log, owner, memberId)
+      } catch (mergeErr) {
+        // Re-throw the original constraint error, not the merge error. If we let the merge
+        // error propagate, handleMemberIdentityError's checkForIdentityConstraint would
+        // return false and no metadata would be stored in integration.results.error.
+        // Re-throwing the constraint error lets handleMemberIdentityError retry the merge.
+        this.log.warn(
+          mergeErr,
+          { memberId, owner },
+          'merge threw during identity conflict — re-throwing constraint error for retry',
+        )
+        throw err
+      }
+      if (merged) return owner
+
+      // noMerge, owner not found, or stale prefetch (owner === memberId):
+      // Re-throw original constraint DatabaseError. handleMemberIdentityError will call
+      // mergeIfAllowed again — for noMerge this is idempotent (one extra getMemberNoMerge
+      // query); for merge errors it provides a natural retry.
+      throw err
+    }
+  }
+
+  /**
+   * After an initial identity conflict redirects to a surviving member, inserts all incoming
+   * identities that the surviving member doesn't already have. If a further conflict triggers
+   * another merge the loop follows the new survivor. Throws ApplicationError once maxMerges
+   * is reached so the error surfaces in integration.results.
+   */
+  private async syncIdentitiesAfterRedirect(
+    initialSurvivingId: string,
+    integrationId: string,
+    incomingIdentities: IMemberIdentity[],
+    maxMerges = 2,
+  ): Promise<string> {
+    let survivingId = initialSurvivingId
+
+    for (let mergeCount = 0; ; mergeCount++) {
+      const freshMap = await findIdentitiesForMembers(this.pgQx, [survivingId])
+      const freshIdentities = freshMap.get(survivingId) ?? []
+
+      // Match on (platform, value, type) only — per-member unique index excludes verified.
+      // Inserting an identity that already exists with a different verified flag would hit
+      // uix_memberIdentities_memberId_platform_value_type.
+      const toInsert = incomingIdentities.filter(
+        (incoming) =>
+          !freshIdentities.some(
+            (existing) =>
+              existing.platform === incoming.platform &&
+              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
+              existing.type === incoming.type,
+          ),
+      )
+
+      // Promote verified=false → true for identities already on the surviving member
+      // where the incoming payload asserts verified=true.
+      const toVerify = incomingIdentities.filter(
+        (incoming) =>
+          incoming.verified &&
+          freshIdentities.some(
+            (existing) =>
+              existing.platform === incoming.platform &&
+              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
+              existing.type === incoming.type &&
+              !existing.verified,
+          ),
+      )
+
+      if (toVerify.length > 0) {
+        await this.memberRepo.updateIdentities(survivingId, toVerify)
+      }
+
+      if (toInsert.length === 0) {
+        return survivingId
+      }
+
+      let nextRedirectId: string | void
+      try {
+        nextRedirectId = await this.insertIdentitiesWithConflictResolution(
+          survivingId,
+          integrationId,
+          toInsert,
+          true,
+        )
+      } catch (err) {
+        // If we've already followed at least one redirect the original member id is stale.
+        // Wrap the error so handleMemberIdentityError uses survivingId as the merge target
+        // instead of the already-absorbed original member.
+        if (survivingId !== initialSurvivingId) {
+          throw new ApplicationError(
+            'identity conflict after redirect sync',
+            err instanceof Error ? err : undefined,
+            { survivingId },
+          )
+        }
+        throw err
+      }
+
+      if (!nextRedirectId) {
+        return survivingId
+      }
+
+      if (mergeCount + 1 >= maxMerges) {
+        throw new ApplicationError('identity sync exceeded merge limit', undefined, {
+          mergeCount: mergeCount + 1,
+          survivingId,
+          maxMerges,
+        })
+      }
+
+      survivingId = nextRedirectId
+    }
+  }
+
   public async create(
     segmentIds: string[],
     integrationId: string,
     data: IMemberCreateData,
-    source: string,
-    releaseMemberLock?: () => Promise<void>,
+    platform: PlatformType,
+    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
   ): Promise<string> {
     return logExecutionTimeV2(
       async () => {
         try {
           this.log.debug('Creating a new member!')
 
-          // prevent empty identity handles
-          data.identities = data.identities.filter((i) => i.value)
+          // filter empty handles and deduplicate by (platform, value, type, verified)
+          data.identities = data.identities.filter(
+            (identity, idx) =>
+              !!identity.value &&
+              data.identities.findIndex(
+                (j) =>
+                  j.platform === identity.platform &&
+                  j.value === identity.value &&
+                  j.type === identity.type &&
+                  j.verified === identity.verified,
+              ) === idx,
+          )
 
           if (data.identities.length === 0) {
             throw new Error('Member must have at least one identity!')
@@ -92,8 +345,7 @@ export default class MemberService extends LoggerBase {
           let attributes: Record<string, unknown> = {}
           if (data.attributes) {
             attributes = await logExecutionTimeV2(
-              () =>
-                memberAttributeService.validateAttributes(data.attributes, source as PlatformType),
+              () => memberAttributeService.validateAttributes(platform, data.attributes),
               this.log,
               'memberService -> create -> validateAttributes',
             )
@@ -128,43 +380,33 @@ export default class MemberService extends LoggerBase {
             }
           }
 
-          const id = await logExecutionTimeV2(
+          const { id } = await logExecutionTimeV2(
             () =>
               createMember(this.pgQx, {
                 displayName: data.displayName,
                 joinedAt: data.joinedAt.toISOString(),
                 attributes,
-                identities: data.identities,
                 reach: MemberService.calculateReach({}, data.reach),
               }),
             this.log,
             'memberService -> create -> createMember',
           )
 
+          let redirectId: string | void
           try {
-            await logExecutionTimeV2(
-              () => this.memberRepo.insertIdentities(id, integrationId, data.identities),
+            redirectId = await logExecutionTimeV2(
+              () =>
+                this.insertIdentitiesWithConflictResolution(
+                  id,
+                  integrationId,
+                  data.identities,
+                  false,
+                ),
               this.log,
-              'memberService -> create -> insertIdentities',
+              'memberService -> create -> insertIdentitiesWithConflictResolution',
             )
           } catch (err) {
-            this.log.error(err, { memberId: id }, 'Error while inserting identities!')
-            await logExecutionTimeV2(
-              async () => this.memberRepo.destroyMemberAfterError(id, false),
-              this.log,
-              'memberService -> create -> destroyMemberAfterError',
-            )
-            throw new ApplicationError('Error while inserting identities for a new member!', err)
-          }
-
-          try {
-            await logExecutionTimeV2(
-              () => this.memberRepo.addToSegments(id, segmentIds),
-              this.log,
-              'memberService -> create -> addToSegments',
-            )
-          } catch (err) {
-            this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
+            this.log.error(err, { memberId: id }, 'Error inserting member identities!')
             await logExecutionTimeV2(
               async () => this.memberRepo.destroyMemberAfterError(id, true),
               this.log,
@@ -173,35 +415,90 @@ export default class MemberService extends LoggerBase {
             throw err
           }
 
-          if (releaseMemberLock) {
-            await releaseMemberLock()
+          let effectiveMemberId: string
+
+          if (redirectId) {
+            await this.scheduleOrphanMemberDeletion(id)
+            effectiveMemberId = await this.syncIdentitiesAfterRedirect(
+              redirectId,
+              integrationId,
+              data.identities,
+            )
+            await logExecutionTimeV2(
+              () => this.memberRepo.addToSegments(effectiveMemberId, segmentIds),
+              this.log,
+              'memberService -> create -> addToSegments (conflict redirect)',
+            )
+          } else {
+            effectiveMemberId = id
+            try {
+              await logExecutionTimeV2(
+                () => this.memberRepo.addToSegments(id, segmentIds),
+                this.log,
+                'memberService -> create -> addToSegments',
+              )
+            } catch (err) {
+              this.log.error(err, { memberId: id }, 'Error while adding member to segments!')
+              await logExecutionTimeV2(
+                async () => this.memberRepo.destroyMemberAfterError(id, true),
+                this.log,
+                'memberService -> create -> destroyMemberAfterError',
+              )
+              throw err
+            }
           }
 
           // we should prevent organization creation for bot members
           if (botDetection === MemberBotDetection.CONFIRMED_BOT) {
             this.log.debug('Skipping organization creation for bot member')
-            return id
+            return effectiveMemberId
           }
 
           // trigger LLM validation if the member is suspected as a bot
           if (botDetection === MemberBotDetection.SUSPECTED_BOT) {
-            this.log.debug({ memberId: id }, 'Member suspected as bot. Triggering LLM validation.')
-            await this.startMemberBotAnalysisWithLLMWorkflow(id)
+            this.log.debug(
+              { memberId: effectiveMemberId },
+              'Member suspected as bot. Triggering LLM validation.',
+            )
+            await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
           const organizations = []
           const orgService = new OrganizationService(this.store, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
-              const id = await logExecutionTimeV2(
-                () => orgService.findOrCreate(source, integrationId, org),
-                this.log,
-                'memberService -> create -> findOrCreateOrg',
-              )
-              organizations.push({
-                id,
-                source: org.source,
-              })
+              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
+              // hot-row contention on the organizations table. Permanent fix is in
+              // tncTransformerBase.ts to stop emitting this org entirely.
+              if (
+                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
+              ) {
+                continue
+              }
+
+              const key = orgCacheKey(org)
+              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
+              let orgIdPromise: Promise<string | undefined>
+              if (cachedOrgPromise) {
+                orgIdPromise = cachedOrgPromise
+              } else {
+                orgIdPromise = logExecutionTimeV2(
+                  () => orgService.findOrCreate(platform, integrationId, org),
+                  this.log,
+                  'memberService -> create -> findOrCreateOrg',
+                )
+                if (key) {
+                  orgPromiseCache?.set(key, orgIdPromise)
+                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
+                }
+              }
+              const orgId = await orgIdPromise
+              if (orgId) {
+                organizations.push({
+                  id: orgId,
+                  source: org.source,
+                })
+              }
             }
           }
 
@@ -214,6 +511,9 @@ export default class MemberService extends LoggerBase {
                 this.assignOrganizationByEmailDomain(
                   integrationId,
                   emailIdentities.map((i) => i.value),
+                  orgPromiseCache,
+                  effectiveMemberId,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
@@ -225,7 +525,6 @@ export default class MemberService extends LoggerBase {
 
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
-            const orgService = new OrganizationService(this.store, this.log)
 
             const orgsToAdd = (
               await Promise.all(
@@ -233,7 +532,7 @@ export default class MemberService extends LoggerBase {
                   // Check if the org was already added to the member in the past, including deleted ones.
                   // If it was, we ignore this org to prevent from adding it again.
                   const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(id, org.id),
+                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
                     'memberService -> create -> findMemberOrganizations',
                   )
@@ -244,14 +543,14 @@ export default class MemberService extends LoggerBase {
 
             if (orgsToAdd.length > 0) {
               await logExecutionTimeV2(
-                () => orgService.addToMember(segmentIds, id, orgsToAdd),
+                () => orgService.addToMember(segmentIds, effectiveMemberId, orgsToAdd),
                 this.log,
                 'memberService -> create -> addToMember',
               )
             }
           }
 
-          return id
+          return effectiveMemberId
         } catch (err) {
           this.log.error(err, 'Error while creating a new member!')
           throw err
@@ -269,10 +568,11 @@ export default class MemberService extends LoggerBase {
     data: IMemberUpdateData,
     original: IDbMember,
     originalIdentities: IMemberIdentity[],
-    source: string,
-    releaseMemberLock?: () => Promise<void>,
-  ): Promise<void> {
-    await logExecutionTimeV2(
+    platform: PlatformType,
+    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    activityTimestamp?: string,
+  ): Promise<string | void> {
+    return logExecutionTimeV2(
       async () => {
         this.log.trace({ memberId: id }, 'Updating a member!')
 
@@ -286,8 +586,7 @@ export default class MemberService extends LoggerBase {
           if (data.attributes) {
             this.log.trace({ memberId: id }, 'Validating member attributes!')
             data.attributes = await logExecutionTimeV2(
-              () =>
-                memberAttributeService.validateAttributes(data.attributes, source as PlatformType),
+              () => memberAttributeService.validateAttributes(platform, data.attributes),
               this.log,
               'memberService -> update -> validateAttributes',
             )
@@ -359,27 +658,30 @@ export default class MemberService extends LoggerBase {
             )
           }
 
+          let effectiveMemberId = id
+
           if (identitiesToCreate) {
             this.log.trace({ memberId: id }, 'Inserting new identities!')
-            try {
-              await logExecutionTimeV2(
-                () => this.memberRepo.insertIdentities(id, integrationId, identitiesToCreate),
-                this.log,
-                'memberService -> update -> insertIdentities',
-              )
-            } catch (err) {
-              throw new ApplicationError(
-                'Error while inserting member identities for an existing member!',
-                err,
+            const redirectId = await logExecutionTimeV2(
+              () =>
+                this.insertIdentitiesWithConflictResolution(id, integrationId, identitiesToCreate),
+              this.log,
+              'memberService -> update -> insertIdentitiesWithConflictResolution',
+            )
+            if (redirectId) {
+              effectiveMemberId = await this.syncIdentitiesAfterRedirect(
+                redirectId,
+                integrationId,
+                identitiesToCreate,
               )
             }
           }
 
           if (identitiesToUpdate) {
-            this.log.trace({ memberId: id }, 'Updating identities!')
+            this.log.trace({ memberId: effectiveMemberId }, 'Updating identities!')
             try {
               await logExecutionTimeV2(
-                () => this.memberRepo.updateIdentities(id, identitiesToUpdate),
+                () => this.memberRepo.updateIdentities(effectiveMemberId, identitiesToUpdate),
                 this.log,
                 'memberService -> update -> updateIdentities',
               )
@@ -391,30 +693,49 @@ export default class MemberService extends LoggerBase {
             }
           }
 
-          if (releaseMemberLock) {
-            await releaseMemberLock()
-          }
-
           if (this.botDetectionService.isFlaggedAsBot(toUpdate.attributes)) {
             this.log.debug({ memberId: id }, 'Skipping organization creation for bot member')
-            return
+            return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
 
           const organizations = []
           const orgService = new OrganizationService(this.store, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
+              // Temp fix: skip the individual-noaccount.com placeholder org to avoid
+              // hot-row contention on the organizations table. Permanent fix is in
+              // tncTransformerBase.ts to stop emitting this org entirely.
+              if (
+                org.identities?.some((i) => i.verified && i.value === 'individual-noaccount.com')
+              ) {
+                continue
+              }
+
               this.log.trace({ memberId: id }, 'Finding or creating organization!')
 
-              const orgId = await logExecutionTimeV2(
-                () => orgService.findOrCreate(source, integrationId, org),
-                this.log,
-                'memberService -> update -> findOrCreateOrg',
-              )
-              organizations.push({
-                id: orgId,
-                source: data.source,
-              })
+              const key = orgCacheKey(org)
+              const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
+              let orgIdPromise: Promise<string | undefined>
+              if (cachedOrgPromise) {
+                orgIdPromise = cachedOrgPromise
+              } else {
+                orgIdPromise = logExecutionTimeV2(
+                  () => orgService.findOrCreate(platform, integrationId, org),
+                  this.log,
+                  'memberService -> update -> findOrCreateOrg',
+                )
+                if (key) {
+                  orgPromiseCache?.set(key, orgIdPromise)
+                  orgIdPromise.catch(() => orgPromiseCache?.delete(key))
+                }
+              }
+              const orgId = await orgIdPromise
+              if (orgId) {
+                organizations.push({
+                  id: orgId,
+                  source: data.source,
+                })
+              }
             }
           }
 
@@ -428,6 +749,9 @@ export default class MemberService extends LoggerBase {
                 this.assignOrganizationByEmailDomain(
                   integrationId,
                   emailIdentities.map((i) => i.value),
+                  orgPromiseCache,
+                  effectiveMemberId,
+                  activityTimestamp,
                 ),
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
@@ -439,16 +763,15 @@ export default class MemberService extends LoggerBase {
 
           if (organizations.length > 0) {
             const uniqOrgs = uniqby(organizations, 'id')
-            const orgService = new OrganizationService(this.store, this.log)
 
-            this.log.trace({ memberId: id }, 'Finding member organizations!')
+            this.log.trace({ memberId: effectiveMemberId }, 'Finding member organizations!')
             const orgsToAdd = (
               await Promise.all(
                 uniqOrgs.map(async (org) => {
                   // Check if the org was already added to the member in the past, including deleted ones.
                   // If it was, we ignore this org to prevent from adding it again.
                   const existingMemberOrgs = await logExecutionTimeV2(
-                    () => orgService.findMemberOrganizations(id, org.id),
+                    () => orgService.findMemberOrganizations(effectiveMemberId, org.id),
                     this.log,
                     'memberService -> update -> findMemberOrganizations',
                   )
@@ -458,14 +781,16 @@ export default class MemberService extends LoggerBase {
             ).filter((org) => org !== null)
 
             if (orgsToAdd.length > 0) {
-              this.log.trace({ memberId: id }, 'Adding organizations to member!')
+              this.log.trace({ memberId: effectiveMemberId }, 'Adding organizations to member!')
               await logExecutionTimeV2(
-                () => orgService.addToMember([segmentId], id, orgsToAdd),
+                () => orgService.addToMember([segmentId], effectiveMemberId, orgsToAdd),
                 this.log,
                 'memberService -> update -> addToMember',
               )
             }
           }
+
+          return effectiveMemberId !== id ? effectiveMemberId : undefined
         } catch (err) {
           this.log.error(err, { memberId: id }, 'Error while updating a member!')
           throw err
@@ -479,6 +804,9 @@ export default class MemberService extends LoggerBase {
   public async assignOrganizationByEmailDomain(
     integrationId: string,
     emails: string[],
+    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    memberId?: string,
+    activityTimestamp?: string,
   ): Promise<IOrganizationIdSource[]> {
     const orgService = new OrganizationService(this.store, this.log)
     const organizations: IOrganizationIdSource[] = []
@@ -499,30 +827,48 @@ export default class MemberService extends LoggerBase {
 
     // Assign member to organization based on email domain
     for (const domain of emailDomains) {
-      const orgId = await orgService.findOrCreate(
-        OrganizationAttributeSource.EMAIL,
-        integrationId,
-        {
-          attributes: {
-            name: {
-              integration: [domain],
-            },
+      const orgSource = OrganizationSource.EMAIL_DOMAIN
+      const org: IOrganization = {
+        attributes: {
+          name: {
+            integration: [domain],
           },
-          identities: [
-            {
-              value: domain,
-              type: OrganizationIdentityType.PRIMARY_DOMAIN,
-              platform: 'email',
-              verified: true,
-            },
-          ],
         },
-      )
+        identities: [
+          {
+            value: domain,
+            type: OrganizationIdentityType.PRIMARY_DOMAIN,
+            platform: 'email',
+            verified: true,
+            source: orgSource,
+          },
+        ],
+      }
+      const key = orgCacheKey(org)
+      const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
+      let orgIdPromise: Promise<string | undefined>
+      if (cachedOrgPromise) {
+        orgIdPromise = cachedOrgPromise
+      } else {
+        orgIdPromise = orgService.findOrCreate(
+          OrganizationAttributeSource.EMAIL,
+          integrationId,
+          org,
+        )
+        if (key) {
+          orgPromiseCache?.set(key, orgIdPromise)
+          orgIdPromise.catch(() => orgPromiseCache?.delete(key))
+        }
+      }
+      const orgId = await orgIdPromise
       if (orgId) {
         organizations.push({
           id: orgId,
-          source: OrganizationSource.EMAIL_DOMAIN,
+          source: orgSource,
         })
+        if (memberId && activityTimestamp) {
+          await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
+        }
       }
     }
 
@@ -754,6 +1100,18 @@ export default class MemberService extends LoggerBase {
     return out
   }
 
+  private async scheduleOrphanMemberDeletion(memberId: string): Promise<void> {
+    try {
+      await this.temporal.workflow.start('deleteOrphanMember', {
+        taskQueue: 'entity-merging',
+        workflowId: `${TemporalWorkflowId.DELETE_ORPHAN_MEMBER}/${memberId}`,
+        args: [memberId],
+      })
+    } catch (err) {
+      this.log.error(err, { memberId }, 'Failed to schedule orphan member deletion!')
+    }
+  }
+
   private async startMemberBotAnalysisWithLLMWorkflow(memberId: string): Promise<void> {
     await this.temporal.workflow.start('processMemberBotAnalysisWithLLM', {
       taskQueue: 'profiles',
@@ -766,5 +1124,29 @@ export default class MemberService extends LoggerBase {
         TenantId: [DEFAULT_TENANT_ID],
       },
     })
+  }
+
+  /**
+   * Queues a member activity date in Redis for stint inference.
+   * Uses SADD for natural concurrency safety and deduplication.
+   */
+  private async bufferMemberOrganizationActivityDates(
+    memberId: string,
+    organizationId: string,
+    activityTimestamp: string,
+  ): Promise<void> {
+    const date = new Date(activityTimestamp).toISOString().split('T')[0]
+
+    // Each member gets one flat set: values are "orgId|date"
+    const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+    const value = `${organizationId}|${date}`
+
+    await this.redisClient
+      .multi()
+      .sAdd(datesKey, value)
+      .sAdd(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+      .exec()
+
+    this.log.debug({ memberId, organizationId, date }, 'Buffered activity date and queued member.')
   }
 }

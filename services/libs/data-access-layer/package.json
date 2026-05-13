@@ -1,7 +1,11 @@
 {
   "name": "@crowd/data-access-layer",
+  "private": true,
   "main": "src/index.ts",
   "scripts": {
+    "test": "vitest run",
+    "test:affiliations": "vitest run src/affiliations",
+    "test:affiliations:watch": "vitest src/affiliations",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
@@ -33,7 +37,8 @@
   },
   "devDependencies": {
     "@types/node": "^18.16.3",
-    "sequelize": "6.21.2",
-    "typescript": "^5.6.3"
+    "sequelize": "6.37.8",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

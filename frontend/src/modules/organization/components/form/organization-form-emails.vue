@@ -55,6 +55,7 @@ watch(
         platform: Platform.CUSTOM,
         type: OrganizationIdentityType.EMAIL,
         verified: true,
+        source: 'ui',
       }];
     }
   },
@@ -81,6 +82,7 @@ const addEmail = () => {
     platform: Platform.CUSTOM,
     type: OrganizationIdentityType.EMAIL,
     verified: true,
+    source: 'ui',
   });
 };
 const removeEmail = (index: number) => {
@@ -92,6 +94,7 @@ const removeEmail = (index: number) => {
       platform: Platform.CUSTOM,
       type: OrganizationIdentityType.EMAIL,
       verified: true,
+      source: 'ui',
     };
   }
 };

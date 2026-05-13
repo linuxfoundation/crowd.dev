@@ -56,7 +56,7 @@ SQL >
         cast(coalesce(pp.averageMergeTimeSeconds, 0) as Float64) as previousPeriodValue,
         p.collectionsSlugs as collectionsSlugs,
         p.isLF as isLF,
-        '' as githubHandle,
+        [] as githubHandleArray,
         p.status as status,
         count() OVER () as totalCount
     FROM leaderboards_merge_time_projects p

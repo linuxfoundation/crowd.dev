@@ -3,12 +3,18 @@
     v-model="isVisible"
     custom-class="integration-hackerNews-drawer"
     title="Hacker News"
+    size="600px"
     pre-title="Integration"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="cancel"
   >
     <template #beforeTitle>
       <img class="min-w-6 h-6 mr-2" :src="logoUrl" alt="Hacker News logo" />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="hackernews" />
     </template>
     <template #content>
       <div class="flex flex-col gap-2 items-start mb-2">
@@ -79,33 +85,24 @@
       </el-form>
     </template>
     <template #footer>
-      <div>
-        <lf-button
-          type="secondary-gray"
-          size="medium"
-          class="mr-4"
-          :disabled="loading"
-          @click="cancel"
-        >
-          Cancel
-        </lf-button>
-        <lf-button
-          id="devConnect"
-          type="primary"
-          size="medium"
-          :disabled="connectDisabled || loading"
-          :loading="loading"
-          @click="save"
-        >
-          Connect
-        </lf-button>
-      </div>
+      <drawer-footer-buttons
+        :integration="integration"
+        :is-edit-mode="!!integration?.settings?.urls"
+        :has-form-changed="hasFormChanged"
+        :is-loading="loading"
+        :is-submit-disabled="connectDisabled || loading"
+        :cancel="cancel"
+        :revert-changes="revertChanges"
+        :connect="save"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script>
 import { mapActions } from 'vuex';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 import hackernews from '@/config/integrations/hackernews/config';
 import isUrl from '@/utils/isUrl';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
@@ -116,12 +113,19 @@ import {
 } from '@/shared/modules/monitoring/types/event';
 import { Platform } from '@/shared/modules/platform/types/Platform';
 import LfButton from '@/ui-kit/button/Button.vue';
+import AppDrawer from '@/shared/drawer/drawer.vue';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
 
 export default {
   name: 'LfHackernewsSettingsDrawer',
   components: {
     LfIcon,
     LfButton,
+    AppDrawer,
+    DrawerDescription,
+    DrawerFooterButtons,
+    ChangesConfirmationModal,
   },
   props: {
     integration: {
@@ -149,9 +153,23 @@ export default {
       urls: [],
       keywords: [],
       loading: false,
+      changesConfirmationModalRef: null,
     };
   },
   computed: {
+    hasFormChanged() {
+      const validUrls = this.urls.filter((u) => !!u.url);
+      const validKeywords = this.keywords.filter((k) => !!k);
+      const originalUrls = this.integration?.settings?.urls || [];
+      const originalKeywords = this.integration?.settings?.keywords || [];
+
+      if (validUrls.length !== originalUrls.length) return true;
+      if (validKeywords.length !== originalKeywords.length) return true;
+      if (!validUrls.every((o) => originalUrls.includes(o.url))) return true;
+      if (!validKeywords.every((k) => originalKeywords.includes(k))) return true;
+
+      return false;
+    },
     maxId() {
       return this.urls.length;
     },
@@ -216,6 +234,21 @@ export default {
       doHackerNewsConnect: 'integration/doHackerNewsConnect',
     }),
 
+    canClose(done) {
+      if (this.hasFormChanged) {
+        this.$refs.changesConfirmationModalRef?.open().then((discardChanges) => {
+          if (discardChanges) {
+            this.revertChanges();
+            done(false);
+          } else {
+            done(true);
+          }
+        });
+      } else {
+        done(false);
+      }
+    },
+
     toggle() {
       this.isVisible = !this.isVisible;
     },
@@ -230,6 +263,11 @@ export default {
       if (this.urls.length === 0) {
         this.addNewUrl();
       }
+    },
+
+    revertChanges() {
+      this.syncData();
+      this.keywords = this.integration?.settings.keywords;
     },
 
     addNewUrl(url) {

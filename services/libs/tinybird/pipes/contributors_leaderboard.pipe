@@ -18,7 +18,7 @@ DESCRIPTION >
     - `offset`: Optional integer for result pagination, defaults to 0
     - Response:
     - Count mode (`count=true`): `count` (total number of contributors)
-    - Data mode (default): `id`, `avatar`, `displayName`, `githubHandle`, `contributionCount`, `contributionPercentage`, `roles`
+    - Data mode (default): `id`, `avatar`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`
 
 NODE memberId_aggregates
 SQL >
@@ -55,7 +55,7 @@ SQL >
             m.id,
             m.avatar,
             case when is_non_lf.result then m.publicName else m.displayName end as displayName,
-            m.githubHandle,
+            m.githubHandleArray,
             ma.contributionCount,
             ma.contributionPercentage,
             mr.roles

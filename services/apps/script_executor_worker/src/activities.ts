@@ -25,10 +25,10 @@ import {
   updateOrphanCleanupRun,
 } from './activities/cleanup/segments-agg'
 import {
-  calculateMemberAffiliations,
   getWorkflowsCount,
   mergeMembers,
   mergeOrganizations,
+  triggerMemberAffiliationsRefresh,
   unmergeMembers,
   unmergeMembersPreview,
   waitForTemporalWorkflowExecutionFinish,
@@ -51,6 +51,10 @@ import {
   isLfxMember,
   updateOrganizationIdentity,
 } from './activities/fix-organization-identities-with-wrong-urls'
+import {
+  findMemberWorkExperienceWithEpochDates,
+  updateMemberWorkExperience,
+} from './activities/fix-work-experience-epoch-dates'
 import {
   findMembersWithSamePlatformIdentitiesDifferentCapitalization,
   findMembersWithSameVerifiedEmailsInDifferentPlatforms,
@@ -93,11 +97,13 @@ export {
   setOrganizationAffiliationPolicyIfNotBlocked,
   markMemberForAffiliationRecalc,
   getMembersForAffiliationRecalc,
-  calculateMemberAffiliations,
   startOrphanCleanupRun,
+  triggerMemberAffiliationsRefresh,
   updateOrphanCleanupRun,
   getOrphanMembersSegmentsAgg,
   deleteOrphanMembersSegmentsAgg,
   getOrphanOrganizationSegmentsAgg,
   deleteOrphanOrganizationSegmentsAgg,
+  findMemberWorkExperienceWithEpochDates,
+  updateMemberWorkExperience,
 }

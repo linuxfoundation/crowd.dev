@@ -117,7 +117,6 @@ async function models(queryTimeoutMilliseconds: number, databaseHostnameOverride
   // }
 
   const modelClasses = [
-    require('./auditLog').default,
     require('./member').default,
     require('./memberIdentity').default,
     require('./file').default,

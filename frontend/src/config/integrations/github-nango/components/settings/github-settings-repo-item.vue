@@ -3,8 +3,8 @@
     <td class="!pb-2.5" :class="ri > 0 ? '!pt-2.5' : '!pt-5'">
       <div>
         <div class="flex items-center gap-1.5 mb-0.5">
-          <lf-svg name="git-repository" class="w-4 h-4 text-gray-900" />
-          <p class="text-small">
+          <lf-icon name="book" :size="16" class="text-gray-400" />
+          <p class="text-small font-medium">
             {{ props.repository.name }}
           </p>
         </div>
@@ -23,7 +23,7 @@
           <el-select
             v-model="model"
             placeholder="Select sub-project"
-            class="w-full"
+            class="w-full el-select--pill"
             placement="bottom-end"
             filterable
             @blur="$v.model.$touch"
@@ -44,7 +44,7 @@
           content="Remove repository"
         >
           <lf-button type="secondary-ghost" icon-only @click="removeRepo()">
-            <lf-icon name="circle-minus" type="regular" class="text-gray-500" />
+            <lf-icon name="circle-xmark" type="light" class="text-gray-900 !font-light" />
           </lf-button>
         </lf-tooltip>
       </div>
@@ -55,7 +55,6 @@
 <script lang="ts" setup>
 import { GitHubRepository } from '@/config/integrations/github-nango/types/GithubSettings';
 import { computed, watch } from 'vue';
-import LfSvg from '@/shared/svg/svg.vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
 import LfButton from '@/ui-kit/button/Button.vue';

@@ -27,6 +27,7 @@ export interface OrganizationIdentity {
     type: OrganizationIdentityType;
     value: string;
     verified: boolean;
+    source: string;
     sourceId?: string | null;
     integrationId?: string | null;
 }
@@ -38,6 +39,7 @@ export interface OrganizationIdentityParsed {
     type: OrganizationIdentityType;
     value: string;
     verified: boolean;
+    source: string;
     sourceId?: string | null;
     integrationId?: string | null;
 }

@@ -21,7 +21,7 @@ export function getWebhookClient(channel: SlackChannel): IncomingWebhook | null 
   if (!config.webhookUrl) {
     log.warn(
       { channel },
-      `Slack webhook URL not configured for channel ${channel}. Set CM_${channel}_SLACK_WEBHOOK_URL environment variable.`,
+      `Slack webhook URL not configured for channel ${channel}. Set ${channel}_SLACK_WEBHOOK_URL environment variable.`,
     )
     return null
   }

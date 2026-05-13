@@ -106,6 +106,7 @@ const defaultForm: OrganizationIdentity = {
   verified: false,
   platform: Platform.CUSTOM,
   type: OrganizationIdentityType.EMAIL,
+  source: 'ui',
   sourceId: null,
 };
 

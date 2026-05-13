@@ -13,19 +13,23 @@ import {
   calculateReach,
   getEarliestValidDate,
   getLongestDateRange,
+  getMemberOrganizationSourceRank,
   mergeObjects,
   safeObjectMerge,
+  sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
-  checkOrganizationAffiliationPolicy,
+  changeMemberOrganizationAffiliationOverrides,
   createOrUpdateMemberOrganizations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
+  findIdentitiesForMembers,
   findMemberById,
   findMemberCountEstimateOfOrganizations,
   findMemberManualAffiliation,
@@ -38,9 +42,7 @@ import {
   moveOrgsBetweenMembers,
   updateMember,
 } from '@crowd/data-access-layer'
-import { findIdentitiesForMembers } from '@crowd/data-access-layer/src/member_identities'
 import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
-import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
 import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
@@ -50,13 +52,8 @@ import {
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
-import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
-import {
-  MergeActionState,
-  MergeActionStep,
-  MergeActionType,
-  TemporalWorkflowId,
-} from '@crowd/types'
+import { Client as TemporalClient } from '@crowd/temporal'
+import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -113,23 +110,24 @@ export class CommonMemberService extends LoggerBase {
 
         for (const item of organizations) {
           const org = typeof item === 'string' ? { id: item } : item
+          const dates = sanitizeMemberOrganizationDateRange(org.startDate, org.endDate, true)
 
           // we don't need to touch exactly same existing work experiences
           if (
             !originalOrgs.some(
               (w) =>
-                w.organizationId === item.id &&
-                w.title === (item.title || null) &&
-                w.dateStart === (item.startDate || null) &&
-                w.dateEnd === (item.endDate || null),
+                w.organizationId === org.id &&
+                w.title === (org.title || null) &&
+                w.dateStart === dates.dateStart &&
+                w.dateEnd === dates.dateEnd,
             )
           ) {
             const newOrg = {
               memberId,
               organizationId: org.id,
               title: org.title,
-              dateStart: org.startDate,
-              dateEnd: org.endDate,
+              dateStart: dates.dateStart,
+              dateEnd: dates.dateEnd,
               source: org.source,
             }
 
@@ -139,13 +137,16 @@ export class CommonMemberService extends LoggerBase {
               org.id,
               org.source,
               org.title,
-              org.startDate,
-              org.endDate,
+              dates.dateStart as string | null,
+              dates.dateEnd as string | null,
             )
 
-            const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(this.qx, org.id)
+            const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(
+              this.qx,
+              [org.id],
+            )
 
-            if (newMemberOrgId && isAffiliationBlocked) {
+            if (newMemberOrgId && orgAffiliationPolicyById.get(org.id)) {
               await changeMemberOrganizationAffiliationOverrides(this.qx, [
                 {
                   memberId,
@@ -169,6 +170,7 @@ export class CommonMemberService extends LoggerBase {
     memberId: string,
     segmentId: string,
     timestamp: string,
+    emailDomain?: string,
   ): Promise<string | null> {
     const manualAffiliation = await findMemberManualAffiliation(
       this.qx,
@@ -180,7 +182,12 @@ export class CommonMemberService extends LoggerBase {
       return manualAffiliation.organizationId
     }
 
-    const currentEmployments = await findMemberWorkExperience(this.qx, memberId, timestamp)
+    const currentEmployments = await findMemberWorkExperience(
+      this.qx,
+      memberId,
+      timestamp,
+      emailDomain,
+    )
     if (currentEmployments.length > 0) {
       return this.decidePrimaryOrganizationId(currentEmployments)
     }
@@ -217,50 +224,40 @@ export class CommonMemberService extends LoggerBase {
         return primaryEmployment.organizationId
       }
 
+      let bestRank = 4
+      let highestPrioritySourceExperiences: IWorkExperienceData[] = []
+
+      for (const exp of experiences) {
+        const rank = getMemberOrganizationSourceRank(exp.source)
+        if (rank < bestRank) {
+          bestRank = rank
+          highestPrioritySourceExperiences = [exp]
+        } else if (rank === bestRank) {
+          highestPrioritySourceExperiences.push(exp)
+        }
+      }
+
+      // Keep only candidates from the highest-priority source tier
+      if (highestPrioritySourceExperiences.length === 1) {
+        return highestPrioritySourceExperiences[0].organizationId
+      }
+
       // decide based on the member count in the organizations
       const memberCounts = await findMemberCountEstimateOfOrganizations(
         this.qx,
-        experiences.map((e) => e.organizationId),
+        highestPrioritySourceExperiences.map((e) => e.organizationId),
       )
 
-      if (memberCounts[0].memberCount > memberCounts[1].memberCount) {
+      // memberCounts is sorted desc by memberCount — pick the winner if it's strictly highest
+      if (memberCounts?.length >= 2 && memberCounts[0].memberCount > memberCounts[1].memberCount) {
         return memberCounts[0].organizationId
-      } else if (memberCounts[0].memberCount < memberCounts[1].memberCount) {
-        return memberCounts[1].organizationId
       }
 
-      // if there's a draw in the member count, use the one with the longer period
-      return getLongestDateRange(experiences).organizationId
+      // tie or no data — fall back to longest date range
+      return getLongestDateRange(highestPrioritySourceExperiences).organizationId
     }
 
     return null
-  }
-
-  public async startAffiliationRecalculation(
-    memberId: string,
-    organizationIds: string[],
-    syncToOpensearch = false,
-  ): Promise<void> {
-    await this.temporal.workflow.start('memberUpdate', {
-      taskQueue: 'profiles',
-      workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-      retry: {
-        maximumAttempts: 10,
-      },
-      args: [
-        {
-          member: {
-            id: memberId,
-          },
-          memberOrganizationIds: organizationIds,
-          syncToOpensearch,
-        },
-      ],
-      searchAttributes: {
-        TenantId: [DEFAULT_TENANT_ID],
-      },
-    })
   }
 
   public async merge(

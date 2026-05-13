@@ -1,16 +1,20 @@
 <template>
   <app-drawer
     v-model="isVisible"
-    custom-class="integration-jira-drawer"
     title="Jira"
     size="600px"
     pre-title="Integration"
     :show-footer="true"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="cancel"
   >
     <template #beforeTitle>
       <img class="min-w-6 h-6 mr-2" :src="logoUrl" alt="Jira logo" />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="jira" />
     </template>
     <template #content>
       <div class="w-full flex flex-col mb-6">
@@ -126,29 +130,19 @@
     </template>
 
     <template #footer>
-      <div>
-        <lf-button
-          type="secondary-gray"
-          size="medium"
-          class="mr-4"
-          :disabled="loading"
-          @click="cancel"
-        >
-          Cancel
-        </lf-button>
-        <lf-button
-          id="jiraConnect"
-          type="primary"
-          size="medium"
-          :disabled="$v.$invalid || !hasFormChanged || loading"
-          :loading="loading"
-          @click="connect"
-        >
-          {{ integration?.settings?.url ? "Update" : "Connect" }}
-        </lf-button>
-      </div>
+      <drawer-footer-buttons
+        :integration="integration"
+        :is-edit-mode="!!integration?.settings?.url"
+        :has-form-changed="hasFormChanged"
+        :is-loading="loading"
+        :is-submit-disabled="$v.$invalid || !hasFormChanged || loading"
+        :cancel="cancel"
+        :revert-changes="revertChanges"
+        :connect="connect"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup lang="ts">
@@ -166,6 +160,9 @@ import AppDrawer from '@/shared/drawer/drawer.vue';
 import AppFormItem from '@/shared/form/form-item.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 // import elementChangeDetector from '@/shared/form/element-change';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const emit = defineEmits(['update:modelValue']);
 const props = defineProps<{
@@ -176,12 +173,13 @@ const props = defineProps<{
 }>();
 
 const loading = ref(false);
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 const form = reactive({
   jiraURL: '',
   apiToken: '',
   username: '',
   personalAccessToken: '',
-  projects: [],
+  projects: [] as string[],
 });
 
 const rules = {
@@ -208,16 +206,24 @@ const isVisible = computed({
 });
 const logoUrl = jira.image;
 
-onMounted(() => {
+const syncData = () => {
   if (props.integration?.settings?.url) {
     form.jiraURL = props.integration?.settings.url;
     form.personalAccessToken = props.integration?.settings.auth.personalAccessToken;
     form.username = props.integration?.settings.auth.username;
     form.apiToken = props.integration?.settings.auth.apiToken;
-    form.projects = props.integration?.settings?.projects;
+    form.projects = [...(props.integration?.settings?.projects || [])];
     isAPIConnectionValid.value = true;
   }
   formSnapshot();
+};
+
+const revertChanges = () => {
+  syncData();
+};
+
+onMounted(() => {
+  syncData();
 });
 
 const addProject = () => {
@@ -230,6 +236,21 @@ const removeProject = (index) => {
 
 const cancel = () => {
   isVisible.value = false;
+};
+
+const canClose = (done: (value: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
 };
 
 const onBlurJiraURL = () => {

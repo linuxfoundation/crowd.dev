@@ -5,7 +5,6 @@ export default (app) => {
   const signInRateLimiter = createRateLimiter({
     max: 100,
     windowMs: 15 * 60 * 1000,
-    message: 'errors.429',
   })
 
   app.post(`/auth/sign-in`, signInRateLimiter, safeWrap(require('./authSignIn').default))
@@ -13,7 +12,6 @@ export default (app) => {
   const signUpRateLimiter = createRateLimiter({
     max: 20,
     windowMs: 60 * 60 * 1000,
-    message: 'errors.429',
   })
 
   app.post(`/auth/sign-up`, signUpRateLimiter, safeWrap(require('./authSignUp').default))

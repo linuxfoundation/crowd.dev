@@ -1,9 +1,9 @@
 <template>
   <article
     v-if="props.config"
-    class="border border-gray-200 shadow-sm rounded-lg"
+    class="border border-gray-200 shadow-xs rounded-xl overflow-hidden"
   >
-    <div class="py-4 pl-4 pr-5 flex justify-between items-center">
+    <div class="p-5 pr-5 flex justify-between items-center">
       <!-- Info -->
       <div class="flex items-center gap-4">
         <div class=" h-12 w-12 border border-gray-200 rounded-md flex items-center justify-center">
@@ -12,10 +12,11 @@
           </div>
         </div>
         <div>
-          <h6 class="mb-0.5">
-            {{ props.config.name }}
+          <h6 class="mb-0.5 flex items-center gap-2">
+            {{ props.config.name.replace(' (v2)', '') }}
+            <lf-github-version-tag v-if="isV2" version="v2" tooltip-content="New integration" />
           </h6>
-          <p class="text-gray-500 text-small">
+          <p class="text-neutral-600 text-small">
             {{ props.config.description }}
           </p>
         </div>
@@ -27,7 +28,7 @@
       </div>
 
       <!-- Connect component -->
-      <div v-else class="flex items-center justify-end gap-4">
+      <div v-else class="flex items-center justify-end">
         <component
           :is="props.config.connectComponent"
           v-if="props.config.connectComponent && isComponentMounted"
@@ -38,38 +39,49 @@
       </div>
     </div>
 
-    <div v-if="integration && integration.status" :class="status.actionBar.background">
+    <div
+      v-if="integration && integration.status"
+      :class="[status.actionBar.background, !isInProgress && !hasError ? 'border-t border-gray-100' : '']"
+    >
       <div class="items-center py-2.5 px-4 flex justify-between">
         <!-- Custom content -->
-        <div class="text-small flex items-center" :class="status.actionBar.color">
-          <div v-if="isInProgress && !integration.isNango">
-            <app-integration-progress-bar :progress="selectedProgress" :hide-bar="true" text-class="!text-secondary-500 text-small" />
-          </div>
-          <div v-else-if="hasError">
-            {{ props.config.name }} integration failed to connect due to an API error.
-          </div>
+        <div>
+          <div class="text-small flex items-center" :class="status.actionBar.color">
+            <div v-if="isInProgress && !integration.isNango">
+              <app-integration-progress-bar :progress="selectedProgress" :hide-bar="true" text-class="!text-secondary-500 text-small" />
+            </div>
+            <div v-else-if="hasError">
+              {{ props.config.name }} integration failed to connect due to an API error.
+            </div>
 
-          <component
-            :is="props.config.connectedParamsComponent"
-            v-else-if="isComplete && props.config.connectedParamsComponent"
-            :integration="integration"
-            :segment-id="route.params.id"
-            :grandparent-id="route.params.grandparentId"
-          />
+            <component
+              :is="props.config.connectedParamsComponent"
+              v-else-if="isComplete && props.config.connectedParamsComponent"
+              :integration="integration"
+              :segment-id="route.params.id"
+              :grandparent-id="route.params.grandparentId"
+            />
 
+            <component
+              :is="props.config.statusComponent"
+              v-else-if="!isComplete && props.config.statusComponent"
+              :integration="integration"
+              :segment-id="route.params.id"
+              :grandparent-id="route.params.grandparentId"
+            />
+
+            <p v-if="isComplete && integration.lastProcessedAt" class="text-small text-neutral-500">
+              <span v-if="props.config.connectedParamsComponent" class="font-semibold">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+              Last data check completed {{ lastDataCheckCompleted }}
+            </p>
+          </div>
           <component
-            :is="props.config.statusComponent"
-            v-else-if="!isComplete && props.config.statusComponent"
-            :integration="integration"
+            :is="props.config.mappedReposComponent"
+            v-if="props.config.mappedReposComponent"
             :segment-id="route.params.id"
-            :grandparent-id="route.params.grandparentId"
+            class="!px-0 !pt-3 !pb-0"
           />
-          <p v-if="isComplete && integration.lastProcessedAt" class="text-small text-gray-500">
-            <span v-if="props.config.connectedParamsComponent" class="font-semibold">&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-            Last data check completed {{ lastDataCheckCompleted }}
-          </p>
         </div>
-
         <div class="flex items-center gap-4">
           <component
             :is="props.config.actionComponent"
@@ -81,7 +93,7 @@
           <lf-dropdown placement="bottom-end" width="14.5rem">
             <template #trigger>
               <lf-button type="secondary-ghost" icon-only>
-                <lf-icon name="ellipsis" />
+                <lf-icon name="ellipsis" type="light" class="!font-light" />
               </lf-button>
             </template>
             <component
@@ -92,10 +104,17 @@
               :grandparent-id="route.params.grandparentId"
               @open-setting="isSettingsOpen = true"
             />
-            <lf-dropdown-item type="danger" @click="isModalOpen = true">
-              <lf-icon name="link-simple-slash" type="regular" />
-              Disconnect integration
-            </lf-dropdown-item>
+            <lf-tooltip
+              content="Git can’t be disconnected while it’s mirroring repositories from GitHub, GitLab, or Gerrit integrations."
+              :disabled="!isDisconnectDisabled"
+              placement="top"
+              class="font-primary font-semibold"
+            >
+              <lf-dropdown-item type="danger" :disabled="isDisconnectDisabled" @click="isModalOpen = true">
+                <lf-icon name="link-simple-slash" type="regular" />
+                Disconnect integration
+              </lf-dropdown-item>
+            </lf-tooltip>
           </lf-dropdown>
           <component
             :is="props.config.settingComponent"
@@ -111,47 +130,24 @@
 
     <component
       :is="props.config.mappedReposComponent"
-      v-if="props.config.mappedReposComponent"
+      v-if="props.config.mappedReposComponent && !(integration && integration.status)"
       :segment-id="route.params.id"
+      class="border-t border-gray-100"
     />
 
-    <lf-modal v-model="isModalOpen">
-      <template #default>
-        <div class="px-6 pt-6 flex gap-4">
-          <div class="min-w-10 w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-            <lf-icon name="link-simple-slash" class="text-red-500" :size="16" />
-          </div>
-          <div class="flex flex-col gap-6">
-            <div class="flex flex-col gap-2">
-              <span class="font-semibold">Are you sure you want to disconnect this integration?</span>
-              <p class="text-gray-500 text-small">
-                Once disconnected, data will no longer sync from this source.
-                You can reconnect anytime to resume syncing, but this action can’t be undone.
-              </p>
-            </div>
-            <div class="flex flex-col gap-1">
-              <span class="font-semibold">Type DISCONNECT to confirm</span>
-              <lf-input v-model="disconnectConfirm" placeholder="DISCONNECT" class="w-full" />
-            </div>
-          </div>
-        </div>
-        <div class="px-6 py-4.5 bg-gray-50 mt-8 flex justify-end gap-4">
-          <lf-button type="secondary-ghost-light" @click="isModalOpen = false">
-            Cancel
-          </lf-button>
-          <lf-button type="danger" :disabled="disconnectConfirm !== 'DISCONNECT'" @click="disconnectIntegration()">
-            Disconnect integration
-          </lf-button>
-        </div>
-      </template>
-    </lf-modal>
+    <integration-confirmation-modal
+      v-if="integration"
+      v-model="isModalOpen"
+      :platform="props.config.key"
+      :integration-id="integration.id"
+    />
   </article>
 </template>
 
 <script lang="ts" setup>
 import { IntegrationConfig } from '@/config/integrations';
 import { computed, onMounted, ref } from 'vue';
-import { mapActions, mapGetters } from '@/shared/vuex/vuex.helpers';
+import { mapGetters } from '@/shared/vuex/vuex.helpers';
 import LfIntegrationStatus from '@/modules/admin/modules/integration/components/integration-status.vue';
 import { getIntegrationStatus } from '@/modules/admin/modules/integration/config/status';
 import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
@@ -160,12 +156,12 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
 import AppIntegrationProgressBar from '@/modules/integration/components/integration-progress-bar.vue';
 import { IntegrationProgress } from '@/modules/integration/types/IntegrationProgress';
-import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/event';
-import useProductTracking from '@/shared/modules/monitoring/useProductTracking';
 import { useRoute } from 'vue-router';
 import { dateHelper } from '@/shared/date-helper/date-helper';
-import LfModal from '@/ui-kit/modal/Modal.vue';
-import LfInput from '@/ui-kit/input/Input.vue';
+import LfGithubVersionTag from '@/config/integrations/github/components/github-version-tag.vue';
+import IntegrationConfirmationModal from '@/modules/admin/modules/integration/components/integration-confirmation-modal.vue';
+import LfTooltip from '@/ui-kit/tooltip/Tooltip.vue';
+import { IntegrationService } from '@/modules/integration/integration-service';
 
 const props = defineProps<{
   config: IntegrationConfig,
@@ -175,16 +171,15 @@ const props = defineProps<{
 
 const route = useRoute();
 
-const { doDestroy } = mapActions('integration');
 const { findByPlatform } = mapGetters('integration');
 
 const isModalOpen = ref(false);
-const disconnectConfirm = ref('');
-
-const { trackEvent } = useProductTracking();
+const isDisconnectDisabled = ref(false);
 
 const integration = computed(() => findByPlatform.value(props.config.key));
+
 const status = computed(() => getIntegrationStatus(integration.value));
+const isV2 = computed(() => integration.value?.isNango && integration.value?.status);
 
 const lastDataCheckCompleted = computed(() => {
   if (['github', 'gerrit', 'jira', 'confluence'].includes(integration.value.platform)) {
@@ -207,20 +202,23 @@ const selectedProgress = computed(() => (props.progress || []).find((p) => p.pla
 const isComponentMounted = ref(false);
 const isSettingsOpen = ref(false);
 
+// For Git integration, we need to check if there are any mirrored repositories
+const fetchRepoMappings = () => {
+  if (integration.value && integration.value.platform === 'git') {
+    IntegrationService.fetchGitMappings(integration.value)
+      .then((repos) => {
+        isDisconnectDisabled.value = repos
+          .filter((r) => r.sourceIntegrationId !== r.gitIntegrationId).length > 0;
+      }).catch(() => {
+        isDisconnectDisabled.value = false;
+      });
+  }
+};
+
 onMounted(() => {
   isComponentMounted.value = true;
+  fetchRepoMappings();
 });
-
-const disconnectIntegration = () => {
-  trackEvent({
-    key: FeatureEventKey.DISCONNECT_INTEGRATION,
-    type: EventType.FEATURE,
-    properties: {
-      platform: props.config.key,
-    },
-  });
-  doDestroy(integration.value.id);
-};
 </script>
 
 <script lang="ts">

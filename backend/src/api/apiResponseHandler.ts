@@ -120,7 +120,7 @@ export default class ApiResponseHandler extends LoggerBase {
     }
 
     sendSlackNotification(
-      SlackChannel.ALERTS,
+      SlackChannel.CDP_ALERTS,
       SlackPersona.ERROR_REPORTER,
       `API Error ${code}: ${req.method} ${req.url}`,
       sections,

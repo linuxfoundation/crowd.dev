@@ -165,14 +165,6 @@ class Permissions {
         id: 'organizationAutocomplete',
         allowedRoles: [roles.admin, roles.projectAdmin, roles.readonly],
       },
-      integrationImport: {
-        id: 'integrationImport',
-        allowedRoles: [roles.admin, roles.projectAdmin],
-      },
-      integrationControlLimit: {
-        id: 'integrationControlLimit',
-        allowedRoles: [],
-      },
       integrationCreate: {
         id: 'integrationCreate',
         allowedRoles: [roles.admin, roles.projectAdmin],

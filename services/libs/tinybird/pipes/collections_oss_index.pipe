@@ -91,6 +91,7 @@ SQL >
     FROM collections FINAL
     WHERE
         isNull (collections.deletedAt)
+        AND isNull (collections.ssoUserId)
         and collections.categoryId IN (SELECT id from collections_oss_index_category_ids)
 
 NODE collections_oss_index_top_projects

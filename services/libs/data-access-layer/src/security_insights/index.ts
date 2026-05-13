@@ -15,31 +15,27 @@ export async function findObsoleteReposQx(
   limit = 1000,
 ): Promise<ISecurityInsightsObsoleteRepo[]> {
   const failedReposSubquery =
-    failedRepos.length > 0 ? 'and all_repos."repoUrl" not in ($(failedRepos:csv))' : ''
+    failedRepos.length > 0 ? 'and r."url" not in ($(failedRepos:csv))' : ''
 
   const repos: ISecurityInsightsObsoleteRepo[] = await qx.select(
     `
-      with all_repos as (
-            select
-                id as "insightsProjectId",
-                slug as "insightsProjectSlug",
-                unnest(repositories) as "repoUrl"
-            from "insightsProjects"
-      )
       select distinct
-          "insightsProjectId",
-          "insightsProjectSlug",
-          "repoUrl"
-      from all_repos
-      where not exists (
-          select 1
-          from "securityInsightsEvaluationSuites" s
-          where s.repo = all_repos."repoUrl"
-          AND EXTRACT(EPOCH FROM (now() - s."updatedAt")) < $(insightsObsoleteAfterSeconds)
-      )
-      and "repoUrl" like 'https://github.com%'
-      ${failedReposSubquery}
-      order by "repoUrl" asc
+          ip.id as "insightsProjectId",
+          ip.slug as "insightsProjectSlug",
+          r.url as "repoUrl"
+      from "insightsProjects" ip
+      join "repositories" r on r."insightsProjectId" = ip.id
+      where r."deletedAt" is null
+        and r."excluded" = false
+        and r.url like 'https://github.com%'
+        and not exists (
+            select 1
+            from "securityInsightsEvaluationSuites" s
+            where s.repo = r.url
+            AND EXTRACT(EPOCH FROM (now() - s."updatedAt")) < $(insightsObsoleteAfterSeconds)
+        )
+        ${failedReposSubquery}
+      order by r.url asc
       limit $(limit)
     `,
     {
@@ -82,10 +78,12 @@ export async function addEvaluationSuite(
             ($(id), $(name), $(repo), $(insightsProjectId), $(insightsProjectSlug), $(catalogId), $(result), $(corruptedState), now(), now())
         on conflict ("repo", "catalogId")
             do update
-            set "updatedAt"      = EXCLUDED."updatedAt",
-                "name"           = EXCLUDED."name",
-                "result"         = EXCLUDED."result",
-                "corruptedState" = EXCLUDED."corruptedState"
+            set "updatedAt"           = EXCLUDED."updatedAt",
+                "name"                = EXCLUDED."name",
+                "result"              = EXCLUDED."result",
+                "corruptedState"      = EXCLUDED."corruptedState",
+                "insightsProjectId"   = EXCLUDED."insightsProjectId",
+                "insightsProjectSlug" = EXCLUDED."insightsProjectSlug"
     `,
     {
       id: generateUUIDv4(),
@@ -158,13 +156,15 @@ export async function addSuiteControlEvaluation(
             )
         on conflict ("securityInsightsEvaluationSuiteId", "repo", "controlId")
             do update
-            set 
-                "updatedAt"        = EXCLUDED."updatedAt",
-                "name"             = EXCLUDED."name",
-                "result"           = EXCLUDED."result",
-                "message"          = EXCLUDED."message",
-                "corruptedState"   = EXCLUDED."corruptedState",
-                "remediationGuide" = EXCLUDED."remediationGuide"
+            set
+                "updatedAt"           = EXCLUDED."updatedAt",
+                "name"                = EXCLUDED."name",
+                "result"              = EXCLUDED."result",
+                "message"             = EXCLUDED."message",
+                "corruptedState"      = EXCLUDED."corruptedState",
+                "remediationGuide"    = EXCLUDED."remediationGuide",
+                "insightsProjectId"   = EXCLUDED."insightsProjectId",
+                "insightsProjectSlug" = EXCLUDED."insightsProjectSlug"
                 
     `,
     {
@@ -237,19 +237,21 @@ export async function addControlEvaluationAssessment(
             )
         on conflict ("securityInsightsEvaluationId", "repo", "requirementId")
             do update
-            set "updatedAt"      = EXCLUDED."updatedAt",
-                "applicability"  = EXCLUDED."applicability",
-                "description"    = EXCLUDED."description",
-                "result"         = EXCLUDED."result",
-                "message"        = EXCLUDED."message",
-                "steps"          = EXCLUDED."steps",
-                "stepsExecuted"  = EXCLUDED."stepsExecuted",
-                "runDuration"    = EXCLUDED."runDuration",
-                "recommendation" = EXCLUDED."recommendation",
-                "start"          = EXCLUDED."start",
-                "end"            = EXCLUDED."end",
-                "value"          = EXCLUDED."value",
-                "changes"        = EXCLUDED."changes"
+            set "updatedAt"           = EXCLUDED."updatedAt",
+                "applicability"       = EXCLUDED."applicability",
+                "description"         = EXCLUDED."description",
+                "result"              = EXCLUDED."result",
+                "message"             = EXCLUDED."message",
+                "steps"               = EXCLUDED."steps",
+                "stepsExecuted"       = EXCLUDED."stepsExecuted",
+                "runDuration"         = EXCLUDED."runDuration",
+                "recommendation"      = EXCLUDED."recommendation",
+                "start"               = EXCLUDED."start",
+                "end"                 = EXCLUDED."end",
+                "value"               = EXCLUDED."value",
+                "changes"             = EXCLUDED."changes",
+                "insightsProjectId"   = EXCLUDED."insightsProjectId",
+                "insightsProjectSlug" = EXCLUDED."insightsProjectSlug"
                 
     `,
     {

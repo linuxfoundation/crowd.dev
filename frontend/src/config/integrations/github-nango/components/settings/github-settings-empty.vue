@@ -1,23 +1,33 @@
 <template>
   <div class="flex justify-center">
-    <div class="pt-16 flex flex-col items-center w-full max-w-100">
-      <lf-svg name="git-repository" class="w-16 h-16 text-gray-300 mb-6" />
-      <h6 class="text-center pb-3">
+    <div class="pt-10 flex flex-col items-center w-full max-w-100 gap-4">
+      <lf-icon name="book" type="regular" :size="50" class="text-gray-400" />
+      <h6 class="text-center">
         Sync and map GitHub repositories
       </h6>
-      <p class="text-center text-small text-gray-500 pb-6">
-        Choose which repositories you want to track, and map them with the corresponding project.
-      </p>
+      <div class="flex flex-col gap-4">
+        <div class="text-small text-gray-600 flex flex-row gap-4">
+          <div class="text-xs font-medium bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center shrink-0">
+            1
+          </div>
+          Choose which repositories you want to track, or sync entire GitHub organizations;
+        </div>
+        <div class="text-small text-gray-600 flex flex-row gap-4">
+          <div class="text-xs font-medium bg-gray-100 rounded-full w-6 h-6 flex items-center justify-center shrink-0">
+            2
+          </div>
+          Map each repository with the corresponding project.
+        </div>
+      </div>
       <lf-button type="primary-ghost" @click="emit('add')">
-        <lf-icon name="arrows-rotate" type="regular" />
-        Add repositories
+        <lf-icon name="plus" type="regular" />
+        Sync repositories/organizations
       </lf-button>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import LfSvg from '@/shared/svg/svg.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 

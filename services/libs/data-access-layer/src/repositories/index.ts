@@ -21,6 +21,7 @@ export interface IRepository {
   updatedAt: string
   deletedAt: string | null
   lastArchivedCheckAt: string | null
+  license: string | null
 }
 
 export interface ICreateRepository {
@@ -148,7 +149,8 @@ export async function getRepositoriesBySourceIntegrationId(
       "createdAt",
       "updatedAt",
       "deletedAt",
-      "lastArchivedCheckAt"
+      "lastArchivedCheckAt",
+      license
     FROM public.repositories
     WHERE "sourceIntegrationId" = $(sourceIntegrationId)
       AND "deletedAt" IS NULL
@@ -190,7 +192,8 @@ export async function getRepositoriesByUrl(
       "createdAt",
       "updatedAt",
       "deletedAt",
-      "lastArchivedCheckAt"
+      "lastArchivedCheckAt",
+      license
     FROM public.repositories
     WHERE url IN ($(repoUrls:csv))
     ${deletedFilter}
@@ -318,6 +321,7 @@ export interface IRepositoryMapping {
   }
   gitIntegrationId: string
   sourceIntegrationId: string
+  sourcePlatform: string
 }
 
 /**
@@ -341,9 +345,11 @@ export async function getIntegrationReposMapping(
         'name', s.name
       ) as segment,
       r."gitIntegrationId",
-      r."sourceIntegrationId"
+      r."sourceIntegrationId",
+      i.platform as "sourcePlatform"
     FROM public.repositories r
     JOIN segments s ON s.id = r."segmentId"
+    LEFT JOIN integrations i ON i.id = r."sourceIntegrationId"
     WHERE (r."gitIntegrationId" = $(integrationId) OR r."sourceIntegrationId" = $(integrationId))
       AND r."deletedAt" IS NULL
     ORDER BY r.url
@@ -552,6 +558,146 @@ export async function findSegmentsForRepos(
   )
 
   return results
+}
+
+export interface IGithubRepoForIntegration {
+  url: string
+  name: string
+  owner: string
+  forkedFrom: string | null
+  updatedAt: string
+}
+
+export async function getReposForGithubIntegration(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<IGithubRepoForIntegration[]> {
+  return qx.select(
+    `
+    SELECT
+      r.url,
+      split_part(r.url, '/', -1) as name,
+      split_part(r.url, '/', -2) as owner,
+      r."forkedFrom",
+      r."updatedAt"
+    FROM public.repositories r
+    WHERE r."sourceIntegrationId" = $(integrationId)
+      AND r."deletedAt" IS NULL
+    ORDER BY r.url
+    `,
+    { integrationId },
+  )
+}
+
+interface IGithubRepoForIntegrationWithSource extends IGithubRepoForIntegration {
+  sourceIntegrationId: string
+}
+
+export async function getReposGroupedByOrgForIntegrations(
+  qx: QueryExecutor,
+  integrationIds: string[],
+): Promise<Record<string, Record<string, IGithubRepoForIntegration[]>>> {
+  if (integrationIds.length === 0) return {}
+
+  const repos: IGithubRepoForIntegrationWithSource[] = await qx.select(
+    `
+    SELECT
+      r.url,
+      split_part(r.url, '/', -1) as name,
+      split_part(r.url, '/', -2) as owner,
+      r."forkedFrom",
+      r."updatedAt",
+      r."sourceIntegrationId"
+    FROM public.repositories r
+    WHERE r."sourceIntegrationId" IN ($(integrationIds:csv))
+      AND r."deletedAt" IS NULL
+    ORDER BY r.url
+    `,
+    { integrationIds },
+  )
+
+  const result: Record<string, Record<string, IGithubRepoForIntegration[]>> = {}
+  for (const repo of repos) {
+    const intId = repo.sourceIntegrationId
+    if (!result[intId]) {
+      result[intId] = {}
+    }
+    if (!result[intId][repo.owner]) {
+      result[intId][repo.owner] = []
+    }
+    result[intId][repo.owner].push({
+      url: repo.url,
+      name: repo.name,
+      owner: repo.owner,
+      forkedFrom: repo.forkedFrom,
+      updatedAt: repo.updatedAt,
+    })
+  }
+  return result
+}
+
+/**
+ * Populates `settings.orgs[].repos` from the repositories table for github/github-nango integrations.
+ * Used by worker services to inject repo data into settings before passing to stream processors.
+ */
+export async function populateGithubSettingsWithRepos(
+  qx: QueryExecutor,
+  integrationId: string,
+  settings: unknown,
+): Promise<unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s = settings as any
+  if (!s?.orgs || !Array.isArray(s.orgs)) return settings
+
+  const allReposByOrg = await getReposGroupedByOrgForIntegrations(qx, [integrationId])
+  const reposByOrg = allReposByOrg[integrationId] || {}
+
+  // Only overwrite orgs[].repos if the repositories table has data.
+  // During the 'mapping' phase (legacy github connect), repos live in settings
+  // before being written to the repositories table via mapGithubRepos.
+  const hasRepos = Object.keys(reposByOrg).length > 0
+  if (!hasRepos) return settings
+
+  return {
+    ...s,
+    orgs: s.orgs.map((org: { name: string; [key: string]: unknown }) => ({
+      ...org,
+      repos: (reposByOrg[org.name] || []).map((r) => ({
+        url: r.url,
+        name: r.name,
+        owner: r.owner,
+        updatedAt: r.updatedAt,
+        forkedFrom: r.forkedFrom,
+      })),
+    })),
+  }
+}
+
+/**
+ * Strips repos, unavailableRepos, and orgs[].repos from integration settings in the DB.
+ * Called after mapUnifiedRepositories has written repos to the repositories table,
+ * so they are no longer duplicated in both places.
+ */
+export async function stripReposFromGithubSettings(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<void> {
+  await qx.result(
+    `
+    UPDATE integrations
+    SET settings = jsonb_set(
+      settings - 'repos' - 'unavailableRepos',
+      '{orgs}',
+      COALESCE(
+        (SELECT jsonb_agg(org - 'repos') FROM jsonb_array_elements(settings->'orgs') org),
+        '[]'::jsonb
+      )
+    )
+    WHERE id = $(integrationId)
+      AND settings->'orgs' IS NOT NULL
+    `,
+    { integrationId },
+  )
 }
 
 /**

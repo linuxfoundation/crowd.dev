@@ -1,0 +1,25 @@
+FROM node:20-bullseye-slim AS builder
+
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/crowd/app
+RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
+
+COPY ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+RUN pnpm fetch
+
+COPY ./services ./services
+RUN pnpm i --frozen-lockfile
+
+FROM node:20-bullseye-slim AS runner
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/crowd/app
+RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
+
+COPY --from=builder /usr/crowd/app/node_modules ./node_modules
+COPY --from=builder /usr/crowd/app/services/base.tsconfig.json ./services/base.tsconfig.json
+COPY --from=builder /usr/crowd/app/services/libs ./services/libs
+COPY --from=builder /usr/crowd/app/services/archetypes/ ./services/archetypes
+COPY --from=builder /usr/crowd/app/services/apps/snowflake_connectors/ ./services/apps/snowflake_connectors

@@ -37,10 +37,11 @@ SCHEMA >
     `description` String `json:$.record.description` DEFAULT '',
     `sourceId` String `json:$.record.sourceId` DEFAULT '',
     `sourceParentId` String `json:$.record.sourceParentId` DEFAULT '',
+    `maturity` LowCardinality(String) `json:$.record.maturity` DEFAULT '',
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)
-ENGINE_SORTING_KEY slug
+ENGINE_SORTING_KEY slug, id
 ENGINE_VER updatedAt

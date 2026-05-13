@@ -1,0 +1,140 @@
+NODE repo_health_score_copy_repos
+DESCRIPTION >
+    Returns enabled, non-excluded repository URLs linked to insights projects
+
+SQL >
+    SELECT r.url AS channel
+    FROM repositories r FINAL
+    WHERE r.enabled = true AND r.excluded = false AND isNull (r.deletedAt) AND r.insightsProjectId != ''
+
+NODE repo_health_score_copy_data
+DESCRIPTION >
+    Join all metrics per repository from separate health score pipes
+
+SQL >
+    SELECT
+        repos.channel AS channel,
+        COALESCE(ac.activeContributors, 0) AS activeContributors,
+        COALESCE(ac.activeContributorsBenchmark, 0) AS activeContributorsBenchmark,
+        COALESCE(cd.contributorDependencyCount, 0) AS contributorDependencyCount,
+        COALESCE(cd.contributorDependencyPercentage, 0) AS contributorDependencyPercentage,
+        COALESCE(cd.contributorDependencyBenchmark, 0) AS contributorDependencyBenchmark,
+        COALESCE(od.organizationDependencyCount, 0) AS organizationDependencyCount,
+        COALESCE(od.organizationDependencyPercentage, 0) AS organizationDependencyPercentage,
+        COALESCE(od.organizationDependencyBenchmark, 0) AS organizationDependencyBenchmark,
+        COALESCE(ret.retentionRate, 0) AS retentionRate,
+        COALESCE(ret.retentionBenchmark, 0) AS retentionBenchmark,
+        COALESCE(st.stars, 0) AS stars,
+        COALESCE(st.starsBenchmark, 0) AS starsBenchmark,
+        COALESCE(fk.forks, 0) AS forks,
+        COALESCE(fk.forksBenchmark, 0) AS forksBenchmark,
+        ir.issueResolution AS issueResolution,
+        ir.issueResolutionBenchmark AS issueResolutionBenchmark,
+        COALESCE(pr.pullRequests, 0) AS pullRequests,
+        COALESCE(pr.pullRequestsBenchmark, 0) AS pullRequestsBenchmark,
+        mlt.mergeLeadTime AS mergeLeadTime,
+        mlt.mergeLeadTimeBenchmark AS mergeLeadTimeBenchmark,
+        COALESCE(ad.activeDaysCount, 0) AS activeDaysCount,
+        COALESCE(ad.activeDaysBenchmark, 0) AS activeDaysBenchmark,
+        COALESCE(owh.contributionsOutsideWorkHours, 0) AS contributionsOutsideWorkHours,
+        COALESCE(
+            owh.contributionsOutsideWorkHoursBenchmark, 0
+        ) AS contributionsOutsideWorkHoursBenchmark,
+        sec.securityPercentage AS securityPercentage
+    FROM repo_health_score_copy_repos AS repos
+    LEFT JOIN repo_health_score_active_contributors AS ac USING (channel)
+    LEFT JOIN repo_health_score_contributor_dependency AS cd USING (channel)
+    LEFT JOIN repo_health_score_organization_dependency AS od USING (channel)
+    LEFT JOIN repo_health_score_retention AS ret USING (channel)
+    LEFT JOIN repo_health_score_stars AS st USING (channel)
+    LEFT JOIN repo_health_score_forks AS fk USING (channel)
+    LEFT JOIN repo_health_score_issues_resolution AS ir USING (channel)
+    LEFT JOIN repo_health_score_pull_requests AS pr USING (channel)
+    LEFT JOIN repo_health_score_merge_lead_time AS mlt USING (channel)
+    LEFT JOIN repo_health_score_active_days AS ad USING (channel)
+    LEFT JOIN repo_health_score_contributions_outside_work_hours AS owh USING (channel)
+    LEFT JOIN repo_health_score_security AS sec USING (channel)
+
+NODE repo_health_score_copy_result
+DESCRIPTION >
+    Compute final health score percentages per repository
+
+SQL >
+    WITH
+        arrayFilter(
+            x -> x >= 0,
+            [
+                activeContributorsBenchmark,
+                contributorDependencyBenchmark,
+                organizationDependencyBenchmark,
+                retentionBenchmark
+            ]
+        ) AS contributorBenchmarks,
+        arrayFilter(x -> x >= 0, [starsBenchmark, forksBenchmark]) AS popularityBenchmarks,
+        arrayFilter(
+            x -> x >= 0,
+            [
+                COALESCE(issueResolutionBenchmark, -1),
+                pullRequestsBenchmark,
+                COALESCE(mergeLeadTimeBenchmark, -1),
+                activeDaysBenchmark,
+                contributionsOutsideWorkHoursBenchmark
+            ]
+        ) AS developmentBenchmarks
+    SELECT
+        channel,
+        activeContributors,
+        activeContributorsBenchmark,
+        contributorDependencyCount,
+        contributorDependencyPercentage,
+        contributorDependencyBenchmark,
+        organizationDependencyCount,
+        organizationDependencyPercentage,
+        organizationDependencyBenchmark,
+        retentionRate,
+        retentionBenchmark,
+        stars,
+        starsBenchmark,
+        forks,
+        forksBenchmark,
+        issueResolution,
+        COALESCE(issueResolutionBenchmark, 0) AS issueResolutionBenchmark,
+        pullRequests,
+        pullRequestsBenchmark,
+        mergeLeadTime,
+        COALESCE(mergeLeadTimeBenchmark, 0) AS mergeLeadTimeBenchmark,
+        activeDaysCount,
+        activeDaysBenchmark,
+        contributionsOutsideWorkHours,
+        contributionsOutsideWorkHoursBenchmark,
+        securityPercentage,
+        round(
+            100.0
+            * arraySum(contributorBenchmarks)
+            / if(length(contributorBenchmarks) = 0, 1, 5 * length(contributorBenchmarks))
+        ) AS contributorPercentage,
+        round(
+            100.0
+            * arraySum(popularityBenchmarks)
+            / if(length(popularityBenchmarks) = 0, 1, 5 * length(popularityBenchmarks))
+        ) AS popularityPercentage,
+        round(
+            100.0
+            * arraySum(developmentBenchmarks)
+            / if(length(developmentBenchmarks) = 0, 1, 5 * length(developmentBenchmarks))
+        ) AS developmentPercentage,
+        round(
+            (
+                contributorPercentage
+                + popularityPercentage
+                + developmentPercentage
+                + if(isNotNull(securityPercentage), securityPercentage, 0)
+            )
+            / if(isNotNull(securityPercentage), 4, 3)
+        ) AS overallScore
+    FROM repo_health_score_copy_data
+
+TYPE COPY
+TARGET_DATASOURCE repo_health_score_copy_ds
+COPY_MODE replace
+COPY_SCHEDULE 50 1 * * *

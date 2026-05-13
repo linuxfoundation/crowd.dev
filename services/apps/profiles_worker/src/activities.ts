@@ -3,12 +3,7 @@ import {
   calculateAllMemberLeafAggregates,
   calculateAllOrganizationLeafAggregates,
 } from './activities/calculateLeafSegmentAggregates'
-import {
-  getAffiliationsLastCheckedAt,
-  getLLMResult,
-  getMemberIdsForAffiliationUpdates,
-  updateAffiliationsLastCheckedAt,
-} from './activities/common'
+import { getLLMResult } from './activities/common'
 import {
   createMemberBotSuggestion,
   createMemberNoBot,
@@ -22,22 +17,14 @@ import {
   getSegmentHierarchy,
 } from './activities/member/memberAggregates'
 import {
-  getMemberDisplayAggregates,
-  getMemberDisplayAggsLastSyncedAt,
-  setMemberDisplayAggregates,
-  touchMemberDisplayAggsLastSyncedAt,
-} from './activities/member/memberDisplayAggs'
-import { syncMember, updateMemberAffiliations } from './activities/member/memberUpdate'
+  syncMember,
+  triggerMemberAffiliationsRefresh,
+  updateMemberAffiliations,
+} from './activities/member/memberUpdate'
 import {
   calculateProjectGroupOrganizationAggregates,
   calculateProjectOrganizationAggregates,
 } from './activities/organization/organizationAggregates'
-import {
-  getOrganizationDisplayAggregates,
-  getOrganizationDisplayAggsLastSyncedAt,
-  setOrganizationDisplayAggregates,
-  touchOrganizationDisplayAggsLastSyncedAt,
-} from './activities/organization/organizationDisplayAggs'
 import {
   findMembersInOrganization,
   syncOrganization,
@@ -45,9 +32,7 @@ import {
 
 export {
   updateMemberAffiliations,
-  getAffiliationsLastCheckedAt,
-  getMemberIdsForAffiliationUpdates,
-  updateAffiliationsLastCheckedAt,
+  triggerMemberAffiliationsRefresh,
   syncMember,
   syncOrganization,
   findMembersInOrganization,
@@ -58,15 +43,6 @@ export {
   // Organization aggregates
   calculateProjectOrganizationAggregates,
   calculateProjectGroupOrganizationAggregates,
-  // Legacy display aggs (can be removed once migration is complete)
-  getMemberDisplayAggsLastSyncedAt,
-  touchMemberDisplayAggsLastSyncedAt,
-  getMemberDisplayAggregates,
-  setMemberDisplayAggregates,
-  getOrganizationDisplayAggsLastSyncedAt,
-  touchOrganizationDisplayAggsLastSyncedAt,
-  getOrganizationDisplayAggregates,
-  setOrganizationDisplayAggregates,
   getMemberForBotAnalysis,
   updateMemberAttributes,
   removeMemberOrganizations,

@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { Error400BadRequest } from '@crowd/common'
+import { BadRequestError } from '@crowd/common'
 import { WebhooksRepository } from '@crowd/data-access-layer/src/old/apps/webhook_api/webhooks.repo'
 import { PlatformType, WebhookType } from '@crowd/types'
 
@@ -13,7 +13,7 @@ export const installDiscourseRoutes = async (app: express.Express) => {
     asyncWrap(async (req, res) => {
       const signature = req.headers['x-discourse-event-signature']
       if (!signature) {
-        throw new Error400BadRequest('Missing signature header!')
+        throw new BadRequestError('Missing signature header!')
       }
 
       const eventId = req.headers['x-discourse-event-id']

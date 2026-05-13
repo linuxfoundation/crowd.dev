@@ -8,8 +8,8 @@ const hackernews: IntegrationConfig = {
   key: 'hackernews',
   name: 'Hacker News',
   image,
-  description:
-    'Connect Hacker News to get posts as well as their comments mentioning your community.',
+  description: 'Sync posts and comments mentioning your community.',
+  link: 'https://docs.linuxfoundation.org/lfx/community-management/integrations/hacker-news-integration',
   connectComponent: HackernewsConnect,
   connectedParamsComponent: HackernewsParams,
   showProgress: false,

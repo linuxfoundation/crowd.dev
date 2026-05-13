@@ -7,7 +7,7 @@ import {
   updateOrganization,
 } from '@crowd/data-access-layer'
 import { ICreateInsightsProject, findBySlug } from '@crowd/data-access-layer/src/collections'
-import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
+import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
 import {
   buildSegmentActivityTypes,
   isSegmentSubproject,
@@ -67,6 +67,15 @@ export default class SegmentService extends LoggerBase {
           slug: data.slug,
           isLF: data.isLF,
         })
+      }
+
+      if (isSegmentSubproject(segment) && data.slug && data.slug !== segment.slug) {
+        const collectionService = new CollectionService({ ...this.options, transaction })
+        const projects = await collectionService.findInsightsProjectsBySegmentId(segment.id)
+        if (projects.length > 0) {
+          const normalizedSlug = data.slug.replace(/^nonlf_/, '')
+          await collectionService.updateInsightsProject(projects[0].id, { slug: normalizedSlug })
+        }
       }
 
       await SequelizeRepository.commitTransaction(transaction)

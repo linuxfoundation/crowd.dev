@@ -9,6 +9,7 @@ import {
   IMemberOrganization,
   IOrganization,
   IOrganizationIdSource,
+  IOrganizationIdentity,
   IQueryTimeseriesParams,
   ITimeseriesDatapoint,
   OrganizationIdentityType,
@@ -21,7 +22,7 @@ import { prepareSelectColumns } from '../utils'
 
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
 import { addOrgIdentity, upsertOrgIdentities } from './identities'
-import { IDbOrgIdentity, IDbOrganization, IDbOrganizationInput } from './types'
+import { IDbOrganization, IDbOrganizationInput } from './types'
 import { prepareOrganizationData } from './utils'
 
 const log = getServiceChildLogger('data-access-layer/organizations')
@@ -150,7 +151,7 @@ export async function findOrganizationsByName(
 
 export async function findOrgByVerifiedDomain(
   qx: QueryExecutor,
-  identity: IDbOrgIdentity,
+  identity: IOrganizationIdentity,
 ): Promise<IDbOrganization | null> {
   if (identity.type !== OrganizationIdentityType.PRIMARY_DOMAIN) {
     throw new Error('Invalid identity type')
@@ -182,7 +183,7 @@ export async function findOrgByVerifiedDomain(
 
 export async function findOrgByVerifiedIdentity(
   qx: QueryExecutor,
-  identity: IDbOrgIdentity,
+  identity: IOrganizationIdentity,
 ): Promise<IDbOrganization | null> {
   const result = await qx.selectOneOrNone(
     `
@@ -208,27 +209,6 @@ export async function findOrgByVerifiedIdentity(
   )
 
   return result
-}
-
-export async function getOrgIdentities(
-  qx: QueryExecutor,
-  organizationId: string,
-): Promise<IDbOrgIdentity[]> {
-  return await qx.select(
-    `
-      select platform,
-             type,
-             value,
-             verified,
-             "sourceId",
-             "integrationId"
-      from "organizationIdentities"
-      where "organizationId" = $(organizationId)
-    `,
-    {
-      organizationId,
-    },
-  )
 }
 
 export async function markOrganizationEnriched(
@@ -387,6 +367,7 @@ export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
   data: Partial<IDbOrganizationInput>,
+  throttleUpdatedAt = false,
 ): Promise<string | null> {
   const columns = Object.keys(data)
   if (columns.length === 0) {
@@ -396,9 +377,13 @@ export async function updateOrganization(
   const updatedAt = new Date()
   columns.push('updatedAt')
 
+  const updatedAtExpr = throttleUpdatedAt
+    ? `CASE WHEN "updatedAt" < now() - interval '30 minutes' THEN now() ELSE "updatedAt" END`
+    : `$(updatedAt)`
+
   const query = `
     update organizations set
-      ${columns.map((c) => `"${c}" = $(${c})`).join(',\n')}
+      ${columns.map((c) => `"${c}" = ${c === 'updatedAt' ? updatedAtExpr : `$(${c})`}`).join(',\n')}
     where id = $(organizationId)
     returning id;
   `
@@ -463,8 +448,10 @@ export async function findOrCreateOrganization(
   source: string,
   data: IOrganization,
   integrationId?: string,
+  throttleUpdatedAt = false,
 ): Promise<string | undefined> {
-  const verifiedIdentities = data.identities ? data.identities.filter((i) => i.verified) : []
+  data.identities = data.identities ?? []
+  let verifiedIdentities = data.identities.filter((i) => i.verified)
 
   if (verifiedIdentities.length === 0 && !data.displayName) {
     const message = `Missing organization identity or displayName while creating/updating organization!`
@@ -484,6 +471,16 @@ export async function findOrCreateOrganization(
     }
 
     data.identities = data.identities.filter((i) => i.value !== undefined)
+
+    // Re-derive after normalization may have set domain identity values to undefined
+    verifiedIdentities = data.identities.filter((i) => i.verified)
+
+    if (verifiedIdentities.length === 0 && !data.displayName) {
+      log.debug(
+        'Organization has no valid verified identities after domain normalization and no displayName, skipping.',
+      )
+      return undefined
+    }
 
     let existing
     // find existing org by sent verified identities
@@ -544,13 +541,20 @@ export async function findOrCreateOrganization(
       if (Object.keys(processed.organization).length > 0) {
         log.info({ orgId: existing.id }, `Updating organization!`)
         await logExecutionTimeV2(
-          async () => updateOrganization(qe, existing.id, processed.organization),
+          async () =>
+            updateOrganization(qe, existing.id, processed.organization, throttleUpdatedAt),
           log,
           'organizationService -> findOrCreateOrganization -> updateOrganization',
         )
       }
       await logExecutionTimeV2(
-        async () => upsertOrgIdentities(qe, existing.id, data.identities, integrationId),
+        async () =>
+          upsertOrgIdentities(
+            qe,
+            existing.id,
+            data.identities.map((i) => ({ ...i, source })),
+            integrationId,
+          ),
         log,
         'organizationService -> findOrCreateOrganization -> upsertOrgIdentities',
       )
@@ -636,6 +640,7 @@ export async function findOrCreateOrganization(
               verified: i.verified,
               sourceId: i.sourceId,
               integrationId,
+              source: i.source,
             }),
           log,
           'organizationService -> findOrCreateOrganization -> addOrgIdentity',
@@ -695,4 +700,31 @@ export async function findOrgById<T extends OrganizationField>(
   fields: T[],
 ): Promise<QueryResult<T>> {
   return queryTableById(qx, 'organizations', Object.values(OrganizationField), orgId, fields)
+}
+
+export async function findNonExistingOrganizationIds(
+  qx: QueryExecutor,
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return []
+
+  const valuesClause = ids.map((_, i) => `($(id_${i})::uuid)`).join(', ')
+  const params: Record<string, string> = {}
+  ids.forEach((id, i) => {
+    params[`id_${i}`] = id
+  })
+
+  const rows = await qx.select(
+    `
+    WITH id_list (id) AS (VALUES ${valuesClause})
+    SELECT id_list.id
+    FROM id_list
+    WHERE NOT EXISTS (
+      SELECT 1 FROM organizations o WHERE o.id = id_list.id
+    )
+    `,
+    params,
+  )
+
+  return rows.map((r: { id: string }) => r.id)
 }

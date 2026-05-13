@@ -39,37 +39,3 @@ export interface IQueryActivityRelationsParameters {
   groupBy?: string
   noLimit?: boolean
 }
-
-export interface IQueryActiveMembersParameters {
-  segmentIds: string[]
-  timestampFrom: string
-  timestampTo: string
-  platforms?: string[]
-  orderBy: 'activityCount' | 'activeDaysCount'
-  orderByDirection: 'asc' | 'desc'
-  limit: number
-  offset: number
-}
-
-export interface IActiveMemberData {
-  memberId: string
-  activityCount: number
-  activeDaysCount: number
-}
-
-export interface IQueryActiveOrganizationsParameters {
-  segmentIds: string[]
-  timestampFrom: Date
-  timestampTo: Date
-  platforms?: string[]
-  orderBy: 'activityCount' | 'activeDaysCount'
-  orderByDirection: 'asc' | 'desc'
-  limit: number
-  offset: number
-}
-
-export interface IActiveOrganizationData {
-  organizationId: string
-  activityCount: number
-  activeDaysCount: number
-}

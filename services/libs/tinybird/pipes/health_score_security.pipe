@@ -1,16 +1,16 @@
 NODE health_score_security_project_repos
 SQL >
     %
-    SELECT id, repo AS repo, slug
-    FROM insightsProjects FINAL ARRAY
-    JOIN repositories AS repo
+    SELECT i.id, r.url AS repo, i.slug
+    FROM insightsProjects i FINAL
+    JOIN repositories r FINAL ON r.insightsProjectId = i.id
     WHERE
-        isNull (deletedAt)
+        isNull (i.deletedAt) AND isNull (r.deletedAt) AND r.enabled = true AND r.excluded = false
         {% if defined(project) %}
-            AND id = (SELECT insightsProjectId FROM segments_filtered)
-            AND repo in (select arrayJoin(repositories) from segments_filtered)
+            AND i.id = (SELECT insightsProjectId FROM segments_filtered)
+            AND r.url in (select arrayJoin(repositories) from segments_filtered)
             {% if defined(repos) %}
-                AND repo
+                AND r.url
                 IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}
             {% end %}
         {% end %}

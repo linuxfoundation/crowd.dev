@@ -10,7 +10,6 @@ import {
 import { PageData, SearchCriteria } from '@crowd/types'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
-import AuditLogRepository from './auditLogRepository'
 import SequelizeRepository from './sequelizeRepository'
 
 export abstract class RepositoryBase<
@@ -82,33 +81,6 @@ export abstract class RepositoryBase<
     const page = await this.findAndCountAll(criteria)
 
     return page.rows
-  }
-
-  protected async createAuditLog(
-    entity: string,
-    action: string,
-    record: any,
-    data: any,
-  ): Promise<void> {
-    if (this.log) {
-      let values = {}
-
-      if (data) {
-        values = {
-          ...record.get({ plain: true }),
-        }
-      }
-
-      await AuditLogRepository.log(
-        {
-          entityName: entity,
-          entityId: record.id,
-          action,
-          values,
-        },
-        this.options,
-      )
-    }
   }
 
   protected async populateRelationsForRows(rows: any[]): Promise<any[]> {

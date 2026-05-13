@@ -60,10 +60,7 @@ export interface ISlackThreadStreamData extends ISlackStreamBase {
   placeholder: string
 }
 
-export interface ISlackIntegrationSettings {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  channels: any[]
-}
+export { ISlackIntegrationSettings } from '@crowd/types'
 
 export interface SlackGetChannelsInput {
   token: string

@@ -68,3 +68,22 @@ export async function fetchMemberAffiliations(
     },
   )
 }
+
+export async function moveSelectedAffiliationsBetweenMembers(
+  qx: QueryExecutor,
+  fromMemberId: string,
+  toMemberId: string,
+  affiliationIds: string[],
+): Promise<void> {
+  if (affiliationIds.length === 0) return
+
+  await qx.result(
+    `
+    UPDATE "memberSegmentAffiliations"
+    SET "memberId" = $(toMemberId)
+    WHERE "memberId" = $(fromMemberId)
+      AND "id" IN ($(affiliationIds:csv))
+    `,
+    { fromMemberId, toMemberId, affiliationIds },
+  )
+}

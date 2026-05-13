@@ -7,8 +7,13 @@
     pre-title="Integration"
     :pre-title-img-src="logoUrl"
     pre-title-img-alt="X/Twitter logo"
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="isVisible = false"
   >
+    <template #belowTitle>
+      <drawer-description integration-key="twitter" />
+    </template>
     <template #content>
       <el-form label-position="top" class="form integration-twitter-form" @submit.prevent>
         <el-form-item :label="hashtagField.label">
@@ -27,42 +32,19 @@
     </template>
 
     <template #footer>
-      <div
-        class="flex grow items-center"
-        :class="hasFormChanged ? 'justify-between' : 'justify-end'
-        "
-      >
-        <lf-button
-          v-if="hasFormChanged"
-          type="primary-link"
-          size="medium"
-          @click="doReset"
-        >
-          <lf-icon name="arrow-turn-left" :size="16" />
-          <span>Reset changes</span>
-        </lf-button>
-        <div class="flex gap-4">
-          <lf-button
-            type="bordered"
-            size="medium"
-            @click="isVisible = false"
-          >
-            Cancel
-          </lf-button>
-          <lf-button
-            type="primary"
-            size="medium"
-            :disabled="!hasFormChanged"
-            :href="hasFormChanged
-              ? computedConnectUrl
-              : undefined"
-          >
-            Update
-          </lf-button>
-        </div>
-      </div>
+      <drawer-footer-buttons
+        :integration="integration"
+        :is-edit-mode="integration.settings?.hashtags > 0"
+        :has-form-changed="hasFormChanged"
+        :is-loading="false"
+        :is-submit-disabled="!hasFormChanged"
+        :cancel="() => (isVisible = false)"
+        :revert-changes="doReset"
+        :connect="connect"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup>
@@ -76,9 +58,11 @@ import isEqual from 'lodash/isEqual';
 import { FormSchema } from '@/shared/form/form-schema';
 import StringField from '@/shared/fields/string-field';
 import twitter from '@/config/integrations/twitter/config';
-import LfButton from '@/ui-kit/button/Button.vue';
 import config from '@/config';
 import { AuthService } from '@/modules/auth/services/auth.service';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const props = defineProps({
   modelValue: {
@@ -100,6 +84,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:modelValue']);
+const changesConfirmationModalRef = ref(null);
 
 const getHashtags = () => props.integration.settings?.hashtags || [];
 
@@ -155,10 +140,31 @@ const computedConnectUrl = computed(() => {
   return `${getConnectUrl()}${encodedHashtags}`;
 });
 
+const connect = () => {
+  if (hasFormChanged.value) {
+    window.open(computedConnectUrl.value, '_self');
+  }
+};
+
 const doReset = () => {
   model.value = formSchema.value.initialValues({
     hashtag: parsedHashtags.value,
   });
+};
+
+const canClose = (done) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges) => {
+      if (discardChanges) {
+        doReset();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
 };
 </script>
 

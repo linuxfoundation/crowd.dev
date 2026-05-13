@@ -1,16 +1,19 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { OrganizationIdentityType } from '@crowd/types'
+import {
+  IOrganizationIdentity,
+  NewOrganizationIdentity,
+  OrganizationIdentityType,
+} from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 import { QueryOptions, QueryResult, queryTable } from '../utils'
 
-import { getOrgIdentities } from './base'
-import { IDbOrgIdentity, IDbOrgIdentityInsertInput, IDbOrgIdentityUpdateInput } from './types'
+import { IDbOrgIdentityUpdateInput } from './types'
 
 export async function fetchOrgIdentities(
   qx: QueryExecutor,
   organizationId: string,
-): Promise<IDbOrgIdentity[]> {
+): Promise<IOrganizationIdentity[]> {
   return qx.select(
     `
       SELECT *
@@ -26,7 +29,7 @@ export async function fetchOrgIdentities(
 export async function fetchManyOrgIdentities(
   qx: QueryExecutor,
   organizationIds: string[],
-): Promise<{ organizationId: string; identities: IDbOrgIdentity[] }[]> {
+): Promise<{ organizationId: string; identities: IOrganizationIdentity[] }[]> {
   return qx.select(
     `
       SELECT
@@ -68,11 +71,12 @@ export async function updateOrgIdentityVerifiedFlag(
   )
 }
 
-export async function addOrgIdentity(qx: QueryExecutor, identity: IDbOrgIdentityInsertInput) {
+export async function addOrgIdentity(qx: QueryExecutor, identity: NewOrganizationIdentity) {
   return qx.result(
     `
       INSERT INTO "organizationIdentities" (
         "organizationId",
+        "source",
         platform,
         value,
         type,
@@ -82,7 +86,7 @@ export async function addOrgIdentity(qx: QueryExecutor, identity: IDbOrgIdentity
         "integrationId",
         "createdAt"
       )
-      VALUES ($(organizationId), $(platform), $(value), $(type), $(verified), $(sourceId), $(tenantId), $(integrationId), NOW())
+      VALUES ($(organizationId), $(source), $(platform), $(value), $(type), $(verified), $(sourceId), $(tenantId), $(integrationId), NOW())
       ON CONFLICT DO NOTHING;
     `,
     { tenantId: DEFAULT_TENANT_ID, ...identity },
@@ -92,10 +96,10 @@ export async function addOrgIdentity(qx: QueryExecutor, identity: IDbOrgIdentity
 export async function upsertOrgIdentities(
   qe: QueryExecutor,
   organizationId: string,
-  identities: IDbOrgIdentity[],
+  identities: Partial<IOrganizationIdentity>[],
   integrationId?: string,
 ): Promise<void> {
-  const existingIdentities = await getOrgIdentities(qe, organizationId)
+  const existingIdentities = await fetchOrgIdentities(qe, organizationId)
   const toCreate = []
   const toUpdate = []
 
@@ -119,6 +123,7 @@ export async function upsertOrgIdentities(
         type: i.type,
         value: i.value,
         verified: i.verified,
+        source: i.source,
         sourceId: i.sourceId,
         integrationId,
       })

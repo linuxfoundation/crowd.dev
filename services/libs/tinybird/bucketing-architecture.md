@@ -36,7 +36,7 @@ The bucketing architecture differs from the lambda architecture used for other p
 
 - activityRelations for changing activity data
 - members for marking members as bot or non-bot
-- enabling/disabling repositories in segmentRepositories
+- enabling/disabling repositories in the repositories
 
 These operations will change the result dataset and with each change new rows can be added or removed from the resulting set. However lambda architecture works on single-table insert triggers (the initial MV) so we can't listen to all these events at the same time.
 
@@ -140,8 +140,8 @@ These copy pipes perform three distinct operations that transform raw bucket dat
 
 2. **Cleaning** (Filtering out invalid/unwanted data):
    - Filters by valid members: `memberId IN (SELECT id FROM members_sorted)` (removes bots)
-   - Filters by valid repositories for git platforms (removes disabled repos)
-   - Filters by valid segments: `segmentId IN (SELECT segmentId FROM segmentRepositories WHERE excluded = false)`
+   - Filters by valid repositories for git platforms: `excluded = false AND enabled = true` (removes disabled/excluded repos)
+   - Filters by valid segments via the `repositories` table
    - This is why bucketing output is "cleaned" - invalid data is removed
 
 3. **Deduplication** (Ensuring data consistency):
@@ -252,11 +252,17 @@ WHERE cityHash64(segmentId) % 10 = {bucket_number}
 
 ### Bootstrap Procedure
 
+The snapshot pipes use **append COPY MODE**. This means running a snapshot pipe will add rows to the existing datasource rather than replacing it. To recreate the buckets from scratch, follow these steps for each bucket `#` (0–9):
+
 1. **Prepare**: Ensure all bucket datasources exist
-2. **Execute Snapshots**: Run all 10 snapshot pipes manually
-3. **Verify**: Check each bucket has ~10% of total records
-4. **Enable Enrichment**: Allow scheduled copy pipes to run
-5. **Monitor**: Watch for snapshotId updates in cleaned buckets
+2. **Pause** the `activityRelations_bucket_clean_enrich_copy_pipe_#` pipe
+3. **Truncate** `activityRelations_bucket_MV_ds_#`
+4. **Run** the `activityRelations_bucket_MV_snapshot_#` pipe
+5. **Confirm** that `activityRelations_bucket_MV_ds_#` was populated and has 10% of total records
+6. **Resume** the `activityRelations_bucket_clean_enrich_copy_pipe_#` pipe
+7. **Monitor**: Watch for snapshotId updates in cleaned buckets
+
+> **Why pause the enrichment pipe first?** The enrichment copy pipe reads from `activityRelations_bucket_MV_ds_#`. Truncating while it runs could cause it to produce empty or partial results. Pausing ensures a clean window for the snapshot to populate the datasource.
 
 ## Query Patterns
 

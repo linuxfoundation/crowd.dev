@@ -4,6 +4,7 @@ import path from 'path'
 import pidusage from 'pidusage'
 
 import { getChildLogger, getServiceChildLogger, getServiceLogger } from '@crowd/logging'
+import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { loadJobs } from './loader'
 import { IJobDefinition } from './types'
@@ -145,6 +146,17 @@ const queueJob = async (job: IJobDefinition) => {
     } catch (err) {
       const diff = ((performance.now() - start) / 1000.0).toFixed(2)
       jobLogger.error(err, `Error while running a job! Job exited after ${diff} seconds!`)
+
+      if (err instanceof Error && err.message.includes('did not finish in time')) {
+        sendSlackNotificationAsync(
+          SlackChannel.CDP_CRITICAL_ALERTS,
+          SlackPersona.CRITICAL_ALERTER,
+          `Cron job timed out: ${job.name}`,
+          `Job \`${job.name}\` was killed after exceeding its ${job.timeout}s timeout (ran for ${diff}s).`,
+        ).catch((slackErr) =>
+          jobLogger.error(slackErr, 'Failed to send Slack timeout notification'),
+        )
+      }
     } finally {
       activeJobs.delete(job.name)
     }

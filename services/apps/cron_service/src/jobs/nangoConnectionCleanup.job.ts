@@ -6,6 +6,7 @@ import {
   INangoIntegrationData,
   fetchNangoDeletedIntegrationData,
   fetchNangoIntegrationData,
+  getNangoMappingByConnectionId,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
@@ -22,7 +23,7 @@ import { IJobDefinition } from '../types'
 
 const job: IJobDefinition = {
   name: 'nango-connection-cleanup',
-  cronTime: IS_DEV_ENV ? CronTime.every(10).minutes() : CronTime.everyDay(),
+  cronTime: IS_DEV_ENV ? CronTime.every(10).minutes() : CronTime.everyWeek(),
   timeout: 15 * 60,
   enabled: async () => IS_DEV_ENV || IS_STAGING_ENV,
   process: async (ctx) => {
@@ -60,19 +61,15 @@ const job: IJobDefinition = {
 
       let integration: INangoIntegrationData | undefined
 
-      // github integrations have connection ids per repo in the settings nangoMapping object
+      // github integrations have connection ids per repo in the integration.nango_mapping table
       if (connection.provider_config_key === NangoIntegration.GITHUB) {
-        integration = singleOrDefault(allIntegrations, (i) => {
-          if (i.platform !== PlatformType.GITHUB_NANGO) {
-            return false
-          }
-
-          if (i.settings.nangoMapping && i.settings.nangoMapping[connection.connection_id]) {
-            return true
-          }
-
-          return false
-        })
+        const mapping = await getNangoMappingByConnectionId(qx, connection.connection_id)
+        if (mapping) {
+          integration = singleOrDefault(
+            allIntegrations,
+            (i) => i.id === mapping.integrationId && i.platform === PlatformType.GITHUB_NANGO,
+          )
+        }
         // for other integrations, check if the connection belongs to an integration
       } else {
         integration = singleOrDefault(allIntegrations, (i) => i.id === connection.connection_id)

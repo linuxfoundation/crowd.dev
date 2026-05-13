@@ -36,36 +36,6 @@
       :class="focused || showHint ? 'opacity-100' : 'opacity-0'"
     >
       <span class="helper-copy">{{ hintText }}</span>
-      <el-popover v-if="eagleEye" placement="top-start">
-        <template #reference>
-          <div
-            class="flex items-center text-gray-600 text-xs ml-2"
-          >
-            <lf-icon name="circle-question" :size="16" class="mr-1 flex items-center" />
-            <span>How to use different match types</span>
-          </div>
-        </template>
-        <div>
-          <div
-            class="uppercase tracking-wide font-semibold text-2xs mb-3"
-            style="color: #9ca3af"
-          >
-            Match types
-          </div>
-          <div class="text-xs font-medium">
-            Semantic match
-          </div>
-          <div class="text-2xs text-gray-500 mb-4">
-            Example: devtool
-          </div>
-          <div class="text-xs font-medium">
-            Exact match
-          </div>
-          <div class="text-2xs text-gray-500">
-            Example: "devtool"
-          </div>
-        </div>
-      </el-popover>
     </div>
     <div v-else class="flex items-center mt-2">
       <slot name="error" />
@@ -74,13 +44,11 @@
 </template>
 
 <script>
-import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfTag from '@/ui-kit/tag/Tag.vue';
 
 export default {
   name: 'AppKeywordsInput',
   components: {
-    LfIcon,
     LfTag,
   },
   props: {
@@ -99,10 +67,6 @@ export default {
     placeholder: {
       type: String,
       default: null,
-    },
-    eagleEye: {
-      type: Boolean,
-      default: false,
     },
     isError: {
       type: Boolean,

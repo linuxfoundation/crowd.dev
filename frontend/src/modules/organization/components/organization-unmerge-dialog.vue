@@ -22,7 +22,7 @@
         <lf-button
           type="primary"
           size="medium"
-          :disabled="!selectedIdentity || !preview"
+          :disabled="!localSelectedIdentity || !preview"
           :loading="unmerging"
           @click="unmerge()"
         >
@@ -52,7 +52,7 @@
               v-model="revertPreviousMerge"
               class="text-gray-900 text-xs"
               size="tiny"
-              @update:model-value="fetchPreview(selectedIdentity!)"
+              @update:model-value="fetchPreview(localSelectedIdentity!)"
             >
               Revert previous merge
             </lf-switch>
@@ -137,7 +137,7 @@
                       <template #dropdown>
                         <template v-for="i of identities" :key="i.id">
                           <el-dropdown-item
-                            v-if="i.id !== selectedIdentity!.id"
+                            v-if="i.id !== localSelectedIdentity!.id"
                             :value="i"
                             :label="i.displayValue"
                             @click="changeIdentity(i)"
@@ -245,8 +245,7 @@
   </lf-modal>
 </template>
 
-<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+<script setup lang="ts">import { computed, onMounted, ref } from 'vue';
 import { ToastStore } from '@/shared/message/notification';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import { OrganizationService } from '@/modules/organization/organization-service';
@@ -287,7 +286,7 @@ const preview = ref<{
   primary: Organization;
   secondary: Organization;
 } | null>(null);
-const selectedIdentity = ref<OrganizationIdentityParsed | null>(null);
+const localSelectedIdentity = ref<OrganizationIdentityParsed | null>(null);
 
 const { getOrganizationMergeActions, fetchOrganization } = useOrganizationStore();
 
@@ -322,7 +321,7 @@ const isModalOpen = computed({
   set() {
     emit('update:modelValue', null);
     fetchingPreview.value = false;
-    selectedIdentity.value = null;
+    localSelectedIdentity.value = null;
     preview.value = null;
   },
 });
@@ -351,7 +350,7 @@ const identities = computed(() => {
 });
 
 const changeIdentity = (identity: OrganizationIdentityParsed) => {
-  selectedIdentity.value = identity;
+  localSelectedIdentity.value = identity;
   resetRevertPreviousMerge();
   getCanRevertMerge(identity);
   fetchPreview(identity);
@@ -405,7 +404,7 @@ const unmerge = () => {
     key: FeatureEventKey.UNMERGE_ORGANIZATION_IDENTITY,
     type: EventType.FEATURE,
     properties: {
-      identity: selectedIdentity.value,
+      identity: localSelectedIdentity.value,
     },
   });
 

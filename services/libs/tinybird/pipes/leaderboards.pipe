@@ -22,7 +22,7 @@ SQL >
         previousPeriodValue,
         collectionsSlugs,
         isLF,
-        githubHandle,
+        githubHandleArray,
         status,
         totalCount
     FROM leaderboards_copy_ds

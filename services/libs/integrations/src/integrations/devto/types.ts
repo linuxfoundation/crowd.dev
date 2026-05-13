@@ -1,16 +1,10 @@
 import { IDevToArticle } from './api/articles'
 import { IDevToComment } from './api/comments'
 
-export interface IDevToArticleSettings {
-  id: number
-  lastCommentAt: string | null
-}
-
-export interface IDevToIntegrationSettings {
-  organizations: string[]
-  users: string[]
-  articles: IDevToArticleSettings[]
-}
+export {
+  IDevtoArticleSettings as IDevToArticleSettings,
+  IDevtoIntegrationSettings as IDevToIntegrationSettings,
+} from '@crowd/types'
 
 export enum DevToRootStream {
   ORGANIZATION_ARTICLES = 'organization_articles',

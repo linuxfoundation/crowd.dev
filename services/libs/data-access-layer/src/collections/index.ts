@@ -15,10 +15,15 @@ import { QueryOptions } from '../utils'
 
 export interface ICreateCollection {
   categoryId: string
+  color?: string | null
   description?: string
+  imageUrl?: string | null
   name: string
   slug?: string
   starred: boolean
+  isPrivate?: boolean
+  ssoUserId?: string | null
+  logoUrl?: string | null
 }
 
 export interface ICollection extends ICreateCollection {
@@ -77,11 +82,16 @@ export interface ICollectionInsightProject {
 
 export enum CollectionField {
   CATEGORY_ID = 'categoryId',
+  COLOR = 'color',
   CREATED_AT = 'createdAt',
   DESCRIPTION = 'description',
   ID = 'id',
+  IMAGE_URL = 'imageUrl',
+  IS_PRIVATE = 'isPrivate',
+  LOGO_URL = 'logoUrl',
   NAME = 'name',
   SLUG = 'slug',
+  SSO_USER_ID = 'ssoUserId',
   STARRED = 'starred',
   UPDATED_AT = 'updatedAt',
   DELETED_AT = 'deletedAt',
@@ -128,13 +138,21 @@ export async function createCollection(
   qx: QueryExecutor,
   collection: ICreateCollection,
 ): Promise<ICollection> {
+  const data = {
+    description: null,
+    slug: null,
+    logoUrl: null,
+    imageUrl: null,
+    color: null,
+    ...collection,
+  }
   return qx.selectOne(
     `
-      INSERT INTO collections (name, description, slug, "categoryId", starred)
-      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred))
+      INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color)
+      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color))
       RETURNING *
     `,
-    collection,
+    data,
   )
 }
 
@@ -158,7 +176,8 @@ export enum InsightsProjectField {
   LOGO_URL = 'logoUrl',
   NAME = 'name',
   ORGANIZATION_ID = 'organizationId',
-  REPOSITORIES = 'repositories',
+  // REPOSITORIES column deprecated - repos are managed via public.repositories table
+  // API still accepts repositories param which syncs public.repositories.enabled
   SEARCH_KEYWORDS = 'searchKeywords',
   SEGMENT_ID = 'segmentId',
   SLUG = 'slug',
@@ -321,6 +340,23 @@ export async function updateInsightsProject(
     await syncRepositoriesEnabledStatus(qx, id, enabledUrls)
   }
 
+  // When slug changes, ON UPDATE CASCADE propagates the new slug to securityInsights* tables
+  // but does not touch their updatedAt — update it explicitly so Tinybird picks up the change
+  if (project.slug) {
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationSuites" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluations" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+    await qx.result(
+      `UPDATE "securityInsightsEvaluationAssessments" SET "updatedAt" = NOW() WHERE "insightsProjectSlug" = $(slug)`,
+      { slug: project.slug },
+    )
+  }
+
   return updated as IInsightsProject
 }
 
@@ -341,6 +377,23 @@ function prepareProject(project: Partial<ICreateInsightsProject>) {
     ...project,
   }
   return toUpdate
+}
+
+export async function moveInsightsProjectsToAnotherOrganization(
+  qx: QueryExecutor,
+  fromId: string,
+  toId: string,
+) {
+  return qx.result(
+    `
+      UPDATE "insightsProjects"
+      SET "organizationId" = $(toId),
+          "updatedAt" = now()
+      WHERE "organizationId" = $(fromId)
+        AND "deletedAt" IS NULL
+    `,
+    { fromId, toId },
+  )
 }
 
 export async function findBySlug(qx: QueryExecutor, slug: string) {

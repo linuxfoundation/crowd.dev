@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from loguru import logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -31,7 +31,6 @@ REPO_SELECT_COLUMNS = """
     rp.branch,
     rp."maintainerFile",
     rp."lastMaintainerRunAt",
-    rp."stuckRequiresReOnboard",
     rp."reOnboardingCount"
 """
 
@@ -125,7 +124,19 @@ async def acquire_repository(query: str, params: tuple = None) -> Repository | N
 async def acquire_recurrent_repo() -> Repository | None:
     """Acquire a regular (non-onboarding) repository, that were not processed in the last x hours (REPOSITORY_UPDATE_INTERVAL_HOURS)"""
     recurrent_repo_sql_query = f"""
-    WITH selected_repo AS (
+    -- Rate-limit guard: Gerrit (automotivelinux) aggressively rate-limits concurrent connections.
+    -- This CTE checks if any automotivelinux repo is already being processed,
+    -- so we skip picking another one from the same host until the current one finishes.
+    WITH automotivelinux_processing AS (
+        SELECT 1
+        FROM git."repositoryProcessing" rp2
+        JOIN public.repositories r2 ON r2.id = rp2."repositoryId"
+        WHERE rp2.state = 'processing'
+            AND rp2."lockedAt" IS NOT NULL
+            AND r2.url LIKE '%gerrit.automotivelinux.org%'
+        LIMIT 1
+    ),
+    selected_repo AS (
         SELECT r.id
         FROM public.repositories r
         JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
@@ -133,6 +144,10 @@ async def acquire_recurrent_repo() -> Repository | None:
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
             AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * $3
+            AND NOT (
+                r.url LIKE '%gerrit.automotivelinux.org%'
+                AND EXISTS (SELECT 1 FROM automotivelinux_processing)
+            )
         ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF rp SKIP LOCKED
@@ -150,7 +165,8 @@ async def acquire_recurrent_repo() -> Repository | None:
     states_to_exclude = (
         RepositoryState.PENDING,
         RepositoryState.PROCESSING,
-        RepositoryState.STUCK,
+        RepositoryState.PENDING_REONBOARD,
+        RepositoryState.AUTH_REQUIRED,
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
@@ -173,6 +189,39 @@ async def can_onboard_more():
         return False  # if query failed mostly due to timeout then db is already under high load
 
 
+async def acquire_pending_reonboard_repo() -> Repository | None:
+    """Acquire a pending_reonboard repo for re-onboarding (only called on weekends)."""
+    pending_reonboard_sql_query = f"""
+    WITH selected_repo AS (
+        SELECT r.id
+        FROM public.repositories r
+        JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
+        WHERE rp.state = $1
+            AND rp."lockedAt" IS NULL
+            AND r."deletedAt" IS NULL
+        ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
+        LIMIT 1
+        FOR UPDATE OF rp SKIP LOCKED
+    )
+    UPDATE git."repositoryProcessing" rp
+    SET "lockedAt" = NOW(),
+        state = $2,
+        "lastProcessedCommit" = NULL,
+        branch = NULL,
+        "reOnboardingCount" = rp."reOnboardingCount" + 1,
+        "updatedAt" = NOW()
+    FROM public.repositories r
+    CROSS JOIN selected_repo
+    WHERE rp."repositoryId" = r.id
+        AND rp."repositoryId" = selected_repo.id
+    RETURNING {REPO_SELECT_COLUMNS}
+    """
+    return await acquire_repository(
+        pending_reonboard_sql_query,
+        (RepositoryState.PENDING_REONBOARD, RepositoryState.PROCESSING),
+    )
+
+
 async def acquire_repo_for_processing() -> Repository | None:
     """
     Acquire the next repository to process based on priority and system load.
@@ -182,6 +231,8 @@ async def acquire_repo_for_processing() -> Repository | None:
        current onboarding count is below MAX_CONCURRENT_ONBOARDINGS
     2. Recurrent repos (non-PENDING/non-PROCESSING) - fallback when onboarding
        is unavailable or skipped due to high load
+    3. Pending reonboard repos (PENDING_REONBOARD state) - weekend-only, lowest priority.
+       These are repos needing re-onboarding that were deferred until the weekend.
 
     Onboarding is delayed when integration.results exceeds MAX_INTEGRATION_RESULTS
     to prevent overloading the system during high activity periods.
@@ -191,6 +242,11 @@ async def acquire_repo_for_processing() -> Repository | None:
         repo_to_process = await acquire_onboarding_repo()
     else:
         logger.info("Skipping onboarding due to high load on integration.results")
+
+    if not repo_to_process:
+        is_weekend = datetime.now(timezone.utc).weekday() >= 5
+        if is_weekend:
+            repo_to_process = await acquire_pending_reonboard_repo()
 
     if not repo_to_process:
         repo_to_process = await acquire_recurrent_repo()
@@ -227,14 +283,15 @@ async def update_last_processed_commit(repo_id: str, commit_hash: str, branch: s
     return str(result)
 
 
-async def increase_re_onboarding_count(repo_id: str):
+async def update_repository_license(repository_id: str, license_spdx: str | None) -> None:
     sql_query = """
-    UPDATE git."repositoryProcessing"
-        SET "reOnboardingCount" = "reOnboardingCount" + 1,
-            "updatedAt" = NOW()
-    WHERE "repositoryId" = $1
+    UPDATE public.repositories
+        SET license = $1::varchar,
+        "updatedAt" = NOW()
+    WHERE id = $2
+      AND license IS DISTINCT FROM $1::varchar
     """
-    return await execute(sql_query, (repo_id,))
+    await execute(sql_query, (license_spdx, repository_id))
 
 
 async def mark_repo_as_processed(repo_id: str, repo_state: RepositoryState):
@@ -308,8 +365,12 @@ async def upsert_maintainer(
         INSERT INTO "maintainersInternal"
         ("role", "originalRole", "repoUrl", "repoId", "identityId", "startDate", "endDate")
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT ("repoId", "identityId", "startDate", "endDate") DO UPDATE
-        SET role = EXCLUDED.role, "originalRole" = EXCLUDED."originalRole", "updatedAt" = NOW()
+        ON CONFLICT ("repoId", "identityId", role) DO UPDATE
+        SET "originalRole" = EXCLUDED."originalRole",
+            "repoUrl" = EXCLUDED."repoUrl",
+            "startDate" = COALESCE("maintainersInternal"."startDate", EXCLUDED."startDate"),
+            "endDate" = NULL,
+            "updatedAt" = NOW()
     """
     await execute(
         sql_query,

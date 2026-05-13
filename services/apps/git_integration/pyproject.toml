@@ -35,6 +35,7 @@ dependencies = [
     "aioboto3>=15.1.0",
     "slugify>=0.0.1",
     "orjson>=3.11.3",
+    "pyyaml>=6.0",
 ]
 
 

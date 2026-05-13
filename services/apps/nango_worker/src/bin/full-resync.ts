@@ -1,7 +1,8 @@
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
-  clearNangoIntegrationCursorData,
+  clearNangoCursors,
   findIntegrationDataForNangoWebhookProcessing,
+  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -38,7 +39,10 @@ setImmediate(async () => {
       try {
         const toTrigger: string[] = []
         if (integration.platform === PlatformType.GITHUB_NANGO) {
-          toTrigger.push(...Object.keys(integration.settings.nangoMapping))
+          const allNangoMappings = await getNangoMappingsForIntegrations(pgpQx(dbConnection), [
+            integration.id,
+          ])
+          toTrigger.push(...Object.keys(allNangoMappings[integration.id] || {}))
         } else if (integration.platform === PlatformType.GERRIT) {
           toTrigger.push(integration.id)
         } else {
@@ -55,7 +59,7 @@ setImmediate(async () => {
 
         // clear cursors
         log.info(`Clearing cursors for integration '${integrationId} (${integration.platform})'!`)
-        await clearNangoIntegrationCursorData(pgpQx(dbConnection), integrationId)
+        await clearNangoCursors(pgpQx(dbConnection), integrationId)
       } catch (error) {
         log.error(`Failed to restart syncs for integration: ${integrationId}`, error)
       }

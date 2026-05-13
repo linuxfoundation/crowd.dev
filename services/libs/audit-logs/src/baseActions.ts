@@ -1,4 +1,4 @@
-import { AuditLogAction } from '@crowd/data-access-layer/src/audit_logs/repo'
+import { AuditLogAction } from '@crowd/data-access-layer'
 
 export type CaptureValueFn = <T>(value: T) => T
 

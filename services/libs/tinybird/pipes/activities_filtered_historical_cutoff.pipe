@@ -34,9 +34,7 @@ SQL >
             AND a.timestamp
             < {{ DateTime(endDate, description="Filter activity timestamp before", required=False) }}
         {% end %}
-        {% if defined(repos) %}
-            AND a.channel IN (SELECT channel FROM repos_to_channels)
-        {% end %}
+        {% if defined(repos) %} AND a.channel IN (SELECT channel FROM repos_to_channels) {% end %}
         {% if defined(platform) %}
             AND a.platform
             = {{ String(platform, description="Filter activity platform", required=False) }}

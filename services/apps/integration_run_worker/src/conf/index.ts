@@ -11,9 +11,6 @@ export interface INangoConfig {
   secretKey: string
 }
 
-export interface ISlackAlertingConfig {
-  url: string
-}
 export interface ILokiDbConfig {
   url: string
   token: string
@@ -62,14 +59,6 @@ export const NANGO_CONFIG = (): INangoConfig => {
 
   nangoConfig = config.get<INangoConfig>('nango')
   return nangoConfig
-}
-
-let slackAlertingConfig: ISlackAlertingConfig
-export const SLACK_ALERTING_CONFIG = (): ISlackAlertingConfig => {
-  if (slackAlertingConfig) return slackAlertingConfig
-
-  slackAlertingConfig = config.get<ISlackAlertingConfig>('slackAlerting')
-  return slackAlertingConfig
 }
 
 const platformMap: Map<string, unknown | null> = new Map()

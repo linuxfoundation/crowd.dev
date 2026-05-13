@@ -7,18 +7,18 @@
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || offset <= 0 || count === 0"
+            :disabled="loading || currentOffset <= 0 || count === 0"
             :icon-only="true"
-            @click="fetch(offset - 1)"
+            @click="fetch(currentOffset - 1)"
           >
             <lf-icon name="chevron-left" />
           </lf-button>
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || offset >= count - 1 || count === 0"
+            :disabled="loading || currentOffset >= count - 1 || count === 0"
             :icon-only="true"
-            @click="fetch(offset + 1)"
+            @click="fetch(currentOffset + 1)"
           >
             <lf-icon name="chevron-right" />
           </lf-button>
@@ -29,7 +29,7 @@
           v-else-if="Math.ceil(count) > 1"
           class="text-xs leading-5 text-gray-500"
         >
-          <div>{{ offset + 1 }} of {{ Math.ceil(count) }} suggestions</div>
+          <div>{{ currentOffset + 1 }} of {{ Math.ceil(count) }} suggestions</div>
         </div>
         <div
           v-else-if="Math.ceil(count) === 1"
@@ -174,7 +174,7 @@ const { trackEvent } = useProductTracking();
 
 const organizationsToMerge = ref([]);
 const primary = ref(0);
-const offset = ref(0);
+const currentOffset = ref(0);
 const count = ref(0);
 const loading = ref(false);
 
@@ -213,7 +213,7 @@ const preview = computed(() => {
 
 const fetch = (page) => {
   if (page > -1) {
-    offset.value = page;
+    currentOffset.value = page;
   }
 
   trackEvent({
@@ -223,9 +223,9 @@ const fetch = (page) => {
 
   loading.value = true;
 
-  OrganizationService.fetchMergeSuggestions(1, offset.value, props.query ?? {})
+  OrganizationService.fetchMergeSuggestions(1, currentOffset.value, props.query ?? {})
     .then((res) => {
-      offset.value = +res.offset;
+      currentOffset.value = +res.offset;
       count.value = res.count;
       [organizationsToMerge.value] = res.rows;
 
@@ -259,7 +259,7 @@ const ignoreSuggestion = () => {
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
 
-      const nextIndex = offset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : offset.value;
+      const nextIndex = currentOffset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : currentOffset.value;
       fetch(nextIndex);
       changed.value = true;
     })
@@ -307,7 +307,7 @@ const mergeSuggestion = () => {
 
       loadingMessage();
 
-      const nextIndex = offset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : offset.value;
+      const nextIndex = currentOffset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : currentOffset.value;
       fetch(nextIndex);
       changed.value = true;
     })

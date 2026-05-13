@@ -2,7 +2,7 @@ import {
   changeMemberOrganizationAffiliationOverrides,
   findMemberAffiliationOverrides,
   findPrimaryWorkExperiencesOfMember,
-} from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
+} from '@crowd/data-access-layer'
 import {
   IChangeAffiliationOverrideData,
   IMemberOrganizationAffiliationOverride,

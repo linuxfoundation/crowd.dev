@@ -200,6 +200,7 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
               type: MemberIdentityType.EMAIL,
               platform: this.platform,
               verified: false,
+              source: 'enrichment',
             })
           }
         }

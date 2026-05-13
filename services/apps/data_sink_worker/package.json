@@ -1,5 +1,6 @@
 {
   "name": "@crowd/data-sink-worker",
+  "private": true,
   "scripts": {
     "start": "SERVICE=data-sink-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=data-sink-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9233 src/main.ts",
@@ -16,8 +17,6 @@
     "script:restart-result": "SERVICE=script tsx src/bin/restart-result.ts",
     "script:process-results": "SERVICE=script tsx src/bin/process-results.ts",
     "script:trigger-results-for-tenant": "SERVICE=script tsx src/bin/trigger-results-for-tenant.ts",
-    "script:map-tenant-members-to-org": "SERVICE=script tsx src/bin/map-tenant-members-to-org.ts",
-    "script:map-member-to-org": "SERVICE=script tsx src/bin/map-member-to-org.ts",
     "script:fix-activity-obj-member-data": "SERVICE=script tsx src/bin/fix-activity-obj-member-data.ts",
     "script:fix-member-displayName": "SERVICE=script tsx src/bin/fix-member-displayName.ts",
     "script:fix-members-joinedAt": "SERVICE=script tsx src/bin/fix-members-joinedAt.ts",

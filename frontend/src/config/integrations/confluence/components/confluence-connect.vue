@@ -1,6 +1,6 @@
 <template>
   <lf-button
-    type="secondary"
+    type="outline"
     @click="isConfluenceSettingsDrawerVisible = true"
   >
     <lf-icon name="link-simple" />

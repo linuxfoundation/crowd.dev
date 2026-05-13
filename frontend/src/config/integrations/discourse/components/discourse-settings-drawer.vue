@@ -7,6 +7,8 @@
     pre-title="Integration"
     :show-footer="true"
     has-border
+    close-on-click-modal="true"
+    :close-function="canClose"
     @close="handleCancel()"
   >
     <template #beforeTitle>
@@ -15,6 +17,9 @@
         :src="logoUrl"
         alt="Discourse logo"
       />
+    </template>
+    <template #belowTitle>
+      <drawer-description integration-key="discourse" />
     </template>
     <template #content>
       <el-form
@@ -189,30 +194,19 @@
     </template>
 
     <template #footer>
-      <div style="flex: auto">
-        <lf-button
-          type="secondary-gray"
-          size="medium"
-          class="mr-3"
-          :disabled="loading"
-          @click="handleCancel"
-        >
-          Cancel
-        </lf-button>
-        <lf-button
-          type="primary"
-          size="medium"
-          :disabled="
-            $v.$invalid
-              || !hasFormChanged || loading"
-          :loading="loading"
-          @click="connect()"
-        >
-          {{ integration?.settings?.forumHostname ? "Update" : "Connect" }}
-        </lf-button>
-      </div>
+      <drawer-footer-buttons
+        :integration="props.integration"
+        :is-edit-mode="!!integration?.settings?.forumHostname"
+        :has-form-changed="hasFormChanged"
+        :is-loading="loading"
+        :is-submit-disabled="$v.$invalid || !hasFormChanged || loading"
+        :cancel="handleCancel"
+        :revert-changes="revertChanges"
+        :connect="connect"
+      />
     </template>
   </app-drawer>
+  <changes-confirmation-modal ref="changesConfirmationModalRef" />
 </template>
 
 <script setup lang="ts">
@@ -235,8 +229,12 @@ import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfCard from '@/ui-kit/card/Card.vue';
 import { ToastStore } from '@/shared/message/notification';
+import DrawerDescription from '@/modules/admin/modules/integration/components/drawer-description.vue';
+import DrawerFooterButtons from '@/modules/admin/modules/integration/components/drawer-footer-buttons.vue';
+import ChangesConfirmationModal from '@/modules/admin/modules/integration/components/changes-confirmation-modal.vue';
 
 const { trackEvent } = useProductTracking();
+const changesConfirmationModalRef = ref<InstanceType<typeof ChangesConfirmationModal> | null>(null);
 
 const props = defineProps<{
   modelValue: boolean,
@@ -247,8 +245,7 @@ const props = defineProps<{
 
 const inputRef = ref();
 const showToken = ref(false);
-
-const payloadURL = ref(undefined);
+const payloadURL = ref<string | undefined>(undefined);
 const webhookSecret = ref(undefined);
 
 const { doDiscourseConnect } = mapActions('integration');
@@ -362,6 +359,21 @@ const isVisible = computed({
   },
 });
 
+const canClose = (done: (value: boolean) => void) => {
+  if (hasFormChanged.value) {
+    changesConfirmationModalRef.value?.open().then((discardChanges: boolean) => {
+      if (discardChanges) {
+        revertChanges();
+        done(false);
+      } else {
+        done(true);
+      }
+    });
+  } else {
+    done(false);
+  }
+};
+
 const handleCancel = () => {
   emit('update:modelValue', false);
   if (!props.integration?.settings?.forumHostname) {
@@ -388,7 +400,7 @@ const handleCancel = () => {
   formSnapshot();
 };
 
-onMounted(() => {
+const syncData = () => {
   if (props.integration?.settings?.forumHostname) {
     form.discourseURL = props.integration?.settings.forumHostname;
     form.apiKey = props.integration?.settings.apiKey;
@@ -397,6 +409,14 @@ onMounted(() => {
     isAPIConnectionValid.value = true;
   }
   formSnapshot();
+};
+
+const revertChanges = () => {
+  syncData();
+};
+
+onMounted(() => {
+  syncData();
 });
 
 const verifyWebhook = async () => {

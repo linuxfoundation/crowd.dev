@@ -9,7 +9,6 @@ export interface IProcessNangoWebhookArguments {
 export interface ISyncGithubIntegrationArguments {
   integrationId: string
 }
-
 export interface IGithubIntegrationSyncInstructions {
   providerConfigKey: string
 
@@ -27,4 +26,28 @@ export interface IGithubIntegrationSyncInstructions {
 export interface IGithubRepoData {
   owner: string
   repoName: string
+}
+
+export interface IDeleteGithubRepoConnectionArgs {
+  integrationId: string
+  providerConfigKey: string
+  connectionId: string
+  repo: IGithubRepoData
+}
+
+export interface IDeleteDuplicateGithubConnectionArgs {
+  integrationId: string
+  providerConfigKey: string
+  connectionId: string
+  repo: IGithubRepoData
+}
+
+export interface ISyncGithubRepoArgs {
+  integrationId: string
+  providerConfigKey: string
+  repo: IGithubRepoData
+}
+
+export interface ISyncGithubRepoResult {
+  skipped: boolean
 }

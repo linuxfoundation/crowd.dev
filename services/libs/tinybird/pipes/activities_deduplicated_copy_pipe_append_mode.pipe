@@ -15,7 +15,12 @@ SQL >
         a.url,
         a.updatedAt
     FROM activities a
-    WHERE a.updatedAt > (SELECT max("updatedAt") FROM activities_deduplicated_ds)
+    WHERE
+        a.updatedAt > (
+            SELECT greatest(max(updatedAt), now() - INTERVAL 3 HOUR)
+            FROM activities_deduplicated_ds
+            WHERE updatedAt > now() - INTERVAL 3 HOUR
+        )
 
 TYPE COPY
 TARGET_DATASOURCE activities_deduplicated_ds

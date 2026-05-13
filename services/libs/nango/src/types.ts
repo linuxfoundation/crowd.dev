@@ -232,3 +232,15 @@ export interface INangoWebhookPayload {
   syncType: 'INITIAL' | 'INCREMENTAL'
   modifiedAfter: string
 }
+
+export interface INangoConnectionToCheck {
+  connectionId: string
+  models: string[]
+  workflowIdPrefix: string
+}
+
+export interface ITriggerNangoIntegrationCheckArguments {
+  integrationId: string
+  providerConfigKey: string
+  connections: INangoConnectionToCheck[]
+}

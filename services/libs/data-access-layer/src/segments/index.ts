@@ -351,6 +351,39 @@ export async function getMappedWithSegmentName(
   return result?.segment_name ?? null
 }
 
+export async function getMappedAllWithSegmentName(
+  qx: QueryExecutor,
+  segmentId: string,
+  platforms: PlatformType[],
+): Promise<{ segmentName: string; url: string }[]> {
+  if (platforms.length === 0) {
+    return []
+  }
+
+  const results = await qx.select(
+    `
+      SELECT DISTINCT s.name as segment_name, r.url
+      FROM public.repositories r
+      LEFT JOIN integrations i ON r."sourceIntegrationId" = i.id
+      LEFT JOIN segments s ON i."segmentId" = s.id
+      WHERE r."segmentId" = $(segmentId)
+        AND r."deletedAt" IS NULL
+        AND (
+          i.id IS NULL
+          OR (i.platform = ANY($(platforms)::text[]) AND i."segmentId" <> $(segmentId))
+        )
+    `,
+    { segmentId, platforms },
+  )
+
+  return results
+    .filter((r: { segment_name: string; url: string }) => r.segment_name)
+    .map((r: { segment_name: string; url: string }) => ({
+      segmentName: r.segment_name,
+      url: r.url,
+    }))
+}
+
 export interface ISegment {
   id: string
   name: string

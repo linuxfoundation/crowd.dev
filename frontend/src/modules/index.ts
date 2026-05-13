@@ -9,7 +9,6 @@ import organization from '@/modules/organization/organization-module';
 
 import admin from '@/modules/admin/admin.module';
 import dataQuality from '@/modules/data-quality/data-quality.module';
-import eagleEye from '@/modules/eagle-eye/eagle-eye-module';
 
 const modules: Record<string, any> = {
   shared,
@@ -19,7 +18,6 @@ const modules: Record<string, any> = {
   member,
   activity,
   tag,
-  eagleEye,
   organization,
   admin,
   dataQuality,

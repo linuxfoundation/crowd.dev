@@ -1,0 +1,63 @@
+NODE repositories_populated_copy_base
+DESCRIPTION >
+    Returns base repository information from enabled, non-excluded repositories linked to insights projects
+
+SQL >
+    SELECT r.id AS id, r.url AS url, r.segmentId AS segmentId, r.insightsProjectId AS insightsProjectId
+    FROM repositories r FINAL
+    WHERE r.enabled = true AND r.excluded = false AND isNull (r.deletedAt) AND r.insightsProjectId != ''
+
+NODE repositories_populated_copy_contributor_org_counts
+DESCRIPTION >
+    Calculate contributor and organization counts per repository (channel)
+
+SQL >
+    SELECT
+        channel,
+        uniq(CASE WHEN memberId != '' THEN memberId ELSE NULL END) AS contributorCount,
+        uniq(CASE WHEN organizationId != '' THEN organizationId ELSE NULL END) AS organizationCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    GROUP BY channel
+
+NODE repositories_populated_copy_first_commit
+DESCRIPTION >
+    Returns timestamp of first commit per repository (channel)
+
+SQL >
+    SELECT channel, minOrNull(timestamp) AS firstCommit
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE type = 'authored-commit' AND platform = 'git' AND timestamp > toDateTime('1971-01-01')
+    GROUP BY channel
+
+NODE repositories_populated_copy_software_value
+DESCRIPTION >
+    Returns software value per repository from softwareValueProjectCosts
+
+SQL >
+    SELECT repoUrl, sum(estimatedCost) AS softwareValue
+    FROM softwareValueProjectCosts FINAL
+    GROUP BY repoUrl
+
+NODE repositories_populated_copy_results
+DESCRIPTION >
+    Join all repository metrics together
+
+SQL >
+    SELECT
+        base.id AS id,
+        base.url AS url,
+        base.segmentId AS segmentId,
+        base.insightsProjectId AS insightsProjectId,
+        COALESCE(counts.contributorCount, 0) AS contributorCount,
+        COALESCE(counts.organizationCount, 0) AS organizationCount,
+        COALESCE(sv.softwareValue, 0) AS softwareValue,
+        fc.firstCommit AS firstCommit
+    FROM repositories_populated_copy_base AS base
+    LEFT JOIN repositories_populated_copy_contributor_org_counts AS counts ON base.url = counts.channel
+    LEFT JOIN repositories_populated_copy_first_commit AS fc ON base.url = fc.channel
+    LEFT JOIN repositories_populated_copy_software_value AS sv ON base.url = sv.repoUrl
+
+TYPE COPY
+TARGET_DATASOURCE repositories_populated_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 * * * *

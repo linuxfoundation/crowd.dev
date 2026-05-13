@@ -47,4 +47,12 @@ export * from './twitter/memberAttributes'
 export * from './groupsio/grid'
 export * from './groupsio/types'
 export * from './groupsio/memberAttributes'
+
+export * from './cvent/types'
+
+export * from './tnc/types'
+
+export * from './meetings/types'
+export * from './committees/types'
+
 export * from './activityDisplayService'

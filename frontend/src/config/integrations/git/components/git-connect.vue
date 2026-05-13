@@ -5,7 +5,7 @@
       <!--        <lf-icon name="circle-info" type="regular" />-->
       <!--        Details-->
       <!--      </lf-button>-->
-      <lf-button type="secondary" @click="isGitConnectDrawerVisible = true">
+      <lf-button type="outline" @click="isGitConnectDrawerVisible = true">
         <lf-icon name="link-simple" />
         <slot>Connect</slot>
       </lf-button>

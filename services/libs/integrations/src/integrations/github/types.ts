@@ -1,4 +1,6 @@
 /* eslint-disable  @typescript-eslint/no-explicit-any */
+import { IGithubIntegrationSettings } from '@crowd/types'
+
 export enum GithubActivityType {
   DISCUSSION_STARTED = 'discussion-started',
   PULL_REQUEST_OPENED = 'pull_request-opened',
@@ -171,17 +173,7 @@ export interface GithubPlatformSettings {
   personalAccessTokens: string
 }
 
-export interface GithubIntegrationSettings {
-  orgs: Array<{
-    name: string
-    logo: string
-    url: string
-    fullSync: boolean
-    updatedAt: string
-    repos: Array<Repo>
-  }>
-  unavailableRepos: Repos
-}
+export type GithubIntegrationSettings = IGithubIntegrationSettings
 
 export interface GitHubManualIntegrationSettingsDefault extends GithubIntegrationSettings {
   manualSettingsType: 'default'

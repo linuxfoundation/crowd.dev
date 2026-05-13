@@ -1,5 +1,6 @@
 {
   "name": "@crowd/integration-stream-worker",
+  "private": true,
   "scripts": {
     "start": "SERVICE=integration-stream-worker tsx src/main.ts",
     "start:debug:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=integration-stream-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9231 src/main.ts",

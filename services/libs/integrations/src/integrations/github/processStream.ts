@@ -285,7 +285,7 @@ export const prepareMemberFromOrg = (orgFromApi: any): GithubPrepareOrgMemberOut
 function getRepoByName(name: string, ctx: IProcessStreamContext): Repo | null {
   const settings = ctx.integration.settings as GithubIntegrationSettings
   const availableRepo: Repo | undefined = singleOrDefault(
-    settings?.orgs?.flatMap((o) => o.repos),
+    settings?.orgs?.flatMap((o) => o.repos || []),
     (r) => r.name === name,
   )
   if (availableRepo) {
@@ -327,12 +327,9 @@ const processRootStream: ProcessStreamHandler = async (ctx) => {
     }
   }
 
-  // update integration settings
-  // this settings will be avaliable in next streams
+  // Only persist unavailableRepos for next-run re-checking.
+  // Repos live in the repositories table — do not write them back to settings.
   await ctx.updateIntegrationSettings({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(ctx.integration.settings as any),
-    repos,
     unavailableRepos,
   })
 

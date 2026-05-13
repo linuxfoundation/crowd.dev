@@ -1,7 +1,13 @@
 import _ from 'lodash'
+import { v4 as uuid } from 'uuid'
 
-import { getLongestDateRange } from '@crowd/common'
+import { getLongestDateRange, getMemberOrganizationSourceRank } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
+import {
+  IChangeAffiliationOverrideData,
+  IMemberOrganization,
+  IMemberOrganizationAffiliationOverride,
+} from '@crowd/types'
 
 import { findMemberAffiliations } from '../member_segment_affiliations'
 import { IManualAffiliationData } from '../old/apps/data_sink_worker/repo/memberAffiliation.data'
@@ -12,6 +18,13 @@ import type { MemberOrganizationWithOverrides, TimelineItem } from './types'
 const logger = getServiceChildLogger('member-affiliations')
 
 type AffiliationItem = MemberOrganizationWithOverrides | IManualAffiliationData
+
+const isManualAffiliation = (row: AffiliationItem): row is IManualAffiliationData =>
+  'segmentId' in row && !!row.segmentId
+
+const isMemberOrganizationWithOverrides = (
+  row: AffiliationItem,
+): row is MemberOrganizationWithOverrides => !isManualAffiliation(row)
 
 async function prepareMemberOrganizationAffiliationTimeline(
   qx: QueryExecutor,
@@ -47,7 +60,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
     }
 
     // manual affiliations (identified by segmentId) always take highest precedence
-    const manualAffiliations = orgs.filter((row) => 'segmentId' in row && !!row.segmentId)
+    const manualAffiliations = orgs.filter(isManualAffiliation)
     if (manualAffiliations.length > 0) {
       if (manualAffiliations.length === 1) return manualAffiliations[0]
       // if multiple manual affiliations, pick the one with the longest date range
@@ -75,11 +88,22 @@ async function prepareMemberOrganizationAffiliationTimeline(
         return withDates[0]
       }
 
-      // 2. get the two orgs with the most members, and return the one with the most members if there's no draw
+      // 2. among dated rows, pick the best source tier (ui > email-domain > enrichment-*)
+      if (withDates.length > 1) {
+        const ranked = withDates.map((row) => ({
+          row,
+          rank: getMemberOrganizationSourceRank(
+            isMemberOrganizationWithOverrides(row) ? row.source : undefined,
+          ),
+        }))
+        const bestRank = Math.min(...ranked.map((r) => r.rank))
+        orgs = ranked.filter((r) => r.rank === bestRank).map((r) => r.row)
+        if (orgs.length === 1) return orgs[0]
+      }
+
+      // 3. get the two orgs with the most members, and return the one with the most members if there's no draw
       // only compare member orgs (manual affiliations don't have memberCount)
-      const memberOrgsOnly = orgs.filter(
-        (row: AffiliationItem) => 'segmentId' in row && !!row.segmentId,
-      ) as MemberOrganizationWithOverrides[]
+      const memberOrgsOnly = orgs.filter(isMemberOrganizationWithOverrides)
       if (memberOrgsOnly.length >= 2) {
         const sortedByMembers = memberOrgsOnly.sort((a, b) => b.memberCount - a.memberCount)
         if (sortedByMembers[0].memberCount > sortedByMembers[1].memberCount) {
@@ -87,20 +111,18 @@ async function prepareMemberOrganizationAffiliationTimeline(
         }
       }
 
-      // 3. there's a draw, return the one with the longer date range
+      // 4. there's a draw, return the one with the longer date range
       return getLongestDateRange(orgs)
     }
   }
 
   // solves conflicts in timeranges, always decides on one org when there are overlapping ranges
   const buildTimeline = (
-    memberOrganizations: MemberOrganizationWithOverrides[],
-    manualAffiliations: IManualAffiliationData[],
+    affiliations: AffiliationItem[],
     fallbackOrganizationId: string | null,
+    includeFallback = true,
   ): TimelineItem[] => {
-    const allAffiliationsWithDates = [...memberOrganizations, ...manualAffiliations].filter(
-      (row) => !!row.dateStart,
-    )
+    const allAffiliationsWithDates = affiliations.filter((row) => !!row.dateStart)
 
     const earliestStartDate =
       allAffiliationsWithDates.length > 0
@@ -124,7 +146,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
       let gapStartDate = null
 
       for (let date = new Date(earliestStartDate); date <= now; date.setDate(date.getDate() + 1)) {
-        const orgs = findOrgsWithRolesInDate(date, [...memberOrganizations, ...manualAffiliations])
+        const orgs = findOrgsWithRolesInDate(date, affiliations)
 
         if (orgs.length === 0) {
           // means there's a gap in the timeline, close the current range if there's one
@@ -202,13 +224,15 @@ async function prepareMemberOrganizationAffiliationTimeline(
       fallbackEnd = oneDayBefore(earliestStartDate)
     }
 
-    // prepend range to cover all activities before the earliest affiliation date
-    // also handles edge case where fallback org is null and the timeline is empty.
-    timeline.unshift({
-      organizationId: fallbackOrganizationId,
-      dateStart: fallbackStart.toISOString(),
-      dateEnd: fallbackEnd.toISOString(),
-    })
+    if (includeFallback) {
+      // prepend range to cover all activities before the earliest affiliation date
+      // also handles edge case where fallback org is null and the timeline is empty.
+      timeline.unshift({
+        organizationId: fallbackOrganizationId,
+        dateStart: fallbackStart.toISOString(),
+        dateEnd: fallbackEnd.toISOString(),
+      })
+    }
 
     return timeline
   }
@@ -237,6 +261,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
         mo."dateStart",
         mo."dateEnd",
         mo."createdAt",
+        mo."source",
         coalesce(ovr."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience",
         coalesce(a.total_count, 0) as "memberCount"
       FROM "memberOrganizations" mo
@@ -283,7 +308,38 @@ async function prepareMemberOrganizationAffiliationTimeline(
         .value() ?? null
   }
 
-  return buildTimeline(memberOrganizations, manualAffiliations, fallbackOrganizationId)
+  // We separate global and manual timelines to prevent 'stale' organizationIds
+  // Member organizations apply globally, while member segment affiliations only override specific segments.
+  const baseTimeline = buildTimeline(memberOrganizations, fallbackOrganizationId).map((item) => ({
+    ...item,
+    skipManualAffiliationSegments: manualAffiliations.length > 0,
+  }))
+
+  // Only keep items with an actual org. Gaps (null org) are already handled by the base timeline.
+  const manualTimeline = _.flatMap(
+    _.groupBy(manualAffiliations, 'segmentId'),
+    (affiliations, segmentId) => {
+      const items = buildTimeline(affiliations, null, false)
+        .filter((item) => item.organizationId !== null)
+        .map((item) => ({ ...item, segmentId }))
+
+      // Undated MSAs are invisible to buildTimeline (no dateStart to anchor the loop).
+      // Create a catch-all so the base pass's NOT EXISTS still has a matching manual item.
+      if (items.length === 0) {
+        const primary = selectPrimaryWorkExperience(affiliations)
+        items.push({
+          organizationId: primary.organizationId,
+          dateStart: new Date('1970-01-01').toISOString(),
+          dateEnd: primary.dateEnd ? new Date(primary.dateEnd).toISOString() : null,
+          segmentId,
+        })
+      }
+
+      return items
+    },
+  )
+
+  return [...baseTimeline, ...manualTimeline]
 }
 
 async function processAffiliationActivities(
@@ -302,29 +358,45 @@ async function processAffiliationActivities(
   }
 
   // Build the where conditions for the subquery
-  const conditions = [`"memberId" = $(memberId)`]
+  const conditions = [`ar."memberId" = $(memberId)`]
 
   // Organization filtering
   if (affiliation.organizationId) {
-    conditions.push(`("organizationId" is null or "organizationId" <> $(organizationId))`)
+    conditions.push(`(ar."organizationId" is null or ar."organizationId" <> $(organizationId))`)
   } else {
-    conditions.push(`"organizationId" is not null`)
+    conditions.push(`ar."organizationId" is not null`)
   }
 
   // Date filtering
   if (affiliation.dateStart) {
-    conditions.push(`"timestamp" >= $(dateStart)::date`)
+    conditions.push(`ar."timestamp" >= $(dateStart)::date`)
     params.dateStart = affiliation.dateStart
   }
   if (affiliation.dateEnd) {
-    conditions.push(`"timestamp" < $(dateEnd)::date + interval '1 day'`)
+    conditions.push(`ar."timestamp" < $(dateEnd)::date + interval '1 day'`)
     params.dateEnd = affiliation.dateEnd
   }
 
   // Segment filtering (for manual affiliations)
   if (affiliation.segmentId) {
-    conditions.push(`"segmentId" = $(segmentId)`)
+    conditions.push(`ar."segmentId" = $(segmentId)`)
     params.segmentId = affiliation.segmentId
+  }
+
+  // Don't overwrite activities that a member segment affiliation covers
+  // Those are handled in the manual timeline.
+  if (affiliation.skipManualAffiliationSegments) {
+    conditions.push(`
+      NOT EXISTS (
+        SELECT 1
+        FROM "memberSegmentAffiliations" msa
+        WHERE msa."memberId" = $(memberId)
+          AND msa."segmentId" = ar."segmentId"
+          AND msa."organizationId" IS NOT NULL
+          AND (msa."dateStart" IS NULL OR ar."timestamp" >= msa."dateStart"::date)
+          AND (msa."dateEnd" IS NULL OR ar."timestamp" < msa."dateEnd"::date + interval '1 day')
+      )
+    `)
   }
 
   const whereClause = conditions.join(' and ')
@@ -335,7 +407,7 @@ async function processAffiliationActivities(
         UPDATE "activityRelations"
         SET "organizationId" = $(organizationId), "updatedAt" = CURRENT_TIMESTAMP
         WHERE "activityId" in (
-          select "activityId" from "activityRelations"
+          select ar."activityId" from "activityRelations" ar
           where ${whereClause}
           limit $(batchSize)
         )
@@ -366,4 +438,242 @@ export async function refreshMemberOrganizationAffiliations(qx: QueryExecutor, m
   const processed = results.reduce((acc, processed) => acc + processed, 0)
 
   logger.info({ memberId }, `Refreshed ${processed} activities in ${duration}ms`)
+}
+
+export async function changeMemberOrganizationAffiliationOverrides(
+  qx: QueryExecutor,
+  data: IChangeAffiliationOverrideData[],
+): Promise<void> {
+  if (!Array.isArray(data) || data.length === 0) {
+    return
+  }
+
+  const rows: IMemberOrganizationAffiliationOverride[] = []
+
+  for (const d of data) {
+    if (
+      !d.memberId ||
+      !d.memberOrganizationId ||
+      (d.allowAffiliation === undefined && d.isPrimaryWorkExperience === undefined)
+    ) {
+      continue
+    }
+
+    rows.push({
+      id: uuid(),
+      memberId: d.memberId,
+      memberOrganizationId: d.memberOrganizationId,
+      allowAffiliation: d.allowAffiliation,
+      isPrimaryWorkExperience: d.isPrimaryWorkExperience,
+    })
+  }
+
+  if (rows.length === 0) {
+    return
+  }
+
+  const valuesSql = rows
+    .map(
+      (_, i) => `
+        (
+          $(id_${i}),
+          $(memberId_${i}),
+          $(memberOrganizationId_${i}),
+          $(allowAffiliation_${i}),
+          $(isPrimaryWorkExperience_${i})
+        )
+      `,
+    )
+    .join(', ')
+
+  const params = rows.reduce(
+    (acc, row, i) => {
+      acc[`id_${i}`] = row.id
+      acc[`memberId_${i}`] = row.memberId
+      acc[`memberOrganizationId_${i}`] = row.memberOrganizationId
+      acc[`allowAffiliation_${i}`] = row.allowAffiliation
+      acc[`isPrimaryWorkExperience_${i}`] = row.isPrimaryWorkExperience
+      return acc
+    },
+    {} as Record<string, unknown>,
+  )
+
+  await qx.result(
+    `
+      INSERT INTO "memberOrganizationAffiliationOverrides" (
+        id,
+        "memberId",
+        "memberOrganizationId",
+        "allowAffiliation",
+        "isPrimaryWorkExperience"
+      )
+      VALUES ${valuesSql}
+      ON CONFLICT ("memberId", "memberOrganizationId")
+      DO UPDATE SET
+        "allowAffiliation" = COALESCE(EXCLUDED."allowAffiliation", "memberOrganizationAffiliationOverrides"."allowAffiliation"),
+        "isPrimaryWorkExperience" = COALESCE(EXCLUDED."isPrimaryWorkExperience", "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience");
+    `,
+    params,
+  )
+}
+
+export async function findMemberAffiliationOverrides(
+  qx: QueryExecutor,
+  memberId: string,
+  memberOrganizationIds?: string[],
+): Promise<IMemberOrganizationAffiliationOverride[]> {
+  const whereClause = ['"memberId" = $(memberId)']
+
+  if (memberOrganizationIds?.length) {
+    whereClause.push(`"memberOrganizationId" IN ($(memberOrganizationIds:csv))`)
+  }
+
+  const overrides: IMemberOrganizationAffiliationOverride[] = await qx.select(
+    `
+      SELECT 
+        id,
+        "memberId",
+        "memberOrganizationId",
+        coalesce("allowAffiliation", true) as "allowAffiliation",
+        coalesce("isPrimaryWorkExperience", false) as "isPrimaryWorkExperience"
+      FROM "memberOrganizationAffiliationOverrides"
+      WHERE ${whereClause.join(' AND ')}
+    `,
+    {
+      memberId,
+      memberOrganizationIds,
+    },
+  )
+
+  if (!memberOrganizationIds?.length) {
+    return overrides
+  }
+
+  // Map over requested memberOrganizationIds and provide defaults for missing ones
+  const foundMemberOrgIds = new Set(overrides.map((override) => override.memberOrganizationId))
+
+  const results = memberOrganizationIds.map((memberOrganizationId) => {
+    if (foundMemberOrgIds.has(memberOrganizationId)) {
+      return overrides.find((override) => override.memberOrganizationId === memberOrganizationId)
+    }
+    return {
+      allowAffiliation: true,
+      isPrimaryWorkExperience: false,
+      memberId,
+      memberOrganizationId,
+    }
+  })
+
+  return results
+}
+
+export async function findOrganizationAffiliationOverrides(
+  qx: QueryExecutor,
+  organizationId: string,
+): Promise<IMemberOrganizationAffiliationOverride[]> {
+  return qx.select(
+    `
+      SELECT
+        moa.id,
+        moa."memberId",
+        moa."memberOrganizationId",
+        coalesce(moa."allowAffiliation", true) as "allowAffiliation",
+        coalesce(moa."isPrimaryWorkExperience", false) as "isPrimaryWorkExperience"
+      FROM "memberOrganizationAffiliationOverrides" moa
+      JOIN "memberOrganizations" mo ON moa."memberOrganizationId" = mo.id
+      WHERE mo."organizationId" = $(organizationId)
+      AND mo."deletedAt" IS NULL
+    `,
+    {
+      organizationId,
+    },
+  )
+}
+
+export async function findPrimaryWorkExperiencesOfMember(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<IMemberOrganizationAffiliationOverride[]> {
+  const overrides: IMemberOrganizationAffiliationOverride[] = await qx.select(
+    `
+      SELECT 
+        id,
+        "memberId",
+        "memberOrganizationId",
+        coalesce("allowAffiliation", true) as "allowAffiliation",
+        coalesce("isPrimaryWorkExperience", false) as "isPrimaryWorkExperience"
+      FROM "memberOrganizationAffiliationOverrides"
+      WHERE "memberId" = $(memberId)
+      AND "isPrimaryWorkExperience" = true
+    `,
+    {
+      memberId,
+    },
+  )
+
+  return overrides
+}
+
+export async function fetchOrganizationMembersWithoutAffiliationOverride(
+  qx: QueryExecutor,
+  organizationId: string,
+  allowAffiliation: boolean,
+  afterId?: string,
+  limit = 100,
+): Promise<IMemberOrganization[]> {
+  return qx.select(
+    `
+      SELECT mo.id, mo."memberId"
+      FROM "memberOrganizations" mo
+      WHERE mo."organizationId" = $(organizationId)
+        AND mo."deletedAt" IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "memberOrganizationAffiliationOverrides" moao
+          WHERE moao."memberOrganizationId" = mo.id
+            AND moao."allowAffiliation" = $(allowAffiliation)
+        )
+        ${afterId ? `AND mo.id > $(afterId)` : ''}
+      ORDER BY mo.id
+      LIMIT $(limit)
+    `,
+    {
+      organizationId,
+      allowAffiliation,
+      limit,
+      afterId,
+    },
+  )
+}
+
+export async function applyOrganizationAffiliationPolicyToMembers(
+  qx: QueryExecutor,
+  organizationId: string,
+  allowAffiliation: boolean,
+) {
+  let afterId
+
+  do {
+    // We fetch members whose current override doesn't match the desired org-level affiliation policy.
+    // This avoids rewriting rows that already comply.
+    const memberOrgs = await fetchOrganizationMembersWithoutAffiliationOverride(
+      qx,
+      organizationId,
+      allowAffiliation,
+      afterId,
+    )
+
+    if (memberOrgs.length === 0) break
+
+    await changeMemberOrganizationAffiliationOverrides(
+      qx,
+      memberOrgs.map((mo) => ({
+        memberId: mo.memberId,
+        memberOrganizationId: mo.id,
+        allowAffiliation,
+      })),
+    )
+
+    afterId = memberOrgs[memberOrgs.length - 1].id
+  } while (afterId)
 }

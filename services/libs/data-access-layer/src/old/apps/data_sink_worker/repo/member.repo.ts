@@ -6,7 +6,7 @@ import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 import {
   deleteManyMemberIdentities,
   insertManyMemberIdentities,
-} from '../../../../member_identities'
+} from '../../../../members/identities'
 import { PgPromiseQueryExecutor } from '../../../../queryExecutor'
 
 import { IDbMember, getInsertMemberColumnSet, getSelectMemberColumnSet } from './member.data'
@@ -59,7 +59,7 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
         ['verified', '?memberId', '?platform', '?type', '?value'],
         'memberIdentities',
       ) +
-      ' where t."memberId" = v."memberId"::uuid and t.platform = v.platform and t.type = v.type and t.value = v.value'
+      ' where t."memberId" = v."memberId"::uuid and t.platform = v.platform and t.type = v.type and t.value = v.value and t."deletedAt" is null'
 
     await this.db().none(query)
   }
@@ -86,7 +86,8 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
     memberId: string,
     integrationId: string,
     identities: IMemberIdentity[],
-  ): Promise<void> {
+    failOnConflict = false,
+  ): Promise<number> {
     const objects = identities.map((i) => {
       return {
         memberId,
@@ -96,10 +97,15 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
         value: i.value,
         type: i.type,
         verified: i.verified,
+        source: 'integration',
       }
     })
 
-    await insertManyMemberIdentities(new PgPromiseQueryExecutor(this.db()), objects, true)
+    return insertManyMemberIdentities(
+      new PgPromiseQueryExecutor(this.db()),
+      objects,
+      failOnConflict,
+    )
   }
 
   public async addToSegments(memberId: string, segmentIds: string[]): Promise<void> {

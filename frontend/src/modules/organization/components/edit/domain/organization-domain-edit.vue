@@ -75,6 +75,7 @@ const defaultForm: OrganizationIdentity = {
   verified: false,
   platform: Platform.CUSTOM,
   type: OrganizationIdentityType.PRIMARY_DOMAIN,
+  source: 'ui',
   sourceId: null,
 };
 
@@ -112,6 +113,7 @@ const updateDomain = () => {
       return {
         ...form,
         verified: false,
+        source: 'ui',
         integrationId: null,
         sourceId: null,
         platform: 'custom',

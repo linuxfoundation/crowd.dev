@@ -1,0 +1,105 @@
+DESCRIPTION >
+    - Calculates repository-level contributor dependency (bus factor) health score.
+    - Returns the number of contributors making up 51% of contributions, their combined percentage, and benchmark (0-5).
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter
+    - `endDate`: Optional DateTime filter
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_contributor_dependency_count
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, memberId, count() AS contributionCount
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel, memberId
+        ORDER BY contributionCount DESC
+    {% else %}
+        SELECT channel, memberId, count() AS contributionCount
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfDay(now() - INTERVAL 365 DAY)
+            AND timestamp < toStartOfDay(now() + INTERVAL 1 DAY)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel, memberId
+        ORDER BY contributionCount DESC
+    {% end %}
+
+NODE health_score_contributor_dependency_pct
+SQL >
+    %
+    SELECT
+        channel,
+        memberId,
+        contributionCount,
+        ROUND(
+            contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY channel), 2
+        ) AS contributionPercentage
+    FROM repo_health_score_contributor_dependency_count
+    ORDER BY contributionPercentage DESC
+
+NODE health_score_contributor_dependency_running
+SQL >
+    %
+    SELECT
+        channel,
+        memberId,
+        contributionPercentage,
+        SUM(contributionPercentage) OVER (
+            PARTITION BY channel ORDER BY contributionPercentage DESC, memberId
+        ) AS contributionPercentageRunningTotal
+    FROM health_score_contributor_dependency_pct
+
+NODE health_score_contributor_dependency_score
+SQL >
+    %
+    SELECT
+        channel,
+        count() AS contributorDependencyCount,
+        round(sum(contributionPercentage)) AS contributorDependencyPercentage
+    FROM health_score_contributor_dependency_running
+    WHERE
+        contributionPercentageRunningTotal < 51
+        OR (contributionPercentageRunningTotal - contributionPercentage < 51)
+    GROUP BY channel
+
+NODE health_score_contributor_dependency_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        contributorDependencyCount,
+        contributorDependencyPercentage,
+        CASE
+            WHEN contributorDependencyCount BETWEEN 0 AND 1
+            THEN 0
+            WHEN contributorDependencyCount = 2
+            THEN 1
+            WHEN contributorDependencyCount BETWEEN 3 AND 4
+            THEN 2
+            WHEN contributorDependencyCount BETWEEN 5 AND 6
+            THEN 3
+            WHEN contributorDependencyCount BETWEEN 7 AND 9
+            THEN 4
+            WHEN contributorDependencyCount > 9
+            THEN 5
+            ELSE 0
+        END AS contributorDependencyBenchmark
+    FROM health_score_contributor_dependency_score

@@ -1,6 +1,8 @@
 import { IntegrationRunWorkerEmitter } from '@crowd/common_services'
 import { DbStore, getDbConnection } from '@crowd/data-access-layer/src/database'
 import IntegrationRunRepository from '@crowd/data-access-layer/src/old/apps/integration_run_worker/integrationRun.repo'
+import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { populateGithubSettingsWithRepos } from '@crowd/data-access-layer/src/repositories'
 import {
   GithubIntegrationSettings,
   GithubManualIntegrationSettings,
@@ -97,8 +99,11 @@ setImmediate(async () => {
     log.info(`Triggering integration run for ${integrationId}!`)
 
     // let's get current settings from integration
-    const currentSettings = (await repo.getIntegrationSettings(
+    const rawSettings = await repo.getIntegrationSettings(integrationId)
+    const currentSettings = (await populateGithubSettingsWithRepos(
+      dbStoreQx(store),
       integrationId,
+      rawSettings,
     )) as GithubIntegrationSettings
 
     let repos = []

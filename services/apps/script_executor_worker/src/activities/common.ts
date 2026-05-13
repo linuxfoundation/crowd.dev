@@ -1,7 +1,6 @@
 import axios from 'axios'
 
-import { pgpQx } from '@crowd/data-access-layer'
-import { refreshMemberOrganizationAffiliations } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { signalMemberUpdate } from '@crowd/common_services'
 import { findOrganizationSegments } from '@crowd/data-access-layer/src/old/apps/entity_merging_worker'
 import {
   IMemberIdentity,
@@ -38,7 +37,7 @@ export async function mergeMembers(
 
 export async function unmergeMembers(
   primaryMemberId: string,
-  backup: IUnmergeBackup<IMemberUnmergeBackup>,
+  backup: IUnmergeBackup<IMemberUnmergeBackup> | IUnmergePreviewResult<IMemberUnmergePreviewResult>,
 ): Promise<void> {
   const url = `${process.env['CROWD_API_SERVICE_URL']}/member/${primaryMemberId}/unmerge`
   const requestOptions = {
@@ -158,11 +157,6 @@ export async function getWorkflowsCount(workflowType: string, status: string): P
   }
 }
 
-export async function calculateMemberAffiliations(memberId: string): Promise<void> {
-  try {
-    const qx = pgpQx(svc.postgres.writer.connection())
-    await refreshMemberOrganizationAffiliations(qx, memberId)
-  } catch (err) {
-    throw new Error(err)
-  }
+export async function triggerMemberAffiliationsRefresh(memberId: string): Promise<void> {
+  await signalMemberUpdate(svc.temporal, memberId)
 }

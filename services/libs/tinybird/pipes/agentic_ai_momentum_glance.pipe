@@ -1,0 +1,16 @@
+NODE at_a_glance_metrics
+SQL >
+    SELECT
+        totalCount as total_count,
+        totalSoftwareValue as total_software_value,
+        totalContributorCount as total_contributor_count,
+        totalContributorCount30d as total_contributor_count_30d,
+        commitsCount30d as commits_count_30d,
+        mostActiveProjects as most_active_projects,
+        medianIssueCloseTimeSeconds as median_issue_close_time_seconds,
+        medianIssueCloseTimeSeconds30d as median_issue_close_time_seconds_30d,
+        medianPrResolutionTimeSeconds as median_pr_resolution_time_seconds,
+        medianPrResolutionTimeSeconds30d as median_pr_resolution_time_seconds_30d,
+        projectsWithGithubPrActivity as projects_with_github_pr_activity,
+        projectsWithGithubIssueActivity as projects_with_github_issue_activity
+    FROM agentic_ai_momentum_glance_ds

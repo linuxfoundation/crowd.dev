@@ -222,6 +222,62 @@ export const createNangoGithubConnection = async (
   }
 }
 
+export const createNangoGithubTokenConnection = async (
+  installationId: string,
+  appId: string,
+  clientId: string,
+  retries = 1,
+): Promise<string> => {
+  if (!process.env.NANGO_CLOUD_SECRET_KEY) {
+    throw new Error('NANGO_CLOUD_SECRET_KEY environment variable is required')
+  }
+
+  const connectionId = `github-token-${installationId}`
+
+  log.info({ installationId, appId, connectionId }, 'Creating a nango GitHub token connection...')
+
+  try {
+    const result = await axios.post(
+      'https://api.nango.dev/connection',
+      {
+        connection_id: connectionId,
+        provider_config_key: NangoIntegration.GITHUB,
+        metadata: {},
+        app_id: appId,
+        installation_id: installationId,
+        connection_config: {
+          app_id: appId,
+          client_id: clientId,
+          installation_id: installationId,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.NANGO_CLOUD_SECRET_KEY}`,
+        },
+      },
+    )
+
+    log.info(
+      { result: JSON.stringify(result.data, null, 2) },
+      'Nango GitHub token connection created',
+    )
+
+    return result.data.connection_id
+  } catch (err) {
+    log.error(err, 'Error creating nango GitHub token connection')
+    await handleRateLimitError(err)
+
+    if (retries <= MAX_RETRIES) {
+      await timeout(100)
+
+      return await createNangoGithubTokenConnection(installationId, appId, clientId, retries + 1)
+    } else {
+      throw err
+    }
+  }
+}
+
 export const connectNangoIntegration = async (
   integration: NangoIntegration,
   params: any,

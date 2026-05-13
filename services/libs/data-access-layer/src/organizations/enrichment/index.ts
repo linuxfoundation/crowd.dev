@@ -17,15 +17,26 @@ export async function fetchOrganizationsForEnrichment(
   const enrichableBySqlConditions = []
 
   sourceInputs.forEach((input) => {
-    cacheAgeInnerQueryItems.push(
-      `
+    if (input.neverReenrich) {
+      cacheAgeInnerQueryItems.push(
+        `
+          ( NOT EXISTS (
+            SELECT 1 FROM "organizationEnrichmentCache" oec
+            WHERE oec."organizationId" = o.id
+            AND oec.source = '${input.source}')
+          )`,
+      )
+    } else {
+      cacheAgeInnerQueryItems.push(
+        `
           ( NOT EXISTS (
             SELECT 1 FROM "organizationEnrichmentCache" oec
             WHERE oec."organizationId" = o.id
             AND oec.source = '${input.source}'
             AND EXTRACT(EPOCH FROM (now() - oec."updatedAt")) < ${input.cacheObsoleteAfterSeconds})
           )`,
-    )
+      )
+    }
 
     enrichableBySqlConditions.push(`(${input.enrichableBySql})`)
   })

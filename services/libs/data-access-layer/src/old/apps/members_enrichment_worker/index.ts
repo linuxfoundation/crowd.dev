@@ -29,7 +29,13 @@ export async function fetchMemberDataForLLMSquashing(
                             mo."dateStart",
                             mo."dateEnd",
                             mo.source,
-                            jsonb_agg(oi) as identities
+                            jsonb_agg(jsonb_build_object(
+                              'organizationId', oi."organizationId",
+                              'platform', oi.platform,
+                              'value', oi.value,
+                              'type', oi.type,
+                              'verified', oi.verified
+                            )) filter (where oi.type = 'primary-domain' and oi.verified = true) as identities
                         from "memberOrganizations" mo
                             inner join organizations o on mo."organizationId" = o.id
                             inner join "organizationIdentities" oi on oi."organizationId" = o.id
@@ -63,7 +69,7 @@ export async function fetchMemberDataForLLMSquashing(
                                                 mo."dateStart",
                                                 mo."dateEnd",
                                                 mo.source,
-                                                mo.identities) r)
+                                                coalesce(mo.identities, '[]'::jsonb) as identities) r)
                           )
                   from member_orgs mo
                   where mo."memberId" = m.id
@@ -100,15 +106,26 @@ export async function fetchMembersForEnrichment(
   const enrichableBySqlConditions = []
 
   sourceInputs.forEach((input) => {
-    cacheAgeInnerQueryItems.push(
-      `
+    if (input.neverReenrich) {
+      cacheAgeInnerQueryItems.push(
+        `
+      ( NOT EXISTS (
+          SELECT 1 FROM "memberEnrichmentCache" mec
+          WHERE mec."memberId" = members.id
+          AND mec.source = '${input.source}')
+      )`,
+      )
+    } else {
+      cacheAgeInnerQueryItems.push(
+        `
       ( NOT EXISTS (
           SELECT 1 FROM "memberEnrichmentCache" mec
           WHERE mec."memberId" = members.id
           AND mec.source = '${input.source}'
           AND EXTRACT(EPOCH FROM (now() - mec."updatedAt")) < ${input.cacheObsoleteAfterSeconds})
       )`,
-    )
+      )
+    }
 
     enrichableBySqlConditions.push(`(${input.enrichableBySql})`)
   })
@@ -163,7 +180,13 @@ export async function fetchMembersForLFIDEnrichment(db: DbStore, limit: number, 
         members."contributions",
         members."score",
         members."reach",
-        jsonb_agg(mi.*) as identities
+        jsonb_agg(jsonb_build_object(
+          'platform', mi.platform,
+          'value', mi.value,
+          'type', mi.type,
+          'verified', mi.verified,
+          'sourceId', mi."sourceId"
+        )) as identities
       FROM members
               INNER JOIN "memberIdentities" mi ON mi."memberId" = members.id
               AND mi."deletedAt" is null
@@ -415,26 +438,6 @@ export async function updateOrgIdentity(
   )
 }
 
-export async function insertOrgIdentity(
-  tx: DbTransaction,
-  organizationId: string,
-  tenantId: string,
-  identity: IOrganizationIdentity,
-) {
-  await tx.query(
-    `INSERT INTO "organizationIdentities" ("organizationId", "tenantId", value, type, verified, platform)
-            VALUES ($(organizationId), $(tenantId), $(value), $(type), $(verified), $(platform));`,
-    {
-      organizationId,
-      tenantId,
-      value: identity.value,
-      type: identity.type,
-      verified: identity.verified,
-      platform: identity.platform,
-    },
-  )
-}
-
 export async function deleteMemberOrgById(tx: DbTransaction, id: string): Promise<void> {
   // Execute directly on the provided transaction to avoid creating nested savepoints
   await tx.none(
@@ -478,14 +481,15 @@ export async function updateMemberOrg(
     return null
   }
 
-  // first check if another row like this exists
-  // so that we don't get unique index violations
+  // First check if another row like this exists so that we don't get unique index violations.
+  // We compute the "target" state after applying toUpdate to decide what to look for.
   const params = {
     memberId,
     id: original.id,
     organizationId: original.orgId,
-    dateStart: toUpdate.dateStart === undefined ? toUpdate.dateStart : original.dateStart,
-    dateEnd: toUpdate.dateEnd === undefined ? toUpdate.dateEnd : original.dateEnd,
+    // Use updated value if provided, otherwise keep original
+    dateStart: toUpdate.dateStart !== undefined ? toUpdate.dateStart : original.dateStart,
+    dateEnd: toUpdate.dateEnd !== undefined ? toUpdate.dateEnd : original.dateEnd,
   }
 
   let dateEndFilter = `and "dateEnd" = $(dateEnd)`
@@ -544,8 +548,8 @@ export async function insertWorkExperience(
   memberId: string,
   orgId: string,
   title: string,
-  dateStart: string,
-  dateEnd: string,
+  dateStart: string | null,
+  dateEnd: string | null,
   source: OrganizationSource,
 ): Promise<string | null> {
   let conflictCondition = `("memberId", "organizationId", "dateStart", "dateEnd")`

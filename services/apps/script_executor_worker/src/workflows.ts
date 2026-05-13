@@ -8,6 +8,7 @@ import { dissectMember } from './workflows/dissectMember'
 import { findAndMergeMembersWithSamePlatformIdentitiesDifferentCapitalization } from './workflows/findAndMergeMembersWithSamePlatformIdentitiesDifferentCapitalization'
 import { findAndMergeMembersWithSameVerifiedEmailsInDifferentPlatforms } from './workflows/findAndMergeMembersWithSameVerifiedEmailsInDifferentPlatforms'
 import { fixBotMembersAffiliation } from './workflows/fix-bot-members-affiliation'
+import { fixWorkExperienceEpochDates } from './workflows/fix-work-experience-epoch-dates'
 import { fixOrgIdentitiesWithWrongUrls } from './workflows/fixOrgIdentitiesWithWrongUrls'
 import { processLLMVerifiedMerges } from './workflows/processLLMVerifiedMerges'
 import { recalculateMemberAffiliations } from './workflows/recalculate-member-affiliations'
@@ -26,4 +27,5 @@ export {
   fixBotMembersAffiliation,
   blockProjectOrganizationAffiliations,
   recalculateMemberAffiliations,
+  fixWorkExperienceEpochDates,
 }

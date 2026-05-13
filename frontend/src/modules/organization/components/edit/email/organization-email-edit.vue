@@ -87,6 +87,7 @@ const defaultForm: OrganizationIdentity = {
   verified: true,
   platform: Platform.CUSTOM,
   type: OrganizationIdentityType.EMAIL,
+  source: 'ui',
   sourceId: null,
 };
 
@@ -125,6 +126,7 @@ const updateEmail = () => {
       return {
         ...form,
         verified: false,
+        source: 'ui',
         integrationId: null,
         sourceId: null,
       } as OrganizationIdentity;

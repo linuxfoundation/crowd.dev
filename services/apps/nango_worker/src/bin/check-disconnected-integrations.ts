@@ -1,5 +1,8 @@
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import { fetchNangoDeletedIntegrationData } from '@crowd/data-access-layer/src/integrations'
+import {
+  fetchNangoDeletedIntegrationData,
+  getNangoMappingsForIntegrations,
+} from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import {
@@ -36,14 +39,17 @@ setImmediate(async () => {
 
   const nangoConnections = await getNangoConnections()
 
+  const qx = pgpQx(db)
   const connectionIds: string[] = []
   // Map connectionId -> integrationId to track which integration each connection belongs to
   const connectionToIntegrationMap = new Map<string, string>()
 
   for (const int of deletedNangoIntegrations) {
     if (int.platform === PlatformType.GITHUB_NANGO) {
-      if (int.settings?.nangoMapping) {
-        const connectionIdsForIntegration = Object.keys(int.settings.nangoMapping)
+      const allNangoMappings = await getNangoMappingsForIntegrations(qx, [int.id])
+      const nangoMapping = allNangoMappings[int.id] || {}
+      const connectionIdsForIntegration = Object.keys(nangoMapping)
+      if (connectionIdsForIntegration.length > 0) {
         connectionIds.push(...connectionIdsForIntegration)
         // Map each connection ID to this integration ID
         for (const connectionId of connectionIdsForIntegration) {
@@ -52,7 +58,7 @@ setImmediate(async () => {
       } else {
         log.info(
           { integrationId: int.id, platform: int.platform },
-          'Integration has no nangoMapping in settings, skipping',
+          'Integration has no nango_mapping rows, skipping',
         )
       }
     } else {

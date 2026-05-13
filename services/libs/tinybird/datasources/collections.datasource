@@ -8,6 +8,9 @@ DESCRIPTION >
     - `description` provides additional details about the collection's purpose (empty string if not provided).
     - `categoryId` links to the category this collection belongs to (empty string if no category association).
     - `starred` indicates whether this collection is featured or highlighted (Bool, 0 default for not starred).
+    - `isPrivate` indicates whether this collection is private (Bool, 0 default for public).
+    - `ssoUserId` links to the SSO user who created this community collection (Nullable, null for curated collections).
+    - `logoUrl` is the URL of the collection's logo image (empty string if not provided).
     - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
 
 TAGS "Project collections"
@@ -19,6 +22,9 @@ SCHEMA >
     `description` String `json:$.record.description` DEFAULT '',
     `categoryId` String `json:$.record.categoryId` DEFAULT '',
     `starred` Bool `json:$.record.starred` DEFAULT 0,
+    `isPrivate` Bool `json:$.record.isPrivate` DEFAULT 0,
+    `ssoUserId` Nullable(String) `json:$.record.ssoUserId`,
+    `logoUrl` String `json:$.record.logoUrl` DEFAULT '',
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
     `deletedAt` Nullable(DateTime64(3)) `json:$.record.deletedAt`

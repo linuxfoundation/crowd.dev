@@ -60,6 +60,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
         platform: PlatformType.LFID,
         value: enriched.email.toLowerCase(),
         verified: true,
+        verifiedBy: 'lf-auth0',
       })
     }
 
@@ -78,6 +79,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
         type: MemberIdentityType.USERNAME,
         value: enriched.username.toLowerCase(),
         verified: true,
+        verifiedBy: 'lf-auth0',
       })
     }
 
@@ -100,6 +102,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
           platform: PlatformType.GITHUB,
           value: enrichmentGithub.profileData.nickname.toLowerCase(),
           verified: true,
+          verifiedBy: 'lf-auth0',
         })
       }
 
@@ -127,6 +130,7 @@ export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
             type: MemberIdentityType.EMAIL,
             value: githubEmail.email.toLowerCase(),
             verified: true,
+            verifiedBy: 'lf-auth0',
           })
         }
       }

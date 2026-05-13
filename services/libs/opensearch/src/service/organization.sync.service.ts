@@ -242,6 +242,7 @@ export class OrganizationSyncService {
         keyword_type: identity.type,
         string_type: identity.type,
         bool_verified: identity.verified,
+        string_source: identity.source ?? '',
       })),
 
       int_activityCount: data.activityCount,

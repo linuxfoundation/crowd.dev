@@ -1,19 +1,19 @@
 DESCRIPTION >
     Filters out `isBot = true` and `isTeamMember=true` members. Also possible to use more granular sorting keys in the destination datasource `members_sorted` Copy pipe runs every hour
 
-NODE github_usernames
+NODE github_usernames_array
 SQL >
-    SELECT memberId, argMax(value, createdAt) AS githubHandle
+    SELECT memberId, groupArray(value) AS githubHandleArray
     FROM memberIdentities FINAL
-    WHERE platform = 'github' AND type = 'username' AND verified = 1 AND isNull(deletedAt)
+    WHERE platform = 'github' AND type = 'username' AND verified = 1 AND isNull (deletedAt)
     GROUP BY memberId
 
 NODE members_pre_filter
 SQL >
-    SELECT members.*, pub.publicName, coalesce(gh.githubHandle, '') AS githubHandle
+    SELECT members.*, pub.publicName, coalesce(gha.githubHandleArray, []) AS githubHandleArray
     FROM members FINAL
     LEFT JOIN members_public_names_ds pub ON pub.memberId = members.id
-    LEFT JOIN github_usernames gh ON gh.memberId = members.id
+    LEFT JOIN github_usernames_array gha ON gha.memberId = members.id
     WHERE
         NOT isBot
         AND NOT isTeamMember

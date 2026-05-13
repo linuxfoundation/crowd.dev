@@ -138,6 +138,7 @@ const defaultForm: ContributorIdentity = {
   verified: false,
   platform: 'custom',
   type: 'username',
+  source: 'ui',
   sourceId: null,
 };
 

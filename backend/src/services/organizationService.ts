@@ -7,6 +7,7 @@ import {
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
 import { Error400, Error404, Error409, mergeObjects, normalizeHostname } from '@crowd/common'
+import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
@@ -14,7 +15,7 @@ import {
   removeMemberRole,
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
-import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member_organization_affiliation_overrides'
+import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
 import {
   addMergeAction,
   queryMergeActions,
@@ -48,7 +49,6 @@ import {
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
-import { IActiveOrganizationFilter } from '@/database/repositories/types/organizationTypes'
 import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
 
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
@@ -62,7 +62,6 @@ import {
   keepPrimaryIfExists,
   mergeUniqueStringArrayItems,
 } from './helpers/mergeFunctions'
-import MemberOrganizationService from './memberOrganizationService'
 import SearchSyncService from './searchSyncService'
 
 export default class OrganizationService extends LoggerBase {
@@ -368,7 +367,7 @@ export default class OrganizationService extends LoggerBase {
                   repoOptions,
                 )
 
-              const primaryUnmergedRoles = await MemberOrganizationService.unmergeRoles(
+              const primaryUnmergedRoles = await unmergeRoles(
                 memberOrganizations,
                 mergeAction.unmergeBackup.primary.memberOrganizations,
                 mergeAction.unmergeBackup.secondary.memberOrganizations,
@@ -503,7 +502,7 @@ export default class OrganizationService extends LoggerBase {
       throw new Error409(this.options.language, 'merge.errors.multiple', mergeActions[0].state)
     }
 
-    let blockAffiliations = false
+    let orgAffiliationChanges = false
 
     try {
       const { original, toMerge } = await captureApiChange(
@@ -682,8 +681,15 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Moving members to original organisation!',
           )
 
-          // update members that belong to source organization to destinati
-          await moveMembersBetweenOrganizations(optionsQx(repoOptions), toMergeId, originalId)
+          const { shouldRecalculateAffiliations } = await moveMembersBetweenOrganizations(
+            optionsQx(repoOptions),
+            toMergeId,
+            originalId,
+          )
+
+          if (shouldRecalculateAffiliations) {
+            orgAffiliationChanges = true
+          }
 
           this.log.info(
             { originalId, toMergeId },
@@ -712,21 +718,6 @@ export default class OrganizationService extends LoggerBase {
             { originalId, toMergeId },
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
-
-          if (toUpdate.isAffiliationBlocked) {
-            this.log.info(
-              { originalId, toMergeId },
-              '[Merge Organizations] - Organization wide affiliation block detected!',
-            )
-
-            await applyOrganizationAffiliationPolicyToMembers(
-              optionsQx(repoOptions),
-              originalId,
-              false,
-            )
-
-            blockAffiliations = true
-          }
 
           await SequelizeRepository.commitTransaction(tx)
 
@@ -757,7 +748,7 @@ export default class OrganizationService extends LoggerBase {
           toMergeId,
           original.displayName,
           toMerge.displayName,
-          blockAffiliations,
+          orgAffiliationChanges,
           this.options.currentUser.id,
         ],
       })
@@ -865,6 +856,9 @@ export default class OrganizationService extends LoggerBase {
           type: OrganizationIdentityType.USERNAME,
           platform: 'custom',
           verified: true,
+          source: 'ui',
+          sourceId: null,
+          integrationId: null,
         },
       ]
       delete (data as any).name
@@ -1160,28 +1154,20 @@ export default class OrganizationService extends LoggerBase {
     return OrganizationRepository.findByIds(ids, this.options)
   }
 
-  async findAndCountActive(
-    filters: IActiveOrganizationFilter,
-    offset: number,
-    limit: number,
-    orderBy: string,
-    segments: string[],
-  ) {
-    return OrganizationRepository.findAndCountActiveOpensearch(
-      filters,
-      limit,
-      offset,
-      orderBy,
-      this.options,
-      segments,
-    )
-  }
-
   async query(data) {
-    const { filter, orderBy, limit, offset, segments } = data
+    const { filter: rawFilter, orderBy, limit, offset, segments, search: rawSearch } = data
+    const searchTerm =
+      typeof rawSearch === 'string' && rawSearch.trim() ? rawSearch.trim() : undefined
+
+    // Strip frontend-state keys that are never valid filter columns or operators.
+    // These can appear when the raw Pinia filter state is sent instead of the
+    // processed output of buildApiFilter.
+    const { search: _s, relation: _r, order: _o, settings: _st, ...filter } = rawFilter ?? {}
+
     return OrganizationRepository.findAndCountAll(
       {
         filter,
+        search: searchTerm,
         orderBy,
         limit,
         offset,

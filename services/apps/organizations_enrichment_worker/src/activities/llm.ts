@@ -1,3 +1,4 @@
+import { parseLlmJson } from '@crowd/common'
 import { LlmService } from '@crowd/common_services'
 import {
   OrganizationField,
@@ -132,7 +133,7 @@ export async function selectMostRelevantDomainWithLLM(
       organizationId,
     )
     if (!response) throw new Error('LLM returned no response')
-    return JSON.parse(response.answer) as LlmDomainSelection
+    return parseLlmJson<LlmDomainSelection>(response.answer)
   }
 
   const MAX_RETRIES = 1

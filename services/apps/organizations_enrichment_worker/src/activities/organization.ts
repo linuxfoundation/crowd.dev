@@ -22,10 +22,18 @@ export async function getEnrichableOrganizations(
   const sourceInputs: IEnrichmentSourceQueryInput<OrganizationEnrichmentSource>[] = sources.map(
     (s) => {
       const srv = OrganizationEnrichmentSourceServiceFactory.getEnrichmentSourceService(s, svc.log)
+
+      if (!srv.neverReenrich && srv.cacheObsoleteAfterSeconds == null) {
+        throw new Error(
+          `"${s}" must define cacheObsoleteAfterSeconds if neverReenrich is not enabled`,
+        )
+      }
+
       return {
         source: s,
         cacheObsoleteAfterSeconds: srv.cacheObsoleteAfterSeconds,
         enrichableBySql: srv.enrichableBySql,
+        neverReenrich: srv.neverReenrich,
       }
     },
   )

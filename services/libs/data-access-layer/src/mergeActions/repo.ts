@@ -2,11 +2,13 @@ import validator from 'validator'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import {
+  IMemberIdentity,
   IMemberUnmergeBackup,
   IMergeAction,
   IMergeActionColumns,
   IOrganizationUnmergeBackup,
   IUnmergeBackup,
+  MemberIdentityType,
   MergeActionState,
   MergeActionStep,
   MergeActionType,
@@ -149,4 +151,50 @@ export async function addMergeAction(
       userId,
     },
   )
+}
+
+export async function findMergeBackup(
+  qx: QueryExecutor,
+  primaryId: string,
+  type: MergeActionType.MEMBER,
+  identity: IMemberIdentity,
+): Promise<IMergeAction | null> {
+  const records: IMergeAction[] = await qx.select(
+    `
+    SELECT *
+    FROM "mergeActions" ma
+    WHERE ma."primaryId" = $(primaryId)
+      AND EXISTS(
+        SELECT 1
+        FROM jsonb_array_elements(ma."unmergeBackup" -> 'secondary' -> 'identities') AS identities
+        WHERE (identities ->> 'username' = $(value)
+               OR (identities ->> 'type' = $(type) AND identities ->> 'value' = $(value)))
+          AND identities ->> 'platform' = $(platform)
+      )
+    `,
+    {
+      primaryId,
+      value: identity.value,
+      type: identity.type,
+      platform: identity.platform,
+    },
+  )
+
+  for (const record of records) {
+    if (record.type === MergeActionType.MEMBER && record.unmergeBackup) {
+      const backup = record.unmergeBackup as IUnmergeBackup<IMemberUnmergeBackup>
+      for (const side of [backup.primary, backup.secondary]) {
+        if (!side) continue
+        for (const id of side.identities) {
+          if ('username' in id) {
+            id.value = (id as Record<string, unknown>).username as string
+            id.type = MemberIdentityType.USERNAME
+            delete (id as Record<string, unknown>).username
+          }
+        }
+      }
+    }
+  }
+
+  return records.length > 0 ? records[0] : null
 }

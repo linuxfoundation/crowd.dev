@@ -1,0 +1,62 @@
+DESCRIPTION >
+    - `repos_to_channels_excluded.pipe` expands excluded repository URLs to all possible activity channel formats.
+    - For Gerrit repos, generates both the original URL and the /q/project: variant since activity channels use this format.
+    - Non-Gerrit repos are passed through unchanged.
+    - Used by activity filtering pipes to build exclusion filters for channels that belong to excluded repositories.
+    - Response: `channel` - all possible channel URL formats for excluded repos
+
+TAGS "Repository URLs", "Gerrit"
+
+NODE repos_to_expand
+DESCRIPTION >
+    Get excluded repository URLs to expand
+
+SQL >
+    SELECT url FROM repositories FINAL WHERE isNull (deletedAt) AND enabled = true AND excluded = true
+
+NODE gerrit_repos
+DESCRIPTION >
+    Identify Gerrit repositories by joining with integrations table
+
+SQL >
+    SELECT r.url
+    FROM repositories r FINAL
+    JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+    WHERE i.platform = 'gerrit' AND isNull (r.deletedAt) AND r.url IN (SELECT url FROM repos_to_expand)
+
+NODE expanded_urls
+DESCRIPTION >
+    Output original URLs plus Gerrit channel variants
+
+SQL >
+    -- Original URLs (all excluded repos)
+    SELECT url AS channel
+    FROM repos_to_expand
+    UNION ALL
+    -- Gerrit channel variants: insert q/project: after the base path
+    SELECT
+        CASE
+            -- Pattern: https://host/r/{project} → https://host/r/q/project:{project}
+            WHEN position(url, '/r/') > 0
+            THEN replaceOne(url, '/r/', '/r/q/project:')
+            -- Pattern: https://host/gerrit/{project} → https://host/gerrit/q/project:{project}
+            WHEN position(url, '/gerrit/') > 0
+            THEN replaceOne(url, '/gerrit/', '/gerrit/q/project:')
+            -- Pattern: https://host/{project} → https://host/q/project:{project}
+            ELSE
+                concat(
+                    protocol(url),
+                    '://',
+                    domain(url),
+                    '/q/project:',
+                    if(path(url) = '/', '', substring(path(url), 2))
+                )
+        END AS channel
+    FROM gerrit_repos
+
+NODE channels_deduplicated
+DESCRIPTION >
+    Final deduplicated list of all possible channel URLs for excluded repos
+
+SQL >
+    SELECT DISTINCT channel FROM expanded_urls

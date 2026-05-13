@@ -6,9 +6,11 @@ export const buttonTypes = [
   'bordered',
   'primary-ghost',
   'secondary-ghost',
+  'danger-ghost',
   'secondary-ghost-light',
   'primary-link',
   'secondary-link',
+  'outline',
 ] as const;
 
-export type ButtonType = typeof buttonTypes[number];
+export type ButtonType = (typeof buttonTypes)[number]

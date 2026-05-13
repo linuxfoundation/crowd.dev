@@ -52,9 +52,6 @@ export interface IStepContext {
   // when did integration processing start
   startTimestamp: number
 
-  // existing limit count from the previous runs
-  limitCount: number
-
   // are we doing onboarding - the first run of the integration?
   onboarding: boolean
 
