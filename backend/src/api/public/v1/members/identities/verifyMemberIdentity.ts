@@ -96,7 +96,11 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
             error.constraint ?? error.original?.constraint ?? error.parent?.constraint
 
           if (verified && constraint === 'uix_memberIdentities_platform_value_type_verified') {
-            throw new ConflictError('Identity already verified on another member')
+            throw new ConflictError('Identity already verified on another member', {
+              platform: identity.platform,
+              value: identity.value,
+              type: identity.type,
+            })
           }
 
           throw error
