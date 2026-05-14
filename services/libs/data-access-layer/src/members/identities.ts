@@ -102,7 +102,7 @@ export async function findMemberIdentitiesByValue(
 ): Promise<IMemberIdentity[]> {
   return qx.select(
     `
-        SELECT id, platform, "sourceId", type, value, verified
+        SELECT *
         FROM "memberIdentities"
         WHERE value = $(value) 
           AND "memberId" = $(memberId)

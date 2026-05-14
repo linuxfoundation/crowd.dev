@@ -6,13 +6,15 @@ import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   MemberField,
   findMemberById,
+  findMemberIdentitiesByValue,
   createMemberIdentity as insertMemberIdentity,
   optionsQx,
   touchMemberUpdatedAt,
+  updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
-import { created } from '@/utils/api'
+import { created, ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -45,6 +47,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
   }
 
   let result!: IMemberIdentity
+  let alreadyExisted = false
 
   await captureApiChange(
     req,
@@ -52,45 +55,66 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        try {
-          result = await insertMemberIdentity(
-            tx,
-            {
-              memberId,
-              platform: data.platform,
-              value: data.value,
-              type: data.type,
-              source: data.source,
-              verified: data.verified,
-              verifiedBy: data.verifiedBy,
-            },
-            true,
-            true,
-          )
-        } catch (error) {
-          const constraint =
-            error.constraint ?? error.original?.constraint ?? error.parent?.constraint
+        const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
+          type: data.type,
+        })
 
-          if (constraint === 'uix_memberIdentities_memberId_platform_value_type') {
-            throw new ConflictError('Identity already exists on this member', {
-              platform: data.platform,
-              value: data.value,
-              type: data.type,
-            })
+        const exactMatch = existing.find((i) => i.platform === data.platform)
+
+        if (exactMatch) {
+          alreadyExisted = true
+          result = exactMatch
+        } else {
+          try {
+            result = await insertMemberIdentity(
+              tx,
+              {
+                memberId,
+                platform: data.platform,
+                value: data.value,
+                type: data.type,
+                source: data.source,
+                verified: data.verified,
+                verifiedBy: data.verifiedBy,
+              },
+              true,
+              true,
+            )
+          } catch (error) {
+            const constraint =
+              error.constraint ?? error.original?.constraint ?? error.parent?.constraint
+
+            if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
+              throw new ConflictError('Identity already verified on another member', {
+                platform: data.platform,
+                value: data.value,
+                type: data.type,
+              })
+            }
+
+            throw error
           }
-
-          if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
-            throw new ConflictError('Identity already verified on another member', {
-              platform: data.platform,
-              value: data.value,
-              type: data.type,
-            })
-          }
-
-          throw error
         }
 
-        // touch member updated at to trigger merge suggestion
+        if (data.verified && existing.length > 0) {
+          await Promise.all(
+            existing.map((i) =>
+              updateMemberIdentity(tx, memberId, i.id, {
+                verified: true,
+                verifiedBy: data.verifiedBy,
+              }),
+            ),
+          )
+
+          if (alreadyExisted) {
+            result = {
+              ...exactMatch,
+              verified: true,
+              verifiedBy: data.verifiedBy,
+            }
+          }
+        }
+
         await touchMemberUpdatedAt(tx, memberId)
       })
 
@@ -98,7 +122,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     }),
   )
 
-  created(res, {
+  const response = {
     id: result.id,
     value: result.value,
     platform: result.platform,
@@ -108,5 +132,11 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     source: result.source ?? null,
     createdAt: result.createdAt,
     updatedAt: result.updatedAt,
-  })
+  }
+
+  if (alreadyExisted) {
+    ok(res, response)
+  } else {
+    created(res, response)
+  }
 }
