@@ -4,7 +4,7 @@ import { Options, ServiceWorker } from '@crowd/archetype-worker'
 import { scheduleProjectsDiscovery } from './schedules/scheduleProjectsDiscovery'
 
 const config: Config = {
-  envvars: [],
+  envvars: ['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS', 'LF_CRITICALITY_SCORE_API_URL'],
   producer: {
     enabled: false,
   },

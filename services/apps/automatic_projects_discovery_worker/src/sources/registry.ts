@@ -1,7 +1,11 @@
+import { InsightsDiscussionsSource } from './insights-discussions/source'
 import { LfCriticalityScoreSource } from './lf-criticality-score/source'
 import { IDiscoverySource } from './types'
 
-const sources: IDiscoverySource[] = [new LfCriticalityScoreSource()]
+const sources: IDiscoverySource[] = [
+  new LfCriticalityScoreSource(),
+  new InsightsDiscussionsSource(),
+]
 
 export function getSource(name: string): IDiscoverySource {
   const source = sources.find((s) => s.name === name)
