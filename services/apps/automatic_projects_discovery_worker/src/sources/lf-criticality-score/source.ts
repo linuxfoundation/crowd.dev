@@ -8,7 +8,8 @@ import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../ty
 
 const log = getServiceLogger()
 
-const DEFAULT_API_URL = 'https://lf-criticality-score-api.example.com'
+const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
+const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
 
 interface LfApiResponse {
@@ -20,30 +21,39 @@ interface LfApiResponse {
 }
 
 interface LfApiRow {
-  runDate: string
-  repoUrl: string
+  rundate: string
+  repourl: string
   owner: string
-  repoName: string
+  reponame: string
   contributors: number
   organizations: number
-  sizeSloc: number
-  lastUpdated: number
+  sizesloc: number
+  lastupdated: number
   age: number
-  commitFreq: number
+  commitfreq: number
   score: number
 }
 
 function getApiBaseUrl(): string {
-  return (process.env.LF_CRITICALITY_SCORE_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '')
+  if (process.env.LF_CRITICALITY_SCORE_API_URL) {
+    return process.env.LF_CRITICALITY_SCORE_API_URL.replace(/\/$/, '')
+  }
+  const host = (process.env.LF_CRITICALITY_SCORE_API_HOST ?? DEFAULT_API_HOST)
+    .trim()
+    .replace(/\/$/, '')
+  const port = parseInt(process.env.LF_CRITICALITY_SCORE_API_PORT ?? String(DEFAULT_API_PORT), 10)
+  const scheme = port === 443 ? 'https' : 'http'
+  return `${scheme}://${host}:${port}`
 }
 
 async function fetchPage(
   baseUrl: string,
-  startDate: string,
-  endDate: string,
   page: number,
+  scoredAfter?: string,
 ): Promise<LfApiResponse> {
-  const url = `${baseUrl}/projects/scores?startDate=${startDate}&endDate=${endDate}&page=${page}&pageSize=${PAGE_SIZE}`
+  const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) })
+  if (scoredAfter) params.set('scoredAfter', scoredAfter)
+  const url = `${baseUrl}/projects?${params.toString()}`
 
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
@@ -72,88 +82,81 @@ async function fetchPage(
   })
 }
 
-/**
- * Generates the first day and last day of a given month.
- * monthOffset = 0 → current month, -1 → previous month, etc.
- */
-function monthRange(monthOffset: number): { startDate: string; endDate: string } {
-  const now = new Date()
-  const year = now.getUTCFullYear()
-  const month = now.getUTCMonth() + monthOffset // can be negative; Date handles rollover
-
-  const first = new Date(Date.UTC(year, month, 1))
-  const last = new Date(Date.UTC(year, month + 1, 0)) // last day of month
-
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const fmt = (d: Date) =>
-    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
-
-  return { startDate: fmt(first), endDate: fmt(last) }
-}
-
 export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]> {
     const baseUrl = getApiBaseUrl()
+    const today = new Date().toISOString().slice(0, 10)
+    const { scoredAfter } = options ?? {}
 
-    // Return one dataset per month for the last 12 months (newest first)
-    const datasets: IDatasetDescriptor[] = []
+    const params = new URLSearchParams()
+    if (scoredAfter) params.set('scoredAfter', scoredAfter)
+    const qs = params.toString()
 
-    for (let offset = 0; offset >= -11; offset--) {
-      const { startDate, endDate } = monthRange(offset)
-      const id = startDate.slice(0, 7) // e.g. "2026-02"
-
-      datasets.push({
-        id,
-        date: startDate,
-        url: `${baseUrl}/projects/scores?startDate=${startDate}&endDate=${endDate}`,
-      })
-    }
-
-    return datasets
+    return [
+      {
+        id: scoredAfter ? `${today}-since-${scoredAfter}` : today,
+        date: today,
+        url: `${baseUrl}/projects${qs ? `?${qs}` : ''}`,
+      },
+    ]
   }
 
-  /**
-   * Returns an object-mode Readable that fetches all pages from the API
-   * and pushes each row as a plain object. Activities.ts iterates this
-   * directly (no csv-parse) because format === 'json'.
-   */
   async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
     const baseUrl = getApiBaseUrl()
+    const scoredAfter = new URL(dataset.url).searchParams.get('scoredAfter') ?? undefined
 
-    // Extract startDate and endDate from the stored URL
-    const parsed = new URL(dataset.url)
-    const startDate = parsed.searchParams.get('startDate') ?? ''
-    const endDate = parsed.searchParams.get('endDate') ?? ''
+    log.info(
+      { datasetId: dataset.id, baseUrl, scoredAfter: scoredAfter ?? 'none (full fetch)' },
+      'LF Criticality Score: starting stream fetch.',
+    )
 
     async function* pages() {
       let page = 1
       let totalPages = 1
 
       do {
-        const response = await fetchPage(baseUrl, startDate, endDate, page)
+        log.info(
+          { datasetId: dataset.id, page, totalPages },
+          'LF Criticality Score: fetching page...',
+        )
+        const response = await fetchPage(baseUrl, page, scoredAfter)
         totalPages = response.totalPages
+
+        if (page === 1) {
+          log.info(
+            {
+              datasetId: dataset.id,
+              total: response.total,
+              totalPages,
+              pageSize: response.pageSize,
+            },
+            'LF Criticality Score: first page received — total records available.',
+          )
+        }
 
         for (const row of response.data) {
           yield row
         }
 
-        log.debug(
+        log.info(
           { datasetId: dataset.id, page, totalPages, rowsInPage: response.data.length },
-          'LF Criticality Score page fetched.',
+          'LF Criticality Score: page fetched.',
         )
 
         page++
       } while (page <= totalPages)
+
+      log.info({ datasetId: dataset.id, totalPages }, 'LF Criticality Score: all pages fetched.')
     }
 
     return Readable.from(pages(), { objectMode: true })
   }
 
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
-    const repoUrl = rawRow['repoUrl'] as string | undefined
+    const repoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
     if (!repoUrl) {
       return null
     }

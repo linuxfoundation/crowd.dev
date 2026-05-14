@@ -3,7 +3,7 @@ import lodash from 'lodash'
 import { Transaction } from 'sequelize'
 
 import { Error404, sanitizeMemberOrganizationDateRange } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   OrganizationField,
   changeMemberOrganizationAffiliationOverrides,
@@ -14,7 +14,6 @@ import {
   fetchMemberOrganizationById,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
-  optionsQx,
   queryOrgs,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
@@ -36,16 +35,9 @@ type IOrganizationSummary = Pick<IOrganization, 'id' | 'displayName' | 'logo' | 
 export default class MemberOrganizationsService extends LoggerBase {
   options: IServiceOptions
 
-  private readonly commonMemberService: CommonMemberService
-
   constructor(options: IServiceOptions) {
     super(options.log)
     this.options = options
-    this.commonMemberService = new CommonMemberService(
-      optionsQx(options),
-      options.temporal,
-      options.log,
-    )
   }
 
   // Member organization list
@@ -196,13 +188,16 @@ export default class MemberOrganizationsService extends LoggerBase {
         ])
       }
 
-      // Start affiliation recalculation within the same transaction
-      await this.commonMemberService.startAffiliationRecalculation(memberId, [data.organizationId])
-
       // Fetch updated list
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
@@ -259,11 +254,15 @@ export default class MemberOrganizationsService extends LoggerBase {
         new Set([existing.organizationId, data.organizationId]),
       ).filter((orgId): orgId is string => Boolean(orgId))
 
-      await this.commonMemberService.startAffiliationRecalculation(memberId, orgsToRecalculate)
-
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: orgsToRecalculate,
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
@@ -288,15 +287,16 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       await deleteMemberOrganizations(qx, memberId, [id], true)
 
-      await this.commonMemberService.startAffiliationRecalculation(
-        memberId,
-        [memberOrganizationToBeDeleted.organizationId],
-        true,
-      )
-
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: [memberOrganizationToBeDeleted.organizationId],
+        syncToOpensearch: true,
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)

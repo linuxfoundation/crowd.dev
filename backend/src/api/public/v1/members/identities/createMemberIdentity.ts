@@ -72,11 +72,19 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             error.constraint ?? error.original?.constraint ?? error.parent?.constraint
 
           if (constraint === 'uix_memberIdentities_memberId_platform_value_type') {
-            throw new ConflictError('Identity already exists on this member')
+            throw new ConflictError('Identity already exists on this member', {
+              platform: data.platform,
+              value: data.value,
+              type: data.type,
+            })
           }
 
           if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
-            throw new ConflictError('Identity already verified on another member')
+            throw new ConflictError('Identity already verified on another member', {
+              platform: data.platform,
+              value: data.value,
+              type: data.type,
+            })
           }
 
           throw error
@@ -94,6 +102,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     id: result.id,
     value: result.value,
     platform: result.platform,
+    type: result.type,
     verified: result.verified,
     verifiedBy: result.verifiedBy ?? null,
     source: result.source ?? null,

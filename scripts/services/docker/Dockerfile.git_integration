@@ -83,10 +83,17 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     git \
     ripgrep \
+    ruby \
+    libgit2-1.1 \
+    ruby-dev \
+    build-essential \
+    libgit2-dev \
+    cmake \
+    pkg-config \
     --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
-    && apt-get autoremove -y
+    && gem install licensee -v '9.15.3' --no-document \
+    && apt-get remove --autoremove -y ruby-dev build-essential libgit2-dev cmake pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

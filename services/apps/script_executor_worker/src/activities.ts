@@ -25,10 +25,10 @@ import {
   updateOrphanCleanupRun,
 } from './activities/cleanup/segments-agg'
 import {
-  calculateMemberAffiliations,
   getWorkflowsCount,
   mergeMembers,
   mergeOrganizations,
+  triggerMemberAffiliationsRefresh,
   unmergeMembers,
   unmergeMembersPreview,
   waitForTemporalWorkflowExecutionFinish,
@@ -97,8 +97,8 @@ export {
   setOrganizationAffiliationPolicyIfNotBlocked,
   markMemberForAffiliationRecalc,
   getMembersForAffiliationRecalc,
-  calculateMemberAffiliations,
   startOrphanCleanupRun,
+  triggerMemberAffiliationsRefresh,
   updateOrphanCleanupRun,
   getOrphanMembersSegmentsAgg,
   deleteOrphanMembersSegmentsAgg,
