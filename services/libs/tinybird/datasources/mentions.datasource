@@ -46,7 +46,7 @@ SCHEMA >
     `createdAt` DateTime64(3) `json:$.createdAt` DEFAULT now64(3),
     `bookmarked` UInt8 `json:$.bookmarked` DEFAULT 0,
     `keywords` Array(String) `json:$.keywords[:]` DEFAULT [],
-    `authorFollowerCount` Nullable(Int32) `json:$.authorFollowerCount` DEFAULT NULL,
+    `authorFollowerCount` Nullable(Int32) `json:$.authorFollowerCount`,
     `tags` Array(Nullable(String)) `json:$.tags[:]` DEFAULT []
 
 ENGINE ReplacingMergeTree
