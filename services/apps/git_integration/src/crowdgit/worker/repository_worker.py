@@ -7,7 +7,7 @@ from crowdgit.database.crud import (
     mark_repo_as_processed,
     release_repo,
     update_last_processed_commit,
-    update_repository_license,
+    update_repository_licenses,
 )
 from crowdgit.enums import RepositoryState
 from crowdgit.errors import (
@@ -242,8 +242,8 @@ class RepositoryWorker:
                         repository.id, batch_info.repo_path, repository.url
                     )
                     await self.maintainer_service.process_maintainers(repository, batch_info)
-                    license_spdx = await self.license_service.detect(batch_info.repo_path)
-                    await update_repository_license(repository.id, license_spdx)
+                    licenses = await self.license_service.detect(batch_info.repo_path)
+                    await update_repository_licenses(repository.id, licenses)
                 await self.commit_service.process_single_batch_commits(
                     repository,
                     batch_info,
