@@ -42,12 +42,12 @@ git diff --name-only origin/main...HEAD
 
 Group changed files into workspaces:
 
-| Workspace | Path prefix | Lint command | Format check | Type check | Test |
+| Workspace | Path prefix | Lint | Format check | Type check | Test |
 |---|---|---|---|---|---|
-| Backend | `backend/` | `cd backend && pnpm lint` | `pnpm format-check` | `pnpm tsc-check` | `pnpm test` (needs Docker) |
+| Backend | `backend/` | `cd backend && pnpm lint` | `cd backend && pnpm format-check` | `cd backend && pnpm tsc-check` | `cd backend && pnpm test` (needs Docker) |
 | Frontend | `frontend/` | `cd frontend && npm run lint` | — | — | — |
-| Each service | `services/apps/<name>/` | `pnpm lint` | `pnpm format-check` | `pnpm tsc-check` | `pnpm test` if vitest present |
-| Each lib | `services/libs/<name>/` | `pnpm lint` | `pnpm format-check` | `pnpm tsc-check` | `pnpm test` if vitest present |
+| Each service | `services/apps/<name>/` | `cd services/apps/<name> && pnpm lint` | `cd services/apps/<name> && pnpm format-check` | `cd services/apps/<name> && pnpm tsc-check` | `cd services/apps/<name> && pnpm test` if vitest present |
+| Each lib | `services/libs/<name>/` | `cd services/libs/<name> && pnpm lint` | `cd services/libs/<name> && pnpm format-check` | `cd services/libs/<name> && pnpm tsc-check` | `cd services/libs/<name> && pnpm test` if vitest present |
 
 Run checks only for the workspaces that have changed files.
 

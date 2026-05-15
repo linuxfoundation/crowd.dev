@@ -82,7 +82,7 @@ fi
 case "$FILE_PATH" in
   tsconfig*.json|*/tsconfig*.json)
     warn "TypeScript configuration — changes affect compilation across the monorepo." ;;
-  .eslintrc*|*/eslintrc*|eslint.config*|*/eslint.config*)
+  .eslintrc*|*/.eslintrc*|eslint.config*|*/eslint.config*)
     warn "ESLint configuration — changes affect code quality rules for the project." ;;
   .prettierrc*|*/.prettierrc*)
     warn "Prettier configuration — changes affect code formatting standards." ;;

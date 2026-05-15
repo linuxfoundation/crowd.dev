@@ -6,7 +6,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
@@ -34,11 +34,17 @@
       "Bash(pnpm lint*)",
       "Bash(pnpm format-check*)",
       "Bash(pnpm tsc-check*)",
-      "Bash(npm run lint*)"
+      "Bash(pnpm format*)",
+      "Bash(pnpm test*)",
+      "Bash(npm run lint*)",
+      "Bash(git commit*)",
+      "Bash(git rebase*)",
+      "Bash(git cherry-pick*)",
+      "Bash(git push*)"
     ],
     "deny": [
       "Bash(git reset --hard*)",
-      "Bash(git push --force *)",
+      "Bash(git push --force*)",
       "Bash(rm -rf*)"
     ]
   }

@@ -114,6 +114,25 @@ After auditing all files, provide:
 
 ## Output Format
 
+Return findings as a JSON array first, then a brief markdown summary.
+
+**Part 1 — JSON findings** (used by `/review-pr` Phase 5 for filtering and compilation):
+
+```json
+[
+  {
+    "file": "backend/src/api/members.ts",
+    "line": 12,
+    "severity": "CRITICAL|SHOULD_FIX|NIT",
+    "rule": "<source>:<section>",
+    "message": "...",
+    "suggestion": "..."
+  }
+]
+```
+
+**Part 2 — Markdown summary** (human-readable):
+
 ```text
 ## Code Standards Audit Report
 
@@ -126,20 +145,6 @@ After auditing all files, provide:
 ### Protected Files
 - [List any protected files that were modified, or "None modified"]
 
-### Violations Found
-
-#### CRITICAL
-[Violations that break core patterns or introduce security/data issues]
-
-#### SHOULD FIX
-[Deviations from documented conventions]
-
-#### NIT
-[Minor style issues, protected-file awareness]
-
-### Correctly Followed
-[Notable rules that were correctly followed]
-
 ### Verdict: PASS / FAIL
-[Summary and priority fixes]
+[Total violations by severity. Top 3 priority fixes.]
 ```
