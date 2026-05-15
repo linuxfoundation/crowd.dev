@@ -13,7 +13,7 @@ export default class ServiceStatus extends Command {
     const {args} = await this.parse(ServiceStatus)
     if (!isValidService(args.name)) this.error(`Unknown service: ${args.name}`)
     const statuses = await getContainerStatuses()
-    const info = statuses[args.name] ?? statuses[`${args.name}-dev`]
+    const info = statuses[args.name]
     if (!info) {
       this.log(`${args.name}: stopped`)
     } else {

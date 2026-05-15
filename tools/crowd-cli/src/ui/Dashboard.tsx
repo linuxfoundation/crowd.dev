@@ -20,10 +20,11 @@ import {DebugPortsOverlay} from './DebugPortsOverlay.js'
 import {MultiTailPicker} from './MultiTailPicker.js'
 import {MultiTailOverlay} from './MultiTailOverlay.js'
 
-type Mode = 'dashboard' | 'select-services' | 'operation' | 'confirm-destroy' | 'confirm-full-reset' | 'logs' | 'all-errors' | 'debug-ports' | 'multi-tail-pick' | 'multi-tail'
+type Mode = 'dashboard' | 'select-services' | 'operation' | 'confirm-destroy' | 'confirm-full-reset' | 'logs' | 'all-errors' | 'debug-ports' | 'multi-tail-pick' | 'multi-tail' | 'system-info'
 type Panel = 'scaffold' | 'services'
 
 const NETWORK_NAME = `${PROJECT_NAME}-bridge`
+const OVERHEAD = 8
 
 export interface PostExitAction {
   psql?: {container: string; db: string}
@@ -34,8 +35,13 @@ export interface DashboardProps {
   postExit: PostExitAction
 }
 
+const MIN_COLS = 120
+const MIN_ROWS = 30
+
 export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
   const {exit} = useApp()
+  const [termCols, setTermCols] = useState(process.stdout.columns || 120)
+  const [termRows, setTermRows] = useState(process.stdout.rows || 24)
   const [mode, setMode] = useState<Mode>('dashboard')
   const [statuses, setStatuses] = useState<Record<string, ContainerInfo>>({})
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo>({exists: false})
@@ -55,10 +61,21 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
   const [time, setTime] = useState(new Date())
   const [focusPanel, setFocusPanel] = useState<Panel>('scaffold')
   const [scaffoldCursor, setScaffoldCursor] = useState(0)
+  const [scaffoldScrollOffset, setScaffoldScrollOffset] = useState(0)
   const [servicesCursor, setServicesCursor] = useState(0)
+  const [servicesScrollOffset, setServicesScrollOffset] = useState(0)
   const [pendingRestore, setPendingRestore] = useState<Array<{name: string; dev: boolean}> | null>(null)
   const [multiTailServices, setMultiTailServices] = useState<Array<{name: string; containerName: string; devMode: boolean}>>([])
   const operationInProgress = useRef(false)
+
+  useEffect(() => {
+    const onResize = () => {
+      setTermCols(process.stdout.columns || 120)
+      setTermRows(process.stdout.rows || 24)
+    }
+    process.stdout.on('resize', onResize)
+    return () => { process.stdout.off('resize', onResize) }
+  }, [])
 
   // Service lists don't change while app is running — compute once
   const appServiceNames = useMemo(() => getAppServiceNames(), [])
@@ -88,7 +105,7 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
     pollNetwork()
     const containerInterval = setInterval(pollContainers, 3000)
     const networkInterval = setInterval(pollNetwork, 5000)
-    const clock = setInterval(() => setTime(new Date()), 60000)
+    const clock = setInterval(() => setTime(new Date()), 1000)
     return () => {
       cancelled = true
       clearInterval(containerInterval)
@@ -223,11 +240,25 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
     imagePollRef.current?.()
   }, [])
 
-  useInput((input, key) => {
+  // Stable ref so useInput registers exactly once — avoids listener churn on every re-render
+  // (Ink 4 puts inputHandler in useEffect deps, so a new arrow fn each render = remove+re-add every clock tick)
+  const inputHandlerRef = useRef<(input: string, key: Parameters<Parameters<typeof useInput>[0]>[1]) => void>()
+  inputHandlerRef.current = (input, key) => {
     if (mode === 'operation' && operationDone) {
       setMode('dashboard')
       return
     }
+
+    if (input === 't' && (mode === 'dashboard' || mode === 'system-info')) {
+      setMode(prev => prev === 'system-info' ? 'dashboard' : 'system-info')
+      return
+    }
+
+    if (mode === 'system-info') {
+      if (input === 'q') exit()
+      return
+    }
+
     if (mode !== 'dashboard') return
 
     // navigation
@@ -235,14 +266,43 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
     const services = svcs
     const scaffoldSvcs = scaffoldServiceNames
     const colSize = Math.ceil(svcs.length / 2)
+    const visible = Math.max(5, termRows - OVERHEAD) - 1  // rows available per panel (minus header)
     if (key.upArrow) {
-      if (focusPanel === 'scaffold') setScaffoldCursor(c => Math.max(0, c - 1))
-      else setServicesCursor(c => Math.max(0, c - 1))
+      if (focusPanel === 'scaffold') {
+        const newCursor = Math.max(0, scaffoldCursor - 1)
+        setScaffoldCursor(newCursor)
+        setScaffoldScrollOffset(prev => Math.min(prev, Math.max(0, newCursor - 1)))
+      } else {
+        const newCursor = Math.max(0, servicesCursor - 1)
+        setServicesCursor(newCursor)
+        const prevRow = servicesCursor < colSize ? servicesCursor : servicesCursor - colSize
+        const newRow = newCursor < colSize ? newCursor : newCursor - colSize
+        if (newRow > prevRow) {
+          // wrapped col1→col0: cursor jumped to last row of col0, scroll down to show it
+          setServicesScrollOffset(Math.max(0, newRow - visible + 3))
+        } else {
+          setServicesScrollOffset(prev => Math.min(prev, Math.max(0, newRow - 1)))
+        }
+      }
       return
     }
     if (key.downArrow) {
-      if (focusPanel === 'scaffold') setScaffoldCursor(c => Math.min(scaffoldSvcs.length - 1, c + 1))
-      else setServicesCursor(c => Math.min(svcs.length - 1, c + 1))
+      if (focusPanel === 'scaffold') {
+        const newCursor = Math.min(scaffoldSvcs.length - 1, scaffoldCursor + 1)
+        setScaffoldCursor(newCursor)
+        setScaffoldScrollOffset(prev => Math.max(prev, newCursor - visible + 3))
+      } else {
+        const newCursor = Math.min(svcs.length - 1, servicesCursor + 1)
+        setServicesCursor(newCursor)
+        const prevRow = servicesCursor < colSize ? servicesCursor : servicesCursor - colSize
+        const newRow = newCursor < colSize ? newCursor : newCursor - colSize
+        if (newRow < prevRow) {
+          // wrapped col0→col1: cursor jumped to row 0, scroll back to top
+          setServicesScrollOffset(0)
+        } else {
+          setServicesScrollOffset(prev => Math.max(prev, newRow - visible + 3))
+        }
+      }
       return
     }
     if (key.leftArrow) {
@@ -283,8 +343,10 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
       if (input === 'e' && svc && running && errorServices.has(svc)) { setLogsService(svc); setLogsDevMode(dev); setLogsContainerName(info?.containerName ?? ''); setLogsErrorFilter(true); setMode('logs'); return }
       if (input === 'u' && svc && !running) { runOperation(`Starting ${svc} [dev]...`, log => startService(svc, true, log)); return }
       if (input === 'U' && svc && !running) { runOperation(`Starting ${svc}...`, log => startService(svc, false, log)); return }
-      if (input === 'k' && svc && running) { runOperation(`Stopping ${svc}...`, log => stopService(svc, log)); return }
+      if (input === 'k' && svc && running) { runOperation(`Stopping ${svc}...`, log => stopService(svc, dev, log)); return }
       if (input === 'r' && svc && running) { runOperation(`Restarting ${svc}...`, log => restartService(svc, dev, log)); return }
+      // consume service-panel keys so they never fall through to global scaffold ops
+      if (input === 'u' || input === 'U' || input === 'k' || input === 'r') return
     }
 
     // global error view
@@ -328,7 +390,23 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
       return
     }
     if (input === 'q') exit()
-  })
+  }
+
+  const stableInputHandler = useCallback((input: string, key: Parameters<Parameters<typeof useInput>[0]>[1]) => {
+    inputHandlerRef.current?.(input, key)
+  }, [])
+
+  useInput(stableInputHandler)
+
+  if (termCols < MIN_COLS || termRows < MIN_ROWS) {
+    return (
+      <Box flexDirection="column" padding={2}>
+        <Text color="red" bold>Terminal too small</Text>
+        <Text color="gray">Minimum: {MIN_COLS}×{MIN_ROWS}  Current: {termCols}×{termRows}</Text>
+        <Text color="gray" dimColor>Resize the terminal window to continue.</Text>
+      </Box>
+    )
+  }
 
   if (mode === 'operation') {
     return (
@@ -457,12 +535,56 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
     )
   }
 
+  // Fixed rows consumed by everything except the panels:
+  //   title bar (border): 3
+  //   marginTop before panels: 1
+  //   actionbar (separator + 3 lines): 4
+  const panelHeight = Math.max(5, termRows - OVERHEAD)
+
+  if (mode === 'system-info') {
+    return (
+      <Box flexDirection="column" width={termCols} height={termRows}>
+        <Box borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Text color="cyan" bold>CDP</Text>
+          <Box flexGrow={1} justifyContent="center">
+            <Text color="cyan" bold> SYSTEM INFO </Text>
+          </Box>
+          <Text color="gray">
+            {time.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})}
+            {'  '}
+            {time.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'})}
+          </Text>
+        </Box>
+        <Box flexDirection="column" marginTop={1}>
+          <NetworkPanel name={NETWORK_NAME} info={networkInfo} />
+          <ResourcesPanel statuses={statuses} imageSizes={imageSizes} volumeSizes={volumeSizes} dockerDisk={dockerDisk} />
+        </Box>
+        <Box flexDirection="column">
+          <Text color="gray">{'─'.repeat(termCols)}</Text>
+          <Box gap={3} flexWrap="wrap">
+            <Text color="gray" dimColor>system info — polls every 30-120s</Text>
+            <Box gap={1}><Text color="cyan" bold>[t]</Text><Text color="gray">back to dashboard</Text></Box>
+            <Box gap={1}><Text color="cyan" bold>[q]</Text><Text color="gray">quit</Text></Box>
+          </Box>
+        </Box>
+      </Box>
+    )
+  }
+
   return (
-    <Box flexDirection="column" width={process.stdout.columns || 120} height={process.stdout.rows || 24}>
-      <Box borderStyle="round" borderColor="cyan" paddingX={1}>
-        <Box flexGrow={1}>
-          <Text color="cyan" bold>crowd</Text>
-          <Text color="gray">  Community Data Platform</Text>
+    <Box flexDirection="column" width={termCols}>
+      <Box borderStyle="round" borderColor={errorServices.size > 0 ? 'red' : 'cyan'} paddingX={1}>
+        <Text color="cyan" bold>CDP</Text>
+        <Box flexGrow={1} justifyContent="center" gap={1} paddingX={2}>
+          {errorServices.size > 0 && (
+            <>
+              <Text color="red" bold inverse> !! ERRORS </Text>
+              {[...errorServices].map(svc => (
+                <Text key={svc} color="red" bold>{svc}</Text>
+              ))}
+              <Text color="gray" dimColor>[e] errors  [E] all</Text>
+            </>
+          )}
         </Box>
         <Text color="gray">
           {time.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})}
@@ -471,31 +593,14 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
         </Text>
       </Box>
 
-      {errorServices.size > 0 && (
-        <Box marginTop={1} paddingX={1} gap={2} borderStyle="single" borderColor="red" flexWrap="wrap">
-          <Text color="red" bold inverse> !! ERRORS </Text>
-          <Box flexWrap="wrap" gap={1}>
-            {[...errorServices].map(svc => (
-              <Text key={svc} color="red" bold>{svc}</Text>
-            ))}
-          </Box>
-          <Text color="gray" dimColor>[e] service errors  [E] all errors</Text>
-        </Box>
-      )}
-
-      <Box flexDirection="row" gap={2} marginTop={1}>
+      <Box flexDirection="row" gap={2} marginTop={1} height={panelHeight} overflow="hidden">
         <Box flexDirection="column">
-          <ScaffoldPanel statuses={statuses} focused={focusPanel === 'scaffold'} cursor={scaffoldCursor} errorServices={errorServices} />
+          <ScaffoldPanel statuses={statuses} focused={focusPanel === 'scaffold'} cursor={scaffoldCursor} errorServices={errorServices} height={panelHeight} scrollOffset={scaffoldScrollOffset} />
         </Box>
         <Box flexDirection="column" flexGrow={1}>
-          <ServicesPanel statuses={statuses} focused={focusPanel === 'services'} cursor={servicesCursor} errorServices={errorServices} />
+          <ServicesPanel statuses={statuses} focused={focusPanel === 'services'} cursor={servicesCursor} errorServices={errorServices} serviceNames={appServiceNames} height={panelHeight} scrollOffset={servicesScrollOffset} />
         </Box>
       </Box>
-
-      <NetworkPanel name={NETWORK_NAME} info={networkInfo} />
-      <ResourcesPanel statuses={statuses} imageSizes={imageSizes} volumeSizes={volumeSizes} dockerDisk={dockerDisk} />
-
-      <Box flexGrow={1} />
 
       <Box>
         <ActionBar
@@ -507,8 +612,8 @@ export function Dashboard({cliRoot: _cliRoot, postExit}: DashboardProps) {
           }
           selectedHasErrors={
             focusPanel === 'scaffold'
-              ? errorServices.has(scaffoldServiceNames[scaffoldCursor] ?? '')
-              : errorServices.has(appServiceNames[servicesCursor] ?? '')
+              ? statuses[scaffoldServiceNames[scaffoldCursor]]?.status === 'running' && errorServices.has(scaffoldServiceNames[scaffoldCursor] ?? '')
+              : statuses[appServiceNames[servicesCursor]]?.status === 'running' && errorServices.has(appServiceNames[servicesCursor] ?? '')
           }
           anyErrors={errorServices.size > 0}
           anyRunning={appServiceNames.some(n => statuses[n]?.status === 'running')}

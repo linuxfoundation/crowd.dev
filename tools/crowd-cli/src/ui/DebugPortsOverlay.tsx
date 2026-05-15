@@ -37,7 +37,7 @@ function Section({
         return svc.ports.map((p: PortEntry, i: number) => (
           <Box key={`${svc.name}-${p.hostPort}`} flexDirection="row">
             <Box width={24}>
-              <Text color={i === 0 ? 'white' : 'black'}>{i === 0 ? svc.name : ''}</Text>
+              {i === 0 && <Text color="white">{svc.name}</Text>}
             </Box>
             <Box width={7}><Text color="yellow">{p.hostPort}</Text></Box>
             <Box width={14}>
@@ -67,13 +67,13 @@ export function DebugPortsOverlay({statuses, onExit}: Props) {
         <Text color="cyan" bold>Ports</Text>
         <Text color="gray" dimColor>[q/esc] back</Text>
       </Box>
-      <Text color="gray">{'─'.repeat(60)}</Text>
+      <Text color="gray">{'─'.repeat(process.stdout.columns || 80)}</Text>
 
       <Section title="INFRASTRUCTURE" services={scaffoldPorts} statuses={statuses} />
       <Text> </Text>
       <Section title="SERVICES" services={appPorts} statuses={statuses} emptyLabel="(no services expose ports)" />
 
-      <Text color="gray">{'─'.repeat(60)}</Text>
+      <Text color="gray">{'─'.repeat(process.stdout.columns || 80)}</Text>
     </Box>
   )
 }

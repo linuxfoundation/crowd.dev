@@ -21,13 +21,13 @@ export function OperationOverlay({title, logs, done, error}: Props) {
   }, [done])
 
   const visible = logs.slice(-MAX_VISIBLE)
+  // Pad to MAX_VISIBLE rows so the status block stays anchored at top
+  // and the log area doesn't shift as lines arrive.
+  const padded = Array(Math.max(0, MAX_VISIBLE - visible.length)).fill('').concat(visible)
 
   return (
     <Box flexDirection="column" height={process.stdout.rows || 24} paddingX={1}>
-      {visible.map((log, i) => (
-        <Text key={i} color="gray">{log}</Text>
-      ))}
-      <Box marginTop={1} flexDirection="column">
+      <Box marginBottom={1} flexDirection="column">
         {!done ? (
           <Text color="yellow">{FRAMES[frame]}  {title}</Text>
         ) : error ? (
@@ -42,6 +42,9 @@ export function OperationOverlay({title, logs, done, error}: Props) {
           </>
         )}
       </Box>
+      {padded.map((log, i) => (
+        <Text key={i} color="gray">{log}</Text>
+      ))}
     </Box>
   )
 }

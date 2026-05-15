@@ -20,7 +20,7 @@ export function LibGeneratorWizard({onConfirm, onCancel}: Props) {
   const [step, setStep] = useState<Step>('name')
   const [name, setName] = useState('')
   const [nameError, setNameError] = useState('')
-  const existing = getExistingLibNames()
+  const [existing] = useState(() => getExistingLibNames())
 
   useInput((input, key) => {
     if (key.escape) { onCancel(); return }

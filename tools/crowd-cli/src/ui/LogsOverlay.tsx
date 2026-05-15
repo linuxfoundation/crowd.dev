@@ -28,7 +28,12 @@ export function LogsOverlay({service, devMode, containerName, onExit, errorFilte
       if (timerRef.current) clearTimeout(timerRef.current)
       onExit()
     }
-    if (input === 'c' && errorFilter && onClear) onClear()
+    if (input === 'c' && errorFilter && onClear) {
+      procRef.current?.kill()
+      if (timerRef.current) clearTimeout(timerRef.current)
+      onClear()
+      onExit()
+    }
   })
 
   useEffect(() => {

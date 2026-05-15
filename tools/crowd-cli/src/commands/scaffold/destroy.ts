@@ -1,5 +1,5 @@
 import {Command} from '@oclif/core'
-import {intro, outro, spinner, confirm, cancel} from '@clack/prompts'
+import {intro, outro, spinner, confirm, cancel, isCancel} from '@clack/prompts'
 import {scaffoldDestroy} from '../../lib/scaffold.js'
 
 export default class ScaffoldDestroy extends Command {
@@ -11,7 +11,7 @@ export default class ScaffoldDestroy extends Command {
       message: 'This will permanently delete all Docker volumes. Continue?',
       initialValue: false,
     })
-    if (!ok) {
+    if (isCancel(ok) || !ok) {
       cancel('Aborted.')
       return
     }

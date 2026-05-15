@@ -9,7 +9,7 @@ export default class ServiceList extends Command {
     await this.parse(ServiceList)
     const statuses = await getContainerStatuses()
     const services = getAppServiceNames()
-    const running = services.filter(s => statuses[s]?.status === 'running' || statuses[`${s}-dev`]?.status === 'running')
+    const running = services.filter(s => statuses[s]?.status === 'running')
     const stopped = services.filter(s => !running.includes(s))
 
     this.log('\nServices:')

@@ -1,5 +1,5 @@
 import {Command, Args} from '@oclif/core'
-import {intro, outro, spinner, confirm, cancel} from '@clack/prompts'
+import {intro, outro, spinner, confirm, cancel, isCancel} from '@clack/prompts'
 import {execa} from 'execa'
 import {CLI_SCRIPT, SCRIPTS_PATH} from '../../lib/paths.js'
 
@@ -17,7 +17,7 @@ export default class DbRestore extends Command {
       message: 'This will destroy all current database data. Continue?',
       initialValue: false,
     })
-    if (!ok) {
+    if (isCancel(ok) || !ok) {
       cancel('Aborted.')
       return
     }

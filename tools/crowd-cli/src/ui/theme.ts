@@ -9,3 +9,8 @@ export const theme = {
   accent: 'yellow',
   dim: 'gray',
 } as const
+
+export function statusLabel(status: string): string {
+  if (status === 'unknown' || status === 'exited') return 'stopped'
+  return status
+}

@@ -1,5 +1,5 @@
 import {Command} from '@oclif/core'
-import {intro, outro, spinner, multiselect, confirm, cancel} from '@clack/prompts'
+import {intro, outro, spinner, multiselect, confirm, cancel, isCancel} from '@clack/prompts'
 import {execa} from 'execa'
 import {SCRIPTS_PATH} from '../../lib/paths.js'
 import {getAppServiceNames} from '../../lib/services.js'
@@ -20,7 +20,7 @@ export default class DeployProduction extends Command {
       message: `Deploy ${(selected as string[]).length} service(s) to PRODUCTION?`,
       initialValue: false,
     })
-    if (!ok) {
+    if (isCancel(ok) || !ok) {
       cancel('Aborted.')
       return
     }

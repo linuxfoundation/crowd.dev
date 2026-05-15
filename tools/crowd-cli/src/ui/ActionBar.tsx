@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function ActionBar({focusPanel, selectedRunning, selectedHasErrors, anyErrors, anyRunning, selectedCanPsql}: Props) {
-  const width = Math.min(process.stdout.columns || 80, 120)
+  const width = process.stdout.columns || 80
   return (
     <Box flexDirection="column">
       <Text color="gray">{'─'.repeat(width)}</Text>
@@ -45,26 +45,28 @@ export function ActionBar({focusPanel, selectedRunning, selectedHasErrors, anyEr
         )}
       </Box>
       <Box gap={3} flexWrap="wrap">
-        <Text color="gray" dimColor>infra:</Text>
-        {anyRunning && (
-          <Box gap={1}><Text color="cyan" bold>[m]</Text><Text color="gray">multi-tail</Text></Box>
-        )}
         {[
-          ['U', 'up all'],
-          ['d', 'down all'],
           ['R', 'reset'],
           ['F', 'full reset+restore'],
           ['D', 'destroy+vols'],
-          ['s', 'start svcs'],
-          ['P', 'ports'],
-          ['L', 'lint'],
-          ['q', 'quit'],
+          ['U', 'up all'],
+          ['d', 'down all'],
         ].map(([key, label]) => (
           <Box key={key} gap={1}>
-            <Text color="cyan" bold>[{key}]</Text>
+            <Text color="yellow" bold>[{key}]</Text>
             <Text color="gray">{label}</Text>
           </Box>
         ))}
+      </Box>
+      <Box gap={3} flexWrap="wrap">
+        <Box gap={1}><Text color="cyan" bold>[s]</Text><Text color="gray">start svcs</Text></Box>
+        {anyRunning && (
+          <Box gap={1}><Text color="cyan" bold>[m]</Text><Text color="gray">multi-tail</Text></Box>
+        )}
+        <Box gap={1}><Text color="cyan" bold>[P]</Text><Text color="gray">ports</Text></Box>
+        <Box gap={1}><Text color="cyan" bold>[L]</Text><Text color="gray">lint</Text></Box>
+        <Box gap={1}><Text color="cyan" bold>[t]</Text><Text color="gray">system info</Text></Box>
+        <Box gap={1}><Text color="cyan" bold>[q]</Text><Text color="gray">quit</Text></Box>
       </Box>
     </Box>
   )

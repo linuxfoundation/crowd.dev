@@ -38,7 +38,7 @@ export function ServiceGeneratorWizard({onConfirm, onCancel}: Props) {
   const [nameError, setNameError] = useState('')
   const [debugPort] = useState(() => getNextDebugPort())
   const [defaultApiPort] = useState(() => getNextApiPort())
-  const existing = getExistingServiceNames()
+  const [existing] = useState(() => getExistingServiceNames())
 
   const selectedType = TYPES[typeIdx].value
 

@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function ServiceSelector({onConfirm, onCancel}: Props) {
-  const services = getAppServiceNames()
+  const [services] = useState(() => getAppServiceNames())
   const [cursor, setCursor] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [devMode, setDevMode] = useState(true)
