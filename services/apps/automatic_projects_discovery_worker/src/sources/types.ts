@@ -1,5 +1,7 @@
 import { Readable } from 'stream'
 
+import { ProjectCatalogAction } from '@crowd/data-access-layer/src/project-catalog/types'
+
 export interface IDatasetDescriptor {
   id: string
   date: string
@@ -22,6 +24,6 @@ export interface IDiscoverySourceRow {
   projectSlug: string
   repoName: string
   repoUrl: string
-  action?: 'auto' | 'evaluate' | 'onboard' | 'unsure'
+  action?: ProjectCatalogAction
   lfCriticalityScore?: number
 }

@@ -1,10 +1,12 @@
+export type ProjectCatalogAction = 'auto' | 'evaluate' | 'onboard' | 'unsure'
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string
   repoName: string
   repoUrl: string
   source: string | null
-  action: string
+  action: ProjectCatalogAction
   lfCriticalityScore: number | null
   evaluatedAt: string | null
   onboardedAt: string | null
@@ -23,7 +25,7 @@ export type IDbProjectCatalogCreate = Omit<
   'source' | 'action' | 'lfCriticalityScore'
 > & {
   source?: string | null
-  action?: string
+  action?: ProjectCatalogAction
   lfCriticalityScore?: number
 }
 

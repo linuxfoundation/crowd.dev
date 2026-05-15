@@ -101,8 +101,8 @@ function extractRepoUrls(text: string): string[] {
   while ((match = regex.exec(text)) !== null) {
     const owner = match[1].toLowerCase()
     const repo = match[2]
-      .replace(/\.git$/, '')
       .replace(/[.,;:!?]+$/, '')
+      .replace(/\.git$/, '')
       .toLowerCase()
     if (owner && repo && !GITHUB_NON_REPO_OWNERS.has(owner)) {
       urls.add(`https://github.com/${owner}/${repo}`)

@@ -216,7 +216,11 @@ export async function upsertProjectCatalog(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
-      "action" = CASE WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate' ELSE "projectCatalog"."action" END,
+      "action" = CASE
+        WHEN "projectCatalog"."action" IN ('onboard', 'unsure') THEN "projectCatalog"."action"
+        WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
+        ELSE "projectCatalog"."action"
+      END,
       "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
       "updatedAt" = NOW(),
       "syncedAt" = NOW()
@@ -285,7 +289,11 @@ export async function bulkUpsertProjectCatalog(
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
-      "action" = CASE WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate' ELSE "projectCatalog"."action" END,
+      "action" = CASE
+        WHEN "projectCatalog"."action" IN ('onboard', 'unsure') THEN "projectCatalog"."action"
+        WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
+        ELSE "projectCatalog"."action"
+      END,
       "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
       "updatedAt" = NOW(),
       "syncedAt" = NOW()
