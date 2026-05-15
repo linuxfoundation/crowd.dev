@@ -93,7 +93,6 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
   })
 }
 
-
 // Extracts github.com/{owner}/{repo} URLs from markdown text, normalised to the repo root.
 function extractRepoUrls(text: string): string[] {
   const urls = new Set<string>()
@@ -101,7 +100,10 @@ function extractRepoUrls(text: string): string[] {
   let match: RegExpExecArray | null
   while ((match = regex.exec(text)) !== null) {
     const owner = match[1].toLowerCase()
-    const repo = match[2].replace(/\.git$/, '').replace(/[.,;:!?]+$/, '').toLowerCase()
+    const repo = match[2]
+      .replace(/\.git$/, '')
+      .replace(/[.,;:!?]+$/, '')
+      .toLowerCase()
     if (owner && repo && !GITHUB_NON_REPO_OWNERS.has(owner)) {
       urls.add(`https://github.com/${owner}/${repo}`)
     }
@@ -145,7 +147,6 @@ async function getDiscussionCategoryId(): Promise<string> {
 
   return category.id
 }
-
 
 async function fetchDiscussionsPage(
   categoryId: string,
