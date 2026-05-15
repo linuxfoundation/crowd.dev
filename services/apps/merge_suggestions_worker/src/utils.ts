@@ -52,7 +52,16 @@ export function stripProtocol(value: string) {
 
 // Generic git user.name placeholders and OS account names that are never a real human
 // identity — shared across unrelated machines and meaningless as a merge signal.
-const OS_RESERVED_NAMES = new Set(['unknown', 'root', 'ubuntu', 'admin', 'user', 'guest'])
+const OS_RESERVED_NAMES = new Set([
+  'unknown',
+  'root',
+  'ubuntu',
+  'admin',
+  'user',
+  'guest',
+  '[[unknown]] [not provided]',
+  'deleted user',
+])
 
 export function isOsReservedName(name: string): boolean {
   return OS_RESERVED_NAMES.has(name.trim().toLowerCase())
