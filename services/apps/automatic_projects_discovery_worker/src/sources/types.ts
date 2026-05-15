@@ -22,6 +22,6 @@ export interface IDiscoverySourceRow {
   projectSlug: string
   repoName: string
   repoUrl: string
-  action?: string
+  action?: 'auto' | 'evaluate' | 'onboard' | 'unsure'
   lfCriticalityScore?: number
 }

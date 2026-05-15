@@ -18,12 +18,17 @@ type ProjectCatalogWritable = Pick<
   'projectSlug' | 'repoName' | 'repoUrl' | 'source' | 'action' | 'lfCriticalityScore'
 >
 
-export type IDbProjectCatalogCreate = Omit<ProjectCatalogWritable, 'lfCriticalityScore'> & {
+export type IDbProjectCatalogCreate = Omit<
+  ProjectCatalogWritable,
+  'source' | 'action' | 'lfCriticalityScore'
+> & {
+  source?: string | null
+  action?: string
   lfCriticalityScore?: number
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
-  syncedAt?: string
-  evaluatedAt?: string
-  onboardedAt?: string
+  syncedAt?: string | null
+  evaluatedAt?: string | null
+  onboardedAt?: string | null
 }

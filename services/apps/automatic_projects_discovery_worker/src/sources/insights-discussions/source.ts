@@ -7,14 +7,32 @@ import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../ty
 
 const log = getServiceLogger()
 
+const CATEGORY_SLUG = 'project-onboardings'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
+const GITHUB_NON_REPO_OWNERS = new Set(['user-attachments', 'orgs', 'apps', 'marketplace'])
 const OWNER = 'linuxfoundation'
 const REPO = 'insights'
-const CATEGORY_SLUG = 'project-onboardings'
 
 interface GraphQLResponse<T> {
   data?: T
   errors?: Array<{ message: string }>
+}
+
+interface DiscussionNode {
+  number: number
+  body: string
+  closed: boolean
+}
+
+interface DiscussionsPage {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null }
+  nodes: DiscussionNode[]
+}
+
+interface DiscussionsData {
+  repository: {
+    discussions: DiscussionsPage
+  }
 }
 
 async function graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
@@ -75,7 +93,6 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
   })
 }
 
-const GITHUB_NON_REPO_OWNERS = new Set(['user-attachments', 'orgs', 'apps', 'marketplace'])
 
 // Extracts github.com/{owner}/{repo} URLs from markdown text, normalised to the repo root.
 function extractRepoUrls(text: string): string[] {
@@ -83,9 +100,9 @@ function extractRepoUrls(text: string): string[] {
   const regex = /https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/gi
   let match: RegExpExecArray | null
   while ((match = regex.exec(text)) !== null) {
-    const owner = match[1]
-    const repo = match[2].replace(/\.git$/, '')
-    if (owner && repo && !GITHUB_NON_REPO_OWNERS.has(owner.toLowerCase())) {
+    const owner = match[1].toLowerCase()
+    const repo = match[2].replace(/\.git$/, '').replace(/[.,;:!?]+$/, '').toLowerCase()
+    if (owner && repo && !GITHUB_NON_REPO_OWNERS.has(owner)) {
       urls.add(`https://github.com/${owner}/${repo}`)
     }
   }
@@ -129,16 +146,6 @@ async function getDiscussionCategoryId(): Promise<string> {
   return category.id
 }
 
-interface DiscussionNode {
-  number: number
-  body: string
-  closed: boolean
-}
-
-interface DiscussionsPage {
-  pageInfo: { hasNextPage: boolean; endCursor: string | null }
-  nodes: DiscussionNode[]
-}
 
 async function fetchDiscussionsPage(
   categoryId: string,
@@ -162,12 +169,6 @@ async function fetchDiscussionsPage(
     }
   `
 
-  interface DiscussionsData {
-    repository: {
-      discussions: DiscussionsPage
-    }
-  }
-
   const data = await graphqlRequest<DiscussionsData>(query, { categoryId, cursor })
   return data.repository.discussions
 }
@@ -186,7 +187,6 @@ async function fetchAllDiscussionRepoUrls(): Promise<string[]> {
     const page = await fetchDiscussionsPage(categoryId, cursor)
 
     for (const discussion of page.nodes) {
-      if (discussion.closed) continue
       for (const url of extractRepoUrls(discussion.body)) {
         allUrls.add(url)
       }
