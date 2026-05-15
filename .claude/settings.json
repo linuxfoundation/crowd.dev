@@ -44,7 +44,6 @@
     ],
     "deny": [
       "Bash(git reset --hard*)",
-      "Bash(git push --force*)",
       "Bash(rm -rf*)"
     ]
   }
