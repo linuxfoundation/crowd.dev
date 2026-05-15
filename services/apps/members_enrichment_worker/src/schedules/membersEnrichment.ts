@@ -57,7 +57,7 @@ export const scheduleMembersEnrichment = async () => {
         type: 'startWorkflow',
         workflowType: triggerMembersEnrichment,
         taskQueue: 'members-enrichment',
-        workflowExecutionTimeout: '3 hours',
+        workflowExecutionTimeout: '2 hours',
         retry: {
           initialInterval: '15 seconds',
           backoffCoefficient: 2,
