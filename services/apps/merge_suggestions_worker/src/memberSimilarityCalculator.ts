@@ -200,6 +200,8 @@ class MemberSimilarityCalculator {
     similarMember: IMemberOpensearch,
   ): boolean {
     if (member.identities && member.identities.length > 0) {
+      // Only verified usernames are authoritative enough to veto merges; unverified social
+      // slugs mostly come from enrichment and should not block stronger identity evidence.
       for (const identity of member.identities.filter(
         (i) => i.type === MemberIdentityType.USERNAME && i.verified,
       )) {
@@ -468,8 +470,8 @@ class MemberSimilarityCalculator {
     similarMember: IMemberOpensearch,
     startingScore?: number,
   ): number {
-    // displayName equality (startingScore omitted) is itself a high-confidence signal — don't
-    // gate on metadata. Edit-distance callers pass a score and must have at least one signal.
+    // Exact displayName widens the candidate funnel for sparse git-only profiles.
+    // The LLM prompt still rejects display-name-only matches before merging.
     let isHighConfidence = startingScore === undefined
     let confidenceScore =
       startingScore != null && Number.isFinite(startingScore)
