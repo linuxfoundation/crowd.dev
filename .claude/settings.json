@@ -2,5 +2,44 @@
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-protected-files.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git remote*)",
+      "Bash(git fetch*)",
+      "Bash(git merge-base*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh repo view*)",
+      "Bash(gh api repos*)",
+      "Bash(pnpm lint*)",
+      "Bash(pnpm format-check*)",
+      "Bash(pnpm tsc-check*)",
+      "Bash(npm run lint*)"
+    ],
+    "deny": [
+      "Bash(git reset --hard*)",
+      "Bash(git push --force *)",
+      "Bash(rm -rf*)"
+    ]
   }
 }
