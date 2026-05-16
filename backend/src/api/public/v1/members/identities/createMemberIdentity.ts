@@ -35,16 +35,39 @@ const bodySchema = z
     path: ['verifiedBy'],
   })
 
+type DbConstraintError = Error & {
+  constraint?: string
+  original?: { constraint?: string }
+  parent?: { constraint?: string }
+}
+
+function throwIdentityConflict(
+  error: DbConstraintError,
+  data: { platform: string; value: string; type: MemberIdentityType },
+): never {
+  const constraint = error.constraint ?? error.original?.constraint ?? error.parent?.constraint
+
+  if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
+    throw new ConflictError('Identity already verified on another member', data)
+  }
+
+  throw error
+}
+
 export async function createMemberIdentity(req: Request, res: Response): Promise<void> {
   const { memberId } = validateOrThrow(paramsSchema, req.params)
   const data = validateOrThrow(bodySchema, req.body)
 
   const qx = optionsQx(req)
-
   const member = await findMemberById(qx, memberId, [MemberField.ID])
   if (!member) {
     throw new NotFoundError('Member not found')
   }
+
+  // The data-sink writes identity values as trimmed lowercase, so normalize here
+  // to keep idempotency checks reliable against existing rows.
+  const normalizedValue = data.value.trim().toLowerCase()
+  const conflictContext = { platform: data.platform, value: normalizedValue, type: data.type }
 
   let result!: IMemberIdentity
   let alreadyExisted = false
@@ -55,23 +78,22 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
+        const existing = await findMemberIdentitiesByValue(tx, memberId, normalizedValue, {
           type: data.type,
         })
-
         const exactMatch = existing.find((i) => i.platform === data.platform)
 
-        if (exactMatch) {
-          alreadyExisted = true
-          result = exactMatch
-        } else {
-          try {
+        try {
+          if (exactMatch) {
+            alreadyExisted = true
+            result = exactMatch
+          } else {
             result = await insertMemberIdentity(
               tx,
               {
                 memberId,
                 platform: data.platform,
-                value: data.value,
+                value: normalizedValue,
                 type: data.type,
                 source: data.source,
                 verified: data.verified,
@@ -80,39 +102,26 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
               true,
               true,
             )
-          } catch (error) {
-            const constraint =
-              error.constraint ?? error.original?.constraint ?? error.parent?.constraint
-
-            if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
-              throw new ConflictError('Identity already verified on another member', {
-                platform: data.platform,
-                value: data.value,
-                type: data.type,
-              })
-            }
-
-            throw error
           }
-        }
 
-        if (data.verified && existing.length > 0) {
-          await Promise.all(
-            existing.map((i) =>
-              updateMemberIdentity(tx, memberId, i.id, {
+          // A verified identity confirms the same value for this member, so keep same-value
+          // identities in sync instead of leaving stale unverified duplicates behind.
+          if (data.verified && existing.length > 0) {
+            const updatedResults: IMemberIdentity[] = []
+            for (const identity of existing) {
+              const updated = await updateMemberIdentity(tx, memberId, identity.id, {
                 verified: true,
                 verifiedBy: data.verifiedBy,
-              }),
-            ),
-          )
+              })
+              if (updated) updatedResults.push(updated)
+            }
 
-          if (alreadyExisted) {
-            result = {
-              ...exactMatch,
-              verified: true,
-              verifiedBy: data.verifiedBy,
+            if (alreadyExisted) {
+              result = updatedResults.find((r) => r.id === exactMatch.id) ?? result
             }
           }
+        } catch (error) {
+          throwIdentityConflict(error as DbConstraintError, conflictContext)
         }
 
         await touchMemberUpdatedAt(tx, memberId)
