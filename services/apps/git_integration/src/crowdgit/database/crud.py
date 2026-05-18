@@ -95,7 +95,12 @@ async def acquire_onboarding_repo() -> Repository | None:
     """
     return await acquire_repository(
         onboarding_repo_sql_query,
-        (RepositoryState.PROCESSING, RepositoryState.PENDING, MAX_CONCURRENT_ONBOARDINGS, STUCK_REPO_TIMEOUT_HOURS),
+        (
+            RepositoryState.PROCESSING,
+            RepositoryState.PENDING,
+            MAX_CONCURRENT_ONBOARDINGS,
+            STUCK_REPO_TIMEOUT_HOURS,
+        ),
     )
 
 
@@ -174,7 +179,13 @@ async def acquire_recurrent_repo() -> Repository | None:
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
-        (RepositoryState.PROCESSING, states_to_exclude, REPOSITORY_UPDATE_INTERVAL_HOURS, STUCK_REPO_TIMEOUT_HOURS, FAILED_RETRY_INTERVAL_HOURS),
+        (
+            RepositoryState.PROCESSING,
+            states_to_exclude,
+            REPOSITORY_UPDATE_INTERVAL_HOURS,
+            STUCK_REPO_TIMEOUT_HOURS,
+            FAILED_RETRY_INTERVAL_HOURS,
+        ),
     )
 
 
@@ -194,7 +205,13 @@ async def can_onboard_more():
 
 
 async def acquire_pending_reonboard_repo() -> Repository | None:
-    """Acquire a pending_reonboard repo for re-onboarding (only called on weekends)."""
+    """Acquire a pending_reonboard repo for re-onboarding (only called on weekends).
+
+    PENDING_REONBOARD is no longer produced automatically (ReOnboardingRequiredError was removed
+    in CM-1185). This function stays to drain any legacy rows that pre-date the change, and to
+    allow the CM-1186 backfill script to set state='pending_reonboard' for repos that need a
+    full re-ingest on the weekend.
+    """
     pending_reonboard_sql_query = f"""
     WITH selected_repo AS (
         SELECT r.id

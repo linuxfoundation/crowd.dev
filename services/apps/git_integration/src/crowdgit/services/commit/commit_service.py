@@ -10,6 +10,7 @@ from typing import Any
 
 import orjson
 from pydantic import validate_email
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from crowdgit.database.crud import (
     batch_check_parent_activities,
@@ -204,6 +205,7 @@ class CommitService(BaseService):
             return "HEAD"
         return f"origin/{default_branch}"
 
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
     async def _get_commit_hashes(self, repo_path: str, commit_range: str) -> list[str]:
         """Stream commit hashes oldest-first via rev-list. No buffering in git subprocess."""
         output = await run_shell_command(
@@ -211,11 +213,13 @@ class CommitService(BaseService):
         )
         return [h for h in output.strip().splitlines() if h.strip()]
 
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
     async def _fetch_commits_batch(self, repo_path: str, hashes: list[str]) -> str:
         """Fetch full commit data for exactly the given hashes (no parent traversal)."""
         cmd = [
             "git",
-            "-c", "core.abbrevCommit=false",
+            "-c",
+            "core.abbrevCommit=false",
             "-C",
             repo_path,
             "log",
@@ -776,9 +780,7 @@ class CommitService(BaseService):
                     raise
 
         running_tasks = [
-            asyncio.create_task(
-                process_single_chunk(i, min(i + chunk_size, len(commit_texts)))
-            )
+            asyncio.create_task(process_single_chunk(i, min(i + chunk_size, len(commit_texts))))
             for i in range(0, len(commit_texts), chunk_size)
         ]
 

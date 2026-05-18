@@ -15,11 +15,9 @@ from crowdgit.errors import (
     ForbiddenError,
     InternalError,
     ParentRepoInvalidError,
-    PermissionError as RepoPermissionError,
     RepoAuthRequiredError,
+    RepoPermissionError,
 )
-
-# Import configured loguru logger from crowdgit.logger
 from crowdgit.logger import logger
 from crowdgit.models import Repository
 from crowdgit.services import (
@@ -99,6 +97,11 @@ class RepositoryWorker:
 
     async def _heartbeat_loop(self, repo_id: str, stop_event: asyncio.Event) -> None:
         """Periodically refresh lockedAt so the repo is not reclaimed as a stale lock."""
+        # Refresh immediately so the first tick is not delayed by LOCK_HEARTBEAT_INTERVAL_SEC.
+        try:
+            await update_lock_heartbeat(repo_id)
+        except Exception as e:
+            logger.warning(f"Heartbeat update failed for repo {repo_id}: {e}")
         while not stop_event.is_set():
             await asyncio.sleep(LOCK_HEARTBEAT_INTERVAL_SEC)
             if not stop_event.is_set():

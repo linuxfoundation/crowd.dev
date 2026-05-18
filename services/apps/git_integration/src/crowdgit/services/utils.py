@@ -9,10 +9,10 @@ from crowdgit.errors import (
     EmptyRepoError,
     ForbiddenError,
     NetworkError,
-    PermissionError,
     RateLimitError,
     RemoteServerError,
     RepoAuthRequiredError,
+    RepoPermissionError,
     ValidationError,
 )
 from crowdgit.logger import logger
@@ -175,7 +175,7 @@ ERROR_CLASSIFICATIONS = [
     # (stderr_patterns, exception_class)
     ({"No space left on device"}, DiskSpaceError),
     ({"Network is unreachable", "Connection refused", "Connection timed out"}, NetworkError),
-    ({"Permission denied"}, PermissionError),
+    ({"Permission denied"}, RepoPermissionError),
     ({"The requested URL returned error: 403"}, ForbiddenError),
     ({"The requested URL returned error: 429"}, RateLimitError),
     ({"The requested URL returned error: 5"}, RemoteServerError),

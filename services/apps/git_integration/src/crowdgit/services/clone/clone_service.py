@@ -1,3 +1,4 @@
+import fcntl
 import os
 import shutil
 import tempfile
@@ -294,25 +295,44 @@ class CloneService(BaseService):
                 repo_path = stable_path
                 os.makedirs(repo_path, exist_ok=True)
 
-                if os.path.isdir(os.path.join(repo_path, ".git")):
-                    if not await self._is_repo_valid(repo_path):
-                        self.logger.warning(
-                            f"Repo at {repo_path} is in an invalid state, wiping and re-cloning"
-                        )
-                        await self._wipe_and_reclone(repo_path, remote)
-                    else:
-                        default_branch_changed = await self.has_default_branch_changed(
-                            remote, repository.branch
-                        )
-                        if default_branch_changed:
+                # OS-level flock guards against the DB lock expiry window: if a pod crashes and
+                # another acquires the DB lock after STUCK_REPO_TIMEOUT_HOURS, this flock ensures
+                # the new pod does not mutate the directory while the crashed pod's git subprocess
+                # is still running. Non-blocking: raises OSError(EWOULDBLOCK) if held elsewhere.
+                flock_path = os.path.join(repo_path, ".crowdgit.lock")
+                flock_fd = open(flock_path, "w")
+                try:
+                    fcntl.flock(flock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    flock_fd.close()
+                    raise CommandExecutionError(
+                        f"OS flock busy for {repo_path} — another process still holds the repo",
+                        returncode=1,
+                    ) from None
+
+                try:
+                    if os.path.isdir(os.path.join(repo_path, ".git")):
+                        if not await self._is_repo_valid(repo_path):
+                            self.logger.warning(
+                                f"Repo at {repo_path} is in an invalid state, wiping and re-cloning"
+                            )
                             await self._wipe_and_reclone(repo_path, remote)
                         else:
-                            await self._incremental_fetch(repo_path, remote)
-                else:
-                    # Defensive: wipe in case a prior crash left checkout artifacts with no .git.
-                    shutil.rmtree(repo_path, ignore_errors=True)
-                    os.makedirs(repo_path)
-                    await self._perform_full_clone(repo_path, remote)
+                            default_branch_changed = await self.has_default_branch_changed(
+                                remote, repository.branch
+                            )
+                            if default_branch_changed:
+                                await self._wipe_and_reclone(repo_path, remote)
+                            else:
+                                await self._incremental_fetch(repo_path, remote)
+                    else:
+                        # Defensive: wipe in case a prior crash left checkout artifacts with no .git.
+                        shutil.rmtree(repo_path, ignore_errors=True)
+                        os.makedirs(repo_path)
+                        await self._perform_full_clone(repo_path, remote)
+                finally:
+                    fcntl.flock(flock_fd, fcntl.LOCK_UN)
+                    flock_fd.close()
             else:
                 # Ephemeral path — legacy behaviour for local dev / Docker Compose.
                 repo_path = tempfile.mkdtemp(prefix=f"{get_repo_name(remote)}_")
@@ -333,10 +353,18 @@ class CloneService(BaseService):
             # Wipe persistent clone only on non-transient failures that indicate local git
             # corruption. Transient/remote errors (network, rate-limit, disk-full, timeout)
             # leave the local clone intact — no point re-cloning 6+ GB because GitHub was down.
-            _TRANSIENT_ERRORS = (RateLimitError, NetworkError, RemoteServerError, DiskSpaceError, CommandTimeoutError)
+            _TRANSIENT_ERRORS = (
+                RateLimitError,
+                NetworkError,
+                RemoteServerError,
+                DiskSpaceError,
+                CommandTimeoutError,
+            )
             if stable_path and os.path.isdir(os.path.join(stable_path, ".git")):
                 if not isinstance(e, _TRANSIENT_ERRORS):
-                    self.logger.warning(f"Wiping persistent clone at {stable_path} after non-transient failure")
+                    self.logger.warning(
+                        f"Wiping persistent clone at {stable_path} after non-transient failure"
+                    )
                     shutil.rmtree(stable_path, ignore_errors=True)
             raise
         finally:
