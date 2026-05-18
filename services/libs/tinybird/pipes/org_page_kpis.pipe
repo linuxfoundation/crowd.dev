@@ -6,6 +6,7 @@ TAGS "Organization page"
 
 NODE org_page_kpis_main
 SQL >
+    %
     SELECT
         activeContributors,
         if(

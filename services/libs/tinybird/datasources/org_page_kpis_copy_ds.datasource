@@ -4,10 +4,10 @@ DESCRIPTION >
 
 SCHEMA >
     `organizationId` String,
-    `activeContributors` UInt32,
-    `activeContributorsPrevious` UInt32,
-    `maintainerRoles` UInt32,
-    `criticalProjects` UInt32,
+    `activeContributors` UInt64,
+    `activeContributorsPrevious` UInt64,
+    `maintainerRoles` UInt64,
+    `criticalProjects` UInt64,
     `computedAt` DateTime
 
 ENGINE ReplacingMergeTree

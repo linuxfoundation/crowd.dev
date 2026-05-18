@@ -9,7 +9,7 @@ SCHEMA >
     `projectName` String,
     `projectLogo` String,
     `activityCount` UInt64,
-    `contributorCount` UInt32,
+    `contributorCount` UInt64,
     `computedAt` DateTime
 
 ENGINE ReplacingMergeTree

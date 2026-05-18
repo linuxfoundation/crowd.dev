@@ -6,6 +6,7 @@ TAGS "Organization page"
 
 NODE org_page_profile_base
 SQL >
+    %
     SELECT
         id,
         displayName,
@@ -18,6 +19,7 @@ SQL >
 
 NODE org_page_profile_website
 SQL >
+    %
     SELECT
         organizationId,
         argMax(value, updatedAt) AS website
