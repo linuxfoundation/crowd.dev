@@ -131,6 +131,7 @@ export async function saveOSPSBaselineInsightsToDB(
       qx,
       repo.repoUrl,
       evaluation['control-id'],
+      suite.id,
     )
     for (const assessment of evaluation.assessments) {
       await addControlEvaluationAssessment(qx, {
