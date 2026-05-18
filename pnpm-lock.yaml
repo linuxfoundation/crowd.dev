@@ -1425,9 +1425,6 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
-      '@crowd/redis':
-        specifier: workspace:*
-        version: link:../../libs/redis
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal
