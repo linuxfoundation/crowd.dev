@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import uniqBy from 'lodash.uniqby'
 
-import { parseGitHubNoreplyEmail } from '@crowd/common'
+import { parseGitHubNoreplyEmail, parseGitLabNoreplyEmail } from '@crowd/common'
 import { addMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import { MemberField, queryMembers } from '@crowd/data-access-layer/src/members'
 import MemberMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/memberMergeSuggestions.repo'
@@ -119,6 +119,10 @@ export async function getMemberMergeSuggestions(
       if (ghUsername) {
         noreplyEmailUsernameMatches.push({ value: ghUsername, platform: PlatformType.GITHUB })
       }
+      const glUsername = parseGitLabNoreplyEmail(value)
+      if (glUsername) {
+        noreplyEmailUsernameMatches.push({ value: glUsername, platform: PlatformType.GITLAB })
+      }
     }
 
     // Fuzzy matches (only for verified & non-numeric)
@@ -213,8 +217,8 @@ export async function getMemberMergeSuggestions(
       }),
     },
     {
-      // Query 8: Noreply/private email -> username (verified or unverified)
-      matches: uniqBy(noreplyEmailUsernameMatches, 'value'),
+      // Query 8: Noreply email -> platform username (verified identities only)
+      matches: uniqBy(noreplyEmailUsernameMatches, (m) => `${m.platform}:${m.value}`),
       builder: ({ value, platform }) => ({
         bool: {
           must: [
