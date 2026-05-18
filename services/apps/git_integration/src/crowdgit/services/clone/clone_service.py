@@ -325,6 +325,7 @@ class CloneService(BaseService):
                                 f"Repo at {repo_path} is in an invalid state, wiping and re-cloning"
                             )
                             await self._wipe_and_reclone(repo_path, remote)
+                            batch_info.branch_changed = True
                         else:
                             default_branch_changed = await self.has_default_branch_changed(
                                 remote, repository.branch
@@ -339,6 +340,26 @@ class CloneService(BaseService):
                         shutil.rmtree(repo_path, ignore_errors=True)
                         os.makedirs(repo_path, exist_ok=True)
                         await self._perform_full_clone(repo_path, remote)
+                except Exception as inner_exc:
+                    # Wipe while flock is still held so no other pod can grab the flock and start
+                    # operating on a directory we are about to delete. Releasing the flock first
+                    # (in finally below) and wiping in the outer except creates a race window.
+                    _TRANSIENT = (
+                        RateLimitError,
+                        NetworkError,
+                        RemoteServerError,
+                        DiskSpaceError,
+                        CommandTimeoutError,
+                        RepoLockingError,
+                    )
+                    if not isinstance(inner_exc, _TRANSIENT) and os.path.isdir(
+                        os.path.join(stable_path, ".git")
+                    ):
+                        self.logger.warning(
+                            f"Wiping persistent clone at {stable_path} after non-transient failure"
+                        )
+                        shutil.rmtree(stable_path, ignore_errors=True)
+                    raise
                 finally:
                     fcntl.flock(flock_fd, fcntl.LOCK_UN)
                     flock_fd.close()
@@ -359,23 +380,8 @@ class CloneService(BaseService):
                 e.error_code.value if isinstance(e, CrowdGitError) else ErrorCode.UNKNOWN.value
             )
             self.logger.error(f"Cloning failed: {error_message}")
-            # Wipe persistent clone only on non-transient failures that indicate local git
-            # corruption. Transient/remote errors (network, rate-limit, disk-full, timeout)
-            # leave the local clone intact — no point re-cloning 6+ GB because GitHub was down.
-            _TRANSIENT_ERRORS = (
-                RateLimitError,
-                NetworkError,
-                RemoteServerError,
-                DiskSpaceError,
-                CommandTimeoutError,
-                RepoLockingError,  # flock busy: another pod holds repo, nothing was touched locally
-            )
-            if stable_path and os.path.isdir(os.path.join(stable_path, ".git")):
-                if not isinstance(e, _TRANSIENT_ERRORS):
-                    self.logger.warning(
-                        f"Wiping persistent clone at {stable_path} after non-transient failure"
-                    )
-                    shutil.rmtree(stable_path, ignore_errors=True)
+            # Wipe-on-failure is handled inside the flock-held inner except block above,
+            # so the rmtree always happens before the flock is released (no race window).
             raise
         finally:
             # Only clean up ephemeral temp dirs. Persistent clones are intentionally kept.
