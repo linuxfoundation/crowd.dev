@@ -1413,12 +1413,6 @@ importers:
       '@crowd/archetype-worker':
         specifier: workspace:*
         version: link:../../archetypes/worker
-      '@crowd/common':
-        specifier: workspace:*
-        version: link:../../libs/common
-      '@crowd/common_services':
-        specifier: workspace:*
-        version: link:../../libs/common_services
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../../libs/data-access-layer
@@ -1428,12 +1422,6 @@ importers:
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal
-      '@crowd/types':
-        specifier: workspace:*
-        version: link:../../libs/types
-      '@temporalio/activity':
-        specifier: ~1.11.8
-        version: 1.11.8
       '@temporalio/client':
         specifier: ~1.11.8
         version: 1.11.8

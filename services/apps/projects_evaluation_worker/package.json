@@ -15,13 +15,9 @@
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
-    "@crowd/common": "workspace:*",
-    "@crowd/common_services": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/temporal": "workspace:*",
-    "@crowd/types": "workspace:*",
-    "@temporalio/activity": "~1.11.8",
     "@temporalio/client": "~1.11.8",
     "@temporalio/workflow": "~1.11.8",
     "tsx": "^4.7.1",
