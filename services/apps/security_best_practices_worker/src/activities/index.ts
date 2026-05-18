@@ -93,7 +93,7 @@ export async function saveOSPSBaselineInsightsToDB(
   key: string,
   repo: ISecurityInsightsObsoleteRepo,
 ): Promise<void> {
-  const CATALOG_ID = 'OSPS_B'
+  const CATALOG_ID = 'osps-baseline-2026-02'
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   const result = await redisCache.get(key)
   const parsedResult: ISecurityInsightsPrivateerResult = JSON.parse(result)
