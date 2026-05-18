@@ -10,7 +10,7 @@ const log = getServiceLogger()
 
 export async function fetchPendingProjects(batchSize: number): Promise<IDbProjectCatalog[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
-  
+
   const projects = await findProjectCatalogPendingEvaluation(qx, { limit: batchSize })
 
   log.info({ count: projects.length, batchSize }, 'Fetched projects pending evaluation.')
