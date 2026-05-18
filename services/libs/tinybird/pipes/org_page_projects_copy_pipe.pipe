@@ -1,0 +1,41 @@
+DESCRIPTION >
+    Nightly copy pipe that precomputes per-org per-project metrics for the org page.
+    Writes one row per (organizationId, segmentId) into org_page_projects_copy_ds.
+
+TAGS "Organization page"
+
+NODE org_page_projects_org_segment_activity
+DESCRIPTION >
+    Activity and contributor counts per org per project segment in the last 365 days
+
+SQL >
+    SELECT organizationId, segmentId, count() AS activityCount, uniq(memberId) AS contributorCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        organizationId != ''
+        AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
+        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY organizationId, segmentId
+
+NODE org_page_projects_with_meta
+DESCRIPTION >
+    Enrich with project name, logo and slug from insights_projects_populated_ds
+
+SQL >
+    SELECT
+        a.organizationId,
+        a.segmentId,
+        p.slug AS projectSlug,
+        p.name AS projectName,
+        p.logoUrl AS projectLogo,
+        a.activityCount,
+        a.contributorCount,
+        now() AS computedAt
+    FROM org_page_projects_org_segment_activity a
+    LEFT JOIN insights_projects_populated_ds p ON a.segmentId = p.segmentId
+    WHERE p.slug != ''
+
+TYPE COPY
+TARGET_DATASOURCE org_page_projects_copy_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 1 * * *

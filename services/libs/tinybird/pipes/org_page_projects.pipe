@@ -1,0 +1,17 @@
+DESCRIPTION >
+    Returns the list of projects an organization contributed to in the last 365 days,
+    read from the precomputed org_page_projects_copy_ds.
+
+TAGS "Organization page"
+
+NODE org_page_projects_main
+SQL >
+    SELECT
+        projectSlug,
+        projectName,
+        projectLogo,
+        activityCount,
+        contributorCount
+    FROM org_page_projects_copy_ds FINAL
+    WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+    ORDER BY activityCount DESC

@@ -1,0 +1,115 @@
+DESCRIPTION >
+    Contributor count timeseries for a given organization, bucketed by granularity.
+    Filters to activities where the member belongs to the given org.
+
+TAGS "Organization page"
+
+NODE org_page_contributors_bounds
+SQL >
+    %
+    SELECT min(timestamp) AS actual_start_date, max(timestamp) AS actual_end_date
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+        {% if defined(startDate) %}
+            AND timestamp >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
+        {% end %}
+        {% if defined(endDate) %}
+            AND timestamp < {{ DateTime(endDate, description="Filter activity timestamp before") }}
+        {% end %}
+
+NODE org_page_contributors_timeseries_data
+SQL >
+    %
+    SELECT
+        CASE
+            WHEN {{ String(granularity, 'monthly') }} = 'daily'
+            THEN toDate(addDays(bounds.actual_start_date, numbers.number))
+            WHEN {{ String(granularity, 'monthly') }} = 'weekly'
+            THEN toStartOfWeek(addDays(bounds.actual_start_date, numbers.number * 7))
+            WHEN {{ String(granularity, 'monthly') }} = 'monthly'
+            THEN toStartOfMonth(addMonths(bounds.actual_start_date, numbers.number))
+            WHEN {{ String(granularity, 'monthly') }} = 'quarterly'
+            THEN toStartOfQuarter(addMonths(bounds.actual_start_date, numbers.number * 3))
+            WHEN {{ String(granularity, 'monthly') }} = 'yearly'
+            THEN toStartOfYear(addYears(bounds.actual_start_date, numbers.number))
+        END AS startDate,
+        CASE
+            WHEN {{ String(granularity, 'monthly') }} = 'daily'
+            THEN toDate(addDays(bounds.actual_start_date, numbers.number))
+            WHEN {{ String(granularity, 'monthly') }} = 'weekly'
+            THEN
+                toDate(
+                    toStartOfWeek(addDays(bounds.actual_start_date, numbers.number * 7))
+                    + INTERVAL 6 DAY
+                )
+            WHEN {{ String(granularity, 'monthly') }} = 'monthly'
+            THEN
+                toDate(
+                    toStartOfMonth(addMonths(bounds.actual_start_date, numbers.number))
+                    + INTERVAL 1 MONTH
+                    - INTERVAL 1 DAY
+                )
+            WHEN {{ String(granularity, 'monthly') }} = 'quarterly'
+            THEN
+                toDate(
+                    toStartOfQuarter(addMonths(bounds.actual_start_date, numbers.number * 3))
+                    + INTERVAL 3 MONTH
+                    - INTERVAL 1 DAY
+                )
+            WHEN {{ String(granularity, 'monthly') }} = 'yearly'
+            THEN
+                toDate(
+                    toStartOfYear(addYears(bounds.actual_start_date, numbers.number))
+                    + INTERVAL 1 YEAR
+                    - INTERVAL 1 DAY
+                )
+        END AS endDate,
+        uniqExact(af.memberId) AS contributorCount
+    FROM numbers(1000) numbers
+    CROSS JOIN
+        (
+            SELECT
+                CASE
+                    WHEN {{ String(granularity, 'monthly') }} = 'weekly'
+                    THEN toStartOfWeek(actual_start_date)
+                    WHEN {{ String(granularity, 'monthly') }} = 'monthly'
+                    THEN toStartOfMonth(actual_start_date)
+                    WHEN {{ String(granularity, 'monthly') }} = 'quarterly'
+                    THEN toStartOfQuarter(actual_start_date)
+                    WHEN {{ String(granularity, 'monthly') }} = 'yearly'
+                    THEN toStartOfYear(actual_start_date)
+                    ELSE actual_start_date
+                END AS actual_start_date,
+                actual_end_date
+            FROM org_page_contributors_bounds
+        ) bounds
+    LEFT JOIN
+        activityRelations_deduplicated_cleaned_bucket_union af
+        ON organizationId = {{ String(orgId, '') }}
+        AND CASE
+            WHEN {{ String(granularity, 'monthly') }} = 'daily'
+            THEN toDate(af.timestamp)
+            WHEN {{ String(granularity, 'monthly') }} = 'weekly'
+            THEN toStartOfWeek(af.timestamp)
+            WHEN {{ String(granularity, 'monthly') }} = 'monthly'
+            THEN toStartOfMonth(af.timestamp)
+            WHEN {{ String(granularity, 'monthly') }} = 'quarterly'
+            THEN toStartOfQuarter(af.timestamp)
+            WHEN {{ String(granularity, 'monthly') }} = 'yearly'
+            THEN toStartOfYear(af.timestamp)
+        END = CASE
+            WHEN {{ String(granularity, 'monthly') }} = 'daily'
+            THEN toDate(addDays(bounds.actual_start_date, numbers.number))
+            WHEN {{ String(granularity, 'monthly') }} = 'weekly'
+            THEN toStartOfWeek(addDays(bounds.actual_start_date, numbers.number * 7))
+            WHEN {{ String(granularity, 'monthly') }} = 'monthly'
+            THEN toStartOfMonth(addMonths(bounds.actual_start_date, numbers.number))
+            WHEN {{ String(granularity, 'monthly') }} = 'quarterly'
+            THEN toStartOfQuarter(addMonths(bounds.actual_start_date, numbers.number * 3))
+            WHEN {{ String(granularity, 'monthly') }} = 'yearly'
+            THEN toStartOfYear(addYears(bounds.actual_start_date, numbers.number))
+        END
+    WHERE startDate >= bounds.actual_start_date AND startDate < bounds.actual_end_date
+    GROUP BY startDate, endDate
+    ORDER BY startDate

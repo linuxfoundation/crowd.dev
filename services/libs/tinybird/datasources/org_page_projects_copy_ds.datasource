@@ -1,0 +1,17 @@
+DESCRIPTION >
+    Precomputed per-org per-project metrics for the org page. Rebuilt nightly by org_page_projects_copy_pipe.
+    One row per (organizationId, segmentId). Used by org_page_projects.pipe.
+
+SCHEMA >
+    `organizationId` String,
+    `segmentId` String,
+    `projectSlug` String,
+    `projectName` String,
+    `projectLogo` String,
+    `activityCount` UInt64,
+    `contributorCount` UInt32,
+    `computedAt` DateTime
+
+ENGINE ReplacingMergeTree
+ENGINE_SORTING_KEY organizationId, segmentId
+ENGINE_VER computedAt

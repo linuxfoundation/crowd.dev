@@ -1,0 +1,43 @@
+DESCRIPTION >
+    Organization profile for the org page. Returns one row for a given orgId.
+    Joins organizationIdentities for website and domain.
+
+TAGS "Organization page"
+
+NODE org_page_profile_base
+SQL >
+    SELECT
+        id,
+        displayName,
+        logo,
+        employees AS employeeCount,
+        industry,
+        headline AS description
+    FROM organizations FINAL
+    WHERE id = {{ String(orgId, '', description="Organization ID", required=True) }}
+
+NODE org_page_profile_website
+SQL >
+    SELECT
+        organizationId,
+        argMax(value, updatedAt) AS website
+    FROM organizationIdentities FINAL
+    WHERE
+        organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+        AND platform = 'website'
+        AND type = 'primary'
+    GROUP BY organizationId
+
+NODE org_page_profile_final
+SQL >
+    SELECT
+        b.id,
+        b.displayName,
+        b.logo,
+        b.employeeCount,
+        b.industry,
+        b.description,
+        w.website,
+        domain(w.website) AS domain
+    FROM org_page_profile_base b
+    LEFT JOIN org_page_profile_website w ON b.id = w.organizationId

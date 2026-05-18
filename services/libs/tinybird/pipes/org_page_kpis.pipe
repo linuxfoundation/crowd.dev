@@ -1,0 +1,24 @@
+DESCRIPTION >
+    Returns KPIs for a given organization from the precomputed org_page_kpis_copy_ds.
+    Includes trend calculations comparing current to previous 365-day period.
+
+TAGS "Organization page"
+
+NODE org_page_kpis_main
+SQL >
+    SELECT
+        activeContributors,
+        if(
+            activeContributorsPrevious = 0, 0,
+            round(
+                (toInt64(activeContributors) - toInt64(activeContributorsPrevious))
+                / activeContributorsPrevious * 100,
+                1
+            )
+        ) AS activeContributorsTrend,
+        toInt64(activeContributors) - toInt64(activeContributorsPrevious) AS activeContributorsTrendAbsolute,
+        activeContributorsPrevious AS activeContributorsTrendPrevious,
+        maintainerRoles,
+        criticalProjects
+    FROM org_page_kpis_copy_ds FINAL
+    WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}

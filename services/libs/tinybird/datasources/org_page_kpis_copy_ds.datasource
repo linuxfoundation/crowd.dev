@@ -1,0 +1,15 @@
+DESCRIPTION >
+    Precomputed organization-level KPIs for the org page. Rebuilt nightly by org_page_kpis_copy_pipe.
+    One row per organizationId. Used by org_page_kpis.pipe for cheap request-time lookups.
+
+SCHEMA >
+    `organizationId` String,
+    `activeContributors` UInt32,
+    `activeContributorsPrevious` UInt32,
+    `maintainerRoles` UInt32,
+    `criticalProjects` UInt32,
+    `computedAt` DateTime
+
+ENGINE ReplacingMergeTree
+ENGINE_SORTING_KEY organizationId
+ENGINE_VER computedAt
