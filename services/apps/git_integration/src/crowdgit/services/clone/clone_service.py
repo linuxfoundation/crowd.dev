@@ -20,7 +20,6 @@ from crowdgit.errors import (
     CommandExecutionError,
     CommandTimeoutError,
     CrowdGitError,
-    DiskSpaceError,
     NetworkError,
     RateLimitError,
     RemoteServerError,
