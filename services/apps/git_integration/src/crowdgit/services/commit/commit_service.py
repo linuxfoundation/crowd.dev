@@ -247,7 +247,14 @@ class CommitService(BaseService):
             # flagged via batch_info, so last_processed_commit may point to the old branch.
             try:
                 await run_shell_command(
-                    ["git", "-C", repo_path, "cat-file", "-e", f"{repository.last_processed_commit}^{{commit}}"]
+                    [
+                        "git",
+                        "-C",
+                        repo_path,
+                        "cat-file",
+                        "-e",
+                        f"{repository.last_processed_commit}^{{commit}}",
+                    ]
                 )
                 commit_range = f"{repository.last_processed_commit}..{commit_reference}"
                 self.logger.info(f"Processing incremental range: {commit_range}")

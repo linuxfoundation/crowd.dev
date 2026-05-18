@@ -173,7 +173,7 @@ class CloneService(BaseService):
 
     def _stable_repo_path(self, repo_id: str) -> str | None:
         """Returns a stable on-disk path for the repo when REPO_STORAGE_ROOT is set, else None."""
-        if REPO_STORAGE_ROOT is None:
+        if not REPO_STORAGE_ROOT:
             return None
         return os.path.join(REPO_STORAGE_ROOT, str(repo_id))
 
