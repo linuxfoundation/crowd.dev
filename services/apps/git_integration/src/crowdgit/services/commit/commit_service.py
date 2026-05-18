@@ -207,7 +207,7 @@ class CommitService(BaseService):
 
     @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
     async def _get_commit_hashes(self, repo_path: str, commit_range: str) -> list[str]:
-        """Stream commit hashes oldest-first via rev-list. No buffering in git subprocess."""
+        """Return commit hashes oldest-first via rev-list. Output is buffered in-process (~41 bytes × N commits)."""
         output = await run_shell_command(
             ["git", "-C", repo_path, "rev-list", "--reverse", commit_range]
         )
@@ -242,8 +242,20 @@ class CommitService(BaseService):
         repo_path = batch_info.repo_path
         commit_reference = await self._get_commit_reference(repo_path)
         if repository.last_processed_commit and not batch_info.branch_changed:
-            commit_range = f"{repository.last_processed_commit}..{commit_reference}"
-            self.logger.info(f"Processing incremental range: {commit_range}")
+            # Verify the commit is reachable in the current clone before using it as a range
+            # boundary. In the ephemeral path (no REPO_STORAGE_ROOT) a branch change is not
+            # flagged via batch_info, so last_processed_commit may point to the old branch.
+            try:
+                await run_shell_command(
+                    ["git", "-C", repo_path, "cat-file", "-e", f"{repository.last_processed_commit}^{{commit}}"]
+                )
+                commit_range = f"{repository.last_processed_commit}..{commit_reference}"
+                self.logger.info(f"Processing incremental range: {commit_range}")
+            except Exception:
+                self.logger.warning(
+                    f"last_processed_commit {repository.last_processed_commit} not reachable in current clone — processing full history"
+                )
+                commit_range = commit_reference
         else:
             if batch_info.branch_changed:
                 self.logger.info(
@@ -270,8 +282,10 @@ class CommitService(BaseService):
             # Note: in merge-heavy repos batch_hashes[-1] may not be an ancestor of every earlier
             # hash in the same batch (rev-list topological order interleaves parallel branches).
             # On crash-resume, commits that aren't reachable from batch_hashes[-1] are re-fetched
-            # and re-processed — duplicates are prevented by batch_check_parent_activities which
-            # deduplicates on commit hash before insert. No commits are skipped.
+            # and re-processed. Note: batch_check_parent_activities deduplication only runs for
+            # fork repos (when parent_repo is set). For non-fork repos, replayed activities are
+            # re-inserted; downstream consumers deduplicate on (sourceId, type, platform).
+            # No commits are skipped.
             await update_last_processed_commit(
                 repo_id=repository.id,
                 commit_hash=batch_hashes[-1],

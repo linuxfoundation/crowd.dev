@@ -191,16 +191,21 @@ class CloneService(BaseService):
     async def _incremental_fetch(self, repo_path: str, remote: str) -> None:
         """Fetch latest commits into a persistent clone and update the working tree."""
         # Remove stale git lockfiles left by a previous crash before touching the repo.
+        # Target known locations only — os.walk(.git) on large repos (e.g. linux kernel) blocks
+        # the event loop for seconds scanning hundreds of thousands of pack/ref files.
         git_dir = os.path.join(repo_path, ".git")
-        for dirpath, _, filenames in os.walk(git_dir):
-            for filename in filenames:
-                if filename.endswith(".lock"):
-                    lockpath = os.path.join(dirpath, filename)
-                    try:
-                        os.remove(lockpath)
-                        self.logger.warning(f"Removed stale lockfile: {lockpath}")
-                    except OSError as e:
-                        self.logger.warning(f"Failed to remove stale lockfile {lockpath}: {e}")
+        _KNOWN_LOCKFILES = [
+            os.path.join(git_dir, "index.lock"),
+            os.path.join(git_dir, "HEAD.lock"),
+            os.path.join(git_dir, "packed-refs.lock"),
+        ]
+        for lockpath in _KNOWN_LOCKFILES:
+            if os.path.exists(lockpath):
+                try:
+                    os.remove(lockpath)
+                    self.logger.warning(f"Removed stale lockfile: {lockpath}")
+                except OSError as e:
+                    self.logger.warning(f"Failed to remove stale lockfile {lockpath}: {e}")
 
         default_branch = await get_default_branch(repo_path)
         if default_branch == "*":
@@ -224,7 +229,13 @@ class CloneService(BaseService):
         self.logger.info(f"Wiping and re-cloning {remote}")
         shutil.rmtree(repo_path)
         os.makedirs(repo_path)
-        await self._perform_full_clone(repo_path, remote)
+        try:
+            await self._perform_full_clone(repo_path, remote)
+        except Exception:
+            # Clone failed — wipe the partial .git so the next run starts fresh rather than
+            # attempting an incremental fetch against a half-written clone.
+            shutil.rmtree(repo_path, ignore_errors=True)
+            raise
 
     async def has_default_branch_changed(self, remote: str, saved_branch: str | None) -> bool:
         """Check if the default branch has changed compared to the saved branch
@@ -348,9 +359,11 @@ class CloneService(BaseService):
                         RateLimitError,
                         NetworkError,
                         RemoteServerError,
-                        DiskSpaceError,
                         CommandTimeoutError,
                         RepoLockingError,
+                        # DiskSpaceError intentionally excluded: a full-disk clone leaves a
+                        # partial .git that _is_repo_valid may accept on the next run, causing
+                        # _incremental_fetch to run against a corrupt local clone. Wipe instead.
                     )
                     if not isinstance(inner_exc, _TRANSIENT) and os.path.isdir(
                         os.path.join(stable_path, ".git")

@@ -118,7 +118,9 @@ class RepositoryWorker:
                 else:
                     logger.warning(f"Heartbeat update failed for repo {repo_id}: {e}")
 
-        # Refresh immediately so the first tick is not delayed by LOCK_HEARTBEAT_INTERVAL_SEC.
+        # Fire one beat before the loop so the first refresh happens as soon as the task is
+        # scheduled (the task may not run until the first await inside _process_single_repository,
+        # but this minimises the gap vs. waiting a full LOCK_HEARTBEAT_INTERVAL_SEC).
         await _beat()
         while not stop_event.is_set():
             await asyncio.sleep(LOCK_HEARTBEAT_INTERVAL_SEC)
