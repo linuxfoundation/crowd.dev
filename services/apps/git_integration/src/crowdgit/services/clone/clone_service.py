@@ -74,10 +74,49 @@ class CloneService(BaseService):
             await run_shell_command(
                 ["git", "rev-parse", "--verify", f"{target_commit_hash}^{{commit}}"], cwd=path
             )
+            has_boundary_in_required_range = await self._has_boundary_in_required_range(
+                path, target_commit_hash
+            )
+            if has_boundary_in_required_range:
+                self.logger.info(
+                    f"Target commit {target_commit_hash} reached, but shallow boundary still intersects required range. Continuing deepen."
+                )
+                return False
             self.logger.info(f"Target commit {target_commit_hash} reached")
             return True
         except CommandExecutionError:
             return False
+
+    async def _get_shallow_boundary_commits(self, repo_path: str) -> set[str]:
+        """
+        Return all shallow boundary commits from .git/shallow.
+        """
+        shallow_file = os.path.join(repo_path, ".git", "shallow")
+        try:
+            async with aiofiles.open(shallow_file, "r", encoding="utf-8") as f:
+                return {line.strip() for line in await f.readlines() if line.strip()}
+        except FileNotFoundError:
+            return set()
+
+    async def _has_boundary_in_required_range(
+        self, repo_path: str, target_commit_hash: str
+    ) -> bool:
+        """
+        Check if any shallow boundary commit is inside the current required range.
+
+        If true, the required range is still truncated and the clone should be deepened.
+        """
+        shallow_boundaries = await self._get_shallow_boundary_commits(repo_path)
+        if not shallow_boundaries:
+            return False
+
+        required_commits_output = await run_shell_command(
+            ["git", "rev-list", f"{target_commit_hash}..HEAD"],
+            cwd=repo_path,
+        )
+        required_commits = {line.strip() for line in required_commits_output.splitlines() if line}
+        problematic_boundaries = (required_commits & shallow_boundaries) - {target_commit_hash}
+        return bool(problematic_boundaries)
 
     @retry_on_clone_error
     async def _perform_minimal_clone(self, path: str, remote: str) -> None:
