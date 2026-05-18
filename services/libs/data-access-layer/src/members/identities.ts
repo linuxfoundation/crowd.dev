@@ -102,7 +102,7 @@ export async function findMemberIdentitiesByValue(
 ): Promise<IMemberIdentity[]> {
   return qx.select(
     `
-        SELECT id, platform, "sourceId", type, value, verified
+        SELECT *
         FROM "memberIdentities"
         WHERE value = $(value) 
           AND "memberId" = $(memberId)
@@ -113,18 +113,35 @@ export async function findMemberIdentitiesByValue(
   )
 }
 
+const UPDATABLE_IDENTITY_FIELDS: ReadonlyArray<keyof UpdateMemberIdentity> = [
+  'platform',
+  'value',
+  'type',
+  'verified',
+  'verifiedBy',
+  'source',
+  'sourceId',
+  'integrationId',
+]
+
 export async function updateMemberIdentity(
   qx: QueryExecutor,
   memberId: string,
   id: string,
   data: Partial<UpdateMemberIdentity>,
 ): Promise<IMemberIdentity> {
-  if (Object.keys(data).length === 0) return null
+  const filtered = Object.fromEntries(
+    Object.entries(data).filter(
+      ([k, v]) => (UPDATABLE_IDENTITY_FIELDS as readonly string[]).includes(k) && v !== undefined,
+    ),
+  )
 
-  const setClause = Object.keys(data).map((key) => `"${key}" = $(${key})`)
+  if (Object.keys(filtered).length === 0) return null
+
+  const setClause = Object.keys(filtered).map((key) => `"${key}" = $(${key})`)
   setClause.push('"updatedAt" = now()')
 
-  const params = { memberId, id, ...data }
+  const params = { memberId, id, ...filtered }
 
   const query = `
     UPDATE "memberIdentities"
@@ -572,9 +589,13 @@ export async function findMembersByIdentities(
     conditions.push('mi.verified = true')
   }
 
-  const identityParams = identities
-    .map((identity) => `('${identity.platform}', '${identity.value}', '${identity.type}')`)
-    .join(', ')
+  const identityTuples = identities.map((identity, i) => {
+    params[`ip${i}`] = identity.platform
+    params[`iv${i}`] = identity.value.trim()
+    params[`it${i}`] = identity.type
+    return `($(ip${i}), $(iv${i}), $(it${i}))`
+  })
+  const identityParams = identityTuples.join(', ')
 
   const result = await qx.select(
     `
@@ -583,8 +604,8 @@ export async function findMembersByIdentities(
     )
     select "memberId", i.platform, i.value, i.type
     from "memberIdentities" mi
-      inner join input_identities i 
-        on mi.platform = i.platform 
+      inner join input_identities i
+        on mi.platform = i.platform
         and lower(mi.value) = lower(i.value)
         and mi.type = i.type
         and mi."deletedAt" is null

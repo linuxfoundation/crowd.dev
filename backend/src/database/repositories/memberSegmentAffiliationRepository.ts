@@ -1,5 +1,4 @@
 import { QueryTypes } from 'sequelize'
-import { v4 as uuid } from 'uuid'
 
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
 import { Error404 } from '@crowd/common'
@@ -27,46 +26,6 @@ class MemberSegmentAffiliationRepository extends RepositoryBase<
 > {
   public constructor(options: IRepositoryOptions) {
     super(options, true)
-  }
-
-  async createOrUpdate(data: MemberSegmentAffiliationCreate): Promise<MemberSegmentAffiliation> {
-    if (!data.memberId) {
-      throw new Error('memberId is required when creating a member segment affiliation.')
-    }
-
-    if (!data.segmentId) {
-      throw new Error('segmentId is required when creating a member segment affiliation.')
-    }
-
-    if (data.organizationId === undefined) {
-      throw new Error('organizationId is required when creating a member segment affiliation.')
-    }
-
-    const transaction = this.transaction
-
-    const affiliationInsertResult = await this.options.database.sequelize.query(
-      `INSERT INTO "memberSegmentAffiliations" ("id", "memberId", "segmentId", "organizationId", "dateStart", "dateEnd")
-          VALUES
-              (:id, :memberId, :segmentId, :organizationId, :dateStart, :dateEnd)
-          RETURNING "id"
-        `,
-      {
-        replacements: {
-          id: uuid(),
-          memberId: data.memberId,
-          segmentId: data.segmentId,
-          organizationId: data.organizationId,
-          dateStart: data.dateStart || null,
-          dateEnd: data.dateEnd || null,
-        },
-        type: QueryTypes.INSERT,
-        transaction,
-      },
-    )
-
-    await this.updateAffiliation(data.memberId, data.segmentId, data.organizationId)
-
-    return this.findById(affiliationInsertResult[0][0].id)
   }
 
   async setForMember(memberId: string, data: MemberSegmentAffiliationCreate[]): Promise<void> {
@@ -120,36 +79,6 @@ class MemberSegmentAffiliationRepository extends RepositoryBase<
     }
 
     return records[0]
-  }
-
-  override async update(
-    id: string,
-    data: MemberSegmentAffiliationUpdate,
-  ): Promise<MemberSegmentAffiliation> {
-    const transaction = this.transaction
-
-    if (data.organizationId === undefined) {
-      throw new Error('When updating member segment affiliation, organizationId is required.')
-    }
-
-    const affiliation = await this.findById(id)
-
-    if (!affiliation) {
-      throw new Error404()
-    }
-
-    await this.options.database.sequelize.query(
-      `UPDATE "memberSegmentAffiliations" SET "organizationId" = :organizationId`,
-      {
-        replacements: {
-          organizationId: data.organizationId,
-        },
-        type: QueryTypes.UPDATE,
-        transaction,
-      },
-    )
-
-    return this.findById(id)
   }
 
   override async destroyAll(ids: string[]): Promise<void> {
@@ -229,27 +158,6 @@ class MemberSegmentAffiliationRepository extends RepositoryBase<
     }
 
     return records[0] as MemberSegmentAffiliation
-  }
-
-  private async updateAffiliation(memberId, segmentId, organizationId) {
-    const transaction = this.transaction
-
-    const query = `
-      UPDATE activities
-      SET "organizationId" = :organizationId
-      WHERE "memberId" = :memberId
-        AND "segmentId" = :segmentId
-    `
-
-    await this.options.database.sequelize.query(query, {
-      replacements: {
-        memberId,
-        segmentId,
-        organizationId,
-      },
-      type: QueryTypes.UPDATE,
-      transaction,
-    })
   }
 }
 

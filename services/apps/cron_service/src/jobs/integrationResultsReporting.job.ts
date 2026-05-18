@@ -62,23 +62,34 @@ const job: IJobDefinition = {
       )
     ).count
 
-    // Break down errors by errorMessage + location, enriched with platform info
+    // Break down errors by errorMessage + location, enriched with platform info.
+    // Prefer metadata.errorMessage when set — the data sink worker writes specific
+    // values there (e.g. "noMerge blocked", "merge failed") so those surface as
+    // distinct groups rather than collapsing into the generic outer errorMessage.
     const errorGroups = await dbConnection.any<IErrorGroup>(
       `
       SELECT
-        COALESCE(r.error->>'errorMessage', '[no errorMessage]') AS "errorMessage",
-        COALESCE(r.error->>'location',     '[no location]')     AS location,
-        count(*)::int                                           AS count,
-        round(avg(r.retries), 1)::float                         AS "avgRetries",
-        max(r.retries)::int                                     AS "maxRetries",
-        min(r."createdAt")                                      AS oldest,
-        max(r."updatedAt")                                      AS newest,
+        COALESCE(
+          r.error->'metadata'->>'errorMessage',
+          r.error->>'errorMessage',
+          '[no errorMessage]'
+        ) AS "errorMessage",
+        COALESCE(r.error->>'location', '[no location]') AS location,
+        count(*)::int                                   AS count,
+        round(avg(r.retries), 1)::float                 AS "avgRetries",
+        max(r.retries)::int                             AS "maxRetries",
+        min(r."createdAt")                              AS oldest,
+        max(r."updatedAt")                              AS newest,
         string_agg(DISTINCT i.platform, ', ' ORDER BY i.platform) AS platforms
       FROM integration.results r
       LEFT JOIN integrations i ON i.id = r."integrationId"
       WHERE r.state = 'error'
       GROUP BY
-        r.error->>'errorMessage',
+        COALESCE(
+          r.error->'metadata'->>'errorMessage',
+          r.error->>'errorMessage',
+          '[no errorMessage]'
+        ),
         r.error->>'location'
       ORDER BY count DESC
       LIMIT 20

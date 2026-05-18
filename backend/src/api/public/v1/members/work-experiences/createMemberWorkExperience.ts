@@ -8,14 +8,14 @@ import {
   NotFoundError,
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
@@ -92,12 +92,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
           throw new ConflictError('A work experience with the same dates already exists')
         }
 
-        const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-          tx,
+        const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
           data.organizationId,
-        )
+        ])
 
-        if (newMemberOrgId && isAffiliationBlocked) {
+        if (newMemberOrgId && orgAffiliationPolicyById.get(data.organizationId)) {
           await changeMemberOrganizationAffiliationOverrides(tx, [
             {
               memberId,
@@ -106,9 +105,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
             },
           ])
         }
+      })
 
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, [data.organizationId])
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])

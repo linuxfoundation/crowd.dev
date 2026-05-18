@@ -23,10 +23,10 @@ import {
   MemberField,
   QueryExecutor,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   createOrUpdateMemberOrganizations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
   findIdentitiesForMembers,
@@ -52,13 +52,8 @@ import {
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
-import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
-import {
-  MergeActionState,
-  MergeActionStep,
-  MergeActionType,
-  TemporalWorkflowId,
-} from '@crowd/types'
+import { Client as TemporalClient } from '@crowd/temporal'
+import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -146,9 +141,12 @@ export class CommonMemberService extends LoggerBase {
               dates.dateEnd as string | null,
             )
 
-            const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(this.qx, org.id)
+            const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(
+              this.qx,
+              [org.id],
+            )
 
-            if (newMemberOrgId && isAffiliationBlocked) {
+            if (newMemberOrgId && orgAffiliationPolicyById.get(org.id)) {
               await changeMemberOrganizationAffiliationOverrides(this.qx, [
                 {
                   memberId,
@@ -260,33 +258,6 @@ export class CommonMemberService extends LoggerBase {
     }
 
     return null
-  }
-
-  public async startAffiliationRecalculation(
-    memberId: string,
-    organizationIds: string[],
-    syncToOpensearch = false,
-  ): Promise<void> {
-    await this.temporal.workflow.start('memberUpdate', {
-      taskQueue: 'profiles',
-      workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-      retry: {
-        maximumAttempts: 10,
-      },
-      args: [
-        {
-          member: {
-            id: memberId,
-          },
-          memberOrganizationIds: organizationIds,
-          syncToOpensearch,
-        },
-      ],
-      searchAttributes: {
-        TenantId: [DEFAULT_TENANT_ID],
-      },
-    })
   }
 
   public async merge(

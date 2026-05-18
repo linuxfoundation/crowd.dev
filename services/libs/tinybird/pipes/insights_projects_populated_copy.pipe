@@ -66,7 +66,7 @@ SQL >
 
 NODE insights_projects_populated_copy_flatten_projects
 SQL >
-    SELECT i.id, r.url AS repository
+    SELECT i.id, r.url AS repository, r.licenses AS licenses
     FROM insightsProjects i FINAL
     JOIN
         repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
@@ -77,6 +77,7 @@ SQL >
     SELECT
         insights_projects_populated_copy_flatten_projects.id as id,
         insights_projects_populated_copy_flatten_projects.repository as repository,
+        insights_projects_populated_copy_flatten_projects.licenses as licenses,
         insights_projects_populated_copy_criticality_scores_deduplicated.score as score,
         insights_projects_populated_copy_criticality_scores_deduplicated.rank as rank
     FROM insights_projects_populated_copy_flatten_projects
@@ -92,7 +93,8 @@ SQL >
         max(score) as projectScore,
         argMax(rank, score) AS projectRank,
         groupArray((repository, score, rank)) as repoData,
-        groupArray(repository) as repositories
+        groupArray(repository) as repositories,
+        arrayFlatten(groupArray(arrayMap(l -> tuple(repository, l), licenses))) as repoLicenses
     FROM insights_projects_populated_copy_repository_criticality
     GROUP BY id
 
@@ -209,6 +211,7 @@ SQL >
         any (insightsProjects.twitter) as twitter,
         any (insightsProjects.widgets) as widgets,
         any (insights_projects_populated_copy_project_repo_data.repositories) as repositories,
+        any (insights_projects_populated_copy_project_repo_data.repoLicenses) as repoLicenses,
         any (insightsProjects.enabled) as enabled,
         any (insightsProjects.isLF) as isLF,
         any (insightsProjects.keywords) as keywords,
@@ -231,6 +234,7 @@ SQL >
         any (insights_projects_populated_copy_mentions.communityKeywords) as communityKeywords,
         any (insights_projects_populated_copy_mentions.communityLanguages) as communityLanguages,
         any (segments.status) as status,
+        any (segments.maturity) as maturity,
         any (last_vulnerability_scan_status.lastVulnerabilityScanStatus) as lastVulnerabilityScanStatus
     FROM insightsProjects FINAL
     LEFT JOIN

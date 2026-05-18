@@ -73,6 +73,16 @@ export interface ContributorIdentity {
   duplicatedIdentities?: ContributorIdentity[];
 }
 
+export interface UpdateContributorIdentityPayload {
+  value?: string;
+  type?: string;
+  platform?: string;
+  verified?: boolean;
+  source?: string | null;
+  sourceId?: string | null;
+  integrationId?: string | null;
+}
+
 export interface Contributor {
   activeDaysCount: string;
   activeOn: string[] | null;

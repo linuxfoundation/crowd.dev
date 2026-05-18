@@ -16,7 +16,11 @@ import {
   calculateProjectMemberAggregates,
   getSegmentHierarchy,
 } from './activities/member/memberAggregates'
-import { syncMember, updateMemberAffiliations } from './activities/member/memberUpdate'
+import {
+  syncMember,
+  triggerMemberAffiliationsRefresh,
+  updateMemberAffiliations,
+} from './activities/member/memberUpdate'
 import {
   calculateProjectGroupOrganizationAggregates,
   calculateProjectOrganizationAggregates,
@@ -28,6 +32,7 @@ import {
 
 export {
   updateMemberAffiliations,
+  triggerMemberAffiliationsRefresh,
   syncMember,
   syncOrganization,
   findMembersInOrganization,

@@ -16,6 +16,7 @@
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
+    "@crowd/common_services": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/opensearch": "workspace:*",
     "@crowd/queue": "workspace:*",

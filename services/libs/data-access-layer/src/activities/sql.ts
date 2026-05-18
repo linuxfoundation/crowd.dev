@@ -7,17 +7,10 @@ import {
   ActivityRelations,
   ActivityTimeseriesDatapoint,
   Counter,
-  DbConnOrTx,
   TinybirdClient,
 } from '@crowd/database'
 import { ActivityDisplayService } from '@crowd/integrations'
-import {
-  ActivityTypeSettings,
-  IActivityBySentimentMoodResult,
-  IActivityByTypeAndPlatformResult,
-  ITimeseriesDatapoint,
-  PageData,
-} from '@crowd/types'
+import { ActivityTypeSettings, ITimeseriesDatapoint, PageData } from '@crowd/types'
 
 import { getLatestMemberActivityRelations } from '../activityRelations'
 import { MemberField, queryMembers } from '../members/base'
@@ -35,30 +28,6 @@ import {
   IQueryActivityResult,
   IQueryGroupedActivitiesParameters,
 } from './types'
-
-export async function getActivitiesById(
-  conn: DbConnOrTx,
-  ids: string[],
-  segmentIds: string[],
-  qx: QueryExecutor,
-  activityTypeSettings: ActivityTypeSettings,
-): Promise<IQueryActivityResult[]> {
-  if (ids.length === 0) {
-    return []
-  }
-
-  const data = await queryActivities(
-    {
-      filter: { and: [{ id: { in: ids } }] },
-      limit: ids.length,
-      segmentIds,
-    },
-    qx,
-    activityTypeSettings,
-  )
-
-  return data.rows
-}
 
 export const ACTIVITY_ALL_COLUMNS: ActivityColumn[] = [
   'id',
@@ -101,41 +70,6 @@ export const ACTIVITY_ALL_COLUMNS: ActivityColumn[] = [
   'gitDeletions',
   'gitIsMerge',
 ]
-
-export async function setMemberDataToActivities(
-  conn: DbConnOrTx,
-  memberId: string,
-  data: { isBot: boolean; isTeamMember: boolean },
-): Promise<void> {
-  await conn.none(
-    `
-      update activities set
-        "member_isBot" = $(isBot),
-        "member_isTeamMember" = $(isTeamMember)
-      where "memberId" = $(memberId);
-    `,
-    {
-      memberId,
-      ...data,
-    },
-  )
-}
-
-export async function addActivityToConversation(
-  conn: DbConnOrTx,
-  id: string,
-  conversationId: string,
-): Promise<void> {
-  await conn.none(
-    `
-    UPDATE activities SET "conversationId" = $(conversationId) WHERE id = $(id);
-    `,
-    {
-      id,
-      conversationId,
-    },
-  )
-}
 
 export type ActivityColumn =
   | 'id'
@@ -439,83 +373,6 @@ export async function activitiesTimeseries(
     count: Number(row.count),
     date: row.date,
   }))
-}
-
-export async function activitiesBySentiment(
-  qdbConn: DbConnOrTx,
-  arg: IQueryGroupedActivitiesParameters,
-): Promise<IActivityBySentimentMoodResult[]> {
-  let query = `
-    SELECT COUNT_DISTINCT(id) AS count, sentimentLabel
-    FROM activities
-    WHERE "deletedAt" IS NULL
-    AND "sentimentLabel" IS NOT NULL
-  `
-
-  if (arg.segmentIds) {
-    query += ' AND "segmentId" IN ($(segmentIds:csv))'
-  }
-
-  if (arg.platform) {
-    query += ' AND "platform" = $(platform)'
-  }
-
-  if (arg.startDate && arg.endDate) {
-    query += ' AND "timestamp" BETWEEN $(after) AND $(before)'
-  }
-
-  query += ` GROUP BY sentimentLabel;`
-
-  const rows: IActivityBySentimentMoodResult[] = await qdbConn.query(query, {
-    segmentIds: arg.segmentIds,
-    platform: arg.platform,
-    after: arg.startDate,
-    before: arg.endDate,
-  })
-
-  rows.forEach((row) => {
-    row.count = Number(row.count)
-  })
-
-  return rows
-}
-
-export async function activitiesByTypeAndPlatform(
-  qdbConn: DbConnOrTx,
-  arg: IQueryGroupedActivitiesParameters,
-): Promise<IActivityByTypeAndPlatformResult[]> {
-  let query = `
-    SELECT COUNT_DISTINCT(id) AS count, platform, type
-    FROM activities
-    WHERE "deletedAt" IS NULL
-  `
-
-  if (arg.segmentIds) {
-    query += ' AND "segmentId" IN ($(segmentIds:csv))'
-  }
-
-  if (arg.platform) {
-    query += ' AND "platform" = $(platform)'
-  }
-
-  if (arg.startDate && arg.endDate) {
-    query += ' AND "timestamp" BETWEEN $(after) AND $(before)'
-  }
-
-  query += ` GROUP BY platform, type ORDER BY count DESC;`
-
-  const rows: IActivityByTypeAndPlatformResult[] = await qdbConn.query(query, {
-    segmentIds: arg.segmentIds,
-    platform: arg.platform,
-    after: arg.startDate,
-    before: arg.endDate,
-  })
-
-  rows.forEach((row) => {
-    row.count = Number(row.count)
-  })
-
-  return rows
 }
 
 export async function getLastActivitiesForMembers(

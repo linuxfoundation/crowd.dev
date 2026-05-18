@@ -8,8 +8,11 @@ const PROJECT_CATALOG_COLUMNS = [
   'projectSlug',
   'repoName',
   'repoUrl',
-  'ossfCriticalityScore',
+  'source',
+  'action',
   'lfCriticalityScore',
+  'evaluatedAt',
+  'onboardedAt',
   'syncedAt',
   'createdAt',
   'updatedAt',
@@ -96,17 +99,21 @@ export async function insertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "ossfCriticalityScore",
+      "source",
+      "action",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     VALUES (
       $(projectSlug),
       $(repoName),
       $(repoUrl),
-      $(ossfCriticalityScore),
+      $(source),
+      $(action),
       $(lfCriticalityScore),
+      NOW(),
       NOW(),
       NOW()
     )
@@ -116,7 +123,8 @@ export async function insertProjectCatalog(
       projectSlug: data.projectSlug,
       repoName: data.repoName,
       repoUrl: data.repoUrl,
-      ossfCriticalityScore: data.ossfCriticalityScore ?? null,
+      source: data.source ?? null,
+      action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
   )
@@ -134,7 +142,8 @@ export async function bulkInsertProjectCatalog(
     projectSlug: item.projectSlug,
     repoName: item.repoName,
     repoUrl: item.repoUrl,
-    ossfCriticalityScore: item.ossfCriticalityScore ?? null,
+    source: item.source ?? null,
+    action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
   }))
 
@@ -144,26 +153,32 @@ export async function bulkInsertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "ossfCriticalityScore",
+      "source",
+      "action",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     SELECT
       v."projectSlug",
       v."repoName",
       v."repoUrl",
-      v."ossfCriticalityScore"::double precision,
+      v."source",
+      v."action",
       v."lfCriticalityScore"::double precision,
+      NOW(),
       NOW(),
       NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
       "projectSlug" text,
       "repoName" text,
       "repoUrl" text,
-      "ossfCriticalityScore" double precision,
+      "source" text,
+      "action" text,
       "lfCriticalityScore" double precision
     )
+    ON CONFLICT ("repoUrl") DO NOTHING
     `,
     { values: JSON.stringify(values) },
   )
@@ -179,33 +194,44 @@ export async function upsertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "ossfCriticalityScore",
+      "source",
+      "action",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     VALUES (
       $(projectSlug),
       $(repoName),
       $(repoUrl),
-      $(ossfCriticalityScore),
+      $(source),
+      $(action),
       $(lfCriticalityScore),
+      NOW(),
       NOW(),
       NOW()
     )
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "ossfCriticalityScore" = COALESCE(EXCLUDED."ossfCriticalityScore", "projectCatalog"."ossfCriticalityScore"),
+      "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
+      "action" = CASE
+        WHEN "projectCatalog"."action" IN ('onboard', 'unsure') THEN "projectCatalog"."action"
+        WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
+        ELSE "projectCatalog"."action"
+      END,
       "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
-      "updatedAt" = NOW()
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     {
       projectSlug: data.projectSlug,
       repoName: data.repoName,
       repoUrl: data.repoUrl,
-      ossfCriticalityScore: data.ossfCriticalityScore ?? null,
+      source: data.source ?? null,
+      action: data.action ?? 'auto',
       lfCriticalityScore: data.lfCriticalityScore ?? null,
     },
   )
@@ -223,7 +249,8 @@ export async function bulkUpsertProjectCatalog(
     projectSlug: item.projectSlug,
     repoName: item.repoName,
     repoUrl: item.repoUrl,
-    ossfCriticalityScore: item.ossfCriticalityScore ?? null,
+    source: item.source ?? null,
+    action: item.action ?? 'auto',
     lfCriticalityScore: item.lfCriticalityScore ?? null,
   }))
 
@@ -233,32 +260,43 @@ export async function bulkUpsertProjectCatalog(
       "projectSlug",
       "repoName",
       "repoUrl",
-      "ossfCriticalityScore",
+      "source",
+      "action",
       "lfCriticalityScore",
       "createdAt",
-      "updatedAt"
+      "updatedAt",
+      "syncedAt"
     )
     SELECT
       v."projectSlug",
       v."repoName",
       v."repoUrl",
-      v."ossfCriticalityScore"::double precision,
+      v."source",
+      v."action",
       v."lfCriticalityScore"::double precision,
+      NOW(),
       NOW(),
       NOW()
     FROM jsonb_to_recordset($(values)::jsonb) AS v(
       "projectSlug" text,
       "repoName" text,
       "repoUrl" text,
-      "ossfCriticalityScore" double precision,
+      "source" text,
+      "action" text,
       "lfCriticalityScore" double precision
     )
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "ossfCriticalityScore" = COALESCE(EXCLUDED."ossfCriticalityScore", "projectCatalog"."ossfCriticalityScore"),
+      "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
+      "action" = CASE
+        WHEN "projectCatalog"."action" IN ('onboard', 'unsure') THEN "projectCatalog"."action"
+        WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
+        ELSE "projectCatalog"."action"
+      END,
       "lfCriticalityScore" = COALESCE(EXCLUDED."lfCriticalityScore", "projectCatalog"."lfCriticalityScore"),
-      "updatedAt" = NOW()
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
     `,
     { values: JSON.stringify(values) },
   )
@@ -284,9 +322,13 @@ export async function updateProjectCatalog(
     setClauses.push('"repoUrl" = $(repoUrl)')
     params.repoUrl = data.repoUrl
   }
-  if (data.ossfCriticalityScore !== undefined) {
-    setClauses.push('"ossfCriticalityScore" = $(ossfCriticalityScore)')
-    params.ossfCriticalityScore = data.ossfCriticalityScore
+  if (data.source !== undefined) {
+    setClauses.push('"source" = $(source)')
+    params.source = data.source
+  }
+  if (data.action !== undefined) {
+    setClauses.push('"action" = $(action)')
+    params.action = data.action
   }
   if (data.lfCriticalityScore !== undefined) {
     setClauses.push('"lfCriticalityScore" = $(lfCriticalityScore)')
@@ -295,6 +337,14 @@ export async function updateProjectCatalog(
   if (data.syncedAt !== undefined) {
     setClauses.push('"syncedAt" = $(syncedAt)')
     params.syncedAt = data.syncedAt
+  }
+  if (data.evaluatedAt !== undefined) {
+    setClauses.push('"evaluatedAt" = $(evaluatedAt)')
+    params.evaluatedAt = data.evaluatedAt
+  }
+  if (data.onboardedAt !== undefined) {
+    setClauses.push('"onboardedAt" = $(onboardedAt)')
+    params.onboardedAt = data.onboardedAt
   }
 
   if (setClauses.length === 0) {
