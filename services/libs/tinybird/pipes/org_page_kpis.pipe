@@ -10,14 +10,17 @@ SQL >
     SELECT
         activeContributors,
         if(
-            activeContributorsPrevious = 0, 0,
+            activeContributorsPrevious = 0,
+            0,
             round(
                 (toInt64(activeContributors) - toInt64(activeContributorsPrevious))
-                / activeContributorsPrevious * 100,
+                / activeContributorsPrevious
+                * 100,
                 1
             )
         ) AS activeContributorsTrend,
-        toInt64(activeContributors) - toInt64(activeContributorsPrevious) AS activeContributorsTrendAbsolute,
+        toInt64(activeContributors)
+        - toInt64(activeContributorsPrevious) AS activeContributorsTrendAbsolute,
         activeContributorsPrevious AS activeContributorsTrendPrevious,
         maintainerRoles,
         criticalProjects

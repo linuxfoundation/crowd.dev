@@ -7,22 +7,14 @@ TAGS "Organization page"
 NODE org_page_profile_base
 SQL >
     %
-    SELECT
-        id,
-        displayName,
-        logo,
-        employees AS employeeCount,
-        industry,
-        headline AS description
+    SELECT id, displayName, logo, employees AS employeeCount, industry, headline AS description
     FROM organizations FINAL
     WHERE id = {{ String(orgId, '', description="Organization ID", required=True) }}
 
 NODE org_page_profile_website
 SQL >
     %
-    SELECT
-        organizationId,
-        argMax(value, updatedAt) AS website
+    SELECT organizationId, argMax(value, updatedAt) AS website
     FROM organizationIdentities FINAL
     WHERE
         organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
