@@ -24,6 +24,7 @@ from crowdgit.errors import (
     NetworkError,
     RateLimitError,
     RemoteServerError,
+    RepoLockingError,
 )
 from crowdgit.models import CloneBatchInfo, Repository, ServiceExecution
 from crowdgit.services.base.base_service import BaseService
@@ -299,15 +300,22 @@ class CloneService(BaseService):
                 # another acquires the DB lock after STUCK_REPO_TIMEOUT_HOURS, this flock ensures
                 # the new pod does not mutate the directory while the crashed pod's git subprocess
                 # is still running. Non-blocking: raises OSError(EWOULDBLOCK) if held elsewhere.
-                flock_path = os.path.join(repo_path, ".crowdgit.lock")
-                flock_fd = open(flock_path, "w")
+                #
+                # Lock file lives OUTSIDE repo_path so _wipe_and_reclone (rmtree + makedirs) does
+                # not unlink the inode that the kernel's flock is attached to — if it did, a second
+                # opener would get a fresh inode and a fresh lock, silently bypassing exclusion.
+                # "a" mode avoids truncating the file on concurrent open() calls (harmless, but
+                # cleaner than "w").
+                flock_path = os.path.join(REPO_STORAGE_ROOT, f"{repository.id}.lock")
+                flock_fd = open(flock_path, "a")
                 try:
                     fcntl.flock(flock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except OSError:
                     flock_fd.close()
-                    raise CommandExecutionError(
-                        f"OS flock busy for {repo_path} — another process still holds the repo",
-                        returncode=1,
+                    # RepoLockingError is in _TRANSIENT_ERRORS so the outer except will NOT wipe
+                    # the persistent clone that the other process is actively using.
+                    raise RepoLockingError(
+                        f"OS flock busy for {repo_path} — another process still holds the repo"
                     ) from None
 
                 try:
@@ -323,12 +331,13 @@ class CloneService(BaseService):
                             )
                             if default_branch_changed:
                                 await self._wipe_and_reclone(repo_path, remote)
+                                batch_info.branch_changed = True
                             else:
                                 await self._incremental_fetch(repo_path, remote)
                     else:
                         # Defensive: wipe in case a prior crash left checkout artifacts with no .git.
                         shutil.rmtree(repo_path, ignore_errors=True)
-                        os.makedirs(repo_path)
+                        os.makedirs(repo_path, exist_ok=True)
                         await self._perform_full_clone(repo_path, remote)
                 finally:
                     fcntl.flock(flock_fd, fcntl.LOCK_UN)
@@ -359,6 +368,7 @@ class CloneService(BaseService):
                 RemoteServerError,
                 DiskSpaceError,
                 CommandTimeoutError,
+                RepoLockingError,  # flock busy: another pod holds repo, nothing was touched locally
             )
             if stable_path and os.path.isdir(os.path.join(stable_path, ".git")):
                 if not isinstance(e, _TRANSIENT_ERRORS):

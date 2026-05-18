@@ -241,10 +241,14 @@ class CommitService(BaseService):
         """
         repo_path = batch_info.repo_path
         commit_reference = await self._get_commit_reference(repo_path)
-        if repository.last_processed_commit:
+        if repository.last_processed_commit and not batch_info.branch_changed:
             commit_range = f"{repository.last_processed_commit}..{commit_reference}"
             self.logger.info(f"Processing incremental range: {commit_range}")
         else:
+            if batch_info.branch_changed:
+                self.logger.info(
+                    f"Branch changed for {batch_info.remote} — ignoring stale last_processed_commit, processing full history"
+                )
             commit_range = commit_reference
             self.logger.info(f"Processing full history in {commit_reference}")
 
@@ -263,6 +267,11 @@ class CommitService(BaseService):
             await self._process_activities_from_commits(raw_commits, batch_info, repository)
             # Checkpoint at last hash in batch (oldest-first from rev-list = newest in batch).
             # Next run resumes from batch_hashes[-1]..HEAD.
+            # Note: in merge-heavy repos batch_hashes[-1] may not be an ancestor of every earlier
+            # hash in the same batch (rev-list topological order interleaves parallel branches).
+            # On crash-resume, commits that aren't reachable from batch_hashes[-1] are re-fetched
+            # and re-processed — duplicates are prevented by batch_check_parent_activities which
+            # deduplicates on commit hash before insert. No commits are skipped.
             await update_last_processed_commit(
                 repo_id=repository.id,
                 commit_hash=batch_hashes[-1],

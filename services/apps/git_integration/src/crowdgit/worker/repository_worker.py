@@ -32,6 +32,7 @@ from crowdgit.services import (
 from crowdgit.services.utils import get_default_branch, get_repo_name
 from crowdgit.settings import (
     LOCK_HEARTBEAT_INTERVAL_SEC,
+    STUCK_REPO_TIMEOUT_HOURS,
     WORKER_ERROR_BACKOFF_SEC,
     WORKER_POLLING_INTERVAL_SEC,
 )
@@ -97,18 +98,32 @@ class RepositoryWorker:
 
     async def _heartbeat_loop(self, repo_id: str, stop_event: asyncio.Event) -> None:
         """Periodically refresh lockedAt so the repo is not reclaimed as a stale lock."""
+        consecutive_failures = 0
+        max_failures_before_alarm = max(
+            1, (STUCK_REPO_TIMEOUT_HOURS * 3600) // (LOCK_HEARTBEAT_INTERVAL_SEC * 2)
+        )
+
+        async def _beat() -> None:
+            nonlocal consecutive_failures
+            try:
+                await update_lock_heartbeat(repo_id)
+                consecutive_failures = 0
+            except Exception as e:
+                consecutive_failures += 1
+                if consecutive_failures >= max_failures_before_alarm:
+                    logger.error(
+                        f"Heartbeat failed {consecutive_failures}x for repo {repo_id} — "
+                        f"lock may expire soon (timeout={STUCK_REPO_TIMEOUT_HOURS}h): {e}"
+                    )
+                else:
+                    logger.warning(f"Heartbeat update failed for repo {repo_id}: {e}")
+
         # Refresh immediately so the first tick is not delayed by LOCK_HEARTBEAT_INTERVAL_SEC.
-        try:
-            await update_lock_heartbeat(repo_id)
-        except Exception as e:
-            logger.warning(f"Heartbeat update failed for repo {repo_id}: {e}")
+        await _beat()
         while not stop_event.is_set():
             await asyncio.sleep(LOCK_HEARTBEAT_INTERVAL_SEC)
             if not stop_event.is_set():
-                try:
-                    await update_lock_heartbeat(repo_id)
-                except Exception as e:
-                    logger.warning(f"Heartbeat update failed for repo {repo_id}: {e}")
+                await _beat()
 
     async def _process_repositories(self):
         """

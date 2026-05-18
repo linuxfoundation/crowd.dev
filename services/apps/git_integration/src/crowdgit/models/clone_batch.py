@@ -11,6 +11,10 @@ class CloneBatchInfo(BaseModel):
     latest_commit_in_repo: str | None = Field(
         None, description="Hash of the latest commit in repo"
     )
+    branch_changed: bool = Field(
+        default=False,
+        description="True when default branch changed and clone was wiped — last_processed_commit is stale and must be ignored",
+    )
 
     class Config:
         """Pydantic configuration"""
