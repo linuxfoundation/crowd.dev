@@ -9,14 +9,13 @@ from decimal import Decimal
 from typing import Any
 
 import orjson
-from loguru import logger
 from pydantic import validate_email
-from tenacity import retry, stop_after_attempt, wait_fixed
 
 from crowdgit.database.crud import (
     batch_check_parent_activities,
     batch_insert_activities,
     save_service_execution,
+    update_last_processed_commit,
 )
 from crowdgit.enums import (
     DataSinkWorkerQueueMessageType,
@@ -54,6 +53,7 @@ class CommitService(BaseService):
     _EMAIL_TYPE = "email"
 
     MAX_CHUNK_SIZE = 250
+    HASH_BATCH_SIZE = 1000
 
     def __init__(self, queue_service: QueueService):
         super().__init__()
@@ -126,18 +126,7 @@ class CommitService(BaseService):
         batch_start_time = time.time()
 
         try:
-            self.logger.info(
-                f"Starting commits processing for new batch having commits older than {batch_info.prev_batch_edge_commit}"
-            )
-            raw_commits = await self._execute_git_log(
-                batch_info.repo_path,
-                batch_info.clone_with_batches,
-                batch_info.prev_batch_edge_commit,
-                batch_info.edge_commit,
-                repository.last_processed_commit,
-            )
-
-            await self._process_activities_from_commits(raw_commits, batch_info, repository)
+            await self._process_with_hash_streaming(batch_info, repository)
 
             batch_end_time = time.time()
             batch_time = round(batch_end_time - batch_start_time, 2)
@@ -215,18 +204,69 @@ class CommitService(BaseService):
             return "HEAD"
         return f"origin/{default_branch}"
 
-    def _build_git_log_command(self, repo_path: str, commit_range: str) -> list[str]:
-        """Build git log commands for commits and numstats."""
-        return [
+    async def _get_commit_hashes(self, repo_path: str, commit_range: str) -> list[str]:
+        """Stream commit hashes oldest-first via rev-list. No buffering in git subprocess."""
+        output = await run_shell_command(
+            ["git", "-C", repo_path, "rev-list", "--reverse", commit_range]
+        )
+        return [h for h in output.strip().splitlines() if h.strip()]
+
+    async def _fetch_commits_batch(self, repo_path: str, hashes: list[str]) -> str:
+        """Fetch full commit data for exactly the given hashes (no parent traversal)."""
+        cmd = [
             "git",
+            "-c", "core.abbrevCommit=false",
             "-C",
             repo_path,
             "log",
-            commit_range,
+            "--no-walk=unsorted",
             "--cc",
             "--numstat",
             f"--pretty=format:{self.git_log_format}",
-        ]
+        ] + hashes
+        return await run_shell_command(cmd)
+
+    async def _process_with_hash_streaming(
+        self, batch_info: CloneBatchInfo, repository: Repository
+    ) -> None:
+        """Process all commits for a full clone via hash-based streaming.
+
+        Uses git rev-list to get hashes (no subprocess buffering), then fetches
+        commit data in batches of HASH_BATCH_SIZE. Checkpoints after each batch
+        so a crash at most replays one batch worth of commits.
+        """
+        repo_path = batch_info.repo_path
+        commit_reference = await self._get_commit_reference(repo_path)
+        if repository.last_processed_commit:
+            commit_range = f"{repository.last_processed_commit}..{commit_reference}"
+            self.logger.info(f"Processing incremental range: {commit_range}")
+        else:
+            commit_range = commit_reference
+            self.logger.info(f"Processing full history in {commit_reference}")
+
+        hashes = await self._get_commit_hashes(repo_path, commit_range)
+        if not hashes:
+            self.logger.info("No new commits to process")
+            return
+
+        branch = await get_default_branch(repo_path)
+        total_batches = (len(hashes) + self.HASH_BATCH_SIZE - 1) // self.HASH_BATCH_SIZE
+        self.logger.info(f"Processing {len(hashes)} commits in {total_batches} hash batches")
+
+        for batch_num, i in enumerate(range(0, len(hashes), self.HASH_BATCH_SIZE), 1):
+            batch_hashes = hashes[i : i + self.HASH_BATCH_SIZE]
+            raw_commits = await self._fetch_commits_batch(repo_path, batch_hashes)
+            await self._process_activities_from_commits(raw_commits, batch_info, repository)
+            # Checkpoint at last hash in batch (oldest-first from rev-list = newest in batch).
+            # Next run resumes from batch_hashes[-1]..HEAD.
+            await update_last_processed_commit(
+                repo_id=repository.id,
+                commit_hash=batch_hashes[-1],
+                branch=branch,
+            )
+            self.logger.info(
+                f"Hash batch {batch_num}/{total_batches} checkpointed at {batch_hashes[-1]}"
+            )
 
     def _parse_numstats(self, raw_numstats: str) -> tuple[int, int]:
         """
@@ -249,96 +289,6 @@ class CommitService(BaseService):
                 deletions += int(match.group(2))
 
         return (insertions, deletions)
-
-    async def _get_optimized_commit_range(
-        self,
-        repo_path: str,
-        edge_commit: str,
-        prev_batch_edge_commit: str,
-        last_processed_commit: str | None,
-    ) -> str:
-        """
-        Optimize commit range by using last_processed_commit if available in current batch.
-
-        For middle batches, returns the slice of history between the last batch's edge and this one's.
-        If last_processed_commit exists in the current batch and is not the shallow boundary,
-        uses it as the range start to skip already-processed commits.
-
-        Args:
-            repo_path: Local repository path
-            edge_commit: Current batch's edge commit (shallow boundary)
-            prev_batch_edge_commit: Previous batch's edge commit (upper bound of range)
-            last_processed_commit: Last commit that was successfully processed (if any)
-
-        Returns:
-            Git commit range string (e.g., "commit_a..commit_b")
-        """
-
-        default_commit_range = f"{edge_commit}..{prev_batch_edge_commit}"
-
-        if last_processed_commit and last_processed_commit != edge_commit:
-            try:
-                self.logger.info("Checking last processed commit existence in current batch")
-                await run_shell_command(
-                    ["git", "cat-file", "-e", last_processed_commit], cwd=repo_path
-                )
-                self.logger.info("Found! using optimized range")
-                default_commit_range = f"{last_processed_commit}..{prev_batch_edge_commit}"
-            except Exception:
-                self.logger.info("last processed commit not found in range")
-        return default_commit_range
-
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_fixed(1),
-        reraise=True,
-    )
-    async def _execute_git_log(
-        self,
-        repo_path: str,
-        clone_with_batches: bool,
-        prev_batch_edge_commit: str | None = None,
-        edge_commit: str | None = None,
-        last_processed_commit: str | None = None,
-    ) -> str:
-        """Execute git log command and return raw output."""
-        # Ensure abbreviated commits are disabled
-        await run_shell_command(
-            ["git", "-C", repo_path, "config", "core.abbrevCommit", "false"], cwd=repo_path
-        )
-
-        self.logger.info("Running git log commands...")
-
-        if not clone_with_batches:
-            commit_reference = await self._get_commit_reference(repo_path)
-            self.logger.info(
-                f"Full repo cloned in single batch, getting all commits in {commit_reference}"
-            )
-            raw_commits_cmd = self._build_git_log_command(repo_path, commit_reference)
-            return await run_shell_command(raw_commits_cmd)
-
-        if not prev_batch_edge_commit:
-            return ""
-
-        if edge_commit:
-            commit_range = await self._get_optimized_commit_range(
-                repo_path, edge_commit, prev_batch_edge_commit, last_processed_commit
-            )
-            self.logger.info(f"Processing middle batch: {commit_range}")
-        else:
-            # Final batch: Get all commits from the last known edge to the root.
-            commit_range = prev_batch_edge_commit
-            self.logger.info(f"Processing final batch from: {prev_batch_edge_commit} to root")
-
-        raw_commits_cmd = self._build_git_log_command(repo_path, commit_range)
-
-        self.logger.info(f"Executing git log for range: {commit_range}")
-        return await run_shell_command(raw_commits_cmd)
-
-    def should_skip_commit(self, raw_commit: str | None, edge_commit: str | None) -> bool:
-        """Check if commit should be skipped based on edge commit comparison."""
-        # Only skip the boundary commit of the current shallow clone.
-        return not raw_commit or (edge_commit and raw_commit.startswith(edge_commit))
 
     def clean_up_username(self, name: str):
         name = re.sub(r"(?i)Reviewed[- ]by:", "", name)
@@ -700,17 +650,7 @@ class CommitService(BaseService):
         batch_info: CloneBatchInfo,
         repository: Repository,
     ) -> None:
-        """
-        Process a chunk of raw commit texts into activities and write them to DB and Kafka.
-
-        Args:
-            commit_texts_chunk: List of commit text strings to process
-            repo_path: Path to the repository
-            edge_commit_hash: Edge commit hash for filtering
-            remote: Remote repository URL
-            segment_id: Segment identifier
-            integration_id: Integration identifier
-        """
+        """Process a chunk of raw commit texts into activities and write them to DB and Kafka."""
         activities_db = []
         activities_queue = []
         bad_commits = 0
@@ -718,7 +658,7 @@ class CommitService(BaseService):
         commit = None
 
         for full_commit_text in commit_texts_chunk:
-            if self.should_skip_commit(full_commit_text, batch_info.edge_commit):
+            if not full_commit_text:
                 continue
             commit_text, numstats_text = full_commit_text.split(self.NUMSTAT_SPLITTER)
             commit_lines = commit_text.strip().splitlines()
@@ -802,7 +742,7 @@ class CommitService(BaseService):
         del raw_commits
         gc.collect()
 
-        logger.info(f"Actual number of commits to be processed: {len(commit_texts)}")
+        self.logger.info(f"Actual number of commits to be processed: {len(commit_texts)}")
 
         # Update total_commits metric
         if self._metrics_context:
@@ -820,22 +760,14 @@ class CommitService(BaseService):
 
         max_concurrent = 2
         semaphore = asyncio.Semaphore(max_concurrent)
-        self.logger.info(f"Processing with max_concurrent={max_concurrent}")
-
         completed_chunks = 0
 
         async def process_single_chunk(chunk_start_idx: int, chunk_end_idx: int):
-            nonlocal completed_chunks, total_chunks
-
+            nonlocal completed_chunks
             async with semaphore:
                 chunk = commit_texts[chunk_start_idx:chunk_end_idx]  # noqa: F821
                 try:
-                    # Process chunk and write to DB/Kafka
-                    await self.process_commits_chunk(
-                        chunk,
-                        batch_info,
-                        repository,
-                    )
+                    await self.process_commits_chunk(chunk, batch_info, repository)
                     completed_chunks += 1
                     self.logger.info(f"Progress: {completed_chunks}/{total_chunks} chunks")
                     del chunk
@@ -843,24 +775,23 @@ class CommitService(BaseService):
                     self.logger.error(f"Error processing chunk: {repr(e)}")
                     raise
 
-        tasks = [
-            process_single_chunk(i, min(i + chunk_size, len(commit_texts)))
+        running_tasks = [
+            asyncio.create_task(
+                process_single_chunk(i, min(i + chunk_size, len(commit_texts)))
+            )
             for i in range(0, len(commit_texts), chunk_size)
         ]
 
-        self.logger.info(
-            f"Created {len(tasks)} tasks. Processing with max {max_concurrent} concurrent tasks"
-        )
-
         try:
-            await asyncio.gather(*tasks)
-
+            await asyncio.gather(*running_tasks)
             self.logger.info(f"All {total_chunks} chunks processed successfully.")
-
         except Exception as e:
             self.logger.error(
                 f"Error during chunk processing at chunk {completed_chunks}/{total_chunks}: {e}"
             )
+            for t in running_tasks:
+                t.cancel()
+            await asyncio.gather(*running_tasks, return_exceptions=True)
             raise
 
         finally:
@@ -972,7 +903,7 @@ class CommitService(BaseService):
 
             return commit_datetime
 
-        except ValueError:
+        except (ValueError, TypeError):
             self.logger.warning(
                 f"Invalid commit datetime format: {commit_datetime}, using author datetime"
             )

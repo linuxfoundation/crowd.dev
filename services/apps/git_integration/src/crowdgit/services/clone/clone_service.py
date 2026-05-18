@@ -5,7 +5,6 @@ import time
 from collections.abc import AsyncIterator
 from decimal import Decimal
 
-import aiofiles
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -18,7 +17,9 @@ from crowdgit.database.crud import save_service_execution
 from crowdgit.enums import ErrorCode, ExecutionStatus, OperationType
 from crowdgit.errors import (
     CommandExecutionError,
+    CommandTimeoutError,
     CrowdGitError,
+    DiskSpaceError,
     NetworkError,
     RateLimitError,
     RemoteServerError,
@@ -31,6 +32,7 @@ from crowdgit.services.utils import (
     get_repo_name,
     run_shell_command,
 )
+from crowdgit.settings import REPO_STORAGE_ROOT
 
 DEFAULT_STORAGE_OPTIMIZATION_THRESHOLD_MB = 10000
 
@@ -56,43 +58,6 @@ class CloneService(BaseService):
     @staticmethod
     def _is_gerrit_remote(remote: str) -> bool:
         return any(pattern in remote for pattern in GERRIT_PATTERNS)
-
-    async def _check_if_final_batch(self, path: str, target_commit_hash: str | None) -> bool:
-        """
-        Final batch is determined if:
-        - full history is cloned (no longer shallow_clone)
-        - target commit reached
-        """
-        is_shallow_clone = await run_shell_command(
-            ["git", "rev-parse", "--is-shallow-repository"], cwd=path
-        )
-        if "false" in is_shallow_clone:
-            return True
-        if not target_commit_hash:
-            return False
-        try:
-            await run_shell_command(
-                ["git", "rev-parse", "--verify", f"{target_commit_hash}^{{commit}}"], cwd=path
-            )
-            self.logger.info(f"Target commit {target_commit_hash} reached")
-            return True
-        except CommandExecutionError:
-            return False
-
-    @retry_on_clone_error
-    async def _perform_minimal_clone(self, path: str, remote: str) -> None:
-        """
-        Perform minimal clone of depth=1
-        """
-        # increasing post buffer to avoid RPC failed error
-        await run_shell_command(
-            ["git", "config", "--global", "http.postBuffer", "524288000"], cwd=path
-        )
-        self.logger.info("Initializing minimal clone")
-        await run_shell_command(
-            ["git", "clone", "--depth=1", "--no-tags", "--single-branch", remote, "."], cwd=path
-        )
-        self.logger.info("Minimal clone initialized successfully")
 
     async def _get_repo_size_mb(self, repo_path: str) -> float:
         try:
@@ -144,73 +109,16 @@ class CloneService(BaseService):
             self.logger.error(f"Failed to perform git gc: {repr(e)}")
             # Don't raise - gc failure shouldn't stop processing
 
-    @retry_on_clone_error
-    async def _clone_next_batch(self, repo_path: str, batch_depth: int, remote: str):
-        default_branch = await get_default_branch(repo_path)
-        self.logger.info(
-            f"Fetching an additional {batch_depth} commits from {default_branch} branch"
-        )
-        try:
-            await run_shell_command(
-                ["git", "fetch", "origin", default_branch, f"--deepen={batch_depth}"],
-                cwd=repo_path,
-            )
-        except RemoteServerError:
-            if self._is_gerrit_remote(remote):
-                self.logger.warning(
-                    "Gerrit server error on --deepen, falling back to unshallow fetch"
-                )
-                await run_shell_command(["git", "fetch", "--unshallow"], cwd=repo_path)
-            else:
-                raise
-        # Optimize repository storage using git garbage collection
-        await self._optimize_repository_storage(repo_path)
-
-    async def _update_batch_info(
-        self,
-        batch_info: CloneBatchInfo,
-        repo_path: str,
-        target_commit_hash: str | None,
-        clone_with_batches: bool,
-    ) -> None:
-        """Update batch info with repo path and final batch status.
-
-        For full clones (clone_with_batches=False): Marks as final batch immediately.
-        For batched clones (clone_with_batches=True): Checks if target commit reached or full history fetched.
-        """
+    async def _update_batch_info(self, batch_info: CloneBatchInfo, repo_path: str) -> None:
         batch_info.repo_path = repo_path
-        batch_info.clone_with_batches = clone_with_batches
+        batch_info.is_final_batch = True
 
         if batch_info.is_first_batch:
-            # Set latest commit only from first batch
             latest_commit_output = await run_shell_command(
                 ["git", "rev-parse", "HEAD"],
                 cwd=repo_path,
             )
             batch_info.latest_commit_in_repo = latest_commit_output.strip()
-        if not clone_with_batches:
-            # Full clone: always final batch since entire repository history is available
-            batch_info.is_final_batch = True
-            return
-
-        batch_info.is_final_batch = await self._check_if_final_batch(repo_path, target_commit_hash)
-        batch_info.edge_commit = await self._get_edge_commit(repo_path)
-
-    async def _get_edge_commit(self, repo_path: str):
-        """
-        Returns the edge commit of a shallow clone by reading the .git/shallow file,
-        which contains the boundary commit(s) when history is truncated.
-
-        If the full history has been cloned, the .git/shallow file does not exist.
-        """
-        shallow_file = os.path.join(repo_path, ".git", "shallow")
-        try:
-            async with aiofiles.open(shallow_file, "r", encoding="utf-8") as f:
-                oldest_commit = (await f.readline()).strip()
-            self.logger.info(f"Edge commit: {oldest_commit}")
-            return oldest_commit
-        except FileNotFoundError:
-            return None
 
     async def _cleanup_temp_directory(self, temp_repo_path: str, repo_id: str) -> None:
         """
@@ -253,61 +161,6 @@ class CloneService(BaseService):
         self.logger.info(f"cleaning temp dir {temp_repo_path}")
         shutil.rmtree(temp_repo_path)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_fixed(2),
-        reraise=False,
-    )
-    async def _cleanup_working_directory(self, repo_path: str) -> None:
-        """
-        Remove all files and directories from the repository except the .git directory.
-        This helps reduce disk usage while preserving git history for commit processing.
-        """
-        self.logger.info(f"Cleaning working directory: {repo_path}")
-
-        # Use find command to remove everything except .git directory
-        await run_shell_command(
-            [
-                "find",
-                ".",
-                "-mindepth",
-                "1",
-                "-maxdepth",
-                "1",
-                "!",
-                "-name",
-                ".git",
-                "-exec",
-                "rm",
-                "-rf",
-                "{}",
-                "+",
-            ],
-            cwd=repo_path,
-        )
-
-        self.logger.info("Working directory cleanup completed")
-
-    async def _calculate_batch_depth(self, repo_path: str, remote: str) -> int:
-        calculated_depth = None
-        total_branches_tags = await run_shell_command(
-            ["git", "ls-remote", "--heads", "--tags", remote], cwd=repo_path
-        )
-        total_branches_tags = len(total_branches_tags.splitlines())
-        if total_branches_tags <= 200:
-            # Small repo, get a decent amount of history
-            calculated_depth = 100
-        elif total_branches_tags <= 1000:
-            # Medium repo, get a moderate amount of history
-            calculated_depth = 50
-        else:
-            # Large repo, get less history
-            calculated_depth = 5
-        self.logger.info(
-            f"total_branches_tags={total_branches_tags}, calculated_depth={calculated_depth}"
-        )
-        return calculated_depth
-
     @retry_on_clone_error
     async def _perform_full_clone(self, repo_path: str, remote: str):
         """Perform full repository clone"""
@@ -316,6 +169,60 @@ class CloneService(BaseService):
             ["git", "clone", "--no-tags", "--single-branch", remote, "."], cwd=repo_path
         )
         self.logger.info(f"Successfully completed full clone of repository: {remote}")
+
+    def _stable_repo_path(self, repo_id: str) -> str | None:
+        """Returns a stable on-disk path for the repo when REPO_STORAGE_ROOT is set, else None."""
+        if REPO_STORAGE_ROOT is None:
+            return None
+        return os.path.join(REPO_STORAGE_ROOT, str(repo_id))
+
+    async def _is_repo_valid(self, repo_path: str) -> bool:
+        """Return True if the local clone is usable: HEAD resolves and a remote tracking branch exists."""
+        try:
+            await run_shell_command(["git", "rev-parse", "HEAD"], cwd=repo_path)
+            branch = await get_default_branch(repo_path)
+            return branch != "*"
+        except Exception:
+            return False
+
+    @retry_on_clone_error
+    async def _incremental_fetch(self, repo_path: str, remote: str) -> None:
+        """Fetch latest commits into a persistent clone and update the working tree."""
+        # Remove stale git lockfiles left by a previous crash before touching the repo.
+        git_dir = os.path.join(repo_path, ".git")
+        for dirpath, _, filenames in os.walk(git_dir):
+            for filename in filenames:
+                if filename.endswith(".lock"):
+                    lockpath = os.path.join(dirpath, filename)
+                    try:
+                        os.remove(lockpath)
+                        self.logger.warning(f"Removed stale lockfile: {lockpath}")
+                    except OSError as e:
+                        self.logger.warning(f"Failed to remove stale lockfile {lockpath}: {e}")
+
+        default_branch = await get_default_branch(repo_path)
+        if default_branch == "*":
+            raise CommandExecutionError(
+                f"Cannot fetch {remote}: no remote tracking branch found (detached HEAD)",
+                returncode=1,
+            )
+        self.logger.info(f"Fetching {default_branch} from {remote}")
+        await run_shell_command(
+            ["git", "fetch", "--no-tags", "origin", default_branch], cwd=repo_path
+        )
+        # Update working tree so file-scanning services (licensee, rg, vuln scanner) see
+        # current file content, not the state from the previous run.
+        await run_shell_command(
+            ["git", "reset", "--hard", f"origin/{default_branch}"], cwd=repo_path
+        )
+        await self._optimize_repository_storage(repo_path)
+
+    async def _wipe_and_reclone(self, repo_path: str, remote: str) -> None:
+        """Wipe an existing persistent clone and replace it with a fresh full clone."""
+        self.logger.info(f"Wiping and re-cloning {remote}")
+        shutil.rmtree(repo_path)
+        os.makedirs(repo_path)
+        await self._perform_full_clone(repo_path, remote)
 
     async def has_default_branch_changed(self, remote: str, saved_branch: str | None) -> bool:
         """Check if the default branch has changed compared to the saved branch
@@ -350,57 +257,23 @@ class CloneService(BaseService):
             # On error, assume no change to avoid unnecessary re-cloning
             return False
 
-    async def determine_clone_strategy(
-        self, repo_path: str, remote: str, branch: str | None, last_processed_commit: str | None
-    ) -> bool:
-        """Determine whether to use full clone or minimal clone strategy based on repository state.
-
-        Args:
-            repo_path: Local path where repository will be cloned
-            remote: Remote repository URL (e.g., 'https://github.com/user/repo')
-            branch: Current saved branch name or None for new repositories
-            last_processed_commit: Last processed commit hash or None for new repositories
-
-        Returns: (clone_with_batches)
-            bool: False for full clone (clone_with_batches=False), True for minimal clone (clone_with_batches=True)
-
-        Strategy:
-            - Full clone: New repositories (last_processed_commit=None) or branch changed
-            - Minimal clone: Existing repositories with unchanged branch for incremental processing
-        """
-
-        self.logger.info(
-            f"Starting clone decision for {remote} (branch: {branch}, last_commit: {last_processed_commit})"
-        )
-
-        default_branch_changed = await self.has_default_branch_changed(remote, branch)
-
-        if not last_processed_commit or default_branch_changed:
-            reason = "new repository" if not last_processed_commit else "branch changed"
-            self.logger.info(f"Performing full clone for {remote} - reason: {reason}")
-            await self._perform_full_clone(repo_path, remote)
-            return False
-
-        self.logger.info(
-            f"Performing minimal clone for {remote} - existing repository with unchanged branch"
-        )
-        await self._perform_minimal_clone(repo_path, remote)
-        return True
-
     async def clone_batches_generator(
         self,
         repository: Repository,
-        working_dir_cleanup: bool | None = False,
     ) -> AsyncIterator[CloneBatchInfo]:
         """
-        Async generator that yields CloneBatchInfo for repository cloning.
+        Async generator that yields a single CloneBatchInfo per call.
 
-        For new repositories (clone_with_batches=False): Performs full clone to avoid inefficient batching (stacked git objects).
+        When REPO_STORAGE_ROOT is set (staging/prod k8s): uses a stable on-disk path per repo.
+        First run performs a full clone; subsequent runs do an incremental git fetch + working
+        tree reset. No temp dir cleanup — the clone persists across runs.
 
-        For existing repositories (clone_with_batches=True): Uses incremental batched
-        processing to fetch only new commits since last processing.
+        When REPO_STORAGE_ROOT is unset (local dev / Docker Compose): falls back to the legacy
+        ephemeral behaviour — tempfile.mkdtemp + full clone + cleanup in finally. Behaviour is
+        identical to before this change.
         """
-        temp_repo_path = None
+        repo_path = None
+        stable_path = self._stable_repo_path(repository.id)
         execution_status = ExecutionStatus.SUCCESS
         error_code = None
         error_message = None
@@ -408,60 +281,69 @@ class CloneService(BaseService):
         remote = repository.url.removesuffix(".git")
 
         batch_info = CloneBatchInfo(
-            repo_path=temp_repo_path,
+            repo_path=repo_path,
             remote=remote,
             is_final_batch=False,
             is_first_batch=True,
         )
         try:
-            temp_repo_path = tempfile.mkdtemp(prefix=f"{get_repo_name(remote)}_")
             batch_start_time = time.time()
 
-            clone_with_batches = await self.determine_clone_strategy(
-                temp_repo_path, remote, repository.branch, repository.last_processed_commit
-            )
-            if clone_with_batches:
-                batch_depth = await self._calculate_batch_depth(temp_repo_path, remote)
-            await self._update_batch_info(
-                batch_info, temp_repo_path, repository.last_processed_commit, clone_with_batches
-            )
-            batch_end_time = time.time()
-            total_execution_time += round(batch_end_time - batch_start_time, 2)
+            if stable_path is not None:
+                # Persistent path — used when REPO_STORAGE_ROOT env var is set (k8s).
+                repo_path = stable_path
+                os.makedirs(repo_path, exist_ok=True)
+
+                if os.path.isdir(os.path.join(repo_path, ".git")):
+                    if not await self._is_repo_valid(repo_path):
+                        self.logger.warning(
+                            f"Repo at {repo_path} is in an invalid state, wiping and re-cloning"
+                        )
+                        await self._wipe_and_reclone(repo_path, remote)
+                    else:
+                        default_branch_changed = await self.has_default_branch_changed(
+                            remote, repository.branch
+                        )
+                        if default_branch_changed:
+                            await self._wipe_and_reclone(repo_path, remote)
+                        else:
+                            await self._incremental_fetch(repo_path, remote)
+                else:
+                    # Defensive: wipe in case a prior crash left checkout artifacts with no .git.
+                    shutil.rmtree(repo_path, ignore_errors=True)
+                    os.makedirs(repo_path)
+                    await self._perform_full_clone(repo_path, remote)
+            else:
+                # Ephemeral path — legacy behaviour for local dev / Docker Compose.
+                repo_path = tempfile.mkdtemp(prefix=f"{get_repo_name(remote)}_")
+                await self._perform_full_clone(repo_path, remote)
+
+            await self._update_batch_info(batch_info, repo_path)
+            total_execution_time += round(time.time() - batch_start_time, 2)
 
             yield batch_info
-            if working_dir_cleanup:
-                await self._cleanup_working_directory(temp_repo_path)
-
-            batch_info.is_first_batch = False
-            while not batch_info.is_final_batch:
-                batch_start_time = time.time()
-                batch_info.prev_batch_edge_commit = await self._get_edge_commit(temp_repo_path)
-                await self._clone_next_batch(temp_repo_path, batch_depth, remote)
-                await self._update_batch_info(
-                    batch_info,
-                    temp_repo_path,
-                    repository.last_processed_commit,
-                    clone_with_batches,
-                )
-                batch_end_time = time.time()
-                total_execution_time += round(batch_end_time - batch_start_time, 2)
-
-                yield batch_info
 
         except Exception as e:
-            # Handle both CrowdGitError and generic Exception
             execution_status = ExecutionStatus.FAILURE
             error_message = e.error_message if isinstance(e, CrowdGitError) else repr(e)
             error_code = (
                 e.error_code.value if isinstance(e, CrowdGitError) else ErrorCode.UNKNOWN.value
             )
             self.logger.error(f"Cloning failed: {error_message}")
+            # Wipe persistent clone only on non-transient failures that indicate local git
+            # corruption. Transient/remote errors (network, rate-limit, disk-full, timeout)
+            # leave the local clone intact — no point re-cloning 6+ GB because GitHub was down.
+            _TRANSIENT_ERRORS = (RateLimitError, NetworkError, RemoteServerError, DiskSpaceError, CommandTimeoutError)
+            if stable_path and os.path.isdir(os.path.join(stable_path, ".git")):
+                if not isinstance(e, _TRANSIENT_ERRORS):
+                    self.logger.warning(f"Wiping persistent clone at {stable_path} after non-transient failure")
+                    shutil.rmtree(stable_path, ignore_errors=True)
             raise
         finally:
-            if temp_repo_path and os.path.exists(temp_repo_path):
-                await self._cleanup_temp_directory(temp_repo_path, repository.id)
+            # Only clean up ephemeral temp dirs. Persistent clones are intentionally kept.
+            if stable_path is None and repo_path and os.path.exists(repo_path):
+                await self._cleanup_temp_directory(repo_path, repository.id)
 
-            # Save metrics
             service_execution = ServiceExecution(
                 repo_id=repository.id,
                 operation_type=OperationType.CLONE,

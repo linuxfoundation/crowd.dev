@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime, timezone
 
 from crowdgit.database.crud import (
     acquire_repo_for_processing,
@@ -7,13 +6,16 @@ from crowdgit.database.crud import (
     mark_repo_as_processed,
     release_repo,
     update_last_processed_commit,
+    update_lock_heartbeat,
     update_repository_licenses,
 )
 from crowdgit.enums import RepositoryState
 from crowdgit.errors import (
+    EmptyRepoError,
+    ForbiddenError,
     InternalError,
     ParentRepoInvalidError,
-    ReOnboardingRequiredError,
+    PermissionError as RepoPermissionError,
     RepoAuthRequiredError,
 )
 
@@ -31,8 +33,7 @@ from crowdgit.services import (
 )
 from crowdgit.services.utils import get_default_branch, get_repo_name
 from crowdgit.settings import (
-    STUCK_ONBOARDING_REPO_TIMEOUT_HOURS,
-    STUCK_RECURRENT_REPO_TIMEOUT_HOURS,
+    LOCK_HEARTBEAT_INTERVAL_SEC,
     WORKER_ERROR_BACKOFF_SEC,
     WORKER_POLLING_INTERVAL_SEC,
 )
@@ -96,33 +97,15 @@ class RepositoryWorker:
 
         logger.info("Worker services shutdown triggered")
 
-    async def _ensure_repo_not_stuck(self, repository: Repository):
-        """
-        Check if repo is stuck and raise the appropriate exception if so.
-        Repos can get stuck in processing state for different reasons:
-        - Worker crash or restart (e.g. pod eviction due OOM, deployment after timeout, ...)
-        - `last_processed_commit` is no loger valid due to force-push, dangling-commit, or so...
-        - Race condition: remote is going under breaking changes at the same time we're processing it
-        - Network issues breaking the clone/pull operation
-        """
-        # detection
-        processing_duration_hours = (
-            datetime.now(timezone.utc) - repository.locked_at.astimezone(timezone.utc)
-        ).total_seconds() / 3600
-        repo_stuck: bool = (
-            repository.last_processed_commit
-            and processing_duration_hours >= STUCK_RECURRENT_REPO_TIMEOUT_HOURS
-        ) or (
-            repository.last_processed_commit is None  # onboarding
-            and processing_duration_hours >= STUCK_ONBOARDING_REPO_TIMEOUT_HOURS
-        )
-
-        # handling
-        if repo_stuck:
-            logger.warning(
-                f"Repo {repository.url} is stuck for {processing_duration_hours} hours — queuing for re-onboarding"
-            )
-            raise ReOnboardingRequiredError()
+    async def _heartbeat_loop(self, repo_id: str, stop_event: asyncio.Event) -> None:
+        """Periodically refresh lockedAt so the repo is not reclaimed as a stale lock."""
+        while not stop_event.is_set():
+            await asyncio.sleep(LOCK_HEARTBEAT_INTERVAL_SEC)
+            if not stop_event.is_set():
+                try:
+                    await update_lock_heartbeat(repo_id)
+                except Exception as e:
+                    logger.warning(f"Heartbeat update failed for repo {repo_id}: {e}")
 
     async def _process_repositories(self):
         """
@@ -138,14 +121,26 @@ class RepositoryWorker:
                 logger.debug("No repositories to process")
                 return
 
-            await self._process_single_repository(available_repo_to_process)
+            stop_heartbeat = asyncio.Event()
+            heartbeat_task = asyncio.create_task(
+                self._heartbeat_loop(available_repo_to_process.id, stop_heartbeat)
+            )
+            try:
+                await self._process_single_repository(available_repo_to_process)
+            finally:
+                stop_heartbeat.set()
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
         except Exception as e:
             logger.error(
                 f"Failed to process repository {available_repo_to_process} with error {e}"
             )
         finally:
             if available_repo_to_process:
-                logger.info("releasing repo: ", available_repo_to_process.url)
+                logger.info(f"releasing repo: {available_repo_to_process.url}")
                 await release_repo(available_repo_to_process.id)
                 logger.info(f"Repo {available_repo_to_process.url} released!")
 
@@ -231,10 +226,7 @@ class RepositoryWorker:
             # Validate and get parent repo if this is a fork
             repository.parent_repo = await self._validate_and_get_parent_repo(repository)
 
-            async for batch_info in self.clone_service.clone_batches_generator(
-                repository,
-                working_dir_cleanup=True,
-            ):
+            async for batch_info in self.clone_service.clone_batches_generator(repository):
                 logger.info(f"Clone batch info: {batch_info}")
                 if batch_info.is_first_batch:
                     await self.software_value_service.run(repository.id, batch_info.repo_path)
@@ -249,24 +241,21 @@ class RepositoryWorker:
                     batch_info,
                 )
 
-                if batch_info.is_final_batch:
-                    await update_last_processed_commit(
-                        repo_id=repository.id,
-                        commit_hash=batch_info.latest_commit_in_repo,
-                        branch=await get_default_branch(batch_info.repo_path),
-                    )
-                else:
-                    await self._ensure_repo_not_stuck(repository)
+                await update_last_processed_commit(
+                    repo_id=repository.id,
+                    commit_hash=batch_info.latest_commit_in_repo,
+                    branch=await get_default_branch(batch_info.repo_path),
+                )
 
             logger.info("Incremental processing completed successfully")
             processing_state = RepositoryState.COMPLETED
-        except ReOnboardingRequiredError:
-            logger.info(f"Repo {repository.url} needs re-onboarding, deferring until weekend")
-            processing_state = RepositoryState.PENDING_REONBOARD
+        except EmptyRepoError:
+            logger.info(f"Repository {repository.url} is empty, marking as completed")
+            processing_state = RepositoryState.COMPLETED
         except ParentRepoInvalidError as e:
             logger.error(f"Parent repo validation failed: {repr(e)}")
             processing_state = RepositoryState.REQUIRES_PARENT
-        except RepoAuthRequiredError as e:
+        except (RepoAuthRequiredError, ForbiddenError, RepoPermissionError) as e:
             logger.error(f"Repository requires authentication: {repr(e)}")
             processing_state = RepositoryState.AUTH_REQUIRED
         except Exception as e:
@@ -276,7 +265,7 @@ class RepositoryWorker:
             # Reset logger context for all services
             self._reset_all_contexts()
 
-            logger.info(f"Updating ${repository.url} state to ${processing_state}")
+            logger.info(f"Updating {repository.url} state to {processing_state}")
             await mark_repo_as_processed(repository.id, processing_state)
 
         logger.info("Completed processing repository: {}", repository.url)

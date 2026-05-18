@@ -11,17 +11,6 @@ class CloneBatchInfo(BaseModel):
     latest_commit_in_repo: str | None = Field(
         None, description="Hash of the latest commit in repo"
     )
-    edge_commit: str | None = Field(
-        default=None,
-        description="The oldest commit in the current batch, used to track progress during incremental processing.",
-    )
-    prev_batch_edge_commit: str | None = Field(
-        default=None,
-        description="The edge commit from the previous batch, used to track progress during incremental processing.",
-    )
-    clone_with_batches: bool = Field(
-        default=True, description="Whether repo is cloned with batches"
-    )
 
     class Config:
         """Pydantic configuration"""

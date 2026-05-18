@@ -115,11 +115,15 @@ async def get_remote_default_branch(remote_url: str) -> str | None:
                 # Extract branch name from "ref: refs/heads/main"
                 return line.split("refs/heads/")[-1].split("\t")[0]
 
-        # Fallback: if symbolic ref not available, try common branches
+        # Fallback: if symbolic ref not available, try common branches.
+        # ls-remote exits 0 even when branch absent — must check stdout is non-empty.
         for branch in ["main", "master"]:
             try:
-                await run_shell_command(["git", "ls-remote", "--heads", remote_url, branch])
-                return branch
+                output = await run_shell_command(
+                    ["git", "ls-remote", "--heads", remote_url, branch]
+                )
+                if output.strip():
+                    return branch
             except CommandExecutionError:
                 continue
 

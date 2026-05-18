@@ -107,10 +107,7 @@ def batch_info():
         remote="https://github.com/test/repo.git",
         is_first_batch=True,
         is_final_batch=True,
-        clone_with_batches=False,
         latest_commit_in_repo=None,  # Will be set by service
-        prev_batch_edge_commit=None,
-        edge_commit=None,
     )
 
 
@@ -144,6 +141,9 @@ class TestCommitExtraction:
             """Mock service execution save."""
             pass
 
+        async def mock_update_last_processed_commit(*args, **kwargs):
+            pass
+
         with patch(
             "crowdgit.services.commit.commit_service.batch_insert_activities", mock_batch_insert
         ):
@@ -151,10 +151,14 @@ class TestCommitExtraction:
                 "crowdgit.services.commit.commit_service.save_service_execution",
                 mock_save_execution,
             ):
-                # Process commits
-                await commit_service.process_single_batch_commits(
-                    repository=test_repository, batch_info=batch_info
-                )
+                with patch(
+                    "crowdgit.services.commit.commit_service.update_last_processed_commit",
+                    mock_update_last_processed_commit,
+                ):
+                    # Process commits
+                    await commit_service.process_single_batch_commits(
+                        repository=test_repository, batch_info=batch_info
+                    )
 
         # Verify activities were extracted
         assert len(captured_activities_db) > 0, "No activities were extracted"
@@ -269,6 +273,9 @@ class TestCommitExtraction:
         async def mock_save_execution(execution):
             pass
 
+        async def mock_update_last_processed_commit(*args, **kwargs):
+            pass
+
         with patch(
             "crowdgit.services.commit.commit_service.batch_insert_activities", mock_batch_insert
         ):
@@ -276,9 +283,13 @@ class TestCommitExtraction:
                 "crowdgit.services.commit.commit_service.save_service_execution",
                 mock_save_execution,
             ):
-                await commit_service.process_single_batch_commits(
-                    repository=test_repository, batch_info=batch_info
-                )
+                with patch(
+                    "crowdgit.services.commit.commit_service.update_last_processed_commit",
+                    mock_update_last_processed_commit,
+                ):
+                    await commit_service.process_single_batch_commits(
+                        repository=test_repository, batch_info=batch_info
+                    )
 
         # Extract activity types from DB records
         # DB format: (result_id, state, json_data, tenant_id, integration_id)

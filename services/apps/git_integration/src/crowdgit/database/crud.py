@@ -8,9 +8,11 @@ from crowdgit.errors import RepoLockingError
 from crowdgit.models.repository import Repository
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.settings import (
+    FAILED_RETRY_INTERVAL_HOURS,
     MAX_CONCURRENT_ONBOARDINGS,
     MAX_INTEGRATION_RESULTS,
     REPOSITORY_UPDATE_INTERVAL_HOURS,
+    STUCK_REPO_TIMEOUT_HOURS,
 )
 
 from .connection import get_db_connection
@@ -74,7 +76,7 @@ async def acquire_onboarding_repo() -> Repository | None:
         JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
         CROSS JOIN current_onboarding_count c
         WHERE rp.state = $2
-            AND rp."lockedAt" IS NULL
+            AND (rp."lockedAt" IS NULL OR rp."lockedAt" < NOW() - INTERVAL '1 hour' * $4::numeric)
             AND r."deletedAt" IS NULL
             AND c.count < $3
         ORDER BY rp.priority ASC, rp."createdAt" ASC
@@ -93,7 +95,7 @@ async def acquire_onboarding_repo() -> Repository | None:
     """
     return await acquire_repository(
         onboarding_repo_sql_query,
-        (RepositoryState.PROCESSING, RepositoryState.PENDING, MAX_CONCURRENT_ONBOARDINGS),
+        (RepositoryState.PROCESSING, RepositoryState.PENDING, MAX_CONCURRENT_ONBOARDINGS, STUCK_REPO_TIMEOUT_HOURS),
     )
 
 
@@ -141,9 +143,11 @@ async def acquire_recurrent_repo() -> Repository | None:
         FROM public.repositories r
         JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
         WHERE NOT (rp.state = ANY($2))
-            AND rp."lockedAt" IS NULL
+            AND (rp."lockedAt" IS NULL OR rp."lockedAt" < NOW() - INTERVAL '1 hour' * $4::numeric)
             AND r."deletedAt" IS NULL
-            AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * $3
+            AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
+                CASE WHEN rp.state = 'failed' THEN $5::numeric ELSE $3::numeric END
+            )
             AND NOT (
                 r.url LIKE '%gerrit.automotivelinux.org%'
                 AND EXISTS (SELECT 1 FROM automotivelinux_processing)
@@ -170,7 +174,7 @@ async def acquire_recurrent_repo() -> Repository | None:
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
-        (RepositoryState.PROCESSING, states_to_exclude, REPOSITORY_UPDATE_INTERVAL_HOURS),
+        (RepositoryState.PROCESSING, states_to_exclude, REPOSITORY_UPDATE_INTERVAL_HOURS, STUCK_REPO_TIMEOUT_HOURS, FAILED_RETRY_INTERVAL_HOURS),
     )
 
 
@@ -197,7 +201,7 @@ async def acquire_pending_reonboard_repo() -> Repository | None:
         FROM public.repositories r
         JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
         WHERE rp.state = $1
-            AND rp."lockedAt" IS NULL
+            AND (rp."lockedAt" IS NULL OR rp."lockedAt" < NOW() - INTERVAL '1 hour' * $3::numeric)
             AND r."deletedAt" IS NULL
         ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
         LIMIT 1
@@ -218,7 +222,7 @@ async def acquire_pending_reonboard_repo() -> Repository | None:
     """
     return await acquire_repository(
         pending_reonboard_sql_query,
-        (RepositoryState.PENDING_REONBOARD, RepositoryState.PROCESSING),
+        (RepositoryState.PENDING_REONBOARD, RepositoryState.PROCESSING, STUCK_REPO_TIMEOUT_HOURS),
     )
 
 
@@ -266,6 +270,17 @@ async def release_repo(repo_id: str):
     """
     result = await execute(sql_query, (repo_id,))
     return str(result)
+
+
+async def update_lock_heartbeat(repo_id: str):
+    """Refresh lockedAt timestamp for an actively-processing repo to prevent stale-lock reclaim."""
+    sql_query = """
+    UPDATE git."repositoryProcessing"
+        SET "lockedAt" = NOW(),
+        "updatedAt" = NOW()
+    WHERE "repositoryId" = $1
+    """
+    await execute(sql_query, (repo_id,))
 
 
 async def update_last_processed_commit(repo_id: str, commit_hash: str, branch: str | None = None):

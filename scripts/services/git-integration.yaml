@@ -4,13 +4,14 @@ x-env-args: &env-args
   NODE_ENV: docker
   SERVICE: git-integration
   SHELL: /bin/sh
+  REPO_STORAGE_ROOT: /var/lib/crowdgit
 
 services:
   git-integration:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.git_integration
-    working_dir: /usr/crowd/app/services/apps/git_integration
+    working_dir: /usr/crowd/app
     env_file:
       - ../../backend/.env.dist.local
       - ../../backend/.env.dist.composed
@@ -23,6 +24,8 @@ services:
       - crowd-bridge
     ports:
       - '8085:8085'
+    volumes:
+      - git-integration-repos:/var/lib/crowdgit
 
   git-integration-dev:
     build:
@@ -44,7 +47,11 @@ services:
       - crowd-bridge
     volumes:
       - ../../services/apps/git_integration/src:/usr/crowd/app/services/apps/git_integration/src
+      - git-integration-repos:/var/lib/crowdgit
 
 networks:
   crowd-bridge:
     external: true
+
+volumes:
+  git-integration-repos:
