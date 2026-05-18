@@ -19,7 +19,6 @@
     "@crowd/common_services": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
-    "@crowd/redis": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
     "@temporalio/activity": "~1.11.8",

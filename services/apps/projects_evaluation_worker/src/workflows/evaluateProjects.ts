@@ -16,9 +16,7 @@ const evaluateActivities = proxyActivities<typeof activities>({
 
 const DEFAULT_BATCH_SIZE = 100
 
-export async function evaluateProjects(
-  input: { batchSize?: number } = {},
-): Promise<void> {
+export async function evaluateProjects(input: { batchSize?: number } = {}): Promise<void> {
   const batchSize = input.batchSize ?? DEFAULT_BATCH_SIZE
 
   log.info('evaluateProjects workflow started.')
@@ -45,9 +43,13 @@ export async function evaluateProjects(
     } catch (err) {
       // Log and continue — a single failure should not abort the whole batch.
       failed++
-      log.error(`Evaluation failed for project id=${project.id} repoUrl=${project.repoUrl}: ${String(err)}`)
+      log.error(
+        `Evaluation failed for project id=${project.id} repoUrl=${project.repoUrl}: ${String(err)}`,
+      )
     }
   }
 
-  log.info(`Batch evaluation complete. total=${projects.length} succeeded=${succeeded} failed=${failed}`)
+  log.info(
+    `Batch evaluation complete. total=${projects.length} succeeded=${succeeded} failed=${failed}`,
+  )
 }

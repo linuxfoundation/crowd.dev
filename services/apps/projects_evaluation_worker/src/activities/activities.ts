@@ -1,7 +1,4 @@
-import {
-  findProjectCatalogPendingEvaluation,
-  updateProjectCatalog,
-} from '@crowd/data-access-layer'
+import { findProjectCatalogPendingEvaluation, updateProjectCatalog } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'

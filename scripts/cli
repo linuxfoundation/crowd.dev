@@ -1013,7 +1013,7 @@ while test $# -gt 0; do
         exit
         ;;
     clean-start-dev)
-        IGNORED_SERVICES=("python-worker" "job-generator" "discord-ws" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
+        # IGNORED_SERVICES=("python-worker" "job-generator" "discord-ws" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
         CLEAN_START=1
         DEV=1
         start
