@@ -90,7 +90,8 @@ export async function processDataset(
       projectSlug: parsed.projectSlug,
       repoName: parsed.repoName,
       repoUrl: parsed.repoUrl,
-      ossfCriticalityScore: parsed.ossfCriticalityScore,
+      source: sourceName,
+      action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
     })
 

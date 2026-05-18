@@ -1,4 +1,10 @@
+export const noreplyEmailProviders = {
+  github: '@users.noreply.github.com',
+  gitlab: '@users.noreply.gitlab.com',
+} as const
+
 export const emailProviders = new Set([
+  'users.noreply.gitlab.com',
   'gmail.com',
   'gmail.co.uk',
   'gmail.com.au',

@@ -1,10 +1,15 @@
+export type ProjectCatalogAction = 'auto' | 'evaluate' | 'onboard' | 'unsure'
+
 export interface IDbProjectCatalog {
   id: string
   projectSlug: string
   repoName: string
   repoUrl: string
-  ossfCriticalityScore: number | null
+  source: string | null
+  action: ProjectCatalogAction
   lfCriticalityScore: number | null
+  evaluatedAt: string | null
+  onboardedAt: string | null
   syncedAt: string | null
   createdAt: string | null
   updatedAt: string | null
@@ -12,17 +17,20 @@ export interface IDbProjectCatalog {
 
 type ProjectCatalogWritable = Pick<
   IDbProjectCatalog,
-  'projectSlug' | 'repoName' | 'repoUrl' | 'ossfCriticalityScore' | 'lfCriticalityScore'
+  'projectSlug' | 'repoName' | 'repoUrl' | 'source' | 'action' | 'lfCriticalityScore'
 >
 
 export type IDbProjectCatalogCreate = Omit<
   ProjectCatalogWritable,
-  'ossfCriticalityScore' | 'lfCriticalityScore'
+  'source' | 'action' | 'lfCriticalityScore'
 > & {
-  ossfCriticalityScore?: number
+  source?: string | null
+  action?: ProjectCatalogAction
   lfCriticalityScore?: number
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
-  syncedAt?: string
+  syncedAt?: string | null
+  evaluatedAt?: string | null
+  onboardedAt?: string | null
 }
