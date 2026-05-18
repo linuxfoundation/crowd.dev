@@ -8,7 +8,7 @@ ARG PLATFORM=Linux_x86_64
 RUN wget https://github.com/privateerproj/privateer/releases/download/v${VERSION}/privateer_${PLATFORM}.tar.gz
 RUN tar -xzf privateer_${PLATFORM}.tar.gz
 
-FROM golang:1.24.4-alpine3.21 AS plugin
+FROM golang:1.26.3-alpine3.23 AS plugin
 RUN apk add --no-cache make git
 WORKDIR /plugin
 ARG PVTR_COMMIT=c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
