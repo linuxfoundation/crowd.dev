@@ -12,5 +12,6 @@ SQL >
         count() AS activityCount
     FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+      AND timestamp >= '2005-01-01'
     GROUP BY startDate, endDate
     ORDER BY startDate

@@ -16,3 +16,4 @@ SQL >
     FROM org_page_projects_copy_ds FINAL
     WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
     ORDER BY activityCount DESC
+    LIMIT 20
