@@ -33,10 +33,11 @@ export async function getKafkaMessageCounts(
       if (topicOffset) {
         const high = Number(topicOffset.offset)
         const low = Number(topicOffset.low)
-        // Clamp: stale commits below the low watermark are treated as "at floor".
-        // -1 means no committed offset; treat as at low watermark too.
+        // Clamp committed to [low, high]: stale commits below the floor are treated as "at floor";
+        // commits above the high watermark (topic recreated at lower offsets) are treated as "at high".
+        // -1 means no committed offset; treat as at low watermark.
         const committedRaw = offset.offset === '-1' ? low : Number(offset.offset)
-        const committed = Math.max(committedRaw, low)
+        const committed = Math.min(Math.max(committedRaw, low), high)
 
         totalMessages += Math.max(0, high - low)
         consumedMessages += Math.max(0, committed - low)
