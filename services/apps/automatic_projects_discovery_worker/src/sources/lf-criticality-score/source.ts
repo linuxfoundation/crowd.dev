@@ -13,7 +13,12 @@ const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
 
-function parseEnvInt(value: string | undefined, defaultValue: number, min: number, max: number): number {
+function parseEnvInt(
+  value: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number {
   const parsed = parseInt(value ?? '', 10)
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
 }
@@ -26,7 +31,12 @@ const REQUESTS_PER_SECOND = parseEnvInt(
   100,
 )
 // Max per-page attempts (initial + retries) on 429 or 5xx before giving up.
-const MAX_ATTEMPTS = parseEnvInt(process.env.LF_CRITICALITY_SCORE_MAX_ATTEMPTS ?? process.env.LF_CRITICALITY_SCORE_MAX_RETRIES, 7, 1, 20)
+const MAX_ATTEMPTS = parseEnvInt(
+  process.env.LF_CRITICALITY_SCORE_MAX_ATTEMPTS ?? process.env.LF_CRITICALITY_SCORE_MAX_RETRIES,
+  7,
+  1,
+  20,
+)
 
 interface LfApiResponse {
   page: number
@@ -69,7 +79,7 @@ function parseRetryAfterMs(header: string | string[] | undefined): number | null
   return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
 }
 
-function httpGet(url: string): Promise<{ statusCode: number; retryAfterMs: number | null; body: string }> {
+function httpGet(url: string): Promise {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
     const req = client.get(url, (res) => {
@@ -87,11 +97,7 @@ function httpGet(url: string): Promise<{ statusCode: number; retryAfterMs: numbe
   })
 }
 
-async function fetchPage(
-  baseUrl: string,
-  page: number,
-  scoredAfter?: string,
-): Promise<LfApiResponse> {
+async function fetchPage(baseUrl: string, page: number, scoredAfter?: string): Promise {
   const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) })
   if (scoredAfter) params.set('scoredAfter', scoredAfter)
   const url = `${baseUrl}/projects?${params.toString()}`
@@ -129,7 +135,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]> {
+  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise {
     const baseUrl = getApiBaseUrl()
     const today = new Date().toISOString().slice(0, 10)
     const { scoredAfter } = options ?? {}
@@ -147,7 +153,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     ]
   }
 
-  async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
+  async fetchDatasetStream(dataset: IDatasetDescriptor): Promise {
     const baseUrl = getApiBaseUrl()
     const scoredAfter = new URL(dataset.url).searchParams.get('scoredAfter') ?? undefined
 
@@ -159,32 +165,26 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     const throttleIntervalMs = Math.round(1000 / REQUESTS_PER_SECOND)
 
     async function* pages() {
-      let page = 1
-      let totalPages = 1
+      const firstPage = await fetchPage(baseUrl, 1, scoredAfter)
+      const { totalPages } = firstPage
 
-      do {
-        if (page > 1) {
-          await timeout(throttleIntervalMs)
-        }
+      log.info(
+        { datasetId: dataset.id, total: firstPage.total, totalPages, pageSize: firstPage.pageSize },
+        'LF Criticality Score: first page received — total records available.',
+      )
+
+      for (const row of firstPage.data) {
+        yield row
+      }
+
+      for (let page = 2; page <= totalPages; page++) {
+        await timeout(throttleIntervalMs)
 
         log.info(
           { datasetId: dataset.id, page, totalPages },
           'LF Criticality Score: fetching page...',
         )
         const response = await fetchPage(baseUrl, page, scoredAfter)
-        totalPages = response.totalPages
-
-        if (page === 1) {
-          log.info(
-            {
-              datasetId: dataset.id,
-              total: response.total,
-              totalPages,
-              pageSize: response.pageSize,
-            },
-            'LF Criticality Score: first page received — total records available.',
-          )
-        }
 
         for (const row of response.data) {
           yield row
@@ -194,9 +194,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
           { datasetId: dataset.id, page, totalPages, rowsInPage: response.data.length },
           'LF Criticality Score: page fetched.',
         )
-
-        page++
-      } while (page <= totalPages)
+      }
 
       log.info({ datasetId: dataset.id, totalPages }, 'LF Criticality Score: all pages fetched.')
     }
@@ -204,7 +202,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     return Readable.from(pages(), { objectMode: true })
   }
 
-  parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
+  parseRow(rawRow: Record): IDiscoverySourceRow | null {
     const repoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
     if (!repoUrl) {
       return null
