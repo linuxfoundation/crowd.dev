@@ -10,6 +10,14 @@ SCHEMA >
     `projectLogo` String,
     `activityCount` UInt64,
     `contributorCount` UInt64,
+    `maintainersCount` UInt64,
+    `totalContributors` UInt64,
+    `orgContributors` UInt64,
+    `totalCommits` UInt64,
+    `orgCommits` UInt64,
+    `totalPrsOpened` UInt64,
+    `orgPrsOpened` UInt64,
+    `technicalScore` UInt64,
     `computedAt` DateTime
 
 ENGINE ReplacingMergeTree

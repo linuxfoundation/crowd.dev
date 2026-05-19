@@ -7,8 +7,22 @@ TAGS "Organization page"
 NODE org_page_projects_main
 SQL >
     %
-    SELECT projectSlug, projectName, projectLogo, activityCount, contributorCount
+    SELECT
+        projectSlug,
+        projectName,
+        projectLogo,
+        activityCount,
+        contributorCount,
+        maintainersCount,
+        totalContributors,
+        orgContributors,
+        totalCommits,
+        orgCommits,
+        totalPrsOpened,
+        orgPrsOpened,
+        technicalScore
     FROM org_page_projects_copy_ds FINAL
     WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
-    ORDER BY activityCount DESC
-    LIMIT 20
+    ORDER BY technicalScore DESC, activityCount DESC
+    LIMIT {{ Int32(limit, 21, description="Page size + 1 for hasMore detection") }}
+    OFFSET {{ Int32(offset, 0, description="Pagination offset") }}

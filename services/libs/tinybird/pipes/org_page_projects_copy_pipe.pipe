@@ -35,6 +35,59 @@ SQL >
     LEFT JOIN insights_projects_populated_ds p ON a.segmentId = p.segmentId
     WHERE p.slug != ''
 
+NODE org_page_projects_with_scores
+DESCRIPTION >
+    Join with org_dash_metric_copy_ds to compute technical influence score
+
+SQL >
+    SELECT
+        w.organizationId,
+        w.segmentId,
+        w.projectSlug,
+        w.projectName,
+        w.projectLogo,
+        w.activityCount,
+        w.contributorCount,
+        ifNull(m.maintainersCount, 0) AS maintainersCount,
+        ifNull(m.contributorCount, 0) AS totalContributors,
+        ifNull(m.orgContributorCount, 0) AS orgContributors,
+        ifNull(m.commits, 0) AS totalCommits,
+        ifNull(m.orgCommits, 0) AS orgCommits,
+        ifNull(m.prsOpened, 0) AS totalPrsOpened,
+        ifNull(m.orgPrsOpened, 0) AS orgPrsOpened,
+        (
+            -- Maintainers: 3 pts if org has at least 1 maintainer
+            CASE WHEN ifNull(m.maintainersCount, 0) >= 1 THEN 3 ELSE 0 END
+            -- Contributors: % of org contributors vs total
+            + CASE
+                WHEN ifNull(m.contributorCount, 0) = 0 THEN 0
+                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 20 THEN 3
+                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 5 THEN 2
+                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 1 THEN 1
+                ELSE 0
+              END
+            -- Commits: % of org commits vs total
+            + CASE
+                WHEN ifNull(m.commits, 0) = 0 THEN 0
+                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 20 THEN 3
+                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 5 THEN 2
+                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 1 THEN 1
+                ELSE 0
+              END
+            -- PRs opened: % of org PRs vs total
+            + CASE
+                WHEN ifNull(m.prsOpened, 0) = 0 THEN 0
+                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 20 THEN 3
+                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 5 THEN 2
+                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 1 THEN 1
+                ELSE 0
+              END
+        ) AS technicalScore,
+        w.computedAt
+    FROM org_page_projects_with_meta w
+    LEFT JOIN org_dash_metric_copy_ds m
+        ON w.organizationId = m.organizationId AND w.projectSlug = m.slug
+
 TYPE COPY
 TARGET_DATASOURCE org_page_projects_copy_ds
 COPY_MODE replace
