@@ -18,8 +18,7 @@ SQL >
     FROM organizationIdentities FINAL
     WHERE
         organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
-        AND platform = 'website'
-        AND type = 'primary'
+        AND type = 'primary-domain'
     GROUP BY organizationId
 
 NODE org_page_profile_final

@@ -6,13 +6,7 @@ TAGS "Organization page"
 NODE org_page_contributors_timeseries_data
 SQL >
     %
-    SELECT
-        toStartOfYear(timestamp) AS startDate,
-        toDate(toStartOfYear(timestamp) + INTERVAL 1 YEAR - INTERVAL 1 DAY) AS endDate,
-        uniqExact(memberId) AS contributorCount
-    FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE
-        organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
-        AND timestamp >= '2005-01-01'
-    GROUP BY startDate, endDate
+    SELECT startDate, endDate, contributorCount
+    FROM org_page_contributors_timeseries_copy_ds FINAL
+    WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
     ORDER BY startDate

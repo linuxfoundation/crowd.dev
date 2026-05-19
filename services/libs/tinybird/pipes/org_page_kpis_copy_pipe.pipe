@@ -70,8 +70,12 @@ SQL >
         now() AS computedAt
     FROM org_page_kpis_current_contributors c
     FULL OUTER JOIN org_page_kpis_previous_contributors p ON c.organizationId = p.organizationId
-    FULL OUTER JOIN org_page_kpis_maintainer_roles m ON c.organizationId = m.organizationId
-    FULL OUTER JOIN org_page_kpis_critical_projects cp ON c.organizationId = cp.organizationId
+    FULL OUTER JOIN
+        org_page_kpis_maintainer_roles m
+        ON coalesce(c.organizationId, p.organizationId) = m.organizationId
+    FULL OUTER JOIN
+        org_page_kpis_critical_projects cp
+        ON coalesce(c.organizationId, p.organizationId, m.organizationId) = cp.organizationId
     WHERE organizationId != ''
 
 TYPE COPY

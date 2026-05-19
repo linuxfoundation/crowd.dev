@@ -47,7 +47,7 @@ SQL >
         SELECT count(distinct memberId) as count
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            organizationId = {{ String(orgId, '') }}
+            organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
             {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }} {% end %}
             {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }} {% end %}
     {% else %}

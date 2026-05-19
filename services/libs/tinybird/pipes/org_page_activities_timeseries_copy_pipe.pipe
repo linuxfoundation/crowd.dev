@@ -1,0 +1,22 @@
+DESCRIPTION >
+    Nightly copy pipe that precomputes yearly activity counts per organization for the org page.
+    Writes one row per (organizationId, startDate) into org_page_activities_timeseries_copy_ds.
+
+TAGS "Organization page"
+
+NODE org_page_activities_timeseries_copy_pipe_data
+SQL >
+    SELECT
+        organizationId,
+        toStartOfYear(timestamp) AS startDate,
+        toDate(toStartOfYear(timestamp) + INTERVAL 1 YEAR - INTERVAL 1 DAY) AS endDate,
+        count() AS activityCount,
+        now() AS computedAt
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE organizationId != '' AND timestamp >= '2005-01-01'
+    GROUP BY organizationId, startDate, endDate
+
+TYPE COPY
+TARGET_DATASOURCE org_page_activities_timeseries_copy_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 1 * * *
