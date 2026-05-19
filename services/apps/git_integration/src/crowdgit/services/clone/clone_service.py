@@ -100,16 +100,23 @@ class CloneService(BaseService):
         except CommandExecutionError:
             return False
 
-    async def _get_shallow_boundary_commits(self, repo_path: str) -> set[str]:
+    async def _read_shallow_file(self, repo_path: str) -> list[str]:
         """
-        Return all shallow boundary commits from .git/shallow.
+        Read commit hashes from .git/shallow.
+        Returns an empty list when the file does not exist (full clone).
         """
         shallow_file = os.path.join(repo_path, ".git", "shallow")
         try:
             async with aiofiles.open(shallow_file, "r", encoding="utf-8") as f:
-                return {line.strip() for line in await f.readlines() if line.strip()}
+                return [line.strip() for line in await f.readlines() if line.strip()]
         except FileNotFoundError:
-            return set()
+            return []
+
+    async def _get_shallow_boundary_commits(self, repo_path: str) -> set[str]:
+        """
+        Return all shallow boundary commits from .git/shallow.
+        """
+        return set(await self._read_shallow_file(repo_path))
 
     async def _has_boundary_in_required_range(
         self, repo_path: str, target_commit_hash: str
@@ -244,21 +251,19 @@ class CloneService(BaseService):
         batch_info.is_final_batch = await self._check_if_final_batch(repo_path, target_commit_hash)
         batch_info.edge_commit = await self._get_edge_commit(repo_path)
 
-    async def _get_edge_commit(self, repo_path: str):
+    async def _get_edge_commit(self, repo_path: str) -> str | None:
         """
         Returns the edge commit of a shallow clone by reading the .git/shallow file,
         which contains the boundary commit(s) when history is truncated.
 
         If the full history has been cloned, the .git/shallow file does not exist.
         """
-        shallow_file = os.path.join(repo_path, ".git", "shallow")
-        try:
-            async with aiofiles.open(shallow_file, "r", encoding="utf-8") as f:
-                oldest_commit = (await f.readline()).strip()
-            self.logger.info(f"Edge commit: {oldest_commit}")
-            return oldest_commit
-        except FileNotFoundError:
+        boundaries = await self._read_shallow_file(repo_path)
+        if not boundaries:
             return None
+        oldest_commit = boundaries[0]
+        self.logger.info(f"Edge commit: {oldest_commit}")
+        return oldest_commit
 
     async def _cleanup_temp_directory(self, temp_repo_path: str, repo_id: str) -> None:
         """
