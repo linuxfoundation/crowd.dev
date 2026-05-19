@@ -72,6 +72,12 @@ function getApiBaseUrl(): string {
   return `${scheme}://${host}:${port}`
 }
 
+interface HttpGetResult {
+  statusCode: number
+  retryAfterMs: number | null
+  body: string
+}
+
 function parseRetryAfterMs(header: string | string[] | undefined): number | null {
   const raw = Array.isArray(header) ? header[0] : header
   if (!raw) return null
@@ -79,7 +85,7 @@ function parseRetryAfterMs(header: string | string[] | undefined): number | null
   return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
 }
 
-function httpGet(url: string): Promise {
+function httpGet(url: string): Promise<HttpGetResult> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
     const req = client.get(url, (res) => {
@@ -97,13 +103,34 @@ function httpGet(url: string): Promise {
   })
 }
 
-async function fetchPage(baseUrl: string, page: number, scoredAfter?: string): Promise {
+async function fetchPage(
+  baseUrl: string,
+  page: number,
+  scoredAfter?: string,
+): Promise<LfApiResponse> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) })
   if (scoredAfter) params.set('scoredAfter', scoredAfter)
   const url = `${baseUrl}/projects?${params.toString()}`
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const { statusCode, retryAfterMs, body } = await httpGet(url)
+    let result: HttpGetResult | null = null
+
+    try {
+      result = await httpGet(url)
+    } catch (networkErr) {
+      if (attempt === MAX_ATTEMPTS - 1) {
+        throw new Error(`LF Criticality Score API network error for ${url}: ${networkErr}`)
+      }
+      const delayMs = Math.min(Math.pow(2, attempt) * 1000, 60_000)
+      log.warn(
+        { page, attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, delayMs, err: String(networkErr) },
+        'LF Criticality Score: network error, retrying...',
+      )
+      await timeout(delayMs)
+      continue
+    }
+
+    const { statusCode, retryAfterMs, body } = result
 
     if (statusCode === 200) {
       try {
@@ -135,7 +162,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
   public readonly name = 'lf-criticality-score'
   public readonly format = 'json' as const
 
-  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise {
+  async listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]> {
     const baseUrl = getApiBaseUrl()
     const today = new Date().toISOString().slice(0, 10)
     const { scoredAfter } = options ?? {}
@@ -153,7 +180,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     ]
   }
 
-  async fetchDatasetStream(dataset: IDatasetDescriptor): Promise {
+  async fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable> {
     const baseUrl = getApiBaseUrl()
     const scoredAfter = new URL(dataset.url).searchParams.get('scoredAfter') ?? undefined
 
@@ -202,7 +229,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
     return Readable.from(pages(), { objectMode: true })
   }
 
-  parseRow(rawRow: Record): IDiscoverySourceRow | null {
+  parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null {
     const repoUrl = (rawRow['repourl'] ?? rawRow['repoUrl']) as string | undefined
     if (!repoUrl) {
       return null
