@@ -57,6 +57,16 @@ class CloneService(BaseService):
     def _is_gerrit_remote(remote: str) -> bool:
         return any(pattern in remote for pattern in GERRIT_PATTERNS)
 
+    async def _configure_global_git_client(self, path: str) -> None:
+        # Increase post buffer to reduce RPC failures on large repos
+        await run_shell_command(
+            ["git", "config", "--global", "http.postBuffer", "524288000"], cwd=path
+        )
+        # Disable recursive submodule fetches
+        await run_shell_command(
+            ["git", "config", "--global", "fetch.recurseSubmodules", "false"], cwd=path
+        )
+
     async def _check_if_final_batch(self, path: str, target_commit_hash: str | None) -> bool:
         """
         Final batch is determined if:
@@ -123,10 +133,6 @@ class CloneService(BaseService):
         """
         Perform minimal clone of depth=1
         """
-        # increasing post buffer to avoid RPC failed error
-        await run_shell_command(
-            ["git", "config", "--global", "http.postBuffer", "524288000"], cwd=path
-        )
         self.logger.info("Initializing minimal clone")
         await run_shell_command(
             ["git", "clone", "--depth=1", "--no-tags", "--single-branch", remote, "."], cwd=path
@@ -411,6 +417,7 @@ class CloneService(BaseService):
         self.logger.info(
             f"Starting clone decision for {remote} (branch: {branch}, last_commit: {last_processed_commit})"
         )
+        await self._configure_global_git_client(repo_path)
 
         default_branch_changed = await self.has_default_branch_changed(remote, branch)
 
