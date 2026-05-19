@@ -122,7 +122,7 @@ class RepositoryWorker:
             logger.warning(
                 f"Repo {repository.url} is stuck for {processing_duration_hours} hours — queuing for re-onboarding"
             )
-            raise ()
+            raise ReOnboardingRequiredError()
 
     async def _process_repositories(self):
         """
