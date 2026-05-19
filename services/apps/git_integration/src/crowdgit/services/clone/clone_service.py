@@ -33,6 +33,9 @@ from crowdgit.services.utils import (
 )
 
 DEFAULT_STORAGE_OPTIMIZATION_THRESHOLD_MB = 10000
+INITIAL_BATCH_DEEPEN = 50
+MAX_BATCH_DEEPEN = 10000
+BATCH_DEEPEN_MULTIPLIER = 2
 
 RETRYABLE_CLONE_ERRORS = (RateLimitError, NetworkError, RemoteServerError)
 
@@ -333,26 +336,6 @@ class CloneService(BaseService):
 
         self.logger.info("Working directory cleanup completed")
 
-    async def _calculate_batch_depth(self, repo_path: str, remote: str) -> int:
-        calculated_depth = None
-        total_branches_tags = await run_shell_command(
-            ["git", "ls-remote", "--heads", "--tags", remote], cwd=repo_path
-        )
-        total_branches_tags = len(total_branches_tags.splitlines())
-        if total_branches_tags <= 200:
-            # Small repo, get a decent amount of history
-            calculated_depth = 100
-        elif total_branches_tags <= 1000:
-            # Medium repo, get a moderate amount of history
-            calculated_depth = 50
-        else:
-            # Large repo, get less history
-            calculated_depth = 5
-        self.logger.info(
-            f"total_branches_tags={total_branches_tags}, calculated_depth={calculated_depth}"
-        )
-        return calculated_depth
-
     @retry_on_clone_error
     async def _perform_full_clone(self, repo_path: str, remote: str):
         """Perform full repository clone"""
@@ -451,6 +434,7 @@ class CloneService(BaseService):
         error_code = None
         error_message = None
         total_execution_time = 0.0
+        batch_depth = INITIAL_BATCH_DEEPEN
         remote = repository.url.removesuffix(".git")
 
         batch_info = CloneBatchInfo(
@@ -466,8 +450,6 @@ class CloneService(BaseService):
             clone_with_batches = await self.determine_clone_strategy(
                 temp_repo_path, remote, repository.branch, repository.last_processed_commit
             )
-            if clone_with_batches:
-                batch_depth = await self._calculate_batch_depth(temp_repo_path, remote)
             await self._update_batch_info(
                 batch_info, temp_repo_path, repository.last_processed_commit, clone_with_batches
             )
@@ -493,6 +475,12 @@ class CloneService(BaseService):
                 total_execution_time += round(batch_end_time - batch_start_time, 2)
 
                 yield batch_info
+                if not batch_info.is_final_batch:
+                    # exponential deepen increment to speed up fetching
+                    batch_depth = min(
+                        batch_depth * BATCH_DEEPEN_MULTIPLIER,
+                        MAX_BATCH_DEEPEN,
+                    )
 
         except Exception as e:
             # Handle both CrowdGitError and generic Exception
