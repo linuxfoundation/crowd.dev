@@ -129,44 +129,60 @@ export async function countProjectCatalogByAction(
 }
 
 /**
- * Promotes up to `limit` projects from action='auto' to action='evaluate'.
+ * Promotes 'auto' projects to 'evaluate', enforcing a hard cap on the total
+ * queue size in a single atomic statement.
  *
- * Ordering (all configurable via `sourcePriority`):
- *   1. Source priority — earlier position in the array = higher priority (NULLS/unknown = lowest)
- *   2. lfCriticalityScore DESC (higher score = higher priority, NULLs last)
- *   3. createdAt ASC (older entries first as a stable tie-breaker)
+ * Uses a CTE to:
+ *   1. Compute available slots (evaluateLimit − current 'evaluate' count) inline,
+ *      so two concurrent calls observe the same baseline and each picks a
+ *      disjoint set of rows.
+ *   2. Lock candidates with FOR UPDATE SKIP LOCKED — concurrent transactions
+ *      skip already-locked rows, preventing double-promotion.
+ *   3. Re-check action = 'auto' in the outer UPDATE to guard against rows whose
+ *      state changed after the subquery snapshot (e.g. manual updates).
+ *
+ * Ordering (configurable via `sourcePriority`):
+ *   1. Source priority — earlier position in the array = higher priority (unlisted = lowest)
+ *   2. lfCriticalityScore DESC (NULLs last)
+ *   3. createdAt ASC (stable tie-breaker)
  *
  * Returns the number of rows actually promoted.
  */
 export async function promoteProjectsToEvaluate(
   qx: QueryExecutor,
-  options: { limit: number; sourcePriority: string[] },
+  options: { evaluateLimit: number; sourcePriority: string[] },
 ): Promise<number> {
-  const { limit, sourcePriority } = options
+  const { evaluateLimit, sourcePriority } = options
 
-  if (limit <= 0) {
-    return 0
-  }
-
-  const result = await qx.result(
+  return qx.result(
     `
+    WITH
+      slots AS (
+        SELECT GREATEST(0, $(evaluateLimit) - COUNT(*)) AS available
+        FROM "projectCatalog"
+        WHERE action = 'evaluate'
+      ),
+      candidates AS (
+        SELECT pc.id
+        FROM "projectCatalog" pc
+        CROSS JOIN slots
+        WHERE pc.action = 'auto'
+          AND slots.available > 0
+        ORDER BY
+          COALESCE(ARRAY_POSITION($(sourcePriority)::text[], pc.source), 2147483647) ASC,
+          pc."lfCriticalityScore" DESC NULLS LAST,
+          pc."createdAt" ASC
+        LIMIT (SELECT available FROM slots)
+        FOR UPDATE SKIP LOCKED
+      )
     UPDATE "projectCatalog"
     SET action = 'evaluate', "updatedAt" = NOW()
-    WHERE id IN (
-      SELECT id
-      FROM "projectCatalog"
-      WHERE action = 'auto'
-      ORDER BY
-        COALESCE(ARRAY_POSITION($(sourcePriority)::text[], source), 2147483647) ASC,
-        "lfCriticalityScore" DESC NULLS LAST,
-        "createdAt" ASC
-      LIMIT $(limit)
-    )
+    FROM candidates
+    WHERE "projectCatalog".id = candidates.id
+      AND "projectCatalog".action = 'auto'
     `,
-    { sourcePriority, limit },
+    { evaluateLimit, sourcePriority },
   )
-
-  return result
 }
 
 export async function insertProjectCatalog(

@@ -1,5 +1,4 @@
 import {
-  countProjectCatalogByAction,
   findProjectCatalogPendingEvaluation,
   promoteProjectsToEvaluate,
   updateProjectCatalog,
@@ -15,32 +14,19 @@ import { IPriorityConfig } from '../types'
 const log = getServiceLogger()
 
 /**
- * Promotes 'auto' projects to 'evaluate' up to the configured limit,
- * respecting source priority and criticality score ordering.
+ * Promotes 'auto' projects to 'evaluate' up to the configured limit.
+ * Count, slot computation, locking, and update are all done atomically
+ * inside a single SQL statement — see promoteProjectsToEvaluate in the DAL.
  */
 export async function promoteProjectsForEvaluation(config: IPriorityConfig): Promise<void> {
   const { evaluateLimit, sourcePriority } = config
   const qx = pgpQx(svc.postgres.writer.connection())
 
-  const currentEvaluateCount = await countProjectCatalogByAction(qx, 'evaluate')
-  const slotsAvailable = Math.max(0, evaluateLimit - currentEvaluateCount)
+  log.info({ evaluateLimit, sourcePriority }, 'Priority promotion: starting.')
 
-  log.info(
-    { evaluateLimit, currentEvaluateCount, slotsAvailable, sourcePriority },
-    'Priority promotion: computing slots.',
-  )
+  const promoted = await promoteProjectsToEvaluate(qx, { evaluateLimit, sourcePriority })
 
-  if (slotsAvailable === 0) {
-    log.info('Priority promotion: queue is full, skipping promotion.')
-    return
-  }
-
-  const promoted = await promoteProjectsToEvaluate(qx, {
-    limit: slotsAvailable,
-    sourcePriority,
-  })
-
-  log.info({ promoted, slotsAvailable }, 'Priority promotion: complete.')
+  log.info({ promoted }, 'Priority promotion: complete.')
 }
 
 export async function fetchPendingProjects(batchSize: number): Promise<IDbProjectCatalog[]> {
