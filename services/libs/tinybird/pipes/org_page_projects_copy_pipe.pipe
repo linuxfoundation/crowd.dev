@@ -57,36 +57,47 @@ SQL >
         ifNull(m.orgPrsOpened, 0) AS orgPrsOpened,
         (
             -- Maintainers: 3 pts if org has at least 1 maintainer
-            CASE WHEN ifNull(m.maintainersCount, 0) >= 1 THEN 3 ELSE 0 END
             -- Contributors: % of org contributors vs total
-            + CASE
-                WHEN ifNull(m.contributorCount, 0) = 0 THEN 0
-                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 20 THEN 3
-                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 5 THEN 2
-                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 1 THEN 1
+            CASE WHEN ifNull(m.maintainersCount, 0) >= 1 THEN 3 ELSE 0 END + CASE
+                WHEN ifNull(m.contributorCount, 0) = 0
+                THEN 0
+                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 20
+                THEN 3
+                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 5
+                THEN 2
+                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 1
+                THEN 1
                 ELSE 0
-              END
+            END
             -- Commits: % of org commits vs total
             + CASE
-                WHEN ifNull(m.commits, 0) = 0 THEN 0
-                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 20 THEN 3
-                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 5 THEN 2
-                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 1 THEN 1
+                WHEN ifNull(m.commits, 0) = 0
+                THEN 0
+                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 20
+                THEN 3
+                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 5
+                THEN 2
+                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 1
+                THEN 1
                 ELSE 0
-              END
+            END
             -- PRs opened: % of org PRs vs total
             + CASE
-                WHEN ifNull(m.prsOpened, 0) = 0 THEN 0
-                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 20 THEN 3
-                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 5 THEN 2
-                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 1 THEN 1
+                WHEN ifNull(m.prsOpened, 0) = 0
+                THEN 0
+                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 20
+                THEN 3
+                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 5
+                THEN 2
+                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 1
+                THEN 1
                 ELSE 0
-              END
+            END
         ) AS technicalScore,
         w.computedAt
     FROM org_page_projects_with_meta w
-    LEFT JOIN org_dash_metric_copy_ds m
-        ON w.organizationId = m.organizationId AND w.projectSlug = m.slug
+    LEFT JOIN
+        org_dash_metric_copy_ds m ON w.organizationId = m.organizationId AND w.projectSlug = m.slug
 
 TYPE COPY
 TARGET_DATASOURCE org_page_projects_copy_ds
