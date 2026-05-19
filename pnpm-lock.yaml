@@ -1405,6 +1405,43 @@ importers:
         specifier: ^3.0.1
         version: 3.1.0
 
+  services/apps/projects_evaluation_worker:
+    dependencies:
+      '@crowd/archetype-standard':
+        specifier: workspace:*
+        version: link:../../archetypes/standard
+      '@crowd/archetype-worker':
+        specifier: workspace:*
+        version: link:../../archetypes/worker
+      '@crowd/data-access-layer':
+        specifier: workspace:*
+        version: link:../../libs/data-access-layer
+      '@crowd/logging':
+        specifier: workspace:*
+        version: link:../../libs/logging
+      '@crowd/temporal':
+        specifier: workspace:*
+        version: link:../../libs/temporal
+      '@temporalio/client':
+        specifier: ~1.11.8
+        version: 1.11.8
+      '@temporalio/workflow':
+        specifier: ~1.11.8
+        version: 1.11.8
+      tsx:
+        specifier: ^4.7.1
+        version: 4.7.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.6.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.8.2
+        version: 20.12.7
+      nodemon:
+        specifier: ^3.0.1
+        version: 3.1.0
+
   services/apps/script_executor_worker:
     dependencies:
       '@crowd/archetype-standard':
