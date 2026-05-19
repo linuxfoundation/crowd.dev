@@ -129,15 +129,16 @@ export async function countProjectCatalogByAction(
 }
 
 /**
- * Promotes 'auto' projects to 'evaluate', enforcing a hard cap on the total
- * queue size in a single atomic statement.
+ * Promotes 'auto' projects to 'evaluate', targeting a soft cap on the queue size.
  *
  * Uses a CTE to:
- *   1. Compute available slots (evaluateLimit − current 'evaluate' count) inline,
- *      so two concurrent calls observe the same baseline and each picks a
- *      disjoint set of rows.
- *   2. Lock candidates with FOR UPDATE SKIP LOCKED — concurrent transactions
- *      skip already-locked rows, preventing double-promotion.
+ *   1. Compute available slots (evaluateLimit − current 'evaluate' count) inline.
+ *   2. Lock candidates with FOR UPDATE SKIP LOCKED — prevents double-promotion
+ *      if two transactions run concurrently (e.g. simultaneous manual triggers).
+ *      Note: concurrent calls can each compute the same slot count and promote
+ *      up to evaluateLimit disjoint rows, so the cap is soft — the queue can
+ *      overshoot by at most evaluateLimit per extra concurrent caller. In practice
+ *      this doesn't happen: the schedule uses ScheduleOverlapPolicy.SKIP.
  *   3. Re-check action = 'auto' in the outer UPDATE to guard against rows whose
  *      state changed after the subquery snapshot (e.g. manual updates).
  *
