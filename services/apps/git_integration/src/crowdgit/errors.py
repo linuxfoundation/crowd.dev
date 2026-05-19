@@ -47,7 +47,7 @@ class NetworkError(CrowdGitError):
 
 
 @dataclass
-class PermissionError(CrowdGitError):
+class RepoPermissionError(CrowdGitError):
     error_message: str = "Permission denied"
     error_code: ErrorCode = ErrorCode.PERMISSION_ERROR
 

@@ -122,7 +122,7 @@ class RepositoryWorker:
             logger.warning(
                 f"Repo {repository.url} is stuck for {processing_duration_hours} hours — queuing for re-onboarding"
             )
-            raise ReOnboardingRequiredError()
+            raise ()
 
     async def _process_repositories(self):
         """
@@ -145,7 +145,7 @@ class RepositoryWorker:
             )
         finally:
             if available_repo_to_process:
-                logger.info("releasing repo: ", available_repo_to_process.url)
+                logger.info("releasing repo: {available_repo_to_process.url}")
                 await release_repo(available_repo_to_process.id)
                 logger.info(f"Repo {available_repo_to_process.url} released!")
 
