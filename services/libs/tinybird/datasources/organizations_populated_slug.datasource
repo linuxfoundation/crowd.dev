@@ -2,19 +2,16 @@ DESCRIPTION >
     Denormalized organizations datasource: every column from organizations FINAL plus a
     deterministic globally unique slug derived from displayName and a total contributionCount
     across all segments.
-
     Only includes organizations that have at least one contribution
     (isCodeContribution = 1 OR isCollaboration = 1).
-
     Slug rules:
-      - slug = lowerUTF8(displayName) with non-alphanumeric runs collapsed to '-' and
-        leading/trailing dashes trimmed.
-      - If two or more organizations produce the same baseSlug, the one with the highest
-        contributionCount keeps the bare slug; the rest get '-1', '-2', ... suffixes
-        ordered by descending contributionCount, with id ASC as the deterministic tiebreaker.
-      - If the derived slug would be empty (displayName contains only non-ASCII or special
-        characters), the slug falls back to id.
-
+    - slug = lowerUTF8(displayName) with non-alphanumeric runs collapsed to '-' and
+    leading/trailing dashes trimmed.
+    - If two or more organizations produce the same baseSlug, the one with the highest
+    contributionCount keeps the bare slug; the rest get '-1', '-2', ... suffixes
+    ordered by descending contributionCount, with id ASC as the deterministic tiebreaker.
+    - If the derived slug would be empty (displayName contains only non-ASCII or special
+    characters), the slug falls back to id.
     Refreshed daily at 01:15 UTC by organizations_slugged_copy.pipe.
 
 SCHEMA >
