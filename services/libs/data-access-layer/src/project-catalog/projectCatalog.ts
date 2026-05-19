@@ -1,7 +1,12 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareSelectColumns } from '../utils'
 
-import { IDbProjectCatalog, IDbProjectCatalogCreate, IDbProjectCatalogUpdate } from './types'
+import {
+  IDbProjectCatalog,
+  IDbProjectCatalogCreate,
+  IDbProjectCatalogUpdate,
+  ProjectCatalogAction,
+} from './types'
 
 const PROJECT_CATALOG_COLUMNS = [
   'id',
@@ -106,6 +111,62 @@ export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
     `,
   )
   return parseInt(result.count, 10)
+}
+
+export async function countProjectCatalogByAction(
+  qx: QueryExecutor,
+  action: ProjectCatalogAction,
+): Promise<number> {
+  const result = await qx.selectOne(
+    `
+    SELECT COUNT(*) AS count
+    FROM "projectCatalog"
+    WHERE action = $(action)
+    `,
+    { action },
+  )
+  return parseInt(result.count, 10)
+}
+
+/**
+ * Promotes up to `limit` projects from action='auto' to action='evaluate'.
+ *
+ * Ordering (all configurable via `sourcePriority`):
+ *   1. Source priority — earlier position in the array = higher priority (NULLS/unknown = lowest)
+ *   2. lfCriticalityScore DESC (higher score = higher priority, NULLs last)
+ *   3. createdAt ASC (older entries first as a stable tie-breaker)
+ *
+ * Returns the number of rows actually promoted.
+ */
+export async function promoteProjectsToEvaluate(
+  qx: QueryExecutor,
+  options: { limit: number; sourcePriority: string[] },
+): Promise<number> {
+  const { limit, sourcePriority } = options
+
+  if (limit <= 0) {
+    return 0
+  }
+
+  const result = await qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET action = 'evaluate', "updatedAt" = NOW()
+    WHERE id IN (
+      SELECT id
+      FROM "projectCatalog"
+      WHERE action = 'auto'
+      ORDER BY
+        COALESCE(ARRAY_POSITION($(sourcePriority)::text[], source), 2147483647) ASC,
+        "lfCriticalityScore" DESC NULLS LAST,
+        "createdAt" ASC
+      LIMIT $(limit)
+    )
+    `,
+    { sourcePriority, limit },
+  )
+
+  return result
 }
 
 export async function insertProjectCatalog(
