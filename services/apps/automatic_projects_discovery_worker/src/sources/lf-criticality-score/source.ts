@@ -13,13 +13,20 @@ const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
 
+function parseEnvInt(value: string | undefined, defaultValue: number, min: number, max: number): number {
+  const parsed = parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
+}
+
 // Requests per second sent to the LF Criticality Score API (throttle between pages).
-const REQUESTS_PER_SECOND = parseInt(
-  process.env.LF_CRITICALITY_SCORE_REQUESTS_PER_SECOND ?? '5',
-  10,
+const REQUESTS_PER_SECOND = parseEnvInt(
+  process.env.LF_CRITICALITY_SCORE_REQUESTS_PER_SECOND,
+  5,
+  1,
+  100,
 )
-// Max per-page retry attempts on 429 or 5xx before giving up and letting Temporal retry.
-const MAX_RETRIES = parseInt(process.env.LF_CRITICALITY_SCORE_MAX_RETRIES ?? '7', 10)
+// Max per-page attempts (initial + retries) on 429 or 5xx before giving up.
+const MAX_ATTEMPTS = parseEnvInt(process.env.LF_CRITICALITY_SCORE_MAX_ATTEMPTS ?? process.env.LF_CRITICALITY_SCORE_MAX_RETRIES, 7, 1, 20)
 
 interface LfApiResponse {
   page: number
@@ -55,15 +62,24 @@ function getApiBaseUrl(): string {
   return `${scheme}://${host}:${port}`
 }
 
-function httpGet(url: string): Promise<{ statusCode: number; retryAfter: string | null; body: string }> {
+function parseRetryAfterMs(header: string | string[] | undefined): number | null {
+  const raw = Array.isArray(header) ? header[0] : header
+  if (!raw) return null
+  const secs = parseFloat(raw.trim())
+  return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
+}
+
+function httpGet(url: string): Promise<{ statusCode: number; retryAfterMs: number | null; body: string }> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
     const req = client.get(url, (res) => {
       const statusCode = res.statusCode ?? 0
-      const retryAfter = res.headers['retry-after'] ?? null
+      const retryAfterMs = parseRetryAfterMs(res.headers['retry-after'])
       const chunks: Uint8Array[] = []
       res.on('data', (chunk: Uint8Array) => chunks.push(chunk))
-      res.on('end', () => resolve({ statusCode, retryAfter: retryAfter as string | null, body: Buffer.concat(chunks).toString('utf8') }))
+      res.on('end', () =>
+        resolve({ statusCode, retryAfterMs, body: Buffer.concat(chunks).toString('utf8') }),
+      )
       res.on('error', reject)
     })
     req.on('error', reject)
@@ -80,8 +96,8 @@ async function fetchPage(
   if (scoredAfter) params.set('scoredAfter', scoredAfter)
   const url = `${baseUrl}/projects?${params.toString()}`
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const { statusCode, retryAfter, body } = await httpGet(url)
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const { statusCode, retryAfterMs, body } = await httpGet(url)
 
     if (statusCode === 200) {
       try {
@@ -92,27 +108,21 @@ async function fetchPage(
     }
 
     const isRetryable = statusCode === 429 || statusCode >= 500
-    if (!isRetryable || attempt === MAX_RETRIES) {
+    if (!isRetryable || attempt === MAX_ATTEMPTS - 1) {
       throw new Error(`LF Criticality Score API returned status ${statusCode} for ${url}`)
     }
 
-    let delayMs: number
-    const retryAfterSecs = retryAfter ? parseFloat(retryAfter) : NaN
-    if (!Number.isNaN(retryAfterSecs) && retryAfterSecs > 0) {
-      delayMs = retryAfterSecs * 1000
-    } else {
-      delayMs = Math.min(Math.pow(2, attempt) * 1000, 60_000)
-    }
+    const delayMs = retryAfterMs ?? Math.min(Math.pow(2, attempt) * 1000, 60_000)
 
     log.warn(
-      { page, attempt: attempt + 1, maxRetries: MAX_RETRIES, statusCode, delayMs },
+      { page, attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, statusCode, delayMs },
       'LF Criticality Score: rate limited or server error, retrying...',
     )
     await timeout(delayMs)
   }
 
   // Unreachable, but satisfies TypeScript.
-  throw new Error(`LF Criticality Score API failed for ${url} after ${MAX_RETRIES} retries`)
+  throw new Error(`LF Criticality Score API failed for ${url} after ${MAX_ATTEMPTS} attempts`)
 }
 
 export class LfCriticalityScoreSource implements IDiscoverySource {
