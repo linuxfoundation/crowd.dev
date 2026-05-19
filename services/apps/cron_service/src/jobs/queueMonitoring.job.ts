@@ -189,9 +189,9 @@ async function getTopicMessageCount(
   try {
     const topicOffsets = await admin.fetchTopicOffsets(topic)
 
-    // Sum up all partition offsets to get total messages
+    // Sum (high - low) per partition — actual messages currently in the topic.
     const totalMessages = topicOffsets.reduce((sum, partition) => {
-      return sum + Number(partition.offset)
+      return sum + Math.max(0, Number(partition.offset) - Number(partition.low))
     }, 0)
 
     return totalMessages

@@ -5,8 +5,9 @@ import { Logger } from '@crowd/logging'
 /**
  * Returns the total, consumed, and unconsumed message counts for a Kafka topic/consumer-group pair.
  *
- * Handles the `-1` offset edge case: when a consumer group has never committed an offset,
- * Kafka returns `-1`. In that case all messages from the low watermark onward are unconsumed.
+ * Uses the low watermark as a floor when computing lag so that stale committed offsets
+ * (e.g. after a topic is recreated or truncated) do not produce phantom lag.
+ * A committed offset of -1 (no commit yet) is treated as if the consumer is at the low watermark.
  */
 export async function getKafkaMessageCounts(
   log: Logger,
@@ -30,16 +31,16 @@ export async function getKafkaMessageCounts(
     for (const offset of offsets) {
       const topicOffset = topicOffsets.find((p) => p.partition === offset.partition)
       if (topicOffset) {
-        totalMessages += Number(topicOffset.offset)
+        const high = Number(topicOffset.offset)
+        const low = Number(topicOffset.low)
+        // Clamp: stale commits below the low watermark are treated as "at floor".
+        // -1 means no committed offset; treat as at low watermark too.
+        const committedRaw = offset.offset === '-1' ? low : Number(offset.offset)
+        const committed = Math.max(committedRaw, low)
 
-        if (offset.offset === '-1') {
-          // No committed offset yet — treat all messages from the low watermark as unconsumed.
-          consumedMessages += 0
-          totalLeft += Number(topicOffset.offset) - Number(topicOffset.low)
-        } else {
-          consumedMessages += Number(offset.offset)
-          totalLeft += Number(topicOffset.offset) - Number(offset.offset)
-        }
+        totalMessages += Math.max(0, high - low)
+        consumedMessages += Math.max(0, committed - low)
+        totalLeft += Math.max(0, high - committed)
       }
     }
 
