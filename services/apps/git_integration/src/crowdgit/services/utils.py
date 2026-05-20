@@ -9,10 +9,10 @@ from crowdgit.errors import (
     EmptyRepoError,
     ForbiddenError,
     NetworkError,
-    PermissionError,
     RateLimitError,
     RemoteServerError,
     RepoAuthRequiredError,
+    RepoPermissionError,
     ValidationError,
 )
 from crowdgit.logger import logger
@@ -118,8 +118,11 @@ async def get_remote_default_branch(remote_url: str) -> str | None:
         # Fallback: if symbolic ref not available, try common branches
         for branch in ["main", "master"]:
             try:
-                await run_shell_command(["git", "ls-remote", "--heads", remote_url, branch])
-                return branch
+                output = await run_shell_command(
+                    ["git", "ls-remote", "--heads", remote_url, branch]
+                )
+                if output.strip():
+                    return branch
             except CommandExecutionError:
                 continue
 
@@ -171,7 +174,7 @@ ERROR_CLASSIFICATIONS = [
     # (stderr_patterns, exception_class)
     ({"No space left on device"}, DiskSpaceError),
     ({"Network is unreachable", "Connection refused", "Connection timed out"}, NetworkError),
-    ({"Permission denied"}, PermissionError),
+    ({"Permission denied"}, RepoPermissionError),
     ({"The requested URL returned error: 403"}, ForbiddenError),
     ({"The requested URL returned error: 429"}, RateLimitError),
     ({"The requested URL returned error: 5"}, RemoteServerError),
@@ -231,7 +234,7 @@ async def run_shell_command(
         CommandTimeoutError: When command times out
         DiskSpaceError: When disk space is insufficient
         NetworkError: When network connectivity issues occur
-        PermissionError: When permission is denied
+        RepoPermissionError: When permission is denied
         CommandExecutionError: For other command failures
     """
     process = None

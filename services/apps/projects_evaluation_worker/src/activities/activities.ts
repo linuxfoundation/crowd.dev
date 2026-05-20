@@ -1,12 +1,33 @@
-import { findProjectCatalogPendingEvaluation, updateProjectCatalog } from '@crowd/data-access-layer'
+import {
+  findProjectCatalogPendingEvaluation,
+  promoteProjectsToEvaluate,
+  updateProjectCatalog,
+} from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
 import { evaluateProject } from '../evaluator/evaluator'
 import { svc } from '../main'
+import { IPriorityConfig } from '../types'
 
 const log = getServiceLogger()
+
+/**
+ * Promotes 'auto' projects to 'evaluate' up to the configured limit.
+ * Count, slot computation, locking, and update are all done atomically
+ * inside a single SQL statement — see promoteProjectsToEvaluate in the DAL.
+ */
+export async function promoteProjectsForEvaluation(config: IPriorityConfig): Promise<void> {
+  const { evaluateLimit, sourcePriority } = config
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  log.info({ evaluateLimit, sourcePriority }, 'Priority promotion: starting.')
+
+  const promoted = await promoteProjectsToEvaluate(qx, { evaluateLimit, sourcePriority })
+
+  log.info({ promoted }, 'Priority promotion: complete.')
+}
 
 export async function fetchPendingProjects(batchSize: number): Promise<IDbProjectCatalog[]> {
   const qx = pgpQx(svc.postgres.reader.connection())
