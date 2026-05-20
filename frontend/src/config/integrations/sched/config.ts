@@ -4,7 +4,7 @@ import SchedParams from './components/sched-params.vue';
 import SchedDropdown from './components/sched-dropdown.vue';
 import LfSchedSettingsDrawer from './components/sched-settings-drawer.vue';
 
-const image = new URL('@/assets/images/integrations/cvent.png', import.meta.url).href;
+const image = new URL('@/assets/images/integrations/sched.png', import.meta.url).href;
 
 const sched: IntegrationConfig = {
   key: 'sched',
