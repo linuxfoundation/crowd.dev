@@ -19,12 +19,13 @@ SQL >
 
 NODE org_page_projects_with_meta
 DESCRIPTION >
-    Enrich with project name, logo and slug from insights_projects_populated_ds
+    Enrich with project name, logo, slug, and id from insights_projects_populated_ds
 
 SQL >
     SELECT
         a.organizationId,
         a.segmentId,
+        p.id AS projectId,
         p.slug AS projectSlug,
         p.name AS projectName,
         p.logoUrl AS projectLogo,
@@ -35,19 +36,86 @@ SQL >
     LEFT JOIN insights_projects_populated_ds p ON a.segmentId = p.segmentId
     WHERE p.slug != ''
 
-NODE org_page_projects_with_scores
+NODE org_page_projects_score_project_code_activity
 DESCRIPTION >
-    Join with org_dash_metric_copy_ds to compute technical influence score
+    Project-level code-only activity totals over the last 24 months, used only for the technical score
 
 SQL >
     SELECT
-        w.organizationId,
-        w.segmentId,
-        w.projectSlug,
-        w.projectName,
-        w.projectLogo,
-        w.activityCount,
-        w.contributorCount,
+        segmentId,
+        countIf(
+            case when activityId != '' then activityId else null end, type = 'authored-commit'
+        ) AS scoreCommits,
+        countIf(
+            case when activityId != '' then activityId else null end,
+            type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS scorePrsOpened,
+        uniqIf(
+            memberId,
+            type
+            IN ('authored-commit', 'pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS scoreContributorCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        timestamp >= toStartOfDay(now() - toIntervalDay(730))
+        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY segmentId
+
+NODE org_page_projects_score_org_code_activity
+DESCRIPTION >
+    Org-level code-only activity totals over the last 24 months, used only for the technical score
+
+SQL >
+    SELECT
+        segmentId,
+        organizationId,
+        countIf(
+            case when activityId != '' then activityId else null end, type = 'authored-commit'
+        ) AS scoreOrgCommits,
+        countIf(
+            case when activityId != '' then activityId else null end,
+            type IN ('pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS scoreOrgPrsOpened,
+        uniqIf(
+            memberId,
+            type
+            IN ('authored-commit', 'pull_request-opened', 'merge_request-opened', 'changeset-created')
+        ) AS scoreOrgContributorCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        organizationId != ''
+        AND timestamp >= toStartOfDay(now() - toIntervalDay(730))
+        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY segmentId, organizationId
+
+NODE org_page_projects_score_active_maintainers
+DESCRIPTION >
+    Active maintainers per (insightsProjectId, organizationId): active means started and not ended more than 24 months ago
+
+SQL >
+    SELECT insightsProjectId, organizationId, uniq(memberId) AS scoreMaintainersCount
+    FROM maintainers_roles_copy_ds
+    WHERE
+        role = 'maintainer'
+        AND organizationId != ''
+        AND startDate <= now()
+        AND (toYear(endDate) <= 1970 OR endDate >= now() - toIntervalDay(730))
+    GROUP BY insightsProjectId, organizationId
+
+NODE org_page_projects_with_scores
+DESCRIPTION >
+    Compute technical influence score from spec-compliant 24-month code-only inputs.
+    Display columns (maintainersCount, totalContributors, etc.) remain sourced from org_dash_metric_copy_ds.
+
+SQL >
+    SELECT
+        w.organizationId AS organizationId,
+        w.segmentId AS segmentId,
+        w.projectSlug AS projectSlug,
+        w.projectName AS projectName,
+        w.projectLogo AS projectLogo,
+        w.activityCount AS activityCount,
+        w.contributorCount AS contributorCount,
         ifNull(m.maintainersCount, 0) AS maintainersCount,
         ifNull(m.contributorCount, 0) AS totalContributors,
         ifNull(m.orgContributorCount, 0) AS orgContributors,
@@ -56,48 +124,47 @@ SQL >
         ifNull(m.prsOpened, 0) AS totalPrsOpened,
         ifNull(m.orgPrsOpened, 0) AS orgPrsOpened,
         (
-            -- Maintainers: 3 pts if org has at least 1 maintainer
-            -- Contributors: % of org contributors vs total
-            CASE WHEN ifNull(m.maintainersCount, 0) >= 1 THEN 3 ELSE 0 END + CASE
-                WHEN ifNull(m.contributorCount, 0) = 0
-                THEN 0
-                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 20
-                THEN 3
-                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 5
-                THEN 2
-                WHEN ifNull(m.orgContributorCount, 0) * 100.0 / m.contributorCount >= 1
-                THEN 1
-                ELSE 0
+            -- Maintainers: 3 pts if org has at least 1 active maintainer (24-month window)
+            -- Contributors: 0 if no share; 1.1 if share in (0, 0.1%]; share + 1.0 otherwise
+            CASE WHEN ifNull(mt.scoreMaintainersCount, 0) >= 1 THEN 3.0 ELSE 0.0 END + CASE
+                WHEN
+                    ifNull(pa.scoreContributorCount, 0) = 0
+                    OR ifNull(oa.scoreOrgContributorCount, 0) = 0
+                THEN 0.0
+                WHEN oa.scoreOrgContributorCount * 100.0 / pa.scoreContributorCount <= 0.1
+                THEN 1.1
+                ELSE round(oa.scoreOrgContributorCount * 100.0 / pa.scoreContributorCount + 1.0, 1)
             END
-            -- Commits: % of org commits vs total
+            -- Commits: same formula
             + CASE
-                WHEN ifNull(m.commits, 0) = 0
-                THEN 0
-                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 20
-                THEN 3
-                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 5
-                THEN 2
-                WHEN ifNull(m.orgCommits, 0) * 100.0 / m.commits >= 1
-                THEN 1
-                ELSE 0
+                WHEN ifNull(pa.scoreCommits, 0) = 0 OR ifNull(oa.scoreOrgCommits, 0) = 0
+                THEN 0.0
+                WHEN oa.scoreOrgCommits * 100.0 / pa.scoreCommits <= 0.1
+                THEN 1.1
+                ELSE round(oa.scoreOrgCommits * 100.0 / pa.scoreCommits + 1.0, 1)
             END
-            -- PRs opened: % of org PRs vs total
+            -- PRs opened: same formula
             + CASE
-                WHEN ifNull(m.prsOpened, 0) = 0
-                THEN 0
-                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 20
-                THEN 3
-                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 5
-                THEN 2
-                WHEN ifNull(m.orgPrsOpened, 0) * 100.0 / m.prsOpened >= 1
-                THEN 1
-                ELSE 0
+                WHEN ifNull(pa.scorePrsOpened, 0) = 0 OR ifNull(oa.scoreOrgPrsOpened, 0) = 0
+                THEN 0.0
+                WHEN oa.scoreOrgPrsOpened * 100.0 / pa.scorePrsOpened <= 0.1
+                THEN 1.1
+                ELSE round(oa.scoreOrgPrsOpened * 100.0 / pa.scorePrsOpened + 1.0, 1)
             END
         ) AS technicalScore,
-        w.computedAt
+        w.computedAt AS computedAt
     FROM org_page_projects_with_meta w
     LEFT JOIN
         org_dash_metric_copy_ds m ON w.organizationId = m.organizationId AND w.projectSlug = m.slug
+    LEFT JOIN org_page_projects_score_project_code_activity pa ON w.segmentId = pa.segmentId
+    LEFT JOIN
+        org_page_projects_score_org_code_activity oa
+        ON w.segmentId = oa.segmentId
+        AND w.organizationId = oa.organizationId
+    LEFT JOIN
+        org_page_projects_score_active_maintainers mt
+        ON w.projectId = mt.insightsProjectId
+        AND w.organizationId = mt.organizationId
 
 TYPE COPY
 TARGET_DATASOURCE org_page_projects_copy_ds

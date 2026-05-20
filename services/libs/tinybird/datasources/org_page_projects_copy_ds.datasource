@@ -17,7 +17,7 @@ SCHEMA >
     `orgCommits` UInt64,
     `totalPrsOpened` UInt64,
     `orgPrsOpened` UInt64,
-    `technicalScore` UInt64,
+    `technicalScore` Float64,
     `computedAt` DateTime
 
 ENGINE ReplacingMergeTree
