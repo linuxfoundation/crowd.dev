@@ -13,7 +13,7 @@ SQL >
         count() AS activityCount,
         now() AS computedAt
     FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE organizationId != '' AND timestamp >= '2005-01-01'
+    WHERE organizationId != '' AND timestamp >= '2016-01-01'
     GROUP BY organizationId, startDate, endDate
 
 TYPE COPY

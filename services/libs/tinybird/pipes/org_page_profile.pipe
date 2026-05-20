@@ -12,7 +12,7 @@ SQL >
 
 NODE org_page_profile_base
 SQL >
-    SELECT id, displayName, logo, employees AS employeeCount, industry, headline AS description
+    SELECT id, displayName, logo, size AS employeeCount, industry, headline AS description
     FROM organizations FINAL
     WHERE id = (SELECT id FROM org_slug_lookup)
 
