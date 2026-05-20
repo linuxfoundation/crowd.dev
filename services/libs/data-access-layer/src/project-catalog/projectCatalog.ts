@@ -1,7 +1,12 @@
 import { QueryExecutor } from '../queryExecutor'
 import { prepareSelectColumns } from '../utils'
 
-import { IDbProjectCatalog, IDbProjectCatalogCreate, IDbProjectCatalogUpdate } from './types'
+import {
+  IDbProjectCatalog,
+  IDbProjectCatalogCreate,
+  IDbProjectCatalogUpdate,
+  ProjectCatalogAction,
+} from './types'
 
 const PROJECT_CATALOG_COLUMNS = [
   'id',
@@ -11,6 +16,8 @@ const PROJECT_CATALOG_COLUMNS = [
   'source',
   'action',
   'lfCriticalityScore',
+  'evaluationResult',
+  'evaluationReason',
   'evaluatedAt',
   'onboardedAt',
   'syncedAt',
@@ -106,6 +113,79 @@ export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
     `,
   )
   return parseInt(result.count, 10)
+}
+
+export async function countProjectCatalogByAction(
+  qx: QueryExecutor,
+  action: ProjectCatalogAction,
+): Promise<number> {
+  const result = await qx.selectOne(
+    `
+    SELECT COUNT(*) AS count
+    FROM "projectCatalog"
+    WHERE action = $(action)
+    `,
+    { action },
+  )
+  return parseInt(result.count, 10)
+}
+
+/**
+ * Promotes 'auto' projects to 'evaluate', targeting a soft cap on the queue size.
+ *
+ * Uses a CTE to:
+ *   1. Compute available slots (evaluateLimit − current 'evaluate' count) inline.
+ *   2. Lock candidates with FOR UPDATE SKIP LOCKED — prevents double-promotion
+ *      if two transactions run concurrently (e.g. simultaneous manual triggers).
+ *      Note: concurrent calls can each compute the same slot count and promote
+ *      up to evaluateLimit disjoint rows, so the cap is soft — the queue can
+ *      overshoot by at most evaluateLimit per extra concurrent caller. In practice
+ *      this doesn't happen: the schedule uses ScheduleOverlapPolicy.SKIP.
+ *   3. Re-check action = 'auto' in the outer UPDATE to guard against rows whose
+ *      state changed after the subquery snapshot (e.g. manual updates).
+ *
+ * Ordering (configurable via `sourcePriority`):
+ *   1. Source priority — earlier position in the array = higher priority (unlisted = lowest)
+ *   2. lfCriticalityScore DESC (NULLs last)
+ *   3. createdAt ASC (stable tie-breaker)
+ *
+ * Returns the number of rows actually promoted.
+ */
+export async function promoteProjectsToEvaluate(
+  qx: QueryExecutor,
+  options: { evaluateLimit: number; sourcePriority: string[] },
+): Promise<number> {
+  const { evaluateLimit, sourcePriority } = options
+
+  return qx.result(
+    `
+    WITH
+      slots AS (
+        SELECT GREATEST(0, $(evaluateLimit) - COUNT(*)) AS available
+        FROM "projectCatalog"
+        WHERE action = 'evaluate'
+      ),
+      candidates AS (
+        SELECT pc.id
+        FROM "projectCatalog" pc
+        CROSS JOIN slots
+        WHERE pc.action = 'auto'
+          AND slots.available > 0
+        ORDER BY
+          COALESCE(ARRAY_POSITION($(sourcePriority)::text[], pc.source), 2147483647) ASC,
+          pc."lfCriticalityScore" DESC NULLS LAST,
+          pc."createdAt" ASC
+        LIMIT (SELECT available FROM slots)
+        FOR UPDATE SKIP LOCKED
+      )
+    UPDATE "projectCatalog"
+    SET action = 'evaluate', "updatedAt" = NOW()
+    FROM candidates
+    WHERE "projectCatalog".id = candidates.id
+      AND "projectCatalog".action = 'auto'
+    `,
+    { evaluateLimit, sourcePriority },
+  )
 }
 
 export async function insertProjectCatalog(
@@ -352,6 +432,14 @@ export async function updateProjectCatalog(
   if (data.lfCriticalityScore !== undefined) {
     setClauses.push('"lfCriticalityScore" = $(lfCriticalityScore)')
     params.lfCriticalityScore = data.lfCriticalityScore
+  }
+  if (data.evaluationResult !== undefined) {
+    setClauses.push('"evaluationResult" = $(evaluationResult)')
+    params.evaluationResult = data.evaluationResult
+  }
+  if (data.evaluationReason !== undefined) {
+    setClauses.push('"evaluationReason" = $(evaluationReason)')
+    params.evaluationReason = data.evaluationReason
   }
   if (data.syncedAt !== undefined) {
     setClauses.push('"syncedAt" = $(syncedAt)')

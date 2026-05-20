@@ -1,6 +1,13 @@
 import { log, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from '../activities'
+import type { IEvaluateProjectsInput, IPriorityConfig } from '../types'
+
+// Quick DB write — promote auto → evaluate.
+const promotionActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
 
 // Short timeout: just a DB read.
 const fetchActivities = proxyActivities<typeof activities>({
@@ -14,13 +21,20 @@ const evaluateActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 2 },
 })
 
-const DEFAULT_BATCH_SIZE = 100
+const DEFAULT_PRIORITY_CONFIG: IPriorityConfig = {
+  evaluateLimit: 50,
+  sourcePriority: ['insights-discussions'],
+}
 
-export async function evaluateProjects(input: { batchSize?: number } = {}): Promise<void> {
-  const batchSize = input.batchSize ?? DEFAULT_BATCH_SIZE
+export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Promise<void> {
+  const { batchSize = 50, priorityConfig = DEFAULT_PRIORITY_CONFIG } = input
 
   log.info('evaluateProjects workflow started.')
 
+  // Step 1: promote 'auto' projects to 'evaluate' according to priority config.
+  await promotionActivities.promoteProjectsForEvaluation(priorityConfig)
+
+  // Step 2: fetch the evaluation queue (includes any leftovers from prior runs).
   const projects = await fetchActivities.fetchPendingProjects(batchSize)
 
   if (projects.length === 0) {

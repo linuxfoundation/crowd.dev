@@ -1,7 +1,18 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../main'
-import { evaluateProjects } from '../workflows'
+import { IEvaluateProjectsInput, evaluateProjects } from '../workflows'
+
+// Priority configuration for the evaluation queue.
+// - evaluateLimit: maximum number of projects in 'evaluate' state at any time.
+// - sourcePriority: ordered list of sources; earlier = higher priority; unlisted sources rank last.
+const EVALUATION_ARGS: IEvaluateProjectsInput = {
+  batchSize: 50,
+  priorityConfig: {
+    evaluateLimit: 50,
+    sourcePriority: ['insights-discussions'],
+  },
+}
 
 export const scheduleProjectsEvaluation = async () => {
   svc.log.info('Scheduling projects evaluation')
@@ -21,8 +32,8 @@ export const scheduleProjectsEvaluation = async () => {
         type: 'startWorkflow',
         workflowType: evaluateProjects,
         taskQueue: 'projects-evaluation',
-        args: [{ batchSize: 100 }],
-        // 100 projects × ~3min each = ~5h worst case; set ceiling with margin.
+        args: [EVALUATION_ARGS],
+        // 50 projects × ~3min each = ~2.5h worst case; set ceiling with margin.
         workflowExecutionTimeout: '6 hours',
         retry: {
           initialInterval: '30 seconds',
