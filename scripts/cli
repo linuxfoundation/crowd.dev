@@ -250,8 +250,8 @@ function select_services() {
 }
 
 function deploy_staging() {
-    REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-staging-deploy.yaml"
+    REPOSITORY="linuxfoundation/crowd.dev"
+    WORKFLOW_FILE="lf-oracle-staging-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "
@@ -262,8 +262,8 @@ function deploy_staging() {
 }
 
 function deploy_production() {
-    REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-production-deploy.yaml"
+    REPOSITORY="linuxfoundation/crowd.dev"
+    WORKFLOW_FILE="lf-oracle-production-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "

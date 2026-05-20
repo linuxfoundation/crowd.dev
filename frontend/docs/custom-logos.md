@@ -70,7 +70,7 @@ The following steps provide a possible approach to add custom logos to custom pl
 
 ## Contributing
 
-- [Guidelines](https://github.com/CrowdDotDev/crowd.dev/blob/main/CONTRIBUTING.md)
+- [Guidelines](https://github.com/linuxfoundation/crowd.dev/blob/main/CONTRIBUTING.md)
 - Open a Pull Request to `crowd-linux` branch. Requires at least 1 approval before merging.
 
 ## Testing
