@@ -249,7 +249,6 @@ class CloneService(BaseService):
             return
 
         batch_info.is_final_batch = await self._check_if_final_batch(repo_path, target_commit_hash)
-        batch_info.edge_commit = await self._get_edge_commit(repo_path)
 
     async def _get_edge_commit(self, repo_path: str) -> str | None:
         """
@@ -468,7 +467,6 @@ class CloneService(BaseService):
             batch_info.is_first_batch = False
             while not batch_info.is_final_batch:
                 batch_start_time = time.time()
-                batch_info.prev_batch_edge_commit = await self._get_edge_commit(temp_repo_path)
                 await self._clone_next_batch(temp_repo_path, batch_depth, remote)
                 await self._update_batch_info(
                     batch_info,
@@ -479,13 +477,14 @@ class CloneService(BaseService):
                 batch_end_time = time.time()
                 total_execution_time += round(batch_end_time - batch_start_time, 2)
 
-                yield batch_info
                 if not batch_info.is_final_batch:
                     # exponential deepen increment to speed up fetching
                     batch_depth = min(
                         batch_depth * BATCH_DEEPEN_MULTIPLIER,
                         MAX_BATCH_DEEPEN,
                     )
+
+            yield batch_info
 
         except Exception as e:
             # Handle both CrowdGitError and generic Exception

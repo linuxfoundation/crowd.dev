@@ -244,12 +244,11 @@ class RepositoryWorker:
                     await self.maintainer_service.process_maintainers(repository, batch_info)
                     licenses = await self.license_service.detect(batch_info.repo_path)
                     await update_repository_licenses(repository.id, licenses)
-                await self.commit_service.process_single_batch_commits(
-                    repository,
-                    batch_info,
-                )
-
                 if batch_info.is_final_batch:
+                    await self.commit_service.process_single_batch_commits(
+                        repository,
+                        batch_info,
+                    )
                     await update_last_processed_commit(
                         repo_id=repository.id,
                         commit_hash=batch_info.latest_commit_in_repo,
