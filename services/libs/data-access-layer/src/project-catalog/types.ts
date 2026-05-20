@@ -31,11 +31,13 @@ type ProjectCatalogWritable = Pick<
 
 export type IDbProjectCatalogCreate = Omit<
   ProjectCatalogWritable,
-  'source' | 'action' | 'lfCriticalityScore'
+  'source' | 'action' | 'lfCriticalityScore' | 'evaluationResult' | 'evaluationReason'
 > & {
   source?: string | null
   action?: ProjectCatalogAction
   lfCriticalityScore?: number
+  evaluationResult?: string | null
+  evaluationReason?: string | null
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
