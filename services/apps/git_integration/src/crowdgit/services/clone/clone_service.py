@@ -33,6 +33,9 @@ from crowdgit.services.utils import (
 )
 
 DEFAULT_STORAGE_OPTIMIZATION_THRESHOLD_MB = 10000
+INITIAL_BATCH_DEEPEN = 50
+MAX_BATCH_DEEPEN = 10000
+BATCH_DEEPEN_MULTIPLIER = 2
 
 RETRYABLE_CLONE_ERRORS = (RateLimitError, NetworkError, RemoteServerError)
 
@@ -57,6 +60,16 @@ class CloneService(BaseService):
     def _is_gerrit_remote(remote: str) -> bool:
         return any(pattern in remote for pattern in GERRIT_PATTERNS)
 
+    async def _configure_global_git_client(self, path: str) -> None:
+        # Increase post buffer to reduce RPC failures on large repos
+        await run_shell_command(
+            ["git", "config", "--global", "http.postBuffer", "524288000"], cwd=path
+        )
+        # Disable recursive submodule fetches
+        await run_shell_command(
+            ["git", "config", "--global", "fetch.recurseSubmodules", "false"], cwd=path
+        )
+
     async def _check_if_final_batch(self, path: str, target_commit_hash: str | None) -> bool:
         """
         Final batch is determined if:
@@ -74,20 +87,62 @@ class CloneService(BaseService):
             await run_shell_command(
                 ["git", "rev-parse", "--verify", f"{target_commit_hash}^{{commit}}"], cwd=path
             )
+            has_boundary_in_required_range = await self._has_boundary_in_required_range(
+                path, target_commit_hash
+            )
+            if has_boundary_in_required_range:
+                self.logger.info(
+                    f"Target commit {target_commit_hash} reached, but shallow boundary still intersects required range. Continuing deepen."
+                )
+                return False
             self.logger.info(f"Target commit {target_commit_hash} reached")
             return True
         except CommandExecutionError:
             return False
+
+    async def _read_shallow_file(self, repo_path: str) -> list[str]:
+        """
+        Read commit hashes from .git/shallow.
+        Returns an empty list when the file does not exist (full clone).
+        """
+        shallow_file = os.path.join(repo_path, ".git", "shallow")
+        try:
+            async with aiofiles.open(shallow_file, "r", encoding="utf-8") as f:
+                return [line.strip() for line in await f.readlines() if line.strip()]
+        except FileNotFoundError:
+            return []
+
+    async def _get_shallow_boundary_commits(self, repo_path: str) -> set[str]:
+        """
+        Return all shallow boundary commits from .git/shallow.
+        """
+        return set(await self._read_shallow_file(repo_path))
+
+    async def _has_boundary_in_required_range(
+        self, repo_path: str, target_commit_hash: str
+    ) -> bool:
+        """
+        Check if any shallow boundary commit is inside the current required range.
+
+        If true, the required range is still truncated and the clone should be deepened.
+        """
+        shallow_boundaries = await self._get_shallow_boundary_commits(repo_path)
+        if not shallow_boundaries:
+            return False
+
+        required_commits_output = await run_shell_command(
+            ["git", "rev-list", f"{target_commit_hash}..HEAD"],
+            cwd=repo_path,
+        )
+        required_commits = {line.strip() for line in required_commits_output.splitlines() if line}
+        problematic_boundaries = (required_commits & shallow_boundaries) - {target_commit_hash}
+        return bool(problematic_boundaries)
 
     @retry_on_clone_error
     async def _perform_minimal_clone(self, path: str, remote: str) -> None:
         """
         Perform minimal clone of depth=1
         """
-        # increasing post buffer to avoid RPC failed error
-        await run_shell_command(
-            ["git", "config", "--global", "http.postBuffer", "524288000"], cwd=path
-        )
         self.logger.info("Initializing minimal clone")
         await run_shell_command(
             ["git", "clone", "--depth=1", "--no-tags", "--single-branch", remote, "."], cwd=path
@@ -196,21 +251,19 @@ class CloneService(BaseService):
         batch_info.is_final_batch = await self._check_if_final_batch(repo_path, target_commit_hash)
         batch_info.edge_commit = await self._get_edge_commit(repo_path)
 
-    async def _get_edge_commit(self, repo_path: str):
+    async def _get_edge_commit(self, repo_path: str) -> str | None:
         """
         Returns the edge commit of a shallow clone by reading the .git/shallow file,
         which contains the boundary commit(s) when history is truncated.
 
         If the full history has been cloned, the .git/shallow file does not exist.
         """
-        shallow_file = os.path.join(repo_path, ".git", "shallow")
-        try:
-            async with aiofiles.open(shallow_file, "r", encoding="utf-8") as f:
-                oldest_commit = (await f.readline()).strip()
-            self.logger.info(f"Edge commit: {oldest_commit}")
-            return oldest_commit
-        except FileNotFoundError:
+        boundaries = await self._read_shallow_file(repo_path)
+        if not boundaries:
             return None
+        oldest_commit = boundaries[0]
+        self.logger.info(f"Edge commit: {oldest_commit}")
+        return oldest_commit
 
     async def _cleanup_temp_directory(self, temp_repo_path: str, repo_id: str) -> None:
         """
@@ -288,26 +341,6 @@ class CloneService(BaseService):
 
         self.logger.info("Working directory cleanup completed")
 
-    async def _calculate_batch_depth(self, repo_path: str, remote: str) -> int:
-        calculated_depth = None
-        total_branches_tags = await run_shell_command(
-            ["git", "ls-remote", "--heads", "--tags", remote], cwd=repo_path
-        )
-        total_branches_tags = len(total_branches_tags.splitlines())
-        if total_branches_tags <= 200:
-            # Small repo, get a decent amount of history
-            calculated_depth = 100
-        elif total_branches_tags <= 1000:
-            # Medium repo, get a moderate amount of history
-            calculated_depth = 50
-        else:
-            # Large repo, get less history
-            calculated_depth = 5
-        self.logger.info(
-            f"total_branches_tags={total_branches_tags}, calculated_depth={calculated_depth}"
-        )
-        return calculated_depth
-
     @retry_on_clone_error
     async def _perform_full_clone(self, repo_path: str, remote: str):
         """Perform full repository clone"""
@@ -372,6 +405,7 @@ class CloneService(BaseService):
         self.logger.info(
             f"Starting clone decision for {remote} (branch: {branch}, last_commit: {last_processed_commit})"
         )
+        await self._configure_global_git_client(repo_path)
 
         default_branch_changed = await self.has_default_branch_changed(remote, branch)
 
@@ -405,6 +439,7 @@ class CloneService(BaseService):
         error_code = None
         error_message = None
         total_execution_time = 0.0
+        batch_depth = INITIAL_BATCH_DEEPEN
         remote = repository.url.removesuffix(".git")
 
         batch_info = CloneBatchInfo(
@@ -420,8 +455,6 @@ class CloneService(BaseService):
             clone_with_batches = await self.determine_clone_strategy(
                 temp_repo_path, remote, repository.branch, repository.last_processed_commit
             )
-            if clone_with_batches:
-                batch_depth = await self._calculate_batch_depth(temp_repo_path, remote)
             await self._update_batch_info(
                 batch_info, temp_repo_path, repository.last_processed_commit, clone_with_batches
             )
@@ -447,6 +480,12 @@ class CloneService(BaseService):
                 total_execution_time += round(batch_end_time - batch_start_time, 2)
 
                 yield batch_info
+                if not batch_info.is_final_batch:
+                    # exponential deepen increment to speed up fetching
+                    batch_depth = min(
+                        batch_depth * BATCH_DEEPEN_MULTIPLIER,
+                        MAX_BATCH_DEEPEN,
+                    )
 
         except Exception as e:
             # Handle both CrowdGitError and generic Exception

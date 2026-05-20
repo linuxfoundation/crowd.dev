@@ -261,7 +261,6 @@ export class InsightsDiscussionsSource implements IDiscoverySource {
       projectSlug,
       repoName,
       repoUrl,
-      action: 'evaluate',
     }
   }
 }
