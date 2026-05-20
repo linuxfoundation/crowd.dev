@@ -23,8 +23,13 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
       platform: PlatformType.LFID,
       type: MemberIdentityType.USERNAME,
       value: lfid,
+      verified: true,
     })),
-    ...(emails?.map((email) => ({ type: MemberIdentityType.EMAIL, value: email })) ?? []),
+    ...(emails?.map((email) => ({
+      type: MemberIdentityType.EMAIL,
+      value: email,
+      verified: true,
+    })) ?? []),
   ]
 
   const memberIds = await findMemberIdsByIdentities(qx, identities)

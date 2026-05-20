@@ -178,7 +178,18 @@ class MemberSimilarityCalculator {
     if (
       similarMember.keyword_displayName.toLowerCase() === primaryMember.displayName.toLowerCase()
     ) {
-      return this.decideMemberSimilarityUsingAdditionalChecks(primaryMember, similarMember)
+      const dn = primaryMember.displayName.toLowerCase().trim()
+      if (isOsReservedName(dn)) {
+        return this.LOW_CONFIDENCE_SCORE
+      }
+      // Single-word names (first-name-only, handles) are too ambiguous without a corroborating
+      // signal. Multi-word names (full names) are treated as high-confidence on their own.
+      const isFullName = dn.includes(' ')
+      return this.decideMemberSimilarityUsingAdditionalChecks(
+        primaryMember,
+        similarMember,
+        isFullName ? undefined : this.HIGH_CONFIDENCE_SCORE,
+      )
     }
 
     // calculate similarity percentage

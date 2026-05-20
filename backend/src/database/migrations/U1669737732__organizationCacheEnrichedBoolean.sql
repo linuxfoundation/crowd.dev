@@ -1,1 +1,0 @@
-ALTER TABLE public."organizationCaches" DROP COLUMN "enriched";

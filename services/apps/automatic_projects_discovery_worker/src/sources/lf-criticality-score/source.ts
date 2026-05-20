@@ -2,6 +2,7 @@ import http from 'http'
 import https from 'https'
 import { Readable } from 'stream'
 
+import { timeout } from '@crowd/common'
 import { getServiceLogger } from '@crowd/logging'
 
 import { IDatasetDescriptor, IDiscoverySource, IDiscoverySourceRow } from '../types'
@@ -11,6 +12,31 @@ const log = getServiceLogger()
 const DEFAULT_API_HOST = 'lf-criticality-score-api.example.com'
 const DEFAULT_API_PORT = 443
 const PAGE_SIZE = 100
+
+function parseEnvInt(
+  value: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
+}
+
+// Requests per second sent to the LF Criticality Score API (throttle between pages).
+const REQUESTS_PER_SECOND = parseEnvInt(
+  process.env.LF_CRITICALITY_SCORE_REQUESTS_PER_SECOND,
+  5,
+  1,
+  100,
+)
+// Max per-page attempts (initial + retries) on 429 or 5xx before giving up.
+const MAX_ATTEMPTS = parseEnvInt(
+  process.env.LF_CRITICALITY_SCORE_MAX_ATTEMPTS ?? process.env.LF_CRITICALITY_SCORE_MAX_RETRIES,
+  7,
+  1,
+  20,
+)
 
 interface LfApiResponse {
   page: number
@@ -46,6 +72,37 @@ function getApiBaseUrl(): string {
   return `${scheme}://${host}:${port}`
 }
 
+interface HttpGetResult {
+  statusCode: number
+  retryAfterMs: number | null
+  body: string
+}
+
+function parseRetryAfterMs(header: string | string[] | undefined): number | null {
+  const raw = Array.isArray(header) ? header[0] : header
+  if (!raw) return null
+  const secs = parseFloat(raw.trim())
+  return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
+}
+
+function httpGet(url: string): Promise<HttpGetResult> {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https://') ? https : http
+    const req = client.get(url, (res) => {
+      const statusCode = res.statusCode ?? 0
+      const retryAfterMs = parseRetryAfterMs(res.headers['retry-after'])
+      const chunks: Uint8Array[] = []
+      res.on('data', (chunk: Uint8Array) => chunks.push(chunk))
+      res.on('end', () =>
+        resolve({ statusCode, retryAfterMs, body: Buffer.concat(chunks).toString('utf8') }),
+      )
+      res.on('error', reject)
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
 async function fetchPage(
   baseUrl: string,
   page: number,
@@ -55,31 +112,50 @@ async function fetchPage(
   if (scoredAfter) params.set('scoredAfter', scoredAfter)
   const url = `${baseUrl}/projects?${params.toString()}`
 
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith('https://') ? https : http
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    let result: HttpGetResult | null = null
 
-    const req = client.get(url, (res) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`LF Criticality Score API returned status ${res.statusCode} for ${url}`))
-        res.resume()
-        return
+    try {
+      result = await httpGet(url)
+    } catch (networkErr) {
+      if (attempt === MAX_ATTEMPTS - 1) {
+        throw new Error(`LF Criticality Score API network error for ${url}: ${networkErr}`)
       }
+      const delayMs = Math.min(Math.pow(2, attempt) * 1000, 60_000)
+      log.warn(
+        { page, attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, delayMs, err: String(networkErr) },
+        'LF Criticality Score: network error, retrying...',
+      )
+      await timeout(delayMs)
+      continue
+    }
 
-      const chunks: Uint8Array[] = []
-      res.on('data', (chunk: Uint8Array) => chunks.push(chunk))
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as LfApiResponse)
-        } catch (err) {
-          reject(new Error(`Failed to parse LF Criticality Score API response: ${err}`))
-        }
-      })
-      res.on('error', reject)
-    })
+    const { statusCode, retryAfterMs, body } = result
 
-    req.on('error', reject)
-    req.end()
-  })
+    if (statusCode === 200) {
+      try {
+        return JSON.parse(body) as LfApiResponse
+      } catch (err) {
+        throw new Error(`Failed to parse LF Criticality Score API response: ${err}`)
+      }
+    }
+
+    const isRetryable = statusCode === 429 || statusCode >= 500
+    if (!isRetryable || attempt === MAX_ATTEMPTS - 1) {
+      throw new Error(`LF Criticality Score API returned status ${statusCode} for ${url}`)
+    }
+
+    const delayMs = retryAfterMs ?? Math.min(Math.pow(2, attempt) * 1000, 60_000)
+
+    log.warn(
+      { page, attempt: attempt + 1, maxAttempts: MAX_ATTEMPTS, statusCode, delayMs },
+      'LF Criticality Score: rate limited or server error, retrying...',
+    )
+    await timeout(delayMs)
+  }
+
+  // Unreachable, but satisfies TypeScript.
+  throw new Error(`LF Criticality Score API failed for ${url} after ${MAX_ATTEMPTS} attempts`)
 }
 
 export class LfCriticalityScoreSource implements IDiscoverySource {
@@ -113,29 +189,29 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
       'LF Criticality Score: starting stream fetch.',
     )
 
-    async function* pages() {
-      let page = 1
-      let totalPages = 1
+    const throttleIntervalMs = Math.round(1000 / REQUESTS_PER_SECOND)
 
-      do {
+    async function* pages() {
+      const firstPage = await fetchPage(baseUrl, 1, scoredAfter)
+      const { totalPages } = firstPage
+
+      log.info(
+        { datasetId: dataset.id, total: firstPage.total, totalPages, pageSize: firstPage.pageSize },
+        'LF Criticality Score: first page received — total records available.',
+      )
+
+      for (const row of firstPage.data) {
+        yield row
+      }
+
+      for (let page = 2; page <= totalPages; page++) {
+        await timeout(throttleIntervalMs)
+
         log.info(
           { datasetId: dataset.id, page, totalPages },
           'LF Criticality Score: fetching page...',
         )
         const response = await fetchPage(baseUrl, page, scoredAfter)
-        totalPages = response.totalPages
-
-        if (page === 1) {
-          log.info(
-            {
-              datasetId: dataset.id,
-              total: response.total,
-              totalPages,
-              pageSize: response.pageSize,
-            },
-            'LF Criticality Score: first page received — total records available.',
-          )
-        }
 
         for (const row of response.data) {
           yield row
@@ -145,9 +221,7 @@ export class LfCriticalityScoreSource implements IDiscoverySource {
           { datasetId: dataset.id, page, totalPages, rowsInPage: response.data.length },
           'LF Criticality Score: page fetched.',
         )
-
-        page++
-      } while (page <= totalPages)
+      }
 
       log.info({ datasetId: dataset.id, totalPages }, 'LF Criticality Score: all pages fetched.')
     }
