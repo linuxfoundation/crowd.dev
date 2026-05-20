@@ -4,6 +4,12 @@ DESCRIPTION >
 
 TAGS "Organization page"
 
+NODE org_slug_lookup
+SQL >
+    %
+    SELECT id FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
 NODE org_page_contributors_activity_aggregates
 SQL >
     %
@@ -11,7 +17,7 @@ SQL >
         SELECT count(distinct memberId)
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+            organizationId = (SELECT id FROM org_slug_lookup)
             {% if defined(startDate) %}
                 AND timestamp
                 >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
@@ -26,7 +32,7 @@ SQL >
             ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as "contributionPercentage"
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+            organizationId = (SELECT id FROM org_slug_lookup)
             {% if defined(startDate) %}
                 AND timestamp
                 >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
@@ -47,7 +53,7 @@ SQL >
         SELECT count(distinct memberId) as count
         FROM activityRelations_deduplicated_cleaned_bucket_union
         WHERE
-            organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+            organizationId = (SELECT id FROM org_slug_lookup)
             {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }} {% end %}
             {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }} {% end %}
     {% else %}

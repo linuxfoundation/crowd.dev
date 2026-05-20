@@ -4,6 +4,12 @@ DESCRIPTION >
 
 TAGS "Organization page"
 
+NODE org_slug_lookup
+SQL >
+    %
+    SELECT id FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
 NODE org_page_projects_main
 SQL >
     %
@@ -22,7 +28,7 @@ SQL >
         orgPrsOpened,
         technicalScore
     FROM org_page_projects_copy_ds FINAL
-    WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+    WHERE organizationId = (SELECT id FROM org_slug_lookup)
     ORDER BY technicalScore DESC, activityCount DESC
     LIMIT {{ Int32(limit, 21, description="Page size + 1 for hasMore detection") }}
     OFFSET {{ Int32(offset, 0, description="Pagination offset") }}

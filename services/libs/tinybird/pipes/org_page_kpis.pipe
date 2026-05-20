@@ -4,9 +4,14 @@ DESCRIPTION >
 
 TAGS "Organization page"
 
-NODE org_page_kpis_main
+NODE org_slug_lookup
 SQL >
     %
+    SELECT id FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
+NODE org_page_kpis_main
+SQL >
     SELECT
         activeContributors,
         if(
@@ -25,4 +30,4 @@ SQL >
         maintainerRoles,
         criticalProjects
     FROM org_page_kpis_copy_ds FINAL
-    WHERE organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+    WHERE organizationId = (SELECT id FROM org_slug_lookup)

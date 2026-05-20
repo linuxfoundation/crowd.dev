@@ -4,20 +4,24 @@ DESCRIPTION >
 
 TAGS "Organization page"
 
-NODE org_page_profile_base
+NODE org_slug_lookup
 SQL >
     %
+    SELECT id FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
+NODE org_page_profile_base
+SQL >
     SELECT id, displayName, logo, employees AS employeeCount, industry, headline AS description
     FROM organizations FINAL
-    WHERE id = {{ String(orgId, '', description="Organization ID", required=True) }}
+    WHERE id = (SELECT id FROM org_slug_lookup)
 
 NODE org_page_profile_website
 SQL >
-    %
     SELECT organizationId, argMax(value, updatedAt) AS website
     FROM organizationIdentities FINAL
     WHERE
-        organizationId = {{ String(orgId, '', description="Organization ID", required=True) }}
+        organizationId = (SELECT id FROM org_slug_lookup)
         AND type = 'primary-domain'
     GROUP BY organizationId
 
