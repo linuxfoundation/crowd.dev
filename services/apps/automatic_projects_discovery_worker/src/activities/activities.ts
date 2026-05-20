@@ -1,3 +1,4 @@
+import { Context } from '@temporalio/activity'
 import { parse } from 'csv-parse'
 
 import { bulkUpsertProjectCatalog } from '@crowd/data-access-layer'
@@ -102,6 +103,7 @@ export async function processDataset(
       totalProcessed += batch.length
       batch = []
 
+      Context.current().heartbeat({ totalProcessed, batchNumber })
       log.info({ totalProcessed, batchNumber, datasetId: dataset.id }, 'Batch upserted.')
     }
   }
