@@ -8,6 +8,8 @@ export interface IDbProjectCatalog {
   source: string | null
   action: ProjectCatalogAction
   lfCriticalityScore: number | null
+  evaluationResult: string | null
+  evaluationReason: string | null
   evaluatedAt: string | null
   onboardedAt: string | null
   syncedAt: string | null
@@ -17,7 +19,14 @@ export interface IDbProjectCatalog {
 
 type ProjectCatalogWritable = Pick<
   IDbProjectCatalog,
-  'projectSlug' | 'repoName' | 'repoUrl' | 'source' | 'action' | 'lfCriticalityScore'
+  | 'projectSlug'
+  | 'repoName'
+  | 'repoUrl'
+  | 'source'
+  | 'action'
+  | 'lfCriticalityScore'
+  | 'evaluationResult'
+  | 'evaluationReason'
 >
 
 export type IDbProjectCatalogCreate = Omit<
