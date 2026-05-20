@@ -134,7 +134,6 @@
 
 <script setup lang="ts">
 import useVuelidate from '@vuelidate/core';
-import { required } from '@vuelidate/validators';
 import {
   computed, onMounted, reactive, ref,
 } from 'vue';
