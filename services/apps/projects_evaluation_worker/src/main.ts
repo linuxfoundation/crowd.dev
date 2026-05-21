@@ -4,7 +4,11 @@ import { Options, ServiceWorker } from '@crowd/archetype-worker'
 import { scheduleProjectsEvaluation } from './schedules/scheduleProjectsEvaluation'
 
 const config: Config = {
-  envvars: [],
+  envvars: [
+    'CROWD_PROJECT_EVALUATION_API_ENDPOINT',
+    'CROWD_PROJECT_EVALUATION_API_USER_ID',
+    'CROWD_PROJECT_EVALUATION_API_SECRET',
+  ],
   producer: {
     enabled: false,
   },
