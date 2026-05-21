@@ -1,1 +1,0 @@
-alter table "memberToMerge" drop column "activityEstimate";
