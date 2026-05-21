@@ -15,5 +15,5 @@ export type EvaluationOutcome = Extract<ProjectCatalogAction, 'onboard' | 'skip'
 export interface IEvaluationResult {
   outcome: EvaluationOutcome
   evaluationResult: string
-  evaluationReason: string
+  evaluationReason: string | null
 }

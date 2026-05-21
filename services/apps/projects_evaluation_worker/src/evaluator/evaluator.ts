@@ -5,10 +5,6 @@ interface IApiResponseContent {
   non_onboard_reason?: string
 }
 
-interface IApiResponse {
-  content: IApiResponseContent
-}
-
 export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluationResult> {
   const endpoint = process.env.CROWD_PROJECT_EVALUATION_API_ENDPOINT
   const userId = process.env.CROWD_PROJECT_EVALUATION_API_USER_ID
@@ -18,7 +14,8 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
     return {
       outcome: 'unsure',
       evaluationResult: 'error',
-      evaluationReason: 'Missing API configuration: CROWD_PROJECT_EVALUATION_API_ENDPOINT, CROWD_PROJECT_EVALUATION_API_USER_ID, or CROWD_PROJECT_EVALUATION_API_SECRET',
+      evaluationReason:
+        'Missing API configuration: CROWD_PROJECT_EVALUATION_API_ENDPOINT, CROWD_PROJECT_EVALUATION_API_USER_ID, or CROWD_PROJECT_EVALUATION_API_SECRET',
     }
   }
 
@@ -54,9 +51,9 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
     }
   }
 
-  let responseBody: IApiResponse
+  let responseBody: unknown
   try {
-    responseBody = (await response.json()) as IApiResponse
+    responseBody = await response.json()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return {
@@ -66,11 +63,24 @@ export async function evaluateProject(input: IEvaluationInput): Promise<IEvaluat
     }
   }
 
-  const { onboard, non_onboard_reason } = responseBody.content
+  const content = (responseBody as { content?: unknown } | null)?.content
+  if (
+    !content ||
+    typeof content !== 'object' ||
+    typeof (content as IApiResponseContent).onboard !== 'boolean'
+  ) {
+    return {
+      outcome: 'unsure',
+      evaluationResult: 'error',
+      evaluationReason: `Unexpected API response shape: ${JSON.stringify(responseBody)}`,
+    }
+  }
+
+  const { onboard, non_onboard_reason } = content as IApiResponseContent
 
   return {
     outcome: onboard ? 'onboard' : 'skip',
     evaluationResult: String(onboard),
-    evaluationReason: non_onboard_reason ?? '',
+    evaluationReason: non_onboard_reason ?? null,
   }
 }

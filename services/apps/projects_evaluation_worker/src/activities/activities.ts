@@ -45,8 +45,8 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
   const startTime = Date.now()
 
   // Guard: fetch fresh state to ensure the API is called at most once per project.
-  // If evaluatedAt is already set, a previous run completed this project — skip.
-  const fresh = await findProjectCatalogById(pgpQx(svc.postgres.reader.connection()), project.id)
+  // Uses the writer connection to avoid replica lag missing a just-written evaluatedAt.
+  const fresh = await findProjectCatalogById(qx, project.id)
   if (fresh?.evaluatedAt) {
     log.info(
       { id: project.id, repoUrl: project.repoUrl, evaluatedAt: fresh.evaluatedAt },
