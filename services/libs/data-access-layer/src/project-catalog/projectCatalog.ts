@@ -16,6 +16,8 @@ const PROJECT_CATALOG_COLUMNS = [
   'source',
   'action',
   'lfCriticalityScore',
+  'evaluationResult',
+  'evaluationReason',
   'evaluatedAt',
   'onboardedAt',
   'syncedAt',
@@ -430,6 +432,14 @@ export async function updateProjectCatalog(
   if (data.lfCriticalityScore !== undefined) {
     setClauses.push('"lfCriticalityScore" = $(lfCriticalityScore)')
     params.lfCriticalityScore = data.lfCriticalityScore
+  }
+  if (data.evaluationResult !== undefined) {
+    setClauses.push('"evaluationResult" = $(evaluationResult)')
+    params.evaluationResult = data.evaluationResult
+  }
+  if (data.evaluationReason !== undefined) {
+    setClauses.push('"evaluationReason" = $(evaluationReason)')
+    params.evaluationReason = data.evaluationReason
   }
   if (data.syncedAt !== undefined) {
     setClauses.push('"syncedAt" = $(syncedAt)')
