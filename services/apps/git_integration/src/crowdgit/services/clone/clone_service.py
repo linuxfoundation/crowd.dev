@@ -497,6 +497,10 @@ class CloneService(BaseService):
                 await self._cleanup_working_directory(temp_repo_path)
 
             batch_info.is_first_batch = False
+            if batch_info.is_final_batch:
+                self.logger.info("Clone complete — no deepening needed, all commits available")
+                return
+
             while not batch_info.is_final_batch:
                 batch_start_time = time.time()
                 await self._clone_next_batch(temp_repo_path, batch_depth, remote)
@@ -506,14 +510,12 @@ class CloneService(BaseService):
                 total_execution_time += round(time.time() - batch_start_time, 2)
 
                 if not batch_info.is_final_batch:
-                    # exponential deepen increment to speed up fetching
                     batch_depth = min(
                         batch_depth * BATCH_DEEPEN_MULTIPLIER,
                         MAX_BATCH_DEEPEN,
                     )
 
-            if clone_with_batches:
-                yield batch_info
+            yield batch_info
 
         except Exception as e:
             # Handle both CrowdGitError and generic Exception
