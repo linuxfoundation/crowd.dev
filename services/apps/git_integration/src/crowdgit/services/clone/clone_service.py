@@ -75,10 +75,6 @@ class CloneService(BaseService):
         await run_shell_command(
             ["git", "config", "--global", "fetch.recurseSubmodules", "false"], cwd=path
         )
-        # Ensure abbreviated commits are disabled
-        await run_shell_command(
-            ["git", "-C", path, "config", "core.abbrevCommit", "false"], cwd=path
-        )
 
     async def _is_shallow_clone(self, path: str) -> bool:
         result = await run_shell_command(["git", "rev-parse", "--is-shallow-repository"], cwd=path)

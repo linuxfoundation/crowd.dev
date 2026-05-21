@@ -220,6 +220,10 @@ class CommitService(BaseService):
         last_processed_commit: str | None = None,
     ) -> str:
         """Execute git log command and return raw output."""
+        # Ensure abbreviated commits are disabled
+        await run_shell_command(
+            ["git", "-C", repo_path, "config", "core.abbrevCommit", "false"], cwd=repo_path
+        )
 
         self.logger.info("Running git log commands...")
 
