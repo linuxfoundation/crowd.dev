@@ -16,10 +16,13 @@ DESCRIPTION >
     Collaboration/code activity and contributor counts per org per project segment in the last 365 days
 
 SQL >
-    SELECT ar.organizationId, ar.segmentId, count() AS activityCount, uniq(ar.memberId) AS contributorCount
+    SELECT
+        ar.organizationId, ar.segmentId, count() AS activityCount, uniq(ar.memberId) AS contributorCount
     FROM activityRelations_deduplicated_cleaned_bucket_union ar
-    INNER JOIN org_page_projects_contribution_activity_types at
-        ON ar.type = at.activityType AND ar.platform = at.platform
+    INNER JOIN
+        org_page_projects_contribution_activity_types at
+        ON ar.type = at.activityType
+        AND ar.platform = at.platform
     WHERE
         ar.organizationId != ''
         AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(365))

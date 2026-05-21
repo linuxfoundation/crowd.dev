@@ -7,7 +7,8 @@ TAGS "Organization page"
 NODE org_slug_lookup
 SQL >
     %
-    SELECT id FROM organizations_populated_slug
+    SELECT id
+    FROM organizations_populated_slug
     WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
 
 NODE org_page_profile_base
@@ -20,9 +21,7 @@ NODE org_page_profile_website
 SQL >
     SELECT organizationId, argMax(value, updatedAt) AS website
     FROM organizationIdentities FINAL
-    WHERE
-        organizationId = (SELECT id FROM org_slug_lookup)
-        AND type = 'primary-domain'
+    WHERE organizationId = (SELECT id FROM org_slug_lookup) AND type = 'primary-domain'
     GROUP BY organizationId
 
 NODE org_page_profile_membership
@@ -32,7 +31,12 @@ SQL >
         replaceRegexpOne(
             argMax(
                 if(
-                    tier IN ('Silver Membership', 'Platinum Membership', 'Gold Membership', 'Associate Membership'),
+                    tier IN (
+                        'Silver Membership',
+                        'Platinum Membership',
+                        'Gold Membership',
+                        'Associate Membership'
+                    ),
                     tier,
                     extract(productName, ' - (.+) \\(')
                 ),
@@ -42,9 +46,7 @@ SQL >
             ''
         ) AS membership
     FROM lfxMemberships FINAL
-    WHERE
-        organizationId = (SELECT id FROM org_slug_lookup)
-        AND project = 'The Linux Foundation'
+    WHERE organizationId = (SELECT id FROM org_slug_lookup) AND project = 'The Linux Foundation'
     GROUP BY organizationId
 
 NODE org_page_profile_final

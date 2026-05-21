@@ -7,7 +7,8 @@ TAGS "Organization page"
 NODE org_slug_lookup
 SQL >
     %
-    SELECT id FROM organizations_populated_slug
+    SELECT id
+    FROM organizations_populated_slug
     WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
 
 NODE org_page_contributors_activity_aggregates
