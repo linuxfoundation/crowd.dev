@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import time
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import aiofiles
@@ -22,6 +23,7 @@ from crowdgit.errors import (
     NetworkError,
     RateLimitError,
     RemoteServerError,
+    ReOnboardingRequiredError,
 )
 from crowdgit.models import CloneBatchInfo, Repository, ServiceExecution
 from crowdgit.services.base.base_service import BaseService
@@ -30,6 +32,10 @@ from crowdgit.services.utils import (
     get_remote_default_branch,
     get_repo_name,
     run_shell_command,
+)
+from crowdgit.settings import (
+    STUCK_ONBOARDING_REPO_TIMEOUT_HOURS,
+    STUCK_RECURRENT_REPO_TIMEOUT_HOURS,
 )
 
 DEFAULT_STORAGE_OPTIMIZATION_THRESHOLD_MB = 10000
@@ -69,20 +75,64 @@ class CloneService(BaseService):
         await run_shell_command(
             ["git", "config", "--global", "fetch.recurseSubmodules", "false"], cwd=path
         )
-
-    async def _check_if_final_batch(self, path: str, target_commit_hash: str | None) -> bool:
-        """
-        Final batch is determined if:
-        - full history is cloned (no longer shallow_clone)
-        - target commit reached
-        """
-        is_shallow_clone = await run_shell_command(
-            ["git", "rev-parse", "--is-shallow-repository"], cwd=path
+        # Ensure abbreviated commits are disabled
+        await run_shell_command(
+            ["git", "-C", path, "config", "core.abbrevCommit", "false"], cwd=path
         )
-        if "false" in is_shallow_clone:
+
+    async def _is_shallow_clone(self, path: str) -> bool:
+        result = await run_shell_command(["git", "rev-parse", "--is-shallow-repository"], cwd=path)
+        return "true" in result
+
+    def _is_timeout_reached(self, repository: Repository) -> bool:
+        processing_duration_hours = (
+            datetime.now(timezone.utc) - repository.locked_at.astimezone(timezone.utc)
+        ).total_seconds() / 3600
+        is_onboarding = repository.last_processed_commit is None
+        timeout_hours = (
+            STUCK_ONBOARDING_REPO_TIMEOUT_HOURS
+            if is_onboarding
+            else STUCK_RECURRENT_REPO_TIMEOUT_HOURS
+        )
+        if processing_duration_hours >= timeout_hours:
+            self.logger.warning(
+                f"Repo {repository.url} is stuck for {processing_duration_hours:.1f} hours — queuing for re-onboarding"
+            )
             return True
-        if not target_commit_hash:
-            return False
+        return False
+
+    async def _check_if_final_batch(self, path: str, repository: Repository) -> bool:
+        """
+        Check whether the current batch is the final one.
+
+        Returns True when:
+        - full history fetched (onboarding — no last_processed_commit to look for), or
+        - all commits between last_processed_commit and HEAD are available (no shallow boundary in range).
+
+        Raises ReOnboardingRequiredError when:
+        - force push detected (full clone but last_processed_commit missing), or
+        - processing timeout exceeded while still deepening.
+        """
+        is_shallow_clone = await self._is_shallow_clone(path)
+        is_full_clone = not is_shallow_clone
+
+        target_commit_hash = repository.last_processed_commit
+        if is_full_clone and not target_commit_hash:
+            # fully cloned at once
+            return True
+
+        reached_target_commit = await self._has_required_commit_range(path, target_commit_hash)
+        if reached_target_commit:
+            return True
+
+        timeout_reached = self._is_timeout_reached(repository)
+        force_push_detected = is_full_clone and not reached_target_commit
+        if timeout_reached or force_push_detected:
+            raise ReOnboardingRequiredError()
+
+        return False
+
+    async def _has_required_commit_range(self, path: str, target_commit_hash: str) -> bool:
         try:
             await run_shell_command(
                 ["git", "rev-parse", "--verify", f"{target_commit_hash}^{{commit}}"], cwd=path
@@ -225,13 +275,14 @@ class CloneService(BaseService):
         self,
         batch_info: CloneBatchInfo,
         repo_path: str,
-        target_commit_hash: str | None,
+        repository: Repository,
         clone_with_batches: bool,
     ) -> None:
         """Update batch info with repo path and final batch status.
 
         For full clones (clone_with_batches=False): Marks as final batch immediately.
-        For batched clones (clone_with_batches=True): Checks if target commit reached or full history fetched.
+        For batched clones (clone_with_batches=True): Delegates to _check_if_final_batch
+        to determine if required commit range is available or timeout/force-push occurred.
         """
         batch_info.repo_path = repo_path
         batch_info.clone_with_batches = clone_with_batches
@@ -248,21 +299,7 @@ class CloneService(BaseService):
             batch_info.is_final_batch = True
             return
 
-        batch_info.is_final_batch = await self._check_if_final_batch(repo_path, target_commit_hash)
-
-    async def _get_edge_commit(self, repo_path: str) -> str | None:
-        """
-        Returns the edge commit of a shallow clone by reading the .git/shallow file,
-        which contains the boundary commit(s) when history is truncated.
-
-        If the full history has been cloned, the .git/shallow file does not exist.
-        """
-        boundaries = await self._read_shallow_file(repo_path)
-        if not boundaries:
-            return None
-        oldest_commit = boundaries[0]
-        self.logger.info(f"Edge commit: {oldest_commit}")
-        return oldest_commit
+        batch_info.is_final_batch = await self._check_if_final_batch(repo_path, repository)
 
     async def _cleanup_temp_directory(self, temp_repo_path: str, repo_id: str) -> None:
         """
@@ -455,10 +492,9 @@ class CloneService(BaseService):
                 temp_repo_path, remote, repository.branch, repository.last_processed_commit
             )
             await self._update_batch_info(
-                batch_info, temp_repo_path, repository.last_processed_commit, clone_with_batches
+                batch_info, temp_repo_path, repository, clone_with_batches
             )
-            batch_end_time = time.time()
-            total_execution_time += round(batch_end_time - batch_start_time, 2)
+            total_execution_time += round(time.time() - batch_start_time, 2)
 
             yield batch_info
             if working_dir_cleanup:
@@ -468,14 +504,10 @@ class CloneService(BaseService):
             while not batch_info.is_final_batch:
                 batch_start_time = time.time()
                 await self._clone_next_batch(temp_repo_path, batch_depth, remote)
-                await self._update_batch_info(
-                    batch_info,
-                    temp_repo_path,
-                    repository.last_processed_commit,
-                    clone_with_batches,
+                batch_info.is_final_batch = await self._check_if_final_batch(
+                    temp_repo_path, repository
                 )
-                batch_end_time = time.time()
-                total_execution_time += round(batch_end_time - batch_start_time, 2)
+                total_execution_time += round(time.time() - batch_start_time, 2)
 
                 if not batch_info.is_final_batch:
                     # exponential deepen increment to speed up fetching
@@ -484,7 +516,8 @@ class CloneService(BaseService):
                         MAX_BATCH_DEEPEN,
                     )
 
-            yield batch_info
+            if clone_with_batches:
+                yield batch_info
 
         except Exception as e:
             # Handle both CrowdGitError and generic Exception

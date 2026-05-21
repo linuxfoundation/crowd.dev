@@ -152,7 +152,7 @@ class TestCommitExtraction:
                 mock_save_execution,
             ):
                 # Process commits
-                await commit_service.process_single_batch_commits(
+                await commit_service.process_batch_commits(
                     repository=test_repository, batch_info=batch_info
                 )
 
@@ -276,7 +276,7 @@ class TestCommitExtraction:
                 "crowdgit.services.commit.commit_service.save_service_execution",
                 mock_save_execution,
             ):
-                await commit_service.process_single_batch_commits(
+                await commit_service.process_batch_commits(
                     repository=test_repository, batch_info=batch_info
                 )
 
