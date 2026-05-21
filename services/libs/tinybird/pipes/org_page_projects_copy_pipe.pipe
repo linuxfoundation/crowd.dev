@@ -4,18 +4,27 @@ DESCRIPTION >
 
 TAGS "Organization page"
 
-NODE org_page_projects_org_segment_activity
+NODE org_page_projects_contribution_activity_types
 DESCRIPTION >
-    Activity and contributor counts per org per project segment in the last 365 days
+    Collaboration and code contribution activity types (mirrors leaderboards filter)
 
 SQL >
-    SELECT organizationId, segmentId, count() AS activityCount, uniq(memberId) AS contributorCount
-    FROM activityRelations_deduplicated_cleaned_bucket_union
+    SELECT activityType, platform FROM activityTypes FINAL WHERE isCollaboration OR isCodeContribution
+
+NODE org_page_projects_org_segment_activity
+DESCRIPTION >
+    Collaboration/code activity and contributor counts per org per project segment in the last 365 days
+
+SQL >
+    SELECT ar.organizationId, ar.segmentId, count() AS activityCount, uniq(ar.memberId) AS contributorCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+    INNER JOIN org_page_projects_contribution_activity_types at
+        ON ar.type = at.activityType AND ar.platform = at.platform
     WHERE
-        organizationId != ''
-        AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
-        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
-    GROUP BY organizationId, segmentId
+        ar.organizationId != ''
+        AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(365))
+        AND ar.timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY ar.organizationId, ar.segmentId
 
 NODE org_page_projects_with_meta
 DESCRIPTION >
