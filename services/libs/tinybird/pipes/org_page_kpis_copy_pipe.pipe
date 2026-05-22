@@ -1,0 +1,84 @@
+DESCRIPTION >
+    Nightly copy pipe that precomputes org-level KPIs for the org page.
+    Writes one row per organizationId into org_page_kpis_copy_ds.
+
+TAGS "Organization page"
+
+NODE org_page_kpis_current_contributors
+DESCRIPTION >
+    Active contributors per org in the last 365 days
+
+SQL >
+    SELECT organizationId, uniq(memberId) AS activeContributors
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        organizationId != ''
+        AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
+        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY organizationId
+
+NODE org_page_kpis_previous_contributors
+DESCRIPTION >
+    Active contributors per org in the prior 365-day window (for trend calc)
+
+SQL >
+    SELECT organizationId, uniq(memberId) AS activeContributorsPrevious
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        organizationId != ''
+        AND timestamp >= toStartOfDay(now() - toIntervalDay(730))
+        AND timestamp < toStartOfDay(now() - toIntervalDay(365))
+    GROUP BY organizationId
+
+NODE org_page_kpis_maintainer_roles
+DESCRIPTION >
+    Count of active maintainer role assignments per org
+
+SQL >
+    SELECT organizationId, uniq((memberId, insightsProjectId)) AS maintainerRoles
+    FROM maintainers_roles_copy_ds
+    WHERE role = 'maintainer' AND toYear(endDate) <= 1970 AND organizationId != ''
+    GROUP BY organizationId
+
+NODE org_page_kpis_critical_projects
+DESCRIPTION >
+    Count of distinct projects (segmentIds) an org contributed to in the last 365 days.
+    Serves as the "critical projects" placeholder until a real criticality filter is added.
+
+SQL >
+    SELECT organizationId, uniq(segmentId) AS criticalProjects
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        organizationId != ''
+        AND timestamp >= toStartOfDay(now() - toIntervalDay(365))
+        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY organizationId
+
+NODE org_page_kpis_final
+DESCRIPTION >
+    Join all nodes into one row per org
+
+SQL >
+    SELECT
+        coalesce(
+            c.organizationId, p.organizationId, m.organizationId, cp.organizationId
+        ) AS organizationId,
+        coalesce(c.activeContributors, 0) AS activeContributors,
+        coalesce(p.activeContributorsPrevious, 0) AS activeContributorsPrevious,
+        coalesce(m.maintainerRoles, 0) AS maintainerRoles,
+        coalesce(cp.criticalProjects, 0) AS criticalProjects,
+        now() AS computedAt
+    FROM org_page_kpis_current_contributors c
+    FULL OUTER JOIN org_page_kpis_previous_contributors p ON c.organizationId = p.organizationId
+    FULL OUTER JOIN
+        org_page_kpis_maintainer_roles m
+        ON coalesce(c.organizationId, p.organizationId) = m.organizationId
+    FULL OUTER JOIN
+        org_page_kpis_critical_projects cp
+        ON coalesce(c.organizationId, p.organizationId, m.organizationId) = cp.organizationId
+    WHERE organizationId != ''
+
+TYPE COPY
+TARGET_DATASOURCE org_page_kpis_copy_ds
+COPY_MODE replace
+COPY_SCHEDULE 15 1 * * *
