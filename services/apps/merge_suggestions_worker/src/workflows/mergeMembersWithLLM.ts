@@ -1,6 +1,6 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import { LLMSuggestionVerdictType, MemberMergeSuggestionTable } from '@crowd/types'
+import { LLMSuggestionVerdictType, LlmModelType, MemberMergeSuggestionTable } from '@crowd/types'
 
 import * as commonActivities from '../activities/common'
 import * as memberActivities from '../activities/memberMergeSuggestions'
@@ -24,7 +24,7 @@ export async function mergeMembersWithLLM(
 ): Promise<void> {
   const SUGGESTIONS_PER_RUN = 10
   const REGION = 'us-east-1'
-  const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+  const MODEL_ID = args.modelId ?? LlmModelType.CLAUDE_SONNET_4
   const MODEL_ARGS = {
     max_tokens: 2000,
     anthropic_version: 'bedrock-2023-05-31',

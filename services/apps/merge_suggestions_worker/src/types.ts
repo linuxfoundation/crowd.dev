@@ -104,6 +104,7 @@ export interface IProcessMergeOrganizationSuggestionsWithLLM {
 export interface IProcessMergeMemberSuggestionsWithLLM {
   similarity: ISimilarityFilter
   tenantId: string
+  modelId?: string
 }
 
 export interface ISimilarMemberOpensearchResult {
