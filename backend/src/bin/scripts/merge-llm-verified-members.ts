@@ -12,10 +12,7 @@ const log = getServiceLogger()
 interface LlmVerifiedMemberMergeCandidate {
   primaryId: string
   secondaryId: string
-  mergeState: string | null
-  mergeStep: string | null
   verdictCreatedAt: Date
-  suggestionCreatedAt: Date
 }
 
 const options = [
@@ -38,6 +35,12 @@ const options = [
     description: 'Number of member merges to run at once. Defaults to 1.',
   },
   {
+    name: 'agentUserId',
+    alias: 'a',
+    type: String,
+    description: 'LF Agent user id to use as the audit log actor.',
+  },
+  {
     name: 'help',
     alias: 'h',
     type: Boolean,
@@ -47,83 +50,75 @@ const options = [
 
 const parameters = commandLineArgs(options)
 
+function selectIndependentCandidates(
+  candidates: LlmVerifiedMemberMergeCandidate[],
+): LlmVerifiedMemberMergeCandidate[] {
+  const selectedMemberIds = new Set<string>()
+  const selected: LlmVerifiedMemberMergeCandidate[] = []
+
+  for (const candidate of candidates) {
+    const isConflicting =
+      selectedMemberIds.has(candidate.primaryId) ||
+      selectedMemberIds.has(candidate.secondaryId)
+
+    if (isConflicting) {
+      log.info(
+        {
+          primaryId: candidate.primaryId,
+          secondaryId: candidate.secondaryId,
+        },
+        'Skipping LLM verified member merge because one member is already selected in this batch!',
+      )
+    } else {
+      selectedMemberIds.add(candidate.primaryId)
+      selectedMemberIds.add(candidate.secondaryId)
+      selected.push(candidate)
+    }
+  }
+
+  return selected
+}
+
 async function fetchLlmVerifiedMemberMergeCandidates(
   qx: QueryExecutor,
   batchSize: number,
+  excludedMemberIds: string[],
 ): Promise<LlmVerifiedMemberMergeCandidate[]> {
+  const excludedMemberFilter =
+    excludedMemberIds.length > 0
+      ? `
+        AND l."primaryId" NOT IN ($(excludedMemberIds:csv))
+        AND l."secondaryId" NOT IN ($(excludedMemberIds:csv))
+      `
+      : ''
+
   return qx.select(
     `
-    WITH stale_true_suggestions AS (
-      SELECT
-        s."memberId",
-        s."toMergeId",
-        s.similarity,
-        s."createdAt" AS "suggestionCreatedAt"
-      FROM "memberToMerge" s
-      WHERE s.similarity > 0.8
-        AND s."createdAt" < NOW() - INTERVAL '7 days'
-    ),
-    latest_true_verdict AS (
-      SELECT DISTINCT ON (s."memberId", s."toMergeId")
-        s."memberId",
-        s."toMergeId",
-        l."primaryId",
-        l."secondaryId",
-        l."createdAt" AS "verdictCreatedAt"
-      FROM stale_true_suggestions s
-      JOIN "llmSuggestionVerdicts" l
-        ON l.type = 'member'
-       AND l.verdict = 'true'
-       AND (
-            (l."primaryId" = s."memberId" AND l."secondaryId" = s."toMergeId")
-         OR (l."primaryId" = s."toMergeId" AND l."secondaryId" = s."memberId")
-       )
-      ORDER BY s."memberId", s."toMergeId", l."createdAt" DESC
-    ),
-    latest_merge_action AS (
-      SELECT DISTINCT ON (v."memberId", v."toMergeId")
-        v."memberId",
-        v."toMergeId",
-        ma.state,
-        ma.step,
-        ma."createdAt"
-      FROM latest_true_verdict v
-      LEFT JOIN "mergeActions" ma
-        ON ma.type = 'member'
-       AND (
-            (ma."primaryId" = v."primaryId" AND ma."secondaryId" = v."secondaryId")
-         OR (ma."primaryId" = v."secondaryId" AND ma."secondaryId" = v."primaryId")
-       )
-      ORDER BY v."memberId", v."toMergeId", ma."createdAt" DESC NULLS LAST
-    )
     SELECT
-      v."primaryId",
-      v."secondaryId",
-      ma.state AS "mergeState",
-      ma.step AS "mergeStep",
-      v."verdictCreatedAt",
-      s."suggestionCreatedAt"
-    FROM latest_true_verdict v
-    JOIN stale_true_suggestions s
-      ON s."memberId" = v."memberId"
-     AND s."toMergeId" = v."toMergeId"
-    LEFT JOIN latest_merge_action ma
-      ON ma."memberId" = v."memberId"
-     AND ma."toMergeId" = v."toMergeId"
-    WHERE (ma.state = 'error' OR ma.state IS NULL)
-      AND EXISTS (SELECT 1 FROM members m WHERE m.id = v."primaryId")
-      AND EXISTS (SELECT 1 FROM members m WHERE m.id = v."secondaryId")
+      l."primaryId",
+      l."secondaryId",
+      l."createdAt" AS "verdictCreatedAt"
+    FROM "llmSuggestionVerdicts" l
+    WHERE l.type = 'member'
+      AND l.verdict = 'true'
+      AND EXISTS (SELECT 1 FROM members m WHERE m.id = l."primaryId")
+      AND EXISTS (SELECT 1 FROM members m WHERE m.id = l."secondaryId")
       AND NOT EXISTS (
         SELECT 1
-        FROM "memberNoMerge" n
-        WHERE (n."memberId" = v."primaryId" AND n."noMergeId" = v."secondaryId")
-           OR (n."memberId" = v."secondaryId" AND n."noMergeId" = v."primaryId")
+        FROM "mergeActions" ma
+        WHERE ma.type = 'member'
+          AND (
+            (ma."primaryId" = l."primaryId" AND ma."secondaryId" = l."secondaryId")
+            OR (ma."primaryId" = l."secondaryId" AND ma."secondaryId" = l."primaryId")
+          )
       )
-    ORDER BY v."verdictCreatedAt" ASC
+      ${excludedMemberFilter}
+    ORDER BY l."createdAt" ASC
     LIMIT $(batchSize);
     `,
     {
       batchSize,
+      excludedMemberIds,
     },
   )
 }
@@ -132,21 +127,45 @@ setImmediate(async () => {
   const testRun = parameters.testRun ?? false
   const BATCH_SIZE = parameters.batchSize ?? (testRun ? 10 : 100)
   const PARALLEL_MERGES = parameters.parallelism ?? 1
+  const agentUserId = parameters.agentUserId ?? null
 
-  const options = await SequelizeRepository.getDefaultIRepositoryOptions()
+  if (!agentUserId) {
+    log.error('LF Agent user id is required. Pass --agentUserId=<user-id>.')
+    process.exit(1)
+  }
+
+  const options = await SequelizeRepository.getDefaultIRepositoryOptions({ id: agentUserId })
   const qx = SequelizeRepository.getQueryExecutor(options)
   const service = new CommonMemberService(optionsQx(options), options.temporal, log)
+  const processedMemberIds = new Set<string>()
 
-  log.info({ testRun, BATCH_SIZE, PARALLEL_MERGES }, 'Running script with the following parameters!')
+  log.info(
+    { testRun, BATCH_SIZE, PARALLEL_MERGES, agentUserId },
+    'Running script with the following parameters!',
+  )
 
   let candidates: LlmVerifiedMemberMergeCandidate[] = []
 
   do {
-    candidates = await fetchLlmVerifiedMemberMergeCandidates(qx, BATCH_SIZE)
+    candidates = await fetchLlmVerifiedMemberMergeCandidates(
+      qx,
+      BATCH_SIZE,
+      Array.from(processedMemberIds),
+    )
 
     log.info({ count: candidates.length }, 'Fetched LLM verified member merge candidates!')
 
-    const chunks = chunkArray(candidates, PARALLEL_MERGES)
+    const independentCandidates = selectIndependentCandidates(candidates)
+
+    log.info(
+      {
+        count: independentCandidates.length,
+        skipped: candidates.length - independentCandidates.length,
+      },
+      'Selected independent LLM verified member merge candidates!',
+    )
+
+    const chunks = chunkArray(independentCandidates, PARALLEL_MERGES)
 
     for (const chunk of chunks) {
       await Promise.all(
@@ -161,6 +180,8 @@ setImmediate(async () => {
 
           try {
             await service.merge(candidate.primaryId, candidate.secondaryId)
+            processedMemberIds.add(candidate.primaryId)
+            processedMemberIds.add(candidate.secondaryId)
           } catch (err) {
             log.error(
               {
