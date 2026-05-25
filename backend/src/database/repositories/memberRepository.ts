@@ -253,18 +253,15 @@ class MemberRepository {
 
     const totalCount = await options.database.sequelize.query(
       `
+        WITH segment_members AS (
+            SELECT DISTINCT "memberId" FROM "memberSegmentsAgg" WHERE "segmentId" IN (:segmentIds)
+        )
         SELECT
             COUNT(*) AS count
         FROM "memberToMerge" mtm
         ${membersJoin}
-        WHERE EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms
-            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
-        )
-        AND EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms2
-            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
-        )
+        WHERE mtm."memberId" IN (SELECT "memberId" FROM segment_members)
+        AND mtm."toMergeId" IN (SELECT "memberId" FROM segment_members)
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -364,6 +361,9 @@ class MemberRepository {
 
     const mems = await options.database.sequelize.query(
       `
+        WITH segment_members AS (
+            SELECT DISTINCT "memberId" FROM "memberSegmentsAgg" WHERE "segmentId" IN (:segmentIds)
+        )
         SELECT
             mtm."memberId" AS id,
             mtm."toMergeId",
@@ -376,14 +376,8 @@ class MemberRepository {
         FROM "memberToMerge" mtm
         JOIN members m ON m.id = mtm."memberId"
         JOIN members m2 ON m2.id = mtm."toMergeId"
-        WHERE EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms
-            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
-        )
-        AND EXISTS (
-            SELECT 1 FROM "memberSegmentsAgg" ms2
-            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
-        )
+        WHERE mtm."memberId" IN (SELECT "memberId" FROM segment_members)
+        AND mtm."toMergeId" IN (SELECT "memberId" FROM segment_members)
         AND mtm.similarity IS NOT NULL
           ${memberFilter}
           ${similarityFilter}
