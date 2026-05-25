@@ -42,9 +42,10 @@ export async function mergeMembersWithLLM(
                   3. Attributes and other fields: If one member have a specific field and other member doesn't, skip that field when deciding similarity. 
                   Checking semantically instead of literally is important for such fields. Important fields here are: location, timezone, languages, programming languages. 
                   For example one member might have Berlin in location, while other can have Germany - consider such members have same location.  
-                  4. Display Name: Tokenize using both character and word tokenization. When the display name is more than one word, and the difference is a few edit distances consider it a strong indication of similarity. 
-                  When one display name is contained by the other, check other fields for the final decision. The same members on different platforms might have different display names. 
-                  Display names can be multiple words and might be sorted in different order in different platforms for the same member.
+                  4. Display Name: Tokenize using both character and word tokenization. When the display name is more than one word, and the difference is a few edit distances consider it a strong indication of similarity.
+                  When one display name is contained by the other, check other fields for the final decision. The same members on different platforms might have different display names.
+                  Display names can be multiple words and might be sorted in different order in different platforms for the same member. Display name is a supporting signal only — it is never sufficient on its own. 
+                  If display name is the only thing that matches and there are no corroborating signals from identities, organizations, or attributes, return 'false'.
                   CRITICAL RULE - NEVER MERGE IF SAME PLATFORM WITH DIFFERENT VALUES:
                   Before making any decision, you MUST check if both members have identities on the same platform.
                   If member1.identities[x].platform === member2.identities[y].platform (they share a platform), then:

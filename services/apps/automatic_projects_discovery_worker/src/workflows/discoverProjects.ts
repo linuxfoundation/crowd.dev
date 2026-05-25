@@ -7,9 +7,10 @@ const listActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
-// processDataset is long-running (10-20 min for ~119MB / ~750K rows).
+// processDataset is long-running: ~119MB / ~750K rows + inter-page throttle can exceed 60 min.
 const processActivities = proxyActivities<typeof activities>({
-  startToCloseTimeout: '30 minutes',
+  startToCloseTimeout: '90 minutes',
+  heartbeatTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
 })
 

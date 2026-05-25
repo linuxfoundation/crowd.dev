@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
 import { BadRequestError, NotFoundError, sanitizeMemberOrganizationDateRange } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   cleanSoftDeletedMemberOrganization,
@@ -80,9 +80,11 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
       await qx.tx(async (tx) => {
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)
         await updateMemberOrganization(tx, memberId, workExperienceId, update)
+      })
 
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, [data.organizationId])
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
