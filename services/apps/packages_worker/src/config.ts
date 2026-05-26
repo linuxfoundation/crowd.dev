@@ -45,3 +45,12 @@ export function getEnricherConfig() {
     fetchTimeoutMs: parseInt(process.env.ENRICHER_FETCH_TIMEOUT_MS ?? '10000', 10),
   }
 }
+
+export function getPomFetcherConfig() {
+  return {
+    batchSize: parseInt(process.env.POM_FETCHER_BATCH_SIZE ?? '200', 10),
+    concurrency: parseInt(process.env.POM_FETCHER_CONCURRENCY ?? '10', 10),
+    staleDays: parseInt(process.env.POM_FETCHER_STALE_DAYS ?? '7', 10),
+    idleSleepSec: parseInt(process.env.POM_FETCHER_IDLE_SLEEP_SEC ?? '3600', 10),
+  }
+}
