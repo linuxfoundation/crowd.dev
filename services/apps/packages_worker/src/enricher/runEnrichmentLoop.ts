@@ -1,7 +1,8 @@
-import { getServiceChildLogger } from '@crowd/logging'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { getServiceChildLogger } from '@crowd/logging'
 
 import { getEnricherConfig } from '../config'
+
 import { fetchLightRepo, parseGithubUrl } from './fetchLightRepo'
 import { FetchError, LightRepoResult } from './types'
 import { updateEnrichedRepos } from './updateEnrichedRepos'
@@ -10,10 +11,7 @@ const log = getServiceChildLogger('github-repos-enricher')
 
 const MAX_RETRIES = 3
 
-async function fetchWithRetries(
-  url: string,
-  token: string,
-): Promise<LightRepoResult | null> {
+async function fetchWithRetries(url: string, token: string): Promise<LightRepoResult | null> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await fetchLightRepo(url, token)
@@ -171,7 +169,13 @@ export async function runEnrichmentLoop(
       continue
     }
 
-    const { fetched, failed, flushed } = await processPage(urls, config.tokens, parkedUntil, config, qx)
+    const { fetched, failed, flushed } = await processPage(
+      urls,
+      config.tokens,
+      parkedUntil,
+      config,
+      qx,
+    )
 
     log.info(
       `Page ${pageNum}: read=${urls.length} fetched=${fetched} failed=${failed} flushed=${flushed}`,

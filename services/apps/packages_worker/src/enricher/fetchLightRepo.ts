@@ -67,7 +67,8 @@ export async function fetchLightRepo(url: string, token: string): Promise<LightR
 
   if (json.errors?.length) {
     const err = json.errors[0]
-    if (err.type === 'RATE_LIMITED') throw new FetchError('RATE_LIMIT', `RATE_LIMITED for ${url}`, resetMs)
+    if (err.type === 'RATE_LIMITED')
+      throw new FetchError('RATE_LIMIT', `RATE_LIMITED for ${url}`, resetMs)
     if (err.type === 'NOT_FOUND') throw new FetchError('NOT_FOUND', `NOT_FOUND for ${url}`)
     throw new FetchError('TRANSIENT', `GraphQL error for ${url}: ${err.message ?? err.type}`)
   }
@@ -82,7 +83,9 @@ export async function fetchLightRepo(url: string, token: string): Promise<LightR
     name,
     description: repo.description ?? null,
     primaryLanguage: repo.primaryLanguage?.name ?? null,
-    topics: (repo.repositoryTopics?.nodes ?? []).map((n: { topic: { name: string } }) => n.topic.name),
+    topics: (repo.repositoryTopics?.nodes ?? []).map(
+      (n: { topic: { name: string } }) => n.topic.name,
+    ),
     stars: repo.stargazerCount ?? 0,
     forks: repo.forkCount ?? 0,
     watchers: repo.watchers?.totalCount ?? 0,
