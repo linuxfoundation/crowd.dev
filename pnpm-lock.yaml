@@ -1414,6 +1414,58 @@ importers:
         specifier: ^3.0.1
         version: 3.1.0
 
+  services/apps/pom_fetcher_worker:
+    dependencies:
+      '@crowd/archetype-standard':
+        specifier: workspace:*
+        version: link:../../archetypes/standard
+      '@crowd/archetype-worker':
+        specifier: workspace:*
+        version: link:../../archetypes/worker
+      '@crowd/common':
+        specifier: workspace:*
+        version: link:../../libs/common
+      '@crowd/data-access-layer':
+        specifier: workspace:*
+        version: link:../../libs/data-access-layer
+      '@crowd/database':
+        specifier: workspace:*
+        version: link:../../libs/database
+      '@crowd/logging':
+        specifier: workspace:*
+        version: link:../../libs/logging
+      '@crowd/temporal':
+        specifier: workspace:*
+        version: link:../../libs/temporal
+      '@temporalio/activity':
+        specifier: ~1.11.8
+        version: 1.11.8
+      '@temporalio/client':
+        specifier: ~1.11.8
+        version: 1.11.8
+      '@temporalio/workflow':
+        specifier: ~1.11.8
+        version: 1.11.8
+      axios:
+        specifier: ^1.6.7
+        version: 1.13.5
+      fast-xml-parser:
+        specifier: ^4.4.0
+        version: 4.5.6
+      tsx:
+        specifier: ^4.7.1
+        version: 4.7.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.6.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.8.2
+        version: 20.12.7
+      nodemon:
+        specifier: ^3.0.1
+        version: 3.1.0
+
   services/apps/profiles_worker:
     dependencies:
       '@crowd/archetype-standard':
@@ -6674,6 +6726,10 @@ packages:
 
   fast-xml-parser@4.2.5:
     resolution: {integrity: sha512-B9/wizE4WngqQftFPmdaMYlXoJlJOYxGQOanC77fq9k8+Z0v5dDSVh+3glErdIROP//s/jgb7ZuxKfB8nVyo0g==}
+    hasBin: true
+
+  fast-xml-parser@4.5.6:
+    resolution: {integrity: sha512-Yd4vkROfJf8AuJrDIVMVmYfULKmIJszVsMv7Vo71aocsKgFxpdlpSHXSaInvyYfgw2PRuObQSW2GFpVMUjxu9A==}
     hasBin: true
 
   fast-xml-parser@5.3.4:
@@ -12991,7 +13047,7 @@ snapshots:
   '@sendgrid/client@8.1.3':
     dependencies:
       '@sendgrid/helpers': 8.0.0
-      axios: 1.13.1
+      axios: 1.13.5
     transitivePeerDependencies:
       - debug
 
@@ -13022,7 +13078,7 @@ snapshots:
       '@slack/types': 2.11.0
       '@types/is-stream': 1.1.0
       '@types/node': 20.12.7
-      axios: 1.11.0
+      axios: 1.13.5
       eventemitter3: 3.1.2
       form-data: 2.5.1
       is-electron: 2.2.2
@@ -14621,7 +14677,7 @@ snapshots:
 
   axios@0.21.4:
     dependencies:
-      follow-redirects: 1.15.6
+      follow-redirects: 1.15.11
     transitivePeerDependencies:
       - debug
 
@@ -14642,8 +14698,8 @@ snapshots:
 
   axios@1.12.0:
     dependencies:
-      follow-redirects: 1.15.6
-      form-data: 4.0.4
+      follow-redirects: 1.15.11
+      form-data: 4.0.5
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
       - debug
@@ -16222,6 +16278,10 @@ snapshots:
   fast-uri@3.0.6: {}
 
   fast-xml-parser@4.2.5:
+    dependencies:
+      strnum: 1.0.5
+
+  fast-xml-parser@4.5.6:
     dependencies:
       strnum: 1.0.5
 
@@ -18283,7 +18343,7 @@ snapshots:
 
   peopledatalabs@6.1.5:
     dependencies:
-      axios: 1.11.0
+      axios: 1.13.5
       copy-anything: 3.0.5
     transitivePeerDependencies:
       - debug
