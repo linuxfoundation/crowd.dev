@@ -9,7 +9,7 @@ export function getPackagesDbConfig() {
 }
 
 export function getEnricherConfig() {
-  const rawTokens = process.env.GITHUB_TOKENS ?? ''
+  const rawTokens = process.env.ENRICHER_GITHUB_TOKENS ?? ''
   const tokens = rawTokens.split(',').map((t) => t.trim()).filter(Boolean)
 
   return {
