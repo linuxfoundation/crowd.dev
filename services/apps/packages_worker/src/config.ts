@@ -1,10 +1,20 @@
+function requireEnv(name: string): string {
+  const val = process.env[name]
+  if (!val) throw new Error(`Missing required environment variable: ${name}`)
+  return val
+}
+
+function requireEnvInt(name: string): number {
+  return parseInt(requireEnv(name), 10)
+}
+
 export function getPackagesDbConfig() {
   return {
-    host: process.env.CROWD_PACKAGES_DB_WRITE_HOST,
-    port: parseInt(process.env.CROWD_PACKAGES_DB_PORT, 10),
-    database: process.env.CROWD_PACKAGES_DB_DATABASE,
-    user: process.env.CROWD_PACKAGES_DB_USERNAME,
-    password: process.env.CROWD_PACKAGES_DB_PASSWORD,
+    host: requireEnv('CROWD_PACKAGES_DB_WRITE_HOST'),
+    port: requireEnvInt('CROWD_PACKAGES_DB_PORT'),
+    database: requireEnv('CROWD_PACKAGES_DB_DATABASE'),
+    user: requireEnv('CROWD_PACKAGES_DB_USERNAME'),
+    password: requireEnv('CROWD_PACKAGES_DB_PASSWORD'),
   }
 }
 
@@ -14,10 +24,10 @@ export function getEnricherConfig() {
 
   return {
     tokens,
-    pageSize: parseInt(process.env.PAGE_SIZE, 10),
-    batchSize: parseInt(process.env.BATCH_SIZE, 10),
-    maxRetries: parseInt(process.env.MAX_RETRIES, 10),
-    updateIntervalHours: parseInt(process.env.UPDATE_INTERVAL_HOURS, 10),
-    idleSleepSec: parseInt(process.env.IDLE_SLEEP_SEC, 10),
+    pageSize: requireEnvInt('PAGE_SIZE'),
+    batchSize: requireEnvInt('BATCH_SIZE'),
+    maxRetries: requireEnvInt('MAX_RETRIES'),
+    updateIntervalHours: requireEnvInt('UPDATE_INTERVAL_HOURS'),
+    idleSleepSec: requireEnvInt('IDLE_SLEEP_SEC'),
   }
 }

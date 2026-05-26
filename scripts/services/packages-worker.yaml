@@ -5,6 +5,7 @@ x-env-args: &env-args
   NODE_ENV: docker
   SERVICE: packages-worker
   SHELL: /bin/sh
+  SUPPRESS_NO_CONFIG_WARNING: 'true'
 
 services:
   packages-worker:
@@ -28,7 +29,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
-    command: 'pnpm run dev:packages-worker:local'
+    command: 'pnpm run dev:packages-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:

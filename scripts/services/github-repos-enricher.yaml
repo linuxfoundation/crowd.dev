@@ -5,6 +5,12 @@ x-env-args: &env-args
   NODE_ENV: docker
   SERVICE: github-repos-enricher
   SHELL: /bin/sh
+  SUPPRESS_NO_CONFIG_WARNING: 'true'
+  PAGE_SIZE: '200'
+  BATCH_SIZE: '50'
+  MAX_RETRIES: '3'
+  UPDATE_INTERVAL_HOURS: '24'
+  IDLE_SLEEP_SEC: '60'
 
 services:
   github-repos-enricher:
@@ -28,7 +34,7 @@ services:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
-    command: 'pnpm run dev:github-repos-enricher:local'
+    command: 'pnpm run dev:github-repos-enricher'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:
