@@ -12,6 +12,7 @@
     "recalculate-enrichment-affiliations": "npx tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "npx tsx src/bin/recalculate-all-affiliations.ts",
     "add-lf-projects-to-collection": "npx tsx src/bin/add-lf-projects-to-collection.ts",
+    "sync-light-repos": "npx tsx src/bin/sync-light-repos/index.ts",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
