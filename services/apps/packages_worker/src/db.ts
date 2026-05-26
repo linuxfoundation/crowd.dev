@@ -1,5 +1,5 @@
-import { getDbConnection } from '@crowd/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { getDbConnection } from '@crowd/database'
 
 import { getPackagesDbConfig } from './config'
 

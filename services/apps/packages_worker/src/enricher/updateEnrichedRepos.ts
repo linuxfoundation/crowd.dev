@@ -1,11 +1,14 @@
-import { getServiceChildLogger } from '@crowd/logging'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { getServiceChildLogger } from '@crowd/logging'
 
 import { LightRepoResult } from './types'
 
 const log = getServiceChildLogger('github-repos-enricher:update')
 
-export async function updateEnrichedRepos(qx: QueryExecutor, rows: LightRepoResult[]): Promise<void> {
+export async function updateEnrichedRepos(
+  qx: QueryExecutor,
+  rows: LightRepoResult[],
+): Promise<void> {
   if (rows.length === 0) return
 
   for (const r of rows) {
