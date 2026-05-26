@@ -1,0 +1,22 @@
+FROM node:20-alpine as builder
+
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /usr/crowd/app
+RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
+
+COPY ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+RUN pnpm fetch
+
+COPY ./services ./services
+RUN pnpm i --frozen-lockfile
+
+FROM node:20-alpine as runner
+
+WORKDIR /usr/crowd/app
+RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
+
+COPY --from=builder /usr/crowd/app/node_modules ./node_modules
+COPY --from=builder /usr/crowd/app/services/base.tsconfig.json ./services/base.tsconfig.json
+COPY --from=builder /usr/crowd/app/services/libs ./services/libs
+COPY --from=builder /usr/crowd/app/services/apps/packages_worker/ ./services/apps/packages_worker
