@@ -1,0 +1,28 @@
+{
+  "name": "@crowd/packages-worker",
+  "private": true,
+  "scripts": {
+    "start:packages-worker": "SERVICE=packages-worker tsx src/bin/packages-worker.ts",
+    "start:github-repos-enricher": "SERVICE=github-repos-enricher tsx src/bin/github-repos-enricher.ts",
+    "start:debug:packages-worker:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=packages-worker LOG_LEVEL=trace tsx --inspect=0.0.0.0:9233 src/bin/packages-worker.ts",
+    "start:debug:github-repos-enricher:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=github-repos-enricher LOG_LEVEL=trace tsx --inspect=0.0.0.0:9234 src/bin/github-repos-enricher.ts",
+    "dev:packages-worker:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:packages-worker:local",
+    "dev:github-repos-enricher:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:github-repos-enricher:local",
+    "lint": "npx eslint --ext .ts src --max-warnings=0",
+    "format": "npx prettier --write \"src/**/*.ts\"",
+    "format-check": "npx prettier --check .",
+    "tsc-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crowd/common": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
+    "@crowd/database": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.2",
+    "nodemon": "^3.0.1"
+  }
+}
