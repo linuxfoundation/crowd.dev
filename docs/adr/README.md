@@ -8,7 +8,8 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 
 | ADR | Title | Status | Date |
 | --- | ----- | ------ | ---- |
-| _none yet_ | | | |
+| [ADR-0001](./0001-packages-database.md) | Separate physical database for the packages domain | accepted | 2026-05-26 |
+| [ADR-0002](./0002-packages-worker-architecture.md) | Single-service, multi-entry-point architecture for packages_worker | accepted | 2026-05-25 |
 
 ## Why ADRs?
 
