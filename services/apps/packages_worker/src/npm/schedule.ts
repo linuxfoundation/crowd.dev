@@ -2,7 +2,7 @@ import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/clien
 
 import { svc } from '../service'
 
-import { npmHello } from './workflows'
+import { npmHello } from '../workflows'
 
 export async function scheduleNpmIngest(): Promise<void> {
   const { temporal } = svc
