@@ -14,7 +14,13 @@ RUN pnpm i --frozen-lockfile
 FROM node:20-bookworm-slim as runner
 
 WORKDIR /usr/crowd/app
-RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate && apt update && apt install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+# Copy corepack + pnpm from builder — avoids a network download in the runner stage
+COPY --from=builder /usr/local/lib/node_modules/corepack /usr/local/lib/node_modules/corepack
+COPY --from=builder /usr/local/bin/corepack /usr/local/bin/corepack
+COPY --from=builder /root/.cache/node/corepack /root/.cache/node/corepack
+RUN corepack enable pnpm
 
 COPY --from=builder /usr/crowd/app/node_modules ./node_modules
 COPY --from=builder /usr/crowd/app/services/base.tsconfig.json ./services/base.tsconfig.json
