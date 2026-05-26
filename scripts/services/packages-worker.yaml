@@ -4,6 +4,7 @@ x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
   SERVICE: packages-worker
+  CROWD_TEMPORAL_TASKQUEUE: packages-worker
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
 
