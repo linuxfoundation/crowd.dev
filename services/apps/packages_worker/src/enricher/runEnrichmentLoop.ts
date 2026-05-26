@@ -8,12 +8,13 @@ import { updateEnrichedRepos } from './updateEnrichedRepos'
 
 const log = getServiceChildLogger('github-repos-enricher')
 
+const MAX_RETRIES = 3
+
 async function fetchWithRetries(
   url: string,
   token: string,
-  maxRetries: number,
 ): Promise<LightRepoResult | null> {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await fetchLightRepo(url, token)
     } catch (err) {
@@ -26,12 +27,12 @@ async function fetchWithRetries(
 
       if (err.kind === 'RATE_LIMIT') throw err
 
-      if (attempt < maxRetries) {
+      if (attempt < MAX_RETRIES) {
         const backoffMs = 1000 * 2 ** attempt
         log.warn({ url, attempt, backoffMs }, `Transient error, retrying: ${err.message}`)
         await new Promise((r) => setTimeout(r, backoffMs))
       } else {
-        log.error({ url }, `Gave up after ${maxRetries} retries: ${err.message}`)
+        log.error({ url }, `Gave up after ${MAX_RETRIES} retries: ${err.message}`)
         return null
       }
     }
@@ -42,7 +43,7 @@ async function fetchWithRetries(
 async function fetchPage(
   qx: QueryExecutor,
   cursor: string | null,
-  pageSize: number,
+  batchSize: number,
   updateIntervalHours: number,
 ): Promise<{ rows: Array<{ id: string; url: string }>; urls: string[] }> {
   const rows = await qx.select(
@@ -53,9 +54,9 @@ async function fetchPage(
       AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '$(updateIntervalHours) hours')
       AND ($(cursor) IS NULL OR id > $(cursor))
     ORDER BY id
-    LIMIT $(pageSize)
+    LIMIT $(batchSize)
     `,
-    { cursor, pageSize, updateIntervalHours },
+    { cursor, batchSize, updateIntervalHours },
   )
   return {
     rows,
@@ -103,7 +104,7 @@ async function processPage(
         const url = validUrls[idx]
 
         try {
-          const result = await fetchWithRetries(url, token, config.maxRetries)
+          const result = await fetchWithRetries(url, token)
           if (result) {
             buffer.push(result)
             if (buffer.length >= config.batchSize) {
@@ -161,7 +162,7 @@ export async function runEnrichmentLoop(
   while (!isShuttingDown()) {
     pageNum++
 
-    const { rows, urls } = await fetchPage(qx, cursor, config.pageSize, config.updateIntervalHours)
+    const { rows, urls } = await fetchPage(qx, cursor, config.batchSize, config.updateIntervalHours)
 
     if (urls.length === 0) {
       log.info('No more repos to process, sleeping')

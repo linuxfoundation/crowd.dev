@@ -1,6 +1,3 @@
-import fs from 'fs'
-import path from 'path'
-
 import { getServiceLogger } from '@crowd/logging'
 
 import { getEnricherConfig } from '../config'
@@ -8,9 +5,6 @@ import { getPackagesDb } from '../db'
 import { runEnrichmentLoop } from '../enricher/runEnrichmentLoop'
 
 const log = getServiceLogger()
-
-const liveFilePath = path.join(__dirname, '../tmp/github-repos-enricher-live.tmp')
-const readyFilePath = path.join(__dirname, '../tmp/github-repos-enricher-ready.tmp')
 
 let shuttingDown = false
 
@@ -37,20 +31,6 @@ const main = async () => {
   await qx.selectOne('SELECT 1')
   log.info('Connected to packages-db.')
 
-  fs.mkdirSync(path.dirname(liveFilePath), { recursive: true })
-
-  const healthInterval = setInterval(async () => {
-    if (shuttingDown) return
-    try {
-      await Promise.all([
-        fs.promises.open(liveFilePath, 'a').then((f) => f.close()),
-        fs.promises.open(readyFilePath, 'a').then((f) => f.close()),
-      ])
-    } catch (err) {
-      log.warn({ err }, 'Failed to write health probe files')
-    }
-  }, 5000)
-
   log.info(
     { tokens: config.tokens.length, pageSize: config.pageSize, batchSize: config.batchSize },
     'Starting enrichment loop',
@@ -58,7 +38,6 @@ const main = async () => {
 
   await runEnrichmentLoop(qx, config, () => shuttingDown)
 
-  clearInterval(healthInterval)
   log.info('github-repos-enricher stopped.')
   process.exit(0)
 }

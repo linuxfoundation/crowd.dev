@@ -24,10 +24,8 @@ export function getEnricherConfig() {
 
   return {
     tokens,
-    pageSize: requireEnvInt('PAGE_SIZE'),
-    batchSize: requireEnvInt('BATCH_SIZE'),
-    maxRetries: requireEnvInt('MAX_RETRIES'),
-    updateIntervalHours: requireEnvInt('UPDATE_INTERVAL_HOURS'),
-    idleSleepSec: requireEnvInt('IDLE_SLEEP_SEC'),
+    batchSize: requireEnvInt('ENRICHER_BATCH_SIZE'),
+    updateIntervalHours: requireEnvInt('ENRICHER_REPO_UPDATE_INTERVAL_HOURS'),
+    idleSleepSec: requireEnvInt('ENRICHER_IDLE_SLEEP_SEC'),
   }
 }
