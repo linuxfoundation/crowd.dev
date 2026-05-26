@@ -10,7 +10,6 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | --- | ----- | ------ | ---- |
 | [ADR-0001](./0001-packages-database.md) | Separate physical database for the packages domain | accepted | 2026-05-26 |
 | [ADR-0002](./0002-packages-worker-architecture.md) | Single-service, multi-entry-point architecture for packages_worker | accepted | 2026-05-25 |
-| [ADR-0003](./0003-packages-worker-temporal-parent.md) | Temporal ServiceWorker as the host for packages_worker scheduled workflows | accepted | 2026-05-26 |
 
 ## Why ADRs?
 
