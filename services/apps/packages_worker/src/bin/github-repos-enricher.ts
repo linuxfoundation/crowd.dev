@@ -32,7 +32,7 @@ const main = async () => {
   log.info('Connected to packages-db.')
 
   log.info(
-    { tokens: config.tokens.length, pageSize: config.pageSize, batchSize: config.batchSize },
+    { tokens: config.tokens.length, batchSize: config.batchSize },
     'Starting enrichment loop',
   )
 
