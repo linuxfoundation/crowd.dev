@@ -96,9 +96,8 @@ async function processPage(
         await new Promise((r) => setTimeout(r, initialPark))
       }
 
-      while (true) {
+      while (nextIdx < validUrls.length) {
         const idx = nextIdx++
-        if (idx >= validUrls.length) break
         const url = validUrls[idx]
 
         try {
