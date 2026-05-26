@@ -1,0 +1,74 @@
+DESCRIPTION >
+    Top contributors for a given organization leaderboard.
+    Returns members sorted by contribution count within the specified date range.
+
+TAGS "Organization page"
+
+NODE org_slug_lookup
+SQL >
+    %
+    SELECT id
+    FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
+NODE org_page_contributors_activity_aggregates
+SQL >
+    %
+    {% if Boolean(count, false) %}
+        SELECT count(distinct memberId)
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            organizationId = (SELECT id FROM org_slug_lookup)
+            {% if defined(startDate) %}
+                AND timestamp
+                >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp < {{ DateTime(endDate, description="Filter activity timestamp before") }}
+            {% end %}
+    {% else %}
+        SELECT
+            memberId,
+            count() as "contributionCount",
+            ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as "contributionPercentage"
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            organizationId = (SELECT id FROM org_slug_lookup)
+            {% if defined(startDate) %}
+                AND timestamp
+                >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp < {{ DateTime(endDate, description="Filter activity timestamp before") }}
+            {% end %}
+        GROUP BY memberId
+        ORDER BY contributionCount DESC, memberId DESC
+        LIMIT {{ Int32(limit, 10) }}
+        OFFSET {{ Int32(offset, 0) }}
+    {% end %}
+
+NODE org_page_contributors_leaderboard
+SQL >
+    %
+    {% if Boolean(count, false) %}
+        SELECT count(distinct memberId) as count
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            organizationId = (SELECT id FROM org_slug_lookup)
+            {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }} {% end %}
+            {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }} {% end %}
+    {% else %}
+        SELECT
+            m.id,
+            m.avatar,
+            m.displayName,
+            m.githubHandleArray,
+            agg.contributionCount,
+            agg.contributionPercentage,
+            mr.roles
+        FROM members_sorted AS m ANY
+        INNER JOIN org_page_contributors_activity_aggregates agg ON agg.memberId = m.id
+        LEFT JOIN member_roles mr ON mr.memberId = m.id
+        WHERE m.id IN (SELECT memberId FROM org_page_contributors_activity_aggregates)
+        ORDER BY agg.contributionCount DESC
+    {% end %}

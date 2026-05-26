@@ -79,7 +79,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_MULTIPLE_VALUE_ATTRIBUTES]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 40000,
+      max_tokens: 2000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },
@@ -87,7 +87,7 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
   [LlmQueryType.MEMBER_ENRICHMENT_SQUASH_WORK_EXPERIENCES_FROM_MULTIPLE_SOURCES]: {
     modelId: LlmModelType.CLAUDE_SONNET_4,
     arguments: {
-      max_tokens: 40000,
+      max_tokens: 8000,
       anthropic_version: 'bedrock-2023-05-31',
       temperature: 0,
     },

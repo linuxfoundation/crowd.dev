@@ -10,6 +10,7 @@ import {
   getGithubInstallationToken,
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
+  signalMemberUpdate,
   startMemberUnmergeWorkflow,
   unmergeMember,
 } from '@crowd/common_services'
@@ -819,16 +820,10 @@ export default class MemberService extends LoggerBase {
       // Pass invalidateCache from options to control whether to clear list caches
       await invalidateMemberQueryCache(this.options.redis, [id], invalidateCache)
 
-      const commonMemberService = new CommonMemberService(
-        optionsQx(this.options),
-        this.options.temporal,
-        this.options.log,
-      )
-      await commonMemberService.startAffiliationRecalculation(
-        id,
-        (data.organizations || []).map((o) => o.id),
+      await signalMemberUpdate(this.options.temporal, id, {
+        memberOrganizationIds: (data.organizations || []).map((o) => o.id),
         syncToOpensearch,
-      )
+      })
 
       return record
     } catch (error) {

@@ -21,6 +21,7 @@ export interface IRepository {
   updatedAt: string
   deletedAt: string | null
   lastArchivedCheckAt: string | null
+  licenses: string[] | null
 }
 
 export interface ICreateRepository {
@@ -148,7 +149,8 @@ export async function getRepositoriesBySourceIntegrationId(
       "createdAt",
       "updatedAt",
       "deletedAt",
-      "lastArchivedCheckAt"
+      "lastArchivedCheckAt",
+      licenses
     FROM public.repositories
     WHERE "sourceIntegrationId" = $(sourceIntegrationId)
       AND "deletedAt" IS NULL
@@ -190,7 +192,8 @@ export async function getRepositoriesByUrl(
       "createdAt",
       "updatedAt",
       "deletedAt",
-      "lastArchivedCheckAt"
+      "lastArchivedCheckAt",
+      licenses
     FROM public.repositories
     WHERE url IN ($(repoUrls:csv))
     ${deletedFilter}

@@ -70,9 +70,11 @@ export class NotFoundError extends HttpError {
 export class ConflictError extends HttpError {
   readonly code = 'CONFLICT'
   readonly status = 409
+  readonly context?: Record<string, unknown>
 
-  constructor(message = 'Conflict') {
+  constructor(message = 'Conflict', context?: Record<string, unknown>) {
     super(message)
+    this.context = context
   }
 }
 

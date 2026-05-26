@@ -1,6 +1,4 @@
-import { WorkflowIdReusePolicy } from '@temporalio/client'
-
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
@@ -262,20 +260,9 @@ async function main() {
               log.info(
                 `Triggering memberUpdate: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
               )
-              await temporal.workflow.start('memberUpdate', {
-                taskQueue: 'profiles',
-                workflowId: `member-update/${DEFAULT_TENANT_ID}/${memberId}`,
-                workflowIdReusePolicy:
-                  WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-                retry: { maximumAttempts: 10 },
-                args: [
-                  {
-                    member: { id: memberId },
-                    memberOrganizationIds: activeOrgIds,
-                    syncToOpensearch: true,
-                  },
-                ],
-                searchAttributes: { TenantId: [DEFAULT_TENANT_ID] },
+              await signalMemberUpdate(temporal, memberId, {
+                memberOrganizationIds: activeOrgIds,
+                syncToOpensearch: true,
               })
               if (opts.workflowDelayMs > 0) {
                 await new Promise((resolve) => setTimeout(resolve, opts.workflowDelayMs))

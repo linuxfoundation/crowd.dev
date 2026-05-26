@@ -293,23 +293,29 @@ function build() {
 }
 
 function create_migration() {
-    MIG_NAME="$1"
+    MIG_NAME="$(printf '%s\n' "$1" | tr -s ' ' | xargs)"
+    if [[ -z "$MIG_NAME" ]] || [[ ! "$MIG_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        error "Migration name must be non-empty and contain only letters, numbers, underscores, or hyphens"
+        exit 1
+    fi
+
     MIG_VERSION=$(date +%s)
     UP_MIG_FILE="${CLI_HOME}/../backend/src/database/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
-    DOWN_MIG_FILE="${CLI_HOME}/../backend/src/database/migrations/U${MIG_VERSION}__${MIG_NAME}.sql"
-    touch $UP_MIG_FILE
-    touch $DOWN_MIG_FILE
-    yell "Created ${MIG_FILE}"
+    touch "$UP_MIG_FILE"
+    yell "Created $UP_MIG_FILE"
 }
 
 function create_product_migration() {
-    MIG_NAME="$1"
+    MIG_NAME="$(printf '%s\n' "$1" | tr -s ' ' | xargs)"
+    if [[ -z "$MIG_NAME" ]] || [[ ! "$MIG_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        error "Migration name must be non-empty and contain only letters, numbers, underscores, or hyphens"
+        exit 1
+    fi
+
     MIG_VERSION=$(date +%s)
     UP_MIG_FILE="${CLI_HOME}/../backend/src/product/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
-    DOWN_MIG_FILE="${CLI_HOME}/../backend/src/product/migrations/U${MIG_VERSION}__${MIG_NAME}.sql"
-    touch $UP_MIG_FILE
-    touch $DOWN_MIG_FILE
-    yell "Created ${MIG_FILE}"
+    touch "$UP_MIG_FILE"
+    yell "Created $UP_MIG_FILE"
 }
 
 function build_and_publish() {

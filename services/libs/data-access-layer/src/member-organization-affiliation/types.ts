@@ -10,4 +10,5 @@ export type TimelineItem = {
   dateEnd: string | null
   organizationId: string | null
   segmentId?: string
+  skipManualAffiliationSegments?: boolean
 }

@@ -1,0 +1,14 @@
+DESCRIPTION >
+    Precomputed yearly activity counts per organization for the org page. Rebuilt nightly by org_page_activities_timeseries_copy_pipe.
+    One row per (organizationId, startDate). Used by org_page_activities_timeseries.pipe for cheap request-time lookups.
+
+SCHEMA >
+    `organizationId` String,
+    `startDate` Date,
+    `endDate` Date,
+    `activityCount` UInt64,
+    `computedAt` DateTime
+
+ENGINE ReplacingMergeTree
+ENGINE_SORTING_KEY organizationId, startDate
+ENGINE_VER computedAt
