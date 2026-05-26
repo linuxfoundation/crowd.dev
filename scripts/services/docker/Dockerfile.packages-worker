@@ -1,6 +1,6 @@
-FROM node:20-alpine as builder
+FROM node:20-bookworm-slim as builder
 
-RUN apk add --no-cache python3 make g++
+RUN apt-get update && apt-get install -y python3 make g++ --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/crowd/app
 RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
