@@ -16,3 +16,5 @@ scripts/
 *.md
 Makefile
 backend/
+services/apps/
+!services/apps/packages_worker
