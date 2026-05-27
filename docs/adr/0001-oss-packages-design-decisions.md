@@ -328,7 +328,7 @@ A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-wi
 - **Sonatype Central Stats API access** — not confirmed as of 2026-05-27. If unavailable by day 5, Maven download counts will be absent from the week-2 demo (`downloads_last_month` NULL for Maven rows; disclose to stakeholders).
 - **`has_critical_vulnerability` flag** — currently deferred; the column is commented out in the schema. The open question is what it should mean: (a) any critical advisory exists for this package name regardless of version, or (b) the package's latest version actually falls inside an active affected range. Option (b) requires evaluating OSV's `introduced` / `fixed` / `last_affected` range fields using semver (npm) or Maven's own version comparator — non-trivial work. Until resolved, callers join `advisory_packages` directly instead of reading a flag.
 - **criticality_score formula** — the placeholder formula (`X * downloadsCount + Y * dependentCount`) has not been validated against known critical packages. Final formula is yet to be defined.
-- **pg_partman + pg_cron setup** — must be confirmed active in the OCI environment before download workers start; `downloads_daily` and `downloads_last_30_days` inserts will fail if monthly partitions are not pre-created.
+- **pg_partman + pg_cron setup** — must be confirmed active in the OCI environment before download workers start; `downloads_daily` and `downloads_last_30d` inserts will fail if monthly partitions are not pre-created.
 
 ---
 
