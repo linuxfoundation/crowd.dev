@@ -200,7 +200,7 @@ A standalone Java app parsing the Maven Central Lucene index is being built in p
 
 **Strategy**: token-pooled GraphQL via the existing GitHub App, batches of 100 repos.
 
-The existing `github-repos-enricher` worker (`services/apps/packages_worker/src/github/`) is the template. Token sourcing uses the GitHub App already integrated through Nango — hundreds of installation tokens are available there, so no PATs are needed. Key parameters:
+The existing `github-repos-enricher` worker (`services/apps/packages_worker/src/enricher/`) is the template. Token sourcing uses the GitHub App already integrated through Nango — hundreds of installation tokens are available there, so no PATs are needed. Key parameters:
 
 - **Nango GitHub App tokens** in rotation for rate-limit headroom (not PATs — see open questions).
 - GraphQL `repository(owner, name)` query per repo — one call per repo, not batched.
