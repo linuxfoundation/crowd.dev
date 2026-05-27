@@ -42,6 +42,16 @@ describe('computeV3Score', () => {
     expect(computeV3Score('CVSS:3.1/AV:Z/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H')).toBeNull() // bad enum
   })
 
+  // Regression guards for the unvalidated-Scope bug: missing or invalid S used
+  // to silently produce a Scope:Unchanged score instead of returning null.
+  it('returns null when the Scope metric is missing', () => {
+    expect(computeV3Score('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/C:H/I:H/A:H')).toBeNull()
+  })
+
+  it('returns null when the Scope metric is invalid', () => {
+    expect(computeV3Score('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:X/C:H/I:H/A:H')).toBeNull()
+  })
+
   it('handles scope-changed PR remapping', () => {
     // PR:L scores higher under Scope:Changed than under Scope:Unchanged.
     const unchanged = computeV3Score('CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H')

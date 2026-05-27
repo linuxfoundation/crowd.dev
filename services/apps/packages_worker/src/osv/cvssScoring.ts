@@ -13,6 +13,7 @@ const PR_U: Record<string, number> = { N: 0.85, L: 0.62, H: 0.27 }
 const PR_C: Record<string, number> = { N: 0.85, L: 0.68, H: 0.5 }
 const UI: Record<string, number> = { N: 0.85, R: 0.62 }
 const CIA: Record<string, number> = { N: 0, L: 0.22, H: 0.56 }
+const S_VALUES = new Set(['U', 'C'])
 
 function parseVector(vector: string): Record<string, string> | null {
   const parts = vector.split('/').filter(Boolean)
@@ -41,7 +42,13 @@ export function computeV3Score(vector: string): number | null {
   const av = AV[v.AV]
   const ac = AC[v.AC]
   const ui = UI[v.UI]
+  // Scope is read directly because the metric is qualitative, not numeric, so
+  // it does not slot into the undefined-check below. Validate it explicitly
+  // here — an invalid or missing S would otherwise silently fall through to
+  // the Scope:Unchanged formula and produce a wrong numeric score instead of
+  // null, which is the headline risk flagged in ADR-0005.
   const s = v.S
+  if (!S_VALUES.has(s)) return null
   const pr = s === 'C' ? PR_C[v.PR] : PR_U[v.PR]
   const c = CIA[v.C]
   const i = CIA[v.I]
