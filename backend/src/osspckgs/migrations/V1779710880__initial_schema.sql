@@ -7,7 +7,10 @@ CREATE TABLE packages_universe (
     ecosystem text NOT NULL,
     namespace text,
     name text NOT NULL,
-    downloads_30d bigint,
+    -- To be validated later on: Cached latest-month snapshot written by the same weekly ranking worker that populates
+    -- downloads_monthly. Used directly by rank_packages_universe() to avoid a join.
+    -- For monthly history across runs, see downloads_monthly (keyed by purl).
+    downloads_last_30d bigint,
     dependent_packages_count int,
     dependent_repos_count int,
     criticality_score numeric(10, 4),
@@ -54,7 +57,6 @@ CREATE TABLE packages (
     latest_release_at timestamptz,
     dependent_packages_count int,
     dependent_repos_count int,
-    downloads_last_month bigint,
     -- has_critical_vulnerability bool NOT NULL DEFAULT FALSE,
     -- Deferred: semantics undecided between (a) any advisory with no fixed_version vs
     -- (b) latest_version falls inside an affected semver range. Lateral join against
@@ -78,10 +80,6 @@ CREATE INDEX ON packages (is_critical) WHERE is_critical;
 CREATE INDEX ON packages (ecosystem, name);
 
 CREATE INDEX ON packages USING gin (keywords);
-
-CREATE INDEX ON packages (downloads_last_month DESC)
-WHERE
-    status = 'active';
 
 -- INDEX on has_critical_vulnerability removed — column is commented out above.
 -- Uncomment both when semantics are decided.
@@ -126,7 +124,6 @@ CREATE TABLE versions (
     is_yanked bool,
     is_prerelease bool NOT NULL DEFAULT FALSE,
     license text, -- SPDX where available; can differ per version
-    download_count bigint, -- per-version where available (npm, crates)
     last_synced_at timestamptz NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id, package_id),
     UNIQUE (package_id, number)
@@ -646,9 +643,27 @@ CREATE TABLE package_maintainers (
 );
 
 -- ============================================================
--- DOWNLOADS (time-series, partitioned by month via pg_partman)
+-- DOWNLOADS
 --
--- pg_partman MUST be enabled in OCI config before this migration runs:
+-- Two tables track download volume at different tiers and granularities:
+--
+--   downloads_daily   (tier 2 — packages)
+--     Source of truth for daily download counts. One row per package per day.
+--     No denormalized rollup on the packages table — consumers SUM over this
+--     table when they need a window (e.g. last 30 days).
+--
+--   downloads_monthly (tier 3 — packages_universe)
+--     Monthly download timeline keyed by purl. Stable across the weekly
+--     packages_universe truncation, which is why it uses purl as identifier
+--     rather than a FK to packages_universe. The per-package latest-month
+--     snapshot is also cached in packages_universe.downloads_last_30d for fast
+--     access by the criticality-ranking function (no join needed).
+--
+-- ============================================================
+-- DOWNLOADS DAILY (tier 2 — packages, daily granularity)
+--
+-- Partitioned by month via pg_partman. pg_partman MUST be enabled in OCI
+-- config before this migration runs:
 --   OCI Console → Database → Configuration → Extensions → enable pg_partman
 --
 -- After enabling, run the setup below (once, outside Flyway or in a
@@ -676,13 +691,34 @@ CREATE TABLE package_maintainers (
 -- ============================================================
 CREATE TABLE downloads_daily (
     id bigserial,
-    package_id bigint NOT NULL,
+    package_id bigint NOT NULL REFERENCES packages (id),
     date date NOT NULL,
     count bigint NOT NULL,
     PRIMARY KEY (id, date),
     UNIQUE (package_id, date)
 )
 PARTITION BY RANGE (date);
+
+-- ============================================================
+-- DOWNLOADS MONTHLY (tier 3 — packages_universe, monthly granularity)
+--
+-- Historical timeline of monthly download counts, keyed by purl.
+-- Keyed by purl (not packages_universe.id) so rows survive the weekly
+-- truncation of packages_universe. The latest-month value is also written
+-- to packages_universe.downloads_last_30d for fast access by the ranking function.
+--
+-- month stores the first day of the month (e.g. 2025-01-01 for Jan 2025).
+-- Writers should upsert: INSERT ... ON CONFLICT (purl, month) DO UPDATE SET count = EXCLUDED.count
+-- ============================================================
+CREATE TABLE downloads_monthly (
+    id bigserial PRIMARY KEY,
+    purl text NOT NULL,
+    date date NOT NULL,
+    count bigint NOT NULL,
+    UNIQUE (purl, month)
+);
+
+CREATE INDEX ON downloads_monthly (purl, month DESC);
 
 -- ============================================================
 -- CRITICALITY RANKING FUNCTION
@@ -707,7 +743,7 @@ BEGIN
     -- and to compress the gap between small and large values (e.g. LN(1)=0
     -- vs LN(2)≈0.69 gives a gentler floor than LN(0)=-∞). Typically 1.0.
     --
-    -- Until the npm-registry / Maven downloads enricher runs, downloads_30d
+    -- Until the npm-registry / Maven downloads enricher runs, downloads_last_30d
     -- is NULL on every row. weight_downloads contributes 0 to the score;
     -- ranking effectively reduces to:
     --   LN(1 + dependent_repos_count)     * weight_dependent_repos
@@ -717,7 +753,7 @@ BEGIN
     WITH new_scores AS (
         SELECT
             id,
-            ( LN(log_smoothing + COALESCE(downloads_30d, 0))            * weight_downloads
+            ( LN(log_smoothing + COALESCE(downloads_last_30d, 0))            * weight_downloads
             + LN(log_smoothing + COALESCE(dependent_repos_count, 0))    * weight_dependent_repos
             + LN(log_smoothing + COALESCE(dependent_packages_count, 0)) * weight_dependent_packages
             )::numeric(10, 4) AS new_score
