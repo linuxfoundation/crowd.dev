@@ -13,7 +13,10 @@ CREATE TABLE packages_universe (
     criticality_score numeric(10, 4),
     rank_in_ecosystem int,
     is_critical bool NOT NULL DEFAULT FALSE,
-    last_ranked_at timestamptz
+    -- Renamed from last_ranked_at (original pckgs.md spec) to last_rank_pass_at to make the
+    -- every-pass update semantic explicit: updated unconditionally on each ranking run,
+    -- not only when the rank changes. Mirrors the same column added to packages.
+    last_rank_pass_at timestamptz
 );
 
 CREATE INDEX ON packages_universe (ecosystem, rank_in_ecosystem);
@@ -52,16 +55,25 @@ CREATE TABLE packages (
     dependent_packages_count int,
     dependent_repos_count int,
     downloads_last_month bigint,
-    -- TODO: define semantics before enabling. Options:
-    --   a) fixed_version IS NULL on any advisory range → "no fix released yet" (simple, opt 2)
-    --   b) latest_version falls inside an affected range → "currently vulnerable" (correct, needs semver comparison per ecosystem)
     -- has_critical_vulnerability bool NOT NULL DEFAULT FALSE,
+    -- Deferred: semantics undecided between (a) any advisory with no fixed_version vs
+    -- (b) latest_version falls inside an affected semver range. Lateral join against
+    -- advisory_packages used in queries until this is resolved.
     criticality_score numeric(10, 4),
+    -- is_critical and last_rank_pass_at are not in the original pckgs.md spec; added so
+    -- the packages table can answer "is this package critical?" without joining packages_universe,
+    -- which is an ephemeral ranking workspace and gets truncated on every weekly pass.
+    is_critical    bool NOT NULL DEFAULT FALSE,
+    -- Set on every ranking pass (not just when rank changes) so queries can detect stale rows
+    -- via last_rank_pass_at < NOW() - INTERVAL '8 days'.
+    last_rank_pass_at timestamptz,
     ingestion_source text,
     last_synced_at timestamptz NOT NULL DEFAULT NOW()
 );
 
 CREATE UNIQUE INDEX ON packages (ecosystem, COALESCE(namespace, ''), name);
+
+CREATE INDEX ON packages (is_critical) WHERE is_critical;
 
 CREATE INDEX ON packages (ecosystem, name);
 
@@ -107,8 +119,11 @@ CREATE TABLE versions (
     ecosystem text NOT NULL,
     number text NOT NULL,
     published_at timestamptz,
-    is_latest bool NOT NULL DEFAULT FALSE,
-    is_yanked bool NOT NULL DEFAULT FALSE,
+    -- Nullable: deps.dev PackageVersions does not expose is_latest; set by the npm/maven enricher
+    -- workers that have authoritative latest-version data. NULL = unknown (not yet enriched).
+    is_latest bool,
+    -- Nullable for same reason: yanked status comes from registry-specific workers, not deps.dev.
+    is_yanked bool,
     is_prerelease bool NOT NULL DEFAULT FALSE,
     license text, -- SPDX where available; can differ per version
     download_count bigint, -- per-version where available (npm, crates)
@@ -472,14 +487,26 @@ CREATE TABLE repos (
     watchers int,
     open_issues int,
     last_commit_at timestamptz,
-    archived bool NOT NULL DEFAULT FALSE,
-    disabled bool NOT NULL DEFAULT FALSE,
-    is_fork bool NOT NULL DEFAULT FALSE,
-    created_at timestamptz,
+    -- Nullable: deps.dev ProjectsLatest does not expose archived/disabled/is_fork.
+    -- These are populated by the GitHub API enricher worker. NULL = not yet enriched.
+    archived bool,
+    disabled bool,
+    is_fork bool,
+    -- DEFAULT NOW() added: fallback when upstream source does not provide a creation timestamp.
+    created_at timestamptz DEFAULT NOW(),
+    homepage text,
+    -- raw_project_type/raw_project_name preserve deps.dev's original project identity (e.g. "GITLAB",
+    -- "github.com/owner/repo") so self-hosted GitLab instances can be detected later without backfill.
+    -- canonicalRepoUrl() uses these to build the canonical url; they remain queryable for debugging.
+    raw_project_type text,
+    raw_project_name text,
     -- Scorecard aggregate; per-check detail in repo_scorecard_checks
     scorecard_score numeric(3, 1),
     scorecard_last_run_at timestamptz,
-    last_synced_at timestamptz NOT NULL DEFAULT NOW()
+    -- Nullable with no default: multiple enrichers (deps.dev, GitHub worker, Scorecard) each write
+    -- different columns at different times. NOT NULL DEFAULT would stamp a "synced" timestamp on
+    -- first insert even when most columns are still NULL, making freshness checks misleading.
+    last_synced_at timestamptz
 );
 
 CREATE INDEX ON repos (host, OWNER, name);
@@ -538,7 +565,9 @@ CREATE INDEX ON package_repos (repo_id);
 -- ============================================================
 CREATE TABLE advisories (
     id bigserial PRIMARY KEY,
-    osv_id text UNIQUE NOT NULL,
+    osv_id text UNIQUE NOT NULL,   -- SourceID from deps.dev BQ (GHSA-xxx, CVE-xxx, OSV-xxx, etc.)
+    source text,                   -- 'GHSA' | 'OSV' | 'NVD' | 'NSWG' etc. (BQ: Source)
+    source_url text,               -- upstream advisory URL (BQ: SourceURL)
     aliases text[], -- CVE-XXXX, GHSA-...
     severity text, -- 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
     cvss numeric(3, 1),
@@ -547,7 +576,7 @@ CREATE TABLE advisories (
     summary text,
     details text,
     published_at timestamptz,
-    modified_at timestamptz
+    modified_at timestamptz        -- NULL for BQ-sourced rows; tracked in-house on re-sync
 );
 
 -- osv_id index omitted: UNIQUE constraint above already creates one.
@@ -574,12 +603,16 @@ WHERE
 
 -- Version ranges affected by an advisory per package.
 -- COALESCE prevents silent duplicates when introduced_version is NULL.
+-- BQ-sourced rows populate range_raw / unaffected_raw only; introduced/fixed/last_affected
+-- are populated by a future range-parsing workstream.
 CREATE TABLE advisory_affected_ranges (
     id bigserial PRIMARY KEY,
     advisory_package_id bigint NOT NULL REFERENCES advisory_packages (id),
     introduced_version text, -- NULL = unknown start
-    fixed_version text, -- NULL = no fix yet
-    last_affected text -- NULL = no known upper bound
+    fixed_version text,      -- NULL = no fix yet
+    last_affected text,      -- NULL = no known upper bound
+    range_raw text,          -- raw AffectedVersions string from deps.dev BQ
+    unaffected_raw text      -- raw UnaffectedVersions string from deps.dev BQ
 );
 
 CREATE UNIQUE INDEX ON advisory_affected_ranges (advisory_package_id, COALESCE(introduced_version, ''));
@@ -650,3 +683,98 @@ CREATE TABLE downloads_daily (
     UNIQUE (package_id, date)
 )
 PARTITION BY RANGE (date);
+
+-- ============================================================
+-- CRITICALITY RANKING FUNCTION
+-- ============================================================
+CREATE OR REPLACE FUNCTION rank_packages_universe(
+    weight_downloads            numeric,
+    weight_dependent_repos      numeric,
+    weight_dependent_packages   numeric,
+    log_smoothing               numeric,
+    critical_top_n_by_ecosystem jsonb
+)
+RETURNS TABLE (scored_rows int, ranked_rows int, propagated_rows int)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    n_scored     int;
+    n_ranked     int;
+    n_propagated int;
+BEGIN
+    -- Step 1: recompute scores; only touch rows whose score changed.
+    -- log_smoothing is added before LN() to avoid LN(0) on zero-count rows
+    -- and to compress the gap between small and large values (e.g. LN(1)=0
+    -- vs LN(2)≈0.69 gives a gentler floor than LN(0)=-∞). Typically 1.0.
+    --
+    -- Until the npm-registry / Maven downloads enricher runs, downloads_30d
+    -- is NULL on every row. weight_downloads contributes 0 to the score;
+    -- ranking effectively reduces to:
+    --   LN(1 + dependent_repos_count)     * weight_dependent_repos
+    -- + LN(1 + dependent_packages_count)  * weight_dependent_packages
+    UPDATE packages_universe SET last_rank_pass_at = NOW();
+
+    WITH new_scores AS (
+        SELECT
+            id,
+            ( LN(log_smoothing + COALESCE(downloads_30d, 0))            * weight_downloads
+            + LN(log_smoothing + COALESCE(dependent_repos_count, 0))    * weight_dependent_repos
+            + LN(log_smoothing + COALESCE(dependent_packages_count, 0)) * weight_dependent_packages
+            )::numeric(10, 4) AS new_score
+        FROM packages_universe
+    )
+    UPDATE packages_universe pu
+    SET    criticality_score = ns.new_score
+    FROM   new_scores ns
+    WHERE  pu.id = ns.id
+      AND  pu.criticality_score IS DISTINCT FROM ns.new_score;
+
+    GET DIAGNOSTICS n_scored = ROW_COUNT;
+
+    -- Step 2: rank within ecosystem; flag is_critical via JSONB lookup.
+    -- Only purl-having rows are ranked (null purls can't propagate to packages).
+    -- Tie-break by id keeps ranks deterministic across runs so IS DISTINCT FROM
+    -- doesn't no-op-write equal-score rows on every call.
+    WITH ranked AS (
+        SELECT
+            id,
+            ecosystem,
+            ROW_NUMBER() OVER (
+                PARTITION BY ecosystem
+                ORDER BY criticality_score DESC NULLS LAST, id
+            ) AS r
+        FROM packages_universe
+        WHERE purl IS NOT NULL
+    ),
+    with_flag AS (
+        SELECT
+            id,
+            r,
+            COALESCE(
+                r <= (critical_top_n_by_ecosystem ->> ecosystem)::int,
+                FALSE
+            ) AS new_is_critical
+        FROM ranked
+    )
+    UPDATE packages_universe pu
+    SET    rank_in_ecosystem = wf.r,
+           is_critical       = wf.new_is_critical
+    FROM   with_flag wf
+    WHERE  pu.id = wf.id
+      AND  ( pu.rank_in_ecosystem IS DISTINCT FROM wf.r
+          OR pu.is_critical       IS DISTINCT FROM wf.new_is_critical );
+
+    GET DIAGNOSTICS n_ranked = ROW_COUNT;
+
+    -- Step 3: propagate criticality_score onto Tier-2 packages rows.
+    UPDATE packages p
+    SET    criticality_score = pu.criticality_score
+    FROM   packages_universe pu
+    WHERE  p.purl = pu.purl
+      AND  p.criticality_score IS DISTINCT FROM pu.criticality_score;
+
+    GET DIAGNOSTICS n_propagated = ROW_COUNT;
+
+    RETURN QUERY SELECT n_scored, n_ranked, n_propagated;
+END;
+$$;
