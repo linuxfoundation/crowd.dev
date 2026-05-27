@@ -32,3 +32,20 @@ export function getEnricherConfig() {
     idleSleepSec: requireEnvInt('ENRICHER_IDLE_SLEEP_SEC'),
   }
 }
+
+export function getOsvConfig() {
+  const ecosystems = requireEnv('OSV_ECOSYSTEMS')
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+
+  return {
+    bulkBaseUrl: requireEnv('OSV_BULK_BASE_URL'),
+    ecosystems,
+    syncIntervalHours: requireEnvInt('OSV_SYNC_INTERVAL_HOURS'),
+    idleSleepSec: requireEnvInt('OSV_IDLE_SLEEP_SEC'),
+    tmpDir: requireEnv('OSV_TMP_DIR'),
+    batchSize: requireEnvInt('OSV_BATCH_SIZE'),
+    deriveBatchSize: requireEnvInt('OSV_DERIVE_BATCH_SIZE'),
+  }
+}
