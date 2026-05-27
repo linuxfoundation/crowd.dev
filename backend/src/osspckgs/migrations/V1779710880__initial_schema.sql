@@ -7,9 +7,10 @@ CREATE TABLE packages_universe (
     ecosystem text NOT NULL,
     namespace text,
     name text NOT NULL,
-    -- To be validated later on: Cached latest 30-day window count written by the same weekly ranking worker that populates
-    -- downloads_last_30d. Used directly by rank_packages_universe() to avoid a join.
-    -- For the full rolling-window history, see downloads_last_30d (keyed by purl).
+    -- Cached latest 30-day window count. Written by the same weekly ranking worker that upserts rows into
+    -- the downloads_last_30d table (keyed by purl/end_date). This column is the denormalized latest value
+    -- used directly by rank_packages_universe() to avoid a join; the downloads_last_30d table holds the
+    -- full rolling-window timeline.
     downloads_last_30d bigint,
     dependent_packages_count int,
     dependent_repos_count int,
@@ -706,11 +707,36 @@ PARTITION BY RANGE (date);
 -- Each row captures one window: downloads from start_date to end_date (inclusive).
 -- Keyed by purl (not packages_universe.id) so rows survive the weekly
 -- truncation of packages_universe. The latest window is also written
--- to packages_universe.downloads_last_30d for fast access by the ranking function.
+-- to packages_universe.downloads_last_30d column for fast access by the ranking function.
 --
 -- Writers should upsert: INSERT ... ON CONFLICT (purl, end_date) DO UPDATE SET count = EXCLUDED.count, start_date = EXCLUDED.start_date
 -- PK includes end_date because Postgres requires the partition key to be
 -- part of the primary key on range-partitioned tables.
+--
+-- Partitioned by month via pg_partman. pg_partman MUST be enabled in OCI
+-- config before this migration runs:
+--   OCI Console → Database → Configuration → Extensions → enable pg_partman
+--
+-- After enabling, run the setup below (once, outside Flyway or in a
+-- separate migration) to register pg_partman and create initial partitions:
+--
+--   CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+--
+--   SELECT partman.create_parent(
+--       p_parent_table => 'public.downloads_last_30d',
+--       p_control      => 'end_date',
+--       p_interval     => '1 month',
+--       p_premake      => 3   -- pre-creates 3 future monthly partitions
+--   );
+--
+--   -- pg_cron job to maintain partitions (also needs pg_cron enabled in OCI):
+--   SELECT cron.schedule('partman-maintain-30d', '0 2 * * *',
+--       $$CALL partman.run_maintenance_proc()$$);
+--
+-- Without this setup, inserts into downloads_last_30d will fail with
+-- "no partition found for row". The table structure below is correct;
+-- only the partition management setup is deferred.
+--
 -- ============================================================
 CREATE TABLE downloads_last_30d (
     id bigserial,
