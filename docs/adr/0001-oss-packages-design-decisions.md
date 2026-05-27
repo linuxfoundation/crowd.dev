@@ -123,7 +123,7 @@ The `packages` table retains `declared_repository_url` (raw) and `repository_url
 
 **Population order**:
 1. Registry workers (npm, Maven) write `packages` and `package_repos` rows.
-2. The GitHub enricher polls `repos` for rows where `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_UPDATE_INTERVAL_HOURS`.
+2. The GitHub enricher polls `repos` for rows where `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_REPO_UPDATE_INTERVAL_HOURS`.
 3. The enricher updates those rows with full metadata and sets `last_synced_at`.
 4. Subsequent enricher runs pick up new repos added since the last pass.
 
