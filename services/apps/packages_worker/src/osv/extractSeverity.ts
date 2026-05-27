@@ -21,10 +21,11 @@ function isMalicious(id: string): boolean {
   return id.startsWith('MAL-')
 }
 
-// extractSeverity is pure. Order matches plan §4: V4 preferred, then V3, then
-// the qualitative tag from database_specific.severity. v4 numeric scoring is not
-// yet implemented (see cvssScoring.ts); when only V4 is present we fall back to
-// the qualitative tag and record cvssSource as 'osv_qualitative_fallback'.
+// extractSeverity is pure. The intended order per ADR-0005 is V4 → V3 →
+// qualitative tag from database_specific.severity, but v4 numeric scoring is
+// deferred (see cvssScoring.ts), so v1 skips V4 entirely: V3 first, then the
+// qualitative tag. V4-only records fall through to the qualitative fallback
+// and record cvssSource as 'osv_qualitative_fallback'.
 export function extractSeverity(record: OsvRecord): SeverityResult {
   if (isMalicious(record.id)) {
     return { severity: null, cvss: null, cvssSource: 'osv_malicious_package' }

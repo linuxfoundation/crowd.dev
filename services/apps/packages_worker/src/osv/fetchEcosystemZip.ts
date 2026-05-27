@@ -13,29 +13,41 @@ async function downloadZip(url: string, target: string): Promise<void> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), DOWNLOAD_TIMEOUT_MS)
 
-  let response: Response
+  // The timer covers headers + body. fetch() only awaits headers, so the
+  // pipeline that streams the body to disk must run inside the same try/finally
+  // — otherwise a stalled CDN connection mid-transfer would hang past the
+  // daily window with no timeout protection.
   try {
-    response = await fetch(url, { signal: ac.signal })
-  } catch (err) {
-    throw new FetchError('NETWORK', `Failed to GET ${url}: ${(err as Error).message}`)
+    let response: Response
+    try {
+      response = await fetch(url, { signal: ac.signal })
+    } catch (err) {
+      throw new FetchError('NETWORK', `Failed to GET ${url}: ${(err as Error).message}`)
+    }
+
+    if (response.status === 404) {
+      throw new FetchError('NOT_FOUND', `404 fetching ${url}`)
+    }
+    if (response.status >= 500) {
+      throw new FetchError('TRANSIENT', `${response.status} fetching ${url}`)
+    }
+    if (response.status !== 200) {
+      throw new FetchError('NETWORK', `${response.status} fetching ${url}`)
+    }
+    if (!response.body) {
+      throw new FetchError('NETWORK', `Empty body for ${url}`)
+    }
+
+    try {
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(target))
+    } catch (err) {
+      // pipeline rejects with an AbortError when the timer fires mid-stream;
+      // surface that as a transient network failure so withRetry will retry.
+      throw new FetchError('NETWORK', `Stream failed for ${url}: ${(err as Error).message}`)
+    }
   } finally {
     clearTimeout(timer)
   }
-
-  if (response.status === 404) {
-    throw new FetchError('NOT_FOUND', `404 fetching ${url}`)
-  }
-  if (response.status >= 500) {
-    throw new FetchError('TRANSIENT', `${response.status} fetching ${url}`)
-  }
-  if (response.status !== 200) {
-    throw new FetchError('NETWORK', `${response.status} fetching ${url}`)
-  }
-  if (!response.body) {
-    throw new FetchError('NETWORK', `Empty body for ${url}`)
-  }
-
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(target))
 }
 
 export interface OsvZipEntry {

@@ -26,7 +26,7 @@ async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
       }
       if (attempt < MAX_FETCH_RETRIES) {
         const backoffMs = 1000 * 2 ** attempt
-        log.warn({ label, attempt, backoffMs }, `Transient error, retrying: ${lastErr.message}`)
+        log.warn({ label, attempt, backoffMs, err }, 'Transient error, retrying')
         await new Promise((r) => setTimeout(r, backoffMs))
       }
     }
@@ -46,21 +46,24 @@ async function syncEcosystem(
     /* best-effort cleanup; ignore failure */
   })
 
-  let read = 0
-  let kept = 0
-  let skipped = 0
-  let flushed = 0
-  let buffer: NormalizedRecord[] = []
+  // Counters and buffer live inside the retry closure so a transient retry
+  // restarts from a clean slate and we don't double-count already-flushed
+  // batches. UPSERT is idempotent on osv_id so re-flushing is safe.
+  return await withRetry(`fetch ${ecosystem}`, async () => {
+    let read = 0
+    let kept = 0
+    let skipped = 0
+    let flushed = 0
+    let buffer: NormalizedRecord[] = []
 
-  const flush = async () => {
-    if (buffer.length === 0) return
-    const batch = buffer
-    buffer = []
-    await upsertAdvisoryBatch(qx, batch)
-    flushed += batch.length
-  }
+    const flush = async () => {
+      if (buffer.length === 0) return
+      const batch = buffer
+      buffer = []
+      await upsertAdvisoryBatch(qx, batch)
+      flushed += batch.length
+    }
 
-  await withRetry(`fetch ${ecosystem}`, async () => {
     for await (const entry of fetchEcosystemZip(config.bulkBaseUrl, ecosystem, config.tmpDir)) {
       if (isShuttingDown()) break
       read++
@@ -75,10 +78,10 @@ async function syncEcosystem(
         await flush()
       }
     }
-  })
 
-  await flush()
-  return { read, kept, skipped, flushed }
+    await flush()
+    return { read, kept, skipped, flushed }
+  })
 }
 
 export async function runOsvSync(
@@ -103,7 +106,7 @@ export async function runOsvSync(
         )
       } catch (err) {
         log.error(
-          { ecosystem, err: (err as Error).message },
+          { ecosystem, err },
           `OSV sync failed for ${ecosystem}, continuing with next ecosystem`,
         )
       }
@@ -115,7 +118,7 @@ export async function runOsvSync(
       const { flipped, cleared } = await deriveCriticalFlag(qx, config.deriveBatchSize)
       log.info({ flipped, cleared }, 'deriveCriticalFlag completed')
     } catch (err) {
-      log.error({ err: (err as Error).message }, 'deriveCriticalFlag failed')
+      log.error({ err }, 'deriveCriticalFlag failed')
     }
 
     log.info({ durationMs: Date.now() - passStart }, 'OSV sync pass complete')

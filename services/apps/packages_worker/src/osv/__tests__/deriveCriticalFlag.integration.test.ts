@@ -6,11 +6,15 @@ import { getDbConnection } from '@crowd/database'
 import { deriveCriticalFlag } from '../deriveCriticalFlag'
 
 // Integration test: hits the running packages-db. Skipped automatically when
-// the DB env vars are not set so unit-test runs in CI stay green.
+// any of the DB env vars are missing so unit-test runs in CI stay green and
+// a half-set env (host/port but no database) doesn't fail with a confusing
+// connection error inside beforeAll.
 const HAVE_DB =
   !!process.env.CROWD_PACKAGES_DB_WRITE_HOST &&
   !!process.env.CROWD_PACKAGES_DB_PORT &&
-  !!process.env.CROWD_PACKAGES_DB_USERNAME
+  !!process.env.CROWD_PACKAGES_DB_USERNAME &&
+  !!process.env.CROWD_PACKAGES_DB_DATABASE &&
+  !!process.env.CROWD_PACKAGES_DB_PASSWORD
 
 const FIXTURE_TAG = 'osv-test-fixture'
 
