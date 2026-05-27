@@ -85,15 +85,31 @@ function cmpToken(a: Token, b: Token): number {
   return a.value < b.value ? -1 : a.value > b.value ? 1 : 0
 }
 
+// When one side runs out of tokens, Maven's ComparableVersion substitutes a
+// "null" token whose kind matches the *other* side at that position: num→0,
+// str→'' (empty qualifier, ranked equal to 'ga'/'final'/'release'). Picking the
+// kind unconditionally (e.g. always num:0) breaks comparisons like
+// `1.0-final == 1.0` and `1.0 < 1.0-sp1`.
+function padFor(other: Token): Token {
+  return other.kind === 'num' ? { kind: 'num', value: 0 } : { kind: 'str', value: '' }
+}
+
 function compareMaven(a: string, b: string): number {
   const ta = tokenizeMaven(a)
   const tb = tokenizeMaven(b)
-  const zero: Token = { kind: 'num', value: 0 }
   const max = Math.max(ta.length, tb.length)
   for (let i = 0; i < max; i++) {
-    const aTok = i < ta.length ? ta[i] : zero
-    const bTok = i < tb.length ? tb[i] : zero
-    const c = cmpToken(aTok, bTok)
+    if (i >= ta.length) {
+      const c = cmpToken(padFor(tb[i]), tb[i])
+      if (c !== 0) return c
+      continue
+    }
+    if (i >= tb.length) {
+      const c = cmpToken(ta[i], padFor(ta[i]))
+      if (c !== 0) return c
+      continue
+    }
+    const c = cmpToken(ta[i], tb[i])
     if (c !== 0) return c
   }
   return 0
