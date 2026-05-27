@@ -48,8 +48,8 @@ export function getEnricherConfig() {
 
 export function getPomFetcherConfig() {
   return {
-    batchSize: parseInt(process.env.POM_FETCHER_BATCH_SIZE ?? '200', 10),
-    concurrency: parseInt(process.env.POM_FETCHER_CONCURRENCY ?? '10', 10),
+    batchSize: parseInt(process.env.POM_FETCHER_BATCH_SIZE ?? '50', 10),
+    concurrency: parseInt(process.env.POM_FETCHER_CONCURRENCY ?? '3', 10),
     staleDays: parseInt(process.env.POM_FETCHER_STALE_DAYS ?? '7', 10),
     idleSleepSec: parseInt(process.env.POM_FETCHER_IDLE_SLEEP_SEC ?? '3600', 10),
   }
