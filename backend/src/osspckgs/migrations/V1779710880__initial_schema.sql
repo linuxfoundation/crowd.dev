@@ -7,9 +7,9 @@ CREATE TABLE packages_universe (
     ecosystem text NOT NULL,
     namespace text,
     name text NOT NULL,
-    -- To be validated later on: Cached latest-month snapshot written by the same weekly ranking worker that populates
-    -- downloads_monthly. Used directly by rank_packages_universe() to avoid a join.
-    -- For monthly history across runs, see downloads_monthly (keyed by purl).
+    -- To be validated later on: Cached latest 30-day window count written by the same weekly ranking worker that populates
+    -- downloads_last_30d. Used directly by rank_packages_universe() to avoid a join.
+    -- For the full rolling-window history, see downloads_last_30d (keyed by purl).
     downloads_last_30d bigint,
     dependent_packages_count int,
     dependent_repos_count int,
@@ -652,12 +652,12 @@ CREATE TABLE package_maintainers (
 --     No denormalized rollup on the packages table — consumers SUM over this
 --     table when they need a window (e.g. last 30 days).
 --
---   downloads_monthly (tier 3 — packages_universe)
---     Monthly download timeline keyed by purl. Stable across the weekly
---     packages_universe truncation, which is why it uses purl as identifier
---     rather than a FK to packages_universe. The per-package latest-month
---     snapshot is also cached in packages_universe.downloads_last_30d for fast
---     access by the criticality-ranking function (no join needed).
+--   downloads_last_30d (tier 3 — packages_universe)
+--     Rolling 30-day download timeline keyed by purl. Each row represents one
+--     30-day window (start_date..end_date). Keyed by purl so rows survive the
+--     weekly truncation of packages_universe. The latest window's count is also
+--     cached in packages_universe.downloads_last_30d for fast access by the
+--     criticality-ranking function (no join needed).
 --
 -- ============================================================
 -- DOWNLOADS DAILY (tier 2 — packages, daily granularity)
@@ -700,25 +700,30 @@ CREATE TABLE downloads_daily (
 PARTITION BY RANGE (date);
 
 -- ============================================================
--- DOWNLOADS MONTHLY (tier 3 — packages_universe, monthly granularity)
+-- DOWNLOADS LAST 30D (tier 3 — packages_universe, rolling 30-day granularity)
 --
--- Historical timeline of monthly download counts, keyed by purl.
+-- Historical timeline of rolling 30-day download counts, keyed by purl.
+-- Each row captures one window: downloads from start_date to end_date (inclusive).
 -- Keyed by purl (not packages_universe.id) so rows survive the weekly
--- truncation of packages_universe. The latest-month value is also written
+-- truncation of packages_universe. The latest window is also written
 -- to packages_universe.downloads_last_30d for fast access by the ranking function.
 --
--- month stores the first day of the month (e.g. 2025-01-01 for Jan 2025).
--- Writers should upsert: INSERT ... ON CONFLICT (purl, month) DO UPDATE SET count = EXCLUDED.count
+-- Writers should upsert: INSERT ... ON CONFLICT (purl, end_date) DO UPDATE SET count = EXCLUDED.count, start_date = EXCLUDED.start_date
+-- PK includes end_date because Postgres requires the partition key to be
+-- part of the primary key on range-partitioned tables.
 -- ============================================================
-CREATE TABLE downloads_monthly (
-    id bigserial PRIMARY KEY,
+CREATE TABLE downloads_last_30d (
+    id bigserial,
     purl text NOT NULL,
-    date date NOT NULL,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
     count bigint NOT NULL,
-    UNIQUE (purl, month)
-);
+    PRIMARY KEY (id, end_date),
+    UNIQUE (purl, end_date)
+)
+PARTITION BY RANGE (end_date);
 
-CREATE INDEX ON downloads_monthly (purl, month DESC);
+CREATE INDEX ON downloads_last_30d (purl, end_date DESC);
 
 -- ============================================================
 -- CRITICALITY RANKING FUNCTION
