@@ -12,6 +12,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0003](./0003-has-critical-vulnerability-semantics.md) | Semantics of `packages.has_critical_vulnerability` | accepted | 2026-05-27 |
 | [ADR-0004](./0004-standalone-bin-vs-temporal-for-batch-sub-workers.md) | Standalone bin vs Temporal for batch sub-workers in packages_worker | accepted | 2026-05-27 |
 | [ADR-0005](./0005-cvss-scoring-strategy.md) | CVSS scoring strategy for OSV ingestion (inline v3.1, defer v4) | accepted | 2026-05-27 |
+| [ADR-0006](./0006-advisory-affected-ranges-uniqueness-scope.md) | Uniqueness scope of `advisory_affected_ranges` | accepted | 2026-05-27 |
 
 ## Why ADRs?
 

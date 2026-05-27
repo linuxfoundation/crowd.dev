@@ -2,15 +2,19 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { NormalizedRange, NormalizedRecord } from './types'
 
-// Drop duplicate ranges that would collide on the
-// (advisory_package_id, COALESCE(introduced_version,'')) unique index.
-// We keep the first occurrence; OSV occasionally emits redundant events for
-// the same introduced=X line.
-function dedupeRanges(ranges: NormalizedRange[]): NormalizedRange[] {
+// Drop duplicate ranges that would collide on the unique index over
+// (advisory_package_id, COALESCE(introduced_version,''),
+//  COALESCE(fixed_version,''), COALESCE(last_affected,'')).
+// We key on the full range tuple so two ranges sharing an introduced_version
+// but differing in fixed_version or last_affected both survive — per
+// osv-plan §2 decision #1 ("one package has many version ranges; no
+// denormalization") and ADR-0006. OSV still occasionally emits redundant
+// events for the exact same tuple, which the Set collapses to one row.
+export function dedupeRanges(ranges: NormalizedRange[]): NormalizedRange[] {
   const seen = new Set<string>()
   const out: NormalizedRange[] = []
   for (const r of ranges) {
-    const key = r.introducedVersion ?? ''
+    const key = `${r.introducedVersion ?? ''}|${r.fixedVersion ?? ''}|${r.lastAffected ?? ''}`
     if (seen.has(key)) continue
     seen.add(key)
     out.push(r)
