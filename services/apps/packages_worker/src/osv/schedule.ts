@@ -5,6 +5,14 @@ import { osvSync } from '../workflows'
 
 const SCHEDULE_ID = 'osv-advisories-sync'
 
+// Ecosystems we support today. The value here doubles as the case-sensitive
+// path segment in OSV's bucket URL (<base>/<ecosystem>/all.zip), so a typo
+// like `OSV_ECOSYSTEMS=maven` (lowercase) would 404 silently every day. We
+// validate the env input against this list and refuse to register the
+// schedule on a mismatch — better a loud startup error than a silent miss.
+// Add new entries here when v1 expands beyond npm + Maven.
+const VALID_ECOSYSTEMS = ['npm', 'Maven'] as const
+
 function getEcosystems(): string[] {
   const raw = process.env.OSV_ECOSYSTEMS
   if (!raw) throw new Error('Missing required environment variable: OSV_ECOSYSTEMS')
@@ -14,6 +22,16 @@ function getEcosystems(): string[] {
     .filter(Boolean)
   const deduped = [...new Set(list)]
   if (deduped.length === 0) throw new Error('OSV_ECOSYSTEMS resolved to an empty list')
+  for (const eco of deduped) {
+    if (!(VALID_ECOSYSTEMS as readonly string[]).includes(eco)) {
+      const hint = VALID_ECOSYSTEMS.find((v) => v.toLowerCase() === eco.toLowerCase())
+      const supported = VALID_ECOSYSTEMS.join(', ')
+      const msg = hint
+        ? `OSV_ECOSYSTEMS contains "${eco}" — did you mean "${hint}"? OSV's bucket paths are case-sensitive.`
+        : `OSV_ECOSYSTEMS contains unsupported ecosystem "${eco}". Supported: ${supported}.`
+      throw new Error(msg)
+    }
+  }
   return deduped
 }
 
