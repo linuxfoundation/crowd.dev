@@ -15,16 +15,23 @@ import { upsertAdvisoryBatch } from './upsertAdvisory'
 
 const log = getServiceChildLogger('osv-sync')
 
-// Read at activity invocation time, not at module load — keeps tests that
-// import this file from the sandboxed workflow bundle context working without
-// the env being set.
-function getActivityConfig() {
+// Per-activity env readers. Each activity reads only the env vars it actually
+// needs at invocation time, so e.g. running the derive activity in isolation
+// for testing doesn't require the sync-only OSV_BULK_BASE_URL / OSV_TMP_DIR /
+// OSV_BATCH_SIZE to be set. Read at invocation time (not module load) so the
+// sandboxed workflow bundle that imports this file for type discovery doesn't
+// require any env to be set.
+
+function getSyncConfig() {
   return {
     bulkBaseUrl: required('OSV_BULK_BASE_URL'),
     tmpDir: required('OSV_TMP_DIR'),
     upsertBatchSize: requirePositiveInt('OSV_BATCH_SIZE'),
-    deriveBatchSize: requirePositiveInt('OSV_DERIVE_BATCH_SIZE'),
   }
+}
+
+function getDeriveConfig() {
+  return { deriveBatchSize: requirePositiveInt('OSV_DERIVE_BATCH_SIZE') }
 }
 
 function required(name: string): string {
@@ -78,7 +85,7 @@ export async function osvSyncEcosystem(
   input: OsvSyncEcosystemInput,
 ): Promise<OsvSyncEcosystemResult> {
   const { ecosystem, allowedEcosystems } = input
-  const config = getActivityConfig()
+  const config = getSyncConfig()
   // OSV's bucket uses case-sensitive paths (Maven/all.zip, not maven/all.zip),
   // so `ecosystem` (used for the URL) keeps OSV's canonical case. The allowlist
   // is matched in parseOsvRecord after lowercasing each record's ecosystem per
@@ -159,7 +166,7 @@ export interface OsvDeriveCriticalFlagResult {
 // safe; re-running clears stale FALSE→TRUE and TRUE→FALSE transitions
 // identically.
 export async function osvDeriveCriticalFlag(): Promise<OsvDeriveCriticalFlagResult> {
-  const config = getActivityConfig()
+  const config = getDeriveConfig()
   const start = Date.now()
   const qx: QueryExecutor = await getPackagesDb()
   const { flipped, cleared } = await deriveCriticalFlag(qx, config.deriveBatchSize)
