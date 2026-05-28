@@ -16,9 +16,9 @@ function getEcosystems(): string[] {
   return list
 }
 
-// Registers (or re-registers, idempotently) the daily OSV advisory sync. Cron
-// is offset from npm-registry-ingest (`15 3 * * *`) so the two large daily
-// ingest jobs don't fight for the same DB at the same minute.
+// Registers the daily OSV advisory sync schedule if it doesn't already exist.
+// If the schedule already exists in Temporal, we log and leave it unchanged (no update).
+// Cron is offset from npm-registry-ingest (`15 3 * * *`) so the two large daily ingest jobs don't fight for the same DB at the same minute.
 export async function scheduleOsvSync(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')
