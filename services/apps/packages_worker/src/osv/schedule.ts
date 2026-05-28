@@ -12,8 +12,9 @@ function getEcosystems(): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  if (list.length === 0) throw new Error('OSV_ECOSYSTEMS resolved to an empty list')
-  return list
+  const deduped = [...new Set(list)]
+  if (deduped.length === 0) throw new Error('OSV_ECOSYSTEMS resolved to an empty list')
+  return deduped
 }
 
 // Registers the daily OSV advisory sync schedule if it doesn't already exist.
