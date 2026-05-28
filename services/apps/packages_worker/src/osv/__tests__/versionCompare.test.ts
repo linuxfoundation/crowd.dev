@@ -24,9 +24,13 @@ describe('compareVersion — npm (semver)', () => {
     expect(compareVersion('npm', 'not-a-version-at-all', '1.0.0')).toBeNull()
   })
 
-  it('coerces loose npm versions when possible', () => {
-    // semver.coerce handles common "loose" inputs like trailing junk or missing patch.
-    expect(sign(compareVersion('npm', '1.2', '1.3'))).toBe(-1)
+  it('returns null for short / lossy npm versions instead of coercing', () => {
+    // Under-flag over mis-flag: semver.coerce would map "1.2" → "1.2.0" and
+    // "1.2-junk-3" → "1.2.3", which can flip has_critical_vulnerability on
+    // a malformed introduced/fixed boundary. We prefer null (no match).
+    expect(compareVersion('npm', '1.2', '1.3')).toBeNull()
+    expect(compareVersion('npm', '1.2-junk-3', '1.2.4')).toBeNull()
+    expect(compareVersion('npm', 'v1', '1.0.0')).toBeNull()
   })
 })
 

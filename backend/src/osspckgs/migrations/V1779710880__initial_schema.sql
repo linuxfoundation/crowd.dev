@@ -614,6 +614,16 @@ CREATE INDEX ON advisory_packages (package_id)
 WHERE
     package_id IS NOT NULL;
 
+-- Drives the resolveMissingPackageIds catch-up UPDATE in deriveCriticalFlag:
+-- the query filters WHERE package_id IS NULL and joins on (ecosystem,
+-- package_name), so the planner needs an index whose predicate matches the
+-- WHERE clause to avoid a seq scan over the full table. The non-partial
+-- (ecosystem, package_name) index above can't be used here because it doesn't
+-- prove package_id IS NULL.
+CREATE INDEX ON advisory_packages (ecosystem, package_name)
+WHERE
+    package_id IS NULL;
+
 -- Version ranges affected by an advisory per package. Populated by the OSV
 -- ingest worker (packages_worker/src/osv) using introduced_version /
 -- fixed_version / last_affected. range_raw / unaffected_raw are reserved

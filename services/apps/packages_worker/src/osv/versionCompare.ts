@@ -3,15 +3,20 @@ import * as semver from 'semver'
 // Ecosystem-specific version ordering. Returns -1, 0, 1 like Array#sort,
 // or null when either operand cannot be parsed (we treat that as "do not match").
 
-function coerceSemver(v: string): semver.SemVer | null {
-  const parsed = semver.parse(v, { loose: true })
-  if (parsed) return parsed
-  return semver.coerce(v) ?? null
+// We deliberately do NOT fall back to semver.coerce. Coerce is lossy:
+// "1.2-junk-3" becomes "1.2.3" and "v1" becomes "1.0.0", which can mint a
+// false-positive range match that flips has_critical_vulnerability without
+// evidence. semver.parse with { loose: true } already accepts the common
+// shapes OSV emits (leading "v", prerelease tags); anything it rejects we
+// treat as unparseable and isInRange interprets as "no match". Under-flag
+// over mis-flag is the trade-off we want here.
+function parseLoose(v: string): semver.SemVer | null {
+  return semver.parse(v, { loose: true })
 }
 
 function compareNpm(a: string, b: string): number | null {
-  const pa = coerceSemver(a)
-  const pb = coerceSemver(b)
+  const pa = parseLoose(a)
+  const pb = parseLoose(b)
   if (!pa || !pb) return null
   return semver.compare(pa, pb)
 }

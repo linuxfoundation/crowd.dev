@@ -120,17 +120,20 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
   }
 }
 
-// upsertAdvisoryBatch writes a batch of normalized OSV records in a single
-// transaction. Caller groups into batches of ~OSV_BATCH_SIZE to keep transaction
-// overhead amortized without holding too many row locks at once.
+// upsertAdvisoryBatch writes a batch of normalized OSV records, one record per
+// transaction. Per-record scope keeps advisory_packages row locks short (a few
+// statements instead of ~OSV_BATCH_SIZE × N+1) so concurrent writers aren't
+// blocked, and a Temporal activity cancel mid-batch only loses the in-flight
+// record instead of forcing the whole batch to re-do. upsertOne is idempotent
+// on osv_id, so a Temporal retry that re-runs the activity simply re-UPSERTs
+// the already-committed records with the same values.
 export async function upsertAdvisoryBatch(
   qx: QueryExecutor,
   batch: NormalizedRecord[],
 ): Promise<void> {
-  if (batch.length === 0) return
-  await qx.tx(async (tx) => {
-    for (const record of batch) {
+  for (const record of batch) {
+    await qx.tx(async (tx) => {
       await upsertOne(tx, record)
-    }
-  })
+    })
+  }
 }

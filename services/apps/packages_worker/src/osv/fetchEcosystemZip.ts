@@ -86,12 +86,21 @@ export async function* fetchEcosystemZip(
       if (file.type !== 'File') continue
       if (!file.path.toLowerCase().endsWith('.json')) continue
 
+      // Real OSV entries are well under 100 KB. Check the central-directory
+      // uncompressedSize BEFORE calling file.buffer(), because file.buffer()
+      // decompresses the entry into memory first — a zip-bomb-style payload
+      // (small compressedSize, huge uncompressedSize) would OOM the worker
+      // before any post-decompress length check could fire. Surfaced as PARSE
+      // so withRetry gives up immediately; retrying the same payload won't help.
+      if (file.uncompressedSize > MAX_ENTRY_BYTES) {
+        throw new FetchError(
+          'PARSE',
+          `Entry ${ecosystem}/${file.path} declares uncompressedSize ${file.uncompressedSize}, exceeds ${MAX_ENTRY_BYTES} bytes`,
+        )
+      }
       const buffer = await file.buffer()
-      // Real OSV entries are well under 100 KB. A 10 MB cap is ~200x the
-      // observed max and catches the (admittedly unlikely) case where a bad
-      // upstream record or a zip-bomb-style payload would otherwise cause the
-      // worker to OOM on file.buffer(). We surface it as PARSE so withRetry
-      // gives up immediately — retrying the same payload won't help.
+      // Defense in depth: a malformed central directory could lie about
+      // uncompressedSize. Re-check the actual decompressed length.
       if (buffer.length > MAX_ENTRY_BYTES) {
         throw new FetchError(
           'PARSE',
