@@ -8,6 +8,7 @@ import unzipper from 'unzipper'
 import { FetchError, OsvRecord } from './types'
 
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000
+const MAX_ENTRY_BYTES = 10 * 1024 * 1024 // 10 MB; real OSV entries are < 100 KB
 
 async function downloadZip(url: string, target: string): Promise<void> {
   const ac = new AbortController()
@@ -86,6 +87,17 @@ export async function* fetchEcosystemZip(
       if (!file.path.toLowerCase().endsWith('.json')) continue
 
       const buffer = await file.buffer()
+      // Real OSV entries are well under 100 KB. A 10 MB cap is ~200x the
+      // observed max and catches the (admittedly unlikely) case where a bad
+      // upstream record or a zip-bomb-style payload would otherwise cause the
+      // worker to OOM on file.buffer(). We surface it as PARSE so withRetry
+      // gives up immediately — retrying the same payload won't help.
+      if (buffer.length > MAX_ENTRY_BYTES) {
+        throw new FetchError(
+          'PARSE',
+          `Entry ${ecosystem}/${file.path} exceeds ${MAX_ENTRY_BYTES} bytes (got ${buffer.length})`,
+        )
+      }
       let json: OsvRecord
       try {
         json = JSON.parse(buffer.toString('utf8')) as OsvRecord
