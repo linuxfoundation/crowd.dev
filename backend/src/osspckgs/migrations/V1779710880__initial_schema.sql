@@ -8,8 +8,8 @@ CREATE TABLE packages_universe (
     namespace text,
     name text NOT NULL,
     downloads_30d bigint,
-    dependent_packages_count int,
-    dependent_repos_count int,
+    dependent_packages_count bigint,
+    dependent_repos_count bigint,
     criticality_score numeric(10, 4),
     rank_in_ecosystem int,
     is_critical bool NOT NULL DEFAULT FALSE,
@@ -52,8 +52,8 @@ CREATE TABLE packages (
     latest_version text,
     first_release_at timestamptz,
     latest_release_at timestamptz,
-    dependent_packages_count int,
-    dependent_repos_count int,
+    dependent_packages_count bigint,
+    dependent_repos_count bigint,
     downloads_last_month bigint,
     -- has_critical_vulnerability bool NOT NULL DEFAULT FALSE,
     -- Deferred: semantics undecided between (a) any advisory with no fixed_version vs
@@ -125,7 +125,7 @@ CREATE TABLE versions (
     -- Nullable for same reason: yanked status comes from registry-specific workers, not deps.dev.
     is_yanked bool,
     is_prerelease bool NOT NULL DEFAULT FALSE,
-    license text, -- SPDX where available; can differ per version
+    licenses text[], -- SPDX array, deterministically sorted; can differ per version
     download_count bigint, -- per-version where available (npm, crates)
     last_synced_at timestamptz NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id, package_id),
@@ -615,7 +615,7 @@ CREATE TABLE advisory_affected_ranges (
     unaffected_raw text      -- raw UnaffectedVersions string from deps.dev BQ
 );
 
-CREATE UNIQUE INDEX ON advisory_affected_ranges (advisory_package_id, COALESCE(introduced_version, ''));
+CREATE UNIQUE INDEX ON advisory_affected_ranges (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''));
 
 CREATE INDEX ON advisory_affected_ranges (advisory_package_id);
 
@@ -778,3 +778,41 @@ BEGIN
     RETURN QUERY SELECT n_scored, n_ranked, n_propagated;
 END;
 $$;
+
+-- ============================================================
+-- INGEST JOB TRACKING
+-- Tracks each BQ → GCS → Postgres ingest run per job_kind.
+-- snapshot_at = SnapshotAt date used as watermark for incremental diff.
+-- ============================================================
+CREATE TABLE osspckgs_ingest_jobs (
+    id              bigserial PRIMARY KEY,
+    job_kind        text NOT NULL CHECK (job_kind IN (
+                        'packages', 'versions', 'package_dependencies',
+                        'repos', 'package_repos',
+                        'advisories', 'advisory_packages'
+                    )),
+    status          text NOT NULL CHECK (status IN (
+                        'pending', 'exporting', 'exported',
+                        'loading', 'merging', 'done', 'failed', 'cleaned'
+                    )),
+    sync_mode       text NOT NULL DEFAULT 'incremental'
+                        CHECK (sync_mode IN ('full', 'incremental')),
+    snapshot_at             date,  -- committed watermark: promoted from provisional only when row_count_pg > 0
+    provisional_snapshot_at date,  -- set at job creation; promoted to snapshot_at on successful non-zero merge
+    gcs_prefix      text,            -- gs://bucket/packages/2026-05-26T00-00-00Z/
+    row_count_bq    bigint,
+    row_count_pg    bigint,
+    bq_bytes_billed bigint,          -- totalBytesProcessed from BQ (cost metric, not GCS export size)
+    error_message   text,
+    started_at      timestamptz NOT NULL DEFAULT NOW(),
+    finished_at     timestamptz,
+    cleaned_at      timestamptz
+);
+
+CREATE INDEX ON osspckgs_ingest_jobs (job_kind, started_at DESC);
+
+CREATE INDEX ON osspckgs_ingest_jobs (status)
+WHERE status NOT IN ('done', 'cleaned');
+
+CREATE INDEX ON osspckgs_ingest_jobs (job_kind, snapshot_at DESC)
+WHERE status = 'done';

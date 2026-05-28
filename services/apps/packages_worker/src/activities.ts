@@ -1,1 +1,2 @@
-export { sayHiNpm } from './npm/activities'
+export * from './deps-dev/activities'
+export * from './npm/activities'

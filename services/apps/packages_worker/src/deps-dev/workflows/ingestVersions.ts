@@ -26,7 +26,7 @@ SELECT
   Purl          AS purl,
   Version       AS number,
   UpstreamPublishedAt                                      AS published_at,
-  NOT VersionInfo.IsRelease                                AS is_prerelease,
+  COALESCE(NOT VersionInfo.IsRelease, FALSE)               AS is_prerelease,
   ARRAY_AGG(DISTINCT l ORDER BY l IGNORE NULLS)            AS licenses
 FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
 LEFT JOIN UNNEST(Licenses) AS l ON TRUE
