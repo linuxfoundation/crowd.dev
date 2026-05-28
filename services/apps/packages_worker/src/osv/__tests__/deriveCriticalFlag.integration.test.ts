@@ -39,7 +39,7 @@ const FIXTURES: Record<string, FixturePackage> = {
   // log4shell ranges include [2.13.0, 2.15.0). 2.14.1 in, 2.17.0 above the
   // related CVE-2021-45046/45105 chain too.
   log4j: {
-    ecosystem: 'Maven',
+    ecosystem: 'maven',
     namespace: 'org.apache.logging.log4j',
     name: 'log4j-core',
     latest_version: '2.14.1',

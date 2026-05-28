@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { parseOsvRecord } from '../parseOsvRecord'
 import { OsvRecord } from '../types'
 
-const ALLOW = new Set(['npm', 'Maven'])
+const ALLOW = new Set(['npm', 'maven'])
 
 const baseRecord = (overrides: Partial<OsvRecord>): OsvRecord => ({
   id: 'GHSA-test',
@@ -23,7 +23,7 @@ describe('parseOsvRecord — name splitting', () => {
     const out = parseOsvRecord(r, ALLOW)
     expect(out.packages).toHaveLength(1)
     expect(out.packages[0].pkg).toMatchObject({
-      ecosystem: 'Maven',
+      ecosystem: 'maven',
       packageName: 'org.apache.logging.log4j:log4j-core',
       namespace: 'org.apache.logging.log4j',
       name: 'log4j-core',

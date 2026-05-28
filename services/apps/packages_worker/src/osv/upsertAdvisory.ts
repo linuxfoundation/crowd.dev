@@ -30,11 +30,15 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
   const advisoryRow = await qx.selectOne(
     `
     INSERT INTO advisories
-      (osv_id, aliases, severity, cvss, cvss_source, summary, details, published_at, modified_at)
+      (osv_id, source, source_url, aliases, severity, cvss, cvss_source,
+       summary, details, published_at, modified_at)
     VALUES
-      ($(osvId), $(aliases)::text[], $(severity), $(cvss), $(cvssSource),
-       $(summary), $(details), $(publishedAt)::timestamptz, $(modifiedAt)::timestamptz)
+      ($(osvId), $(source), $(sourceUrl), $(aliases)::text[], $(severity),
+       $(cvss), $(cvssSource), $(summary), $(details),
+       $(publishedAt)::timestamptz, $(modifiedAt)::timestamptz)
     ON CONFLICT (osv_id) DO UPDATE SET
+      source       = EXCLUDED.source,
+      source_url   = EXCLUDED.source_url,
       aliases      = EXCLUDED.aliases,
       severity     = EXCLUDED.severity,
       cvss         = EXCLUDED.cvss,

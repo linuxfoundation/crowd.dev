@@ -70,6 +70,11 @@ export type CvssSource =
 
 export interface NormalizedAdvisory {
   osvId: string
+  // ADR-0001 §OSV / advisories.source — 'OSV' for everything ingested by this
+  // worker. The granular 'GHSA' | 'NVD' | 'NSWG' attribution is the deps.dev
+  // BQ ingestion worker's responsibility, not this one.
+  source: string
+  sourceUrl: string | null
   aliases: string[]
   severity: string | null
   cvss: number | null
