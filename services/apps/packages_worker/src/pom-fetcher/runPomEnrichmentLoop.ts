@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 
 import {
-  listMavenPackagesToEnrich,
+  listMavenPackagesToSync,
   upsertMaintainer,
   upsertPackage,
   upsertPackageMaintainer,
@@ -10,155 +10,211 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPomFetcherConfig } from '../config'
-import { extractArtifact } from './extract'
+import { extractArtifact, normalizeScmUrl } from './extract'
 import { resolveLatestVersion } from './metadata'
 
 const log = getServiceChildLogger('pom-fetcher')
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface BatchResult {
+export interface BatchResult {
   processed: number
   skipped: number
   errors: number
 }
 
+type PackageToSync = Awaited<ReturnType<typeof listMavenPackagesToSync>>[number]
+
+// ─── Non-critical: copy universe stats into packages ─────────────────────────
+
+function mavenRegistryUrl(groupId: string, artifactId: string): string {
+  return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
+}
+
+async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageToSync): Promise<void> {
+  await upsertPackage(qx, {
+    purl: pkg.purl,
+    ecosystem: 'maven',
+    namespace: pkg.namespace,
+    name: pkg.name,
+    description: null,
+    homepage: null,
+    registryUrl: pkg.namespace ? mavenRegistryUrl(pkg.namespace, pkg.name) : null,
+    declaredRepositoryUrl: null,
+    repositoryUrl: null,
+    licenses: null,
+    licensesRaw: null,
+    latestVersion: null,
+    ingestionSource: 'packages_universe',
+    criticalityScore: pkg.criticalityScore,
+    dependentPackagesCount: pkg.dependentPackagesCount,
+    dependentReposCount: pkg.dependentReposCount,
+    downloadsLastMonth: pkg.downloads30d,
+  })
+}
+
+// ─── Critical: full POM extraction ───────────────────────────────────────────
+
+async function processCriticalPackage(
+  qx: QueryExecutor,
+  pkg: PackageToSync,
+): Promise<'processed' | 'skipped' | 'error'> {
+  const groupId = pkg.namespace
+  const artifactId = pkg.name
+
+  if (!groupId) {
+    log.warn({ purl: pkg.purl }, 'Skipping critical package with null namespace (groupId)')
+    return 'skipped'
+  }
+
+  let version = pkg.latestVersion ?? null
+  if (!version) {
+    log.debug({ groupId, artifactId }, 'No baseline version — falling back to maven-metadata.xml')
+    version = await resolveLatestVersion(groupId, artifactId)
+  }
+
+  if (!version) {
+    log.warn({ groupId, artifactId }, 'Could not resolve latest version, skipping')
+    await upsertPackage(qx, {
+      purl: pkg.purl,
+      ecosystem: 'maven',
+      namespace: groupId,
+      name: artifactId,
+      description: null,
+      homepage: null,
+      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      declaredRepositoryUrl: null,
+      repositoryUrl: null,
+      licenses: null,
+      licensesRaw: null,
+      latestVersion: null,
+      ingestionSource: 'pom_fetcher_no_version',
+      criticalityScore: pkg.criticalityScore,
+      dependentPackagesCount: pkg.dependentPackagesCount,
+      dependentReposCount: pkg.dependentReposCount,
+      downloadsLastMonth: pkg.downloads30d,
+    })
+    return 'skipped'
+  }
+
+  const result = await extractArtifact(groupId, artifactId, version, (msg) => {
+    log.debug({ groupId, artifactId, version }, msg)
+  })
+
+  if (result.error) {
+    log.warn({ groupId, artifactId, version, error: result.error }, 'POM extraction error')
+    return 'error'
+  }
+
+  const packageId = await upsertPackage(qx, {
+    purl: pkg.purl,
+    ecosystem: 'maven',
+    namespace: groupId,
+    name: artifactId,
+    description: result.description,
+    homepage: result.homepageUrl,
+    registryUrl: mavenRegistryUrl(groupId, artifactId),
+    declaredRepositoryUrl: result.scmUrl,
+    repositoryUrl: normalizeScmUrl(result.scmUrl),
+    licenses: result.licenses.length > 0 ? result.licenses : null,
+    licensesRaw: result.licensesRaw,
+    latestVersion: version,
+    ingestionSource: 'pom_fetcher',
+    criticalityScore: pkg.criticalityScore,
+    dependentPackagesCount: pkg.dependentPackagesCount,
+    dependentReposCount: pkg.dependentReposCount,
+    downloadsLastMonth: pkg.downloads30d,
+  })
+
+  const allPeople = [
+    ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
+    ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
+  ]
+
+  for (const person of allPeople) {
+    const username = person.username ?? person.email ?? person.displayName
+    if (!username) continue
+
+    const emailHash = person.email
+      ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex')
+      : null
+
+    const maintainerId = await upsertMaintainer(qx, {
+      ecosystem: 'maven',
+      username,
+      displayName: person.displayName,
+      url: person.url,
+      emailHash,
+    })
+
+    await upsertPackageMaintainer(qx, {
+      packageId,
+      maintainerId,
+      role: person.role,
+    })
+  }
+
+  return 'processed'
+}
+
 // ─── Batch processing ─────────────────────────────────────────────────────────
 
-async function processBatch(
+export async function processBatch(
   qx: QueryExecutor,
   config: ReturnType<typeof getPomFetcherConfig>,
+  isCritical: boolean,
 ): Promise<BatchResult> {
-  const packages = await listMavenPackagesToEnrich(qx, {
-    limit: config.batchSize,
+  const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
+  const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
+
+  const packages = await listMavenPackagesToSync(qx, {
+    limit: batchSize,
     offset: 0,
-    staleDays: config.staleDays,
+    fullRefreshDays: config.fullRefreshDays,
+    nonCriticalRefreshDays: config.nonCriticalRefreshDays,
+    isCritical,
   })
 
   if (packages.length === 0) {
     return { processed: 0, skipped: 0, errors: 0 }
   }
 
-  log.info({ count: packages.length }, 'Processing POM batch...')
+  log.info({ count: packages.length, isCritical }, 'Processing batch...')
 
   let processed = 0
   let skipped = 0
   let errors = 0
   const PROGRESS_EVERY = 25
 
-  // Process in small concurrent groups to be polite to Maven Central
-  for (let i = 0; i < packages.length; i += config.concurrency) {
-    const group = packages.slice(i, i + config.concurrency)
+  for (let i = 0; i < packages.length; i += concurrency) {
+    const group = packages.slice(i, i + concurrency)
 
     await Promise.all(
       group.map(async (pkg) => {
-        const groupId = pkg.namespace
-        const artifactId = pkg.name
-
-        if (!groupId) {
-          log.warn({ purl: pkg.purl }, 'Skipping package with null namespace (groupId)')
-          skipped++
-          return
-        }
-
         try {
-          // Step 1: resolve latest version from maven-metadata.xml
-          const version = await resolveLatestVersion(groupId, artifactId)
-          if (!version) {
-            log.warn({ groupId, artifactId }, 'Could not resolve latest version, skipping')
-            // Upsert a minimal record so last_synced_at is set — prevents this package
-            // from re-appearing in every batch within the same pass.
-            // ingestionSource 'pom_fetcher_no_version' marks that it was tried but had no
-            // resolvable version on Maven Central (404 on maven-metadata.xml).
-            await upsertPackage(qx, {
-              purl: `pkg:maven/${groupId}/${artifactId}`,
-              ecosystem: 'maven',
-              namespace: groupId,
-              name: artifactId,
-              description: null,
-              homepage: null,
-              declaredRepositoryUrl: null,
-              licenses: null,
-              licensesRaw: null,
-              latestVersion: null,
-              ingestionSource: 'pom_fetcher_no_version',
-            })
-            skipped++
+          if (!isCritical) {
+            await processNonCriticalPackage(qx, pkg)
+            processed++
             return
           }
 
-          // Step 2: fetch + resolve POM (follows parent chain)
-          const result = await extractArtifact(groupId, artifactId, version, (msg) => {
-            log.debug({ groupId, artifactId, version }, msg)
-          })
-
-          if (result.error) {
-            log.warn({ groupId, artifactId, version, error: result.error }, 'POM extraction error')
-            errors++
-            return
-          }
-
-          // Step 3: upsert into `packages`
-          // purl at package level has no version (package-level identifier)
-          const packagePurl = `pkg:maven/${groupId}/${artifactId}`
-          const packageId = await upsertPackage(qx, {
-            purl: packagePurl,
-            ecosystem: 'maven',
-            namespace: groupId,
-            name: artifactId,
-            description: result.description,
-            homepage: result.homepageUrl,
-            declaredRepositoryUrl: result.scmUrl,
-            licenses: result.licenses.length > 0 ? result.licenses : null,
-            licensesRaw: result.licensesRaw,
-            latestVersion: version,
-            ingestionSource: 'pom_fetcher',
-          })
-
-          // Step 4: upsert maintainers (developers + contributors)
-          const allPeople = [
-            ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
-            ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
-          ]
-
-          for (const person of allPeople) {
-            const username = person.username ?? person.email ?? person.displayName
-            if (!username) continue
-
-            const emailHash = person.email
-              ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex')
-              : null
-
-            const maintainerId = await upsertMaintainer(qx, {
-              ecosystem: 'maven',
-              username,
-              displayName: person.displayName,
-              url: person.url,
-              emailHash,
-            })
-
-            await upsertPackageMaintainer(qx, {
-              packageId,
-              maintainerId,
-              role: person.role,
-            })
-          }
-
-          processed++
+          const status = await processCriticalPackage(qx, pkg)
+          if (status === 'processed') processed++
+          else if (status === 'skipped') skipped++
+          else errors++
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          log.error({ groupId, artifactId, error: message }, 'Unexpected error processing package')
+          log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
           errors++
         }
       }),
     )
 
-    // done = packages processed so far (based on loop index, always accurate)
     const done = i + group.length
     const prevDone = i
     const crossedBoundary = Math.floor(done / PROGRESS_EVERY) > Math.floor(prevDone / PROGRESS_EVERY)
     if (crossedBoundary || done === packages.length) {
-      log.info(
+      log.debug(
         { done, total: packages.length, processed, skipped, errors },
         `Progress: ${done}/${packages.length}`,
       )
@@ -168,62 +224,83 @@ async function processBatch(
   return { processed, skipped, errors }
 }
 
+// ─── Phase runner ─────────────────────────────────────────────────────────────
+
+async function runPhase(
+  qx: QueryExecutor,
+  config: ReturnType<typeof getPomFetcherConfig>,
+  isCritical: boolean,
+  isShuttingDown: () => boolean,
+): Promise<{ processed: number; skipped: number; errors: number }> {
+  const label = isCritical ? 'critical' : 'non-critical'
+  let total = { processed: 0, skipped: 0, errors: 0 }
+  let batchNum = 0
+  const phaseStartedAt = Date.now()
+
+  log.info({ phase: label }, 'Phase started')
+
+  while (!isShuttingDown()) {
+    const result = await processBatch(qx, config, isCritical)
+
+    if (result.processed + result.skipped + result.errors === 0) {
+      const durationSec = Math.round((Date.now() - phaseStartedAt) / 1000)
+      log.info({ phase: label, ...total, durationSec }, 'Phase complete')
+      return total
+    }
+
+    batchNum++
+    total.processed += result.processed
+    total.skipped += result.skipped
+    total.errors += result.errors
+
+    log.info(
+      {
+        phase: label,
+        batch: batchNum,
+        totalProcessed: total.processed,
+        totalSkipped: total.skipped,
+        totalErrors: total.errors,
+        elapsedSec: Math.round((Date.now() - phaseStartedAt) / 1000),
+      },
+      'Batch done',
+    )
+  }
+
+  return total
+}
+
 // ─── Main loop ────────────────────────────────────────────────────────────────
 
-/**
- * Loops indefinitely: pages through all Maven packages that need POM
- * enrichment, sleeps when the pass is complete, then restarts from offset 0.
- *
- * The caller is responsible for creating the DB connection and passing
- * `isShuttingDown` so the loop exits cleanly on SIGTERM/SIGINT.
- */
 export async function runPomEnrichmentLoop(
   qx: QueryExecutor,
   config: ReturnType<typeof getPomFetcherConfig>,
   isShuttingDown: () => boolean,
 ): Promise<void> {
-  let totalProcessed = 0
-  let totalSkipped = 0
-  let totalErrors = 0
   let passNumber = 0
-  let passStartedAt = Date.now()
 
   while (!isShuttingDown()) {
-    if (totalProcessed + totalSkipped + totalErrors === 0) {
-      passNumber++
-      passStartedAt = Date.now()
-      log.info({ pass: passNumber }, 'Starting pass')
-    }
+    passNumber++
+    const passStartedAt = Date.now()
+    log.info({ pass: passNumber }, 'Starting pass')
 
-    const result = await processBatch(qx, config)
+    // Phase 1: non-critical first — DB-only, high throughput
+    const nonCritical = await runPhase(qx, config, false, isShuttingDown)
 
-    if (result.processed + result.skipped + result.errors === 0) {
-      // Nothing left in this pass — log summary and sleep
-      const durationMs = Date.now() - passStartedAt
-      log.info(
-        {
-          totalProcessed,
-          totalSkipped,
-          totalErrors,
-          durationMs,
-          durationSec: Math.round(durationMs / 1000),
-        },
-        `Pass complete. Sleeping ${config.idleSleepSec}s before next pass.`,
-      )
-      await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
-      totalProcessed = 0
-      totalSkipped = 0
-      totalErrors = 0
-      continue
-    }
+    // Phase 2: critical — HTTP-bound, lower throughput
+    const critical = await runPhase(qx, config, true, isShuttingDown)
 
-    totalProcessed += result.processed
-    totalSkipped += result.skipped
-    totalErrors += result.errors
-
+    const durationMs = Date.now() - passStartedAt
     log.info(
-      { processed: result.processed, skipped: result.skipped, errors: result.errors, totalProcessed, totalSkipped, totalErrors },
-      'Batch complete',
+      {
+        pass: passNumber,
+        totalProcessed: nonCritical.processed + critical.processed,
+        totalSkipped: nonCritical.skipped + critical.skipped,
+        totalErrors: nonCritical.errors + critical.errors,
+        durationSec: Math.round(durationMs / 1000),
+      },
+      `Pass complete. Sleeping ${config.idleSleepSec}s before next pass.`,
     )
+
+    await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
   }
 }

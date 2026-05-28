@@ -65,6 +65,34 @@ const parser = new XMLParser({
   parseAttributeValue: false,
 })
 
+// ─── Retry with exponential backoff ──────────────────────────────────────────
+
+const MAX_RETRIES = 3
+const RETRY_BASE_MS = 2_000
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+async function getWithRetry(url: string): Promise<string> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await axios.get<string>(url, { responseType: 'text', timeout: REQUEST_TIMEOUT_MS })
+      return res.data
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_BASE_MS * 2 ** attempt + Math.random() * 500
+          await sleep(delay)
+          continue
+        }
+      }
+      throw err
+    }
+  }
+  throw new Error(`Max retries exceeded for ${url}`)
+}
+
 // ─── POM fetch ────────────────────────────────────────────────────────────────
 
 export function buildPomUrl(groupId: string, artifactId: string, version: string): string {
@@ -80,8 +108,8 @@ export async function fetchPom(
 ): Promise<PomData | null> {
   const url = buildPomUrl(groupId, artifactId, version)
   try {
-    const res = await axios.get<string>(url, { responseType: 'text', timeout: REQUEST_TIMEOUT_MS })
-    const parsed = parser.parse(res.data)
+    const data = await getWithRetry(url)
+    const parsed = parser.parse(data)
     return (parsed?.project as PomData) ?? null
   } catch (err) {
     if (axios.isAxiosError(err)) {
@@ -237,6 +265,42 @@ export async function extractArtifact(
       error: message,
     }
   }
+}
+
+// ─── SCM URL normalisation ───────────────────────────────────────────────────
+
+/**
+ * Converts the raw SCM URL from a POM (declared_repository_url) into a clean
+ * HTTPS repository URL suitable for storage as repository_url.
+ *
+ * Handles common Maven SCM URL forms:
+ *   scm:git:git@github.com:owner/repo.git  → https://github.com/owner/repo
+ *   scm:git:https://github.com/owner/repo  → https://github.com/owner/repo
+ *   git://github.com/owner/repo.git        → https://github.com/owner/repo
+ *   https://github.com/owner/repo/tree/... → https://github.com/owner/repo
+ */
+export function normalizeScmUrl(raw: string | null): string | null {
+  if (!raw) return null
+  let url = raw.trim()
+
+  // Strip scm:git: or scm: prefix
+  url = url.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
+
+  // Convert SSH git@host:owner/repo → https://host/owner/repo
+  url = url.replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
+
+  // Convert git:// → https://
+  url = url.replace(/^git:\/\//, 'https://')
+
+  // Strip trailing .git
+  url = url.replace(/\.git$/, '')
+
+  // Strip /tree/... or /blob/... path suffixes (keep only host + owner + repo)
+  url = url.replace(/\/(tree|blob)(\/.*)?$/, '')
+
+  if (!url.startsWith('https://')) return null
+
+  return url.replace(/\/$/, '')
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

@@ -7,6 +7,11 @@ export interface IDbPackageUniverse {
   namespace: string | null
   name: string
   rankInEcosystem: number | null
+  isCritical: boolean
+  criticalityScore: number | null
+  dependentPackagesCount: number | null
+  dependentReposCount: number | null
+  downloads30d: bigint | null
 }
 
 // ─── packages ─────────────────────────────────────────────────────────────────
@@ -23,6 +28,12 @@ export type IDbPackageUpsert = {
   licensesRaw: string | null
   latestVersion: string | null
   ingestionSource: string
+  criticalityScore?: number | null
+  dependentPackagesCount?: number | null
+  dependentReposCount?: number | null
+  downloadsLastMonth?: bigint | null
+  registryUrl?: string | null
+  repositoryUrl?: string | null
 }
 
 // ─── maintainers ──────────────────────────────────────────────────────────────

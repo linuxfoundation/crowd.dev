@@ -22,7 +22,7 @@ const main = async () => {
 
   const config = getPomFetcherConfig()
   log.info(
-    { batchSize: config.batchSize, concurrency: config.concurrency, staleDays: config.staleDays },
+    { batchSize: config.batchSize, concurrency: config.concurrency, fullRefreshDays: config.fullRefreshDays },
     'Config loaded',
   )
 
