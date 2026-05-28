@@ -115,7 +115,17 @@ export function parseOsvRecord(
     if (!allowedEcosystems.has(ecosystem)) continue
 
     const ranges = flattenRanges(affected)
-    if (ranges.length === 0 && (affected.versions ?? []).length === 0) {
+    // If OSV only provides an enumerated `versions[]` list (no `ranges[]`),
+    // convert each exact version into a degenerate range (introduced=v,
+    // last_affected=v) so isInRange matches when `latest_version === v`.
+    // Without this we'd record the advisory_package but no range rows, and
+    // deriveCriticalFlag would silently fail to flag the package.
+    if (ranges.length === 0 && (affected.versions ?? []).length > 0) {
+      for (const v of affected.versions ?? []) {
+        ranges.push({ introducedVersion: v, fixedVersion: null, lastAffected: v })
+      }
+    }
+    if (ranges.length === 0) {
       // No usable affected range at all; skip this package entry but keep going.
       continue
     }

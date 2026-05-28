@@ -202,6 +202,46 @@ describe('parseOsvRecord — range flattening', () => {
     expect(out.packages).toEqual([])
   })
 
+  it('converts versions[] to discrete ranges when ranges[] is empty', () => {
+    // Some OSV records list exact vulnerable versions without a structured
+    // range. Without the conversion the advisory_package would land in the DB
+    // with zero ranges and deriveCriticalFlag would never flag the package.
+    const r = baseRecord({
+      affected: [
+        {
+          package: { ecosystem: 'npm', name: 'pkg' },
+          versions: ['1.0.0', '1.0.1', '1.0.2'],
+        },
+      ],
+    })
+    const out = parseOsvRecord(r, ALLOW)
+    expect(out.packages).toHaveLength(1)
+    expect(out.packages[0].ranges).toEqual([
+      { introducedVersion: '1.0.0', fixedVersion: null, lastAffected: '1.0.0' },
+      { introducedVersion: '1.0.1', fixedVersion: null, lastAffected: '1.0.1' },
+      { introducedVersion: '1.0.2', fixedVersion: null, lastAffected: '1.0.2' },
+    ])
+  })
+
+  it('ignores versions[] when ranges[] is non-empty (avoids redundant rows)', () => {
+    // If OSV provides both, ranges[] is the source of truth — versions[] is
+    // typically a subset enumeration. Avoid writing the same vulnerability
+    // window twice (once as a structured range, once as a per-version range).
+    const r = baseRecord({
+      affected: [
+        {
+          package: { ecosystem: 'npm', name: 'pkg' },
+          ranges: [{ type: 'SEMVER', events: [{ introduced: '1.0.0' }, { fixed: '2.0.0' }] }],
+          versions: ['1.5.0'],
+        },
+      ],
+    })
+    const out = parseOsvRecord(r, ALLOW)
+    expect(out.packages[0].ranges).toEqual([
+      { introducedVersion: '1.0.0', fixedVersion: '2.0.0', lastAffected: null },
+    ])
+  })
+
   it('merges multiple affected[] entries for the same package', () => {
     // Some OSV records list the same (ecosystem, name) multiple times to express
     // disjoint range sets. We collapse them under one advisory_package row.

@@ -614,10 +614,14 @@ CREATE INDEX ON advisory_packages (package_id)
 WHERE
     package_id IS NOT NULL;
 
--- Version ranges affected by an advisory per package.
+-- Version ranges affected by an advisory per package. Populated by the OSV
+-- ingest worker (packages_worker/src/osv) using introduced_version /
+-- fixed_version / last_affected. range_raw / unaffected_raw are reserved
+-- for the deps.dev BQ ingest worker (future): that worker writes the raw
+-- range strings without parsing into structured boundaries. The OSV upsert
+-- path only deletes rows where range_raw / unaffected_raw are both NULL,
+-- so deps.dev rows are not clobbered when OSV re-syncs.
 -- COALESCE prevents silent duplicates when introduced_version is NULL.
--- BQ-sourced rows populate range_raw / unaffected_raw only; introduced/fixed/last_affected
--- are populated by a future range-parsing workstream.
 CREATE TABLE advisory_affected_ranges (
     id bigserial PRIMARY KEY,
     advisory_package_id bigint NOT NULL REFERENCES advisory_packages (id),

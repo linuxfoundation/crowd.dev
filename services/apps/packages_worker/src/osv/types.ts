@@ -1,14 +1,3 @@
-// Worker config, read from env in src/config.ts.
-export interface OsvConfig {
-  bulkBaseUrl: string
-  ecosystems: string[]
-  syncIntervalHours: number
-  idleSleepSec: number
-  tmpDir: string
-  batchSize: number
-  deriveBatchSize: number
-}
-
 // ---- Raw OSV JSON (only the fields we read) ----
 // Reference: https://ossf.github.io/osv-schema/
 

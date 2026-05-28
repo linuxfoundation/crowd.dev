@@ -85,8 +85,18 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
     )
     const advisoryPackageId = advisoryPackageRow.id as number
 
+    // Only delete OSV-derived rows: rows with at least one of
+    // introduced/fixed/last_affected populated AND no deps.dev-source raw text
+    // columns. The deps.dev BQ worker (future) is expected to populate
+    // range_raw / unaffected_raw on rows of its own; we must not wipe those
+    // on every OSV pass.
     await qx.result(
-      `DELETE FROM advisory_affected_ranges WHERE advisory_package_id = $(advisoryPackageId)`,
+      `
+      DELETE FROM advisory_affected_ranges
+      WHERE advisory_package_id = $(advisoryPackageId)
+        AND range_raw IS NULL
+        AND unaffected_raw IS NULL
+      `,
       { advisoryPackageId },
     )
 

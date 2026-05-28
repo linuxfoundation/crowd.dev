@@ -9,7 +9,14 @@ import type * as activities from './activities'
 // §`has_critical_vulnerability` semantics the derive step runs after every
 // ingest pass so packages added between schedule firings are at most one
 // cycle stale and self-heal on the next run.
-const { osvSyncEcosystem, osvDeriveCriticalFlag } = proxyActivities<typeof activities>({
+//
+// Sync and derive use separate proxyActivities configs because their
+// heartbeat shape differs: sync emits one heartbeat per ~1000 records (see
+// activities.ts) so a 5-minute heartbeatTimeout is the right liveness signal;
+// derive is a single tight loop over packages with no per-page heartbeat,
+// so it relies on startToCloseTimeout only — sharing the sync heartbeat
+// config would silently cancel the derive activity at Tier 2 scale.
+const { osvSyncEcosystem } = proxyActivities<typeof activities>({
   // npm sync alone is ~1 hour today (N+1 upsert path, see deferred review
   // comment on upsertAdvisory.ts). Maven is ~5 minutes. We give each
   // per-ecosystem activity a generous 2-hour ceiling.
@@ -24,6 +31,20 @@ const { osvSyncEcosystem, osvDeriveCriticalFlag } = proxyActivities<typeof activ
     // Activities translate FetchError(NOT_FOUND|PARSE) to ApplicationFailure
     // with these type names — Temporal short-circuits the retry.
     nonRetryableErrorTypes: ['NOT_FOUND', 'PARSE'],
+  },
+})
+
+const { osvDeriveCriticalFlag } = proxyActivities<typeof activities>({
+  // Paged scan over packages (~600-700k at Tier 2 scale). The whole derive
+  // pass runs in ~5 minutes on the current dataset; we give it 1 hour of
+  // headroom for the table to grow. No heartbeatTimeout — the activity does
+  // not heartbeat, so adding one would cancel the activity silently before
+  // startToCloseTimeout fires.
+  startToCloseTimeout: '1 hour',
+  retry: {
+    initialInterval: '30 seconds',
+    backoffCoefficient: 2,
+    maximumAttempts: 3,
   },
 })
 
