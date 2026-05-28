@@ -50,7 +50,7 @@ const FIXTURES: Record<string, FixturePackage> = {
   // Regression guard for the implicit-empty-qualifier Maven bug. There's no
   // critical advisory for fixture.test:final-quirk, so the flag must be FALSE.
   finalQuirk: {
-    ecosystem: 'Maven',
+    ecosystem: 'maven',
     namespace: 'fixture.test',
     name: 'final-quirk',
     latest_version: '1.0-final',

@@ -28,9 +28,12 @@ const { osvSyncEcosystem, osvDeriveCriticalFlag } = proxyActivities<typeof activ
 })
 
 export interface OsvSyncWorkflowInput {
-  // OSV ecosystem labels (case-sensitive: 'npm', 'Maven', 'PyPI', …). The same
-  // list is used both for the per-ecosystem download loop and as the
-  // post-parse allowlist filter inside parseOsvRecord.
+  // OSV ecosystem labels in OSV's canonical case ('npm', 'Maven', 'PyPI', …).
+  // Same list is used by the per-ecosystem download loop, where OSV's bucket
+  // is case-sensitive (Maven/all.zip), and as the allowlist source for
+  // parseOsvRecord. The activity lowercases the allowlist internally before
+  // matching parsed records, since storage normalizes to lowercase per
+  // ADR-0001 §OSV "Ecosystem normalization".
   ecosystems: string[]
 }
 

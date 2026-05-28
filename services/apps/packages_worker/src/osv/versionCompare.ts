@@ -94,9 +94,15 @@ function padFor(other: Token): Token {
   return other.kind === 'num' ? { kind: 'num', value: 0 } : { kind: 'str', value: '' }
 }
 
-function compareMaven(a: string, b: string): number {
+function compareMaven(a: string, b: string): number | null {
   const ta = tokenizeMaven(a)
   const tb = tokenizeMaven(b)
+  // Empty or punctuation-only inputs (e.g. '', '...', '---') tokenize to []
+  // and would otherwise be treated as version 0. Per the compareVersion
+  // contract ("returns null when either operand cannot be parsed"), reject
+  // them here so isInRange treats them as "no match" — safer than silently
+  // ordering garbage as 0.
+  if (ta.length === 0 || tb.length === 0) return null
   const max = Math.max(ta.length, tb.length)
   for (let i = 0; i < max; i++) {
     if (i >= ta.length) {
@@ -115,8 +121,11 @@ function compareMaven(a: string, b: string): number {
   return 0
 }
 
+// Ecosystem names are stored lowercase in packages-db per ADR-0001 §OSV
+// "Ecosystem normalization" — 'npm' and 'maven'. Callers (deriveCriticalFlag)
+// pull the value straight from the DB so the literals here must match.
 export function compareVersion(ecosystem: string, a: string, b: string): number | null {
   if (ecosystem === 'npm') return compareNpm(a, b)
-  if (ecosystem === 'Maven') return compareMaven(a, b)
+  if (ecosystem === 'maven') return compareMaven(a, b)
   return null
 }

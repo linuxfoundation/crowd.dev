@@ -30,7 +30,7 @@ describe('compareVersion — npm (semver)', () => {
   })
 })
 
-describe('compareVersion — Maven (ComparableVersion-style)', () => {
+describe('compareVersion — maven (ComparableVersion-style)', () => {
   it.each([
     // Basic numeric ordering
     ['1.0', '1.1', -1],
@@ -56,8 +56,16 @@ describe('compareVersion — Maven (ComparableVersion-style)', () => {
     ['1.0-m1', '1.0-milestone1', 0],
     // Numeric beats alpha at same depth
     ['1.0-1', '1.0-alpha', 1],
-  ])('compareVersion("Maven", %s, %s) sign = %s', (a, b, expected) => {
-    expect(sign(compareVersion('Maven', a, b))).toBe(expected)
+  ])('compareVersion("maven", %s, %s) sign = %s', (a, b, expected) => {
+    expect(sign(compareVersion('maven', a, b))).toBe(expected)
+  })
+
+  it('returns null for unparseable maven versions', () => {
+    // Empty / punctuation-only strings tokenize to [] and used to silently
+    // compare as version 0. Per the comparator contract, return null instead.
+    expect(compareVersion('maven', '', '1.0')).toBeNull()
+    expect(compareVersion('maven', '1.0', '')).toBeNull()
+    expect(compareVersion('maven', '...', '1.0')).toBeNull()
   })
 })
 
@@ -65,5 +73,14 @@ describe('compareVersion — unsupported ecosystems', () => {
   it('returns null for ecosystems we have no comparator for', () => {
     expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()
     expect(compareVersion('crates.io', '0.1', '0.2')).toBeNull()
+  })
+
+  it('rejects titlecase "Maven" — production storage is always lowercase', () => {
+    // Regression guard for the casing bug Fix 1 missed: deriveCriticalFlag
+    // reads `ecosystem` from packages-db where it's lowercase. The comparator
+    // is keyed on the same lowercase form per ADR-0001 §OSV "Ecosystem
+    // normalization". A titlecase 'Maven' call indicates the caller forgot
+    // to normalize.
+    expect(compareVersion('Maven', '1.0', '2.0')).toBeNull()
   })
 })

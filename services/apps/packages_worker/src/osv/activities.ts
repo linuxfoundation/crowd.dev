@@ -22,8 +22,8 @@ function getActivityConfig() {
   return {
     bulkBaseUrl: required('OSV_BULK_BASE_URL'),
     tmpDir: required('OSV_TMP_DIR'),
-    upsertBatchSize: parseInt(required('OSV_BATCH_SIZE'), 10),
-    deriveBatchSize: parseInt(required('OSV_DERIVE_BATCH_SIZE'), 10),
+    upsertBatchSize: requirePositiveInt('OSV_BATCH_SIZE'),
+    deriveBatchSize: requirePositiveInt('OSV_DERIVE_BATCH_SIZE'),
   }
 }
 
@@ -31,6 +31,19 @@ function required(name: string): string {
   const value = process.env[name]
   if (!value) throw new Error(`Missing required environment variable: ${name}`)
   return value
+}
+
+// requirePositiveInt fails fast on non-numeric or zero/negative values so an
+// upstream env-config typo can't turn into NaN propagating through the upsert
+// buffer flush threshold (`buffer.length >= NaN` is always false → unbounded
+// growth) or SQL `LIMIT NaN` errors in the derive loop.
+function requirePositiveInt(name: string): number {
+  const raw = required(name)
+  const parsed = parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Env ${name} must be a positive integer, got: ${raw}`)
+  }
+  return parsed
 }
 
 export interface OsvSyncEcosystemInput {
@@ -66,7 +79,11 @@ export async function osvSyncEcosystem(
 ): Promise<OsvSyncEcosystemResult> {
   const { ecosystem, allowedEcosystems } = input
   const config = getActivityConfig()
-  const allowed = new Set(allowedEcosystems)
+  // OSV's bucket uses case-sensitive paths (Maven/all.zip, not maven/all.zip),
+  // so `ecosystem` (used for the URL) keeps OSV's canonical case. The allowlist
+  // is matched in parseOsvRecord after lowercasing each record's ecosystem per
+  // ADR-0001 §OSV "Ecosystem normalization", so the set is built lowercase here.
+  const allowed = new Set(allowedEcosystems.map((e) => e.toLowerCase()))
   const start = Date.now()
 
   const ecoDir = path.join(config.tmpDir, ecosystem)
