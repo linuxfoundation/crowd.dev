@@ -21,7 +21,8 @@ function isMalicious(id: string): boolean {
   return id.startsWith('MAL-')
 }
 
-// extractSeverity is pure. The intended order per ADR-0005 is V4 → V3 →
+// extractSeverity is pure. The intended order per ADR-0001 §CVSS scoring
+// strategy is V4 → V3 →
 // qualitative tag from database_specific.severity, but v4 numeric scoring is
 // deferred (see cvssScoring.ts), so v1 skips V4 entirely: V3 first, then the
 // qualitative tag. V4-only records fall through to the qualitative fallback

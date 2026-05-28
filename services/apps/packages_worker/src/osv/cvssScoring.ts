@@ -46,7 +46,7 @@ export function computeV3Score(vector: string): number | null {
   // it does not slot into the undefined-check below. Validate it explicitly
   // here — an invalid or missing S would otherwise silently fall through to
   // the Scope:Unchanged formula and produce a wrong numeric score instead of
-  // null, which is the headline risk flagged in ADR-0005.
+  // null, which is the headline risk flagged in ADR-0001 §CVSS scoring strategy.
   const s = v.S
   if (!S_VALUES.has(s)) return null
   const pr = s === 'C' ? PR_C[v.PR] : PR_U[v.PR]

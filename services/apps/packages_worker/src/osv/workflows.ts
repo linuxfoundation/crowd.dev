@@ -2,11 +2,13 @@ import { log, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from './activities'
 
-// Per ADR-0005 the v3.1 inline scorer + qualitative fallback are mature; v4 is
-// deferred to a follow-up. Per ADR-0006 the dedup key matches the widened
-// unique index so multi-distro ranges are preserved. Per ADR-0003 the derive
-// step runs after every ingest pass so packages added between schedule firings
-// are at most one cycle stale and self-heal on the next run.
+// Per ADR-0001 §CVSS scoring strategy the v3.1 inline scorer + qualitative
+// fallback are mature; v4 is deferred to a follow-up. Per ADR-0001
+// §`advisory_affected_ranges` uniqueness scope the dedup key matches the
+// widened unique index so multi-distro ranges are preserved. Per ADR-0001
+// §`has_critical_vulnerability` semantics the derive step runs after every
+// ingest pass so packages added between schedule firings are at most one
+// cycle stale and self-heal on the next run.
 const { osvSyncEcosystem, osvDeriveCriticalFlag } = proxyActivities<typeof activities>({
   // npm sync alone is ~1 hour today (N+1 upsert path, see deferred review
   // comment on upsertAdvisory.ts). Maven is ~5 minutes. We give each

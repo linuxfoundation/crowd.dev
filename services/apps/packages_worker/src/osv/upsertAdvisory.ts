@@ -8,7 +8,8 @@ import { NormalizedRange, NormalizedRecord } from './types'
 // We key on the full range tuple so two ranges sharing an introduced_version
 // but differing in fixed_version or last_affected both survive — per
 // osv-plan §2 decision #1 ("one package has many version ranges; no
-// denormalization") and ADR-0006. OSV still occasionally emits redundant
+// denormalization") and ADR-0001 §`advisory_affected_ranges` uniqueness scope.
+// OSV still occasionally emits redundant
 // events for the exact same tuple, which the Set collapses to one row.
 export function dedupeRanges(ranges: NormalizedRange[]): NormalizedRange[] {
   const seen = new Set<string>()

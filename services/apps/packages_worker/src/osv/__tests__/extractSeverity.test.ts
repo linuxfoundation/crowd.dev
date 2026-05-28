@@ -36,7 +36,7 @@ describe('extractSeverity', () => {
   })
 
   it('falls back to qualitative when only V4 is present (V4 numeric not implemented)', () => {
-    // Documented v1 limitation in ADR-0003 + cvssScoring.ts.
+    // Documented v1 limitation in ADR-0001 §CVSS scoring strategy + cvssScoring.ts.
     const r = record({
       severity: [
         {

@@ -6,7 +6,8 @@ import { dedupeRanges } from '../upsertAdvisory'
 // dedupeRanges is the pre-flight pass that keeps inserts from colliding on the
 // (advisory_package_id, introduced, fixed, last_affected) unique index. The
 // scope of the dedup key is the load-bearing detail — keying only on
-// introduced_version (the historical bug guarded by ADR-0006) silently dropped
+// introduced_version (the historical bug guarded by ADR-0001
+// §`advisory_affected_ranges` uniqueness scope) silently dropped
 // ranges that share an introduced_version but differ in fixed_version or
 // last_affected, which OSV emits for cross-distro patches and partial-fix
 // scenarios.

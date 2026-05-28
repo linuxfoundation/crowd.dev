@@ -9,7 +9,8 @@
 -- sharing an introduced_version but differing in fixed_version / last_affected
 -- (cross-distro patches, partial fixes) no longer collide on insert and lose
 -- the wider range. Restores the osv-plan §2 decision #1 invariant: "one
--- package has many version ranges, no denormalization." See ADR-0006.
+-- package has many version ranges, no denormalization." See ADR-0001
+-- §`advisory_affected_ranges` uniqueness scope.
 DO $$
 DECLARE
     idx_name text;
