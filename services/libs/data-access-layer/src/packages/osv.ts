@@ -137,11 +137,15 @@ export async function upsertAdvisoryPackage(
   return row.id as number
 }
 
-// Only delete OSV-derived rows: rows with at least one of
-// introduced/fixed/last_affected populated AND no deps.dev-source raw text
-// columns. The deps.dev BQ worker (future) is expected to populate range_raw
-// / unaffected_raw on rows of its own; we must not wipe those on every OSV
-// pass.
+// Delete every advisory_affected_ranges row for this advisory_package that
+// lacks deps.dev raw columns — i.e. every OSV-owned row. The deps.dev BQ
+// worker (future) is expected to populate range_raw / unaffected_raw on rows
+// of its own and never set the structured introduced/fixed/last_affected
+// columns; this predicate scopes the wipe to the OSV pipeline's rows so a
+// deps.dev row is never clobbered on resync. OSV rows where all three
+// structured columns are NULL (e.g. some MAL- "always vulnerable" ranges)
+// are still deleted here and re-inserted from the new payload below — that's
+// fine, the row is OSV-owned and idempotent.
 export async function deleteOsvOnlyRanges(
   qx: QueryExecutor,
   advisoryPackageId: number,

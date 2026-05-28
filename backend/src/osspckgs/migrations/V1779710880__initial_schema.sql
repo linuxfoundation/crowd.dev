@@ -616,10 +616,13 @@ WHERE
 
 -- Drives the resolveMissingPackageIds catch-up UPDATE in deriveCriticalFlag:
 -- the query filters WHERE package_id IS NULL and joins on (ecosystem,
--- package_name), so the planner needs an index whose predicate matches the
--- WHERE clause to avoid a seq scan over the full table. The non-partial
--- (ecosystem, package_name) index above can't be used here because it doesn't
--- prove package_id IS NULL.
+-- package_name). The non-partial (ecosystem, package_name) index above is
+-- usable here too (the planner just adds a Filter on package_id IS NULL), but
+-- as the table grows the vast majority of rows have package_id IS NOT NULL,
+-- so the non-partial scan ends up filtering out most of what it reads. This
+-- partial index only contains the still-unresolved rows, keeping it tiny
+-- regardless of total table size and making the daily catch-up O(unresolved)
+-- instead of O(total).
 CREATE INDEX ON advisory_packages (ecosystem, package_name)
 WHERE
     package_id IS NULL;

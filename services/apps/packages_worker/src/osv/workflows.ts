@@ -21,9 +21,14 @@ const { osvSyncEcosystem } = proxyActivities<typeof activities>({
   // comment on upsertAdvisory.ts). Maven is ~5 minutes. We give each
   // per-ecosystem activity a generous 2-hour ceiling.
   startToCloseTimeout: '2 hours',
-  // Activity heartbeats every 1000 records (see activities.ts). 5 minutes is
-  // plenty of headroom for a network hiccup mid-batch.
-  heartbeatTimeout: '5 minutes',
+  // Activity heartbeats every 1000 records (see activities.ts), but the FIRST
+  // heartbeat only fires after the full ecosystem zip has been downloaded
+  // (no heartbeat during downloadZip). DOWNLOAD_TIMEOUT_MS in
+  // fetchEcosystemZip.ts is 10 minutes, so the heartbeatTimeout must exceed
+  // that — otherwise Temporal kills the activity as unresponsive on a slow
+  // CDN even though the download is progressing. 15 minutes leaves 5 minutes
+  // of headroom past the download cap before the next heartbeat is expected.
+  heartbeatTimeout: '15 minutes',
   retry: {
     initialInterval: '30 seconds',
     backoffCoefficient: 2,
