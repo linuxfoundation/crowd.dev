@@ -76,7 +76,7 @@
     "eslint-plugin-storybook": "^10.2.12",
     "eslint-plugin-vue": "^9.33.0",
     "lint-staged": "^15.4.3",
-    "postcss": "^8.4.21",
+    "postcss": "^8.5.15",
     "rollup-plugin-visualizer": "^5.9.2",
     "sass": "^1.80.0",
     "storybook": "^10.2.12",
