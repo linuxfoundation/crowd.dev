@@ -82,7 +82,7 @@ Tier 2 enriches a critical slice of the npm and Maven ecosystems — not the ful
 
 We use the [deps.dev BigQuery public datasets](https://deps.dev) — specifically `PackageVersionsLatest`, `DependentsLatest`, `PackageVersionToProjectLatest`, and `ProjectsLatest` — filtered to `System IN ('NPM', 'MAVEN')` as the universe input. The BigQuery data is exported to Parquet files and imported into `packages_universe` on a weekly cadence aligned with deps.dev's own refresh interval. The first run is a one-time full backfill; subsequent weekly imports only pull rows whose deps.dev snapshot date has advanced since the previous import, so the export size and write volume are scoped to actual diffs rather than the full universe. A scoring + ranking job then promotes the top-N per ecosystem by setting `is_critical = true` and copying `criticality_score` onto the full `packages` table.
 
-The scoring formula, per-ecosystem critical-package quotas, graph-signal inputs, and spotlight-override mechanism are defined in §Criticality scoring methodology below. The ranking function takes `critical_top_n_by_ecosystem` as a JSONB parameter and weights as numeric inputs, so thresholds and formula coefficients can be tuned at call time without a schema change.
+The current scoring formula and per-ecosystem critical-package quotas are **not yet finalized** — both are still under discussion. The ranking function takes `critical_top_n_by_ecosystem` as a JSONB parameter and weights as numeric inputs, so thresholds and formula coefficients can be tuned at call time without a schema change.
 
 The BigQuery free tier is approximately 1 TiB/month. Column projection and `System` filtering are mandatory on every query; full-table scans will exhaust the quota.
 
