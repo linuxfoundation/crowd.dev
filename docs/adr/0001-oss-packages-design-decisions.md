@@ -206,7 +206,7 @@ Inputs in blue are new graph-derived signals; the spotlight step in orange is th
 #### Additional Decisions
 
 - **Edge filter**: `dependency_kind = 'direct'` only — exclude `dev` and `peer` (they don't represent runtime blast radius).
-- **Version resolution**: each package's latest non-yanked, non-prerelease version (uses existing `versions.is_latest` / `is_yanked`).
+- **Version resolution**: each package's latest non-yanked, non-prerelease version (uses existing `versions.is_latest` / `is_yanked` / `is_prerelease`).
 - **Graph scope**: per-ecosystem; don't merge ecosystems into a single graph. Cross-ecosystem edges are rare and noisy.
 - **Score range**: `[0, 1]` (weights sum to 1.0). Score interpretation: weighted average percentile across signals within ecosystem. Tier membership is determined by rank, not by score threshold.
 - **Cadence**: weekly, aligned with the existing universe refresh.
