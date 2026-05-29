@@ -15,7 +15,7 @@ The oss-packages domain is being built inside CDP as a new, independent capabili
 | Database placement                             | decided                                             |
 | Worker architecture                            | decided                                             |
 | Universe source and critical-package selection | decided                                             |
-| Criticality scoring methodology                | proposed (weights tunable; deps.dev ingestion vs in-memory pending) |
+| Criticality scoring methodology                | proposed (weights tunable)                                          |
 | Write semantics across sub-workers             | decided                                             |
 | Package → repository provenance                | decided                                             |
 | OSV as canonical security source               | decided                                             |
@@ -145,7 +145,7 @@ These are a starting point, not a recommendation we've validated. They will be r
 
 #### Per-ecosystem tier budgets
 
-`rank_packages_universe()` already takes `critical_top_n_by_ecosystem` as a JSONB parameter that ranks within each ecosystem and cuts at top N. Tier 2 reuses the same shape with a second JSONB parameter and a separate `is_tier2` column on `packages_universe`. Tier 1 ⊆ Tier 2 falls out naturally from the same ranking.
+`rank_packages_universe()` already takes `critical_top_n_by_ecosystem` as a JSONB parameter that ranks within each ecosystem and cuts at top N.
 
 Allocation policy is **floor + ceiling + judgment**: every onboarded ecosystem gets a minimum (the floor — guarantees representation regardless of size), no single ecosystem exceeds a percentage of the total (the ceiling — prevents npm from swallowing the list). Illustrative values for a 700k Tier 2 budget:
 
