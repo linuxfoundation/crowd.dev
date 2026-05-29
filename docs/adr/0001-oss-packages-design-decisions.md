@@ -23,6 +23,7 @@ The oss-packages domain is being built inside CDP as a new, independent capabili
 | `has_critical_vulnerability` semantics         | decided                                             |
 | `advisory_affected_ranges` uniqueness scope    | decided                                             |
 | Per-source ingestion strategies                | decided (Sonatype API access pending)               |
+| Source of truth: deps.dev vs registries / OSV  | decided                                             |
 | deps.dev coverage and gaps                     | decided                                             |
 | Downloads timeline by tier                     | decided                                             |
 
@@ -80,7 +81,7 @@ Adding a new data source means adding `src/{worker}/` and a new compose service 
 
 Tier 2 enriches a critical slice of the npm and Maven ecosystems — not the full registry. We need a signal-rich, affordable source to rank the ~4–5M packages and decide which top-N to fully enrich.
 
-We use the [deps.dev BigQuery public datasets](https://deps.dev) — specifically `PackageVersionsLatest`, `DependentsLatest`, `PackageVersionToProjectLatest`, and `ProjectsLatest` — filtered to `System IN ('NPM', 'MAVEN')` as the universe input. The BigQuery data is exported to Parquet files and imported into `packages_universe` on a weekly cadence. A scoring + ranking job then promotes the top-N per ecosystem by setting `is_critical = true` and copying `criticality_score` onto the full `packages` table.
+We use the [deps.dev BigQuery public datasets](https://deps.dev) — specifically `PackageVersionsLatest`, `DependentsLatest`, `PackageVersionToProjectLatest`, and `ProjectsLatest` — filtered to `System IN ('NPM', 'MAVEN')` as the universe input. The BigQuery data is exported to Parquet files and imported into `packages_universe` on a weekly cadence aligned with deps.dev's own refresh interval. The first run is a one-time full backfill; subsequent weekly imports only pull rows whose deps.dev snapshot date has advanced since the previous import, so the export size and write volume are scoped to actual diffs rather than the full universe. A scoring + ranking job then promotes the top-N per ecosystem by setting `is_critical = true` and copying `criticality_score` onto the full `packages` table.
 
 The scoring formula, per-ecosystem critical-package quotas, graph-signal inputs, and spotlight-override mechanism are defined in §Criticality scoring methodology below. The ranking function takes `critical_top_n_by_ecosystem` as a JSONB parameter and weights as numeric inputs, so thresholds and formula coefficients can be tuned at call time without a schema change.
 
@@ -223,7 +224,7 @@ Five sub-workers run concurrently (npm, Maven, OSV, GitHub, Docker Hub), all wri
 | Table                                 | Rule                                                                                                                                                                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages`                            | Upsert on `purl`. Each worker only writes columns it owns; ecosystem isolation means column-level conflicts cannot occur in practice.                                                                                                                       |
-| `packages_universe`                   | Full truncate-and-replace on the weekly rank job. No other worker writes to this table. The truncate + bulk-insert must be wrapped in a single transaction or shadow-table swap to avoid a window of emptiness visible to the promotion query.              |
+| `packages_universe`                   | Incremental upsert keyed on `purl`. The deps.dev import only touches rows whose underlying deps.dev snapshot date has advanced since the previous import (initial run is a one-time full backfill).           |
 | `versions`                            | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`.                                                                                                                     |
 | `repos`                               | Registry workers (npm, Maven) do **not** write directly to `repos`. They write `package_repos` rows. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
 | `package_repos`                       | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other.                                                                                         |
@@ -415,6 +416,51 @@ Docker Hub runs after registry workers are stable. Docker dependents (which imag
 
 ---
 
+### Source of truth: deps.dev backfill vs registries / OSV
+
+deps.dev gives us a single low-cost source covering packages, versions, package → repo mappings, repos, and advisories. The same data is also available from the underlying registries (npm, Maven Central, etc.) and from OSV directly. We need a clear ownership rule so two sources don't quietly disagree.
+
+We split responsibility by lifecycle stage, not by table:
+
+- **Initial backfill (one-time, per ecosystem)**: deps.dev populates `packages`, `versions`, `package_repos`, `repos`, `advisories`, and `advisory_affected_ranges` in a single bulk pass. This is how we get from zero to a workable dataset without standing up every registry worker first.
+- **New packages discovered after backfill**: deps.dev remains the bootstrap source. On each weekly deps.dev import, any newly-seen `purl` lands in all relevant tables from deps.dev fields, exactly as it did during backfill. This avoids a window where a new package exists in deps.dev but is invisible to us until the registry worker happens to see it.
+- **Ongoing updates to existing rows**: registries are the source of truth for package and version data; OSV is the source of truth for advisories; the GitHub enricher remains the source of truth for `repos` metadata beyond what `ProjectsLatest` provides. Registry / OSV workers may overwrite values that deps.dev wrote at backfill time — that is the intended direction of drift.
+
+Concretely:
+
+| Lifecycle event                                              | Writer              |
+| ------------------------------------------------------------ | ------------------- |
+| First-ever load of an ecosystem                              | deps.dev import     |
+| New package appears in deps.dev export                       | deps.dev import     |
+| New version published, deprecation / yank flipped            | registry worker     |
+| `latest_version`, `latest_release_at`, license drift         | registry worker     |
+| `package_repos` row added by a new registry/heuristic source | registry worker     |
+| Advisory created or modified                                 | OSV worker          |
+| Repo metadata refresh (stars, topics, archived, etc.)        | github-repos-enricher |
+
+The §deps.dev coverage and gaps table below remains the authoritative per-column ownership reference; this section is the lifecycle rule that sits on top of it.
+
+#### Data-source provenance: `package_source_log`
+
+To make drift between deps.dev and the registry / OSV workers observable, every package carries one row per writing source in `package_source_log`. Each worker that touches a package upserts its `(package_id, source)` row in the same transaction as the data write — bumping `last_synced_at` and recording the set of `table.column` paths it owns for that package.
+
+| Column           | Purpose                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `package_id`     | FK to `packages(id)`. Part of PK.                                                             |
+| `source`         | Writing source: `'deps_dev'`, `'npm-registry'`, `'maven-central'`, `'osv'`, `'github-enricher'`, `'manual'`. Part of PK. |
+| `columns`        | Array of `table.column` paths this source wrote for this package (e.g. `packages.latest_version`, `versions.is_yanked`). |
+| `last_synced_at` | Timestamp of the most recent write by this source for this package.                           |
+
+Primary key is `(package_id, source)` — one row per package per source, updated in place. Cardinality is bounded by `|packages| × |sources|` (a small constant per package), well under what an append-only event log would generate.
+
+The shape answers the two questions the live data tables cannot: "which source last touched this package, and when?" and "is deps.dev still writing columns that a registry worker should now own?". It deliberately does not preserve history — a worker overwriting its own row drops the previous `columns` set. The present-tense "who currently owns what for this package" view is what the intended consumers (drift alerting, debugging the registry-vs-deps.dev handoff) need.
+
+Updating `package_source_log` is a social contract on every worker that writes to packages-domain tables — no Postgres constraint enforces it. Code review and the §Source of truth lifecycle table are the enforcement mechanisms.
+
+**Decided**: 2026-05-29
+
+---
+
 ### deps.dev coverage and gaps
 
 deps.dev is the primary source for package identity, dependents, advisories, and `ProjectsLatest`-derived repo metadata. The table below is the canonical reference for which sub-worker owns which column. Nullable columns in the schema reflect these boundaries.
@@ -495,8 +541,6 @@ Downloads is the strongest criticality signal, but the ~4–5M packages in `pack
 
 Tier 2 (`packages`) downloads are stored in `downloads_daily` — one row per `(package_id, date)`, consumers sum over any window they need. Tier 3 (`packages_universe`) downloads are stored in `downloads_last_30d` — one row per `(purl, end_date)` capturing a rolling 30-day window — with the latest window's count also cached on `packages_universe.downloads_last_30d bigint` for direct use by `rank_packages_universe()` without a join.
 
-`downloads_last_30d` is keyed by `purl` (not `packages_universe.id`) so rows survive the weekly truncation of `packages_universe`.
-
 | Table                | Tier                    | Grain                                      | Unique key           | PK               | Partitioning                   |
 | -------------------- | ----------------------- | ------------------------------------------ | -------------------- | ---------------- | ------------------------------ |
 | `downloads_daily`    | 2 (`packages`)          | one row per package per day                | `(package_id, date)` | `(id, date)`     | RANGE on `date` via pg_partman |
@@ -532,8 +576,8 @@ A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-wi
 
 - 2026-05-27 — initial record
 - 2026-05-28 — folded standalone ADR-0003 (`has_critical_vulnerability` semantics), ADR-0005 (CVSS scoring strategy), and ADR-0006 (`advisory_affected_ranges` uniqueness scope) into this living record; standalone files removed. Resolved the prior open question on `has_critical_vulnerability` (option b + MAL- override). ADR-0004 (standalone-bin vs Temporal) was removed before merging — the worker architecture decision in this ADR supersedes it.
+- 2026-05-29 — clarified `packages_universe` import semantics (one-time backfill + weekly snapshot-diff incrementals; the ranking job updates score/flag columns in place). Added §Source of truth: deps.dev backfill vs registries / OSV with lifecycle ownership rules and the agreed `package_source_log` provenance table (`(package_id, source)` PK; `columns` array tracks `table.column` paths each source writes).
 - 2026-05-29 — added §Criticality scoring methodology (graph signals — transitive dependent count and PageRank centrality; per-ecosystem percentile-rank formula in `[0, 1]`; floor + ceiling tier budget policy; `package_criticality_spotlight` table). Resolves the prior open question on the placeholder formula. Standalone ADR-0002 was folded into this living record before publication and removed. New open questions added on deps.dev coverage for graph signals and on the `packages_universe` write-semantics row.
-
 ---
 
 ## Note on promotion to production
