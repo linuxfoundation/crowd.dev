@@ -30,6 +30,21 @@ services:
     networks:
       - crowd-bridge
 
+  packages:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    command: -c 'max_connections=300'
+    environment:
+      - POSTGRES_PASSWORD=example
+      - POSTGRES_DB=packages-db
+    ports:
+      - 5434:5432
+    volumes:
+      - pgdata-packages-dev:/var/lib/postgresql/data
+    shm_size: 1gb
+    networks:
+      - crowd-bridge
+
   open-search:
     image: opensearchproject/opensearch:2.7.0
     restart: unless-stopped
@@ -191,6 +206,7 @@ networks:
 volumes:
   pgdata-dev:
   pgdata-product-dev:
+  pgdata-packages-dev:
   opensearch-dev:
   s3-dev:
   redis-dev:
