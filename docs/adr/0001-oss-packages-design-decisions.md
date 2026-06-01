@@ -100,7 +100,7 @@ Five sub-workers run concurrently (npm, Maven, OSV, GitHub, Docker Hub), all wri
 | `advisories` | Upsert on `osv_id`. OSV is the single source of truth; no other worker writes to this table. |
 | `maintainers` / `package_maintainers` | Upsert on `(ecosystem, username)`. Never delete — history is preserved. |
 | `downloads_daily` | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates. |
-| `downloads_last_30d` | Upsert on `(purl, end_date)`. Written by the weekly ranking worker only. The cached `packages_universe.downloads_last_30d` column must be updated in the same pass. |
+| `downloads_last_30d` | Upsert on `(purl, end_date)`. Each ecosystem's ingestion worker is responsible for writing its own rows. For npm: the npm worker's `refreshLast30dDownloads` workflow writes on a monthly cron (and backfills). The cached `packages_universe.downloads_last_30d` column must be updated in the same pass as the latest window row. |
 
 The column-ownership rule is a social contract, not enforced by Postgres. Code review must catch cross-ecosystem or cross-source column writes using this table as the reference.
 
@@ -177,10 +177,13 @@ The ingest worker must stream-parse the bulk ZIP rather than loading it into mem
 
 **Strategy**: daily delta poll via the CouchDB changes feed, not a full sync.
 
-1. Call `replicate.npmjs.com/_changes?since=<last_seq>&limit=<batch>` to get package names changed in the last 24h.
-2. For each changed name, fetch the full document from `registry.npmjs.com/<package>`.
-3. Normalize into `packages`, `versions`, `maintainers`, and `package_maintainers` using the write rules above.
-4. Downloads (timeline): call `api.npmjs.org/downloads/range/<start>:<end>/<package>` in batches of **128 packages per call** against the critical list. Write per-day rows to `downloads_daily`. Update `packages_universe.downloads_last_30d` at the end of each pass.
+1. Call `replicate.npmjs.com/_changes?since=<last_seq>&limit=<batch>` to get package names changed since the last run.
+2. Filter changed names against the `packages` table (~700k packages). Only packages already tracked in Tier 2 are re-ingested — unknown packages in the changes feed are ignored.
+3. For each matching changed name, fetch the full document from `registry.npmjs.com/<package>`.
+4. Normalize into `packages`, `versions`, `maintainers`, and `package_maintainers` using the write rules above.
+4. Downloads: two Temporal workflows — `backfillDailyDownloads` (per-day rows into `downloads_daily`) and `refreshLast30dDownloads` (rolling 30-day windows into `downloads_last_30d`). Both are self-healing: they detect and fill missing windows on each run rather than assuming continuity. Both currently source packages from a static watch list. Once the deps.dev BQ import is operational, `backfillDailyDownloads` will source from `packages` (Tier 2 critical slice) and `refreshLast30dDownloads` will source from `packages_universe` (full Tier 3 population).
+
+   **Rolling-30-day window shape**: each `downloads_last_30d` window uses `end_date = 1st of calendar month, start_date = end_date − 30 days` — not a true calendar month. This ensures every window covers exactly 30 days, making download counts directly comparable across months for criticality scoring. Calendar months (28–31 days) would skew comparisons.
 
 The `_changes` `seq` cursor is persisted between runs (in a `worker_state` row or env var) so each poll starts where the last one ended. If the cursor is lost the worker falls back to a full re-sync of the critical list.
 
@@ -315,7 +318,7 @@ SET count      = EXCLUDED.count,
     start_date = EXCLUDED.start_date;
 ```
 
-The weekly ranking worker must write both the `downloads_last_30d` row and the cached `packages_universe.downloads_last_30d` column in the same pass — if only one write happens, the ranking function silently uses a stale value. Code review must enforce this.
+The writer of a `downloads_last_30d` row must also update the cached `packages_universe.downloads_last_30d` column in the same pass when writing the latest window — if only one write happens, the ranking function silently uses a stale value. Code review must enforce this. For npm, this responsibility belongs to the npm worker's `refreshLast30dDownloads` workflow.
 
 A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-window history but no daily history; the daily timeline starts from the promotion date forward.
 
