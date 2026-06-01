@@ -4,6 +4,7 @@ import type * as depsDevActivities from '../activities'
 
 import { ingestAdvisories } from './ingestAdvisories'
 import { ingestDependencies } from './ingestDependencies'
+import { ingestDependentCounts } from './ingestDependentCounts'
 import { ingestPackages } from './ingestPackages'
 import { ingestRepos } from './ingestRepos'
 import { ingestVersions } from './ingestVersions'
@@ -14,7 +15,7 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } =
     retry: { maximumAttempts: 3 },
   })
 
-const { rankPackagesUniverse, updateDependentCounts } = proxyActivities<typeof depsDevActivities>({
+const { rankPackagesUniverse } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
   retry: { maximumAttempts: 2 },
 })
@@ -27,6 +28,7 @@ type JobKind =
   | 'package_dependencies'
   | 'advisories'
   | 'advisory_packages'
+  | 'dependent_counts'
 
 // deps.dev retains weekly snapshots for ~3 years; 1095 days (3 years) gives comfortable headroom.
 // advisories/advisory_packages use AdvisoriesLatest (no partition history) → effectively unlimited.
@@ -38,13 +40,18 @@ const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   package_dependencies: 1095,
   advisories: 999_999,
   advisory_packages: 999_999,
+  dependent_counts: 1095,
 }
 
 // Kinds whose incremental diff is driven by a BQ partition snapshot date.
 // repos/package_repos use cursor-based ingestion; advisories/advisory_packages use Latest views.
 const PARTITIONED_KINDS: JobKind[] = ['packages', 'versions', 'package_dependencies']
 
-export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental' }): Promise<void> {
+// Kinds that query PackageVersionToProject/Dependents — always resolve snapshot date because those
+// tables are on a weekly cadence that may differ from PackageVersions.
+const SNAPSHOT_RESOLVED_KINDS: JobKind[] = ['repos', 'dependent_counts']
+
+export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental'; ecosystems?: string[]; reuseExports?: boolean; depsTableOption?: 'A' | 'B'; exportName?: string }): Promise<void> {
   // B3: deterministic timestamps — workflowInfo().startTime is replay-stable; new Date() is not.
   const start = workflowInfo().startTime
   const runId = start.toISOString().replace(/[:.]/g, '-')
@@ -57,7 +64,7 @@ export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental' }):
   //
   // First-ever bootstrap (no prior snapshots): must run mode='full'.
   // The 'full' scan against *Latest views is naturally idempotent — re-running
-  // after a partial failure re-processes already-loaded rows via ON CONFLICT,
+  // after a partial failure re-processes already-loaded rows via ON CONFLICT DO NOTHING,
   // which is wasteful but safe.
 
   const jobKinds: JobKind[] = [
@@ -66,14 +73,22 @@ export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental' }):
   const watermarks = new Map<JobKind, string | null>()
 
   // B6: resolve the actual available snapshot date from BQ (deps.dev publishes weekly, not daily).
-  // All partitioned kinds share the same PackageVersions/DependencyGraphEdges cadence so one
-  // resolution covers all — but each kind may in theory differ, so resolve per-kind.
+  // Partitioned BQ kinds need resolved dates; cursor kinds (repos, dependent_counts) query different
+  // tables (PackageVersionToProject, Dependents) that may be on a different cadence than PackageVersions.
   const resolvedSnapshots = new Map<JobKind, string>()
+
+  // Partitioned kinds: only needed for incremental (full mode uses *Latest views, no partition filter)
   if (opts.mode === 'incremental') {
     for (const kind of PARTITIONED_KINDS) {
       const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
       resolvedSnapshots.set(kind, snapshotDate)
     }
+  }
+
+  // Always resolve snapshot date for kinds that filter by partition date
+  for (const kind of SNAPSHOT_RESOLVED_KINDS) {
+    const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
+    resolvedSnapshots.set(kind, snapshotDate)
   }
 
   // Validate all watermarks up-front before touching BQ (fail fast, not mid-run)
@@ -110,20 +125,22 @@ export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental' }):
   // then advisories last.
   // M3: executeChild for retry isolation and history compaction per kind.
   await executeChild(ingestPackages, {
-    args: [{ runId, syncMode: opts.mode, today: snap('packages'), watermark: wm('packages') }],
+    args: [{ runId, syncMode: opts.mode, today: snap('packages'), watermark: wm('packages'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }],
   })
-  await updateDependentCounts({ runId })
+  await executeChild(ingestDependentCounts, {
+    args: [{ runId, snapshotDate: snap('dependent_counts'), reuseExports: opts.reuseExports, exportName: opts.exportName }],
+  })
 
-  await executeChild(ingestRepos, { args: [{ runId }] })
+  await executeChild(ingestRepos, { args: [{ runId, snapshotDate: snap('repos'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }] })
 
   await executeChild(ingestVersions, {
-    args: [{ runId, syncMode: opts.mode, today: snap('versions'), watermark: wm('versions') }],
+    args: [{ runId, syncMode: opts.mode, today: snap('versions'), watermark: wm('versions'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }],
   })
   await executeChild(ingestDependencies, {
-    args: [{ runId, syncMode: opts.mode, today: snap('package_dependencies'), watermark: wm('package_dependencies') }],
+    args: [{ runId, syncMode: opts.mode, today: snap('package_dependencies'), watermark: wm('package_dependencies'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, depsTableOption: opts.depsTableOption, exportName: opts.exportName }],
   })
   await rankPackagesUniverse()
   await executeChild(ingestAdvisories, {
-    args: [{ runId, syncMode: opts.mode, today, watermark: wm('advisories') }],
+    args: [{ runId, syncMode: opts.mode, today, watermark: wm('advisories'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }],
   })
 }

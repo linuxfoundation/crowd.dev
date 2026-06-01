@@ -1,14 +1,22 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
+import { buildVersionsFullSql, buildVersionsIncrementalSql } from '../queries/versionsSql'
+import { toSystemsFilter } from '../queries/systems'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
   retry: { maximumAttempts: 3, initialInterval: '1 minute', backoffCoefficient: 2 },
 })
 
+const { listParquetFiles } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '5 minutes',
+  retry: { maximumAttempts: 3 },
+})
+
 const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '2 hours',
+  heartbeatTimeout: '2 minutes',
   retry: { maximumAttempts: 2 },
 })
 
@@ -17,57 +25,11 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 1 },
 })
 
-const SYSTEMS = `'NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO'`
-
-const VERSIONS_SQL_FULL = `
-SELECT
-  LOWER(System) AS ecosystem,
-  Name          AS raw_name,
-  Purl          AS purl,
-  Version       AS number,
-  UpstreamPublishedAt                                      AS published_at,
-  COALESCE(NOT VersionInfo.IsRelease, FALSE)               AS is_prerelease,
-  ARRAY_AGG(DISTINCT l ORDER BY l IGNORE NULLS)            AS licenses
-FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
-LEFT JOIN UNNEST(Licenses) AS l ON TRUE
-WHERE System IN (${SYSTEMS})
-  AND Purl IS NOT NULL
-GROUP BY 1, 2, 3, 4, 5, 6
-`
-
-function buildIncrementalSql(today: string, watermark: string): string {
-  return `
-WITH today AS (
-  SELECT
-    LOWER(System) AS ecosystem,
-    Name          AS raw_name,
-    Purl          AS purl,
-    Version       AS number,
-    UpstreamPublishedAt                                    AS published_at,
-    COALESCE(NOT VersionInfo.IsRelease, FALSE)             AS is_prerelease,
-    ARRAY_AGG(DISTINCT l ORDER BY l IGNORE NULLS)          AS licenses
-  FROM \`bigquery-public-data.deps_dev_v1.PackageVersions\`
-  LEFT JOIN UNNEST(Licenses) AS l ON TRUE
-  WHERE SnapshotAt = TIMESTAMP('${today}')
-    AND System IN (${SYSTEMS})
-    AND Purl IS NOT NULL
-  GROUP BY 1, 2, 3, 4, 5, 6
-),
-last_watermark AS (
-  SELECT System, Name, Version, MAX(UpstreamPublishedAt) AS UpstreamPublishedAt
-  FROM \`bigquery-public-data.deps_dev_v1.PackageVersions\`
-  WHERE SnapshotAt = TIMESTAMP('${watermark}')
-    AND System IN (${SYSTEMS})
-  GROUP BY System, Name, Version
-)
-SELECT t.*
-FROM today t
-LEFT JOIN last_watermark l
-  ON LOWER(l.System) = t.ecosystem AND l.Name = t.raw_name AND l.Version = t.number
-WHERE l.Version IS NULL
-   OR t.published_at != l.UpstreamPublishedAt
-`
-}
+const { dropVersionsIndexes, rebuildVersionsIndexes } = proxyActivities<typeof depsDevActivities>({
+  // Index builds on large partitioned tables can take hours.
+  startToCloseTimeout: '6 hours',
+  retry: { maximumAttempts: 2, initialInterval: '1 minute' },
+})
 
 const STAGING_TABLE = 'staging.osspckgs_versions_raw'
 
@@ -83,39 +45,64 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_versions_raw (
 )
 `
 
-// TODO(Step 11 optimization): for full loads, drop secondary indexes on versions_p0…versions_p31
-// before merge and rebuild after — 5-10× speedup. Requires knowing exact index names from the
-// migration. Skip for now; add once confirmed against a live schema.
 const MERGE_SQL = `
 INSERT INTO versions (
-  package_id, ecosystem, number, published_at, is_prerelease, licenses, last_synced_at
+  package_id, ecosystem, namespace, name, number, published_at, is_prerelease, licenses, last_synced_at
 )
 SELECT
-  p.id, s.ecosystem, s.number, s.published_at, s.is_prerelease, s.licenses, NOW()
+  p.id, s.ecosystem, p.namespace, p.name, s.number, s.published_at, s.is_prerelease, s.licenses, NOW()
 FROM staging.osspckgs_versions_raw s
 JOIN packages p ON p.purl = s.purl
-ON CONFLICT (package_id, number) DO UPDATE SET
-  published_at   = EXCLUDED.published_at,
-  is_prerelease  = EXCLUDED.is_prerelease,
-  licenses       = EXCLUDED.licenses,
-  last_synced_at = NOW()
+ON CONFLICT (package_id, number) DO NOTHING
 `
+
+// Full-load variant: UNIQUE constraint is dropped before the chunk loop so plain INSERT is safe.
+// DISTINCT ON (p.id, s.number) deduplicates before INSERT — guards against duplicate (purl, number)
+// rows in BQ data that would cause the UNIQUE constraint rebuild to fail.
+const MERGE_SQL_FULL = `
+INSERT INTO versions (
+  package_id, ecosystem, namespace, name, number, published_at, is_prerelease, licenses, last_synced_at
+)
+SELECT DISTINCT ON (p.id, s.number)
+  p.id, s.ecosystem, p.namespace, p.name, s.number, s.published_at, s.is_prerelease, s.licenses, NOW()
+FROM staging.osspckgs_versions_raw s
+JOIN packages p ON p.purl = s.purl
+ORDER BY p.id, s.number, s.published_at DESC NULLS LAST
+`
+
+// SET LOCAL scopes settings to this transaction only.
+// synchronous_commit=off skips WAL flush wait — safe for plain INSERT on full loads.
+// session_replication_role=replica disables FK trigger checks — safe because package_id
+// comes from a JOIN against packages; non-matching rows are filtered before INSERT.
+// max_parallel_workers_per_gather parallelises the SELECT side of INSERT...SELECT.
+const MERGE_PREPARE_SQL = [
+  `SET LOCAL work_mem = '512MB'`,
+  `SET LOCAL synchronous_commit = off`,
+  `SET LOCAL session_replication_role = 'replica'`,
+  `SET LOCAL max_parallel_workers_per_gather = 8`,
+]
 
 const PG_COLUMNS = [
   'ecosystem', 'raw_name', 'purl', 'number',
   'published_at', 'is_prerelease', 'licenses',
 ]
 
+const ROWS_PER_CHUNK = 1_000_000
+
 export async function ingestVersions(opts: {
   runId: string
   syncMode: 'full' | 'incremental'
   today: string
   watermark: string | null
+  ecosystems?: string[]
+  reuseExports?: boolean
+  exportName?: string
 }): Promise<void> {
+  const systems = toSystemsFilter(opts.ecosystems)
   const sql =
     opts.syncMode === 'full'
-      ? VERSIONS_SQL_FULL
-      : buildIncrementalSql(opts.today, opts.watermark!)
+      ? buildVersionsFullSql(systems)
+      : buildVersionsIncrementalSql(opts.today, opts.watermark!, systems)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'versions',
@@ -124,18 +111,62 @@ export async function ingestVersions(opts: {
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
     maxBytesGb: 400,
+    reuseExports: opts.reuseExports,
+    exportName: opts.exportName,
   })
 
-  await gcsParquetToStaging({
-    jobId: exportResult.jobId,
-    gcsPrefix: exportResult.gcsPrefix,
-    stagingTable: STAGING_TABLE,
-    stagingDdl: STAGING_DDL,
-    pgColumns: PG_COLUMNS,
-  })
+  const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
+  const totalFiles = fileNames.length
 
-  await mergeStagingToTable({
-    jobId: exportResult.jobId,
-    mergeSql: MERGE_SQL,
-  })
+  if (totalFiles === 0) {
+    await mergeStagingToTable({ jobId: exportResult.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    return
+  }
+
+  if (opts.syncMode === 'full') {
+    await dropVersionsIndexes()
+  }
+
+  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
+  const filesPerChunk = totalRows > 0
+    ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
+    : Math.min(fileNames.length, 2)
+  const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
+  let priorRowsAffected = 0
+  let priorStagingRows = 0
+
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+    const start = chunkIndex * filesPerChunk
+    const chunk = fileNames.slice(start, start + filesPerChunk)
+    const isFinal = chunkIndex === totalChunks - 1
+
+    const { rowsLoaded } = await gcsParquetToStaging({
+      jobId: exportResult.jobId,
+      stagingTable: STAGING_TABLE,
+      stagingDdl: STAGING_DDL,
+      pgColumns: PG_COLUMNS,
+      timestampColumns: ['published_at'],
+      fileNames: chunk,
+      filesOffset: start,
+      totalFiles,
+      priorStagingRows,
+    })
+    priorStagingRows += rowsLoaded
+
+    const { rowsAffected } = await mergeStagingToTable({
+      jobId: exportResult.jobId,
+      prepareSql: MERGE_PREPARE_SQL,
+      mergeSql: opts.syncMode === 'full' ? MERGE_SQL_FULL : MERGE_SQL,
+      tableNames: 'versions',
+      isFinal,
+      priorRowsAffected,
+      chunkInfo: { index: chunkIndex, total: totalChunks },
+    })
+
+    priorRowsAffected += rowsAffected
+  }
+
+  if (opts.syncMode === 'full') {
+    await rebuildVersionsIndexes()
+  }
 }

@@ -1321,6 +1321,9 @@ importers:
       '@google-cloud/storage':
         specifier: 7.19.0
         version: 7.19.0(encoding@0.1.13)
+      '@temporalio/activity':
+        specifier: ~1.11.8
+        version: 1.11.8
       '@temporalio/client':
         specifier: ~1.11.8
         version: 1.11.8
@@ -9877,7 +9880,7 @@ packages:
 
   uuid@3.3.2:
     resolution: {integrity: sha512-yXJmeNaw3DnnKAOKJE51sL/ZaYfWJRl1pK9dr19YFCu0ObS231AB1/LbqTKRAQ5kw8A90rA6fr4riOUpTZvQZA==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+    deprecated: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
     hasBin: true
 
   uuid@8.3.2:

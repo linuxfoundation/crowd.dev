@@ -21,13 +21,8 @@ export async function rankPackagesUniverse(): Promise<void> {
         p.purl, p.ecosystem, p.namespace, p.name,
         p.downloads_last_month,
         p.dependent_packages_count,
-        COALESCE(repo_agg.dep_repos, 0)
+        p.dependent_repos_count
       FROM packages p
-      LEFT JOIN (
-        SELECT package_id, COUNT(DISTINCT repo_id) AS dep_repos
-        FROM package_repos
-        GROUP BY package_id
-      ) repo_agg ON repo_agg.package_id = p.id
       WHERE p.ecosystem IN ('npm', 'go', 'maven', 'pypi', 'nuget', 'cargo')
     `)
   })

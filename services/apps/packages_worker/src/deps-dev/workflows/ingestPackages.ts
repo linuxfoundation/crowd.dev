@@ -1,14 +1,22 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
+import { buildPackagesFullSql, buildPackagesIncrementalSql } from '../queries/packagesSql'
+import { toSystemsFilter } from '../queries/systems'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
   retry: { maximumAttempts: 3, initialInterval: '1 minute', backoffCoefficient: 2 },
 })
 
+const { listParquetFiles } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '5 minutes',
+  retry: { maximumAttempts: 3 },
+})
+
 const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '2 hours',
+  heartbeatTimeout: '2 minutes',
   retry: { maximumAttempts: 2 },
 })
 
@@ -16,66 +24,6 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
   retry: { maximumAttempts: 1 },
 })
-
-const SYSTEMS = `'NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO'`
-
-const PACKAGES_SQL_FULL = `
-SELECT
-  LOWER(System)  AS ecosystem,
-  Name           AS raw_name,
-  Purl           AS purl,
-  Description    AS description,
-  Licenses       AS licenses,
-  Version        AS latest_version,
-  (SELECT URL FROM UNNEST(Links) WHERE Label='SOURCE_REPO' ORDER BY URL LIMIT 1) AS declared_repo_url,
-  (SELECT URL FROM UNNEST(Links) WHERE Label='HOMEPAGE'    ORDER BY URL LIMIT 1) AS homepage,
-  MIN(UpstreamPublishedAt) OVER (PARTITION BY System, Name) AS first_release_at,
-  MAX(UpstreamPublishedAt) OVER (PARTITION BY System, Name) AS latest_release_at,
-  COUNT(*)                 OVER (PARTITION BY System, Name) AS versions_count
-FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
-WHERE System IN (${SYSTEMS})
-  AND Purl IS NOT NULL
-QUALIFY ROW_NUMBER() OVER (PARTITION BY System, Name ORDER BY UpstreamPublishedAt DESC) = 1
-`
-
-function buildIncrementalSql(today: string, watermark: string): string {
-  return `
-WITH today AS (
-  SELECT
-    LOWER(System)  AS ecosystem,
-    Name           AS raw_name,
-    Purl           AS purl,
-    Description    AS description,
-    Licenses       AS licenses,
-    Version        AS latest_version,
-    (SELECT URL FROM UNNEST(Links) WHERE Label='SOURCE_REPO' ORDER BY URL LIMIT 1) AS declared_repo_url,
-    (SELECT URL FROM UNNEST(Links) WHERE Label='HOMEPAGE'    ORDER BY URL LIMIT 1) AS homepage,
-    UpstreamPublishedAt,
-    MIN(UpstreamPublishedAt) OVER (PARTITION BY System, Name) AS first_release_at,
-    MAX(UpstreamPublishedAt) OVER (PARTITION BY System, Name) AS latest_release_at,
-    COUNT(*)                 OVER (PARTITION BY System, Name) AS versions_count
-  FROM \`bigquery-public-data.deps_dev_v1.PackageVersions\`
-  WHERE SnapshotAt = TIMESTAMP('${today}')
-    AND System IN (${SYSTEMS})
-    AND Purl IS NOT NULL
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY System, Name ORDER BY UpstreamPublishedAt DESC) = 1
-),
-last_watermark AS (
-  SELECT DISTINCT System, Name, ANY_VALUE(Purl) AS Purl, ANY_VALUE(Version) AS Version,
-         MAX(UpstreamPublishedAt) AS UpstreamPublishedAt
-  FROM \`bigquery-public-data.deps_dev_v1.PackageVersions\`
-  WHERE SnapshotAt = TIMESTAMP('${watermark}')
-    AND System IN (${SYSTEMS})
-  GROUP BY System, Name
-)
-SELECT t.* EXCEPT(UpstreamPublishedAt)
-FROM today t
-LEFT JOIN last_watermark l
-  ON l.System = UPPER(t.ecosystem) AND l.Name = t.raw_name
-WHERE l.Name IS NULL
-   OR t.UpstreamPublishedAt != l.UpstreamPublishedAt
-`
-}
 
 const STAGING_TABLE = 'staging.osspckgs_packages_raw'
 
@@ -119,17 +67,7 @@ SELECT
   s.first_release_at, s.latest_release_at, s.versions_count,
   'deps_dev', NOW()
 FROM staging.osspckgs_packages_raw s
-ON CONFLICT (purl) DO UPDATE SET
-  description             = EXCLUDED.description,
-  licenses                = EXCLUDED.licenses,
-  latest_version          = EXCLUDED.latest_version,
-  declared_repository_url = EXCLUDED.declared_repository_url,
-  homepage                = EXCLUDED.homepage,
-  first_release_at        = EXCLUDED.first_release_at,
-  latest_release_at       = EXCLUDED.latest_release_at,
-  versions_count          = EXCLUDED.versions_count,
-  ingestion_source        = EXCLUDED.ingestion_source,
-  last_synced_at          = NOW()
+ON CONFLICT (purl) DO NOTHING
 `
 
 const PG_COLUMNS = [
@@ -138,16 +76,22 @@ const PG_COLUMNS = [
   'first_release_at', 'latest_release_at', 'versions_count',
 ]
 
+const ROWS_PER_CHUNK = 1_000_000
+
 export async function ingestPackages(opts: {
   runId: string
   syncMode: 'full' | 'incremental'
   today: string
   watermark: string | null
+  ecosystems?: string[]
+  reuseExports?: boolean
+  exportName?: string
 }): Promise<void> {
+  const systems = toSystemsFilter(opts.ecosystems)
   const sql =
     opts.syncMode === 'full'
-      ? PACKAGES_SQL_FULL
-      : buildIncrementalSql(opts.today, opts.watermark!)
+      ? buildPackagesFullSql(systems)
+      : buildPackagesIncrementalSql(opts.today, opts.watermark!, systems)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'packages',
@@ -155,19 +99,54 @@ export async function ingestPackages(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 400,
+    maxBytesGb: opts.syncMode === 'full' ? 6000 : 400,
+    reuseExports: opts.reuseExports,
+    exportName: opts.exportName,
   })
 
-  await gcsParquetToStaging({
-    jobId: exportResult.jobId,
-    gcsPrefix: exportResult.gcsPrefix,
-    stagingTable: STAGING_TABLE,
-    stagingDdl: STAGING_DDL,
-    pgColumns: PG_COLUMNS,
-  })
+  const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
+  const totalFiles = fileNames.length
 
-  await mergeStagingToTable({
-    jobId: exportResult.jobId,
-    mergeSql: MERGE_SQL,
-  })
+  if (totalFiles === 0) {
+    await mergeStagingToTable({ jobId: exportResult.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    return
+  }
+
+  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
+  const filesPerChunk = totalRows > 0
+    ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
+    : Math.min(fileNames.length, 2)
+  const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
+  let priorRowsAffected = 0
+  let priorStagingRows = 0
+
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+    const start = chunkIndex * filesPerChunk
+    const chunk = fileNames.slice(start, start + filesPerChunk)
+    const isFinal = chunkIndex === totalChunks - 1
+
+    const { rowsLoaded } = await gcsParquetToStaging({
+      jobId: exportResult.jobId,
+      stagingTable: STAGING_TABLE,
+      stagingDdl: STAGING_DDL,
+      pgColumns: PG_COLUMNS,
+      timestampColumns: ['first_release_at', 'latest_release_at'],
+      fileNames: chunk,
+      filesOffset: start,
+      totalFiles,
+      priorStagingRows,
+    })
+    priorStagingRows += rowsLoaded
+
+    const { rowsAffected } = await mergeStagingToTable({
+      jobId: exportResult.jobId,
+      mergeSql: MERGE_SQL,
+      tableNames: 'packages',
+      isFinal,
+      priorRowsAffected,
+      chunkInfo: { index: chunkIndex, total: totalChunks },
+    })
+
+    priorRowsAffected += rowsAffected
+  }
 }

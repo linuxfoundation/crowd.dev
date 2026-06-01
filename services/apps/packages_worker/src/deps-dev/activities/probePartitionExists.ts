@@ -32,7 +32,8 @@ export async function probePartitionExists(input: ProbePartitionExistsInput): Pr
   const query = `
     SELECT 1
     FROM \`${table}\`
-    WHERE SnapshotAt = TIMESTAMP('${input.snapshotAt}')
+    WHERE SnapshotAt >= TIMESTAMP('${input.snapshotAt}')
+      AND SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${input.snapshotAt}', INTERVAL 1 DAY))
     LIMIT 1
   `
 

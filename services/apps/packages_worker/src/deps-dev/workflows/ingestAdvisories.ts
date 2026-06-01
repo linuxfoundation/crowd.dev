@@ -1,14 +1,22 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
+import { ADVISORIES_SQL, buildAdvisoryPackagesSql } from '../queries/advisoriesSql'
+import { toSystemsFilter } from '../queries/systems'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
   retry: { maximumAttempts: 3, initialInterval: '1 minute', backoffCoefficient: 2 },
 })
 
+const { listParquetFiles } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '5 minutes',
+  retry: { maximumAttempts: 3 },
+})
+
 const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
+  heartbeatTimeout: '2 minutes',
   retry: { maximumAttempts: 2 },
 })
 
@@ -16,43 +24,6 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '30 minutes',
   retry: { maximumAttempts: 1 },
 })
-
-// Both full and incremental use AdvisoriesLatest — no partitioned history table exists.
-// ON CONFLICT (osv_id) DO UPDATE handles upserts idempotently.
-const ADVISORIES_SQL = `
-SELECT
-  SourceID                      AS osv_id,
-  Source                        AS source,
-  SourceURL                     AS source_url,
-  Title                         AS summary,
-  Description                   AS details,
-  CVSS3Score                    AS cvss,
-  NULLIF(Severity, 'UNKNOWN')                AS severity,
-  Aliases                       AS aliases,
-  Disclosed                     AS published_at
-FROM \`bigquery-public-data.deps_dev_v1.AdvisoriesLatest\`
-`
-
-const ADVISORY_PACKAGES_SQL = `
-WITH purl_map AS (
-  SELECT System, Name, ANY_VALUE(Purl) AS purl
-  FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
-  WHERE System IN ('NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO')
-    AND Purl IS NOT NULL
-  GROUP BY System, Name
-)
-SELECT
-  a.SourceID             AS osv_id,
-  LOWER(pkg.System)      AS ecosystem,
-  pkg.Name               AS package_name,
-  pm.purl                AS purl,
-  pkg.AffectedVersions   AS range_raw,
-  pkg.UnaffectedVersions AS unaffected_raw
-FROM \`bigquery-public-data.deps_dev_v1.AdvisoriesLatest\` a,
-UNNEST(a.Packages) AS pkg
-LEFT JOIN purl_map pm ON pm.System = pkg.System AND pm.Name = pkg.Name
-WHERE pkg.System IN ('NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO')
-`
 
 const ADVISORIES_STAGING_TABLE = 'staging.osspckgs_advisories_raw'
 const ADVISORY_PACKAGES_STAGING_TABLE = 'staging.osspckgs_advisory_packages_raw'
@@ -64,7 +35,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_advisories_raw (
   source_url   text,
   summary      text,
   details      text,
-  cvss         numeric(3,1),
+  cvss         float8,
   severity     text,
   aliases      text[],
   published_at timestamptz
@@ -84,17 +55,12 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_advisory_packages_raw (
 
 const ADVISORIES_MERGE_SQL = `
 INSERT INTO advisories (osv_id, source, source_url, summary, details, cvss, severity, aliases, published_at)
-SELECT osv_id, source, source_url, summary, details, cvss, severity, aliases, published_at
+SELECT osv_id, source, source_url, summary, details,
+  CASE WHEN cvss IS NULL OR cvss = 'NaN'::float8 OR cvss = 'Infinity'::float8 OR cvss = '-Infinity'::float8
+    THEN NULL ELSE cvss::numeric(3,1) END,
+  severity, aliases, published_at
 FROM staging.osspckgs_advisories_raw
-ON CONFLICT (osv_id) DO UPDATE SET
-  source       = EXCLUDED.source,
-  source_url   = EXCLUDED.source_url,
-  summary      = EXCLUDED.summary,
-  details      = EXCLUDED.details,
-  cvss         = EXCLUDED.cvss,
-  severity     = EXCLUDED.severity,
-  aliases      = EXCLUDED.aliases,
-  published_at = EXCLUDED.published_at
+ON CONFLICT (osv_id) DO NOTHING
 `
 
 const ADVISORY_PACKAGES_MERGE_SQL = `
@@ -107,9 +73,7 @@ SELECT
 FROM staging.osspckgs_advisory_packages_raw s
 JOIN advisories adv ON adv.osv_id = s.osv_id
 LEFT JOIN packages p ON p.purl = s.purl
-ON CONFLICT (advisory_id, ecosystem, package_name) DO UPDATE SET
-  package_id = EXCLUDED.package_id
-WHERE advisory_packages.package_id IS NULL AND EXCLUDED.package_id IS NOT NULL
+ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 `
 
 // Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist
@@ -125,9 +89,7 @@ JOIN advisories adv ON adv.osv_id = s.osv_id
 JOIN advisory_packages ap ON ap.advisory_id = adv.id
                           AND ap.ecosystem = s.ecosystem
                           AND ap.package_name = s.package_name
-ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, '')) DO UPDATE SET
-  range_raw      = EXCLUDED.range_raw,
-  unaffected_raw = EXCLUDED.unaffected_raw
+ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, '')) DO NOTHING
 `
 
 const ADVISORIES_PG_COLUMNS = [
@@ -139,12 +101,19 @@ const ADVISORY_PACKAGES_PG_COLUMNS = [
   'osv_id', 'ecosystem', 'package_name', 'purl', 'range_raw', 'unaffected_raw',
 ]
 
+const ROWS_PER_CHUNK = 1_000_000
+
 export async function ingestAdvisories(opts: {
   runId: string
   syncMode: 'full' | 'incremental'
   today: string
   watermark: string | null
+  ecosystems?: string[]
+  reuseExports?: boolean
+  exportName?: string
 }): Promise<void> {
+  const systems = toSystemsFilter(opts.ecosystems)
+
   // Step 1: advisories header rows
   const advisoriesExport = await bqExportToGcs({
     jobKind: 'advisories',
@@ -153,41 +122,110 @@ export async function ingestAdvisories(opts: {
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
     maxBytesGb: 10,
+    reuseExports: opts.reuseExports,
+    exportName: opts.exportName,
   })
 
-  await gcsParquetToStaging({
-    jobId: advisoriesExport.jobId,
-    gcsPrefix: advisoriesExport.gcsPrefix,
-    stagingTable: ADVISORIES_STAGING_TABLE,
-    stagingDdl: ADVISORIES_STAGING_DDL,
-    pgColumns: ADVISORIES_PG_COLUMNS,
-  })
+  const { fileNames: advFileNames, rowCounts: advRowCounts } = await listParquetFiles({ gcsPrefix: advisoriesExport.gcsPrefix })
+  const advTotalFiles = advFileNames.length
 
-  await mergeStagingToTable({
-    jobId: advisoriesExport.jobId,
-    mergeSql: ADVISORIES_MERGE_SQL,
-  })
+  if (advTotalFiles === 0) {
+    await mergeStagingToTable({ jobId: advisoriesExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+  } else {
+    const advTotalRows = advRowCounts.reduce((a, b) => a + b, 0)
+    const advFilesPerChunk = advTotalRows > 0
+      ? Math.max(1, Math.round((ROWS_PER_CHUNK * advFileNames.length) / advTotalRows))
+      : Math.min(advFileNames.length, 2)
+    const advTotalChunks = Math.ceil(advFileNames.length / advFilesPerChunk)
+    let priorRowsAffected = 0
+    let advPriorStagingRows = 0
+
+    for (let chunkIndex = 0; chunkIndex < advTotalChunks; chunkIndex++) {
+      const start = chunkIndex * advFilesPerChunk
+      const chunk = advFileNames.slice(start, start + advFilesPerChunk)
+      const isFinal = chunkIndex === advTotalChunks - 1
+
+      const { rowsLoaded } = await gcsParquetToStaging({
+        jobId: advisoriesExport.jobId,
+        stagingTable: ADVISORIES_STAGING_TABLE,
+        stagingDdl: ADVISORIES_STAGING_DDL,
+        pgColumns: ADVISORIES_PG_COLUMNS,
+        timestampColumns: ['published_at'],
+        decimalColumns: ['cvss'],
+        fileNames: chunk,
+        filesOffset: start,
+        totalFiles: advTotalFiles,
+        priorStagingRows: advPriorStagingRows,
+      })
+      advPriorStagingRows += rowsLoaded
+
+      const { rowsAffected } = await mergeStagingToTable({
+        jobId: advisoriesExport.jobId,
+        mergeSql: ADVISORIES_MERGE_SQL,
+        tableNames: 'advisories',
+        isFinal,
+        priorRowsAffected,
+        chunkInfo: { index: chunkIndex, total: advTotalChunks },
+      })
+
+      priorRowsAffected += rowsAffected
+    }
+  }
 
   // Step 2: advisory_packages + affected ranges (FK → advisories must exist first)
   const pkgsExport = await bqExportToGcs({
     jobKind: 'advisory_packages',
-    sql: ADVISORY_PACKAGES_SQL,
+    sql: buildAdvisoryPackagesSql(systems),
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
     maxBytesGb: 10,
+    reuseExports: opts.reuseExports,
+    exportName: opts.exportName,
   })
 
-  await gcsParquetToStaging({
-    jobId: pkgsExport.jobId,
-    gcsPrefix: pkgsExport.gcsPrefix,
-    stagingTable: ADVISORY_PACKAGES_STAGING_TABLE,
-    stagingDdl: ADVISORY_PACKAGES_STAGING_DDL,
-    pgColumns: ADVISORY_PACKAGES_PG_COLUMNS,
-  })
+  const { fileNames: pkgFileNames, rowCounts: pkgRowCounts } = await listParquetFiles({ gcsPrefix: pkgsExport.gcsPrefix })
+  const pkgTotalFiles = pkgFileNames.length
 
-  await mergeStagingToTable({
-    jobId: pkgsExport.jobId,
-    mergeSql: [ADVISORY_PACKAGES_MERGE_SQL, ADVISORY_AFFECTED_RANGES_MERGE_SQL],
-  })
+  if (pkgTotalFiles === 0) {
+    await mergeStagingToTable({ jobId: pkgsExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    return
+  }
+
+  const pkgTotalRows = pkgRowCounts.reduce((a, b) => a + b, 0)
+  const pkgFilesPerChunk = pkgTotalRows > 0
+    ? Math.max(1, Math.round((ROWS_PER_CHUNK * pkgFileNames.length) / pkgTotalRows))
+    : Math.min(pkgFileNames.length, 2)
+  const pkgTotalChunks = Math.ceil(pkgFileNames.length / pkgFilesPerChunk)
+  let pkgPriorRowsAffected = 0
+  let pkgPriorStagingRows = 0
+
+  for (let chunkIndex = 0; chunkIndex < pkgTotalChunks; chunkIndex++) {
+    const start = chunkIndex * pkgFilesPerChunk
+    const chunk = pkgFileNames.slice(start, start + pkgFilesPerChunk)
+    const isFinal = chunkIndex === pkgTotalChunks - 1
+
+    const { rowsLoaded } = await gcsParquetToStaging({
+      jobId: pkgsExport.jobId,
+      stagingTable: ADVISORY_PACKAGES_STAGING_TABLE,
+      stagingDdl: ADVISORY_PACKAGES_STAGING_DDL,
+      pgColumns: ADVISORY_PACKAGES_PG_COLUMNS,
+      fileNames: chunk,
+      filesOffset: start,
+      totalFiles: pkgTotalFiles,
+      priorStagingRows: pkgPriorStagingRows,
+    })
+    pkgPriorStagingRows += rowsLoaded
+
+    const { rowsAffected } = await mergeStagingToTable({
+      jobId: pkgsExport.jobId,
+      mergeSql: [ADVISORY_PACKAGES_MERGE_SQL, ADVISORY_AFFECTED_RANGES_MERGE_SQL],
+      tableNames: ['advisory_packages', 'advisory_affected_ranges'],
+      isFinal,
+      priorRowsAffected: pkgPriorRowsAffected,
+      chunkInfo: { index: chunkIndex, total: pkgTotalChunks },
+    })
+
+    pkgPriorRowsAffected += rowsAffected
+  }
 }

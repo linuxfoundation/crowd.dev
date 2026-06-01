@@ -6,10 +6,15 @@ import { bigquery } from '../config'
 const log = getServiceChildLogger('resolveSnapshotDate')
 
 // Maps each partitioned job kind to its BQ table; advisory kinds use AdvisoriesLatest (no snapshots).
+// repos/package_repos/dependent_counts query PackageVersionToProject or Dependents — both on weekly
+// cadence that differs from PackageVersions (which may publish more frequently).
 const TABLE_BY_KIND: Partial<Record<OsspckgsJobKind, string>> = {
   packages: 'bigquery-public-data.deps_dev_v1.PackageVersions',
   versions: 'bigquery-public-data.deps_dev_v1.PackageVersions',
   package_dependencies: 'bigquery-public-data.deps_dev_v1.DependencyGraphEdges',
+  repos: 'bigquery-public-data.deps_dev_v1.PackageVersionToProject',
+  package_repos: 'bigquery-public-data.deps_dev_v1.PackageVersionToProject',
+  dependent_counts: 'bigquery-public-data.deps_dev_v1.Dependents',
 }
 
 export interface ResolveSnapshotDateInput {
@@ -34,9 +39,8 @@ export async function resolveSnapshotDate(
   const query = `
     SELECT MAX(SnapshotAt) AS snapshot_date
     FROM \`${table}\`
-    WHERE SnapshotAt BETWEEN
-      TIMESTAMP(DATE_SUB(DATE '${input.today}', INTERVAL 30 DAY))
-      AND TIMESTAMP('${input.today} 23:59:59')
+    WHERE SnapshotAt >= TIMESTAMP(DATE_SUB(DATE '${input.today}', INTERVAL 30 DAY))
+      AND SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${input.today}', INTERVAL 1 DAY))
   `
 
   const [job] = await bigquery.createQueryJob({ query, location: 'US' })
