@@ -67,7 +67,7 @@ SELECT
   s.first_release_at, s.latest_release_at, s.versions_count,
   'deps_dev', NOW()
 FROM staging.osspckgs_packages_raw s
-ON CONFLICT (purl) DO NOTHING
+ON CONFLICT DO NOTHING
 `
 
 const PG_COLUMNS = [

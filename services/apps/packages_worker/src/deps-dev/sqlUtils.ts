@@ -27,8 +27,8 @@ export function formatValue(val: unknown): string {
       v = unwrapParquetList(v)
       if (Array.isArray(v)) v = (v as unknown[]).find((x) => x != null) ?? null
       if (v === null || v === undefined) return 'NULL'
-      if (typeof v === 'string') return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-      if (Buffer.isBuffer(v)) return `"${(v as Buffer).toString('utf8').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      if (typeof v === 'string') return `"${v.replace(/\0/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      if (Buffer.isBuffer(v)) return `"${(v as Buffer).toString('utf8').replace(/\0/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
       if (typeof v === 'number' || typeof v === 'bigint') return String(v)
       // Unexpected type — surface it clearly rather than emitting [object Object]
       throw new Error(`Unexpected array element: ${JSON.stringify(v)}`)
@@ -38,7 +38,9 @@ export function formatValue(val: unknown): string {
   // Parquetjs returns {} (plain object, no 'list' key) for null/empty REPEATED fields.
   // unwrapParquetList left it unchanged. Treat as NULL rather than String() → '[object Object]'.
   if (typeof val === 'object') return 'NULL'
-  return `'${String(val).replace(/'/g, "''")}'`
+  // Strip null bytes — PostgreSQL wire protocol treats \0 as string terminator,
+  // causing "invalid message format". NPM registry data frequently contains them.
+  return `'${String(val).replace(/\0/g, '').replace(/'/g, "''")}'`
 }
 
 export function buildInsert(
