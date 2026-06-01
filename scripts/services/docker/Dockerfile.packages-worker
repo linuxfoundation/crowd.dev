@@ -1,0 +1,26 @@
+FROM node:20-bookworm-slim as builder
+
+RUN apt-get update && apt-get install -y python3 make g++ --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/crowd/app
+RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
+
+COPY ./pnpm-workspace.yaml ./pnpm-lock.yaml ./
+RUN pnpm fetch
+
+COPY ./services/base.tsconfig.json ./services/
+COPY ./services/archetypes ./services/archetypes
+COPY ./services/libs ./services/libs
+COPY ./services/apps/packages_worker ./services/apps/packages_worker
+RUN pnpm i --frozen-lockfile --filter @crowd/packages-worker...
+
+FROM node:20-bookworm-slim as runner
+
+WORKDIR /usr/crowd/app
+RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate && apt update && apt install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/crowd/app/node_modules ./node_modules
+COPY --from=builder /usr/crowd/app/services/base.tsconfig.json ./services/base.tsconfig.json
+COPY --from=builder /usr/crowd/app/services/libs ./services/libs
+COPY --from=builder /usr/crowd/app/services/archetypes/ ./services/archetypes
+COPY --from=builder /usr/crowd/app/services/apps/packages_worker/ ./services/apps/packages_worker

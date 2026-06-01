@@ -16,6 +16,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/review-pr`  | Review a PR, audit code changes, check PR quality, validate a PR against standards                  |
 | `/adr`        | Record an architecture decision, choose between frameworks/libraries/patterns, query past decisions  |
 | `/scaffold-snowflake-connector` | Add a new Snowflake-connector data source or integration                          |
+| `/packages-worker-setup` | First-time setup of packages-db and github-repos-enricher for a new engineer    |
+| `/packages-worker-add-entrypoint` | Scaffold a new sibling worker inside packages_worker (npm, OSV, scorecard, etc.) |
 
 ## Trigger Phrases
 
@@ -45,3 +47,13 @@ This project has guided skills for common workflows. **Proactively suggest the r
 **`/scaffold-snowflake-connector`** — match any of these intents:
 - "Add a new Snowflake connector", "New integration for [platform]"
 - "Scaffold a new data source", anything about adding a platform to `snowflake_connectors`
+
+**`/packages-worker-setup`** — match any of these intents:
+- "Set up packages worker", "how do I run the enricher", "first time on this branch"
+- "Get packages-db running", "packages-db won't start", "ENRICHER_GITHUB_TOKENS"
+- Any first-time setup question specific to `packages_worker` or `packages-db`
+
+**`/packages-worker-add-entrypoint`** — match any of these intents:
+- "Add a new packages worker", "scaffold a sibling worker", "new entry point in packages_worker"
+- "Add npm ingestion", "add OSV worker", "add scorecard runner"
+- Any request to create a new `src/bin/*.ts` worker inside `packages_worker`
