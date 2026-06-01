@@ -15,7 +15,11 @@ WHERE e.System IN (${systems})
 `
 }
 
-export function buildDepsIncrementalSqlA(today: string, watermark: string, systems: string): string {
+export function buildDepsIncrementalSqlA(
+  today: string,
+  watermark: string,
+  systems: string,
+): string {
   return `
 WITH today AS (
   SELECT
@@ -65,7 +69,11 @@ WHERE d.System IN (${systems})
 `
 }
 
-export function buildDepsIncrementalSqlB(today: string, watermark: string, systems: string): string {
+export function buildDepsIncrementalSqlB(
+  today: string,
+  watermark: string,
+  systems: string,
+): string {
   return `
 WITH today AS (
   SELECT
@@ -103,7 +111,12 @@ export function buildDepsFullSql(systems: string, tableOption: 'A' | 'B' = 'A'):
   return tableOption === 'B' ? buildDepsFullSqlB(systems) : buildDepsFullSqlA(systems)
 }
 
-export function buildDepsIncrementalSql(today: string, watermark: string, systems: string, tableOption: 'A' | 'B' = 'A'): string {
+export function buildDepsIncrementalSql(
+  today: string,
+  watermark: string,
+  systems: string,
+  tableOption: 'A' | 'B' = 'A',
+): string {
   return tableOption === 'B'
     ? buildDepsIncrementalSqlB(today, watermark, systems)
     : buildDepsIncrementalSqlA(today, watermark, systems)

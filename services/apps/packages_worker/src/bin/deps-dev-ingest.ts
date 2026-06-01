@@ -1,6 +1,6 @@
 import { scheduleOsspckgsBootstrap } from '../deps-dev/schedules/bootstrap'
-import { svc } from '../service'
 import { scheduleOsspckgsCleanup } from '../schedules/cleanup'
+import { svc } from '../service'
 
 setImmediate(async () => {
   await svc.init()

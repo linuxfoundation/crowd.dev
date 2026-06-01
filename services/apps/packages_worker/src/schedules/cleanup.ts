@@ -1,7 +1,7 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
-import { svc } from '../service'
 import { cleanupOsspckgs } from '../deps-dev/workflows'
+import { svc } from '../service'
 
 export async function scheduleOsspckgsCleanup(): Promise<void> {
   const { temporal } = svc

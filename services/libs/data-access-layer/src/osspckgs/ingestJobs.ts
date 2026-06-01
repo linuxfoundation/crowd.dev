@@ -97,7 +97,11 @@ export async function findExportedJobByGcsPrefix(
     { gcsPrefix },
   )
   return row
-    ? { id: Number(row.id), rowCountBq: Number(row.row_count_bq ?? 0), bqBytesBilled: Number(row.bq_bytes_billed ?? 0) }
+    ? {
+        id: Number(row.id),
+        rowCountBq: Number(row.row_count_bq ?? 0),
+        bqBytesBilled: Number(row.bq_bytes_billed ?? 0),
+      }
     : null
 }
 
@@ -228,7 +232,7 @@ export async function markJobStatus(
   }
   if (fields.tableRowCounts !== undefined) {
     // Merge into existing jsonb so each pipeline stage accumulates its own keys.
-    sets.push('table_row_counts = COALESCE(table_row_counts, \'{}\'::jsonb) || $(tableRowCounts)')
+    sets.push("table_row_counts = COALESCE(table_row_counts, '{}'::jsonb) || $(tableRowCounts)")
     params.tableRowCounts = fields.tableRowCounts
   }
   if (fields.bqBytesBilled !== undefined) {
@@ -265,8 +269,5 @@ export async function markJobStatus(
     sets.push('snapshot_at = provisional_snapshot_at')
   }
 
-  await qx.result(
-    `UPDATE osspckgs_ingest_jobs SET ${sets.join(', ')} WHERE id = $(jobId)`,
-    params,
-  )
+  await qx.result(`UPDATE osspckgs_ingest_jobs SET ${sets.join(', ')} WHERE id = $(jobId)`, params)
 }

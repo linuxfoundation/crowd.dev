@@ -51,7 +51,9 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  const ecosystems = positional[1] ? positional[1].split(',').map((e) => e.trim().toUpperCase()) : undefined
+  const ecosystems = positional[1]
+    ? positional[1].split(',').map((e) => e.trim().toUpperCase())
+    : undefined
 
   const serverUrl = process.env.CROWD_TEMPORAL_SERVER_URL
   const namespace = process.env.CROWD_TEMPORAL_NAMESPACE
@@ -78,7 +80,9 @@ async function main(): Promise<void> {
     depsTableOption === 'B' ? '--deps-table-b' : '',
     exportName ? `--export-name ${exportName}` : '',
   ].filter(Boolean)
-  console.log(`Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`)
+  console.log(
+    `Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`,
+  )
   await connection.close()
 }
 

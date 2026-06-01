@@ -49,11 +49,13 @@ export async function readParquetRowCount(objectName: string, fileSize: number):
     const [buf] = await file.download({ start: offset, end: offset + length - 1 })
     return buf
   }
-  const reader = new ParquetEnvelopeReader(readFn, async () => {}, fileSize)
+  const reader = new ParquetEnvelopeReader(readFn, () => undefined, fileSize)
   const metadata = await reader.readFooter()
   // parquetjs uses Int64 (Thrift) for num_rows; unary + converts it to JS number.
-  return ((metadata.row_groups as unknown) as Array<{ num_rows: unknown }>)
-    .reduce((sum, rg) => sum + +(rg.num_rows as number), 0)
+  return (metadata.row_groups as unknown as Array<{ num_rows: unknown }>).reduce(
+    (sum, rg) => sum + +(rg.num_rows as number),
+    0,
+  )
 }
 
 export async function* streamParquetRowsFromGcs(

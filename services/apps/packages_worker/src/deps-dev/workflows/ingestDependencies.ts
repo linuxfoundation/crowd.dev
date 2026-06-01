@@ -30,7 +30,9 @@ const { createVersionsLookup } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 2, initialInterval: '30 seconds' },
 })
 
-const { dropPackageDepsIndexes, rebuildPackageDepsIndexes } = proxyActivities<typeof depsDevActivities>({
+const { dropPackageDepsIndexes, rebuildPackageDepsIndexes } = proxyActivities<
+  typeof depsDevActivities
+>({
   // Index builds on 1B+ rows can take hours — long timeout required.
   startToCloseTimeout: '12 hours',
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
@@ -138,8 +140,12 @@ const MERGE_PREPARE_SQL = [
 ]
 
 const PG_COLUMNS = [
-  'ecosystem', 'root_name', 'root_version',
-  'to_name', 'to_version', 'version_constraint',
+  'ecosystem',
+  'root_name',
+  'root_version',
+  'to_name',
+  'to_version',
+  'version_constraint',
 ]
 
 const ROWS_PER_CHUNK = 1_000_000
@@ -159,7 +165,7 @@ export async function ingestDependencies(opts: {
   const sql =
     opts.syncMode === 'full'
       ? buildDepsFullSql(systems, tableOption)
-      : buildDepsIncrementalSql(opts.today, opts.watermark!, systems, tableOption)
+      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', systems, tableOption)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'package_dependencies',
@@ -192,13 +198,14 @@ export async function ingestDependencies(opts: {
   }
 
   const totalRows = rowCounts.reduce((a, b) => a + b, 0)
-  const filesPerChunk = totalRows > 0
-    ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
-    : Math.min(fileNames.length, 2)
+  const filesPerChunk =
+    totalRows > 0
+      ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
+      : Math.min(fileNames.length, 2)
   const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
   let priorRowsAffected = 0
   let priorStagingRows = 0
-  let priorTableRowCounts: Record<string, number> = {}
+  const priorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
     const start = chunkIndex * filesPerChunk

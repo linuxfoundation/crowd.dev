@@ -29,8 +29,21 @@ export interface MergeStagingOutput {
 }
 
 export async function mergeStagingToTable(input: MergeStagingInput): Promise<MergeStagingOutput> {
-  const { jobId, prepareSql, mergeSql, tableNames, isFinal = true, priorRowsAffected = 0, priorTableRowCounts = {}, chunkInfo } = input
-  const prepareStatements = prepareSql ? (Array.isArray(prepareSql) ? prepareSql : [prepareSql]) : []
+  const {
+    jobId,
+    prepareSql,
+    mergeSql,
+    tableNames,
+    isFinal = true,
+    priorRowsAffected = 0,
+    priorTableRowCounts = {},
+    chunkInfo,
+  } = input
+  const prepareStatements = prepareSql
+    ? Array.isArray(prepareSql)
+      ? prepareSql
+      : [prepareSql]
+    : []
   const statements = Array.isArray(mergeSql) ? mergeSql : [mergeSql]
   const names = Array.isArray(tableNames) ? tableNames : [tableNames]
 
@@ -77,7 +90,10 @@ export async function mergeStagingToTable(input: MergeStagingInput): Promise<Mer
       rowCountPg: totalRowsAffected,
       tableRowCounts: totalTableRowCounts,
     })
-    log.info({ jobId, rowsAffected: totalRowsAffected, tableRowCounts: totalTableRowCounts }, 'Merge complete')
+    log.info(
+      { jobId, rowsAffected: totalRowsAffected, tableRowCounts: totalTableRowCounts },
+      'Merge complete',
+    )
   }
 
   return { rowsAffected, tableRowCounts }

@@ -15,7 +15,9 @@ const log = getServiceChildLogger('createVersionsLookup')
 //
 // Index on (ecosystem, ns, name, number) supports index scans for small staging batches
 // where a full hash join would be wasteful.
-export async function createVersionsLookup(input: { ecosystems?: string[] }): Promise<{ rowCount: number }> {
+export async function createVersionsLookup(input: {
+  ecosystems?: string[]
+}): Promise<{ rowCount: number }> {
   const { ecosystems } = input
   const qx = await getPackagesDb()
 

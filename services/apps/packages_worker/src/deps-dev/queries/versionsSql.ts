@@ -14,7 +14,11 @@ WHERE System IN (${systems})
 `
 }
 
-export function buildVersionsIncrementalSql(today: string, watermark: string, systems: string): string {
+export function buildVersionsIncrementalSql(
+  today: string,
+  watermark: string,
+  systems: string,
+): string {
   return `
 WITH today AS (
   SELECT

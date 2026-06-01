@@ -1,4 +1,9 @@
-import { ApplicationFailure, executeChild, proxyActivities, workflowInfo } from '@temporalio/workflow'
+import {
+  ApplicationFailure,
+  executeChild,
+  proxyActivities,
+  workflowInfo,
+} from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
 
@@ -9,11 +14,12 @@ import { ingestPackages } from './ingestPackages'
 import { ingestRepos } from './ingestRepos'
 import { ingestVersions } from './ingestVersions'
 
-const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } =
-  proxyActivities<typeof depsDevActivities>({
-    startToCloseTimeout: '5 minutes',
-    retry: { maximumAttempts: 3 },
-  })
+const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActivities<
+  typeof depsDevActivities
+>({
+  startToCloseTimeout: '5 minutes',
+  retry: { maximumAttempts: 3 },
+})
 
 const { rankPackagesUniverse } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
@@ -51,7 +57,13 @@ const PARTITIONED_KINDS: JobKind[] = ['packages', 'versions', 'package_dependenc
 // tables are on a weekly cadence that may differ from PackageVersions.
 const SNAPSHOT_RESOLVED_KINDS: JobKind[] = ['repos', 'dependent_counts']
 
-export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental'; ecosystems?: string[]; reuseExports?: boolean; depsTableOption?: 'A' | 'B'; exportName?: string }): Promise<void> {
+export async function bootstrapOsspckgs(opts: {
+  mode: 'full' | 'incremental'
+  ecosystems?: string[]
+  reuseExports?: boolean
+  depsTableOption?: 'A' | 'B'
+  exportName?: string
+}): Promise<void> {
   // B3: deterministic timestamps — workflowInfo().startTime is replay-stable; new Date() is not.
   const start = workflowInfo().startTime
   const runId = start.toISOString().replace(/[:.]/g, '-')
@@ -68,7 +80,11 @@ export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental'; ec
   // which is wasteful but safe.
 
   const jobKinds: JobKind[] = [
-    'packages', 'versions', 'package_dependencies', 'advisories', 'advisory_packages',
+    'packages',
+    'versions',
+    'package_dependencies',
+    'advisories',
+    'advisory_packages',
   ]
   const watermarks = new Map<JobKind, string | null>()
 
@@ -125,22 +141,80 @@ export async function bootstrapOsspckgs(opts: { mode: 'full' | 'incremental'; ec
   // then advisories last.
   // M3: executeChild for retry isolation and history compaction per kind.
   await executeChild(ingestPackages, {
-    args: [{ runId, syncMode: opts.mode, today: snap('packages'), watermark: wm('packages'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }],
+    args: [
+      {
+        runId,
+        syncMode: opts.mode,
+        today: snap('packages'),
+        watermark: wm('packages'),
+        ecosystems: opts.ecosystems,
+        reuseExports: opts.reuseExports,
+        exportName: opts.exportName,
+      },
+    ],
   })
   await executeChild(ingestDependentCounts, {
-    args: [{ runId, snapshotDate: snap('dependent_counts'), reuseExports: opts.reuseExports, exportName: opts.exportName }],
+    args: [
+      {
+        runId,
+        snapshotDate: snap('dependent_counts'),
+        reuseExports: opts.reuseExports,
+        exportName: opts.exportName,
+      },
+    ],
   })
 
-  await executeChild(ingestRepos, { args: [{ runId, snapshotDate: snap('repos'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }] })
+  await executeChild(ingestRepos, {
+    args: [
+      {
+        runId,
+        snapshotDate: snap('repos'),
+        ecosystems: opts.ecosystems,
+        reuseExports: opts.reuseExports,
+        exportName: opts.exportName,
+      },
+    ],
+  })
 
   await executeChild(ingestVersions, {
-    args: [{ runId, syncMode: opts.mode, today: snap('versions'), watermark: wm('versions'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }],
+    args: [
+      {
+        runId,
+        syncMode: opts.mode,
+        today: snap('versions'),
+        watermark: wm('versions'),
+        ecosystems: opts.ecosystems,
+        reuseExports: opts.reuseExports,
+        exportName: opts.exportName,
+      },
+    ],
   })
   await executeChild(ingestDependencies, {
-    args: [{ runId, syncMode: opts.mode, today: snap('package_dependencies'), watermark: wm('package_dependencies'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, depsTableOption: opts.depsTableOption, exportName: opts.exportName }],
+    args: [
+      {
+        runId,
+        syncMode: opts.mode,
+        today: snap('package_dependencies'),
+        watermark: wm('package_dependencies'),
+        ecosystems: opts.ecosystems,
+        reuseExports: opts.reuseExports,
+        depsTableOption: opts.depsTableOption,
+        exportName: opts.exportName,
+      },
+    ],
   })
   await rankPackagesUniverse()
   await executeChild(ingestAdvisories, {
-    args: [{ runId, syncMode: opts.mode, today, watermark: wm('advisories'), ecosystems: opts.ecosystems, reuseExports: opts.reuseExports, exportName: opts.exportName }],
+    args: [
+      {
+        runId,
+        syncMode: opts.mode,
+        today,
+        watermark: wm('advisories'),
+        ecosystems: opts.ecosystems,
+        reuseExports: opts.reuseExports,
+        exportName: opts.exportName,
+      },
+    ],
   })
 }

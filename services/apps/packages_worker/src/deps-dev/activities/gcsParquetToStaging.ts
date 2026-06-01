@@ -1,4 +1,5 @@
 import { Context } from '@temporalio/activity'
+
 import { QueryExecutor, markJobStatus, updateLoadingProgress } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -66,7 +67,10 @@ async function loadParquetFile(
       try {
         await qx.result(buildInsert(table, columns, batch))
       } catch (err) {
-        log.error({ err, firstRow: batch[0], lastRow: batch[batch.length - 1] }, 'Batch insert failed — dumping first/last row for diagnosis')
+        log.error(
+          { err, firstRow: batch[0], lastRow: batch[batch.length - 1] },
+          'Batch insert failed — dumping first/last row for diagnosis',
+        )
         throw err
       }
       totalLoaded += batch.length
@@ -78,7 +82,10 @@ async function loadParquetFile(
     try {
       await qx.result(buildInsert(table, columns, batch))
     } catch (err) {
-      log.error({ err, firstRow: batch[0], lastRow: batch[batch.length - 1] }, 'Final batch insert failed — dumping first/last row for diagnosis')
+      log.error(
+        { err, firstRow: batch[0], lastRow: batch[batch.length - 1] },
+        'Final batch insert failed — dumping first/last row for diagnosis',
+      )
       throw err
     }
     totalLoaded += batch.length
@@ -94,9 +101,7 @@ function gcsPrefixToObjectPrefix(gcsPrefix: string): string {
   return slashIdx >= 0 ? withoutScheme.slice(slashIdx + 1) : ''
 }
 
-export async function gcsParquetToStaging(
-  input: GcsToStagingInput,
-): Promise<GcsToStagingOutput> {
+export async function gcsParquetToStaging(input: GcsToStagingInput): Promise<GcsToStagingOutput> {
   const { jobId, stagingTable, stagingDdl, pgColumns, timestampColumns, decimalColumns } = input
   const tsCols = new Set(timestampColumns ?? [])
   const decCols = new Set(decimalColumns ?? [])
@@ -126,7 +131,10 @@ export async function gcsParquetToStaging(
 
   const totalFiles = input.totalFiles ?? parquetFileNames.length
 
-  log.info({ jobId, stagingTable, fileCount: parquetFileNames.length, filesOffset, totalFiles }, 'Loading parquet files into staging')
+  log.info(
+    { jobId, stagingTable, fileCount: parquetFileNames.length, filesOffset, totalFiles },
+    'Loading parquet files into staging',
+  )
 
   let totalLoaded = 0
 

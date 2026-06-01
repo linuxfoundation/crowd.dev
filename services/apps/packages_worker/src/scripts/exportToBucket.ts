@@ -1,3 +1,22 @@
+import {
+  OsspckgsJobKind,
+  createIngestJob,
+  findExportByKindAndName,
+  markJobStatus,
+} from '@crowd/data-access-layer'
+
+import { getPackagesDb } from '../db'
+import { extractBqStats } from '../deps-dev/bqStats'
+import { GCS_BUCKET, bigquery, bucket } from '../deps-dev/config'
+import { ADVISORIES_SQL, buildAdvisoryPackagesSql } from '../deps-dev/queries/advisoriesSql'
+import { buildDependentCountsSql } from '../deps-dev/queries/dependentCountsSql'
+import { buildDepsFullSql } from '../deps-dev/queries/depsSql'
+import { buildPackageReposSql } from '../deps-dev/queries/packageReposSql'
+import { buildPackagesFullSql } from '../deps-dev/queries/packagesSql'
+import { buildReposSql } from '../deps-dev/queries/reposSql'
+import { toSystemsFilter } from '../deps-dev/queries/systems'
+import { buildVersionsFullSql } from '../deps-dev/queries/versionsSql'
+
 const HELP = `
 Usage: export-to-bucket <export-name> <parts> [options]
 
@@ -43,25 +62,15 @@ After exporting, trigger bootstrap with:
   pnpm trigger-bootstrap:local full CARGO --export-name cargo-may-2026
 `
 
-import { ADVISORIES_SQL, buildAdvisoryPackagesSql } from '../deps-dev/queries/advisoriesSql'
-import { buildDependentCountsSql } from '../deps-dev/queries/dependentCountsSql'
-import { buildDepsFullSql } from '../deps-dev/queries/depsSql'
-import { buildPackageReposSql } from '../deps-dev/queries/packageReposSql'
-import { buildPackagesFullSql } from '../deps-dev/queries/packagesSql'
-import { buildReposSql } from '../deps-dev/queries/reposSql'
-import { toSystemsFilter } from '../deps-dev/queries/systems'
-import { buildVersionsFullSql } from '../deps-dev/queries/versionsSql'
-import { extractBqStats } from '../deps-dev/bqStats'
-import { GCS_BUCKET, bigquery, bucket } from '../deps-dev/config'
-import { getPackagesDb } from '../db'
-import {
-  OsspckgsJobKind,
-  createIngestJob,
-  findExportByKindAndName,
-  markJobStatus,
-} from '@crowd/data-access-layer'
-
-type ExportPart = 'packages' | 'versions' | 'deps' | 'repos' | 'package_repos' | 'counts' | 'advisories' | 'advisory_packages'
+type ExportPart =
+  | 'packages'
+  | 'versions'
+  | 'deps'
+  | 'repos'
+  | 'package_repos'
+  | 'counts'
+  | 'advisories'
+  | 'advisory_packages'
 
 const PART_TO_KIND: Record<ExportPart, OsspckgsJobKind> = {
   packages: 'packages',
@@ -74,7 +83,16 @@ const PART_TO_KIND: Record<ExportPart, OsspckgsJobKind> = {
   advisory_packages: 'advisory_packages',
 }
 
-const ALL_PARTS: ExportPart[] = ['packages', 'versions', 'deps', 'repos', 'package_repos', 'counts', 'advisories', 'advisory_packages']
+const ALL_PARTS: ExportPart[] = [
+  'packages',
+  'versions',
+  'deps',
+  'repos',
+  'package_repos',
+  'counts',
+  'advisories',
+  'advisory_packages',
+]
 
 async function resolveSnapshotDate(table: string, today: string): Promise<string> {
   const query = `
@@ -87,7 +105,7 @@ async function resolveSnapshotDate(table: string, today: string): Promise<string
   const [rows] = await job.getQueryResults()
   const raw = rows[0]?.snapshot_date
   if (!raw) throw new Error(`No snapshot found within 30 days of ${today} for ${table}`)
-  const val = typeof raw === 'string' ? raw : raw?.value ?? String(raw)
+  const val = typeof raw === 'string' ? raw : (raw?.value ?? String(raw))
   return val.slice(0, 10)
 }
 
@@ -110,10 +128,14 @@ async function exportPart(opts: {
     const priorPath = prior.gcsPrefix.replace(`gs://${GCS_BUCKET}/`, '')
     const [priorFiles] = await bucket.getFiles({ prefix: priorPath, maxResults: 1 })
     if (priorFiles.length > 0) {
-      console.log(`  ✓ ${part} (${jobKind}) — already exported (job #${prior.id}, ${prior.rowCountBq.toLocaleString()} rows, GCS files present), skipping`)
+      console.log(
+        `  ✓ ${part} (${jobKind}) — already exported (job #${prior.id}, ${prior.rowCountBq.toLocaleString()} rows, GCS files present), skipping`,
+      )
       return
     }
-    console.log(`  ⚠ ${part} (${jobKind}) — found in DB (job #${prior.id}) but GCS files are gone, re-exporting`)
+    console.log(
+      `  ⚠ ${part} (${jobKind}) — found in DB (job #${prior.id}) but GCS files are gone, re-exporting`,
+    )
   }
 
   // GCS-first recovery: if files exist in the bucket but DB has no record (e.g. after scaffold reset),
@@ -121,10 +143,14 @@ async function exportPart(opts: {
   const [existingFiles] = await bucket.getFiles({ prefix: gcsFolderPath, maxResults: 1 })
   if (existingFiles.length > 0) {
     if (dryRunOnly) {
-      console.log(`  ✓ ${part} (${jobKind}) — GCS files exist (no DB record, would register on real run), skipping BQ`)
+      console.log(
+        `  ✓ ${part} (${jobKind}) — GCS files exist (no DB record, would register on real run), skipping BQ`,
+      )
       return
     }
-    console.log(`  ↻ ${part} (${jobKind}) — GCS files exist but no DB record (scaffold reset?), registering...`)
+    console.log(
+      `  ↻ ${part} (${jobKind}) — GCS files exist but no DB record (scaffold reset?), registering...`,
+    )
     const jobId = await createIngestJob(qx, jobKind, 'full', null, exportName)
     await markJobStatus(qx, jobId, 'exported', {
       gcsPrefix,
@@ -140,7 +166,9 @@ async function exportPart(opts: {
   const [dryRunJob] = await bigquery.createQueryJob({ query: sql, dryRun: true, location: 'US' })
   const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
   const costUsd = (dryRunBytes / 1e12) * 5
-  console.log(`  ${dryRunOnly ? '~' : '→'} ${part} (${jobKind}) — ${(dryRunBytes / 1e9).toFixed(1)} GB, ~$${costUsd.toFixed(4)}`)
+  console.log(
+    `  ${dryRunOnly ? '~' : '→'} ${part} (${jobKind}) — ${(dryRunBytes / 1e9).toFixed(1)} GB, ~$${costUsd.toFixed(4)}`,
+  )
 
   if (dryRunOnly) return
 
@@ -173,7 +201,9 @@ EXPORT DATA OPTIONS(
   })
 
   const actualCost = (stats.bqBytesBilled / 1e12) * 5
-  console.log(`    ✓ done — ${(stats.outputRows ?? 0).toLocaleString()} rows, $${actualCost.toFixed(4)} billed, ${durationSec}s (job #${jobId})`)
+  console.log(
+    `    ✓ done — ${(stats.outputRows ?? 0).toLocaleString()} rows, $${actualCost.toFixed(4)} billed, ${durationSec}s (job #${jobId})`,
+  )
 }
 
 async function main(): Promise<void> {
@@ -199,9 +229,7 @@ async function main(): Promise<void> {
   }
 
   const requestedParts: ExportPart[] =
-    partsArg === 'all'
-      ? ALL_PARTS
-      : (partsArg.split(',').map((p) => p.trim()) as ExportPart[])
+    partsArg === 'all' ? ALL_PARTS : (partsArg.split(',').map((p) => p.trim()) as ExportPart[])
 
   const invalidParts = requestedParts.filter((p) => !ALL_PARTS.includes(p))
   if (invalidParts.length > 0) {
@@ -211,10 +239,13 @@ async function main(): Promise<void> {
   }
 
   const ecosystemsIdx = args.indexOf('--ecosystems')
-  const ecosystems = ecosystemsIdx !== -1 ? args[ecosystemsIdx + 1]?.split(',').map((e) => e.trim().toUpperCase()) : undefined
+  const ecosystems =
+    ecosystemsIdx !== -1
+      ? args[ecosystemsIdx + 1]?.split(',').map((e) => e.trim().toUpperCase())
+      : undefined
 
   const snapshotDateArgIdx = args.indexOf('--snapshot-date')
-  let snapshotDate = snapshotDateArgIdx !== -1 ? args[snapshotDateArgIdx + 1] : undefined
+  const snapshotDate = snapshotDateArgIdx !== -1 ? args[snapshotDateArgIdx + 1] : undefined
 
   const depsTableOption: 'A' | 'B' = args.includes('--deps-table-b') ? 'B' : 'A'
   const dryRunOnly = args.includes('--dry-run')
@@ -230,14 +261,22 @@ async function main(): Promise<void> {
   let countsSnapshotDate = snapshotDate
 
   if (needsReposSnapshot && !reposSnapshotDate) {
-    process.stdout.write('  Resolving snapshot date for repos/package_repos (PackageVersionToProject)... ')
-    reposSnapshotDate = await resolveSnapshotDate('bigquery-public-data.deps_dev_v1.PackageVersionToProject', today)
+    process.stdout.write(
+      '  Resolving snapshot date for repos/package_repos (PackageVersionToProject)... ',
+    )
+    reposSnapshotDate = await resolveSnapshotDate(
+      'bigquery-public-data.deps_dev_v1.PackageVersionToProject',
+      today,
+    )
     console.log(reposSnapshotDate)
   }
 
   if (needsCountsSnapshot && !countsSnapshotDate) {
     process.stdout.write('  Resolving snapshot date for counts (Dependents)... ')
-    countsSnapshotDate = await resolveSnapshotDate('bigquery-public-data.deps_dev_v1.Dependents', today)
+    countsSnapshotDate = await resolveSnapshotDate(
+      'bigquery-public-data.deps_dev_v1.Dependents',
+      today,
+    )
     console.log(countsSnapshotDate)
   }
 
@@ -254,7 +293,9 @@ async function main(): Promise<void> {
 
   const ecosystemLabel = ecosystems ? ecosystems.join(',') : 'all'
   const tableLabel = depsTableOption === 'B' ? ' [deps=Option B]' : ''
-  console.log(`\nexport-name: ${exportName}  ecosystems: ${ecosystemLabel}${tableLabel}  mode: ${dryRunOnly ? 'dry-run' : 'export'}\n`)
+  console.log(
+    `\nexport-name: ${exportName}  ecosystems: ${ecosystemLabel}${tableLabel}  mode: ${dryRunOnly ? 'dry-run' : 'export'}\n`,
+  )
 
   for (const part of requestedParts) {
     await exportPart({

@@ -93,12 +93,24 @@ ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fix
 `
 
 const ADVISORIES_PG_COLUMNS = [
-  'osv_id', 'source', 'source_url', 'summary', 'details',
-  'cvss', 'severity', 'aliases', 'published_at',
+  'osv_id',
+  'source',
+  'source_url',
+  'summary',
+  'details',
+  'cvss',
+  'severity',
+  'aliases',
+  'published_at',
 ]
 
 const ADVISORY_PACKAGES_PG_COLUMNS = [
-  'osv_id', 'ecosystem', 'package_name', 'purl', 'range_raw', 'unaffected_raw',
+  'osv_id',
+  'ecosystem',
+  'package_name',
+  'purl',
+  'range_raw',
+  'unaffected_raw',
 ]
 
 const ROWS_PER_CHUNK = 1_000_000
@@ -126,20 +138,28 @@ export async function ingestAdvisories(opts: {
     exportName: opts.exportName,
   })
 
-  const { fileNames: advFileNames, rowCounts: advRowCounts } = await listParquetFiles({ gcsPrefix: advisoriesExport.gcsPrefix })
+  const { fileNames: advFileNames, rowCounts: advRowCounts } = await listParquetFiles({
+    gcsPrefix: advisoriesExport.gcsPrefix,
+  })
   const advTotalFiles = advFileNames.length
 
   if (advTotalFiles === 0) {
-    await mergeStagingToTable({ jobId: advisoriesExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: advisoriesExport.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
   } else {
     const advTotalRows = advRowCounts.reduce((a, b) => a + b, 0)
-    const advFilesPerChunk = advTotalRows > 0
-      ? Math.max(1, Math.round((ROWS_PER_CHUNK * advFileNames.length) / advTotalRows))
-      : Math.min(advFileNames.length, 2)
+    const advFilesPerChunk =
+      advTotalRows > 0
+        ? Math.max(1, Math.round((ROWS_PER_CHUNK * advFileNames.length) / advTotalRows))
+        : Math.min(advFileNames.length, 2)
     const advTotalChunks = Math.ceil(advFileNames.length / advFilesPerChunk)
     let priorRowsAffected = 0
     let advPriorStagingRows = 0
-    let advPriorTableRowCounts: Record<string, number> = {}
+    const advPriorTableRowCounts: Record<string, number> = {}
 
     for (let chunkIndex = 0; chunkIndex < advTotalChunks; chunkIndex++) {
       const start = chunkIndex * advFilesPerChunk
@@ -191,22 +211,30 @@ export async function ingestAdvisories(opts: {
     exportName: opts.exportName,
   })
 
-  const { fileNames: pkgFileNames, rowCounts: pkgRowCounts } = await listParquetFiles({ gcsPrefix: pkgsExport.gcsPrefix })
+  const { fileNames: pkgFileNames, rowCounts: pkgRowCounts } = await listParquetFiles({
+    gcsPrefix: pkgsExport.gcsPrefix,
+  })
   const pkgTotalFiles = pkgFileNames.length
 
   if (pkgTotalFiles === 0) {
-    await mergeStagingToTable({ jobId: pkgsExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: pkgsExport.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
     return
   }
 
   const pkgTotalRows = pkgRowCounts.reduce((a, b) => a + b, 0)
-  const pkgFilesPerChunk = pkgTotalRows > 0
-    ? Math.max(1, Math.round((ROWS_PER_CHUNK * pkgFileNames.length) / pkgTotalRows))
-    : Math.min(pkgFileNames.length, 2)
+  const pkgFilesPerChunk =
+    pkgTotalRows > 0
+      ? Math.max(1, Math.round((ROWS_PER_CHUNK * pkgFileNames.length) / pkgTotalRows))
+      : Math.min(pkgFileNames.length, 2)
   const pkgTotalChunks = Math.ceil(pkgFileNames.length / pkgFilesPerChunk)
   let pkgPriorRowsAffected = 0
   let pkgPriorStagingRows = 0
-  let pkgPriorTableRowCounts: Record<string, number> = {}
+  const pkgPriorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < pkgTotalChunks; chunkIndex++) {
     const start = chunkIndex * pkgFilesPerChunk

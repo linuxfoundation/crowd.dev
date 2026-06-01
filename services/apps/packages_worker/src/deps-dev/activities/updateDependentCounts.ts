@@ -33,7 +33,10 @@ export async function updateDependentCounts(
   const jobId = await createIngestJob(qx, 'dependent_counts', 'full', new Date(input.snapshotDate))
   await markJobStatus(qx, jobId, 'loading')
 
-  const [job] = await bigquery.createQueryJob({ query: buildDependentCountsSql(input.snapshotDate), location: 'US' })
+  const [job] = await bigquery.createQueryJob({
+    query: buildDependentCountsSql(input.snapshotDate),
+    location: 'US',
+  })
   await job.promise()
   const bqStats = await extractBqStats(job)
   const stream = job.getQueryResultsStream()
@@ -82,7 +85,13 @@ export async function updateDependentCounts(
     tableRowCounts: { 'bq:stream': totalFromBq, packages: totalUpdated },
   })
   log.info(
-    { jobId, totalUpdated, bqJobId: bqStats.bqJobId, totalBytesProcessed: bqStats.totalBytesProcessed, totalSlotMs: bqStats.totalSlotMs },
+    {
+      jobId,
+      totalUpdated,
+      bqJobId: bqStats.bqJobId,
+      totalBytesProcessed: bqStats.totalBytesProcessed,
+      totalSlotMs: bqStats.totalSlotMs,
+    },
     'dependent_packages_count update complete',
   )
   return { rowsUpdated: totalUpdated }

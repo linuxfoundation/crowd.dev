@@ -24,13 +24,16 @@ export async function cleanupGcs(): Promise<{ deletedObjects: number; markedJobs
 
   // Mark cleaned_at on finished jobs older than 24h
   const qx = await getPackagesDb()
-  const markedJobs = await qx.result(`
+  const markedJobs = await qx.result(
+    `
     UPDATE osspckgs_ingest_jobs
     SET cleaned_at = NOW()
     WHERE status = 'done'
       AND cleaned_at IS NULL
       AND finished_at < $(cutoff)
-  `, { cutoff })
+  `,
+    { cutoff },
+  )
 
   log.info({ deletedObjects, markedJobs }, 'GCS cleanup complete')
   return { deletedObjects, markedJobs }

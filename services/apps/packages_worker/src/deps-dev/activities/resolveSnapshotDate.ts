@@ -55,7 +55,7 @@ export async function resolveSnapshotDate(
   const snapshotDate =
     typeof raw === 'string'
       ? raw.slice(0, 10)
-      : raw?.value?.slice(0, 10) ?? String(raw).slice(0, 10)
+      : (raw?.value?.slice(0, 10) ?? String(raw).slice(0, 10))
 
   log.info({ jobKind: input.jobKind, snapshotDate }, 'Resolved snapshot date')
   return { snapshotDate }

@@ -46,7 +46,10 @@ const SECONDARY_INDEXES: Array<{ columns: string; createSql: string }> = [
 // Drops secondary (non-constraint) indexes on package_dependencies.
 // Idempotent: DROP INDEX IF EXISTS on each found index.
 // For a partitioned table, dropping the parent index cascades to all 64 partitions.
-export async function dropPackageDepsIndexes(): Promise<{ dropped: string[]; droppedConstraint: string | null }> {
+export async function dropPackageDepsIndexes(): Promise<{
+  dropped: string[]
+  droppedConstraint: string | null
+}> {
   const qx = await getPackagesDb()
 
   const rows: Array<{ indexname: string }> = await qx.select(NON_CONSTRAINT_INDEXES_SQL)
@@ -66,7 +69,10 @@ export async function dropPackageDepsIndexes(): Promise<{ dropped: string[]; dro
   const constraintRow = await qx.selectOneOrNone(UNIQUE_CONSTRAINT_SQL)
   let droppedConstraint: string | null = null
   if (constraintRow) {
-    log.info({ constraint: constraintRow.conname }, 'Dropping UNIQUE constraint on package_dependencies')
+    log.info(
+      { constraint: constraintRow.conname },
+      'Dropping UNIQUE constraint on package_dependencies',
+    )
     await qx.result(`ALTER TABLE package_dependencies DROP CONSTRAINT ${constraintRow.conname}`)
     droppedConstraint = constraintRow.conname
   } else {
@@ -81,7 +87,10 @@ export async function dropPackageDepsIndexes(): Promise<{ dropped: string[]; dro
 // Idempotent: existence check uses exact column-list match — "(version_id)" — to avoid
 // false positives from substring matches (e.g. "depends_on_version_id" contains "version_id").
 // Only non-constraint indexes are checked so the UNIQUE constraint cannot cause a false positive.
-export async function rebuildPackageDepsIndexes(): Promise<{ rebuilt: string[]; rebuiltConstraint: boolean }> {
+export async function rebuildPackageDepsIndexes(): Promise<{
+  rebuilt: string[]
+  rebuiltConstraint: boolean
+}> {
   const qx = await getPackagesDb()
 
   const existing: Array<{ indexdef: string }> = await qx.select(NON_CONSTRAINT_INDEXES_SQL)
@@ -131,12 +140,17 @@ export async function rebuildPackageDepsIndexes(): Promise<{ rebuilt: string[]; 
     `)
     totalDedupDeleted += result
   }
-  log.info({ rowsDeleted: totalDedupDeleted }, 'Cross-chunk duplicate rows removed from package_dependencies')
+  log.info(
+    { rowsDeleted: totalDedupDeleted },
+    'Cross-chunk duplicate rows removed from package_dependencies',
+  )
 
   const constraintRow = await qx.selectOneOrNone(UNIQUE_CONSTRAINT_SQL)
   let rebuiltConstraint = false
   if (!constraintRow) {
-    log.info('Rebuilding UNIQUE constraint on package_dependencies (this may take a while on large tables)')
+    log.info(
+      'Rebuilding UNIQUE constraint on package_dependencies (this may take a while on large tables)',
+    )
     await qx.result(
       `ALTER TABLE package_dependencies ADD UNIQUE (version_id, depends_on_id, dependency_kind)`,
     )

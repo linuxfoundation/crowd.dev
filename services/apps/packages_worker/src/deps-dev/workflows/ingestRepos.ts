@@ -45,9 +45,17 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_repos_raw (
 `
 
 const REPOS_PG_COLUMNS = [
-  'canonical_url', 'host', 'owner', 'name',
-  'raw_project_type', 'raw_project_name',
-  'description', 'homepage', 'stars', 'forks', 'open_issues',
+  'canonical_url',
+  'host',
+  'owner',
+  'name',
+  'raw_project_type',
+  'raw_project_name',
+  'description',
+  'homepage',
+  'stars',
+  'forks',
+  'open_issues',
 ]
 
 const REPOS_MERGE_SQL = `
@@ -109,20 +117,28 @@ export async function ingestRepos(opts: {
     exportName: opts.exportName,
   })
 
-  const { fileNames: repoFileNames, rowCounts: repoRowCounts } = await listParquetFiles({ gcsPrefix: reposExport.gcsPrefix })
+  const { fileNames: repoFileNames, rowCounts: repoRowCounts } = await listParquetFiles({
+    gcsPrefix: reposExport.gcsPrefix,
+  })
   const repoTotalFiles = repoFileNames.length
 
   if (repoTotalFiles === 0) {
-    await mergeStagingToTable({ jobId: reposExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: reposExport.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
   } else {
     const repoTotalRows = repoRowCounts.reduce((a, b) => a + b, 0)
-    const repoFilesPerChunk = repoTotalRows > 0
-      ? Math.max(1, Math.round((ROWS_PER_CHUNK * repoFileNames.length) / repoTotalRows))
-      : Math.min(repoFileNames.length, 2)
+    const repoFilesPerChunk =
+      repoTotalRows > 0
+        ? Math.max(1, Math.round((ROWS_PER_CHUNK * repoFileNames.length) / repoTotalRows))
+        : Math.min(repoFileNames.length, 2)
     const repoTotalChunks = Math.ceil(repoFileNames.length / repoFilesPerChunk)
     let priorRowsAffected = 0
     let repoPriorStagingRows = 0
-    let repoPriorTableRowCounts: Record<string, number> = {}
+    const repoPriorTableRowCounts: Record<string, number> = {}
 
     for (let chunkIndex = 0; chunkIndex < repoTotalChunks; chunkIndex++) {
       const start = chunkIndex * repoFilesPerChunk
@@ -171,22 +187,30 @@ export async function ingestRepos(opts: {
     exportName: opts.exportName,
   })
 
-  const { fileNames: pkgRepoFileNames, rowCounts: pkgRepoRowCounts } = await listParquetFiles({ gcsPrefix: pkgReposExport.gcsPrefix })
+  const { fileNames: pkgRepoFileNames, rowCounts: pkgRepoRowCounts } = await listParquetFiles({
+    gcsPrefix: pkgReposExport.gcsPrefix,
+  })
   const pkgRepoTotalFiles = pkgRepoFileNames.length
 
   if (pkgRepoTotalFiles === 0) {
-    await mergeStagingToTable({ jobId: pkgReposExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: pkgReposExport.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
     return
   }
 
   const pkgRepoTotalRows = pkgRepoRowCounts.reduce((a, b) => a + b, 0)
-  const pkgRepoFilesPerChunk = pkgRepoTotalRows > 0
-    ? Math.max(1, Math.round((ROWS_PER_CHUNK * pkgRepoFileNames.length) / pkgRepoTotalRows))
-    : Math.min(pkgRepoFileNames.length, 2)
+  const pkgRepoFilesPerChunk =
+    pkgRepoTotalRows > 0
+      ? Math.max(1, Math.round((ROWS_PER_CHUNK * pkgRepoFileNames.length) / pkgRepoTotalRows))
+      : Math.min(pkgRepoFileNames.length, 2)
   const pkgRepoTotalChunks = Math.ceil(pkgRepoFileNames.length / pkgRepoFilesPerChunk)
   let pkgRepoPriorRowsAffected = 0
   let pkgRepoPriorStagingRows = 0
-  let pkgRepoPriorTableRowCounts: Record<string, number> = {}
+  const pkgRepoPriorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < pkgRepoTotalChunks; chunkIndex++) {
     const start = chunkIndex * pkgRepoFilesPerChunk

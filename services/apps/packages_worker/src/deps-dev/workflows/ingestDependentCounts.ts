@@ -70,18 +70,24 @@ export async function ingestDependentCounts(opts: {
   const totalFiles = fileNames.length
 
   if (totalFiles === 0) {
-    await mergeStagingToTable({ jobId: exportResult.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: exportResult.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
     return
   }
 
   const totalRows = rowCounts.reduce((a, b) => a + b, 0)
-  const filesPerChunk = totalRows > 0
-    ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
-    : Math.min(fileNames.length, 2)
+  const filesPerChunk =
+    totalRows > 0
+      ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
+      : Math.min(fileNames.length, 2)
   const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
   let priorRowsAffected = 0
   let priorStagingRows = 0
-  let priorTableRowCounts: Record<string, number> = {}
+  const priorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
     const start = chunkIndex * filesPerChunk

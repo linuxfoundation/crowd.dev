@@ -37,7 +37,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   const { jobKind, sql, runId, syncMode, snapshotAt, maxBytesGb, reuseExports, exportName } = input
 
   // Named exports use a stable GCS path independent of runId so they survive across bootstrap runs.
-  const namedGcsPrefix = exportName ? `gs://${GCS_BUCKET}/osspckgs/${jobKind}/exports/${exportName}/` : null
+  const namedGcsPrefix = exportName
+    ? `gs://${GCS_BUCKET}/osspckgs/${jobKind}/exports/${exportName}/`
+    : null
   const namedFolderPath = exportName ? `osspckgs/${jobKind}/exports/${exportName}/` : null
 
   const gcsPrefix = namedGcsPrefix ?? `gs://${GCS_BUCKET}/osspckgs/${jobKind}/${runId}/`
@@ -47,23 +49,53 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
 
   // Named export: look up by (job_kind, export_name) — most explicit reuse mode.
   if (exportName) {
+    const namedPrefix: string = namedGcsPrefix ?? ''
+    const namedFolder: string = namedFolderPath ?? ''
     const prior = await findExportByKindAndName(qx, jobKind, exportName)
     if (prior) {
       const priorFolderPath = prior.gcsPrefix.replace(`gs://${GCS_BUCKET}/`, '')
       const [priorFiles] = await bucket.getFiles({ prefix: priorFolderPath, maxResults: 1 })
       if (priorFiles.length > 0) {
-        log.info({ jobKind, exportName, jobId: prior.id, gcsPrefix: prior.gcsPrefix }, 'exportName match — skipping BQ, loading from named export')
-        return { gcsPrefix: prior.gcsPrefix, rowCount: prior.rowCountBq, bqBytesBilled: 0, jobId: prior.id }
+        log.info(
+          { jobKind, exportName, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
+          'exportName match — skipping BQ, loading from named export',
+        )
+        return {
+          gcsPrefix: prior.gcsPrefix,
+          rowCount: prior.rowCountBq,
+          bqBytesBilled: 0,
+          jobId: prior.id,
+        }
       }
-      log.warn({ jobKind, exportName, jobId: prior.id }, 'named export found in DB but GCS files gone (expired?), falling through to BQ')
+      log.warn(
+        { jobKind, exportName, jobId: prior.id },
+        'named export found in DB but GCS files gone (expired?), falling through to BQ',
+      )
     } else {
       // DB empty (e.g. scaffold reset) — check GCS directly before hitting BQ.
-      const [existingNamedFiles] = await bucket.getFiles({ prefix: namedFolderPath!, maxResults: 1 })
+      const [existingNamedFiles] = await bucket.getFiles({
+        prefix: namedFolder,
+        maxResults: 1,
+      })
       if (existingNamedFiles.length > 0) {
-        log.info({ jobKind, exportName, gcsPrefix: namedGcsPrefix }, 'no DB record but GCS files exist — re-registering named export (scaffold reset?)')
-        const jobId = await createIngestJob(qx, jobKind, syncMode, snapshotAt ? new Date(snapshotAt) : null, exportName)
-        await markJobStatus(qx, jobId, 'exported', { gcsPrefix: namedGcsPrefix!, rowCountBq: 0, bqBytesBilled: 0, tableRowCounts: { 'bq:export': 0 } })
-        return { gcsPrefix: namedGcsPrefix!, rowCount: 0, bqBytesBilled: 0, jobId }
+        log.info(
+          { jobKind, exportName, gcsPrefix: namedPrefix },
+          'no DB record but GCS files exist — re-registering named export (scaffold reset?)',
+        )
+        const jobId = await createIngestJob(
+          qx,
+          jobKind,
+          syncMode,
+          snapshotAt ? new Date(snapshotAt) : null,
+          exportName,
+        )
+        await markJobStatus(qx, jobId, 'exported', {
+          gcsPrefix: namedPrefix,
+          rowCountBq: 0,
+          bqBytesBilled: 0,
+          tableRowCounts: { 'bq:export': 0 },
+        })
+        return { gcsPrefix: namedPrefix, rowCount: 0, bqBytesBilled: 0, jobId }
       }
       log.info({ jobKind, exportName }, 'no named export in DB or GCS — running BQ export')
     }
@@ -77,12 +109,26 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
       const priorFolderPath = prior.gcsPrefix.replace(`gs://${GCS_BUCKET}/`, '')
       const [priorFiles] = await bucket.getFiles({ prefix: priorFolderPath, maxResults: 1 })
       if (priorFiles.length > 0) {
-        log.info({ jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix }, 'reuseExports=true — skipping BQ, loading from prior export')
-        return { gcsPrefix: prior.gcsPrefix, rowCount: prior.rowCountBq, bqBytesBilled: 0, jobId: prior.id }
+        log.info(
+          { jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
+          'reuseExports=true — skipping BQ, loading from prior export',
+        )
+        return {
+          gcsPrefix: prior.gcsPrefix,
+          rowCount: prior.rowCountBq,
+          bqBytesBilled: 0,
+          jobId: prior.id,
+        }
       }
-      log.warn({ jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix }, 'reuseExports=true — prior export found in DB but GCS files are gone (expired?), falling through to BQ')
+      log.warn(
+        { jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
+        'reuseExports=true — prior export found in DB but GCS files are gone (expired?), falling through to BQ',
+      )
     } else {
-      log.warn({ jobKind }, 'reuseExports=true but no prior export found in DB — falling through to BQ')
+      log.warn(
+        { jobKind },
+        'reuseExports=true but no prior export found in DB — falling through to BQ',
+      )
     }
   }
 
@@ -91,7 +137,10 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   if (existingFiles.length > 0) {
     const existing = await findExportedJobByGcsPrefix(qx, gcsPrefix)
     if (existing) {
-      log.info({ jobKind, jobId: existing.id, gcsPrefix }, 'GCS files already exist — reusing export')
+      log.info(
+        { jobKind, jobId: existing.id, gcsPrefix },
+        'GCS files already exist — reusing export',
+      )
       return { gcsPrefix, rowCount: existing.rowCountBq, bqBytesBilled: 0, jobId: existing.id }
     }
   }
@@ -146,7 +195,15 @@ EXPORT DATA OPTIONS(
   })
 
   log.info(
-    { jobKind, jobId, rowCount, bqJobId: bqStats.bqJobId, totalBytesProcessed: bqStats.totalBytesProcessed, totalSlotMs: bqStats.totalSlotMs, durationMs: bqStats.durationMs },
+    {
+      jobKind,
+      jobId,
+      rowCount,
+      bqJobId: bqStats.bqJobId,
+      totalBytesProcessed: bqStats.totalBytesProcessed,
+      totalSlotMs: bqStats.totalSlotMs,
+      durationMs: bqStats.durationMs,
+    },
     'BQ export complete',
   )
 

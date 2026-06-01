@@ -45,7 +45,10 @@ const SECONDARY_INDEXES: Array<{ columns: string; createSql: string; matchString
   },
 ]
 
-export async function dropVersionsIndexes(): Promise<{ dropped: string[]; droppedConstraint: string | null }> {
+export async function dropVersionsIndexes(): Promise<{
+  dropped: string[]
+  droppedConstraint: string | null
+}> {
   const qx = await getPackagesDb()
 
   const rows: Array<{ indexname: string }> = await qx.select(NON_CONSTRAINT_INDEXES_SQL)
@@ -74,7 +77,10 @@ export async function dropVersionsIndexes(): Promise<{ dropped: string[]; droppe
   return { dropped: names, droppedConstraint }
 }
 
-export async function rebuildVersionsIndexes(): Promise<{ rebuilt: string[]; rebuiltConstraint: boolean }> {
+export async function rebuildVersionsIndexes(): Promise<{
+  rebuilt: string[]
+  rebuiltConstraint: boolean
+}> {
   const qx = await getPackagesDb()
 
   const existing: Array<{ indexdef: string }> = await qx.select(NON_CONSTRAINT_INDEXES_SQL)
@@ -83,7 +89,9 @@ export async function rebuildVersionsIndexes(): Promise<{ rebuilt: string[]; reb
   const rebuilt: string[] = []
 
   for (const idx of SECONDARY_INDEXES) {
-    const alreadyExists = existingDefs.some((def) => def.includes(idx.matchString ?? `(${idx.columns})`))
+    const alreadyExists = existingDefs.some((def) =>
+      def.includes(idx.matchString ?? `(${idx.columns})`),
+    )
     if (alreadyExists) {
       log.info({ columns: idx.columns }, 'Index already exists, skipping')
       continue

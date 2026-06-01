@@ -19,7 +19,11 @@ QUALIFY ROW_NUMBER() OVER (PARTITION BY System, Name ORDER BY UpstreamPublishedA
 `
 }
 
-export function buildPackagesIncrementalSql(today: string, watermark: string, systems: string): string {
+export function buildPackagesIncrementalSql(
+  today: string,
+  watermark: string,
+  systems: string,
+): string {
   return `
 WITH today AS (
   SELECT

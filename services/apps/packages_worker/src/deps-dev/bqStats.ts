@@ -1,5 +1,6 @@
 import type { BigQuery } from '@google-cloud/bigquery'
 import type { Job } from '@google-cloud/bigquery'
+
 import type { BqStats } from '@crowd/data-access-layer'
 
 export async function extractBqStats(
@@ -22,15 +23,17 @@ export async function extractBqStats(
 
   const totalBytesProcessed = Number(stats.totalBytesProcessed ?? 0)
   // For script jobs, totalBytesBilled is in query.totalBytesBilled, not stats.totalBytesBilled.
-  let totalBytesBilled = Number(query.totalBytesBilled ?? stats.totalBytesBilled ?? 0)
+  const totalBytesBilled = Number(query.totalBytesBilled ?? stats.totalBytesBilled ?? 0)
   const totalSlotMs = Number(query.totalSlotMs ?? 0)
-  let outputRows: number | undefined = query.outputRows != null ? Number(query.outputRows) : undefined
+  let outputRows: number | undefined =
+    query.outputRows != null ? Number(query.outputRows) : undefined
 
   // Script jobs (CREATE TEMP TABLE + EXPORT DATA): scriptStatistics is not returned by getMetadata().
   // List child jobs instead — the CREATE TEMP TABLE child has the row count in dmlStats.insertedRowCount.
   const numChildJobs = Number(stats.numChildJobs ?? 0)
   if (numChildJobs > 0 && outputRows == null && bqClient) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [childJobs] = await bqClient.getJobs({ parentJobId: job.id, location: 'US' } as any)
       for (const childJob of childJobs) {
         const [childMeta] = await childJob.getMetadata()
