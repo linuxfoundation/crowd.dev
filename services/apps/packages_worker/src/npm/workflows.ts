@@ -38,7 +38,7 @@ export async function backfillDailyDownloads(): Promise<void> {
   await mapWithConcurrency(tracked, concurrency, async (pkg) => {
     const windows = await acts.findMissingDownloadWindows(pkg.id, pkg.firstReleaseAt)
     for (const w of windows) {
-      await acts.fetchAndPersistDailyDownloads(pkg.name, pkg.id, w.start, w.end)
+      await acts.fetchAndPersistDailyDownloads(pkg.name, pkg.id, pkg.purl, w.start, w.end)
     }
   })
 }

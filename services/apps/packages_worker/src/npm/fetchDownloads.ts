@@ -26,7 +26,8 @@ export async function fetchBulkPointRange(
   start: string,
   end: string,
 ): Promise<BulkPointRangeResult | FetchError> {
-  if (names.length > 128) throw new Error(`fetchBulkPointRange: too many names (${names.length} > 128)`)
+  if (names.length > 128)
+    throw new Error(`fetchBulkPointRange: too many names (${names.length} > 128)`)
   const url = `https://api.npmjs.org/downloads/point/${start}:${end}/${names.join(',')}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)

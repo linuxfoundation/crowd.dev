@@ -5,6 +5,7 @@ import {
   getScannedNpmPackages,
   getTrackedNpmPackages,
   insertDailyDownloads,
+  logAuditFieldChanges,
   markNpmPackageScanned,
   setNpmChangesLastSeq,
   upsertLast30dDownload,
@@ -20,8 +21,8 @@ import {
   fetchDailyRange as fetchDailyRangeHttp,
   fetchPointRange,
 } from './fetchDownloads'
-import { computeMissingLast30dWindows, Last30dWindow } from './last30dGaps'
 import { fetchPackument } from './fetchPackument'
+import { Last30dWindow, computeMissingLast30dWindows } from './last30dGaps'
 import { isFetchError } from './types'
 import { upsertPackage } from './upsertPackage'
 import { getWatchList } from './watchList'
@@ -29,6 +30,8 @@ import { getWatchList } from './watchList'
 export { getWatchList }
 
 const log = getServiceChildLogger('npm')
+
+const WORKER = 'npm'
 
 export async function pollNpmChanges(): Promise<string[]> {
   const qx = await getPackagesDb()
@@ -71,9 +74,10 @@ export async function ingestNpmPackage(name: string): Promise<void> {
     throw new Error(`Failed to fetch packument for ${name}: ${packumentResult.message}`)
   }
 
-  await upsertPackage(qx, packumentResult)
+  const { purl, changedFields } = await upsertPackage(qx, packumentResult)
+  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
   await markNpmPackageScanned(qx, name)
-  log.info({ name }, 'Ingested npm package')
+  log.info({ name, changedFields: changedFields.length }, 'Ingested npm package')
 }
 
 export async function getUnscannedPackages(names: string[]): Promise<string[]> {
@@ -125,6 +129,7 @@ export async function findMissingDownloadWindows(
 export async function fetchAndPersistDailyDownloads(
   name: string,
   packageId: string,
+  purl: string,
   start: string,
   end: string,
 ): Promise<number> {
@@ -137,7 +142,8 @@ export async function fetchAndPersistDailyDownloads(
   }
   if (result.downloads.length === 0) return 0
   const qx = await getPackagesDb()
-  await insertDailyDownloads(qx, packageId, result.downloads)
+  const changedFields = await insertDailyDownloads(qx, packageId, result.downloads)
+  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
   return result.downloads.length
 }
 
@@ -187,7 +193,15 @@ export async function fetchAndPersistLast30dWindow(
     )
   }
   const qx = await getPackagesDb()
-  await upsertLast30dDownload(qx, purl, start, end, result.count, mirrorToUniverse)
+  const changedFields = await upsertLast30dDownload(
+    qx,
+    purl,
+    start,
+    end,
+    result.count,
+    mirrorToUniverse,
+  )
+  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
   return result.count
 }
 
@@ -201,9 +215,7 @@ export async function fetchBulkAndPersistLast30dWindow(
   await sleep(downloadSleepMs())
   const result = await fetchBulkPointRange(names, start, end)
   if (isFetchError(result)) {
-    throw new Error(
-      `Failed to fetch bulk last-30d downloads [${start}:${end}]: ${result.message}`,
-    )
+    throw new Error(`Failed to fetch bulk last-30d downloads [${start}:${end}]: ${result.message}`)
   }
   const qx = await getPackagesDb()
   let persisted = 0
@@ -215,7 +227,8 @@ export async function fetchBulkAndPersistLast30dWindow(
       log.warn({ name, start, end }, 'npm bulk response: no data for package — skipping')
       continue
     }
-    await upsertLast30dDownload(qx, purl, start, end, count, mirrorToUniverse)
+    const changedFields = await upsertLast30dDownload(qx, purl, start, end, count, mirrorToUniverse)
+    await logAuditFieldChanges(qx, WORKER, purl, changedFields)
     persisted++
   }
   return persisted

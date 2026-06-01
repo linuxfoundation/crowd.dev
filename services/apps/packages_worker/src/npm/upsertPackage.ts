@@ -16,7 +16,10 @@ import {
 } from './normalize'
 import type { FundingEntry, Packument } from './types'
 
-export async function upsertPackage(qx: QueryExecutor, packument: Packument): Promise<void> {
+export async function upsertPackage(
+  qx: QueryExecutor,
+  packument: Packument,
+): Promise<{ purl: string; changedFields: string[] }> {
   const raw = packument.name
   const { namespace, name } = parseNpmName(raw)
   const purl = buildPurl(raw)
@@ -39,8 +42,10 @@ export async function upsertPackage(qx: QueryExecutor, packument: Packument): Pr
   const fundingLinks = extractFundingLinks(latestV?.funding)
   const maintainers = collectMaintainers(packument)
 
+  const changed = new Set<string>()
+
   await qx.tx(async (t) => {
-    const { id: pkgId } = await upsertNpmPackage(t, {
+    const { id: pkgId, changedFields: pkgChanged } = await upsertNpmPackage(t, {
       purl,
       namespace,
       name,
@@ -61,8 +66,9 @@ export async function upsertPackage(qx: QueryExecutor, packument: Packument): Pr
       firstReleaseAt: firstReleaseAt ?? null,
       latestReleaseAt: latestReleaseAt ?? null,
     })
+    pkgChanged.forEach((f) => changed.add(f))
 
-    await upsertNpmVersions(
+    const verChanged = await upsertNpmVersions(
       t,
       pkgId,
       versionEntries.map(([number, v]) => ({
@@ -73,15 +79,20 @@ export async function upsertPackage(qx: QueryExecutor, packument: Packument): Pr
         license: v.license ?? licenses[0] ?? null,
       })),
     )
+    verChanged.forEach((f) => changed.add(f))
 
     if (maintainers.length > 0) {
-      await upsertNpmMaintainers(t, pkgId, maintainers)
+      const mChanged = await upsertNpmMaintainers(t, pkgId, maintainers)
+      mChanged.forEach((f) => changed.add(f))
     }
 
     if (fundingLinks.length > 0) {
-      await upsertNpmFundingLinks(t, pkgId, fundingLinks)
+      const fChanged = await upsertNpmFundingLinks(t, pkgId, fundingLinks)
+      fChanged.forEach((f) => changed.add(f))
     }
   })
+
+  return { purl, changedFields: Array.from(changed) }
 }
 
 function rawRepoUrl(packument: Packument): string | null {

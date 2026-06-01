@@ -25,13 +25,14 @@ export async function insertDailyDownloads(
   qx: QueryExecutor,
   packageId: string,
   days: Array<{ day: string; downloads: number }>,
-): Promise<void> {
-  if (days.length === 0) return
-  await qx.result(
+): Promise<string[]> {
+  if (days.length === 0) return []
+  const rowCount = await qx.result(
     `INSERT INTO downloads_daily (package_id, date, count)
      SELECT $(packageId)::bigint, d::date, c
        FROM unnest($(dates)::text[], $(counts)::bigint[]) AS u(d, c)
      ON CONFLICT (package_id, date) DO NOTHING`,
     { packageId, dates: days.map((d) => d.day), counts: days.map((d) => d.downloads) },
   )
+  return rowCount > 0 ? ['downloads_daily.date', 'downloads_daily.count'] : []
 }

@@ -68,7 +68,12 @@ export function collectMaintainers(packument: Packument): Array<{
 }> {
   const map = new Map<
     string,
-    { username: string; displayName: string | null; email: string | null; role: 'author' | 'maintainer' }
+    {
+      username: string
+      displayName: string | null
+      email: string | null
+      role: 'author' | 'maintainer'
+    }
   >()
 
   for (const m of packument.maintainers ?? []) {

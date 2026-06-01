@@ -1,7 +1,9 @@
 import { QueryExecutor } from '../queryExecutor'
 
 export async function getNpmChangesLastSeq(qx: QueryExecutor): Promise<string | null> {
-  const row = await qx.selectOneOrNone(`SELECT value FROM npm_worker_state WHERE name = 'changes_last_seq'`)
+  const row = await qx.selectOneOrNone(
+    `SELECT value FROM npm_worker_state WHERE name = 'changes_last_seq'`,
+  )
   return row ? (row.value as string) : null
 }
 
