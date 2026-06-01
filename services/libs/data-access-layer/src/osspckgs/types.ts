@@ -53,3 +53,32 @@ export type IDbPackageMaintainerUpsert = {
   maintainerId: number
   role: 'author' | 'maintainer' | null
 }
+
+// ─── versions ─────────────────────────────────────────────────────────────────
+
+export type IDbVersionUpsert = {
+  packageId: number
+  ecosystem: string
+  number: string
+  isLatest: boolean
+  isPrerelease: boolean
+  license: string | null
+}
+
+// ─── repos ────────────────────────────────────────────────────────────────────
+
+export type IDbRepoUpsert = {
+  url: string
+  host: string | null
+  owner: string | null
+  name: string | null
+}
+
+// ─── package_repos ────────────────────────────────────────────────────────────
+
+export type IDbPackageRepoUpsert = {
+  packageId: number
+  repoId: number
+  source: 'declared' | 'deps_dev' | 'heuristic' | 'manual'
+  confidence: number
+}

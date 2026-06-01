@@ -14,28 +14,19 @@ export async function findPackageIdsByPurl(
 // ─── packages_universe ────────────────────────────────────────────────────────
 
 /**
- * Returns a page of Maven packages from packages_universe that need syncing
- * into the packages table.
- *
- * Eligibility rules:
- *  - p.purl IS NULL  → never added to packages (any criticality)
- *  - is_critical = false → periodic refresh of universe stats (default 180d)
- *  - is_critical = true  → not yet POM-enriched, new version released, or
- *                          periodic full refresh (default 90d)
- *
- * Critical packages are returned first so POM enrichment is prioritised.
+ * Returns a page of critical Maven packages from packages_universe that need
+ * syncing into the packages table (never synced, or stale by refreshDays).
  */
-export async function listMavenPackagesToSync(
+export async function listCriticalMavenPackagesToSync(
   qx: QueryExecutor,
-  options: { limit: number; offset: number; fullRefreshDays?: number; nonCriticalRefreshDays?: number; isCritical?: boolean },
+  options: { limit: number; refreshDays: number },
 ): Promise<
-  (Pick<IDbPackageUniverse, 'id' | 'namespace' | 'name' | 'isCritical' | 'criticalityScore' | 'dependentPackagesCount' | 'dependentReposCount' | 'downloads30d'> & {
+  (Pick<IDbPackageUniverse, 'id' | 'namespace' | 'name' | 'criticalityScore' | 'dependentPackagesCount' | 'dependentReposCount' | 'downloads30d'> & {
     purl: string
     latestVersion: string | null
   })[]
 > {
-  const { limit, offset, fullRefreshDays = 90, nonCriticalRefreshDays = 180, isCritical } = options
-  const isCriticalFilter = isCritical !== undefined ? isCritical : null
+  const { limit, refreshDays } = options
 
   return qx.select(
     `
@@ -44,7 +35,6 @@ export async function listMavenPackagesToSync(
       pu.purl,
       pu.namespace,
       pu.name,
-      pu.is_critical              AS "isCritical",
       pu.criticality_score        AS "criticalityScore",
       pu.dependent_packages_count AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
@@ -54,26 +44,19 @@ export async function listMavenPackagesToSync(
     LEFT JOIN packages p ON p.purl = pu.purl
     WHERE
       pu.ecosystem = 'maven'
+      AND pu.is_critical = true
       AND pu.purl IS NOT NULL
       AND pu.namespace IS NOT NULL
-      AND ($(isCriticalFilter)::boolean IS NULL OR pu.is_critical = $(isCriticalFilter)::boolean)
       AND (
         p.purl IS NULL
-        OR (pu.is_critical = false
-            AND p.last_synced_at < NOW() - ($(nonCriticalRefreshDays) || ' days')::interval)
-        OR (pu.is_critical = true
-            AND p.ingestion_source IN ('maven_index', 'packages_universe'))
-        OR (pu.is_critical = true
-            AND p.latest_release_at > p.last_synced_at)
-        OR (pu.is_critical = true
-            AND p.last_synced_at < NOW() - ($(fullRefreshDays) || ' days')::interval)
+        OR p.last_synced_at < NOW() - ($(refreshDays) || ' days')::interval
       )
     ORDER BY
       pu.rank_in_ecosystem ASC NULLS LAST,
       pu.id ASC
-    LIMIT $(limit) OFFSET $(offset)
+    LIMIT $(limit)
     `,
-    { limit, offset, fullRefreshDays, nonCriticalRefreshDays, isCriticalFilter },
+    { limit, refreshDays },
   )
 }
 

@@ -11,7 +11,6 @@ import { XMLParser } from 'fast-xml-parser'
 export interface PomMaintainer {
   username: string | null
   displayName: string | null
-  /** Raw email from POM — hash with SHA-256 before storing (GDPR) */
   email: string | null
   url: string | null
   role: 'author' | 'maintainer'
@@ -55,7 +54,7 @@ interface PomPerson {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const MAVEN_REPO = 'https://repo1.maven.org/maven2'
-const MAX_PARENT_HOPS = 5
+export const MAX_PARENT_HOPS = 7
 const REQUEST_TIMEOUT_MS = 15_000
 
 const parser = new XMLParser({
@@ -80,8 +79,10 @@ async function getWithRetry(url: string): Promise<string> {
       const res = await axios.get<string>(url, { responseType: 'text', timeout: REQUEST_TIMEOUT_MS })
       return res.data
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 429) {
-        if (attempt < MAX_RETRIES) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status
+        // 429 = explicit rate limit, 403 = CDN throttle (Maven Central uses both)
+        if ((status === 429 || status === 403) && attempt < MAX_RETRIES) {
           const delay = RETRY_BASE_MS * 2 ** attempt + Math.random() * 500
           await sleep(delay)
           continue
@@ -195,10 +196,65 @@ async function resolveWithInheritance(
   }
 }
 
-// ─── Public entry point ───────────────────────────────────────────────────────
+// ─── Public entry points ──────────────────────────────────────────────────────
 
 /**
- * Fetches and resolves POM metadata for the given Maven artifact.
+ * Fetches only the root POM without following the parent chain.
+ * Faster than extractArtifact — use for non-critical packages where inherited
+ * fields (licenses, SCM) may be missing but throughput matters more.
+ */
+export async function extractArtifactDirect(
+  groupId: string,
+  artifactId: string,
+  version: string,
+  log: (msg: string) => void = () => undefined,
+): Promise<PomExtractionResult> {
+  const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
+  const pom = await fetchPom(groupId, artifactId, version, log)
+
+  if (!pom) {
+    return {
+      groupId,
+      artifactId,
+      version,
+      purl,
+      description: null,
+      licenses: [],
+      licensesRaw: null,
+      scmUrl: null,
+      homepageUrl: null,
+      developers: [],
+      contributors: [],
+      parentHops: 0,
+      error: `POM not found: ${buildPomUrl(groupId, artifactId, version)}`,
+    }
+  }
+
+  const licenses = extractLicenses(pom)
+  const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
+  const developers = extractPersons(pom.developers?.developer, 'author')
+  const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
+
+  return {
+    groupId,
+    artifactId,
+    version,
+    purl,
+    description: extractStr(pom.description),
+    licenses,
+    licensesRaw: licenses.length > 0 ? licenses.join(', ') : null,
+    scmUrl,
+    homepageUrl: extractStr(pom.url),
+    developers,
+    contributors,
+    parentHops: 0,
+    error: null,
+  }
+}
+
+/**
+ * Fetches and resolves POM metadata for the given Maven artifact, following
+ * the parent chain to inherit licenses and SCM when not in the direct POM.
  * Always returns a result object; errors are captured in `result.error`.
  */
 export async function extractArtifact(
