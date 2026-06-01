@@ -48,14 +48,10 @@ export function getEnricherConfig() {
 
 export function getPomFetcherConfig() {
   return {
-    // critical packages — HTTP-bound, keep low
     batchSize: parseInt(process.env.POM_FETCHER_BATCH_SIZE ?? '50', 10),
-    concurrency: parseInt(process.env.POM_FETCHER_CONCURRENCY ?? '3', 10),
-    fullRefreshDays: parseInt(process.env.POM_FETCHER_FULL_REFRESH_DAYS ?? '90', 10),
-    // non-critical packages — DB-only, can go much higher
-    nonCriticalBatchSize: parseInt(process.env.POM_FETCHER_NON_CRITICAL_BATCH_SIZE ?? '500', 10),
-    nonCriticalConcurrency: parseInt(process.env.POM_FETCHER_NON_CRITICAL_CONCURRENCY ?? '20', 10),
-    nonCriticalRefreshDays: parseInt(process.env.POM_FETCHER_NON_CRITICAL_REFRESH_DAYS ?? '180', 10),
+    concurrency: parseInt(process.env.POM_FETCHER_CONCURRENCY ?? '5', 10),
+    refreshDays: parseInt(process.env.POM_FETCHER_REFRESH_DAYS ?? '1', 10),
+    groupDelayMs: parseInt(process.env.POM_FETCHER_GROUP_DELAY_MS ?? '200', 10),
     idleSleepSec: parseInt(process.env.POM_FETCHER_IDLE_SLEEP_SEC ?? '3600', 10),
   }
 }

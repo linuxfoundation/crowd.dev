@@ -21,10 +21,7 @@ const main = async () => {
   log.info('pom-fetcher starting...')
 
   const config = getPomFetcherConfig()
-  log.info(
-    { batchSize: config.batchSize, concurrency: config.concurrency, fullRefreshDays: config.fullRefreshDays },
-    'Config loaded',
-  )
+  log.info(config, 'Config loaded')
 
   const qx = await getPackagesDb()
   await qx.selectOne('SELECT 1')
