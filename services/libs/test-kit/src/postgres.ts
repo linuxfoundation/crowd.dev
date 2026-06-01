@@ -53,7 +53,7 @@ export async function openTestWorkerDatabase(): Promise<{
 
 /**
  * Truncates all public tables in the worker database.
- * @throws {Error} If executed against a non-test database database name.
+ * @throws {Error} If executed against a non-test database name.
  */
 export async function resetTestDatabase(qx: QueryExecutor): Promise<void> {
   const { name } = await qx.selectOne('SELECT current_database() AS name')
@@ -146,6 +146,10 @@ function getTestPostgres(): TestPostgres {
   }
 
   const port = Number(DB_PORT)
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Expected valid DB_PORT (got ${DB_PORT})`)
+  }
 
   if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
     throw new Error(`Expected local DB_HOST (got ${host})`)
