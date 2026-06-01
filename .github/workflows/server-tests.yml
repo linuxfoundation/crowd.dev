@@ -53,16 +53,17 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm' # Built-in caching for faster runs
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: |
-          corepack enable
-          pnpm i --frozen-lockfile
+        run: pnpm i --frozen-lockfile
 
       - name: Prepare test database
         run: ./.github/scripts/prepare-test-template-db.sh
