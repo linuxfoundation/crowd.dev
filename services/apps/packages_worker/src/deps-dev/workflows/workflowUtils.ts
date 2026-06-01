@@ -1,6 +1,7 @@
 /**
  * Split file names into chunks where each chunk's total size is <= bytesPerChunk.
- * Always produces at least one chunk. A single oversized file goes in its own chunk.
+ * Returns an empty array when fileNames is empty. When non-empty, always produces
+ * at least one chunk. A single oversized file goes in its own chunk.
  */
 export function buildChunks(
   fileNames: string[],

@@ -942,8 +942,8 @@ CREATE TABLE osspckgs_ingest_jobs (
                     )),
     sync_mode       text NOT NULL DEFAULT 'incremental'
                         CHECK (sync_mode IN ('full', 'incremental')),
-    snapshot_at             date,  -- committed watermark: promoted from provisional only when row_count_pg > 0
-    provisional_snapshot_at date,  -- set at job creation; promoted to snapshot_at on successful non-zero merge
+    snapshot_at             date,  -- committed watermark: promoted from provisional unconditionally on 'done' (including 0-row quiet windows)
+    provisional_snapshot_at date,  -- set at job creation; promoted to snapshot_at when job reaches 'done'
     gcs_prefix      text,            -- gs://bucket/packages/2026-05-26T00-00-00Z/
     row_count_bq    bigint,
     row_count_staging bigint,        -- rows loaded into staging table from GCS parquet files

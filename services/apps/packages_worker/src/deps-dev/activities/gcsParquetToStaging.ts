@@ -75,6 +75,9 @@ async function loadParquetFile(
       }
       totalLoaded += batch.length
       batch = []
+      // Heartbeat after each batch so the 2-min heartbeat timeout doesn't fire mid-file
+      // on large parquet shards where a single file load can exceed the inter-chunk delay.
+      Context.current().heartbeat({ loaded: totalLoaded })
     }
   }
 
@@ -89,6 +92,7 @@ async function loadParquetFile(
       throw err
     }
     totalLoaded += batch.length
+    Context.current().heartbeat({ loaded: totalLoaded })
   }
 
   return totalLoaded

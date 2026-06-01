@@ -43,7 +43,6 @@ docker exec --interactive "$CONTAINER" \
     --username postgres \
     --dbname packages-db \
     --no-password \
-    --jobs 4 \
     --verbose \
 < "$DUMP_FILE"
 

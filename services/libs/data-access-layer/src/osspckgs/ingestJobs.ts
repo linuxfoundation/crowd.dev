@@ -185,7 +185,8 @@ export async function updateLoadingProgress(
 
 // Inserts a new job row with status 'pending', returns the new id.
 // provisionalSnapshotAt is the expected snapshot date; promoted to snapshot_at
-// only on successful non-zero merge (B10 — prevents watermark advancing on empty exports).
+// unconditionally when the job reaches 'done' — including quiet incremental windows
+// with 0 rows, so the watermark always advances and the same date is never re-queried.
 export async function createIngestJob(
   qx: QueryExecutor,
   jobKind: OsspckgsJobKind,
