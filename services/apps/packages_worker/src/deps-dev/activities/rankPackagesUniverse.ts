@@ -15,11 +15,11 @@ export async function rankPackagesUniverse(): Promise<void> {
     await tx.result(`
       INSERT INTO packages_universe (
         purl, ecosystem, namespace, name,
-        downloads_30d, dependent_packages_count, dependent_repos_count
+        downloads_last_30d, dependent_packages_count, dependent_repos_count
       )
       SELECT
         p.purl, p.ecosystem, p.namespace, p.name,
-        p.downloads_last_month,
+        NULL,
         p.dependent_packages_count,
         p.dependent_repos_count
       FROM packages p

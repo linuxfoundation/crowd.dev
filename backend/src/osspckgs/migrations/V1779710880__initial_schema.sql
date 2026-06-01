@@ -7,9 +7,13 @@ CREATE TABLE packages_universe (
     ecosystem text NOT NULL,
     namespace text,
     name text NOT NULL,
-    downloads_30d bigint,
-    dependent_packages_count bigint,
-    dependent_repos_count bigint,
+    -- Cached latest 30-day window count. Written by the same weekly ranking worker that upserts rows into
+    -- the downloads_last_30d table (keyed by purl/end_date). This column is the denormalized latest value
+    -- used directly by rank_packages_universe() to avoid a join; the downloads_last_30d table holds the
+    -- full rolling-window timeline.
+    downloads_last_30d bigint,
+    dependent_packages_count int,
+    dependent_repos_count int,
     criticality_score numeric(10, 4),
     rank_in_ecosystem int,
     is_critical bool NOT NULL DEFAULT FALSE,
@@ -52,13 +56,14 @@ CREATE TABLE packages (
     latest_version text,
     first_release_at timestamptz,
     latest_release_at timestamptz,
-    dependent_packages_count bigint,
-    dependent_repos_count bigint,
-    downloads_last_month bigint,
-    -- has_critical_vulnerability bool NOT NULL DEFAULT FALSE,
-    -- Deferred: semantics undecided between (a) any advisory with no fixed_version vs
-    -- (b) latest_version falls inside an affected semver range. Lateral join against
-    -- advisory_packages used in queries until this is resolved.
+    dependent_packages_count int,
+    dependent_repos_count int,
+    -- has_critical_vulnerability: TRUE iff latest_version is inside an active
+    -- affected range of a critical advisory (CVSS >= 7.0) OR a MAL-* malicious-
+    -- package advisory matches the package. Maintained by the deriveCriticalFlag
+    -- activity in packages_worker/src/osv/. See ADR-0001 §`has_critical_vulnerability`
+    -- semantics for the option-b + MAL- override rationale.
+    has_critical_vulnerability bool NOT NULL DEFAULT FALSE,
     criticality_score numeric(10, 4),
     -- is_critical and last_rank_pass_at are not in the original pckgs.md spec; added so
     -- the packages table can answer "is this package critical?" without joining packages_universe,
@@ -79,12 +84,12 @@ CREATE INDEX ON packages (ecosystem, name);
 
 CREATE INDEX ON packages USING gin (keywords);
 
-CREATE INDEX ON packages (downloads_last_month DESC)
+-- Partial index on has_critical_vulnerability TRUE rows only — that's the bucket
+-- the security overlay query needs ("list all packages with a known critical
+-- vuln"). The FALSE rows dominate the table and don't need an index.
+CREATE INDEX ON packages (has_critical_vulnerability)
 WHERE
-    status = 'active';
-
--- INDEX on has_critical_vulnerability removed — column is commented out above.
--- Uncomment both when semantics are decided.
+    has_critical_vulnerability;
 
 CREATE INDEX ON packages (criticality_score DESC)
 WHERE
@@ -571,6 +576,15 @@ CREATE TABLE advisories (
     aliases text[], -- CVE-XXXX, GHSA-...
     severity text, -- 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
     cvss numeric(3, 1),
+    -- Provenance of the cvss value above. Lets downstream consumers distinguish
+    -- a real vendor-supplied vector from a synthesized qualitative fallback.
+    -- See ADR-0001 §CVSS scoring strategy. Allowed values:
+    --   'osv_cvss_v3'              numeric score from a CVSS_V3 vector
+    --   'osv_cvss_v4'              reserved; v4 numeric scoring deferred
+    --   'osv_qualitative_fallback' synthesized from database_specific.severity
+    --   'osv_malicious_package'    MAL-* id with no CVSS vector
+    -- Extensible to 'ghsa' | 'nvd' as additional sources come online.
+    cvss_source text,
     -- >= 7.0 intentional: treat HIGH + CRITICAL both as actionable
     is_critical bool GENERATED ALWAYS AS (cvss >= 7.0) STORED,
     summary text,
@@ -601,10 +615,27 @@ CREATE INDEX ON advisory_packages (package_id)
 WHERE
     package_id IS NOT NULL;
 
--- Version ranges affected by an advisory per package.
+-- Drives the resolveMissingPackageIds catch-up UPDATE in deriveCriticalFlag:
+-- the query filters WHERE package_id IS NULL and joins on (ecosystem,
+-- package_name). The non-partial (ecosystem, package_name) index above is
+-- usable here too (the planner just adds a Filter on package_id IS NULL), but
+-- as the table grows the vast majority of rows have package_id IS NOT NULL,
+-- so the non-partial scan ends up filtering out most of what it reads. This
+-- partial index only contains the still-unresolved rows, keeping it tiny
+-- regardless of total table size and making the daily catch-up O(unresolved)
+-- instead of O(total).
+CREATE INDEX ON advisory_packages (ecosystem, package_name)
+WHERE
+    package_id IS NULL;
+
+-- Version ranges affected by an advisory per package. Populated by the OSV
+-- ingest worker (packages_worker/src/osv) using introduced_version /
+-- fixed_version / last_affected. range_raw / unaffected_raw are reserved
+-- for the deps.dev BQ ingest worker (future): that worker writes the raw
+-- range strings without parsing into structured boundaries. The OSV upsert
+-- path only deletes rows where range_raw / unaffected_raw are both NULL,
+-- so deps.dev rows are not clobbered when OSV re-syncs.
 -- COALESCE prevents silent duplicates when introduced_version is NULL.
--- BQ-sourced rows populate range_raw / unaffected_raw only; introduced/fixed/last_affected
--- are populated by a future range-parsing workstream.
 CREATE TABLE advisory_affected_ranges (
     id bigserial PRIMARY KEY,
     advisory_package_id bigint NOT NULL REFERENCES advisory_packages (id),
@@ -615,7 +646,22 @@ CREATE TABLE advisory_affected_ranges (
     unaffected_raw text      -- raw UnaffectedVersions string from deps.dev BQ
 );
 
+<<<<<<< HEAD
 CREATE UNIQUE INDEX ON advisory_affected_ranges (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''));
+=======
+-- Full-tuple uniqueness so two ranges sharing introduced_version but differing
+-- in fixed_version or last_affected (cross-distro patches, partial fixes in a
+-- single advisory) both survive insertion. The narrower (advisory_package_id,
+-- introduced_version) form silently collapsed those cases to one row, dropping
+-- the wider range and under-reporting vulnerable windows in the derive step.
+-- See ADR-0001 §`advisory_affected_ranges` uniqueness scope.
+CREATE UNIQUE INDEX ON advisory_affected_ranges (
+    advisory_package_id,
+    COALESCE(introduced_version, ''),
+    COALESCE(fixed_version, ''),
+    COALESCE(last_affected, '')
+);
+>>>>>>> main
 
 CREATE INDEX ON advisory_affected_ranges (advisory_package_id);
 
@@ -646,9 +692,27 @@ CREATE TABLE package_maintainers (
 );
 
 -- ============================================================
--- DOWNLOADS (time-series, partitioned by month via pg_partman)
+-- DOWNLOADS
 --
--- pg_partman MUST be enabled in OCI config before this migration runs:
+-- Two tables track download volume at different tiers and granularities:
+--
+--   downloads_daily   (tier 2 — packages)
+--     Source of truth for daily download counts. One row per package per day.
+--     No denormalized rollup on the packages table — consumers SUM over this
+--     table when they need a window (e.g. last 30 days).
+--
+--   downloads_last_30d (tier 3 — packages_universe)
+--     Rolling 30-day download timeline keyed by purl. Each row represents one
+--     30-day window (start_date..end_date). Keyed by purl so rows survive the
+--     weekly truncation of packages_universe. The latest window's count is also
+--     cached in packages_universe.downloads_last_30d for fast access by the
+--     criticality-ranking function (no join needed).
+--
+-- ============================================================
+-- DOWNLOADS DAILY (tier 2 — packages, daily granularity)
+--
+-- Partitioned by month via pg_partman. pg_partman MUST be enabled in OCI
+-- config before this migration runs:
 --   OCI Console → Database → Configuration → Extensions → enable pg_partman
 --
 -- After enabling, run the setup below (once, outside Flyway or in a
@@ -676,13 +740,86 @@ CREATE TABLE package_maintainers (
 -- ============================================================
 CREATE TABLE downloads_daily (
     id bigserial,
-    package_id bigint NOT NULL,
+    package_id bigint NOT NULL REFERENCES packages (id),
     date date NOT NULL,
     count bigint NOT NULL,
     PRIMARY KEY (id, date),
     UNIQUE (package_id, date)
 )
 PARTITION BY RANGE (date);
+
+-- ============================================================
+-- DOWNLOADS LAST 30D (tier 3 — packages_universe, rolling 30-day granularity)
+--
+-- Historical timeline of rolling 30-day download counts, keyed by purl.
+-- Each row captures one window: downloads from start_date to end_date (inclusive).
+-- Keyed by purl (not packages_universe.id) so rows survive the weekly
+-- truncation of packages_universe. The latest window is also written
+-- to packages_universe.downloads_last_30d column for fast access by the ranking function.
+--
+-- Writers should upsert: INSERT ... ON CONFLICT (purl, end_date) DO UPDATE SET count = EXCLUDED.count, start_date = EXCLUDED.start_date
+-- PK includes end_date because Postgres requires the partition key to be
+-- part of the primary key on range-partitioned tables.
+--
+-- Partitioned by month via pg_partman. pg_partman MUST be enabled in OCI
+-- config before this migration runs:
+--   OCI Console → Database → Configuration → Extensions → enable pg_partman
+--
+-- After enabling, run the setup below (once, outside Flyway or in a
+-- separate migration) to register pg_partman and create initial partitions:
+--
+--   CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+--
+--   SELECT partman.create_parent(
+--       p_parent_table => 'public.downloads_last_30d',
+--       p_control      => 'end_date',
+--       p_interval     => '1 month',
+--       p_premake      => 3   -- pre-creates 3 future monthly partitions
+--   );
+--
+--   -- pg_cron job to maintain partitions (also needs pg_cron enabled in OCI):
+--   SELECT cron.schedule('partman-maintain-30d', '0 2 * * *',
+--       $$CALL partman.run_maintenance_proc()$$);
+--
+-- Without this setup, inserts into downloads_last_30d will fail with
+-- "no partition found for row". The table structure below is correct;
+-- only the partition management setup is deferred.
+--
+-- ============================================================
+CREATE TABLE downloads_last_30d (
+    id bigserial,
+    purl text NOT NULL,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
+    count bigint NOT NULL,
+    PRIMARY KEY (id, end_date),
+    UNIQUE (purl, end_date)
+)
+PARTITION BY RANGE (end_date);
+
+CREATE INDEX ON downloads_last_30d (purl, end_date DESC);
+
+-- ============================================================
+-- AUDIT — per-purl field-change log
+--
+-- Append-only log of field-level changes. Each row records the set of
+-- 'table.column' tokens that were actually mutated for a given purl during one
+-- worker write pass. Rows with no real changes are not written (caller skips
+-- the insert when changed_fields is empty).
+-- ============================================================
+CREATE TABLE audit_field_changes (
+    id             bigserial PRIMARY KEY,
+    worker         text NOT NULL,
+    purl           text NOT NULL,
+    logged_at      timestamptz NOT NULL DEFAULT NOW(),
+    changed_fields text[] NOT NULL
+);
+
+CREATE INDEX ON audit_field_changes (purl, logged_at DESC);
+
+CREATE INDEX ON audit_field_changes (worker, logged_at DESC);
+
+CREATE INDEX ON audit_field_changes USING gin (changed_fields);
 
 -- ============================================================
 -- CRITICALITY RANKING FUNCTION
@@ -707,7 +844,7 @@ BEGIN
     -- and to compress the gap between small and large values (e.g. LN(1)=0
     -- vs LN(2)≈0.69 gives a gentler floor than LN(0)=-∞). Typically 1.0.
     --
-    -- Until the npm-registry / Maven downloads enricher runs, downloads_30d
+    -- Until the npm-registry / Maven downloads enricher runs, downloads_last_30d
     -- is NULL on every row. weight_downloads contributes 0 to the score;
     -- ranking effectively reduces to:
     --   LN(1 + dependent_repos_count)     * weight_dependent_repos
@@ -717,7 +854,7 @@ BEGIN
     WITH new_scores AS (
         SELECT
             id,
-            ( LN(log_smoothing + COALESCE(downloads_30d, 0))            * weight_downloads
+            ( LN(log_smoothing + COALESCE(downloads_last_30d, 0))            * weight_downloads
             + LN(log_smoothing + COALESCE(dependent_repos_count, 0))    * weight_dependent_repos
             + LN(log_smoothing + COALESCE(dependent_packages_count, 0)) * weight_dependent_packages
             )::numeric(10, 4) AS new_score
