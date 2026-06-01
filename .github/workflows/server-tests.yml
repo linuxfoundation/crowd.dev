@@ -29,6 +29,7 @@ jobs:
     services:
       postgres:
         image: postgres:14-alpine
+        command: postgres -c wal_level=logical
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: example
@@ -40,7 +41,6 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 15
-          postgres -c wal_level=logical
 
     env:
       NODE_ENV: test
@@ -53,7 +53,7 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Setup Node and cache pnpm
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -65,7 +65,7 @@ jobs:
           pnpm i --frozen-lockfile
 
       - name: Prepare test database
-        run: SEQUIN_BOOTSTRAP=1 ./scripts/prepare-test-template-db.sh
+        run: ./.github/scripts/prepare-test-template-db.sh
 
       - name: Run server tests
         run: pnpm test:server

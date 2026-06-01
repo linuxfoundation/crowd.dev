@@ -787,11 +787,21 @@ function down_test_scaffold() {
 }
 
 function migrate_test() {
-    set -a
-    # shellcheck source=/dev/null
-    source "$CLI_HOME/../.env.test"
-    set +a
-    "$CLI_HOME/prepare-test-template-db.sh"
+    wait_for_postgres test-db crowd-test-db
+    say "Recreating test_template..."
+    docker exec crowd-test-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE IF EXISTS test_template;" \
+        -c "CREATE DATABASE test_template;"
+    say "Building crowd flyway migration image..."
+    docker build $DOCKER_PLATFORM_FLAGS -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database --load
+    say "Migrating test_template..."
+    docker run --rm --network "${PROJECT_NAME}-bridge-test" \
+        -e PGHOST=crowd-test-db \
+        -e PGPORT=5432 \
+        -e PGUSER=postgres \
+        -e PGPASSWORD=example \
+        -e PGDATABASE=test_template \
+        crowd_flyway
 }
 
 function source_edition() {

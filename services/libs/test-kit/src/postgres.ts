@@ -1,7 +1,6 @@
 import pgPromise from 'pg-promise'
 
-import { IS_TEST_ENV } from '@crowd/common'
-import { DEFAULT_TENANT_ID } from '@crowd/common/src/env'
+import { DEFAULT_TENANT_ID, IS_TEST_ENV } from '@crowd/common'
 import { type DbConnection, type DbInstance, type IDatabaseConfig } from '@crowd/database'
 import type { QueryExecutor } from '@crowd/database'
 
@@ -60,7 +59,7 @@ export async function resetTestDatabase(qx: QueryExecutor): Promise<void> {
   const { name } = await qx.selectOne('SELECT current_database() AS name')
 
   if (!/^test_[a-z0-9_]+$/.test(name)) {
-    throw new Error(`Not a worker test database: ${name}`)
+    throw new Error(`Expected worker test database (got ${name})`)
   }
 
   await qx.selectNone(`
@@ -137,21 +136,19 @@ async function dropDatabase(catalog: DbConnection, name: string): Promise<void> 
  */
 function getTestPostgres(): TestPostgres {
   if (!IS_TEST_ENV) {
-    throw new Error(`NODE_ENV=test required (got ${process.env.NODE_ENV ?? 'unset'})`)
+    throw new Error(`Expected NODE_ENV=test (got ${process.env.NODE_ENV ?? 'unset'})`)
   }
 
   const { DB_HOST: host, DB_PORT, DB_USER: user, DB_PASSWORD: password } = process.env
 
   if (!host || !DB_PORT || !user || !password) {
-    throw new Error(
-      'DB_HOST, DB_PORT, DB_USER, and DB_PASSWORD are required — run ./scripts/cli scaffold up-test and use .env.test',
-    )
+    throw new Error('Missing required database environment variables')
   }
 
   const port = Number(DB_PORT)
 
   if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
-    throw new Error(`Security safeguard: DB_HOST must be localhost (got: ${host})`)
+    throw new Error(`Expected local DB_HOST (got ${host})`)
   }
 
   return { host, port, user, password }
