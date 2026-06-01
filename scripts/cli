@@ -778,7 +778,7 @@ function migrate_local() {
 
 function up_test_scaffold() {
     scaffold_set_up_network "${PROJECT_NAME}-bridge-test" $DOCKET_TEST_NETWORK_SUBNET $DOCKER_TEST_NETWORK_GATEWAY
-    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/scaffold.test.yaml up -d --wait
+    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/scaffold.test.yaml up -d
     migrate_test
 }
 
