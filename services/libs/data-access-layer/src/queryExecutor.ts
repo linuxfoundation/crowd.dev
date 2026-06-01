@@ -1,24 +1,13 @@
-import pgp from 'pg-promise'
 import { QueryTypes, Sequelize, Transaction } from 'sequelize'
 
-import { DbConnOrTx, DbConnection, DbStore, DbTransaction, RepositoryBase } from '@crowd/database'
+import { type QueryExecutor, formatQuery } from '@crowd/database'
+
+export { PgPromiseQueryExecutor, dbStoreQx, formatQuery, pgpQx, repoQx } from '@crowd/database'
+export type { QueryExecutor } from '@crowd/database'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export interface QueryExecutor {
-  select(query: string, params?: object): Promise<any>
-  selectNone(query: string, params?: object): Promise<void>
-  selectOneOrNone(query: string, params?: object): Promise<any>
-  selectOne(query: string, params?: object): Promise<any>
-  result(query: string, params?: object): Promise<number>
-
-  tx<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>
-}
-
-export function formatQuery(query: string, params?: object): string {
-  return pgp.as.format(query, params)
-}
-
+/** Sequelize-backed QueryExecutor for legacy backend repositories. */
 export class SequelizeQueryExecutor implements QueryExecutor {
   constructor(private readonly sequelize: Sequelize) {}
 
@@ -115,47 +104,6 @@ export class TransactionalSequelizeQueryExecutor extends SequelizeQueryExecutor 
       transaction: this.transaction,
     }
   }
-}
-
-export class PgPromiseQueryExecutor implements QueryExecutor {
-  constructor(private readonly db: DbConnection | DbTransaction) {}
-
-  select(query: string, params?: object): Promise<any> {
-    return this.db.query(formatQuery(query, params))
-  }
-  selectNone(query: string, params?: object): Promise<void> {
-    return this.db.none(formatQuery(query, params))
-  }
-  selectOneOrNone(query: string, params?: object): Promise<any> {
-    return this.db.oneOrNone(formatQuery(query, params))
-  }
-  selectOne(query: string, params?: object): Promise<any> {
-    return this.db.one(formatQuery(query, params))
-  }
-  async result(query: string, params?: object): Promise<number> {
-    const result = await this.db.result(formatQuery(query, params))
-    return result.rowCount
-  }
-
-  tx<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T> {
-    return this.db.tx((tx) => fn(new PgPromiseQueryExecutor(tx)))
-  }
-}
-
-export function pgpQx(db: DbConnOrTx): QueryExecutor {
-  return new PgPromiseQueryExecutor(db)
-}
-
-export function dbStoreQx(dbStore: DbStore): QueryExecutor {
-  return pgpQx(dbStore.connection())
-}
-
-export function repoQx(repo: RepositoryBase<any>): QueryExecutor {
-  return pgpQx(repo.db())
-}
-
-export function connQx(conn: DbConnOrTx): QueryExecutor {
-  return pgpQx(conn)
 }
 
 export function optionsQx(options: any): QueryExecutor {

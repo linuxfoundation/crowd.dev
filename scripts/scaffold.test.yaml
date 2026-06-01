@@ -1,0 +1,25 @@
+services:
+  test-db:
+    image: postgres:14-alpine
+    container_name: crowd-test-db
+    restart: unless-stopped
+    command: -c 'wal_level=logical'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: postgres
+    ports:
+      - '5434:5432'
+    volumes:
+      - ./scaffold/sequin/postgres-docker-entrypoint-initdb.d/create-sequin-database.sql:/docker-entrypoint-initdb.d/create-sequin-database.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    networks:
+      - crowd-bridge-test
+
+networks:
+  crowd-bridge-test:
+    external: true

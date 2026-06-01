@@ -2,7 +2,7 @@ import validator from 'validator'
 
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 
-import { QueryExecutor, connQx } from '../queryExecutor'
+import { QueryExecutor, pgpQx } from '../queryExecutor'
 
 export enum ActorType {
   USER = 'user',
@@ -75,7 +75,7 @@ let qx: QueryExecutor | undefined = undefined
 export async function addAuditAction(options: AuditLogRequestOptions, action: AuditLogAction) {
   if (!qx) {
     const conn = await getDbConnection(WRITE_DB_CONFIG())
-    qx = connQx(conn)
+    qx = pgpQx(conn)
   }
 
   await qx.result(
