@@ -1,3 +1,6 @@
+-- Staging schema — used by gcsParquetToStaging activity for temporary unlogged tables.
+CREATE SCHEMA IF NOT EXISTS staging;
+
 -- ============================================================
 -- DOMAIN 1: UNIVERSE (Tier 3 → Tier 2 ranking input)
 -- ============================================================
@@ -130,6 +133,10 @@ CREATE TABLE versions (
     -- Nullable for same reason: yanked status comes from registry-specific workers, not deps.dev.
     is_yanked bool,
     is_prerelease bool NOT NULL DEFAULT FALSE,
+    -- Denormalized from packages for fast deps merge resolution.
+    -- Allows resolving (ecosystem, namespace, name, number) → version_id in one index lookup.
+    namespace text,
+    name      text NOT NULL,
     licenses text[], -- SPDX array, deterministically sorted; can differ per version
     download_count bigint, -- per-version where available (npm, crates)
     last_synced_at timestamptz NOT NULL DEFAULT NOW(),
@@ -239,6 +246,8 @@ CREATE INDEX ON versions (published_at DESC);
 CREATE INDEX ON versions (package_id)
 WHERE
     is_latest;
+
+CREATE INDEX ON versions (ecosystem, COALESCE(namespace, ''), name, number);
 
 -- ============================================================
 -- PACKAGE DEPENDENCIES — PARTITION BY HASH(depends_on_id)
@@ -646,9 +655,6 @@ CREATE TABLE advisory_affected_ranges (
     unaffected_raw text      -- raw UnaffectedVersions string from deps.dev BQ
 );
 
-<<<<<<< HEAD
-CREATE UNIQUE INDEX ON advisory_affected_ranges (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''));
-=======
 -- Full-tuple uniqueness so two ranges sharing introduced_version but differing
 -- in fixed_version or last_affected (cross-distro patches, partial fixes in a
 -- single advisory) both survive insertion. The narrower (advisory_package_id,
@@ -661,9 +667,9 @@ CREATE UNIQUE INDEX ON advisory_affected_ranges (
     COALESCE(fixed_version, ''),
     COALESCE(last_affected, '')
 );
->>>>>>> main
 
-CREATE INDEX ON advisory_affected_ranges (advisory_package_id);
+-- advisory_package_id prefix lookups are served by the UNIQUE index on
+-- (advisory_package_id, introduced_version, fixed_version) — no separate index needed.
 
 -- ============================================================
 -- MAINTAINERS
@@ -849,8 +855,9 @@ BEGIN
     -- ranking effectively reduces to:
     --   LN(1 + dependent_repos_count)     * weight_dependent_repos
     -- + LN(1 + dependent_packages_count)  * weight_dependent_packages
-    UPDATE packages_universe SET last_rank_pass_at = NOW();
-
+    --
+    -- last_rank_pass_at is set at INSERT time in rankPackagesUniverse activity (TRUNCATE + INSERT
+    -- before each call), so no separate full-table UPDATE needed here.
     WITH new_scores AS (
         SELECT
             id,
@@ -926,7 +933,8 @@ CREATE TABLE osspckgs_ingest_jobs (
     job_kind        text NOT NULL CHECK (job_kind IN (
                         'packages', 'versions', 'package_dependencies',
                         'repos', 'package_repos',
-                        'advisories', 'advisory_packages'
+                        'advisories', 'advisory_packages',
+                        'dependent_counts'
                     )),
     status          text NOT NULL CHECK (status IN (
                         'pending', 'exporting', 'exported',
@@ -938,8 +946,16 @@ CREATE TABLE osspckgs_ingest_jobs (
     provisional_snapshot_at date,  -- set at job creation; promoted to snapshot_at on successful non-zero merge
     gcs_prefix      text,            -- gs://bucket/packages/2026-05-26T00-00-00Z/
     row_count_bq    bigint,
-    row_count_pg    bigint,
+    row_count_staging bigint,        -- rows loaded into staging table from GCS parquet files
+    row_count_pg    bigint,          -- total rows inserted into final table(s) after merge
+    table_row_counts  jsonb,         -- per-table inserted row counts, e.g. {"packages": 5000000}
     bq_bytes_billed bigint,          -- totalBytesProcessed from BQ (cost metric, not GCS export size)
+    bq_job_id       text,            -- GCP BigQuery job ID (project:location.jobId)
+    bq_stats        jsonb,           -- full BQ job statistics: bytesProcessed, bytesBilled, slotMs, cacheHit, etc.
+    bq_cost_usd     numeric(12, 8) GENERATED ALWAYS AS (
+                        ROUND(COALESCE(bq_bytes_billed, 0)::numeric / 1000000000000.0 * 5.0, 8)
+                    ) STORED,        -- estimated BQ cost at $5/TB on-demand pricing
+    export_name     text,            -- named export group (e.g. "cargo-may-2026") for --export-name bootstrap
     error_message   text,
     started_at      timestamptz NOT NULL DEFAULT NOW(),
     finished_at     timestamptz,
@@ -953,3 +969,9 @@ WHERE status NOT IN ('done', 'cleaned');
 
 CREATE INDEX ON osspckgs_ingest_jobs (job_kind, snapshot_at DESC)
 WHERE status = 'done';
+
+CREATE INDEX ON osspckgs_ingest_jobs (bq_job_id)
+WHERE bq_job_id IS NOT NULL;
+
+CREATE INDEX ON osspckgs_ingest_jobs (job_kind, export_name)
+WHERE export_name IS NOT NULL;

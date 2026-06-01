@@ -119,6 +119,7 @@ export async function ingestPackages(opts: {
   const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
   let priorRowsAffected = 0
   let priorStagingRows = 0
+  let priorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
     const start = chunkIndex * filesPerChunk
@@ -138,15 +139,21 @@ export async function ingestPackages(opts: {
     })
     priorStagingRows += rowsLoaded
 
-    const { rowsAffected } = await mergeStagingToTable({
+    const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: exportResult.jobId,
       mergeSql: MERGE_SQL,
       tableNames: 'packages',
       isFinal,
       priorRowsAffected,
+      priorTableRowCounts,
       chunkInfo: { index: chunkIndex, total: totalChunks },
     })
 
     priorRowsAffected += rowsAffected
+    if (!isFinal) {
+      for (const [k, v] of Object.entries(tableRowCounts)) {
+        priorTableRowCounts[k] = (priorTableRowCounts[k] ?? 0) + v
+      }
+    }
   }
 }

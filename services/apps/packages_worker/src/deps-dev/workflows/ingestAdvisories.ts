@@ -89,7 +89,7 @@ JOIN advisories adv ON adv.osv_id = s.osv_id
 JOIN advisory_packages ap ON ap.advisory_id = adv.id
                           AND ap.ecosystem = s.ecosystem
                           AND ap.package_name = s.package_name
-ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, '')) DO NOTHING
+ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, '')) DO NOTHING
 `
 
 const ADVISORIES_PG_COLUMNS = [
@@ -139,6 +139,7 @@ export async function ingestAdvisories(opts: {
     const advTotalChunks = Math.ceil(advFileNames.length / advFilesPerChunk)
     let priorRowsAffected = 0
     let advPriorStagingRows = 0
+    let advPriorTableRowCounts: Record<string, number> = {}
 
     for (let chunkIndex = 0; chunkIndex < advTotalChunks; chunkIndex++) {
       const start = chunkIndex * advFilesPerChunk
@@ -159,16 +160,22 @@ export async function ingestAdvisories(opts: {
       })
       advPriorStagingRows += rowsLoaded
 
-      const { rowsAffected } = await mergeStagingToTable({
+      const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
         jobId: advisoriesExport.jobId,
         mergeSql: ADVISORIES_MERGE_SQL,
         tableNames: 'advisories',
         isFinal,
         priorRowsAffected,
+        priorTableRowCounts: advPriorTableRowCounts,
         chunkInfo: { index: chunkIndex, total: advTotalChunks },
       })
 
       priorRowsAffected += rowsAffected
+      if (!isFinal) {
+        for (const [k, v] of Object.entries(tableRowCounts)) {
+          advPriorTableRowCounts[k] = (advPriorTableRowCounts[k] ?? 0) + v
+        }
+      }
     }
   }
 
@@ -199,6 +206,7 @@ export async function ingestAdvisories(opts: {
   const pkgTotalChunks = Math.ceil(pkgFileNames.length / pkgFilesPerChunk)
   let pkgPriorRowsAffected = 0
   let pkgPriorStagingRows = 0
+  let pkgPriorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < pkgTotalChunks; chunkIndex++) {
     const start = chunkIndex * pkgFilesPerChunk
@@ -217,15 +225,21 @@ export async function ingestAdvisories(opts: {
     })
     pkgPriorStagingRows += rowsLoaded
 
-    const { rowsAffected } = await mergeStagingToTable({
+    const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgsExport.jobId,
       mergeSql: [ADVISORY_PACKAGES_MERGE_SQL, ADVISORY_AFFECTED_RANGES_MERGE_SQL],
       tableNames: ['advisory_packages', 'advisory_affected_ranges'],
       isFinal,
       priorRowsAffected: pkgPriorRowsAffected,
+      priorTableRowCounts: pkgPriorTableRowCounts,
       chunkInfo: { index: chunkIndex, total: pkgTotalChunks },
     })
 
     pkgPriorRowsAffected += rowsAffected
+    if (!isFinal) {
+      for (const [k, v] of Object.entries(tableRowCounts)) {
+        pkgPriorTableRowCounts[k] = (pkgPriorTableRowCounts[k] ?? 0) + v
+      }
+    }
   }
 }

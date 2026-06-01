@@ -21,31 +21,29 @@ export async function extractBqStats(
     : []
 
   const totalBytesProcessed = Number(stats.totalBytesProcessed ?? 0)
-  const totalBytesBilled = Number(stats.totalBytesBilled ?? 0)
+  // For script jobs, totalBytesBilled is in query.totalBytesBilled, not stats.totalBytesBilled.
+  let totalBytesBilled = Number(query.totalBytesBilled ?? stats.totalBytesBilled ?? 0)
   const totalSlotMs = Number(query.totalSlotMs ?? 0)
   let outputRows: number | undefined = query.outputRows != null ? Number(query.outputRows) : undefined
 
-  // Script jobs (CREATE TEMP TABLE + EXPORT DATA) have per-statement stats in child jobs.
-  // Pull outputRows from the CREATE TEMP TABLE child, which has it as a standard query result.
-  const scriptStats = stats.scriptStatistics as Record<string, unknown> | undefined
-  if (scriptStats && bqClient) {
-    const stackFrames = (scriptStats.stackFrames ?? []) as Array<Record<string, unknown>>
-    const createFrame = stackFrames.find((f) =>
-      String(f.text ?? '')
-        .trimStart()
-        .toUpperCase()
-        .startsWith('CREATE TEMP TABLE'),
-    )
-    if (createFrame?.childJobId) {
-      try {
-        // location required — jobs created with location:'US' are not found without it
-        const childJob = bqClient.job(String(createFrame.childJobId), { location: 'US' })
+  // Script jobs (CREATE TEMP TABLE + EXPORT DATA): scriptStatistics is not returned by getMetadata().
+  // List child jobs instead — the CREATE TEMP TABLE child has the row count in dmlStats.insertedRowCount.
+  const numChildJobs = Number(stats.numChildJobs ?? 0)
+  if (numChildJobs > 0 && outputRows == null && bqClient) {
+    try {
+      const [childJobs] = await bqClient.getJobs({ parentJobId: job.id, location: 'US' } as any)
+      for (const childJob of childJobs) {
         const [childMeta] = await childJob.getMetadata()
         const childQuery = (childMeta.statistics?.query ?? {}) as Record<string, unknown>
-        if (childQuery.outputRows != null) outputRows = Number(childQuery.outputRows)
-      } catch {
-        // non-fatal — outputRows stays undefined
+        // EXPORT_DATA child job exposes row count via exportDataStatistics.rowCount
+        const exportStats = (childQuery.exportDataStatistics ?? {}) as Record<string, unknown>
+        if (exportStats.rowCount != null) {
+          outputRows = Number(exportStats.rowCount)
+          break
+        }
       }
+    } catch {
+      // non-fatal — outputRows stays undefined
     }
   }
 

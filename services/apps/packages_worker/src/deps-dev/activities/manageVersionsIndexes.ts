@@ -38,6 +38,11 @@ const SECONDARY_INDEXES: Array<{ columns: string; createSql: string; matchString
     // Include WHERE clause so the check doesn't match a hypothetical plain (package_id) index.
     matchString: '(package_id) where is_latest',
   },
+  {
+    columns: "ecosystem, coalesce(namespace, ''), name, number",
+    createSql: `CREATE INDEX ON versions (ecosystem, COALESCE(namespace, ''), name, number)`,
+    matchString: "(ecosystem, coalesce(namespace, ''), name, number)",
+  },
 ]
 
 export async function dropVersionsIndexes(): Promise<{ dropped: string[]; droppedConstraint: string | null }> {
@@ -86,6 +91,32 @@ export async function rebuildVersionsIndexes(): Promise<{ rebuilt: string[]; reb
     log.info({ columns: idx.columns }, 'Creating index on versions')
     await qx.result(idx.createSql)
     rebuilt.push(idx.columns)
+  }
+
+  // Remove cross-chunk duplicates before rebuilding the UNIQUE constraint.
+  // versions is HASH-partitioned by package_id (32 partitions). Loop over each partition table
+  // directly so PG scans one partition at a time rather than all 32 at once.
+  const NUM_PARTITIONS = 32
+  let totalDedupDeleted = 0
+  for (let p = 0; p < NUM_PARTITIONS; p++) {
+    const table = `versions_p${p}`
+    const deleted = await qx.result(`
+      DELETE FROM ${table} v
+      USING (
+        SELECT id
+        FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (PARTITION BY package_id, number ORDER BY id) AS rn
+          FROM ${table}
+        ) sub
+        WHERE rn > 1
+      ) dupes
+      WHERE v.id = dupes.id
+    `)
+    totalDedupDeleted += deleted
+  }
+  if (totalDedupDeleted > 0) {
+    log.info({ rowsDeleted: totalDedupDeleted }, 'Cross-chunk duplicate rows removed from versions')
   }
 
   const constraintRow = await qx.selectOneOrNone(UNIQUE_CONSTRAINT_SQL)

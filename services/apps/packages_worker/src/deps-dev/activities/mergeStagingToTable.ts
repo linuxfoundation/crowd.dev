@@ -17,16 +17,19 @@ export interface MergeStagingInput {
   isFinal?: boolean
   // Row count merged in prior chunks, added to this chunk's count when marking done.
   priorRowsAffected?: number
+  // Per-table row counts from prior chunks; merged with this chunk's counts on the final call.
+  priorTableRowCounts?: Record<string, number>
   // For log progress: { index: chunkIndex, total: totalChunks }
   chunkInfo?: { index: number; total: number }
 }
 
 export interface MergeStagingOutput {
   rowsAffected: number
+  tableRowCounts: Record<string, number>
 }
 
 export async function mergeStagingToTable(input: MergeStagingInput): Promise<MergeStagingOutput> {
-  const { jobId, prepareSql, mergeSql, tableNames, isFinal = true, priorRowsAffected = 0, chunkInfo } = input
+  const { jobId, prepareSql, mergeSql, tableNames, isFinal = true, priorRowsAffected = 0, priorTableRowCounts = {}, chunkInfo } = input
   const prepareStatements = prepareSql ? (Array.isArray(prepareSql) ? prepareSql : [prepareSql]) : []
   const statements = Array.isArray(mergeSql) ? mergeSql : [mergeSql]
   const names = Array.isArray(tableNames) ? tableNames : [tableNames]
@@ -65,13 +68,17 @@ export async function mergeStagingToTable(input: MergeStagingInput): Promise<Mer
 
   if (isFinal) {
     const totalRowsAffected = priorRowsAffected + rowsAffected
+    const totalTableRowCounts: Record<string, number> = { ...priorTableRowCounts }
+    for (const [table, count] of Object.entries(tableRowCounts)) {
+      totalTableRowCounts[table] = (totalTableRowCounts[table] ?? 0) + count
+    }
     await markJobStatus(qx, jobId, 'done', {
       finishedAt: new Date(),
       rowCountPg: totalRowsAffected,
-      tableRowCounts,
+      tableRowCounts: totalTableRowCounts,
     })
-    log.info({ jobId, rowsAffected: totalRowsAffected, tableRowCounts }, 'Merge complete')
+    log.info({ jobId, rowsAffected: totalRowsAffected, tableRowCounts: totalTableRowCounts }, 'Merge complete')
   }
 
-  return { rowsAffected }
+  return { rowsAffected, tableRowCounts }
 }

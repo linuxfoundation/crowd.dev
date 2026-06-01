@@ -10,7 +10,7 @@ import { buildInsert } from '../sqlUtils'
 const log = getServiceChildLogger('gcsParquetToStaging')
 
 const BATCH_SIZE = 1_000
-const MAX_CONCURRENT = 4
+const MAX_CONCURRENT = 2
 
 export interface GcsToStagingInput {
   jobId: number
@@ -129,7 +129,6 @@ export async function gcsParquetToStaging(
   log.info({ jobId, stagingTable, fileCount: parquetFileNames.length, filesOffset, totalFiles }, 'Loading parquet files into staging')
 
   let totalLoaded = 0
-  let chunkIdx = 0
 
   for (let i = 0; i < parquetFileNames.length; i += MAX_CONCURRENT) {
     const chunk = parquetFileNames.slice(i, i + MAX_CONCURRENT)
@@ -148,10 +147,7 @@ export async function gcsParquetToStaging(
       'Staging load progress',
     )
     Context.current().heartbeat({ done: doneGlobal, total: totalFiles })
-    if (chunkIdx % 10 === 0 || doneInBatch === parquetFileNames.length) {
-      await updateLoadingProgress(qx, jobId, doneGlobal, totalFiles)
-    }
-    chunkIdx++
+    await updateLoadingProgress(qx, jobId, doneGlobal, totalFiles)
   }
 
   const cumulativeStagingRows = (input.priorStagingRows ?? 0) + totalLoaded
@@ -159,6 +155,8 @@ export async function gcsParquetToStaging(
     rowCountStaging: cumulativeStagingRows,
     tableRowCounts: { [`staging:${stagingTable}`]: totalLoaded },
   })
+
+  await qx.result(`ANALYZE ${stagingTable}`)
 
   log.info({ jobId, stagingTable, totalLoaded }, 'Staging load complete')
 

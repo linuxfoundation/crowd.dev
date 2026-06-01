@@ -122,6 +122,7 @@ export async function ingestRepos(opts: {
     const repoTotalChunks = Math.ceil(repoFileNames.length / repoFilesPerChunk)
     let priorRowsAffected = 0
     let repoPriorStagingRows = 0
+    let repoPriorTableRowCounts: Record<string, number> = {}
 
     for (let chunkIndex = 0; chunkIndex < repoTotalChunks; chunkIndex++) {
       const start = chunkIndex * repoFilesPerChunk
@@ -140,16 +141,22 @@ export async function ingestRepos(opts: {
       })
       repoPriorStagingRows += rowsLoaded
 
-      const { rowsAffected } = await mergeStagingToTable({
+      const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
         jobId: reposExport.jobId,
         mergeSql: REPOS_MERGE_SQL,
         tableNames: 'repos',
         isFinal,
         priorRowsAffected,
+        priorTableRowCounts: repoPriorTableRowCounts,
         chunkInfo: { index: chunkIndex, total: repoTotalChunks },
       })
 
       priorRowsAffected += rowsAffected
+      if (!isFinal) {
+        for (const [k, v] of Object.entries(tableRowCounts)) {
+          repoPriorTableRowCounts[k] = (repoPriorTableRowCounts[k] ?? 0) + v
+        }
+      }
     }
   }
 
@@ -179,6 +186,7 @@ export async function ingestRepos(opts: {
   const pkgRepoTotalChunks = Math.ceil(pkgRepoFileNames.length / pkgRepoFilesPerChunk)
   let pkgRepoPriorRowsAffected = 0
   let pkgRepoPriorStagingRows = 0
+  let pkgRepoPriorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < pkgRepoTotalChunks; chunkIndex++) {
     const start = chunkIndex * pkgRepoFilesPerChunk
@@ -197,15 +205,21 @@ export async function ingestRepos(opts: {
     })
     pkgRepoPriorStagingRows += rowsLoaded
 
-    const { rowsAffected } = await mergeStagingToTable({
+    const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgReposExport.jobId,
       mergeSql: PKGREPOS_MERGE_SQL,
       tableNames: 'package_repos',
       isFinal,
       priorRowsAffected: pkgRepoPriorRowsAffected,
+      priorTableRowCounts: pkgRepoPriorTableRowCounts,
       chunkInfo: { index: chunkIndex, total: pkgRepoTotalChunks },
     })
 
     pkgRepoPriorRowsAffected += rowsAffected
+    if (!isFinal) {
+      for (const [k, v] of Object.entries(tableRowCounts)) {
+        pkgRepoPriorTableRowCounts[k] = (pkgRepoPriorTableRowCounts[k] ?? 0) + v
+      }
+    }
   }
 }

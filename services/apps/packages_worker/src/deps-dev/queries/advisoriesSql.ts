@@ -16,7 +16,7 @@ FROM \`bigquery-public-data.deps_dev_v1.AdvisoriesLatest\`
 export function buildAdvisoryPackagesSql(systems: string): string {
   return `
 WITH purl_map AS (
-  SELECT System, Name, ANY_VALUE(Purl) AS purl
+  SELECT System, Name, ANY_VALUE(REGEXP_REPLACE(Purl, r'@[^@]*$', '')) AS purl
   FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
   WHERE System IN (${systems})
     AND Purl IS NOT NULL

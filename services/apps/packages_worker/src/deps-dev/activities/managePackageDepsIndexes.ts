@@ -105,23 +105,33 @@ export async function rebuildPackageDepsIndexes(): Promise<{ rebuilt: string[]; 
   // multiple BQ parquet files (different chunks), each inserting its own row. The DELETE here is
   // a one-time scan at the end of the full load — cheaper than failing the constraint rebuild.
   // depends_on_id is included in the USING join so PG routes each delete to the correct partition.
-  const dedupResult = await qx.result(`
-    DELETE FROM package_dependencies pd
-    USING (
-      SELECT id, depends_on_id
-      FROM (
-        SELECT id, depends_on_id,
-               ROW_NUMBER() OVER (
-                 PARTITION BY version_id, depends_on_id, dependency_kind
-                 ORDER BY id
-               ) AS rn
-        FROM package_dependencies
-      ) sub
-      WHERE rn > 1
-    ) dupes
-    WHERE pd.id = dupes.id AND pd.depends_on_id = dupes.depends_on_id
-  `)
-  log.info({ rowsDeleted: dedupResult }, 'Cross-chunk duplicate rows removed from package_dependencies')
+  //
+  // Run per partition (depends_on_id % 64 = p) so each iteration prunes to one of the 64
+  // partitions instead of scanning all 1.15B rows at once. Same total rows read; each pass
+  // fits in work_mem and avoids cross-partition sort.
+  const NUM_PARTITIONS = 64
+  let totalDedupDeleted = 0
+  for (let p = 0; p < NUM_PARTITIONS; p++) {
+    const result = await qx.result(`
+      DELETE FROM package_dependencies pd
+      USING (
+        SELECT id, depends_on_id
+        FROM (
+          SELECT id, depends_on_id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY version_id, depends_on_id, dependency_kind
+                   ORDER BY id
+                 ) AS rn
+          FROM package_dependencies
+          WHERE depends_on_id % ${NUM_PARTITIONS} = ${p}
+        ) sub
+        WHERE rn > 1
+      ) dupes
+      WHERE pd.id = dupes.id AND pd.depends_on_id = dupes.depends_on_id
+    `)
+    totalDedupDeleted += result
+  }
+  log.info({ rowsDeleted: totalDedupDeleted }, 'Cross-chunk duplicate rows removed from package_dependencies')
 
   const constraintRow = await qx.selectOneOrNone(UNIQUE_CONSTRAINT_SQL)
   let rebuiltConstraint = false

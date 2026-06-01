@@ -26,7 +26,7 @@ LEFT JOIN (
 WHERE d.SnapshotAt >= TIMESTAMP('${snapshotDate}')
   AND d.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${snapshotDate}', INTERVAL 1 DAY))
   AND d.System IN ('NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO')
-  AND d.MinimumDepth = 1
+  AND d.MinimumDepth >= 1
   AND d.DependentIsHighestReleaseWithResolution = TRUE
 GROUP BY pm.purl
 `
