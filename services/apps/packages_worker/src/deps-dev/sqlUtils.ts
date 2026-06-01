@@ -28,9 +28,9 @@ export function formatValue(val: unknown): string {
       if (Array.isArray(v)) v = (v as unknown[]).find((x) => x != null) ?? null
       if (v === null || v === undefined) return 'NULL'
       if (typeof v === 'string')
-        return `"${v.replace(/\0/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        return `"${v.replace(/\0/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "''")}"`
       if (Buffer.isBuffer(v))
-        return `"${(v as Buffer).toString('utf8').replace(/\0/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        return `"${(v as Buffer).toString('utf8').replace(/\0/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "''")}"`
       if (typeof v === 'number' || typeof v === 'bigint') return String(v)
       // Unexpected type — surface it clearly rather than emitting [object Object]
       throw new Error(`Unexpected array element: ${JSON.stringify(v)}`)
