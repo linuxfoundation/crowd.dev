@@ -4,6 +4,8 @@ import { getPackagesDb } from '../../db'
 
 const log = getServiceChildLogger('createVersionsLookup')
 
+const VALID_ECOSYSTEMS = new Set(['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo'])
+
 // Builds a persistent UNLOGGED lookup table in the staging schema for the root-version JOIN in
 // ingestDependencies. Using a temp table per chunk would rebuild 4GB for every chunk on npm
 // (150+ chunks × rebuild cost). An UNLOGGED table in the staging schema survives across
@@ -22,10 +24,14 @@ export async function createVersionsLookup(input: {
   const qx = await getPackagesDb()
 
   // versions.ecosystem is lowercase (BQ SQL uses LOWER(System)) — lowercase the filter values.
-  const ecosystemFilter =
-    ecosystems && ecosystems.length > 0
-      ? `WHERE v.ecosystem = ANY(ARRAY[${ecosystems.map((e) => `'${e.toLowerCase()}'`).join(', ')}])`
-      : ''
+  let ecosystemFilter = ''
+  if (ecosystems && ecosystems.length > 0) {
+    const lower = ecosystems.map((e) => e.toLowerCase())
+    for (const e of lower) {
+      if (!VALID_ECOSYSTEMS.has(e)) throw new Error(`Invalid ecosystem: ${e}`)
+    }
+    ecosystemFilter = `WHERE v.ecosystem = ANY(ARRAY[${lower.map((e) => `'${e}'`).join(', ')}])`
+  }
 
   log.info({ ecosystems: ecosystems ?? 'all' }, 'Building versions lookup table')
 

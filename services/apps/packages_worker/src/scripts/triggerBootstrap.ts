@@ -43,7 +43,14 @@ async function main(): Promise<void> {
   const depsTableOption: 'A' | 'B' = args.includes('--deps-table-b') ? 'B' : 'A'
   const exportNameIdx = args.indexOf('--export-name')
   const exportName = exportNameIdx !== -1 ? args[exportNameIdx + 1] : undefined
-  const positional = args.filter((a) => !a.startsWith('--') && a !== exportName)
+  const positional: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--')) {
+      if (args[i] === '--export-name') i++ // skip value
+      continue
+    }
+    positional.push(args[i])
+  }
 
   const mode = (positional[0] ?? 'full') as 'full' | 'incremental'
   if (mode !== 'full' && mode !== 'incremental') {
@@ -54,6 +61,17 @@ async function main(): Promise<void> {
   const ecosystems = positional[1]
     ? positional[1].split(',').map((e) => e.trim().toUpperCase())
     : undefined
+
+  const VALID_ECOSYSTEMS = new Set(['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO'])
+  if (ecosystems) {
+    const invalid = ecosystems.filter((e) => !VALID_ECOSYSTEMS.has(e))
+    if (invalid.length > 0) {
+      console.error(
+        `Unknown ecosystem(s): ${invalid.join(', ')}. Valid: ${[...VALID_ECOSYSTEMS].join(', ')}`,
+      )
+      process.exit(1)
+    }
+  }
 
   const serverUrl = process.env.CROWD_TEMPORAL_SERVER_URL
   const namespace = process.env.CROWD_TEMPORAL_NAMESPACE

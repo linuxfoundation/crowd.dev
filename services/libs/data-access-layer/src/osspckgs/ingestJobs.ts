@@ -264,8 +264,10 @@ export async function markJobStatus(
     params.exportName = fields.exportName
   }
 
-  // B10: promote provisional_snapshot_at → snapshot_at only when done with rows
-  if (status === 'done' && fields.rowCountPg !== undefined && fields.rowCountPg > 0) {
+  // B10: promote provisional_snapshot_at → snapshot_at on completion — unconditional so that
+  // incremental runs with 0 new rows still advance the watermark. A quiet window is a valid
+  // outcome and must not cause the next run to re-query the same date range indefinitely.
+  if (status === 'done') {
     sets.push('snapshot_at = provisional_snapshot_at')
   }
 

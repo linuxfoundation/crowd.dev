@@ -10,13 +10,10 @@
  */
 
 import { createRequire } from 'module'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
 import readline from 'readline'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
-const { Client } = require(join(__dirname, '../node_modules/.pnpm/pg@8.11.5/node_modules/pg'))
+const { Client } = require('pg')
 
 // ── ANSI helpers ──────────────────────────────────────────────────────────────
 
