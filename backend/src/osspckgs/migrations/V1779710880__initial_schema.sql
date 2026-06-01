@@ -797,9 +797,10 @@ CREATE INDEX ON downloads_last_30d (purl, end_date DESC);
 -- ============================================================
 -- AUDIT — per-purl field-change log
 --
--- One row per (worker, purl) per Temporal activity execution. changed_fields
--- holds 'table.column' tokens for columns that actually changed value during
--- that execution. Empty-change executions are not logged.
+-- Append-only log of field-level changes. Each row records the set of
+-- 'table.column' tokens that were actually mutated for a given purl during one
+-- worker write pass. Rows with no real changes are not written (caller skips
+-- the insert when changed_fields is empty).
 -- ============================================================
 CREATE TABLE audit_field_changes (
     id             bigserial PRIMARY KEY,
