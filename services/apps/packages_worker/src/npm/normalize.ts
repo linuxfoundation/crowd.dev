@@ -50,14 +50,53 @@ export function extractRepoUrl(packument: Packument): string | null {
   if (!repo) return null
   const raw = typeof repo === 'string' ? repo : repo.url
   if (!raw) return null
-  return (
-    raw
-      .replace(/^git\+/, '')
-      .replace(/^git:\/\//, 'https://')
-      .replace(/\.git$/, '')
-      .replace(/#.*$/, '')
-      .trim() || null
-  )
+  return canonicalizeRepoUrl(raw)
+}
+
+const SHORTHAND_HOSTS: Record<string, string> = {
+  github: 'github.com',
+  gitlab: 'gitlab.com',
+  bitbucket: 'bitbucket.org',
+  gist: 'gist.github.com',
+}
+
+function canonicalizeRepoUrl(raw: string): string | null {
+  let s = raw.trim().replace(/#.*$/, '')
+  if (!s) return null
+
+  const sh = s.match(/^(github|gitlab|bitbucket|gist):(.+)$/)
+  if (sh) {
+    s = `https://${SHORTHAND_HOSTS[sh[1]]}/${sh[2]}`
+  } else if (!s.includes('://') && !s.includes('@') && /^[\w.-]+\/[\w.-]+$/.test(s)) {
+    s = `https://github.com/${s}`
+  }
+
+  s = s.replace(/^git\+/, '')
+
+  const scp = s.match(/^git@([^:]+):(.+)$/)
+  if (scp) {
+    s = `https://${scp[1]}/${scp[2]}`
+  }
+
+  s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
+  s = s.replace(/^git:\/\//, 'https://')
+
+  let u: URL
+  try {
+    u = new URL(s)
+  } catch {
+    return null
+  }
+
+  const hostname = u.hostname.toLowerCase().replace(/^www\./, '')
+  const segments = u.pathname.split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  const owner = segments[0]
+  const name = segments[1].replace(/\.git$/, '')
+  if (!owner || !name) return null
+
+  return `https://${hostname}/${owner}/${name}`
 }
 
 export function collectMaintainers(packument: Packument): Array<{

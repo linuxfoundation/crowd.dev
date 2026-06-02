@@ -1,4 +1,6 @@
 import {
+  getOrCreateRepoByUrl,
+  setPackageRepoForSource,
   upsertNpmFundingLinks,
   upsertNpmMaintainers,
   upsertNpmPackage,
@@ -67,6 +69,17 @@ export async function upsertPackage(
       latestReleaseAt: latestReleaseAt ?? null,
     })
     pkgChanged.forEach((f) => changed.add(f))
+
+    if (repositoryUrl) {
+      const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+        t,
+        repositoryUrl,
+      )
+      repoChanged.forEach((f) => changed.add(f))
+
+      const linkChanged = await setPackageRepoForSource(t, pkgId, repoId, 'npm', 1.0)
+      linkChanged.forEach((f) => changed.add(f))
+    }
 
     const verChanged = await upsertNpmVersions(
       t,
