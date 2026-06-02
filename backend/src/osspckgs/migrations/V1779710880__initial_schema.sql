@@ -1,3 +1,6 @@
+-- Staging schema — used by gcsParquetToStaging activity for temporary unlogged tables.
+CREATE SCHEMA IF NOT EXISTS staging;
+
 -- ============================================================
 -- DOMAIN 1: UNIVERSE (Tier 3 → Tier 2 ranking input)
 -- ============================================================
@@ -130,7 +133,12 @@ CREATE TABLE versions (
     -- Nullable for same reason: yanked status comes from registry-specific workers, not deps.dev.
     is_yanked bool,
     is_prerelease bool NOT NULL DEFAULT FALSE,
-    license text, -- SPDX where available; can differ per version
+    -- Denormalized from packages for fast deps merge resolution.
+    -- Allows resolving (ecosystem, namespace, name, number) → version_id in one index lookup.
+    namespace text,
+    name      text NOT NULL,
+    licenses text[], -- SPDX array, deterministically sorted; can differ per version
+    download_count bigint, -- per-version where available (npm, crates)
     last_synced_at timestamptz NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id, package_id),
     UNIQUE (package_id, number)
@@ -238,6 +246,8 @@ CREATE INDEX ON versions (published_at DESC);
 CREATE INDEX ON versions (package_id)
 WHERE
     is_latest;
+
+CREATE INDEX ON versions (ecosystem, COALESCE(namespace, ''), name, number);
 
 -- ============================================================
 -- PACKAGE DEPENDENCIES — PARTITION BY HASH(depends_on_id)
@@ -658,7 +668,8 @@ CREATE UNIQUE INDEX ON advisory_affected_ranges (
     COALESCE(last_affected, '')
 );
 
-CREATE INDEX ON advisory_affected_ranges (advisory_package_id);
+-- advisory_package_id prefix lookups are served by the UNIQUE index on
+-- (advisory_package_id, introduced_version, fixed_version) — no separate index needed.
 
 -- ============================================================
 -- MAINTAINERS
@@ -795,6 +806,28 @@ PARTITION BY RANGE (end_date);
 CREATE INDEX ON downloads_last_30d (purl, end_date DESC);
 
 -- ============================================================
+-- AUDIT — per-purl field-change log
+--
+-- Append-only log of field-level changes. Each row records the set of
+-- 'table.column' tokens that were actually mutated for a given purl during one
+-- worker write pass. Rows with no real changes are not written (caller skips
+-- the insert when changed_fields is empty).
+-- ============================================================
+CREATE TABLE audit_field_changes (
+    id             bigserial PRIMARY KEY,
+    worker         text NOT NULL,
+    purl           text NOT NULL,
+    logged_at      timestamptz NOT NULL DEFAULT NOW(),
+    changed_fields text[] NOT NULL
+);
+
+CREATE INDEX ON audit_field_changes (purl, logged_at DESC);
+
+CREATE INDEX ON audit_field_changes (worker, logged_at DESC);
+
+CREATE INDEX ON audit_field_changes USING gin (changed_fields);
+
+-- ============================================================
 -- CRITICALITY RANKING FUNCTION
 -- ============================================================
 CREATE OR REPLACE FUNCTION rank_packages_universe(
@@ -822,8 +855,9 @@ BEGIN
     -- ranking effectively reduces to:
     --   LN(1 + dependent_repos_count)     * weight_dependent_repos
     -- + LN(1 + dependent_packages_count)  * weight_dependent_packages
-    UPDATE packages_universe SET last_rank_pass_at = NOW();
-
+    --
+    -- last_rank_pass_at is set at INSERT time in rankPackagesUniverse activity (TRUNCATE + INSERT
+    -- before each call), so no separate full-table UPDATE needed here.
     WITH new_scores AS (
         SELECT
             id,
@@ -888,3 +922,56 @@ BEGIN
     RETURN QUERY SELECT n_scored, n_ranked, n_propagated;
 END;
 $$;
+
+-- ============================================================
+-- INGEST JOB TRACKING
+-- Tracks each BQ → GCS → Postgres ingest run per job_kind.
+-- snapshot_at = SnapshotAt date used as watermark for incremental diff.
+-- ============================================================
+CREATE TABLE osspckgs_ingest_jobs (
+    id              bigserial PRIMARY KEY,
+    job_kind        text NOT NULL CHECK (job_kind IN (
+                        'packages', 'versions', 'package_dependencies',
+                        'repos', 'package_repos',
+                        'advisories', 'advisory_packages',
+                        'dependent_counts'
+                    )),
+    status          text NOT NULL CHECK (status IN (
+                        'pending', 'exporting', 'exported',
+                        'loading', 'merging', 'done', 'failed', 'cleaned'
+                    )),
+    sync_mode       text NOT NULL DEFAULT 'incremental'
+                        CHECK (sync_mode IN ('full', 'incremental')),
+    snapshot_at             date,  -- committed watermark: promoted from provisional unconditionally on 'done' (including 0-row quiet windows)
+    provisional_snapshot_at date,  -- set at job creation; promoted to snapshot_at when job reaches 'done'
+    gcs_prefix      text,            -- gs://bucket/packages/2026-05-26T00-00-00Z/
+    row_count_bq    bigint,
+    row_count_staging bigint,        -- rows loaded into staging table from GCS parquet files
+    row_count_pg    bigint,          -- total rows inserted into final table(s) after merge
+    table_row_counts  jsonb,         -- per-table inserted row counts, e.g. {"packages": 5000000}
+    bq_bytes_billed bigint,          -- totalBytesProcessed from BQ (cost metric, not GCS export size)
+    bq_job_id       text,            -- GCP BigQuery job ID (project:location.jobId)
+    bq_stats        jsonb,           -- full BQ job statistics: bytesProcessed, bytesBilled, slotMs, cacheHit, etc.
+    bq_cost_usd     numeric(12, 8) GENERATED ALWAYS AS (
+                        ROUND(COALESCE(bq_bytes_billed, 0)::numeric / 1000000000000.0 * 5.0, 8)
+                    ) STORED,        -- estimated BQ cost at $5/TB on-demand pricing
+    export_name     text,            -- named export group (e.g. "cargo-may-2026") for --export-name bootstrap
+    error_message   text,
+    started_at      timestamptz NOT NULL DEFAULT NOW(),
+    finished_at     timestamptz,
+    cleaned_at      timestamptz
+);
+
+CREATE INDEX ON osspckgs_ingest_jobs (job_kind, started_at DESC);
+
+CREATE INDEX ON osspckgs_ingest_jobs (status)
+WHERE status NOT IN ('done', 'cleaned');
+
+CREATE INDEX ON osspckgs_ingest_jobs (job_kind, snapshot_at DESC)
+WHERE status = 'done';
+
+CREATE INDEX ON osspckgs_ingest_jobs (bq_job_id)
+WHERE bq_job_id IS NOT NULL;
+
+CREATE INDEX ON osspckgs_ingest_jobs (job_kind, export_name)
+WHERE export_name IS NOT NULL;
