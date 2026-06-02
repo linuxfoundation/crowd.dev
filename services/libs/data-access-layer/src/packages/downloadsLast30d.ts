@@ -17,6 +17,32 @@ export async function getExistingLast30dEndDates(
   return rows.map((r) => r.end_date)
 }
 
+export async function getPurlsMissingLast30dWindow(
+  qx: QueryExecutor,
+  purls: string[],
+  endDate: string,
+  afterPurl: string,
+  batchSize: number,
+): Promise<string[]> {
+  const rows: Array<{ purl: string }> = await qx.select(
+    `SELECT p.purl
+       FROM packages p
+      WHERE p.ecosystem = 'npm'
+        AND p.purl = ANY($(purls)::text[])
+        AND p.purl > $(afterPurl)
+        AND (p.first_release_at IS NULL
+             OR date_trunc('month', p.first_release_at) <= $(endDate)::date)
+        AND NOT EXISTS (
+          SELECT 1 FROM downloads_last_30d d
+           WHERE d.purl = p.purl AND d.end_date = $(endDate)::date
+        )
+      ORDER BY p.purl
+      LIMIT $(batchSize)`,
+    { purls, endDate, afterPurl, batchSize },
+  )
+  return rows.map((r) => r.purl)
+}
+
 export async function upsertLast30dDownload(
   qx: QueryExecutor,
   purl: string,

@@ -1,16 +1,13 @@
 export {
+  backfillDailyBatch,
   commitNpmChangesSeq,
-  fetchAndPersistDailyDownloads,
-  fetchAndPersistLast30dWindow,
-  fetchBulkAndPersistLast30dWindow,
-  findMissingDownloadWindows,
-  findMissingLast30dWindows,
-  getDailyDownloadsTrackedList,
-  getDownloadsConcurrency,
+  currentTimestamp,
+  getLast30dWindows,
   getUnscannedPackages,
   getWatchList,
   ingestNpmPackage,
   pollNpmChanges,
+  refreshLast30dWindowBatch,
 } from './npm/activities'
 export * from './deps-dev/activities'
 export { osvSyncEcosystem, osvDeriveCriticalFlag } from './osv/activities'

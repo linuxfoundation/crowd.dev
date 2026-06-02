@@ -1,7 +1,5 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import { mapWithConcurrency } from '../utils/concurrency'
-
 import type * as activities from './activities'
 
 const acts = proxyActivities<typeof activities>({
@@ -36,68 +34,61 @@ export async function ingestNpmPackages(): Promise<void> {
   }
 }
 
-export async function backfillDailyDownloads(): Promise<void> {
-  const [tracked, concurrency] = await Promise.all([
-    acts.getDailyDownloadsTrackedList(),
-    acts.getDownloadsConcurrency(),
-  ])
+const DAILY_BATCH_SIZE = 20
+const DAILY_MAX_BATCHES_PER_RUN = 50
 
-  await mapWithConcurrency(tracked, concurrency, async (pkg) => {
-    const windows = await acts.findMissingDownloadWindows(pkg.id, pkg.firstReleaseAt)
-    for (const w of windows) {
-      await acts.fetchAndPersistDailyDownloads(pkg.name, pkg.id, pkg.purl, w.start, w.end)
-    }
-  })
+interface BackfillDailyState {
+  cutoff?: string
 }
 
-export async function refreshLast30dDownloads(): Promise<void> {
-  const [tracked, concurrency] = await Promise.all([
-    acts.getDailyDownloadsTrackedList(),
-    acts.getDownloadsConcurrency(),
-  ])
+export async function backfillDailyDownloads(state: BackfillDailyState = {}): Promise<void> {
+  const cutoff = state.cutoff ?? (await acts.currentTimestamp())
 
-  // Step 1: per-package gap detection in parallel
-  const gaps = await mapWithConcurrency(tracked, concurrency, async (pkg) => ({
-    name: pkg.name,
-    purl: pkg.purl,
-    windows: await acts.findMissingLast30dWindows(pkg.purl, pkg.firstReleaseAt),
-  }))
-
-  // Step 2: group by window key — pure Map/Array ops, no I/O, determinism preserved
-  type WindowEntry = {
-    start: string
-    end: string
-    isLatest: boolean
-    unscoped: Array<{ name: string; purl: string }>
-    scoped: Array<{ name: string; purl: string }>
-  }
-  const byWindow = new Map<string, WindowEntry>()
-  for (const { name, purl, windows } of gaps) {
-    for (const w of windows) {
-      const key = `${w.start}:${w.end}`
-      let entry = byWindow.get(key)
-      if (!entry) {
-        entry = { start: w.start, end: w.end, isLatest: w.isLatest, unscoped: [], scoped: [] }
-        byWindow.set(key, entry)
-      }
-      ;(name.startsWith('@') ? entry.scoped : entry.unscoped).push({ name, purl })
-    }
+  for (let i = 0; i < DAILY_MAX_BATCHES_PER_RUN; i++) {
+    const { fetched } = await acts.backfillDailyBatch(cutoff, DAILY_BATCH_SIZE)
+    if (fetched === 0) return
   }
 
-  // Step 3: process windows with concurrency=2 — bulk for unscoped (max 128 per call), individual for scoped
-  await mapWithConcurrency(Array.from(byWindow.values()), 2, async (entry) => {
-    for (let i = 0; i < entry.unscoped.length; i += 128) {
-      const batch = entry.unscoped.slice(i, i + 128)
-      await acts.fetchBulkAndPersistLast30dWindow(
-        batch.map((p) => p.name),
-        batch.map((p) => p.purl),
-        entry.start,
-        entry.end,
-        entry.isLatest,
-      )
+  await continueAsNew<typeof backfillDailyDownloads>({ cutoff })
+}
+
+const LAST30D_BATCH_SIZE = 1000
+const LAST30D_MAX_BATCHES_PER_RUN = 50
+
+interface RefreshLast30dState {
+  windowIndex: number
+  cursor: string
+}
+
+export async function refreshLast30dDownloads(
+  state: RefreshLast30dState = { windowIndex: 0, cursor: '' },
+): Promise<void> {
+  const windows = await acts.getLast30dWindows()
+
+  let { windowIndex, cursor } = state
+  let batches = 0
+
+  while (windowIndex < windows.length) {
+    const w = windows[windowIndex]
+    const { fetched, nextCursor } = await acts.refreshLast30dWindowBatch(
+      w.start,
+      w.end,
+      w.isLatest,
+      cursor,
+      LAST30D_BATCH_SIZE,
+    )
+    batches++
+
+    if (fetched < LAST30D_BATCH_SIZE) {
+      // Window drained for this run → advance to the next window.
+      windowIndex++
+      cursor = ''
+    } else {
+      cursor = nextCursor
     }
-    for (const { name, purl } of entry.scoped) {
-      await acts.fetchAndPersistLast30dWindow(name, purl, entry.start, entry.end, entry.isLatest)
+
+    if (batches >= LAST30D_MAX_BATCHES_PER_RUN && windowIndex < windows.length) {
+      await continueAsNew<typeof refreshLast30dDownloads>({ windowIndex, cursor })
     }
-  })
+  }
 }

@@ -10,8 +10,9 @@ CREATE TABLE npm_worker_state (
 );
 
 CREATE TABLE npm_package_state (
-  name             text        PRIMARY KEY,
-  first_scanned_at timestamptz NOT NULL DEFAULT now()
+  name                              text        PRIMARY KEY,
+  metadata_first_scanned_at         timestamptz NOT NULL DEFAULT now(),
+  daily_downloads_last_processed_at timestamptz
 );
 
 -- ============================================================

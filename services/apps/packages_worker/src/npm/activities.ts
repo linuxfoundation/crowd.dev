@@ -1,11 +1,12 @@
 import {
-  getExistingLast30dEndDates,
   getMissingDownloadDates,
   getNpmChangesLastSeq,
+  getPurlsMissingLast30dWindow,
   getScannedNpmPackages,
-  getTrackedNpmPackages,
+  getTrackedPackagesNeedingDailyBackfill,
   insertDailyDownloads,
   logAuditFieldChanges,
+  markDailyDownloadsProcessed,
   markNpmPackageScanned,
   setNpmChangesLastSeq,
   upsertLast30dDownload,
@@ -101,70 +102,61 @@ export async function getUnscannedPackages(names: string[]): Promise<string[]> {
   return names.filter((n) => !scanned.has(n))
 }
 
-export async function getDailyDownloadsTrackedList(): Promise<
-  Array<{ id: string; name: string; purl: string; firstReleaseAt: string | null }>
-> {
-  const watchList = await getWatchList()
-  if (watchList.length === 0) return []
-
-  const qx = await getPackagesDb()
-  const rows = await getTrackedNpmPackages(qx, watchList.map(buildPurl))
-
-  if (rows.length === 0) {
-    log.info('No tracked packages found in packages table yet — skipping daily downloads backfill')
-  }
-
-  return rows
-}
-
 function utcYesterday(): string {
   const d = new Date()
   d.setUTCDate(d.getUTCDate() - 1)
   return d.toISOString().slice(0, 10)
 }
 
-export async function findMissingDownloadWindows(
-  packageId: string,
-  firstReleaseAt: string | null,
-): Promise<Array<{ start: string; end: string }>> {
-  const lower =
-    firstReleaseAt && firstReleaseAt.slice(0, 10) > NPM_EARLIEST
-      ? firstReleaseAt.slice(0, 10)
-      : NPM_EARLIEST
+export async function currentTimestamp(): Promise<string> {
+  return new Date().toISOString()
+}
+
+export async function backfillDailyBatch(
+  cutoff: string,
+  batchSize: number,
+): Promise<{ fetched: number }> {
+  const watchList = await getWatchList()
+  if (watchList.length === 0) return { fetched: 0 }
+
+  const qx = await getPackagesDb()
+  const candidates = await getTrackedPackagesNeedingDailyBackfill(
+    qx,
+    watchList,
+    watchList.map(buildPurl),
+    cutoff,
+    batchSize,
+  )
+  if (candidates.length === 0) return { fetched: 0 }
+
   const yesterday = utcYesterday()
 
-  if (lower > yesterday) return []
+  for (const pkg of candidates) {
+    const lower =
+      pkg.firstReleaseAt && pkg.firstReleaseAt.slice(0, 10) > NPM_EARLIEST
+        ? pkg.firstReleaseAt.slice(0, 10)
+        : NPM_EARLIEST
 
-  const qx = await getPackagesDb()
-  const missingDates = await getMissingDownloadDates(qx, packageId, lower, yesterday)
-  return computeChunks(missingDates)
-}
+    if (lower <= yesterday) {
+      const missingDates = await getMissingDownloadDates(qx, pkg.id, lower, yesterday)
+      for (const w of computeChunks(missingDates)) {
+        await sleep(downloadSleepMs())
+        const result = await fetchDailyRangeHttp(pkg.name, w.start, w.end)
+        if (isFetchError(result)) {
+          throw new Error(
+            `Failed to fetch daily downloads for ${pkg.name} [${w.start}:${w.end}]: ${result.message}`,
+          )
+        }
+        if (result.downloads.length === 0) continue
+        const changedFields = await insertDailyDownloads(qx, pkg.id, result.downloads)
+        await logAuditFieldChanges(qx, WORKER, pkg.purl, changedFields)
+      }
+    }
 
-export async function fetchAndPersistDailyDownloads(
-  name: string,
-  packageId: string,
-  purl: string,
-  start: string,
-  end: string,
-): Promise<number> {
-  await sleep(downloadSleepMs())
-  const result = await fetchDailyRangeHttp(name, start, end)
-  if (isFetchError(result)) {
-    throw new Error(
-      `Failed to fetch daily downloads for ${name} [${start}:${end}]: ${result.message}`,
-    )
+    await markDailyDownloadsProcessed(qx, pkg.name)
   }
-  if (result.downloads.length === 0) return 0
-  const qx = await getPackagesDb()
-  const changedFields = await insertDailyDownloads(qx, packageId, result.downloads)
-  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
-  return result.downloads.length
-}
 
-export async function getDownloadsConcurrency(): Promise<number> {
-  const raw = process.env.CROWD_PACKAGES_DOWNLOADS_CONCURRENCY
-  const n = parseInt(raw ?? '1', 10)
-  return Number.isFinite(n) && n > 0 ? n : 1
+  return { fetched: candidates.length }
 }
 
 function downloadSleepMs(): number {
@@ -182,68 +174,93 @@ function utcFirstOfCurrentMonth(): string {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10)
 }
 
-export async function findMissingLast30dWindows(
-  purl: string,
-  firstReleaseAt: string | null,
-): Promise<Last30dWindow[]> {
-  const upperEndDate = utcFirstOfCurrentMonth()
-  const qx = await getPackagesDb()
-  const existing = await getExistingLast30dEndDates(qx, purl, NPM_EARLIEST, upperEndDate)
-  return computeMissingLast30dWindows(firstReleaseAt, upperEndDate, existing)
+export async function getLast30dWindows(): Promise<Last30dWindow[]> {
+  return computeMissingLast30dWindows(null, utcFirstOfCurrentMonth(), [])
 }
 
-export async function fetchAndPersistLast30dWindow(
-  name: string,
-  purl: string,
+const PURL_NPM_PREFIX = 'pkg:npm/'
+
+export interface Last30dBatchResult {
+  fetched: number
+  nextCursor: string
+}
+
+export async function refreshLast30dWindowBatch(
   start: string,
   end: string,
   mirrorToUniverse: boolean,
-): Promise<number> {
-  await sleep(downloadSleepMs())
-  const result = await fetchPointRange(name, start, end)
-  if (isFetchError(result)) {
-    throw new Error(
-      `Failed to fetch last-30d downloads for ${name} [${start}:${end}]: ${result.message}`,
-    )
-  }
+  afterPurl: string,
+  batchSize: number,
+): Promise<Last30dBatchResult> {
+  const watchList = await getWatchList()
+  if (watchList.length === 0) return { fetched: 0, nextCursor: afterPurl }
+
   const qx = await getPackagesDb()
-  const changedFields = await upsertLast30dDownload(
+  const missingPurls = await getPurlsMissingLast30dWindow(
     qx,
-    purl,
-    start,
+    watchList.map(buildPurl),
     end,
-    result.count,
-    mirrorToUniverse,
+    afterPurl,
+    batchSize,
   )
-  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
-  return result.count
-}
+  if (missingPurls.length === 0) return { fetched: 0, nextCursor: afterPurl }
 
-export async function fetchBulkAndPersistLast30dWindow(
-  names: string[],
-  purls: string[],
-  start: string,
-  end: string,
-  mirrorToUniverse: boolean,
-): Promise<number> {
-  await sleep(downloadSleepMs())
-  const result = await fetchBulkPointRange(names, start, end)
-  if (isFetchError(result)) {
-    throw new Error(`Failed to fetch bulk last-30d downloads [${start}:${end}]: ${result.message}`)
-  }
-  const qx = await getPackagesDb()
-  let persisted = 0
-  for (let i = 0; i < names.length; i++) {
-    const name = names[i]
-    const purl = purls[i]
-    const count = result.counts.get(name)
-    if (count === undefined) {
-      log.warn({ name, start, end }, 'npm bulk response: no data for package — skipping')
-      continue
+  // Rows come back ORDER BY purl, so the last is the max → the next cursor.
+  const nextCursor = missingPurls[missingPurls.length - 1]
+
+  const items = missingPurls.map((purl) => ({ purl, name: purl.slice(PURL_NPM_PREFIX.length) }))
+  const unscoped = items.filter((i) => !i.name.startsWith('@'))
+  const scoped = items.filter((i) => i.name.startsWith('@'))
+
+  for (let i = 0; i < unscoped.length; i += 128) {
+    const batch = unscoped.slice(i, i + 128)
+    await sleep(downloadSleepMs())
+    const result = await fetchBulkPointRange(
+      batch.map((b) => b.name),
+      start,
+      end,
+    )
+    if (isFetchError(result)) {
+      throw new Error(
+        `Failed to fetch bulk last-30d downloads [${start}:${end}]: ${result.message}`,
+      )
     }
-    const changedFields = await upsertLast30dDownload(qx, purl, start, end, count, mirrorToUniverse)
-    await logAuditFieldChanges(qx, WORKER, purl, changedFields)
-    persisted++
+    for (const b of batch) {
+      const count = result.counts.get(b.name)
+      if (count === undefined) {
+        log.warn({ name: b.name, start, end }, 'npm bulk response: no data for package — skipping')
+        continue
+      }
+      const changedFields = await upsertLast30dDownload(
+        qx,
+        b.purl,
+        start,
+        end,
+        count,
+        mirrorToUniverse,
+      )
+      await logAuditFieldChanges(qx, WORKER, b.purl, changedFields)
+    }
   }
-  return persisted
+
+  for (const s of scoped) {
+    await sleep(downloadSleepMs())
+    const result = await fetchPointRange(s.name, start, end)
+    if (isFetchError(result)) {
+      throw new Error(
+        `Failed to fetch last-30d downloads for ${s.name} [${start}:${end}]: ${result.message}`,
+      )
+    }
+    const changedFields = await upsertLast30dDownload(
+      qx,
+      s.purl,
+      start,
+      end,
+      result.count,
+      mirrorToUniverse,
+    )
+    await logAuditFieldChanges(qx, WORKER, s.purl, changedFields)
+  }
+
+  return { fetched: missingPurls.length, nextCursor }
 }

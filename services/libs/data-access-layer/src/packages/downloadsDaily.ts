@@ -21,6 +21,59 @@ export async function getMissingDownloadDates(
   return rows.map((r) => r.date)
 }
 
+export interface DailyBackfillCandidate {
+  id: string
+  purl: string
+  name: string
+  firstReleaseAt: string | null
+}
+
+export async function getTrackedPackagesNeedingDailyBackfill(
+  qx: QueryExecutor,
+  names: string[],
+  purls: string[],
+  cutoff: string,
+  batchSize: number,
+): Promise<DailyBackfillCandidate[]> {
+  const rows: Array<{
+    id: string
+    purl: string
+    name: string
+    first_release_at: string | null
+  }> = await qx.select(
+    `WITH wl AS (
+       SELECT name, purl FROM unnest($(names)::text[], $(purls)::text[]) AS t(name, purl)
+     )
+     SELECT p.id::text AS id, p.purl, wl.name, p.first_release_at::text AS first_release_at
+       FROM wl
+       JOIN packages p ON p.ecosystem = 'npm' AND p.purl = wl.purl
+       LEFT JOIN npm_package_state s ON s.name = wl.name
+      WHERE s.daily_downloads_last_processed_at IS NULL
+         OR s.daily_downloads_last_processed_at < $(cutoff)::timestamptz
+      ORDER BY s.daily_downloads_last_processed_at ASC NULLS FIRST, p.purl
+      LIMIT $(batchSize)`,
+    { names, purls, cutoff, batchSize },
+  )
+  return rows.map((r) => ({
+    id: r.id,
+    purl: r.purl,
+    name: r.name,
+    firstReleaseAt: r.first_release_at,
+  }))
+}
+
+// Bump the daily-downloads watermark for a package (keyed by npm name). Called
+// after a package's windows are processed — even when npm returned no data — so
+// it isn't re-selected until the next cycle.
+export async function markDailyDownloadsProcessed(qx: QueryExecutor, name: string): Promise<void> {
+  await qx.result(
+    `INSERT INTO npm_package_state (name, daily_downloads_last_processed_at)
+     VALUES ($(name), NOW())
+     ON CONFLICT (name) DO UPDATE SET daily_downloads_last_processed_at = NOW()`,
+    { name },
+  )
+}
+
 export async function insertDailyDownloads(
   qx: QueryExecutor,
   packageId: string,
