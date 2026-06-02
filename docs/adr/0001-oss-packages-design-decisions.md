@@ -10,17 +10,21 @@ The oss-packages domain is being built inside CDP as a new, independent capabili
 
 ## Scope and current status
 
-| Decision area | Status |
-| --- | --- |
-| Database placement | decided |
-| Worker architecture | decided |
-| Universe source and critical-package selection | decided (formula is a placeholder) |
-| Write semantics across sub-workers | decided |
-| Package → repository provenance | decided |
-| OSV as canonical security source | decided (`has_critical_vulnerability` flag deferred) |
-| Per-source ingestion strategies | decided (Sonatype API access pending) |
-| deps.dev coverage and gaps | decided |
-| Downloads timeline by tier | decided |
+| Decision area                                  | Status                                              |
+| ---------------------------------------------- | --------------------------------------------------- |
+| Database placement                             | decided                                             |
+| Worker architecture                            | decided                                             |
+| Universe source and critical-package selection | decided (formula is a placeholder)                  |
+| Write semantics across sub-workers             | decided                                             |
+| Package → repository provenance                | decided                                             |
+| OSV as canonical security source               | decided                                             |
+| CVSS scoring strategy                          | decided (v4 numeric scoring deferred)               |
+| `has_critical_vulnerability` semantics         | decided                                             |
+| `advisory_affected_ranges` uniqueness scope    | decided                                             |
+| Per-source ingestion strategies                | decided (Sonatype API access pending)               |
+| Source of truth: deps.dev vs registries / OSV  | decided                                             |
+| deps.dev coverage and gaps                     | decided                                             |
+| Downloads timeline by tier                     | decided                                             |
 
 ---
 
@@ -34,11 +38,11 @@ We store all packages-domain data in a dedicated physical Postgres instance (`pa
 
 **Partitioning rationale:**
 
-| Table | Strategy | Buckets | Hot query shape |
-| --- | --- | --- | --- |
-| `versions` | HASH(`package_id`) | 32 | Lookup by package — lands in one partition; ~2.8M rows each at 90M total |
-| `package_dependencies` | HASH(`depends_on_id`) | 64 | "Who depends on vulnerable package X?" — lands in one partition; ~18M rows each at 1.15B total |
-| `downloads_daily` | RANGE(`date`) via `pg_partman` | automatic | Time-series; pruning old partitions is straightforward |
+| Table                  | Strategy                       | Buckets   | Hot query shape                                                                                |
+| ---------------------- | ------------------------------ | --------- | ---------------------------------------------------------------------------------------------- |
+| `versions`             | HASH(`package_id`)             | 32        | Lookup by package — lands in one partition; ~2.8M rows each at 90M total                       |
+| `package_dependencies` | HASH(`depends_on_id`)          | 64        | "Who depends on vulnerable package X?" — lands in one partition; ~18M rows each at 1.15B total |
+| `downloads_daily`      | RANGE(`date`) via `pg_partman` | automatic | Time-series; pruning old partitions is straightforward                                         |
 
 **`package_dependencies` query trade-off**: partitioning on `depends_on_id` makes upstream queries fast — "which packages depend on X?" lands in one partition. The inverse — "what does package Y depend on?" (lookup by `package_id`, not `depends_on_id`) — is a cross-partition scan. The upstream direction is the security-critical hot path (vulnerability blast-radius analysis), so this trade-off is intentional.
 
@@ -76,7 +80,7 @@ Adding a new data source means adding `src/{worker}/` and a new compose service 
 
 Tier 2 enriches a critical slice of the npm and Maven ecosystems — not the full registry. We need a signal-rich, affordable source to rank the ~4–5M packages and decide which top-N to fully enrich.
 
-We use the [deps.dev BigQuery public datasets](https://deps.dev) — specifically `PackageVersionsLatest`, `DependentsLatest`, `PackageVersionToProjectLatest`, and `ProjectsLatest` — filtered to `System IN ('NPM', 'MAVEN')` as the universe input. The BigQuery data is exported to Parquet files and imported into `packages_universe` on a weekly cadence. A scoring + ranking job then promotes the top-N per ecosystem by setting `is_critical = true` and copying `criticality_score` onto the full `packages` table.
+We use the [deps.dev BigQuery public datasets](https://deps.dev) — specifically `PackageVersionsLatest`, `DependentsLatest`, `PackageVersionToProjectLatest`, and `ProjectsLatest` — filtered to `System IN ('NPM', 'MAVEN')` as the universe input. The BigQuery data is exported to Parquet files and imported into `packages_universe` on a weekly cadence aligned with deps.dev's own refresh interval. The first run is a one-time full backfill; subsequent weekly imports only pull rows whose deps.dev snapshot date has advanced since the previous import, so the export size and write volume are scoped to actual diffs rather than the full universe. A scoring + ranking job then promotes the top-N per ecosystem by setting `is_critical = true` and copying `criticality_score` onto the full `packages` table.
 
 The current scoring formula and per-ecosystem critical-package quotas are **not yet finalized** — both are still under discussion. The ranking function takes `critical_top_n_by_ecosystem` as a JSONB parameter and weights as numeric inputs, so thresholds and formula coefficients can be tuned at call time without a schema change.
 
@@ -90,17 +94,17 @@ The BigQuery free tier is approximately 1 TiB/month. Column projection and `Syst
 
 Five sub-workers run concurrently (npm, Maven, OSV, GitHub, Docker Hub), all writing to the same `packages-db` schema. We define per-table write rules that allow concurrent writes without distributed locking:
 
-| Table | Rule |
-| --- | --- |
-| `packages` | Upsert on `purl`. Each worker only writes columns it owns; ecosystem isolation means column-level conflicts cannot occur in practice. |
-| `packages_universe` | Full truncate-and-replace on the weekly rank job. No other worker writes to this table. The truncate + bulk-insert must be wrapped in a single transaction or shadow-table swap to avoid a window of emptiness visible to the promotion query. |
-| `versions` | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`. |
-| `repos` | Registry workers (npm, Maven) do **not** write directly to `repos`. They write `package_repos` rows. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
-| `package_repos` | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other. |
-| `advisories` | Upsert on `osv_id`. OSV is the single source of truth; no other worker writes to this table. |
-| `maintainers` / `package_maintainers` | Upsert on `(ecosystem, username)`. Never delete — history is preserved. |
-| `downloads_daily` | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates. |
-| `downloads_last_30d` | Upsert on `(purl, end_date)`. Each ecosystem's ingestion worker is responsible for writing its own rows. For npm: the npm worker's `refreshLast30dDownloads` workflow writes on a monthly cron (and backfills). The cached `packages_universe.downloads_last_30d` column must be updated in the same pass as the latest window row. |
+| Table                                 | Rule                                                                                                                                                                                                                                                        |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages`                            | Upsert on `purl`. Each worker only writes columns it owns; ecosystem isolation means column-level conflicts cannot occur in practice.                                                                                                                       |
+| `packages_universe`                   | Incremental upsert keyed on `purl`. The deps.dev import only touches rows whose underlying deps.dev snapshot date has advanced since the previous import (initial run is a one-time full backfill).           |
+| `versions`                            | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`.                                                                                                                     |
+| `repos`                               | Registry workers (npm, Maven) do **not** write directly to `repos`. They write `package_repos` rows. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
+| `package_repos`                       | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other.                                                                                         |
+| `advisories`                          | Upsert on `osv_id`. OSV is the single source of truth; no other worker writes to this table.                                                                                                                                                                |
+| `maintainers` / `package_maintainers` | Upsert on `(ecosystem, username)`. Never delete — history is preserved.                                                                                                                                                                                     |
+| `downloads_daily`                     | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates.                                                     |
+| `downloads_last_30d`                  | Upsert on `(purl, end_date)`. Written by the weekly ranking worker only. The cached `packages_universe.downloads_last_30d` column must be updated in the same pass.                                                                                         |
 
 The column-ownership rule is a social contract, not enforced by Postgres. Code review must catch cross-ecosystem or cross-source column writes using this table as the reference.
 
@@ -122,6 +126,7 @@ All repo URLs are **canonicalized** before insertion: scheme normalized to `http
 The `packages` table retains `declared_repository_url` (raw) and `repository_url` (canonical highest-confidence match) as denormalized copies for quick access.
 
 **Population order**:
+
 1. Registry workers (npm, Maven) write `packages` and `package_repos` rows.
 2. The GitHub enricher polls `repos` for rows where `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_REPO_UPDATE_INTERVAL_HOURS`.
 3. The enricher updates those rows with full metadata and sets `last_synced_at`.
@@ -146,28 +151,94 @@ We ingest the OSV bulk ZIP — full download daily, not incremental — into `ad
 **Severity fallback** (many OSV records carry no CVSS vector):
 
 | Qualitative severity | Synthesized cvss |
-| --- | --- |
-| `CRITICAL` | 9.5 |
-| `HIGH` | 7.5 |
-| `MEDIUM` | 5.0 |
-| `LOW` | 3.0 |
+| -------------------- | ---------------- |
+| `CRITICAL`           | 9.5              |
+| `HIGH`               | 7.5              |
+| `MEDIUM`             | 5.0              |
+| `LOW`                | 3.0              |
 
 The qualitative `severity` tag is stored alongside the synthesized value so consumers can distinguish real CVSS from approximations.
 
 **Ecosystem normalization**:
 
 | OSV raw value | Stored as |
-| --- | --- |
-| `npm` | `npm` |
-| `Maven` | `maven` |
+| ------------- | --------- |
+| `npm`         | `npm`     |
+| `Maven`       | `maven`   |
 
 **Derivation cadence**: `deriveCriticalFlag` runs at the end of each OSV sync pass in the same worker loop — no separate scheduler needed.
 
-**`has_critical_vulnerability` flag**: deferred — semantics not yet decided (see Open Questions). Callers join `advisory_packages` directly in the interim.
+**`has_critical_vulnerability` flag**: see the [§`has_critical_vulnerability` semantics](#has_critical_vulnerability-semantics) section below.
 
 The ingest worker must stream-parse the bulk ZIP rather than loading it into memory.
 
 **Decided**: 2026-05-26
+
+---
+
+### CVSS scoring strategy
+
+OSV records carry severity as a `severity[]` array of `{type, score}` entries, where `type` is `CVSS_V2 | CVSS_V3 | CVSS_V4 | …` and `score` is the **vector string** (e.g. `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H`), not a numeric base score. We compute the numeric base score inline from the FIRST v3.1 specification (~80 LOC in `services/apps/packages_worker/src/osv/cvssScoring.ts`), without a third-party CVSS dependency.
+
+Scoring fallback chain (in `extractSeverity.ts`):
+
+1. `MAL-*` id → `cvss = NULL`, `cvss_source = 'osv_malicious_package'`.
+2. CVSS_V3 vector → compute inline, `cvss_source = 'osv_cvss_v3'`.
+3. `database_specific.severity` qualitative tag → synthesized per the severity-fallback table in §OSV, `cvss_source = 'osv_qualitative_fallback'`.
+4. Nothing → `cvss = NULL` and `cvss_source = NULL`.
+
+Scope (`S`) metric is validated against `{U, C}` up front; a missing or invalid `S` returns `null` from the score function rather than silently falling through to the Scope:Unchanged formula.
+
+**CVSS v4 is deferred.** Computing v4 base scores requires the ~270-entry macro-vector lookup table from the FIRST v4.0 spec; the validation effort to verify it against reference vectors is its own slice of work. V4-only OSV records (no V3 sibling vector and no qualitative tag — ~1.1% of advisories as of 2026-05-27) land with `cvss = NULL`. The `cvss_source` column allows downstream consumers to distinguish synthesized-from-qualitative scores (`osv_qualitative_fallback`) from real V3 base scores (`osv_cvss_v3`), and the V4-NULL bucket is queryable for follow-up sizing (`SELECT COUNT(*) FROM advisories WHERE cvss_source IS NULL`).
+
+The inline implementation is unit-tested against six FIRST-published reference vectors (log4shell 10.0, shellshock 9.8, heartbleed 7.5, ChangeCipherSpec 4.8, a low-end vector at 3.3, and an all-None at 0.0), plus regression guards for missing-`S` and `S:X`.
+
+**Trade-off considered:** adopting a third-party CVSS package (e.g. npm `cvss` or a v4-capable alternative) was rejected — `cvss` covers v2/v3 only, so we'd still own the v4 problem; v4-capable libraries are recent and require validating against reference vectors anyway. Inline code we can unit-test against FIRST-published scores is the lower-risk path for a security-critical formula.
+
+**Decided**: 2026-05-27
+
+---
+
+### `has_critical_vulnerability` semantics
+
+`packages.has_critical_vulnerability = TRUE` iff there exists an advisory `a` such that:
+
+- `a.is_critical = TRUE` (CVSS ≥ 7.0) OR `a.osv_id LIKE 'MAL-%'` (malicious-package report), AND
+- The package's current `latest_version` falls inside one of `a`'s affected ranges per the ecosystem comparator (semver for npm, a Maven `ComparableVersion`-style comparator for Maven).
+
+A range `(introduced, fixed, last_affected)` matches `latest_version` when:
+
+- `introduced IS NULL OR introduced = '0' OR latest_version >= introduced`, AND
+- `fixed IS NULL OR latest_version < fixed`, AND
+- `last_affected IS NULL OR latest_version <= last_affected`.
+
+This is **option (b)** (latest_version inside an active range), plus a **MAL- override** so malicious-package reports flip the flag regardless of CVSS — the XZ-style maintainer-compromise case. ~213k of 220k npm OSV records are `MAL-*` with `cvss = NULL`, so option (b) on its own would miss the dominant security signal.
+
+**Why not option (a)** (any critical advisory exists for the package name, regardless of version): option (a) over-reports — a CVE patched in v1.0 flags a package now on v9.0 — and under-reports when an advisory has multiple `affected[]` ranges where only some are patched. The actionable consumer question is "is the version I'd install today vulnerable?", and that's option (b).
+
+**Why not SQL-only derivation:** Postgres has no native semver or Maven `ComparableVersion` comparator. Implementing either as a `plpgsql` function is a significantly larger maintenance surface than the ~120 LOC TypeScript equivalent and would need re-validation against every Postgres minor-version upgrade.
+
+**Maintenance.** `deriveCriticalFlag` (the second activity in the `osvSync` workflow) recomputes the flag for every package whose `latest_version` is non-null. Both the FALSE → TRUE and TRUE → FALSE transitions are handled idempotently. A catch-up resolver populates `advisory_packages.package_id` for advisories that arrived before the matching package was ingested — at most one OSV cycle lag (~24h) for late-arriving packages.
+
+The ecosystem-specific comparators are TypeScript (`services/apps/packages_worker/src/osv/versionCompare.ts`), unit-tested with 30 cases covering Maven qualifier ranks (alpha < beta < milestone < rc < snapshot < ga/final < sp), qualifier aliases (`final` / `release` / `ga` / empty all equal), cross-ecosystem null returns, and the `1.0-final == 1.0` edge case.
+
+**Known gap.** Packages without `latest_version` are skipped and remain FALSE regardless of matching advisories. V4-only advisories without a V3 sibling or qualitative tag (`cvss_source IS NULL`) do not contribute to the flag — see the CVSS scoring strategy section.
+
+**Decided**: 2026-05-28 (resolves the prior open question on this flag)
+
+---
+
+### `advisory_affected_ranges` uniqueness scope
+
+`advisory_affected_ranges` uses a full-tuple unique index `(advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))` rather than the narrower `(advisory_package_id, introduced_version)`.
+
+The narrower form forces two ranges that share an `introduced_version` but differ in `fixed_version` or `last_affected` to collapse into one row — a real OSV case (cross-distro patches, partial fixes within a single advisory) — and silently drops the wider range. When the surviving range is the narrower one, the package's actual vulnerable window is under-reported and `has_critical_vulnerability` returns FALSE for versions inside the wider range. The full-tuple key preserves the §Write semantics principle "one package has many version ranges; no denormalization."
+
+The application-side `dedupeRanges` in `upsertAdvisory.ts` keys on the same full tuple so the pre-flight matches the database constraint exactly. Truly identical tuples (the original "OSV emits a redundant event on the same line" case) still collapse; ranges that differ in any component are all preserved.
+
+Local verification against the live OSV dataset (2026-05-28) showed the multi-range advisory_packages count was unchanged from the narrow-index baseline — current OSV data doesn't exercise the cross-distro multi-range path in practice. The fix is correctness-only on today's dataset; the bug it prevents is real but unreached.
+
+**Decided**: 2026-05-28
 
 ---
 
@@ -221,73 +292,118 @@ Docker Hub runs after registry workers are stable. Docker dependents (which imag
 
 ---
 
+### Source of truth: deps.dev backfill vs registries / OSV
+
+deps.dev gives us a single low-cost source covering packages, versions, package → repo mappings, repos, and advisories. The same data is also available from the underlying registries (npm, Maven Central, etc.) and from OSV directly. We need a clear ownership rule so two sources don't quietly disagree.
+
+We split responsibility by lifecycle stage, not by table:
+
+- **Initial backfill (one-time, per ecosystem)**: deps.dev populates `packages`, `versions`, `package_repos`, `repos`, `advisories`, and `advisory_affected_ranges` in a single bulk pass. This is how we get from zero to a workable dataset without standing up every registry worker first.
+- **New packages discovered after backfill**: deps.dev remains the bootstrap source. On each weekly deps.dev import, any newly-seen `purl` lands in all relevant tables from deps.dev fields, exactly as it did during backfill. This avoids a window where a new package exists in deps.dev but is invisible to us until the registry worker happens to see it.
+- **Ongoing updates to existing rows**: registries are the source of truth for package and version data; OSV is the source of truth for advisories; the GitHub enricher remains the source of truth for `repos` metadata beyond what `ProjectsLatest` provides. Registry / OSV workers may overwrite values that deps.dev wrote at backfill time — that is the intended direction of drift.
+
+Concretely:
+
+| Lifecycle event                                              | Writer              |
+| ------------------------------------------------------------ | ------------------- |
+| First-ever load of an ecosystem                              | deps.dev import     |
+| New package appears in deps.dev export                       | deps.dev import     |
+| New version published, deprecation / yank flipped            | registry worker     |
+| `latest_version`, `latest_release_at`, license drift         | registry worker     |
+| `package_repos` row added by a new registry/heuristic source | registry worker     |
+| Advisory created or modified                                 | OSV worker          |
+| Repo metadata refresh (stars, topics, archived, etc.)        | github-repos-enricher |
+
+The §deps.dev coverage and gaps table below remains the authoritative per-column ownership reference; this section is the lifecycle rule that sits on top of it.
+
+#### Data-source provenance: `package_source_log`
+
+To make drift between deps.dev and the registry / OSV workers observable, every package carries one row per writing source in `package_source_log`. Each worker that touches a package upserts its `(package_id, source)` row in the same transaction as the data write — bumping `last_synced_at` and recording the set of `table.column` paths it owns for that package.
+
+| Column           | Purpose                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `package_id`     | FK to `packages(id)`. Part of PK.                                                             |
+| `source`         | Writing source: `'deps_dev'`, `'npm-registry'`, `'maven-central'`, `'osv'`, `'github-enricher'`, `'manual'`. Part of PK. |
+| `columns`        | Array of `table.column` paths this source wrote for this package (e.g. `packages.latest_version`, `versions.is_yanked`). |
+| `last_synced_at` | Timestamp of the most recent write by this source for this package.                           |
+
+Primary key is `(package_id, source)` — one row per package per source, updated in place. Cardinality is bounded by `|packages| × |sources|` (a small constant per package), well under what an append-only event log would generate.
+
+The shape answers the two questions the live data tables cannot: "which source last touched this package, and when?" and "is deps.dev still writing columns that a registry worker should now own?". It deliberately does not preserve history — a worker overwriting its own row drops the previous `columns` set. The present-tense "who currently owns what for this package" view is what the intended consumers (drift alerting, debugging the registry-vs-deps.dev handoff) need.
+
+Updating `package_source_log` is a social contract on every worker that writes to packages-domain tables — no Postgres constraint enforces it. Code review and the §Source of truth lifecycle table are the enforcement mechanisms.
+
+**Decided**: 2026-05-29
+
+---
+
 ### deps.dev coverage and gaps
 
 deps.dev is the primary source for package identity, dependents, advisories, and `ProjectsLatest`-derived repo metadata. The table below is the canonical reference for which sub-worker owns which column. Nullable columns in the schema reflect these boundaries.
 
 #### packages
 
-| Column | From deps.dev? | Source if not |
-| --- | --- | --- |
-| `purl`, `ecosystem`, `namespace`, `name` | yes | — |
-| `description`, `licenses`, `latest_version` | yes | — |
-| `declared_repository_url`, `homepage` | yes | — |
-| `first_release_at`, `latest_release_at`, `versions_count` | yes | — |
-| `dependent_packages_count` | yes (via `DependentsLatest`) | — |
-| `registry_url` | no | npm registry / crates.io / PyPI |
-| `status` | no | npm registry (deprecated/unpublished flag; no deps.dev equivalent) |
-| `licenses_raw` | no | npm registry / crates.io (raw SPDX before normalization) |
-| `keywords` | no | npm registry / PyPI / crates.io |
-| `dist_tags_latest`, `_next`, `_beta` | no | npm registry only |
-| `dependent_repos_count` | no | derived in Postgres: `COUNT(DISTINCT repo_id)` via `package_repos` |
-| `criticality_score`, `is_critical` | no | internal — `rank_packages_universe()` |
+| Column                                                    | From deps.dev?               | Source if not                                                      |
+| --------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------ |
+| `purl`, `ecosystem`, `namespace`, `name`                  | yes                          | —                                                                  |
+| `description`, `licenses`, `latest_version`               | yes                          | —                                                                  |
+| `declared_repository_url`, `homepage`                     | yes                          | —                                                                  |
+| `first_release_at`, `latest_release_at`, `versions_count` | yes                          | —                                                                  |
+| `dependent_packages_count`                                | yes (via `DependentsLatest`) | —                                                                  |
+| `registry_url`                                            | no                           | npm registry / crates.io / PyPI                                    |
+| `status`                                                  | no                           | npm registry (deprecated/unpublished flag; no deps.dev equivalent) |
+| `licenses_raw`                                            | no                           | npm registry / crates.io (raw SPDX before normalization)           |
+| `keywords`                                                | no                           | npm registry / PyPI / crates.io                                    |
+| `dist_tags_latest`, `_next`, `_beta`                      | no                           | npm registry only                                                  |
+| `dependent_repos_count`                                   | no                           | derived in Postgres: `COUNT(DISTINCT repo_id)` via `package_repos` |
+| `criticality_score`, `is_critical`                        | no                           | internal — `rank_packages_universe()`                              |
 
 #### versions
 
-| Column | From deps.dev? | Source if not |
-| --- | --- | --- |
-| `number`, `published_at` | yes | — |
-| `is_prerelease` | yes (derived: `NOT VersionInfo.IsRelease`) | — |
-| `license` | yes (per-version, `PackageVersionsLatest`) | — |
-| `is_latest` | no | derived: `number = packages.latest_version` |
-| `is_yanked` | no | npm registry (deprecated flag per version); crates.io API |
+| Column                   | From deps.dev?                             | Source if not                                             |
+| ------------------------ | ------------------------------------------ | --------------------------------------------------------- |
+| `number`, `published_at` | yes                                        | —                                                         |
+| `is_prerelease`          | yes (derived: `NOT VersionInfo.IsRelease`) | —                                                         |
+| `license`                | yes (per-version, `PackageVersionsLatest`) | —                                                         |
+| `is_latest`              | no                                         | derived: `number = packages.latest_version`               |
+| `is_yanked`              | no                                         | npm registry (deprecated flag per version); crates.io API |
 
 #### repos
 
-| Column | From deps.dev? | Source if not |
-| --- | --- | --- |
-| `url`, `host`, `owner`, `name` | yes (`ProjectsLatest`) | — |
-| `description`, `homepage`, `stars`, `forks`, `open_issues` | yes | — |
-| `raw_project_type`, `raw_project_name` | yes | — |
-| `primary_language`, `topics`, `watchers` | no | GitHub API (`github-repos-enricher`) |
-| `last_commit_at`, `archived`, `disabled`, `is_fork`, `created_at` | no | GitHub API |
-| `scorecard_score`, `scorecard_last_run_at` | no | `bigquery-public-data.openssf.scorecardcron_v2_latest` |
+| Column                                                            | From deps.dev?         | Source if not                                          |
+| ----------------------------------------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `url`, `host`, `owner`, `name`                                    | yes (`ProjectsLatest`) | —                                                      |
+| `description`, `homepage`, `stars`, `forks`, `open_issues`        | yes                    | —                                                      |
+| `raw_project_type`, `raw_project_name`                            | yes                    | —                                                      |
+| `primary_language`, `topics`, `watchers`                          | no                     | GitHub API (`github-repos-enricher`)                   |
+| `last_commit_at`, `archived`, `disabled`, `is_fork`, `created_at` | no                     | GitHub API                                             |
+| `scorecard_score`, `scorecard_last_run_at`                        | no                     | `bigquery-public-data.openssf.scorecardcron_v2_latest` |
 
 #### advisories
 
-| Column | From deps.dev? | Source if not |
-| --- | --- | --- |
-| `osv_id`, `source`, `source_url`, `summary`, `details` | yes (`AdvisoriesLatest`) | — |
-| `cvss`, `severity`, `aliases`, `published_at` | yes | — |
-| `modified_at` | no | tracked in-house on each re-sync |
+| Column                                                 | From deps.dev?           | Source if not                    |
+| ------------------------------------------------------ | ------------------------ | -------------------------------- |
+| `osv_id`, `source`, `source_url`, `summary`, `details` | yes (`AdvisoriesLatest`) | —                                |
+| `cvss`, `severity`, `aliases`, `published_at`          | yes                      | —                                |
+| `modified_at`                                          | no                       | tracked in-house on each re-sync |
 
 #### advisory_affected_ranges
 
-| Column | From deps.dev? | Source if not |
-| --- | --- | --- |
-| `range_raw`, `unaffected_raw` | yes | — |
-| `introduced_version`, `fixed_version`, `last_affected` | no | future range-parsing workstream (parses `range_raw`) |
+| Column                                                 | From deps.dev? | Source if not                                        |
+| ------------------------------------------------------ | -------------- | ---------------------------------------------------- |
+| `range_raw`, `unaffected_raw`                          | yes            | —                                                    |
+| `introduced_version`, `fixed_version`, `last_affected` | no             | future range-parsing workstream (parses `range_raw`) |
 
 #### Tables with zero deps.dev coverage
 
-| Table | Owning source |
-| --- | --- |
-| `repo_scorecard_checks` | `bigquery-public-data.openssf.scorecardcron_v2_latest` |
-| `repo_docker` | Docker Hub API / GHCR |
-| `maintainers`, `package_maintainers` | npm registry, crates.io, PyPI |
-| `package_funding_links` | npm registry (`funding` field) |
-| `package_name_history` | internal CDP tracking only |
-| `downloads_daily`, `downloads_last_30d` | registry APIs / BigQuery — see Downloads section |
+| Table                                   | Owning source                                          |
+| --------------------------------------- | ------------------------------------------------------ |
+| `repo_scorecard_checks`                 | `bigquery-public-data.openssf.scorecardcron_v2_latest` |
+| `repo_docker`                           | Docker Hub API / GHCR                                  |
+| `maintainers`, `package_maintainers`    | npm registry, crates.io, PyPI                          |
+| `package_funding_links`                 | npm registry (`funding` field)                         |
+| `package_name_history`                  | internal CDP tracking only                             |
+| `downloads_daily`, `downloads_last_30d` | registry APIs / BigQuery — see Downloads section       |
 
 Any new column added to the schema or new deps.dev table exposed requires an amendment to this section. If a sub-worker discovers coverage drift (deps.dev adds or removes fields), the change in ownership must be made explicit here — do not silently fill what was previously listed as a gap.
 
@@ -301,12 +417,10 @@ Downloads is the strongest criticality signal, but the ~4–5M packages in `pack
 
 Tier 2 (`packages`) downloads are stored in `downloads_daily` — one row per `(package_id, date)`, consumers sum over any window they need. Tier 3 (`packages_universe`) downloads are stored in `downloads_last_30d` — one row per `(purl, end_date)` capturing a rolling 30-day window — with the latest window's count also cached on `packages_universe.downloads_last_30d bigint` for direct use by `rank_packages_universe()` without a join.
 
-`downloads_last_30d` is keyed by `purl` (not `packages_universe.id`) so rows survive the weekly truncation of `packages_universe`.
-
-| Table | Tier | Grain | Unique key | PK | Partitioning |
-| --- | --- | --- | --- | --- | --- |
-| `downloads_daily` | 2 (`packages`) | one row per package per day | `(package_id, date)` | `(id, date)` | RANGE on `date` via pg_partman |
-| `downloads_last_30d` | 3 (`packages_universe`) | one row per purl per rolling 30-day window | `(purl, end_date)` | `(id, end_date)` | RANGE on `end_date` |
+| Table                | Tier                    | Grain                                      | Unique key           | PK               | Partitioning                   |
+| -------------------- | ----------------------- | ------------------------------------------ | -------------------- | ---------------- | ------------------------------ |
+| `downloads_daily`    | 2 (`packages`)          | one row per package per day                | `(package_id, date)` | `(id, date)`     | RANGE on `date` via pg_partman |
+| `downloads_last_30d` | 3 (`packages_universe`) | one row per purl per rolling 30-day window | `(purl, end_date)`   | `(id, end_date)` | RANGE on `end_date`            |
 
 Upsert pattern for `downloads_last_30d`:
 
@@ -329,8 +443,6 @@ A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-wi
 ## Open questions / in-flight
 
 - **Sonatype Central Stats API access** — not confirmed as of 2026-05-27. If unavailable by day 5, Maven download counts will be absent from the week-2 demo (`downloads_last_month` NULL for Maven rows; disclose to stakeholders).
-- **`has_critical_vulnerability` flag** — currently deferred; the column is commented out in the schema. The open question is what it should mean: (a) any critical advisory exists for this package name regardless of version, or (b) the package's latest version actually falls inside an active affected range. Option (b) requires evaluating OSV's `introduced` / `fixed` / `last_affected` range fields using semver (npm) or Maven's own version comparator — non-trivial work. Until resolved, callers join `advisory_packages` directly instead of reading a flag.
-- **criticality_score formula** — the placeholder formula (`X * downloadsCount + Y * dependentCount`) has not been validated against known critical packages. Final formula is yet to be defined.
 - **pg_partman + pg_cron setup** — must be confirmed active in the OCI environment before download workers start; `downloads_daily` and `downloads_last_30d` inserts will fail if monthly partitions are not pre-created.
 
 ---
@@ -338,12 +450,15 @@ A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-wi
 ## Changelog
 
 - 2026-05-27 — initial record
+- 2026-05-28 — folded standalone ADR-0003 (`has_critical_vulnerability` semantics), ADR-0005 (CVSS scoring strategy), and ADR-0006 (`advisory_affected_ranges` uniqueness scope) into this living record; standalone files removed. Resolved the prior open question on `has_critical_vulnerability` (option b + MAL- override). ADR-0004 (standalone-bin vs Temporal) was removed before merging — the worker architecture decision in this ADR supersedes it.
+- 2026-05-29 — clarified `packages_universe` import semantics (one-time backfill + weekly snapshot-diff incrementals; the ranking job updates score/flag columns in place). Added §Source of truth: deps.dev backfill vs registries / OSV with lifecycle ownership rules and the agreed `package_source_log` provenance table (`(package_id, source)` PK; `columns` array tracks `table.column` paths each source writes).
 
 ---
 
 ## Note on promotion to production
 
 At first production release of oss-packages, the team decides whether to:
+
 - seal ADR-0001 as `accepted` (frozen) and write new ADRs for any post-release changes, or
 - split it into per-area ADRs for clearer long-term ownership.
 
