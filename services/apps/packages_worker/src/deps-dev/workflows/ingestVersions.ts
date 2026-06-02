@@ -31,6 +31,14 @@ const { dropVersionsIndexes, rebuildVersionsIndexes } = proxyActivities<typeof d
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
+const { dropVersionsConstraints, rebuildVersionsConstraints } = proxyActivities<
+  typeof depsDevActivities
+>({
+  // FK validation on large partitioned tables can take hours.
+  startToCloseTimeout: '6 hours',
+  retry: { maximumAttempts: 2, initialInterval: '1 minute' },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_versions_raw'
 
 const STAGING_DDL = `
@@ -72,13 +80,12 @@ ORDER BY p.id, s.number, s.published_at DESC NULLS LAST
 
 // SET LOCAL scopes settings to this transaction only.
 // synchronous_commit=off skips WAL flush wait — safe for plain INSERT on full loads.
-// session_replication_role=replica disables FK trigger checks — safe because package_id
-// comes from a JOIN against packages; non-matching rows are filtered before INSERT.
 // max_parallel_workers_per_gather parallelises the SELECT side of INSERT...SELECT.
+// session_replication_role=replica would skip FK trigger checks but requires superuser —
+// blocked on Oracle Cloud managed PostgreSQL regardless of REPLICATION role.
 const MERGE_PREPARE_SQL = [
   `SET LOCAL work_mem = '512MB'`,
   `SET LOCAL synchronous_commit = off`,
-  `SET LOCAL session_replication_role = 'replica'`,
   `SET LOCAL max_parallel_workers_per_gather = 8`,
 ]
 
@@ -134,6 +141,7 @@ export async function ingestVersions(opts: {
   }
 
   if (opts.syncMode === 'full') {
+    await dropVersionsConstraints()
     await dropVersionsIndexes()
   }
 
@@ -186,5 +194,6 @@ export async function ingestVersions(opts: {
 
   if (opts.syncMode === 'full') {
     await rebuildVersionsIndexes()
+    await rebuildVersionsConstraints()
   }
 }
