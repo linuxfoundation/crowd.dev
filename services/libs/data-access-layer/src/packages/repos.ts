@@ -36,14 +36,15 @@ export async function setPackageRepoForSource(
   )
 
   if (!existing) {
-    await qx.result(
+    const rowCount = await qx.result(
       `INSERT INTO package_repos (package_id, repo_id, source, confidence)
        VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence))
-       ON CONFLICT (package_id, repo_id) DO UPDATE
-         SET source = EXCLUDED.source, confidence = EXCLUDED.confidence, verified_at = NOW()`,
+       ON CONFLICT (package_id, repo_id) DO NOTHING`,
       { packageId, repoId, source, confidence },
     )
-    return ['package_repos.repo_id', 'package_repos.source', 'package_repos.confidence']
+    return rowCount > 0
+      ? ['package_repos.repo_id', 'package_repos.source', 'package_repos.confidence']
+      : []
   }
 
   if (existing.repo_id === repoId) return []

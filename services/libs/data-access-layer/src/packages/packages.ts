@@ -106,14 +106,14 @@ export async function upsertNpmPackage(
 
 export async function getTrackedNpmPackages(
   qx: QueryExecutor,
-  names: string[],
+  purls: string[],
 ): Promise<Array<{ id: string; name: string; purl: string; firstReleaseAt: string | null }>> {
   const rows: Array<{ id: string; name: string; purl: string; first_release_at: string | null }> =
     await qx.select(
       `SELECT id::text AS id, name, purl, first_release_at::text AS first_release_at
          FROM packages
-        WHERE ecosystem = 'npm' AND name = ANY($(names)::text[])`,
-      { names },
+        WHERE ecosystem = 'npm' AND purl = ANY($(purls)::text[])`,
+      { purls },
     )
   return rows.map((r) => ({
     id: r.id,

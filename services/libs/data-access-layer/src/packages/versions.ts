@@ -16,7 +16,7 @@ export async function upsertNpmVersions(
   if (versions.length === 0) return []
   const row: { changed_fields: string[] } = await qx.selectOne(
     `WITH old AS (
-       SELECT number, is_latest, is_prerelease, license
+       SELECT number, published_at, is_latest, is_prerelease, license
          FROM versions
         WHERE package_id = $(packageId)::bigint AND number = ANY($(numbers)::text[])
      ),
@@ -31,15 +31,18 @@ export async function upsertNpmVersions(
          $(licenses)::text[]
        ) AS v(num, pub, latest, pre, lic)
        ON CONFLICT (package_id, number) DO UPDATE SET
+         -- COALESCE so a NULL upstream value never wipes a known date, but a
+         -- non-null correction (or first-known timestamp) is applied.
+         published_at   = COALESCE(EXCLUDED.published_at, versions.published_at),
          is_latest      = EXCLUDED.is_latest,
          is_prerelease  = EXCLUDED.is_prerelease,
          license        = EXCLUDED.license,
          last_synced_at = EXCLUDED.last_synced_at
-       RETURNING number, is_latest, is_prerelease, license
+       RETURNING number, published_at, is_latest, is_prerelease, license
      )
      SELECT array_remove(ARRAY[
        CASE WHEN bool_or(o.number IS NULL)                                THEN 'versions.number' END,
-       CASE WHEN bool_or(o.number IS NULL)                                THEN 'versions.published_at' END,
+       CASE WHEN bool_or(o.number IS NULL OR o.published_at IS DISTINCT FROM ins.published_at) THEN 'versions.published_at' END,
        CASE WHEN bool_or(o.is_latest     IS DISTINCT FROM ins.is_latest)     THEN 'versions.is_latest' END,
        CASE WHEN bool_or(o.is_prerelease IS DISTINCT FROM ins.is_prerelease) THEN 'versions.is_prerelease' END,
        CASE WHEN bool_or(o.license       IS DISTINCT FROM ins.license)       THEN 'versions.license' END

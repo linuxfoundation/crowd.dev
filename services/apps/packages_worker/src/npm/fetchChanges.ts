@@ -2,48 +2,45 @@ import type { FetchError } from './types'
 
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
 
+const PAGE_LIMIT = 1000
+
 export interface ChangesResult {
   names: string[]
   lastSeq: string
+  hasMore: boolean
 }
 
 export async function fetchChangesSince(since: string): Promise<ChangesResult | FetchError> {
-  const names = new Set<string>()
-  let seq = since
-
-  for (;;) {
-    const url = `https://replicate.npmjs.com/_changes?since=${encodeURIComponent(seq)}&limit=1000`
-    let res: Response
-    try {
-      res = await fetch(url, {
-        headers: { 'User-Agent': USER_AGENT, 'npm-replication-opt-in': 'true' },
-      })
-    } catch (err) {
-      return { kind: 'TRANSIENT', message: String(err) }
-    }
-
-    if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
-
-    let body: { results?: unknown[]; last_seq?: unknown; pending?: unknown }
-    try {
-      body = await res.json()
-    } catch {
-      return { kind: 'MALFORMED', message: 'invalid JSON' }
-    }
-
-    if (!Array.isArray(body.results)) return { kind: 'MALFORMED', message: 'missing results' }
-
-    for (const row of body.results as Array<{ id?: unknown }>) {
-      if (typeof row.id === 'string' && !row.id.startsWith('_')) {
-        names.add(row.id)
-      }
-    }
-
-    seq = String(body.last_seq ?? seq)
-    if (!body.pending || body.pending === 0) break
+  const url = `https://replicate.npmjs.com/_changes?since=${encodeURIComponent(since)}&limit=${PAGE_LIMIT}`
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT, 'npm-replication-opt-in': 'true' },
+    })
+  } catch (err) {
+    return { kind: 'TRANSIENT', message: String(err) }
   }
 
-  return { names: [...names], lastSeq: seq }
+  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+
+  let body: { results?: unknown[]; last_seq?: unknown; pending?: unknown }
+  try {
+    body = await res.json()
+  } catch {
+    return { kind: 'MALFORMED', message: 'invalid JSON' }
+  }
+
+  if (!Array.isArray(body.results)) return { kind: 'MALFORMED', message: 'missing results' }
+
+  const names = new Set<string>()
+  for (const row of body.results as Array<{ id?: unknown }>) {
+    if (typeof row.id === 'string' && !row.id.startsWith('_')) {
+      names.add(row.id)
+    }
+  }
+
+  const pending = typeof body.pending === 'number' ? body.pending : 0
+  return { names: [...names], lastSeq: String(body.last_seq ?? since), hasMore: pending > 0 }
 }
 
 export async function fetchCurrentSeq(): Promise<string | FetchError> {

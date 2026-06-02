@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
 import { mapWithConcurrency } from '../utils/concurrency'
 
@@ -14,7 +14,7 @@ const acts = proxyActivities<typeof activities>({
 })
 
 export async function ingestNpmPackages(): Promise<void> {
-  const [watchList, changedNames] = await Promise.all([acts.getWatchList(), acts.pollNpmChanges()])
+  const [watchList, changes] = await Promise.all([acts.getWatchList(), acts.pollNpmChanges()])
 
   const newPackages = await acts.getUnscannedPackages(watchList)
   for (const name of newPackages) {
@@ -23,9 +23,16 @@ export async function ingestNpmPackages(): Promise<void> {
 
   const scanned = new Set(newPackages)
   const watchSet = new Set(watchList)
-  const toIngest = changedNames.filter((n) => watchSet.has(n) && !scanned.has(n))
+  const toIngest = changes.names.filter((n) => watchSet.has(n) && !scanned.has(n))
   for (const name of toIngest) {
     await acts.ingestNpmPackage(name)
+  }
+
+  // Advance the cursor only after this page is ingested
+  await acts.commitNpmChangesSeq(changes.lastSeq)
+
+  if (changes.hasMore) {
+    await continueAsNew<typeof ingestNpmPackages>()
   }
 }
 

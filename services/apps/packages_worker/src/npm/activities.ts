@@ -23,6 +23,7 @@ import {
 } from './fetchDownloads'
 import { fetchPackument } from './fetchPackument'
 import { Last30dWindow, computeMissingLast30dWindows } from './last30dGaps'
+import { buildPurl } from './normalize'
 import { isFetchError } from './types'
 import { upsertPackage } from './upsertPackage'
 import { getWatchList } from './watchList'
@@ -33,7 +34,13 @@ const log = getServiceChildLogger('npm')
 
 const WORKER = 'npm'
 
-export async function pollNpmChanges(): Promise<string[]> {
+export interface PollNpmChangesResult {
+  names: string[]
+  lastSeq: string
+  hasMore: boolean
+}
+
+export async function pollNpmChanges(): Promise<PollNpmChangesResult> {
   const qx = await getPackagesDb()
 
   const since = await getNpmChangesLastSeq(qx)
@@ -44,9 +51,8 @@ export async function pollNpmChanges(): Promise<string[]> {
     if (isFetchError(seqResult)) {
       throw new Error(`Failed to bootstrap npm seq: ${seqResult.message}`)
     }
-    await setNpmChangesLastSeq(qx, seqResult)
-    log.info({ seq: seqResult }, 'Bootstrapped changes_last_seq')
-    return []
+    log.info({ seq: seqResult }, 'Bootstrapping changes_last_seq')
+    return { names: [], lastSeq: seqResult, hasMore: false }
   }
 
   log.info({ since }, 'Polling npm _changes feed')
@@ -56,10 +62,18 @@ export async function pollNpmChanges(): Promise<string[]> {
     throw new Error(`Failed to fetch npm changes: ${result.message}`)
   }
 
-  await setNpmChangesLastSeq(qx, result.lastSeq)
+  log.info(
+    { count: result.names.length, newSeq: result.lastSeq, hasMore: result.hasMore },
+    'Fetched npm changes page',
+  )
+  return { names: result.names, lastSeq: result.lastSeq, hasMore: result.hasMore }
+}
 
-  log.info({ count: result.names.length, newSeq: result.lastSeq }, 'Fetched npm changes')
-  return result.names
+// Advance the _changes cursor. Called by the workflow AFTER the page's packages
+// are ingested so the cursor never moves past unprocessed work.
+export async function commitNpmChangesSeq(lastSeq: string): Promise<void> {
+  const qx = await getPackagesDb()
+  await setNpmChangesLastSeq(qx, lastSeq)
 }
 
 export async function ingestNpmPackage(name: string): Promise<void> {
@@ -94,7 +108,7 @@ export async function getDailyDownloadsTrackedList(): Promise<
   if (watchList.length === 0) return []
 
   const qx = await getPackagesDb()
-  const rows = await getTrackedNpmPackages(qx, watchList)
+  const rows = await getTrackedNpmPackages(qx, watchList.map(buildPurl))
 
   if (rows.length === 0) {
     log.info('No tracked packages found in packages table yet — skipping daily downloads backfill')

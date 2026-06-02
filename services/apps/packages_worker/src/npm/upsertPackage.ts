@@ -77,7 +77,7 @@ export async function upsertPackage(
       )
       repoChanged.forEach((f) => changed.add(f))
 
-      const linkChanged = await setPackageRepoForSource(t, pkgId, repoId, 'npm', 1.0)
+      const linkChanged = await setPackageRepoForSource(t, pkgId, repoId, 'declared', 0.8)
       linkChanged.forEach((f) => changed.add(f))
     }
 
