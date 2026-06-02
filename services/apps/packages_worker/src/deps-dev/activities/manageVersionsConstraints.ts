@@ -10,12 +10,18 @@ const log = getServiceChildLogger('manageVersionsConstraints')
 // packages guarantee only valid rows are inserted.
 // On Oracle Cloud managed PostgreSQL, session_replication_role=replica is blocked even with
 // the REPLICATION role granted, so this is the only way to skip FK trigger overhead.
+// Only fetch FKs referencing parent tables (not partition children) — see managePackageDepsConstraints.ts
+// for the full explanation. versions only has one FK (→ packages, not partitioned) so this filter
+// is a no-op here, but kept for consistency and future safety.
 const FK_CONSTRAINTS_SQL = `
   SELECT conname,
          pg_get_constraintdef(oid) AS condef
   FROM pg_constraint
   WHERE conrelid = 'versions'::regclass
     AND contype = 'f'
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_inherits WHERE inhrelid = confrelid
+    )
 `
 
 // Known FK definitions — used to recreate constraints after full load.
@@ -40,7 +46,7 @@ export async function dropVersionsConstraints(): Promise<{ dropped: string[] }> 
   log.info({ constraints: rows.map((r) => r.conname) }, 'Dropping FK constraints on versions')
 
   for (const row of rows) {
-    await qx.result(`ALTER TABLE versions DROP CONSTRAINT ${row.conname}`)
+    await qx.result(`ALTER TABLE versions DROP CONSTRAINT IF EXISTS ${row.conname}`)
   }
 
   log.info({ dropped: rows.map((r) => r.conname) }, 'FK constraints dropped')
