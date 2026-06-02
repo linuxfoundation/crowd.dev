@@ -6,6 +6,10 @@
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
+import { getServiceChildLogger } from '@crowd/logging'
+
+const log = getServiceChildLogger('maven')
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PomMaintainer {
@@ -101,13 +105,7 @@ export function buildPomUrl(groupId: string, artifactId: string, version: string
   return `${MAVEN_REPO}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
 }
 
-export async function fetchPom(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  log?: (msg: string) => void,
-): Promise<PomData | null> {
-  const url = buildPomUrl(groupId, artifactId, version)
+export async function fetchPom(groupId: string, artifactId: string, version: string, url: string): Promise<PomData | null> {
   try {
     const data = await getWithRetry(url)
     const parsed = parser.parse(data)
@@ -116,10 +114,10 @@ export async function fetchPom(
     if (axios.isAxiosError(err)) {
       const status = err.response?.status
       if (status === 404) {
-        log?.(`POM not found (404): ${url}`)
+        log.debug({ groupId, artifactId, version }, `POM not found (404): ${url}`)
         return null
       }
-      log?.(`HTTP ${status ?? 'unknown'} fetching POM: ${url}`)
+      log.debug({ groupId, artifactId, version }, `HTTP ${status ?? 'unknown'} fetching POM: ${url}`)
       return null
     }
     throw err
@@ -139,19 +137,13 @@ interface ResolvedFields {
   hops: number
 }
 
-async function resolveWithInheritance(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  log: (msg: string) => void,
-  depth = 0,
-): Promise<ResolvedFields> {
+async function resolveWithInheritance(groupId: string, artifactId: string, version: string, depth = 0): Promise<ResolvedFields> {
   if (depth > MAX_PARENT_HOPS) {
-    log(`Max parent hops (${MAX_PARENT_HOPS}) reached`)
+    log.debug({ groupId, artifactId, version }, `Max parent hops (${MAX_PARENT_HOPS}) reached`)
     return emptyFields(depth)
   }
 
-  const pom = await fetchPom(groupId, artifactId, version, log)
+  const pom = await fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version))
   if (!pom) return emptyFields(depth)
 
   const licenses = extractLicenses(pom)
@@ -164,14 +156,8 @@ async function resolveWithInheritance(
   const parent = extractParent(pom)
 
   if (parent && (missingLicense || missingScm)) {
-    log(`[hop ${depth + 1}] ${parent.groupId}:${parent.artifactId}:${parent.version}`)
-    const parentFields = await resolveWithInheritance(
-      parent.groupId,
-      parent.artifactId,
-      parent.version,
-      log,
-      depth + 1,
-    )
+    log.debug({ groupId, artifactId, version }, `[hop ${depth + 1}] ${parent.groupId}:${parent.artifactId}:${parent.version}`)
+    const parentFields = await resolveWithInheritance(parent.groupId, parent.artifactId, parent.version, depth + 1)
     return {
       description: extractStr(pom.description) ?? parentFields.description,
       licenses: licenses.length > 0 ? licenses : parentFields.licenses,
@@ -203,14 +189,10 @@ async function resolveWithInheritance(
  * Faster than extractArtifact — use for non-critical packages where inherited
  * fields (licenses, SCM) may be missing but throughput matters more.
  */
-export async function extractArtifactDirect(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  log: (msg: string) => void = () => undefined,
-): Promise<PomExtractionResult> {
+export async function extractArtifactDirect(groupId: string, artifactId: string, version: string): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
-  const pom = await fetchPom(groupId, artifactId, version, log)
+  const pomUrl = buildPomUrl(groupId, artifactId, version)
+  const pom = await fetchPom(groupId, artifactId, version, pomUrl)
 
   if (!pom) {
     return {
@@ -226,7 +208,7 @@ export async function extractArtifactDirect(
       developers: [],
       contributors: [],
       parentHops: 0,
-      error: `POM not found: ${buildPomUrl(groupId, artifactId, version)}`,
+      error: `POM not found: ${pomUrl}`,
     }
   }
 
@@ -257,17 +239,12 @@ export async function extractArtifactDirect(
  * the parent chain to inherit licenses and SCM when not in the direct POM.
  * Always returns a result object; errors are captured in `result.error`.
  */
-export async function extractArtifact(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  log: (msg: string) => void = () => undefined,
-): Promise<PomExtractionResult> {
+export async function extractArtifact(groupId: string, artifactId: string, version: string): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
 
-  const rootPom = await fetchPom(groupId, artifactId, version, log)
+  const pomUrl = buildPomUrl(groupId, artifactId, version)
+  const rootPom = await fetchPom(groupId, artifactId, version, pomUrl)
   if (!rootPom) {
-    const pomUrl = buildPomUrl(groupId, artifactId, version)
     return {
       groupId,
       artifactId,
@@ -286,7 +263,7 @@ export async function extractArtifact(
   }
 
   try {
-    const resolved = await resolveWithInheritance(groupId, artifactId, version, log)
+    const resolved = await resolveWithInheritance(groupId, artifactId, version)
     return {
       groupId,
       artifactId,
@@ -304,7 +281,7 @@ export async function extractArtifact(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log(`Error resolving POM: ${message}`)
+    log.debug({ groupId, artifactId, version }, `Error resolving POM: ${message}`)
     return {
       groupId,
       artifactId,

@@ -59,6 +59,7 @@ export type IDbPackageMaintainerUpsert = {
 export type IDbVersionUpsert = {
   packageId: number
   ecosystem: string
+  name: string
   number: string
   isLatest: boolean
   isPrerelease: boolean

@@ -14,19 +14,22 @@ export async function findPackageIdsByPurl(
 // ─── packages_universe ────────────────────────────────────────────────────────
 
 /**
- * Returns a page of critical Maven packages from packages_universe that need
- * syncing into the packages table (never synced, or stale by refreshDays).
+ * Returns a page of Maven packages from packages_universe that need syncing
+ * into the packages table (never synced, or stale by refreshDays).
+ *
+ * isCritical=true  → critical packages queued for full POM extraction
+ * isCritical=false → non-critical packages queued for universe-stats refresh (DB-only)
  */
-export async function listCriticalMavenPackagesToSync(
+export async function listMavenPackagesToSync(
   qx: QueryExecutor,
-  options: { limit: number; refreshDays: number },
+  options: { limit: number; refreshDays: number; isCritical: boolean },
 ): Promise<
-  (Pick<IDbPackageUniverse, 'id' | 'namespace' | 'name' | 'criticalityScore' | 'dependentPackagesCount' | 'dependentReposCount' | 'downloads30d'> & {
+  (Pick<IDbPackageUniverse, 'id' | 'namespace' | 'name' | 'isCritical' | 'criticalityScore' | 'dependentPackagesCount' | 'dependentReposCount' | 'downloads30d'> & {
     purl: string
     latestVersion: string | null
   })[]
 > {
-  const { limit, refreshDays } = options
+  const { limit, refreshDays, isCritical } = options
 
   return qx.select(
     `
@@ -35,6 +38,7 @@ export async function listCriticalMavenPackagesToSync(
       pu.purl,
       pu.namespace,
       pu.name,
+      pu.is_critical              AS "isCritical",
       pu.criticality_score        AS "criticalityScore",
       pu.dependent_packages_count AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
@@ -44,7 +48,7 @@ export async function listCriticalMavenPackagesToSync(
     LEFT JOIN packages p ON p.purl = pu.purl
     WHERE
       pu.ecosystem = 'maven'
-      AND pu.is_critical = true
+      AND pu.is_critical = $(isCritical)
       AND pu.purl IS NOT NULL
       AND pu.namespace IS NOT NULL
       AND (
@@ -56,7 +60,59 @@ export async function listCriticalMavenPackagesToSync(
       pu.id ASC
     LIMIT $(limit)
     `,
-    { limit, refreshDays },
+    { limit, refreshDays, isCritical },
+  )
+}
+
+// ─── packages touch ───────────────────────────────────────────────────────────
+
+/**
+ * Bumps last_synced_at without re-fetching POM data.
+ * Used when the upstream version is unchanged — avoids a full extraction pass
+ * while keeping the staleness timer fresh and syncing latest universe metrics.
+ */
+export async function touchPackageSyncedAt(
+  qx: QueryExecutor,
+  purl: string,
+  metrics: {
+    criticalityScore: number | null | undefined
+    dependentPackagesCount: number | null | undefined
+    dependentReposCount: number | null | undefined
+    downloadsLastMonth: bigint | null | undefined
+  },
+): Promise<void> {
+  await qx.result(
+    `
+    UPDATE packages SET
+      last_synced_at           = NOW(),
+      criticality_score        = COALESCE($(criticalityScore),       criticality_score),
+      dependent_packages_count = COALESCE($(dependentPackagesCount), dependent_packages_count),
+      dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count),
+      downloads_last_month     = COALESCE($(downloadsLastMonth),     downloads_last_month)
+    WHERE purl = $(purl)
+    `,
+    {
+      purl,
+      criticalityScore: metrics.criticalityScore ?? null,
+      dependentPackagesCount: metrics.dependentPackagesCount ?? null,
+      dependentReposCount: metrics.dependentReposCount ?? null,
+      downloadsLastMonth: metrics.downloadsLastMonth ?? null,
+    },
+  )
+}
+
+// ─── audit ────────────────────────────────────────────────────────────────────
+
+export async function logAuditFieldChange(
+  qx: QueryExecutor,
+  worker: string,
+  purl: string,
+  changedFields: string[],
+): Promise<void> {
+  if (changedFields.length === 0) return
+  await qx.result(
+    `INSERT INTO audit_field_changes (worker, purl, changed_fields) VALUES ($(worker), $(purl), $(changedFields)::text[])`,
+    { worker, purl, changedFields },
   )
 }
 

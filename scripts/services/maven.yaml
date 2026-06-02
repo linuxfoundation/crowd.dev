@@ -3,7 +3,7 @@ version: '3.1'
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
-  SERVICE: pom-fetcher
+  SERVICE: maven
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
   LOG_LEVEL: 'info'
@@ -14,11 +14,11 @@ x-env-args: &env-args
   POM_FETCHER_IDLE_SLEEP_SEC: '3600'
 
 services:
-  pom-fetcher:
+  maven:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
-    command: 'pnpm run start:pom-fetcher'
+    command: 'pnpm run start:maven'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -31,11 +31,11 @@ services:
     networks:
       - crowd-bridge
 
-  pom-fetcher-dev:
+  maven-dev:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
-    command: 'pnpm run dev:pom-fetcher'
+    command: 'pnpm run dev:maven'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:
@@ -45,7 +45,7 @@ services:
       - ../../backend/.env.override.composed
     environment:
       <<: *env-args
-    hostname: pom-fetcher
+    hostname: maven
     networks:
       - crowd-bridge
     volumes:

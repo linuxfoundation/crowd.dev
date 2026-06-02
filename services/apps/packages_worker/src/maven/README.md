@@ -127,12 +127,12 @@ The POM fetcher seeds `repos` with URL-derivable fields only. The GitHub enriche
 
 | Value | Meaning |
 |-------|---------|
-| `pom_fetcher` | Critical — full POM + parent resolution succeeded |
-| `pom_fetcher_direct` | Non-critical — direct POM fetch succeeded (no parent resolution) |
-| `pom_fetcher_not_on_central` | `maven-metadata.xml` not found on `repo1.maven.org` — artifact is hosted on a third-party repository (e.g. WSO2 Nexus, JBoss, Atlassian). Universe data came from an aggregator (deps.dev, OSV). |
-| `pom_fetcher_no_version` | `maven-metadata.xml` found but `<release>` is empty — artifact has no stable release |
-| `pom_fetcher_error` | `maven-metadata.xml` has a release version but the `.pom` file for that version is a 404. Typical cause: partial deploy to Maven Central (metadata updated, artifact not uploaded) or Eclipse P2 feature artifacts that don't publish a standard POM. |
-| `pom_fetcher_rate_limited` | Maven Central returned 403/429 on all retry attempts. Package will be retried on the next pass. |
+| `maven` | Critical — full POM + parent resolution succeeded |
+| `maven_direct` | Non-critical — direct POM fetch succeeded (no parent resolution) |
+| `maven_not_on_central` | `maven-metadata.xml` not found on `repo1.maven.org` — artifact is hosted on a third-party repository (e.g. WSO2 Nexus, JBoss, Atlassian). Universe data came from an aggregator (deps.dev, OSV). |
+| `maven_no_version` | `maven-metadata.xml` found but `<release>` is empty — artifact has no stable release |
+| `maven_error` | `maven-metadata.xml` has a release version but the `.pom` file for that version is a 404. Typical cause: partial deploy to Maven Central (metadata updated, artifact not uploaded) or Eclipse P2 feature artifacts that don't publish a standard POM. |
+| `maven_rate_limited` | Maven Central returned 403/429 on all retry attempts. Package will be retried on the next pass. |
 | `packages_universe` | Non-critical, DB-only mode (`POM_FETCHER_DIRECT_POM_FOR_ALL=false`) — only universe stats copied |
 
 ---
@@ -143,11 +143,11 @@ The POM fetcher seeds `repos` with URL-derivable fields only. The GitHub enriche
 
 WSO2 publishes some artifacts exclusively to their own Nexus at `maven.wso2.org`. A subset of their artifacts appear in `packages_universe` (sourced from deps.dev/OSV which aggregates all Maven repositories) but are **not** available on `repo1.maven.org/maven2`.
 
-Affected pattern: `org.wso2.carbon.*` — specifically `.feature` Eclipse P2 artifacts and `.stub` artifacts. These are written with `ingestion_source = 'pom_fetcher_not_on_central'` and are not retried until the next `nonCriticalPomRefreshDays` window.
+Affected pattern: `org.wso2.carbon.*` — specifically `.feature` Eclipse P2 artifacts and `.stub` artifacts. These are written with `ingestion_source = 'maven_not_on_central'` and are not retried until the next `nonCriticalPomRefreshDays` window.
 
 ### Eclipse P2 Feature Artifacts (`*.feature`)
 
-Eclipse/OSGi feature artifacts (e.g. `org.wso2.carbon.identity.xacml.server.feature`) are packaged as `.zip` files, not `.jar`. Some publishers update `maven-metadata.xml` on Central without uploading the corresponding `.pom`. These land in `pom_fetcher_error`. No fix is possible without the publisher correcting their CI/CD pipeline.
+Eclipse/OSGi feature artifacts (e.g. `org.wso2.carbon.identity.xacml.server.feature`) are packaged as `.zip` files, not `.jar`. Some publishers update `maven-metadata.xml` on Central without uploading the corresponding `.pom`. These land in `maven_error`. No fix is possible without the publisher correcting their CI/CD pipeline.
 
 ### Maven Central 403 rate limiting
 
@@ -155,7 +155,7 @@ Maven Central (`repo1.maven.org`) restituisce 403 come meccanismo di throttle ol
 
 1. **Retry con backoff esponenziale** — 403 e 429 vengono ritentati fino a 3 volte (2s base, ×2 per tentativo). Gestito in `getWithRetry` (extract.ts) e `resolveVersionsList` (metadata.ts).
 
-2. **Fallback su DB** — se tutti i retry esauriscono, il pacchetto viene scritto con `ingestion_source = 'pom_fetcher_rate_limited'` e `last_synced_at = NOW()`, evitando loop infiniti. Verrà ritentato al prossimo ciclo di refresh.
+2. **Fallback su DB** — se tutti i retry esauriscono, il pacchetto viene scritto con `ingestion_source = 'maven_rate_limited'` e `last_synced_at = NOW()`, evitando loop infiniti. Verrà ritentato al prossimo ciclo di refresh.
 
 **Causa root dei 403 persistenti:** `packages_universe` è ordinato per `rank_in_ecosystem`, quindi pacchetti dello stesso namespace (es. `com.google.apis`, `org.wso2`, `software.amazon.awssdk`) si raggruppano nel batch e colpiscono lo stesso CDN node di Maven Central in rapida successione. Il rate limit scatta sistematicamente dopo ~150–200 pacchetti processati.
 
@@ -167,7 +167,7 @@ Namespace noti per triggerare il rate limit a causa dell'alta densità di artefa
 
 ### Partial Maven Central Deploys
 
-Occasionally a publisher's CI/CD updates `<release>` in `maven-metadata.xml` before the `.pom` is fully propagated to all Central mirrors. These appear as `pom_fetcher_error` on the first pass and usually resolve on the next periodic refresh.
+Occasionally a publisher's CI/CD updates `<release>` in `maven-metadata.xml` before the `.pom` is fully propagated to all Central mirrors. These appear as `maven_error` on the first pass and usually resolve on the next periodic refresh.
 
 ---
 
@@ -221,7 +221,7 @@ The daily Temporal schedule has a **12-hour workflow timeout**. With `POM_FETCHE
 
 ## Scheduling
 
-Runs daily at **4am UTC** via Temporal schedule `maven-pom-fetcher`.
+Runs daily at **4am UTC** via Temporal schedule `maven`.
 Overlap policy: `SKIP` — if a previous run is still active, the new trigger is dropped.
 Catchup window: 1 hour.
 Workflow timeout: 12 hours.
@@ -274,9 +274,9 @@ ORDER BY packages DESC;
 ```
 
 Expected behaviour:
-- `pom_fetcher` (critical, full resolution) → high repo coverage
-- `pom_fetcher_direct` (non-critical, no parent resolution) → low repo coverage
-- `pom_fetcher_not_on_central` / `pom_fetcher_error` → no repo (no POM data)
+- `maven` (critical, full resolution) → high repo coverage
+- `maven_direct` (non-critical, no parent resolution) → low repo coverage
+- `maven_not_on_central` / `maven_error` → no repo (no POM data)
 
 Repo coverage will grow naturally as the critical package set expands and as non-critical packages hit their 30-day POM refresh window.
 
