@@ -33,6 +33,7 @@ const parseUserIntoMember = (user: DiscourseUserResponse, forumHostname: string)
         type: MemberIdentityType.USERNAME,
         platform: PlatformType.DISCOURSE,
         verified: true,
+        verifiedBy: PlatformType.DISCOURSE,
       },
     ],
     displayName: user.user.name,
@@ -64,6 +65,7 @@ const parseUserIntoMember = (user: DiscourseUserResponse, forumHostname: string)
       type: MemberIdentityType.EMAIL,
       platform: PlatformType.DISCOURSE,
       verified: true,
+      verifiedBy: PlatformType.DISCOURSE,
     })
   }
 

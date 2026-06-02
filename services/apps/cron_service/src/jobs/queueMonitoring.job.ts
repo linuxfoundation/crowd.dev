@@ -2,7 +2,7 @@ import CronTime from 'cron-time-generator'
 
 import { IS_PROD_ENV, distinct, timeout } from '@crowd/common'
 import { Logger } from '@crowd/logging'
-import { KafkaAdmin, QUEUE_CONFIG, getKafkaClient } from '@crowd/queue'
+import { KafkaAdmin, QUEUE_CONFIG, getKafkaClient, getKafkaMessageCounts } from '@crowd/queue'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import telemetry from '@crowd/telemetry'
 
@@ -41,7 +41,7 @@ const job: IJobDefinition = {
       }
 
       for (const group of groups) {
-        const counts = await getMessageCounts(ctx.log, admin, topic, group)
+        const counts = await getKafkaMessageCounts(ctx.log, admin, topic, group)
         ctx.log.info(
           `Topic ${topic} group ${group} has ${counts.total} total messages, ${counts.consumed} consumed, ${counts.unconsumed} unconsumed!`,
         )
@@ -53,7 +53,7 @@ const job: IJobDefinition = {
 
     if (msg && msg.trim().length > 0) {
       await sendSlackNotificationAsync(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_CRITICAL_ALERTS,
         SlackPersona.WARNING_PROPAGATOR,
         'Queue Monitoring Alert',
         msg,
@@ -181,61 +181,6 @@ async function isConsumerListeningToTopic(
   }
 }
 
-async function getMessageCounts(
-  log: Logger,
-  admin: KafkaAdmin,
-  topic: string,
-  groupId: string,
-): Promise<{
-  total: number
-  consumed: number
-  unconsumed: number
-}> {
-  try {
-    const topicOffsets = await admin.fetchTopicOffsets(topic)
-    const offsetsResponse = await admin.fetchOffsets({
-      groupId: groupId,
-      topics: [topic],
-    })
-
-    const offsets = offsetsResponse[0].partitions
-
-    let totalMessages = 0
-    let consumedMessages = 0
-    let totalLeft = 0
-
-    for (const offset of offsets) {
-      const topicOffset = topicOffsets.find((p) => p.partition === offset.partition)
-      if (topicOffset) {
-        // Total messages is the latest offset
-        totalMessages += Number(topicOffset.offset)
-
-        // Handle -1 offsets (no committed offset)
-        if (offset.offset === '-1') {
-          // No committed offset means no messages consumed from this partition
-          consumedMessages += 0
-          // Unconsumed is the total messages in the partition
-          totalLeft += Number(topicOffset.offset) - Number(topicOffset.low)
-        } else {
-          // Consumed messages is the consumer group's offset
-          consumedMessages += Number(offset.offset)
-          // Unconsumed is the difference
-          totalLeft += Number(topicOffset.offset) - Number(offset.offset)
-        }
-      }
-    }
-
-    return {
-      total: totalMessages,
-      consumed: consumedMessages,
-      unconsumed: totalLeft,
-    }
-  } catch (err) {
-    log.error(err, 'Failed to get message count!')
-    throw err
-  }
-}
-
 async function getTopicMessageCount(
   log: Logger,
   admin: KafkaAdmin,
@@ -244,9 +189,9 @@ async function getTopicMessageCount(
   try {
     const topicOffsets = await admin.fetchTopicOffsets(topic)
 
-    // Sum up all partition offsets to get total messages
+    // Sum (high - low) per partition — actual messages currently in the topic.
     const totalMessages = topicOffsets.reduce((sum, partition) => {
-      return sum + Number(partition.offset)
+      return sum + Math.max(0, Number(partition.offset) - Number(partition.low))
     }, 0)
 
     return totalMessages

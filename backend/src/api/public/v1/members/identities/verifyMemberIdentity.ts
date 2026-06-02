@@ -6,7 +6,7 @@ import {
   memberUnmergeAction,
   memberVerifyIdentityAction,
 } from '@crowd/audit-logs'
-import { InternalError, NotFoundError } from '@crowd/common'
+import { ConflictError, InternalError, NotFoundError } from '@crowd/common'
 import {
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
@@ -53,7 +53,9 @@ function toReturn(identity: IMemberIdentity) {
     id: identity.id,
     value: identity.value,
     platform: identity.platform,
+    type: identity.type,
     verified: identity.verified,
+    verifiedBy: identity.verifiedBy ?? null,
     source: identity.source,
     createdAt: identity.createdAt,
     updatedAt: identity.updatedAt,
@@ -84,10 +86,25 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       captureOldState(identity)
 
       await qx.tx(async (tx) => {
-        updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
-          verified,
-          verifiedBy,
-        })
+        try {
+          updatedIdentity = await updateMemberIdentity(tx, memberId, identityId, {
+            verified,
+            verifiedBy,
+          })
+        } catch (error) {
+          const constraint =
+            error.constraint ?? error.original?.constraint ?? error.parent?.constraint
+
+          if (verified && constraint === 'uix_memberIdentities_platform_value_type_verified') {
+            throw new ConflictError('Identity already verified on another member', {
+              platform: identity.platform,
+              value: identity.value,
+              type: identity.type,
+            })
+          }
+
+          throw error
+        }
 
         if (!updatedIdentity) {
           throw new InternalError('Failed to update member identity')
@@ -98,6 +115,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
             filter: {
               and: [
                 {
+                  memberId: { eq: memberId },
                   username: { eq: identity.value },
                   platform: { eq: identity.platform },
                 },
@@ -138,7 +156,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     } catch (error) {
       req.log.warn({ error }, 'Audit log capture failed after identity unmerge')
       sendSlackNotification(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.ERROR_REPORTER,
         `Audit log capture failed after identity unmerge: member ${memberId}`,
         [{ title: 'Error', text: `\`${error?.message || error}\`` }],
@@ -163,7 +181,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
     } catch (error) {
       req.log.warn({ error }, 'Failed to start unmerge workflow after identity unmerge')
       sendSlackNotification(
-        SlackChannel.ALERTS,
+        SlackChannel.CDP_ALERTS,
         SlackPersona.ERROR_REPORTER,
         `Failed to start unmerge workflow after identity unmerge: member ${memberId}`,
         [

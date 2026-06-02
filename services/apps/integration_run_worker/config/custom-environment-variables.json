@@ -20,9 +20,6 @@
     "url": "CROWD_NANGO_URL",
     "secretKey": "CROWD_NANGO_SECRET_KEY"
   },
-  "slackAlerting": {
-    "url": "CROWD_SLACK_ALERTING_URL"
-  },
   "github": {
     "appId": "CROWD_GITHUB_APP_ID",
     "clientId": "CROWD_GITHUB_CLIENT_ID",

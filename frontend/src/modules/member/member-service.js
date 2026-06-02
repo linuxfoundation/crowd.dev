@@ -164,40 +164,6 @@ export class MemberService {
     return response.data;
   }
 
-  static async listActive({
-    platform,
-    isTeamMember,
-    activityTimestampFrom,
-    activityTimestampTo,
-    orderBy,
-    offset,
-    limit,
-    segments,
-  }) {
-    const params = {
-      ...(platform.length && {
-        'filter[platforms]': platform.map((p) => p.value).join(','),
-      }),
-      ...(isTeamMember === false && {
-        'filter[isTeamMember]': isTeamMember,
-      }),
-      'filter[isOrganization]': false,
-      'filter[isBot]': false,
-      'filter[activityTimestampFrom]': activityTimestampFrom,
-      'filter[activityTimestampTo]': activityTimestampTo,
-      orderBy,
-      offset,
-      limit,
-      segments,
-    };
-
-    const response = await authAxios.get('/member/active', {
-      params,
-    });
-
-    return response.data;
-  }
-
   static async merge(memberToKeep, memberToMerge, segments) {
     const response = await authAxios.put(`/member/${memberToKeep.id}/merge`, {
       memberToMerge: memberToMerge.id,

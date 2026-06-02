@@ -8,9 +8,11 @@ from loguru import logger
 from crowdgit.services import (
     CloneService,
     CommitService,
+    LicenseService,
     MaintainerService,
     QueueService,
     SoftwareValueService,
+    VulnerabilityScannerService,
 )
 from crowdgit.settings import WORKER_SHUTDOWN_TIMEOUT_SEC
 from crowdgit.worker.repository_worker import RepositoryWorker
@@ -25,14 +27,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     queue_service = QueueService()
     commit_service = CommitService(queue_service=queue_service)
     software_value_service = SoftwareValueService()
+    vulnerability_scanner_service = VulnerabilityScannerService()
     maintainer_service = MaintainerService()
+    license_service = LicenseService()
 
     worker_task = None
     worker = RepositoryWorker(
         clone_service=clone_service,
         commit_service=commit_service,
         software_value_service=software_value_service,
+        vulnerability_scanner_service=vulnerability_scanner_service,
         maintainer_service=maintainer_service,
+        license_service=license_service,
         queue_service=queue_service,
     )
     logger.info("Repo worker initialized")

@@ -3,18 +3,15 @@ import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 import * as activities from '../../activities'
 import { IOrganizationProfileSyncInput } from '../../types/organization'
 
-// Configure timeouts and retry policies to update a member in the database.
-const { updateMemberAffiliations, syncOrganization, findMembersInOrganization } = proxyActivities<
-  typeof activities
->({
-  startToCloseTimeout: '5 minutes',
-})
+const { syncOrganization, findMembersInOrganization, triggerMemberAffiliationsRefresh } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '5 minutes',
+  })
 
 /*
 organizationUpdate can do the following:
-  - Update all affiliations of members in a given organization in the database, if recalculateAffiliations is true.
+  - Queue affiliation refreshes for members in a given organization, if recalculateAffiliations is true.
   - Sync organization to OpenSearch, if syncOptions.doSync is true.
-  - Also sync organization aggregates to postgres (organizationSegmentsAgg table), if syncOptions.doSync is true AND syncOptions.withAggs is true.
 */
 export async function organizationUpdate(input: IOrganizationProfileSyncInput): Promise<void> {
   // End early if recalculateAffiliations is false, only do syncing if necessary.
@@ -43,7 +40,8 @@ export async function organizationUpdate(input: IOrganizationProfileSyncInput): 
   }
 
   for (const memberId of memberIds) {
-    await updateMemberAffiliations(memberId)
+    // Queue through memberUpdate so concurrent refreshes coalesce on the same member slot.
+    await triggerMemberAffiliationsRefresh(memberId)
   }
 
   await continueAsNew<typeof organizationUpdate>({

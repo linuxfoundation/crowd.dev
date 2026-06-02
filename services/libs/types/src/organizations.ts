@@ -52,8 +52,8 @@ export interface IOrganization {
 export interface IMemberOrganization {
   id?: string
   title?: string
-  dateStart: Date | string
-  dateEnd: Date | string
+  dateStart: Date | string | null
+  dateEnd: Date | string | null
   memberId: string
   organizationId: string
   updatedAt?: string
@@ -65,6 +65,10 @@ export interface IMemberOrganization {
   displayName?: string
   affiliationOverride?: IMemberOrganizationAffiliationOverride
 }
+
+export type MemberOrganizationDateRange = Pick<IMemberOrganization, 'dateStart' | 'dateEnd'>
+
+export type MemberOrganizationDateInput = Date | string | null | undefined
 
 type MemberOrganizationEditableFields = Pick<
   IMemberOrganization,
@@ -91,6 +95,22 @@ export interface IMemberRoleWithOrganization extends IMemberOrganization {
   organizationName: string
   organizationLogo: string
 }
+
+export interface MemberOrgDate {
+  organizationId: string
+  date: string // YYYY-MM-DD
+}
+
+interface MemberOrgStintChangeBase {
+  memberId: string
+  organizationId: string
+  dateStart: string
+  dateEnd: string
+}
+
+export type MemberOrgStintChange =
+  | ({ type: 'insert' } & MemberOrgStintChangeBase)
+  | ({ type: 'update'; id: string } & MemberOrgStintChangeBase)
 
 export interface IExecutiveChange {
   joined_date?: string

@@ -48,6 +48,9 @@ SCHEMA >
     `updatedById` UUID `json:$.updatedById` DEFAULT toUUID('00000000-0000-0000-0000-000000000000'),
     `segmentId` LowCardinality(String) `json:$.segmentId` DEFAULT ''
 
+INDEXES >
+    idx_updatedAt updatedAt TYPE minmax GRANULARITY 1
+
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)
 ENGINE_SORTING_KEY id

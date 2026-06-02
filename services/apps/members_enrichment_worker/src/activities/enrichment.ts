@@ -6,11 +6,13 @@ import {
   generateUUIDv1,
   hasIntersection,
   replaceDoubleQuotes,
+  sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
 } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
+  fetchManyOrganizationAffiliationPolicies,
   updateMemberAttributes,
   updateMemberContributions,
   updateMemberReach,
@@ -31,7 +33,12 @@ import {
   updateMemberEnrichmentCacheDb,
   updateMemberOrg,
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
-import { findOrCreateOrganization } from '@crowd/data-access-layer/src/organizations'
+import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
+import {
+  addOrgIdentity,
+  findOrCreateOrganization,
+  findOrgByVerifiedIdentity,
+} from '@crowd/data-access-layer/src/organizations'
 import { dbStoreQx, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { refreshMaterializedView } from '@crowd/data-access-layer/src/utils'
 import { SearchSyncApiClient } from '@crowd/opensearch'
@@ -47,6 +54,7 @@ import {
   MemberIdentityType,
   OrganizationAttributeSource,
   OrganizationIdentityType,
+  OrganizationMergeSuggestionTable,
   OrganizationSource,
   PlatformType,
 } from '@crowd/types'
@@ -287,15 +295,20 @@ export async function updateMemberUsingSquashedPayload(
   hasContributions: boolean,
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): Promise<boolean> {
-  return await svc.postgres.writer.transactionally(async (tx) => {
-    let updated = false
+  const affectedOrgIds: string[] = []
+  const orgIdsToSync: string[] = []
+  let affiliationNeedsRefresh = false
+
+  const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
+    let didUpdate = false
+
     const qx = dbStoreQx(tx)
 
     // process identities
     if (squashedPayload.identities.length > 0) {
       svc.log.debug({ memberId }, 'Adding to member identities!')
       for (const i of squashedPayload.identities) {
-        updated = true
+        didUpdate = true
         await createMemberIdentity(
           qx,
           {
@@ -327,7 +340,7 @@ export async function updateMemberUsingSquashedPayload(
           const typed = normalized as IMemberEnrichmentDataNormalized
 
           if (typed.contributions) {
-            updated = true
+            didUpdate = true
             await updateMemberContributions(qx, memberId, typed.contributions)
           }
         }
@@ -346,7 +359,7 @@ export async function updateMemberUsingSquashedPayload(
         const priorities = await getPriorityArray()
         attributes = await setAttributesDefaultValues(attributes, priorities)
       }
-      updated = true
+      didUpdate = true
       await updateMemberAttributes(qx, memberId, attributes)
     }
 
@@ -366,17 +379,18 @@ export async function updateMemberUsingSquashedPayload(
           total,
         }
 
-        updated = true
+        didUpdate = true
         await updateMemberReach(qx, memberId, reach)
       }
     }
 
-    const orgIdsToSync: string[] = []
     const newOrUpdatedMemberOrgs = []
 
-    if (squashedPayload.memberOrganizations.length > 0) {
-      const orgPromises = []
+    squashedPayload.memberOrganizations = sanitizeWorkExperienceDateRanges(
+      squashedPayload.memberOrganizations,
+    )
 
+    if (squashedPayload.memberOrganizations.length > 0) {
       // try matching member's existing organizations with the new ones
       // we'll be using displayName, title, dates
       for (const org of squashedPayload.memberOrganizations) {
@@ -415,37 +429,148 @@ export async function updateMemberUsingSquashedPayload(
 
         const orgSource = OrganizationAttributeSource.ENRICHMENT
 
-        orgPromises.push(
-          findOrCreateOrganization(qx, orgSource, {
-            displayName: org.name,
-            description: org.organizationDescription,
-            identities: identities.map((i) => ({ ...i, source: orgSource })),
+        let orgId: string | undefined
+        const orgPayload = {
+          displayName: org.name,
+          description: org.organizationDescription,
+          identities: identities.map((i) => ({ ...i, source: orgSource })),
+        }
+
+        try {
+          // Keep the org write in a savepoint: if this identity is already verified
+          // on another org, we can recover without aborting the member update transaction.
+          orgId = await qx.tx((trnx) => findOrCreateOrganization(trnx, orgSource, orgPayload))
+        } catch (error) {
+          const constraint = 'uix_organizationIdentities_plat_val_typ_tenantId_verified'
+          const dbError = error as { constraint?: string; detail?: string }
+
+          if (
+            error.constructor?.name !== 'DatabaseError' ||
+            dbError.constraint !== constraint ||
+            !dbError.detail
+          ) {
+            throw error
+          }
+
+          const match = dbError.detail.match(/=\((.*?)\)/)
+          if (!match) throw error
+
+          const [platform, value, type] = match[1].split(',').map((v) => v.trim())
+          const erroredIdentity = {
+            platform,
+            value,
+            type: type as OrganizationIdentityType,
+            verified: true,
+          }
+
+          const identityOwners = []
+          const erroredIdentityOwner = await findOrgByVerifiedIdentity(qx, erroredIdentity)
+          if (!erroredIdentityOwner) throw error
+
+          identityOwners.push({
+            identity: erroredIdentity,
+            organizationId: erroredIdentityOwner.id,
           })
-            .then((orgId) => {
-              // set the organization id for later use
-              org.organizationId = orgId
-              if (org.identities) {
-                for (const i of org.identities) {
-                  i.organizationId = orgId
+
+          // The first write normalizes domain identities before failing. Use that normalized
+          // payload when checking the rest, so the retry won't hit the same index again.
+          for (const identity of orgPayload.identities.filter((i) => i.verified)) {
+            const isErroredIdentity =
+              identity.platform === erroredIdentity.platform &&
+              identity.type === erroredIdentity.type &&
+              identity.value.toLowerCase() === erroredIdentity.value.toLowerCase()
+
+            if (!isErroredIdentity) {
+              const owner = await findOrgByVerifiedIdentity(qx, identity)
+
+              if (owner) {
+                identityOwners.push({ identity, organizationId: owner.id })
+              }
+            }
+          }
+
+          // Keep the enriched org identity as an unverified signal. The verified version stays
+          // with the existing owner, preserving the unique identity invariant.
+          const identitiesToAddAsUnverified = identityOwners.map((owner) => owner.identity)
+          const retryIdentities = orgPayload.identities.filter(
+            (identity) =>
+              !identitiesToAddAsUnverified.some(
+                (identityToAddAsUnverified) =>
+                  identity.platform === identityToAddAsUnverified.platform &&
+                  identity.type === identityToAddAsUnverified.type &&
+                  identity.value.toLowerCase() === identityToAddAsUnverified.value.toLowerCase(),
+              ),
+          )
+
+          orgId = await qx.tx((trnx) =>
+            findOrCreateOrganization(trnx, orgSource, {
+              ...orgPayload,
+              identities: retryIdentities,
+            }),
+          )
+
+          if (orgId) {
+            const mergeSuggestionsRepo = new OrganizationMergeSuggestionsRepository(
+              tx.transaction(),
+              svc.log,
+            )
+            const mergeSuggestions = []
+            const suggestedOwnerIds = new Set<string>()
+
+            for (const identityOwner of identityOwners) {
+              if (identityOwner.organizationId !== orgId) {
+                await addOrgIdentity(qx, {
+                  organizationId: orgId,
+                  platform: identityOwner.identity.platform,
+                  value: identityOwner.identity.value,
+                  type: identityOwner.identity.type,
+                  verified: false,
+                  source: orgSource,
+                })
+
+                const noMergeIds = await mergeSuggestionsRepo.findNoMergeIds(
+                  identityOwner.organizationId,
+                )
+                if (
+                  !noMergeIds.includes(orgId) &&
+                  !suggestedOwnerIds.has(identityOwner.organizationId)
+                ) {
+                  suggestedOwnerIds.add(identityOwner.organizationId)
+                  mergeSuggestions.push({
+                    similarity: 0.95,
+                    organizations: [identityOwner.organizationId, orgId] as [string, string],
+                  })
                 }
               }
-              if (orgId) {
-                orgIdsToSync.push(orgId)
-              }
-            })
-            .then(() =>
-              Promise.all(
-                orgIdsToSync.map((orgId) =>
-                  syncOrganization(orgId).catch((error) => {
-                    console.error(`Failed to sync organization with ID ${orgId}:`, error)
-                  }),
-                ),
-              ),
-            ),
-        )
+            }
+
+            if (mergeSuggestions.length > 0) {
+              // A shared verified identity is a strong merge signal, unless the pair was
+              // explicitly marked as no-merge by a reviewer.
+              await mergeSuggestionsRepo.addToMerge(
+                mergeSuggestions,
+                OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
+              )
+              await mergeSuggestionsRepo.addToMerge(
+                mergeSuggestions,
+                OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
+              )
+            }
+          }
+        }
+
+        if (orgId) {
+          org.organizationId = orgId
+          if (org.identities) {
+            for (const i of org.identities) {
+              i.organizationId = orgId
+            }
+          }
+
+          orgIdsToSync.push(orgId)
+        }
       }
 
-      await Promise.all(orgPromises)
       // ignore all organizations that were not created
       squashedPayload.memberOrganizations = squashedPayload.memberOrganizations.filter(
         (o) => o.organizationId,
@@ -457,9 +582,16 @@ export async function updateMemberUsingSquashedPayload(
         isHighConfidenceSourceSelectedForWorkExperiences,
       )
 
+      // Enrichment often deletes and recreates the same orgs with identical dates.
+      // Skip the refresh when the timeline that drives activityRelations hasn't changed.
+      affiliationNeedsRefresh =
+        results.toUpdate.size > 0 ||
+        hasMemberOrganizationTimelineChange(results.toDelete, results.toCreate)
+
       if (results.toDelete.length > 0) {
         for (const org of results.toDelete) {
-          updated = true
+          didUpdate = true
+          affectedOrgIds.push(org.orgId)
           await deleteMemberOrgById(tx.transaction(), org.id)
         }
       }
@@ -469,7 +601,8 @@ export async function updateMemberUsingSquashedPayload(
           if (!org.organizationId) {
             throw new Error('Organization ID is missing!')
           }
-          updated = true
+          didUpdate = true
+          affectedOrgIds.push(org.organizationId)
 
           const newMemberOrgId = await insertWorkExperience(
             tx.transaction(),
@@ -492,7 +625,8 @@ export async function updateMemberUsingSquashedPayload(
 
       if (results.toUpdate.size > 0) {
         for (const [memberOrg, toUpdate] of results.toUpdate) {
-          updated = true
+          didUpdate = true
+          affectedOrgIds.push(memberOrg.orgId)
           const updatedMemberOrgId = await updateMemberOrg(
             tx.transaction(),
             memberId,
@@ -509,25 +643,28 @@ export async function updateMemberUsingSquashedPayload(
         }
       }
 
-      for (const mo of newOrUpdatedMemberOrgs) {
-        const isOrganizationAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-          qx,
-          mo.organizationId,
-        )
+      const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(
+        qx,
+        newOrUpdatedMemberOrgs.map((mo) => mo.organizationId),
+      )
 
-        if (isOrganizationAffiliationBlocked) {
-          await changeMemberOrganizationAffiliationOverrides(qx, [
-            {
-              memberId,
-              memberOrganizationId: mo.id,
-              allowAffiliation: false,
-            },
-          ])
-        }
+      const overrides = newOrUpdatedMemberOrgs
+        .filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
+        .map((mo) => ({
+          memberId,
+          memberOrganizationId: mo.id,
+          allowAffiliation: false,
+        }))
+
+      if (overrides.length > 0) {
+        await changeMemberOrganizationAffiliationOverrides(qx, overrides)
+        // When we write allowAffiliation=false, activityRelations must refresh
+        // to respect the newly created override, even if timeline hasn't changed.
+        affiliationNeedsRefresh = true
       }
     }
 
-    if (updated) {
+    if (didUpdate) {
       await setMemberEnrichmentUpdatedAt(tx.transaction(), memberId)
       await syncMember(memberId)
     } else {
@@ -536,8 +673,27 @@ export async function updateMemberUsingSquashedPayload(
 
     svc.log.debug({ memberId }, 'Member sources processed successfully!')
 
-    return updated
+    return didUpdate
   })
+
+  if (orgIdsToSync.length > 0) {
+    await Promise.all(
+      [...new Set(orgIdsToSync)].map((orgId) =>
+        syncOrganization(orgId).catch((error) => {
+          svc.log.error({ orgId, error }, 'Failed to sync organization')
+        }),
+      ),
+    )
+  }
+
+  if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
+    await signalMemberUpdate(svc.temporal, memberId, {
+      memberOrganizationIds: [...new Set(affectedOrgIds)],
+      syncToOpensearch: true,
+    })
+  }
+
+  return wasUpdated
 }
 
 export function doesIncomingOrgExistInExistingOrgs(
@@ -549,9 +705,10 @@ export function doesIncomingOrgExistInExistingOrgs(
     .filter((i) => i.type === OrganizationIdentityType.PRIMARY_DOMAIN && i.verified)
     .map((i) => i.value)
 
-  const existingVerifiedPrimaryDomainIdentityValues = existingOrg.identities
-    .filter((i) => i.type === OrganizationIdentityType.PRIMARY_DOMAIN && i.verified)
-    .map((i) => i.value)
+  // existingOrg.identities is already filtered to primary-domain + verified at the query level
+  const existingVerifiedPrimaryDomainIdentityValues = (existingOrg.identities || []).map(
+    (i) => i.value,
+  )
 
   const incomingOrgStartDate = incomingOrg.startDate ? new Date(incomingOrg.startDate) : null
   const incomingOrgEndDate = incomingOrg.endDate ? new Date(incomingOrg.endDate) : null
@@ -607,21 +764,66 @@ interface IWorkExperienceChanges {
   toUpdate: Map<IMemberOrganizationData, Record<string, any>>
 }
 
+function sanitizeWorkExperienceDateRanges(
+  organizations: IMemberEnrichmentDataNormalizedOrganization[],
+): IMemberEnrichmentDataNormalizedOrganization[] {
+  return organizations.map((org) => {
+    const dates = sanitizeMemberOrganizationDateRange(org.startDate, org.endDate)
+
+    return {
+      ...org,
+      startDate: dates.dateStart instanceof Date ? dates.dateStart.toISOString() : dates.dateStart,
+      endDate: dates.dateEnd instanceof Date ? dates.dateEnd.toISOString() : dates.dateEnd,
+    }
+  })
+}
+
+/**
+ * Returns true when the set of (orgId, startDate, endDate) tuples differs
+ * between deletes and creates. Fields like title or source don't affect
+ * the affiliation timeline, so they're intentionally ignored.
+ */
+function hasMemberOrganizationTimelineChange(
+  toDelete: IMemberOrganizationData[],
+  toCreate: IMemberEnrichmentDataNormalizedOrganization[],
+): boolean {
+  const toKey = (orgId: string, start: string | null | undefined, end: string | null | undefined) =>
+    `${orgId}|${start ? start.substring(0, 10) : ''}|${end ? end.substring(0, 10) : ''}`
+
+  const deletedKeys = new Set(toDelete.map((d) => toKey(d.orgId, d.dateStart, d.dateEnd)))
+  const createdKeys = new Set(toCreate.map((c) => toKey(c.organizationId, c.startDate, c.endDate)))
+
+  if (deletedKeys.size !== createdKeys.size) return true
+  for (const key of deletedKeys) {
+    if (!createdKeys.has(key)) return true
+  }
+  return false
+}
+
 function prepareWorkExperiences(
   oldVersion: IMemberOrganizationData[],
   newVersion: IMemberEnrichmentDataNormalizedOrganization[],
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): IWorkExperienceChanges {
   // we delete all the work experiences that were not manually created
-  let toDelete = oldVersion.filter((c) => c.source !== OrganizationSource.UI)
+  const toDelete = oldVersion.filter((c) => c.source !== OrganizationSource.UI)
 
   const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toUpdate: Map<IMemberOrganizationData, Record<string, any>> = new Map()
 
   if (isHighConfidenceSourceSelectedForWorkExperiences) {
-    toDelete = oldVersion
-    toCreate.push(...newVersion)
+    const uiEntries = oldVersion.filter((c) => c.source === OrganizationSource.UI)
+    const filteredNewVersion = newVersion.filter(
+      (e) =>
+        !uiEntries.some(
+          (ui) =>
+            e.title === ui.jobTitle &&
+            e.identities &&
+            e.identities.some((i) => i.organizationId === ui.orgId),
+        ),
+    )
+    toCreate.push(...filteredNewVersion)
     return {
       toDelete,
       toCreate,

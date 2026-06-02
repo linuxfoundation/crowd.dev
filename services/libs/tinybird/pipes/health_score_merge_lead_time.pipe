@@ -26,8 +26,9 @@ SQL >
         {% end %}
     GROUP BY segmentId
 
-NODE health_score_merge_lead_time_with_benchmark
+NODE health_score_merge_lead_time_benchmark
 SQL >
+    %
     SELECT
         segmentId,
         mergeLeadTime,

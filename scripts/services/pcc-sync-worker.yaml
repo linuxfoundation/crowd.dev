@@ -1,0 +1,53 @@
+version: '3.1'
+
+x-env-args: &env-args
+  DOCKER_BUILDKIT: 1
+  NODE_ENV: docker
+  SERVICE: pcc-sync-worker
+  CROWD_TEMPORAL_TASKQUEUE: pccSync
+  SHELL: /bin/sh
+
+services:
+  pcc-sync-worker:
+    build:
+      context: ../../
+      dockerfile: ./scripts/services/docker/Dockerfile.pcc_sync_worker
+    command: 'pnpm run start'
+    working_dir: /usr/crowd/app/services/apps/pcc_sync_worker
+    env_file:
+      - ../../backend/.env.dist.local
+      - ../../backend/.env.dist.composed
+      - ../../backend/.env.override.local
+      - ../../backend/.env.override.composed
+    environment:
+      <<: *env-args
+    restart: always
+    networks:
+      - crowd-bridge
+
+  pcc-sync-worker-dev:
+    build:
+      context: ../../
+      dockerfile: ./scripts/services/docker/Dockerfile.pcc_sync_worker
+    command: 'pnpm run dev'
+    working_dir: /usr/crowd/app/services/apps/pcc_sync_worker
+    env_file:
+      - ../../backend/.env.dist.local
+      - ../../backend/.env.dist.composed
+      - ../../backend/.env.override.local
+      - ../../backend/.env.override.composed
+    environment:
+      <<: *env-args
+    hostname: pcc-sync-worker
+    networks:
+      - crowd-bridge
+    volumes:
+      - ../../services/libs/common/src:/usr/crowd/app/services/libs/common/src
+      - ../../services/libs/logging/src:/usr/crowd/app/services/libs/logging/src
+      - ../../services/libs/snowflake/src:/usr/crowd/app/services/libs/snowflake/src
+      - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
+      - ../../services/apps/pcc_sync_worker/src:/usr/crowd/app/services/apps/pcc_sync_worker/src
+
+networks:
+  crowd-bridge:
+    external: true

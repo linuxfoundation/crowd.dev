@@ -267,7 +267,8 @@ const query = ref('');
 const activities = ref([]);
 const limit = ref(10);
 const offset = ref(0);
-const timestamp = ref(dateHelper(props.entity.joinedAt).toISOString());
+const joinedAt = dateHelper(props.entity.joinedAt);
+const timestamp = ref(joinedAt.isValid() ? joinedAt.toISOString() : new Date(0).toISOString());
 const noMore = ref(false);
 const selectedSegment = ref(props.selectedSegment || null);
 
@@ -373,14 +374,21 @@ const fetchActivities = async ({ reset } = { reset: false }) => {
 
   loading.value = true;
 
+  let querySegments: string[];
+  if (selectedSegment.value) {
+    querySegments = [selectedSegment.value];
+  } else if (segments.value.length > 0) {
+    querySegments = segments.value.map((s) => s.id);
+  } else {
+    querySegments = [];
+  }
+
   const data = await ActivityService.query({
     filter: filterToApply,
     orderBy: 'timestamp_DESC',
     limit: limit.value,
     offset: offset.value,
-    segments: selectedSegment.value
-      ? [selectedSegment.value]
-      : segments.value.map((s) => s.id),
+    segments: querySegments,
   });
 
   loading.value = false;
@@ -419,7 +427,7 @@ watch(platform, async (newValue, oldValue) => {
 onMounted(async () => {
   await store.dispatch(
     'integration/doFetch',
-    segments.value.map((s: any) => s.id),
+    selectedProjectGroup.value?.id ? [selectedProjectGroup.value.id] : [],
   );
   await fetchActivities();
 });

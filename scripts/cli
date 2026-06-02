@@ -293,23 +293,42 @@ function build() {
 }
 
 function create_migration() {
-    MIG_NAME="$1"
+    MIG_NAME="$(printf '%s\n' "$1" | tr -s ' ' | xargs)"
+    if [[ -z "$MIG_NAME" ]] || [[ ! "$MIG_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        error "Migration name must be non-empty and contain only letters, numbers, underscores, or hyphens"
+        exit 1
+    fi
+
     MIG_VERSION=$(date +%s)
     UP_MIG_FILE="${CLI_HOME}/../backend/src/database/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
-    DOWN_MIG_FILE="${CLI_HOME}/../backend/src/database/migrations/U${MIG_VERSION}__${MIG_NAME}.sql"
-    touch $UP_MIG_FILE
-    touch $DOWN_MIG_FILE
-    yell "Created ${MIG_FILE}"
+    touch "$UP_MIG_FILE"
+    yell "Created $UP_MIG_FILE"
 }
 
 function create_product_migration() {
-    MIG_NAME="$1"
+    MIG_NAME="$(printf '%s\n' "$1" | tr -s ' ' | xargs)"
+    if [[ -z "$MIG_NAME" ]] || [[ ! "$MIG_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        error "Migration name must be non-empty and contain only letters, numbers, underscores, or hyphens"
+        exit 1
+    fi
+
     MIG_VERSION=$(date +%s)
     UP_MIG_FILE="${CLI_HOME}/../backend/src/product/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
-    DOWN_MIG_FILE="${CLI_HOME}/../backend/src/product/migrations/U${MIG_VERSION}__${MIG_NAME}.sql"
-    touch $UP_MIG_FILE
-    touch $DOWN_MIG_FILE
-    yell "Created ${MIG_FILE}"
+    touch "$UP_MIG_FILE"
+    yell "Created $UP_MIG_FILE"
+}
+
+function create_packages_migration() {
+    MIG_NAME="$(printf '%s\n' "$1" | tr -s ' ' | xargs)"
+    if [[ -z "$MIG_NAME" ]] || [[ ! "$MIG_NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        error "Migration name must be non-empty and contain only letters, numbers, underscores, or hyphens"
+        exit 1
+    fi
+
+    MIG_VERSION=$(date +%s)
+    UP_MIG_FILE="${CLI_HOME}/../backend/src/osspckgs/migrations/V${MIG_VERSION}__${MIG_NAME}.sql"
+    touch "$UP_MIG_FILE"
+    yell "Created $UP_MIG_FILE"
 }
 
 function build_and_publish() {
@@ -396,6 +415,10 @@ function scaffold() {
             ;;
         create-product-migration)
             create_product_migration $2
+            exit
+            ;;
+        create-packages-migration)
+            create_packages_migration $2
             exit
             ;;
         migrate-up)
@@ -683,7 +706,25 @@ function migrate_tinybird_local() {
     set -eo pipefail
 }
 
+function wait_for_postgres() {
+    local service="$1"
+    local container="$2"
+    local attempts=10
+    local i=0
+    say "Waiting for postgres ($service) to be ready..."
+    until docker exec "$container" pg_isready -U postgres -q 2>/dev/null; do
+        i=$((i + 1))
+        if [[ $i -ge $attempts ]]; then
+            error "Postgres ($service) not ready after ${attempts} attempts. Aborting."
+            exit 1
+        fi
+        sleep 2
+    done
+    say "Postgres ($service) is ready."
+}
+
 function migrate_postgres_local() {
+    wait_for_postgres db "${PROJECT_NAME}_db_1"
     say "Building crowd flyway migration image..."
     docker build $DOCKER_PLATFORM_FLAGS -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database --load
     say "Applying PostgreSQL migrations!"
@@ -697,6 +738,7 @@ function migrate_postgres_local() {
 }
 
 function migrate_productdb_local() {
+    wait_for_postgres product "${PROJECT_NAME}_product_1"
     say "Building product flyway migration image..."
     docker build $DOCKER_PLATFORM_FLAGS -t product_flyway -f $CLI_HOME/../backend/src/product/Dockerfile.flyway $CLI_HOME/../backend/src/product --load
     say "Applying product database migrations!"
@@ -709,9 +751,24 @@ function migrate_productdb_local() {
         product_flyway
 }
 
+function migrate_packagesdb_local() {
+    wait_for_postgres packages "${PROJECT_NAME}_packages_1"
+    say "Building packages flyway migration image..."
+    docker build $DOCKER_PLATFORM_FLAGS -t packages_flyway -f $CLI_HOME/../backend/src/osspckgs/Dockerfile.flyway $CLI_HOME/../backend/src/osspckgs --load
+    say "Applying packages database migrations!"
+    docker run --rm --network "${PROJECT_NAME}-bridge" \
+        -e PGHOST=packages \
+        -e PGPORT=5432 \
+        -e PGUSER=postgres \
+        -e PGPASSWORD=example \
+        -e PGDATABASE=packages-db \
+        packages_flyway
+}
+
 function migrate_local() {
     migrate_postgres_local
     migrate_productdb_local
+    migrate_packagesdb_local
     migrate_tinybird_local
 }
 
@@ -946,7 +1003,7 @@ function start() {
 SCRIPT_USAGE="${YELLOW}${PROJECT_NAME} CLI ${RESET}\n
 Usage: ./cli <command>\n
 ${YELLOW}Scaffold:${RESET}
-  scaffold [up|down|destroy|reset|create-migration|create-product-migration|migrate-up|up-test]\n
+  scaffold [up|down|destroy|reset|create-migration|create-product-migration|create-packages-migration|migrate-up|up-test]\n
 ${YELLOW}Services:${RESET}
   service <name> [up|down|restart|status|logs|id]
   start | start-dev | start-be | start-e2e
@@ -1051,14 +1108,14 @@ while test $# -gt 0; do
         exit
         ;;
     service-restart-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "discord-ws" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
         DEV=1
         kill_all_containers
         service_start
         exit
         ;;
     clean-start-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "discord-ws" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker")
         CLEAN_START=1
         DEV=1
         start

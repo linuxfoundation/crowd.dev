@@ -8,6 +8,7 @@ from crowdgit.errors import RepoLockingError
 from crowdgit.models.repository import Repository
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.settings import (
+    FAILED_RETRY_INTERVAL_HOURS,
     MAX_CONCURRENT_ONBOARDINGS,
     MAX_INTEGRATION_RESULTS,
     REPOSITORY_UPDATE_INTERVAL_HOURS,
@@ -31,7 +32,6 @@ REPO_SELECT_COLUMNS = """
     rp.branch,
     rp."maintainerFile",
     rp."lastMaintainerRunAt",
-    rp."stuckRequiresReOnboard",
     rp."reOnboardingCount"
 """
 
@@ -125,14 +125,32 @@ async def acquire_repository(query: str, params: tuple = None) -> Repository | N
 async def acquire_recurrent_repo() -> Repository | None:
     """Acquire a regular (non-onboarding) repository, that were not processed in the last x hours (REPOSITORY_UPDATE_INTERVAL_HOURS)"""
     recurrent_repo_sql_query = f"""
-    WITH selected_repo AS (
+    -- Rate-limit guard: Gerrit (automotivelinux) aggressively rate-limits concurrent connections.
+    -- This CTE checks if any automotivelinux repo is already being processed,
+    -- so we skip picking another one from the same host until the current one finishes.
+    WITH automotivelinux_processing AS (
+        SELECT 1
+        FROM git."repositoryProcessing" rp2
+        JOIN public.repositories r2 ON r2.id = rp2."repositoryId"
+        WHERE rp2.state = 'processing'
+            AND rp2."lockedAt" IS NOT NULL
+            AND r2.url LIKE '%gerrit.automotivelinux.org%'
+        LIMIT 1
+    ),
+    selected_repo AS (
         SELECT r.id
         FROM public.repositories r
         JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
         WHERE NOT (rp.state = ANY($2))
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
-            AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * $3
+            AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
+                CASE WHEN rp.state = 'failed' THEN $4::numeric ELSE $3::numeric END
+            )
+            AND NOT (
+                r.url LIKE '%gerrit.automotivelinux.org%'
+                AND EXISTS (SELECT 1 FROM automotivelinux_processing)
+            )
         ORDER BY rp.priority ASC, rp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF rp SKIP LOCKED
@@ -150,12 +168,17 @@ async def acquire_recurrent_repo() -> Repository | None:
     states_to_exclude = (
         RepositoryState.PENDING,
         RepositoryState.PROCESSING,
-        RepositoryState.STUCK,
         RepositoryState.PENDING_REONBOARD,
+        RepositoryState.AUTH_REQUIRED,
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
-        (RepositoryState.PROCESSING, states_to_exclude, REPOSITORY_UPDATE_INTERVAL_HOURS),
+        (
+            RepositoryState.PROCESSING,
+            states_to_exclude,
+            REPOSITORY_UPDATE_INTERVAL_HOURS,
+            FAILED_RETRY_INTERVAL_HOURS,
+        ),
     )
 
 
@@ -268,6 +291,17 @@ async def update_last_processed_commit(repo_id: str, commit_hash: str, branch: s
     return str(result)
 
 
+async def update_repository_licenses(repository_id: str, licenses: list[str]) -> None:
+    sql_query = """
+    UPDATE public.repositories
+        SET licenses = $1::varchar[],
+        "updatedAt" = NOW()
+    WHERE id = $2
+      AND licenses IS DISTINCT FROM $1::varchar[]
+    """
+    await execute(sql_query, (licenses, repository_id))
+
+
 async def mark_repo_as_processed(repo_id: str, repo_state: RepositoryState):
     sql_query = """
     UPDATE git."repositoryProcessing"
@@ -339,8 +373,12 @@ async def upsert_maintainer(
         INSERT INTO "maintainersInternal"
         ("role", "originalRole", "repoUrl", "repoId", "identityId", "startDate", "endDate")
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT ("repoId", "identityId", "startDate", "endDate") DO UPDATE
-        SET role = EXCLUDED.role, "originalRole" = EXCLUDED."originalRole", "updatedAt" = NOW()
+        ON CONFLICT ("repoId", "identityId", role) DO UPDATE
+        SET "originalRole" = EXCLUDED."originalRole",
+            "repoUrl" = EXCLUDED."repoUrl",
+            "startDate" = COALESCE("maintainersInternal"."startDate", EXCLUDED."startDate"),
+            "endDate" = NULL,
+            "updatedAt" = NOW()
     """
     await execute(
         sql_query,

@@ -1,6 +1,6 @@
 import {
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
+  fetchManyOrganizationAffiliationPolicies,
 } from '@crowd/data-access-layer'
 import { DbStore } from '@crowd/data-access-layer/src/database'
 import {
@@ -25,18 +25,11 @@ export class OrganizationService extends LoggerBase {
     source: string,
     integrationId: string,
     data: IOrganization,
-  ): Promise<string> {
-    const id = await this.store.transactionally(async (txStore) => {
+  ): Promise<string | undefined> {
+    return this.store.transactionally(async (txStore) => {
       const qe = dbStoreQx(txStore)
-      const id = await findOrCreateOrganization(qe, source, data, integrationId)
-      return id
+      return findOrCreateOrganization(qe, source, data, integrationId, true)
     })
-
-    if (!id) {
-      throw new Error('Organization not found or created!')
-    }
-
-    return id
   }
 
   public async addToMember(
@@ -54,23 +47,21 @@ export class OrganizationService extends LoggerBase {
 
     const newMemberOrgs = await addOrgsToMember(qe, memberId, orgs)
 
-    for (const newMemberOrg of newMemberOrgs) {
-      // Check if organization affiliation is blocked
-      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-        qe,
-        newMemberOrg.organizationId,
-      )
+    const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(
+      qe,
+      newMemberOrgs.map((mo) => mo.organizationId),
+    )
 
-      if (isAffiliationBlocked) {
-        // If organization affiliation is blocked, create an affiliation override
-        await changeMemberOrganizationAffiliationOverrides(qe, [
-          {
-            memberId,
-            memberOrganizationId: newMemberOrg.memberOrganizationId,
-            allowAffiliation: false,
-          },
-        ])
-      }
+    const overrides = newMemberOrgs
+      .filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
+      .map((mo) => ({
+        memberId,
+        memberOrganizationId: mo.memberOrganizationId,
+        allowAffiliation: false,
+      }))
+
+    if (overrides.length > 0) {
+      await changeMemberOrganizationAffiliationOverrides(qe, overrides)
     }
   }
 

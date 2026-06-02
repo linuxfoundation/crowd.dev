@@ -37,9 +37,6 @@
   "organizationEnrichment": {},
   "eagleEye": {},
   "githubToken": {},
-  "slackAlerting": {
-    "url": ""
-  },
   "auth0": {},
   "sso": {},
   "crowdAnalytics": {

@@ -42,6 +42,7 @@ const parseBotMember = (memberData: GithubPrepareMemberOutput): IMemberData => {
         value: memberData.memberFromApi.login,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GITHUB,
       },
     ],
     displayName: memberData.memberFromApi.login,
@@ -72,6 +73,7 @@ const parseDeletedMember = (memberData: GithubPrepareMemberOutput): IMemberData 
         value: memberData.memberFromApi.login,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GITHUB,
       },
     ],
     displayName: 'Deleted User',
@@ -115,6 +117,7 @@ const parseMember = (memberData: GithubPrepareMemberOutput): IMemberData => {
         type: MemberIdentityType.USERNAME,
         sourceId: memberFromApi.id.toString(),
         verified: true,
+        verifiedBy: PlatformType.GITHUB,
       },
     ],
     displayName: memberFromApi?.name?.trim() || memberFromApi.login,
@@ -146,6 +149,7 @@ const parseMember = (memberData: GithubPrepareMemberOutput): IMemberData => {
       value: email,
       type: MemberIdentityType.EMAIL,
       verified: true,
+      verifiedBy: PlatformType.GITHUB,
     })
   }
 
@@ -245,6 +249,7 @@ const parseOrgMember = (memberData: GithubPrepareOrgMemberOutput): IMemberData =
         value: orgFromApi.login,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GITHUB,
       },
     ],
     displayName: orgFromApi?.name?.trim() || orgFromApi.login,
@@ -270,6 +275,7 @@ const parseOrgMember = (memberData: GithubPrepareOrgMemberOutput): IMemberData =
       value: orgFromApi.email,
       type: MemberIdentityType.EMAIL,
       verified: true,
+      verifiedBy: PlatformType.GITHUB,
     })
   }
 

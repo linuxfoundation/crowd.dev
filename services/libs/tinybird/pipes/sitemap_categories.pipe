@@ -1,3 +1,3 @@
 NODE sitemap_categories_slugs
 SQL >
-    SELECT slug FROM categories FINAL
+    SELECT slug FROM categories FINAL WHERE isNull (deletedAt)

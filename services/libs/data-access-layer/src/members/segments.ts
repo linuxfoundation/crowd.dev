@@ -1,6 +1,3 @@
-import map from 'lodash.map'
-import pickBy from 'lodash.pickby'
-
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { getServiceChildLogger } from '@crowd/logging'
 import { SegmentData } from '@crowd/types'
@@ -14,13 +11,10 @@ import { QueryExecutor } from '../queryExecutor'
 import { buildSegmentActivityTypes, isSegmentSubproject } from '../segments'
 import { prepareBulkInsert } from '../utils'
 
-import {
-  IMemberActivitySummary,
-  IMemberSegmentAggregates,
-  IMemberSegmentDisplayAggregates,
-} from './types'
+import { BLACKLISTED_MEMBER_TITLES } from './base'
+import { IMemberActivitySummary, IMemberSegmentAggregates } from './types'
 
-const log = getServiceChildLogger('organizations/segments')
+const log = getServiceChildLogger('members/segments')
 
 export async function findLastSyncDate(qx: QueryExecutor, memberId: string): Promise<Date | null> {
   const result = await qx.selectOneOrNone(
@@ -114,45 +108,6 @@ export async function fetchAbsoluteMemberAggregates(
       memberId,
     },
   )
-}
-
-export async function updateMemberDisplayAggregates(
-  qx: QueryExecutor,
-  data: IMemberSegmentDisplayAggregates[],
-): Promise<void> {
-  if (data.some((item) => !item.memberId || !item.segmentId)) {
-    throw new Error('Missing memberId or segmentId!')
-  }
-
-  await qx.tx(async (trx) => {
-    for (const item of data) {
-      // dynamically add non-falsy fields to update
-      const updates = pickBy(
-        {
-          lastActive: item.lastActive,
-          averageSentiment: item.averageSentiment,
-          activityTypes: item.activityTypes,
-        },
-        (value) => !!value,
-      )
-
-      const setClauses = map(updates, (_value, key) => `"${key}" = $(${key})`)
-      setClauses.push('"updatedAt" = now()')
-
-      await trx.result(
-        `
-        UPDATE "memberSegmentsAgg"
-        SET ${setClauses.join(', ')}
-        WHERE "memberId" = $(memberId) AND "segmentId" = $(segmentId);
-        `,
-        {
-          ...updates,
-          memberId: item.memberId,
-          segmentId: item.segmentId,
-        },
-      )
-    }
-  })
 }
 
 export async function includeMemberToSegments(
@@ -251,7 +206,21 @@ export async function findMemberWorkExperience(
   qx: QueryExecutor,
   memberId: string,
   timestamp: string,
+  emailDomain?: string,
 ): Promise<IWorkExperienceData[] | null> {
+  let domainOrClause = ''
+  if (emailDomain) {
+    domainOrClause = `
+          OR (mo."source" = 'email-domain' AND EXISTS (
+            SELECT 1 FROM "organizationIdentities" oi
+            WHERE oi."organizationId" = mo."organizationId"
+              AND oi.type = 'primary-domain'
+              AND oi.verified = true
+              AND LOWER(oi.value) = LOWER($(emailDomain))
+          ))
+    `
+  }
+
   const result = await qx.select(
     `
       SELECT
@@ -260,17 +229,19 @@ export async function findMemberWorkExperience(
       FROM "memberOrganizations" mo
       LEFT JOIN "memberOrganizationAffiliationOverrides" ovr on ovr."memberOrganizationId" = mo."id"
       WHERE mo."memberId" = $(memberId)
+        AND mo."deletedAt" IS NULL
+        AND coalesce(ovr."allowAffiliation", true) = true
         AND (
           (mo."dateStart" <= $(timestamp) AND mo."dateEnd" >= $(timestamp))
           OR (mo."dateStart" <= $(timestamp) AND mo."dateEnd" IS NULL)
+          ${domainOrClause}
         )
-        AND mo."deletedAt" IS NULL
-        AND coalesce(ovr."allowAffiliation", true) = true
       ORDER BY mo."dateStart" DESC, mo.id
     `,
     {
       memberId,
       timestamp,
+      emailDomain,
     },
   )
 
@@ -368,14 +339,13 @@ export async function findAllUnkownDatedOrganizations(
   return filterOutBlacklistedTitles(result)
 }
 
-const BLACKLISTED_TITLES = ['Investor', 'Mentor', 'Board Member']
 function filterOutBlacklistedTitles(experiences: IWorkExperienceData[]): IWorkExperienceData[] {
   return experiences.filter(
     (row) =>
       !row.title ||
       (row.title !== null &&
         row.title !== undefined &&
-        !BLACKLISTED_TITLES.some((t) => row.title.toLowerCase().includes(t.toLowerCase()))),
+        !BLACKLISTED_MEMBER_TITLES.some((t) => row.title.toLowerCase().includes(t))),
   )
 }
 

@@ -1,0 +1,103 @@
+DESCRIPTION >
+    - Calculates repository-level organization dependency health score.
+    - Returns the number of organizations making up 51% of contributions, their combined percentage, and benchmark (0-5).
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter
+    - `endDate`: Optional DateTime filter
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_organization_dependency_count
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, organizationId, count() AS contributionCount
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            organizationId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel, organizationId
+    {% else %}
+        SELECT channel, organizationId, count() AS contributionCount
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            organizationId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfDay(now() - INTERVAL 365 DAY)
+            AND timestamp < toStartOfDay(now() + INTERVAL 1 DAY)
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel, organizationId
+    {% end %}
+
+NODE health_score_organization_dependency_pct
+SQL >
+    %
+    SELECT
+        channel,
+        organizationId,
+        contributionCount,
+        (
+            contributionCount * 100.0 / SUM(contributionCount) OVER (PARTITION BY channel)
+        ) AS contributionPercentage
+    FROM repo_health_score_organization_dependency_count
+    ORDER BY contributionPercentage DESC
+
+NODE health_score_organization_dependency_running
+SQL >
+    %
+    SELECT
+        channel,
+        organizationId,
+        contributionPercentage,
+        SUM(contributionPercentage) OVER (
+            PARTITION BY channel ORDER BY contributionPercentage DESC, organizationId
+        ) AS contributionPercentageRunningTotal
+    FROM health_score_organization_dependency_pct
+
+NODE health_score_organization_dependency_score
+SQL >
+    %
+    SELECT
+        channel,
+        count() AS organizationDependencyCount,
+        round(sum(contributionPercentage)) AS organizationDependencyPercentage
+    FROM health_score_organization_dependency_running
+    WHERE
+        contributionPercentageRunningTotal < 51
+        OR (contributionPercentageRunningTotal - contributionPercentage < 51)
+    GROUP BY channel
+
+NODE health_score_organization_dependency_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        organizationDependencyCount,
+        organizationDependencyPercentage,
+        CASE
+            WHEN organizationDependencyCount BETWEEN 0 AND 1
+            THEN 0
+            WHEN organizationDependencyCount = 2
+            THEN 1
+            WHEN organizationDependencyCount = 3
+            THEN 2
+            WHEN organizationDependencyCount BETWEEN 4 AND 5
+            THEN 3
+            WHEN organizationDependencyCount BETWEEN 6 AND 7
+            THEN 4
+            WHEN organizationDependencyCount >= 8
+            THEN 5
+            ELSE 0
+        END AS organizationDependencyBenchmark
+    FROM health_score_organization_dependency_score

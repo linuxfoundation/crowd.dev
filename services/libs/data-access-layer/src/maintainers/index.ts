@@ -16,6 +16,7 @@ export interface Maintainer {
   url: string
   repoType: MaintainerRepoType
   role: string
+  maintainerFile: string | null
 }
 
 export async function findMaintainerRoles(
@@ -24,8 +25,13 @@ export async function findMaintainerRoles(
 ): Promise<Maintainer[]> {
   return qx.select(
     `
-      SELECT * FROM mv_maintainer_roles
-      WHERE "memberId" IN ($(memberIds:csv))
+      SELECT
+        mmr.*,
+        rp."maintainerFile"
+      FROM mv_maintainer_roles mmr
+      LEFT JOIN public.repositories r ON r.url = mmr.url
+      LEFT JOIN git."repositoryProcessing" rp ON rp."repositoryId" = r.id
+      WHERE mmr."memberId" IN ($(memberIds:csv))
     `,
     {
       memberIds,

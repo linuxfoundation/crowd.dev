@@ -12,6 +12,7 @@ SQL >
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt
     FROM activityRelations_enriched_deduplicated_ds act
+    WHERE snapshotId = (SELECT max(snapshotId) FROM activityRelations_enriched_deduplicated_ds)
     GROUP BY segmentId, memberId
 
 TYPE COPY

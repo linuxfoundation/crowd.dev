@@ -78,10 +78,12 @@ export async function addEvaluationSuite(
             ($(id), $(name), $(repo), $(insightsProjectId), $(insightsProjectSlug), $(catalogId), $(result), $(corruptedState), now(), now())
         on conflict ("repo", "catalogId")
             do update
-            set "updatedAt"      = EXCLUDED."updatedAt",
-                "name"           = EXCLUDED."name",
-                "result"         = EXCLUDED."result",
-                "corruptedState" = EXCLUDED."corruptedState"
+            set "updatedAt"           = EXCLUDED."updatedAt",
+                "name"                = EXCLUDED."name",
+                "result"              = EXCLUDED."result",
+                "corruptedState"      = EXCLUDED."corruptedState",
+                "insightsProjectId"   = EXCLUDED."insightsProjectId",
+                "insightsProjectSlug" = EXCLUDED."insightsProjectSlug"
     `,
     {
       id: generateUUIDv4(),
@@ -154,13 +156,15 @@ export async function addSuiteControlEvaluation(
             )
         on conflict ("securityInsightsEvaluationSuiteId", "repo", "controlId")
             do update
-            set 
-                "updatedAt"        = EXCLUDED."updatedAt",
-                "name"             = EXCLUDED."name",
-                "result"           = EXCLUDED."result",
-                "message"          = EXCLUDED."message",
-                "corruptedState"   = EXCLUDED."corruptedState",
-                "remediationGuide" = EXCLUDED."remediationGuide"
+            set
+                "updatedAt"           = EXCLUDED."updatedAt",
+                "name"                = EXCLUDED."name",
+                "result"              = EXCLUDED."result",
+                "message"             = EXCLUDED."message",
+                "corruptedState"      = EXCLUDED."corruptedState",
+                "remediationGuide"    = EXCLUDED."remediationGuide",
+                "insightsProjectId"   = EXCLUDED."insightsProjectId",
+                "insightsProjectSlug" = EXCLUDED."insightsProjectSlug"
                 
     `,
     {
@@ -233,19 +237,21 @@ export async function addControlEvaluationAssessment(
             )
         on conflict ("securityInsightsEvaluationId", "repo", "requirementId")
             do update
-            set "updatedAt"      = EXCLUDED."updatedAt",
-                "applicability"  = EXCLUDED."applicability",
-                "description"    = EXCLUDED."description",
-                "result"         = EXCLUDED."result",
-                "message"        = EXCLUDED."message",
-                "steps"          = EXCLUDED."steps",
-                "stepsExecuted"  = EXCLUDED."stepsExecuted",
-                "runDuration"    = EXCLUDED."runDuration",
-                "recommendation" = EXCLUDED."recommendation",
-                "start"          = EXCLUDED."start",
-                "end"            = EXCLUDED."end",
-                "value"          = EXCLUDED."value",
-                "changes"        = EXCLUDED."changes"
+            set "updatedAt"           = EXCLUDED."updatedAt",
+                "applicability"       = EXCLUDED."applicability",
+                "description"         = EXCLUDED."description",
+                "result"              = EXCLUDED."result",
+                "message"             = EXCLUDED."message",
+                "steps"               = EXCLUDED."steps",
+                "stepsExecuted"       = EXCLUDED."stepsExecuted",
+                "runDuration"         = EXCLUDED."runDuration",
+                "recommendation"      = EXCLUDED."recommendation",
+                "start"               = EXCLUDED."start",
+                "end"                 = EXCLUDED."end",
+                "value"               = EXCLUDED."value",
+                "changes"             = EXCLUDED."changes",
+                "insightsProjectId"   = EXCLUDED."insightsProjectId",
+                "insightsProjectSlug" = EXCLUDED."insightsProjectSlug"
                 
     `,
     {

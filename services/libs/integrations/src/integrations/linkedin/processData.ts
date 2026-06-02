@@ -94,6 +94,7 @@ const getMember = async (
         type: MemberIdentityType.USERNAME,
         sourceId,
         verified: true,
+        verifiedBy: PlatformType.LINKEDIN,
       },
     ],
     displayName,

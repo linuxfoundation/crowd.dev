@@ -195,13 +195,17 @@ export default class IntegrationService {
       const { segmentId, id: insightsProjectId } = insightsProject
       const { platform } = data
 
-      await this.updateInsightsProject({
-        insightsProjectId,
-        isFirstUpdate: true,
-        platform,
-        segmentId,
-        transaction,
-      })
+      // Skip for GITHUB_NANGO: repos aren't available at create time.
+      // - GITHUB_NANGO: repos stripped from settings; githubNangoConnect calls updateInsightsProject after mapGithubRepos populates public.repositories.
+      if (platform !== PlatformType.GITHUB_NANGO) {
+        await this.updateInsightsProject({
+          insightsProjectId,
+          isFirstUpdate: true,
+          platform,
+          segmentId,
+          transaction,
+        })
+      }
 
       return integration
     } catch (error) {
@@ -836,6 +840,36 @@ export default class IntegrationService {
 
         // create github mapping - this also creates git integration
         await txService.mapGithubRepos(integration.id, mapping, false, forkedFromMap)
+
+        // Re-run updateInsightsProject now that repos are mapped, so metadata can be fetched.
+        // This is a best-effort enrichment step: failures here should not roll back the core
+        // GitHub Nango connection or repo mapping.
+        try {
+          const collectionService = new CollectionService(txOptions)
+          const [insightsProject] = await collectionService.findInsightsProjectsBySegmentId(
+            integration.segmentId,
+          )
+          if (insightsProject) {
+            await txService.updateInsightsProject({
+              insightsProjectId: insightsProject.id,
+              isFirstUpdate: true,
+              platform: PlatformType.GITHUB_NANGO,
+              segmentId: insightsProject.segmentId,
+              transaction,
+            })
+          }
+        } catch (err) {
+          // Log and continue; metadata enrichment is non-critical and should not block connection.
+          // eslint-disable-next-line no-console
+          console.error(
+            'Failed to update insights project metadata after GitHub Nango connection',
+            {
+              integrationId: integration?.id,
+              segmentId: integration?.segmentId,
+              error: err,
+            },
+          )
+        }
       } else {
         // update existing integration
         integration = await txService.findById(integrationId)

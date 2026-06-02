@@ -374,7 +374,7 @@ export default class IntegrationStreamService extends LoggerBase {
       await integrationService.processWebhookStream(context)
       this.log.debug('Finished processing webhook stream!')
       await this.repo.deleteStream(streamId)
-      await this.webhookRepo.markWebhookProcessed(webhookId)
+      await this.webhookRepo.deleteWebhook(webhookId)
       return true
     } catch (err) {
       this.log.error(err, 'Error while processing webhook stream!')

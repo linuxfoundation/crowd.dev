@@ -11,6 +11,7 @@ export function prepareBulkInsert(
   columns: string[],
   objects: object[],
   onConflict?: string,
+  returnRows = false,
 ) {
   const preparedObjects = objects.map((_, r) => {
     return `(${columns.map((_, c) => `$(rows.r${r}_c${c})`).join(',')})`
@@ -26,6 +27,7 @@ export function prepareBulkInsert(
       INSERT INTO $(table:name) (${columns.map((_, i) => `$(columns.col${i}:name)`).join(',')})
       VALUES ${preparedObjects.join(',')}
       ${onConflictClause}
+      ${returnRows ? 'RETURNING *' : ''}
     `,
     {
       table,

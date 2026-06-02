@@ -183,7 +183,6 @@ cython_debug/
 /docker/docker-compose.yaml
 /docker/docker-compose.dev.yaml
 
-/backend/superface/**
 docker/volume
 
 services/libs/*/dist
@@ -196,9 +195,13 @@ services/libs/tinybird/.diff_tmp
 # custom cursor rules
 .cursor/rules/*.local.mdc
 
-# claude code rules
-CLAUDE.md
-.claude
+# claude
+.claude/settings.local.json
+.claude/cache/
+.claude/tmp/
+.claude/logs/
+.claude/sessions/
+.claude/todos/
 
 # git integration test repositories & output
 services/apps/git_integration/src/test/repos/

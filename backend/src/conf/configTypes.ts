@@ -68,7 +68,7 @@ export interface ApiConfiguration {
 export interface Auth0Configuration {
   clientId: string
   jwks: string
-  issuerBaseURL: string
+  issuerBaseURLs: string
   audience: string
 }
 
@@ -154,10 +154,6 @@ export interface GithubTokenConfiguration {
 
 export interface StackExchangeConfiguration {
   key: string
-}
-
-export interface SlackAlertingConfiguration {
-  url: string
 }
 
 export interface IntegrationProcessingConfiguration {

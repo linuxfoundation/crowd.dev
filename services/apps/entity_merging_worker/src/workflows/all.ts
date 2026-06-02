@@ -14,15 +14,23 @@ const {
   recalculateActivityAffiliationsOfOrganizationAsync,
   setMergeAction,
   syncMember,
-  syncOrganization,
   notifyFrontendMemberMergeSuccessful,
   notifyFrontendMemberUnmergeSuccessful,
   syncRemoveMember,
   finishMemberMergingUpdateActivities,
   finishMemberUnmergingUpdateActivities,
 } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '60 minutes',
+  startToCloseTimeout: '2 hours',
 })
+
+const { syncOrganization } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '2 hours',
+  heartbeatTimeout: '5 minutes',
+})
+
+export async function deleteOrphanMember(memberId: string): Promise<void> {
+  await deleteMember(memberId)
+}
 
 export async function finishMemberMerging(
   primaryId: string,
@@ -91,7 +99,7 @@ export async function finishOrganizationMerging(
   secondaryId: string,
   original: string,
   toMerge: string,
-  blockAffiliation: boolean,
+  shouldRecalculateAffiliations: boolean,
   userId: string,
 ): Promise<void> {
   await setMergeAction(primaryId, secondaryId, {
@@ -99,7 +107,7 @@ export async function finishOrganizationMerging(
   })
   await finishOrganizationMergingUpdateActivities(secondaryId, primaryId)
 
-  if (blockAffiliation) {
+  if (shouldRecalculateAffiliations) {
     await recalculateActivityAffiliationsOfOrganizationAsync(primaryId)
   }
 

@@ -36,7 +36,7 @@ export const scheduleSnowflakeS3Cleanup = async () => {
     } else {
       svc.log.error({ err }, 'Failed to create snowflake-s3-cleanup schedule')
       sendSlackNotification(
-        SlackChannel.INTEGRATION_NOTIFICATIONS,
+        SlackChannel.CDP_INTEGRATIONS_ALERTS,
         SlackPersona.ERROR_REPORTER,
         'Snowflake S3 Cleanup Schedule Failed',
         `Failed to create the \`snowflake-s3-cleanup\` Temporal schedule.\n\n*Error:* ${err.message || err}`,

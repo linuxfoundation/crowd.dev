@@ -34,6 +34,7 @@ function parseMember(record: SlackMember): IMemberData {
         type: MemberIdentityType.USERNAME,
         sourceId: record.id,
         verified: true,
+        verifiedBy: PlatformType.SLACK,
       },
     ],
     attributes: {
@@ -65,6 +66,7 @@ function parseMember(record: SlackMember): IMemberData {
       type: MemberIdentityType.EMAIL,
       sourceId: record.id,
       verified: true,
+      verifiedBy: PlatformType.SLACK,
     })
   }
 

@@ -1,6 +1,6 @@
 import commandLineArgs from 'command-line-args'
-import { randomUUID } from 'crypto'
 
+import { signalMemberUpdate } from '@crowd/common_services'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
 import { getServiceLogger } from '@crowd/logging'
 import { getTemporalClient } from '@crowd/temporal'
@@ -99,26 +99,8 @@ setImmediate(async () => {
       try {
         log.info(`Processing member: ${member.id}`)
 
-        const uuid = randomUUID()
-
-        await temporal.workflow.start('memberUpdate', {
-          taskQueue: 'profiles',
-          workflowId: `member-update-fix-unaffiliation/${organizationId}/${member.id}/${uuid}`,
-          retry: {
-            maximumAttempts: 10,
-          },
-          args: [
-            {
-              member: {
-                id: member.id,
-              },
-              memberOrganizationIds: [organizationId],
-              syncToOpensearch: false,
-            },
-          ],
-          searchAttributes: {
-            TenantId: ['875c38bd-2b1b-4e91-ad07-0cfbabb4c49f'], // default tenantId
-          },
+        await signalMemberUpdate(temporal, member.id, {
+          memberOrganizationIds: [organizationId],
         })
 
         processedCount++

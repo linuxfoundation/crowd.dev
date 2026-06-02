@@ -455,7 +455,9 @@ export class CollectionService extends LoggerBase {
         }
       }
 
-      await this.syncRepositoryGroupsWithDb(qx, insightsProjectId, project.repositoryGroups)
+      if (project.repositoryGroups !== undefined) {
+        await this.syncRepositoryGroupsWithDb(qx, insightsProjectId, project.repositoryGroups)
+      }
 
       const txSvc = new CollectionService({
         ...this.options,

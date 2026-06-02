@@ -26,8 +26,8 @@ export default class MemberAttributeService extends LoggerBase {
   }
 
   public async validateAttributes(
-    attributes: Record<string, unknown>,
     platform: PlatformType,
+    attributes: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     const settings = await getMemberAttributeSettings(dbStoreQx(this.store), this.redis)
     const memberAttributeSettings = settings.reduce((acc, attribute) => {

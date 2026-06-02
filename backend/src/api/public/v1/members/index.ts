@@ -4,9 +4,12 @@ import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
+import { createMemberIdentity } from './identities/createMemberIdentity'
 import { getMemberIdentities } from './identities/getMemberIdentities'
 import { verifyMemberIdentity } from './identities/verifyMemberIdentity'
 import { getMemberMaintainerRoles } from './maintainer-roles/getMemberMaintainerRoles'
+import { getProjectAffiliations } from './project-affiliations/getProjectAffiliations'
+import { patchProjectAffiliation } from './project-affiliations/patchProjectAffiliation'
 import { resolveMemberByIdentities } from './resolveMember'
 import { createMemberWorkExperience } from './work-experiences/createMemberWorkExperience'
 import { deleteMemberWorkExperience } from './work-experiences/deleteMemberWorkExperience'
@@ -25,6 +28,12 @@ export function membersRouter(): Router {
     safeWrap(getMemberIdentities),
   )
 
+  router.post(
+    '/:memberId/identities',
+    requireScopes([SCOPES.WRITE_MEMBER_IDENTITIES]),
+    safeWrap(createMemberIdentity),
+  )
+
   router.patch(
     '/:memberId/identities/:identityId',
     requireScopes([SCOPES.WRITE_MEMBER_IDENTITIES]),
@@ -35,6 +44,18 @@ export function membersRouter(): Router {
     '/:memberId/maintainer-roles',
     requireScopes([SCOPES.READ_MAINTAINER_ROLES]),
     safeWrap(getMemberMaintainerRoles),
+  )
+
+  router.get(
+    '/:memberId/project-affiliations',
+    requireScopes([SCOPES.READ_PROJECT_AFFILIATIONS]),
+    safeWrap(getProjectAffiliations),
+  )
+
+  router.patch(
+    '/:memberId/project-affiliations/:projectId',
+    requireScopes([SCOPES.WRITE_PROJECT_AFFILIATIONS]),
+    safeWrap(patchProjectAffiliation),
   )
 
   router.post(

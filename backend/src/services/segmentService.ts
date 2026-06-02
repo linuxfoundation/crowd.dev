@@ -69,6 +69,15 @@ export default class SegmentService extends LoggerBase {
         })
       }
 
+      if (isSegmentSubproject(segment) && data.slug && data.slug !== segment.slug) {
+        const collectionService = new CollectionService({ ...this.options, transaction })
+        const projects = await collectionService.findInsightsProjectsBySegmentId(segment.id)
+        if (projects.length > 0) {
+          const normalizedSlug = data.slug.replace(/^nonlf_/, '')
+          await collectionService.updateInsightsProject(projects[0].id, { slug: normalizedSlug })
+        }
+      }
+
       await SequelizeRepository.commitTransaction(transaction)
 
       return await this.findById(id)

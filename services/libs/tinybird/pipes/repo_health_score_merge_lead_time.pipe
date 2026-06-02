@@ -1,0 +1,60 @@
+DESCRIPTION >
+    - Calculates repository-level merge lead time health score.
+    - Returns average days to merge PRs and benchmark (0-5) per repository.
+    - Queries `pull_requests_analyzed` for optimal performance.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter for PRs opened after timestamp
+    - `endDate`: Optional DateTime filter for PRs opened before timestamp
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_merge_lead_time_score
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, round(avg(dateDiff('day', openedAt, mergedAt))) AS mergeLeadTime
+        FROM pull_requests_analyzed
+        WHERE
+            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND openedAt
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND openedAt < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, round(avg(dateDiff('day', openedAt, mergedAt))) AS mergeLeadTime
+        FROM pull_requests_analyzed
+        WHERE
+            openedAt >= toStartOfDay(now() - toIntervalDay(365))
+            AND openedAt < toStartOfDay(now() + toIntervalDay(1))
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel
+    {% end %}
+
+NODE health_score_merge_lead_time_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        mergeLeadTime,
+        CASE
+            WHEN mergeLeadTime >= 30
+            THEN 0
+            WHEN mergeLeadTime BETWEEN 21 AND 30
+            THEN 1
+            WHEN mergeLeadTime BETWEEN 15 AND 20
+            THEN 2
+            WHEN mergeLeadTime BETWEEN 7 AND 14
+            THEN 3
+            WHEN mergeLeadTime BETWEEN 3 AND 6
+            THEN 4
+            WHEN mergeLeadTime BETWEEN 0 AND 2
+            THEN 5
+            ELSE 0
+        END AS mergeLeadTimeBenchmark
+    FROM repo_health_score_merge_lead_time_score

@@ -1,0 +1,71 @@
+DESCRIPTION >
+    - Calculates repository-level contributions outside work hours health score.
+    - Returns percentage of contributions outside work hours and benchmark (0-5) per repository.
+    - Lower percentage (more during work hours) scores higher.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter
+    - `endDate`: Optional DateTime filter
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_contributions_outside_work_hours_score
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT
+            channel,
+            round(
+                (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
+                / count(id)
+            ) AS contributionsOutsideWorkHours
+        FROM contributions_with_local_time_ds
+        WHERE
+            channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT
+            channel,
+            round(
+                (100. * countIf((weekday >= 6) OR (two_hours_block >= 18) OR (two_hours_block < 8)))
+                / count(id)
+            ) AS contributionsOutsideWorkHours
+        FROM contributions_with_local_time_ds
+        WHERE
+            timestamp >= toStartOfDay(now() - toIntervalDay(365))
+            AND timestamp < toStartOfDay(now() + toIntervalDay(1))
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel
+    {% end %}
+
+NODE health_score_contributions_outside_work_hours_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        contributionsOutsideWorkHours,
+        CASE
+            WHEN contributionsOutsideWorkHours >= 75
+            THEN 0
+            WHEN contributionsOutsideWorkHours BETWEEN 50 AND 74
+            THEN 1
+            WHEN contributionsOutsideWorkHours BETWEEN 40 AND 49
+            THEN 2
+            WHEN contributionsOutsideWorkHours BETWEEN 30 AND 39
+            THEN 3
+            WHEN contributionsOutsideWorkHours BETWEEN 20 AND 29
+            THEN 4
+            WHEN contributionsOutsideWorkHours BETWEEN 0 AND 19
+            THEN 5
+            ELSE 0
+        END AS contributionsOutsideWorkHoursBenchmark
+    FROM repo_health_score_contributions_outside_work_hours_score

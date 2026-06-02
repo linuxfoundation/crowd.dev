@@ -66,7 +66,7 @@ export default class EnrichmentServiceSerpApi extends LoggerBase implements IEnr
       return response.total_searches_left > 0
     } catch (error) {
       this.log.error('Error while checking serpapi account usage', error)
-      return false
+      throw error
     }
   }
 

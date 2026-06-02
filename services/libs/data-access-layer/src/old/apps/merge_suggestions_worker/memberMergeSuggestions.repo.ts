@@ -241,7 +241,12 @@ class MemberMergeSuggestionsRepository {
           mem.attributes,
           mem."displayName",
           mem."joinedAt",
-          jsonb_agg(distinct mI) as identities,
+          jsonb_agg(distinct jsonb_build_object(
+            'platform', mI.platform,
+            'value', mI.value,
+            'type', mI.type,
+            'verified', mI.verified
+          )) as identities,
           coalesce(
             (
               select jsonb_agg(

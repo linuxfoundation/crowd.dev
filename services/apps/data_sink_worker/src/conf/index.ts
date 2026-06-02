@@ -7,10 +7,6 @@ import { IRedisConfiguration } from '@crowd/redis'
 import { ITemporalConfig } from '@crowd/temporal'
 import { QueuePriorityLevel } from '@crowd/types'
 
-export interface ISlackAlertingConfig {
-  url: string
-}
-
 export interface IGithubConfig {
   isSnowflakeEnabled: string
 }
@@ -50,14 +46,6 @@ export const DB_CONFIG = (): IDatabaseConfig => {
 
   dbConfig = config.get<IDatabaseConfig>('db')
   return dbConfig
-}
-
-let slackAlertingConfig: ISlackAlertingConfig
-export const SLACK_ALERTING_CONFIG = (): ISlackAlertingConfig => {
-  if (slackAlertingConfig) return slackAlertingConfig
-
-  slackAlertingConfig = config.get<ISlackAlertingConfig>('slackAlerting')
-  return slackAlertingConfig
 }
 
 let temporalConfig: ITemporalConfig | undefined

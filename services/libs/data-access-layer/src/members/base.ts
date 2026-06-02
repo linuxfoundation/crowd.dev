@@ -95,6 +95,8 @@ export interface MemberUpdateInput {
   manuallyCreated?: boolean
 }
 
+export const BLACKLISTED_MEMBER_TITLES = ['investor', 'mentor', 'board member']
+
 export const MEMBER_MERGE_FIELDS = [
   'affiliations',
   'attributes',
@@ -535,8 +537,6 @@ export async function executeQuery(
 
   const result = { rows, count, limit, offset }
 
-  // Cache the result
-  log.info(`Caching members advanced query result: ${cacheKey}`)
   await cache.set(cacheKey, result, 21600) // 6 hours TTL
 
   return result
@@ -549,7 +549,6 @@ async function refreshCacheInBackground(
   params: IQueryMembersAdvancedParams,
 ): Promise<void> {
   try {
-    log.info(`Refreshing members advanced query cache in background: ${cacheKey}`)
     await executeQuery(qx, redis, cacheKey, params)
   } catch (error) {
     log.warn('Background cache refresh failed:', error)
@@ -679,6 +678,7 @@ export async function createMember(qx: QueryExecutor, data: MemberCreateInput): 
   const dbData: Record<string, unknown> = {
     ...data,
     id,
+    manuallyCreated: data.manuallyCreated ?? false,
     tenantId: DEFAULT_TENANT_ID,
     createdAt: ts,
     updatedAt: ts,

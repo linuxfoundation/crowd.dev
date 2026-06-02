@@ -62,43 +62,20 @@ export default class DataSinkRepository extends RepositoryBase<DataSinkRepositor
         `
         select r.id
         from integration.results r
-        where (r.state = $(pendingState) 
-          or (r.state = $(delayedState) and r."delayedUntil" < now())
-          or (r.state = $(errorState) and r.retries <= 5))
+        where (r.state = $(pendingState)
+          or (r.state = $(delayedState) and r."delayedUntil" < now()))
           ${lastId !== undefined ? 'and r.id > $(lastId)' : ''}
         order by r.id
         limit ${limit};
         `,
+        // ERROR rows are intentionally excluded: ERROR is a terminal state — a row reaches it
+        // only after exhausting all retries or hitting an unrepeatable error. Re-queuing it
+        // without resetting retries means it will immediately error again on the next attempt.
+        // To retry a specific error row, reset it explicitly first (state = PENDING, retries = 0).
         {
           pendingState: IntegrationResultState.PENDING,
           delayedState: IntegrationResultState.DELAYED,
-          errorState: IntegrationResultState.ERROR,
           lastId,
-        },
-      )
-
-      return results.map((s) => s.id)
-    } catch (err) {
-      this.log.error(err, 'Failed to get old results to process!')
-      throw err
-    }
-  }
-
-  public async getOldResultsToProcess(limit: number): Promise<string[]> {
-    try {
-      const results = await this.db().any(
-        `
-        select r.id
-        from integration.results r
-        where r.state = $(pendingState) 
-          or (r.state = $(delayedState) and r."delayedUntil" < now())
-          or (r.state = $(errorState) and r.retries <= 5)
-        limit ${limit};
-        `,
-        {
-          pendingState: IntegrationResultState.PENDING,
-          delayedState: IntegrationResultState.DELAYED,
-          errorState: IntegrationResultState.ERROR,
         },
       )
 

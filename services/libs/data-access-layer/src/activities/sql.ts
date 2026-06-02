@@ -7,17 +7,10 @@ import {
   ActivityRelations,
   ActivityTimeseriesDatapoint,
   Counter,
-  DbConnOrTx,
   TinybirdClient,
 } from '@crowd/database'
 import { ActivityDisplayService } from '@crowd/integrations'
-import {
-  ActivityTypeSettings,
-  IActivityBySentimentMoodResult,
-  IActivityByTypeAndPlatformResult,
-  ITimeseriesDatapoint,
-  PageData,
-} from '@crowd/types'
+import { ActivityTypeSettings, ITimeseriesDatapoint, PageData } from '@crowd/types'
 
 import { getLatestMemberActivityRelations } from '../activityRelations'
 import { MemberField, queryMembers } from '../members/base'
@@ -35,30 +28,6 @@ import {
   IQueryActivityResult,
   IQueryGroupedActivitiesParameters,
 } from './types'
-
-export async function getActivitiesById(
-  conn: DbConnOrTx,
-  ids: string[],
-  segmentIds: string[],
-  qx: QueryExecutor,
-  activityTypeSettings: ActivityTypeSettings,
-): Promise<IQueryActivityResult[]> {
-  if (ids.length === 0) {
-    return []
-  }
-
-  const data = await queryActivities(
-    {
-      filter: { and: [{ id: { in: ids } }] },
-      limit: ids.length,
-      segmentIds,
-    },
-    qx,
-    activityTypeSettings,
-  )
-
-  return data.rows
-}
 
 export const ACTIVITY_ALL_COLUMNS: ActivityColumn[] = [
   'id',
@@ -101,41 +70,6 @@ export const ACTIVITY_ALL_COLUMNS: ActivityColumn[] = [
   'gitDeletions',
   'gitIsMerge',
 ]
-
-export async function setMemberDataToActivities(
-  conn: DbConnOrTx,
-  memberId: string,
-  data: { isBot: boolean; isTeamMember: boolean },
-): Promise<void> {
-  await conn.none(
-    `
-      update activities set
-        "member_isBot" = $(isBot),
-        "member_isTeamMember" = $(isTeamMember)
-      where "memberId" = $(memberId);
-    `,
-    {
-      memberId,
-      ...data,
-    },
-  )
-}
-
-export async function addActivityToConversation(
-  conn: DbConnOrTx,
-  id: string,
-  conversationId: string,
-): Promise<void> {
-  await conn.none(
-    `
-    UPDATE activities SET "conversationId" = $(conversationId) WHERE id = $(id);
-    `,
-    {
-      id,
-      conversationId,
-    },
-  )
-}
 
 export type ActivityColumn =
   | 'id'
@@ -312,7 +246,7 @@ export async function queryActivities(
 
   let countTb = 0
   if (!arg.noCount) {
-    const countResp = await tb.pipe<{ data: { count: number }[] }>(
+    const countResp = await tb.pipeSql<{ data: { count: number }[] }>(
       'activities_relations_filtered',
       {
         ...tbParams,
@@ -441,83 +375,6 @@ export async function activitiesTimeseries(
   }))
 }
 
-export async function activitiesBySentiment(
-  qdbConn: DbConnOrTx,
-  arg: IQueryGroupedActivitiesParameters,
-): Promise<IActivityBySentimentMoodResult[]> {
-  let query = `
-    SELECT COUNT_DISTINCT(id) AS count, sentimentLabel
-    FROM activities
-    WHERE "deletedAt" IS NULL
-    AND "sentimentLabel" IS NOT NULL
-  `
-
-  if (arg.segmentIds) {
-    query += ' AND "segmentId" IN ($(segmentIds:csv))'
-  }
-
-  if (arg.platform) {
-    query += ' AND "platform" = $(platform)'
-  }
-
-  if (arg.startDate && arg.endDate) {
-    query += ' AND "timestamp" BETWEEN $(after) AND $(before)'
-  }
-
-  query += ` GROUP BY sentimentLabel;`
-
-  const rows: IActivityBySentimentMoodResult[] = await qdbConn.query(query, {
-    segmentIds: arg.segmentIds,
-    platform: arg.platform,
-    after: arg.startDate,
-    before: arg.endDate,
-  })
-
-  rows.forEach((row) => {
-    row.count = Number(row.count)
-  })
-
-  return rows
-}
-
-export async function activitiesByTypeAndPlatform(
-  qdbConn: DbConnOrTx,
-  arg: IQueryGroupedActivitiesParameters,
-): Promise<IActivityByTypeAndPlatformResult[]> {
-  let query = `
-    SELECT COUNT_DISTINCT(id) AS count, platform, type
-    FROM activities
-    WHERE "deletedAt" IS NULL
-  `
-
-  if (arg.segmentIds) {
-    query += ' AND "segmentId" IN ($(segmentIds:csv))'
-  }
-
-  if (arg.platform) {
-    query += ' AND "platform" = $(platform)'
-  }
-
-  if (arg.startDate && arg.endDate) {
-    query += ' AND "timestamp" BETWEEN $(after) AND $(before)'
-  }
-
-  query += ` GROUP BY platform, type ORDER BY count DESC;`
-
-  const rows: IActivityByTypeAndPlatformResult[] = await qdbConn.query(query, {
-    segmentIds: arg.segmentIds,
-    platform: arg.platform,
-    after: arg.startDate,
-    before: arg.endDate,
-  })
-
-  rows.forEach((row) => {
-    row.count = Number(row.count)
-  })
-
-  return rows
-}
-
 export async function getLastActivitiesForMembers(
   qx: QueryExecutor,
   memberIds: string[],
@@ -580,6 +437,11 @@ export async function createOrUpdateRelations(
   let index = 0
 
   const activityIds = new Set<string>()
+  const checkedMembers = new Map<string, string | null>() // id -> resolved id (null if not found)
+  const checkedObjectMembers = new Map<string, string | null>() // separate cache for objectMemberId lookups
+  const checkedOrganizations = new Map<string, boolean>() // id -> exists
+  const checkedSegments = new Map<string, boolean>() // id -> exists
+  const checkedConversations = new Map<string, boolean>() // id -> exists
   const valueList: string[] = []
   for (const data of relations) {
     if (data.username === undefined || data.username === null) {
@@ -597,132 +459,182 @@ export async function createOrUpdateRelations(
     if (!skipChecks) {
       // check objectMember exists
       if (data.objectMemberId !== undefined && data.objectMemberId !== null) {
-        let objectMember = await qe.select(
-          `
+        if (checkedObjectMembers.has(data.objectMemberId)) {
+          data.objectMemberId = checkedObjectMembers.get(data.objectMemberId)
+        } else {
+          let objectMember = await qe.select(
+            `
       SELECT id
       FROM members
       WHERE id = $(objectMemberId)
     `,
-          {
-            objectMemberId: data.objectMemberId,
-          },
-        )
+            {
+              objectMemberId: data.objectMemberId,
+            },
+          )
 
-        if (objectMember.length === 0) {
-          if (data.objectMemberUsername && data.platform) {
-            objectMember = await qe.select(
-              `
+          if (objectMember.length === 0) {
+            if (data.objectMemberUsername && data.platform) {
+              objectMember = await qe.select(
+                `
           SELECT "memberId"
           FROM "memberIdentities"
-          WHERE value = $(value) 
-            and platform = $(platform) 
+          WHERE value = $(value)
+            and platform = $(platform)
             and verified = true
             and "deletedAt" is null
           limit 1
         `,
-              {
-                value: data.objectMemberUsername,
-                platform: data.platform,
-              },
-            )
+                {
+                  value: data.objectMemberUsername,
+                  platform: data.platform,
+                },
+              )
 
-            if (objectMember.length === 0) {
-              data.objectMemberId = null
+              if (objectMember.length === 0) {
+                checkedObjectMembers.set(data.objectMemberId, null)
+                data.objectMemberId = null
+              } else {
+                checkedObjectMembers.set(data.objectMemberId, objectMember[0].memberId)
+                data.objectMemberId = objectMember[0].memberId
+              }
             } else {
-              data.objectMemberId = objectMember[0].memberId
+              checkedObjectMembers.set(data.objectMemberId, null)
+              data.objectMemberId = null
             }
           } else {
-            data.objectMemberId = null
+            checkedObjectMembers.set(data.objectMemberId, data.objectMemberId)
           }
         }
       }
 
       // check conversation exists
       if (data.conversationId !== undefined && data.conversationId !== null) {
-        const conversation = await qe.select(
-          `
+        if (checkedConversations.has(data.conversationId)) {
+          if (!checkedConversations.get(data.conversationId)) {
+            data.conversationId = null
+          }
+        } else {
+          const conversation = await qe.select(
+            `
       SELECT id
       FROM conversations
       WHERE id = $(conversationId)
     `,
-          {
-            conversationId: data.conversationId,
-          },
-        )
+            {
+              conversationId: data.conversationId,
+            },
+          )
 
-        if (conversation.length === 0) {
-          data.conversationId = null
+          if (conversation.length === 0) {
+            checkedConversations.set(data.conversationId, false)
+            data.conversationId = null
+          } else {
+            checkedConversations.set(data.conversationId, true)
+          }
         }
       }
 
       // check segmentId exists
-      const segment = await qe.select(
-        `
+      if (checkedSegments.has(data.segmentId)) {
+        if (!checkedSegments.get(data.segmentId)) {
+          // segment not found, skip adding this activity relation
+          continue
+        }
+      } else {
+        const segment = await qe.select(
+          `
       SELECT id
       FROM segments
       WHERE id = $(segmentId)
     `,
-        {
-          segmentId: data.segmentId,
-        },
-      )
+          {
+            segmentId: data.segmentId,
+          },
+        )
 
-      if (segment.length === 0) {
-        // segment not found, skip adding this activity relation
-        continue
+        if (segment.length === 0) {
+          checkedSegments.set(data.segmentId, false)
+          // segment not found, skip adding this activity relation
+          continue
+        }
+
+        checkedSegments.set(data.segmentId, true)
       }
 
       // check member exists
-      let member = await qe.select(
-        `
+      if (checkedMembers.has(data.memberId)) {
+        const resolved = checkedMembers.get(data.memberId)
+        if (resolved === null) {
+          // member not found, skip adding this activity relation
+          continue
+        }
+        data.memberId = resolved
+      } else {
+        let member = await qe.select(
+          `
       SELECT id
       FROM members
       WHERE id = $(memberId)
     `,
-        {
-          memberId: data.memberId,
-        },
-      )
+          {
+            memberId: data.memberId,
+          },
+        )
 
-      if (member.length === 0) {
-        // find member using identity
-        member = await qe.select(
-          `
+        if (member.length === 0) {
+          // find member using identity
+          member = await qe.select(
+            `
         SELECT "memberId"
         FROM "memberIdentities"
-        WHERE value = $(value) 
-          and platform = $(platform) 
+        WHERE value = $(value)
+          and platform = $(platform)
           and verified = true
           and "deletedAt" is null
         limit 1
       `,
-          {
-            value: data.username,
-            platform: data.platform,
-          },
-        )
-        if (member.length === 0) {
-          // member not found, skip adding this activity relation
-          continue
+            {
+              value: data.username,
+              platform: data.platform,
+            },
+          )
+          if (member.length === 0) {
+            checkedMembers.set(data.memberId, null)
+            // member not found, skip adding this activity relation
+            continue
+          } else {
+            checkedMembers.set(data.memberId, member[0].memberId)
+            data.memberId = member[0].memberId
+          }
         } else {
-          data.memberId = member[0].memberId
+          checkedMembers.set(data.memberId, data.memberId)
         }
       }
 
       if (data.organizationId !== undefined && data.organizationId !== null) {
-        const organization = await qe.select(
-          `
+        if (checkedOrganizations.has(data.organizationId)) {
+          if (!checkedOrganizations.get(data.organizationId)) {
+            data.organizationId = null
+          }
+        } else {
+          const organization = await qe.select(
+            `
         SELECT id
         FROM organizations
         WHERE id = $(organizationId)
       `,
-          {
-            organizationId: data.organizationId,
-          },
-        )
+            {
+              organizationId: data.organizationId,
+            },
+          )
 
-        if (organization.length === 0) {
-          data.organizationId = null
+          if (organization.length === 0) {
+            checkedOrganizations.set(data.organizationId, false)
+            data.organizationId = null
+          } else {
+            checkedOrganizations.set(data.organizationId, true)
+          }
         }
       }
     }

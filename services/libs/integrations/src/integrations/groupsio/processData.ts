@@ -31,6 +31,7 @@ const processMemberJoin: ProcessDataHandler = async (ctx) => {
         value: memberData.email,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GROUPSIO,
       },
       {
         sourceId: memberData.user_id.toString(),
@@ -38,6 +39,7 @@ const processMemberJoin: ProcessDataHandler = async (ctx) => {
         value: memberData.email,
         type: MemberIdentityType.EMAIL,
         verified: true,
+        verifiedBy: PlatformType.GROUPSIO,
       },
     ],
   }
@@ -72,6 +74,7 @@ const processMessage: ProcessDataHandler = async (ctx) => {
         value: memberData.email,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GROUPSIO,
       },
       {
         sourceId: memberData.user_id.toString(),
@@ -79,6 +82,7 @@ const processMessage: ProcessDataHandler = async (ctx) => {
         value: memberData.email,
         type: MemberIdentityType.EMAIL,
         verified: true,
+        verifiedBy: PlatformType.GROUPSIO,
       },
     ],
   }
@@ -114,6 +118,7 @@ const processMemberLeft: ProcessDataHandler = async (ctx) => {
         value: memberData.email,
         type: MemberIdentityType.USERNAME,
         verified: true,
+        verifiedBy: PlatformType.GROUPSIO,
       },
       {
         sourceId: memberData.user_id.toString(),
@@ -121,6 +126,7 @@ const processMemberLeft: ProcessDataHandler = async (ctx) => {
         value: memberData.email,
         type: MemberIdentityType.EMAIL,
         verified: true,
+        verifiedBy: PlatformType.GROUPSIO,
       },
     ],
   }

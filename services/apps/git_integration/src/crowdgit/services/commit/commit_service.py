@@ -17,6 +17,7 @@ from crowdgit.database.crud import (
     batch_check_parent_activities,
     batch_insert_activities,
     save_service_execution,
+    update_last_processed_commit,
 )
 from crowdgit.enums import (
     DataSinkWorkerQueueMessageType,
@@ -26,7 +27,7 @@ from crowdgit.enums import (
     IntegrationResultType,
     OperationType,
 )
-from crowdgit.errors import CrowdGitError
+from crowdgit.errors import CrowdGitError, InternalError
 from crowdgit.models import CloneBatchInfo, Repository, ServiceExecution
 from crowdgit.services.base.base_service import BaseService
 from crowdgit.services.commit.activitymap import ActivityMap
@@ -58,8 +59,6 @@ class CommitService(BaseService):
     def __init__(self, queue_service: QueueService):
         super().__init__()
         self.queue_service = queue_service
-        # Metrics tracking for current repository
-        self._metrics_context = None
 
     @property
     def git_log_format(self) -> str:
@@ -96,7 +95,7 @@ class CommitService(BaseService):
         except ValueError:
             return False
 
-    async def process_single_batch_commits(
+    async def process_batch_commits(
         self,
         repository: Repository,
         batch_info: CloneBatchInfo,
@@ -108,105 +107,64 @@ class CommitService(BaseService):
             repository: Repository object containing segment and integration info
             batch_info: Clone batch information with paths and commit boundaries
         """
-        # Initialize metrics context on first call
-        if self._metrics_context is None:
-            self._metrics_context = {
-                "start_time": time.time(),
-                "total_execution_time": 0.0,
-                "execution_status": ExecutionStatus.SUCCESS,
-                "error_code": None,
-                "error_message": None,
-                "total_commits": 0,
-                "processed_commits": 0,
-                "bad_commits": 0,
-                "skipped_activities": 0,
-                "total_activities": 0,
-            }
+        self._metrics_context = {
+            "total_commits": 0,
+            "processed_commits": 0,
+            "bad_commits": 0,
+            "skipped_activities": 0,
+            "total_activities": 0,
+        }
 
-        batch_start_time = time.time()
+        start_time = time.time()
 
         try:
-            self.logger.info(
-                f"Starting commits processing for new batch having commits older than {batch_info.prev_batch_edge_commit}"
-            )
+            self.logger.info(f"Starting commits processing for {batch_info.remote}")
             raw_commits = await self._execute_git_log(
                 batch_info.repo_path,
                 batch_info.clone_with_batches,
-                batch_info.prev_batch_edge_commit,
-                batch_info.edge_commit,
                 repository.last_processed_commit,
             )
 
             await self._process_activities_from_commits(raw_commits, batch_info, repository)
 
-            batch_end_time = time.time()
-            batch_time = round(batch_end_time - batch_start_time, 2)
-            self._metrics_context["total_execution_time"] += batch_time
+            execution_time = round(time.time() - start_time, 2)
 
-            self.logger.info(
-                f"Batch activity processed from {batch_info.remote} in {batch_time}sec"
-            )
+            self.logger.info(f"Commits processed from {batch_info.remote} in {execution_time}sec")
 
-            # Save metrics if this is the final batch
-            if batch_info.is_final_batch:
-                service_execution = ServiceExecution(
-                    repo_id=repository.id,
-                    operation_type=OperationType.COMMIT,
-                    status=self._metrics_context["execution_status"],
-                    error_code=self._metrics_context["error_code"],
-                    error_message=self._metrics_context["error_message"],
-                    execution_time_sec=Decimal(
-                        str(round(self._metrics_context["total_execution_time"], 2))
-                    ),
-                    metrics={
-                        "total_commits": self._metrics_context["total_commits"],
-                        "processed_commits": self._metrics_context["processed_commits"],
-                        "bad_commits": self._metrics_context["bad_commits"],
-                        "skipped_activities": self._metrics_context["skipped_activities"],
-                        "total_activities": self._metrics_context["total_activities"],
-                    },
-                )
-                await save_service_execution(service_execution)
-                # Reset metrics context after saving
-                self._metrics_context = None
-
-        except Exception as e:
-            # Update metrics context with error info
-            batch_end_time = time.time()
-            batch_time = round(batch_end_time - batch_start_time, 2)
-            self._metrics_context["total_execution_time"] += batch_time
-            self._metrics_context["execution_status"] = ExecutionStatus.FAILURE
-
-            error_message = e.error_message if isinstance(e, CrowdGitError) else repr(e)
-            self._metrics_context["error_code"] = (
-                e.error_code.value if isinstance(e, CrowdGitError) else ErrorCode.UNKNOWN.value
-            )
-            self._metrics_context["error_message"] = error_message
-
-            self.logger.error(f"Commit processing failed: {error_message}")
-
-            # Save metrics on error
             service_execution = ServiceExecution(
                 repo_id=repository.id,
                 operation_type=OperationType.COMMIT,
-                status=self._metrics_context["execution_status"],
-                error_code=self._metrics_context["error_code"],
-                error_message=self._metrics_context["error_message"],
-                execution_time_sec=Decimal(
-                    str(round(self._metrics_context["total_execution_time"], 2))
-                ),
-                metrics={
-                    "total_commits": self._metrics_context["total_commits"],
-                    "processed_commits": self._metrics_context["processed_commits"],
-                    "bad_commits": self._metrics_context["bad_commits"],
-                    "skipped_activities": self._metrics_context["skipped_activities"],
-                    "total_activities": self._metrics_context["total_activities"],
-                },
+                status=ExecutionStatus.SUCCESS,
+                execution_time_sec=Decimal(str(execution_time)),
+                metrics=self._metrics_context,
             )
             await save_service_execution(service_execution)
-            # Reset metrics context after saving
-            self._metrics_context = None
+
+        except Exception as e:
+            error_message = e.error_message if isinstance(e, CrowdGitError) else repr(e)
+            self.logger.error(f"Commit processing failed: {error_message}")
+
+            execution_time = round(time.time() - start_time, 2)
+
+            service_execution = ServiceExecution(
+                repo_id=repository.id,
+                operation_type=OperationType.COMMIT,
+                status=ExecutionStatus.FAILURE,
+                error_code=(
+                    e.error_code.value if isinstance(e, CrowdGitError) else ErrorCode.UNKNOWN.value
+                ),
+                error_message=error_message,
+                execution_time_sec=Decimal(str(execution_time)),
+                metrics=self._metrics_context,
+            )
+            await save_service_execution(service_execution)
             raise
+
+        await update_last_processed_commit(
+            repo_id=repository.id,
+            commit_hash=batch_info.latest_commit_in_repo,
+            branch=await get_default_branch(batch_info.repo_path),
+        )
 
     async def _get_commit_reference(self, repo_path: str) -> str:
         """Get the commit reference for git log command."""
@@ -250,44 +208,6 @@ class CommitService(BaseService):
 
         return (insertions, deletions)
 
-    async def _get_optimized_commit_range(
-        self,
-        repo_path: str,
-        edge_commit: str,
-        prev_batch_edge_commit: str,
-        last_processed_commit: str | None,
-    ) -> str:
-        """
-        Optimize commit range by using last_processed_commit if available in current batch.
-
-        For middle batches, returns the slice of history between the last batch's edge and this one's.
-        If last_processed_commit exists in the current batch and is not the shallow boundary,
-        uses it as the range start to skip already-processed commits.
-
-        Args:
-            repo_path: Local repository path
-            edge_commit: Current batch's edge commit (shallow boundary)
-            prev_batch_edge_commit: Previous batch's edge commit (upper bound of range)
-            last_processed_commit: Last commit that was successfully processed (if any)
-
-        Returns:
-            Git commit range string (e.g., "commit_a..commit_b")
-        """
-
-        default_commit_range = f"{edge_commit}..{prev_batch_edge_commit}"
-
-        if last_processed_commit and last_processed_commit != edge_commit:
-            try:
-                self.logger.info("Checking last processed commit existence in current batch")
-                await run_shell_command(
-                    ["git", "cat-file", "-e", last_processed_commit], cwd=repo_path
-                )
-                self.logger.info("Found! using optimized range")
-                default_commit_range = f"{last_processed_commit}..{prev_batch_edge_commit}"
-            except Exception:
-                self.logger.info("last processed commit not found in range")
-        return default_commit_range
-
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_fixed(1),
@@ -297,8 +217,6 @@ class CommitService(BaseService):
         self,
         repo_path: str,
         clone_with_batches: bool,
-        prev_batch_edge_commit: str | None = None,
-        edge_commit: str | None = None,
         last_processed_commit: str | None = None,
     ) -> str:
         """Execute git log command and return raw output."""
@@ -311,34 +229,24 @@ class CommitService(BaseService):
 
         if not clone_with_batches:
             commit_reference = await self._get_commit_reference(repo_path)
-            self.logger.info(
-                f"Full repo cloned in single batch, getting all commits in {commit_reference}"
+            self.logger.info(f"Full clone: getting all commits in {commit_reference}")
+            return await run_shell_command(
+                self._build_git_log_command(repo_path, commit_reference)
             )
-            raw_commits_cmd = self._build_git_log_command(repo_path, commit_reference)
-            return await run_shell_command(raw_commits_cmd)
 
-        if not prev_batch_edge_commit:
-            return ""
-
-        if edge_commit:
-            commit_range = await self._get_optimized_commit_range(
-                repo_path, edge_commit, prev_batch_edge_commit, last_processed_commit
+        # Batched clone: deepening is complete, run last_processed..HEAD
+        if not last_processed_commit:
+            raise InternalError(
+                error_message="clone_with_batches=True requires last_processed_commit to be set"
             )
-            self.logger.info(f"Processing middle batch: {commit_range}")
-        else:
-            # Final batch: Get all commits from the last known edge to the root.
-            commit_range = prev_batch_edge_commit
-            self.logger.info(f"Processing final batch from: {prev_batch_edge_commit} to root")
 
-        raw_commits_cmd = self._build_git_log_command(repo_path, commit_range)
-
+        commit_range = f"{last_processed_commit}..HEAD"
         self.logger.info(f"Executing git log for range: {commit_range}")
-        return await run_shell_command(raw_commits_cmd)
+        return await run_shell_command(self._build_git_log_command(repo_path, commit_range))
 
-    def should_skip_commit(self, raw_commit: str | None, edge_commit: str | None) -> bool:
-        """Check if commit should be skipped based on edge commit comparison."""
-        # Only skip the boundary commit of the current shallow clone.
-        return not raw_commit or (edge_commit and raw_commit.startswith(edge_commit))
+    def should_skip_commit(self, raw_commit: str | None) -> bool:
+        """Check if commit should be skipped."""
+        return not raw_commit
 
     def clean_up_username(self, name: str):
         name = re.sub(r"(?i)Reviewed[- ]by:", "", name)
@@ -427,6 +335,7 @@ class CommitService(BaseService):
             "platform": self._GIT_PLATFORM,
             "channel": remote,
             "body": "\n".join(commit["message"]),
+            "username": primary_email,
             "attributes": {
                 "insertions": insertions,
                 "timezone": dt.tzname(),
@@ -537,47 +446,22 @@ class CommitService(BaseService):
         committer_name = commit["committer_name"]
         committer_email = commit["committer_email"]
 
-        # Create author activity
-        author = {
-            "username": author_name,
-            "displayName": author_name,
-            "emails": [author_email],
-        }
-        activity = self.create_activity(
-            remote=remote,
-            commit=commit,
-            activity_type="authored-commit",
-            member=author,
-            source_id=commit_hash,
-            segment_id=segment_id,
-            re_onboarding_count=re_onboarding_count,
-        )
-        activity_db, activity_kafka = self.prepare_activity_for_db_and_queue(
-            activity, segment_id, integration_id
-        )
-        activities_db.append(activity_db)
-        activities_queue.append(activity_kafka)
-
-        # Only create committer activity if author and committer are different
-        if author_name != committer_name or author_email != committer_email:
-            # IMPORTANT: hash_input has a typo in "commited" instead of "committed"
-            # however fixing it requires recalculating sourceId/parentSourceId for ALL git activities in db
-            # so far the typo doesn't have any major effect, since the activity type "committed-commit" is correct
-            hash_input = f"{commit_hash}commited-commit{committer_email}"
-            committer_source_id = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()
-
-            committer = {
-                "username": committer_name,
-                "displayName": committer_name,
-                "emails": [committer_email],
+        # Create author activity — skip if email is empty (no identity to attach to)
+        author_email = author_email.strip() if author_email else ""
+        if not author_email:
+            self.logger.warning(f"Skipping authored-commit for {commit_hash} — empty author email")
+        else:
+            author = {
+                "username": author_email,
+                "displayName": author_name,
+                "emails": [author_email],
             }
             activity = self.create_activity(
                 remote=remote,
                 commit=commit,
-                activity_type="committed-commit",
-                member=committer,
-                source_id=committer_source_id,
-                source_parent_id=commit_hash,
+                activity_type="authored-commit",
+                member=author,
+                source_id=commit_hash,
                 segment_id=segment_id,
                 re_onboarding_count=re_onboarding_count,
             )
@@ -587,24 +471,65 @@ class CommitService(BaseService):
             activities_db.append(activity_db)
             activities_queue.append(activity_kafka)
 
+        # Only create committer activity if author and committer are different
+        committer_email = committer_email.strip() if committer_email else ""
+        if author_name != committer_name or author_email != committer_email:
+            if not committer_email:
+                self.logger.warning(
+                    f"Skipping committed-commit for {commit_hash} — empty committer email"
+                )
+            else:
+                # IMPORTANT: hash_input has a typo in "commited" instead of "committed"
+                # however fixing it requires recalculating sourceId/parentSourceId for ALL git activities in db
+                # so far the typo doesn't have any major effect, since the activity type "committed-commit" is correct
+                hash_input = f"{commit_hash}commited-commit{committer_email}"
+                committer_source_id = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()
+
+                committer = {
+                    "username": committer_email,
+                    "displayName": committer_name,
+                    "emails": [committer_email],
+                }
+                activity = self.create_activity(
+                    remote=remote,
+                    commit=commit,
+                    activity_type="committed-commit",
+                    member=committer,
+                    source_id=committer_source_id,
+                    source_parent_id=commit_hash,
+                    segment_id=segment_id,
+                    re_onboarding_count=re_onboarding_count,
+                )
+                activity_db, activity_kafka = self.prepare_activity_for_db_and_queue(
+                    activity, segment_id, integration_id
+                )
+                activities_db.append(activity_db)
+                activities_queue.append(activity_kafka)
+
         # Process extracted activities from commit message
         extracted_activities = self.extract_activities(commit["message"])
         for extracted_activity in extracted_activities:
             activity_type, member_data = list(extracted_activity.items())[0]
+
+            trailer_email = (member_data.get("email") or "").strip()
+            if not trailer_email:
+                self.logger.warning(
+                    f"Skipping {activity_type} for {commit_hash} — empty email in commit trailer"
+                )
+                continue
 
             # Convert activity type to lowercase and add "-commit" suffix
             # This matches the legacy behavior: "signed-off-by" -> "signed-off-commit"
             activity_type = activity_type.lower().replace("-by", "") + "-commit"
 
             member = {
-                "username": member_data["email"],
                 "displayName": member_data["name"],
-                "emails": [member_data["email"]],
+                "emails": [trailer_email],
             }
 
             # Generate unique source ID for extracted activity
             source_id = hashlib.sha1(
-                (commit_hash + activity_type + member_data["email"]).encode("utf-8")
+                (commit_hash + activity_type + trailer_email).encode("utf-8")
             ).hexdigest()
             activity = self.create_activity(
                 remote=remote,
@@ -683,17 +608,7 @@ class CommitService(BaseService):
         batch_info: CloneBatchInfo,
         repository: Repository,
     ) -> None:
-        """
-        Process a chunk of raw commit texts into activities and write them to DB and Kafka.
-
-        Args:
-            commit_texts_chunk: List of commit text strings to process
-            repo_path: Path to the repository
-            edge_commit_hash: Edge commit hash for filtering
-            remote: Remote repository URL
-            segment_id: Segment identifier
-            integration_id: Integration identifier
-        """
+        """Process a chunk of raw commit texts into activities and write them to DB and Kafka."""
         activities_db = []
         activities_queue = []
         bad_commits = 0
@@ -701,7 +616,7 @@ class CommitService(BaseService):
         commit = None
 
         for full_commit_text in commit_texts_chunk:
-            if self.should_skip_commit(full_commit_text, batch_info.edge_commit):
+            if self.should_skip_commit(full_commit_text):
                 continue
             commit_text, numstats_text = full_commit_text.split(self.NUMSTAT_SPLITTER)
             commit_lines = commit_text.strip().splitlines()
@@ -757,12 +672,10 @@ class CommitService(BaseService):
         self.logger.info(
             f"Processed {processed_commits} commits, skipped {bad_commits} invalid commits, filtered {skipped_activities} activities from parent repo in {batch_info.repo_path}"
         )
-        # Update metrics context
-        if self._metrics_context:
-            self._metrics_context["processed_commits"] += processed_commits
-            self._metrics_context["bad_commits"] += bad_commits
-            self._metrics_context["total_activities"] += len(activities_db)
-            self._metrics_context["skipped_activities"] += skipped_activities
+        self._metrics_context["processed_commits"] += processed_commits
+        self._metrics_context["bad_commits"] += bad_commits
+        self._metrics_context["total_activities"] += len(activities_db)
+        self._metrics_context["skipped_activities"] += skipped_activities
 
         # Write activities to database and queue
         if activities_db:
@@ -787,9 +700,7 @@ class CommitService(BaseService):
 
         logger.info(f"Actual number of commits to be processed: {len(commit_texts)}")
 
-        # Update total_commits metric
-        if self._metrics_context:
-            self._metrics_context["total_commits"] += len(commit_texts)
+        self._metrics_context["total_commits"] = len(commit_texts)
 
         if len(commit_texts) == 0:
             self.logger.info("No commits to be processed")

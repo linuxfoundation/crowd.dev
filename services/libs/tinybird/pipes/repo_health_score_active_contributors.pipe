@@ -1,0 +1,64 @@
+DESCRIPTION >
+    - Calculates repository-level active contributors health score.
+    - Returns unique active contributor count and benchmark (0-5) per repository for the previous quarter.
+    - Parameters:
+    - `repoUrl`: Optional repository URL for single-repo mode
+    - `startDate`: Optional DateTime filter for contributions after timestamp
+    - `endDate`: Optional DateTime filter for contributions before timestamp
+
+TAGS "Repository health", "Metrics"
+
+NODE repo_health_score_active_contributors_score
+SQL >
+    %
+    {% if defined(repoUrl) %}
+        SELECT channel, uniq(memberId) AS activeContributors
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND channel = {{ String(repoUrl, description="Repository URL", required=False) }}
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+            {% if defined(startDate) %}
+                AND timestamp
+                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            {% end %}
+            {% if defined(endDate) %}
+                AND timestamp
+                < {{ DateTime(endDate, description="Filter before date", required=False) }}
+            {% end %}
+        GROUP BY channel
+    {% else %}
+        SELECT channel, uniq(memberId) AS activeContributors
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE
+            memberId != ''
+            AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
+            AND timestamp >= toStartOfQuarter(now() - toIntervalQuarter(1))
+            AND timestamp < toStartOfQuarter(now())
+            AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
+        GROUP BY channel
+    {% end %}
+
+NODE health_score_active_contributors_benchmark
+SQL >
+    %
+    SELECT
+        channel,
+        activeContributors,
+        CASE
+            WHEN activeContributors BETWEEN 0 AND 1
+            THEN 0
+            WHEN activeContributors BETWEEN 2 AND 3
+            THEN 1
+            WHEN activeContributors BETWEEN 4 AND 6
+            THEN 2
+            WHEN activeContributors BETWEEN 7 AND 10
+            THEN 3
+            WHEN activeContributors BETWEEN 11 AND 20
+            THEN 4
+            WHEN activeContributors > 20
+            THEN 5
+            ELSE 0
+        END AS activeContributorsBenchmark
+    FROM repo_health_score_active_contributors_score

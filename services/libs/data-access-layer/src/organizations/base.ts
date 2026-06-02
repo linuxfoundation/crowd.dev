@@ -367,6 +367,7 @@ export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
   data: Partial<IDbOrganizationInput>,
+  throttleUpdatedAt = false,
 ): Promise<string | null> {
   const columns = Object.keys(data)
   if (columns.length === 0) {
@@ -376,9 +377,13 @@ export async function updateOrganization(
   const updatedAt = new Date()
   columns.push('updatedAt')
 
+  const updatedAtExpr = throttleUpdatedAt
+    ? `CASE WHEN "updatedAt" < now() - interval '30 minutes' THEN now() ELSE "updatedAt" END`
+    : `$(updatedAt)`
+
   const query = `
     update organizations set
-      ${columns.map((c) => `"${c}" = $(${c})`).join(',\n')}
+      ${columns.map((c) => `"${c}" = ${c === 'updatedAt' ? updatedAtExpr : `$(${c})`}`).join(',\n')}
     where id = $(organizationId)
     returning id;
   `
@@ -443,8 +448,10 @@ export async function findOrCreateOrganization(
   source: string,
   data: IOrganization,
   integrationId?: string,
+  throttleUpdatedAt = false,
 ): Promise<string | undefined> {
-  const verifiedIdentities = data.identities ? data.identities.filter((i) => i.verified) : []
+  data.identities = data.identities ?? []
+  let verifiedIdentities = data.identities.filter((i) => i.verified)
 
   if (verifiedIdentities.length === 0 && !data.displayName) {
     const message = `Missing organization identity or displayName while creating/updating organization!`
@@ -464,6 +471,16 @@ export async function findOrCreateOrganization(
     }
 
     data.identities = data.identities.filter((i) => i.value !== undefined)
+
+    // Re-derive after normalization may have set domain identity values to undefined
+    verifiedIdentities = data.identities.filter((i) => i.verified)
+
+    if (verifiedIdentities.length === 0 && !data.displayName) {
+      log.debug(
+        'Organization has no valid verified identities after domain normalization and no displayName, skipping.',
+      )
+      return undefined
+    }
 
     let existing
     // find existing org by sent verified identities
@@ -524,7 +541,8 @@ export async function findOrCreateOrganization(
       if (Object.keys(processed.organization).length > 0) {
         log.info({ orgId: existing.id }, `Updating organization!`)
         await logExecutionTimeV2(
-          async () => updateOrganization(qe, existing.id, processed.organization),
+          async () =>
+            updateOrganization(qe, existing.id, processed.organization, throttleUpdatedAt),
           log,
           'organizationService -> findOrCreateOrganization -> updateOrganization',
         )

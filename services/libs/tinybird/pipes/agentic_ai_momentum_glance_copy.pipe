@@ -1,0 +1,204 @@
+DESCRIPTION >
+    Pre-computes at-a-glance metrics for the Agentic AI collection.
+    Filters by specific repositories in the collection via collectionsRepositories.
+    Runs daily and stores the result in agentic_ai_momentum_glance_ds.
+
+NODE ai_repos
+SQL >
+    SELECT r.url, r.segmentId, r.insightsProjectId
+    FROM collectionsRepositories cr FINAL
+    JOIN repositories r FINAL ON cr.repoId = r.id
+    WHERE
+        cr.collectionId = '3cf46a5d-abd0-440e-95f9-4ae9458903a8'
+        AND isNull (cr.deletedAt)
+        AND isNull (r.deletedAt)
+        AND r.enabled = true
+
+NODE ai_projects
+SQL >
+    SELECT id, name, slug, softwareValue
+    FROM insights_projects_populated_ds
+    WHERE id IN (SELECT DISTINCT insightsProjectId FROM ai_repos)
+
+NODE total_contributor_count
+SQL >
+    SELECT countDistinct(memberId) AS totalContributorCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND (type, platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )
+
+NODE total_contributor_count_30d
+SQL >
+    SELECT countDistinct(memberId) AS totalContributorCount30d
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND timestamp >= now() - INTERVAL 30 DAY
+        AND (type, platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )
+
+NODE commits_count_30d
+SQL >
+    SELECT count() AS commitsCount30d
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND type IN ('authored-commit', 'committed-commit')
+        AND timestamp >= now() - INTERVAL 30 DAY
+
+NODE new_contributors_per_project
+SQL >
+    SELECT segmentId, countIf(first_activity >= now() - INTERVAL 30 DAY) AS newContributors
+    FROM
+        (
+            SELECT segmentId, memberId, min(timestamp) AS first_activity
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+                AND channel IN (SELECT url FROM ai_repos)
+                AND (type, platform) IN (
+                    SELECT activityType, platform
+                    FROM activityTypes
+                    WHERE isCodeContribution = 1 OR isCollaboration = 1
+                )
+            GROUP BY segmentId, memberId
+        )
+    GROUP BY segmentId
+
+NODE most_active_projects
+SQL >
+    SELECT
+        coalesce(
+            arrayStringConcat(
+                arrayMap(
+                    x
+                    -> toJSONString(map('name', x .1, 'slug', x .2, 'newContributors', toString(x .3))),
+                    arraySlice(
+                        arrayReverseSort(x -> x .3, groupArray((p.name, p.slug, ncp.newContributors))),
+                        1,
+                        3
+                    )
+                ),
+                ','
+            ),
+            ''
+        ) AS mostActiveProjects
+    FROM new_contributors_per_project ncp
+    LEFT JOIN
+        (
+            SELECT segmentId, any (insightsProjectId) AS insightsProjectId
+            FROM ai_repos
+            GROUP BY segmentId
+        ) ar
+        ON ar.segmentId = ncp.segmentId
+    LEFT JOIN ai_projects p ON p.id = ar.insightsProjectId
+
+NODE median_issue_close_time
+SQL >
+    SELECT coalesce(median(closedInSeconds), 0) AS medianIssueCloseTimeSeconds
+    FROM issues_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND isNotNull(closedAt)
+        AND closedInSeconds > 0
+
+NODE median_issue_close_time_30d
+SQL >
+    SELECT coalesce(median(closedInSeconds), 0) AS medianIssueCloseTimeSeconds30d
+    FROM issues_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND isNotNull(closedAt)
+        AND closedInSeconds > 0
+        AND closedAt >= now() - INTERVAL 30 DAY
+
+NODE median_pr_resolution_time
+SQL >
+    SELECT coalesce(median(resolvedInSeconds), 0) AS medianPrResolutionTimeSeconds
+    FROM pull_requests_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND isNotNull(resolvedAt)
+        AND resolvedInSeconds > 0
+
+NODE median_pr_resolution_time_30d
+SQL >
+    SELECT coalesce(median(resolvedInSeconds), 0) AS medianPrResolutionTimeSeconds30d
+    FROM pull_requests_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND isNotNull(resolvedAt)
+        AND resolvedInSeconds > 0
+        AND resolvedAt >= now() - INTERVAL 30 DAY
+
+NODE projects_with_github_pr
+SQL >
+    SELECT countDistinct(segmentId) AS projectsWithGithubPrActivity
+    FROM pull_requests_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND platform = 'github'
+
+NODE projects_with_github_issue
+SQL >
+    SELECT countDistinct(segmentId) AS projectsWithGithubIssueActivity
+    FROM issues_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND platform = 'github'
+
+NODE at_a_glance_metrics
+SQL >
+    SELECT
+        '3cf46a5d-abd0-440e-95f9-4ae9458903a8' AS collectionId,
+        count(*) AS totalCount,
+        sum(softwareValue) AS totalSoftwareValue,
+        any (total_contributor_count.totalContributorCount) AS totalContributorCount,
+        any (total_contributor_count_30d.totalContributorCount30d) AS totalContributorCount30d,
+        any (commits_count_30d.commitsCount30d) AS commitsCount30d,
+        concat('[', any (most_active_projects.mostActiveProjects), ']') AS mostActiveProjects,
+        any (median_issue_close_time.medianIssueCloseTimeSeconds) AS medianIssueCloseTimeSeconds,
+        any (
+            median_issue_close_time_30d.medianIssueCloseTimeSeconds30d
+        ) AS medianIssueCloseTimeSeconds30d,
+        any (median_pr_resolution_time.medianPrResolutionTimeSeconds) AS medianPrResolutionTimeSeconds,
+        any (
+            median_pr_resolution_time_30d.medianPrResolutionTimeSeconds30d
+        ) AS medianPrResolutionTimeSeconds30d,
+        any (projects_with_github_pr.projectsWithGithubPrActivity) AS projectsWithGithubPrActivity,
+        any (
+            projects_with_github_issue.projectsWithGithubIssueActivity
+        ) AS projectsWithGithubIssueActivity
+    FROM ai_projects
+    CROSS JOIN total_contributor_count
+    CROSS JOIN total_contributor_count_30d
+    CROSS JOIN commits_count_30d
+    CROSS JOIN most_active_projects
+    CROSS JOIN median_issue_close_time
+    CROSS JOIN median_issue_close_time_30d
+    CROSS JOIN median_pr_resolution_time
+    CROSS JOIN median_pr_resolution_time_30d
+    CROSS JOIN projects_with_github_pr
+    CROSS JOIN projects_with_github_issue
+
+TYPE COPY
+TARGET_DATASOURCE agentic_ai_momentum_glance_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 2 * * *

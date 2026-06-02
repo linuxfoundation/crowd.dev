@@ -9,11 +9,10 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { QUEUE_CONFIG, QueueFactory } from '@crowd/queue'
 import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
+import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 import { PlatformType } from '@crowd/types'
 
 import { IntegrationResolver } from '../core/integrationResolver'
-import { MetadataStore, SnowflakeExportJob } from '../core/metadataStore'
-import { S3Service } from '../core/s3Service'
 import { getDataSource, getEnabledPlatforms } from '../integrations'
 
 const log = getServiceChildLogger('transformerConsumer')
@@ -30,6 +29,7 @@ export class TransformerConsumer {
     private readonly integrationResolver: IntegrationResolver,
     private readonly emitter: DataSinkWorkerEmitter,
     private readonly pollingIntervalMs: number,
+    private readonly enabledPlatforms: string[],
   ) {
     this.currentPollingIntervalMs = pollingIntervalMs
   }
@@ -40,13 +40,17 @@ export class TransformerConsumer {
 
     while (this.running) {
       try {
-        const job = await this.metadataStore.claimOldestPendingJob()
+        const job = await this.metadataStore.claimOldestPendingJob(
+          buildPlatformFilter(this.enabledPlatforms),
+        )
         log.info('Claiming job from metadata store', { job })
 
         if (job) {
           log.info({ jobId: job.id, platform: job.platform, s3Path: job.s3Path }, 'Processing job')
           this.currentPollingIntervalMs = this.pollingIntervalMs
           await this.processJob(job)
+          // yield to the event loop so GC can collect the previous batch before the next one starts
+          await new Promise<void>((resolve) => setImmediate(resolve))
           continue
         }
       } catch (err) {
@@ -82,32 +86,31 @@ export class TransformerConsumer {
       const platform = job.platform as PlatformType
       const source = getDataSource(platform, job.sourceName)
 
-      const rows = await this.s3Service.readParquetRows(job.s3Path)
-
       let transformedCount = 0
       let transformSkippedCount = 0
       let resolveSkippedCount = 0
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]
-        const result = source.transformer.safeTransformRow(row)
-        if (!result) {
+      for await (const row of this.s3Service.streamParquetRows(job.s3Path)) {
+        const results = source.transformer.safeTransformRow(row)
+        if (!results) {
           transformSkippedCount++
           continue
         }
 
-        const resolved = await this.integrationResolver.resolve(platform, result.segment)
-        if (!resolved) {
-          resolveSkippedCount++
-          continue
-        }
+        for (const result of results) {
+          const resolved = await this.integrationResolver.resolve(platform, result.segment)
+          if (!resolved) {
+            resolveSkippedCount++
+            continue
+          }
 
-        await this.emitter.createAndProcessActivityResult(
-          resolved.segmentId,
-          resolved.integrationId,
-          result.activity,
-        )
-        transformedCount++
+          await this.emitter.createAndProcessActivityResult(
+            resolved.segmentId,
+            resolved.integrationId,
+            result.activity,
+          )
+          transformedCount++
+        }
       }
 
       const skippedCount = transformSkippedCount + resolveSkippedCount
@@ -123,11 +126,10 @@ export class TransformerConsumer {
 
       log.info({ jobId: job.id, ...processingMetrics }, 'Job completed')
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
       log.error({ jobId: job.id, err }, 'Job failed')
 
       try {
-        await this.metadataStore.markFailed(job.id, errorMessage, {
+        await this.metadataStore.markFailed(job.id, err, {
           processingDurationMs: Date.now() - startTime,
         })
       } catch (updateErr) {
@@ -156,5 +158,14 @@ export async function createTransformerConsumer(): Promise<TransformerConsumer> 
 
   const pollingIntervalMs = 10_000 // 10 seconds
 
-  return new TransformerConsumer(metadataStore, s3Service, resolver, emitter, pollingIntervalMs)
+  const enabledPlatforms = getEnabledPlatforms()
+
+  return new TransformerConsumer(
+    metadataStore,
+    s3Service,
+    resolver,
+    emitter,
+    pollingIntervalMs,
+    enabledPlatforms,
+  )
 }

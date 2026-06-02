@@ -47,7 +47,7 @@ class NetworkError(CrowdGitError):
 
 
 @dataclass
-class PermissionError(CrowdGitError):
+class RepoPermissionError(CrowdGitError):
     error_message: str = "Permission denied"
     error_code: ErrorCode = ErrorCode.PERMISSION_ERROR
 
@@ -56,6 +56,7 @@ class PermissionError(CrowdGitError):
 class CommandExecutionError(CrowdGitError):
     error_message: str = "Command execution failed"
     error_code: ErrorCode = ErrorCode.SHELL_COMMAND_FAILED
+    returncode: int | None = None
 
 
 @dataclass
@@ -116,6 +117,30 @@ class ReOnboardingRequiredError(CrowdGitError):
 
 
 @dataclass
-class StuckRepoError(CrowdGitError):
-    error_message = "Repos stuck in processing state for a long time"
-    error_code: ErrorCode = ErrorCode.STUCK_REPO
+class RepoAuthRequiredError(CrowdGitError):
+    error_message: str = "Repository requires authentication (likely private or deleted)"
+    error_code: ErrorCode = ErrorCode.REPO_AUTH_REQUIRED
+
+
+@dataclass
+class RateLimitError(CrowdGitError):
+    error_message: str = "Rate limited by remote server"
+    error_code: ErrorCode = ErrorCode.RATE_LIMITED
+
+
+@dataclass
+class ForbiddenError(CrowdGitError):
+    error_message: str = "Access to repository is forbidden"
+    error_code: ErrorCode = ErrorCode.ACCESS_FORBIDDEN
+
+
+@dataclass
+class RemoteServerError(CrowdGitError):
+    error_message: str = "Remote server returned an internal error"
+    error_code: ErrorCode = ErrorCode.SERVER_ERROR
+
+
+@dataclass
+class EmptyRepoError(CrowdGitError):
+    error_message: str = "Repository is empty (no branches or commits)"
+    error_code: ErrorCode = ErrorCode.EMPTY_REPO
