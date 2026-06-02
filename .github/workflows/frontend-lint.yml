@@ -5,6 +5,9 @@ on:
     paths:
       - 'frontend/**'
 
+permissions:
+  contents: read
+
 jobs:
   lint-frontend:
     runs-on: ubuntu-latest
