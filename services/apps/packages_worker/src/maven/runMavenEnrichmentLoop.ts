@@ -3,10 +3,10 @@ import crypto from 'crypto'
 import {
   listMavenPackagesToSync,
   logAuditFieldChange,
+  replacePackageMaintainers,
   touchPackageSyncedAt,
   upsertMaintainer,
   upsertPackage,
-  upsertPackageMaintainer,
   upsertPackageRepo,
   upsertRepo,
   upsertVersionsBatch,
@@ -16,7 +16,8 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
 import { MAX_PARENT_HOPS, extractArtifact, normalizeScmUrl } from './extract'
-import { resolveVersionsList } from './metadata'
+import { isMavenFetchError, resolveVersionsList } from './metadata'
+import { isPrerelease, parseRepoUrl } from './normalize'
 
 const log = getServiceChildLogger('maven')
 
@@ -38,53 +39,18 @@ function mavenRegistryUrl(groupId: string, artifactId: string): string {
   return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
 }
 
-function isPrerelease(version: string): boolean {
-  return /-(SNAPSHOT|alpha|beta|rc|m\d+)/i.test(version)
-}
-
-// Reorders packages so that consecutive items come from different namespaces (e.g. org.apache, com.google).
-// This spreads Maven Central requests across different group IDs, avoiding bursts that could hit rate limits
-// on the same namespace in a tight loop.
-// function interleaveByNamespace(packages: PackageRow[]): PackageRow[] {
-//   const byNamespace = new Map<string, PackageRow[]>()
-//   for (const pkg of packages) {
-//     const ns = pkg.namespace ?? '__unknown__'
-//     if (!byNamespace.has(ns)) byNamespace.set(ns, [])
-//     byNamespace.get(ns)!.push(pkg)
-//   }
-//   const queues = [...byNamespace.values()]
-//   const result: PackageRow[] = []
-//   let i = 0
-//   while (result.length < packages.length) {
-//     const q = queues[i % queues.length]
-//     if (q.length > 0) result.push(q.shift()!)
-//     i++
-//   }
-//   return result
-// }
-
-function parseRepoUrl(url: string): { host: string; owner: string | null; name: string | null } | null {
-  try {
-    const parsed = new URL(url)
-    const h = parsed.hostname.toLowerCase()
-    let host: string
-    if (h === 'github.com' || h.endsWith('.github.com')) host = 'github'
-    else if (h === 'gitlab.com' || h.includes('gitlab')) host = 'gitlab'
-    else if (h === 'bitbucket.org') host = 'bitbucket'
-    else host = 'other'
-    const parts = parsed.pathname.split('/').filter(Boolean)
-    return { host, owner: parts[0] ?? null, name: parts[1] ?? null }
-  } catch {
-    return null
-  }
-}
-
-async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null): Promise<void> {
+async function writeRepoLink(
+  qx: QueryExecutor,
+  packageId: number,
+  repositoryUrl: string | null,
+  changed: Set<string>,
+): Promise<void> {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  await upsertPackageRepo(qx, { packageId, repoId, source: 'declared', confidence: 0.8 })
+  const repoChanged = await upsertPackageRepo(qx, { packageId, repoId, source: 'declared', confidence: 0.8 })
+  repoChanged.forEach((f) => changed.add(f))
 }
 
 // ─── Non-critical: copy universe stats into packages ─────────────────────────
@@ -129,28 +95,35 @@ async function processCriticalPackage(
   // Phase 1: lightweight metadata fetch to get the current upstream version.
   const metadata = await resolveVersionsList(groupId, artifactId)
 
-  if (!metadata) {
-    await upsertPackage(qx, {
-      purl: pkg.purl,
-      ecosystem: 'maven',
-      namespace: groupId,
-      name: artifactId,
-      description: null,
-      homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
-      declaredRepositoryUrl: null,
-      repositoryUrl: null,
-      licenses: null,
-      licensesRaw: null,
-      latestVersion: pkg.latestVersion ?? null,
-      ingestionSource: 'maven_not_on_central',
-      criticalityScore: pkg.criticalityScore,
-      dependentPackagesCount: pkg.dependentPackagesCount,
-      dependentReposCount: pkg.dependentReposCount,
-      downloadsLastMonth: pkg.downloads30d,
-    })
-    log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
-    return 'skipped'
+  if (isMavenFetchError(metadata)) {
+    if (metadata.kind === 'NOT_FOUND') {
+      await upsertPackage(qx, {
+        purl: pkg.purl,
+        ecosystem: 'maven',
+        namespace: groupId,
+        name: artifactId,
+        description: null,
+        homepage: null,
+        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        declaredRepositoryUrl: null,
+        repositoryUrl: null,
+        licenses: null,
+        licensesRaw: null,
+        latestVersion: pkg.latestVersion ?? null,
+        ingestionSource: 'maven_not_on_central',
+        criticalityScore: pkg.criticalityScore,
+        dependentPackagesCount: pkg.dependentPackagesCount,
+        dependentReposCount: pkg.dependentReposCount,
+        downloadsLastMonth: pkg.downloads30d,
+      })
+      log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
+      return 'skipped'
+    }
+    if (metadata.kind === 'RATE_LIMIT') {
+      log.warn({ groupId, artifactId, status: metadata.status }, 'Rate limited — will retry next pass')
+      return 'error'
+    }
+    throw new Error(`Transient error fetching metadata for ${groupId}:${artifactId} — ${metadata.message}`)
   }
 
   const version = metadata.releaseVersion
@@ -180,10 +153,6 @@ async function processCriticalPackage(
   }
 
   // Phase 2: skip full POM extraction when upstream version matches what we already have.
-  // This avoids 1-8 HTTP calls (POM + parent chain) for packages that haven't released
-  // a new version since the last sync.
-  // Skipped on forceFullExtraction (first run against a fresh/restored DB) because
-  // packages.latest_version may carry stale data from the dump.
   if (!forceFullExtraction && version === pkg.latestVersion) {
     await touchPackageSyncedAt(qx, pkg.purl, {
       criticalityScore: pkg.criticalityScore,
@@ -195,7 +164,8 @@ async function processCriticalPackage(
     return 'unchanged'
   }
 
-  // Phase 3: full POM extraction with parent-chain resolution.
+  // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
+  // transaction so partial writes never leave the package in an inconsistent state.
   const result = await extractArtifact(groupId, artifactId, version)
 
   if (result.error) {
@@ -231,73 +201,82 @@ async function processCriticalPackage(
 
   const repositoryUrl = normalizeScmUrl(result.scmUrl)
 
-  const packageId = await upsertPackage(qx, {
-    purl: pkg.purl,
-    ecosystem: 'maven',
-    namespace: groupId,
-    name: artifactId,
-    description: result.description,
-    homepage: result.homepageUrl,
-    registryUrl: mavenRegistryUrl(groupId, artifactId),
-    declaredRepositoryUrl: result.scmUrl,
-    repositoryUrl,
-    licenses: result.licenses.length > 0 ? result.licenses : null,
-    licensesRaw: result.licensesRaw,
-    latestVersion: version,
-    ingestionSource: 'maven',
-    criticalityScore: pkg.criticalityScore,
-    dependentPackagesCount: pkg.dependentPackagesCount,
-    dependentReposCount: pkg.dependentReposCount,
-    downloadsLastMonth: pkg.downloads30d,
-  })
+  await qx.tx(async (t) => {
+    const changed = new Set<string>()
 
-  const allPeople = [
-    ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
-    ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
-  ]
-
-  let maintainerCount = 0
-  for (const person of allPeople) {
-    const username = person.username ?? person.email ?? person.displayName
-    if (!username) continue
-    const emailHash = person.email ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex') : null
-    const maintainerId = await upsertMaintainer(qx, {
+    const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
+      purl: pkg.purl,
       ecosystem: 'maven',
-      username,
-      displayName: person.displayName,
-      url: person.url,
-      emailHash,
-    })
-    await upsertPackageMaintainer(qx, { packageId, maintainerId, role: person.role })
-    maintainerCount++
-  }
-
-  const allVersions = metadata.versions.length > 0 ? metadata.versions : [version]
-  await upsertVersionsBatch(
-    qx,
-    allVersions.map((v) => ({
-      packageId,
-      ecosystem: 'maven',
+      namespace: groupId,
       name: artifactId,
-      number: v,
-      isLatest: v === metadata.releaseVersion,
-      isPrerelease: isPrerelease(v),
-      license: result.licenses[0] ?? null,
-    })),
-  )
+      description: result.description,
+      homepage: result.homepageUrl,
+      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      declaredRepositoryUrl: result.scmUrl,
+      repositoryUrl,
+      licenses: result.licenses.length > 0 ? result.licenses : null,
+      licensesRaw: result.licensesRaw,
+      latestVersion: version,
+      ingestionSource: 'maven-registry',
+      criticalityScore: pkg.criticalityScore,
+      dependentPackagesCount: pkg.dependentPackagesCount,
+      dependentReposCount: pkg.dependentReposCount,
+      downloadsLastMonth: pkg.downloads30d,
+    })
+    pkgChanged.forEach((f) => changed.add(f))
 
-  await writeRepoLink(qx, packageId, repositoryUrl)
+    const allVersions = metadata.versions.length > 0 ? metadata.versions : [version]
+    const verChanged = await upsertVersionsBatch(
+      t,
+      allVersions.map((v) => ({
+        packageId,
+        ecosystem: 'maven',
+        name: artifactId,
+        number: v,
+        isLatest: v === metadata.releaseVersion,
+        isPrerelease: isPrerelease(v),
+        license: result.licenses[0] ?? null,
+      })),
+    )
+    verChanged.forEach((f) => changed.add(f))
 
-  const auditFields = ['latest_version']
-  if (result.licenses.length > 0) auditFields.push('licenses')
-  if (repositoryUrl) auditFields.push('repository_url')
-  if (result.description) auditFields.push('description')
-  await logAuditFieldChange(qx, 'maven', pkg.purl, auditFields)
+    const allPeople = [
+      ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
+      ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
+    ]
 
-  log.info(
-    { groupId, artifactId, version, parentHops: result.parentHops, licenses: result.licenses.length, maintainers: maintainerCount, versions: allVersions.length },
-    'ok',
-  )
+    const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
+    for (const person of allPeople) {
+      const username = person.username ?? person.email ?? person.displayName
+      if (!username) continue
+      const emailHash = person.email
+        ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex')
+        : null
+      const { id: maintainerId, changedFields: mChanged } = await upsertMaintainer(t, {
+        ecosystem: 'maven',
+        username,
+        displayName: person.displayName,
+        url: person.url,
+        emailHash,
+      })
+      mChanged.forEach((f) => changed.add(f))
+      maintainerLinks.push({ maintainerId, role: person.role })
+    }
+
+    if (maintainerLinks.length > 0) {
+      const pmChanged = await replacePackageMaintainers(t, packageId, maintainerLinks)
+      pmChanged.forEach((f) => changed.add(f))
+    }
+
+    await writeRepoLink(t, packageId, repositoryUrl, changed)
+
+    await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
+
+    log.info(
+      { groupId, artifactId, version, parentHops: result.parentHops, licenses: result.licenses.length, maintainers: maintainerLinks.length, versions: allVersions.length },
+      'ok',
+    )
+  })
 
   return 'processed'
 }
@@ -321,10 +300,6 @@ export async function processBatch(
   log.info({ count: packages.length, isCritical }, 'Batch started')
 
   const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
-  // interleaveByNamespace was introduced as a workaround when the local dev IP was throttled by Maven Central.
-  // In production runs are 24h apart so the IP is always cold — leaving packages in their natural order for now.
-  // const queue = isCritical ? interleaveByNamespace(packages) : packages
-  // const queue = packages
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += concurrency) {
     const group = packages.slice(batchStart, batchStart + concurrency)
@@ -346,11 +321,7 @@ export async function processBatch(
           counts[status]++
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          const isRateLimit = message.includes('403') || message.includes('429')
-          log.error(
-            { purl: pkg.purl, error: message },
-            isRateLimit ? 'Rate limited — will retry next pass' : 'Unexpected error processing package',
-          )
+          log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
           counts.error++
         }
       }),
@@ -440,24 +411,16 @@ export async function runMavenEnrichmentLoop(
     const passStartedAt = Date.now()
     log.info({ pass: passNumber }, 'Pass started')
 
-    // Phase 1: non-critical — DB-only, high throughput, no HTTP
-    // const nonCritical = await runPhase(qx, config, false, isShuttingDown)
-
-    // Phase 2: critical — HTTP-bound, two-phase version check + POM extraction
     const critical = await runPhase(qx, config, true, isShuttingDown)
 
     const durationSec = Math.round((Date.now() - passStartedAt) / 1000)
     log.info(
       {
         pass: passNumber,
-        // totalProcessed: nonCritical.processed + critical.processed,
-        // totalSkipped: nonCritical.skipped + critical.skipped,
-        // totalUnchanged: nonCritical.unchanged + critical.unchanged,
-        // totalErrors: nonCritical.error + critical.error,
-        totalProcessed:  critical.processed,
-        totalSkipped:  critical.skipped,
-        totalUnchanged:  critical.unchanged,
-        totalErrors:  critical.error,
+        totalProcessed: critical.processed,
+        totalSkipped: critical.skipped,
+        totalUnchanged: critical.unchanged,
+        totalErrors: critical.error,
         durationSec,
       },
       `Pass complete — sleeping ${config.idleSleepSec}s`,

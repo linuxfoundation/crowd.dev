@@ -29,6 +29,15 @@ export interface MavenVersionsMetadata {
   releaseVersion: string | null
 }
 
+export type MavenFetchError =
+  | { kind: 'NOT_FOUND' }
+  | { kind: 'RATE_LIMIT'; status: number }
+  | { kind: 'TRANSIENT'; message: string }
+
+export function isMavenFetchError(v: unknown): v is MavenFetchError {
+  return typeof v === 'object' && v !== null && 'kind' in v
+}
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -36,7 +45,7 @@ async function sleep(ms: number): Promise<void> {
 export async function resolveVersionsList(
   groupId: string,
   artifactId: string,
-): Promise<MavenVersionsMetadata | null> {
+): Promise<MavenVersionsMetadata | MavenFetchError> {
   const groupPath = groupId.replace(/\./g, '/')
   const url = `${MAVEN_REPO}/${groupPath}/${artifactId}/maven-metadata.xml`
 
@@ -61,19 +70,22 @@ export async function resolveVersionsList(
       return { versions, releaseVersion: release || latest || null }
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        if (err.response?.status === 404) return null
+        const status = err.response?.status
+        if (status === 404) return { kind: 'NOT_FOUND' }
         // 429 = explicit rate limit, 403 = CDN throttle (Maven Central uses both)
-        if ((err.response?.status === 429 || err.response?.status === 403) && attempt < MAX_RETRIES) {
+        if ((status === 429 || status === 403) && attempt < MAX_RETRIES) {
           const delay = RETRY_BASE_MS * 2 ** attempt + Math.random() * 500
           await sleep(delay)
           continue
         }
+        if (status === 429 || status === 403) return { kind: 'RATE_LIMIT', status: status! }
       }
-      throw err
+      const message = err instanceof Error ? err.message : String(err)
+      return { kind: 'TRANSIENT', message }
     }
   }
 
-  return null
+  return { kind: 'RATE_LIMIT', status: 429 }
 }
 
 export async function resolveLatestVersion(
@@ -81,5 +93,6 @@ export async function resolveLatestVersion(
   artifactId: string,
 ): Promise<string | null> {
   const meta = await resolveVersionsList(groupId, artifactId)
-  return meta?.releaseVersion ?? null
+  if (isMavenFetchError(meta)) return null
+  return meta.releaseVersion
 }

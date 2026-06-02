@@ -131,66 +131,64 @@ export async function logAuditFieldChange(
 
 /**
  * Inserts or updates a row in `packages`.
- * Returns the id of the upserted row.
+ * Returns the id and the list of fields that actually changed value.
  */
-export async function upsertPackage(qx: QueryExecutor, item: IDbPackageUpsert): Promise<number> {
+export async function upsertPackage(
+  qx: QueryExecutor,
+  item: IDbPackageUpsert,
+): Promise<{ id: number; changedFields: string[] }> {
   const row = await qx.selectOne(
     `
-    INSERT INTO packages (
-      purl,
-      ecosystem,
-      namespace,
-      name,
-      description,
-      homepage,
-      registry_url,
-      declared_repository_url,
-      repository_url,
-      licenses,
-      licenses_raw,
-      latest_version,
-      criticality_score,
-      dependent_packages_count,
-      dependent_repos_count,
-      downloads_last_month,
-      ingestion_source,
-      last_synced_at
-    ) VALUES (
-      $(purl),
-      $(ecosystem),
-      $(namespace),
-      $(name),
-      $(description),
-      $(homepage),
-      $(registryUrl),
-      $(declaredRepositoryUrl),
-      $(repositoryUrl),
-      $(licenses)::text[],
-      $(licensesRaw),
-      $(latestVersion),
-      $(criticalityScore),
-      $(dependentPackagesCount),
-      $(dependentReposCount),
-      $(downloadsLastMonth),
-      $(ingestionSource),
-      NOW()
+    WITH old AS (
+      SELECT description, homepage, registry_url, declared_repository_url, repository_url,
+             licenses, licenses_raw, latest_version, ingestion_source
+        FROM packages WHERE purl = $(purl)
+    ),
+    ins AS (
+      INSERT INTO packages (
+        purl, ecosystem, namespace, name,
+        description, homepage, registry_url, declared_repository_url, repository_url,
+        licenses, licenses_raw, latest_version,
+        criticality_score, dependent_packages_count, dependent_repos_count, downloads_last_month,
+        ingestion_source, last_synced_at
+      ) VALUES (
+        $(purl), $(ecosystem), $(namespace), $(name),
+        $(description), $(homepage), $(registryUrl), $(declaredRepositoryUrl), $(repositoryUrl),
+        $(licenses)::text[], $(licensesRaw), $(latestVersion),
+        $(criticalityScore), $(dependentPackagesCount), $(dependentReposCount), $(downloadsLastMonth),
+        $(ingestionSource), NOW()
+      )
+      ON CONFLICT (purl) DO UPDATE SET
+        description              = COALESCE(EXCLUDED.description,              packages.description),
+        homepage                 = COALESCE(EXCLUDED.homepage,                 packages.homepage),
+        registry_url             = COALESCE(EXCLUDED.registry_url,             packages.registry_url),
+        declared_repository_url  = COALESCE(EXCLUDED.declared_repository_url,  packages.declared_repository_url),
+        repository_url           = COALESCE(EXCLUDED.repository_url,           packages.repository_url),
+        licenses                 = COALESCE(EXCLUDED.licenses,                 packages.licenses),
+        licenses_raw             = COALESCE(EXCLUDED.licenses_raw,             packages.licenses_raw),
+        latest_version           = COALESCE(EXCLUDED.latest_version,           packages.latest_version),
+        criticality_score        = COALESCE(EXCLUDED.criticality_score,        packages.criticality_score),
+        dependent_packages_count = COALESCE(EXCLUDED.dependent_packages_count, packages.dependent_packages_count),
+        dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
+        downloads_last_month     = COALESCE(EXCLUDED.downloads_last_month,     packages.downloads_last_month),
+        ingestion_source         = EXCLUDED.ingestion_source,
+        last_synced_at           = NOW()
+      RETURNING id, description, homepage, registry_url, declared_repository_url, repository_url,
+                licenses, licenses_raw, latest_version, ingestion_source
     )
-    ON CONFLICT (purl) DO UPDATE SET
-      description              = COALESCE(EXCLUDED.description,              packages.description),
-      homepage                 = COALESCE(EXCLUDED.homepage,                 packages.homepage),
-      registry_url             = COALESCE(EXCLUDED.registry_url,             packages.registry_url),
-      declared_repository_url  = COALESCE(EXCLUDED.declared_repository_url,  packages.declared_repository_url),
-      repository_url           = COALESCE(EXCLUDED.repository_url,           packages.repository_url),
-      licenses                 = COALESCE(EXCLUDED.licenses,                 packages.licenses),
-      licenses_raw             = COALESCE(EXCLUDED.licenses_raw,             packages.licenses_raw),
-      latest_version           = COALESCE(EXCLUDED.latest_version,           packages.latest_version),
-      criticality_score        = COALESCE(EXCLUDED.criticality_score,        packages.criticality_score),
-      dependent_packages_count = COALESCE(EXCLUDED.dependent_packages_count, packages.dependent_packages_count),
-      dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
-      downloads_last_month     = COALESCE(EXCLUDED.downloads_last_month,     packages.downloads_last_month),
-      ingestion_source         = EXCLUDED.ingestion_source,
-      last_synced_at           = NOW()
-    RETURNING id
+    SELECT ins.id,
+           array_remove(ARRAY[
+             CASE WHEN o.description             IS DISTINCT FROM ins.description             THEN 'packages.description' END,
+             CASE WHEN o.homepage                IS DISTINCT FROM ins.homepage                THEN 'packages.homepage' END,
+             CASE WHEN o.registry_url            IS DISTINCT FROM ins.registry_url            THEN 'packages.registry_url' END,
+             CASE WHEN o.declared_repository_url IS DISTINCT FROM ins.declared_repository_url THEN 'packages.declared_repository_url' END,
+             CASE WHEN o.repository_url          IS DISTINCT FROM ins.repository_url          THEN 'packages.repository_url' END,
+             CASE WHEN o.licenses                IS DISTINCT FROM ins.licenses                THEN 'packages.licenses' END,
+             CASE WHEN o.licenses_raw            IS DISTINCT FROM ins.licenses_raw            THEN 'packages.licenses_raw' END,
+             CASE WHEN o.latest_version          IS DISTINCT FROM ins.latest_version          THEN 'packages.latest_version' END,
+             CASE WHEN o.ingestion_source        IS DISTINCT FROM ins.ingestion_source        THEN 'packages.ingestion_source' END
+           ], NULL) AS changed_fields
+    FROM ins LEFT JOIN old o ON true
     `,
     {
       ...item,
@@ -202,5 +200,5 @@ export async function upsertPackage(qx: QueryExecutor, item: IDbPackageUpsert): 
       downloadsLastMonth: item.downloadsLastMonth ?? null,
     },
   )
-  return row.id as number
+  return { id: row.id as number, changedFields: row.changed_fields as string[] }
 }
