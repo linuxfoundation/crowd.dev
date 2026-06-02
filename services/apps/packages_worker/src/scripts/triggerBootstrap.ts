@@ -42,7 +42,10 @@ async function main(): Promise<void> {
   const reuseExports = args.includes('--reuse-exports')
   const depsTableOption: 'A' | 'B' = args.includes('--deps-table-b') ? 'B' : 'A'
   const exportNameIdx = args.indexOf('--export-name')
-  if (exportNameIdx !== -1 && (exportNameIdx + 1 >= args.length || args[exportNameIdx + 1].startsWith('--'))) {
+  if (
+    exportNameIdx !== -1 &&
+    (exportNameIdx + 1 >= args.length || args[exportNameIdx + 1].startsWith('--'))
+  ) {
     console.error('--export-name requires a value')
     process.exit(1)
   }
