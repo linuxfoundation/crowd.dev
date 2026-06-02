@@ -1,4 +1,5 @@
 export {
+  commitNpmChangesSeq,
   fetchAndPersistDailyDownloads,
   fetchAndPersistLast30dWindow,
   fetchBulkAndPersistLast30dWindow,
