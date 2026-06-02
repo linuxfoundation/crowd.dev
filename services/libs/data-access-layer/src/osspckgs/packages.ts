@@ -1,4 +1,5 @@
 import { QueryExecutor } from '../queryExecutor'
+
 import { IDbPackageUniverse, IDbPackageUpsert } from './types'
 
 export async function findPackageIdsByPurl(
@@ -24,7 +25,17 @@ export async function listMavenPackagesToSync(
   qx: QueryExecutor,
   options: { limit: number; refreshDays: number; isCritical: boolean },
 ): Promise<
-  (Pick<IDbPackageUniverse, 'id' | 'namespace' | 'name' | 'isCritical' | 'criticalityScore' | 'dependentPackagesCount' | 'dependentReposCount' | 'downloads30d'> & {
+  (Pick<
+    IDbPackageUniverse,
+    | 'id'
+    | 'namespace'
+    | 'name'
+    | 'isCritical'
+    | 'criticalityScore'
+    | 'dependentPackagesCount'
+    | 'dependentReposCount'
+    | 'downloads30d'
+  > & {
     purl: string
     latestVersion: string | null
   })[]
