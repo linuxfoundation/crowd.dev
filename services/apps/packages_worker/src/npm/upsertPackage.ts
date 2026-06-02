@@ -1,17 +1,17 @@
 import {
   getOrCreateRepoByUrl,
-  setPackageRepoForSource,
   upsertNpmFundingLinks,
   upsertNpmMaintainers,
   upsertNpmPackage,
   upsertNpmVersions,
+  upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import {
   buildPurl,
   collectMaintainers,
-  extractRepoUrl,
+  extractRepo,
   isPrerelease,
   normalizeLicenses,
   parseNpmName,
@@ -28,7 +28,8 @@ export async function upsertPackage(
   const licenses = normalizeLicenses(packument)
   const licensesRaw = typeof packument.license === 'string' ? packument.license : null
   const declaredRepositoryUrl = rawRepoUrl(packument)
-  const repositoryUrl = extractRepoUrl(packument)
+  const repo = extractRepo(packument)
+  const repositoryUrl = repo?.url ?? null
   const versionEntries = Object.entries(packument.versions)
   const time = packument.time ?? {}
   const latestVersion = packument['dist-tags']?.latest ?? null
@@ -70,14 +71,15 @@ export async function upsertPackage(
     })
     pkgChanged.forEach((f) => changed.add(f))
 
-    if (repositoryUrl) {
+    if (repo) {
       const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
         t,
-        repositoryUrl,
+        repo.url,
+        repo.host,
       )
       repoChanged.forEach((f) => changed.add(f))
 
-      const linkChanged = await setPackageRepoForSource(t, pkgId, repoId, 'declared', 0.8)
+      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, 'declared', 0.8)
       linkChanged.forEach((f) => changed.add(f))
     }
 

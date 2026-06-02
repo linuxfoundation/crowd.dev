@@ -9,6 +9,8 @@ function encodeNpmName(name: string): string {
 
 export async function fetchPackument(name: string): Promise<Packument | FetchError> {
   const url = `${REGISTRY}/${encodeNpmName(name)}`
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
     res = await fetch(url, {
@@ -16,9 +18,12 @@ export async function fetchPackument(name: string): Promise<Packument | FetchErr
         Accept: 'application/json',
         'User-Agent': USER_AGENT,
       },
+      signal: abort.signal,
     })
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
+  } finally {
+    clearTimeout(timer)
   }
 
   if (res.status === 404)

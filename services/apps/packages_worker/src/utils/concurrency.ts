@@ -11,15 +11,20 @@ export async function mapWithConcurrency<T, R>(
 
   const results: R[] = new Array(items.length)
   const executing = new Set<Promise<void>>()
+  let firstError: unknown
+  let failed = false
 
-  for (let i = 0; i < items.length; i++) {
+  for (let i = 0; i < items.length && !failed; i++) {
     const idx = i
-    // Chain the set-cleanup onto p itself (not a discarded p.finally()) so the
-    // only promise we hold is the one awaited by race()/all() — a rejection
-    // therefore never escapes as an unhandled rejection.
     const p: Promise<void> = fn(items[idx])
       .then((r) => {
         results[idx] = r
+      })
+      .catch((err) => {
+        if (!failed) {
+          failed = true
+          firstError = err
+        }
       })
       .finally(() => {
         executing.delete(p)
@@ -32,5 +37,6 @@ export async function mapWithConcurrency<T, R>(
   }
 
   await Promise.all(executing)
+  if (failed) throw firstError
   return results
 }

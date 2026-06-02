@@ -1,4 +1,5 @@
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import type { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
 
 import type { Packument } from './types'
 
@@ -47,7 +48,7 @@ function dedup(arr: string[]): string[] {
   return [...new Set(arr)]
 }
 
-export function extractRepoUrl(packument: Packument): string | null {
+export function extractRepo(packument: Packument): CanonicalRepo | null {
   const repo = packument.repository
   if (!repo) return null
   const raw = typeof repo === 'string' ? repo : repo.url

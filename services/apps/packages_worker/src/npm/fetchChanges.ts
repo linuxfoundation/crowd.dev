@@ -12,20 +12,25 @@ export interface ChangesResult {
 
 export async function fetchChangesSince(since: string): Promise<ChangesResult | FetchError> {
   const url = `https://replicate.npmjs.com/_changes?since=${encodeURIComponent(since)}&limit=${PAGE_LIMIT}`
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
     res = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT, 'npm-replication-opt-in': 'true' },
+      signal: abort.signal,
     })
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
+  } finally {
+    clearTimeout(timer)
   }
 
   if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
 
   let body: { results?: unknown[]; last_seq?: unknown; pending?: unknown }
   try {
-    body = await res.json()
+    body = (await res.json()) as { results?: unknown[]; last_seq?: unknown; pending?: unknown }
   } catch {
     return { kind: 'MALFORMED', message: 'invalid JSON' }
   }
@@ -44,20 +49,25 @@ export async function fetchChangesSince(since: string): Promise<ChangesResult | 
 }
 
 export async function fetchCurrentSeq(): Promise<string | FetchError> {
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
     res = await fetch('https://replicate.npmjs.com/', {
       headers: { 'User-Agent': USER_AGENT, 'npm-replication-opt-in': 'true' },
+      signal: abort.signal,
     })
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
+  } finally {
+    clearTimeout(timer)
   }
 
   if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}` }
 
   let body: { update_seq?: unknown }
   try {
-    body = await res.json()
+    body = (await res.json()) as { update_seq?: unknown }
   } catch {
     return { kind: 'MALFORMED', message: 'invalid JSON' }
   }

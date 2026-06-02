@@ -39,18 +39,20 @@ export async function upsertNpmMaintainers(
 
   const before: Array<{ maintainer_id: string; role: string | null }> = await qx.select(
     `SELECT maintainer_id::text AS maintainer_id, role
-       FROM package_maintainers WHERE package_id = $(packageId)`,
+       FROM package_maintainers WHERE package_id = $(packageId)::bigint`,
     { packageId },
   )
   const beforeMap = new Map(before.map((r) => [r.maintainer_id, r.role]))
 
-  await qx.result(`DELETE FROM package_maintainers WHERE package_id = $(packageId)`, { packageId })
+  await qx.result(`DELETE FROM package_maintainers WHERE package_id = $(packageId)::bigint`, {
+    packageId,
+  })
 
   const afterMap = new Map<string, string | null>()
   for (const m of maintainers) {
     const row: { maintainer_id: string } | null = await qx.selectOneOrNone(
       `INSERT INTO package_maintainers (package_id, maintainer_id, role)
-       SELECT $(packageId), id, $(role) FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
+       SELECT $(packageId)::bigint, id, $(role) FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
        ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role
        RETURNING maintainer_id::text AS maintainer_id`,
       { packageId, role: m.role, username: m.username },
