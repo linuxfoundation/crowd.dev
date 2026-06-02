@@ -58,7 +58,7 @@ export async function blockMemberOrganizationAffiliation(
 
 export async function markMemberForAffiliationRecalc(memberIds: string[]): Promise<void> {
   try {
-    await svc.redis.sAdd('queue:recalculate:members:affiliation', memberIds)
+    await svc.redis.sAdd('recalculate-member-affiliations', memberIds)
   } catch (error) {
     svc.log.error(error, 'Error marking member for affiliation recalc!')
     throw error
@@ -67,7 +67,7 @@ export async function markMemberForAffiliationRecalc(memberIds: string[]): Promi
 
 export async function getMembersForAffiliationRecalc(batchSize: number): Promise<string[]> {
   try {
-    return svc.redis.sPop('queue:recalculate:members:affiliation', batchSize)
+    return svc.redis.sPop('recalculate-member-affiliations', batchSize)
   } catch (error) {
     svc.log.error(error, 'Error getting members for affiliation recalc!')
     throw error

@@ -1,0 +1,231 @@
+DESCRIPTION >
+    Pre-computes per-project metrics for the Agentic AI collection.
+    Filters by specific repositories in the collection via collectionsRepositories.
+    Runs daily and stores results in agentic_ai_projects_list_ds.
+
+NODE ai_repos
+SQL >
+    SELECT r.url, r.segmentId, r.insightsProjectId
+    FROM collectionsRepositories cr FINAL
+    JOIN repositories r FINAL ON cr.repoId = r.id
+    WHERE
+        cr.collectionId = '3cf46a5d-abd0-440e-95f9-4ae9458903a8'
+        AND isNull (cr.deletedAt)
+        AND isNull (r.deletedAt)
+        AND r.enabled = true
+
+NODE ai_projects
+SQL >
+    SELECT
+        p.id,
+        p.segmentId,
+        p.name,
+        p.slug,
+        p.softwareValue,
+        groupArray(ar.url) AS repoUrls,
+        arrayFilter(x -> x LIKE '%github.com%', groupArray(ar.url)) AS githubRepos
+    FROM insights_projects_populated_ds p
+    JOIN ai_repos ar ON ar.insightsProjectId = p.id
+    GROUP BY p.id, p.segmentId, p.name, p.slug, p.softwareValue
+
+NODE activity_counts
+SQL >
+    SELECT
+        segmentId,
+        countIf(type = 'star') AS stars,
+        countIf(type = 'star' AND timestamp >= now() - INTERVAL 30 DAY) AS stars30d,
+        countIf(type = 'fork') AS forks,
+        countIf(type = 'fork' AND timestamp >= now() - INTERVAL 30 DAY) AS forks30d,
+        countIf(type IN ('authored-commit', 'committed-commit')) AS commits,
+        countIf(
+            type IN ('authored-commit', 'committed-commit') AND timestamp >= now() - INTERVAL 30 DAY
+        ) AS commits30d
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND type IN ('star', 'fork', 'authored-commit', 'committed-commit')
+    GROUP BY segmentId
+
+NODE contributor_counts_alltime
+SQL >
+    SELECT segmentId, countDistinct(memberId) AS contributors
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND (type, platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )
+    GROUP BY segmentId
+
+NODE contributor_counts
+SQL >
+    SELECT segmentId, countDistinct(memberId) AS contributors30d
+    FROM activityRelations_deduplicated_cleaned_bucket_union
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+        AND channel IN (SELECT url FROM ai_repos)
+        AND timestamp >= now() - INTERVAL 30 DAY
+        AND (type, platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )
+    GROUP BY segmentId
+
+NODE new_contributor_counts
+SQL >
+    SELECT segmentId, countIf(first_activity >= now() - INTERVAL 30 DAY) AS newContributors30d
+    FROM
+        (
+            SELECT segmentId, memberId, min(timestamp) AS first_activity
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                segmentId IN (SELECT DISTINCT segmentId FROM ai_repos)
+                AND channel IN (SELECT url FROM ai_repos)
+                AND (type, platform) IN (
+                    SELECT activityType, platform
+                    FROM activityTypes
+                    WHERE isCodeContribution = 1 OR isCollaboration = 1
+                )
+            GROUP BY segmentId, memberId
+        )
+    GROUP BY segmentId
+
+NODE ai_package_metrics
+SQL >
+    SELECT
+        insightsProjectId,
+        argMax(downloadsCount, date) AS downloads,
+        toInt64(argMax(downloadsCount, date)) - toInt64(
+            argMaxIf(downloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
+        ) AS downloads30d,
+        argMax(dockerDownloadsCount, date) AS dockerPulls,
+        toInt64(argMax(dockerDownloadsCount, date)) - toInt64(
+            argMaxIf(dockerDownloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
+        ) AS dockerPulls30d,
+        max(dependentReposCount) AS dependentRepos,
+        max(dependentPackagesCount) AS dependentPackages
+    FROM packageDownloads FINAL
+    WHERE insightsProjectId IN (SELECT DISTINCT insightsProjectId FROM ai_repos)
+    GROUP BY insightsProjectId
+
+NODE pr_metrics
+SQL >
+    SELECT
+        segmentId,
+        if(count() > 0, round(countIf(isNotNull(mergedAt)) * 100.0 / count(), 2), NULL) AS mergeRate,
+        if(
+            countIf(openedAt >= now() - INTERVAL 30 DAY) > 0,
+            round(
+                countIf(isNotNull(mergedAt) AND openedAt >= now() - INTERVAL 30 DAY)
+                * 100.0
+                / countIf(openedAt >= now() - INTERVAL 30 DAY),
+                2
+            ),
+            NULL
+        ) AS mergeRate30d,
+        medianIf(
+            resolvedInSeconds, isNotNull(resolvedAt) AND resolvedInSeconds > 0
+        ) AS prResolveTimeSeconds,
+        medianIf(
+            resolvedInSeconds,
+            isNotNull(resolvedAt) AND resolvedInSeconds > 0 AND resolvedAt >= now() - INTERVAL 30 DAY
+        ) AS prResolveTimeSeconds30d
+    FROM pull_requests_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos) AND channel IN (SELECT url FROM ai_repos)
+    GROUP BY segmentId
+
+NODE issue_metrics
+SQL >
+    SELECT
+        segmentId,
+        medianIf(closedInSeconds, isNotNull(closedAt) AND closedInSeconds > 0) AS issueCloseTimeSeconds,
+        medianIf(
+            closedInSeconds,
+            isNotNull(closedAt) AND closedInSeconds > 0 AND closedAt >= now() - INTERVAL 30 DAY
+        ) AS issueCloseTimeSeconds30d,
+        medianIf(
+            respondedInSeconds, isNotNull(respondedInSeconds) AND respondedInSeconds > 0
+        ) AS issueResponseTimeSeconds,
+        medianIf(
+            respondedInSeconds,
+            isNotNull(respondedInSeconds)
+            AND respondedInSeconds > 0
+            AND openedAt >= now() - INTERVAL 30 DAY
+        ) AS issueResponseTimeSeconds30d,
+        countIf(isNull (respondedInSeconds) AND isNull (closedAt)) AS noResponseIssues,
+        countIf(
+            isNull (respondedInSeconds) AND openedAt >= now() - INTERVAL 30 DAY
+        ) AS noResponseIssues30d
+    FROM issues_analyzed
+    WHERE
+        segmentId IN (SELECT DISTINCT segmentId FROM ai_repos) AND channel IN (SELECT url FROM ai_repos)
+    GROUP BY segmentId
+
+NODE vulnerability_counts
+SQL >
+    SELECT
+        r.insightsProjectId AS projectId,
+        countIf(v.status != 'RESOLVED') AS vulnerabilities,
+        countIf(
+            v.status != 'RESOLVED' AND v.firstDetectedAt >= now() - INTERVAL 30 DAY
+        ) AS vulnerabilities30d
+    FROM vulnerabilities v FINAL
+    JOIN repositories r FINAL ON v.repoUrl = r.url
+    WHERE v.repoUrl IN (SELECT url FROM ai_repos)
+    GROUP BY r.insightsProjectId
+
+NODE final_join
+SQL >
+    SELECT
+        p.id AS projectId,
+        p.name AS name,
+        p.slug AS slug,
+        if(length(p.githubRepos) > 0, p.githubRepos[1], '') AS githubRepoLink,
+        coalesce(ac.stars, 0) AS stars,
+        coalesce(ac.stars30d, 0) AS stars30d,
+        coalesce(ac.forks, 0) AS forks,
+        coalesce(ac.forks30d, 0) AS forks30d,
+        pm.downloads AS downloads,
+        pm.downloads30d AS downloads30d,
+        pm.dockerPulls AS dockerPulls,
+        pm.dockerPulls30d AS dockerPulls30d,
+        pm.dependentRepos AS dependentRepos,
+        pm.dependentPackages AS dependentPackages,
+        coalesce(ac.commits, 0) AS commits,
+        coalesce(ac.commits30d, 0) AS commits30d,
+        coalesce(ca.contributors, 0) AS contributors,
+        coalesce(cc.contributors30d, 0) AS contributors30d,
+        coalesce(nc.newContributors30d, 0) AS newContributors30d,
+        pr.mergeRate AS mergeRate,
+        pr.mergeRate30d AS mergeRate30d,
+        pr.prResolveTimeSeconds AS prResolveTimeSeconds,
+        pr.prResolveTimeSeconds30d AS prResolveTimeSeconds30d,
+        im.issueCloseTimeSeconds AS issueCloseTimeSeconds,
+        im.issueCloseTimeSeconds30d AS issueCloseTimeSeconds30d,
+        im.issueResponseTimeSeconds AS issueResponseTimeSeconds,
+        im.issueResponseTimeSeconds30d AS issueResponseTimeSeconds30d,
+        im.noResponseIssues AS noResponseIssues,
+        im.noResponseIssues30d AS noResponseIssues30d,
+        vc.vulnerabilities AS vulnerabilities,
+        vc.vulnerabilities30d AS vulnerabilities30d,
+        p.softwareValue AS cocomoValue
+    FROM ai_projects p
+    LEFT JOIN activity_counts ac ON ac.segmentId = p.segmentId
+    LEFT JOIN contributor_counts_alltime ca ON ca.segmentId = p.segmentId
+    LEFT JOIN contributor_counts cc ON cc.segmentId = p.segmentId
+    LEFT JOIN new_contributor_counts nc ON nc.segmentId = p.segmentId
+    LEFT JOIN ai_package_metrics pm ON pm.insightsProjectId = p.id
+    LEFT JOIN pr_metrics pr ON pr.segmentId = p.segmentId
+    LEFT JOIN issue_metrics im ON im.segmentId = p.segmentId
+    LEFT JOIN vulnerability_counts vc ON vc.projectId = p.id
+
+TYPE COPY
+TARGET_DATASOURCE agentic_ai_projects_list_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 2 * * *

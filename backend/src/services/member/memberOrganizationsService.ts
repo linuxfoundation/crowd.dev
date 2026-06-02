@@ -1,18 +1,19 @@
 /* eslint-disable no-continue */
+import lodash from 'lodash'
 import { Transaction } from 'sequelize'
 
-import { Error404 } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { Error404, sanitizeMemberOrganizationDateRange } from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   OrganizationField,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
   deleteMemberOrganizations,
+  fetchManyOrganizationAffiliationPolicies,
+  fetchMemberOrganizationById,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
-  optionsQx,
   queryOrgs,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
@@ -22,6 +23,7 @@ import {
   IOrganization,
   IRenderFriendlyMemberOrganization,
   MemberOrganizationUpdate,
+  OrganizationSource,
 } from '@crowd/types'
 
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
@@ -33,16 +35,9 @@ type IOrganizationSummary = Pick<IOrganization, 'id' | 'displayName' | 'logo' | 
 export default class MemberOrganizationsService extends LoggerBase {
   options: IServiceOptions
 
-  private readonly commonMemberService: CommonMemberService
-
   constructor(options: IServiceOptions) {
     super(options.log)
     this.options = options
-    this.commonMemberService = new CommonMemberService(
-      optionsQx(options),
-      options.temporal,
-      options.log,
-    )
   }
 
   // Member organization list
@@ -166,18 +161,24 @@ export default class MemberOrganizationsService extends LoggerBase {
 
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
+      const dates = sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
+      const memberOrgData: Partial<IMemberOrganization> = {
+        ...data,
+        dateStart: dates.dateStart,
+        dateEnd: dates.dateEnd,
+      }
 
       // Clean up any soft-deleted entries
-      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, data)
+      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, memberOrgData)
 
       // Create new member organization
-      const newMemberOrgId = await createMemberOrganization(qx, memberId, data)
+      const newMemberOrgId = await createMemberOrganization(qx, memberId, memberOrgData)
 
-      // Check if organization affiliation is blocked
-      const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(qx, data.organizationId)
+      const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(qx, [
+        data.organizationId,
+      ])
 
-      // If organization affiliation is blocked, create an affiliation override
-      if (newMemberOrgId && isAffiliationBlocked) {
+      if (newMemberOrgId && orgAffiliationPolicyById.get(data.organizationId)) {
         await changeMemberOrganizationAffiliationOverrides(qx, [
           {
             memberId,
@@ -187,13 +188,16 @@ export default class MemberOrganizationsService extends LoggerBase {
         ])
       }
 
-      // Start affiliation recalculation within the same transaction
-      await this.commonMemberService.startAffiliationRecalculation(memberId, [data.organizationId])
-
       // Fetch updated list
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
@@ -213,26 +217,52 @@ export default class MemberOrganizationsService extends LoggerBase {
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
 
-      const update: MemberOrganizationUpdate = Object.fromEntries(
-        Object.entries({
-          organizationId: data.organizationId,
-          title: data.title,
-          dateStart: data.dateStart,
-          dateEnd: data.dateEnd,
-          source: data.source,
-          verified: data.verified,
-          verifiedBy: data.verifiedBy,
-        }).filter(([, v]) => v !== undefined),
+      const existing = await fetchMemberOrganizationById(qx, id)
+      if (!existing || existing.memberId !== memberId) {
+        throw new Error404(`Member organization with id ${id} not found!`)
+      }
+
+      const hasDateStart = data.dateStart !== undefined
+      const hasDateEnd = data.dateEnd !== undefined
+      const targetDateRange = sanitizeMemberOrganizationDateRange(
+        hasDateStart ? data.dateStart : existing.dateStart,
+        hasDateEnd ? data.dateEnd : existing.dateEnd,
+        true,
       )
 
-      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, data)
-      await updateMemberOrganization(qx, memberId, id, update)
+      const update = lodash.pickBy(
+        {
+          organizationId: data.organizationId,
+          title: data.title,
+          dateStart: hasDateStart ? targetDateRange.dateStart : undefined,
+          dateEnd: hasDateEnd ? targetDateRange.dateEnd : undefined,
 
-      await this.commonMemberService.startAffiliationRecalculation(memberId, [data.organizationId])
+          verified: data.verified,
+          verifiedBy: data.verifiedBy,
+        },
+        (v) => v !== undefined,
+      ) as MemberOrganizationUpdate
+
+      await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)
+      await updateMemberOrganization(qx, memberId, id, {
+        ...update,
+        source: OrganizationSource.UI,
+      })
+
+      // Trigger recalculation for old and new orgs if changed
+      const orgsToRecalculate = Array.from(
+        new Set([existing.organizationId, data.organizationId]),
+      ).filter((orgId): orgId is string => Boolean(orgId))
 
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: orgsToRecalculate,
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
@@ -257,15 +287,16 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       await deleteMemberOrganizations(qx, memberId, [id], true)
 
-      await this.commonMemberService.startAffiliationRecalculation(
-        memberId,
-        [memberOrganizationToBeDeleted.organizationId],
-        true,
-      )
-
       const result = await this.list(memberId, transaction)
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(this.options.temporal, memberId, {
+        memberOrganizationIds: [memberOrganizationToBeDeleted.organizationId],
+        syncToOpensearch: true,
+      })
+
       return result
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)

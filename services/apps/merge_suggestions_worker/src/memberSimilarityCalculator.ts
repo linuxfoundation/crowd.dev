@@ -1,6 +1,12 @@
 import { get as getLevenshteinDistance } from 'fast-levenshtein'
 
-import { parseGitHubNoreplyEmail } from '@crowd/common'
+import {
+  getEmailLocalPart,
+  isKnownBot,
+  isLocalMachineEmail,
+  parseGitHubNoreplyEmail,
+  parseGitLabNoreplyEmail,
+} from '@crowd/common'
 import {
   IMemberIdentity,
   IMemberOpensearch,
@@ -14,6 +20,7 @@ import {
 
 import { EMAIL_AS_USERNAME_PLATFORMS } from './enums'
 import { MemberAttributeOpensearch } from './enums'
+import { isOsReservedName } from './utils'
 
 class MemberSimilarityCalculator {
   static HIGH_CONFIDENCE_SCORE = 0.9
@@ -171,7 +178,18 @@ class MemberSimilarityCalculator {
     if (
       similarMember.keyword_displayName.toLowerCase() === primaryMember.displayName.toLowerCase()
     ) {
-      return this.decideMemberSimilarityUsingAdditionalChecks(primaryMember, similarMember)
+      const dn = primaryMember.displayName.toLowerCase().trim()
+      if (isOsReservedName(dn)) {
+        return this.LOW_CONFIDENCE_SCORE
+      }
+      // Single-word names (first-name-only, handles) are too ambiguous without a corroborating
+      // signal. Multi-word names (full names) are treated as high-confidence on their own.
+      const isFullName = dn.includes(' ')
+      return this.decideMemberSimilarityUsingAdditionalChecks(
+        primaryMember,
+        similarMember,
+        isFullName ? undefined : this.HIGH_CONFIDENCE_SCORE,
+      )
     }
 
     // calculate similarity percentage
@@ -193,34 +211,92 @@ class MemberSimilarityCalculator {
     similarMember: IMemberOpensearch,
   ): boolean {
     if (member.identities && member.identities.length > 0) {
+      // Only verified usernames are authoritative enough to veto merges; unverified social
+      // slugs mostly come from enrichment and should not block stronger identity evidence.
       for (const identity of member.identities.filter(
-        (i) => i.type === MemberIdentityType.USERNAME,
+        (i) => i.type === MemberIdentityType.USERNAME && i.verified,
       )) {
+        const clashingIdentities = similarMember.nested_identities.filter(
+          (i) =>
+            i.keyword_type === MemberIdentityType.USERNAME &&
+            i.bool_verified === true &&
+            i.string_platform === identity.platform &&
+            i.keyword_value !== identity.value,
+        )
+
+        if (clashingIdentities.length === 0) continue
+
+        // git "usernames" are commit-author emails — a single person commits from many addresses
+        // (work, personal, noreply, machine-local). Different values don't mean different people.
+        // Relax only when ALL clashes are email-like and the displayName is a real identity.
         if (
-          similarMember.nested_identities.some(
-            (i) =>
-              i.keyword_type === MemberIdentityType.USERNAME &&
-              i.string_platform === identity.platform &&
-              i.keyword_value !== identity.value,
-          )
+          identity.platform === PlatformType.GIT &&
+          identity.value.includes('@') &&
+          clashingIdentities.every((c) => c.keyword_value?.includes('@')) &&
+          !this.isNonIdentityBearingDisplayName(member, similarMember)
         ) {
-          return true
+          continue
         }
+
+        return true
       }
     }
 
     return false
   }
 
-  /**
-   * Checks if a noreply email in one member matches a username in the other (e.g. GitHub noreply email -> GitHub username)
-   * Works bidirectionally: primary email -> similar username, and similar email -> primary username.
-   */
+  // Returns true when either member's displayName is a bot or a generic placeholder rather than
+  // a real person's name — we keep conservative clash detection for these to avoid merging
+  // distinct entities that share the same non-identity string.
+  private static isNonIdentityBearingDisplayName(
+    member: IMemberWithAggregatesForMergeSuggestions,
+    similarMember: IMemberOpensearch,
+  ): boolean {
+    if (member.attributes?.[MemberAttributeName.IS_BOT]?.default === true) return true
+    // obj_isBot is a boolean attribute indexed under obj_attributes but not in the typed enum
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((similarMember.obj_attributes as any)?.obj_isBot?.bool_default === true) return true
+    if (isKnownBot(member.displayName ?? '') || isKnownBot(similarMember.keyword_displayName ?? ''))
+      return true
+
+    const primaryDn = (member.displayName ?? '').toLowerCase().trim()
+    const similarDn = (similarMember.keyword_displayName ?? '').toLowerCase().trim()
+
+    if (isOsReservedName(primaryDn) || isOsReservedName(similarDn)) return true
+
+    // When a git/username local-part equals the displayName, the name is just the commit-time
+    // default (e.g. user.name="user", user.email="user@laptop.local").
+    for (const id of member.identities) {
+      if (
+        id.platform === PlatformType.GIT &&
+        id.type === MemberIdentityType.USERNAME &&
+        id.value.includes('@')
+      ) {
+        const lp = getEmailLocalPart(id.value)
+        if (lp === primaryDn || lp === similarDn) return true
+      }
+    }
+    for (const id of similarMember.nested_identities) {
+      if (
+        id.string_platform === PlatformType.GIT &&
+        id.keyword_type === MemberIdentityType.USERNAME &&
+        id.string_value?.includes('@')
+      ) {
+        const lp = getEmailLocalPart(id.string_value)
+        if (lp === primaryDn || lp === similarDn) return true
+      }
+    }
+
+    return false
+  }
+
+  // Checks if a noreply address on either member resolves to the other's platform username.
+  // Noreply identities can be ingested as type=email or type=username depending on the source.
   static hasMatchingUsernameFromNoreplyEmail(
     primaryMember: IMemberWithAggregatesForMergeSuggestions,
     similarMember: IMemberOpensearch,
   ): boolean {
-    // Primary member's noreply emails -> similar member's platform usernames
+    // Primary member's noreply -> similar member's platform usernames
     const similarUsernamesByPlatform = {
       [PlatformType.GITHUB]: new Set(
         similarMember.nested_identities
@@ -231,18 +307,32 @@ class MemberSimilarityCalculator {
           )
           .map((i) => i.string_value?.toLowerCase()),
       ),
+      [PlatformType.GITLAB]: new Set(
+        similarMember.nested_identities
+          .filter(
+            (i) =>
+              i.string_platform === PlatformType.GITLAB &&
+              i.keyword_type === MemberIdentityType.USERNAME,
+          )
+          .map((i) => i.string_value?.toLowerCase()),
+      ),
     }
 
     for (const identity of primaryMember.identities) {
-      if (!identity.verified || identity.type !== MemberIdentityType.EMAIL) continue
+      if (!identity.verified) continue
 
       const ghUsername = parseGitHubNoreplyEmail(identity.value)
       if (ghUsername && similarUsernamesByPlatform[PlatformType.GITHUB].has(ghUsername)) {
         return true
       }
+
+      const glUsername = parseGitLabNoreplyEmail(identity.value)
+      if (glUsername && similarUsernamesByPlatform[PlatformType.GITLAB].has(glUsername)) {
+        return true
+      }
     }
 
-    // Similar member's noreply emails -> primary member's platform usernames
+    // Similar member's noreply -> primary member's platform usernames
     const primaryUsernamesByPlatform = {
       [PlatformType.GITHUB]: new Set(
         primaryMember.identities
@@ -251,13 +341,25 @@ class MemberSimilarityCalculator {
           )
           .map((i) => i.value?.toLowerCase()),
       ),
+      [PlatformType.GITLAB]: new Set(
+        primaryMember.identities
+          .filter(
+            (i) => i.platform === PlatformType.GITLAB && i.type === MemberIdentityType.USERNAME,
+          )
+          .map((i) => i.value?.toLowerCase()),
+      ),
     }
 
     for (const identity of similarMember.nested_identities) {
-      if (!identity.bool_verified || identity.keyword_type !== MemberIdentityType.EMAIL) continue
+      if (!identity.bool_verified) continue
 
       const ghUsername = parseGitHubNoreplyEmail(identity.string_value)
       if (ghUsername && primaryUsernamesByPlatform[PlatformType.GITHUB].has(ghUsername)) {
+        return true
+      }
+
+      const glUsername = parseGitLabNoreplyEmail(identity.string_value)
+      if (glUsername && primaryUsernamesByPlatform[PlatformType.GITLAB].has(glUsername)) {
         return true
       }
     }
@@ -379,10 +481,15 @@ class MemberSimilarityCalculator {
     similarMember: IMemberOpensearch,
     startingScore?: number,
   ): number {
-    let isHighConfidence = false
-    let confidenceScore = startingScore || this.HIGH_CONFIDENCE_SCORE
+    // Exact displayName widens the candidate funnel for sparse git-only profiles.
+    // The LLM prompt still rejects display-name-only matches before merging.
+    let isHighConfidence = startingScore === undefined
+    let confidenceScore =
+      startingScore != null && Number.isFinite(startingScore)
+        ? startingScore
+        : this.HIGH_CONFIDENCE_SCORE
 
-    const bumpFactor = Math.floor((1 - confidenceScore) / 5)
+    const bumpFactor = (1 - confidenceScore) / 6
 
     if (this.hasSameLocation(member, similarMember)) {
       isHighConfidence = true
@@ -409,11 +516,58 @@ class MemberSimilarityCalculator {
       confidenceScore = this.bumpConfidenceScore(confidenceScore, bumpFactor)
     }
 
+    // Catches contributors whose only identity is commits from an unconfigured machine —
+    // same local-part across *.local / *.lan addresses is a strong hint they're the same person.
+    if (this.hasSameLocalPartInGitUsername(member, similarMember)) {
+      isHighConfidence = true
+      confidenceScore = this.bumpConfidenceScore(confidenceScore, bumpFactor)
+    }
+
     if (!isHighConfidence) {
       return this.LOW_CONFIDENCE_SCORE
     }
 
     return confidenceScore
+  }
+
+  static hasSameLocalPartInGitUsername(
+    member: IMemberWithAggregatesForMergeSuggestions,
+    similarMember: IMemberOpensearch,
+  ): boolean {
+    const primaryDn = (member.displayName ?? '').toLowerCase().trim()
+    const similarDn = (similarMember.keyword_displayName ?? '').toLowerCase().trim()
+    const isUsable = (lp: string) =>
+      lp.length > 0 &&
+      lp !== primaryDn &&
+      lp !== similarDn &&
+      !isKnownBot(lp) &&
+      !isOsReservedName(lp)
+
+    const primaryLocalParts = member.identities
+      .filter(
+        (i) =>
+          i.platform === PlatformType.GIT &&
+          i.type === MemberIdentityType.USERNAME &&
+          isLocalMachineEmail(i.value),
+      )
+      .map((i) => getEmailLocalPart(i.value))
+      .filter(isUsable)
+
+    if (primaryLocalParts.length === 0) return false
+
+    const similarLocalParts = new Set(
+      similarMember.nested_identities
+        .filter(
+          (i) =>
+            i.string_platform === PlatformType.GIT &&
+            i.keyword_type === MemberIdentityType.USERNAME &&
+            isLocalMachineEmail(i.string_value ?? ''),
+        )
+        .map((i) => getEmailLocalPart(i.string_value ?? ''))
+        .filter(isUsable),
+    )
+
+    return primaryLocalParts.some((lp) => similarLocalParts.has(lp))
   }
 
   static bumpConfidenceScore(confidenceScore: number, bump: number): number {

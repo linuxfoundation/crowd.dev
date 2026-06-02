@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { captureApiChange, memberVerifyWorkExperienceAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   deleteMemberOrganizations,
@@ -62,11 +62,15 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
           })
         } else {
           await deleteMemberOrganizations(tx, memberId, [workExperienceId], true)
-
-          const service = new CommonMemberService(tx, req.temporal, req.log)
-          await service.startAffiliationRecalculation(memberId, [memberOrg.organizationId])
         }
       })
+
+      // Signal after commit so the workflow sees persisted changes
+      if (!verified) {
+        await signalMemberUpdate(req.temporal, memberId, {
+          memberOrganizationIds: [memberOrg.organizationId],
+        })
+      }
 
       captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
     }),

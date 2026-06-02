@@ -114,7 +114,9 @@ async def invoke_bedrock(
                 raw_text = raw_text.rstrip().rsplit("```", 1)[0]
             raw_text = raw_text.strip()
 
-            output = json.loads(raw_text)
+            # Extract only the first JSON object (model sometimes appends extra text)
+            decoder = json.JSONDecoder()
+            output, _ = decoder.raw_decode(raw_text)
 
             # Calculate cost (Claude Haiku 4.5 on AWS Bedrock: $1.00/$5.00 per 1M tokens)
             input_tokens = response_body["usage"]["input_tokens"]

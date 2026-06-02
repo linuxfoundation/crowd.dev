@@ -19,11 +19,6 @@ import {
   updateMemberUsingSquashedPayload,
 } from './activities/enrichment'
 import { refreshToken } from './activities/lf-auth0/authenticateLFAuth0'
-import {
-  getIdentitiesExistInOtherMembers,
-  mergeMembers,
-  updateMemberWithEnrichmentData,
-} from './activities/lf-auth0/enrichLFAuth0'
 import { getEnrichmentLFAuth0 } from './activities/lf-auth0/getEnrichmentLFAuth0'
 import { getLFIDEnrichableMembers } from './activities/lf-auth0/getLFIDEnrichableMembers'
 import {
@@ -39,9 +34,12 @@ import {
 } from './activities/llm'
 import {
   getEnrichableMembers,
+  getIdentitiesExistInOtherMembers,
   getMemberById,
+  mergeMembers,
   syncMembersToOpensearch,
   syncOrganizationsToOpensearch,
+  updateMemberWithEnrichmentData,
 } from './activities/member'
 
 export {

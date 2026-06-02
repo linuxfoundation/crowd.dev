@@ -2,19 +2,28 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
-import { ConflictError, NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  sanitizeMemberOrganizationDateRange,
+} from '@crowd/common'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   changeMemberOrganizationAffiliationOverrides,
-  checkOrganizationAffiliationPolicy,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationAffiliationPolicies,
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
-import type { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
+import type {
+  IMemberOrganization,
+  IMemberRoleWithOrganization,
+  MemberOrganizationDateRange,
+} from '@crowd/types'
 
 import { created } from '@/utils/api'
 import { toMemberWorkExperience } from '@/utils/mapper'
@@ -53,12 +62,20 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
     memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState({})
 
+      let dates: MemberOrganizationDateRange
+
+      try {
+        dates = sanitizeMemberOrganizationDateRange(data.startDate, data.endDate, true)
+      } catch (error) {
+        throw new BadRequestError('Invalid work experience date range')
+      }
+
       const memberOrgData: IMemberOrganization = {
         memberId,
         organizationId: data.organizationId,
         title: data.jobTitle,
-        dateStart: data.startDate,
-        dateEnd: data.endDate,
+        dateStart: dates.dateStart,
+        dateEnd: dates.dateEnd,
         source: data.source,
         verified: data.verified,
         verifiedBy: data.verifiedBy,
@@ -67,7 +84,7 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
       let newMemberOrgId: string | undefined
 
       await qx.tx(async (tx) => {
-        await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, data)
+        await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, memberOrgData)
 
         newMemberOrgId = await createMemberOrganization(tx, memberId, memberOrgData)
 
@@ -75,12 +92,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
           throw new ConflictError('A work experience with the same dates already exists')
         }
 
-        const isAffiliationBlocked = await checkOrganizationAffiliationPolicy(
-          tx,
+        const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(tx, [
           data.organizationId,
-        )
+        ])
 
-        if (newMemberOrgId && isAffiliationBlocked) {
+        if (newMemberOrgId && orgAffiliationPolicyById.get(data.organizationId)) {
           await changeMemberOrganizationAffiliationOverrides(tx, [
             {
               memberId,
@@ -89,9 +105,11 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
             },
           ])
         }
+      })
 
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, [data.organizationId])
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])

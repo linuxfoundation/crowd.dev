@@ -5,15 +5,16 @@ import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { ConflictError, NotFoundError } from '@crowd/common'
 import {
   MemberField,
-  checkMemberIdentityExistence,
   findMemberById,
+  findMemberIdentitiesByValue,
   createMemberIdentity as insertMemberIdentity,
   optionsQx,
   touchMemberUpdatedAt,
+  updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
-import { created } from '@/utils/api'
+import { created, ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -34,18 +35,42 @@ const bodySchema = z
     path: ['verifiedBy'],
   })
 
+type DbConstraintError = Error & {
+  constraint?: string
+  original?: { constraint?: string }
+  parent?: { constraint?: string }
+}
+
+function throwIdentityConflict(
+  error: DbConstraintError,
+  data: { platform: string; value: string; type: MemberIdentityType },
+): never {
+  const constraint = error.constraint ?? error.original?.constraint ?? error.parent?.constraint
+
+  if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
+    throw new ConflictError('Identity already verified on another member', data)
+  }
+
+  throw error
+}
+
 export async function createMemberIdentity(req: Request, res: Response): Promise<void> {
   const { memberId } = validateOrThrow(paramsSchema, req.params)
   const data = validateOrThrow(bodySchema, req.body)
 
   const qx = optionsQx(req)
-
   const member = await findMemberById(qx, memberId, [MemberField.ID])
   if (!member) {
     throw new NotFoundError('Member not found')
   }
 
+  // The data-sink writes identity values as trimmed lowercase, so normalize here
+  // to keep idempotency checks reliable against existing rows.
+  const normalizedValue = data.value.trim().toLowerCase()
+  const conflictContext = { platform: data.platform, value: normalizedValue, type: data.type }
+
   let result!: IMemberIdentity
+  let alreadyExisted = false
 
   await captureApiChange(
     req,
@@ -53,39 +78,52 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await checkMemberIdentityExistence(
-          tx,
-          data.value,
-          data.platform,
-          data.type,
-        )
+        const existing = await findMemberIdentitiesByValue(tx, memberId, normalizedValue, {
+          type: data.type,
+        })
+        const exactMatch = existing.find((i) => i.platform === data.platform)
 
-        for (const identity of existing) {
-          if (identity.memberId === memberId) {
-            throw new ConflictError('Identity already exists on this member')
+        try {
+          if (exactMatch) {
+            alreadyExisted = true
+            result = exactMatch
+          } else {
+            result = await insertMemberIdentity(
+              tx,
+              {
+                memberId,
+                platform: data.platform,
+                value: normalizedValue,
+                type: data.type,
+                source: data.source,
+                verified: data.verified,
+                verifiedBy: data.verifiedBy,
+              },
+              true,
+              true,
+            )
           }
 
-          if (identity.verified) {
-            throw new ConflictError('Identity already verified on another member')
+          // A verified identity confirms the same value for this member, so keep same-value
+          // identities in sync instead of leaving stale unverified duplicates behind.
+          if (data.verified && existing.length > 0) {
+            const updatedResults: IMemberIdentity[] = []
+            for (const identity of existing) {
+              const updated = await updateMemberIdentity(tx, memberId, identity.id, {
+                verified: true,
+                verifiedBy: data.verifiedBy,
+              })
+              if (updated) updatedResults.push(updated)
+            }
+
+            if (alreadyExisted) {
+              result = updatedResults.find((r) => r.id === exactMatch.id) ?? result
+            }
           }
+        } catch (error) {
+          throwIdentityConflict(error as DbConstraintError, conflictContext)
         }
 
-        result = await insertMemberIdentity(
-          tx,
-          {
-            memberId,
-            platform: data.platform,
-            value: data.value,
-            type: data.type,
-            source: data.source,
-            verified: data.verified,
-            verifiedBy: data.verifiedBy,
-          },
-          true,
-          true,
-        )
-
-        // touch member updated at to trigger merge suggestion
         await touchMemberUpdatedAt(tx, memberId)
       })
 
@@ -93,14 +131,21 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     }),
   )
 
-  created(res, {
+  const response = {
     id: result.id,
     value: result.value,
     platform: result.platform,
+    type: result.type,
     verified: result.verified,
     verifiedBy: result.verifiedBy ?? null,
     source: result.source ?? null,
     createdAt: result.createdAt,
     updatedAt: result.updatedAt,
-  })
+  }
+
+  if (alreadyExisted) {
+    ok(res, response)
+  } else {
+    created(res, response)
+  }
 }

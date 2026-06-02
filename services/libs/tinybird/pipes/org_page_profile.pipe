@@ -1,0 +1,66 @@
+DESCRIPTION >
+    Organization profile for the org page. Returns one row for a given orgId.
+    Joins organizationIdentities for website and domain.
+
+TAGS "Organization page"
+
+NODE org_slug_lookup
+SQL >
+    %
+    SELECT id
+    FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
+NODE org_page_profile_base
+SQL >
+    SELECT id, displayName, logo, size AS employeeCount, industry, headline AS description
+    FROM organizations FINAL
+    WHERE id = (SELECT id FROM org_slug_lookup)
+
+NODE org_page_profile_website
+SQL >
+    SELECT organizationId, argMax(value, updatedAt) AS website
+    FROM organizationIdentities FINAL
+    WHERE organizationId = (SELECT id FROM org_slug_lookup) AND type = 'primary-domain'
+    GROUP BY organizationId
+
+NODE org_page_profile_membership
+SQL >
+    SELECT
+        organizationId,
+        replaceRegexpOne(
+            argMax(
+                if(
+                    tier IN (
+                        'Silver Membership',
+                        'Platinum Membership',
+                        'Gold Membership',
+                        'Associate Membership'
+                    ),
+                    tier,
+                    extract(productName, ' - (.+) \\(')
+                ),
+                updatedAt
+            ),
+            ' Membership$',
+            ''
+        ) AS membership
+    FROM lfxMemberships FINAL
+    WHERE organizationId = (SELECT id FROM org_slug_lookup) AND project = 'The Linux Foundation'
+    GROUP BY organizationId
+
+NODE org_page_profile_final
+SQL >
+    SELECT
+        b.id,
+        b.displayName,
+        b.logo,
+        b.employeeCount,
+        b.industry,
+        b.description,
+        w.website,
+        domain(w.website) AS domain,
+        m.membership
+    FROM org_page_profile_base b
+    LEFT JOIN org_page_profile_website w ON b.id = w.organizationId
+    LEFT JOIN org_page_profile_membership m ON b.id = m.organizationId
