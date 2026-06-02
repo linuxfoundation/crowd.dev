@@ -1,19 +1,14 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 /**
  * TUI monitor for osspckgs_ingest_jobs.
- * Usage: node scripts/monitor-osspckgs.mjs
- *
- * Env: CROWD_PACKAGES_DB_WRITE_HOST, CROWD_PACKAGES_DB_PORT,
- *      CROWD_PACKAGES_DB_DATABASE, CROWD_PACKAGES_DB_USERNAME, CROWD_PACKAGES_DB_PASSWORD
+ * Usage: pnpm monitor:osspckgs[:local]
  *
  * Keys: ↑/↓ navigate  Enter expand/collapse  r refresh  q quit
  */
 
-import { createRequire } from 'module'
 import readline from 'readline'
 
-const require = createRequire(import.meta.url)
-const { Client } = require('pg')
+import { getPackagesDb } from '../db'
 
 // ── ANSI helpers ──────────────────────────────────────────────────────────────
 
@@ -54,38 +49,22 @@ function writeln(row, col, s) { write(move(row, col) + clearLine() + s) }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 
-function dbClient() {
-  return new Client({
-    host:     process.env.CROWD_PACKAGES_DB_WRITE_HOST     ?? 'localhost',
-    port:     parseInt(process.env.CROWD_PACKAGES_DB_PORT  ?? '5432'),
-    database: process.env.CROWD_PACKAGES_DB_DATABASE       ?? 'packages-db',
-    user:     process.env.CROWD_PACKAGES_DB_USERNAME       ?? 'postgres',
-    password: process.env.CROWD_PACKAGES_DB_PASSWORD       ?? '',
-  })
-}
-
 async function fetchJobs() {
-  const client = dbClient()
-  await client.connect()
-  try {
-    const { rows } = await client.query(`
-      SELECT
-        id, job_kind, status, sync_mode,
-        snapshot_at, provisional_snapshot_at,
-        gcs_prefix, export_name,
-        row_count_bq, row_count_staging, row_count_pg,
-        bq_bytes_billed,
-        table_row_counts,
-        error_message,
-        started_at, finished_at, cleaned_at
-      FROM osspckgs_ingest_jobs
-      ORDER BY started_at DESC
-      LIMIT 100
-    `)
-    return rows
-  } finally {
-    await client.end()
-  }
+  const qx = await getPackagesDb()
+  return qx.select(`
+    SELECT
+      id, job_kind, status, sync_mode,
+      snapshot_at, provisional_snapshot_at,
+      gcs_prefix, export_name,
+      row_count_bq, row_count_staging, row_count_pg,
+      bq_bytes_billed,
+      table_row_counts,
+      error_message,
+      started_at, finished_at, cleaned_at
+    FROM osspckgs_ingest_jobs
+    ORDER BY started_at DESC
+    LIMIT 100
+  `)
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────────
@@ -154,7 +133,7 @@ function fmtEtaStr(ms) {
 }
 
 function fmtElapsed(start, end) {
-  const ms = (end ? new Date(end) : new Date()) - new Date(start)
+  const ms = (end ? new Date(end) : new Date()).getTime() - new Date(start).getTime()
   const s = Math.floor(ms / 1000)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -686,7 +665,15 @@ process.on('SIGTERM', () => { cleanup(); process.exit(0) })
 process.on('exit', cleanup)
 process.stdout.on('resize', render)
 
-write(A.altOn + A.reset + A.hide + A.clear)
-setupInput()
-await refresh()
-scheduleRefresh()
+async function main() {
+  write(A.altOn + A.reset + A.hide + A.clear)
+  setupInput()
+  await refresh()
+  scheduleRefresh()
+}
+
+main().catch((err) => {
+  cleanup()
+  console.error(err)
+  process.exit(1)
+})

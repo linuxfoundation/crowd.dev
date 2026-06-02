@@ -72,13 +72,12 @@ ORDER BY p.id, s.number, s.published_at DESC NULLS LAST
 
 // SET LOCAL scopes settings to this transaction only.
 // synchronous_commit=off skips WAL flush wait — safe for plain INSERT on full loads.
-// session_replication_role=replica disables FK trigger checks — safe because package_id
-// comes from a JOIN against packages; non-matching rows are filtered before INSERT.
 // max_parallel_workers_per_gather parallelises the SELECT side of INSERT...SELECT.
+// FK integrity is guaranteed by the JOIN against packages — non-matching rows are filtered
+// before INSERT, so session_replication_role=replica is not needed.
 const MERGE_PREPARE_SQL = [
   `SET LOCAL work_mem = '512MB'`,
   `SET LOCAL synchronous_commit = off`,
-  `SET LOCAL session_replication_role = 'replica'`,
   `SET LOCAL max_parallel_workers_per_gather = 8`,
 ]
 
