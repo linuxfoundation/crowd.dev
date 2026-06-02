@@ -1,5 +1,8 @@
 -- npm worker supporting tables and partition management for download tracking.
 
+ALTER TABLE maintainers DROP COLUMN IF EXISTS email_hash;
+ALTER TABLE maintainers ADD COLUMN IF NOT EXISTS email text;
+
 CREATE TABLE npm_worker_state (
   name        text PRIMARY KEY,
   value       text NOT NULL,

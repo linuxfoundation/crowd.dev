@@ -680,7 +680,7 @@ CREATE TABLE maintainers (
     username text NOT NULL,
     display_name text,
     url text,
-    email text,
+    email_hash text, -- SHA-256; never raw email (GDPR)
     github_login text,
     UNIQUE (ecosystem, username)
 );
@@ -718,9 +718,29 @@ CREATE TABLE package_maintainers (
 -- DOWNLOADS DAILY (tier 2 — packages, daily granularity)
 --
 -- Partitioned by month via pg_partman. pg_partman MUST be enabled in OCI
--- config before this migration runs (OCI Console → Database → Configuration
--- → Extensions → enable pg_partman). Partition setup is handled by
--- V1780231200__npm_worker.sql.
+-- config before this migration runs:
+--   OCI Console → Database → Configuration → Extensions → enable pg_partman
+--
+-- After enabling, run the setup below (once, outside Flyway or in a
+-- separate migration) to register pg_partman and create initial partitions:
+--
+--   CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+--
+--   SELECT partman.create_parent(
+--       p_parent_table => 'public.downloads_daily',
+--       p_control      => 'date',
+--       p_interval     => '1 month',
+--       p_premake      => 3   -- pre-creates 3 future monthly partitions
+--   );
+--
+--   -- pg_cron job to maintain partitions (also needs pg_cron enabled in OCI):
+--   SELECT cron.schedule('partman-maintain', '0 1 * * *',
+--       $$CALL partman.run_maintenance_proc()$$);
+--
+-- Without this setup, inserts into downloads_daily will fail with
+-- "no partition found for row". The table structure below is correct;
+-- only the partition management setup is deferred.
+--
 -- PK includes date because Postgres requires the partition key to be
 -- part of the primary key on range-partitioned tables.
 -- ============================================================
@@ -739,7 +759,6 @@ PARTITION BY RANGE (date);
 --
 -- Historical timeline of rolling 30-day download counts, keyed by purl.
 -- Each row captures one window: downloads from start_date to end_date (inclusive).
--- end_date = 1st of each calendar month, start_date = end_date - 30 days.
 -- Keyed by purl (not packages_universe.id) so rows survive the weekly
 -- truncation of packages_universe. The latest window is also written
 -- to packages_universe.downloads_last_30d column for fast access by the ranking function.
@@ -748,10 +767,30 @@ PARTITION BY RANGE (date);
 -- PK includes end_date because Postgres requires the partition key to be
 -- part of the primary key on range-partitioned tables.
 --
--- Partitioned by year via pg_partman (one row per purl per month means monthly
--- partitions would be too granular). pg_partman MUST be enabled in OCI config
--- before this migration runs (OCI Console → Database → Configuration → Extensions
--- → enable pg_partman). Partition setup is handled by V1780231200__npm_worker.sql.
+-- Partitioned by month via pg_partman. pg_partman MUST be enabled in OCI
+-- config before this migration runs:
+--   OCI Console → Database → Configuration → Extensions → enable pg_partman
+--
+-- After enabling, run the setup below (once, outside Flyway or in a
+-- separate migration) to register pg_partman and create initial partitions:
+--
+--   CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+--
+--   SELECT partman.create_parent(
+--       p_parent_table => 'public.downloads_last_30d',
+--       p_control      => 'end_date',
+--       p_interval     => '1 month',
+--       p_premake      => 3   -- pre-creates 3 future monthly partitions
+--   );
+--
+--   -- pg_cron job to maintain partitions (also needs pg_cron enabled in OCI):
+--   SELECT cron.schedule('partman-maintain-30d', '0 2 * * *',
+--       $$CALL partman.run_maintenance_proc()$$);
+--
+-- Without this setup, inserts into downloads_last_30d will fail with
+-- "no partition found for row". The table structure below is correct;
+-- only the partition management setup is deferred.
+--
 -- ============================================================
 CREATE TABLE downloads_last_30d (
     id bigserial,
