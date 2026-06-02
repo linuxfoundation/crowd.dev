@@ -52,6 +52,8 @@ export async function upsertNpmPackage(
          'npm-registry', NOW()
        )
        ON CONFLICT (purl) DO UPDATE SET
+         namespace               = EXCLUDED.namespace,
+         name                    = EXCLUDED.name,
          status                  = EXCLUDED.status,
          registry_url            = EXCLUDED.registry_url,
          description             = EXCLUDED.description,

@@ -11,12 +11,12 @@ export async function upsertNpmFundingLinks(
   links: NpmFundingLinkInput[],
 ): Promise<string[]> {
   const before: Array<{ url: string; type: string | null }> = await qx.select(
-    `SELECT url, type FROM package_funding_links WHERE package_id = $(packageId)`,
+    `SELECT url, type FROM package_funding_links WHERE package_id = $(packageId)::bigint`,
     { packageId },
   )
   const beforeMap = new Map(before.map((r) => [r.url, r.type]))
 
-  await qx.result(`DELETE FROM package_funding_links WHERE package_id = $(packageId)`, {
+  await qx.result(`DELETE FROM package_funding_links WHERE package_id = $(packageId)::bigint`, {
     packageId,
   })
 
@@ -25,7 +25,7 @@ export async function upsertNpmFundingLinks(
     const type = link.type ?? null
     await qx.result(
       `INSERT INTO package_funding_links (package_id, type, url)
-       VALUES ($(packageId), $(type), $(url))
+       VALUES ($(packageId)::bigint, $(type), $(url))
        ON CONFLICT (package_id, url) DO NOTHING`,
       { packageId, type, url: link.url },
     )
