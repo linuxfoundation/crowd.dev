@@ -102,10 +102,7 @@ export function collectMaintainers(packument: Packument): Array<{
 
 function parseAuthorString(s: string): { name: string; email: string | null } {
   const emailMatch = s.match(/<([^>]+)>/)
-  const name = s
-    .replace(/<[^>]+>/g, '')
-    .replace(/\([^)]+\)/g, '')
-    .trim()
+  const name = s.split(/[<(]/)[0].trim()
   return { name, email: emailMatch ? emailMatch[1] : null }
 }
 
