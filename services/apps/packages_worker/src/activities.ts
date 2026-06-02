@@ -1,4 +1,4 @@
 export * from './deps-dev/activities'
 export * from './npm/activities'
 export { osvSyncEcosystem, osvDeriveCriticalFlag } from './osv/activities'
-export { processMavenCriticalBatch, processMavenNonCriticalBatch } from './pom-fetcher/activities'
+export { processMavenCriticalBatch, processMavenNonCriticalBatch } from './maven/activities'

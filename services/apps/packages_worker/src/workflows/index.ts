@@ -10,4 +10,4 @@ export {
 } from '../deps-dev/workflows'
 export { npmHello } from '../npm/workflows'
 export { osvSync } from '../osv/workflows'
-export { pomFetcherWorkflow } from '../pom-fetcher/workflows'
+export { mavenCriticalWorkflow, mavenNonCriticalWorkflow } from '../maven/workflows'

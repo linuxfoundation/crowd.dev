@@ -46,12 +46,15 @@ export function getEnricherConfig() {
   }
 }
 
-export function getPomFetcherConfig() {
+export function getMavenConfig() {
   return {
-    batchSize: parseInt(process.env.POM_FETCHER_BATCH_SIZE ?? '50', 10),
-    concurrency: parseInt(process.env.POM_FETCHER_CONCURRENCY ?? '5', 10),
-    refreshDays: parseInt(process.env.POM_FETCHER_REFRESH_DAYS ?? '1', 10),
-    groupDelayMs: parseInt(process.env.POM_FETCHER_GROUP_DELAY_MS ?? '200', 10),
-    idleSleepSec: parseInt(process.env.POM_FETCHER_IDLE_SLEEP_SEC ?? '3600', 10),
+    batchSize: requireEnvInt('POM_FETCHER_BATCH_SIZE'),
+    concurrency: requireEnvInt('POM_FETCHER_CONCURRENCY'),
+    nonCriticalBatchSize: requireEnvInt('POM_FETCHER_NON_CRITICAL_BATCH_SIZE'),
+    nonCriticalConcurrency: requireEnvInt('POM_FETCHER_NON_CRITICAL_CONCURRENCY'),
+    refreshDays: requireEnvInt('POM_FETCHER_REFRESH_DAYS'),
+    groupDelayMs: requireEnvInt('POM_FETCHER_GROUP_DELAY_MS'),
+    idleSleepSec: requireEnvInt('POM_FETCHER_IDLE_SLEEP_SEC'),
+    forceFullExtraction: requireEnv('POM_FETCHER_FORCE_FULL_EXTRACTION') === 'true',
   }
 }

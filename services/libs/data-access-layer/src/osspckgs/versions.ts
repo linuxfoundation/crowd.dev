@@ -26,10 +26,11 @@ export async function upsertVersionsBatch(
 
   await qx.result(
     `
-    INSERT INTO versions (package_id, ecosystem, number, is_latest, is_prerelease, license, last_synced_at)
+    INSERT INTO versions (package_id, ecosystem, name, number, is_latest, is_prerelease, license, last_synced_at)
     SELECT
       UNNEST($(packageIds)::bigint[]),
       UNNEST($(ecosystems)::text[]),
+      UNNEST($(names)::text[]),
       UNNEST($(numbers)::text[]),
       UNNEST($(isLatests)::bool[]),
       UNNEST($(isPreleases)::bool[]),
@@ -44,6 +45,7 @@ export async function upsertVersionsBatch(
     {
       packageIds: versions.map((v) => v.packageId),
       ecosystems: versions.map((v) => v.ecosystem),
+      names: versions.map((v) => v.name),
       numbers: versions.map((v) => v.number),
       isLatests: versions.map((v) => v.isLatest),
       isPreleases: versions.map((v) => v.isPrerelease),
