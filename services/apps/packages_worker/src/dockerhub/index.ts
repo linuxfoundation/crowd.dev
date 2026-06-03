@@ -1,3 +1,11 @@
+import {
+  PendingDockerRepoRow,
+  StaleRepoDockerRow,
+  fetchPendingDockerRepos,
+  fetchStaleRepoDocker,
+  markRepoDockerChecked,
+  touchRepoDocker,
+} from '@crowd/data-access-layer/src/packages'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -7,8 +15,8 @@ import { parseGithubUrl } from '../enricher/fetchLightRepo'
 import { buildCandidates } from './candidates'
 import { detectDockerfile } from './detectDockerfile'
 import { fetchDockerhub } from './fetchDockerhub'
-import { DiscoveryRepoRow, DockerhubRepoResult, FetchError, RefreshImageRow } from './types'
-import { markDockerChecked, touchRepoDocker, upsertRepoDocker } from './upsertRepoDocker'
+import { DockerhubRepoResult, FetchError } from './types'
+import { upsertRepoDocker } from './upsertRepoDocker'
 
 const log = getServiceChildLogger('dockerhub-sync')
 
@@ -106,31 +114,9 @@ async function githubFetchWithRetries(
   return null
 }
 
-async function fetchRefreshPage(
-  qx: QueryExecutor,
-  cursor: string | null,
-  config: DockerhubConfig,
-): Promise<RefreshImageRow[]> {
-  return qx.select(
-    `
-    SELECT id, repo_id, image_name
-    FROM repo_docker
-    WHERE last_synced_at < NOW() - make_interval(hours => $(refreshIntervalHours))
-      AND ($(cursor)::bigint IS NULL OR id > $(cursor)::bigint)
-    ORDER BY id
-    LIMIT $(batchSize)
-    `,
-    {
-      cursor,
-      batchSize: config.batchSize,
-      refreshIntervalHours: config.refreshIntervalHours,
-    },
-  )
-}
-
 async function processRefreshPage(
   qx: QueryExecutor,
-  rows: RefreshImageRow[],
+  rows: StaleRepoDockerRow[],
   config: DockerhubConfig,
 ): Promise<{ ok: number; gone: number }> {
   let ok = 0
@@ -152,31 +138,7 @@ async function processRefreshPage(
   return { ok, gone }
 }
 
-async function fetchDiscoveryPage(
-  qx: QueryExecutor,
-  cursor: string | null,
-  config: DockerhubConfig,
-): Promise<DiscoveryRepoRow[]> {
-  return qx.select(
-    `
-    SELECT id, url, owner, name
-    FROM repos
-    WHERE host = 'github'
-      AND (docker_checked_at IS NULL
-           OR docker_checked_at < NOW() - make_interval(days => $(discoveryIntervalDays)))
-      AND ($(cursor)::bigint IS NULL OR id > $(cursor)::bigint)
-    ORDER BY id
-    LIMIT $(batchSize)
-    `,
-    {
-      cursor,
-      batchSize: config.batchSize,
-      discoveryIntervalDays: config.discoveryIntervalDays,
-    },
-  )
-}
-
-function resolveOwnerName(row: DiscoveryRepoRow): { owner: string; name: string } | null {
+function resolveOwnerName(row: PendingDockerRepoRow): { owner: string; name: string } | null {
   if (row.owner && row.name) return { owner: row.owner, name: row.name }
   try {
     return parseGithubUrl(row.url)
@@ -187,13 +149,13 @@ function resolveOwnerName(row: DiscoveryRepoRow): { owner: string; name: string 
 
 async function discoverRepo(
   qx: QueryExecutor,
-  row: DiscoveryRepoRow,
+  row: PendingDockerRepoRow,
   token: string,
   config: DockerhubConfig,
 ): Promise<'hit' | 'miss' | 'skip'> {
   const parsed = resolveOwnerName(row)
   if (!parsed) {
-    await markDockerChecked(qx, row.id)
+    await markRepoDockerChecked(qx, row.id)
     return 'skip'
   }
 
@@ -201,11 +163,11 @@ async function discoverRepo(
   if (hasDockerfile === null) {
     // GitHub lookup failed (404/auth/gave-up). Mark checked so the backlog
     // drains; the discoveryIntervalDays re-check will try again later.
-    await markDockerChecked(qx, row.id)
+    await markRepoDockerChecked(qx, row.id)
     return 'skip'
   }
   if (!hasDockerfile) {
-    await markDockerChecked(qx, row.id)
+    await markRepoDockerChecked(qx, row.id)
     return 'miss'
   }
 
@@ -213,18 +175,18 @@ async function discoverRepo(
     const result = await hubFetchWithRetries(config.hubBaseUrl, candidate)
     if (result) {
       await upsertRepoDocker(qx, row.id, result)
-      await markDockerChecked(qx, row.id)
+      await markRepoDockerChecked(qx, row.id)
       return 'hit'
     }
   }
 
-  await markDockerChecked(qx, row.id)
+  await markRepoDockerChecked(qx, row.id)
   return 'miss'
 }
 
 async function processDiscoveryPage(
   qx: QueryExecutor,
-  rows: DiscoveryRepoRow[],
+  rows: PendingDockerRepoRow[],
   parkedUntil: Map<string, number>,
   config: DockerhubConfig,
 ): Promise<{ hits: number; misses: number; skipped: number; failed: number }> {
@@ -296,7 +258,12 @@ export async function runDockerhubLoop(
   while (!isShuttingDown()) {
     pageNum++
 
-    const refreshRows = await fetchRefreshPage(qx, refreshCursor, config)
+    const refreshRows = await fetchStaleRepoDocker(
+      qx,
+      refreshCursor,
+      config.batchSize,
+      config.refreshIntervalHours,
+    )
     if (refreshRows.length > 0) {
       const stats = await processRefreshPage(qx, refreshRows, config)
       log.info(
@@ -309,7 +276,12 @@ export async function runDockerhubLoop(
 
     if (isShuttingDown()) break
 
-    const discoveryRows = await fetchDiscoveryPage(qx, discoveryCursor, config)
+    const discoveryRows = await fetchPendingDockerRepos(
+      qx,
+      discoveryCursor,
+      config.batchSize,
+      config.discoveryIntervalDays,
+    )
     if (discoveryRows.length > 0) {
       const stats = await processDiscoveryPage(qx, discoveryRows, githubParkedUntil, config)
       log.info(
