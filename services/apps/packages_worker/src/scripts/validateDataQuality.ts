@@ -65,7 +65,9 @@ const main = async () => {
   process.stdout.write(render(rows))
 
   const failures = rows.filter((r) => r.status === 'FAIL')
-  const warnings = rows.filter((r) => r.status === 'WARN' || r.status === 'POOR' || r.status === 'LOW')
+  const warnings = rows.filter(
+    (r) => r.status === 'WARN' || r.status === 'POOR' || r.status === 'LOW',
+  )
 
   if (failures.length > 0) {
     log.error(

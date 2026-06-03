@@ -1,7 +1,7 @@
 // ─── packages_universe ────────────────────────────────────────────────────────
 
 export interface IDbPackageUniverse {
-  id: number
+  id: string
   purl: string | null
   ecosystem: string
   namespace: string | null

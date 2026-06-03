@@ -2,7 +2,9 @@ export function isPrerelease(version: string): boolean {
   return /-(SNAPSHOT|alpha|beta|rc|m\d+)/i.test(version)
 }
 
-export function parseRepoUrl(url: string): { host: string; owner: string | null; name: string | null } | null {
+export function parseRepoUrl(
+  url: string,
+): { host: string; owner: string | null; name: string | null } | null {
   try {
     const parsed = new URL(url)
     const h = parsed.hostname.toLowerCase()

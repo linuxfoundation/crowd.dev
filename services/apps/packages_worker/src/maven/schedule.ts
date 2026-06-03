@@ -1,7 +1,7 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../service'
-import { mavenCriticalWorkflow, mavenNonCriticalWorkflow } from '../workflows'
+import { mavenCriticalWorkflow } from '../workflows'
 
 export async function scheduleMavenCritical(): Promise<void> {
   const { temporal } = svc
