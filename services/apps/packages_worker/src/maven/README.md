@@ -1,34 +1,87 @@
 # Maven POM Fetcher
 
 Worker that syncs Maven package metadata from Maven Central into the `packages` DB.
-Runs as a standalone entry point inside `packages_worker` on a daily Temporal schedule (4am UTC).
+Lives in `packages_worker` and can run in two ways:
+
+- **Temporal (production, incremental):** entry point `bin/packages-worker.ts` registers the
+  `maven-critical` Temporal schedule. Each tick runs a **single batch** as a Temporal activity,
+  and **skips POM extraction when the version is unchanged**. See [Scheduling](#scheduling).
+- **One-shot backfill:** entry point `bin/maven-backfill.ts` (`pnpm backfill:maven`) drains the
+  Tier 2 critical queue once with **full extraction** (no version short-circuit), then exits.
+  Run it `exec`ed into the `packages-worker` container for the initial fill / periodic full
+  refresh. It is resumable — the DB state is the cursor, so re-running picks up where it left off.
 
 ---
 
 ## Architecture: Two-Tier Fetch
 
-All Maven packages in `packages_universe` are processed in two sequential phases per pass.
+Both phases pull candidates from `packages_universe` (filtered by `is_critical`, ordered by
+`rank_in_ecosystem`) and write into `packages`. A package is a candidate when it is not yet
+in `packages` (`last_synced_at IS NULL`) or its `last_synced_at` is older than
+`POM_FETCHER_REFRESH_DAYS`. The two phases run as **separate Temporal schedules** (or, in the
+standalone loop, only the critical phase runs).
 
-### Phase 1 — Non-Critical
+### Non-Critical phase (`is_critical = false`)
 
-| Mode | Trigger | What happens |
-|------|---------|-------------|
-| `POM_FETCHER_DIRECT_POM_FOR_ALL=false` (default) | `last_synced_at > 1 day` | DB-only: copies universe stats (criticality, downloads, dependents) into `packages`. No HTTP. |
-| `POM_FETCHER_DIRECT_POM_FOR_ALL=true` | `last_synced_at > 30 days` | Fetches `maven-metadata.xml` + root POM (no parent chain). Populates description, homepage, SCM, maintainers, versions. |
+DB-only. Copies universe stats (criticality score, downloads, dependent counts) into
+`packages` with `ingestion_source = 'packages_universe'`. **No HTTP.** Fast (~1000 pkg/sec).
 
-### Phase 2 — Critical
+### Critical phase (`is_critical = true`)
 
-Always active. Full POM extraction with parent chain resolution (max 5 hops). Runs when:
-- Package not yet in `packages` table
-- `ingestion_source IN ('maven_index', 'packages_universe')` — not yet POM-enriched
-- New version released (`latest_release_at > last_synced_at`)
-- Periodic full refresh (`last_synced_at > 90 days`)
+Full POM extraction from Maven Central with parent-chain resolution (max 8 hops). Populates
+description, homepage, SCM/repo, licenses, maintainers and the full version list.
 
-**Why two tiers?** Parent POM resolution is the expensive part — it requires multiple HTTP requests per package (up to 5 extra fetches). Running it on millions of non-critical packages every day is not feasible. For non-critical packages a single direct-POM fetch is sufficient; for critical packages the extra cost is justified by data quality.
+Whether the version short-circuit applies is fixed per **entry point** (not a runtime flag):
+
+| Entry point | Mode | Behaviour |
+|-------------|------|-----------|
+| Standalone `bin/maven.ts` | **backfill** | Always runs full POM extraction for every selected critical package, regardless of version. Use for the initial fill / periodic full refresh. |
+| Temporal `mavenCriticalWorkflow` | **incremental** | If the upstream release version equals the stored `latest_version`, skips the POM fetch and only bumps `last_synced_at` (status `unchanged`). Full extraction runs only for new packages or when the version changed. |
+
+This is passed as the `forceFullExtraction` argument to `processBatch` — `true` from the
+standalone loop, `false` from the Temporal activity. There is no env variable for it.
+
+**Why two tiers?** Parent POM resolution is the expensive part — multiple HTTP requests per
+package (up to 8 extra fetches). Running it on millions of non-critical packages is not
+feasible; for them the DB-only universe stats are enough. The extra cost is reserved for
+critical packages, where data quality matters.
+
+### Parent POM cache
+
+Parent POMs are shared across many artifacts of the same namespace (`org.apache:apache`,
+`org.springframework.boot:spring-boot-starter-parent`, `com.google.cloud:google-cloud-shared-config`, …).
+Because the queue is ordered by `rank_in_ecosystem`, those siblings are processed close
+together. A module-level, coordinate-keyed in-process cache in `extract.ts` collapses the
+repeated parent fetches into a **single** HTTP request, and also removes the redundant second
+fetch of each artifact's own POM (`extractArtifact` fetches the leaf, then
+`resolveWithInheritance` would fetch it again at depth 0). This is the **single biggest lever
+against Maven Central rate limiting** — and it works *because* of the namespace clustering, so
+shuffling the batch (which the queue's `rank` ordering produces) would be counter-productive.
+
+- **Only successful fetches are cached.** `fetchPom` returns `null` for both a real 404 and a
+  transient failure (throttle/timeout), so caching `null` would poison the cache — it is never
+  done. Missing/failed POMs are simply re-fetched on the next pass.
+- **No TTL.** Maven coordinates are immutable, so a cached POM never goes stale. The cache is
+  bounded by an LRU size cap (`POM_CACHE_MAX_ENTRIES`, default 5000) purely to cap memory.
+- **Request coalescing.** Concurrent fetches for the same coordinates share a single in-flight
+  request instead of issuing duplicates.
+- **Observability.** `getPomCacheStats()` returns `{ size, hits, coalesced, misses, evictions,
+  hitRate }`; the critical batch logs it once per batch under message **`POM cache`**, so you
+  can watch the hit rate climb as the cache warms.
+
+> The cache lives for the lifetime of the worker process. Under Temporal it persists **across
+> batches/ticks** (same process), so the hit rate keeps improving across the run; in the
+> standalone loop it persists across passes until the process is restarted.
 
 ---
 
-## Coverage Matrix (`POM_FETCHER_DIRECT_POM_FOR_ALL=true`)
+## Coverage Matrix (critical packages — full POM extraction)
+
+The matrix below describes the **critical** path (full POM + parent resolution).
+Non-critical packages are DB-only: they receive just the universe-stat columns
+(`criticality_score`, `dependent_packages_count`, `dependent_repos_count`,
+`downloads_last_month`) plus `purl`/`namespace`/`name`/`registry_url`/`last_synced_at`;
+all POM-derived columns stay null for them.
 
 ### packages
 
@@ -69,7 +122,7 @@ Always active. Full POM extraction with parent chain resolution (max 5 hops). Ru
 | is_latest | `number === <release>` | ✅ all |
 | is_prerelease | regex on version string³ | ✅ all |
 | last_synced_at | NOW() | ✅ all |
-| license | package-level license applied to all versions⁴ | ✅ best-effort¹ |
+| licenses | package-level license applied to all versions⁴ (stored as a single-element `text[]`) | ✅ best-effort¹ |
 | published_at | Sonatype: release timestamp | 🔜 Sonatype |
 | is_yanked | no yank mechanism in Maven | ❌ |
 | download_count | no public per-version API | ❌ |
@@ -113,9 +166,9 @@ The POM fetcher seeds `repos` with URL-derivable fields only. The GitHub enriche
 
 **Notes:**
 
-> ¹ **best-effort**: field is populated when declared in the direct POM. If inherited from a parent POM (common for `licenses`, `<scm>` in Apache/Spring/Google projects), it is null for non-critical packages.
+> ¹ **best-effort**: field is populated only when present in the resolved POM chain. Non-critical packages skip POM fetching entirely (DB-only), so these columns are always null for them.
 >
-> ² **full resolution for critical**: parent chain is followed (max 5 hops), so inherited fields are resolved correctly.
+> ² **full resolution for critical**: parent chain is followed (max 8 hops), so inherited fields are resolved correctly.
 >
 > ³ **prerelease regex**: matches `-SNAPSHOT`, `-alpha`, `-beta`, `-rc`, `-M[0-9]+` (case-insensitive).
 >
@@ -127,13 +180,14 @@ The POM fetcher seeds `repos` with URL-derivable fields only. The GitHub enriche
 
 | Value | Meaning |
 |-------|---------|
-| `maven` | Critical — full POM + parent resolution succeeded |
-| `maven_direct` | Non-critical — direct POM fetch succeeded (no parent resolution) |
+| `maven-registry` | Critical — full POM + parent resolution succeeded |
+| `packages_universe` | Non-critical (DB-only) — only universe stats copied, no POM fetch |
 | `maven_not_on_central` | `maven-metadata.xml` not found on `repo1.maven.org` — artifact is hosted on a third-party repository (e.g. WSO2 Nexus, JBoss, Atlassian). Universe data came from an aggregator (deps.dev, OSV). |
 | `maven_no_version` | `maven-metadata.xml` found but `<release>` is empty — artifact has no stable release |
 | `maven_error` | `maven-metadata.xml` has a release version but the `.pom` file for that version is a 404. Typical cause: partial deploy to Maven Central (metadata updated, artifact not uploaded) or Eclipse P2 feature artifacts that don't publish a standard POM. |
-| `maven_rate_limited` | Maven Central returned 403/429 on all retry attempts. Package will be retried on the next pass. |
-| `packages_universe` | Non-critical, DB-only mode (`POM_FETCHER_DIRECT_POM_FOR_ALL=false`) — only universe stats copied |
+
+> On a 403/429 rate-limit or a transient network error, **no sentinel record is written**:
+> the batch counts the package as an error and it is simply retried on the next tick/pass.
 
 ---
 
@@ -155,11 +209,17 @@ Maven Central (`repo1.maven.org`) restituisce 403 come meccanismo di throttle ol
 
 1. **Retry con backoff esponenziale** — 403 e 429 vengono ritentati fino a 3 volte (2s base, ×2 per tentativo). Gestito in `getWithRetry` (extract.ts) e `resolveVersionsList` (metadata.ts).
 
-2. **Fallback su DB** — se tutti i retry esauriscono, il pacchetto viene scritto con `ingestion_source = 'maven_rate_limited'` e `last_synced_at = NOW()`, evitando loop infiniti. Verrà ritentato al prossimo ciclo di refresh.
+2. **Retry al prossimo pass** — se tutti i retry esauriscono, il batch conta il pacchetto come errore (nessun record sentinel viene scritto su `packages`) e lo riprenderà al tick/pass successivo, quando l'IP è di nuovo freddo.
 
 **Causa root dei 403 persistenti:** `packages_universe` è ordinato per `rank_in_ecosystem`, quindi pacchetti dello stesso namespace (es. `com.google.apis`, `org.wso2`, `software.amazon.awssdk`) si raggruppano nel batch e colpiscono lo stesso CDN node di Maven Central in rapida successione. Il rate limit scatta sistematicamente dopo ~150–200 pacchetti processati.
 
-**Fix applicato:** i batch HTTP vengono shufflati prima dell'esecuzione (`[...packages].sort(() => Math.random() - 0.5)`) per distribuire i namespace uniformemente nei gruppi concorrenti. Un delay configurabile tra i gruppi (`POM_FETCHER_GROUP_DELAY_MS`, default 200ms) riduce ulteriormente il rate di richieste.
+**Mitigazione applicata, in ordine di efficacia:**
+
+1. **Cache in-process dei parent POM** (vedi [Parent POM cache](#parent-pom-cache)) — sfrutta il clustering per namespace per collassare i fetch dei parent condivisi e il doppio fetch del leaf POM, riducendo il **volume totale** di richieste. È la leva principale: il throttle è volume-based per IP, quindi meno richieste = meno 403.
+2. Un delay configurabile tra i gruppi concorrenti (`POM_FETCHER_GROUP_DELAY_MS`) + `POM_FETCHER_CONCURRENCY` basso (≤5) → abbassano il rate istantaneo.
+3. Backoff di retry con jitter (`±500ms`, vedi `extract.ts` / `metadata.ts`) → evita retry sincronizzati.
+
+> Nota: **lo shuffle dei batch non aiuta** — riordina gli stessi N request nella stessa finestra temporale (stesso volume → stesso throttle) e in più romperebbe la località che rende efficace la cache dei parent.
 
 Namespace noti per triggerare il rate limit a causa dell'alta densità di artefatti: `com.google.apis`, `software.amazon.awssdk`, `org.wso2.*`.
 
@@ -173,22 +233,38 @@ Occasionally a publisher's CI/CD updates `<release>` in `maven-metadata.xml` bef
 
 ## Configuration Reference
 
-All variables are optional — defaults are shown.
+**All variables are required** — `getMavenConfig()` (`config.ts`) calls `requireEnv` for each,
+so the worker throws on startup if any is missing. Suggested values shown.
+
+| Env var | Suggested | Description |
+|---------|-----------|-------------|
+| `POM_FETCHER_BATCH_SIZE` | `50` | Packages per batch — critical phase |
+| `POM_FETCHER_CONCURRENCY` | `5` | Concurrent fetches — critical phase |
+| `POM_FETCHER_NON_CRITICAL_BATCH_SIZE` | `500` | Packages per batch — non-critical phase |
+| `POM_FETCHER_NON_CRITICAL_CONCURRENCY` | `20` | Concurrent writes — non-critical DB-only phase |
+| `POM_FETCHER_REFRESH_DAYS` | `1` | Staleness window — re-sync a package once its `last_synced_at` is older than N days (applies to both phases) |
+| `POM_FETCHER_GROUP_DELAY_MS` | `200`–`400` | Delay between concurrent groups in the critical phase (rate-limit mitigation) |
+
+### Sync source (Temporal critical path)
+
+These select **where the critical sync gets its work from**. They affect only the Temporal
+`processMavenCriticalBatch` activity — the standalone backfill loop is unaffected. All are
+optional; unset/invalid values fall back to the current universe-polling behaviour.
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `POM_FETCHER_DIRECT_POM_FOR_ALL` | `false` | `true` = direct POM fetch for all packages + full resolution for critical |
-| `POM_FETCHER_BATCH_SIZE` | `50` | Packages per batch — critical phase |
-| `POM_FETCHER_CONCURRENCY` | `5` | Concurrent fetches — critical phase |
-| `POM_FETCHER_FULL_REFRESH_DAYS` | `90` | Re-sync critical packages after N days |
-| `POM_FETCHER_NON_CRITICAL_BATCH_SIZE` | `500` | Packages per batch — non-critical phase |
-| `POM_FETCHER_NON_CRITICAL_CONCURRENCY` | `20` | Concurrent writes — non-critical DB-only mode |
-| `POM_FETCHER_NON_CRITICAL_POM_CONCURRENCY` | `5` | Concurrent fetches — non-critical direct-pom mode |
-| `POM_FETCHER_NON_CRITICAL_REFRESH_DAYS` | `1` | Re-sync non-critical stats after N days (DB-only) |
-| `POM_FETCHER_NON_CRITICAL_POM_REFRESH_DAYS` | `30` | Re-sync non-critical POM data after N days (direct-pom) |
-| `POM_FETCHER_IDLE_SLEEP_SEC` | `3600` | Sleep between passes |
+| `MAVEN_SYNC_SOURCE` | `maven` | `maven` = poll `packages_universe` by staleness (current behaviour). `api` = enrich only what the delta feed reports. `both` = run both passes per tick. |
+| `MAVEN_DELTA_API_URL` | — | Base URL of our delta feed (e.g. the Railway deployment). **Required** when source is `api` or `both`. |
+| `MAVEN_DELTA_API_TOKEN` | — | Optional bearer token for the delta feed. |
+| `MAVEN_DELTA_API_PAGE_SIZE` | `100` | Page size for `/api/changes` pagination. |
+| `MAVEN_DELTA_API_LOOKBACK_MINUTES` | `15` | Rolling window size: each tick fetches `[now-N, now)`. Overlaps the cron interval on purpose — re-processing is safe (idempotent upserts). |
+| `MAVEN_DELTA_API_INCLUDE_PRERELEASE` | `false` | Forwarded as `includePrerelease` to the feed. |
 
-**Concurrency guidance:** Maven Central handles 10–15 concurrent requests per IP without throttling. Retry logic with exponential backoff handles 429s. Keep `POM_FETCHER_CONCURRENCY` + `POM_FETCHER_NON_CRITICAL_POM_CONCURRENCY` ≤ 15 in production.
+The delta-API path always runs **full extraction** (the feed is an explicit "this changed"
+signal) and only enriches packages that are `is_critical` in `packages_universe`; non-critical
+purls in the feed are dropped.
+
+**Concurrency guidance:** Maven Central handles 10–15 concurrent requests per IP without throttling. Retry logic with exponential backoff handles 429/403s. Keep `POM_FETCHER_CONCURRENCY` ≤ 5 locally — repeated local runs heat the IP (see [Known Exceptions](#maven-central-403-rate-limiting)).
 
 ---
 
@@ -202,30 +278,49 @@ Observed on ~2K packages (local dev, Maven Central over the network):
 | Non-critical | direct-pom | ~25 pkg/sec | 2 HTTP requests/pkg: metadata.xml + POM |
 | Critical | full-pom | ~15–25 pkg/sec | Faster when packages share parent POMs (CDN cache warm) |
 
-**Estimated time for 800K packages (10% critical) at default settings:**
+**Estimated time for ~800K packages (≈18% critical):**
 
 | Phase | Packages | Estimated time |
 |-------|----------|---------------|
-| Non-critical (DB-only, first pass) | 720K | ~12 min |
-| Non-critical (direct-pom, first pass) | 720K | ~8 h |
-| Critical (full-pom, first pass) | 80K | ~3–4 h |
+| Non-critical (DB-only) | ~670K | ~12 min |
+| Critical (full POM, first extraction) | ~150K | several hours |
 
-First pass is the expensive one. Subsequent daily passes are incremental:
-- Non-critical DB-only: re-syncs all packages daily (~12 min)
-- Non-critical direct-pom: re-syncs after 30 days (~8 h every 30 days)
-- Critical: only packages with new versions or approaching 90-day refresh window
+The first critical extraction is the expensive part — run it with the standalone backfill
+loop. Afterwards the Temporal schedules keep things incremental: non-critical re-syncs cheaply
+every `POM_FETCHER_REFRESH_DAYS`, and critical packages are re-fetched only when a new release
+is published (the Temporal path skips unchanged versions)
+or once their refresh window elapses.
 
-The daily Temporal schedule has a **12-hour workflow timeout**. With `POM_FETCHER_DIRECT_POM_FOR_ALL=true`, the first pass is within budget (~11–12 h); increase `POM_FETCHER_NON_CRITICAL_POM_CONCURRENCY` to 10 to halve non-critical time if needed.
+Under Temporal **each tick processes one batch** within its workflow timeout (15 min critical /
+5 min non-critical); the backlog is drained over many ticks, not in one long pass. To go
+faster, raise `POM_FETCHER_BATCH_SIZE` / `POM_FETCHER_CONCURRENCY` (keep concurrency ≤ 15 to
+avoid Maven Central throttling) or trigger the schedule manually.
 
 ---
 
 ## Scheduling
 
-Runs daily at **4am UTC** via Temporal schedule `maven`.
-Overlap policy: `SKIP` — if a previous run is still active, the new trigger is dropped.
-Catchup window: 1 hour.
-Workflow timeout: 12 hours.
-Max retries: 3 (30s initial, 2× backoff).
+Two Temporal schedules are registered on startup of `bin/packages-worker.ts`
+(see `maven/schedule.ts`):
+
+| Schedule ID | Cron | Workflow | Activity | Workflow timeout |
+|-------------|------|----------|----------|------------------|
+| `maven-critical` | `*/5 * * * *` (every 5 min) | `mavenCriticalWorkflow` | `processMavenCriticalBatch` → one critical batch | 15 min |
+| `maven-non-critical` | `*/10 * * * *` (every 10 min) | `mavenNonCriticalWorkflow` | `processMavenNonCriticalBatch` → one non-critical batch | 5 min |
+
+Both: overlap policy `SKIP` (a tick is dropped if the previous run is still active),
+catchup window 1 hour, retry 3× (30s initial, 2× backoff).
+
+**Each tick processes a single batch** (`POM_FETCHER_BATCH_SIZE` /
+`POM_FETCHER_NON_CRITICAL_BATCH_SIZE`), not a full pass — the queue is drained incrementally
+across ticks.
+
+To run a batch on demand instead of waiting for the cron, trigger the schedule from the
+Temporal UI (the schedule's **Trigger** button) or the CLI:
+
+```bash
+temporal schedule trigger --schedule-id maven-critical
+```
 
 ---
 

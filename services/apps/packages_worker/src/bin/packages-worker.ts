@@ -4,8 +4,8 @@ import {
   scheduleLatestLast30dRefresh,
   scheduleNpmIngest,
 } from '../npm/schedule'
+import { scheduleMavenCritical } from '../maven/schedule'
 import { scheduleOsvSync } from '../osv/schedule'
-import { scheduleMavenCritical, scheduleMavenNonCritical } from '../maven/schedule'
 import { svc } from '../service'
 
 setImmediate(async () => {
@@ -16,6 +16,5 @@ setImmediate(async () => {
   await scheduleLast30dHistoryBackfill()
   await scheduleOsvSync()
   await scheduleMavenCritical()
-  await scheduleMavenNonCritical()
   await svc.start()
 })
