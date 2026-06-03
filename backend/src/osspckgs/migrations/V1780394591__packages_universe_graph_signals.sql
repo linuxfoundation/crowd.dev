@@ -16,6 +16,12 @@ ALTER TABLE packages
 ALTER TABLE packages_universe
   RENAME COLUMN dependent_packages_count TO dependent_count;
 
+-- The renamed column holds old all-dependent counts (direct + transitive combined).
+-- NULL them out so criticality scoring uses 0 for this signal until dependent_counts
+-- is re-ingested with the split values; inflated scores are worse than missing ones.
+UPDATE packages        SET dependent_count = NULL;
+UPDATE packages_universe SET dependent_count = NULL;
+
 -- rank_packages_universe() stores its body as text — renaming the column above does NOT
 -- update the function. Replace it here so it references dependent_count, not the old name.
 CREATE OR REPLACE FUNCTION rank_packages_universe(
