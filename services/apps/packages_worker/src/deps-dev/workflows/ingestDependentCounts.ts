@@ -26,18 +26,18 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
 
 const STAGING_TABLE = 'staging.osspckgs_dependent_counts_raw'
 
-// DROP before CREATE: staging table is TRUNCATED on every chunk anyway, so DROP+CREATE is
-// equivalent to IF NOT EXISTS. But IF NOT EXISTS skips schema changes — an existing table
-// with the old dependent_packages_count column would cause the INSERT to fail on the new names.
-const STAGING_DDL = `
-DROP TABLE IF EXISTS staging.osspckgs_dependent_counts_raw;
-CREATE UNLOGGED TABLE staging.osspckgs_dependent_counts_raw (
+// Two-statement DDL: DROP before CREATE so an existing table with the old dependent_packages_count
+// column doesn't block the new column names. Staging table is TRUNCATED on every chunk anyway,
+// so DROP+CREATE is semantically equivalent to IF NOT EXISTS for normal runs.
+const STAGING_DDL = [
+  `DROP TABLE IF EXISTS staging.osspckgs_dependent_counts_raw`,
+  `CREATE UNLOGGED TABLE staging.osspckgs_dependent_counts_raw (
   purl                       text,
   dependent_count            bigint,
   transitive_dependent_count bigint,
   dependent_repos_count      bigint
-)
-`
+)`,
+]
 
 // Strip @version from both sides — BQ ANY_VALUE(Purl) is non-deterministic across separate
 // query executions and may include or omit the version suffix.

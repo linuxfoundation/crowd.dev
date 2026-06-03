@@ -101,8 +101,11 @@ export async function bootstrapOsspckgs(opts: {
     }
   }
 
-  // Always resolve snapshot date for kinds that filter by partition date
-  for (const kind of SNAPSHOT_RESOLVED_KINDS.filter((k) => runs(k))) {
+  // Always resolve snapshot date for kinds that filter by partition date.
+  // repos/package_repos share one ingestRepos call — resolve repos snapshot when either runs.
+  for (const kind of SNAPSHOT_RESOLVED_KINDS) {
+    const shouldResolve = kind === 'repos' ? runs('repos') || runs('package_repos') : runs(kind)
+    if (!shouldResolve) continue
     const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
     resolvedSnapshots.set(kind, snapshotDate)
   }
