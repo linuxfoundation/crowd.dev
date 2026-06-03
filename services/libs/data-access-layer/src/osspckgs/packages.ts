@@ -72,7 +72,7 @@ export async function listMavenPackagesToSync(
         p.namespace,
         p.name,
         p.criticality_score        AS "criticalityScore",
-        p.dependent_packages_count AS "dependentPackagesCount",
+        p.dependent_count          AS "dependentPackagesCount",
         p.dependent_repos_count    AS "dependentReposCount",
         p.downloads_last_month     AS "downloads30d",
         p.latest_version           AS "latestVersion"
@@ -103,7 +103,7 @@ export async function listMavenPackagesToSync(
       pu.namespace,
       pu.name,
       pu.criticality_score        AS "criticalityScore",
-      pu.dependent_packages_count AS "dependentPackagesCount",
+      pu.dependent_count          AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
       pu.downloads_30d            AS "downloads30d",
       p.latest_version            AS "latestVersion"
@@ -147,7 +147,7 @@ export async function listMavenPackagesByPurls(
       p.namespace,
       p.name,
       p.criticality_score        AS "criticalityScore",
-      p.dependent_packages_count AS "dependentPackagesCount",
+      p.dependent_count          AS "dependentPackagesCount",
       p.dependent_repos_count    AS "dependentReposCount",
       p.downloads_last_month     AS "downloads30d",
       p.latest_version           AS "latestVersion"
@@ -186,7 +186,7 @@ export async function touchPackageSyncedAt(
     UPDATE packages SET
       last_synced_at           = NOW(),
       criticality_score        = COALESCE($(criticalityScore),       criticality_score),
-      dependent_packages_count = COALESCE($(dependentPackagesCount), dependent_packages_count),
+      dependent_count          = COALESCE($(dependentPackagesCount), dependent_count),
       dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count),
       downloads_last_month     = COALESCE($(downloadsLastMonth),     downloads_last_month)
     WHERE purl = $(purl)
@@ -238,7 +238,7 @@ export async function upsertPackage(
         purl, ecosystem, namespace, name,
         description, homepage, registry_url, declared_repository_url, repository_url,
         licenses, licenses_raw, latest_version,
-        criticality_score, dependent_packages_count, dependent_repos_count, downloads_last_month,
+        criticality_score, dependent_count, dependent_repos_count, downloads_last_month,
         ingestion_source, last_synced_at
       ) VALUES (
         $(purl), $(ecosystem), $(namespace), $(name),
@@ -257,7 +257,7 @@ export async function upsertPackage(
         licenses_raw             = COALESCE(EXCLUDED.licenses_raw,             packages.licenses_raw),
         latest_version           = COALESCE(EXCLUDED.latest_version,           packages.latest_version),
         criticality_score        = COALESCE(EXCLUDED.criticality_score,        packages.criticality_score),
-        dependent_packages_count = COALESCE(EXCLUDED.dependent_packages_count, packages.dependent_packages_count),
+        dependent_count          = COALESCE(EXCLUDED.dependent_count,          packages.dependent_count),
         dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
         downloads_last_month     = COALESCE(EXCLUDED.downloads_last_month,     packages.downloads_last_month),
         ingestion_source         = EXCLUDED.ingestion_source,
