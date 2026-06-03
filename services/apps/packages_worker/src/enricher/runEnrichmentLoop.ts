@@ -110,10 +110,13 @@ class WriteBuffer {
   }
 
   async flush(): Promise<number> {
-    const batch = this.results.splice(0)
-    const skips = this.skipUrls.splice(0)
+    const batch = [...this.results]
+    const skips = [...this.skipUrls]
     this.lastFlushAt = Date.now()
     await Promise.all([bulkUpdateEnrichedRepos(this.qx, batch), markReposSkipped(this.qx, skips)])
+    // Clear only after both writes succeed — preserves items if the DB call throws
+    this.results.splice(0, batch.length)
+    this.skipUrls.splice(0, skips.length)
     return batch.length
   }
 }
@@ -198,6 +201,7 @@ async function runStreamingPool(
           parseGithubUrl(row.url)
         } catch {
           log.warn({ url: row.url }, 'Skipping non-GitHub URL')
+          writeBuffer.addSkip(row.url)
           continue
         }
 
