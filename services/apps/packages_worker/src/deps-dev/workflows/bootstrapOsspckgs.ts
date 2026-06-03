@@ -167,7 +167,7 @@ export async function bootstrapOsspckgs(opts: {
       ],
     })
   }
-  if (runs('repos')) {
+  if (runs('repos') || runs('package_repos')) {
     await executeChild(ingestRepos, {
       args: [
         {

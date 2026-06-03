@@ -46,7 +46,7 @@ export async function dropVersionsConstraints(): Promise<{ dropped: string[] }> 
   log.info({ constraints: rows.map((r) => r.conname) }, 'Dropping FK constraints on versions')
 
   for (const row of rows) {
-    await qx.result(`ALTER TABLE versions DROP CONSTRAINT IF EXISTS ${row.conname}`)
+    await qx.result(`ALTER TABLE versions DROP CONSTRAINT IF EXISTS "${row.conname}"`)
   }
 
   log.info({ dropped: rows.map((r) => r.conname) }, 'FK constraints dropped')
@@ -56,12 +56,12 @@ export async function dropVersionsConstraints(): Promise<{ dropped: string[] }> 
 export async function rebuildVersionsConstraints(): Promise<{ rebuilt: string[] }> {
   const qx = await getPackagesDb()
 
-  const existing: Array<{ conname: string }> = await qx.select(FK_CONSTRAINTS_SQL)
+  const existing: Array<{ conname: string; condef: string }> = await qx.select(FK_CONSTRAINTS_SQL)
 
   const rebuilt: string[] = []
 
   for (const def of FK_DEFINITIONS) {
-    const alreadyExists = existing.some((r) => r.conname.includes(def.columns.split(',')[0].trim()))
+    const alreadyExists = existing.some((r) => r.condef.includes(`FOREIGN KEY (${def.columns})`))
     if (alreadyExists) {
       log.info({ columns: def.columns }, 'FK constraint already exists, skipping')
       continue
