@@ -80,7 +80,7 @@ export async function resolveVersionsList(
           await sleep(delay)
           continue
         }
-        if (status === 429 || status === 403) return { kind: 'RATE_LIMIT', status: status! }
+        if (status === 429 || status === 403) return { kind: 'RATE_LIMIT', status }
       }
       const message = err instanceof Error ? err.message : String(err)
       return { kind: 'TRANSIENT', message }
