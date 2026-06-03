@@ -193,6 +193,52 @@ function truncate(s, len) {
   return s.length > len ? s.slice(0, len - 1) + '…' : s
 }
 
+// ── Table counts ──────────────────────────────────────────────────────────────
+
+// Maps job_kind → target Postgres tables (in write order).
+const KIND_TABLES = {
+  packages:              ['packages'],
+  versions:              ['versions'],
+  package_dependencies:  ['package_dependencies'],
+  repos:                 ['repos'],
+  package_repos:         ['package_repos'],
+  advisories:            ['advisories'],
+  advisory_packages:     ['advisory_packages', 'advisory_affected_ranges'],
+  dependent_counts:      ['packages'],
+}
+
+const TABLE_ABBREV = {
+  packages:                  'pkgs',
+  versions:                  'vers',
+  package_dependencies:      'deps',
+  repos:                     'repos',
+  package_repos:             'pkg_repos',
+  advisories:                'adv',
+  advisory_packages:         'adv_pkgs',
+  advisory_affected_ranges:  'adv_ranges',
+}
+
+async function fetchTableCounts() {
+  const client = dbClient()
+  await client.connect()
+  try {
+    const { rows } = await client.query(`
+      SELECT relname, n_live_tup
+      FROM pg_stat_user_tables
+      WHERE relname IN (
+        'packages', 'versions', 'package_dependencies',
+        'repos', 'package_repos',
+        'advisories', 'advisory_packages', 'advisory_affected_ranges'
+      )
+    `)
+    const result = {}
+    for (const row of rows) result[row.relname] = Number(row.n_live_tup)
+    return result
+  } finally {
+    await client.end()
+  }
+}
+
 // ── Ecosystem extraction ───────────────────────────────────────────────────────
 
 const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo']
@@ -217,6 +263,7 @@ const COL = {
   files:   24,
   staging: 12,
   pg:      14,
+  table:   18,
   elapsed: 12,
   chunk:   26,
   total:   24,
@@ -233,6 +280,7 @@ function tableHeader() {
     'FILES'.padEnd(COL.files) +
     'STAGING'.padEnd(COL.staging) +
     'PG ROWS'.padEnd(COL.pg) +
+    'TABLE ROWS'.padEnd(COL.table) +
     'ELAPSED'.padEnd(COL.elapsed) +
     'MERGE ETA'.padEnd(COL.chunk) +
     'TOTAL ETA'
@@ -256,6 +304,22 @@ function filesCell(job, bg) {
 
 function stagingCell(job, bg) {
   return padCell(fmtCompact(job.row_count_staging), COL.staging, bg)
+}
+
+function tableCountCell(job, bg) {
+  const tables = KIND_TABLES[job.job_kind]
+  if (!tables) return padCell(A.dim + '—' + A.reset, COL.table, bg)
+  if (tables.length === 1) {
+    const count = tableCounts[tables[0]]
+    return padCell(count != null ? fmtCompact(count) : A.dim + '—' + A.reset, COL.table, bg)
+  }
+  // Multi-table: "abbrev:N abbrev:M"
+  const parts = tables.map(t => {
+    const abbrev = TABLE_ABBREV[t] ?? t
+    const count = tableCounts[t]
+    return `${abbrev}:${count != null ? fmtCompact(count) : A.dim + '—' + A.reset}`
+  })
+  return padCell(parts.join(' '), COL.table, bg)
 }
 
 function pgCell(job, bg) {
@@ -304,6 +368,7 @@ function tableRow(job, selected) {
     filesCell(job, bg) +
     stagingCell(job, bg) +
     pgCell(job, bg) +
+    tableCountCell(job, bg) +
     padCell(elapsed, COL.elapsed, bg) +
     chunkEtaCell(job, bg) +
     totalEtaCell(job, bg) +
@@ -427,6 +492,7 @@ function renderDetail(job, cols) {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let jobs = []
+let tableCounts = {}
 let selected = 0
 let detailOpen = false
 let lastRefresh = null
@@ -619,7 +685,9 @@ function render() {
 
 async function refresh() {
   try {
-    jobs = await fetchJobs()
+    const [newJobs, newTableCounts] = await Promise.all([fetchJobs(), fetchTableCounts()])
+    jobs = newJobs
+    tableCounts = newTableCounts
     if (selected >= jobs.length) selected = Math.max(0, jobs.length - 1)
     lastRefresh = new Date().toLocaleTimeString()
     error = null

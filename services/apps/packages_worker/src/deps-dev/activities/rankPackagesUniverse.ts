@@ -17,14 +17,15 @@ export async function rankPackagesUniverse(): Promise<void> {
     await tx.result(`
       INSERT INTO packages_universe (
         purl, ecosystem, namespace, name,
-        downloads_last_30d, dependent_packages_count, dependent_repos_count,
+        downloads_last_30d, dependent_count, dependent_repos_count, transitive_dependent_count,
         last_rank_pass_at
       )
       SELECT
         p.purl, p.ecosystem, p.namespace, p.name,
         NULL,
-        p.dependent_packages_count,
+        p.dependent_count,
         p.dependent_repos_count,
+        p.transitive_dependent_count,
         NOW()
       FROM packages p
       WHERE p.ecosystem IN ('npm', 'go', 'maven', 'pypi', 'nuget', 'cargo')

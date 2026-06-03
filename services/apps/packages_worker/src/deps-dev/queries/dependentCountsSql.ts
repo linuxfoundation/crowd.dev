@@ -1,5 +1,7 @@
 // DependentsLatest scans all historical snapshots (~77 TB, ~$303). Use one partition instead.
 // No ecosystem filter on Dependents — counts dependents from all ecosystems pointing at our packages.
+// MinimumDepth=1 = direct dependents (package declares an explicit dependency edge).
+// MinimumDepth>1 = transitive dependents (only reachable via intermediaries).
 export function buildDependentCountsSql(snapshotDate: string): string {
   return `
 WITH purl_map AS (
@@ -10,9 +12,10 @@ WITH purl_map AS (
   GROUP BY System, Name
 )
 SELECT
-  pm.purl                                                                      AS purl,
-  COUNT(DISTINCT CONCAT(d.Dependent.System, ':', d.Dependent.Name))            AS dependent_packages_count,
-  COUNT(DISTINCT pvp.ProjectName)                                               AS dependent_repos_count
+  pm.purl                                                                                                  AS purl,
+  COUNT(DISTINCT IF(d.MinimumDepth = 1, CONCAT(d.Dependent.System, ':', d.Dependent.Name), NULL))         AS dependent_count,
+  COUNT(DISTINCT IF(d.MinimumDepth > 1, CONCAT(d.Dependent.System, ':', d.Dependent.Name), NULL))         AS transitive_dependent_count,
+  COUNT(DISTINCT pvp.ProjectName)                                                                          AS dependent_repos_count
 FROM \`bigquery-public-data.deps_dev_v1.Dependents\` d
 JOIN purl_map pm ON pm.System = d.System AND pm.Name = d.Name
 LEFT JOIN (

@@ -28,9 +28,10 @@ const STAGING_TABLE = 'staging.osspckgs_dependent_counts_raw'
 
 const STAGING_DDL = `
 CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_dependent_counts_raw (
-  purl                      text,
-  dependent_packages_count  bigint,
-  dependent_repos_count     bigint
+  purl                       text,
+  dependent_count            bigint,
+  transitive_dependent_count bigint,
+  dependent_repos_count      bigint
 )
 `
 
@@ -38,14 +39,15 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_dependent_counts_raw (
 // query executions and may include or omit the version suffix.
 const MERGE_SQL = `
 UPDATE packages SET
-  dependent_packages_count = s.dependent_packages_count,
-  dependent_repos_count    = s.dependent_repos_count,
-  last_synced_at           = NOW()
+  dependent_count            = s.dependent_count,
+  transitive_dependent_count = s.transitive_dependent_count,
+  dependent_repos_count      = s.dependent_repos_count,
+  last_synced_at             = NOW()
 FROM staging.osspckgs_dependent_counts_raw s
 WHERE packages.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 `
 
-const PG_COLUMNS = ['purl', 'dependent_packages_count', 'dependent_repos_count']
+const PG_COLUMNS = ['purl', 'dependent_count', 'transitive_dependent_count', 'dependent_repos_count']
 
 const ROWS_PER_CHUNK = 1_000_000
 
