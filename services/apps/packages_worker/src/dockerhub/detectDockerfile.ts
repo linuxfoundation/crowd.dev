@@ -58,7 +58,15 @@ export async function detectDockerfile(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const json = (await response.json()) as any
+  let json: any
+  try {
+    json = await response.json()
+  } catch (err) {
+    throw new FetchError(
+      'MALFORMED',
+      `Non-JSON body for ${owner}/${name}: ${(err as Error).message}`,
+    )
+  }
 
   if (json.errors?.length) {
     const err = json.errors[0]

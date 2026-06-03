@@ -26,20 +26,23 @@ export async function fetchDockerhub(
     throw new FetchError('TRANSIENT', `Network error for ${imageName}: ${(err as Error).message}`)
   }
 
-  const remaining = parseInt(response.headers.get('x-ratelimit-remaining') ?? '', 10)
   const resetSec = parseInt(response.headers.get('x-ratelimit-reset') ?? '0', 10)
   const resetMs = resetSec ? resetSec * 1000 + 5_000 : Date.now() + 65_000
 
-  if (response.status === 429 || (Number.isFinite(remaining) && remaining <= 0)) {
+  if (response.status === 429) {
     throw new FetchError('RATE_LIMIT', `Rate limited on ${imageName}`, resetMs)
   }
-
+  if (response.status === 401 || response.status === 403) {
+    // Surface as AUTH so the loop fails fast instead of silently marking every
+    // image "gone" when the base URL is misconfigured or Hub starts requiring auth.
+    throw new FetchError('AUTH', `${response.status} for ${imageName}`)
+  }
   if (response.status === 404) throw new FetchError('NOT_FOUND', `404 for ${imageName}`)
   if (response.status >= 500) {
     throw new FetchError('TRANSIENT', `${response.status} for ${imageName}`)
   }
   if (!response.ok) {
-    // 400/401/403 etc — treat as a miss; Hub sometimes 400s on malformed slugs.
+    // 400 etc — Hub sometimes 400s on malformed slugs; treat as a miss.
     throw new FetchError('NOT_FOUND', `${response.status} for ${imageName}`)
   }
 

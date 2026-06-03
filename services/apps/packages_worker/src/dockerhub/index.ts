@@ -16,12 +16,23 @@ const MAX_RETRIES = 3
 
 type DockerhubConfig = ReturnType<typeof getDockerhubConfig>
 
-// Docker Hub's anonymous rate limit is per-IP, not per-token, so unlike the
-// GitHub fan-out below this stays a single sequential caller. hubParkedUntil
-// is module state so the park survives across refresh and discovery pages.
+// Docker Hub's anonymous rate limit is per-IP, not per-token. hubParkedUntil
+// is module state so the park survives across refresh and discovery pages, and
+// hubChain serializes calls so the per-token GitHub fan-out below can't fire
+// concurrent Hub requests against that single per-IP budget.
 let hubParkedUntil = 0
+let hubChain: Promise<unknown> = Promise.resolve()
 
-async function hubFetchWithRetries(
+function hubFetchWithRetries(
+  baseUrl: string,
+  imageName: string,
+): Promise<DockerhubRepoResult | null> {
+  const run = hubChain.then(() => hubFetchInner(baseUrl, imageName))
+  hubChain = run.catch(() => undefined)
+  return run
+}
+
+async function hubFetchInner(
   baseUrl: string,
   imageName: string,
 ): Promise<DockerhubRepoResult | null> {
@@ -37,6 +48,12 @@ async function hubFetchWithRetries(
       if (!(err instanceof FetchError)) throw err
 
       if (err.kind === 'NOT_FOUND') return null
+      if (err.kind === 'AUTH') {
+        // Systemic misconfig (wrong base URL, Hub now requires auth) — propagate
+        // so the worker exits instead of silently marking every image gone.
+        log.error({ imageName }, err.message)
+        throw err
+      }
       if (err.kind === 'MALFORMED') {
         log.warn({ imageName }, err.message)
         return null
@@ -229,25 +246,34 @@ async function processDiscoveryPage(
         const idx = nextIdx++
         const row = rows[idx]
 
-        try {
-          const outcome = await discoverRepo(qx, row, token, config)
-          if (outcome === 'hit') hits++
-          else if (outcome === 'miss') misses++
-          else skipped++
-        } catch (err) {
-          if (err instanceof FetchError && err.kind === 'RATE_LIMIT') {
-            const resetAt = err.resetAt ?? Date.now() + 60_000
-            const waitMs = Math.max(1_000, resetAt - Date.now())
-            parkedUntil.set(token, resetAt)
-            log.warn(
-              { tokenIdx, parkedUntil: new Date(resetAt).toISOString() },
-              `token#${tokenIdx} rate limited — parking for ${Math.round(waitMs / 1000)}s`,
-            )
-            await new Promise((r) => setTimeout(r, waitMs))
-            failed++
-          } else {
-            log.error({ url: row.url, err }, 'Unexpected discovery error')
-            failed++
+        // Retry the same row after a GitHub rate-limit park instead of abandoning
+        // it. Without this the cursor advances past a row whose docker_checked_at
+        // was never set, and it isn't picked up again until the cursor wraps to
+        // null at end-of-backlog (potentially days on a 600k-row sweep).
+        let done = false
+        while (!done) {
+          try {
+            const outcome = await discoverRepo(qx, row, token, config)
+            if (outcome === 'hit') hits++
+            else if (outcome === 'miss') misses++
+            else skipped++
+            done = true
+          } catch (err) {
+            if (err instanceof FetchError && err.kind === 'RATE_LIMIT') {
+              const resetAt = err.resetAt ?? Date.now() + 60_000
+              const waitMs = Math.max(1_000, resetAt - Date.now())
+              parkedUntil.set(token, resetAt)
+              log.warn(
+                { tokenIdx, parkedUntil: new Date(resetAt).toISOString() },
+                `token#${tokenIdx} rate limited — parking for ${Math.round(waitMs / 1000)}s`,
+              )
+              await new Promise((r) => setTimeout(r, waitMs))
+              // loop retries the same row
+            } else {
+              log.error({ url: row.url, err }, 'Unexpected discovery error')
+              failed++
+              done = true
+            }
           }
         }
       }

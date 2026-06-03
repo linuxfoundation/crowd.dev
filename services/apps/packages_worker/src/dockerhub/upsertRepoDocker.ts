@@ -7,27 +7,32 @@ export async function upsertRepoDocker(
   repoId: string | null,
   r: DockerhubRepoResult,
 ): Promise<void> {
-  await qx.result(
-    `
-    INSERT INTO repo_docker (repo_id, image_name, pulls, stars, last_synced_at)
-    VALUES ($(repoId), $(imageName), $(pulls), $(stars), NOW())
-    ON CONFLICT (image_name) DO UPDATE SET
-      repo_id        = COALESCE(repo_docker.repo_id, EXCLUDED.repo_id),
-      pulls          = EXCLUDED.pulls,
-      stars          = EXCLUDED.stars,
-      last_synced_at = NOW()
-    `,
-    { repoId, imageName: r.imageName, pulls: r.pulls, stars: r.stars },
-  )
+  // Transactional so a missing partition on repo_docker_pulls_daily (or any other
+  // failure on the snapshot insert) rolls back the last_synced_at bump on repo_docker
+  // too — otherwise the row drops out of the refresh queue for 24h with no snapshot.
+  await qx.tx(async (tx) => {
+    await tx.result(
+      `
+      INSERT INTO repo_docker (repo_id, image_name, pulls, stars, last_synced_at)
+      VALUES ($(repoId), $(imageName), $(pulls), $(stars), NOW())
+      ON CONFLICT (image_name) DO UPDATE SET
+        repo_id        = COALESCE(repo_docker.repo_id, EXCLUDED.repo_id),
+        pulls          = EXCLUDED.pulls,
+        stars          = EXCLUDED.stars,
+        last_synced_at = NOW()
+      `,
+      { repoId, imageName: r.imageName, pulls: r.pulls, stars: r.stars },
+    )
 
-  await qx.result(
-    `
-    INSERT INTO repo_docker_pulls_daily (image_name, date, pulls_total)
-    VALUES ($(imageName), CURRENT_DATE, $(pulls))
-    ON CONFLICT (image_name, date) DO UPDATE SET pulls_total = EXCLUDED.pulls_total
-    `,
-    { imageName: r.imageName, pulls: r.pulls },
-  )
+    await tx.result(
+      `
+      INSERT INTO repo_docker_pulls_daily (image_name, date, pulls_total)
+      VALUES ($(imageName), CURRENT_DATE, $(pulls))
+      ON CONFLICT (image_name, date) DO UPDATE SET pulls_total = EXCLUDED.pulls_total
+      `,
+      { imageName: r.imageName, pulls: r.pulls },
+    )
+  })
 }
 
 export async function touchRepoDocker(qx: QueryExecutor, imageName: string): Promise<void> {

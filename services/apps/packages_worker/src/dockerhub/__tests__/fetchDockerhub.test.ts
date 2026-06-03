@@ -68,9 +68,19 @@ describe('fetchDockerhub', () => {
     }
   })
 
-  it('classifies x-ratelimit-remaining: 0 as RATE_LIMIT even on 200', async () => {
-    mockFetch(200, { pull_count: 1 }, { 'x-ratelimit-remaining': '0' })
-    await expect(fetchDockerhub(BASE, 'a/b')).rejects.toMatchObject({ kind: 'RATE_LIMIT' })
+  it('does NOT discard a 200 response when x-ratelimit-remaining is 0', async () => {
+    // remaining=0 means this request consumed the last slot; the response itself
+    // is valid. The next call will 429 and park then.
+    mockFetch(200, { pull_count: 1, star_count: 0 }, { 'x-ratelimit-remaining': '0' })
+    const r = await fetchDockerhub(BASE, 'a/b')
+    expect(r.pulls).toBe(1)
+  })
+
+  it('classifies 401/403 as AUTH so misconfig surfaces instead of looking like a miss', async () => {
+    mockFetch(401, { message: 'unauthorized' })
+    await expect(fetchDockerhub(BASE, 'a/b')).rejects.toMatchObject({ kind: 'AUTH' })
+    mockFetch(403, { message: 'forbidden' })
+    await expect(fetchDockerhub(BASE, 'a/b')).rejects.toMatchObject({ kind: 'AUTH' })
   })
 
   it('classifies 5xx as TRANSIENT', async () => {
