@@ -79,6 +79,7 @@ export async function listMavenPackagesToSync(
       FROM packages p
       WHERE
         p.ecosystem = 'maven'
+        AND p.is_critical
         AND p.namespace IS NOT NULL
         AND (
           p.ingestion_source IS NULL
@@ -154,6 +155,7 @@ export async function listMavenPackagesByPurls(
     FROM packages p
     WHERE
       p.ecosystem = 'maven'
+      AND p.is_critical
       AND p.namespace IS NOT NULL
       AND p.purl = ANY($(purls))
     ORDER BY
