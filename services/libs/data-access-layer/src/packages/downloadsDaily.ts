@@ -24,16 +24,18 @@ export async function getMissingDownloadDates(
 export interface DailyBackfillCandidate {
   id: string
   purl: string
-  name: string
+  name: string // npm registry name (namespace/name), for the downloads HTTP call
   firstReleaseAt: string | null
 }
 
-export async function getTrackedPackagesNeedingDailyBackfill(
+// `laneIndex`/`laneCount` shard the due set across concurrent lanes by a stable hash
+// of the purl, so each lane drains a disjoint slice (laneCount=1 ⇒ no sharding).
+export async function getNpmPackagesNeedingDailyBackfill(
   qx: QueryExecutor,
-  names: string[],
-  purls: string[],
   cutoff: string,
   batchSize: number,
+  laneIndex: number,
+  laneCount: number,
 ): Promise<DailyBackfillCandidate[]> {
   const rows: Array<{
     id: string
@@ -41,18 +43,18 @@ export async function getTrackedPackagesNeedingDailyBackfill(
     name: string
     first_release_at: string | null
   }> = await qx.select(
-    `WITH wl AS (
-       SELECT name, purl FROM unnest($(names)::text[], $(purls)::text[]) AS t(name, purl)
-     )
-     SELECT p.id::text AS id, p.purl, wl.name, p.first_release_at::text AS first_release_at
-       FROM wl
-       JOIN packages p ON p.ecosystem = 'npm' AND p.purl = wl.purl
-       LEFT JOIN npm_package_state s ON s.name = wl.name
-      WHERE s.daily_downloads_last_processed_at IS NULL
-         OR s.daily_downloads_last_processed_at < $(cutoff)::timestamptz
+    `SELECT p.id::text AS id, p.purl AS purl,
+            CASE WHEN p.namespace IS NOT NULL THEN p.namespace || '/' || p.name ELSE p.name END AS name,
+            p.first_release_at::text AS first_release_at
+       FROM packages p
+       LEFT JOIN npm_package_state s ON s.purl = p.purl
+      WHERE p.ecosystem = 'npm'
+        AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
+        AND (s.daily_downloads_last_processed_at IS NULL
+             OR s.daily_downloads_last_processed_at < $(cutoff)::timestamptz)
       ORDER BY s.daily_downloads_last_processed_at ASC NULLS FIRST, p.purl
       LIMIT $(batchSize)`,
-    { names, purls, cutoff, batchSize },
+    { cutoff, batchSize, laneIndex, laneCount },
   )
   return rows.map((r) => ({
     id: r.id,
@@ -62,15 +64,15 @@ export async function getTrackedPackagesNeedingDailyBackfill(
   }))
 }
 
-// Bump the daily-downloads watermark for a package (keyed by npm name). Called
-// after a package's windows are processed — even when npm returned no data — so
-// it isn't re-selected until the next cycle.
-export async function markDailyDownloadsProcessed(qx: QueryExecutor, name: string): Promise<void> {
+// Bump the daily-downloads watermark for a package (keyed by purl). Called after a
+// package's windows are processed — even when npm returned no data — so it isn't
+// re-selected until the next cycle.
+export async function markDailyDownloadsProcessed(qx: QueryExecutor, purl: string): Promise<void> {
   await qx.result(
-    `INSERT INTO npm_package_state (name, daily_downloads_last_processed_at)
-     VALUES ($(name), NOW())
-     ON CONFLICT (name) DO UPDATE SET daily_downloads_last_processed_at = NOW()`,
-    { name },
+    `INSERT INTO npm_package_state (purl, daily_downloads_last_processed_at)
+     VALUES ($(purl), NOW())
+     ON CONFLICT (purl) DO UPDATE SET daily_downloads_last_processed_at = NOW()`,
+    { purl },
   )
 }
 

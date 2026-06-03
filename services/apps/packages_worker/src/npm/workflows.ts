@@ -11,30 +11,70 @@ const acts = proxyActivities<typeof activities>({
   },
 })
 
-export async function ingestNpmPackages(): Promise<void> {
-  const [watchList, changes] = await Promise.all([acts.getWatchList(), acts.pollNpmChanges()])
+// Per lane, per round. Total purls fetched per round = lanes × INGEST_PER_LANE.
+const INGEST_PER_LANE = 50
+const INGEST_ROUNDS_PER_RUN = 25
 
-  const newPackages = await acts.getUnscannedPackages(watchList)
-  for (const name of newPackages) {
-    await acts.ingestNpmPackage(name)
+interface IngestState {
+  unscannedCursor: string
+  unscannedDone: boolean
+}
+
+// Deterministic round-robin split of items into `lanes` shards.
+function shardRoundRobin<T>(items: T[], lanes: number): T[][] {
+  const shards: T[][] = Array.from({ length: lanes }, () => [])
+  for (let i = 0; i < items.length; i++) shards[i % lanes].push(items[i])
+  return shards
+}
+
+// Run each non-empty shard as its own ingest lane (one proxy IP each), concurrently.
+async function runLanes(shards: string[][]): Promise<void> {
+  await Promise.all(
+    shards.map((shard, i) => (shard.length ? acts.ingestNpmPackageBatch(shard, i) : undefined)),
+  )
+}
+
+export async function ingestNpmPackages(
+  state: IngestState = { unscannedCursor: '', unscannedDone: false },
+): Promise<void> {
+  let { unscannedCursor, unscannedDone } = state
+
+  // Concurrency = number of lanes (one per proxy IP when enabled, else 1).
+  const lanes = await acts.getLaneCount()
+  const perRound = lanes * INGEST_PER_LANE
+
+  // 1. Drain unscanned npm packages, fanning each round out across the lanes.
+  if (!unscannedDone) {
+    for (let r = 0; r < INGEST_ROUNDS_PER_RUN; r++) {
+      const { purls, nextCursor } = await acts.getUnscannedNpmBatch(unscannedCursor, perRound)
+      await runLanes(shardRoundRobin(purls, lanes))
+      unscannedCursor = nextCursor
+      if (purls.length < perRound) {
+        unscannedDone = true
+        break
+      }
+    }
   }
 
-  const scanned = new Set(newPackages)
-  const watchSet = new Set(watchList)
-  const toIngest = changes.names.filter((n) => watchSet.has(n) && !scanned.has(n))
-  for (const name of toIngest) {
-    await acts.ingestNpmPackage(name)
+  // 2. Process exactly one _changes page, re-ingesting tracked packages across lanes.
+  const changes = await acts.pollNpmChanges()
+  if (changes.names.length > 0) {
+    const toIngest = await acts.getChangedNpmPurls(changes.names)
+    await runLanes(shardRoundRobin(toIngest, lanes))
   }
 
-  // Advance the cursor only after this page is ingested
+  // Advance the cursor only after this page is ingested.
   await acts.commitNpmChangesSeq(changes.lastSeq)
 
-  if (changes.hasMore) {
-    await continueAsNew<typeof ingestNpmPackages>()
+  // 3. Continue while either axis still has work; the changes cursor advances every
+  //    run so a long backfill never starves the feed.
+  if (!unscannedDone || changes.hasMore) {
+    await continueAsNew<typeof ingestNpmPackages>({ unscannedCursor, unscannedDone })
   }
 }
 
-const DAILY_BATCH_SIZE = 20
+// Per lane, per round. Total packages selected per round = lanes × *_PER_LANE.
+const DAILY_PER_LANE = 20
 const DAILY_MAX_BATCHES_PER_RUN = 50
 
 interface BackfillDailyState {
@@ -43,52 +83,43 @@ interface BackfillDailyState {
 
 export async function backfillDailyDownloads(state: BackfillDailyState = {}): Promise<void> {
   const cutoff = state.cutoff ?? (await acts.currentTimestamp())
+  const lanes = await acts.getLaneCount()
 
+  // Each round fans out one self-selecting lane per proxy IP; lanes drain disjoint
+  // hash-shards of the due set. A round with no work across all lanes means done.
   for (let i = 0; i < DAILY_MAX_BATCHES_PER_RUN; i++) {
-    const { fetched } = await acts.backfillDailyBatch(cutoff, DAILY_BATCH_SIZE)
-    if (fetched === 0) return
+    const results = await Promise.all(
+      Array.from({ length: lanes }, (_, lane) =>
+        acts.backfillDailyLane(cutoff, DAILY_PER_LANE, lane, lanes),
+      ),
+    )
+    const total = results.reduce((sum, r) => sum + r.fetched, 0)
+    if (total === 0) return
   }
 
   await continueAsNew<typeof backfillDailyDownloads>({ cutoff })
 }
 
-const LAST30D_BATCH_SIZE = 1000
+const LAST30D_PER_LANE = 1000
 const LAST30D_MAX_BATCHES_PER_RUN = 50
 
 interface RefreshLast30dState {
-  windowIndex: number
-  cursor: string
+  cutoff?: string
 }
 
-export async function refreshLast30dDownloads(
-  state: RefreshLast30dState = { windowIndex: 0, cursor: '' },
-): Promise<void> {
-  const windows = await acts.getLast30dWindows()
+export async function refreshLast30dDownloads(state: RefreshLast30dState = {}): Promise<void> {
+  const cutoff = state.cutoff ?? (await acts.currentTimestamp())
+  const lanes = await acts.getLaneCount()
 
-  let { windowIndex, cursor } = state
-  let batches = 0
-
-  while (windowIndex < windows.length) {
-    const w = windows[windowIndex]
-    const { fetched, nextCursor } = await acts.refreshLast30dWindowBatch(
-      w.start,
-      w.end,
-      w.isLatest,
-      cursor,
-      LAST30D_BATCH_SIZE,
+  for (let i = 0; i < LAST30D_MAX_BATCHES_PER_RUN; i++) {
+    const results = await Promise.all(
+      Array.from({ length: lanes }, (_, lane) =>
+        acts.backfillLast30dLane(cutoff, LAST30D_PER_LANE, lane, lanes),
+      ),
     )
-    batches++
-
-    if (fetched < LAST30D_BATCH_SIZE) {
-      // Window drained for this run → advance to the next window.
-      windowIndex++
-      cursor = ''
-    } else {
-      cursor = nextCursor
-    }
-
-    if (batches >= LAST30D_MAX_BATCHES_PER_RUN && windowIndex < windows.length) {
-      await continueAsNew<typeof refreshLast30dDownloads>({ windowIndex, cursor })
-    }
+    const total = results.reduce((sum, r) => sum + r.fetched, 0)
+    if (total === 0) return
   }
+
+  await continueAsNew<typeof refreshLast30dDownloads>({ cutoff })
 }

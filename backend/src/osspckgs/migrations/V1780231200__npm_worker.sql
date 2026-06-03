@@ -10,10 +10,18 @@ CREATE TABLE npm_worker_state (
 );
 
 CREATE TABLE npm_package_state (
-  name                              text        PRIMARY KEY,
+  purl                              text        PRIMARY KEY,
   metadata_first_scanned_at         timestamptz NOT NULL DEFAULT now(),
+  metadata_last_run_at              timestamptz,
+  metadata_run_result               jsonb,        -- { status, attempts, httpStatus?, errorKind?, message? }
   daily_downloads_last_processed_at timestamptz
 );
+
+CREATE TABLE npm_package_universe_state (
+  purl                      text        PRIMARY KEY,
+  downloads_30d_last_run_at timestamptz
+);
+CREATE INDEX ON npm_package_universe_state (downloads_30d_last_run_at);
 
 -- ============================================================
 -- pg_partman setup for downloads_daily (monthly partitions)

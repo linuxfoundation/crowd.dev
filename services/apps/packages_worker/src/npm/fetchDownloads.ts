@@ -1,9 +1,23 @@
+import type { Dispatcher } from 'undici'
+
 import type { FetchError } from './types'
 
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
 
 function encodeNpmName(name: string): string {
   return name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name)
+}
+
+// Build a fetch init with the optional undici `dispatcher` (a ProxyAgent) so a lane
+// can egress through its own proxy IP. `dispatcher` is an undici-specific option not
+// present in the DOM RequestInit type, so it's spliced in here.
+function downloadInit(dispatcher?: Dispatcher, signal?: AbortSignal): RequestInit {
+  const init: RequestInit & { dispatcher?: Dispatcher } = {
+    headers: { 'User-Agent': USER_AGENT },
+    signal,
+  }
+  if (dispatcher) init.dispatcher = dispatcher
+  return init as RequestInit
 }
 
 export interface PointRangeResult {
@@ -25,6 +39,7 @@ export async function fetchBulkPointRange(
   names: string[],
   start: string,
   end: string,
+  dispatcher?: Dispatcher,
 ): Promise<BulkPointRangeResult | FetchError> {
   if (names.length > 128)
     throw new Error(`fetchBulkPointRange: too many names (${names.length} > 128)`)
@@ -33,7 +48,7 @@ export async function fetchBulkPointRange(
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: abort.signal })
+    res = await fetch(url, downloadInit(dispatcher, abort.signal))
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
   } finally {
@@ -84,13 +99,14 @@ export async function fetchPointRange(
   name: string,
   start: string,
   end: string,
+  dispatcher?: Dispatcher,
 ): Promise<PointRangeResult | FetchError> {
   const url = `https://api.npmjs.org/downloads/point/${start}:${end}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: abort.signal })
+    res = await fetch(url, downloadInit(dispatcher, abort.signal))
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
   } finally {
@@ -140,13 +156,14 @@ export async function fetchDailyRange(
   name: string,
   start: string,
   end: string,
+  dispatcher?: Dispatcher,
 ): Promise<DailyDownloadsResult | FetchError> {
   const url = `https://api.npmjs.org/downloads/range/${start}:${end}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: abort.signal })
+    res = await fetch(url, downloadInit(dispatcher, abort.signal))
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
   } finally {

@@ -1,3 +1,5 @@
+import type { Dispatcher } from 'undici'
+
 import type { FetchError, Packument } from './types'
 
 const REGISTRY = 'https://registry.npmjs.org'
@@ -7,19 +9,27 @@ function encodeNpmName(name: string): string {
   return name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name)
 }
 
-export async function fetchPackument(name: string): Promise<Packument | FetchError> {
+// `dispatcher` (an undici ProxyAgent) routes the request through a specific proxy IP
+// so concurrent ingest lanes each use their own egress address / rate limit.
+export async function fetchPackument(
+  name: string,
+  dispatcher?: Dispatcher,
+): Promise<Packument | FetchError> {
   const url = `${REGISTRY}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, {
+    // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
+    const init: RequestInit & { dispatcher?: Dispatcher } = {
       headers: {
         Accept: 'application/json',
         'User-Agent': USER_AGENT,
       },
       signal: abort.signal,
-    })
+    }
+    if (dispatcher) init.dispatcher = dispatcher
+    res = await fetch(url, init as RequestInit)
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
   } finally {

@@ -17,30 +17,55 @@ export async function getExistingLast30dEndDates(
   return rows.map((r) => r.end_date)
 }
 
-export async function getPurlsMissingLast30dWindow(
+export interface Last30dCandidate {
+  purl: string
+  firstReleaseAt: string | null
+  isNew: boolean // no watermark row yet -> needs the full window history
+}
+
+// `laneIndex`/`laneCount` shard the due set across concurrent lanes by a stable hash
+// of the purl, so each lane drains a disjoint slice (laneCount=1 ⇒ no sharding).
+export async function getNpmUniversePurlsDueForLast30d(
   qx: QueryExecutor,
-  purls: string[],
-  endDate: string,
-  afterPurl: string,
+  cutoff: string,
   batchSize: number,
-): Promise<string[]> {
-  const rows: Array<{ purl: string }> = await qx.select(
-    `SELECT p.purl
-       FROM packages p
-      WHERE p.ecosystem = 'npm'
-        AND p.purl = ANY($(purls)::text[])
-        AND p.purl > $(afterPurl)
-        AND (p.first_release_at IS NULL
-             OR date_trunc('month', p.first_release_at) <= $(endDate)::date)
-        AND NOT EXISTS (
-          SELECT 1 FROM downloads_last_30d d
-           WHERE d.purl = p.purl AND d.end_date = $(endDate)::date
-        )
-      ORDER BY p.purl
-      LIMIT $(batchSize)`,
-    { purls, endDate, afterPurl, batchSize },
+  laneIndex: number,
+  laneCount: number,
+): Promise<Last30dCandidate[]> {
+  const rows: Array<{ purl: string; first_release_at: string | null; is_new: boolean }> =
+    await qx.select(
+      `WITH due AS (
+         SELECT pu.purl AS purl, (s.purl IS NULL) AS is_new
+           FROM packages_universe pu
+           LEFT JOIN npm_package_universe_state s ON s.purl = pu.purl
+          WHERE pu.ecosystem = 'npm'
+            AND (((hashtext(pu.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
+            AND (s.downloads_30d_last_run_at IS NULL
+                 OR s.downloads_30d_last_run_at < $(cutoff)::timestamptz)
+          ORDER BY s.downloads_30d_last_run_at ASC NULLS FIRST, pu.purl
+          LIMIT $(batchSize)
+       )
+       SELECT d.purl AS purl, p.first_release_at::text AS first_release_at, d.is_new
+         FROM due d
+         LEFT JOIN packages p ON p.purl = d.purl`,
+      { cutoff, batchSize, laneIndex, laneCount },
+    )
+  return rows.map((r) => ({
+    purl: r.purl,
+    firstReleaseAt: r.first_release_at,
+    isNew: r.is_new,
+  }))
+}
+
+// Bump the last-30d watermark for a package (keyed by purl). Called after a
+// package's windows are processed so it isn't re-selected until the next cycle.
+export async function markLast30dProcessed(qx: QueryExecutor, purl: string): Promise<void> {
+  await qx.result(
+    `INSERT INTO npm_package_universe_state (purl, downloads_30d_last_run_at)
+     VALUES ($(purl), NOW())
+     ON CONFLICT (purl) DO UPDATE SET downloads_30d_last_run_at = NOW()`,
+    { purl },
   )
-  return rows.map((r) => r.purl)
 }
 
 export async function upsertLast30dDownload(

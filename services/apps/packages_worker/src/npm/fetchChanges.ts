@@ -28,9 +28,9 @@ export async function fetchChangesSince(since: string): Promise<ChangesResult | 
 
   if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
 
-  let body: { results?: unknown[]; last_seq?: unknown; pending?: unknown }
+  let body: { results?: unknown[]; last_seq?: unknown }
   try {
-    body = (await res.json()) as { results?: unknown[]; last_seq?: unknown; pending?: unknown }
+    body = (await res.json()) as { results?: unknown[]; last_seq?: unknown }
   } catch {
     return { kind: 'MALFORMED', message: 'invalid JSON' }
   }
@@ -44,8 +44,8 @@ export async function fetchChangesSince(since: string): Promise<ChangesResult | 
     }
   }
 
-  const pending = typeof body.pending === 'number' ? body.pending : 0
-  return { names: [...names], lastSeq: String(body.last_seq ?? since), hasMore: pending > 0 }
+  const hasMore = body.results.length >= PAGE_LIMIT
+  return { names: [...names], lastSeq: String(body.last_seq ?? since), hasMore }
 }
 
 export async function fetchCurrentSeq(): Promise<string | FetchError> {

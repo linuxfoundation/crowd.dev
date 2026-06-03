@@ -9,22 +9,29 @@ import {
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import {
-  buildPurl,
   collectMaintainers,
   extractRepo,
   isPrerelease,
   normalizeLicenses,
   parseNpmName,
+  stripNullBytesDeep,
 } from './normalize'
 import type { FundingEntry, Packument } from './types'
 
+// `purl` is the source-of-truth identifier taken from the packages row — the
+// worker never generates purls from names. namespace/name are parsed from the
+// packument's registry name only to populate those (mutable) columns.
 export async function upsertPackage(
   qx: QueryExecutor,
   packument: Packument,
+  purl: string,
 ): Promise<{ purl: string; changedFields: string[] }> {
+  // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
+  // text columns reject; strip them before any field is persisted.
+  stripNullBytesDeep(packument)
+
   const raw = packument.name
   const { namespace, name } = parseNpmName(raw)
-  const purl = buildPurl(raw)
   const licenses = normalizeLicenses(packument)
   const licensesRaw = typeof packument.license === 'string' ? packument.license : null
   const declaredRepositoryUrl = rawRepoUrl(packument)
