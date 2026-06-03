@@ -507,6 +507,10 @@ CREATE TABLE repos (
     -- Scorecard aggregate; per-check detail in repo_scorecard_checks
     scorecard_score numeric(3, 1),
     scorecard_last_run_at timestamptz,
+    -- Last time dockerhub-sync probed this repo for a published Docker image (Dockerfile
+    -- detection + Hub candidate lookup). NULL = never checked. Separate from last_synced_at
+    -- because discovery cadence (weeks) differs from light-metadata refresh cadence (daily).
+    docker_checked_at timestamptz,
     -- Nullable with no default: multiple enrichers (deps.dev, GitHub worker, Scorecard) each write
     -- different columns at different times. NOT NULL DEFAULT would stamp a "synced" timestamp on
     -- first insert even when most columns are still NULL, making freshness checks misleading.
@@ -520,6 +524,13 @@ CREATE INDEX ON repos (stars DESC);
 CREATE INDEX ON repos (scorecard_score)
 WHERE
     scorecard_score IS NOT NULL;
+
+-- Partial index for the dockerhub-sync discovery backlog query: pages repos that have
+-- never been probed for a Docker image. Once docker_checked_at is set the row drops out
+-- of the index, so this stays small even as the repos table grows.
+CREATE INDEX repos_docker_pending_idx ON repos (id)
+WHERE
+    host = 'github' AND docker_checked_at IS NULL;
 
 -- OpenSSF Scorecard per-check detail (~18 named checks)
 CREATE TABLE repo_scorecard_checks (
@@ -546,6 +557,30 @@ CREATE UNIQUE INDEX ON repo_docker (image_name);
 CREATE INDEX ON repo_docker (repo_id)
 WHERE
     repo_id IS NOT NULL;
+
+-- Supports the dockerhub-sync refresh query (WHERE last_synced_at < NOW() - interval).
+CREATE INDEX repo_docker_stale_idx ON repo_docker (last_synced_at);
+
+-- ============================================================
+-- REPO DOCKER PULLS DAILY
+-- One row per image per day storing the *lifetime* pull_count as returned
+-- by hub.docker.com/v2/repositories/<image>. Docker Hub does not expose
+-- per-day download counts, so daily deltas are derived at query time:
+--   pulls_total - LAG(pulls_total) OVER (PARTITION BY image_name ORDER BY date)
+-- Keyed by image_name (matches repo_docker UNIQUE) so rows survive a
+-- repo_docker re-discovery without an FK cascade.
+--
+-- Partitioned monthly via pg_partman — same setup as downloads_daily; add a
+-- partman.create_parent('public.repo_docker_pulls_daily', 'date', '1 month', 3)
+-- call alongside the downloads_daily registration.
+-- ============================================================
+CREATE TABLE repo_docker_pulls_daily (
+    image_name text NOT NULL,
+    date date NOT NULL,
+    pulls_total bigint NOT NULL,
+    PRIMARY KEY (image_name, date)
+)
+PARTITION BY RANGE (date);
 
 -- Package → repo provenance (monorepos publish N packages from one repo)
 CREATE TABLE package_repos (

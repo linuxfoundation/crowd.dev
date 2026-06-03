@@ -32,3 +32,21 @@ export function getEnricherConfig() {
     idleSleepSec: requireEnvInt('ENRICHER_IDLE_SLEEP_SEC'),
   }
 }
+
+export function getDockerhubConfig() {
+  const rawTokens = process.env.ENRICHER_GITHUB_TOKENS ?? ''
+  const tokens = rawTokens
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+
+  return {
+    // GitHub PATs reused from the enricher for Dockerfile detection (GraphQL).
+    tokens,
+    hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
+    batchSize: requireEnvInt('DOCKERHUB_BATCH_SIZE'),
+    refreshIntervalHours: requireEnvInt('DOCKERHUB_REFRESH_INTERVAL_HOURS'),
+    discoveryIntervalDays: requireEnvInt('DOCKERHUB_DISCOVERY_INTERVAL_DAYS'),
+    idleSleepSec: requireEnvInt('DOCKERHUB_IDLE_SLEEP_SEC'),
+  }
+}
