@@ -187,8 +187,9 @@ export async function ingestDependencies(opts: {
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
   const totalFiles = fileNames.length
+  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
 
-  if (totalFiles === 0) {
+  if (totalFiles === 0 || totalRows === 0) {
     await mergeStagingToTable({
       jobId: exportResult.jobId,
       mergeSql: [],
