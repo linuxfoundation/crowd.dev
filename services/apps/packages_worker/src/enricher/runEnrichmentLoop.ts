@@ -4,23 +4,69 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { getEnricherConfig } from '../config'
 
 import { fetchLightRepo, parseGithubUrl } from './fetchLightRepo'
+import { GithubAppConfig, getInstallationToken } from './githubAppAuth'
 import { FetchError, LightRepoResult } from './types'
-import { updateEnrichedRepos } from './updateEnrichedRepos'
+import { bulkUpdateEnrichedRepos, markReposSkipped } from './updateEnrichedRepos'
 
 const log = getServiceChildLogger('github-repos-enricher')
 
 const MAX_RETRIES = 3
+const DB_FETCH_SIZE = 2000
+const WRITE_FLUSH_SIZE = 500
+const WRITE_FLUSH_MS = 5000
 
-async function fetchWithRetries(url: string, token: string): Promise<LightRepoResult | null> {
+// ─── Token selection ─────────────────────────────────────────────────────────
+
+function selectInstallation(
+  installationIds: number[],
+  parkedUntil: Map<number, number>,
+  roundRobinIdx: { value: number },
+): { installationId: number; waitMs: number } {
+  const now = Date.now()
+  const n = installationIds.length
+
+  for (let i = 0; i < n; i++) {
+    const idx = (roundRobinIdx.value + i) % n
+    const id = installationIds[idx]
+    if ((parkedUntil.get(id) ?? 0) <= now) {
+      roundRobinIdx.value = (idx + 1) % n
+      return { installationId: id, waitMs: 0 }
+    }
+  }
+
+  let soonestReset = Infinity
+  let soonestId = installationIds[0]
+  for (const id of installationIds) {
+    const reset = parkedUntil.get(id) ?? 0
+    if (reset < soonestReset) {
+      soonestReset = reset
+      soonestId = id
+    }
+  }
+  return { installationId: soonestId, waitMs: Math.max(1_000, soonestReset - now) }
+}
+
+// ─── Fetch with retries ───────────────────────────────────────────────────────
+
+type FetchOutcome =
+  | { kind: 'success'; data: LightRepoResult }
+  | { kind: 'permanent' } // NOT_FOUND / AUTH / MALFORMED — mark skip_enrichment
+  | { kind: 'transient' } // gave up after retries — leave last_synced_at unset
+
+async function fetchWithRetries(
+  url: string,
+  token: string,
+  timeoutMs: number,
+): Promise<FetchOutcome> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await fetchLightRepo(url, token)
+      return { kind: 'success', data: await fetchLightRepo(url, token, timeoutMs) }
     } catch (err) {
       if (!(err instanceof FetchError)) throw err
 
       if (['NOT_FOUND', 'AUTH', 'MALFORMED'].includes(err.kind)) {
         log.warn({ url, kind: err.kind }, err.message)
-        return null
+        return { kind: 'permanent' }
       }
 
       if (err.kind === 'RATE_LIMIT') throw err
@@ -31,157 +77,234 @@ async function fetchWithRetries(url: string, token: string): Promise<LightRepoRe
         await new Promise((r) => setTimeout(r, backoffMs))
       } else {
         log.error({ url }, `Gave up after ${MAX_RETRIES} retries: ${err.message}`)
-        return null
+        return { kind: 'transient' }
       }
     }
   }
-  return null
+  return { kind: 'transient' }
 }
 
-async function fetchPage(
+// ─── Write buffer ─────────────────────────────────────────────────────────────
+
+class WriteBuffer {
+  private results: LightRepoResult[] = []
+  private skipUrls: string[] = []
+  private lastFlushAt = Date.now()
+
+  constructor(private readonly qx: QueryExecutor) {}
+
+  add(result: LightRepoResult): void {
+    this.results.push(result)
+  }
+
+  addSkip(url: string): void {
+    this.skipUrls.push(url)
+  }
+
+  shouldFlush(): boolean {
+    return (
+      this.results.length >= WRITE_FLUSH_SIZE ||
+      this.skipUrls.length >= WRITE_FLUSH_SIZE ||
+      Date.now() - this.lastFlushAt >= WRITE_FLUSH_MS
+    )
+  }
+
+  async flush(): Promise<number> {
+    const batch = this.results.splice(0)
+    const skips = this.skipUrls.splice(0)
+    this.lastFlushAt = Date.now()
+    await Promise.all([bulkUpdateEnrichedRepos(this.qx, batch), markReposSkipped(this.qx, skips)])
+    return batch.length
+  }
+}
+
+// ─── DB cursor stream ─────────────────────────────────────────────────────────
+
+async function fetchDbBatch(
   qx: QueryExecutor,
   cursor: string | null,
-  batchSize: number,
   updateIntervalHours: number,
-): Promise<{ rows: Array<{ id: string; url: string }>; urls: string[] }> {
-  const rows = await qx.select(
+): Promise<Array<{ id: string; url: string }>> {
+  return qx.select(
     `
     SELECT id, url
     FROM repos
     WHERE host = 'github'
+      AND skip_enrichment = false
       AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '$(updateIntervalHours) hours')
       AND ($(cursor) IS NULL OR id > $(cursor))
     ORDER BY id
-    LIMIT $(batchSize)
+    LIMIT $(dbFetchSize)
     `,
-    { cursor, batchSize, updateIntervalHours },
+    { cursor, dbFetchSize: DB_FETCH_SIZE, updateIntervalHours },
   )
-  return {
-    rows,
-    urls: rows.map((r: { url: string }) => r.url),
-  }
 }
 
-async function processPage(
-  urls: string[],
-  tokens: string[],
-  parkedUntil: Map<string, number>,
-  config: ReturnType<typeof getEnricherConfig>,
-  qx: QueryExecutor,
-): Promise<{ fetched: number; failed: number; flushed: number }> {
-  const validUrls: string[] = []
-  let skipped = 0
-  for (const url of urls) {
-    try {
-      parseGithubUrl(url)
-      validUrls.push(url)
-    } catch {
-      skipped++
-    }
-  }
-  if (skipped > 0) log.warn(`Skipped ${skipped} non-GitHub URLs`)
+// ─── Streaming pool ───────────────────────────────────────────────────────────
 
-  const buffer: LightRepoResult[] = []
-  const failures: Array<{ url: string; reason: string }> = []
-  let failed = 0
-  let flushed = 0
-  let nextIdx = 0
+async function runStreamingPool(
+  qx: QueryExecutor,
+  installationIds: number[],
+  appConfig: GithubAppConfig,
+  config: ReturnType<typeof getEnricherConfig>,
+  isShuttingDown: () => boolean,
+  metrics: { totalFetched: number; totalRequests: number; startTime: number },
+): Promise<'exhausted' | 'shutdown'> {
+  const parkedUntil = new Map<number, number>()
+  const roundRobinIdx = { value: 0 }
+  const writeBuffer = new WriteBuffer(qx)
+
+  let cursor: string | null = null
+  let dbDone = false
+  const queue: Array<{ id: string; url: string }> = []
+  let pendingFetch: Promise<void> | null = null
+  let logTimer = Date.now()
+
+  const fillQueue = (): void => {
+    if (pendingFetch || dbDone) return
+    pendingFetch = fetchDbBatch(qx, cursor, config.updateIntervalHours).then((rows) => {
+      pendingFetch = null
+      if (rows.length === 0) {
+        dbDone = true
+      } else {
+        queue.push(...rows)
+        cursor = rows[rows.length - 1].id
+      }
+    })
+  }
+
+  const nextRow = async (): Promise<{ id: string; url: string } | null> => {
+    while (queue.length === 0) {
+      if (dbDone) return null
+      fillQueue()
+      if (pendingFetch) await pendingFetch
+    }
+    // Prefetch next batch when queue gets low
+    if (queue.length < DB_FETCH_SIZE / 2 && !pendingFetch && !dbDone) fillQueue()
+    return queue.shift() ?? null
+  }
+
+  // Prime the queue before workers start
+  fillQueue()
+  await (pendingFetch ?? Promise.resolve())
 
   await Promise.all(
-    tokens.map(async (token, tokenIdx) => {
-      // Respect any park set during a previous page of this run
-      const initialPark = (parkedUntil.get(token) ?? 0) - Date.now()
-      if (initialPark > 0) {
-        log.warn(`token#${tokenIdx} still parked, waiting ${Math.round(initialPark / 1000)}s`)
-        await new Promise((r) => setTimeout(r, initialPark))
-      }
-
-      while (nextIdx < validUrls.length) {
-        const idx = nextIdx++
-        const url = validUrls[idx]
+    Array.from({ length: config.concurrency }, async () => {
+      while (!isShuttingDown()) {
+        const row = await nextRow()
+        if (!row) break
 
         try {
-          const result = await fetchWithRetries(url, token)
-          if (result) {
-            buffer.push(result)
-            if (buffer.length >= config.batchSize) {
-              const batch = buffer.splice(0)
-              await updateEnrichedRepos(qx, batch)
-              flushed += batch.length
-            }
-          } else {
-            failures.push({ url, reason: 'see warn log above' })
-            failed++
+          parseGithubUrl(row.url)
+        } catch {
+          log.warn({ url: row.url }, 'Skipping non-GitHub URL')
+          continue
+        }
+
+        const { installationId, waitMs } = selectInstallation(
+          installationIds,
+          parkedUntil,
+          roundRobinIdx,
+        )
+
+        if (waitMs > 0) {
+          log.warn(
+            { waitMs: Math.round(waitMs / 1000) },
+            `All installations parked, waiting ${Math.round(waitMs / 1000)}s`,
+          )
+          await new Promise((r) => setTimeout(r, waitMs))
+        }
+
+        try {
+          const token = await getInstallationToken(
+            appConfig.appId,
+            appConfig.privateKeyPem,
+            installationId,
+          )
+          metrics.totalRequests++
+          const outcome = await fetchWithRetries(row.url, token, config.fetchTimeoutMs)
+
+          if (outcome.kind === 'success') {
+            metrics.totalFetched++
+            writeBuffer.add(outcome.data)
+          } else if (outcome.kind === 'permanent') {
+            writeBuffer.addSkip(row.url)
           }
         } catch (err) {
           if (err instanceof FetchError && err.kind === 'RATE_LIMIT') {
             const resetAt = err.resetAt ?? Date.now() + 60_000
-            const waitMs = Math.max(1_000, resetAt - Date.now())
-            parkedUntil.set(token, resetAt)
+            parkedUntil.set(installationId, resetAt)
             log.warn(
-              { tokenIdx, parkedUntil: new Date(resetAt).toISOString() },
-              `token#${tokenIdx} rate limited — parking for ${Math.round(waitMs / 1000)}s`,
+              { installationId, resetAt: new Date(resetAt).toISOString() },
+              'Installation rate limited — parking, re-queuing url',
             )
-            await new Promise((r) => setTimeout(r, waitMs))
-            failures.push({ url, reason: 'rate-limit' })
-            failed++
+            queue.unshift(row)
           } else {
-            log.error({ url, err }, 'Unexpected error')
-            failures.push({ url, reason: (err as Error).message })
-            failed++
+            log.error({ url: row.url, err }, 'Unexpected error')
+          }
+        }
+
+        if (writeBuffer.shouldFlush()) {
+          const flushed = await writeBuffer.flush()
+          if (Date.now() - logTimer >= 10_000) {
+            logTimer = Date.now()
+            const elapsedHours = (Date.now() - metrics.startTime) / 3_600_000
+            log.info(
+              {
+                totalFetched: metrics.totalFetched,
+                totalRequests: metrics.totalRequests,
+                reposPerHour:
+                  elapsedHours > 0
+                    ? Math.round(metrics.totalFetched / elapsedHours)
+                    : metrics.totalFetched,
+                reqsPerHour:
+                  elapsedHours > 0
+                    ? Math.round(metrics.totalRequests / elapsedHours)
+                    : metrics.totalRequests,
+                flushed,
+                queueDepth: queue.length,
+              },
+              'Throughput snapshot',
+            )
           }
         }
       }
     }),
   )
 
-  if (buffer.length > 0) {
-    await updateEnrichedRepos(qx, buffer)
-    flushed += buffer.length
-  }
-
-  if (failures.length > 0) {
-    log.warn({ failures }, `${failures.length} repo(s) failed this page`)
-  }
-
-  return { fetched: validUrls.length - failed, failed, flushed }
+  await writeBuffer.flush()
+  return isShuttingDown() ? 'shutdown' : 'exhausted'
 }
+
+// ─── Public entry point ───────────────────────────────────────────────────────
 
 export async function runEnrichmentLoop(
   qx: QueryExecutor,
+  installationIds: number[],
+  appConfig: GithubAppConfig,
   config: ReturnType<typeof getEnricherConfig>,
   isShuttingDown: () => boolean,
 ): Promise<void> {
-  const parkedUntil = new Map<string, number>()
-  let cursor: string | null = null
-  let pageNum = 0
+  const metrics = { totalFetched: 0, totalRequests: 0, startTime: Date.now() }
 
   while (!isShuttingDown()) {
-    pageNum++
-
-    const { rows, urls } = await fetchPage(qx, cursor, config.batchSize, config.updateIntervalHours)
-
-    if (urls.length === 0) {
-      log.info('No more repos to process, sleeping')
-      await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
-      cursor = null
-      continue
-    }
-
-    const { fetched, failed, flushed } = await processPage(
-      urls,
-      config.tokens,
-      parkedUntil,
-      config,
+    const outcome = await runStreamingPool(
       qx,
+      installationIds,
+      appConfig,
+      config,
+      isShuttingDown,
+      metrics,
     )
+
+    if (outcome === 'shutdown') break
 
     log.info(
-      `Page ${pageNum}: read=${urls.length} fetched=${fetched} failed=${failed} flushed=${flushed}`,
+      { totalFetched: metrics.totalFetched, totalRequests: metrics.totalRequests },
+      `All repos processed — sleeping ${config.idleSleepSec}s`,
     )
-
-    if (rows.length > 0) {
-      cursor = rows[rows.length - 1].id
-    }
+    await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
   }
+
+  log.info('Enrichment loop stopped')
 }
