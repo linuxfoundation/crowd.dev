@@ -27,6 +27,7 @@ Options:
                            ${VALID_KINDS.join(', ')}
                          "rank" runs rankPackagesUniverse only (no ingest).
                          "repos" and "package_repos" always run together (one workflow).
+                         "advisories" and "advisory_packages" always run together (one workflow).
   --reuse-exports        Skip BQ for any kind that has recent exported data in DB+GCS.
                          Falls back to BQ if files are gone or no prior export exists.
   --export-name <name>   Skip BQ entirely for kinds covered by a named export

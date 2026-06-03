@@ -217,7 +217,7 @@ export async function bootstrapOsspckgs(opts: {
   if (runs('rank')) {
     await rankPackagesUniverse()
   }
-  if (runs('advisories')) {
+  if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {
       args: [
         {
