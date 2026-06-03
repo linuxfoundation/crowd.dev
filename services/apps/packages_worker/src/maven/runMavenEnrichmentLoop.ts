@@ -1,6 +1,8 @@
 import crypto from 'crypto'
 
 import {
+  MavenPackageToSync,
+  listMavenPackagesByPurls,
   listMavenPackagesToSync,
   logAuditFieldChange,
   replacePackageMaintainers,
@@ -15,7 +17,9 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
-import { MAX_PARENT_HOPS, extractArtifact, normalizeScmUrl } from './extract'
+
+import { fetchMavenChanges } from './deltaApi'
+import { MAX_PARENT_HOPS, extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
 
@@ -28,10 +32,19 @@ export interface BatchResult {
   skipped: number
   error: number
   unchanged: number
+  // critical packages whose parent chain was truncated at MAX_PARENT_HOPS (POM data may be incomplete)
+  hopLimitReached: number
+}
+
+type CriticalStatus = 'processed' | 'skipped' | 'unchanged' | 'error'
+
+interface CriticalPackageResult {
+  status: CriticalStatus
+  hopLimitReached: boolean
 }
 
 type MavenConfig = ReturnType<typeof getMavenConfig>
-type PackageRow = Awaited<ReturnType<typeof listMavenPackagesToSync>>[number]
+type PackageRow = MavenPackageToSync
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,8 +62,34 @@ async function writeRepoLink(
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  const repoChanged = await upsertPackageRepo(qx, { packageId, repoId, source: 'declared', confidence: 0.8 })
+  const repoChanged = await upsertPackageRepo(qx, {
+    packageId,
+    repoId,
+    source: 'declared',
+    confidence: 0.8,
+  })
   repoChanged.forEach((f) => changed.add(f))
+}
+
+// Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
+// rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
+// can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
+async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const code = (err as { code?: string }).code
+      const isDeadlock =
+        code === '40P01' || /deadlock detected/i.test(String((err as Error)?.message))
+      if (isDeadlock && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 50 * attempt + Math.random() * 100))
+        log.debug({ attempt }, 'Deadlock detected — retrying transaction')
+        continue
+      }
+      throw err
+    }
+  }
 }
 
 // ─── Non-critical: copy universe stats into packages ─────────────────────────
@@ -83,13 +122,13 @@ async function processCriticalPackage(
   qx: QueryExecutor,
   pkg: PackageRow,
   forceFullExtraction: boolean,
-): Promise<'processed' | 'skipped' | 'unchanged' | 'error'> {
+): Promise<CriticalPackageResult> {
   const groupId = pkg.namespace
   const artifactId = pkg.name
 
   if (!groupId) {
     log.warn({ purl: pkg.purl }, 'Skipping: null namespace (groupId)')
-    return 'skipped'
+    return { status: 'skipped', hopLimitReached: false }
   }
 
   // Phase 1: lightweight metadata fetch to get the current upstream version.
@@ -117,13 +156,18 @@ async function processCriticalPackage(
         downloadsLastMonth: pkg.downloads30d,
       })
       log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
-      return 'skipped'
+      return { status: 'skipped', hopLimitReached: false }
     }
     if (metadata.kind === 'RATE_LIMIT') {
-      log.warn({ groupId, artifactId, status: metadata.status }, 'Rate limited — will retry next pass')
-      return 'error'
+      log.warn(
+        { groupId, artifactId, status: metadata.status },
+        'Rate limited — will retry next pass',
+      )
+      return { status: 'error', hopLimitReached: false }
     }
-    throw new Error(`Transient error fetching metadata for ${groupId}:${artifactId} — ${metadata.message}`)
+    throw new Error(
+      `Transient error fetching metadata for ${groupId}:${artifactId} — ${metadata.message}`,
+    )
   }
 
   const version = metadata.releaseVersion
@@ -149,7 +193,7 @@ async function processCriticalPackage(
       downloadsLastMonth: pkg.downloads30d,
     })
     log.warn({ groupId, artifactId }, 'No release version in metadata — writing minimal record')
-    return 'skipped'
+    return { status: 'skipped', hopLimitReached: false }
   }
 
   // Phase 2: skip full POM extraction when upstream version matches what we already have.
@@ -161,7 +205,7 @@ async function processCriticalPackage(
       downloadsLastMonth: pkg.downloads30d,
     })
     log.debug({ groupId, artifactId, version }, 'Version unchanged — skipping POM extraction')
-    return 'unchanged'
+    return { status: 'unchanged', hopLimitReached: false }
   }
 
   // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
@@ -189,96 +233,119 @@ async function processCriticalPackage(
       dependentReposCount: pkg.dependentReposCount,
       downloadsLastMonth: pkg.downloads30d,
     })
-    return 'error'
+    return { status: 'error', hopLimitReached: false }
   }
 
-  if (result.parentHops > MAX_PARENT_HOPS) {
+  const hopLimitReached = result.parentHops > MAX_PARENT_HOPS
+  if (hopLimitReached) {
     log.warn(
-      { groupId, artifactId, parentHops: result.parentHops, missingLicenses: result.licenses.length === 0, missingScm: !result.scmUrl },
+      {
+        groupId,
+        artifactId,
+        parentHops: result.parentHops,
+        missingLicenses: result.licenses.length === 0,
+        missingScm: !result.scmUrl,
+      },
       'Parent hop limit reached — data may be incomplete',
     )
   }
 
   const repositoryUrl = normalizeScmUrl(result.scmUrl)
 
-  await qx.tx(async (t) => {
-    const changed = new Set<string>()
+  await withDeadlockRetry(() =>
+    qx.tx(async (t) => {
+      const changed = new Set<string>()
 
-    const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
-      purl: pkg.purl,
-      ecosystem: 'maven',
-      namespace: groupId,
-      name: artifactId,
-      description: result.description,
-      homepage: result.homepageUrl,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
-      declaredRepositoryUrl: result.scmUrl,
-      repositoryUrl,
-      licenses: result.licenses.length > 0 ? result.licenses : null,
-      licensesRaw: result.licensesRaw,
-      latestVersion: version,
-      ingestionSource: 'maven-registry',
-      criticalityScore: pkg.criticalityScore,
-      dependentPackagesCount: pkg.dependentPackagesCount,
-      dependentReposCount: pkg.dependentReposCount,
-      downloadsLastMonth: pkg.downloads30d,
-    })
-    pkgChanged.forEach((f) => changed.add(f))
-
-    const allVersions = metadata.versions.length > 0 ? metadata.versions : [version]
-    const verChanged = await upsertVersionsBatch(
-      t,
-      allVersions.map((v) => ({
-        packageId,
+      const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
+        purl: pkg.purl,
         ecosystem: 'maven',
+        namespace: groupId,
         name: artifactId,
-        number: v,
-        isLatest: v === metadata.releaseVersion,
-        isPrerelease: isPrerelease(v),
-        license: result.licenses[0] ?? null,
-      })),
-    )
-    verChanged.forEach((f) => changed.add(f))
-
-    const allPeople = [
-      ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
-      ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
-    ]
-
-    const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
-    for (const person of allPeople) {
-      const username = person.username ?? person.email ?? person.displayName
-      if (!username) continue
-      const emailHash = person.email
-        ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex')
-        : null
-      const { id: maintainerId, changedFields: mChanged } = await upsertMaintainer(t, {
-        ecosystem: 'maven',
-        username,
-        displayName: person.displayName,
-        url: person.url,
-        emailHash,
+        description: result.description,
+        homepage: result.homepageUrl,
+        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        declaredRepositoryUrl: result.scmUrl,
+        repositoryUrl,
+        licenses: result.licenses.length > 0 ? result.licenses : null,
+        licensesRaw: result.licensesRaw,
+        latestVersion: version,
+        ingestionSource: 'maven-registry',
+        criticalityScore: pkg.criticalityScore,
+        dependentPackagesCount: pkg.dependentPackagesCount,
+        dependentReposCount: pkg.dependentReposCount,
+        downloadsLastMonth: pkg.downloads30d,
       })
-      mChanged.forEach((f) => changed.add(f))
-      maintainerLinks.push({ maintainerId, role: person.role })
-    }
+      pkgChanged.forEach((f) => changed.add(f))
 
-    if (maintainerLinks.length > 0) {
-      const pmChanged = await replacePackageMaintainers(t, packageId, maintainerLinks)
-      pmChanged.forEach((f) => changed.add(f))
-    }
+      const allVersions = metadata.versions.length > 0 ? metadata.versions : [version]
+      const verChanged = await upsertVersionsBatch(
+        t,
+        allVersions.map((v) => ({
+          packageId,
+          ecosystem: 'maven',
+          name: artifactId,
+          number: v,
+          isLatest: v === metadata.releaseVersion,
+          isPrerelease: isPrerelease(v),
+          license: result.licenses[0] ?? null,
+        })),
+      )
+      verChanged.forEach((f) => changed.add(f))
 
-    await writeRepoLink(t, packageId, repositoryUrl, changed)
+      const allPeople = [
+        ...result.developers.map((d) => ({ ...d, role: 'author' as const })),
+        ...result.contributors.map((c) => ({ ...c, role: 'maintainer' as const })),
+      ].sort((a, b) => {
+        // Stable order on the shared maintainers table so concurrent transactions acquire
+        // row locks in the same order → no deadlock cycles.
+        const ka = a.username ?? a.email ?? a.displayName ?? ''
+        const kb = b.username ?? b.email ?? b.displayName ?? ''
+        return ka < kb ? -1 : ka > kb ? 1 : 0
+      })
 
-    await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
+      const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
+      for (const person of allPeople) {
+        const username = person.username ?? person.email ?? person.displayName
+        if (!username) continue
+        const emailHash = person.email
+          ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex')
+          : null
+        const { id: maintainerId, changedFields: mChanged } = await upsertMaintainer(t, {
+          ecosystem: 'maven',
+          username,
+          displayName: person.displayName,
+          url: person.url,
+          emailHash,
+        })
+        mChanged.forEach((f) => changed.add(f))
+        maintainerLinks.push({ maintainerId, role: person.role })
+      }
 
-    log.info(
-      { groupId, artifactId, version, parentHops: result.parentHops, licenses: result.licenses.length, maintainers: maintainerLinks.length, versions: allVersions.length },
-      'ok',
-    )
-  })
+      if (maintainerLinks.length > 0) {
+        const pmChanged = await replacePackageMaintainers(t, packageId, maintainerLinks)
+        pmChanged.forEach((f) => changed.add(f))
+      }
 
-  return 'processed'
+      await writeRepoLink(t, packageId, repositoryUrl, changed)
+
+      await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
+
+      log.info(
+        {
+          groupId,
+          artifactId,
+          version,
+          parentHops: result.parentHops,
+          licenses: result.licenses.length,
+          maintainers: maintainerLinks.length,
+          versions: allVersions.length,
+        },
+        'ok',
+      )
+    }),
+  )
+
+  return { status: 'processed', hopLimitReached }
 }
 
 // ─── Batch processing ─────────────────────────────────────────────────────────
@@ -287,19 +354,33 @@ export async function processBatch(
   qx: QueryExecutor,
   config: MavenConfig,
   isCritical: boolean,
+  forceFullExtraction: boolean,
 ): Promise<BatchResult> {
   const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
-  const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
   const refreshDays = config.refreshDays
-  const forceFullExtraction = config.forceFullExtraction
 
   const packages = await listMavenPackagesToSync(qx, { limit: batchSize, refreshDays, isCritical })
 
-  if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  return processPackages(qx, config, packages, isCritical, forceFullExtraction)
+}
+
+// Runs a concrete list of packages through the enrichment pipeline. Shared by the
+// universe-polling path (processBatch) and the delta-API path (processApiChangesBatch).
+async function processPackages(
+  qx: QueryExecutor,
+  config: MavenConfig,
+  packages: PackageRow[],
+  isCritical: boolean,
+  forceFullExtraction: boolean,
+): Promise<BatchResult> {
+  const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
+
+  if (packages.length === 0)
+    return { processed: 0, skipped: 0, error: 0, unchanged: 0, hopLimitReached: 0 }
 
   log.info({ count: packages.length, isCritical }, 'Batch started')
 
-  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0, hopLimitReached: 0 }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += concurrency) {
     const group = packages.slice(batchStart, batchStart + concurrency)
@@ -317,8 +398,9 @@ export async function processBatch(
             return
           }
 
-          const status = await processCriticalPackage(qx, pkg, forceFullExtraction)
-          counts[status]++
+          const res = await processCriticalPackage(qx, pkg, forceFullExtraction)
+          counts[res.status]++
+          if (res.hopLimitReached) counts.hopLimitReached++
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
@@ -333,7 +415,80 @@ export async function processBatch(
     }
   }
 
+  if (isCritical) {
+    // POM cache only fills on the critical path (parent-chain resolution).
+    log.info(getPomCacheStats(), 'POM cache')
+  }
+
   return counts
+}
+
+// ─── Delta-API batch ──────────────────────────────────────────────────────────
+
+// BatchResult plus delta-feed-specific counters and a fetch/process timing split —
+// handy for the benchmark script and for spotting whether time goes to the feed or
+// to POM extraction. Extra fields are ignored by callers that only need BatchResult.
+export interface DeltaApiBatchResult extends BatchResult {
+  apiChanges: number
+  uniquePackages: number
+  matchedCritical: number
+  fetchMs: number
+  processMs: number
+}
+
+// Pulls the changed artifacts from our delta feed over a rolling [now-lookback, now)
+// window and enriches the critical ones. The window deliberately overlaps the
+// Temporal schedule interval; re-processing is safe because every write is an
+// idempotent upsert. Always forces full extraction — the feed is an explicit
+// "this changed" signal, so we never trust the version-unchanged shortcut here.
+export async function processApiChangesBatch(
+  qx: QueryExecutor,
+  config: MavenConfig,
+): Promise<DeltaApiBatchResult> {
+  const until = new Date()
+  const since = new Date(until.getTime() - config.deltaApi.lookbackMinutes * 60_000)
+
+  const fetchStartedAt = Date.now()
+
+  const changes = await fetchMavenChanges({
+    baseUrl: config.deltaApi.baseUrl,
+    token: config.deltaApi.token,
+    since: since.toISOString(),
+    until: until.toISOString(),
+    pageSize: config.deltaApi.pageSize,
+    includePrerelease: config.deltaApi.includePrerelease,
+  })
+
+  // Collapse to package-level purls (drop the @version) and dedup — the feed
+  // reports one entry per version, but we enrich the package as a whole.
+  const purls = Array.from(new Set(changes.map((c) => `pkg:maven/${c.groupId}/${c.artifactId}`)))
+
+  const packages = await listMavenPackagesByPurls(qx, purls)
+  const fetchMs = Date.now() - fetchStartedAt
+
+  log.info(
+    {
+      changes: changes.length,
+      uniquePackages: purls.length,
+      matchedCritical: packages.length,
+      lookbackMinutes: config.deltaApi.lookbackMinutes,
+      fetchMs,
+    },
+    'Delta-API window fetched',
+  )
+
+  const processStartedAt = Date.now()
+  const counts = await processPackages(qx, config, packages, true, true)
+  const processMs = Date.now() - processStartedAt
+
+  return {
+    ...counts,
+    apiChanges: changes.length,
+    uniquePackages: purls.length,
+    matchedCritical: packages.length,
+    fetchMs,
+    processMs,
+  }
 }
 
 // ─── Phase runner ─────────────────────────────────────────────────────────────
@@ -345,14 +500,21 @@ async function runPhase(
   isShuttingDown: () => boolean,
 ): Promise<BatchResult> {
   const label = isCritical ? 'critical' : 'non-critical'
-  const total: BatchResult = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const total: BatchResult = {
+    processed: 0,
+    skipped: 0,
+    error: 0,
+    unchanged: 0,
+    hopLimitReached: 0,
+  }
   let batchNum = 0
   const phaseStartedAt = Date.now()
 
   log.info({ phase: label }, 'Phase started')
 
   while (!isShuttingDown()) {
-    const result = await processBatch(qx, config, isCritical)
+    // The standalone loop is the backfill entry point → always full extraction.
+    const result = await processBatch(qx, config, isCritical, true)
 
     if (result.processed + result.skipped + result.error + result.unchanged === 0) {
       const durationSec = Math.round((Date.now() - phaseStartedAt) / 1000)
@@ -365,6 +527,7 @@ async function runPhase(
     total.skipped += result.skipped
     total.error += result.error
     total.unchanged += result.unchanged
+    total.hopLimitReached += result.hopLimitReached
 
     log.info(
       {
@@ -374,6 +537,7 @@ async function runPhase(
         totalSkipped: total.skipped,
         totalUnchanged: total.unchanged,
         totalErrors: total.error,
+        totalHopLimitReached: total.hopLimitReached,
         elapsedSec: Math.round((Date.now() - phaseStartedAt) / 1000),
       },
       'Batch done',
@@ -383,49 +547,19 @@ async function runPhase(
   return total
 }
 
-// ─── Main loop ────────────────────────────────────────────────────────────────
+// ─── One-shot backfill ──────────────────────────────────────────────────────────
 
-export async function runMavenEnrichmentLoop(
+/**
+ * Drains the Tier 2 critical queue once, with full POM extraction, and returns
+ * the totals. It does NOT idle-loop — it runs until a batch comes back empty (or
+ * shutdown is requested) and then returns, so the caller can exit. Meant to be
+ * triggered manually (e.g. `pnpm backfill:maven` execed into the packages-worker
+ * container).
+ */
+export async function runMavenCriticalBackfill(
   qx: QueryExecutor,
   config: MavenConfig,
   isShuttingDown: () => boolean,
-): Promise<void> {
-  log.info(
-    {
-      batchSize: config.batchSize,
-      concurrency: config.concurrency,
-      nonCriticalBatchSize: config.nonCriticalBatchSize,
-      nonCriticalConcurrency: config.nonCriticalConcurrency,
-      refreshDays: config.refreshDays,
-      forceFullExtraction: config.forceFullExtraction,
-    },
-    config.forceFullExtraction
-      ? 'POM fetcher started — FORCE FULL EXTRACTION (version-unchanged check disabled)'
-      : 'POM fetcher started',
-  )
-
-  let passNumber = 0
-
-  while (!isShuttingDown()) {
-    passNumber++
-    const passStartedAt = Date.now()
-    log.info({ pass: passNumber }, 'Pass started')
-
-    const critical = await runPhase(qx, config, true, isShuttingDown)
-
-    const durationSec = Math.round((Date.now() - passStartedAt) / 1000)
-    log.info(
-      {
-        pass: passNumber,
-        totalProcessed: critical.processed,
-        totalSkipped: critical.skipped,
-        totalUnchanged: critical.unchanged,
-        totalErrors: critical.error,
-        durationSec,
-      },
-      `Pass complete — sleeping ${config.idleSleepSec}s`,
-    )
-
-    await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
-  }
+): Promise<BatchResult> {
+  return runPhase(qx, config, true, isShuttingDown)
 }

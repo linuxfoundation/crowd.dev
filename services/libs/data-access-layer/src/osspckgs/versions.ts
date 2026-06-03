@@ -6,7 +6,9 @@ import { IDbVersionUpsert } from './types'
  * Bulk-upserts a list of versions for a single package.
  * Uses UNNEST arrays to avoid N individual round-trips.
  * On conflict (package_id, number) updates is_latest, is_prerelease, and
- * license (never overwrites an existing license with NULL).
+ * licenses (never overwrites an existing licenses array with NULL).
+ * The per-version `license` input is stored as a single-element text[] in the
+ * `licenses` column (the schema is an array to match packages.licenses).
  * Returns the list of fields that actually changed across all versions.
  */
 export async function upsertVersionsBatch(
@@ -28,36 +30,40 @@ export async function upsertVersionsBatch(
   const row: { changed_fields: string[] } = await qx.selectOne(
     `
     WITH old AS (
-      SELECT number, is_latest, is_prerelease, license
+      SELECT number, is_latest, is_prerelease, licenses
         FROM versions
        WHERE package_id = $(packageId)::bigint AND number = ANY($(numbers)::text[])
     ),
     ins AS (
-      INSERT INTO versions (package_id, ecosystem, name, number, is_latest, is_prerelease, license, last_synced_at)
+      INSERT INTO versions (package_id, ecosystem, name, number, is_latest, is_prerelease, licenses, last_synced_at)
       SELECT
-        UNNEST($(packageIds)::bigint[]),
-        UNNEST($(ecosystems)::text[]),
-        UNNEST($(names)::text[]),
-        UNNEST($(numbers)::text[]),
-        UNNEST($(isLatests)::bool[]),
-        UNNEST($(isPreleases)::bool[]),
-        UNNEST($(licenses)::text[]),
+        t.package_id, t.ecosystem, t.name, t.number, t.is_latest, t.is_prerelease,
+        CASE WHEN t.license IS NULL THEN NULL ELSE ARRAY[t.license] END,
         NOW()
+      FROM UNNEST(
+        $(packageIds)::bigint[],
+        $(ecosystems)::text[],
+        $(names)::text[],
+        $(numbers)::text[],
+        $(isLatests)::bool[],
+        $(isPreleases)::bool[],
+        $(licenses)::text[]
+      ) AS t(package_id, ecosystem, name, number, is_latest, is_prerelease, license)
       ON CONFLICT (package_id, number) DO UPDATE SET
         is_latest      = EXCLUDED.is_latest,
         is_prerelease  = EXCLUDED.is_prerelease,
-        license        = COALESCE(EXCLUDED.license, versions.license),
+        licenses       = COALESCE(EXCLUDED.licenses, versions.licenses),
         last_synced_at = NOW()
-      RETURNING number, is_latest, is_prerelease, license
+      RETURNING number, is_latest, is_prerelease, licenses
     )
     SELECT array_remove(ARRAY[
       CASE WHEN bool_or(o.number IS NULL)                                          THEN 'versions.number' END,
       CASE WHEN bool_or(o.is_latest     IS DISTINCT FROM ins.is_latest)            THEN 'versions.is_latest' END,
       CASE WHEN bool_or(o.is_prerelease IS DISTINCT FROM ins.is_prerelease)        THEN 'versions.is_prerelease' END,
-      CASE WHEN bool_or(o.license       IS DISTINCT FROM ins.license)              THEN 'versions.license' END
+      CASE WHEN bool_or(o.licenses      IS DISTINCT FROM ins.licenses)             THEN 'versions.licenses' END
     ], NULL) AS changed_fields
     FROM ins LEFT JOIN old o ON o.number = ins.number
-    `,
+`,
     {
       packageId: versions[0].packageId,
       packageIds: versions.map((v) => v.packageId),

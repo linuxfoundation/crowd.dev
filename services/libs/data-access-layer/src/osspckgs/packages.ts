@@ -15,33 +15,86 @@ export async function findPackageIdsByPurl(
 // ─── packages_universe ────────────────────────────────────────────────────────
 
 /**
- * Returns a page of Maven packages from packages_universe that need syncing
- * into the packages table (never synced, or stale by refreshDays).
+ * Carries everything the Maven enrichment path needs to sync a package.
+ * For the Tier 2 (critical) path these fields come from `packages`; the disabled
+ * non-critical path reads the same shape from `packages_universe`.
+ */
+export type MavenPackageToSync = Pick<
+  IDbPackageUniverse,
+  | 'id'
+  | 'namespace'
+  | 'name'
+  | 'criticalityScore'
+  | 'dependentPackagesCount'
+  | 'dependentReposCount'
+  | 'downloads30d'
+> & {
+  purl: string
+  latestVersion: string | null
+}
+
+// ingestion_source values this worker writes once it has attempted a package
+// (success or a terminal outcome). A `packages` row carrying any other value —
+// e.g. the marker the criticality worker sets when it promotes a package to
+// Tier 2 — has never been POM-enriched, so we pick it up immediately instead of
+// waiting for the staleness window. Errors/skips re-run only once stale, so a
+// broken package isn't retried every pass.
+const MAVEN_WORKER_OUTCOMES = [
+  'maven-registry',
+  'maven_error',
+  'maven_not_on_central',
+  'maven_no_version',
+]
+
+/**
+ * Returns a page of Maven packages that need syncing via POM extraction.
  *
- * isCritical=true  → critical packages queued for full POM extraction
- * isCritical=false → non-critical packages queued for universe-stats refresh (DB-only)
+ * isCritical=true  → Tier 2: reads from `packages` (populated by the criticality
+ *                    worker, which writes ingestion_source + last_synced_at).
+ *                    A row is due when it hasn't been POM-enriched yet, or is
+ *                    stale by refreshDays. Ordered by criticality_score.
+ * isCritical=false → disabled non-critical path: reads from `packages_universe`.
+ *                    Kept for reference only — the universe→packages copy is owned
+ *                    by the criticality worker and this path is not scheduled.
  */
 export async function listMavenPackagesToSync(
   qx: QueryExecutor,
   options: { limit: number; refreshDays: number; isCritical: boolean },
-): Promise<
-  (Pick<
-    IDbPackageUniverse,
-    | 'id'
-    | 'namespace'
-    | 'name'
-    | 'isCritical'
-    | 'criticalityScore'
-    | 'dependentPackagesCount'
-    | 'dependentReposCount'
-    | 'downloads30d'
-  > & {
-    purl: string
-    latestVersion: string | null
-  })[]
-> {
+): Promise<MavenPackageToSync[]> {
   const { limit, refreshDays, isCritical } = options
 
+  if (isCritical) {
+    return qx.select(
+      `
+      SELECT
+        p.id,
+        p.purl,
+        p.namespace,
+        p.name,
+        p.criticality_score        AS "criticalityScore",
+        p.dependent_packages_count AS "dependentPackagesCount",
+        p.dependent_repos_count    AS "dependentReposCount",
+        p.downloads_last_month     AS "downloads30d",
+        p.latest_version           AS "latestVersion"
+      FROM packages p
+      WHERE
+        p.ecosystem = 'maven'
+        AND p.namespace IS NOT NULL
+        AND (
+          p.ingestion_source IS NULL
+          OR p.ingestion_source <> ALL($(workerOutcomes)::text[])
+          OR p.last_synced_at < NOW() - ($(refreshDays) || ' days')::interval
+        )
+      ORDER BY
+        p.criticality_score DESC NULLS LAST,
+        p.id ASC
+      LIMIT $(limit)
+      `,
+      { limit, refreshDays, workerOutcomes: MAVEN_WORKER_OUTCOMES },
+    )
+  }
+
+  // Disabled non-critical path — reads from packages_universe (not scheduled).
   return qx.select(
     `
     SELECT
@@ -49,7 +102,6 @@ export async function listMavenPackagesToSync(
       pu.purl,
       pu.namespace,
       pu.name,
-      pu.is_critical              AS "isCritical",
       pu.criticality_score        AS "criticalityScore",
       pu.dependent_packages_count AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
@@ -59,7 +111,7 @@ export async function listMavenPackagesToSync(
     LEFT JOIN packages p ON p.purl = pu.purl
     WHERE
       pu.ecosystem = 'maven'
-      AND pu.is_critical = $(isCritical)
+      AND pu.is_critical = false
       AND pu.purl IS NOT NULL
       AND pu.namespace IS NOT NULL
       AND (
@@ -71,7 +123,44 @@ export async function listMavenPackagesToSync(
       pu.id ASC
     LIMIT $(limit)
     `,
-    { limit, refreshDays, isCritical },
+    { limit, refreshDays },
+  )
+}
+
+/**
+ * Loads Tier 2 Maven packages (from `packages`) by package-level purl, regardless
+ * of staleness. Used by the delta-API sync path: the upstream feed already told us
+ * these packages changed, so we (re)extract them now. Purls not present in
+ * `packages` (i.e. not promoted to Tier 2 by the criticality worker) are dropped.
+ */
+export async function listMavenPackagesByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<MavenPackageToSync[]> {
+  if (purls.length === 0) return []
+
+  return qx.select(
+    `
+    SELECT
+      p.id,
+      p.purl,
+      p.namespace,
+      p.name,
+      p.criticality_score        AS "criticalityScore",
+      p.dependent_packages_count AS "dependentPackagesCount",
+      p.dependent_repos_count    AS "dependentReposCount",
+      p.downloads_last_month     AS "downloads30d",
+      p.latest_version           AS "latestVersion"
+    FROM packages p
+    WHERE
+      p.ecosystem = 'maven'
+      AND p.namespace IS NOT NULL
+      AND p.purl = ANY($(purls))
+    ORDER BY
+      p.criticality_score DESC NULLS LAST,
+      p.id ASC
+    `,
+    { purls },
   )
 }
 

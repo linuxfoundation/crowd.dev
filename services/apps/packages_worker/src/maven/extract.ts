@@ -2,7 +2,6 @@
  * Core POM extraction logic — pure functions (no I/O side-effects, no DB calls).
  * Callers are responsible for concurrency, retries, and persistence.
  */
-
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
@@ -57,8 +56,11 @@ interface PomPerson {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const MAVEN_REPO = 'https://repo1.maven.org/maven2'
-export const MAX_PARENT_HOPS = 7
+// Base URL for fetching POMs/metadata. Defaults to canonical Central (repo1, Fastly —
+// aggressive per-IP throttling). Point POM_FETCHER_MAVEN_BASE_URL at a high-throughput
+// mirror (e.g. the Google GCS mirror) for bulk backfills.
+const MAVEN_REPO = process.env.POM_FETCHER_MAVEN_BASE_URL ?? 'https://repo1.maven.org/maven2'
+export const MAX_PARENT_HOPS = 8
 const REQUEST_TIMEOUT_MS = 15_000
 
 const parser = new XMLParser({
@@ -80,7 +82,10 @@ async function sleep(ms: number): Promise<void> {
 async function getWithRetry(url: string): Promise<string> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const res = await axios.get<string>(url, { responseType: 'text', timeout: REQUEST_TIMEOUT_MS })
+      const res = await axios.get<string>(url, {
+        responseType: 'text',
+        timeout: REQUEST_TIMEOUT_MS,
+      })
       return res.data
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -105,7 +110,12 @@ export function buildPomUrl(groupId: string, artifactId: string, version: string
   return `${MAVEN_REPO}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
 }
 
-export async function fetchPom(groupId: string, artifactId: string, version: string, url: string): Promise<PomData | null> {
+export async function fetchPom(
+  groupId: string,
+  artifactId: string,
+  version: string,
+  url: string,
+): Promise<PomData | null> {
   try {
     const data = await getWithRetry(url)
     const parsed = parser.parse(data)
@@ -117,11 +127,121 @@ export async function fetchPom(groupId: string, artifactId: string, version: str
         log.debug({ groupId, artifactId, version }, `POM not found (404): ${url}`)
         return null
       }
-      log.debug({ groupId, artifactId, version }, `HTTP ${status ?? 'unknown'} fetching POM: ${url}`)
+      log.debug(
+        { groupId, artifactId, version },
+        `HTTP ${status ?? 'unknown'} fetching POM: ${url}`,
+      )
       return null
     }
     throw err
   }
+}
+
+// ─── POM cache ──────────────────────────────────────────────────────────────
+//
+// Parent POMs are heavily shared across artifacts of the same namespace
+// (e.g. org.apache:apache, org.springframework.boot:spring-boot-starter-parent),
+// and the sync queue is ordered by rank_in_ecosystem, so those siblings are
+// processed close together. A module-level, coordinate-keyed in-process cache
+// collapses those repeated parent fetches into a single HTTP request — the single
+// biggest lever against Maven Central rate limiting. It also removes the redundant
+// second fetch of each artifact's own POM (extractArtifact fetches the leaf, then
+// resolveWithInheritance fetches it again at depth 0).
+//
+// Only *successful* fetches are cached: fetchPom() returns null for both a real 404
+// and a transient failure (throttle/timeout), so caching null would poison the cache
+// with transient errors — we never do it. Maven coordinates are immutable, so a cached
+// POM never goes stale; the LRU size cap is purely to bound memory.
+
+const POM_CACHE_MAX_ENTRIES = 5_000
+
+const pomCache = new Map<string, PomData>()
+const inFlight = new Map<string, Promise<PomData | null>>()
+const pomCacheStats = { hits: 0, coalesced: 0, misses: 0, evictions: 0 }
+
+function pomCacheKey(groupId: string, artifactId: string, version: string): string {
+  return `${groupId}:${artifactId}:${version}`
+}
+
+function cacheSet(key: string, pom: PomData): void {
+  pomCache.delete(key) // re-insert to refresh recency (LRU)
+  pomCache.set(key, pom)
+  if (pomCache.size > POM_CACHE_MAX_ENTRIES) {
+    const oldest = pomCache.keys().next().value
+    if (oldest !== undefined) {
+      pomCache.delete(oldest)
+      pomCacheStats.evictions++
+    }
+  }
+}
+
+/**
+ * Cached + request-coalescing wrapper around fetchPom().
+ * - Cache hit  → returns the stored POM, no HTTP.
+ * - In-flight  → a concurrent fetch for the same coordinates is already running;
+ *                await it instead of issuing a duplicate request.
+ * - Miss       → performs the network fetch; caches the result only if non-null.
+ */
+async function fetchPomCached(
+  groupId: string,
+  artifactId: string,
+  version: string,
+): Promise<PomData | null> {
+  const key = pomCacheKey(groupId, artifactId, version)
+
+  const cached = pomCache.get(key)
+  if (cached !== undefined) {
+    pomCacheStats.hits++
+    pomCache.delete(key) // refresh recency on read (LRU)
+    pomCache.set(key, cached)
+    return cached
+  }
+
+  const pending = inFlight.get(key)
+  if (pending) {
+    pomCacheStats.coalesced++
+    return pending
+  }
+
+  pomCacheStats.misses++
+  const promise = fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version))
+    .then((pom) => {
+      if (pom) cacheSet(key, pom)
+      return pom
+    })
+    .finally(() => {
+      inFlight.delete(key)
+    })
+
+  inFlight.set(key, promise)
+  return promise
+}
+
+/** Snapshot of cache effectiveness — logged once per critical batch by the enrichment loop. */
+export function getPomCacheStats(): {
+  size: number
+  hits: number
+  coalesced: number
+  misses: number
+  evictions: number
+  hitRate: number
+} {
+  const lookups = pomCacheStats.hits + pomCacheStats.coalesced + pomCacheStats.misses
+  const hitRate =
+    lookups === 0
+      ? 0
+      : Math.round(((pomCacheStats.hits + pomCacheStats.coalesced) / lookups) * 100) / 100
+  return { size: pomCache.size, ...pomCacheStats, hitRate }
+}
+
+/** Clears the cache and counters. Intended for tests. */
+export function resetPomCache(): void {
+  pomCache.clear()
+  inFlight.clear()
+  pomCacheStats.hits = 0
+  pomCacheStats.coalesced = 0
+  pomCacheStats.misses = 0
+  pomCacheStats.evictions = 0
 }
 
 // ─── Inheritance resolution ───────────────────────────────────────────────────
@@ -137,13 +257,18 @@ interface ResolvedFields {
   hops: number
 }
 
-async function resolveWithInheritance(groupId: string, artifactId: string, version: string, depth = 0): Promise<ResolvedFields> {
+async function resolveWithInheritance(
+  groupId: string,
+  artifactId: string,
+  version: string,
+  depth = 0,
+): Promise<ResolvedFields> {
   if (depth > MAX_PARENT_HOPS) {
     log.debug({ groupId, artifactId, version }, `Max parent hops (${MAX_PARENT_HOPS}) reached`)
     return emptyFields(depth)
   }
 
-  const pom = await fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version))
+  const pom = await fetchPomCached(groupId, artifactId, version)
   if (!pom) return emptyFields(depth)
 
   const licenses = extractLicenses(pom)
@@ -156,8 +281,16 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
   const parent = extractParent(pom)
 
   if (parent && (missingLicense || missingScm)) {
-    log.debug({ groupId, artifactId, version }, `[hop ${depth + 1}] ${parent.groupId}:${parent.artifactId}:${parent.version}`)
-    const parentFields = await resolveWithInheritance(parent.groupId, parent.artifactId, parent.version, depth + 1)
+    log.debug(
+      { groupId, artifactId, version },
+      `[hop ${depth + 1}] ${parent.groupId}:${parent.artifactId}:${parent.version}`,
+    )
+    const parentFields = await resolveWithInheritance(
+      parent.groupId,
+      parent.artifactId,
+      parent.version,
+      depth + 1,
+    )
     return {
       description: extractStr(pom.description) ?? parentFields.description,
       licenses: licenses.length > 0 ? licenses : parentFields.licenses,
@@ -189,10 +322,14 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
  * Faster than extractArtifact — use for non-critical packages where inherited
  * fields (licenses, SCM) may be missing but throughput matters more.
  */
-export async function extractArtifactDirect(groupId: string, artifactId: string, version: string): Promise<PomExtractionResult> {
+export async function extractArtifactDirect(
+  groupId: string,
+  artifactId: string,
+  version: string,
+): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
   const pomUrl = buildPomUrl(groupId, artifactId, version)
-  const pom = await fetchPom(groupId, artifactId, version, pomUrl)
+  const pom = await fetchPomCached(groupId, artifactId, version)
 
   if (!pom) {
     return {
@@ -239,11 +376,15 @@ export async function extractArtifactDirect(groupId: string, artifactId: string,
  * the parent chain to inherit licenses and SCM when not in the direct POM.
  * Always returns a result object; errors are captured in `result.error`.
  */
-export async function extractArtifact(groupId: string, artifactId: string, version: string): Promise<PomExtractionResult> {
+export async function extractArtifact(
+  groupId: string,
+  artifactId: string,
+  version: string,
+): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
 
   const pomUrl = buildPomUrl(groupId, artifactId, version)
-  const rootPom = await fetchPom(groupId, artifactId, version, pomUrl)
+  const rootPom = await fetchPomCached(groupId, artifactId, version)
   if (!rootPom) {
     return {
       groupId,

@@ -8,11 +8,10 @@
  * Returns null when the artifact is not found (404) or the metadata is
  * malformed.
  */
-
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
-const MAVEN_REPO = 'https://repo1.maven.org/maven2'
+const MAVEN_REPO = process.env.POM_FETCHER_MAVEN_BASE_URL ?? 'https://repo1.maven.org/maven2'
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 3
 const RETRY_BASE_MS = 2_000
@@ -51,7 +50,10 @@ export async function resolveVersionsList(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const res = await axios.get<string>(url, { responseType: 'text', timeout: REQUEST_TIMEOUT_MS })
+      const res = await axios.get<string>(url, {
+        responseType: 'text',
+        timeout: REQUEST_TIMEOUT_MS,
+      })
       const parsed = parser.parse(res.data)
 
       // Prefer <release> over <latest> — release excludes snapshots/alphas
