@@ -71,10 +71,7 @@ async function main(): Promise<void> {
   const exportName = exportNameIdx !== -1 ? args[exportNameIdx + 1] : undefined
 
   const kindsIdx = args.indexOf('--kinds')
-  if (
-    kindsIdx !== -1 &&
-    (kindsIdx + 1 >= args.length || args[kindsIdx + 1].startsWith('--'))
-  ) {
+  if (kindsIdx !== -1 && (kindsIdx + 1 >= args.length || args[kindsIdx + 1].startsWith('--'))) {
     console.error('--kinds requires a value')
     process.exit(1)
   }

@@ -199,8 +199,16 @@ export async function ingestVersions(opts: {
     }
   } catch (err) {
     if (opts.syncMode === 'full') {
-      try { await rebuildVersionsIndexes() } catch (_) { /* best-effort */ }
-      try { await rebuildVersionsConstraints() } catch (_) { /* best-effort */ }
+      try {
+        await rebuildVersionsIndexes()
+      } catch (_) {
+        /* best-effort */
+      }
+      try {
+        await rebuildVersionsConstraints()
+      } catch (_) {
+        /* best-effort */
+      }
     }
     throw err
   }

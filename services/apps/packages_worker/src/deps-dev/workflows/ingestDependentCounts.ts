@@ -51,7 +51,12 @@ FROM staging.osspckgs_dependent_counts_raw s
 WHERE packages.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 `
 
-const PG_COLUMNS = ['purl', 'dependent_count', 'transitive_dependent_count', 'dependent_repos_count']
+const PG_COLUMNS = [
+  'purl',
+  'dependent_count',
+  'transitive_dependent_count',
+  'dependent_repos_count',
+]
 
 const ROWS_PER_CHUNK = 1_000_000
 

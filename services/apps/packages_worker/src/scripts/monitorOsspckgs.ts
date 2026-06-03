@@ -181,24 +181,24 @@ function truncate(s: string, len: number) {
 // ── Table counts ──────────────────────────────────────────────────────────────
 
 const KIND_TABLES: Record<string, string[]> = {
-  packages:             ['packages'],
-  versions:             ['versions'],
+  packages: ['packages'],
+  versions: ['versions'],
   package_dependencies: ['package_dependencies'],
-  repos:                ['repos'],
-  package_repos:        ['package_repos'],
-  advisories:           ['advisories'],
-  advisory_packages:    ['advisory_packages', 'advisory_affected_ranges'],
-  dependent_counts:     ['packages'],
+  repos: ['repos'],
+  package_repos: ['package_repos'],
+  advisories: ['advisories'],
+  advisory_packages: ['advisory_packages', 'advisory_affected_ranges'],
+  dependent_counts: ['packages'],
 }
 
 const TABLE_ABBREV: Record<string, string> = {
-  packages:                 'pkgs',
-  versions:                 'vers',
-  package_dependencies:     'deps',
-  repos:                    'repos',
-  package_repos:            'pkg_repos',
-  advisories:               'adv',
-  advisory_packages:        'adv_pkgs',
+  packages: 'pkgs',
+  versions: 'vers',
+  package_dependencies: 'deps',
+  repos: 'repos',
+  package_repos: 'pkg_repos',
+  advisories: 'adv',
+  advisory_packages: 'adv_pkgs',
   advisory_affected_ranges: 'adv_ranges',
 }
 

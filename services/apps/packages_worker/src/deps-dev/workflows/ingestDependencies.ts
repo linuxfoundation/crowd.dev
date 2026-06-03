@@ -258,8 +258,16 @@ export async function ingestDependencies(opts: {
     }
   } catch (err) {
     if (opts.syncMode === 'full') {
-      try { await rebuildPackageDepsIndexes() } catch (_) { /* best-effort */ }
-      try { await rebuildPackageDepsConstraints() } catch (_) { /* best-effort */ }
+      try {
+        await rebuildPackageDepsIndexes()
+      } catch (_) {
+        /* best-effort */
+      }
+      try {
+        await rebuildPackageDepsConstraints()
+      } catch (_) {
+        /* best-effort */
+      }
     }
     throw err
   }
