@@ -33,9 +33,9 @@ description, homepage, SCM/repo, licenses, maintainers and the full version list
 
 Whether the version short-circuit applies is fixed per **entry point** (not a runtime flag):
 
-| Entry point | Mode | Behaviour |
-|-------------|------|-----------|
-| Standalone `bin/maven.ts` | **backfill** | Always runs full POM extraction for every selected critical package, regardless of version. Use for the initial fill / periodic full refresh. |
+| Entry point                      | Mode            | Behaviour                                                                                                                                                                                                             |
+| -------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standalone `bin/maven.ts`        | **backfill**    | Always runs full POM extraction for every selected critical package, regardless of version. Use for the initial fill / periodic full refresh.                                                                         |
 | Temporal `mavenCriticalWorkflow` | **incremental** | If the upstream release version equals the stored `latest_version`, skips the POM fetch and only bumps `last_synced_at` (status `unchanged`). Full extraction runs only for new packages or when the version changed. |
 
 This is passed as the `forceFullExtraction` argument to `processBatch` — `true` from the
@@ -55,7 +55,7 @@ together. A module-level, coordinate-keyed in-process cache in `extract.ts` coll
 repeated parent fetches into a **single** HTTP request, and also removes the redundant second
 fetch of each artifact's own POM (`extractArtifact` fetches the leaf, then
 `resolveWithInheritance` would fetch it again at depth 0). This is the **single biggest lever
-against Maven Central rate limiting** — and it works *because* of the namespace clustering, so
+against Maven Central rate limiting** — and it works _because_ of the namespace clustering, so
 shuffling the batch (which the queue's `rank` ordering produces) would be counter-productive.
 
 - **Only successful fetches are cached.** `fetchPom` returns `null` for both a real 404 and a
@@ -66,7 +66,7 @@ shuffling the batch (which the queue's `rank` ordering produces) would be counte
 - **Request coalescing.** Concurrent fetches for the same coordinates share a single in-flight
   request instead of issuing duplicates.
 - **Observability.** `getPomCacheStats()` returns `{ size, hits, coalesced, misses, evictions,
-  hitRate }`; the critical batch logs it once per batch under message **`POM cache`**, so you
+hitRate }`; the critical batch logs it once per batch under message **`POM cache`**, so you
   can watch the hit rate climb as the cache warms.
 
 > The cache lives for the lifetime of the worker process. Under Temporal it persists **across
@@ -85,71 +85,71 @@ all POM-derived columns stay null for them.
 
 ### packages
 
-| Column | Source | Coverage |
-|--------|--------|----------|
-| purl | packages_universe | ✅ all |
-| ecosystem | hardcoded `'maven'` | ✅ all |
-| namespace | packages_universe.namespace (= groupId) | ✅ all |
-| name | packages_universe.name (= artifactId) | ✅ all |
-| registry_url | `https://central.sonatype.com/artifact/{ns}/{name}` | ✅ all |
-| latest_version | maven-metadata.xml `<release>` | ✅ all |
-| ingestion_source | see table below | ✅ all |
-| last_synced_at | NOW() | ✅ all |
-| description | POM `<description>` | ✅ best-effort¹ |
-| homepage | POM `<url>` | ✅ best-effort¹ |
-| declared_repository_url | POM `<scm><url\|connection>` raw | ✅ best-effort¹ |
-| repository_url | normalized from declared_repository_url | ✅ best-effort¹ |
-| licenses / licenses_raw | POM `<licenses>` | ✅ best-effort¹ / ✅ full for critical² |
-| status | Sonatype: deprecated flag | 🔜 Sonatype |
-| versions_count | Sonatype: COUNT of releases | 🔜 Sonatype |
-| first_release_at | Sonatype: MIN release timestamp | 🔜 Sonatype |
-| latest_release_at | Sonatype: MAX release timestamp | 🔜 Sonatype |
-| keywords | not in Maven POM | ❌ |
-| dist_tags_* | N/A — Maven ecosystem | ❌ |
-| dependent_packages_count | not in Maven registry API | ❌ |
-| dependent_repos_count | not in Maven registry API | ❌ |
-| criticality_score | set by ranking function | ❌ |
-| is_critical | set by ranking function | ❌ |
-| last_rank_pass_at | set by ranking function | ❌ |
+| Column                   | Source                                              | Coverage                                |
+| ------------------------ | --------------------------------------------------- | --------------------------------------- |
+| purl                     | packages_universe                                   | ✅ all                                  |
+| ecosystem                | hardcoded `'maven'`                                 | ✅ all                                  |
+| namespace                | packages_universe.namespace (= groupId)             | ✅ all                                  |
+| name                     | packages_universe.name (= artifactId)               | ✅ all                                  |
+| registry_url             | `https://central.sonatype.com/artifact/{ns}/{name}` | ✅ all                                  |
+| latest_version           | maven-metadata.xml `<release>`                      | ✅ all                                  |
+| ingestion_source         | see table below                                     | ✅ all                                  |
+| last_synced_at           | NOW()                                               | ✅ all                                  |
+| description              | POM `<description>`                                 | ✅ best-effort¹                         |
+| homepage                 | POM `<url>`                                         | ✅ best-effort¹                         |
+| declared_repository_url  | POM `<scm><url\|connection>` raw                    | ✅ best-effort¹                         |
+| repository_url           | normalized from declared_repository_url             | ✅ best-effort¹                         |
+| licenses / licenses_raw  | POM `<licenses>`                                    | ✅ best-effort¹ / ✅ full for critical² |
+| status                   | Sonatype: deprecated flag                           | 🔜 Sonatype                             |
+| versions_count           | Sonatype: COUNT of releases                         | 🔜 Sonatype                             |
+| first_release_at         | Sonatype: MIN release timestamp                     | 🔜 Sonatype                             |
+| latest_release_at        | Sonatype: MAX release timestamp                     | 🔜 Sonatype                             |
+| keywords                 | not in Maven POM                                    | ❌                                      |
+| dist*tags*\*             | N/A — Maven ecosystem                               | ❌                                      |
+| dependent_packages_count | not in Maven registry API                           | ❌                                      |
+| dependent_repos_count    | not in Maven registry API                           | ❌                                      |
+| criticality_score        | set by ranking function                             | ❌                                      |
+| is_critical              | set by ranking function                             | ❌                                      |
+| last_rank_pass_at        | set by ranking function                             | ❌                                      |
 
 ### versions
 
-| Column | Source | Coverage |
-|--------|--------|----------|
-| package_id | FK from packages upsert | ✅ all |
-| ecosystem | hardcoded `'maven'` | ✅ all |
-| number | maven-metadata.xml `<versions><version>` | ✅ all |
-| is_latest | `number === <release>` | ✅ all |
-| is_prerelease | regex on version string³ | ✅ all |
-| last_synced_at | NOW() | ✅ all |
-| licenses | package-level license applied to all versions⁴ (stored as a single-element `text[]`) | ✅ best-effort¹ |
-| published_at | Sonatype: release timestamp | 🔜 Sonatype |
-| is_yanked | no yank mechanism in Maven | ❌ |
-| download_count | no public per-version API | ❌ |
+| Column         | Source                                                                               | Coverage        |
+| -------------- | ------------------------------------------------------------------------------------ | --------------- |
+| package_id     | FK from packages upsert                                                              | ✅ all          |
+| ecosystem      | hardcoded `'maven'`                                                                  | ✅ all          |
+| number         | maven-metadata.xml `<versions><version>`                                             | ✅ all          |
+| is_latest      | `number === <release>`                                                               | ✅ all          |
+| is_prerelease  | regex on version string³                                                             | ✅ all          |
+| last_synced_at | NOW()                                                                                | ✅ all          |
+| licenses       | package-level license applied to all versions⁴ (stored as a single-element `text[]`) | ✅ best-effort¹ |
+| published_at   | Sonatype: release timestamp                                                          | 🔜 Sonatype     |
+| is_yanked      | no yank mechanism in Maven                                                           | ❌              |
+| download_count | no public per-version API                                                            | ❌              |
 
 ### maintainers / package_maintainers
 
-| Column | Source | Coverage |
-|--------|--------|----------|
-| ecosystem | hardcoded `'maven'` | ✅ all |
-| username | POM `<developer><id>` | ✅ best-effort¹ |
-| display_name | POM `<developer><name>` | ✅ best-effort¹ |
-| email_hash | SHA-256(`<developer><email>`) — GDPR | ✅ best-effort¹ |
-| url | POM `<developer><url>` | ✅ best-effort¹ |
-| role | `'author'` from `<developers>`, `'maintainer'` from `<contributors>` | ✅ best-effort¹ |
-| github_login | requires identity resolution | ❌ |
+| Column       | Source                                                               | Coverage        |
+| ------------ | -------------------------------------------------------------------- | --------------- |
+| ecosystem    | hardcoded `'maven'`                                                  | ✅ all          |
+| username     | POM `<developer><id>`                                                | ✅ best-effort¹ |
+| display_name | POM `<developer><name>`                                              | ✅ best-effort¹ |
+| email_hash   | SHA-256(`<developer><email>`) — GDPR                                 | ✅ best-effort¹ |
+| url          | POM `<developer><url>`                                               | ✅ best-effort¹ |
+| role         | `'author'` from `<developers>`, `'maintainer'` from `<contributors>` | ✅ best-effort¹ |
+| github_login | requires identity resolution                                         | ❌              |
 
 ### repos / package_repos
 
-| Column | Source | Coverage |
-|--------|--------|----------|
-| repos.url | `repository_url` (normalized from POM `<scm>`) | ✅ best-effort¹ |
-| repos.host | derived from URL (`github` / `gitlab` / `bitbucket` / `other`) | ✅ best-effort¹ |
-| repos.owner | URL path segment | ✅ best-effort¹ |
-| repos.name | URL path segment | ✅ best-effort¹ |
-| repos.description / stars / forks / … | GitHub enricher | filled by github-repos-enricher |
-| package_repos.source | `'declared'` (from POM `<scm>`) | ✅ best-effort¹ |
-| package_repos.confidence | `0.80` | ✅ best-effort¹ |
+| Column                                | Source                                                         | Coverage                        |
+| ------------------------------------- | -------------------------------------------------------------- | ------------------------------- |
+| repos.url                             | `repository_url` (normalized from POM `<scm>`)                 | ✅ best-effort¹                 |
+| repos.host                            | derived from URL (`github` / `gitlab` / `bitbucket` / `other`) | ✅ best-effort¹                 |
+| repos.owner                           | URL path segment                                               | ✅ best-effort¹                 |
+| repos.name                            | URL path segment                                               | ✅ best-effort¹                 |
+| repos.description / stars / forks / … | GitHub enricher                                                | filled by github-repos-enricher |
+| package_repos.source                  | `'declared'` (from POM `<scm>`)                                | ✅ best-effort¹                 |
+| package_repos.confidence              | `0.80`                                                         | ✅ best-effort¹                 |
 
 The POM fetcher seeds `repos` with URL-derivable fields only. The GitHub enricher then fills the rest (description, stars, forks, language, topics, etc.) because the repo row already exists. On conflict the `repos` upsert uses `COALESCE` — richer data from other enrichers is never overwritten.
 
@@ -178,13 +178,13 @@ The POM fetcher seeds `repos` with URL-derivable fields only. The GitHub enriche
 
 ## `ingestion_source` Values
 
-| Value | Meaning |
-|-------|---------|
-| `maven-registry` | Critical — full POM + parent resolution succeeded |
-| `packages_universe` | Non-critical (DB-only) — only universe stats copied, no POM fetch |
-| `maven_not_on_central` | `maven-metadata.xml` not found on `repo1.maven.org` — artifact is hosted on a third-party repository (e.g. WSO2 Nexus, JBoss, Atlassian). Universe data came from an aggregator (deps.dev, OSV). |
-| `maven_no_version` | `maven-metadata.xml` found but `<release>` is empty — artifact has no stable release |
-| `maven_error` | `maven-metadata.xml` has a release version but the `.pom` file for that version is a 404. Typical cause: partial deploy to Maven Central (metadata updated, artifact not uploaded) or Eclipse P2 feature artifacts that don't publish a standard POM. |
+| Value                  | Meaning                                                                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maven-registry`       | Critical — full POM + parent resolution succeeded                                                                                                                                                                                                     |
+| `packages_universe`    | Non-critical (DB-only) — only universe stats copied, no POM fetch                                                                                                                                                                                     |
+| `maven_not_on_central` | `maven-metadata.xml` not found on `repo1.maven.org` — artifact is hosted on a third-party repository (e.g. WSO2 Nexus, JBoss, Atlassian). Universe data came from an aggregator (deps.dev, OSV).                                                      |
+| `maven_no_version`     | `maven-metadata.xml` found but `<release>` is empty — artifact has no stable release                                                                                                                                                                  |
+| `maven_error`          | `maven-metadata.xml` has a release version but the `.pom` file for that version is a 404. Typical cause: partial deploy to Maven Central (metadata updated, artifact not uploaded) or Eclipse P2 feature artifacts that don't publish a standard POM. |
 
 > On a 403/429 rate-limit or a transient network error, **no sentinel record is written**:
 > the batch counts the package as an error and it is simply retried on the next tick/pass.
@@ -236,14 +236,14 @@ Occasionally a publisher's CI/CD updates `<release>` in `maven-metadata.xml` bef
 **All variables are required** — `getMavenConfig()` (`config.ts`) calls `requireEnv` for each,
 so the worker throws on startup if any is missing. Suggested values shown.
 
-| Env var | Suggested | Description |
-|---------|-----------|-------------|
-| `POM_FETCHER_BATCH_SIZE` | `50` | Packages per batch — critical phase |
-| `POM_FETCHER_CONCURRENCY` | `5` | Concurrent fetches — critical phase |
-| `POM_FETCHER_NON_CRITICAL_BATCH_SIZE` | `500` | Packages per batch — non-critical phase |
-| `POM_FETCHER_NON_CRITICAL_CONCURRENCY` | `20` | Concurrent writes — non-critical DB-only phase |
-| `POM_FETCHER_REFRESH_DAYS` | `1` | Staleness window — re-sync a package once its `last_synced_at` is older than N days (applies to both phases) |
-| `POM_FETCHER_GROUP_DELAY_MS` | `200`–`400` | Delay between concurrent groups in the critical phase (rate-limit mitigation) |
+| Env var                                | Suggested   | Description                                                                                                  |
+| -------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| `POM_FETCHER_BATCH_SIZE`               | `50`        | Packages per batch — critical phase                                                                          |
+| `POM_FETCHER_CONCURRENCY`              | `5`         | Concurrent fetches — critical phase                                                                          |
+| `POM_FETCHER_NON_CRITICAL_BATCH_SIZE`  | `500`       | Packages per batch — non-critical phase                                                                      |
+| `POM_FETCHER_NON_CRITICAL_CONCURRENCY` | `20`        | Concurrent writes — non-critical DB-only phase                                                               |
+| `POM_FETCHER_REFRESH_DAYS`             | `1`         | Staleness window — re-sync a package once its `last_synced_at` is older than N days (applies to both phases) |
+| `POM_FETCHER_GROUP_DELAY_MS`           | `200`–`400` | Delay between concurrent groups in the critical phase (rate-limit mitigation)                                |
 
 ### Sync source (Temporal critical path)
 
@@ -251,14 +251,14 @@ These select **where the critical sync gets its work from**. They affect only th
 `processMavenCriticalBatch` activity — the standalone backfill loop is unaffected. All are
 optional; unset/invalid values fall back to the current universe-polling behaviour.
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `MAVEN_SYNC_SOURCE` | `maven` | `maven` = poll `packages_universe` by staleness (current behaviour). `api` = enrich only what the delta feed reports. `both` = run both passes per tick. |
-| `MAVEN_DELTA_API_URL` | — | Base URL of our delta feed (e.g. the Railway deployment). **Required** when source is `api` or `both`. |
-| `MAVEN_DELTA_API_TOKEN` | — | Optional bearer token for the delta feed. |
-| `MAVEN_DELTA_API_PAGE_SIZE` | `100` | Page size for `/api/changes` pagination. |
-| `MAVEN_DELTA_API_LOOKBACK_MINUTES` | `15` | Rolling window size: each tick fetches `[now-N, now)`. Overlaps the cron interval on purpose — re-processing is safe (idempotent upserts). |
-| `MAVEN_DELTA_API_INCLUDE_PRERELEASE` | `false` | Forwarded as `includePrerelease` to the feed. |
+| Env var                              | Default | Description                                                                                                                                              |
+| ------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAVEN_SYNC_SOURCE`                  | `maven` | `maven` = poll `packages_universe` by staleness (current behaviour). `api` = enrich only what the delta feed reports. `both` = run both passes per tick. |
+| `MAVEN_DELTA_API_URL`                | —       | Base URL of our delta feed (e.g. the Railway deployment). **Required** when source is `api` or `both`.                                                   |
+| `MAVEN_DELTA_API_TOKEN`              | —       | Optional bearer token for the delta feed.                                                                                                                |
+| `MAVEN_DELTA_API_PAGE_SIZE`          | `100`   | Page size for `/api/changes` pagination.                                                                                                                 |
+| `MAVEN_DELTA_API_LOOKBACK_MINUTES`   | `15`    | Rolling window size: each tick fetches `[now-N, now)`. Overlaps the cron interval on purpose — re-processing is safe (idempotent upserts).               |
+| `MAVEN_DELTA_API_INCLUDE_PRERELEASE` | `false` | Forwarded as `includePrerelease` to the feed.                                                                                                            |
 
 The delta-API path always runs **full extraction** (the feed is an explicit "this changed"
 signal) and only enriches packages that are `is_critical` in `packages_universe`; non-critical
@@ -272,18 +272,18 @@ purls in the feed are dropped.
 
 Observed on ~2K packages (local dev, Maven Central over the network):
 
-| Phase | Mode | Throughput | Notes |
-|-------|------|------------|-------|
-| Non-critical | DB-only | ~1000 pkg/sec | Pure DB writes, no HTTP |
-| Non-critical | direct-pom | ~25 pkg/sec | 2 HTTP requests/pkg: metadata.xml + POM |
-| Critical | full-pom | ~15–25 pkg/sec | Faster when packages share parent POMs (CDN cache warm) |
+| Phase        | Mode       | Throughput     | Notes                                                   |
+| ------------ | ---------- | -------------- | ------------------------------------------------------- |
+| Non-critical | DB-only    | ~1000 pkg/sec  | Pure DB writes, no HTTP                                 |
+| Non-critical | direct-pom | ~25 pkg/sec    | 2 HTTP requests/pkg: metadata.xml + POM                 |
+| Critical     | full-pom   | ~15–25 pkg/sec | Faster when packages share parent POMs (CDN cache warm) |
 
 **Estimated time for ~800K packages (≈18% critical):**
 
-| Phase | Packages | Estimated time |
-|-------|----------|---------------|
-| Non-critical (DB-only) | ~670K | ~12 min |
-| Critical (full POM, first extraction) | ~150K | several hours |
+| Phase                                 | Packages | Estimated time |
+| ------------------------------------- | -------- | -------------- |
+| Non-critical (DB-only)                | ~670K    | ~12 min        |
+| Critical (full POM, first extraction) | ~150K    | several hours  |
 
 The first critical extraction is the expensive part — run it with the standalone backfill
 loop. Afterwards the Temporal schedules keep things incremental: non-critical re-syncs cheaply
@@ -303,10 +303,10 @@ avoid Maven Central throttling) or trigger the schedule manually.
 Two Temporal schedules are registered on startup of `bin/packages-worker.ts`
 (see `maven/schedule.ts`):
 
-| Schedule ID | Cron | Workflow | Activity | Workflow timeout |
-|-------------|------|----------|----------|------------------|
-| `maven-critical` | `*/5 * * * *` (every 5 min) | `mavenCriticalWorkflow` | `processMavenCriticalBatch` → one critical batch | 15 min |
-| `maven-non-critical` | `*/10 * * * *` (every 10 min) | `mavenNonCriticalWorkflow` | `processMavenNonCriticalBatch` → one non-critical batch | 5 min |
+| Schedule ID          | Cron                          | Workflow                   | Activity                                                | Workflow timeout |
+| -------------------- | ----------------------------- | -------------------------- | ------------------------------------------------------- | ---------------- |
+| `maven-critical`     | `*/5 * * * *` (every 5 min)   | `mavenCriticalWorkflow`    | `processMavenCriticalBatch` → one critical batch        | 15 min           |
+| `maven-non-critical` | `*/10 * * * *` (every 10 min) | `mavenNonCriticalWorkflow` | `processMavenNonCriticalBatch` → one non-critical batch | 5 min            |
 
 Both: overlap policy `SKIP` (a tick is dropped if the previous run is still active),
 catchup window 1 hour, retry 3× (30s initial, 2× backoff).
@@ -330,12 +330,12 @@ temporal schedule trigger --schedule-id maven-critical
 
 Maven packages released via automated CI/CD pipelines (every commit or every day) accumulate thousands of versions on Central. Observed examples on a 10K sample:
 
-| Package | Versions |
-|---------|----------|
-| io.joern/x2cpg_3 | ~2 166 |
-| org.cdk8s/cdk8s | ~1 749 |
-| io.joern/semanticcpg_3 | ~2 077 |
-| org.janusgraph/* (×15 artifacts) | ~795 each |
+| Package                           | Versions  |
+| --------------------------------- | --------- |
+| io.joern/x2cpg_3                  | ~2 166    |
+| org.cdk8s/cdk8s                   | ~1 749    |
+| io.joern/semanticcpg_3            | ~2 077    |
+| org.janusgraph/\* (×15 artifacts) | ~795 each |
 
 `maven-metadata.xml` `<versions><version>` lists **every version ever published**, including each snapshot, alpha, RC, and automated patch. On a 10K package run this produced ~3.8M rows in the `versions` table (~1 375 versions/package on average).
 
@@ -369,6 +369,7 @@ ORDER BY packages DESC;
 ```
 
 Expected behaviour:
+
 - `maven` (critical, full resolution) → high repo coverage
 - `maven_direct` (non-critical, no parent resolution) → low repo coverage
 - `maven_not_on_central` / `maven_error` → no repo (no POM data)
