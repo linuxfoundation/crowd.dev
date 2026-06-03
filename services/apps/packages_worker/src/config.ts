@@ -15,7 +15,6 @@ export function getPackagesDbConfig() {
     database: requireEnv('CROWD_PACKAGES_DB_DATABASE'),
     user: requireEnv('CROWD_PACKAGES_DB_USERNAME'),
     password: requireEnv('CROWD_PACKAGES_DB_PASSWORD'),
-    ssl: { rejectUnauthorized: false },
   }
 }
 
@@ -39,15 +38,7 @@ export function getGithubAppConfig() {
 }
 
 export function getEnricherConfig() {
-  const rawTokens = process.env.ENRICHER_GITHUB_TOKENS ?? ''
-  const tokens = rawTokens
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean)
-
   return {
-    tokens,
-    batchSize: requireEnvInt('ENRICHER_BATCH_SIZE'),
     updateIntervalHours: requireEnvInt('ENRICHER_REPO_UPDATE_INTERVAL_HOURS'),
     idleSleepSec: requireEnvInt('ENRICHER_IDLE_SLEEP_SEC'),
     concurrency: parseInt(process.env.ENRICHER_CONCURRENCY ?? '80', 10),
