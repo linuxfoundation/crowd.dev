@@ -1,135 +1,118 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
+
 /**
  * TUI monitor for osspckgs_ingest_jobs.
- * Usage: node scripts/monitor-osspckgs.mjs
- *
- * Env: CROWD_PACKAGES_DB_WRITE_HOST, CROWD_PACKAGES_DB_PORT,
- *      CROWD_PACKAGES_DB_DATABASE, CROWD_PACKAGES_DB_USERNAME, CROWD_PACKAGES_DB_PASSWORD
+ * Usage: pnpm monitor:osspckgs[:local]
  *
  * Keys: ↑/↓ navigate  Enter expand/collapse  r refresh  q quit
  */
-
-import { createRequire } from 'module'
 import readline from 'readline'
 
-const require = createRequire(import.meta.url)
-const { Client } = require('pg')
+import { getPackagesDb } from '../db'
 
 // ── ANSI helpers ──────────────────────────────────────────────────────────────
 
 const ESC = '\x1b['
 const A = {
-  reset:     '\x1b[0m',
-  bold:      '\x1b[1m',
-  dim:       '\x1b[2m',
-  hide:      '\x1b[?25l',
-  show:      '\x1b[?25h',
-  altOn:     '\x1b[?1049h',
-  altOff:    '\x1b[?1049l',
-  clear:     '\x1b[2J\x1b[H',
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  hide: '\x1b[?25l',
+  show: '\x1b[?25h',
+  altOn: '\x1b[?1049h',
+  altOff: '\x1b[?1049l',
+  clear: '\x1b[2J\x1b[H',
   // fg
-  black:     '\x1b[30m',
-  red:       '\x1b[31m',
-  green:     '\x1b[32m',
-  yellow:    '\x1b[33m',
-  blue:      '\x1b[34m',
-  magenta:   '\x1b[35m',
-  cyan:      '\x1b[36m',
-  white:     '\x1b[37m',
-  gray:      '\x1b[90m',
+  black: '\x1b[30m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+  gray: '\x1b[90m',
   // bg
-  bgBlue:    '\x1b[44m',
-  bgGreen:   '\x1b[42m',
-  bgRed:     '\x1b[41m',
-  bgBlack:   '\x1b[40m',
-  bgGray:    '\x1b[100m',
+  bgBlue: '\x1b[44m',
+  bgGreen: '\x1b[42m',
+  bgRed: '\x1b[41m',
+  bgBlack: '\x1b[40m',
+  bgGray: '\x1b[100m',
 }
 
-const move = (row, col) => `${ESC}${row};${col}H`
+const move = (row: number, col: number) => `${ESC}${row};${col}H`
 const clearLine = () => `${ESC}2K`
 const w = process.stdout
 
-function write(s) { w.write(s) }
-function writeln(row, col, s) { write(move(row, col) + clearLine() + s) }
+function write(s: string) {
+  w.write(s)
+}
+function writeln(row: number, col: number, s: string) {
+  write(move(row, col) + clearLine() + s)
+}
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 
-function dbClient() {
-  return new Client({
-    host:     process.env.CROWD_PACKAGES_DB_WRITE_HOST     ?? 'localhost',
-    port:     parseInt(process.env.CROWD_PACKAGES_DB_PORT  ?? '5432'),
-    database: process.env.CROWD_PACKAGES_DB_DATABASE       ?? 'packages-db',
-    user:     process.env.CROWD_PACKAGES_DB_USERNAME       ?? 'postgres',
-    password: process.env.CROWD_PACKAGES_DB_PASSWORD       ?? '',
-  })
-}
-
 async function fetchJobs() {
-  const client = dbClient()
-  await client.connect()
-  try {
-    const { rows } = await client.query(`
-      SELECT
-        id, job_kind, status, sync_mode,
-        snapshot_at, provisional_snapshot_at,
-        gcs_prefix, export_name,
-        row_count_bq, row_count_staging, row_count_pg,
-        bq_bytes_billed,
-        table_row_counts,
-        error_message,
-        started_at, finished_at, cleaned_at
-      FROM osspckgs_ingest_jobs
-      ORDER BY started_at DESC
-      LIMIT 100
-    `)
-    return rows
-  } finally {
-    await client.end()
-  }
+  const qx = await getPackagesDb()
+  return qx.select(`
+    SELECT
+      id, job_kind, status, sync_mode,
+      snapshot_at, provisional_snapshot_at,
+      gcs_prefix, export_name,
+      row_count_bq, row_count_staging, row_count_pg,
+      bq_bytes_billed,
+      table_row_counts,
+      error_message,
+      started_at, finished_at, cleaned_at
+    FROM osspckgs_ingest_jobs
+    ORDER BY started_at DESC
+    LIMIT 100
+  `)
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────────
 
 const STATUS_COLOR = {
-  pending:   A.gray,
+  pending: A.gray,
   exporting: A.yellow,
-  exported:  A.yellow,
-  loading:   A.cyan,
-  merging:   A.blue,
-  done:      A.green,
-  failed:    A.red,
-  cleaned:   A.dim + A.gray,
+  exported: A.yellow,
+  loading: A.cyan,
+  merging: A.blue,
+  done: A.green,
+  failed: A.red,
+  cleaned: A.dim + A.gray,
 }
 
 const STATUS_ICON = {
-  pending:   '○',
+  pending: '○',
   exporting: '⟳',
-  exported:  '⟳',
-  loading:   '⟳',
-  merging:   '⟳',
-  done:      '✓',
-  failed:    '✗',
-  cleaned:   '–',
+  exported: '⟳',
+  loading: '⟳',
+  merging: '⟳',
+  done: '✓',
+  failed: '✗',
+  cleaned: '–',
 }
 
-function statusStr(status) {
-  const c = STATUS_COLOR[status] ?? ''
-  const i = STATUS_ICON[status] ?? '?'
+function statusStr(status: string) {
+  const c = STATUS_COLOR[status as keyof typeof STATUS_COLOR] ?? ''
+  const i = STATUS_ICON[status as keyof typeof STATUS_ICON] ?? '?'
   return `${c}${i} ${status}${A.reset}`
 }
 
-function fmtNum(n) {
+function fmtNum(n: unknown) {
   if (n == null) return A.dim + '—' + A.reset
   return Number(n).toLocaleString()
 }
 
-function fmtGb(bytes) {
+function fmtGb(bytes: unknown) {
   if (bytes == null) return A.dim + '—' + A.reset
   const gb = Number(bytes) / 1e9
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(Number(bytes) / 1e6).toFixed(0)} MB`
 }
 
-function fmtCompact(n) {
+function fmtCompact(n: unknown) {
   if (n == null) return A.dim + '—' + A.reset
   const v = Number(n)
   if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`
@@ -138,12 +121,12 @@ function fmtCompact(n) {
   return String(v)
 }
 
-function fmtRate(ratePerMin) {
+function fmtRate(ratePerMin: number) {
   if (ratePerMin >= 60000) return fmtCompact(Math.round(ratePerMin)) + '/min'
   return fmtCompact(Math.round(ratePerMin / 60)) + '/s'
 }
 
-function fmtEtaStr(ms) {
+function fmtEtaStr(ms: number) {
   const s = Math.ceil(ms / 1000)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -153,26 +136,27 @@ function fmtEtaStr(ms) {
   return `${m}m${String(sec).padStart(2, '0')}s`
 }
 
-function fmtElapsed(start, end) {
-  const ms = (end ? new Date(end) : new Date()) - new Date(start)
+function fmtElapsed(start: unknown, end: unknown) {
+  const ms =
+    (end ? new Date(end as string) : new Date()).getTime() - new Date(start as string).getTime()
   const s = Math.floor(ms / 1000)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
   const sec = s % 60
-  return [h, m, sec].map(v => String(v).padStart(2, '0')).join(':')
+  return [h, m, sec].map((v) => String(v).padStart(2, '0')).join(':')
 }
 
-function fmtDate(d) {
+function fmtDate(d: unknown) {
   if (!d) return A.dim + '—' + A.reset
-  return new Date(d).toISOString().replace('T', ' ').slice(0, 19)
+  return new Date(d as string).toISOString().replace('T', ' ').slice(0, 19)
 }
 
-function pct(a, b) {
+function pct(a: unknown, b: unknown) {
   if (!a || !b || Number(b) === 0) return ''
-  return ` (${Math.round(Number(a) / Number(b) * 100)}%)`
+  return ` (${Math.round((Number(a) / Number(b)) * 100)}%)`
 }
 
-function progressBar(ratio, width = 20) {
+function progressBar(ratio: number | null | undefined, width = 20) {
   if (ratio == null || isNaN(ratio)) return A.dim + '─'.repeat(width) + A.reset
   const filled = Math.min(Math.round(ratio * width), width)
   const empty = width - filled
@@ -182,15 +166,56 @@ function progressBar(ratio, width = 20) {
 
 // Re-applies `bg` before the padding spaces so cells that end with A.reset
 // (e.g. fmtNum, statusStr) don't leave a bg gap in selected rows.
-function padCell(s, len, bg) {
+function padCell(s: string, len: number, bg: string) {
+  // eslint-disable-next-line no-control-regex
   const visible = s.replace(/\x1b\[[0-9;]*m/g, '')
   const pad = Math.max(0, len - visible.length)
   return s + bg + ' '.repeat(pad)
 }
 
-function truncate(s, len) {
+function truncate(s: string, len: number) {
   if (!s) return ''
   return s.length > len ? s.slice(0, len - 1) + '…' : s
+}
+
+// ── Table counts ──────────────────────────────────────────────────────────────
+
+const KIND_TABLES: Record<string, string[]> = {
+  packages: ['packages'],
+  versions: ['versions'],
+  package_dependencies: ['package_dependencies'],
+  repos: ['repos'],
+  package_repos: ['package_repos'],
+  advisories: ['advisories'],
+  advisory_packages: ['advisory_packages', 'advisory_affected_ranges'],
+  dependent_counts: ['packages'],
+}
+
+const TABLE_ABBREV: Record<string, string> = {
+  packages: 'pkgs',
+  versions: 'vers',
+  package_dependencies: 'deps',
+  repos: 'repos',
+  package_repos: 'pkg_repos',
+  advisories: 'adv',
+  advisory_packages: 'adv_pkgs',
+  advisory_affected_ranges: 'adv_ranges',
+}
+
+async function fetchTableCounts(): Promise<Record<string, number>> {
+  const qx = await getPackagesDb()
+  const rows = await qx.select(`
+    SELECT relname, n_live_tup
+    FROM pg_stat_user_tables
+    WHERE relname IN (
+      'packages', 'versions', 'package_dependencies',
+      'repos', 'package_repos',
+      'advisories', 'advisory_packages', 'advisory_affected_ranges'
+    )
+  `)
+  const result: Record<string, number> = {}
+  for (const row of rows) result[row.relname as string] = Number(row.n_live_tup)
+  return result
 }
 
 // ── Ecosystem extraction ───────────────────────────────────────────────────────
@@ -199,32 +224,35 @@ const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo']
 
 // Parses ecosystem names from gcs_prefix or export_name.
 // Looks for -<eco>- or -<eco>/ patterns so "go" doesn't match inside "cargo".
-function extractEcosystem(job) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractEcosystem(job: any) {
   const src = [job.gcs_prefix ?? '', job.export_name ?? ''].join(' ').toLowerCase()
-  const found = KNOWN_ECOSYSTEMS.filter(e => new RegExp(`[-/]${e}[-/]|[-/]${e}$`).test(src))
+  const found = KNOWN_ECOSYSTEMS.filter((e) => new RegExp(`[-/]${e}[-/]|[-/]${e}$`).test(src))
   return found.length > 0 ? found.join(',') : null
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 const COL = {
-  id:      5,
-  kind:    20,
-  eco:     10,
-  status:  18,
-  mode:    10,
-  bq:      10,
-  files:   24,
+  id: 5,
+  kind: 20,
+  eco: 10,
+  status: 18,
+  mode: 10,
+  bq: 10,
+  files: 24,
   staging: 12,
-  pg:      14,
+  pg: 14,
+  table: 18,
   elapsed: 12,
-  chunk:   26,
-  total:   24,
+  chunk: 26,
+  total: 24,
 }
 
 function tableHeader() {
-  const content = (
-    ' ' + 'ID'.padEnd(COL.id) +
+  const content =
+    ' ' +
+    'ID'.padEnd(COL.id) +
     'KIND'.padEnd(COL.kind) +
     'ECO'.padEnd(COL.eco) +
     'STATUS'.padEnd(COL.status) +
@@ -233,17 +261,18 @@ function tableHeader() {
     'FILES'.padEnd(COL.files) +
     'STAGING'.padEnd(COL.staging) +
     'PG ROWS'.padEnd(COL.pg) +
+    'TABLE ROWS'.padEnd(COL.table) +
     'ELAPSED'.padEnd(COL.elapsed) +
     'MERGE ETA'.padEnd(COL.chunk) +
     'TOTAL ETA'
-  )
   const rightPad = Math.max(0, (process.stdout.columns || 80) - content.length)
   return A.bold + A.bgGray + A.white + content + ' '.repeat(rightPad) + A.reset
 }
 
-function filesCell(job, bg) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filesCell(job: any, bg: string) {
   const trc = job.table_row_counts ?? {}
-  const done  = trc['progress:done']
+  const done = trc['progress:done']
   const total = trc['progress:total']
   if (done == null || total == null || Number(total) === 0) {
     return padCell(A.dim + '—' + A.reset, COL.files, bg)
@@ -254,11 +283,29 @@ function filesCell(job, bg) {
   return padCell(`${progressBar(ratio, 6)}${bg} ${done}/${total} ${suffix}`, COL.files, bg)
 }
 
-function stagingCell(job, bg) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function stagingCell(job: any, bg: string) {
   return padCell(fmtCompact(job.row_count_staging), COL.staging, bg)
 }
 
-function pgCell(job, bg) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function tableCountCell(job: any, bg: string) {
+  const tables = KIND_TABLES[job.job_kind as string]
+  if (!tables) return padCell(A.dim + '—' + A.reset, COL.table, bg)
+  if (tables.length === 1) {
+    const count = tableCounts[tables[0]]
+    return padCell(count != null ? fmtCompact(count) : A.dim + '—' + A.reset, COL.table, bg)
+  }
+  const parts = tables.map((t) => {
+    const abbrev = TABLE_ABBREV[t] ?? t
+    const count = tableCounts[t]
+    return `${abbrev}:${count != null ? fmtCompact(count) : '—'}`
+  })
+  return padCell(parts.join(' '), COL.table, bg)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pgCell(job: any, bg: string) {
   const pgRows = job.row_count_pg
   if (job.status === 'merging' && pgRows) {
     const totalRows = Number(job.row_count_staging) || Number(job.row_count_bq) || 0
@@ -269,25 +316,30 @@ function pgCell(job, bg) {
   return padCell(fmtNum(pgRows), COL.pg, bg)
 }
 
-function chunkEtaCell(job, bg) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function chunkEtaCell(job: any, bg: string) {
   const eta = computeChunkEta(job)
   if (eta == null) return padCell(A.dim + '—' + A.reset, COL.chunk, bg)
   return padCell(
     `${progressBar(eta.ratio, 6)}${bg} ~${fmtEtaStr(eta.ms)} ${A.dim}${fmtRate(eta.ratePerMin)}${A.reset}`,
-    COL.chunk, bg,
+    COL.chunk,
+    bg,
   )
 }
 
-function totalEtaCell(job, bg) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function totalEtaCell(job: any, bg: string) {
   const eta = computeTotalEta(job)
   if (eta == null) return padCell(A.dim + '—' + A.reset, COL.total, bg)
   return padCell(
     `${progressBar(eta.ratio, 8)}${bg} ~${fmtEtaStr(eta.ms)} ${A.dim}${fmtRate(eta.ratePerMin)}${A.reset}`,
-    COL.total, bg,
+    COL.total,
+    bg,
   )
 }
 
-function tableRow(job, selected) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function tableRow(job: any, selected: boolean) {
   const bg = selected ? A.bgBlue + A.white : ''
   const elapsed = ['pending', 'failed'].includes(job.status)
     ? A.dim + '—' + A.reset
@@ -295,24 +347,35 @@ function tableRow(job, selected) {
 
   return (
     bg +
-    ' ' + String(job.id).padEnd(COL.id) +
-    A.bold + truncate(job.job_kind, COL.kind - 1).padEnd(COL.kind) + A.reset + bg +
-    padCell(extractEcosystem(job) ? A.cyan + extractEcosystem(job) + A.reset : A.dim + '—' + A.reset, COL.eco, bg) +
+    ' ' +
+    String(job.id).padEnd(COL.id) +
+    A.bold +
+    truncate(job.job_kind, COL.kind - 1).padEnd(COL.kind) +
+    A.reset +
+    bg +
+    padCell(
+      extractEcosystem(job) ? A.cyan + extractEcosystem(job) + A.reset : A.dim + '—' + A.reset,
+      COL.eco,
+      bg,
+    ) +
     padCell(statusStr(job.status), COL.status, bg) +
     job.sync_mode.padEnd(COL.mode) +
     padCell(fmtCompact(job.row_count_bq), COL.bq, bg) +
     filesCell(job, bg) +
     stagingCell(job, bg) +
     pgCell(job, bg) +
+    tableCountCell(job, bg) +
     padCell(elapsed, COL.elapsed, bg) +
     chunkEtaCell(job, bg) +
     totalEtaCell(job, bg) +
-    bg + '\x1b[K' +
+    bg +
+    '\x1b[K' +
     A.reset
   )
 }
 
-function renderDetail(job, cols) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderDetail(job: any, cols: number) {
   const lines = []
   const sep = A.dim + '─'.repeat(cols - 2) + A.reset
 
@@ -322,13 +385,21 @@ function renderDetail(job, cols) {
       ? A.dim + String(job.provisional_snapshot_at).slice(0, 10) + ' (provisional)' + A.reset
       : A.dim + '—' + A.reset
 
-  lines.push(` ${A.bold}Job #${job.id} — ${job.job_kind}${A.reset}   ${statusStr(job.status)}  ${A.dim}${job.sync_mode}${A.reset}`)
+  lines.push(
+    ` ${A.bold}Job #${job.id} — ${job.job_kind}${A.reset}   ${statusStr(job.status)}  ${A.dim}${job.sync_mode}${A.reset}`,
+  )
   lines.push(` ${sep}`)
   lines.push(` ${A.dim}snapshot:${A.reset}  ${snapshotDate}`)
-  lines.push(` ${A.dim}started:${A.reset}   ${fmtDate(job.started_at)}   ${A.dim}finished:${A.reset} ${fmtDate(job.finished_at)}`)
-  lines.push(` ${A.dim}elapsed:${A.reset}   ${fmtElapsed(job.started_at, job.finished_at)}   ${A.dim}bq cost:${A.reset} ${fmtGb(job.bq_bytes_billed)}`)
+  lines.push(
+    ` ${A.dim}started:${A.reset}   ${fmtDate(job.started_at)}   ${A.dim}finished:${A.reset} ${fmtDate(job.finished_at)}`,
+  )
+  lines.push(
+    ` ${A.dim}elapsed:${A.reset}   ${fmtElapsed(job.started_at, job.finished_at)}   ${A.dim}bq cost:${A.reset} ${fmtGb(job.bq_bytes_billed)}`,
+  )
   if (job.gcs_prefix) {
-    lines.push(` ${A.dim}gcs:${A.reset}       ${A.dim}${truncate(job.gcs_prefix, cols - 14)}${A.reset}`)
+    lines.push(
+      ` ${A.dim}gcs:${A.reset}       ${A.dim}${truncate(job.gcs_prefix, cols - 14)}${A.reset}`,
+    )
   }
   lines.push(` ${sep}`)
 
@@ -336,12 +407,12 @@ function renderDetail(job, cols) {
   lines.push(` ${A.bold}Pipeline${A.reset}`)
 
   const trc = job.table_row_counts ?? {}
-  const bqRows     = Number(job.row_count_bq)     || null
-  const stagRows   = Number(job.row_count_staging) || null
-  const pgRows     = Number(job.row_count_pg)      || null
+  const bqRows = Number(job.row_count_bq) || null
+  const stagRows = Number(job.row_count_staging) || null
+  const pgRows = Number(job.row_count_pg) || null
 
-  const isCursor   = trc['bq:stream'] != null
-  const isExport   = trc['bq:export'] != null || job.gcs_prefix != null
+  const isCursor = trc['bq:stream'] != null
+  const isExport = trc['bq:export'] != null || job.gcs_prefix != null
 
   // All pipeline label cells are this wide — keeps bars aligned.
   const LW = 16
@@ -349,57 +420,79 @@ function renderDetail(job, cols) {
   if (isExport) {
     // bq:export: full bar only when rows > 0; dashes when 0 (reused/skipped BQ)
     const bqExportCount = trc['bq:export'] ?? job.row_count_bq
-    const bqExportBar   = bqExportCount > 0 ? progressBar(1.0) : progressBar(null)
-    lines.push(` ${A.dim}${'bq:export'.padEnd(LW)}${A.reset} ${bqExportBar} ${fmtNum(bqExportCount)}`)
+    const bqExportBar = bqExportCount > 0 ? progressBar(1.0) : progressBar(null)
+    lines.push(
+      ` ${A.dim}${'bq:export'.padEnd(LW)}${A.reset} ${bqExportBar} ${fmtNum(bqExportCount)}`,
+    )
 
-    const stagKeys = Object.keys(trc).filter(k => k.startsWith('staging:'))
+    const stagKeys = Object.keys(trc).filter((k) => k.startsWith('staging:'))
     if (stagKeys.length > 0) {
       for (const k of stagKeys) {
         const stagCount = Number(trc[k])
         // ratio vs bqRows when known; full bar when bqRows absent (reused export — staging completed)
         const ratio = bqRows ? stagCount / bqRows : 1.0
-        lines.push(` ${A.dim}${truncate(k, LW).padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(stagCount)}${pct(stagCount, bqRows)}`)
+        lines.push(
+          ` ${A.dim}${truncate(k, LW).padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(stagCount)}${pct(stagCount, bqRows)}`,
+        )
       }
     } else {
-      const ratio = bqRows ? stagRows / bqRows : stagRows ? 1.0 : null
-      lines.push(` ${A.dim}${'staging'.padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(stagRows)}${pct(stagRows, bqRows)}`)
+      const ratio = bqRows ? (stagRows ?? 0) / bqRows : stagRows ? 1.0 : null
+      lines.push(
+        ` ${A.dim}${'staging'.padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(stagRows)}${pct(stagRows, bqRows)}`,
+      )
     }
 
     // Show file-level progress (loading and merging — persists after loading completes)
-    const progressDone  = trc['progress:done']
+    const progressDone = trc['progress:done']
     const progressTotal = trc['progress:total']
     if (progressDone != null && progressTotal != null && Number(progressTotal) > 0) {
-      const ratio   = Number(progressDone) / Number(progressTotal)
-      const pctVal  = Math.round(ratio * 100)
-      const suffix  = pctVal >= 100 ? '✓' : `${pctVal}%`
-      lines.push(` ${A.dim}${'files'.padEnd(LW)}${A.reset} ${progressBar(ratio)} ${progressDone}/${progressTotal} (${suffix})`)
+      const ratio = Number(progressDone) / Number(progressTotal)
+      const pctVal = Math.round(ratio * 100)
+      const suffix = pctVal >= 100 ? '✓' : `${pctVal}%`
+      lines.push(
+        ` ${A.dim}${'files'.padEnd(LW)}${A.reset} ${progressBar(ratio)} ${progressDone}/${progressTotal} (${suffix})`,
+      )
     }
 
-    const ref = stagRows || bqRows  // prefer staging as denominator for final rows
-    const finalKeys = Object.keys(trc).filter(k => !k.startsWith('bq:') && !k.startsWith('staging:') && !k.startsWith('progress:'))
+    const ref = stagRows || bqRows // prefer staging as denominator for final rows
+    const finalKeys = Object.keys(trc).filter(
+      (k) => !k.startsWith('bq:') && !k.startsWith('staging:') && !k.startsWith('progress:'),
+    )
     if (finalKeys.length > 0) {
       for (const k of finalKeys) {
         const count = Number(trc[k])
         const ratio = ref ? count / ref : null
-        lines.push(` ${A.dim}${truncate(k, LW).padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(count)}${pct(count, ref)}`)
+        lines.push(
+          ` ${A.dim}${truncate(k, LW).padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(count)}${pct(count, ref)}`,
+        )
       }
     } else if (pgRows) {
       const ratio = ref ? pgRows / ref : null
-      lines.push(` ${A.dim}${'final'.padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(pgRows)}${pct(pgRows, ref)}`)
+      lines.push(
+        ` ${A.dim}${'final'.padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(pgRows)}${pct(pgRows, ref)}`,
+      )
     } else {
-      lines.push(` ${A.dim}${'final'.padEnd(LW)}${A.reset} ${progressBar(null)} ${A.dim}—${A.reset}`)
+      lines.push(
+        ` ${A.dim}${'final'.padEnd(LW)}${A.reset} ${progressBar(null)} ${A.dim}—${A.reset}`,
+      )
     }
   } else if (isCursor) {
-    const bqCount  = Number(trc['bq:stream'])
-    const finalKeys = Object.keys(trc).filter(k => k !== 'bq:stream')
-    lines.push(` ${A.dim}${'bq:stream'.padEnd(LW)}${A.reset} ${progressBar(1.0)} ${fmtNum(bqCount)}`)
+    const bqCount = Number(trc['bq:stream'])
+    const finalKeys = Object.keys(trc).filter((k) => k !== 'bq:stream')
+    lines.push(
+      ` ${A.dim}${'bq:stream'.padEnd(LW)}${A.reset} ${progressBar(1.0)} ${fmtNum(bqCount)}`,
+    )
     for (const k of finalKeys) {
       const count = Number(trc[k])
       const ratio = bqCount ? count / bqCount : null
-      lines.push(` ${A.dim}${truncate(k, LW).padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(count)}${pct(count, bqCount)}`)
+      lines.push(
+        ` ${A.dim}${truncate(k, LW).padEnd(LW)}${A.reset} ${progressBar(ratio)} ${fmtNum(count)}${pct(count, bqCount)}`,
+      )
     }
     if (finalKeys.length === 0 && pgRows) {
-      lines.push(` ${A.dim}${'final'.padEnd(LW)}${A.reset} ${progressBar(pgRows / bqCount)} ${fmtNum(pgRows)}`)
+      lines.push(
+        ` ${A.dim}${'final'.padEnd(LW)}${A.reset} ${progressBar(pgRows / bqCount)} ${fmtNum(pgRows)}`,
+      )
     }
   } else {
     // No pipeline data yet
@@ -409,13 +502,17 @@ function renderDetail(job, cols) {
   lines.push(` ${sep}`)
 
   if (job.error_message) {
-    lines.push(` ${A.red}${A.bold}Error:${A.reset} ${A.red}${truncate(job.error_message, cols - 10)}${A.reset}`)
+    lines.push(
+      ` ${A.red}${A.bold}Error:${A.reset} ${A.red}${truncate(job.error_message, cols - 10)}${A.reset}`,
+    )
   } else {
     lines.push(` ${A.dim}no errors${A.reset}`)
   }
 
   // table_row_counts raw (exclude ephemeral progress keys)
-  const trcDisplay = Object.fromEntries(Object.entries(trc).filter(([k]) => !k.startsWith('progress:')))
+  const trcDisplay = Object.fromEntries(
+    Object.entries(trc).filter(([k]) => !k.startsWith('progress:')),
+  )
   if (Object.keys(trcDisplay).length > 0) {
     lines.push(` ${sep}`)
     lines.push(` ${A.dim}table_row_counts: ${JSON.stringify(trcDisplay)}${A.reset}`)
@@ -426,12 +523,14 @@ function renderDetail(job, cols) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let jobs = []
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let jobs: any[] = []
+let tableCounts: Record<string, number> = {}
 let selected = 0
 let detailOpen = false
-let lastRefresh = null
-let error = null
-let refreshTimer = null
+let lastRefresh: string | null = null
+let error: string | null = null
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 // Per-chunk merge timing via status transitions.
 // row_count_pg only updates once per chunk (after the full tx commits) so delta-based rate is useless.
@@ -440,7 +539,8 @@ let refreshTimer = null
 const chunkMergeHistory = new Map()
 // { prevStatus, mergeStart: ms|null, prevStagingRows, completedChunks: [{stagingRows,durationMs}] }
 
-function updateChunkHistory(job, now) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function updateChunkHistory(job: any, now: number) {
   const stagingRows = Number(job.row_count_staging) || 0
   const existing = chunkMergeHistory.get(job.id)
 
@@ -463,7 +563,11 @@ function updateChunkHistory(job, now) {
   }
 
   // staging changed mid-merge (shouldn't happen normally): treat as fresh merge
-  if (job.status === 'merging' && existing.prevStatus === 'merging' && stagingRows !== existing.prevStagingRows) {
+  if (
+    job.status === 'merging' &&
+    existing.prevStatus === 'merging' &&
+    stagingRows !== existing.prevStagingRows
+  ) {
     mergeStart = now
   }
 
@@ -471,7 +575,10 @@ function updateChunkHistory(job, now) {
   if (existing.prevStatus === 'merging' && job.status !== 'merging') {
     if (mergeStart != null && existing.prevStagingRows > 0) {
       const durationMs = now - mergeStart
-      completedChunks = [...completedChunks, { stagingRows: existing.prevStagingRows, durationMs }].slice(-10)
+      completedChunks = [
+        ...completedChunks,
+        { stagingRows: existing.prevStagingRows, durationMs },
+      ].slice(-10)
     }
     mergeStart = null
   }
@@ -487,7 +594,8 @@ function updateChunkHistory(job, now) {
 // ETA to finish merging the current staging chunk.
 // Uses historical merge rate from completed chunks when available; falls back to overall job
 // throughput (includes loading time, so slightly conservative) when none observed yet.
-function computeChunkEta(job) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function computeChunkEta(job: any) {
   if (job.status !== 'merging') return null
   const stagingRows = Number(job.row_count_staging) || 0
   if (!stagingRows) return null
@@ -499,7 +607,8 @@ function computeChunkEta(job) {
     // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
     // Most recent chunk contributes ~50% of the rate; history stabilises it.
     const chunks = hist.completedChunks
-    let weightedRate = 0, totalWeight = 0
+    let weightedRate = 0,
+      totalWeight = 0
     for (let i = 0; i < chunks.length; i++) {
       const w = Math.pow(2, i)
       weightedRate += (chunks[i].stagingRows / chunks[i].durationMs) * w
@@ -520,12 +629,17 @@ function computeChunkEta(job) {
   const elapsedMs = Date.now() - hist.mergeStart
   const remainingMs = estimatedDurationMs - elapsedMs
   if (remainingMs <= 0) return null
-  return { ms: remainingMs, ratio: Math.min(elapsedMs / estimatedDurationMs, 1), ratePerMin: rateRowsPerMs * 60000 }
+  return {
+    ms: remainingMs,
+    ratio: Math.min(elapsedMs / estimatedDurationMs, 1),
+    ratePerMin: rateRowsPerMs * 60000,
+  }
 }
 
 // ETA for the entire job (all remaining files + merges).
 // Uses job.started_at so rate includes both loading and merging time naturally.
-function computeTotalEta(job) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function computeTotalEta(job: any) {
   if (!['loading', 'merging'].includes(job.status)) return null
   const pgRows = Number(job.row_count_pg) || 0
   const trc = job.table_row_counts ?? {}
@@ -534,9 +648,12 @@ function computeTotalEta(job) {
   const stagingRows = Number(job.row_count_staging) || 0
   if (!filesDone || !filesTotal || !pgRows || !job.started_at) return null
   const bqRows = Number(job.row_count_bq) || 0
-  const rowsPerFile = bqRows > 0 && filesTotal > 0
-    ? bqRows / filesTotal
-    : (stagingRows > 0 ? stagingRows / filesDone : 0)
+  const rowsPerFile =
+    bqRows > 0 && filesTotal > 0
+      ? bqRows / filesTotal
+      : stagingRows > 0
+        ? stagingRows / filesDone
+        : 0
   if (!rowsPerFile) return null
   const estimatedTotal = bqRows > 0 ? bqRows : rowsPerFile * filesTotal
   if (pgRows >= estimatedTotal) return null
@@ -544,7 +661,11 @@ function computeTotalEta(job) {
   if (elapsedMs < 10000 || pgRows < 1000) return null
   const ratePerMs = pgRows / elapsedMs
   if (ratePerMs <= 0) return null
-  return { ms: (estimatedTotal - pgRows) / ratePerMs, ratio: Math.min(pgRows / estimatedTotal, 1), ratePerMin: ratePerMs * 60000 }
+  return {
+    ms: (estimatedTotal - pgRows) / ratePerMs,
+    ratio: Math.min(pgRows / estimatedTotal, 1),
+    ratePerMin: ratePerMs * 60000,
+  }
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────────
@@ -568,15 +689,17 @@ function render() {
   // Summary bar
   const counts = { running: 0, done: 0, failed: 0 }
   for (const j of jobs) {
-    if (['exporting','exported','loading','merging'].includes(j.status)) counts.running++
+    if (['exporting', 'exported', 'loading', 'merging'].includes(j.status)) counts.running++
     else if (j.status === 'done' || j.status === 'cleaned') counts.done++
     else if (j.status === 'failed') counts.failed++
   }
-  writeln(3, 1,
+  writeln(
+    3,
+    1,
     ` ${A.dim}total:${A.reset} ${jobs.length}` +
-    `  ${A.cyan}running:${A.reset} ${counts.running}` +
-    `  ${A.green}done:${A.reset} ${counts.done}` +
-    `  ${A.red}failed:${A.reset} ${counts.failed}`
+      `  ${A.cyan}running:${A.reset} ${counts.running}` +
+      `  ${A.green}done:${A.reset} ${counts.done}` +
+      `  ${A.red}failed:${A.reset} ${counts.failed}`,
   )
 
   // Header
@@ -619,12 +742,14 @@ function render() {
 
 async function refresh() {
   try {
-    jobs = await fetchJobs()
+    const [newJobs, newTableCounts] = await Promise.all([fetchJobs(), fetchTableCounts()])
+    jobs = newJobs
+    tableCounts = newTableCounts
     if (selected >= jobs.length) selected = Math.max(0, jobs.length - 1)
     lastRefresh = new Date().toLocaleTimeString()
     error = null
   } catch (e) {
-    error = e.message
+    error = (e as Error).message
   }
   render() // render first — ETAs use history from previous refresh
   const now = Date.now()
@@ -681,12 +806,26 @@ function cleanup() {
   if (process.stdin.isTTY) process.stdin.setRawMode(false)
 }
 
-process.on('SIGINT', () => { cleanup(); process.exit(0) })
-process.on('SIGTERM', () => { cleanup(); process.exit(0) })
+process.on('SIGINT', () => {
+  cleanup()
+  process.exit(0)
+})
+process.on('SIGTERM', () => {
+  cleanup()
+  process.exit(0)
+})
 process.on('exit', cleanup)
 process.stdout.on('resize', render)
 
-write(A.altOn + A.reset + A.hide + A.clear)
-setupInput()
-await refresh()
-scheduleRefresh()
+async function main() {
+  write(A.altOn + A.reset + A.hide + A.clear)
+  setupInput()
+  await refresh()
+  scheduleRefresh()
+}
+
+main().catch((err) => {
+  cleanup()
+  console.error(err)
+  process.exit(1)
+})
