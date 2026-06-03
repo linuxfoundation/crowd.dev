@@ -93,12 +93,12 @@ export async function bootstrapOsspckgs(opts: {
   // tables (PackageVersionToProject, Dependents) that may be on a different cadence than PackageVersions.
   const resolvedSnapshots = new Map<JobKind, string>()
 
-  // Partitioned kinds: only needed for incremental (full mode uses *Latest views, no partition filter)
-  if (opts.mode === 'incremental') {
-    for (const kind of PARTITIONED_KINDS.filter((k) => runs(k))) {
-      const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
-      resolvedSnapshots.set(kind, snapshotDate)
-    }
+  // Partitioned kinds: always resolve so snapshot_at stores a real BQ partition date.
+  // Full mode doesn't use the date in its BQ query (*Latest views, no partition filter)
+  // but the resolved date becomes the watermark for the next incremental run.
+  for (const kind of PARTITIONED_KINDS.filter((k) => runs(k))) {
+    const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
+    resolvedSnapshots.set(kind, snapshotDate)
   }
 
   // Always resolve snapshot date for kinds that filter by partition date.

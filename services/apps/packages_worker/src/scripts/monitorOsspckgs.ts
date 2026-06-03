@@ -71,6 +71,20 @@ async function fetchJobs() {
   `)
 }
 
+async function fetchWatermarks(): Promise<Record<string, string>> {
+  const qx = await getPackagesDb()
+  const rows = await qx.select(`
+    SELECT DISTINCT ON (job_kind) job_kind, snapshot_at
+    FROM osspckgs_ingest_jobs
+    WHERE status = 'done' AND snapshot_at IS NOT NULL
+      AND job_kind IN ('packages', 'versions', 'package_dependencies')
+    ORDER BY job_kind, snapshot_at DESC
+  `)
+  const result: Record<string, string> = {}
+  for (const row of rows) result[row.job_kind as string] = String(row.snapshot_at).slice(0, 10)
+  return result
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────────
 
 const STATUS_COLOR = {
@@ -110,6 +124,17 @@ function fmtGb(bytes: unknown) {
   if (bytes == null) return A.dim + '—' + A.reset
   const gb = Number(bytes) / 1e9
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(Number(bytes) / 1e6).toFixed(0)} MB`
+}
+
+function fmtMode(mode: string) {
+  if (mode === 'incremental') return A.yellow + 'incr' + A.reset
+  return A.cyan + mode + A.reset
+}
+
+function fmtUsd(bytes: unknown) {
+  if (bytes == null || Number(bytes) === 0) return A.dim + '—' + A.reset
+  const usd = (Number(bytes) / 1e12) * 5.0
+  return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
 }
 
 function fmtCompact(n: unknown) {
@@ -166,9 +191,25 @@ function progressBar(ratio: number | null | undefined, width = 20) {
 
 // Re-applies `bg` before the padding spaces so cells that end with A.reset
 // (e.g. fmtNum, statusStr) don't leave a bg gap in selected rows.
+// Clips content that exceeds len so overlong cells never push adjacent columns.
 function padCell(s: string, len: number, bg: string) {
   // eslint-disable-next-line no-control-regex
   const visible = s.replace(/\x1b\[[0-9;]*m/g, '')
+  if (visible.length > len) {
+    // Walk raw string, skip escape sequences, cut at len-1 visible chars then add …
+    let vis = 0
+    let i = 0
+    while (i < s.length && vis < len - 1) {
+      if (s[i] === '\x1b') {
+        const end = s.indexOf('m', i)
+        i = end !== -1 ? end + 1 : i + 1
+      } else {
+        vis++
+        i++
+      }
+    }
+    return s.slice(0, i) + A.reset + bg + '…'
+  }
   const pad = Math.max(0, len - visible.length)
   return s + bg + ' '.repeat(pad)
 }
@@ -198,8 +239,8 @@ const TABLE_ABBREV: Record<string, string> = {
   repos: 'repos',
   package_repos: 'pkg_repos',
   advisories: 'adv',
-  advisory_packages: 'adv_pkgs',
-  advisory_affected_ranges: 'adv_ranges',
+  advisory_packages: 'ap',
+  advisory_affected_ranges: 'ar',
 }
 
 async function fetchTableCounts(): Promise<Record<string, number>> {
@@ -227,7 +268,7 @@ const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo']
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractEcosystem(job: any) {
   const src = [job.gcs_prefix ?? '', job.export_name ?? ''].join(' ').toLowerCase()
-  const found = KNOWN_ECOSYSTEMS.filter((e) => new RegExp(`[-/]${e}[-/]|[-/]${e}$`).test(src))
+  const found = KNOWN_ECOSYSTEMS.filter((e) => new RegExp(`(^|[-/,])${e}([-/,]|$)`).test(src))
   return found.length > 0 ? found.join(',') : null
 }
 
@@ -238,8 +279,9 @@ const COL = {
   kind: 20,
   eco: 10,
   status: 18,
-  mode: 10,
+  mode: 6,
   bq: 10,
+  cost: 10,
   files: 24,
   staging: 12,
   pg: 14,
@@ -258,6 +300,7 @@ function tableHeader() {
     'STATUS'.padEnd(COL.status) +
     'MODE'.padEnd(COL.mode) +
     'BQ ROWS'.padEnd(COL.bq) +
+    'BQ COST'.padEnd(COL.cost) +
     'FILES'.padEnd(COL.files) +
     'STAGING'.padEnd(COL.staging) +
     'PG ROWS'.padEnd(COL.pg) +
@@ -359,8 +402,9 @@ function tableRow(job: any, selected: boolean) {
       bg,
     ) +
     padCell(statusStr(job.status), COL.status, bg) +
-    job.sync_mode.padEnd(COL.mode) +
+    padCell(fmtMode(job.sync_mode), COL.mode, bg) +
     padCell(fmtCompact(job.row_count_bq), COL.bq, bg) +
+    padCell(fmtUsd(job.bq_bytes_billed), COL.cost, bg) +
     filesCell(job, bg) +
     stagingCell(job, bg) +
     pgCell(job, bg) +
@@ -394,7 +438,7 @@ function renderDetail(job: any, cols: number) {
     ` ${A.dim}started:${A.reset}   ${fmtDate(job.started_at)}   ${A.dim}finished:${A.reset} ${fmtDate(job.finished_at)}`,
   )
   lines.push(
-    ` ${A.dim}elapsed:${A.reset}   ${fmtElapsed(job.started_at, job.finished_at)}   ${A.dim}bq cost:${A.reset} ${fmtGb(job.bq_bytes_billed)}`,
+    ` ${A.dim}elapsed:${A.reset}   ${fmtElapsed(job.started_at, job.finished_at)}   ${A.dim}bq cost:${A.reset} ${fmtGb(job.bq_bytes_billed)} ${A.dim}(${fmtUsd(job.bq_bytes_billed)})${A.reset}`,
   )
   if (job.gcs_prefix) {
     lines.push(
@@ -526,6 +570,7 @@ function renderDetail(job: any, cols: number) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let jobs: any[] = []
 let tableCounts: Record<string, number> = {}
+let watermarks: Record<string, string> = {}
 let selected = 0
 let detailOpen = false
 let lastRefresh: string | null = null
@@ -702,8 +747,18 @@ function render() {
       `  ${A.red}failed:${A.reset} ${counts.failed}`,
   )
 
+  // Watermarks bar
+  const WM_KINDS = ['packages', 'versions', 'package_dependencies']
+  const wmParts = WM_KINDS.map((k) => {
+    const date = watermarks[k]
+    const label = A.dim + k.replace('package_dependencies', 'pkg_deps') + ':' + A.reset
+    const val = date ? A.green + date + A.reset : A.dim + '—' + A.reset
+    return `${label}${val}`
+  })
+  writeln(4, 1, ` ${A.dim}watermarks:${A.reset}  ` + wmParts.join(`  ${A.dim}│${A.reset}  `))
+
   // Header
-  const headerRow = 5
+  const headerRow = 6
   writeln(headerRow, 1, tableHeader())
 
   // List
@@ -742,9 +797,10 @@ function render() {
 
 async function refresh() {
   try {
-    const [newJobs, newTableCounts] = await Promise.all([fetchJobs(), fetchTableCounts()])
+    const [newJobs, newTableCounts, newWatermarks] = await Promise.all([fetchJobs(), fetchTableCounts(), fetchWatermarks()])
     jobs = newJobs
     tableCounts = newTableCounts
+    watermarks = newWatermarks
     if (selected >= jobs.length) selected = Math.max(0, jobs.length - 1)
     lastRefresh = new Date().toLocaleTimeString()
     error = null
