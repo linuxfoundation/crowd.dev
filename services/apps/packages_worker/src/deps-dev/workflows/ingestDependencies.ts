@@ -166,7 +166,7 @@ export async function ingestDependencies(opts: {
   reuseExports?: boolean
   depsTableOption?: 'A' | 'B'
   exportName?: string
-}): Promise<void> {
+}): Promise<{ rowCountBq: number }> {
   const systems = toSystemsFilter(opts.ecosystems)
   const tableOption = opts.depsTableOption ?? 'A'
   const sql =
@@ -187,15 +187,16 @@ export async function ingestDependencies(opts: {
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
   const totalFiles = fileNames.length
+  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
 
-  if (totalFiles === 0) {
+  if (totalFiles === 0 || totalRows === 0) {
     await mergeStagingToTable({
       jobId: exportResult.jobId,
       mergeSql: [],
       tableNames: [],
       isFinal: true,
     })
-    return
+    return { rowCountBq: exportResult.rowCount }
   }
 
   await createVersionsLookup({ ecosystems: opts.ecosystems })
@@ -206,7 +207,6 @@ export async function ingestDependencies(opts: {
   }
 
   try {
-    const totalRows = rowCounts.reduce((a, b) => a + b, 0)
     const filesPerChunk =
       totalRows > 0
         ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
@@ -271,4 +271,5 @@ export async function ingestDependencies(opts: {
     }
     throw err
   }
+  return { rowCountBq: exportResult.rowCount }
 }
