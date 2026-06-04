@@ -128,44 +128,6 @@ export async function listMavenPackagesToSync(
   )
 }
 
-/**
- * Loads Tier 2 Maven packages (from `packages`) by package-level purl, regardless
- * of staleness. Used by the delta-API sync path: the upstream feed already told us
- * these packages changed, so we (re)extract them now. Purls not present in
- * `packages` (i.e. not promoted to Tier 2 by the criticality worker) are dropped.
- */
-export async function listMavenPackagesByPurls(
-  qx: QueryExecutor,
-  purls: string[],
-): Promise<MavenPackageToSync[]> {
-  if (purls.length === 0) return []
-
-  return qx.select(
-    `
-    SELECT
-      p.id,
-      p.purl,
-      p.namespace,
-      p.name,
-      p.criticality_score        AS "criticalityScore",
-      p.dependent_count          AS "dependentPackagesCount",
-      p.dependent_repos_count    AS "dependentReposCount",
-      p.downloads_last_month     AS "downloads30d",
-      p.latest_version           AS "latestVersion"
-    FROM packages p
-    WHERE
-      p.ecosystem = 'maven'
-      AND p.is_critical
-      AND p.namespace IS NOT NULL
-      AND p.purl = ANY($(purls))
-    ORDER BY
-      p.criticality_score DESC NULLS LAST,
-      p.id ASC
-    `,
-    { purls },
-  )
-}
-
 // ─── packages touch ───────────────────────────────────────────────────────────
 
 /**
@@ -232,20 +194,20 @@ export async function upsertPackage(
     `
     WITH old AS (
       SELECT description, homepage, registry_url, declared_repository_url, repository_url,
-             licenses, licenses_raw, latest_version, ingestion_source
+             licenses, licenses_raw, latest_version, versions_count, latest_release_at, ingestion_source
         FROM packages WHERE purl = $(purl)
     ),
     ins AS (
       INSERT INTO packages (
         purl, ecosystem, namespace, name,
         description, homepage, registry_url, declared_repository_url, repository_url,
-        licenses, licenses_raw, latest_version,
+        licenses, licenses_raw, latest_version, versions_count, latest_release_at,
         criticality_score, dependent_count, dependent_repos_count, downloads_last_month,
         ingestion_source, last_synced_at
       ) VALUES (
         $(purl), $(ecosystem), $(namespace), $(name),
         $(description), $(homepage), $(registryUrl), $(declaredRepositoryUrl), $(repositoryUrl),
-        $(licenses)::text[], $(licensesRaw), $(latestVersion),
+        $(licenses)::text[], $(licensesRaw), $(latestVersion), $(versionsCount), $(latestReleaseAt),
         $(criticalityScore), $(dependentPackagesCount), $(dependentReposCount), $(downloadsLastMonth),
         $(ingestionSource), NOW()
       )
@@ -258,6 +220,8 @@ export async function upsertPackage(
         licenses                 = COALESCE(EXCLUDED.licenses,                 packages.licenses),
         licenses_raw             = COALESCE(EXCLUDED.licenses_raw,             packages.licenses_raw),
         latest_version           = COALESCE(EXCLUDED.latest_version,           packages.latest_version),
+        versions_count           = COALESCE(EXCLUDED.versions_count,           packages.versions_count),
+        latest_release_at        = COALESCE(EXCLUDED.latest_release_at,        packages.latest_release_at),
         criticality_score        = COALESCE(EXCLUDED.criticality_score,        packages.criticality_score),
         dependent_count          = COALESCE(EXCLUDED.dependent_count,          packages.dependent_count),
         dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
@@ -265,7 +229,7 @@ export async function upsertPackage(
         ingestion_source         = EXCLUDED.ingestion_source,
         last_synced_at           = NOW()
       RETURNING id, description, homepage, registry_url, declared_repository_url, repository_url,
-                licenses, licenses_raw, latest_version, ingestion_source
+                licenses, licenses_raw, latest_version, versions_count, latest_release_at, ingestion_source
     )
     SELECT ins.id,
            array_remove(ARRAY[
@@ -277,6 +241,8 @@ export async function upsertPackage(
              CASE WHEN o.licenses                IS DISTINCT FROM ins.licenses                THEN 'packages.licenses' END,
              CASE WHEN o.licenses_raw            IS DISTINCT FROM ins.licenses_raw            THEN 'packages.licenses_raw' END,
              CASE WHEN o.latest_version          IS DISTINCT FROM ins.latest_version          THEN 'packages.latest_version' END,
+             CASE WHEN o.versions_count          IS DISTINCT FROM ins.versions_count          THEN 'packages.versions_count' END,
+             CASE WHEN o.latest_release_at       IS DISTINCT FROM ins.latest_release_at       THEN 'packages.latest_release_at' END,
              CASE WHEN o.ingestion_source        IS DISTINCT FROM ins.ingestion_source        THEN 'packages.ingestion_source' END
            ], NULL) AS changed_fields
     FROM ins LEFT JOIN old o ON true
@@ -285,6 +251,8 @@ export async function upsertPackage(
       ...item,
       registryUrl: item.registryUrl ?? null,
       repositoryUrl: item.repositoryUrl ?? null,
+      versionsCount: item.versionsCount ?? null,
+      latestReleaseAt: item.latestReleaseAt ?? null,
       criticalityScore: item.criticalityScore ?? null,
       dependentPackagesCount: item.dependentPackagesCount ?? null,
       dependentReposCount: item.dependentReposCount ?? null,

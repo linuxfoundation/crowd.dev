@@ -247,25 +247,6 @@ so the worker throws on startup if any is missing. Suggested values shown.
 | `POM_FETCHER_REFRESH_DAYS`             | `1`         | Staleness window — re-sync a package once its `last_synced_at` is older than N days (applies to both phases) |
 | `POM_FETCHER_GROUP_DELAY_MS`           | `200`–`400` | Delay between concurrent groups in the critical phase (rate-limit mitigation)                                |
 
-### Sync source (Temporal critical path)
-
-These select **where the critical sync gets its work from**. They affect only the Temporal
-`processMavenCriticalBatch` activity — the standalone backfill loop is unaffected. All are
-optional; unset/invalid values fall back to the current universe-polling behaviour.
-
-| Env var                              | Default | Description                                                                                                                                              |
-| ------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAVEN_SYNC_SOURCE`                  | `maven` | `maven` = poll `packages_universe` by staleness (current behaviour). `api` = enrich only what the delta feed reports. `both` = run both passes per tick. |
-| `MAVEN_DELTA_API_URL`                | —       | Base URL of our delta feed (e.g. the Railway deployment). **Required** when source is `api` or `both`.                                                   |
-| `MAVEN_DELTA_API_TOKEN`              | —       | Optional bearer token for the delta feed.                                                                                                                |
-| `MAVEN_DELTA_API_PAGE_SIZE`          | `100`   | Page size for `/api/changes` pagination.                                                                                                                 |
-| `MAVEN_DELTA_API_LOOKBACK_MINUTES`   | `15`    | Rolling window size: each tick fetches `[now-N, now)`. Overlaps the cron interval on purpose — re-processing is safe (idempotent upserts).               |
-| `MAVEN_DELTA_API_INCLUDE_PRERELEASE` | `false` | Forwarded as `includePrerelease` to the feed.                                                                                                            |
-
-The delta-API path always runs **full extraction** (the feed is an explicit "this changed"
-signal) and only enriches packages that are `is_critical` in `packages_universe`; non-critical
-purls in the feed are dropped.
-
 **Concurrency guidance:** Maven Central handles 10–15 concurrent requests per IP without throttling. Retry logic with exponential backoff handles 429/403s. Keep `POM_FETCHER_CONCURRENCY` ≤ 5 locally — repeated local runs heat the IP (see [Known Exceptions](#maven-central-403-rate-limiting)).
 
 ---

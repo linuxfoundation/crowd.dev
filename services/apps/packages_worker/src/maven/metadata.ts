@@ -26,6 +26,25 @@ const parser = new XMLParser({
 export interface MavenVersionsMetadata {
   versions: string[]
   releaseVersion: string | null
+  lastUpdated: Date | null
+}
+
+// maven-metadata.xml carries <lastUpdated>yyyyMMddHHmmss</lastUpdated> in UTC —
+// the timestamp of the most recent publish. Parse it into a Date for
+// packages.latest_release_at; return null on anything malformed.
+function parseMavenLastUpdated(raw: unknown): Date | null {
+  if (typeof raw !== 'string') {
+    // fast-xml-parser may coerce the all-digits value to a number
+    raw = typeof raw === 'number' ? String(raw) : null
+  }
+  const m =
+    typeof raw === 'string'
+      ? raw.trim().match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/)
+      : null
+  if (!m) return null
+  const [, y, mo, d, h, mi, s] = m
+  const ts = Date.UTC(+y, +mo - 1, +d, +h, +mi, +s)
+  return Number.isNaN(ts) ? null : new Date(ts)
 }
 
 export type MavenFetchError =
@@ -69,7 +88,11 @@ export async function resolveVersionsList(
         versions = [rawVersions.trim()]
       }
 
-      return { versions, releaseVersion: release || latest || null }
+      return {
+        versions,
+        releaseVersion: release || latest || null,
+        lastUpdated: parseMavenLastUpdated(versioning?.lastUpdated),
+      }
     } catch (err) {
       if (axios.isAxiosError(err)) {
         const status = err.response?.status
