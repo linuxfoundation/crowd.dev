@@ -16,7 +16,7 @@ const MAX_CONCURRENT = 2
 export interface GcsToStagingInput {
   jobId: number
   stagingTable: string
-  stagingDdl?: string
+  stagingDdl?: string | string[]
   pgColumns: string[]
   // BQ exports TIMESTAMP columns as INT64 microseconds (BigInt in parquetjs).
   // List any timestamptz columns here so they get converted before INSERT.
@@ -114,7 +114,10 @@ export async function gcsParquetToStaging(input: GcsToStagingInput): Promise<Gcs
   const qx = await getPackagesDb()
 
   await markJobStatus(qx, jobId, 'loading')
-  if (stagingDdl) await qx.result(stagingDdl)
+  if (stagingDdl) {
+    const stmts = Array.isArray(stagingDdl) ? stagingDdl : [stagingDdl]
+    for (const stmt of stmts) await qx.result(stmt)
+  }
   await qx.result(`TRUNCATE ${stagingTable}`)
   // Reset progress at the start of a fresh run (first chunk). This handles job ID reuse
   // via --export-name: a previous run's 193/193 would otherwise persist due to GREATEST.

@@ -255,8 +255,8 @@ The `packages` table retains `declared_repository_url` (raw) and `repository_url
 **Population order**:
 
 1. Registry workers (npm, Maven) write `packages` and `package_repos` rows.
-2. The GitHub enricher polls `repos` for rows where `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_REPO_UPDATE_INTERVAL_HOURS`.
-3. The enricher updates those rows with full metadata and sets `last_synced_at`.
+2. The GitHub enricher polls `repos` for rows where `skip_enrichment = false` and `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_REPO_UPDATE_INTERVAL_HOURS`.
+3. The enricher updates those rows with full metadata and sets `last_synced_at`. Permanently unreachable repos (deleted, private, IP-allowlisted) are marked `skip_enrichment = true` and not retried.
 4. Subsequent enricher runs pick up new repos added since the last pass.
 
 `repos` rows are current-state only — no historical snapshots; each enricher run overwrites previous metadata values.
@@ -396,11 +396,12 @@ A standalone Java app parsing the Maven Central Lucene index is being built in p
 
 #### GitHub
 
-**Strategy**: token-pooled GraphQL via the existing GitHub App, batches of 100 repos.
+**Strategy**: streaming worker pool via GitHub App installation tokens, bulk DB writes.
 
-The existing `github-repos-enricher` worker (`services/apps/packages_worker/src/enricher/`) is the template. Token sourcing uses the GitHub App already integrated through Nango — hundreds of installation tokens are available there, so no PATs are needed. Key parameters:
+The `github-repos-enricher` worker (`services/apps/packages_worker/src/enricher/`) enumerates all GitHub App installations at startup and uses their tokens as a rotating rate-limit pool. Key parameters:
 
-- **Nango GitHub App tokens** in rotation for rate-limit headroom (not PATs — see open questions).
+- **Streaming concurrency**: each worker slot independently pulls the next URL from a cursor-backed DB queue — a slow request blocks only that slot. Bulk writes flush every 500 results.
+- **Permanent failures** (NOT_FOUND, IP allowlist, AUTH): marked with `skip_enrichment = true` and excluded from future passes.
 - GraphQL `repository(owner, name)` query per repo — one call per repo, not batched.
 - Writes `primary_language`, `topics`, `watchers`, `last_commit_at`, `archived`, `disabled`, `is_fork`, `created_at` to `repos`. Does not provide Scorecard — that comes from deps.dev `ProjectsLatest`.
 
