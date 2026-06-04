@@ -47,6 +47,7 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
 import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
@@ -1074,6 +1075,9 @@ export default class OrganizationService extends LoggerBase {
         data.isAffiliationBlocked !== existingOrg.isAffiliationBlocked
       ) {
         await applyOrganizationAffiliationPolicyToMembers(qx, record.id, !data.isAffiliationBlocked)
+        if (data.isAffiliationBlocked) {
+          await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
+        }
         recalculateAffiliations = true
       }
 

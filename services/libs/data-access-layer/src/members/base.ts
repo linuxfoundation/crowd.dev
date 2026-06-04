@@ -589,14 +589,18 @@ export async function moveAffiliationsBetweenMembers(
   fromMemberId: string,
   toMemberId: string,
 ): Promise<void> {
-  const params: Record<string, string> = {
-    fromMemberId,
-    toMemberId,
-  }
-
   await qx.result(
-    `update "memberSegmentAffiliations" set "memberId" = $(toMemberId) where "memberId" = $(fromMemberId);`,
-    params,
+    `
+      update "memberSegmentAffiliations"
+      set "memberId" = $(toMemberId)
+      where
+        "memberId" = $(fromMemberId)
+        and "deletedAt" is null
+    `,
+    {
+      fromMemberId,
+      toMemberId,
+    },
   )
 }
 

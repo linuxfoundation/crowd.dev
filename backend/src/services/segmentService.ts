@@ -23,6 +23,7 @@ import {
   SegmentUpdateData,
 } from '@crowd/types'
 
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
 import MemberRepository from '../database/repositories/memberRepository'
 import SegmentRepository from '../database/repositories/segmentRepository'
@@ -739,6 +740,7 @@ export default class SegmentService extends LoggerBase {
         const updatedOrgId = await updateOrganization(qx, o.id, { isAffiliationBlocked: true })
         if (updatedOrgId) {
           await applyOrganizationAffiliationPolicyToMembers(qx, updatedOrgId, false)
+          await deleteMemberSegmentAffiliations(qx, { organizationId: updatedOrgId })
           result.push(updatedOrgId)
         }
       }

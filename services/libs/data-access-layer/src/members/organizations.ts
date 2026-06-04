@@ -11,6 +11,7 @@ import {
   findMemberAffiliationOverrides,
   findOrganizationAffiliationOverrides,
 } from '../member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
 
@@ -465,9 +466,11 @@ export async function deleteMemberOrganizations(
     // Clean up segment affiliations for orgs that no longer have any active work experiences
     if (affectedOrgIds.length > 0) {
       await tx.result(
-        `DELETE FROM "memberSegmentAffiliations" msa
+        `UPDATE "memberSegmentAffiliations" msa
+         SET "deletedAt" = NOW()
          WHERE msa."memberId" = $(memberId)
            AND msa."organizationId" IN ($(orgIds:csv))
+           AND msa."deletedAt" IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM "memberOrganizations" mo
              WHERE mo."memberId" = $(memberId)
@@ -868,26 +871,26 @@ async function moveRolesBetweenEntities(
     }
 
     const preserveManualBlock = existingOverride?.allowAffiliation === false && !isSourceBlocked
+    const targetMemberId = mergeStrat.targetMemberId(role)
+    const shouldWriteOverride = isTargetBlocked || preserveManualBlock || isPrimaryWorkExp
+    const finalAllowAffiliation = isTargetBlocked || preserveManualBlock ? false : undefined
 
-    if (isTargetBlocked) {
+    if (shouldWriteOverride) {
       await changeMemberOrganizationAffiliationOverrides(qx, [
         {
-          memberId: mergeStrat.targetMemberId(role),
+          memberId: targetMemberId,
           memberOrganizationId: newRoleId,
-          allowAffiliation: false,
+          allowAffiliation: finalAllowAffiliation,
           isPrimaryWorkExperience: isPrimaryWorkExp || undefined,
         },
       ])
-      shouldRecalculateAffiliations = true
-    } else if (preserveManualBlock || isPrimaryWorkExp) {
-      await changeMemberOrganizationAffiliationOverrides(qx, [
-        {
-          memberId: mergeStrat.targetMemberId(role),
-          memberOrganizationId: newRoleId,
-          allowAffiliation: preserveManualBlock ? false : undefined,
-          isPrimaryWorkExperience: isPrimaryWorkExp || undefined,
-        },
-      ])
+
+      // If the affiliation is blocked, delete any existing MSAs to prevent the member from
+      // remaining affiliated through a manually created affiliation.
+      if (finalAllowAffiliation === false) {
+        await deleteMemberSegmentAffiliations(qx, { memberId: targetMemberId, organizationId: targetOrgId })
+      }
+
       shouldRecalculateAffiliations = true
     }
 
@@ -1188,6 +1191,12 @@ export async function mergeRoles(
           isPrimaryWorkExperience: finalIsPrimaryWorkExp || undefined,
         },
       ])
+      if (finalAllowAffiliation === false) {
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId: addData.memberId,
+          organizationId: addData.organizationId,
+        })
+      }
       shouldRecalculateAffiliations = true
     }
 

@@ -2,6 +2,7 @@ import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { DbStore } from '@crowd/data-access-layer/src/database'
 import {
   addOrgsToMember,
@@ -52,8 +53,9 @@ export class OrganizationService extends LoggerBase {
       newMemberOrgs.map((mo) => mo.organizationId),
     )
 
-    const overrides = newMemberOrgs
-      .filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
+    const memberOrgsWithBlockedAffiliations = newMemberOrgs.filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
+    
+    const overrides = memberOrgsWithBlockedAffiliations
       .map((mo) => ({
         memberId,
         memberOrganizationId: mo.memberOrganizationId,
@@ -62,6 +64,12 @@ export class OrganizationService extends LoggerBase {
 
     if (overrides.length > 0) {
       await changeMemberOrganizationAffiliationOverrides(qe, overrides)
+    }
+
+    for (const organizationId of new Set(
+      memberOrgsWithBlockedAffiliations.map((mo) => mo.organizationId),
+    )) {
+      await deleteMemberSegmentAffiliations(qe, { memberId, organizationId })
     }
   }
 

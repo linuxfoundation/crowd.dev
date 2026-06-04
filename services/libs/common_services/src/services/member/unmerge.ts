@@ -23,6 +23,7 @@ import {
 } from '@crowd/data-access-layer'
 import { addMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
+  deleteMemberSegmentAffiliations,
   findMemberAffiliations,
   moveSelectedAffiliationsBetweenMembers,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
@@ -544,15 +545,17 @@ export async function unmergeMember(
       memberOrganizationId: string
       allowAffiliation: false
     }[] = []
+   
+    const orgIdsWithBlockedAffiliations = new Set<string>()
 
     for (const role of rolesToRestore) {
       const newRoleId = await addMemberRole(tx, { ...role, memberId: secondaryId })
-      if (newRoleId) {
-        const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
-        // Only org-level policy blocks are restored here. Pre-merge manual row-level
-        // blocks and isPrimaryWorkExperience flags are not restored because the unmerge
-        // backup does not carry override data.
-        if (isBlocked) {
+      const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
+
+      if (isBlocked) {
+        orgIdsWithBlockedAffiliations.add(role.organizationId)
+
+        if (newRoleId) {
           overridesToCreate.push({
             memberId: secondaryId,
             memberOrganizationId: newRoleId,
@@ -564,6 +567,16 @@ export async function unmergeMember(
 
     if (overridesToCreate.length > 0) {
       await changeMemberOrganizationAffiliationOverrides(tx, overridesToCreate)
+    }
+
+    // Affiliations (memberSegmentAffiliations) have already been moved to the secondary.
+    // If affiliation is blocked for this organization, remove any existing MSAs to prevent
+    // the member from remaining affiliated through a manually created affiliation.
+    for (const organizationId of orgIdsWithBlockedAffiliations) {
+      await deleteMemberSegmentAffiliations(tx, {
+        memberId: secondaryId,
+        organizationId,
+      })
     }
 
     // Delete stale roles from primary that aren't in the preview
