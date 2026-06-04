@@ -39,8 +39,8 @@ export async function mergeCentralityScores(
        JOIN packages p ON p.id = v.package_id
       WHERE pu.purl = p.purl`,
     {
-      packageIds: rows.map(r => r.packageId),
-      scores:     rows.map(r => r.centralityScore),
+      packageIds: rows.map((r) => r.packageId),
+      scores: rows.map((r) => r.centralityScore),
     },
   )
 }

@@ -2,11 +2,11 @@ import { DirectEdge } from './queries'
 
 export interface Graph {
   nodeIndex: Map<number, number>
-  nodeIds:   number[]
-  numDeps:   Int32Array  // how many packages each node depends on (divides its vote)
-  rowPtr:    Int32Array  // rowPtr[v] = start of v's dependents in colData
-  colData:   Int32Array  // flat array of dependent node indices
-  N:         number
+  nodeIds: number[]
+  numDeps: Int32Array // how many packages each node depends on (divides its vote)
+  rowPtr: Int32Array // rowPtr[v] = start of v's dependents in colData
+  colData: Int32Array // flat array of dependent node indices
+  N: number
 }
 
 export function buildGraph(edges: DirectEdge[]): Graph {
@@ -15,19 +15,25 @@ export function buildGraph(edges: DirectEdge[]): Graph {
   const nodeIds: number[] = []
 
   for (const { packageId, dependsOnId } of edges) {
-    if (!nodeIndex.has(packageId))   { nodeIndex.set(packageId,   nodeIds.length); nodeIds.push(packageId)   }
-    if (!nodeIndex.has(dependsOnId)) { nodeIndex.set(dependsOnId, nodeIds.length); nodeIds.push(dependsOnId) }
+    if (!nodeIndex.has(packageId)) {
+      nodeIndex.set(packageId, nodeIds.length)
+      nodeIds.push(packageId)
+    }
+    if (!nodeIndex.has(dependsOnId)) {
+      nodeIndex.set(dependsOnId, nodeIds.length)
+      nodeIds.push(dependsOnId)
+    }
   }
 
   const N = nodeIds.length
 
   // Pass 1: count
   const depCount = new Int32Array(N)
-  const numDeps  = new Int32Array(N)
+  const numDeps = new Int32Array(N)
 
   for (const { packageId, dependsOnId } of edges) {
-    depCount[nodeIndex.get(dependsOnId)!]++
-    numDeps[nodeIndex.get(packageId)!]++
+    depCount[nodeIndex.get(dependsOnId) as number]++
+    numDeps[nodeIndex.get(packageId) as number]++
   }
 
   // Build rowPtr (prefix sum of depCount)
@@ -39,8 +45,8 @@ export function buildGraph(edges: DirectEdge[]): Graph {
   const fillIdx = new Int32Array(N)
 
   for (const { packageId, dependsOnId } of edges) {
-    const v = nodeIndex.get(dependsOnId)!
-    colData[rowPtr[v] + fillIdx[v]++] = nodeIndex.get(packageId)!
+    const v = nodeIndex.get(dependsOnId) as number
+    colData[rowPtr[v] + fillIdx[v]++] = nodeIndex.get(packageId) as number
   }
 
   return { nodeIndex, nodeIds, numDeps, rowPtr, colData, N }
@@ -48,18 +54,19 @@ export function buildGraph(edges: DirectEdge[]): Graph {
 
 export function computePageRank(
   { numDeps, rowPtr, colData, N }: Graph,
-  damping     = 0.85,
-  maxIter     = 100,
+  damping = 0.85,
+  maxIter = 100,
   convergence = 1e-6,
   onIteration?: (iter: number, delta: number) => void,
 ): { scores: Float64Array; iterations: number } {
-  const teleportation = (1 - damping) / N   // base score every node gets regardless of links
-  let scores          = new Float64Array(N).fill(1 / N)  // start: equal weight for all nodes
-  let next            = new Float64Array(N)               // scratch buffer, swapped each iteration
-  let iters           = 0
+  if (N === 0) return { scores: new Float64Array(0), iterations: 0 }
+
+  const teleportation = (1 - damping) / N // base score every node gets regardless of links
+  let scores = new Float64Array(N).fill(1 / N) // start: equal weight for all nodes
+  let next = new Float64Array(N) // scratch buffer, swapped each iteration
+  let iters = 0
 
   for (iters = 1; iters <= maxIter; iters++) {
-
     // Every node starts with the teleportation floor
     next.fill(teleportation)
 
@@ -81,11 +88,10 @@ export function computePageRank(
     // L1 delta: total change in scores across all nodes
     let delta = 0
     for (let i = 0; i < N; i++) delta += Math.abs(next[i] - scores[i])
-
-    ;[scores, next] = [next, scores]  // swap buffers — no data copy
+    ;[scores, next] = [next, scores] // swap buffers — no data copy
     onIteration?.(iters, delta)
 
-    if (delta < convergence) break    // scores have stabilised
+    if (delta < convergence) break // scores have stabilised
   }
 
   return { scores, iterations: iters }

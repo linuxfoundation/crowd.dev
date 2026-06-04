@@ -3,7 +3,7 @@
 --
 -- Formula (ADR-0001 §Criticality scoring methodology):
 --   impact = w_downloads  * pct_rank( LOG(1 + downloads_last_30d)          ) within ecosystem
---           + w_dep_pkgs  * pct_rank( LOG(1 + dependent_packages_count)   ) within ecosystem
+--           + w_dep_pkgs  * pct_rank( LOG(1 + dependent_count)             ) within ecosystem
 --           + w_transitive * pct_rank( LOG(1 + transitive_dependent_count) ) within ecosystem
 --
 -- Default weights: 0.25 / 0.25 / 0.50 (sum to 1.0).
@@ -45,7 +45,7 @@ BEGIN
                   PARTITION BY ecosystem ORDER BY LOG(1 + COALESCE(downloads_last_30d, 0)))
 
             + weight_dependent_packages * PERCENT_RANK() OVER (
-                  PARTITION BY ecosystem ORDER BY LOG(1 + COALESCE(dependent_packages_count, 0)))
+                  PARTITION BY ecosystem ORDER BY LOG(1 + COALESCE(dependent_count, 0)))
 
             + weight_transitive * PERCENT_RANK() OVER (
                   PARTITION BY ecosystem ORDER BY LOG(1 + COALESCE(transitive_dependent_count, 0)))
