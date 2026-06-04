@@ -3,7 +3,8 @@ import { QueryExecutor } from '../queryExecutor'
 import { IDbVersionUpsert } from './types'
 
 /**
- * Bulk-upserts a list of versions for a single package.
+ * Bulk-upserts a list of versions for a single package. All elements must share
+ * the same packageId — throws otherwise (the change-detection logic assumes it).
  * Uses UNNEST arrays to avoid N individual round-trips.
  * On conflict (package_id, number) updates is_latest, is_prerelease, and
  * licenses (never overwrites an existing licenses array with NULL).
@@ -16,6 +17,14 @@ export async function upsertVersionsBatch(
   versions: IDbVersionUpsert[],
 ): Promise<string[]> {
   if (versions.length === 0) return []
+
+  // This function operates on a single package: `old` reads by a scalar packageId and
+  // the changed-fields join keys on `number` alone, so mixing packageIds would silently
+  // corrupt the result. Enforce the invariant rather than rely on the caller.
+  const packageId = versions[0].packageId
+  if (versions.some((v) => v.packageId !== packageId)) {
+    throw new Error('upsertVersionsBatch: all versions must belong to the same package')
+  }
 
   // maven-metadata.xml sometimes contains duplicate version strings — deduplicate
   // by number before inserting to avoid "ON CONFLICT DO UPDATE command cannot affect
@@ -37,11 +46,10 @@ export async function upsertVersionsBatch(
     ins AS (
       INSERT INTO versions (package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, licenses, last_synced_at)
       SELECT
-        t.package_id, t.ecosystem, t.namespace, t.name, t.number, t.is_latest, t.is_prerelease,
+        $(packageId)::bigint, t.ecosystem, t.namespace, t.name, t.number, t.is_latest, t.is_prerelease,
         CASE WHEN t.license IS NULL THEN NULL ELSE ARRAY[t.license] END,
         NOW()
       FROM UNNEST(
-        $(packageIds)::bigint[],
         $(ecosystems)::text[],
         $(namespaces)::text[],
         $(names)::text[],
@@ -49,7 +57,7 @@ export async function upsertVersionsBatch(
         $(isLatests)::bool[],
         $(isPreleases)::bool[],
         $(licenses)::text[]
-      ) AS t(package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, license)
+      ) AS t(ecosystem, namespace, name, number, is_latest, is_prerelease, license)
       ON CONFLICT (package_id, number) DO UPDATE SET
         namespace      = COALESCE(EXCLUDED.namespace, versions.namespace),
         is_latest      = EXCLUDED.is_latest,
@@ -67,8 +75,7 @@ export async function upsertVersionsBatch(
     FROM ins LEFT JOIN old o ON o.number = ins.number
 `,
     {
-      packageId: versions[0].packageId,
-      packageIds: versions.map((v) => v.packageId),
+      packageId,
       ecosystems: versions.map((v) => v.ecosystem),
       namespaces: versions.map((v) => v.namespace),
       names: versions.map((v) => v.name),
