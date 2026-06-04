@@ -387,6 +387,16 @@ async function processLast30dWindowPlans(
     await onSettled(purl, res)
   }
 
+  // Heartbeat before every fetch (not just once per window). A rate-limited proxy IP tarpits
+  // requests — each hangs to the 30s fetch timeout instead of returning a fast 429 — so a lane
+  // can sit silent for minutes inside a single window. Beating at each fetch boundary bounds the
+  // gap between heartbeats to one throttle sleep + one fetch (~31s), well under the heartbeat
+  // timeout, so a slow-but-alive lane is no longer killed mid-flight (and a genuinely stalled one
+  // is still detected promptly).
+  const beat = (phase: string, end: string): void => {
+    Context.current().heartbeat({ laneIndex, phase, window: end })
+  }
+
   for (const items of groups) {
     const { start, end, isLatest } = items[0].window
     const unscoped = items.filter((i) => !i.name.startsWith('@'))
@@ -397,6 +407,7 @@ async function processLast30dWindowPlans(
         .slice(i, i + 128)
         .filter((b) => results.get(b.purl)?.status !== 'error')
       if (batch.length === 0) continue
+      beat('bulk', end)
       await sleep(downloadSleepMs())
       const result = await fetchBulkPointRange(
         batch.map((b) => b.name),
@@ -443,6 +454,7 @@ async function processLast30dWindowPlans(
       // Skip names already known bad (404'd in an earlier, more recent window) so a
       // bogus package isn't re-fetched once per historical window.
       if (results.get(s.purl)?.status === 'error') continue
+      beat('scoped', end)
       await sleep(downloadSleepMs())
       const result = await fetchPointRange(s.name, start, end, dispatcher)
       if (isFetchError(result)) {
@@ -475,9 +487,10 @@ async function processLast30dWindowPlans(
       await settleWindow(s.purl)
     }
 
-    // Liveness signal after each window so a stalled lane is detected promptly. Combined with
-    // the per-round window cap, a retry resumes cheaply — already-stored windows are skipped.
-    Context.current().heartbeat({ laneIndex, window: end })
+    // Window done. The per-fetch beats above already keep the lane live mid-window; this marks
+    // the window boundary. Combined with the per-round window cap, a retry resumes cheaply —
+    // already-stored windows are skipped.
+    beat('window-done', end)
   }
 }
 
