@@ -11,9 +11,9 @@ path_computed AS (
   SELECT
     pm.purl,
     CASE pvp.ProjectType
-      WHEN 'GITHUB'    THEN 'github.com'
-      WHEN 'GITLAB'    THEN 'gitlab.com'
-      WHEN 'BITBUCKET' THEN 'bitbucket.org'
+      WHEN 'GITHUB'    THEN 'github'
+      WHEN 'GITLAB'    THEN 'gitlab'
+      WHEN 'BITBUCKET' THEN 'bitbucket'
     END AS host,
     CASE pvp.ProjectType
       WHEN 'GITHUB' THEN LOWER(
@@ -40,7 +40,7 @@ path_computed AS (
 )
 SELECT
   purl,
-  CONCAT('https://', host, '/', path) AS canonical_url,
+  CONCAT('https://', CASE host WHEN 'github' THEN 'github.com' WHEN 'gitlab' THEN 'gitlab.com' WHEN 'bitbucket' THEN 'bitbucket.org' END, '/', path) AS canonical_url,
   confidence
 FROM path_computed
 WHERE REGEXP_CONTAINS(path, r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._/-]+$')

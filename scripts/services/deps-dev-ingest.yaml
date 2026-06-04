@@ -13,7 +13,7 @@ services:
   deps-dev-ingest:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run start:deps-dev-ingest'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
@@ -30,7 +30,7 @@ services:
   deps-dev-ingest-dev:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run dev:deps-dev-ingest'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'

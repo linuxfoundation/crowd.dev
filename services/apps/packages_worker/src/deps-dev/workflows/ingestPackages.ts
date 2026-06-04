@@ -94,7 +94,7 @@ export async function ingestPackages(opts: {
   ecosystems?: string[]
   reuseExports?: boolean
   exportName?: string
-}): Promise<void> {
+}): Promise<{ rowCountBq: number }> {
   const systems = toSystemsFilter(opts.ecosystems)
   const sql =
     opts.syncMode === 'full'
@@ -122,7 +122,7 @@ export async function ingestPackages(opts: {
       tableNames: [],
       isFinal: true,
     })
-    return
+    return { rowCountBq: exportResult.rowCount }
   }
 
   const totalRows = rowCounts.reduce((a, b) => a + b, 0)
@@ -170,4 +170,5 @@ export async function ingestPackages(opts: {
       }
     }
   }
+  return { rowCountBq: exportResult.rowCount }
 }

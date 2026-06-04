@@ -1,39 +1,73 @@
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-import { getServiceChildLogger } from '@crowd/logging'
 
 import { LightRepoResult } from './types'
 
-const log = getServiceChildLogger('github-repos-enricher:update')
-
-export async function updateEnrichedRepos(
+export async function bulkUpdateEnrichedRepos(
   qx: QueryExecutor,
   rows: LightRepoResult[],
 ): Promise<void> {
   if (rows.length === 0) return
 
-  for (const r of rows) {
-    await qx.result(
-      `UPDATE repos SET
-        host             = COALESCE(host, $(host)),
-        owner            = COALESCE(owner, $(owner)),
-        name             = COALESCE(name, $(name)),
-        description      = $(description),
-        primary_language = $(primaryLanguage),
-        topics           = $(topics)::text[],
-        stars            = $(stars),
-        forks            = $(forks),
-        watchers         = $(watchers),
-        open_issues      = $(openIssues),
-        last_commit_at   = $(lastCommitAt)::timestamptz,
-        archived         = $(archived),
-        disabled         = $(disabled),
-        is_fork          = $(isFork),
-        created_at       = COALESCE(created_at, $(createdAt)::timestamptz),
-        last_synced_at   = NOW()
-       WHERE url = $(url)`,
-      r,
-    )
-  }
+  // Single round-trip: unpack rows from JSON, update all in one query.
+  // NULLIF handles empty strings from JSON serialisation of null timestamps.
+  // Nullable columns (stars, forks, etc.) stay null when GitHub returns nothing.
+  await qx.result(
+    `
+    UPDATE repos AS r
+    SET
+      description      = v.description,
+      primary_language = v.primary_language,
+      topics           = v.topics,
+      stars            = v.stars::int,
+      forks            = v.forks::int,
+      watchers         = v.watchers::int,
+      open_issues      = v.open_issues::int,
+      last_commit_at   = NULLIF(v.last_commit_at, '')::timestamptz,
+      archived         = v.archived::bool,
+      disabled         = v.disabled::bool,
+      is_fork          = v.is_fork::bool,
+      host             = COALESCE(r.host,       v.host),
+      owner            = COALESCE(r.owner,      v.owner),
+      name             = COALESCE(r.name,       v.name),
+      created_at       = COALESCE(r.created_at, NULLIF(v.created_at, '')::timestamptz),
+      last_synced_at   = NOW()
+    FROM (
+      SELECT
+        j->>'url'                                             AS url,
+        j->>'description'                                     AS description,
+        j->>'primaryLanguage'                                 AS primary_language,
+        ARRAY(SELECT jsonb_array_elements_text(j->'topics')) AS topics,
+        j->>'stars'                                           AS stars,
+        j->>'forks'                                           AS forks,
+        j->>'watchers'                                        AS watchers,
+        j->>'openIssues'                                      AS open_issues,
+        j->>'lastCommitAt'                                    AS last_commit_at,
+        j->>'archived'                                        AS archived,
+        j->>'disabled'                                        AS disabled,
+        j->>'isFork'                                          AS is_fork,
+        j->>'host'                                            AS host,
+        j->>'owner'                                           AS owner,
+        j->>'name'                                            AS name,
+        j->>'createdAt'                                       AS created_at
+      FROM jsonb_array_elements($1::jsonb) j
+    ) v
+    WHERE r.url = v.url
+    `,
+    [JSON.stringify(rows)],
+  )
+}
 
-  log.debug({ count: rows.length }, 'Updated enriched repos')
+export async function markReposSkipped(qx: QueryExecutor, urls: string[]): Promise<void> {
+  if (urls.length === 0) return
+
+  await qx.result(
+    `
+    UPDATE repos
+    SET
+      last_synced_at  = NOW(),
+      skip_enrichment = true
+    WHERE url = ANY($1::text[])
+    `,
+    [urls],
+  )
 }

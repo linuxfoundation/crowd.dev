@@ -14,7 +14,8 @@ The oss-packages domain is being built inside CDP as a new, independent capabili
 | ---------------------------------------------- | --------------------------------------------------- |
 | Database placement                             | decided                                             |
 | Worker architecture                            | decided                                             |
-| Universe source and critical-package selection | decided (formula is a placeholder)                  |
+| Universe source and critical-package selection | decided                                             |
+| Criticality scoring methodology                | proposed (weights tunable)                                          |
 | Write semantics across sub-workers             | decided                                             |
 | Package → repository provenance                | decided                                             |
 | OSV as canonical security source               | decided                                             |
@@ -82,11 +83,137 @@ Tier 2 enriches a critical slice of the npm and Maven ecosystems — not the ful
 
 We use the [deps.dev BigQuery public datasets](https://deps.dev) — specifically `PackageVersionsLatest`, `DependentsLatest`, `PackageVersionToProjectLatest`, and `ProjectsLatest` — filtered to `System IN ('NPM', 'MAVEN')` as the universe input. The BigQuery data is exported to Parquet files and imported into `packages_universe` on a weekly cadence aligned with deps.dev's own refresh interval. The first run is a one-time full backfill; subsequent weekly imports only pull rows whose deps.dev snapshot date has advanced since the previous import, so the export size and write volume are scoped to actual diffs rather than the full universe. A scoring + ranking job then promotes the top-N per ecosystem by setting `is_critical = true` and copying `criticality_score` onto the full `packages` table.
 
-The current scoring formula and per-ecosystem critical-package quotas are **not yet finalized** — both are still under discussion. The ranking function takes `critical_top_n_by_ecosystem` as a JSONB parameter and weights as numeric inputs, so thresholds and formula coefficients can be tuned at call time without a schema change.
+The scoring formula, per-ecosystem critical-package quotas, graph-signal inputs, and spotlight-override mechanism are defined in §Criticality scoring methodology below. The ranking function takes `critical_top_n_by_ecosystem` as a JSONB parameter and weights as numeric inputs, so thresholds and formula coefficients can be tuned at call time without a schema change.
 
 The BigQuery free tier is approximately 1 TiB/month. Column projection and `System` filtering are mandatory on every query; full-table scans will exhaust the quota.
 
 **Decided**: 2026-05-26
+
+---
+
+### Criticality scoring methodology
+
+The §Universe source section above establishes that `packages_universe` is the Tier 3 ranking workspace and that `rank_packages_universe()` produces the criticality scores. This section locks in **what goes into the score** — replacing the placeholder formula (`X * downloadsCount + Y * dependentCount`) with a defensible methodology that captures load-bearing upstream packages (the left-pad / XZ pattern), normalizes across ecosystems, and supports manual overrides for known-critical primitives.
+
+This is treated as a brand-new workstream: no reuse or extension of any existing in-flight criticality code. All code lives inside `services/apps/packages_worker/src/criticality/` following the §Worker architecture pattern (`activities.ts`, `workflows.ts`, `schedule.ts`, queries co-located in the same directory). No additions to `services/libs/data-access-layer` — consistent with how other sub-workers like `osv` and `enricher` keep DB access local to the worker.
+
+#### Inputs
+
+Five signals, all stored on `packages_universe`:
+
+| Signal                       | Existing? | Source                                                                  |
+| ---------------------------- | --------- | ----------------------------------------------------------------------- |
+| `downloads_last_30d`         | yes       | weekly downloads ingestion (registry APIs)                              |
+| `dependent_packages_count`   | yes       | deps.dev `DependentsLatest`                                             |
+| `dependent_repos_count`      | yes       | derived in Postgres from `package_repos`                                |
+| `transitive_dependent_count` | **new**   | computed in the criticality sub-worker (see Implementation note below) |
+| `centrality_score`           | **new**   | computed in the criticality sub-worker (PageRank, see below)            |
+
+Direct dependent counts capture popularity. Transitive dependent count and centrality capture **blast radius** — load-bearing upstream packages with few direct dependents but massive indirect reach (the left-pad / XZ class that direct counts alone miss).
+
+PageRank centrality is the primary blast-radius signal; transitive dependent count is stored as a sanity check / floor, not as an equal-weight input. The two are correlated — PageRank is a weighted refinement of transitive count, where a package's score depends recursively on the importance of who depends on it. Blending them as independent signals would double-count blast radius. Both columns are stored so weights can be tuned without rerunning the graph job.
+
+#### Scoring formula
+
+Per-ecosystem percentile-rank of each log-transformed signal, then weighted blend:
+
+```
+score =  w_downloads   * pct_rank( LN(1 + downloads_last_30d)         )   within ecosystem
+       + w_dep_pkgs    * pct_rank( LN(1 + dependent_packages_count)   )   within ecosystem
+       + w_dep_repos   * pct_rank( LN(1 + dependent_repos_count)      )   within ecosystem
+       + w_transitive  * pct_rank( LN(1 + transitive_dependent_count) )   within ecosystem
+       + w_centrality  * pct_rank( centrality_score                   )   within ecosystem
+```
+
+Weights sum to 1.0 → score ∈ `[0, 1]`. Centrality skips the `LN()` (PageRank is already in a small bounded range) but still passes through `pct_rank` so every signal lands on the same percentile scale. Starting weight bias: centrality dominant (PageRank is the primary blast-radius signal), transitive count low (kept as a sanity floor — see Inputs note on double-counting), direct dependents and downloads balanced as secondary popularity signals. All weights are call-time numeric parameters to `rank_packages_universe()` — tunable without schema or code changes.
+
+**Suggested starting weights** (use as the first call, then iterate):
+
+| Weight          | Value | Signal               | Rationale                                              |
+| --------------- | ----- | -------------------- | ------------------------------------------------------ |
+| `w_centrality`  | 0.40  | PageRank             | Primary blast-radius signal                            |
+| `w_transitive`  | 0.10  | Transitive dependents | Sanity floor; low to avoid double-counting centrality  |
+| `w_dep_pkgs`    | 0.20  | Direct dependent packages | Popularity within the package graph                |
+| `w_dep_repos`   | 0.15  | Direct dependent repos | Popularity across consumer codebases                  |
+| `w_downloads`   | 0.15  | 30-day downloads     | Adoption signal, lighter weight (noisy for new packages) |
+
+These are a starting point, not a recommendation we've validated. They will be revised once the first ranked list is observable and stakeholders review which packages land in / near Tier 1 — particularly for smaller ecosystems where the percentile distribution is less stable.
+
+**Why percentile-rank, not min-max:** even after log-transform, heavy-tailed signals retain extreme outliers that bend the min-max scale. Example — downloads `[10, 100, 1000, 10000, 1B]` log-transformed are `[2.4, 4.6, 6.9, 9.2, 20.7]`. Min-max on those gives `[0.00, 0.12, 0.25, 0.37, 1.00]` (four out of five squeezed below 0.4); percentile-rank gives uniform `[0.00, 0.25, 0.50, 0.75, 1.00]`, stable to outliers, and `0.5` means "median within ecosystem" regardless of which ecosystem.
+
+**Why per-ecosystem:** the percentile uses `PARTITION BY ecosystem` so ecosystems are never compared on the same absolute scale. A top-percentile crates package is strategically important; without per-ecosystem partitioning it would be buried by npm's volume.
+
+#### Per-ecosystem tier budgets
+
+`rank_packages_universe()` already takes `critical_top_n_by_ecosystem` as a JSONB parameter that ranks within each ecosystem and cuts at top N.
+
+Allocation policy is **floor + ceiling + judgment**: every onboarded ecosystem gets a minimum (the floor — guarantees representation regardless of size), no single ecosystem exceeds a percentage of the total (the ceiling — prevents npm from swallowing the list). Illustrative values for a 700k Tier 2 budget:
+
+| Ecosystem  | Tier 2 budget | Tier 1 budget |
+| ---------- | ------------- | ------------- |
+| npm        | 300k          | 50k           |
+| Maven      | 150k          | 25k           |
+| PyPI       | 100k          | 15k           |
+| crates     | 75k           | 5k            |
+| Go modules | 75k           | 5k            |
+| **Total**  | **700k**      | **100k**      |
+
+Specific numbers are a stakeholder decision; the rationale per ecosystem must live alongside the JSONB config so the "why these values?" question is answerable later. Avoid proportional-to-ecosystem-size — it amplifies npm dominance, the opposite of what we want.
+
+#### Spotlight overrides
+
+A new `package_criticality_spotlight` table keyed on `(ecosystem, namespace, name)` carries required `rationale`, `added_by`, `added_at` columns. Rows in this table are flagged `is_critical = TRUE` regardless of computed score. Applied **after** ranking inside the criticality workflow so spotlights are not overwritten on the next pass. Rationale-per-row is deliberate: the safety net stays auditable as it grows.
+
+The spotlight exists because the methodology has a known structural blind spot — packages that are critical but rarely depended on in the observable graph (vendored code, build-time-only tools, dependencies pulled outside the registry). No combination of graph signals will surface these; manual curation is the only path.
+
+#### Implementation note: in-memory graph computation vs deps.dev ingestion
+
+The in-memory build of `transitive_dependent_count` and `centrality_score` is a **direct consequence of the §Database placement and §Worker architecture decisions to store only direct dependencies on `package_dependencies`**. Materializing the full transitive closure would be ~1.5B rows; storing might not be viable at this point, so transitive signals must be computed at scoring time. The chosen approach: stream direct edges into memory per ecosystem (~10M nodes / ~100M edges for npm fits in ~2 GB RAM on a single worker box), compute transitive counts via reverse-BFS and PageRank centrality iteratively (damping 0.85, ~100 iterations, converges on `1e-6`), bulk-merge results into `packages_universe`. No graph DB, no distributed framework.
+
+**Before committing to this implementation, confirm whether deps.dev already provides these signals so we can ingest instead of compute:**
+
+- **Transitive dependent count** — `DependentsLatest` is the table we already source `dependent_packages_count` from. Verify whether its dependent counts are direct-only or include indirect dependents. If indirect counts are included, the column can be sourced in the existing universe-import job (consistent with how the other dependent counts are already populated) and the in-memory transitive computation is unnecessary.
+- **Centrality / importance score** — deps.dev does not appear to expose a PageRank-style score in its current schema.
+
+If both signals are ingestible, the criticality sub-worker reduces to "call `rank_packages_universe()` with the right weights" — much simpler. If only one is ingestible, the in-memory job still runs but does less work. Either way the §deps.dev coverage and gaps table below must be updated to record what's sourced from where.
+
+#### Worker layout
+
+A new directory `services/apps/packages_worker/src/criticality/` with the standard sub-worker layout (`activities.ts`, `workflows.ts`, `schedule.ts`, queries co-located), and `src/bin/criticality-worker.ts` as its entrypoint. Weekly cadence, one workflow per ecosystem, `ScheduleOverlapPolicy.SKIP`. Workflow steps: load graph snapshot → compute transitive counts and PageRank (or skip if ingested from deps.dev) → merge results into `packages_universe` → call `rank_packages_universe()` → apply spotlight overrides → propagate `criticality_score` onto `packages`.
+
+#### High-level flow
+
+```mermaid
+flowchart TD
+    A[package_dependencies<br/>direct edges, partitioned by depends_on_id] -->|stream filtered to<br/>direct kind + latest version| B[Load graph snapshot<br/>per ecosystem]
+    B --> C[Build in-memory<br/>reverse adjacency]
+    C --> D[Transitive dependent count<br/>reverse-BFS per node<br/>OR ingest from deps.dev]
+    C --> E[PageRank centrality<br/>iterative, damping 0.85]
+    D --> F[Merge into<br/>packages_universe]
+    E --> F
+    G[Downloads, direct dependent<br/>packages/repos<br/>existing inputs] --> F
+    F --> H[rank_packages_universe<br/>1. Percentile-rank per ecosystem<br/>2. Weighted blend<br/>3. Per-ecosystem top-N cut]
+    H --> I[Apply spotlight overrides<br/>force is_critical = TRUE]
+    I --> J[Propagate criticality_score<br/>to packages table]
+
+    style D fill:#e1f5ff
+    style E fill:#e1f5ff
+    style I fill:#fff4e1
+```
+
+Inputs in blue are new graph-derived signals; the spotlight step in orange is the deliberate safety net for the methodology's structural blind spot.
+
+#### Additional Decisions
+
+- **Edge filter**: `dependency_kind = 'direct'` only — exclude `dev` and `peer` (they don't represent runtime blast radius).
+- **Version resolution**: each package's latest non-yanked, non-prerelease version (uses existing `versions.is_latest` / `is_yanked` / `is_prerelease`).
+- **Graph scope**: per-ecosystem; don't merge ecosystems into a single graph. Cross-ecosystem edges are rare and noisy.
+- **Score range**: `[0, 1]` (weights sum to 1.0). Score interpretation: weighted average percentile across signals within ecosystem. Tier membership is determined by rank, not by score threshold.
+- **Cadence**: weekly, aligned with the existing universe refresh.
+
+**Weights are expected to change.** The starting weight vector (centrality heaviest, transitive kept low as a sanity floor, downloads and direct dependents lighter) is a judgment-based initial bias, not a validated configuration. Once the ranked list is observable, weights will be tuned based on stakeholder review of which packages land where — particularly at the Tier 1 boundary and for smaller ecosystems. Because weights are call-time numeric parameters to `rank_packages_universe()`, retuning does not require a schema change, code change, or redeploy. Expect multiple iterations before weights are locked in.
+
+**Status**: proposed — 2026-05-29. Formula shape, inputs, tier-budget policy, and spotlight table are agreed. Open: (1) whether transitive counts can be sourced from deps.dev before in-memory PageRank work begins; (2) final weight values, which will be tuned against an observable ranked list.
 
 ---
 
@@ -128,8 +255,8 @@ The `packages` table retains `declared_repository_url` (raw) and `repository_url
 **Population order**:
 
 1. Registry workers (npm, Maven) write `packages` and `package_repos` rows.
-2. The GitHub enricher polls `repos` for rows where `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_REPO_UPDATE_INTERVAL_HOURS`.
-3. The enricher updates those rows with full metadata and sets `last_synced_at`.
+2. The GitHub enricher polls `repos` for rows where `skip_enrichment = false` and `last_synced_at IS NULL` (never enriched) or `last_synced_at < NOW() - INTERVAL '<configurable hours>'` (stale). The re-sync interval is controlled via `ENRICHER_REPO_UPDATE_INTERVAL_HOURS`.
+3. The enricher updates those rows with full metadata and sets `last_synced_at`. Permanently unreachable repos (deleted, private, IP-allowlisted) are marked `skip_enrichment = true` and not retried.
 4. Subsequent enricher runs pick up new repos added since the last pass.
 
 `repos` rows are current-state only — no historical snapshots; each enricher run overwrites previous metadata values.
@@ -272,11 +399,12 @@ A standalone Java app parsing the Maven Central Lucene index is being built in p
 
 #### GitHub
 
-**Strategy**: token-pooled GraphQL via the existing GitHub App, batches of 100 repos.
+**Strategy**: streaming worker pool via GitHub App installation tokens, bulk DB writes.
 
-The existing `github-repos-enricher` worker (`services/apps/packages_worker/src/enricher/`) is the template. Token sourcing uses the GitHub App already integrated through Nango — hundreds of installation tokens are available there, so no PATs are needed. Key parameters:
+The `github-repos-enricher` worker (`services/apps/packages_worker/src/enricher/`) enumerates all GitHub App installations at startup and uses their tokens as a rotating rate-limit pool. Key parameters:
 
-- **Nango GitHub App tokens** in rotation for rate-limit headroom (not PATs — see open questions).
+- **Streaming concurrency**: each worker slot independently pulls the next URL from a cursor-backed DB queue — a slow request blocks only that slot. Bulk writes flush every 500 results.
+- **Permanent failures** (NOT_FOUND, IP allowlist, AUTH): marked with `skip_enrichment = true` and excluded from future passes.
 - GraphQL `repository(owner, name)` query per repo — one call per repo, not batched.
 - Writes `primary_language`, `topics`, `watchers`, `last_commit_at`, `archived`, `disabled`, `is_fork`, `created_at` to `repos`. Does not provide Scorecard — that comes from deps.dev `ProjectsLatest`.
 
@@ -443,6 +571,7 @@ A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-wi
 ## Open questions / in-flight
 
 - **Sonatype Central Stats API access** — not confirmed as of 2026-05-27. If unavailable by day 5, Maven download counts will be absent from the week-2 demo (`downloads_last_month` NULL for Maven rows; disclose to stakeholders).
+- **deps.dev coverage for transitive dependents and centrality** — see §Criticality scoring methodology. Verify whether `DependentsLatest` includes indirect dependents before building the in-memory PageRank/BFS job; cheaper to ingest than to compute if it's already there.
 - **pg_partman + pg_cron setup** — must be confirmed active in the OCI environment before download workers start; `downloads_daily` and `downloads_last_30d` inserts will fail if monthly partitions are not pre-created.
 
 ---
@@ -452,7 +581,7 @@ A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-wi
 - 2026-05-27 — initial record
 - 2026-05-28 — folded standalone ADR-0003 (`has_critical_vulnerability` semantics), ADR-0005 (CVSS scoring strategy), and ADR-0006 (`advisory_affected_ranges` uniqueness scope) into this living record; standalone files removed. Resolved the prior open question on `has_critical_vulnerability` (option b + MAL- override). ADR-0004 (standalone-bin vs Temporal) was removed before merging — the worker architecture decision in this ADR supersedes it.
 - 2026-05-29 — clarified `packages_universe` import semantics (one-time backfill + weekly snapshot-diff incrementals; the ranking job updates score/flag columns in place). Added §Source of truth: deps.dev backfill vs registries / OSV with lifecycle ownership rules and the agreed `package_source_log` provenance table (`(package_id, source)` PK; `columns` array tracks `table.column` paths each source writes).
-
+- 2026-05-29 — added §Criticality scoring methodology (graph signals — transitive dependent count and PageRank centrality; per-ecosystem percentile-rank formula in `[0, 1]`; floor + ceiling tier budget policy; `package_criticality_spotlight` table).
 ---
 
 ## Note on promotion to production
