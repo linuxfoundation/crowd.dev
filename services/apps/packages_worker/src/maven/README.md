@@ -81,8 +81,8 @@ hitRate }`; the critical batch logs it once per batch under message **`POM cache
 
 The matrix below describes the **critical** path (full POM + parent resolution).
 Non-critical packages are DB-only: they receive just the universe-stat columns
-(`criticality_score`, `dependent_packages_count`, `dependent_repos_count`,
-`downloads_last_month`) plus `purl`/`namespace`/`name`/`registry_url`/`last_synced_at`;
+(`criticality_score`, `dependent_packages_count`, `dependent_repos_count`)
+plus `purl`/`namespace`/`name`/`registry_url`/`last_synced_at`;
 all POM-derived columns stay null for them.
 
 ### packages

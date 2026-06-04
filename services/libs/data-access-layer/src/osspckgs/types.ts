@@ -33,7 +33,6 @@ export type IDbPackageUpsert = {
   criticalityScore?: number | null
   dependentPackagesCount?: number | null
   dependentReposCount?: number | null
-  downloadsLastMonth?: bigint | null
   registryUrl?: string | null
   repositoryUrl?: string | null
 }
