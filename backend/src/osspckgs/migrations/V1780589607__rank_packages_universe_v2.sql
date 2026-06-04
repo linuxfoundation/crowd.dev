@@ -16,12 +16,6 @@
 --   2.5 Spotlight — force is_critical = TRUE for rows in package_criticality_spotlight
 --   3. Propagate — copy impact + is_critical onto the packages table
 
--- Graph-derived scoring signals (ADR-0001 §Criticality scoring methodology).
--- Populated by the criticality worker; NULL until first pass.
-ALTER TABLE packages_universe
-    ADD COLUMN IF NOT EXISTS transitive_dependent_count bigint,
-    ADD COLUMN IF NOT EXISTS centrality_score           numeric(10, 8);
-
 ALTER TABLE packages_universe
     RENAME COLUMN criticality_score TO impact;
 
