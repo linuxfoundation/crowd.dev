@@ -1,7 +1,8 @@
 import { getServiceLogger } from '@crowd/logging'
 
-import { getEnricherConfig } from '../config'
+import { getEnricherConfig, getGithubAppConfig } from '../config'
 import { getPackagesDb } from '../db'
+import { fetchRateLimitDiagnostics, resolveInstallations } from '../enricher/githubAppAuth'
 import { runEnrichmentLoop } from '../enricher/runEnrichmentLoop'
 
 const log = getServiceLogger()
@@ -20,23 +21,32 @@ process.on('SIGTERM', shutdown)
 const main = async () => {
   log.info('github-repos-enricher starting...')
 
-  const config = getEnricherConfig()
+  const enricherConfig = getEnricherConfig()
+  const appConfig = getGithubAppConfig()
 
-  if (config.tokens.length === 0) {
-    log.error('ENRICHER_GITHUB_TOKENS is required (comma-separated PATs)')
+  const installationIds = await resolveInstallations(appConfig)
+
+  if (installationIds.length === 0) {
+    log.error('No GitHub App installations found — cannot build token pool')
     process.exit(1)
   }
+
+  await fetchRateLimitDiagnostics(appConfig.appId, appConfig.privateKeyPem, installationIds)
+
+  log.info(
+    {
+      installations: installationIds.length,
+      concurrency: enricherConfig.concurrency,
+      fetchTimeoutMs: enricherConfig.fetchTimeoutMs,
+    },
+    'Starting enrichment loop',
+  )
 
   const qx = await getPackagesDb()
   await qx.selectOne('SELECT 1')
   log.info('Connected to packages-db.')
 
-  log.info(
-    { tokens: config.tokens.length, batchSize: config.batchSize },
-    'Starting enrichment loop',
-  )
-
-  await runEnrichmentLoop(qx, config, () => shuttingDown)
+  await runEnrichmentLoop(qx, installationIds, appConfig, enricherConfig, () => shuttingDown)
 
   log.info('github-repos-enricher stopped.')
   process.exit(0)
