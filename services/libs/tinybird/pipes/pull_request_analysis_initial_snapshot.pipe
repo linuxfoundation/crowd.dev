@@ -24,8 +24,16 @@ SQL >
             type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created'
         )
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
 
 NODE pull_request_first_assigned
@@ -37,8 +45,16 @@ SQL >
         snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
         AND type IN ('pull_request-assigned', 'merge_request-assigned')
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
     ORDER BY assignedAt DESC
@@ -53,8 +69,16 @@ SQL >
         snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
         AND (type = 'pull_request-review-requested' OR type = 'merge_request-review-requested')
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
@@ -77,8 +101,16 @@ SQL >
             OR type = 'patchset_approval-created'
         )
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
@@ -100,8 +132,16 @@ SQL >
             OR type = 'patchset_approval-created'
         )
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
@@ -122,8 +162,16 @@ SQL >
             OR type = 'changeset-abandoned'
         )
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
@@ -142,8 +190,16 @@ SQL >
         snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
         AND (type = 'pull_request-merged' OR type = 'merge_request-merged' OR type = 'changeset-merged')
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
@@ -169,8 +225,16 @@ SQL >
             OR type = 'changeset-abandoned'
         )
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
@@ -187,8 +251,16 @@ SQL >
         AND type = 'patchset-created'
         AND sourceParentId != ''
         {% if defined(bucket_id) %}
-            AND cityHash64(segmentId) % {{UInt8(num_buckets, 5, description="Total number of buckets", required=False)}}
-            = {{UInt8(bucket_id, 0, description="Bucket index to process (0 to num_buckets-1)", required=False)}}
+            AND cityHash64(segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
         {% end %}
     GROUP BY sourceParentId
 
