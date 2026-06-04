@@ -9,17 +9,15 @@ import { CentralityInput, CentralityResult } from './types'
 
 const log = getServiceChildLogger('criticality')
 
-function getConfig() {
-  return {
-    damping:     Number(process.env.CRITICALITY_PAGERANK_DAMPING)                  || 0.85,
-    maxIter:     parseInt(process.env.CRITICALITY_PAGERANK_MAX_ITER   ?? '', 10)   || 100,
-    convergence: Number(process.env.CRITICALITY_PAGERANK_CONVERGENCE)              || 1e-6,
-  }
-}
+const PAGERANK_DAMPING     = 0.85
+const PAGERANK_MAX_ITER    = 100
+const PAGERANK_CONVERGENCE = 1e-6
 
 export async function criticalityComputePageRank(input: CentralityInput): Promise<CentralityResult> {
   const { ecosystem } = input
-  const { damping, maxIter, convergence } = getConfig()
+  const damping     = PAGERANK_DAMPING
+  const maxIter     = PAGERANK_MAX_ITER
+  const convergence = PAGERANK_CONVERGENCE
   const start = Date.now()
   const qx = await getPackagesDb()
 
@@ -40,15 +38,18 @@ export async function criticalityComputePageRank(input: CentralityInput): Promis
   log.info({ ecosystem, iterations, nodeCount: graph.N }, 'PageRank converged')
 
   // ── Step 4: merge centrality_score into packages_universe
-  const batch = Array.from(graph.nodeIndex.entries()).map(([packageId, idx]) => ({
-    packageId,
-    centralityScore: scores[idx],
-  }))
-
+  // Stream map entries into fixed-size chunks — O(CHUNK) extra memory, not O(N).
   const CHUNK = 10_000
-  for (let i = 0; i < batch.length; i += CHUNK) {
-    await mergeCentralityScores(qx, batch.slice(i, i + CHUNK))
+  let buffer: Array<{ packageId: number; centralityScore: number }> = []
+
+  for (const [packageId, idx] of graph.nodeIndex) {
+    buffer.push({ packageId, centralityScore: scores[idx] })
+    if (buffer.length === CHUNK) {
+      await mergeCentralityScores(qx, buffer)
+      buffer = []
+    }
   }
+  if (buffer.length > 0) await mergeCentralityScores(qx, buffer)
 
   return { ecosystem, nodeCount: graph.N, edgeCount, iterations, durationMs: Date.now() - start }
 }

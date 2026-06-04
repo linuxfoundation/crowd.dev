@@ -5,7 +5,6 @@ export interface DirectEdge {
   dependsOnId: number
 }
 
-
 // Unique direct package→package edges for the ecosystem.
 // DISTINCT deduplicates multi-version rows; parallel hint scoped to the transaction.
 export async function loadDirectEdges(qx: QueryExecutor, ecosystem: string): Promise<DirectEdge[]> {
