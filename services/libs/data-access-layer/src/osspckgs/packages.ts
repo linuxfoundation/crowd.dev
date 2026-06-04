@@ -155,7 +155,7 @@ export async function touchPackageSyncedAt(
       criticalityScore: metrics.criticalityScore ?? null,
       dependentPackagesCount: metrics.dependentPackagesCount ?? null,
       dependentReposCount: metrics.dependentReposCount ?? null,
-      },
+    },
   )
 }
 
