@@ -10,10 +10,10 @@ x-env-args: &env-args
   SUPPRESS_NO_CONFIG_WARNING: 'true'
 
 services:
-  packages-worker:
+  packages:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run start:packages-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
@@ -27,10 +27,10 @@ services:
     networks:
       - crowd-bridge
 
-  packages-worker-dev:
+  packages-dev:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run dev:packages-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
@@ -41,7 +41,7 @@ services:
       - ../../backend/.env.override.composed
     environment:
       <<: *env-args
-    hostname: packages-worker
+    hostname: packages
     networks:
       - crowd-bridge
     volumes:
