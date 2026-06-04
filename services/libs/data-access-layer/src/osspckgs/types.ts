@@ -59,6 +59,7 @@ export type IDbPackageMaintainerUpsert = {
 export type IDbVersionUpsert = {
   packageId: number
   ecosystem: string
+  namespace: string | null
   name: string
   number: string
   isLatest: boolean

@@ -283,6 +283,7 @@ async function processCriticalPackage(
         allVersions.map((v) => ({
           packageId,
           ecosystem: 'maven',
+          namespace: groupId,
           name: artifactId,
           number: v,
           isLatest: v === metadata.releaseVersion,
@@ -377,6 +378,18 @@ async function processPackages(
 
   if (packages.length === 0)
     return { processed: 0, skipped: 0, error: 0, unchanged: 0, hopLimitReached: 0 }
+
+  // Cluster the batch by namespace so artifacts sharing a parent POM are processed
+  // adjacently — this is what makes the parent-POM cache effective. The criticality
+  // ordering only decides *which* packages are in the batch (via the SQL LIMIT);
+  // it does not group same-namespace siblings, so we reorder here. Only matters on
+  // the critical path (the non-critical path issues no POM/parent HTTP).
+  if (isCritical) {
+    packages.sort(
+      (a, b) =>
+        (a.namespace ?? '').localeCompare(b.namespace ?? '') || a.name.localeCompare(b.name),
+    )
+  }
 
   log.info({ count: packages.length, isCritical }, 'Batch started')
 
