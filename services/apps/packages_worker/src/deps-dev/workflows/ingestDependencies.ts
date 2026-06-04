@@ -207,7 +207,6 @@ export async function ingestDependencies(opts: {
   }
 
   try {
-    const totalRows = rowCounts.reduce((a, b) => a + b, 0)
     const filesPerChunk =
       totalRows > 0
         ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
