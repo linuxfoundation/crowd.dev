@@ -81,7 +81,8 @@ async function fetchWatermarks(): Promise<Record<string, string>> {
     ORDER BY job_kind, snapshot_at DESC
   `)
   const result: Record<string, string> = {}
-  for (const row of rows) result[row.job_kind as string] = new Date(row.snapshot_at as string).toISOString().slice(0, 10)
+  for (const row of rows)
+    result[row.job_kind as string] = new Date(row.snapshot_at as string).toISOString().slice(0, 10)
   return result
 }
 
