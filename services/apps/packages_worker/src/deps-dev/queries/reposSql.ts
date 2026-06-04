@@ -5,9 +5,9 @@ WITH raw AS (
     p.Type AS raw_project_type,
     p.Name AS raw_project_name,
     CASE p.Type
-      WHEN 'GITHUB'    THEN 'github.com'
-      WHEN 'GITLAB'    THEN 'gitlab.com'
-      WHEN 'BITBUCKET' THEN 'bitbucket.org'
+      WHEN 'GITHUB'    THEN 'github'
+      WHEN 'GITLAB'    THEN 'gitlab'
+      WHEN 'BITBUCKET' THEN 'bitbucket'
     END AS host,
     CASE p.Type
       WHEN 'GITHUB' THEN LOWER(
@@ -32,7 +32,7 @@ WITH raw AS (
     AND p.Type IN ('GITHUB', 'GITLAB', 'BITBUCKET')
 )
 SELECT
-  CONCAT('https://', host, '/', path) AS canonical_url,
+  CONCAT('https://', CASE raw_project_type WHEN 'GITHUB' THEN 'github.com' WHEN 'GITLAB' THEN 'gitlab.com' WHEN 'BITBUCKET' THEN 'bitbucket.org' END, '/', path) AS canonical_url,
   host,
   REGEXP_EXTRACT(path, r'^([^/]+)/') AS owner,
   REGEXP_EXTRACT(path, r'^[^/]+/(.+)$') AS name,
