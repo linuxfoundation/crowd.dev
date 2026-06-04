@@ -2,7 +2,6 @@ import crypto from 'crypto'
 
 import {
   MavenPackageToSync,
-  listMavenPackagesByPurls,
   listMavenPackagesToSync,
   logAuditFieldChange,
   replacePackageMaintainers,
@@ -18,7 +17,6 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
 
-import { fetchMavenChanges } from './deltaApi'
 import { MAX_PARENT_HOPS, extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
@@ -269,6 +267,8 @@ async function processCriticalPackage(
         licenses: result.licenses.length > 0 ? result.licenses : null,
         licensesRaw: result.licensesRaw,
         latestVersion: version,
+        versionsCount: metadata.versions.length > 0 ? metadata.versions.length : null,
+        latestReleaseAt: metadata.lastUpdated,
         ingestionSource: 'maven-registry',
         criticalityScore: pkg.criticalityScore,
         dependentPackagesCount: pkg.dependentPackagesCount,
@@ -365,8 +365,7 @@ export async function processBatch(
   return processPackages(qx, config, packages, isCritical, forceFullExtraction)
 }
 
-// Runs a concrete list of packages through the enrichment pipeline. Shared by the
-// universe-polling path (processBatch) and the delta-API path (processApiChangesBatch).
+// Runs a concrete list of packages through the enrichment pipeline.
 async function processPackages(
   qx: QueryExecutor,
   config: MavenConfig,
@@ -434,74 +433,6 @@ async function processPackages(
   }
 
   return counts
-}
-
-// ─── Delta-API batch ──────────────────────────────────────────────────────────
-
-// BatchResult plus delta-feed-specific counters and a fetch/process timing split —
-// handy for the benchmark script and for spotting whether time goes to the feed or
-// to POM extraction. Extra fields are ignored by callers that only need BatchResult.
-export interface DeltaApiBatchResult extends BatchResult {
-  apiChanges: number
-  uniquePackages: number
-  matchedCritical: number
-  fetchMs: number
-  processMs: number
-}
-
-// Pulls the changed artifacts from our delta feed over a rolling [now-lookback, now)
-// window and enriches the critical ones. The window deliberately overlaps the
-// Temporal schedule interval; re-processing is safe because every write is an
-// idempotent upsert. Always forces full extraction — the feed is an explicit
-// "this changed" signal, so we never trust the version-unchanged shortcut here.
-export async function processApiChangesBatch(
-  qx: QueryExecutor,
-  config: MavenConfig,
-): Promise<DeltaApiBatchResult> {
-  const until = new Date()
-  const since = new Date(until.getTime() - config.deltaApi.lookbackMinutes * 60_000)
-
-  const fetchStartedAt = Date.now()
-
-  const changes = await fetchMavenChanges({
-    baseUrl: config.deltaApi.baseUrl,
-    token: config.deltaApi.token,
-    since: since.toISOString(),
-    until: until.toISOString(),
-    pageSize: config.deltaApi.pageSize,
-    includePrerelease: config.deltaApi.includePrerelease,
-  })
-
-  // Collapse to package-level purls (drop the @version) and dedup — the feed
-  // reports one entry per version, but we enrich the package as a whole.
-  const purls = Array.from(new Set(changes.map((c) => `pkg:maven/${c.groupId}/${c.artifactId}`)))
-
-  const packages = await listMavenPackagesByPurls(qx, purls)
-  const fetchMs = Date.now() - fetchStartedAt
-
-  log.info(
-    {
-      changes: changes.length,
-      uniquePackages: purls.length,
-      matchedCritical: packages.length,
-      lookbackMinutes: config.deltaApi.lookbackMinutes,
-      fetchMs,
-    },
-    'Delta-API window fetched',
-  )
-
-  const processStartedAt = Date.now()
-  const counts = await processPackages(qx, config, packages, true, true)
-  const processMs = Date.now() - processStartedAt
-
-  return {
-    ...counts,
-    apiChanges: changes.length,
-    uniquePackages: purls.length,
-    matchedCritical: packages.length,
-    fetchMs,
-    processMs,
-  }
 }
 
 // ─── Phase runner ─────────────────────────────────────────────────────────────

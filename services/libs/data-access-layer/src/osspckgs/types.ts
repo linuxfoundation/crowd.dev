@@ -27,6 +27,8 @@ export type IDbPackageUpsert = {
   licenses: string[] | null
   licensesRaw: string | null
   latestVersion: string | null
+  versionsCount?: number | null
+  latestReleaseAt?: Date | null
   ingestionSource: string
   criticalityScore?: number | null
   dependentPackagesCount?: number | null
