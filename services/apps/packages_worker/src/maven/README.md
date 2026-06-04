@@ -50,13 +50,15 @@ critical packages, where data quality matters.
 
 Parent POMs are shared across many artifacts of the same namespace (`org.apache:apache`,
 `org.springframework.boot:spring-boot-starter-parent`, `com.google.cloud:google-cloud-shared-config`, …).
-Because the queue is ordered by `rank_in_ecosystem`, those siblings are processed close
-together. A module-level, coordinate-keyed in-process cache in `extract.ts` collapses the
-repeated parent fetches into a **single** HTTP request, and also removes the redundant second
-fetch of each artifact's own POM (`extractArtifact` fetches the leaf, then
-`resolveWithInheritance` would fetch it again at depth 0). This is the **single biggest lever
-against Maven Central rate limiting** — and it works _because_ of the namespace clustering, so
-shuffling the batch (which the queue's `rank` ordering produces) would be counter-productive.
+The batch is **selected** by criticality (`rank_in_ecosystem` / `criticality_score` via the SQL
+`LIMIT`), but that ordering does **not** group same-namespace siblings — so before processing,
+`processPackages` re-sorts each critical batch by `(namespace, name)`. That sort is what puts the
+siblings adjacent, so a parent fetched for one is still cached when the next arrives. A
+module-level, coordinate-keyed in-process cache in `extract.ts` then collapses the repeated parent
+fetches into a **single** HTTP request, and also removes the redundant second fetch of each
+artifact's own POM (`extractArtifact` fetches the leaf, then `resolveWithInheritance` would fetch
+it again at depth 0). This is the **single biggest lever against Maven Central rate limiting** — and
+it works _because_ of the namespace sort, so re-shuffling the batch would be counter-productive.
 
 - **Only successful fetches are cached.** `fetchPom` returns `null` for both a real 404 and a
   transient failure (throttle/timeout), so caching `null` would poison the cache — it is never

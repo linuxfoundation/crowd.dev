@@ -35,21 +35,23 @@ export async function upsertVersionsBatch(
        WHERE package_id = $(packageId)::bigint AND number = ANY($(numbers)::text[])
     ),
     ins AS (
-      INSERT INTO versions (package_id, ecosystem, name, number, is_latest, is_prerelease, licenses, last_synced_at)
+      INSERT INTO versions (package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, licenses, last_synced_at)
       SELECT
-        t.package_id, t.ecosystem, t.name, t.number, t.is_latest, t.is_prerelease,
+        t.package_id, t.ecosystem, t.namespace, t.name, t.number, t.is_latest, t.is_prerelease,
         CASE WHEN t.license IS NULL THEN NULL ELSE ARRAY[t.license] END,
         NOW()
       FROM UNNEST(
         $(packageIds)::bigint[],
         $(ecosystems)::text[],
+        $(namespaces)::text[],
         $(names)::text[],
         $(numbers)::text[],
         $(isLatests)::bool[],
         $(isPreleases)::bool[],
         $(licenses)::text[]
-      ) AS t(package_id, ecosystem, name, number, is_latest, is_prerelease, license)
+      ) AS t(package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, license)
       ON CONFLICT (package_id, number) DO UPDATE SET
+        namespace      = COALESCE(EXCLUDED.namespace, versions.namespace),
         is_latest      = EXCLUDED.is_latest,
         is_prerelease  = EXCLUDED.is_prerelease,
         licenses       = COALESCE(EXCLUDED.licenses, versions.licenses),
@@ -68,6 +70,7 @@ export async function upsertVersionsBatch(
       packageId: versions[0].packageId,
       packageIds: versions.map((v) => v.packageId),
       ecosystems: versions.map((v) => v.ecosystem),
+      namespaces: versions.map((v) => v.namespace),
       names: versions.map((v) => v.name),
       numbers: versions.map((v) => v.number),
       isLatests: versions.map((v) => v.isLatest),
