@@ -1,7 +1,8 @@
 export {
   backfillDailyDownloads,
+  backfillLast30dHistory,
   ingestNpmPackages,
-  refreshLast30dDownloads,
+  refreshLatestLast30dDownloads,
 } from '../npm/workflows'
 export {
   bootstrapOsspckgs,

@@ -14,14 +14,18 @@ CREATE TABLE npm_package_state (
   metadata_first_scanned_at         timestamptz NOT NULL DEFAULT now(),
   metadata_last_run_at              timestamptz,
   metadata_run_result               jsonb,        -- { status, attempts, httpStatus?, errorKind?, message? }
-  daily_downloads_last_processed_at timestamptz
+  daily_downloads_last_processed_at timestamptz,
+  daily_downloads_run_result        jsonb         -- { status, httpStatus?, errorKind?, message? }
 );
 
 CREATE TABLE npm_package_universe_state (
-  purl                      text        PRIMARY KEY,
-  downloads_30d_last_run_at timestamptz
+  purl                                text        PRIMARY KEY,
+  downloads_30d_last_run_at           timestamptz,  -- breadth watermark: latest 30d window refreshed
+  downloads_30d_history_backfilled_at timestamptz,  -- depth watermark: NULL until full older history filled
+  downloads_30d_run_result            jsonb         -- { status, httpStatus?, errorKind?, message? }
 );
 CREATE INDEX ON npm_package_universe_state (downloads_30d_last_run_at);
+CREATE INDEX ON npm_package_universe_state (downloads_30d_history_backfilled_at);
 
 -- ============================================================
 -- pg_partman setup for downloads_daily (monthly partitions)

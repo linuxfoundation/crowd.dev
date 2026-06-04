@@ -1,7 +1,12 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../service'
-import { backfillDailyDownloads, ingestNpmPackages, refreshLast30dDownloads } from '../workflows'
+import {
+  backfillDailyDownloads,
+  backfillLast30dHistory,
+  ingestNpmPackages,
+  refreshLatestLast30dDownloads,
+} from '../workflows'
 
 export async function scheduleNpmIngest(): Promise<void> {
   const { temporal } = svc
@@ -75,13 +80,15 @@ export async function scheduleDailyDownloadsBackfill(): Promise<void> {
   }
 }
 
-export async function scheduleLast30dDownloadsRefresh(): Promise<void> {
+// Breadth: refresh the current 30-day window for every package, monthly on the 1st. Fast and
+// mirrored to packages_universe — the product-critical number lands across the whole universe.
+export async function scheduleLatestLast30dRefresh(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')
 
   try {
     await temporal.schedule.create({
-      scheduleId: 'npm-last-30d-downloads-refresh',
+      scheduleId: 'npm-last-30d-latest-refresh',
       spec: {
         cronExpressions: ['0 4 1 * *'],
       },
@@ -91,7 +98,7 @@ export async function scheduleLast30dDownloadsRefresh(): Promise<void> {
       },
       action: {
         type: 'startWorkflow',
-        workflowType: refreshLast30dDownloads,
+        workflowType: refreshLatestLast30dDownloads,
         taskQueue: 'packages-worker',
         workflowExecutionTimeout: '6 hours',
         retry: {
@@ -104,7 +111,45 @@ export async function scheduleLast30dDownloadsRefresh(): Promise<void> {
     })
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info('Schedule npm-last-30d-downloads-refresh already registered.')
+      svc.log.info('Schedule npm-last-30d-latest-refresh already registered.')
+    } else {
+      throw err
+    }
+  }
+}
+
+// Depth: backfill older 30-day history in the background, daily. Independent of the monthly
+// breadth refresh (overlap SKIP), so a long initial backfill never blocks the latest-window run.
+export async function scheduleLast30dHistoryBackfill(): Promise<void> {
+  const { temporal } = svc
+  if (!temporal) throw new Error('Temporal client not initialized')
+
+  try {
+    await temporal.schedule.create({
+      scheduleId: 'npm-last-30d-history-backfill',
+      spec: {
+        cronExpressions: ['30 4 * * *'],
+      },
+      policies: {
+        overlap: ScheduleOverlapPolicy.SKIP,
+        catchupWindow: '1 hour',
+      },
+      action: {
+        type: 'startWorkflow',
+        workflowType: backfillLast30dHistory,
+        taskQueue: 'packages-worker',
+        workflowExecutionTimeout: '6 hours',
+        retry: {
+          initialInterval: '30 seconds',
+          backoffCoefficient: 2,
+          maximumAttempts: 3,
+        },
+        args: [],
+      },
+    })
+  } catch (err) {
+    if (err instanceof ScheduleAlreadyRunning) {
+      svc.log.info('Schedule npm-last-30d-history-backfill already registered.')
     } else {
       throw err
     }

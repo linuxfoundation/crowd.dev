@@ -64,15 +64,31 @@ export async function getNpmPackagesNeedingDailyBackfill(
   }))
 }
 
-// Bump the daily-downloads watermark for a package (keyed by purl). Called after a
-// package's windows are processed — even when npm returned no data — so it isn't
-// re-selected until the next cycle.
-export async function markDailyDownloadsProcessed(qx: QueryExecutor, purl: string): Promise<void> {
+// Structured outcome of a daily-downloads run, stored as JSONB in
+// npm_package_state.daily_downloads_run_result.
+export interface DailyDownloadsRunResult {
+  status: 'success' | 'error'
+  httpStatus?: number
+  errorKind?: string
+  message?: string
+}
+
+// Bump the daily-downloads watermark for a package (keyed by purl) and record the run
+// outcome. Called after a package's windows are processed — even when npm returned no
+// data or the package was skipped on a client error — so it isn't re-selected until
+// the next cycle.
+export async function markDailyDownloadsProcessed(
+  qx: QueryExecutor,
+  purl: string,
+  result: DailyDownloadsRunResult,
+): Promise<void> {
   await qx.result(
-    `INSERT INTO npm_package_state (purl, daily_downloads_last_processed_at)
-     VALUES ($(purl), NOW())
-     ON CONFLICT (purl) DO UPDATE SET daily_downloads_last_processed_at = NOW()`,
-    { purl },
+    `INSERT INTO npm_package_state (purl, daily_downloads_last_processed_at, daily_downloads_run_result)
+     VALUES ($(purl), NOW(), $(result)::jsonb)
+     ON CONFLICT (purl) DO UPDATE SET
+       daily_downloads_last_processed_at = NOW(),
+       daily_downloads_run_result        = EXCLUDED.daily_downloads_run_result`,
+    { purl, result: JSON.stringify(result) },
   )
 }
 

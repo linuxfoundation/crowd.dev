@@ -20,22 +20,24 @@ export async function getExistingLast30dEndDates(
 export interface Last30dCandidate {
   purl: string
   firstReleaseAt: string | null
-  isNew: boolean // no watermark row yet -> needs the full window history
 }
 
-// `laneIndex`/`laneCount` shard the due set across concurrent lanes by a stable hash
-// of the purl, so each lane drains a disjoint slice (laneCount=1 ⇒ no sharding).
-export async function getNpmUniversePurlsDueForLast30d(
+// BREADTH selection. A purl is "due for the latest window" while its breadth watermark
+// (`downloads_30d_last_run_at`) is older than this run's cutoff (or absent). The watermark
+// is bumped once its current 30-day window is refreshed, so the monthly run touches every
+// package's latest window exactly once and the denormalized number lands across the whole
+// universe before any deep history is filled. Older history is a separate pass keyed on
+// `downloads_30d_history_backfilled_at` — see getNpmUniversePurlsDueForLast30dHistory.
+export async function getNpmUniversePurlsDueForLatest30d(
   qx: QueryExecutor,
   cutoff: string,
   batchSize: number,
   laneIndex: number,
   laneCount: number,
 ): Promise<Last30dCandidate[]> {
-  const rows: Array<{ purl: string; first_release_at: string | null; is_new: boolean }> =
-    await qx.select(
-      `WITH due AS (
-         SELECT pu.purl AS purl, (s.purl IS NULL) AS is_new
+  const rows: Array<{ purl: string; first_release_at: string | null }> = await qx.select(
+    `WITH due AS (
+         SELECT pu.purl AS purl
            FROM packages_universe pu
            LEFT JOIN npm_package_universe_state s ON s.purl = pu.purl
           WHERE pu.ecosystem = 'npm'
@@ -45,26 +47,93 @@ export async function getNpmUniversePurlsDueForLast30d(
           ORDER BY s.downloads_30d_last_run_at ASC NULLS FIRST, pu.purl
           LIMIT $(batchSize)
        )
-       SELECT d.purl AS purl, p.first_release_at::text AS first_release_at, d.is_new
+       SELECT d.purl AS purl, p.first_release_at::text AS first_release_at
          FROM due d
          LEFT JOIN packages p ON p.purl = d.purl`,
-      { cutoff, batchSize, laneIndex, laneCount },
-    )
+    { cutoff, batchSize, laneIndex, laneCount },
+  )
   return rows.map((r) => ({
     purl: r.purl,
     firstReleaseAt: r.first_release_at,
-    isNew: r.is_new,
   }))
 }
 
-// Bump the last-30d watermark for a package (keyed by purl). Called after a
-// package's windows are processed so it isn't re-selected until the next cycle.
-export async function markLast30dProcessed(qx: QueryExecutor, purl: string): Promise<void> {
+// DEPTH selection. A purl needs history backfill once its latest window is present
+// (`downloads_30d_last_run_at IS NOT NULL` — breadth ran) but its full older history has
+// not yet been filled (`downloads_30d_history_backfilled_at IS NULL`). This keeps the work
+// strictly breadth-first per package: history is never fetched before the latest window.
+// Sharded the same way; oldest-breadth-first so the longest-waiting packages drain first.
+export async function getNpmUniversePurlsDueForLast30dHistory(
+  qx: QueryExecutor,
+  batchSize: number,
+  laneIndex: number,
+  laneCount: number,
+): Promise<Last30dCandidate[]> {
+  const rows: Array<{ purl: string; first_release_at: string | null }> = await qx.select(
+    `WITH due AS (
+         SELECT pu.purl AS purl, s.downloads_30d_last_run_at AS last_run_at
+           FROM packages_universe pu
+           JOIN npm_package_universe_state s ON s.purl = pu.purl
+          WHERE pu.ecosystem = 'npm'
+            AND (((hashtext(pu.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
+            AND s.downloads_30d_last_run_at IS NOT NULL
+            AND s.downloads_30d_history_backfilled_at IS NULL
+          ORDER BY s.downloads_30d_last_run_at ASC, pu.purl
+          LIMIT $(batchSize)
+       )
+       SELECT d.purl AS purl, p.first_release_at::text AS first_release_at
+         FROM due d
+         LEFT JOIN packages p ON p.purl = d.purl`,
+    { batchSize, laneIndex, laneCount },
+  )
+  return rows.map((r) => ({
+    purl: r.purl,
+    firstReleaseAt: r.first_release_at,
+  }))
+}
+
+// Structured outcome of a last-30d run, stored as JSONB in
+// npm_package_universe_state.downloads_30d_run_result.
+export interface Last30dRunResult {
+  status: 'success' | 'error'
+  httpStatus?: number
+  errorKind?: string
+  message?: string
+}
+
+// Bump the BREADTH watermark (`downloads_30d_last_run_at`) for a package and record the
+// run outcome. Called by the latest-window refresh once a package's current 30-day window
+// is processed — even when skipped on a client error — so it isn't re-selected this cycle.
+export async function markLast30dProcessed(
+  qx: QueryExecutor,
+  purl: string,
+  result: Last30dRunResult,
+): Promise<void> {
   await qx.result(
-    `INSERT INTO npm_package_universe_state (purl, downloads_30d_last_run_at)
-     VALUES ($(purl), NOW())
-     ON CONFLICT (purl) DO UPDATE SET downloads_30d_last_run_at = NOW()`,
-    { purl },
+    `INSERT INTO npm_package_universe_state (purl, downloads_30d_last_run_at, downloads_30d_run_result)
+     VALUES ($(purl), NOW(), $(result)::jsonb)
+     ON CONFLICT (purl) DO UPDATE SET
+       downloads_30d_last_run_at = NOW(),
+       downloads_30d_run_result  = EXCLUDED.downloads_30d_run_result`,
+    { purl, result: JSON.stringify(result) },
+  )
+}
+
+// Bump the DEPTH watermark (`downloads_30d_history_backfilled_at`) for a package: its full
+// older history is now present in downloads_last_30d (or it was given up on via a client
+// error). The row already exists — breadth inserted it — so this is a plain UPDATE; a purl
+// is only history-backfilled after its latest window ran, so it is never created here.
+export async function markLast30dHistoryBackfilled(
+  qx: QueryExecutor,
+  purl: string,
+  result: Last30dRunResult,
+): Promise<void> {
+  await qx.result(
+    `UPDATE npm_package_universe_state
+        SET downloads_30d_history_backfilled_at = NOW(),
+            downloads_30d_run_result            = $(result)::jsonb
+      WHERE purl = $(purl)`,
+    { purl, result: JSON.stringify(result) },
   )
 }
 

@@ -1,15 +1,21 @@
+import { Context } from '@temporalio/activity'
 import { type Dispatcher, ProxyAgent } from 'undici'
 
 import {
+  DailyDownloadsRunResult,
+  Last30dRunResult,
+  getExistingLast30dEndDates,
   getMissingDownloadDates,
   getNpmChangesLastSeq,
   getNpmPackagesNeedingDailyBackfill,
   getNpmPurlsForChangedNames,
-  getNpmUniversePurlsDueForLast30d,
+  getNpmUniversePurlsDueForLast30dHistory,
+  getNpmUniversePurlsDueForLatest30d,
   getUnscannedNpmPurls,
   insertDailyDownloads,
   logAuditFieldChanges,
   markDailyDownloadsProcessed,
+  markLast30dHistoryBackfilled,
   markLast30dProcessed,
   markNpmPackageScanned,
   setNpmChangesLastSeq,
@@ -241,15 +247,33 @@ export async function backfillDailyLane(
           ? pkg.firstReleaseAt.slice(0, 10)
           : NPM_EARLIEST
 
+      // Outcome recorded on the watermark row. A client error (404/4xx — e.g. a bogus
+      // deps.dev dependency-chain name that leaked into `packages`) flips this to error
+      // and the package is skipped, not retried. 429/5xx/network still throw below.
+      let runResult: DailyDownloadsRunResult = { status: 'success' }
+
       if (lower <= yesterday) {
         const missingDates = await getMissingDownloadDates(qx, pkg.id, lower, yesterday)
         for (const w of computeChunks(missingDates)) {
           await sleep(downloadSleepMs())
           const result = await fetchDailyRangeHttp(pkg.name, w.start, w.end, dispatcher)
           if (isFetchError(result)) {
-            throw new Error(
-              `Failed to fetch daily downloads for ${pkg.name} [${w.start}:${w.end}]: ${result.message}`,
+            if (!isClientError(result.statusCode, result.kind)) {
+              throw new Error(
+                `Failed to fetch daily downloads for ${pkg.name} [${w.start}:${w.end}]: ${result.message}`,
+              )
+            }
+            log.warn(
+              { purl: pkg.purl, statusCode: result.statusCode, kind: result.kind },
+              'npm daily downloads 4xx — marking processed and skipping',
             )
+            runResult = {
+              status: 'error',
+              httpStatus: result.statusCode,
+              errorKind: result.kind,
+              message: result.message,
+            }
+            break
           }
           if (result.downloads.length === 0) continue
           const changedFields = await insertDailyDownloads(qx, pkg.id, result.downloads)
@@ -257,7 +281,7 @@ export async function backfillDailyLane(
         }
       }
 
-      await markDailyDownloadsProcessed(qx, pkg.purl)
+      await markDailyDownloadsProcessed(qx, pkg.purl, runResult)
     }
   } finally {
     await dispatcher?.close()
@@ -272,7 +296,7 @@ export async function backfillDailyLane(
 
 function downloadSleepMs(): number {
   const raw = process.env.CROWD_PACKAGES_DOWNLOAD_SLEEP_MS
-  const n = parseInt(raw ?? '1000', 10)
+  const n = parseInt(raw ?? '1200', 10)
   return Number.isFinite(n) && n >= 0 ? n : 500
 }
 
@@ -286,8 +310,7 @@ function utcFirstOfCurrentMonth(): string {
 }
 
 // The current rolling 30-day window: end = 1st of this month, start = end − 30 days
-// (clamped to NPM_EARLIEST). Same shape computeMissingLast30dWindows emits for its
-// last window, so it groups together with new packages' latest window.
+// (clamped to NPM_EARLIEST). isLatest, so its upsert mirrors to packages_universe.
 function latestLast30dWindow(end: string): Last30dWindow {
   const startDay = new Date(end + 'T00:00:00Z')
   startDay.setUTCDate(startDay.getUTCDate() - 30)
@@ -301,32 +324,24 @@ interface Last30dWorkItem {
   window: Last30dWindow
 }
 
-// One last-30d lane. Self-selects a disjoint hash-shard of the due packages (per-purl
-// watermark + laneIndex/laneCount) and expands each into the windows it needs (new →
-// full history, existing → latest only). Fetches grouped BY WINDOW (most recent first)
-// so unscoped packages bulk-fetch 128 at a time per window (scoped individually),
-// routed through this lane's proxy IP. The watermark is bumped only after every fetch
-// in the batch succeeds — an error throws, the activity retries, and nothing is marked.
-export async function backfillLast30dLane(
-  cutoff: string,
-  batchSize: number,
+interface Last30dPlan {
+  purl: string
+  name: string // npm registry name (derived from purl)
+  windows: Last30dWindow[]
+}
+
+async function processLast30dWindowPlans(
+  qx: QueryExecutor,
+  dispatcher: Dispatcher | undefined,
+  plans: Last30dPlan[],
   laneIndex: number,
-  lanes: number,
-): Promise<{ fetched: number }> {
-  const qx = await getPackagesDb()
-  const due = await getNpmUniversePurlsDueForLast30d(qx, cutoff, batchSize, laneIndex, lanes)
-  if (due.length === 0) return { fetched: 0 }
-
-  const latestEnd = utcFirstOfCurrentMonth()
-
+  onSettled: (purl: string, result: Last30dRunResult) => Promise<void>,
+): Promise<void> {
   const work: Last30dWorkItem[] = []
-  for (const c of due) {
-    const name = npmNameFromPurl(c.purl)
-    const windows = c.isNew
-      ? computeMissingLast30dWindows(c.firstReleaseAt, latestEnd, [])
-      : [latestLast30dWindow(latestEnd)]
-    for (const window of windows) work.push({ purl: c.purl, name, window })
+  for (const p of plans) {
+    for (const window of p.windows) work.push({ purl: p.purl, name: p.name, window })
   }
+  if (work.length === 0) return
 
   // Group (purl, window) work by window so each window's unscoped packages bulk.
   const byWindow = new Map<string, Last30dWorkItem[]>()
@@ -337,78 +352,245 @@ export async function backfillLast30dLane(
     else byWindow.set(key, [item])
   }
 
-  // Process the most recent window first (it carries isLatest, so packages_universe's
-  // denormalized downloads_last_30d is refreshed before older history is backfilled),
-  // then walk older windows newest→oldest. end is YYYY-MM-DD so a string sort orders.
+  // Most recent window first (the latest carries isLatest, so the universe mirror is refreshed
+  // before older history), then walk older windows. end is YYYY-MM-DD so a string sort orders.
   const groups = [...byWindow.values()].sort((a, b) =>
     b[0].window.end.localeCompare(a[0].window.end),
   )
 
-  const proxy = proxyForLane(laneIndex)
-  const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
+  // Per-purl outcome. A client error (404/4xx — e.g. a bogus deps.dev dependency-chain name
+  // that leaked into the universe) flips a purl to error; it's then skipped in later windows.
+  const results = new Map<string, Last30dRunResult>(
+    work.map((w) => [w.purl, { status: 'success' }]),
+  )
 
-  try {
-    for (const items of groups) {
-      const { start, end, isLatest } = items[0].window
-      const unscoped = items.filter((i) => !i.name.startsWith('@'))
-      const scoped = items.filter((i) => i.name.startsWith('@'))
+  // `remaining` counts a purl's outstanding windows in this batch; once it hits 0 (or a client
+  // error settles it early) onSettled fires exactly once. The caller decides the DB action.
+  const remaining = new Map<string, number>()
+  for (const w of work) remaining.set(w.purl, (remaining.get(w.purl) ?? 0) + 1)
+  const settled = new Set<string>()
 
-      for (let i = 0; i < unscoped.length; i += 128) {
-        const batch = unscoped.slice(i, i + 128)
-        await sleep(downloadSleepMs())
-        const result = await fetchBulkPointRange(
-          batch.map((b) => b.name),
-          start,
-          end,
-          dispatcher,
-        )
-        if (isFetchError(result)) {
+  const settleWindow = async (purl: string): Promise<void> => {
+    if (settled.has(purl)) return
+    const left = (remaining.get(purl) ?? 1) - 1
+    remaining.set(purl, left)
+    if (left <= 0) {
+      settled.add(purl)
+      await onSettled(purl, results.get(purl) ?? { status: 'success' })
+    }
+  }
+
+  const settleError = async (purl: string, res: Last30dRunResult): Promise<void> => {
+    results.set(purl, res)
+    if (settled.has(purl)) return
+    settled.add(purl)
+    await onSettled(purl, res)
+  }
+
+  for (const items of groups) {
+    const { start, end, isLatest } = items[0].window
+    const unscoped = items.filter((i) => !i.name.startsWith('@'))
+    const scoped = items.filter((i) => i.name.startsWith('@'))
+
+    for (let i = 0; i < unscoped.length; i += 128) {
+      const batch = unscoped
+        .slice(i, i + 128)
+        .filter((b) => results.get(b.purl)?.status !== 'error')
+      if (batch.length === 0) continue
+      await sleep(downloadSleepMs())
+      const result = await fetchBulkPointRange(
+        batch.map((b) => b.name),
+        start,
+        end,
+        dispatcher,
+      )
+      if (isFetchError(result)) {
+        if (!isClientError(result.statusCode, result.kind)) {
           throw new Error(
             `Failed to fetch bulk last-30d downloads [${start}:${end}]: ${result.message}`,
           )
         }
+        log.warn(
+          { start, end, statusCode: result.statusCode, kind: result.kind, count: batch.length },
+          'npm bulk last-30d 4xx — marking batch processed and skipping',
+        )
         for (const b of batch) {
-          const count = result.counts.get(b.name)
-          if (count === undefined) {
-            log.warn(
-              { name: b.name, start, end },
-              'npm bulk response: no data for package — skipping',
-            )
-            continue
-          }
+          await settleError(b.purl, {
+            status: 'error',
+            httpStatus: result.statusCode,
+            errorKind: result.kind,
+            message: result.message,
+          })
+        }
+        continue
+      }
+      for (const b of batch) {
+        const count = result.counts.get(b.name)
+        if (count === undefined) {
+          log.warn(
+            { name: b.name, start, end },
+            'npm bulk response: no data for package — skipping',
+          )
+        } else {
           const changedFields = await upsertLast30dDownload(qx, b.purl, start, end, count, isLatest)
           await logAuditFieldChanges(qx, WORKER, b.purl, changedFields)
         }
+        await settleWindow(b.purl)
       }
+    }
 
-      for (const s of scoped) {
-        await sleep(downloadSleepMs())
-        const result = await fetchPointRange(s.name, start, end, dispatcher)
-        if (isFetchError(result)) {
+    for (const s of scoped) {
+      // Skip names already known bad (404'd in an earlier, more recent window) so a
+      // bogus package isn't re-fetched once per historical window.
+      if (results.get(s.purl)?.status === 'error') continue
+      await sleep(downloadSleepMs())
+      const result = await fetchPointRange(s.name, start, end, dispatcher)
+      if (isFetchError(result)) {
+        if (!isClientError(result.statusCode, result.kind)) {
           throw new Error(
             `Failed to fetch last-30d downloads for ${s.name} [${start}:${end}]: ${result.message}`,
           )
         }
-        const changedFields = await upsertLast30dDownload(
-          qx,
-          s.purl,
-          start,
-          end,
-          result.count,
-          isLatest,
+        log.warn(
+          { purl: s.purl, statusCode: result.statusCode, kind: result.kind },
+          'npm last-30d 4xx — marking processed and skipping',
         )
-        await logAuditFieldChanges(qx, WORKER, s.purl, changedFields)
+        await settleError(s.purl, {
+          status: 'error',
+          httpStatus: result.statusCode,
+          errorKind: result.kind,
+          message: result.message,
+        })
+        continue
       }
+      const changedFields = await upsertLast30dDownload(
+        qx,
+        s.purl,
+        start,
+        end,
+        result.count,
+        isLatest,
+      )
+      await logAuditFieldChanges(qx, WORKER, s.purl, changedFields)
+      await settleWindow(s.purl)
     }
+
+    // Liveness signal after each window so a stalled lane is detected promptly. Combined with
+    // the per-round window cap, a retry resumes cheaply — already-stored windows are skipped.
+    Context.current().heartbeat({ laneIndex, window: end })
+  }
+}
+
+// BREADTH lane. Self-selects a disjoint hash-shard of packages due for the current latest
+// 30-day window and fetches just that window for each (bulk-128 for unscoped), mirroring the
+// count to packages_universe.downloads_last_30d. One window per package keeps the lane fast,
+// so the denormalized number lands across the whole universe before any deep history is
+// filled. The breadth watermark (downloads_30d_last_run_at) is bumped per package as soon as
+// its window is processed — even on a client error — so the monthly run touches each once.
+export async function refreshLatestLast30dLane(
+  cutoff: string,
+  batchSize: number,
+  laneIndex: number,
+  lanes: number,
+): Promise<{ fetched: number }> {
+  const qx = await getPackagesDb()
+  const due = await getNpmUniversePurlsDueForLatest30d(qx, cutoff, batchSize, laneIndex, lanes)
+  if (due.length === 0) return { fetched: 0 }
+
+  const window = latestLast30dWindow(utcFirstOfCurrentMonth())
+  const plans: Last30dPlan[] = due.map((c) => ({
+    purl: c.purl,
+    name: npmNameFromPurl(c.purl),
+    windows: [window],
+  }))
+
+  const proxy = proxyForLane(laneIndex)
+  const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
+
+  let marked = 0
+  try {
+    await processLast30dWindowPlans(qx, dispatcher, plans, laneIndex, async (purl, result) => {
+      marked++
+      await markLast30dProcessed(qx, purl, result)
+    })
   } finally {
     await dispatcher?.close()
   }
 
-  for (const c of due) await markLast30dProcessed(qx, c.purl)
+  log.info(
+    { laneIndex, due: due.length, marked, exit: proxy?.host ?? 'direct' },
+    'Refreshed latest last-30d window',
+  )
+  return { fetched: due.length }
+}
+
+// DEPTH lane. Self-selects a disjoint hash-shard of packages whose latest window is already
+// present (breadth ran) but whose older history is not yet filled. For each, the still-missing
+// older windows are derived from the durable downloads_last_30d rows and capped to the newest
+// `windowCap` — a brand-new package has ~140 monthly windows (NPM_EARLIEST → now), so without
+// this cap a single activity tried to fetch every window for every package in one shot and
+// never finished inside the activity timeout. The latest window is excluded (it's breadth's
+// job, so these never re-mirror). The depth watermark (downloads_30d_history_backfilled_at) is
+// bumped only once a package's whole backlog drains (or it 4xx's); a partially-backfilled
+// package stays unmarked and is re-selected next round until it converges. Because progress
+// lives in downloads_last_30d, a timed-out/retried lane skips already-stored windows.
+export async function backfillLast30dHistoryLane(
+  batchSize: number,
+  windowCap: number,
+  laneIndex: number,
+  lanes: number,
+): Promise<{ fetched: number }> {
+  const qx = await getPackagesDb()
+  const due = await getNpmUniversePurlsDueForLast30dHistory(qx, batchSize, laneIndex, lanes)
+  if (due.length === 0) return { fetched: 0 }
+
+  const latestEnd = utcFirstOfCurrentMonth()
+
+  const plans: Last30dPlan[] = []
+  const complete = new Map<string, boolean>()
+  const settledEmpty: string[] = []
+  for (const c of due) {
+    const existing = await getExistingLast30dEndDates(qx, c.purl, NPM_EARLIEST, latestEnd)
+    // Older windows only — the latest window is the breadth pass's responsibility.
+    const missing = computeMissingLast30dWindows(c.firstReleaseAt, latestEnd, existing).filter(
+      (w) => !w.isLatest,
+    )
+    if (missing.length === 0) {
+      // No older gaps remain — history is fully filled. Settle the depth watermark so this
+      // purl drops out of the history selection.
+      settledEmpty.push(c.purl)
+      continue
+    }
+    // computeMissingLast30dWindows returns oldest→newest; take the newest `windowCap`.
+    const windows = missing.slice(Math.max(0, missing.length - windowCap))
+    complete.set(c.purl, missing.length <= windowCap)
+    plans.push({ purl: c.purl, name: npmNameFromPurl(c.purl), windows })
+  }
+
+  for (const purl of settledEmpty) {
+    await markLast30dHistoryBackfilled(qx, purl, { status: 'success' })
+  }
+
+  const proxy = proxyForLane(laneIndex)
+  const dispatcher = proxy ? new ProxyAgent(proxyUrl(proxy)) : undefined
+
+  let marked = settledEmpty.length
+  try {
+    await processLast30dWindowPlans(qx, dispatcher, plans, laneIndex, async (purl, result) => {
+      // Stamp the depth watermark only when the purl's whole backlog has drained (or it was
+      // given up on via a client error); otherwise leave it for the next round to continue.
+      if (result.status === 'error' || complete.get(purl)) {
+        marked++
+        await markLast30dHistoryBackfilled(qx, purl, result)
+      }
+    })
+  } finally {
+    await dispatcher?.close()
+  }
 
   log.info(
-    { laneIndex, count: due.length, exit: proxy?.host ?? 'direct' },
-    'Backfilled last-30d downloads lane',
+    { laneIndex, due: due.length, marked, exit: proxy?.host ?? 'direct' },
+    'Backfilled last-30d history lane',
   )
   return { fetched: due.length }
 }
