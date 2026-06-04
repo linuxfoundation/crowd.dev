@@ -36,6 +36,7 @@ DECLARE
     n_propagated int;
 BEGIN
     -- ── Step 1: score ──────────────────────────────────────────────────────────
+    -- last_rank_pass_at updated unconditionally on every pass (schema requirement).
     WITH percentile_scores AS (
         SELECT
             id,
@@ -52,14 +53,10 @@ BEGIN
         FROM packages_universe
     )
     UPDATE packages_universe pu
-       SET last_rank_pass_at = NOW()
-     WHERE TRUE;
-
-    UPDATE packages_universe pu
-       SET impact = ps.new_impact
+       SET impact            = ps.new_impact,
+           last_rank_pass_at = NOW()
       FROM percentile_scores ps
-     WHERE pu.id = ps.id
-       AND pu.impact IS DISTINCT FROM ps.new_impact;
+     WHERE pu.id = ps.id;
 
     GET DIAGNOSTICS n_scored = ROW_COUNT;
 
@@ -109,25 +106,14 @@ BEGIN
        AND pu.is_critical                  = FALSE;
 
     -- ── Step 3: propagate to packages ─────────────────────────────────────────
-    -- last_rank_pass_at is updated unconditionally (schema requirement: every pass,
-    -- not only when scores change, so staleness checks work reliably).
-    -- impact and is_critical are guarded by IS DISTINCT FROM to avoid unnecessary WAL writes.
+    -- last_rank_pass_at updated unconditionally on every pass (schema requirement).
     UPDATE packages p
-       SET last_rank_pass_at = NOW()
+       SET impact            = pu.impact,
+           is_critical       = pu.is_critical,
+           last_rank_pass_at = NOW()
       FROM packages_universe pu
      WHERE p.purl      = pu.purl
        AND p.ecosystem = pu.ecosystem;
-
-    UPDATE packages p
-       SET impact      = pu.impact,
-           is_critical = pu.is_critical
-      FROM packages_universe pu
-     WHERE p.purl      = pu.purl
-       AND p.ecosystem = pu.ecosystem
-       AND (
-             p.impact      IS DISTINCT FROM pu.impact
-          OR p.is_critical IS DISTINCT FROM pu.is_critical
-       );
 
     GET DIAGNOSTICS n_propagated = ROW_COUNT;
 
