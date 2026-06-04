@@ -2,6 +2,7 @@ import crypto from 'crypto'
 
 import {
   MavenPackageToSync,
+  QueryExecutor,
   listMavenPackagesToSync,
   logAuditFieldChange,
   replacePackageMaintainers,
@@ -12,7 +13,6 @@ import {
   upsertRepo,
   upsertVersionsBatch,
 } from '@crowd/data-access-layer'
-import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'

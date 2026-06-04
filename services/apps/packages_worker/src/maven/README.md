@@ -207,25 +207,25 @@ Eclipse/OSGi feature artifacts (e.g. `org.wso2.carbon.identity.xacml.server.feat
 
 ### Maven Central 403 rate limiting
 
-Maven Central (`repo1.maven.org`) restituisce 403 come meccanismo di throttle oltre al canonico 429. Il comportamento è gestito a due livelli:
+Maven Central (`repo1.maven.org`) returns 403 as a throttling mechanism in addition to the canonical 429. The behaviour is handled at two levels:
 
-1. **Retry con backoff esponenziale** — 403 e 429 vengono ritentati fino a 3 volte (2s base, ×2 per tentativo). Gestito in `getWithRetry` (extract.ts) e `resolveVersionsList` (metadata.ts).
+1. **Exponential backoff retry** — 403 and 429 are retried up to 3 times (2s base, ×2 per attempt). Handled in `getWithRetry` (extract.ts) and `resolveVersionsList` (metadata.ts).
 
-2. **Retry al prossimo pass** — se tutti i retry esauriscono, il batch conta il pacchetto come errore (nessun record sentinel viene scritto su `packages`) e lo riprenderà al tick/pass successivo, quando l'IP è di nuovo freddo.
+2. **Retry on the next pass** — if all retries are exhausted, the batch counts the package as an error (no sentinel record is written to `packages`) and picks it up again on the next tick/pass, when the IP has cooled down.
 
-**Causa root dei 403 persistenti:** `packages_universe` è ordinato per `rank_in_ecosystem`, quindi pacchetti dello stesso namespace (es. `com.google.apis`, `org.wso2`, `software.amazon.awssdk`) si raggruppano nel batch e colpiscono lo stesso CDN node di Maven Central in rapida successione. Il rate limit scatta sistematicamente dopo ~150–200 pacchetti processati.
+**Root cause of persistent 403s:** `packages_universe` is ordered by `rank_in_ecosystem`, so packages from the same namespace (e.g. `com.google.apis`, `org.wso2`, `software.amazon.awssdk`) cluster together in the batch and hit the same Maven Central CDN node in rapid succession. The rate limit consistently kicks in after ~150–200 packages processed.
 
-**Mitigazione applicata, in ordine di efficacia:**
+**Mitigations applied, in order of effectiveness:**
 
-1. **Cache in-process dei parent POM** (vedi [Parent POM cache](#parent-pom-cache)) — sfrutta il clustering per namespace per collassare i fetch dei parent condivisi e il doppio fetch del leaf POM, riducendo il **volume totale** di richieste. È la leva principale: il throttle è volume-based per IP, quindi meno richieste = meno 403.
-2. Un delay configurabile tra i gruppi concorrenti (`POM_FETCHER_GROUP_DELAY_MS`) + `POM_FETCHER_CONCURRENCY` basso (≤5) → abbassano il rate istantaneo.
-3. Backoff di retry con jitter (`±500ms`, vedi `extract.ts` / `metadata.ts`) → evita retry sincronizzati.
+1. **In-process parent POM cache** (see [Parent POM cache](#parent-pom-cache)) — leverages namespace clustering to collapse fetches of shared parents and the double fetch of the leaf POM, reducing the **total volume** of requests. This is the main lever: throttling is volume-based per IP, so fewer requests = fewer 403s.
+2. A configurable delay between concurrent groups (`POM_FETCHER_GROUP_DELAY_MS`) + low `POM_FETCHER_CONCURRENCY` (≤5) → lower the instantaneous rate.
+3. Retry backoff with jitter (`±500ms`, see `extract.ts` / `metadata.ts`) → avoids synchronized retries.
 
-> Nota: **lo shuffle dei batch non aiuta** — riordina gli stessi N request nella stessa finestra temporale (stesso volume → stesso throttle) e in più romperebbe la località che rende efficace la cache dei parent.
+> Note: **shuffling the batch does not help** — it reorders the same N requests within the same time window (same volume → same throttle) and would additionally break the locality that makes the parent cache effective.
 
-Namespace noti per triggerare il rate limit a causa dell'alta densità di artefatti: `com.google.apis`, `software.amazon.awssdk`, `org.wso2.*`.
+Namespaces known to trigger the rate limit due to their high artifact density: `com.google.apis`, `software.amazon.awssdk`, `org.wso2.*`.
 
-**IP caldo durante i test locali:** run ripetute sulla stessa macchina accumulano request history sull'IP. Maven Central usa finestre di throttle lunghe (1–4 ore), quindi anche a concurrency=3 + delay=400ms l'IP può rimanere in stato di throttle per tutta la sessione di test. In produzione questo non accade perché le run sono distanziate di 24 ore e l'IP è sempre freddo tra un pass e l'altro. Per verificare se l'IP è throttlato: `curl -I https://repo1.maven.org/maven2/org/wso2/carbon/identity/framework/application-mgt/maven-metadata.xml` — risposta 403 immediata conferma il throttle.
+**Hot IP during local testing:** repeated runs on the same machine accumulate request history on the IP. Maven Central uses long throttle windows (1–4 hours), so even at concurrency=3 + delay=400ms the IP can stay throttled for the entire test session. This does not happen in production because runs are spaced 24 hours apart and the IP is always cold between passes. To check whether the IP is throttled: `curl -I https://repo1.maven.org/maven2/org/wso2/carbon/identity/framework/application-mgt/maven-metadata.xml` — an immediate 403 response confirms the throttle.
 
 ### Partial Maven Central Deploys
 
