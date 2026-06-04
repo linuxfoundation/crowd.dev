@@ -141,8 +141,9 @@ export async function fetchPom(
 //
 // Parent POMs are heavily shared across artifacts of the same namespace
 // (e.g. org.apache:apache, org.springframework.boot:spring-boot-starter-parent),
-// and the sync queue is ordered by rank_in_ecosystem, so those siblings are
-// processed close together. A module-level, coordinate-keyed in-process cache
+// and the critical batch is re-sorted by namespace before processing (see
+// runMavenEnrichmentLoop), so those siblings are processed close together. A
+// module-level, coordinate-keyed in-process cache
 // collapses those repeated parent fetches into a single HTTP request — the single
 // biggest lever against Maven Central rate limiting. It also removes the redundant
 // second fetch of each artifact's own POM (extractArtifact fetches the leaf, then
@@ -318,9 +319,10 @@ async function resolveWithInheritance(
 // ─── Public entry points ──────────────────────────────────────────────────────
 
 /**
- * Fetches only the root POM without following the parent chain.
- * Faster than extractArtifact — use for non-critical packages where inherited
- * fields (licenses, SCM) may be missing but throughput matters more.
+ * Fetches only the root POM without following the parent chain — faster than
+ * extractArtifact, but inherited fields (licenses, SCM) may be missing.
+ * Currently unused: kept as a lightweight option for high-throughput paths that
+ * don't need parent inheritance.
  */
 export async function extractArtifactDirect(
   groupId: string,
