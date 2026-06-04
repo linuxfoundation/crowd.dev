@@ -109,7 +109,7 @@ export async function ingestVersions(opts: {
   ecosystems?: string[]
   reuseExports?: boolean
   exportName?: string
-}): Promise<void> {
+}): Promise<{ rowCountBq: number }> {
   const systems = toSystemsFilter(opts.ecosystems)
   const sql =
     opts.syncMode === 'full'
@@ -137,7 +137,7 @@ export async function ingestVersions(opts: {
       tableNames: [],
       isFinal: true,
     })
-    return
+    return { rowCountBq: exportResult.rowCount }
   }
 
   if (opts.syncMode === 'full') {
@@ -212,4 +212,5 @@ export async function ingestVersions(opts: {
     }
     throw err
   }
+  return { rowCountBq: exportResult.rowCount }
 }

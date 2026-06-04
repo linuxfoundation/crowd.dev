@@ -1,6 +1,7 @@
 import {
   ApplicationFailure,
   executeChild,
+  log,
   proxyActivities,
   workflowInfo,
 } from '@temporalio/workflow'
@@ -143,8 +144,9 @@ export async function bootstrapOsspckgs(opts: {
   // (FK → packages + repos), then versions (FK → packages), then deps (FK → versions),
   // then advisories last.
   // M3: executeChild for retry isolation and history compaction per kind.
+  let totalPartitionedBqRows = 0
   if (runs('packages')) {
-    await executeChild(ingestPackages, {
+    const pkgResult = await executeChild(ingestPackages, {
       args: [
         {
           runId,
@@ -157,6 +159,7 @@ export async function bootstrapOsspckgs(opts: {
         },
       ],
     })
+    totalPartitionedBqRows += pkgResult?.rowCountBq ?? 0
   }
   if (runs('dependent_counts')) {
     await executeChild(ingestDependentCounts, {
@@ -184,7 +187,7 @@ export async function bootstrapOsspckgs(opts: {
     })
   }
   if (runs('versions')) {
-    await executeChild(ingestVersions, {
+    const versResult = await executeChild(ingestVersions, {
       args: [
         {
           runId,
@@ -197,9 +200,10 @@ export async function bootstrapOsspckgs(opts: {
         },
       ],
     })
+    totalPartitionedBqRows += versResult?.rowCountBq ?? 0
   }
   if (runs('package_dependencies')) {
-    await executeChild(ingestDependencies, {
+    const depsResult = await executeChild(ingestDependencies, {
       args: [
         {
           runId,
@@ -213,9 +217,14 @@ export async function bootstrapOsspckgs(opts: {
         },
       ],
     })
+    totalPartitionedBqRows += depsResult?.rowCountBq ?? 0
   }
-  if (runs('rank')) {
+  if (runs('rank') && totalPartitionedBqRows > 0) {
+    log.info('Starting rank pass', { totalPartitionedBqRows })
     await rankPackagesUniverse()
+    log.info('Rank pass complete')
+  } else if (runs('rank')) {
+    log.info('Skipping rank pass — no new BQ rows in partitioned kinds')
   }
   if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {

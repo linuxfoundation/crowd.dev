@@ -5,6 +5,7 @@ import { getPackagesDb } from '../../db'
 const log = getServiceChildLogger('rankPackagesUniverse')
 
 export async function rankPackagesUniverse(): Promise<void> {
+  log.info('Starting packages universe rank pass')
   const qx = await getPackagesDb()
 
   // All three steps in one transaction: TRUNCATE+INSERT, rank, copyback.

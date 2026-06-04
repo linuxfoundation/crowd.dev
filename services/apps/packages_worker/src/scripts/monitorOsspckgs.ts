@@ -797,7 +797,11 @@ function render() {
 
 async function refresh() {
   try {
-    const [newJobs, newTableCounts, newWatermarks] = await Promise.all([fetchJobs(), fetchTableCounts(), fetchWatermarks()])
+    const [newJobs, newTableCounts, newWatermarks] = await Promise.all([
+      fetchJobs(),
+      fetchTableCounts(),
+      fetchWatermarks(),
+    ])
     jobs = newJobs
     tableCounts = newTableCounts
     watermarks = newWatermarks
