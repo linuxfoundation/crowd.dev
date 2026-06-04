@@ -27,7 +27,6 @@ export type MavenPackageToSync = Pick<
   | 'criticalityScore'
   | 'dependentPackagesCount'
   | 'dependentReposCount'
-  | 'downloads30d'
 > & {
   purl: string
   latestVersion: string | null
@@ -74,7 +73,6 @@ export async function listMavenPackagesToSync(
         p.criticality_score        AS "criticalityScore",
         p.dependent_count          AS "dependentPackagesCount",
         p.dependent_repos_count    AS "dependentReposCount",
-        p.downloads_last_month     AS "downloads30d",
         p.latest_version           AS "latestVersion"
       FROM packages p
       WHERE
@@ -106,7 +104,6 @@ export async function listMavenPackagesToSync(
       pu.criticality_score        AS "criticalityScore",
       pu.dependent_count          AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
-      pu.downloads_30d            AS "downloads30d",
       p.latest_version            AS "latestVersion"
     FROM packages_universe pu
     LEFT JOIN packages p ON p.purl = pu.purl
@@ -142,7 +139,6 @@ export async function touchPackageSyncedAt(
     criticalityScore: number | null | undefined
     dependentPackagesCount: number | null | undefined
     dependentReposCount: number | null | undefined
-    downloadsLastMonth: bigint | null | undefined
   },
 ): Promise<void> {
   await qx.result(
@@ -151,8 +147,7 @@ export async function touchPackageSyncedAt(
       last_synced_at           = NOW(),
       criticality_score        = COALESCE($(criticalityScore),       criticality_score),
       dependent_count          = COALESCE($(dependentPackagesCount), dependent_count),
-      dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count),
-      downloads_last_month     = COALESCE($(downloadsLastMonth),     downloads_last_month)
+      dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count)
     WHERE purl = $(purl)
     `,
     {
@@ -160,8 +155,7 @@ export async function touchPackageSyncedAt(
       criticalityScore: metrics.criticalityScore ?? null,
       dependentPackagesCount: metrics.dependentPackagesCount ?? null,
       dependentReposCount: metrics.dependentReposCount ?? null,
-      downloadsLastMonth: metrics.downloadsLastMonth ?? null,
-    },
+      },
   )
 }
 
@@ -202,13 +196,13 @@ export async function upsertPackage(
         purl, ecosystem, namespace, name,
         description, homepage, registry_url, declared_repository_url, repository_url,
         licenses, licenses_raw, latest_version, versions_count, latest_release_at,
-        criticality_score, dependent_count, dependent_repos_count, downloads_last_month,
+        criticality_score, dependent_count, dependent_repos_count,
         ingestion_source, last_synced_at
       ) VALUES (
         $(purl), $(ecosystem), $(namespace), $(name),
         $(description), $(homepage), $(registryUrl), $(declaredRepositoryUrl), $(repositoryUrl),
         $(licenses)::text[], $(licensesRaw), $(latestVersion), $(versionsCount), $(latestReleaseAt),
-        $(criticalityScore), $(dependentPackagesCount), $(dependentReposCount), $(downloadsLastMonth),
+        $(criticalityScore), $(dependentPackagesCount), $(dependentReposCount),
         $(ingestionSource), NOW()
       )
       ON CONFLICT (purl) DO UPDATE SET
@@ -225,7 +219,6 @@ export async function upsertPackage(
         criticality_score        = COALESCE(EXCLUDED.criticality_score,        packages.criticality_score),
         dependent_count          = COALESCE(EXCLUDED.dependent_count,          packages.dependent_count),
         dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
-        downloads_last_month     = COALESCE(EXCLUDED.downloads_last_month,     packages.downloads_last_month),
         ingestion_source         = EXCLUDED.ingestion_source,
         last_synced_at           = NOW()
       RETURNING id, description, homepage, registry_url, declared_repository_url, repository_url,
@@ -256,7 +249,6 @@ export async function upsertPackage(
       criticalityScore: item.criticalityScore ?? null,
       dependentPackagesCount: item.dependentPackagesCount ?? null,
       dependentReposCount: item.dependentReposCount ?? null,
-      downloadsLastMonth: item.downloadsLastMonth ?? null,
     },
   )
   return { id: row.id as number, changedFields: row.changed_fields as string[] }

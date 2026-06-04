@@ -110,7 +110,6 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
     criticalityScore: pkg.criticalityScore,
     dependentPackagesCount: pkg.dependentPackagesCount,
     dependentReposCount: pkg.dependentReposCount,
-    downloadsLastMonth: pkg.downloads30d,
   })
 }
 
@@ -151,7 +150,6 @@ async function processCriticalPackage(
         criticalityScore: pkg.criticalityScore,
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
-        downloadsLastMonth: pkg.downloads30d,
       })
       log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
       return { status: 'skipped', hopLimitReached: false }
@@ -188,7 +186,6 @@ async function processCriticalPackage(
       criticalityScore: pkg.criticalityScore,
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
-      downloadsLastMonth: pkg.downloads30d,
     })
     log.warn({ groupId, artifactId }, 'No release version in metadata — writing minimal record')
     return { status: 'skipped', hopLimitReached: false }
@@ -200,7 +197,6 @@ async function processCriticalPackage(
       criticalityScore: pkg.criticalityScore,
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
-      downloadsLastMonth: pkg.downloads30d,
     })
     log.debug({ groupId, artifactId, version }, 'Version unchanged — skipping POM extraction')
     return { status: 'unchanged', hopLimitReached: false }
@@ -229,7 +225,6 @@ async function processCriticalPackage(
       criticalityScore: pkg.criticalityScore,
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
-      downloadsLastMonth: pkg.downloads30d,
     })
     return { status: 'error', hopLimitReached: false }
   }
@@ -273,7 +268,6 @@ async function processCriticalPackage(
         criticalityScore: pkg.criticalityScore,
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
-        downloadsLastMonth: pkg.downloads30d,
       })
       pkgChanged.forEach((f) => changed.add(f))
 
