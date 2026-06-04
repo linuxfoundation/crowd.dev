@@ -1,2 +1,0 @@
-DROP INDEX "segments_slug_pSlug_gpSlugNull_tenantId_idx";
-DROP INDEX "segments_slug_pSlugNull_gpSlugNull_tenantId_idx";

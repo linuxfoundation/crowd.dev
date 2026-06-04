@@ -1,12 +1,10 @@
 import asyncio
-from datetime import datetime, timezone
 
 from crowdgit.database.crud import (
     acquire_repo_for_processing,
     get_recently_processed_repository_by_url,
     mark_repo_as_processed,
     release_repo,
-    update_last_processed_commit,
     update_repository_licenses,
 )
 from crowdgit.enums import RepositoryState
@@ -29,10 +27,8 @@ from crowdgit.services import (
     SoftwareValueService,
     VulnerabilityScannerService,
 )
-from crowdgit.services.utils import get_default_branch, get_repo_name
+from crowdgit.services.utils import get_repo_name
 from crowdgit.settings import (
-    STUCK_ONBOARDING_REPO_TIMEOUT_HOURS,
-    STUCK_RECURRENT_REPO_TIMEOUT_HOURS,
     WORKER_ERROR_BACKOFF_SEC,
     WORKER_POLLING_INTERVAL_SEC,
 )
@@ -96,34 +92,6 @@ class RepositoryWorker:
 
         logger.info("Worker services shutdown triggered")
 
-    async def _ensure_repo_not_stuck(self, repository: Repository):
-        """
-        Check if repo is stuck and raise the appropriate exception if so.
-        Repos can get stuck in processing state for different reasons:
-        - Worker crash or restart (e.g. pod eviction due OOM, deployment after timeout, ...)
-        - `last_processed_commit` is no loger valid due to force-push, dangling-commit, or so...
-        - Race condition: remote is going under breaking changes at the same time we're processing it
-        - Network issues breaking the clone/pull operation
-        """
-        # detection
-        processing_duration_hours = (
-            datetime.now(timezone.utc) - repository.locked_at.astimezone(timezone.utc)
-        ).total_seconds() / 3600
-        repo_stuck: bool = (
-            repository.last_processed_commit
-            and processing_duration_hours >= STUCK_RECURRENT_REPO_TIMEOUT_HOURS
-        ) or (
-            repository.last_processed_commit is None  # onboarding
-            and processing_duration_hours >= STUCK_ONBOARDING_REPO_TIMEOUT_HOURS
-        )
-
-        # handling
-        if repo_stuck:
-            logger.warning(
-                f"Repo {repository.url} is stuck for {processing_duration_hours} hours — queuing for re-onboarding"
-            )
-            raise ReOnboardingRequiredError()
-
     async def _process_repositories(self):
         """
         Process repositories by priority - check acquire_repo_for_processing()
@@ -145,7 +113,7 @@ class RepositoryWorker:
             )
         finally:
             if available_repo_to_process:
-                logger.info("releasing repo: ", available_repo_to_process.url)
+                logger.info(f"releasing repo: {available_repo_to_process.url}")
                 await release_repo(available_repo_to_process.id)
                 logger.info(f"Repo {available_repo_to_process.url} released!")
 
@@ -244,19 +212,11 @@ class RepositoryWorker:
                     await self.maintainer_service.process_maintainers(repository, batch_info)
                     licenses = await self.license_service.detect(batch_info.repo_path)
                     await update_repository_licenses(repository.id, licenses)
-                await self.commit_service.process_single_batch_commits(
-                    repository,
-                    batch_info,
-                )
-
                 if batch_info.is_final_batch:
-                    await update_last_processed_commit(
-                        repo_id=repository.id,
-                        commit_hash=batch_info.latest_commit_in_repo,
-                        branch=await get_default_branch(batch_info.repo_path),
+                    await self.commit_service.process_batch_commits(
+                        repository,
+                        batch_info,
                     )
-                else:
-                    await self._ensure_repo_not_stuck(repository)
 
             logger.info("Incremental processing completed successfully")
             processing_state = RepositoryState.COMPLETED

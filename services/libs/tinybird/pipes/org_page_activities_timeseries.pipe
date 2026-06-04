@@ -1,0 +1,18 @@
+DESCRIPTION >
+    Activity timeseries for a given organization, bucketed by year (all-time).
+
+TAGS "Organization page"
+
+NODE org_slug_lookup
+SQL >
+    %
+    SELECT id
+    FROM organizations_populated_slug
+    WHERE slug = {{ String(orgSlug, '', description="Organization slug", required=True) }}
+
+NODE org_page_activities_timeseries_data
+SQL >
+    SELECT startDate, endDate, activityCount
+    FROM org_page_activities_timeseries_copy_ds FINAL
+    WHERE organizationId = (SELECT id FROM org_slug_lookup)
+    ORDER BY startDate

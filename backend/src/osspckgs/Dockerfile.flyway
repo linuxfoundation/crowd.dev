@@ -1,0 +1,17 @@
+FROM flyway/flyway:7.8.1-alpine
+
+USER root
+
+# Install envsubst from gettext used for templating.
+RUN apk update \
+  && apk add --no-cache gettext
+
+USER flyway
+
+COPY ./flyway_migrate.sh /migrate.sh
+
+# Override default `flyway` entrypoint.
+ENTRYPOINT ["/migrate.sh"]
+
+# Copy migrations.
+COPY ./migrations /tmp/migrations
