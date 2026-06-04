@@ -16,13 +16,7 @@ type MemberSegmentAffiliationDeleteFilter = {
 
 export async function deleteMemberSegmentAffiliations(
   qx: QueryExecutor,
-  {
-    ids,
-    memberId,
-    organizationId,
-    segmentId,
-    mode = 'soft',
-  }: MemberSegmentAffiliationDeleteFilter,
+  { ids, memberId, organizationId, segmentId, mode = 'soft' }: MemberSegmentAffiliationDeleteFilter,
 ) {
   const where: string[] = []
   const params: Record<string, unknown> = {}

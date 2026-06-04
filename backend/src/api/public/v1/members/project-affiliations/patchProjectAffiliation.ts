@@ -14,8 +14,8 @@ import {
   optionsQx,
 } from '@crowd/data-access-layer'
 import type { ISegmentAffiliationWithOrg } from '@crowd/data-access-layer'
-
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 

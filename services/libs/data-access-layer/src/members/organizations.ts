@@ -888,7 +888,10 @@ async function moveRolesBetweenEntities(
       // If the affiliation is blocked, delete any existing MSAs to prevent the member from
       // remaining affiliated through a manually created affiliation.
       if (finalAllowAffiliation === false) {
-        await deleteMemberSegmentAffiliations(qx, { memberId: targetMemberId, organizationId: targetOrgId })
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId: targetMemberId,
+          organizationId: targetOrgId,
+        })
       }
 
       shouldRecalculateAffiliations = true

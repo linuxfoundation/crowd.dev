@@ -17,9 +17,9 @@ import {
   updateMemberContributions,
   updateMemberReach,
 } from '@crowd/data-access-layer'
-import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { createMemberIdentity } from '@crowd/data-access-layer'
 import { findMemberIdentityWithTheMostActivityInPlatform as getMemberMostActiveIdentity } from '@crowd/data-access-layer/src/activityRelations'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/attributeSettings'
 import {
   deleteMemberOrgById,
@@ -649,14 +649,16 @@ export async function updateMemberUsingSquashedPayload(
         newOrUpdatedMemberOrgs.map((mo) => mo.organizationId),
       )
 
-      const memberOrgsWithAffiliationBlocked = newOrUpdatedMemberOrgs.filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
+      const memberOrgsWithAffiliationBlocked = newOrUpdatedMemberOrgs.filter((mo) =>
+        orgAffiliationPolicies.get(mo.organizationId),
+      )
 
       for (const organizationId of new Set(
         memberOrgsWithAffiliationBlocked.map((mo) => mo.organizationId),
       )) {
         await deleteMemberSegmentAffiliations(qx, { memberId, organizationId })
       }
-      
+
       const overrides = memberOrgsWithAffiliationBlocked.map((mo) => ({
         memberId,
         memberOrganizationId: mo.id,

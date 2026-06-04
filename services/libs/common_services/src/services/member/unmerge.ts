@@ -545,7 +545,7 @@ export async function unmergeMember(
       memberOrganizationId: string
       allowAffiliation: false
     }[] = []
-   
+
     const orgIdsWithBlockedAffiliations = new Set<string>()
 
     for (const role of rolesToRestore) {

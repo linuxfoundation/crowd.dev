@@ -1,7 +1,12 @@
 import lodash, { chunk, uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
-import { captureApiChange, memberCreateAction, memberEditAffiliationsAction, memberEditProfileAction } from '@crowd/audit-logs'
+import {
+  captureApiChange,
+  memberCreateAction,
+  memberEditAffiliationsAction,
+  memberEditProfileAction,
+} from '@crowd/audit-logs'
 import {
   DEFAULT_TENANT_ID,
   Error400,
@@ -25,6 +30,11 @@ import {
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
 import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import {
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+  insertMemberAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   MemberField,
   fetchManyMemberIdentities,
@@ -58,7 +68,6 @@ import {
   TemporalWorkflowId,
 } from '@crowd/types'
 
-import { deleteMemberSegmentAffiliations, findMemberAffiliations, insertMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { KUBE_MODE, SERVICE } from '@/conf'
 import { ServiceType } from '@/conf/configTypes'
 import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
