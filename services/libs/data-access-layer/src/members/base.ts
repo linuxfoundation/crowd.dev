@@ -595,7 +595,6 @@ export async function moveAffiliationsBetweenMembers(
       set "memberId" = $(toMemberId)
       where
         "memberId" = $(fromMemberId)
-        and "deletedAt" is null
     `,
     {
       fromMemberId,

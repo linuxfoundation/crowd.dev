@@ -132,7 +132,6 @@ export async function moveSelectedAffiliationsBetweenMembers(
     SET "memberId" = $(toMemberId)
     WHERE "memberId" = $(fromMemberId)
       AND "id" IN ($(affiliationIds:csv))
-      AND "deletedAt" IS NULL
     `,
     { fromMemberId, toMemberId, affiliationIds },
   )

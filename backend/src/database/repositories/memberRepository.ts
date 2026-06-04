@@ -2088,8 +2088,7 @@ class MemberRepository {
 
     const updateQuery = `
       update "memberSegmentAffiliations" set "memberId" = :toMemberId where "memberId" = :fromMemberId
-      and "id" in (:memberSegmentAffiliationIds)
-      and "deletedAt" is null;
+      and "id" in (:memberSegmentAffiliationIds);
     `
 
     await seq.query(updateQuery, {
