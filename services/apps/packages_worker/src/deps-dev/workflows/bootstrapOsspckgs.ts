@@ -1,7 +1,6 @@
 import {
   ApplicationFailure,
   executeChild,
-  log,
   proxyActivities,
   workflowInfo,
 } from '@temporalio/workflow'
@@ -20,11 +19,6 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActi
 >({
   startToCloseTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
-})
-
-const { rankPackagesUniverse } = proxyActivities<typeof depsDevActivities>({
-  startToCloseTimeout: '1 hour',
-  retry: { maximumAttempts: 2 },
 })
 
 type JobKind =
@@ -144,9 +138,8 @@ export async function bootstrapOsspckgs(opts: {
   // (FK → packages + repos), then versions (FK → packages), then deps (FK → versions),
   // then advisories last.
   // M3: executeChild for retry isolation and history compaction per kind.
-  let totalPartitionedBqRows = 0
   if (runs('packages')) {
-    const pkgResult = await executeChild(ingestPackages, {
+    await executeChild(ingestPackages, {
       args: [
         {
           runId,
@@ -159,7 +152,6 @@ export async function bootstrapOsspckgs(opts: {
         },
       ],
     })
-    totalPartitionedBqRows += pkgResult?.rowCountBq ?? 0
   }
   if (runs('dependent_counts')) {
     await executeChild(ingestDependentCounts, {
@@ -187,7 +179,7 @@ export async function bootstrapOsspckgs(opts: {
     })
   }
   if (runs('versions')) {
-    const versResult = await executeChild(ingestVersions, {
+    await executeChild(ingestVersions, {
       args: [
         {
           runId,
@@ -200,10 +192,9 @@ export async function bootstrapOsspckgs(opts: {
         },
       ],
     })
-    totalPartitionedBqRows += versResult?.rowCountBq ?? 0
   }
   if (runs('package_dependencies')) {
-    const depsResult = await executeChild(ingestDependencies, {
+    await executeChild(ingestDependencies, {
       args: [
         {
           runId,
@@ -217,15 +208,8 @@ export async function bootstrapOsspckgs(opts: {
         },
       ],
     })
-    totalPartitionedBqRows += depsResult?.rowCountBq ?? 0
   }
-  if (runs('rank') && totalPartitionedBqRows > 0) {
-    log.info('Starting rank pass', { totalPartitionedBqRows })
-    await rankPackagesUniverse()
-    log.info('Rank pass complete')
-  } else if (runs('rank')) {
-    log.info('Skipping rank pass — no new BQ rows in partitioned kinds')
-  }
+  // ranking disabled — re-enable by restoring: if (runs('rank') && totalPartitionedBqRows > 0) { ... }
   if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {
       args: [
