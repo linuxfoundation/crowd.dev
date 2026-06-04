@@ -90,6 +90,7 @@ class WriteBuffer {
   private results: LightRepoResult[] = []
   private skipUrls: string[] = []
   private lastFlushAt = Date.now()
+  private flushing = false
 
   constructor(private readonly qx: QueryExecutor) {}
 
@@ -102,6 +103,7 @@ class WriteBuffer {
   }
 
   shouldFlush(): boolean {
+    if (this.flushing) return false
     return (
       this.results.length >= WRITE_FLUSH_SIZE ||
       this.skipUrls.length >= WRITE_FLUSH_SIZE ||
@@ -113,10 +115,15 @@ class WriteBuffer {
     const batch = [...this.results]
     const skips = [...this.skipUrls]
     this.lastFlushAt = Date.now()
-    await Promise.all([bulkUpdateEnrichedRepos(this.qx, batch), markReposSkipped(this.qx, skips)])
-    // Clear only after both writes succeed — preserves items if the DB call throws
-    this.results.splice(0, batch.length)
-    this.skipUrls.splice(0, skips.length)
+    this.flushing = true
+    try {
+      await Promise.all([bulkUpdateEnrichedRepos(this.qx, batch), markReposSkipped(this.qx, skips)])
+      // Clear only after both writes succeed — preserves items if the DB call throws
+      this.results.splice(0, batch.length)
+      this.skipUrls.splice(0, skips.length)
+    } finally {
+      this.flushing = false
+    }
     return batch.length
   }
 }
@@ -165,15 +172,20 @@ async function runStreamingPool(
 
   const fillQueue = (): void => {
     if (pendingFetch || dbDone) return
-    pendingFetch = fetchDbBatch(qx, cursor, config.updateIntervalHours).then((rows) => {
-      pendingFetch = null
-      if (rows.length === 0) {
-        dbDone = true
-      } else {
-        queue.push(...rows)
-        cursor = rows[rows.length - 1].id
-      }
-    })
+    pendingFetch = fetchDbBatch(qx, cursor, config.updateIntervalHours)
+      .then((rows) => {
+        pendingFetch = null
+        if (rows.length === 0) {
+          dbDone = true
+        } else {
+          queue.push(...rows)
+          cursor = rows[rows.length - 1].id
+        }
+      })
+      .catch((err) => {
+        pendingFetch = null
+        log.warn({ err }, 'DB batch fetch failed, will retry')
+      })
   }
 
   const nextRow = async (): Promise<{ id: string; url: string } | null> => {
