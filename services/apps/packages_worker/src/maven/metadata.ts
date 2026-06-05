@@ -11,7 +11,11 @@
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
-const MAVEN_REPO = process.env.POM_FETCHER_MAVEN_BASE_URL ?? 'https://repo1.maven.org/maven2'
+import { isPrerelease } from './normalize'
+
+function getMavenRepo(): string {
+  return process.env.MAVEN_FETCHER_BASE_URL ?? 'https://repo1.maven.org/maven2'
+}
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 3
 const RETRY_BASE_MS = 2_000
@@ -60,12 +64,23 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+/**
+ * Returns the best stable release version given Maven's candidate (from <release>/<latest>)
+ * and the full versions list. Falls back to the pre-release candidate only when no stable
+ * version exists at all (e.g. a library that has never cut a stable release).
+ */
+export function pickStableRelease(candidate: string | null, versions: string[]): string | null {
+  if (candidate && !isPrerelease(candidate)) return candidate
+  const latestStable = [...versions].reverse().find((v) => !isPrerelease(v)) ?? null
+  return latestStable ?? candidate
+}
+
 export async function resolveVersionsList(
   groupId: string,
   artifactId: string,
 ): Promise<MavenVersionsMetadata | MavenFetchError> {
   const groupPath = groupId.replace(/\./g, '/')
-  const url = `${MAVEN_REPO}/${groupPath}/${artifactId}/maven-metadata.xml`
+  const url = `${getMavenRepo()}/${groupPath}/${artifactId}/maven-metadata.xml`
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -75,7 +90,6 @@ export async function resolveVersionsList(
       })
       const parsed = parser.parse(res.data)
 
-      // Prefer <release> over <latest> — release excludes snapshots/alphas
       const versioning = parsed?.metadata?.versioning
       const release = typeof versioning?.release === 'string' ? versioning.release.trim() : null
       const latest = typeof versioning?.latest === 'string' ? versioning.latest.trim() : null
@@ -88,9 +102,11 @@ export async function resolveVersionsList(
         versions = [rawVersions.trim()]
       }
 
+      const releaseVersion = pickStableRelease(release || latest || null, versions)
+
       return {
         versions,
-        releaseVersion: release || latest || null,
+        releaseVersion,
         lastUpdated: parseMavenLastUpdated(versioning?.lastUpdated),
       }
     } catch (err) {
