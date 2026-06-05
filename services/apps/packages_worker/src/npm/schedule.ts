@@ -26,7 +26,7 @@ export async function scheduleNpmIngest(): Promise<void> {
         type: 'startWorkflow',
         workflowType: ingestNpmPackages,
         taskQueue: 'npm-worker',
-        workflowExecutionTimeout: '1 hour',
+        workflowRunTimeout: '24 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,
@@ -62,7 +62,7 @@ export async function scheduleDailyDownloadsBackfill(): Promise<void> {
         type: 'startWorkflow',
         workflowType: backfillDailyDownloads,
         taskQueue: 'npm-worker',
-        workflowExecutionTimeout: '6 hours',
+        workflowRunTimeout: '24 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,
@@ -100,7 +100,7 @@ export async function scheduleLatestLast30dRefresh(): Promise<void> {
         type: 'startWorkflow',
         workflowType: refreshLatestLast30dDownloads,
         taskQueue: 'npm-worker',
-        workflowExecutionTimeout: '6 hours',
+        workflowRunTimeout: '24 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,
@@ -138,7 +138,7 @@ export async function scheduleLast30dHistoryBackfill(): Promise<void> {
         type: 'startWorkflow',
         workflowType: backfillLast30dHistory,
         taskQueue: 'npm-worker',
-        workflowExecutionTimeout: '6 hours',
+        workflowRunTimeout: '24 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,
