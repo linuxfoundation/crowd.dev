@@ -21,6 +21,10 @@ process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)
 
 const main = async () => {
+  process.env.MAVEN_FETCHER_BASE_URL =
+    process.env.MAVEN_FETCHER_BASE_URL_BACKFILL ??
+    'https://maven-central.storage-download.googleapis.com/maven2'
+
   log.info('maven backfill starting (one-shot, full extraction)...')
 
   const config = getMavenConfig()

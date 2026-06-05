@@ -48,11 +48,11 @@ export function getEnricherConfig() {
 
 export function getMavenConfig() {
   return {
-    batchSize: requireEnvInt('POM_FETCHER_BATCH_SIZE'),
-    concurrency: requireEnvInt('POM_FETCHER_CONCURRENCY'),
-    nonCriticalBatchSize: requireEnvInt('POM_FETCHER_NON_CRITICAL_BATCH_SIZE'),
-    nonCriticalConcurrency: requireEnvInt('POM_FETCHER_NON_CRITICAL_CONCURRENCY'),
-    refreshDays: requireEnvInt('POM_FETCHER_REFRESH_DAYS'),
-    groupDelayMs: requireEnvInt('POM_FETCHER_GROUP_DELAY_MS'),
+    batchSize: requireEnvInt('MAVEN_FETCHER_BATCH_SIZE'),
+    concurrency: requireEnvInt('MAVEN_FETCHER_CONCURRENCY'),
+    nonCriticalBatchSize: requireEnvInt('MAVEN_FETCHER_NON_CRITICAL_BATCH_SIZE'),
+    nonCriticalConcurrency: requireEnvInt('MAVEN_FETCHER_NON_CRITICAL_CONCURRENCY'),
+    refreshDays: requireEnvInt('MAVEN_FETCHER_REFRESH_DAYS'),
+    groupDelayMs: requireEnvInt('MAVEN_FETCHER_GROUP_DELAY_MS'),
   }
 }

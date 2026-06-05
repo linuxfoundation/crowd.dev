@@ -1,5 +1,5 @@
 export function isPrerelease(version: string): boolean {
-  return /-(SNAPSHOT|alpha|beta|rc|m\d+)/i.test(version)
+  return /-(SNAPSHOT|alpha|beta|rc|cr|m\d+|dev)/i.test(version)
 }
 
 export function parseRepoUrl(

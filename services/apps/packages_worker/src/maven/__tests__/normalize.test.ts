@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { normalizeScmUrl } from '../extract'
+import { pickStableRelease } from '../metadata'
 import { isPrerelease, parseRepoUrl } from '../normalize'
 
 describe('isPrerelease', () => {
@@ -31,9 +32,44 @@ describe('isPrerelease', () => {
     expect(isPrerelease('5.3.0-M10')).toBe(true)
   })
 
+  it('detects dev', () => {
+    expect(isPrerelease('1.0-dev')).toBe(true)
+    expect(isPrerelease('2.0.0-dev')).toBe(true)
+  })
+
   it('returns false for versions with numbers that are not milestones', () => {
     expect(isPrerelease('1.2.3')).toBe(false)
     expect(isPrerelease('10.0.0')).toBe(false)
+  })
+})
+
+describe('pickStableRelease', () => {
+  it('returns stable candidate directly', () => {
+    expect(pickStableRelease('2.0.18', ['2.0.17', '2.0.18'])).toBe('2.0.18')
+  })
+
+  it('falls back to latest stable in list when candidate is alpha', () => {
+    const versions = ['2.0.16', '2.0.18', '2.1.0-alpha1']
+    expect(pickStableRelease('2.1.0-alpha1', versions)).toBe('2.0.18')
+  })
+
+  it('falls back to latest stable in list when candidate is RC', () => {
+    const versions = ['2.3.9', '2.4.0-RC']
+    expect(pickStableRelease('2.4.0-RC', versions)).toBe('2.3.9')
+  })
+
+  it('falls back to latest stable in list when candidate is null', () => {
+    const versions = ['1.0.0', '1.1.0', '1.2.0-beta']
+    expect(pickStableRelease(null, versions)).toBe('1.1.0')
+  })
+
+  it('returns pre-release candidate when no stable version exists', () => {
+    const versions = ['1.0.0-alpha', '1.0.0-beta']
+    expect(pickStableRelease('1.0.0-beta', versions)).toBe('1.0.0-beta')
+  })
+
+  it('returns null when candidate is null and versions list is empty', () => {
+    expect(pickStableRelease(null, [])).toBeNull()
   })
 })
 

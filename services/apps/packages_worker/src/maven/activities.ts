@@ -8,6 +8,9 @@ import { BatchResult, processBatch } from './runMavenEnrichmentLoop'
 const log = getServiceChildLogger('maven-activity')
 
 export async function processMavenCriticalBatch(): Promise<BatchResult> {
+  process.env.MAVEN_FETCHER_BASE_URL =
+    process.env.MAVEN_FETCHER_BASE_URL_INCREMENTAL ?? 'https://repo1.maven.org/maven2'
+
   const config = getMavenConfig()
   const qx = await getPackagesDb()
 

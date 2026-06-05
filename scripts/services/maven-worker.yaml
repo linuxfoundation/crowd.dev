@@ -13,7 +13,7 @@ services:
   maven-worker:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run start:maven-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
@@ -30,7 +30,7 @@ services:
   maven-worker-dev:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run dev:maven-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'

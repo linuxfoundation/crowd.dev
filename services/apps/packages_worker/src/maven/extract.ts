@@ -56,11 +56,14 @@ interface PomPerson {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// Base URL for fetching POMs/metadata. Defaults to canonical Central (repo1, Fastly —
-// aggressive per-IP throttling). Point POM_FETCHER_MAVEN_BASE_URL at a high-throughput
-// mirror (e.g. the Google GCS mirror) for bulk backfills.
-const MAVEN_REPO = process.env.POM_FETCHER_MAVEN_BASE_URL ?? 'https://repo1.maven.org/maven2'
-export const MAX_PARENT_HOPS = 8
+// Lazy getter — evaluated at call time so the entry point can set MAVEN_FETCHER_BASE_URL
+// before the first HTTP request without worrying about module load order.
+// Backfill sets MAVEN_FETCHER_BASE_URL from MAVEN_FETCHER_BASE_URL_BACKFILL (GCS mirror);
+// the incremental Temporal worker sets it from MAVEN_FETCHER_BASE_URL_INCREMENTAL (repo1).
+function getMavenRepo(): string {
+  return process.env.MAVEN_FETCHER_BASE_URL ?? 'https://repo1.maven.org/maven2'
+}
+
 const REQUEST_TIMEOUT_MS = 15_000
 
 const parser = new XMLParser({
@@ -107,7 +110,7 @@ async function getWithRetry(url: string): Promise<string> {
 
 export function buildPomUrl(groupId: string, artifactId: string, version: string): string {
   const groupPath = groupId.replace(/\./g, '/')
-  return `${MAVEN_REPO}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
+  return `${getMavenRepo()}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
 }
 
 export async function fetchPom(
@@ -264,11 +267,6 @@ async function resolveWithInheritance(
   version: string,
   depth = 0,
 ): Promise<ResolvedFields> {
-  if (depth > MAX_PARENT_HOPS) {
-    log.debug({ groupId, artifactId, version }, `Max parent hops (${MAX_PARENT_HOPS}) reached`)
-    return emptyFields(depth)
-  }
-
   const pom = await fetchPomCached(groupId, artifactId, version)
   if (!pom) return emptyFields(depth)
 

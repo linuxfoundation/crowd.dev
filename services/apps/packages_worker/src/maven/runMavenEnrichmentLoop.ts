@@ -17,7 +17,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
 
-import { MAX_PARENT_HOPS, extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
+import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
 
@@ -30,15 +30,12 @@ export interface BatchResult {
   skipped: number
   error: number
   unchanged: number
-  // critical packages whose parent chain was truncated at MAX_PARENT_HOPS (POM data may be incomplete)
-  hopLimitReached: number
 }
 
 type CriticalStatus = 'processed' | 'skipped' | 'unchanged' | 'error'
 
 interface CriticalPackageResult {
   status: CriticalStatus
-  hopLimitReached: boolean
 }
 
 type MavenConfig = ReturnType<typeof getMavenConfig>
@@ -125,7 +122,7 @@ async function processCriticalPackage(
 
   if (!groupId) {
     log.warn({ purl: pkg.purl }, 'Skipping: null namespace (groupId)')
-    return { status: 'skipped', hopLimitReached: false }
+    return { status: 'skipped' }
   }
 
   // Phase 1: lightweight metadata fetch to get the current upstream version.
@@ -152,14 +149,14 @@ async function processCriticalPackage(
         dependentReposCount: pkg.dependentReposCount,
       })
       log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
-      return { status: 'skipped', hopLimitReached: false }
+      return { status: 'skipped' }
     }
     if (metadata.kind === 'RATE_LIMIT') {
       log.warn(
         { groupId, artifactId, status: metadata.status },
         'Rate limited — will retry next pass',
       )
-      return { status: 'error', hopLimitReached: false }
+      return { status: 'error' }
     }
     throw new Error(
       `Transient error fetching metadata for ${groupId}:${artifactId} — ${metadata.message}`,
@@ -188,7 +185,7 @@ async function processCriticalPackage(
       dependentReposCount: pkg.dependentReposCount,
     })
     log.warn({ groupId, artifactId }, 'No release version in metadata — writing minimal record')
-    return { status: 'skipped', hopLimitReached: false }
+    return { status: 'skipped' }
   }
 
   // Phase 2: skip full POM extraction when upstream version matches what we already have.
@@ -199,7 +196,7 @@ async function processCriticalPackage(
       dependentReposCount: pkg.dependentReposCount,
     })
     log.debug({ groupId, artifactId, version }, 'Version unchanged — skipping POM extraction')
-    return { status: 'unchanged', hopLimitReached: false }
+    return { status: 'unchanged' }
   }
 
   // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
@@ -226,21 +223,7 @@ async function processCriticalPackage(
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
     })
-    return { status: 'error', hopLimitReached: false }
-  }
-
-  const hopLimitReached = result.parentHops > MAX_PARENT_HOPS
-  if (hopLimitReached) {
-    log.warn(
-      {
-        groupId,
-        artifactId,
-        parentHops: result.parentHops,
-        missingLicenses: result.licenses.length === 0,
-        missingScm: !result.scmUrl,
-      },
-      'Parent hop limit reached — data may be incomplete',
-    )
+    return { status: 'error' }
   }
 
   const repositoryUrl = normalizeScmUrl(result.scmUrl)
@@ -325,7 +308,7 @@ async function processCriticalPackage(
 
       await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
 
-      log.info(
+      log.debug(
         {
           groupId,
           artifactId,
@@ -340,7 +323,7 @@ async function processCriticalPackage(
     }),
   )
 
-  return { status: 'processed', hopLimitReached }
+  return { status: 'processed' }
 }
 
 // ─── Batch processing ─────────────────────────────────────────────────────────
@@ -370,7 +353,7 @@ async function processPackages(
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
   if (packages.length === 0)
-    return { processed: 0, skipped: 0, error: 0, unchanged: 0, hopLimitReached: 0 }
+    return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
   // Cluster the batch by namespace so artifacts sharing a parent POM are processed
   // adjacently — this is what makes the parent-POM cache effective. The criticality
@@ -386,7 +369,7 @@ async function processPackages(
 
   log.info({ count: packages.length, isCritical }, 'Batch started')
 
-  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0, hopLimitReached: 0 }
+  const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += concurrency) {
     const group = packages.slice(batchStart, batchStart + concurrency)
@@ -406,7 +389,6 @@ async function processPackages(
 
           const res = await processCriticalPackage(qx, pkg, forceFullExtraction)
           counts[res.status]++
-          if (res.hopLimitReached) counts.hopLimitReached++
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
@@ -416,8 +398,8 @@ async function processPackages(
     )
 
     const done = batchStart + group.length
-    if (done % 25 === 0 || done === packages.length) {
-      log.debug({ done, total: packages.length, ...counts }, 'Progress')
+    if (done % 1000 === 0 || done === packages.length) {
+      log.info({ done, total: packages.length, ...counts }, 'Progress')
     }
   }
 
@@ -443,7 +425,6 @@ async function runPhase(
     skipped: 0,
     error: 0,
     unchanged: 0,
-    hopLimitReached: 0,
   }
   let batchNum = 0
   const phaseStartedAt = Date.now()
@@ -465,7 +446,6 @@ async function runPhase(
     total.skipped += result.skipped
     total.error += result.error
     total.unchanged += result.unchanged
-    total.hopLimitReached += result.hopLimitReached
 
     log.info(
       {
@@ -475,7 +455,6 @@ async function runPhase(
         totalSkipped: total.skipped,
         totalUnchanged: total.unchanged,
         totalErrors: total.error,
-        totalHopLimitReached: total.hopLimitReached,
         elapsedSec: Math.round((Date.now() - phaseStartedAt) / 1000),
       },
       'Batch done',
