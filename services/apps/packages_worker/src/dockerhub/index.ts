@@ -95,11 +95,15 @@ async function githubFetchWithRetries(
     } catch (err) {
       if (!(err instanceof FetchError)) throw err
 
-      if (['NOT_FOUND', 'AUTH', 'MALFORMED'].includes(err.kind)) {
+      if (['NOT_FOUND', 'MALFORMED'].includes(err.kind)) {
         log.warn({ owner, name, kind: err.kind }, err.message)
         return null
       }
 
+      // AUTH means the installation token is bad (revoked / app misconfig).
+      // Propagate so the worker fails fast instead of marking every repo
+      // checked for DOCKERHUB_DISCOVERY_INTERVAL_DAYS — symmetric to Hub AUTH.
+      if (err.kind === 'AUTH') throw err
       if (err.kind === 'RATE_LIMIT') throw err
 
       if (attempt < MAX_RETRIES) {
@@ -242,6 +246,10 @@ async function processDiscoveryPage(
               )
               await new Promise((r) => setTimeout(r, waitMs))
               // loop retries the same row
+            } else if (err instanceof FetchError && err.kind === 'AUTH') {
+              // Re-throw so runDockerhubLoop exits and the process restarts with
+              // a fresh resolveInstallations() — same fail-fast as Hub AUTH.
+              throw err
             } else {
               log.error({ url: row.url, err }, 'Unexpected discovery error')
               failed++
