@@ -466,11 +466,10 @@ export async function deleteMemberOrganizations(
     // Clean up segment affiliations for orgs that no longer have any active work experiences
     if (affectedOrgIds.length > 0) {
       await tx.result(
-        `UPDATE "memberSegmentAffiliations" msa
+        `DELETE FROM "memberSegmentAffiliations" msa
          SET "deletedAt" = NOW()
          WHERE msa."memberId" = $(memberId)
            AND msa."organizationId" IN ($(orgIds:csv))
-           AND msa."deletedAt" IS NULL
            AND NOT EXISTS (
              SELECT 1 FROM "memberOrganizations" mo
              WHERE mo."memberId" = $(memberId)

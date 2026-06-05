@@ -556,6 +556,7 @@ export async function unmergeMember(
         orgIdsWithBlockedAffiliations.add(role.organizationId)
 
         if (newRoleId) {
+          // Recreate the block override for restored roles when the org is currently blocked
           overridesToCreate.push({
             memberId: secondaryId,
             memberOrganizationId: newRoleId,
@@ -569,9 +570,7 @@ export async function unmergeMember(
       await changeMemberOrganizationAffiliationOverrides(tx, overridesToCreate)
     }
 
-    // Affiliations (memberSegmentAffiliations) have already been moved to the secondary.
-    // If affiliation is blocked for this organization, remove any existing MSAs to prevent
-    // the member from remaining affiliated through a manually created affiliation.
+    // Remove moved MSAs for blocked orgs so they do not re-affiliate the secondary
     for (const organizationId of orgIdsWithBlockedAffiliations) {
       await deleteMemberSegmentAffiliations(tx, {
         memberId: secondaryId,
