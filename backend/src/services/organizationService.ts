@@ -16,6 +16,7 @@ import {
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -1074,6 +1075,9 @@ export default class OrganizationService extends LoggerBase {
         data.isAffiliationBlocked !== existingOrg.isAffiliationBlocked
       ) {
         await applyOrganizationAffiliationPolicyToMembers(qx, record.id, !data.isAffiliationBlocked)
+        if (data.isAffiliationBlocked) {
+          await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
+        }
         recalculateAffiliations = true
       }
 

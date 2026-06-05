@@ -1,8 +1,10 @@
 import {
   changeMemberOrganizationAffiliationOverrides,
+  fetchMemberOrganizationById,
   findMemberAffiliationOverrides,
   findPrimaryWorkExperiencesOfMember,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   IChangeAffiliationOverrideData,
   IMemberOrganizationAffiliationOverride,
@@ -16,6 +18,20 @@ class MemberOrganizationAffiliationOverridesRepository {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
     await changeMemberOrganizationAffiliationOverrides(qx, [data])
+
+    const { allowAffiliation, memberId, memberOrganizationId } = data
+
+    if (allowAffiliation === false && memberId && memberOrganizationId) {
+      const memberOrganization = await fetchMemberOrganizationById(qx, memberOrganizationId)
+
+      if (memberOrganization?.organizationId) {
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId,
+          organizationId: memberOrganization.organizationId,
+        })
+      }
+    }
+
     const overrides = await findMemberAffiliationOverrides(qx, data.memberId, [
       data.memberOrganizationId,
     ])

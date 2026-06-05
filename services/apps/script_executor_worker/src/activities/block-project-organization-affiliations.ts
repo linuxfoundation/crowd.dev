@@ -1,5 +1,6 @@
 import { OrganizationField, findOrgById, pgpQx, updateOrganization } from '@crowd/data-access-layer'
 import { changeMemberOrganizationAffiliationOverrides } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import OrganizationRepository from '@crowd/data-access-layer/src/old/apps/script_executor_worker/organization.repo'
 import { IChangeAffiliationOverrideData, IMemberOrganization } from '@crowd/types'
 
@@ -30,13 +31,12 @@ export async function setOrganizationAffiliationPolicyIfNotBlocked(
       OrganizationField.IS_AFFILIATION_BLOCKED,
     ])
 
-    // Return true if already blocked (no update needed)
     if (organization?.isAffiliationBlocked) {
       return true
     }
 
-    // Set isAffiliationBlocked = true
     await updateOrganization(qx, organizationId, { isAffiliationBlocked: true })
+    await deleteMemberSegmentAffiliations(qx, { organizationId })
     return false
   } catch (error) {
     svc.log.error(error, 'Error setting organization affiliation policy!')
@@ -49,7 +49,7 @@ export async function blockMemberOrganizationAffiliation(
 ): Promise<void> {
   try {
     const qx = pgpQx(svc.postgres.writer.connection())
-    return changeMemberOrganizationAffiliationOverrides(qx, data)
+    await changeMemberOrganizationAffiliationOverrides(qx, data)
   } catch (error) {
     svc.log.error(error, 'Error blocking organization affiliation!')
     throw error
