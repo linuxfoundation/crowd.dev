@@ -1,0 +1,72 @@
+name: Server Tests
+
+on:
+  pull_request:
+    # Only trigger when relevant files change to save CI minutes
+    paths-ignore:
+      - 'frontend/**'
+      - '**.md'
+      - '.gitignore'
+      - '.editorconfig'
+      - '**/.eslintrc*'
+      - '.prettierrc'
+      - '.prettierignore'
+      - 'LICENSE'
+
+# Automatically cancel in-progress runs if you push new code to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:14-alpine
+        command: postgres -c wal_level=logical
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: example
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: example
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm i --frozen-lockfile
+
+      - name: Prepare test database
+        run: ./.github/scripts/prepare-test-template-db.sh
+
+      - name: Run server tests
+        run: pnpm test:server
