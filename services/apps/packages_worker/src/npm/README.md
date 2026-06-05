@@ -8,7 +8,7 @@ worker boots (`src/bin/npm-worker.ts`).
 
 Shared design notes:
 
-- **Lanes.** Concurrency is expressed as *lanes* — one per configured proxy IP
+- **Lanes.** Concurrency is expressed as _lanes_ — one per configured proxy IP
   when `CROWD_PACKAGES_PROXIES_ENABLED=true`, otherwise a single direct lane
   (`src/npm/proxies.ts`). Each lane egresses through its own IP so the work stays
   under npm's per-IP rate limits. Lane count is read at runtime via
@@ -37,7 +37,7 @@ Shared design notes:
    filtered down to purls that exist in `packages` and re-ingested across lanes.
    On a cold start it bootstraps the `_changes` cursor from `replicate.npmjs.com`
    instead of replaying all history.
-3. **Advances the `_changes` cursor** only *after* the page's packages are
+3. **Advances the `_changes` cursor** only _after_ the page's packages are
    ingested, so the cursor never moves past unprocessed work.
 
 Continues-as-new while either the backfill or the feed still has work. Each
@@ -53,7 +53,7 @@ package fetch is a packument upsert + audit-field-change log + scan watermark.
 (`packages`). Each round runs one self-selecting lane per proxy IP; lanes drain
 disjoint **hash-shards** (`laneIndex / laneCount`) of the packages due for
 backfill (`lanes × 20` per round, up to 50 rounds per run). Per package it
-computes the *missing* date ranges between the package's first release (clamped
+computes the _missing_ date ranges between the package's first release (clamped
 to `NPM_EARLIEST`) and yesterday, fetches only those gaps, inserts the rows, and
 bumps the per-package watermark. A round where every lane fetches nothing means
 done; otherwise it continues-as-new with a fixed `cutoff`.
@@ -66,14 +66,14 @@ done; otherwise it continues-as-new with a fixed `cutoff`.
 rows) by **two cooperating workflows** keyed on two watermarks in
 `npm_package_universe_state`:
 
-| Watermark | Meaning | Set by |
-| --- | --- | --- |
-| `downloads_30d_last_run_at` | current 30-day window refreshed | breadth (3a) |
-| `downloads_30d_history_backfilled_at` | full older history filled | depth (3b) |
+| Watermark                             | Meaning                         | Set by       |
+| ------------------------------------- | ------------------------------- | ------------ |
+| `downloads_30d_last_run_at`           | current 30-day window refreshed | breadth (3a) |
+| `downloads_30d_history_backfilled_at` | full older history filled       | depth (3b)   |
 
 The split makes the work **breadth-first**: the latest 30-day number (the
 product-critical, denormalized `packages_universe.downloads_last_30d`) lands for
-*every* package before any deep history is fetched, and the history backfill can
+_every_ package before any deep history is fetched, and the history backfill can
 never block the latest-window refresh.
 
 Both share one fetch engine (`processLast30dWindowPlans`): work is grouped **by
@@ -144,10 +144,10 @@ temporal workflow start \
 
 ### Relevant environment variables
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `CROWD_PACKAGES_PROXIES_ENABLED` | `false` | Master switch for the proxy/lane layer. Off = single direct lane. |
-| `CROWD_PACKAGES_PROXIES` | — | Comma-separated `host:port:user:pass` proxy list; lane count = number of entries. |
-| `CROWD_PACKAGES_INGEST_SLEEP_MS` | `1200` | Per-package throttle in the metadata ingest lane. |
-| `CROWD_PACKAGES_DOWNLOAD_SLEEP_MS` | `1000` | Per-fetch throttle in the download lanes. |
-| `CROWD_PACKAGES_TEMPORAL_NAMESPACE` | — | Temporal namespace the worker connects to. |
+| Variable                            | Default | Purpose                                                                           |
+| ----------------------------------- | ------- | --------------------------------------------------------------------------------- |
+| `CROWD_PACKAGES_PROXIES_ENABLED`    | `false` | Master switch for the proxy/lane layer. Off = single direct lane.                 |
+| `CROWD_PACKAGES_PROXIES`            | —       | Comma-separated `host:port:user:pass` proxy list; lane count = number of entries. |
+| `CROWD_PACKAGES_INGEST_SLEEP_MS`    | `1200`  | Per-package throttle in the metadata ingest lane.                                 |
+| `CROWD_PACKAGES_DOWNLOAD_SLEEP_MS`  | `1000`  | Per-fetch throttle in the download lanes.                                         |
+| `CROWD_PACKAGES_TEMPORAL_NAMESPACE` | —       | Temporal namespace the worker connects to.                                        |
