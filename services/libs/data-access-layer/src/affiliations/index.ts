@@ -99,6 +99,7 @@ export async function findManualAffiliationsBulk(
       FROM "memberSegmentAffiliations" msa
       JOIN organizations o ON msa."organizationId" = o.id
       WHERE msa."memberId" IN ($(memberIds:csv))
+        AND msa."deletedAt" IS NULL
     `,
     { memberIds },
   )

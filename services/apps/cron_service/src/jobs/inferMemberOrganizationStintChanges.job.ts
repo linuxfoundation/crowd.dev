@@ -15,6 +15,7 @@ import {
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
 import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
@@ -128,6 +129,10 @@ async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChang
             allowAffiliation: false,
           },
         ])
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId: change.memberId,
+          organizationId: change.organizationId,
+        })
       }
     } else {
       await updateMemberOrganization(qx, change.memberId, change.id, {
