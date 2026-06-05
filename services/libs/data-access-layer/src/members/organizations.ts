@@ -467,7 +467,6 @@ export async function deleteMemberOrganizations(
     if (affectedOrgIds.length > 0) {
       await tx.result(
         `DELETE FROM "memberSegmentAffiliations" msa
-         SET "deletedAt" = NOW()
          WHERE msa."memberId" = $(memberId)
            AND msa."organizationId" IN ($(orgIds:csv))
            AND NOT EXISTS (
