@@ -21,6 +21,9 @@ export async function fetchDockerhub(
     response = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
+      // Hub calls are serialized via hubChain in the loop — a stalled socket
+      // would otherwise block every subsequent Hub probe indefinitely.
+      signal: AbortSignal.timeout(30_000),
     })
   } catch (err) {
     throw new FetchError('TRANSIENT', `Network error for ${imageName}: ${(err as Error).message}`)

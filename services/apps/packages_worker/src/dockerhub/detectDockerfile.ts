@@ -29,6 +29,7 @@ export async function detectDockerfile(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query: DOCKERFILE_QUERY, variables: { owner, name } }),
+      signal: AbortSignal.timeout(30_000),
     })
   } catch (err) {
     throw new FetchError(
