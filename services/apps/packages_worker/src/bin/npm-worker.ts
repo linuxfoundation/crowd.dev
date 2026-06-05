@@ -4,7 +4,6 @@ import {
   scheduleLatestLast30dRefresh,
   scheduleNpmIngest,
 } from '../npm/schedule'
-import { scheduleOsvSync } from '../osv/schedule'
 import { svc } from '../service'
 
 setImmediate(async () => {
@@ -13,6 +12,5 @@ setImmediate(async () => {
   await scheduleDailyDownloadsBackfill()
   await scheduleLatestLast30dRefresh()
   await scheduleLast30dHistoryBackfill()
-  await scheduleOsvSync()
   await svc.start()
 })

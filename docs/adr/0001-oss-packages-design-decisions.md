@@ -118,24 +118,22 @@ PageRank centrality is the primary blast-radius signal; transitive dependent cou
 Per-ecosystem percentile-rank of each log-transformed signal, then weighted blend:
 
 ```
-score =  w_downloads   * pct_rank( LN(1 + downloads_last_30d)         )   within ecosystem
-       + w_dep_pkgs    * pct_rank( LN(1 + dependent_packages_count)   )   within ecosystem
-       + w_dep_repos   * pct_rank( LN(1 + dependent_repos_count)      )   within ecosystem
-       + w_transitive  * pct_rank( LN(1 + transitive_dependent_count) )   within ecosystem
-       + w_centrality  * pct_rank( centrality_score                   )   within ecosystem
+impact =  w_downloads   * pct_rank( LOG(1 + downloads_last_30d)         )   within ecosystem
+        + w_dep_pkgs    * pct_rank( LOG(1 + dependent_count)            )   within ecosystem
+        + w_transitive  * pct_rank( LOG(1 + transitive_dependent_count) )   within ecosystem
 ```
 
-Weights sum to 1.0 → score ∈ `[0, 1]`. Centrality skips the `LN()` (PageRank is already in a small bounded range) but still passes through `pct_rank` so every signal lands on the same percentile scale. Starting weight bias: centrality dominant (PageRank is the primary blast-radius signal), transitive count low (kept as a sanity floor — see Inputs note on double-counting), direct dependents and downloads balanced as secondary popularity signals. All weights are call-time numeric parameters to `rank_packages_universe()` — tunable without schema or code changes.
+Weights sum to 1.0 → impact ∈ `[0, 1]`. `dependent_count` is direct dependent packages only; `transitive_dependent_count` is indirect dependents only. All weights are call-time numeric parameters to `rank_packages_universe()` — tunable without schema or code changes.
 
-**Suggested starting weights** (use as the first call, then iterate):
+`centrality_score` (PageRank) is computed and stored on `packages_universe` by the criticality worker and will be added to the formula if needed.
 
-| Weight          | Value | Signal               | Rationale                                              |
-| --------------- | ----- | -------------------- | ------------------------------------------------------ |
-| `w_centrality`  | 0.40  | PageRank             | Primary blast-radius signal                            |
-| `w_transitive`  | 0.10  | Transitive dependents | Sanity floor; low to avoid double-counting centrality  |
-| `w_dep_pkgs`    | 0.20  | Direct dependent packages | Popularity within the package graph                |
-| `w_dep_repos`   | 0.15  | Direct dependent repos | Popularity across consumer codebases                  |
-| `w_downloads`   | 0.15  | 30-day downloads     | Adoption signal, lighter weight (noisy for new packages) |
+**Current weights** (defaults in `rank_packages_universe()`, iterate once the ranked list is observable):
+
+| Weight          | Value | Signal                      | Rationale                                                            |
+| --------------- | ----- | --------------------------- | -------------------------------------------------------------------- |
+| `w_transitive`  | 0.50  | Indirect dependent packages | Primary blast-radius signal — captures packages invisible to direct counts |
+| `w_dep_pkgs`    | 0.25  | Direct dependent packages   | Popularity within the package graph                                  |
+| `w_downloads`   | 0.25  | 30-day downloads            | Adoption signal, balanced with dependency reach                      |
 
 These are a starting point, not a recommendation we've validated. They will be revised once the first ranked list is observable and stakeholders review which packages land in / near Tier 1 — particularly for smaller ecosystems where the percentile distribution is less stable.
 
@@ -226,10 +224,10 @@ Five sub-workers run concurrently (npm, Maven, OSV, GitHub, Docker Hub), all wri
 | `packages`                            | Upsert on `purl`. Each worker only writes columns it owns; ecosystem isolation means column-level conflicts cannot occur in practice.                                                                                                                       |
 | `packages_universe`                   | Incremental upsert keyed on `purl`. The deps.dev import only touches rows whose underlying deps.dev snapshot date has advanced since the previous import (initial run is a one-time full backfill).           |
 | `versions`                            | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`.                                                                                                                     |
-| `repos`                               | Registry workers (npm, Maven) do **not** write directly to `repos`. They write `package_repos` rows. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
+| `repos`                               | Registry workers (npm, Maven) do **not** write `repos` enrichment metadata. They INSERT a minimal `repos(url, host)` row — `url` (canonical) and `host` (coarse classification) are both derived from the declared repository URL — solely to create the FK target their `package_repos` link needs. `owner`/`name`/`stars`/`description` and all other metadata stay NULL and remain enricher-owned; existing rows are never updated by registry workers. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
 | `package_repos`                       | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other.                                                                                         |
 | `advisories`                          | Upsert on `osv_id`. OSV is the single source of truth; no other worker writes to this table.                                                                                                                                                                |
-| `maintainers` / `package_maintainers` | Upsert on `(ecosystem, username)`. Never delete — history is preserved.                                                                                                                                                                                     |
+| `maintainers` / `package_maintainers` | `maintainers`: upsert on `(ecosystem, username)`, never deleted — the identity history is preserved. `package_maintainers`: reflects the **current** link set — the npm worker replaces a package's links each ingest (delete + reinsert), so prior link rows are not retained.                                                                                                                                                                                     |
 | `downloads_daily`                     | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates.                                                     |
 | `downloads_last_30d`                  | Upsert on `(purl, end_date)`. Written by the weekly ranking worker only. The cached `packages_universe.downloads_last_30d` column must be updated in the same pass.                                                                                         |
 
@@ -375,10 +373,13 @@ Local verification against the live OSV dataset (2026-05-28) showed the multi-ra
 
 **Strategy**: daily delta poll via the CouchDB changes feed, not a full sync.
 
-1. Call `replicate.npmjs.com/_changes?since=<last_seq>&limit=<batch>` to get package names changed in the last 24h.
-2. For each changed name, fetch the full document from `registry.npmjs.com/<package>`.
-3. Normalize into `packages`, `versions`, `maintainers`, and `package_maintainers` using the write rules above.
-4. Downloads (timeline): call `api.npmjs.org/downloads/range/<start>:<end>/<package>` in batches of **128 packages per call** against the critical list. Write per-day rows to `downloads_daily`. Update `packages_universe.downloads_last_30d` at the end of each pass.
+1. Call `replicate.npmjs.com/_changes?since=<last_seq>&limit=<batch>` to get package names changed since the last run.
+2. Filter changed names against the `packages` table (~700k packages). Only packages already tracked in Tier 2 are re-ingested — unknown packages in the changes feed are ignored.
+3. For each matching changed name, fetch the full document from `registry.npmjs.com/<package>`.
+4. Normalize into `packages`, `versions`, `maintainers`, and `package_maintainers` using the write rules above.
+4. Downloads: two Temporal workflows — `backfillDailyDownloads` (per-day rows into `downloads_daily`) and `refreshLast30dDownloads` (rolling 30-day windows into `downloads_last_30d`). Both are self-healing: they detect and fill missing windows on each run rather than assuming continuity. Both currently source packages from a static watch list. Once the deps.dev BQ import is operational, `backfillDailyDownloads` will source from `packages` (Tier 2 critical slice) and `refreshLast30dDownloads` will source from `packages_universe` (full Tier 3 population).
+
+   **Rolling-30-day window shape**: each `downloads_last_30d` window uses `end_date = 1st of calendar month, start_date = end_date − 30 days` — not a true calendar month. This ensures every window covers exactly 30 days, making download counts directly comparable across months for criticality scoring. Calendar months (28–31 days) would skew comparisons.
 
 The `_changes` `seq` cursor is persisted between runs (in a `worker_state` row or env var) so each poll starts where the last one ended. If the cursor is lost the worker falls back to a full re-sync of the critical list.
 
@@ -557,7 +558,7 @@ SET count      = EXCLUDED.count,
     start_date = EXCLUDED.start_date;
 ```
 
-The weekly ranking worker must write both the `downloads_last_30d` row and the cached `packages_universe.downloads_last_30d` column in the same pass — if only one write happens, the ranking function silently uses a stale value. Code review must enforce this.
+The writer of a `downloads_last_30d` row must also update the cached `packages_universe.downloads_last_30d` column in the same pass when writing the latest window — if only one write happens, the ranking function silently uses a stale value. Code review must enforce this. For npm, this responsibility belongs to the npm worker's `refreshLast30dDownloads` workflow.
 
 A package promoted from Tier 3 to Tier 2 (becomes critical) will have rolling-window history but no daily history; the daily timeline starts from the promotion date forward.
 
