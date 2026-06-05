@@ -18,6 +18,12 @@ const options = [
     description: 'Dry run — log counts and member ids only, no writes.',
   },
   {
+    name: 'memberIds',
+    type: String,
+    multiple: true,
+    description: 'Comma-separated member ids to recalculate without running MSA cleanup.',
+  },
+  {
     name: 'help',
     alias: 'h',
     type: Boolean,
@@ -26,6 +32,21 @@ const options = [
 ]
 
 const parameters = commandLineArgs(options)
+
+function parseMemberIds(value?: string[]): string[] {
+  if (!value?.length) {
+    return []
+  }
+
+  return [
+    ...new Set(
+      value
+        .flatMap((item) => item.split(','))
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ]
+}
 
 const MSAS_TO_CLEAN_SQL = `
   SELECT DISTINCT
@@ -43,6 +64,34 @@ const MSAS_TO_CLEAN_SQL = `
 
 setImmediate(async () => {
   const testRun = parameters.testRun ?? false
+  const providedMemberIds = parseMemberIds(parameters.memberIds)
+
+  const temporal = await getTemporalClient(TEMPORAL_CONFIG)
+
+  log.info(
+    { testRun, providedMemberCount: providedMemberIds.length },
+    'Running cleanup-msas-for-blocked-affiliation-overrides',
+  )
+
+  if (providedMemberIds.length > 0) {
+    log.info(
+      { memberCount: providedMemberIds.length, memberIds: providedMemberIds },
+      'Members to recalculate',
+    )
+
+    if (testRun) {
+      log.info('Test run — no memberUpdate signals triggered')
+      process.exit(0)
+    }
+
+    for (const memberId of providedMemberIds) {
+      await signalMemberUpdate(temporal, memberId)
+      log.info({ memberId }, 'Triggered memberUpdate')
+    }
+
+    log.info({ memberCount: providedMemberIds.length }, 'Done')
+    process.exit(0)
+  }
 
   const db = await getDbConnection({
     host: DB_CONFIG.writeHost,
@@ -53,9 +102,6 @@ setImmediate(async () => {
   })
 
   const qx = pgpQx(db)
-  const temporal = await getTemporalClient(TEMPORAL_CONFIG)
-
-  log.info({ testRun }, 'Running cleanup-msas-for-blocked-affiliation-overrides')
 
   const rows: { id: string; memberId: string; organizationId: string }[] = await qx.select(
     MSAS_TO_CLEAN_SQL,
