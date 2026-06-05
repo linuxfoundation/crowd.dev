@@ -26,7 +26,17 @@ CREATE OR REPLACE FUNCTION rank_packages_universe(
     weight_downloads            numeric DEFAULT 0.25,
     weight_dependent_packages   numeric DEFAULT 0.25,
     weight_transitive           numeric DEFAULT 0.50,
-    critical_top_n_by_ecosystem jsonb   DEFAULT '{}'::jsonb
+    critical_top_n_by_ecosystem jsonb   DEFAULT '{
+        "npm":        210000,
+        "pypi":       140000,
+        "maven":      120000,
+        "nuget":       70000,
+        "packagist":   56000,
+        "go":          42000,
+        "cargo":       28000,
+        "rubygems":    21000,
+        "docker":      13000
+    }'::jsonb
 )
 RETURNS TABLE(scored_rows int, ranked_rows int, propagated_rows int)
 LANGUAGE plpgsql AS $$

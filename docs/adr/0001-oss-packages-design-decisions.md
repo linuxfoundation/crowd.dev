@@ -118,24 +118,22 @@ PageRank centrality is the primary blast-radius signal; transitive dependent cou
 Per-ecosystem percentile-rank of each log-transformed signal, then weighted blend:
 
 ```
-score =  w_downloads   * pct_rank( LN(1 + downloads_last_30d)         )   within ecosystem
-       + w_dep_pkgs    * pct_rank( LN(1 + dependent_packages_count)   )   within ecosystem
-       + w_dep_repos   * pct_rank( LN(1 + dependent_repos_count)      )   within ecosystem
-       + w_transitive  * pct_rank( LN(1 + transitive_dependent_count) )   within ecosystem
-       + w_centrality  * pct_rank( centrality_score                   )   within ecosystem
+impact =  w_downloads   * pct_rank( LOG(1 + downloads_last_30d)         )   within ecosystem
+        + w_dep_pkgs    * pct_rank( LOG(1 + dependent_count)            )   within ecosystem
+        + w_transitive  * pct_rank( LOG(1 + transitive_dependent_count) )   within ecosystem
 ```
 
-Weights sum to 1.0 → score ∈ `[0, 1]`. Centrality skips the `LN()` (PageRank is already in a small bounded range) but still passes through `pct_rank` so every signal lands on the same percentile scale. Starting weight bias: centrality dominant (PageRank is the primary blast-radius signal), transitive count low (kept as a sanity floor — see Inputs note on double-counting), direct dependents and downloads balanced as secondary popularity signals. All weights are call-time numeric parameters to `rank_packages_universe()` — tunable without schema or code changes.
+Weights sum to 1.0 → impact ∈ `[0, 1]`. `dependent_count` is direct dependent packages only; `transitive_dependent_count` is indirect dependents only. All weights are call-time numeric parameters to `rank_packages_universe()` — tunable without schema or code changes.
 
-**Suggested starting weights** (use as the first call, then iterate):
+`centrality_score` (PageRank) is computed and stored on `packages_universe` by the criticality worker and will be added to the formula if needed.
 
-| Weight          | Value | Signal               | Rationale                                              |
-| --------------- | ----- | -------------------- | ------------------------------------------------------ |
-| `w_centrality`  | 0.40  | PageRank             | Primary blast-radius signal                            |
-| `w_transitive`  | 0.10  | Transitive dependents | Sanity floor; low to avoid double-counting centrality  |
-| `w_dep_pkgs`    | 0.20  | Direct dependent packages | Popularity within the package graph                |
-| `w_dep_repos`   | 0.15  | Direct dependent repos | Popularity across consumer codebases                  |
-| `w_downloads`   | 0.15  | 30-day downloads     | Adoption signal, lighter weight (noisy for new packages) |
+**Current weights** (defaults in `rank_packages_universe()`, iterate once the ranked list is observable):
+
+| Weight          | Value | Signal                      | Rationale                                                            |
+| --------------- | ----- | --------------------------- | -------------------------------------------------------------------- |
+| `w_transitive`  | 0.50  | Indirect dependent packages | Primary blast-radius signal — captures packages invisible to direct counts |
+| `w_dep_pkgs`    | 0.25  | Direct dependent packages   | Popularity within the package graph                                  |
+| `w_downloads`   | 0.25  | 30-day downloads            | Adoption signal, balanced with dependency reach                      |
 
 These are a starting point, not a recommendation we've validated. They will be revised once the first ranked list is observable and stakeholders review which packages land in / near Tier 1 — particularly for smaller ecosystems where the percentile distribution is less stable.
 
