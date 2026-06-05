@@ -1,6 +1,6 @@
 /**
- * Core POM extraction logic — pure functions (no I/O side-effects, no DB calls).
- * Callers are responsible for concurrency, retries, and persistence.
+ * Core POM extraction logic — HTTP only, no DB calls.
+ * Callers are responsible for concurrency and persistence.
  */
 import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
@@ -250,6 +250,9 @@ export function resetPomCache(): void {
 
 // ─── Inheritance resolution ───────────────────────────────────────────────────
 
+// Covers all known real-world Maven parent chains (Spring, Apache, etc. top out at ~4 hops).
+const MAX_PARENT_DEPTH = 8
+
 interface ResolvedFields {
   description: string | null
   licenses: string[]
@@ -266,6 +269,7 @@ async function resolveWithInheritance(
   artifactId: string,
   version: string,
   depth = 0,
+  visited = new Set<string>(),
 ): Promise<ResolvedFields> {
   const pom = await fetchPomCached(groupId, artifactId, version)
   if (!pom) return emptyFields(depth)
@@ -280,25 +284,35 @@ async function resolveWithInheritance(
   const parent = extractParent(pom)
 
   if (parent && (missingLicense || missingScm)) {
-    log.debug(
-      { groupId, artifactId, version },
-      `[hop ${depth + 1}] ${parent.groupId}:${parent.artifactId}:${parent.version}`,
-    )
-    const parentFields = await resolveWithInheritance(
-      parent.groupId,
-      parent.artifactId,
-      parent.version,
-      depth + 1,
-    )
-    return {
-      description: extractStr(pom.description) ?? parentFields.description,
-      licenses: licenses.length > 0 ? licenses : parentFields.licenses,
-      licensesRaw: licenses.length > 0 ? licenses.join(', ') : parentFields.licensesRaw,
-      scmUrl: scmUrl ?? parentFields.scmUrl,
-      homepageUrl: extractStr(pom.url) ?? parentFields.homepageUrl,
-      developers: developers.length > 0 ? developers : parentFields.developers,
-      contributors: contributors.length > 0 ? contributors : parentFields.contributors,
-      hops: parentFields.hops,
+    const parentKey = `${parent.groupId}:${parent.artifactId}:${parent.version}`
+    if (depth >= MAX_PARENT_DEPTH || visited.has(parentKey)) {
+      log.warn(
+        { groupId, artifactId, version, depth, cycle: visited.has(parentKey) },
+        'Parent chain limit reached — stopping inheritance resolution',
+      )
+    } else {
+      visited.add(parentKey)
+      log.debug(
+        { groupId, artifactId, version },
+        `[hop ${depth + 1}] ${parentKey}`,
+      )
+      const parentFields = await resolveWithInheritance(
+        parent.groupId,
+        parent.artifactId,
+        parent.version,
+        depth + 1,
+        visited,
+      )
+      return {
+        description: extractStr(pom.description) ?? parentFields.description,
+        licenses: licenses.length > 0 ? licenses : parentFields.licenses,
+        licensesRaw: licenses.length > 0 ? licenses.join(', ') : parentFields.licensesRaw,
+        scmUrl: scmUrl ?? parentFields.scmUrl,
+        homepageUrl: extractStr(pom.url) ?? parentFields.homepageUrl,
+        developers: developers.length > 0 ? developers : parentFields.developers,
+        contributors: contributors.length > 0 ? contributors : parentFields.contributors,
+        hops: parentFields.hops,
+      }
     }
   }
 
