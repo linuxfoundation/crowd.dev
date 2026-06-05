@@ -34,7 +34,7 @@ export async function upsertNpmVersions(
          $(numbers)::text[],
          $(publishedAts)::text[],
          $(isLatests)::bool[],
-         $(isPreleases)::bool[],
+         $(isPrereleases)::bool[],
          $(licenses)::text[]
        ) AS v(num, pub, latest, pre, lic)
        CROSS JOIN (SELECT namespace, name FROM packages WHERE id = $(packageId)::bigint) p
@@ -61,7 +61,7 @@ export async function upsertNpmVersions(
       numbers: versions.map((v) => v.number),
       publishedAts: versions.map((v) => v.publishedAt),
       isLatests: versions.map((v) => v.isLatest),
-      isPreleases: versions.map((v) => v.isPrerelease),
+      isPrereleases: versions.map((v) => v.isPrerelease),
       licenses: versions.map((v) => v.license),
     },
   )

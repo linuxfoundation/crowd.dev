@@ -39,13 +39,15 @@ export async function upsertPackageRepo(
        INSERT INTO package_repos (package_id, repo_id, source, confidence)
        VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence))
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
+         source      = EXCLUDED.source,
          confidence  = EXCLUDED.confidence,
          verified_at = NOW()
        RETURNING source, confidence
      )
      SELECT array_remove(ARRAY[
        CASE WHEN o.source IS NULL                             THEN 'package_repos.repo_id' END,
-       CASE WHEN o.source IS NULL                             THEN 'package_repos.source' END,
+       CASE WHEN o.source IS NULL
+              OR o.source     IS DISTINCT FROM ins.source     THEN 'package_repos.source' END,
        CASE WHEN o.source IS NULL
               OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
      ], NULL) AS changed_fields

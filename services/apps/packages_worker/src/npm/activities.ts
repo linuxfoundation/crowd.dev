@@ -296,8 +296,8 @@ export async function backfillDailyLane(
 
 function downloadSleepMs(): number {
   const raw = process.env.CROWD_PACKAGES_DOWNLOAD_SLEEP_MS
-  const n = parseInt(raw ?? '1200', 10)
-  return Number.isFinite(n) && n >= 0 ? n : 500
+  const n = parseInt(raw ?? '1000', 10)
+  return Number.isFinite(n) && n >= 0 ? n : 1000
 }
 
 function sleep(ms: number): Promise<void> {

@@ -19,6 +19,7 @@ export function parseNpmName(raw: string): { namespace: string | null; name: str
 // PostgreSQL wire protocol ("invalid message format").
 export function stripNullBytesDeep<T>(value: T): T {
   if (typeof value === 'string') {
+    // eslint-disable-next-line no-control-regex
     return value.replace(/\u0000/g, '') as T
   }
   if (Array.isArray(value)) {

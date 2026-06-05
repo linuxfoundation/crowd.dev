@@ -3,8 +3,8 @@
 The npm worker keeps the npm slice of the packages database fresh: package
 metadata (packuments), per-day download counts, and rolling 30-day download
 windows. It does this with **four Temporal workflows**, all running on the
-`packages-worker` task queue and all registered as cron schedules when the
-worker boots (`src/bin/packages-worker.ts`).
+`npm-worker` task queue and all registered as cron schedules when the
+worker boots (`src/bin/npm-worker.ts`).
 
 Shared design notes:
 
@@ -120,22 +120,22 @@ converges.
 
 ## How to run
 
-All three are **cron-scheduled automatically** — just start the worker and the
+All four are **cron-scheduled automatically** — just start the worker and the
 schedules register themselves (idempotently):
 
 ```bash
 # from services/apps/packages_worker
-pnpm dev:packages-worker:local     # local: loads backend/.env.*.local, hot-reload
-pnpm start:packages-worker         # prod-style start
+pnpm dev:npm-worker:local     # local: loads backend/.env.*.local, hot-reload
+pnpm start:npm-worker         # prod-style start
 ```
 
 To run one **on demand** (outside its cron), trigger the workflow against the
-`packages-worker` task queue with the Temporal CLI or client — they all take no
+`npm-worker` task queue with the Temporal CLI or client — they all take no
 args and default their internal state:
 
 ```bash
 temporal workflow start \
-  --task-queue packages-worker \
+  --task-queue npm-worker \
   --type ingestNpmPackages \
   --workflow-id npm-ingest-manual
 
