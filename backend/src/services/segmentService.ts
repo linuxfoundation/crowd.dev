@@ -8,6 +8,7 @@ import {
 } from '@crowd/data-access-layer'
 import { ICreateInsightsProject, findBySlug } from '@crowd/data-access-layer/src/collections'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   buildSegmentActivityTypes,
   isSegmentSubproject,
@@ -739,6 +740,7 @@ export default class SegmentService extends LoggerBase {
         const updatedOrgId = await updateOrganization(qx, o.id, { isAffiliationBlocked: true })
         if (updatedOrgId) {
           await applyOrganizationAffiliationPolicyToMembers(qx, updatedOrgId, false)
+          await deleteMemberSegmentAffiliations(qx, { organizationId: updatedOrgId })
           result.push(updatedOrgId)
         }
       }

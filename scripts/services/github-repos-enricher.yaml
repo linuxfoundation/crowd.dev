@@ -6,7 +6,6 @@ x-env-args: &env-args
   SERVICE: github-repos-enricher
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
-  ENRICHER_BATCH_SIZE: '100'
   ENRICHER_REPO_UPDATE_INTERVAL_HOURS: '24'
   ENRICHER_IDLE_SLEEP_SEC: '60'
 
@@ -14,7 +13,7 @@ services:
   github-repos-enricher:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run start:github-repos-enricher'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
@@ -31,7 +30,7 @@ services:
   github-repos-enricher-dev:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run dev:github-repos-enricher'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'

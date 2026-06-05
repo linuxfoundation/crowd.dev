@@ -1,2 +1,17 @@
-export { npmHello } from '../npm/workflows'
+export {
+  backfillDailyDownloads,
+  backfillLast30dHistory,
+  ingestNpmPackages,
+  refreshLatestLast30dDownloads,
+} from '../npm/workflows'
+export {
+  bootstrapOsspckgs,
+  cleanupOsspckgs,
+  ingestPackages,
+  ingestVersions,
+  ingestRepos,
+  ingestDependencies,
+  ingestAdvisories,
+  ingestDependentCounts,
+} from '../deps-dev/workflows'
 export { osvSync } from '../osv/workflows'

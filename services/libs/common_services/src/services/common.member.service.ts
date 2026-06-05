@@ -43,7 +43,10 @@ import {
   updateMember,
 } from '@crowd/data-access-layer'
 import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
-import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import {
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -154,6 +157,10 @@ export class CommonMemberService extends LoggerBase {
                   allowAffiliation: false,
                 },
               ])
+              await deleteMemberSegmentAffiliations(this.qx, {
+                memberId,
+                organizationId: org.id,
+              })
             }
 
             await addOrgsToSegments(this.qx, segmentIds, [org.id])

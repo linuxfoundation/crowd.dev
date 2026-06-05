@@ -174,24 +174,6 @@ class MemberSimilarityCalculator {
       }
     }
 
-    // check displayName match
-    if (
-      similarMember.keyword_displayName.toLowerCase() === primaryMember.displayName.toLowerCase()
-    ) {
-      const dn = primaryMember.displayName.toLowerCase().trim()
-      if (isOsReservedName(dn)) {
-        return this.LOW_CONFIDENCE_SCORE
-      }
-      // Single-word names (first-name-only, handles) are too ambiguous without a corroborating
-      // signal. Multi-word names (full names) are treated as high-confidence on their own.
-      const isFullName = dn.includes(' ')
-      return this.decideMemberSimilarityUsingAdditionalChecks(
-        primaryMember,
-        similarMember,
-        isFullName ? undefined : this.HIGH_CONFIDENCE_SCORE,
-      )
-    }
-
     // calculate similarity percentage
     const identityLength = similarPrimaryIdentity?.value.length || 0
 
@@ -226,14 +208,13 @@ class MemberSimilarityCalculator {
 
         if (clashingIdentities.length === 0) continue
 
-        // git "usernames" are commit-author emails — a single person commits from many addresses
-        // (work, personal, noreply, machine-local). Different values don't mean different people.
-        // Relax only when ALL clashes are email-like and the displayName is a real identity.
+        // Git usernames are commit-author emails; one person may have many. Ignore the clash when
+        // both sides are email-shaped and display names are not generic.
         if (
           identity.platform === PlatformType.GIT &&
           identity.value.includes('@') &&
           clashingIdentities.every((c) => c.keyword_value?.includes('@')) &&
-          !this.isNonIdentityBearingDisplayName(member, similarMember)
+          !this.hasGenericDisplayName(member, similarMember)
         ) {
           continue
         }
@@ -245,10 +226,8 @@ class MemberSimilarityCalculator {
     return false
   }
 
-  // Returns true when either member's displayName is a bot or a generic placeholder rather than
-  // a real person's name — we keep conservative clash detection for these to avoid merging
-  // distinct entities that share the same non-identity string.
-  private static isNonIdentityBearingDisplayName(
+  /** Either member has a display name too generic to relax a git-email username clash. */
+  private static hasGenericDisplayName(
     member: IMemberWithAggregatesForMergeSuggestions,
     similarMember: IMemberOpensearch,
   ): boolean {
@@ -264,8 +243,7 @@ class MemberSimilarityCalculator {
 
     if (isOsReservedName(primaryDn) || isOsReservedName(similarDn)) return true
 
-    // When a git/username local-part equals the displayName, the name is just the commit-time
-    // default (e.g. user.name="user", user.email="user@laptop.local").
+    // Commit config often sets displayName to the git email local-part (e.g. "user" + user@laptop.local).
     for (const id of member.identities) {
       if (
         id.platform === PlatformType.GIT &&

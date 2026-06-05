@@ -8,13 +8,14 @@ DESCRIPTION >
     - Parameters:
     - `search`: Required string for searching across all entity types (inherited by filtered pipes)
     - `limit`: Optional integer for result limit per entity type, defaults to 10
-    - Response: `type` ('collection'|'project'|'repository'), `slug`, `logo`, `projectSlug`, `name`
+    - Response: `type` ('collection'|'project'|'repository'), `id` (projectId only), `slug`, `logo`, `projectSlug`, `name`
 
 NODE merge_results_from_collections_projects_repos_filtered
 SQL >
     %
     select
         'collection' as type,
+        '' as id,
         collections_filtered.slug,
         null as logo,
         null as projectSlug,
@@ -26,6 +27,7 @@ SQL >
     union all
     select
         'project' as type,
+        insightsProjects_filtered.id,
         insightsProjects_filtered.slug,
         insightsProjects_filtered.logo,
         insightsProjects_filtered.slug as "projectSlug",
@@ -42,6 +44,7 @@ SQL >
     union all
     select
         'repository' as type,
+        '' as id,
         activityRepositories_filtered.repo as slug,
         null as logo,
         activityRepositories_filtered.projectSlug as "projectSlug",

@@ -6,15 +6,21 @@ export interface LightRepoResult {
   description: string | null
   primaryLanguage: string | null
   topics: string[]
-  stars: number
-  forks: number
-  watchers: number
-  openIssues: number
+  stars: number | null
+  forks: number | null
+  watchers: number | null
+  openIssues: number | null
   lastCommitAt: string | null
-  archived: boolean
-  disabled: boolean
-  isFork: boolean
+  archived: boolean | null
+  disabled: boolean | null
+  isFork: boolean | null
   createdAt: string | null
+  rateLimit: {
+    limit: number
+    cost: number
+    remaining: number
+    resetAt: string
+  } | null
 }
 
 export type FetchErrorKind = 'RATE_LIMIT' | 'TRANSIENT' | 'NOT_FOUND' | 'AUTH' | 'MALFORMED'
