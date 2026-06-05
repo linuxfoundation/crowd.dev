@@ -6,14 +6,61 @@ import { IManualAffiliationData } from '../old/apps/data_sink_worker/repo/member
 import { QueryExecutor } from '../queryExecutor'
 import { prepareBulkInsert } from '../utils'
 
-export async function deleteMemberAffiliations(qx: QueryExecutor, memberId: string) {
-  await qx.result(
-    `
-      DELETE FROM "memberSegmentAffiliations"
-      WHERE "memberId" = $(memberId)
-    `,
-    { memberId },
-  )
+type MemberSegmentAffiliationDeleteFilter = {
+  ids?: string[]
+  memberId?: string
+  organizationId?: string
+  segmentId?: string
+  mode?: 'soft' | 'hard'
+}
+
+export async function deleteMemberSegmentAffiliations(
+  qx: QueryExecutor,
+  { ids, memberId, organizationId, segmentId, mode = 'soft' }: MemberSegmentAffiliationDeleteFilter,
+) {
+  const where: string[] = []
+  const params: Record<string, unknown> = {}
+
+  if (memberId) {
+    where.push(`"memberId" = $(memberId)`)
+    params.memberId = memberId
+  }
+
+  if (organizationId) {
+    where.push(`"organizationId" = $(organizationId)`)
+    params.organizationId = organizationId
+  }
+
+  if (segmentId) {
+    where.push(`"segmentId" = $(segmentId)`)
+    params.segmentId = segmentId
+  }
+
+  if (ids?.length) {
+    where.push(`"id" IN ($(ids:csv))`)
+    params.ids = ids
+  }
+
+  if (where.length === 0) {
+    throw new Error('At least one filter must be provided')
+  }
+
+  const whereClause = where.join(' AND ')
+
+  const query =
+    mode === 'hard'
+      ? `
+          DELETE FROM "memberSegmentAffiliations"
+          WHERE ${whereClause}
+        `
+      : `
+          UPDATE "memberSegmentAffiliations"
+          SET "deletedAt" = NOW()
+          WHERE ${whereClause}
+            AND "deletedAt" IS NULL
+        `
+
+  return qx.result(query, params)
 }
 
 export async function findMemberAffiliations(
@@ -25,6 +72,7 @@ export async function findMemberAffiliations(
       SELECT *
       FROM "memberSegmentAffiliations"
       WHERE "memberId" = $(memberId)
+        AND "deletedAt" IS NULL
     `,
     { memberId },
   )
@@ -62,6 +110,7 @@ export async function fetchMemberAffiliations(
           "segmentId"
         FROM "memberSegmentAffiliations"
         WHERE "memberId" = $(memberId)
+          AND "deletedAt" IS NULL
       `,
     {
       memberId,

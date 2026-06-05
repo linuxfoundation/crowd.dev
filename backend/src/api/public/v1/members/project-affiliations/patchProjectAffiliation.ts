@@ -3,10 +3,9 @@ import { z } from 'zod'
 
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
 import { NotFoundError } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
-  deleteAllMemberSegmentAffiliationsForProject,
   fetchMemberProjectSegments,
   fetchMemberSegmentAffiliationsForProject,
   findMaintainerRoles,
@@ -15,6 +14,7 @@ import {
   optionsQx,
 } from '@crowd/data-access-layer'
 import type { ISegmentAffiliationWithOrg } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
@@ -75,8 +75,12 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
     memberEditAffiliationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState(existingAffiliations)
 
+      const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
+      const newOrgIds = affiliations.map((a) => a.organizationId)
+      const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
+
       await qx.tx(async (tx) => {
-        await deleteAllMemberSegmentAffiliationsForProject(tx, memberId, projectId)
+        await deleteMemberSegmentAffiliations(tx, { memberId, segmentId: projectId })
 
         if (affiliations.length > 0) {
           await insertMemberSegmentAffiliations(
@@ -91,13 +95,11 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
             })),
           )
         }
+      })
 
-        const oldOrgIds = existingAffiliations.map((a) => a.organizationId)
-        const newOrgIds = affiliations.map((a) => a.organizationId)
-        const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
-
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, orgIdsToRecalculate)
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: orgIdsToRecalculate,
       })
 
       updatedAffiliations = await fetchMemberSegmentAffiliationsForProject(qx, memberId, projectId)

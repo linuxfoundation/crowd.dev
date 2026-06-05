@@ -8,7 +8,7 @@ import {
   NotFoundError,
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   changeMemberOrganizationAffiliationOverrides,
@@ -19,6 +19,7 @@ import {
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import type {
   IMemberOrganization,
   IMemberRoleWithOrganization,
@@ -104,10 +105,16 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
               allowAffiliation: false,
             },
           ])
+          await deleteMemberSegmentAffiliations(tx, {
+            memberId,
+            organizationId: data.organizationId,
+          })
         }
+      })
 
-        const service = new CommonMemberService(tx, req.temporal, req.log)
-        await service.startAffiliationRecalculation(memberId, [data.organizationId])
+      // Signal after commit so the workflow sees persisted changes
+      await signalMemberUpdate(req.temporal, memberId, {
+        memberOrganizationIds: [data.organizationId],
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])

@@ -1,7 +1,6 @@
 import {
   ChildWorkflowCancellationType,
   ParentClosePolicy,
-  continueAsNew,
   executeChild,
   proxyActivities,
 } from '@temporalio/workflow'
@@ -53,6 +52,4 @@ export async function triggerMembersEnrichment(): Promise<void> {
       ),
     )
   }
-
-  await continueAsNew<typeof triggerMembersEnrichment>()
 }

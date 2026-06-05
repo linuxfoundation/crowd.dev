@@ -8,6 +8,7 @@ from crowdgit.errors import RepoLockingError
 from crowdgit.models.repository import Repository
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.settings import (
+    FAILED_RETRY_INTERVAL_HOURS,
     MAX_CONCURRENT_ONBOARDINGS,
     MAX_INTEGRATION_RESULTS,
     REPOSITORY_UPDATE_INTERVAL_HOURS,
@@ -143,7 +144,9 @@ async def acquire_recurrent_repo() -> Repository | None:
         WHERE NOT (rp.state = ANY($2))
             AND rp."lockedAt" IS NULL
             AND r."deletedAt" IS NULL
-            AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * $3
+            AND rp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
+                CASE WHEN rp.state = 'failed' THEN $4::numeric ELSE $3::numeric END
+            )
             AND NOT (
                 r.url LIKE '%gerrit.automotivelinux.org%'
                 AND EXISTS (SELECT 1 FROM automotivelinux_processing)
@@ -170,7 +173,12 @@ async def acquire_recurrent_repo() -> Repository | None:
     )
     return await acquire_repository(
         recurrent_repo_sql_query,
-        (RepositoryState.PROCESSING, states_to_exclude, REPOSITORY_UPDATE_INTERVAL_HOURS),
+        (
+            RepositoryState.PROCESSING,
+            states_to_exclude,
+            REPOSITORY_UPDATE_INTERVAL_HOURS,
+            FAILED_RETRY_INTERVAL_HOURS,
+        ),
     )
 
 
@@ -281,6 +289,17 @@ async def update_last_processed_commit(repo_id: str, commit_hash: str, branch: s
     """
     result = await execute(sql_query, (commit_hash, branch, repo_id))
     return str(result)
+
+
+async def update_repository_licenses(repository_id: str, licenses: list[str]) -> None:
+    sql_query = """
+    UPDATE public.repositories
+        SET licenses = $1::varchar[],
+        "updatedAt" = NOW()
+    WHERE id = $2
+      AND licenses IS DISTINCT FROM $1::varchar[]
+    """
+    await execute(sql_query, (licenses, repository_id))
 
 
 async def mark_repo_as_processed(repo_id: str, repo_state: RepositoryState):

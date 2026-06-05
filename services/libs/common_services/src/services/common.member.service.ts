@@ -43,7 +43,10 @@ import {
   updateMember,
 } from '@crowd/data-access-layer'
 import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
-import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import {
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -52,13 +55,8 @@ import {
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
 import { Logger, LoggerBase } from '@crowd/logging'
-import { Client as TemporalClient, WorkflowIdReusePolicy } from '@crowd/temporal'
-import {
-  MergeActionState,
-  MergeActionStep,
-  MergeActionType,
-  TemporalWorkflowId,
-} from '@crowd/types'
+import { Client as TemporalClient } from '@crowd/temporal'
+import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -159,6 +157,10 @@ export class CommonMemberService extends LoggerBase {
                   allowAffiliation: false,
                 },
               ])
+              await deleteMemberSegmentAffiliations(this.qx, {
+                memberId,
+                organizationId: org.id,
+              })
             }
 
             await addOrgsToSegments(this.qx, segmentIds, [org.id])
@@ -263,33 +265,6 @@ export class CommonMemberService extends LoggerBase {
     }
 
     return null
-  }
-
-  public async startAffiliationRecalculation(
-    memberId: string,
-    organizationIds: string[],
-    syncToOpensearch = false,
-  ): Promise<void> {
-    await this.temporal.workflow.start('memberUpdate', {
-      taskQueue: 'profiles',
-      workflowId: `${TemporalWorkflowId.MEMBER_UPDATE}/${DEFAULT_TENANT_ID}/${memberId}`,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,
-      retry: {
-        maximumAttempts: 10,
-      },
-      args: [
-        {
-          member: {
-            id: memberId,
-          },
-          memberOrganizationIds: organizationIds,
-          syncToOpensearch,
-        },
-      ],
-      searchAttributes: {
-        TenantId: [DEFAULT_TENANT_ID],
-      },
-    })
   }
 
   public async merge(

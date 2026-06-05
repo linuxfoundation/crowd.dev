@@ -185,6 +185,7 @@ export async function findMemberManualAffiliation(
       SELECT * FROM "memberSegmentAffiliations"
       WHERE "memberId" = $(memberId)
         AND "segmentId" = $(segmentId)
+        AND "deletedAt" IS NULL
         AND (
           ("dateStart" <= $(timestamp) AND "dateEnd" >= $(timestamp))
           OR ("dateStart" <= $(timestamp) AND "dateEnd" IS NULL)

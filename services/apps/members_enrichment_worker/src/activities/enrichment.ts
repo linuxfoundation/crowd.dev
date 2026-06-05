@@ -9,7 +9,7 @@ import {
   sanitizeMemberOrganizationDateRange,
   setAttributesDefaultValues,
 } from '@crowd/common'
-import { CommonMemberService } from '@crowd/common_services'
+import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
@@ -19,6 +19,7 @@ import {
 } from '@crowd/data-access-layer'
 import { createMemberIdentity } from '@crowd/data-access-layer'
 import { findMemberIdentityWithTheMostActivityInPlatform as getMemberMostActiveIdentity } from '@crowd/data-access-layer/src/activityRelations'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/attributeSettings'
 import {
   deleteMemberOrgById,
@@ -297,6 +298,7 @@ export async function updateMemberUsingSquashedPayload(
 ): Promise<boolean> {
   const affectedOrgIds: string[] = []
   const orgIdsToSync: string[] = []
+  let affiliationNeedsRefresh = false
 
   const wasUpdated = await svc.postgres.writer.transactionally(async (tx) => {
     let didUpdate = false
@@ -581,6 +583,12 @@ export async function updateMemberUsingSquashedPayload(
         isHighConfidenceSourceSelectedForWorkExperiences,
       )
 
+      // Enrichment often deletes and recreates the same orgs with identical dates.
+      // Skip the refresh when the timeline that drives activityRelations hasn't changed.
+      affiliationNeedsRefresh =
+        results.toUpdate.size > 0 ||
+        hasMemberOrganizationTimelineChange(results.toDelete, results.toCreate)
+
       if (results.toDelete.length > 0) {
         for (const org of results.toDelete) {
           didUpdate = true
@@ -641,16 +649,28 @@ export async function updateMemberUsingSquashedPayload(
         newOrUpdatedMemberOrgs.map((mo) => mo.organizationId),
       )
 
-      const overrides = newOrUpdatedMemberOrgs
-        .filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
-        .map((mo) => ({
-          memberId,
-          memberOrganizationId: mo.id,
-          allowAffiliation: false,
-        }))
+      const memberOrgsWithAffiliationBlocked = newOrUpdatedMemberOrgs.filter((mo) =>
+        orgAffiliationPolicies.get(mo.organizationId),
+      )
+
+      for (const organizationId of new Set(
+        memberOrgsWithAffiliationBlocked.map((mo) => mo.organizationId),
+      )) {
+        await deleteMemberSegmentAffiliations(qx, { memberId, organizationId })
+      }
+
+      const overrides = memberOrgsWithAffiliationBlocked.map((mo) => ({
+        memberId,
+        memberOrganizationId: mo.id,
+        allowAffiliation: false,
+      }))
 
       if (overrides.length > 0) {
         await changeMemberOrganizationAffiliationOverrides(qx, overrides)
+
+        // When we write allowAffiliation=false, activityRelations must refresh
+        // to respect the newly created override, even if timeline hasn't changed.
+        affiliationNeedsRefresh = true
       }
     }
 
@@ -676,17 +696,11 @@ export async function updateMemberUsingSquashedPayload(
     )
   }
 
-  if (affectedOrgIds.length > 0) {
-    const commonMemberService = new CommonMemberService(
-      pgpQx(svc.postgres.writer.connection()),
-      svc.temporal,
-      svc.log,
-    )
-    await commonMemberService.startAffiliationRecalculation(
-      memberId,
-      [...new Set(affectedOrgIds)],
-      true,
-    )
+  if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
+    await signalMemberUpdate(svc.temporal, memberId, {
+      memberOrganizationIds: [...new Set(affectedOrgIds)],
+      syncToOpensearch: true,
+    })
   }
 
   return wasUpdated
@@ -772,6 +786,28 @@ function sanitizeWorkExperienceDateRanges(
       endDate: dates.dateEnd instanceof Date ? dates.dateEnd.toISOString() : dates.dateEnd,
     }
   })
+}
+
+/**
+ * Returns true when the set of (orgId, startDate, endDate) tuples differs
+ * between deletes and creates. Fields like title or source don't affect
+ * the affiliation timeline, so they're intentionally ignored.
+ */
+function hasMemberOrganizationTimelineChange(
+  toDelete: IMemberOrganizationData[],
+  toCreate: IMemberEnrichmentDataNormalizedOrganization[],
+): boolean {
+  const toKey = (orgId: string, start: string | null | undefined, end: string | null | undefined) =>
+    `${orgId}|${start ? start.substring(0, 10) : ''}|${end ? end.substring(0, 10) : ''}`
+
+  const deletedKeys = new Set(toDelete.map((d) => toKey(d.orgId, d.dateStart, d.dateEnd)))
+  const createdKeys = new Set(toCreate.map((c) => toKey(c.organizationId, c.startDate, c.endDate)))
+
+  if (deletedKeys.size !== createdKeys.size) return true
+  for (const key of deletedKeys) {
+    if (!createdKeys.has(key)) return true
+  }
+  return false
 }
 
 function prepareWorkExperiences(

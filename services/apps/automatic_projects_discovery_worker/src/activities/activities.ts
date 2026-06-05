@@ -1,3 +1,4 @@
+import { Context } from '@temporalio/activity'
 import { parse } from 'csv-parse'
 
 import { bulkUpsertProjectCatalog } from '@crowd/data-access-layer'
@@ -19,6 +20,9 @@ export async function listSources(): Promise<string[]> {
 
 export async function listDatasets(sourceName: string): Promise<IDatasetDescriptor[]> {
   const source = getSource(sourceName)
+
+  log.info({ sourceName }, 'Listing datasets.')
+
   const datasets = await source.listAvailableDatasets()
 
   log.info({ sourceName, count: datasets.length, newest: datasets[0]?.id }, 'Datasets listed.')
@@ -36,7 +40,9 @@ export async function processDataset(
   log.info({ sourceName, datasetId: dataset.id, url: dataset.url }, 'Processing dataset...')
 
   const source = getSource(sourceName)
+  log.info({ sourceName, datasetId: dataset.id }, 'Opening dataset stream...')
   const stream = await source.fetchDatasetStream(dataset)
+  log.info({ sourceName, datasetId: dataset.id }, 'Dataset stream opened.')
 
   // For CSV sources: pipe through csv-parse to get Record<string, string> objects.
   // For JSON sources: the stream already emits pre-parsed objects in object mode.
@@ -85,7 +91,8 @@ export async function processDataset(
       projectSlug: parsed.projectSlug,
       repoName: parsed.repoName,
       repoUrl: parsed.repoUrl,
-      ossfCriticalityScore: parsed.ossfCriticalityScore,
+      source: sourceName,
+      action: parsed.action ?? 'auto',
       lfCriticalityScore: parsed.lfCriticalityScore,
     })
 
@@ -96,6 +103,7 @@ export async function processDataset(
       totalProcessed += batch.length
       batch = []
 
+      Context.current().heartbeat({ totalProcessed, batchNumber })
       log.info({ totalProcessed, batchNumber, datasetId: dataset.id }, 'Batch upserted.')
     }
   }
@@ -103,6 +111,10 @@ export async function processDataset(
   // Flush remaining rows that didn't fill a complete batch
   if (batch.length > 0) {
     batchNumber++
+    log.info(
+      { sourceName, datasetId: dataset.id, batchSize: batch.length },
+      'Flushing final batch...',
+    )
     await bulkUpsertProjectCatalog(qx, batch)
     totalProcessed += batch.length
   }

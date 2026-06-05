@@ -1,5 +1,7 @@
 import { Readable } from 'stream'
 
+import { ProjectCatalogAction } from '@crowd/data-access-layer/src/project-catalog/types'
+
 export interface IDatasetDescriptor {
   id: string
   date: string
@@ -13,7 +15,7 @@ export interface IDiscoverySource {
    * 'json': fetchDatasetStream returns an object-mode Readable that emits pre-parsed records.
    */
   format?: 'csv' | 'json'
-  listAvailableDatasets(): Promise<IDatasetDescriptor[]>
+  listAvailableDatasets(options?: { scoredAfter?: string }): Promise<IDatasetDescriptor[]>
   fetchDatasetStream(dataset: IDatasetDescriptor): Promise<Readable>
   parseRow(rawRow: Record<string, unknown>): IDiscoverySourceRow | null
 }
@@ -22,6 +24,6 @@ export interface IDiscoverySourceRow {
   projectSlug: string
   repoName: string
   repoUrl: string
-  ossfCriticalityScore?: number
+  action?: ProjectCatalogAction
   lfCriticalityScore?: number
 }

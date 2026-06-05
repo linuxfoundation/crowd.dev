@@ -4,7 +4,13 @@ import {
   UnauthorizedError as Auth0UnauthorizedError,
 } from 'express-oauth2-jwt-bearer'
 
-import { HttpError, InsufficientScopeError, InternalError, UnauthorizedError } from '@crowd/common'
+import {
+  ConflictError,
+  HttpError,
+  InsufficientScopeError,
+  InternalError,
+  UnauthorizedError,
+} from '@crowd/common'
 import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 
 /**
@@ -17,6 +23,30 @@ export const errorHandler: ErrorRequestHandler = (
   res: Response,
   _next: NextFunction,
 ) => {
+  if (error instanceof ConflictError) {
+    req.log.warn({ context: error.context }, 'Public API conflict')
+    sendSlackNotification(
+      SlackChannel.CDP_LFX_SELF_SERVE_ALERTS,
+      SlackPersona.WARNING_PROPAGATOR,
+      `Public API Conflict 409: ${req.method} ${req.url}`,
+      [
+        {
+          title: 'Request',
+          text: `*Method:* \`${req.method}\`\n*URL:* \`${req.url}\``,
+        },
+        {
+          title: 'Conflict',
+          text: `*Message:* ${error.message}`,
+        },
+        ...(error.context
+          ? [{ title: 'Context', text: `\`\`\`${JSON.stringify(error.context, null, 2)}\`\`\`` }]
+          : []),
+      ],
+    )
+    res.status(error.status).json(error.toJSON())
+    return
+  }
+
   if (error instanceof HttpError) {
     res.status(error.status).json(error.toJSON())
     return

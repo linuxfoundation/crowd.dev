@@ -102,16 +102,19 @@ export async function findSuiteControlEvaluation(
   qx: QueryExecutor,
   repo: string,
   controlId: string,
+  suiteId?: string,
 ): Promise<ISecurityInsightsEvaluations | null> {
   return await qx.selectOneOrNone(
     `
       select *
       from "securityInsightsEvaluations"
       where "repo" = $(repo) and "controlId" = $(controlId)
+      ${suiteId ? 'and "securityInsightsEvaluationSuiteId" = $(suiteId)' : ''}
     `,
     {
       repo,
       controlId,
+      suiteId,
     },
   )
 }
