@@ -19,6 +19,7 @@ import {
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import type {
   IMemberOrganization,
   IMemberRoleWithOrganization,
@@ -104,6 +105,10 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
               allowAffiliation: false,
             },
           ])
+          await deleteMemberSegmentAffiliations(tx, {
+            memberId,
+            organizationId: data.organizationId,
+          })
         }
       })
 

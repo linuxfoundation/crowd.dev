@@ -12,6 +12,7 @@ import {
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { getDbConnection } from '@crowd/data-access-layer/src/database'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/utils'
 import { getServiceLogger } from '@crowd/logging'
 import { getRedisClient } from '@crowd/redis'
@@ -129,6 +130,10 @@ setImmediate(async () => {
                             allowAffiliation: false,
                           },
                         ])
+                        await deleteMemberSegmentAffiliations(tx, {
+                          memberId,
+                          organizationId: change.organizationId,
+                        })
                       }
                     } else if (change.type === 'update') {
                       await updateMemberOrganization(tx, memberId, change.id, {

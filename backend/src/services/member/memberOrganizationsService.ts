@@ -17,6 +17,7 @@ import {
   queryOrgs,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { LoggerBase } from '@crowd/logging'
 import {
   IMemberOrganization,
@@ -186,6 +187,7 @@ export default class MemberOrganizationsService extends LoggerBase {
             allowAffiliation: false,
           },
         ])
+        await deleteMemberSegmentAffiliations(qx, { memberId, organizationId: data.organizationId })
       }
 
       // Fetch updated list
