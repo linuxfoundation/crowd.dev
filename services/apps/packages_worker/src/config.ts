@@ -47,15 +47,7 @@ export function getEnricherConfig() {
 }
 
 export function getDockerhubConfig() {
-  const rawTokens = process.env.ENRICHER_GITHUB_TOKENS ?? ''
-  const tokens = rawTokens
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean)
-
   return {
-    // GitHub PATs reused from the enricher for Dockerfile detection (GraphQL).
-    tokens,
     hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
     batchSize: requireEnvInt('DOCKERHUB_BATCH_SIZE'),
     refreshIntervalHours: requireEnvInt('DOCKERHUB_REFRESH_INTERVAL_HOURS'),

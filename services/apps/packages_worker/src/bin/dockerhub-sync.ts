@@ -1,8 +1,9 @@
 import { getServiceLogger } from '@crowd/logging'
 
-import { getDockerhubConfig } from '../config'
+import { getDockerhubConfig, getGithubAppConfig } from '../config'
 import { getPackagesDb } from '../db'
 import { runDockerhubLoop } from '../dockerhub'
+import { fetchRateLimitDiagnostics, resolveInstallations } from '../enricher/githubAppAuth'
 
 const log = getServiceLogger()
 
@@ -21,22 +22,31 @@ const main = async () => {
   log.info('dockerhub-sync starting...')
 
   const config = getDockerhubConfig()
+  const appConfig = getGithubAppConfig()
 
-  if (config.tokens.length === 0) {
-    log.error('ENRICHER_GITHUB_TOKENS is required (comma-separated PATs)')
+  const installationIds = await resolveInstallations(appConfig)
+
+  if (installationIds.length === 0) {
+    log.error('No GitHub App installations found — cannot build token pool')
     process.exit(1)
   }
+
+  await fetchRateLimitDiagnostics(appConfig.appId, appConfig.privateKeyPem, installationIds)
 
   const qx = await getPackagesDb()
   await qx.selectOne('SELECT 1')
   log.info('Connected to packages-db.')
 
   log.info(
-    { tokens: config.tokens.length, batchSize: config.batchSize, hubBaseUrl: config.hubBaseUrl },
+    {
+      installations: installationIds.length,
+      batchSize: config.batchSize,
+      hubBaseUrl: config.hubBaseUrl,
+    },
     'Starting dockerhub loop',
   )
 
-  await runDockerhubLoop(qx, config, () => shuttingDown)
+  await runDockerhubLoop(qx, installationIds, appConfig, config, () => shuttingDown)
 
   log.info('dockerhub-sync stopped.')
   process.exit(0)

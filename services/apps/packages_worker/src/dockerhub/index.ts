@@ -11,6 +11,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getDockerhubConfig } from '../config'
 import { parseGithubUrl } from '../enricher/fetchLightRepo'
+import { GithubAppConfig, getInstallationToken } from '../enricher/githubAppAuth'
 
 import { buildCandidates } from './candidates'
 import { detectDockerfile } from './detectDockerfile'
@@ -187,7 +188,9 @@ async function discoverRepo(
 async function processDiscoveryPage(
   qx: QueryExecutor,
   rows: PendingDockerRepoRow[],
-  parkedUntil: Map<string, number>,
+  installationIds: number[],
+  appConfig: GithubAppConfig,
+  parkedUntil: Map<number, number>,
   config: DockerhubConfig,
 ): Promise<{ hits: number; misses: number; skipped: number; failed: number }> {
   let hits = 0
@@ -197,10 +200,13 @@ async function processDiscoveryPage(
   let nextIdx = 0
 
   await Promise.all(
-    config.tokens.map(async (token, tokenIdx) => {
-      const initialPark = (parkedUntil.get(token) ?? 0) - Date.now()
+    installationIds.map(async (installationId) => {
+      const initialPark = (parkedUntil.get(installationId) ?? 0) - Date.now()
       if (initialPark > 0) {
-        log.warn(`token#${tokenIdx} still parked, waiting ${Math.round(initialPark / 1000)}s`)
+        log.warn(
+          { installationId },
+          `installation still parked, waiting ${Math.round(initialPark / 1000)}s`,
+        )
         await new Promise((r) => setTimeout(r, initialPark))
       }
 
@@ -215,6 +221,11 @@ async function processDiscoveryPage(
         let done = false
         while (!done) {
           try {
+            const token = await getInstallationToken(
+              appConfig.appId,
+              appConfig.privateKeyPem,
+              installationId,
+            )
             const outcome = await discoverRepo(qx, row, token, config)
             if (outcome === 'hit') hits++
             else if (outcome === 'miss') misses++
@@ -224,10 +235,10 @@ async function processDiscoveryPage(
             if (err instanceof FetchError && err.kind === 'RATE_LIMIT') {
               const resetAt = err.resetAt ?? Date.now() + 60_000
               const waitMs = Math.max(1_000, resetAt - Date.now())
-              parkedUntil.set(token, resetAt)
+              parkedUntil.set(installationId, resetAt)
               log.warn(
-                { tokenIdx, parkedUntil: new Date(resetAt).toISOString() },
-                `token#${tokenIdx} rate limited — parking for ${Math.round(waitMs / 1000)}s`,
+                { installationId, parkedUntil: new Date(resetAt).toISOString() },
+                `installation rate limited — parking for ${Math.round(waitMs / 1000)}s`,
               )
               await new Promise((r) => setTimeout(r, waitMs))
               // loop retries the same row
@@ -247,10 +258,12 @@ async function processDiscoveryPage(
 
 export async function runDockerhubLoop(
   qx: QueryExecutor,
+  installationIds: number[],
+  appConfig: GithubAppConfig,
   config: DockerhubConfig,
   isShuttingDown: () => boolean,
 ): Promise<void> {
-  const githubParkedUntil = new Map<string, number>()
+  const githubParkedUntil = new Map<number, number>()
   let refreshCursor: string | null = null
   let discoveryCursor: string | null = null
   let pageNum = 0
@@ -283,7 +296,14 @@ export async function runDockerhubLoop(
       config.discoveryIntervalDays,
     )
     if (discoveryRows.length > 0) {
-      const stats = await processDiscoveryPage(qx, discoveryRows, githubParkedUntil, config)
+      const stats = await processDiscoveryPage(
+        qx,
+        discoveryRows,
+        installationIds,
+        appConfig,
+        githubParkedUntil,
+        config,
+      )
       log.info(
         `Discovery page ${pageNum}: read=${discoveryRows.length} hits=${stats.hits} ` +
           `misses=${stats.misses} skipped=${stats.skipped} failed=${stats.failed}`,
