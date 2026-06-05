@@ -368,8 +368,8 @@ importers:
         specifier: ^8.1.1
         version: 8.1.1
       '@types/node':
-        specifier: ~18.0.4
-        version: 18.0.6
+        specifier: ^20.8.2
+        version: 20.12.7
       '@types/sanitize-html':
         specifier: ^2.6.2
         version: 2.11.0
@@ -723,8 +723,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.4
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       config:
         specifier: ^3.3.9
         version: 3.3.11
@@ -922,8 +922,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.4
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       nodemon:
         specifier: ^2.0.22
         version: 2.0.22
@@ -968,8 +968,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.4
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       nodemon:
         specifier: ^2.0.22
         version: 2.0.22
@@ -1610,8 +1610,8 @@ importers:
         specifier: ^4.17.17
         version: 4.17.21
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       nodemon:
         specifier: ^2.0.22
         version: 2.0.22
@@ -1653,8 +1653,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.4
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       nodemon:
         specifier: ^2.0.22
         version: 2.0.22
@@ -1883,8 +1883,8 @@ importers:
         specifier: ^4.17.17
         version: 4.17.21
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       bunyan-middleware:
         specifier: ^1.0.2
         version: 1.0.2
@@ -2032,8 +2032,8 @@ importers:
         version: 1.1.9
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2096,8 +2096,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.4
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2163,8 +2163,8 @@ importers:
         version: 2.30.1
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2239,8 +2239,8 @@ importers:
         version: 13.11.0
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       sequelize:
         specifier: 6.37.8
         version: 6.37.8(pg@8.11.5)
@@ -2249,7 +2249,7 @@ importers:
         version: 5.6.3
       vitest:
         specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@18.19.31)(terser@5.43.1)
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@20.12.7)(terser@5.43.1)
 
   services/libs/database:
     dependencies:
@@ -2267,8 +2267,8 @@ importers:
         version: 11.6.0
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2325,8 +2325,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.3
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       '@types/sanitize-html':
         specifier: ^2.9.0
         version: 2.11.0
@@ -2353,8 +2353,8 @@ importers:
         specifier: ^0.2.5
         version: 0.2.9
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2384,8 +2384,8 @@ importers:
         version: 1.8.4
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2427,8 +2427,8 @@ importers:
         version: 4.6.2
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2452,8 +2452,8 @@ importers:
         version: 2.2.4
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2474,8 +2474,8 @@ importers:
         version: 4.6.13
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2493,8 +2493,8 @@ importers:
         version: 6.1.0
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2518,8 +2518,8 @@ importers:
         version: 2.3.4(asn1.js@5.4.1)
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       tsx:
         specifier: ^4.7.1
         version: 4.7.3
@@ -2537,8 +2537,8 @@ importers:
         version: 4.38.0
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2562,8 +2562,8 @@ importers:
         version: 1.17.2
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -2571,8 +2571,8 @@ importers:
   services/libs/types:
     devDependencies:
       '@types/node':
-        specifier: ^18.16.3
-        version: 18.19.31
+        specifier: ^20.8.2
+        version: 20.12.7
       typescript:
         specifier: ^5.6.3
         version: 5.6.3
@@ -4856,12 +4856,6 @@ packages:
 
   '@types/node-int64@0.4.32':
     resolution: {integrity: sha512-xf/JsSlnXQ+mzvc0IpXemcrO4BrCfpgNpMco+GLcXkFk01k/gW9lGJu+Vof0ZSvHK6DsHJDPSbjFPs36QkWXqw==}
-
-  '@types/node@18.0.6':
-    resolution: {integrity: sha512-/xUq6H2aQm261exT6iZTMifUySEt4GR5KX8eYyY+C4MSNPqSh9oNIP7tz2GLKTlFaiBbgZNxffoR3CVRG+cljw==}
-
-  '@types/node@18.19.31':
-    resolution: {integrity: sha512-ArgCD39YpyyrtFKIqMDvjz79jto5fcI/SVUs2HwB+f0dAzq68yqOdyaSivLiLugSziTpNXLQrVb7RZFmdZzbhA==}
 
   '@types/node@20.12.7':
     resolution: {integrity: sha512-wq0cICSkRLVaf3UGLMGItu/PtdY7oaXaI/RVU+xliKVOtRna3PRY57ZDfztpDL0n11vfymMUnXv8QwYCO7L1wg==}
@@ -13970,12 +13964,6 @@ snapshots:
     dependencies:
       '@types/node': 20.12.7
 
-  '@types/node@18.0.6': {}
-
-  '@types/node@18.19.31':
-    dependencies:
-      undici-types: 5.26.5
-
   '@types/node@20.12.7':
     dependencies:
       undici-types: 5.26.5
@@ -14232,14 +14220,6 @@ snapshots:
       '@vitest/utils': 3.2.4
       chai: 5.3.3
       tinyrainbow: 2.0.0
-
-  '@vitest/mocker@3.2.4(vite@5.4.21(@types/node@18.19.31)(terser@5.43.1))':
-    dependencies:
-      '@vitest/spy': 3.2.4
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 5.4.21(@types/node@18.19.31)(terser@5.43.1)
 
   '@vitest/mocker@3.2.4(vite@5.4.21(@types/node@20.12.7)(terser@5.43.1))':
     dependencies:
@@ -19851,24 +19831,6 @@ snapshots:
 
   verify-github-webhook@1.0.1: {}
 
-  vite-node@3.2.4(@types/node@18.19.31)(terser@5.43.1):
-    dependencies:
-      cac: 6.7.14
-      debug: 4.4.3
-      es-module-lexer: 1.7.0
-      pathe: 2.0.3
-      vite: 5.4.21(@types/node@18.19.31)(terser@5.43.1)
-    transitivePeerDependencies:
-      - '@types/node'
-      - less
-      - lightningcss
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - supports-color
-      - terser
-
   vite-node@3.2.4(@types/node@20.12.7)(terser@5.43.1):
     dependencies:
       cac: 6.7.14
@@ -19887,16 +19849,6 @@ snapshots:
       - supports-color
       - terser
 
-  vite@5.4.21(@types/node@18.19.31)(terser@5.43.1):
-    dependencies:
-      esbuild: 0.21.5
-      postcss: 8.5.8
-      rollup: 4.60.1
-    optionalDependencies:
-      '@types/node': 18.19.31
-      fsevents: 2.3.3
-      terser: 5.43.1
-
   vite@5.4.21(@types/node@20.12.7)(terser@5.43.1):
     dependencies:
       esbuild: 0.21.5
@@ -19906,45 +19858,6 @@ snapshots:
       '@types/node': 20.12.7
       fsevents: 2.3.3
       terser: 5.43.1
-
-  vitest@3.2.4(@types/debug@4.1.12)(@types/node@18.19.31)(terser@5.43.1):
-    dependencies:
-      '@types/chai': 5.2.3
-      '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(vite@5.4.21(@types/node@18.19.31)(terser@5.43.1))
-      '@vitest/pretty-format': 3.2.4
-      '@vitest/runner': 3.2.4
-      '@vitest/snapshot': 3.2.4
-      '@vitest/spy': 3.2.4
-      '@vitest/utils': 3.2.4
-      chai: 5.3.3
-      debug: 4.4.3
-      expect-type: 1.3.0
-      magic-string: 0.30.21
-      pathe: 2.0.3
-      picomatch: 4.0.4
-      std-env: 3.10.0
-      tinybench: 2.9.0
-      tinyexec: 0.3.2
-      tinyglobby: 0.2.15
-      tinypool: 1.1.1
-      tinyrainbow: 2.0.0
-      vite: 5.4.21(@types/node@18.19.31)(terser@5.43.1)
-      vite-node: 3.2.4(@types/node@18.19.31)(terser@5.43.1)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/debug': 4.1.12
-      '@types/node': 18.19.31
-    transitivePeerDependencies:
-      - less
-      - lightningcss
-      - msw
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - supports-color
-      - terser
 
   vitest@3.2.4(@types/debug@4.1.12)(@types/node@20.12.7)(terser@5.43.1):
     dependencies:

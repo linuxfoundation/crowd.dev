@@ -16,7 +16,7 @@
     "@temporalio/proto": "~1.17.2"
   },
   "devDependencies": {
-    "@types/node": "^18.16.3",
+    "@types/node": "^20.8.2",
     "typescript": "^5.6.3"
   }
 }
