@@ -20,6 +20,6 @@ SCHEMA >
     `createdAt` DateTime64(3) `json:$.record.created_at`
 
 ENGINE ReplacingMergeTree
-ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_PARTITION_KEY toYear(verifiedAt)
 ENGINE_SORTING_KEY packageId, repoId
 ENGINE_VER verifiedAt
