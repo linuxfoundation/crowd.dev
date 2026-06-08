@@ -20,6 +20,7 @@ WITH purl_map AS (
   FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
   WHERE System IN (${systems})
     AND Purl IS NOT NULL
+    AND Name NOT LIKE '%>%'
   GROUP BY System, Name
 )
 SELECT
@@ -33,5 +34,6 @@ FROM \`bigquery-public-data.deps_dev_v1.AdvisoriesLatest\` a,
 UNNEST(a.Packages) AS pkg
 LEFT JOIN purl_map pm ON pm.System = pkg.System AND pm.Name = pkg.Name
 WHERE pkg.System IN (${systems})
+  AND pkg.Name NOT LIKE '%>%'
 `
 }
