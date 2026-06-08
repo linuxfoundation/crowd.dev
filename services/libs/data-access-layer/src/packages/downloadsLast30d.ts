@@ -37,19 +37,17 @@ export async function getNpmUniversePurlsDueForLatest30d(
 ): Promise<Last30dCandidate[]> {
   const rows: Array<{ purl: string; first_release_at: string | null }> = await qx.select(
     `WITH due AS (
-         SELECT pu.purl AS purl
-           FROM packages_universe pu
-           LEFT JOIN npm_package_universe_state s ON s.purl = pu.purl
-          WHERE pu.ecosystem = 'npm'
-            AND (((hashtext(pu.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
+         SELECT p.purl AS purl, p.first_release_at
+           FROM packages p
+           LEFT JOIN npm_package_universe_state s ON s.purl = p.purl
+          WHERE p.ecosystem = 'npm'
+            AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
             AND (s.downloads_30d_last_run_at IS NULL
                  OR s.downloads_30d_last_run_at < $(cutoff)::timestamptz)
-          ORDER BY s.downloads_30d_last_run_at ASC NULLS FIRST, pu.purl
+          ORDER BY s.downloads_30d_last_run_at ASC NULLS FIRST, p.purl
           LIMIT $(batchSize)
        )
-       SELECT d.purl AS purl, p.first_release_at::text AS first_release_at
-         FROM due d
-         LEFT JOIN packages p ON p.purl = d.purl`,
+       SELECT purl, first_release_at::text AS first_release_at FROM due`,
     { cutoff, batchSize, laneIndex, laneCount },
   )
   return rows.map((r) => ({
@@ -71,19 +69,17 @@ export async function getNpmUniversePurlsDueForLast30dHistory(
 ): Promise<Last30dCandidate[]> {
   const rows: Array<{ purl: string; first_release_at: string | null }> = await qx.select(
     `WITH due AS (
-         SELECT pu.purl AS purl, s.downloads_30d_last_run_at AS last_run_at
-           FROM packages_universe pu
-           JOIN npm_package_universe_state s ON s.purl = pu.purl
-          WHERE pu.ecosystem = 'npm'
-            AND (((hashtext(pu.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
+         SELECT p.purl AS purl, p.first_release_at, s.downloads_30d_last_run_at AS last_run_at
+           FROM packages p
+           JOIN npm_package_universe_state s ON s.purl = p.purl
+          WHERE p.ecosystem = 'npm'
+            AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
             AND s.downloads_30d_last_run_at IS NOT NULL
             AND s.downloads_30d_history_backfilled_at IS NULL
-          ORDER BY s.downloads_30d_last_run_at ASC, pu.purl
+          ORDER BY s.downloads_30d_last_run_at ASC, p.purl
           LIMIT $(batchSize)
        )
-       SELECT d.purl AS purl, p.first_release_at::text AS first_release_at
-         FROM due d
-         LEFT JOIN packages p ON p.purl = d.purl`,
+       SELECT purl, first_release_at::text AS first_release_at FROM due`,
     { batchSize, laneIndex, laneCount },
   )
   return rows.map((r) => ({
@@ -167,12 +163,12 @@ export async function upsertLast30dDownload(
   const changed = row.changed_fields
   if (mirrorToUniverse) {
     const rowCount = await qx.result(
-      `UPDATE packages_universe
+      `UPDATE packages
           SET downloads_last_30d = $(count)
         WHERE purl = $(purl) AND downloads_last_30d IS DISTINCT FROM $(count)`,
       { count, purl },
     )
-    if (rowCount > 0) changed.push('packages_universe.downloads_last_30d')
+    if (rowCount > 0) changed.push('packages.downloads_last_30d')
   }
   return changed
 }
