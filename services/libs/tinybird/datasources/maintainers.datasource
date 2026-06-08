@@ -1,0 +1,28 @@
+DESCRIPTION >
+    - `maintainers` contains package maintainer profiles sourced from package registries (npm, PyPI, etc.).
+    - Replicated from Postgres packages-db — one row per unique (ecosystem, username) identity.
+    - Used to identify who maintains critical packages, correlate maintainers across ecosystems, and support contributor analytics.
+    - `id` is the internal primary key.
+    - `ecosystem` is the package registry this identity belongs to: 'npm', 'pypi', 'cargo', 'maven', etc.
+    - `username` is the maintainer's registry username — unique within an ecosystem.
+    - `displayName` is the maintainer's human-readable name as published in the registry (empty string if not provided).
+    - `url` is the maintainer's profile URL on the registry (empty string if not provided).
+    - `emailHash` is a SHA-256 hash of the maintainer's email address — never the raw email (GDPR compliance).
+    - `githubLogin` is the maintainer's GitHub username if resolved (empty string if not linked).
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `ecosystem` String `json:$.record.ecosystem`,
+    `username` String `json:$.record.username`,
+    `displayName` String `json:$.record.display_name` DEFAULT '',
+    `url` String `json:$.record.url` DEFAULT '',
+    `emailHash` String `json:$.record.email_hash` DEFAULT '',
+    `githubLogin` String `json:$.record.github_login` DEFAULT '',
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY ecosystem, username
+ENGINE_VER updatedAt

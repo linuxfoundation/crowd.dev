@@ -1,0 +1,39 @@
+DESCRIPTION >
+    - `versions` contains published version metadata for tracked packages across all ecosystems.
+    - Replicated from Postgres packages-db — one row per (package, version number) pair.
+    - Used to identify the latest version, detect pre-releases, track publish timelines, and resolve dependency constraints.
+    - `id` is the internal primary key (included in the composite primary key with package_id for partitioning in Postgres).
+    - `packageId` links to the parent packages row.
+    - `ecosystem` is the package registry: 'npm', 'go', 'maven', 'pypi', 'nuget', 'cargo', etc.
+    - `namespace` is the package scope or group; empty string if not applicable.
+    - `name` is the package name — denormalized from packages for fast dependency resolution without a join.
+    - `number` is the version string (e.g. '1.2.3', '2.0.0-beta.1').
+    - `publishedAt` is when this version was published to the registry (empty string if unknown).
+    - `isLatest` is 1 if this is the current latest stable version according to the registry, 0 otherwise (0 default until enriched).
+    - `isYanked` is 1 if this version was retracted/yanked from the registry, 0 otherwise (0 default until enriched).
+    - `isPrerelease` is 1 if the version string contains a pre-release identifier (alpha, beta, rc, etc.), 0 otherwise.
+    - `licenses` is an array of SPDX-normalized license identifiers for this specific version (may differ from the package-level value).
+    - `downloadCount` is the per-version download count where available (npm, crates); 0 if not tracked.
+    - `lastSyncedAt` is when the row was last written by any worker — serves as the updated_at watermark for sync.
+    - `createdAt` is the row-insert timestamp — set once on first insert, never updated.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `packageId` UInt64 `json:$.record.package_id`,
+    `ecosystem` String `json:$.record.ecosystem`,
+    `namespace` String `json:$.record.namespace` DEFAULT '',
+    `name` String `json:$.record.name`,
+    `number` String `json:$.record.number`,
+    `publishedAt` DateTime64(3) `json:$.record.published_at` DEFAULT '',
+    `isLatest` UInt8 `json:$.record.is_latest` DEFAULT 0,
+    `isYanked` UInt8 `json:$.record.is_yanked` DEFAULT 0,
+    `isPrerelease` UInt8 `json:$.record.is_prerelease` DEFAULT 0,
+    `licenses` Array(String) `json:$.record.licenses[:]` DEFAULT [],
+    `downloadCount` UInt64 `json:$.record.download_count` DEFAULT 0,
+    `lastSyncedAt` DateTime64(3) `json:$.record.last_synced_at`,
+    `createdAt` DateTime64(3) `json:$.record.created_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY packageId, number
+ENGINE_VER lastSyncedAt

@@ -1,0 +1,40 @@
+DESCRIPTION >
+    - `advisories` contains OSV-shaped security advisories ingested from deps.dev BigQuery.
+    - Replicated from Postgres packages-db — each row is one advisory (CVE, GHSA, MAL-*, etc.).
+    - Used to surface critical vulnerabilities, track CVSS scores, and power security overlays in LFX Insights.
+    - `id` is the internal primary key.
+    - `osvId` is the canonical advisory identifier (e.g. GHSA-xxx, CVE-xxx, OSV-xxx) — globally unique.
+    - `source` is the originating database: 'GHSA', 'OSV', 'NVD', 'NSWG', etc. (empty string if unknown).
+    - `sourceUrl` is the upstream advisory URL (empty string if not provided).
+    - `aliases` is an array of alternate identifiers for the same advisory (e.g. a GHSA may alias a CVE).
+    - `severity` is the qualitative risk level: 'LOW', 'MEDIUM', 'HIGH', or 'CRITICAL' (empty string if unknown).
+    - `cvss` is the numeric CVSS score (0 if not available).
+    - `cvssSource` documents the provenance of the CVSS value: 'osv_cvss_v3', 'osv_qualitative_fallback', 'osv_malicious_package', etc.
+    - `isCritical` is 1 when cvss >= 7.0 (HIGH or CRITICAL), 0 otherwise — computed from the score.
+    - `summary` is a short human-readable description of the vulnerability (empty string if not provided).
+    - `details` is the full advisory text (empty string if not provided).
+    - `publishedAt` is when the advisory was first published upstream (empty string if unknown).
+    - `modifiedAt` is when the advisory was last modified upstream; NULL for BQ-sourced rows (empty string if unknown).
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `osvId` String `json:$.record.osv_id`,
+    `source` String `json:$.record.source` DEFAULT '',
+    `sourceUrl` String `json:$.record.source_url` DEFAULT '',
+    `aliases` Array(String) `json:$.record.aliases[:]` DEFAULT [],
+    `severity` String `json:$.record.severity` DEFAULT '',
+    `cvss` Float32 `json:$.record.cvss` DEFAULT 0,
+    `cvssSource` String `json:$.record.cvss_source` DEFAULT '',
+    `isCritical` UInt8 `json:$.record.is_critical` DEFAULT 0,
+    `summary` String `json:$.record.summary` DEFAULT '',
+    `details` String `json:$.record.details` DEFAULT '',
+    `publishedAt` DateTime64(3) `json:$.record.published_at` DEFAULT '',
+    `modifiedAt` DateTime64(3) `json:$.record.modified_at` DEFAULT '',
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY osvId
+ENGINE_VER updatedAt

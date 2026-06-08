@@ -1,0 +1,24 @@
+DESCRIPTION >
+    - `advisoryPackages` maps security advisories to the packages they affect.
+    - Replicated from Postgres packages-db — one advisory can affect multiple packages across different ecosystems.
+    - Used to determine which packages are impacted by a given advisory, and to backfill `has_critical_vulnerability` on packages.
+    - `id` is the internal primary key.
+    - `advisoryId` links to the parent advisory record.
+    - `packageId` links to the matching packages row (0 if the package exists in OSV but not yet in our DB).
+    - `ecosystem` is the package ecosystem (npm, go, maven, pypi, etc.).
+    - `packageName` is the package name within its ecosystem as reported by OSV.
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `advisoryId` UInt64 `json:$.record.advisory_id`,
+    `packageId` UInt64 `json:$.record.package_id` DEFAULT 0,
+    `ecosystem` String `json:$.record.ecosystem`,
+    `packageName` String `json:$.record.package_name`,
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY ecosystem, packageName, id
+ENGINE_VER updatedAt
