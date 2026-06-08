@@ -646,6 +646,10 @@ export default class ActivityService extends LoggerBase {
       `[ACTIVITY] We still have ${relevantPayloads.length} activities left to process after finding segments!`,
     )
 
+    if (relevantPayloads.length === 0) {
+      return resultMap
+    }
+
     const orConditions = relevantPayloads.map((r) => {
       return {
         and: [

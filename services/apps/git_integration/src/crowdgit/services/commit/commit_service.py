@@ -390,6 +390,7 @@ class CommitService(BaseService):
 
         data_dict = {
             "type": IntegrationResultType.ACTIVITY,
+            "segmentId": segment_id,
             "data": activity,
         }
         activity_db = (

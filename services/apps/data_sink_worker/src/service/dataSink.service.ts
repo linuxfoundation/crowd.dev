@@ -392,7 +392,7 @@ export default class DataSinkService extends LoggerBase {
                   onboarding: r.onboarding === null ? true : r.onboarding,
                   platform: r.platform,
                   activity: r.data.data as IActivityData,
-                  segmentId: r.data.segmentId ?? r.segmentId,
+                  segmentId: r.data.segmentId ?? (r.data.data as IActivityData & { segmentId?: string })?.segmentId ?? r.segmentId,
                 }
               }),
               toProcess.some((r) => r.onboarding === true),
