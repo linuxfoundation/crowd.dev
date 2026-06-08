@@ -60,9 +60,9 @@ const REPOS_PG_COLUMNS = [
 
 const REPOS_MERGE_SQL = `
 INSERT INTO repos (url, raw_project_type, raw_project_name, host, owner, name,
-                   description, homepage, stars, forks, open_issues, last_synced_at, updated_at)
+                   description, homepage, stars, forks, open_issues, last_synced_at)
 SELECT s.canonical_url, s.raw_project_type, s.raw_project_name, s.host, s.owner, s.name,
-       s.description, s.homepage, s.stars, s.forks, s.open_issues, NOW(), NOW()
+       s.description, s.homepage, s.stars, s.forks, s.open_issues, NOW()
 FROM staging.osspckgs_repos_raw s
 ON CONFLICT (url) DO NOTHING
 `
@@ -85,9 +85,9 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'confidence']
 // Staging purl may or may not include @version depending on when the GCS export was taken,
 // so strip on staging side only — packages.purl stays bare and the UNIQUE index is usable.
 const PKGREPOS_MERGE_SQL = `
-INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at, updated_at)
+INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', s.confidence, NOW(), NOW(), NOW()
+  p.id, r.id, 'deps_dev', s.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 JOIN repos r ON r.url = s.canonical_url

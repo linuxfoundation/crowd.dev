@@ -9,8 +9,13 @@
 --   npm_package_universe_state    — watermark columns serve the same purpose
 --   package_criticality_spotlight — override config; has added_at
 --
--- repos: created_at already exists but stores the GitHub repository creation date,
--- not a row-insert audit timestamp. Only updated_at is added here.
+-- repos: created_at already exists (stores the GitHub repository creation date) and
+-- last_synced_at serves as the row-level updated_at. Neither column is added here.
+--
+-- packages, versions, repo_docker: last_synced_at already serves as updated_at.
+-- Only created_at is added to avoid duplicate semantics.
+--
+-- package_repos: verified_at already serves as updated_at. Only created_at is added.
 --
 -- Partitioned tables (versions, package_dependencies, downloads_daily, downloads_last_30d):
 -- PostgreSQL 12+ propagates new columns to all child partitions automatically —
@@ -21,22 +26,17 @@ ALTER TABLE packages_universe
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE packages
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE package_funding_links
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE versions
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE package_dependencies
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
-
-ALTER TABLE repos
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE repo_scorecard_checks
@@ -44,12 +44,10 @@ ALTER TABLE repo_scorecard_checks
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE repo_docker
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE package_repos
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE advisories
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),

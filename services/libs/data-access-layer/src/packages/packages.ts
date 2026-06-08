@@ -42,14 +42,14 @@ export async function upsertNpmPackage(
          licenses, licenses_raw, keywords,
          dist_tags_latest, dist_tags_next, dist_tags_beta,
          versions_count, latest_version, first_release_at, latest_release_at,
-         ingestion_source, last_synced_at, created_at, updated_at
+         ingestion_source, last_synced_at, created_at
        ) VALUES (
          $(purl), 'npm', $(namespace), $(name), $(status), $(registryUrl),
          $(description), $(homepage), $(declaredRepositoryUrl), $(repositoryUrl),
          $(licenses), $(licensesRaw), $(keywords),
          $(distLatest), $(distNext), $(distBeta),
          $(versionsCount), $(latestVersion), $(firstReleaseAt), $(latestReleaseAt),
-         'npm-registry', NOW(), NOW(), NOW()
+         'npm-registry', NOW(), NOW()
        )
        ON CONFLICT (purl) DO UPDATE SET
          namespace               = EXCLUDED.namespace,
@@ -71,8 +71,7 @@ export async function upsertNpmPackage(
          first_release_at        = EXCLUDED.first_release_at,
          latest_release_at       = EXCLUDED.latest_release_at,
          ingestion_source        = EXCLUDED.ingestion_source,
-         last_synced_at          = EXCLUDED.last_synced_at,
-         updated_at              = EXCLUDED.updated_at
+         last_synced_at          = EXCLUDED.last_synced_at
        RETURNING id, namespace, name, status, registry_url, description, homepage,
                  declared_repository_url, repository_url, licenses, licenses_raw, keywords,
                  dist_tags_latest, dist_tags_next, dist_tags_beta,

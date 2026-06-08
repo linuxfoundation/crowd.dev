@@ -56,11 +56,11 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_versions_raw (
 const MERGE_SQL = `
 INSERT INTO versions (
   package_id, ecosystem, namespace, name, number, published_at, is_prerelease, licenses, last_synced_at,
-  created_at, updated_at
+  created_at
 )
 SELECT
   p.id, s.ecosystem, p.namespace, p.name, s.number, s.published_at, s.is_prerelease, s.licenses, NOW(),
-  NOW(), NOW()
+  NOW()
 FROM staging.osspckgs_versions_raw s
 JOIN packages p ON p.purl = s.purl
 ON CONFLICT (package_id, number) DO NOTHING
@@ -72,11 +72,11 @@ ON CONFLICT (package_id, number) DO NOTHING
 const MERGE_SQL_FULL = `
 INSERT INTO versions (
   package_id, ecosystem, namespace, name, number, published_at, is_prerelease, licenses, last_synced_at,
-  created_at, updated_at
+  created_at
 )
 SELECT DISTINCT ON (p.id, s.number)
   p.id, s.ecosystem, p.namespace, p.name, s.number, s.published_at, s.is_prerelease, s.licenses, NOW(),
-  NOW(), NOW()
+  NOW()
 FROM staging.osspckgs_versions_raw s
 JOIN packages p ON p.purl = s.purl
 ORDER BY p.id, s.number, s.published_at DESC NULLS LAST
