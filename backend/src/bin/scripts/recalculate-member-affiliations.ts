@@ -1,62 +1,54 @@
 import commandLineArgs from 'command-line-args'
-import validator from 'validator'
 
+import { signalMemberUpdate } from '@crowd/common_services'
 import { getServiceLogger } from '@crowd/logging'
-import { getRedisClient } from '@crowd/redis'
+import { getTemporalClient } from '@crowd/temporal'
 
-import { REDIS_CONFIG } from '@/conf'
-
-const RECALCULATE_MEMBER_AFFILIATIONS_KEY = 'recalculate-member-affiliations'
+import { TEMPORAL_CONFIG } from '@/conf'
 
 const log = getServiceLogger()
 
 const options = [
   {
     name: 'memberIds',
-    alias: 'm',
     type: String,
-    description: 'Comma-separated member IDs to queue for affiliation recalculation.',
+    multiple: true,
   },
 ]
 
-const parameters = commandLineArgs(options) as {
-  memberIds?: string
+const parameters = commandLineArgs(options)
+
+function parseMemberIds(value?: string[]): string[] {
+  if (!value?.length) {
+    return []
+  }
+
+  return [
+    ...new Set(
+      value
+        .flatMap((item) => item.split(','))
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ]
 }
 
 setImmediate(async () => {
-  if (!parameters.memberIds) {
-    throw new Error('memberIds is required')
-  }
-
-  const memberIds: string[] = Array.from(
-    new Set(
-      parameters.memberIds
-        .split(',')
-        .map((id: string) => id.trim())
-        .filter(Boolean),
-    ),
-  )
-
-  const invalidMemberIds = memberIds.filter((id) => !validator.isUUID(id))
-  if (invalidMemberIds.length > 0) {
-    throw new Error(`Invalid member IDs: ${invalidMemberIds.join(', ')}`)
-  }
+  const memberIds = parseMemberIds(parameters.memberIds)
 
   if (memberIds.length === 0) {
-    log.info('No member IDs provided!')
-    return
+    log.error('No memberIds provided')
+    process.exit(1)
   }
 
-  const redis = await getRedisClient(REDIS_CONFIG, true)
+  log.info({ memberCount: memberIds.length }, 'Triggering member updates')
 
-  await redis.sAdd(RECALCULATE_MEMBER_AFFILIATIONS_KEY, memberIds)
+  const temporal = await getTemporalClient(TEMPORAL_CONFIG)
 
-  log.info(
-    {
-      count: memberIds.length,
-      memberIds,
-      redisKey: RECALCULATE_MEMBER_AFFILIATIONS_KEY,
-    },
-    'Queued members for affiliation recalculation!',
-  )
+  for (const memberId of memberIds) {
+    await signalMemberUpdate(temporal, memberId)
+  }
+
+  log.info({ memberCount: memberIds.length }, 'Finished triggering member updates')
+  process.exit(0)
 })
