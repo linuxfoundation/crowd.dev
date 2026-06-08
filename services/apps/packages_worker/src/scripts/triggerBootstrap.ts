@@ -25,7 +25,7 @@ Arguments:
 Options:
   --kinds <k1,k2>        Run only specific job kinds (default: all). Comma-separated:
                            ${VALID_KINDS.join(', ')}
-                         "rank" runs rankPackagesUniverse only (no ingest).
+                         "rank" runs rankPackages only (no ingest).
                          "repos" and "package_repos" always run together (one workflow).
                          "advisories" and "advisory_packages" always run together (one workflow).
   --reuse-exports        Skip BQ for any kind that has recent exported data in DB+GCS.
