@@ -123,24 +123,33 @@ async function processRefreshPage(
   qx: QueryExecutor,
   rows: StaleRepoDockerRow[],
   config: DockerhubConfig,
-): Promise<{ ok: number; gone: number }> {
+): Promise<{ ok: number; gone: number; failed: number }> {
   let ok = 0
   let gone = 0
+  let failed = 0
 
   for (const row of rows) {
-    const result = await hubFetchWithRetries(config.hubBaseUrl, row.image_name)
-    if (result) {
-      await upsertRepoDocker(qx, row.repo_id, result)
-      ok++
-    } else {
-      // Image deleted or unreachable — bump last_synced_at so we don't retry
-      // it every page; the row (and its pulls_daily history) is kept.
-      await touchRepoDocker(qx, row.image_name)
-      gone++
+    try {
+      const result = await hubFetchWithRetries(config.hubBaseUrl, row.image_name)
+      if (result) {
+        await upsertRepoDocker(qx, row.repo_id, result)
+        ok++
+      } else {
+        // Image deleted or unreachable — bump last_synced_at so we don't retry
+        // it every page; the row (and its pulls_daily history) is kept.
+        await touchRepoDocker(qx, row.image_name)
+        gone++
+      }
+    } catch (err) {
+      // AUTH from Hub stays fatal — propagate so the worker exits instead of
+      // silently degrading every refresh into a miss.
+      if (err instanceof FetchError && err.kind === 'AUTH') throw err
+      log.error({ imageName: row.image_name, err }, 'Unexpected refresh error')
+      failed++
     }
   }
 
-  return { ok, gone }
+  return { ok, gone, failed }
 }
 
 function resolveOwnerName(row: PendingDockerRepoRow): { owner: string; name: string } | null {
@@ -288,7 +297,8 @@ export async function runDockerhubLoop(
     if (refreshRows.length > 0) {
       const stats = await processRefreshPage(qx, refreshRows, config)
       log.info(
-        `Refresh page ${pageNum}: read=${refreshRows.length} ok=${stats.ok} gone=${stats.gone}`,
+        `Refresh page ${pageNum}: read=${refreshRows.length} ok=${stats.ok} ` +
+          `gone=${stats.gone} failed=${stats.failed}`,
       )
       refreshCursor = refreshRows[refreshRows.length - 1].id
     } else {
