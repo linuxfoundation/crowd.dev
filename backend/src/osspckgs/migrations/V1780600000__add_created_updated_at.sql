@@ -21,10 +21,6 @@
 -- PostgreSQL 12+ propagates new columns to all child partitions automatically —
 -- no per-partition ALTER needed.
 
-ALTER TABLE packages_universe
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
-
 ALTER TABLE packages
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
 
