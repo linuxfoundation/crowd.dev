@@ -80,8 +80,8 @@ export async function scheduleDailyDownloadsBackfill(): Promise<void> {
   }
 }
 
-// Breadth: refresh the current 30-day window for every package, monthly on the 1st. Fast and
-// mirrored to packages_universe — the product-critical number lands across the whole universe.
+// Breadth: refresh the current 30-day window for every is_critical npm package, monthly on the 1st.
+// Mirrors the count to packages.downloads_last_30d for use by rank_packages().
 export async function scheduleLatestLast30dRefresh(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')
