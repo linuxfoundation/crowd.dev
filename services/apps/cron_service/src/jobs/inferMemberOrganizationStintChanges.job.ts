@@ -4,6 +4,7 @@ import {
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
   inferMemberOrganizationStintChanges,
+  signalMemberUpdate,
 } from '@crowd/common_services'
 import {
   QueryExecutor,
@@ -18,6 +19,7 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/d
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
+import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
 
 import { IJobDefinition } from '../types'
@@ -30,6 +32,7 @@ const job: IJobDefinition = {
     const redis = await getRedisClient(REDIS_CONFIG())
     const db = await getDbConnection(WRITE_DB_CONFIG())
     const qx = pgpQx(db)
+    const temporal = await getTemporalClient(TEMPORAL_CONFIG())
 
     ctx.log.info('Starting member organization stint inference job.')
 
@@ -64,6 +67,12 @@ const job: IJobDefinition = {
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
             await qx.tx((tx) => applyStintChanges(tx, changes))
+
+            ctx.log.debug(
+              { memberId },
+              'Triggering member update workflow to refresh affiliations.',
+            )
+            await signalMemberUpdate(temporal, memberId)
           }
         }
 
