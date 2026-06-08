@@ -40,7 +40,6 @@ export async function getNpmUniversePurlsDueForLatest30d(
          FROM packages p
          LEFT JOIN npm_package_universe_state s ON s.purl = p.purl
         WHERE p.ecosystem = 'npm'
-          AND p.is_critical = TRUE
           AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
           AND (s.downloads_30d_last_run_at IS NULL
                OR s.downloads_30d_last_run_at < $(cutoff)::timestamptz)
