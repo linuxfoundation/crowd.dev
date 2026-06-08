@@ -30,16 +30,18 @@ const job: IJobDefinition = {
   timeout: 10 * 60,
   process: async (ctx) => {
     const redis = await getRedisClient(REDIS_CONFIG())
-    const db = await getDbConnection(WRITE_DB_CONFIG())
-    const qx = pgpQx(db)
-    const temporal = await getTemporalClient(TEMPORAL_CONFIG())
 
     ctx.log.info('Starting member organization stint inference job.')
 
     const memberIds = await redis.sRandMemberCount(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
+
     if (!memberIds?.length) return
 
-    ctx.log.info({ count: memberIds.length }, 'Processing members from queue.')
+    const db = await getDbConnection(WRITE_DB_CONFIG())
+    const qx = pgpQx(db)
+    const temporal = await getTemporalClient(TEMPORAL_CONFIG())
+
+    ctx.log.info({ count: memberIds.length }, 'Processing members from buffer.')
 
     let processed = 0
 
