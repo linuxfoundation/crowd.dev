@@ -27,8 +27,8 @@ type DockerhubConfig = ReturnType<typeof getDockerhubConfig>
 
 // Docker Hub's anonymous rate limit is per-IP, not per-token. hubParkedUntil
 // is module state so the park survives across refresh and discovery pages, and
-// hubChain serializes calls so the per-token GitHub fan-out below can't fire
-// concurrent Hub requests against that single per-IP budget.
+// hubChain serializes calls so the per-installation GitHub fan-out below can't
+// fire concurrent Hub requests against that single per-IP budget.
 let hubParkedUntil = 0
 let hubChain: Promise<unknown> = Promise.resolve()
 

@@ -43,6 +43,12 @@ describe('fetchDockerhub', () => {
     expect(spy).toHaveBeenCalledWith(`${BASE}/repositories/a/b/`, expect.anything())
   })
 
+  it('normalizes a trailing slash on the configured base URL', async () => {
+    const spy = mockFetch(200, { pull_count: 1, star_count: 0 })
+    await fetchDockerhub(`${BASE}/`, 'a/b')
+    expect(spy).toHaveBeenCalledWith(`${BASE}/repositories/a/b/`, expect.anything())
+  })
+
   it('classifies 404 as NOT_FOUND', async () => {
     mockFetch(404, { message: 'object not found' })
     await expect(fetchDockerhub(BASE, 'a/b')).rejects.toMatchObject({ kind: 'NOT_FOUND' })

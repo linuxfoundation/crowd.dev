@@ -14,7 +14,7 @@ export async function fetchDockerhub(
   baseUrl: string,
   imageName: string,
 ): Promise<DockerhubRepoResult> {
-  const url = `${baseUrl}/repositories/${imageName}/`
+  const url = `${baseUrl.replace(/\/+$/, '')}/repositories/${imageName}/`
 
   let response: Response
   try {

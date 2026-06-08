@@ -30,9 +30,8 @@ CREATE INDEX IF NOT EXISTS repo_docker_stale_idx ON repo_docker (last_synced_at)
 -- Keyed by image_name (matches repo_docker UNIQUE) so rows survive a
 -- repo_docker re-discovery without an FK cascade.
 --
--- Partitioned monthly via pg_partman — same setup as downloads_daily; add a
--- partman.create_parent('public.repo_docker_pulls_daily', 'date', '1 month', 3)
--- call alongside the downloads_daily registration.
+-- Partitioned monthly via pg_partman (extension + schema already created in
+-- V1780231200__npm_worker.sql).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS repo_docker_pulls_daily (
     image_name text NOT NULL,
@@ -41,3 +40,22 @@ CREATE TABLE IF NOT EXISTS repo_docker_pulls_daily (
     PRIMARY KEY (image_name, date)
 )
 PARTITION BY RANGE (date);
+
+-- Guard so this migration is idempotent against environments where the
+-- table was already registered manually (e.g. local dev that applied the
+-- earlier in-place schema edit).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM partman.part_config
+    WHERE parent_table = 'public.repo_docker_pulls_daily'
+  ) THEN
+    PERFORM partman.create_parent(
+      p_parent_table => 'public.repo_docker_pulls_daily',
+      p_control      => 'date',
+      p_interval     => '1 month',
+      p_premake      => 3
+    );
+  END IF;
+END
+$$;
