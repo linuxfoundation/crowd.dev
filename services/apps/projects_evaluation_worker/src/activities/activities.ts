@@ -1,4 +1,5 @@
 import {
+  findProjectCatalogById,
   findProjectCatalogPendingEvaluation,
   promoteProjectsToEvaluate,
   updateProjectCatalog,
@@ -43,6 +44,17 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
+  // Guard: fetch fresh state to ensure the API is called at most once per project.
+  // Uses the writer connection to avoid replica lag missing a just-written evaluatedAt.
+  const fresh = await findProjectCatalogById(qx, project.id)
+  if (fresh?.evaluatedAt) {
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl, evaluatedAt: fresh.evaluatedAt },
+      'Project already evaluated, skipping API call.',
+    )
+    return
+  }
+
   log.info({ id: project.id, repoUrl: project.repoUrl }, 'Starting evaluation.')
 
   const result = await evaluateProject({
@@ -56,6 +68,8 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
 
   await updateProjectCatalog(qx, project.id, {
     action: result.outcome,
+    evaluationResult: result.evaluationResult,
+    evaluationReason: result.evaluationReason,
     evaluatedAt: new Date().toISOString(),
   })
 
@@ -66,7 +80,8 @@ export async function evaluateAndUpdateProject(project: IDbProjectCatalog): Prom
       id: project.id,
       repoUrl: project.repoUrl,
       outcome: result.outcome,
-      reason: result.reason,
+      evaluationResult: result.evaluationResult,
+      evaluationReason: result.evaluationReason,
       elapsedSeconds,
     },
     'Evaluation complete.',

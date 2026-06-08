@@ -1,7 +1,12 @@
 import lodash, { chunk, uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
-import { captureApiChange, memberCreateAction, memberEditProfileAction } from '@crowd/audit-logs'
+import {
+  captureApiChange,
+  memberCreateAction,
+  memberEditAffiliationsAction,
+  memberEditProfileAction,
+} from '@crowd/audit-logs'
 import {
   DEFAULT_TENANT_ID,
   Error400,
@@ -25,6 +30,11 @@ import {
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
 import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import {
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+  insertMemberAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   MemberField,
   fetchManyMemberIdentities,
@@ -67,7 +77,6 @@ import { AttributeData } from '../attributes/attribute'
 
 import { IRepositoryOptions } from './IRepositoryOptions'
 import MemberAttributeSettingsRepository from './memberAttributeSettingsRepository'
-import MemberSegmentAffiliationRepository from './memberSegmentAffiliationRepository'
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
 import TenantRepository from './tenantRepository'
@@ -1128,8 +1137,31 @@ class MemberRepository {
     data: MemberSegmentAffiliation[],
     options: IRepositoryOptions,
   ): Promise<void> {
-    const affiliationRepository = new MemberSegmentAffiliationRepository(options)
-    await affiliationRepository.setForMember(memberId, data)
+    const qx = optionsQx(options)
+    await captureApiChange(
+      options,
+      memberEditAffiliationsAction(memberId, async (captureOldState, captureNewState) => {
+        const oldOnes = await findMemberAffiliations(qx, memberId)
+        captureOldState(
+          oldOnes.map((item) => ({
+            segmentId: item.segmentId,
+            organizationId: item.organizationId,
+            dateStart: item.dateStart,
+            dateEnd: item.dateEnd,
+          })),
+        )
+
+        captureNewState(data)
+
+        await deleteMemberSegmentAffiliations(qx, { memberId })
+
+        if (data.length === 0) {
+          return
+        }
+
+        await insertMemberAffiliations(qx, memberId, data)
+      }),
+    )
   }
 
   static async getAffiliations(
@@ -1155,6 +1187,7 @@ class MemberRepository {
       left join organizations o on o.id = msa."organizationId"
       join segments s on s.id = msa."segmentId"
       where msa."memberId" = :memberId
+        and msa."deletedAt" is null
     `
 
     const data = await seq.query(query, {

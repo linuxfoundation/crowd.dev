@@ -85,6 +85,7 @@ export async function fetchMemberSegmentAffiliationsWithOrg(
       FROM "memberSegmentAffiliations" msa
       JOIN organizations o ON msa."organizationId" = o.id
       WHERE msa."memberId" = $(memberId)
+        AND msa."deletedAt" IS NULL
     `,
     { memberId },
   )
@@ -114,6 +115,7 @@ export async function fetchMemberSegmentAffiliationsForProject(
       JOIN organizations o ON msa."organizationId" = o.id
       WHERE msa."memberId" = $(memberId)
         AND msa."segmentId" = $(segmentId)
+        AND msa."deletedAt" IS NULL
     `,
     { memberId, segmentId },
   )
@@ -124,24 +126,6 @@ export interface ISegmentAffiliationInsert {
   dateStart: string | null
   dateEnd: string | null
   verifiedBy: string
-}
-
-/**
- * Delete all segment affiliations for a member + project (segment) combination.
- */
-export async function deleteAllMemberSegmentAffiliationsForProject(
-  qx: QueryExecutor,
-  memberId: string,
-  segmentId: string,
-): Promise<void> {
-  await qx.result(
-    `
-      DELETE FROM "memberSegmentAffiliations"
-      WHERE "memberId" = $(memberId)
-        AND "segmentId" = $(segmentId)
-    `,
-    { memberId, segmentId },
-  )
 }
 
 /**

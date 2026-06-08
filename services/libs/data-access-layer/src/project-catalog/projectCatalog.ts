@@ -316,7 +316,7 @@ export async function upsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'unsure') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,
@@ -389,7 +389,7 @@ export async function bulkUpsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'unsure') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,

@@ -7,7 +7,7 @@ services:
       - POSTGRES_PASSWORD=example
       - POSTGRES_DB=crowd-web
     ports:
-      - 5432:5432
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
       - ./scaffold/sequin/postgres-docker-entrypoint-initdb.d/create-sequin-database.sql:/docker-entrypoint-initdb.d/create-sequin-database.sql
@@ -23,9 +23,26 @@ services:
       - POSTGRES_PASSWORD=example
       - POSTGRES_DB=product-db
     ports:
-      - 5433:5432
+      - '127.0.0.1:5433:5432'
     volumes:
       - pgdata-product-dev:/var/lib/postgresql/data
+    shm_size: 1gb
+    networks:
+      - crowd-bridge
+
+  packages:
+    build:
+      context: ./packages-db
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: -c 'max_connections=300'
+    environment:
+      - POSTGRES_PASSWORD=example
+      - POSTGRES_DB=packages-db
+    ports:
+      - '127.0.0.1:5434:5432'
+    volumes:
+      - pgdata-packages-dev:/var/lib/postgresql/data
     shm_size: 1gb
     networks:
       - crowd-bridge
@@ -47,8 +64,8 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - 9200:9200
-      - 9600:9600
+      - '127.0.0.1:9200:9200'
+      - '127.0.0.1:9600:9600'
     volumes:
       - opensearch-dev:/usr/share/opensearch/data
     networks:
@@ -70,7 +87,7 @@ services:
     image: scireum/s3-ninja:8.0.0
     restart: unless-stopped
     ports:
-      - 9000:9000
+      - '127.0.0.1:9100:9000'
     volumes:
       - s3-dev:/home/sirius/data
     networks:
@@ -83,7 +100,7 @@ services:
       - ./scaffold/nginx/templates:/etc/nginx/templates
       - ./scaffold/nginx/ssl:/etc/nginx/ssl
     ports:
-      - '443:443'
+      - '127.0.0.1:443:443'
     environment:
       - NGINX_HOST=localhost
       - NGINX_PORT=443
@@ -100,7 +117,7 @@ services:
     volumes:
       - redis-dev:/data
     ports:
-      - 6379:6379
+      - '127.0.0.1:6379:6379'
     networks:
       - crowd-bridge
 
@@ -118,7 +135,7 @@ services:
       - NANGO_SERVER_URL=http://localhost:3003
       - SERVER_PORT=3003
     ports:
-      - '3003:3003'
+      - '127.0.0.1:3003:3003'
     networks:
       - crowd-bridge
 
@@ -139,9 +156,9 @@ services:
       - KAFKA_KRAFT_CLUSTER_ID=OTMwNzFhYTY1ODNiNGE5OT
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
     ports:
-      - '9092:9092'
-      - '9093:9093'
-      - '9094:9094'
+      - '127.0.0.1:9092:9092'
+      - '127.0.0.1:9093:9093'
+      - '127.0.0.1:9094:9094'
     networks:
       - crowd-bridge
 
@@ -167,8 +184,8 @@ services:
       context: scaffold/temporal
     restart: unless-stopped
     ports:
-      - '7233:7233'
-      - '8233:8233'
+      - '127.0.0.1:7233:7233'
+      - '127.0.0.1:8233:8233'
     networks:
       - crowd-bridge
 
@@ -179,8 +196,8 @@ services:
     environment:
       - COMPATIBILITY_MODE=1 # <— force Classic version
     ports:
-      - '80:80'
-      - '7181:7181'
+      - '127.0.0.1:80:80'
+      - '127.0.0.1:7181:7181'
     networks:
       - crowd-bridge
 
@@ -191,6 +208,7 @@ networks:
 volumes:
   pgdata-dev:
   pgdata-product-dev:
+  pgdata-packages-dev:
   opensearch-dev:
   s3-dev:
   redis-dev:

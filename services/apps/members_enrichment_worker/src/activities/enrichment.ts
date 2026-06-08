@@ -19,6 +19,7 @@ import {
 } from '@crowd/data-access-layer'
 import { createMemberIdentity } from '@crowd/data-access-layer'
 import { findMemberIdentityWithTheMostActivityInPlatform as getMemberMostActiveIdentity } from '@crowd/data-access-layer/src/activityRelations'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/attributeSettings'
 import {
   deleteMemberOrgById,
@@ -648,16 +649,25 @@ export async function updateMemberUsingSquashedPayload(
         newOrUpdatedMemberOrgs.map((mo) => mo.organizationId),
       )
 
-      const overrides = newOrUpdatedMemberOrgs
-        .filter((mo) => orgAffiliationPolicies.get(mo.organizationId))
-        .map((mo) => ({
-          memberId,
-          memberOrganizationId: mo.id,
-          allowAffiliation: false,
-        }))
+      const memberOrgsWithAffiliationBlocked = newOrUpdatedMemberOrgs.filter((mo) =>
+        orgAffiliationPolicies.get(mo.organizationId),
+      )
+
+      for (const organizationId of new Set(
+        memberOrgsWithAffiliationBlocked.map((mo) => mo.organizationId),
+      )) {
+        await deleteMemberSegmentAffiliations(qx, { memberId, organizationId })
+      }
+
+      const overrides = memberOrgsWithAffiliationBlocked.map((mo) => ({
+        memberId,
+        memberOrganizationId: mo.id,
+        allowAffiliation: false,
+      }))
 
       if (overrides.length > 0) {
         await changeMemberOrganizationAffiliationOverrides(qx, overrides)
+
         // When we write allowAffiliation=false, activityRelations must refresh
         // to respect the newly created override, even if timeline hasn't changed.
         affiliationNeedsRefresh = true
