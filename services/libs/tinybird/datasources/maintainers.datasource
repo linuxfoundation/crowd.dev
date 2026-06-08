@@ -7,6 +7,7 @@ DESCRIPTION >
     - `username` is the maintainer's registry username — unique within an ecosystem.
     - `displayName` is the maintainer's human-readable name as published in the registry (empty string if not provided).
     - `url` is the maintainer's profile URL on the registry (empty string if not provided).
+    - `email` is the maintainer's email address as published in the registry (empty string if not provided).
     - `githubLogin` is the maintainer's GitHub username if resolved (empty string if not linked).
     - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
 
@@ -16,6 +17,7 @@ SCHEMA >
     `username` String `json:$.record.username`,
     `displayName` String `json:$.record.display_name` DEFAULT '',
     `url` String `json:$.record.url` DEFAULT '',
+    `email` String `json:$.record.email` DEFAULT '',
     `githubLogin` String `json:$.record.github_login` DEFAULT '',
     `createdAt` DateTime64(3) `json:$.record.created_at`,
     `updatedAt` DateTime64(3) `json:$.record.updated_at`
