@@ -70,11 +70,11 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_deps_raw (
 const MERGE_SQL = `
 INSERT INTO package_dependencies (
   package_id, version_id, depends_on_id, depends_on_version_id,
-  version_constraint, dependency_kind, is_optional
+  version_constraint, dependency_kind, is_optional, created_at, updated_at
 )
 SELECT
   pv.package_id, pv.id, pd.id, dv.id,
-  sp.version_constraint, 'direct', FALSE
+  sp.version_constraint, 'direct', FALSE, NOW(), NOW()
 FROM staging.osspckgs_deps_raw sp
 JOIN staging.osspckgs_versions_lookup pv ON pv.ecosystem = sp.ecosystem
   AND pv.ns = CASE
@@ -106,11 +106,11 @@ ON CONFLICT (version_id, depends_on_id, dependency_kind) DO NOTHING
 const MERGE_SQL_FULL = `
 INSERT INTO package_dependencies (
   package_id, version_id, depends_on_id, depends_on_version_id,
-  version_constraint, dependency_kind, is_optional
+  version_constraint, dependency_kind, is_optional, created_at, updated_at
 )
 SELECT DISTINCT ON (pv.id, pd.id)
   pv.package_id, pv.id, pd.id, dv.id,
-  sp.version_constraint, 'direct', FALSE
+  sp.version_constraint, 'direct', FALSE, NOW(), NOW()
 FROM staging.osspckgs_deps_raw sp
 JOIN staging.osspckgs_versions_lookup pv ON pv.ecosystem = sp.ecosystem
   AND pv.ns = CASE

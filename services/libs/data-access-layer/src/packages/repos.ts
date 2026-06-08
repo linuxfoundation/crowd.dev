@@ -36,12 +36,13 @@ export async function upsertPackageRepo(
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
      ),
      ins AS (
-       INSERT INTO package_repos (package_id, repo_id, source, confidence)
-       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence))
+       INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at, updated_at)
+       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence), NOW(), NOW())
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
          source      = EXCLUDED.source,
          confidence  = EXCLUDED.confidence,
-         verified_at = NOW()
+         verified_at = NOW(),
+         updated_at  = EXCLUDED.updated_at
        RETURNING source, confidence
      )
      SELECT array_remove(ARRAY[

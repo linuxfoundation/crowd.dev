@@ -54,22 +54,23 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_advisory_packages_raw (
 `
 
 const ADVISORIES_MERGE_SQL = `
-INSERT INTO advisories (osv_id, source, source_url, summary, details, cvss, severity, aliases, published_at)
+INSERT INTO advisories (osv_id, source, source_url, summary, details, cvss, severity, aliases, published_at, created_at, updated_at)
 SELECT osv_id, source, source_url, summary, details,
   CASE WHEN cvss IS NULL OR cvss = 'NaN'::float8 OR cvss = 'Infinity'::float8 OR cvss = '-Infinity'::float8
     THEN NULL ELSE cvss::numeric(3,1) END,
-  severity, aliases, published_at
+  severity, aliases, published_at, NOW(), NOW()
 FROM staging.osspckgs_advisories_raw
 ON CONFLICT (osv_id) DO NOTHING
 `
 
 const ADVISORY_PACKAGES_MERGE_SQL = `
-INSERT INTO advisory_packages (advisory_id, package_id, ecosystem, package_name)
+INSERT INTO advisory_packages (advisory_id, package_id, ecosystem, package_name, created_at, updated_at)
 SELECT
   adv.id,
   p.id,
   s.ecosystem,
-  s.package_name
+  s.package_name,
+  NOW(), NOW()
 FROM staging.osspckgs_advisory_packages_raw s
 JOIN advisories adv ON adv.osv_id = s.osv_id
 LEFT JOIN packages p ON p.purl = s.purl
@@ -78,12 +79,13 @@ ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 
 // Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist
 const ADVISORY_AFFECTED_RANGES_MERGE_SQL = `
-INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version)
+INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version, created_at, updated_at)
 SELECT
   ap.id,
   s.range_raw,
   s.unaffected_raw,
-  NULL
+  NULL,
+  NOW(), NOW()
 FROM staging.osspckgs_advisory_packages_raw s
 JOIN advisories adv ON adv.osv_id = s.osv_id
 JOIN advisory_packages ap ON ap.advisory_id = adv.id

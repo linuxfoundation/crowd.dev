@@ -30,7 +30,8 @@ export async function bulkUpdateEnrichedRepos(
       owner            = COALESCE(r.owner,      v.owner),
       name             = COALESCE(r.name,       v.name),
       created_at       = COALESCE(r.created_at, NULLIF(v.created_at, '')::timestamptz),
-      last_synced_at   = NOW()
+      last_synced_at   = NOW(),
+      updated_at       = NOW()
     FROM (
       SELECT
         j->>'url'                                             AS url,
@@ -65,7 +66,8 @@ export async function markReposSkipped(qx: QueryExecutor, urls: string[]): Promi
     UPDATE repos
     SET
       last_synced_at  = NOW(),
-      skip_enrichment = true
+      skip_enrichment = true,
+      updated_at      = NOW()
     WHERE url = ANY($1::text[])
     `,
     [urls],
