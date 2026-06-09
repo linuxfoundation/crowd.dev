@@ -73,6 +73,7 @@ export async function getNpmUniversePurlsDueForLast30dHistory(
            FROM packages p
            JOIN npm_package_universe_state s ON s.purl = p.purl
           WHERE p.ecosystem = 'npm'
+            AND p.is_critical = TRUE
             AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
             AND s.downloads_30d_last_run_at IS NOT NULL
             AND s.downloads_30d_history_backfilled_at IS NULL
