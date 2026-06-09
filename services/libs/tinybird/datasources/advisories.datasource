@@ -29,8 +29,8 @@ SCHEMA >
     `isCritical` UInt8 `json:$.record.is_critical` DEFAULT 0,
     `summary` String `json:$.record.summary` DEFAULT '',
     `details` String `json:$.record.details` DEFAULT '',
-    `publishedAt` DateTime64(3) `json:$.record.published_at` DEFAULT '',
-    `modifiedAt` DateTime64(3) `json:$.record.modified_at` DEFAULT '',
+    `publishedAt` Nullable(DateTime64(3)) `json:$.record.published_at`,
+    `modifiedAt` Nullable(DateTime64(3)) `json:$.record.modified_at`,
     `createdAt` DateTime64(3) `json:$.record.created_at`,
     `updatedAt` DateTime64(3) `json:$.record.updated_at`
 
