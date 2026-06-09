@@ -50,8 +50,8 @@ export async function upsertMavenPackageRepo(
        WHERE package_id = $(packageId) AND repo_id = $(repoId)
     ),
     ins AS (
-      INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at)
-      VALUES ($(packageId), $(repoId), $(source), $(confidence), NOW())
+      INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
+      VALUES ($(packageId), $(repoId), $(source), $(confidence), NOW(), NOW())
       ON CONFLICT (package_id, repo_id) DO UPDATE SET
         confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
         verified_at = NOW()
