@@ -19,8 +19,8 @@ DESCRIPTION >
     - `distTagsLatest`, `distTagsNext`, `distTagsBeta` are npm dist-tag values; empty string for non-npm packages.
     - `versionsCount` is the total number of published versions (0 if unknown).
     - `latestVersion` is the most recent stable version string (empty string if unknown).
-    - `firstReleaseAt` is the timestamp of the earliest published version (empty string if unknown).
-    - `latestReleaseAt` is the timestamp of the most recent published version (empty string if unknown).
+    - `firstReleaseAt` is the timestamp of the earliest published version (NULL if unknown).
+    - `latestReleaseAt` is the timestamp of the most recent published version (NULL if unknown).
     - `dependentCount` is the number of packages that directly depend on this package (0 if unknown).
     - `transitiveDependentCount` is the number of packages that transitively depend on this package (0 if unknown).
     - `dependentReposCount` is the number of repositories that depend on this package (0 if unknown).
