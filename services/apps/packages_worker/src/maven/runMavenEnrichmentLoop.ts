@@ -9,7 +9,7 @@ import {
   touchPackageSyncedAt,
   upsertMaintainer,
   upsertPackage,
-  upsertPackageRepo,
+  upsertMavenPackageRepo,
   upsertRepo,
   upsertVersionsBatch,
 } from '@crowd/data-access-layer'
@@ -57,7 +57,7 @@ async function writeRepoLink(
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  const repoChanged = await upsertPackageRepo(qx, {
+  const repoChanged = await upsertMavenPackageRepo(qx, {
     packageId,
     repoId,
     source: 'declared',

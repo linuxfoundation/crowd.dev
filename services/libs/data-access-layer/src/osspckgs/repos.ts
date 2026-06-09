@@ -39,7 +39,7 @@ export async function upsertRepo(qx: QueryExecutor, item: IDbRepoUpsert): Promis
  * On conflict keeps the higher confidence value and refreshes verified_at.
  * Returns the list of fields that actually changed.
  */
-export async function upsertPackageRepo(
+export async function upsertMavenPackageRepo(
   qx: QueryExecutor,
   item: IDbPackageRepoUpsert,
 ): Promise<string[]> {
