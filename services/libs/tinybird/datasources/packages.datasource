@@ -60,7 +60,7 @@ SCHEMA >
     `hasCriticalVulnerability` UInt8 `json:$.record.has_critical_vulnerability` DEFAULT 0,
     `impact` Float32 `json:$.record.impact` DEFAULT 0,
     `isCritical` UInt8 `json:$.record.is_critical` DEFAULT 0,
-    `lastRankPassAt` DateTime64(3) `json:$.record.last_rank_pass_at` DEFAULT '',
+    `lastRankPassAt` Nullable(DateTime64(3)) `json:$.record.last_rank_pass_at`,
     `ingestionSource` String `json:$.record.ingestion_source` DEFAULT '',
     `lastSyncedAt` DateTime64(3) `json:$.record.last_synced_at`,
     `createdAt` DateTime64(3) `json:$.record.created_at`
