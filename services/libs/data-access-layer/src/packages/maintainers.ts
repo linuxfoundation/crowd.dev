@@ -14,7 +14,11 @@ export async function upsertNpmMaintainers(
 ): Promise<string[]> {
   const changed = new Set<string>()
 
-  for (const m of maintainers) {
+  // Lock maintainers rows in a deterministic (username) order so concurrent ingest lanes
+  // enriching different packages that share maintainers can't acquire the row locks in cyclic order
+  const ordered = [...maintainers].sort((a, b) => a.username.localeCompare(b.username))
+
+  for (const m of ordered) {
     const row: { changed_fields: string[] } = await qx.selectOne(
       `WITH old AS (
          SELECT display_name, email FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
@@ -50,7 +54,7 @@ export async function upsertNpmMaintainers(
   })
 
   const afterMap = new Map<string, string | null>()
-  for (const m of maintainers) {
+  for (const m of ordered) {
     const row: { maintainer_id: string } | null = await qx.selectOneOrNone(
       `INSERT INTO package_maintainers (package_id, maintainer_id, role, created_at, updated_at)
        SELECT $(packageId)::bigint, id, $(role), NOW(), NOW() FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
