@@ -56,6 +56,25 @@ export function normalizeLicenses(packument: Packument): string[] {
   )
 }
 
+// A version's license is sometimes an object ({ type, url })
+// or the legacy array form ([{ type, file }, ...]). Passing those raw
+export function versionLicense(raw: unknown): string | null {
+  if (raw == null) return null
+  if (typeof raw === 'string') return raw || null
+  if (Array.isArray(raw)) {
+    const types = raw
+      .map((l) => (typeof l === 'string' ? l : isLicenseObject(l) ? l.type : null))
+      .filter((t): t is string => Boolean(t))
+    return types.length ? types.join(' OR ') : null
+  }
+  if (isLicenseObject(raw)) return raw.type ?? null
+  return null
+}
+
+function isLicenseObject(v: unknown): v is { type?: string } {
+  return typeof v === 'object' && v !== null
+}
+
 function clean(s: string): string {
   return s.replace(/[()]/g, '').trim()
 }
