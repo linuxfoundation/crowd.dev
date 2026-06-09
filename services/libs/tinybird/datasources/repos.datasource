@@ -14,7 +14,7 @@ DESCRIPTION >
     - `forks` is the fork count (0 if not yet enriched).
     - `watchers` is the watcher count (0 if not yet enriched).
     - `openIssues` is the number of open issues (0 if not yet enriched).
-    - `lastCommitAt` is the timestamp of the most recent commit (empty string if unknown).
+    - `lastCommitAt` is the timestamp of the most recent commit (NULL if unknown).
     - `archived` is 1 if the repository is archived, 0 otherwise (0 default until enriched).
     - `disabled` is 1 if the repository is disabled, 0 otherwise (0 default until enriched).
     - `isFork` is 1 if this repository is a fork of another, 0 otherwise (0 default until enriched).
@@ -23,9 +23,10 @@ DESCRIPTION >
     - `rawProjectType` is the deps.dev project type string (e.g. 'GITHUB', 'GITLAB') for identity resolution.
     - `rawProjectName` is the deps.dev project name (e.g. 'github.com/owner/repo') for identity resolution.
     - `scorecardScore` is the OpenSSF Scorecard aggregate score (0 if not yet scored).
-    - `scorecardLastRunAt` is when the Scorecard was last evaluated (empty string if never run).
+    - `scorecardLastRunAt` is when the Scorecard was last evaluated (NULL if never run).
     - `skipEnrichment` is 1 if the GitHub enricher should skip this repo (e.g. invalid/transient URLs), 0 otherwise.
-    - `lastSyncedAt` is when the row was last written by any worker — serves as the updated_at watermark for sync.
+    - `lastSyncedAt` is the timestamp of the last GitHub enrichment attempt (NULL if never enriched or transient failure).
+    - `updatedAt` is the row-level audit timestamp used as the Tinybird watermark for sync.
 
 SCHEMA >
     `id` UInt64 `json:$.record.id`,
