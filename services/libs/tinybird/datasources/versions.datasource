@@ -8,7 +8,7 @@ DESCRIPTION >
     - `namespace` is the package scope or group; empty string if not applicable.
     - `name` is the package name — denormalized from packages for fast dependency resolution without a join.
     - `number` is the version string (e.g. '1.2.3', '2.0.0-beta.1').
-    - `publishedAt` is when this version was published to the registry (empty string if unknown).
+    - `publishedAt` is when this version was published to the registry (NULL if unknown).
     - `isLatest` is 1 if this is the current latest stable version according to the registry, 0 otherwise (0 default until enriched).
     - `isYanked` is 1 if this version was retracted/yanked from the registry, 0 otherwise (0 default until enriched).
     - `isPrerelease` is 1 if the version string contains a pre-release identifier (alpha, beta, rc, etc.), 0 otherwise.
