@@ -27,7 +27,7 @@ DESCRIPTION >
     - `hasCriticalVulnerability` is 1 if the latest version has an active critical advisory (CVSS >= 7.0), 0 otherwise.
     - `impact` is the composite criticality impact score from the ranking function (0 if not yet ranked).
     - `isCritical` is 1 if this package ranks in the top N by ecosystem in the most recent ranking pass, 0 otherwise.
-    - `lastRankPassAt` is when the criticality ranking worker last processed this package (empty string if never ranked).
+    - `lastRankPassAt` is when the criticality ranking worker last processed this package (NULL if never ranked).
     - `ingestionSource` identifies which worker last wrote the row: 'npm-registry', 'deps_dev', etc. (empty string if unknown).
     - `lastSyncedAt` is when the row was last written by any worker — serves as the updated_at watermark for sync.
     - `createdAt` is the row-insert timestamp — set once on first insert, never updated.
