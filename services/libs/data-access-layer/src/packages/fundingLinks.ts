@@ -24,8 +24,8 @@ export async function upsertNpmFundingLinks(
   for (const link of links) {
     const type = link.type ?? null
     await qx.result(
-      `INSERT INTO package_funding_links (package_id, type, url)
-       VALUES ($(packageId)::bigint, $(type), $(url))
+      `INSERT INTO package_funding_links (package_id, type, url, created_at, updated_at)
+       VALUES ($(packageId)::bigint, $(type), $(url), NOW(), NOW())
        ON CONFLICT (package_id, url) DO NOTHING`,
       { packageId, type, url: link.url },
     )

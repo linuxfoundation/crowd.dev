@@ -99,8 +99,8 @@ export async function insertDailyDownloads(
 ): Promise<string[]> {
   if (days.length === 0) return []
   const rowCount = await qx.result(
-    `INSERT INTO downloads_daily (package_id, date, count)
-     SELECT $(packageId)::bigint, d::date, c
+    `INSERT INTO downloads_daily (package_id, date, count, created_at, updated_at)
+     SELECT $(packageId)::bigint, d::date, c, NOW(), NOW()
        FROM unnest($(dates)::text[], $(counts)::bigint[]) AS u(d, c)
      ON CONFLICT (package_id, date) DO NOTHING`,
     { packageId, dates: days.map((d) => d.day), counts: days.map((d) => d.downloads) },

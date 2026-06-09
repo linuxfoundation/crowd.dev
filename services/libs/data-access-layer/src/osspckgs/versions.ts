@@ -44,11 +44,11 @@ export async function upsertVersionsBatch(
        WHERE package_id = $(packageId)::bigint AND number = ANY($(numbers)::text[])
     ),
     ins AS (
-      INSERT INTO versions (package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, licenses, last_synced_at)
+      INSERT INTO versions (package_id, ecosystem, namespace, name, number, is_latest, is_prerelease, licenses, last_synced_at, created_at)
       SELECT
         $(packageId)::bigint, t.ecosystem, t.namespace, t.name, t.number, t.is_latest, t.is_prerelease,
         CASE WHEN t.license IS NULL THEN NULL ELSE ARRAY[t.license] END,
-        NOW()
+        NOW(), NOW()
       FROM UNNEST(
         $(ecosystems)::text[],
         $(namespaces)::text[],

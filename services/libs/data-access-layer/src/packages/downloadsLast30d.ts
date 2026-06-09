@@ -147,11 +147,12 @@ export async function upsertLast30dDownload(
        SELECT start_date, count FROM downloads_last_30d WHERE purl = $(purl) AND end_date = $(endDate)::date
      ),
      ins AS (
-       INSERT INTO downloads_last_30d (purl, start_date, end_date, count)
-       VALUES ($(purl), $(startDate)::date, $(endDate)::date, $(count))
+       INSERT INTO downloads_last_30d (purl, start_date, end_date, count, created_at, updated_at)
+       VALUES ($(purl), $(startDate)::date, $(endDate)::date, $(count), NOW(), NOW())
        ON CONFLICT (purl, end_date) DO UPDATE SET
          count      = EXCLUDED.count,
-         start_date = EXCLUDED.start_date
+         start_date = EXCLUDED.start_date,
+         updated_at = EXCLUDED.updated_at
        RETURNING start_date, count
      )
      SELECT array_remove(ARRAY[

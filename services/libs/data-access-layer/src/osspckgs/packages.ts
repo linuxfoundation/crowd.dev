@@ -197,13 +197,13 @@ export async function upsertPackage(
         description, homepage, registry_url, declared_repository_url, repository_url,
         licenses, licenses_raw, latest_version, versions_count, latest_release_at,
         criticality_score, dependent_count, dependent_repos_count,
-        ingestion_source, last_synced_at
+        ingestion_source, last_synced_at, created_at
       ) VALUES (
         $(purl), $(ecosystem), $(namespace), $(name),
         $(description), $(homepage), $(registryUrl), $(declaredRepositoryUrl), $(repositoryUrl),
         $(licenses)::text[], $(licensesRaw), $(latestVersion), $(versionsCount), $(latestReleaseAt),
         $(criticalityScore), $(dependentPackagesCount), $(dependentReposCount),
-        $(ingestionSource), NOW()
+        $(ingestionSource), NOW(), NOW()
       )
       ON CONFLICT (purl) DO UPDATE SET
         description              = COALESCE(EXCLUDED.description,              packages.description),

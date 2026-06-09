@@ -20,13 +20,14 @@ export async function findRepoIdsByUrl(
 export async function upsertRepo(qx: QueryExecutor, item: IDbRepoUpsert): Promise<number> {
   const row = await qx.selectOne(
     `
-    INSERT INTO repos (url, host, owner, name, last_synced_at)
-    VALUES ($(url), $(host), $(owner), $(name), NOW())
+    INSERT INTO repos (url, host, owner, name, last_synced_at, updated_at)
+    VALUES ($(url), $(host), $(owner), $(name), NOW(), NOW())
     ON CONFLICT (url) DO UPDATE SET
       host           = COALESCE(EXCLUDED.host,  repos.host),
       owner          = COALESCE(EXCLUDED.owner, repos.owner),
       name           = COALESCE(EXCLUDED.name,  repos.name),
-      last_synced_at = NOW()
+      last_synced_at = NOW(),
+      updated_at     = NOW()
     RETURNING id
     `,
     item,
@@ -50,8 +51,8 @@ export async function upsertMavenPackageRepo(
        WHERE package_id = $(packageId) AND repo_id = $(repoId)
     ),
     ins AS (
-      INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at)
-      VALUES ($(packageId), $(repoId), $(source), $(confidence), NOW())
+      INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
+      VALUES ($(packageId), $(repoId), $(source), $(confidence), NOW(), NOW())
       ON CONFLICT (package_id, repo_id) DO UPDATE SET
         confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
         verified_at = NOW()

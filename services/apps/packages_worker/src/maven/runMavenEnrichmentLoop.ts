@@ -1,5 +1,3 @@
-import crypto from 'crypto'
-
 import {
   MavenPackageToSync,
   QueryExecutor,
@@ -285,15 +283,12 @@ async function processCriticalPackage(
       for (const person of allPeople) {
         const username = person.username ?? person.email ?? person.displayName
         if (!username) continue
-        const emailHash = person.email
-          ? crypto.createHash('sha256').update(person.email.toLowerCase().trim()).digest('hex')
-          : null
         const { id: maintainerId, changedFields: mChanged } = await upsertMaintainer(t, {
           ecosystem: 'maven',
           username,
           displayName: person.displayName,
           url: person.url,
-          emailHash,
+          email: person.email ?? null,
         })
         mChanged.forEach((f) => changed.add(f))
         maintainerLinks.push({ maintainerId, role: person.role })

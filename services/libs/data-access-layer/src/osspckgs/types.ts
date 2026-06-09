@@ -44,7 +44,7 @@ export type IDbMaintainerUpsert = {
   username: string
   displayName: string | null
   url: string | null
-  emailHash: string | null
+  email: string | null
 }
 
 // ─── package_maintainers ──────────────────────────────────────────────────────
