@@ -24,7 +24,7 @@ SCHEMA >
     `namespace` String `json:$.record.namespace` DEFAULT '',
     `name` String `json:$.record.name`,
     `number` String `json:$.record.number`,
-    `publishedAt` DateTime64(3) `json:$.record.published_at` DEFAULT '',
+    `publishedAt` Nullable(DateTime64(3)) `json:$.record.published_at`,
     `isLatest` UInt8 `json:$.record.is_latest` DEFAULT 0,
     `isYanked` UInt8 `json:$.record.is_yanked` DEFAULT 0,
     `isPrerelease` UInt8 `json:$.record.is_prerelease` DEFAULT 0,
