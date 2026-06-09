@@ -9,8 +9,10 @@
 --   npm_package_universe_state    — watermark columns serve the same purpose
 --   package_criticality_spotlight — override config; has added_at
 --
--- repos: created_at already exists (stores the GitHub repository creation date) and
--- last_synced_at serves as the row-level updated_at. Neither column is added here.
+-- repos: created_at already exists (stores the GitHub repository creation date).
+-- last_synced_at is nullable (not set until the GitHub enricher runs), so updated_at
+-- is added as a non-nullable watermark for Tinybird sync. last_synced_at is kept as
+-- a separate enrichment-freshness signal.
 --
 -- packages, versions, repo_docker: last_synced_at already serves as updated_at.
 -- Only created_at is added to avoid duplicate semantics.
@@ -20,6 +22,9 @@
 -- Partitioned tables (versions, package_dependencies, downloads_daily, downloads_last_30d):
 -- PostgreSQL 12+ propagates new columns to all child partitions automatically —
 -- no per-partition ALTER needed.
+
+ALTER TABLE repos
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
 
 ALTER TABLE packages
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();

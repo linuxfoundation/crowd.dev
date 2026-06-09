@@ -20,13 +20,14 @@ export async function findRepoIdsByUrl(
 export async function upsertRepo(qx: QueryExecutor, item: IDbRepoUpsert): Promise<number> {
   const row = await qx.selectOne(
     `
-    INSERT INTO repos (url, host, owner, name, last_synced_at)
-    VALUES ($(url), $(host), $(owner), $(name), NOW())
+    INSERT INTO repos (url, host, owner, name, last_synced_at, updated_at)
+    VALUES ($(url), $(host), $(owner), $(name), NOW(), NOW())
     ON CONFLICT (url) DO UPDATE SET
       host           = COALESCE(EXCLUDED.host,  repos.host),
       owner          = COALESCE(EXCLUDED.owner, repos.owner),
       name           = COALESCE(EXCLUDED.name,  repos.name),
-      last_synced_at = NOW()
+      last_synced_at = NOW(),
+      updated_at     = NOW()
     RETURNING id
     `,
     item,
