@@ -27,7 +27,7 @@ const heartbeatingActs = proxyActivities<typeof activities>({
 
 // Per lane, per round. Total purls fetched per round = lanes × INGEST_PER_LANE.
 const INGEST_PER_LANE = 50
-const INGEST_ROUNDS_PER_RUN = 25
+const INGEST_ROUNDS_PER_RUN = 5
 
 interface IngestState {
   unscannedCursor: string
