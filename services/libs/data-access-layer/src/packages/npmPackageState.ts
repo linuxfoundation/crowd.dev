@@ -28,7 +28,9 @@ export async function markNpmPackageScanned(
   )
 }
 
-// npm packages in the `packages` table that have never been metadata-scanned.
+// Critical npm packages in the `packages` table that have never been metadata-scanned.
+// Only is_critical packages are enriched — metadata is deep, per-package work, so it is
+// scoped to the critical set (matching the daily-downloads pass).
 // Keyset-paginated on purl so the workflow can drain a large first run across
 // many continueAsNew runs.
 export async function getUnscannedNpmPurls(
@@ -41,6 +43,7 @@ export async function getUnscannedNpmPurls(
        FROM packages p
        LEFT JOIN npm_package_state s ON s.purl = p.purl
       WHERE p.ecosystem = 'npm'
+        AND p.is_critical = TRUE
         AND p.purl > $(afterPurl)
         AND s.purl IS NULL
       ORDER BY p.purl
@@ -51,9 +54,11 @@ export async function getUnscannedNpmPurls(
 }
 
 // Given a list of changed npm registry names (from the _changes feed), return the
-// purls of those that exist as npm rows in `packages`. The purl is read straight
-// from the row; feed names are matched against the decoded namespace/name columns
-// (the purl is percent-encoded, so substr(purl) would be %40scope/name).
+// purls of the critical ones that exist as npm rows in `packages`. The purl is read
+// straight from the row; feed names are matched against the decoded namespace/name
+// columns (the purl is percent-encoded, so substr(purl) would be %40scope/name).
+// Restricted to is_critical packages — non-critical packages are never metadata-scanned,
+// so there is nothing to keep fresh when they change.
 export async function getNpmPurlsForChangedNames(
   qx: QueryExecutor,
   names: string[],
@@ -64,7 +69,8 @@ export async function getNpmPurlsForChangedNames(
        FROM packages p
        JOIN unnest($(names)::text[]) AS u(name)
          ON (CASE WHEN p.namespace IS NOT NULL THEN p.namespace || '/' || p.name ELSE p.name END) = u.name
-      WHERE p.ecosystem = 'npm'`,
+      WHERE p.ecosystem = 'npm'
+        AND p.is_critical = TRUE`,
     { names },
   )
   return rows.map((r) => r.purl)

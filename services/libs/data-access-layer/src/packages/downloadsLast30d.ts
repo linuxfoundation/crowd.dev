@@ -25,10 +25,10 @@ export interface Last30dCandidate {
 // BREADTH selection. A purl is "due for the latest window" while its breadth watermark
 // (`downloads_30d_last_run_at`) is older than this run's cutoff (or absent). The watermark
 // is bumped once its current 30-day window is refreshed, so the monthly run touches every
-// package's latest window exactly once and the denormalized number lands across the whole
-// universe before any deep history is filled. Older history is a separate pass keyed on
-// `downloads_30d_history_backfilled_at` — see getNpmUniversePurlsDueForLast30dHistory.
-export async function getNpmUniversePurlsDueForLatest30d(
+// package's latest window exactly once and the denormalized number lands across all npm
+// packages before any deep history is filled. Older history is a separate pass keyed on
+// `downloads_30d_history_backfilled_at` — see getNpmPurlsDueForLast30dHistory.
+export async function getNpmPurlsDueForLatest30d(
   qx: QueryExecutor,
   cutoff: string,
   batchSize: number,
@@ -39,7 +39,7 @@ export async function getNpmUniversePurlsDueForLatest30d(
     `WITH due AS (
          SELECT p.purl AS purl, p.first_release_at
            FROM packages p
-           LEFT JOIN npm_package_universe_state s ON s.purl = p.purl
+           LEFT JOIN npm_package_state s ON s.purl = p.purl
           WHERE p.ecosystem = 'npm'
             AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
             AND (s.downloads_30d_last_run_at IS NULL
@@ -61,7 +61,7 @@ export async function getNpmUniversePurlsDueForLatest30d(
 // not yet been filled (`downloads_30d_history_backfilled_at IS NULL`). This keeps the work
 // strictly breadth-first per package: history is never fetched before the latest window.
 // Sharded the same way; oldest-breadth-first so the longest-waiting packages drain first.
-export async function getNpmUniversePurlsDueForLast30dHistory(
+export async function getNpmPurlsDueForLast30dHistory(
   qx: QueryExecutor,
   batchSize: number,
   laneIndex: number,
@@ -71,9 +71,8 @@ export async function getNpmUniversePurlsDueForLast30dHistory(
     `WITH due AS (
          SELECT p.purl AS purl, p.first_release_at, s.downloads_30d_last_run_at AS last_run_at
            FROM packages p
-           JOIN npm_package_universe_state s ON s.purl = p.purl
+           JOIN npm_package_state s ON s.purl = p.purl
           WHERE p.ecosystem = 'npm'
-            AND p.is_critical = TRUE
             AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
             AND s.downloads_30d_last_run_at IS NOT NULL
             AND s.downloads_30d_history_backfilled_at IS NULL
@@ -90,7 +89,7 @@ export async function getNpmUniversePurlsDueForLast30dHistory(
 }
 
 // Structured outcome of a last-30d run, stored as JSONB in
-// npm_package_universe_state.downloads_30d_run_result.
+// npm_package_state.downloads_30d_run_result.
 export interface Last30dRunResult {
   status: 'success' | 'error'
   httpStatus?: number
@@ -107,7 +106,7 @@ export async function markLast30dProcessed(
   result: Last30dRunResult,
 ): Promise<void> {
   await qx.result(
-    `INSERT INTO npm_package_universe_state (purl, downloads_30d_last_run_at, downloads_30d_run_result)
+    `INSERT INTO npm_package_state (purl, downloads_30d_last_run_at, downloads_30d_run_result)
      VALUES ($(purl), NOW(), $(result)::jsonb)
      ON CONFLICT (purl) DO UPDATE SET
        downloads_30d_last_run_at = NOW(),
@@ -126,7 +125,7 @@ export async function markLast30dHistoryBackfilled(
   result: Last30dRunResult,
 ): Promise<void> {
   await qx.result(
-    `UPDATE npm_package_universe_state
+    `UPDATE npm_package_state
         SET downloads_30d_history_backfilled_at = NOW(),
             downloads_30d_run_result            = $(result)::jsonb
       WHERE purl = $(purl)`,
