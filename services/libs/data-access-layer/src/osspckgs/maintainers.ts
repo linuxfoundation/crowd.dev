@@ -13,23 +13,24 @@ export async function upsertMaintainer(
   const row = await qx.selectOne(
     `
     WITH old AS (
-      SELECT display_name, url, email_hash
+      SELECT display_name, url, email
         FROM maintainers WHERE ecosystem = $(ecosystem) AND username = $(username)
     ),
     ins AS (
-      INSERT INTO maintainers (ecosystem, username, display_name, url, email_hash)
-      VALUES ($(ecosystem), $(username), $(displayName), $(url), $(emailHash))
+      INSERT INTO maintainers (ecosystem, username, display_name, url, email, created_at, updated_at)
+      VALUES ($(ecosystem), $(username), $(displayName), $(url), $(email), NOW(), NOW())
       ON CONFLICT (ecosystem, username) DO UPDATE SET
         display_name = COALESCE(EXCLUDED.display_name, maintainers.display_name),
         url          = COALESCE(EXCLUDED.url,          maintainers.url),
-        email_hash   = COALESCE(EXCLUDED.email_hash,   maintainers.email_hash)
-      RETURNING id, display_name, url, email_hash
+        email        = COALESCE(EXCLUDED.email,        maintainers.email),
+        updated_at   = NOW()
+      RETURNING id, display_name, url, email
     )
     SELECT ins.id,
            array_remove(ARRAY[
              CASE WHEN o.display_name IS DISTINCT FROM ins.display_name THEN 'maintainers.display_name' END,
              CASE WHEN o.url          IS DISTINCT FROM ins.url          THEN 'maintainers.url' END,
-             CASE WHEN o.email_hash   IS DISTINCT FROM ins.email_hash   THEN 'maintainers.email_hash' END
+             CASE WHEN o.email        IS DISTINCT FROM ins.email        THEN 'maintainers.email' END
            ], NULL) AS changed_fields
     FROM ins LEFT JOIN old o ON true
     `,
@@ -59,9 +60,9 @@ export async function replacePackageMaintainers(
   const afterMap = new Map<number, string | null>()
   for (const { maintainerId, role } of links) {
     await qx.result(
-      `INSERT INTO package_maintainers (package_id, maintainer_id, role)
-       VALUES ($(packageId), $(maintainerId), $(role))
-       ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role`,
+      `INSERT INTO package_maintainers (package_id, maintainer_id, role, created_at, updated_at)
+       VALUES ($(packageId), $(maintainerId), $(role), NOW(), NOW())
+       ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
       { packageId, maintainerId, role },
     )
     afterMap.set(maintainerId, role)

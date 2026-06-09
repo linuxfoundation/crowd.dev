@@ -8,9 +8,9 @@ import {
   getMissingDownloadDates,
   getNpmChangesLastSeq,
   getNpmPackagesNeedingDailyBackfill,
+  getNpmPurlsDueForLast30dHistory,
+  getNpmPurlsDueForLatest30d,
   getNpmPurlsForChangedNames,
-  getNpmUniversePurlsDueForLast30dHistory,
-  getNpmUniversePurlsDueForLatest30d,
   getUnscannedNpmPurls,
   insertDailyDownloads,
   logAuditFieldChanges,
@@ -507,7 +507,7 @@ export async function refreshLatestLast30dLane(
   lanes: number,
 ): Promise<{ fetched: number }> {
   const qx = await getPackagesDb()
-  const due = await getNpmUniversePurlsDueForLatest30d(qx, cutoff, batchSize, laneIndex, lanes)
+  const due = await getNpmPurlsDueForLatest30d(qx, cutoff, batchSize, laneIndex, lanes)
   if (due.length === 0) return { fetched: 0 }
 
   const window = latestLast30dWindow(utcFirstOfCurrentMonth())
@@ -554,7 +554,7 @@ export async function backfillLast30dHistoryLane(
   lanes: number,
 ): Promise<{ fetched: number }> {
   const qx = await getPackagesDb()
-  const due = await getNpmUniversePurlsDueForLast30dHistory(qx, batchSize, laneIndex, lanes)
+  const due = await getNpmPurlsDueForLast30dHistory(qx, batchSize, laneIndex, lanes)
   if (due.length === 0) return { fetched: 0 }
 
   const latestEnd = utcFirstOfCurrentMonth()

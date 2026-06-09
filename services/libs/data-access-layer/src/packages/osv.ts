@@ -75,11 +75,11 @@ export async function upsertAdvisory(
     `
     INSERT INTO advisories
       (osv_id, source, source_url, aliases, severity, cvss, cvss_source,
-       summary, details, published_at, modified_at)
+       summary, details, published_at, modified_at, created_at, updated_at)
     VALUES
       ($(osvId), $(source), $(sourceUrl), $(aliases)::text[], $(severity),
        $(cvss), $(cvssSource), $(summary), $(details),
-       $(publishedAt)::timestamptz, $(modifiedAt)::timestamptz)
+       $(publishedAt)::timestamptz, $(modifiedAt)::timestamptz, NOW(), NOW())
     ON CONFLICT (osv_id) DO UPDATE SET
       source       = EXCLUDED.source,
       source_url   = EXCLUDED.source_url,
@@ -90,7 +90,8 @@ export async function upsertAdvisory(
       summary      = EXCLUDED.summary,
       details      = EXCLUDED.details,
       published_at = EXCLUDED.published_at,
-      modified_at  = EXCLUDED.modified_at
+      modified_at  = EXCLUDED.modified_at,
+      updated_at   = EXCLUDED.updated_at
     RETURNING id
     `,
     advisory,
@@ -125,11 +126,12 @@ export async function upsertAdvisoryPackage(
   const row = await qx.selectOne(
     `
     INSERT INTO advisory_packages
-      (advisory_id, package_id, ecosystem, package_name)
+      (advisory_id, package_id, ecosystem, package_name, created_at, updated_at)
     VALUES
-      ($(advisoryId), $(packageId), $(ecosystem), $(packageName))
+      ($(advisoryId), $(packageId), $(ecosystem), $(packageName), NOW(), NOW())
     ON CONFLICT (advisory_id, ecosystem, package_name) DO UPDATE SET
-      package_id = EXCLUDED.package_id
+      package_id = EXCLUDED.package_id,
+      updated_at = EXCLUDED.updated_at
     RETURNING id
     `,
     input,
@@ -168,9 +170,9 @@ export async function insertAdvisoryRange(
   await qx.result(
     `
     INSERT INTO advisory_affected_ranges
-      (advisory_package_id, introduced_version, fixed_version, last_affected)
+      (advisory_package_id, introduced_version, fixed_version, last_affected, created_at, updated_at)
     VALUES
-      ($(advisoryPackageId), $(introducedVersion), $(fixedVersion), $(lastAffected))
+      ($(advisoryPackageId), $(introducedVersion), $(fixedVersion), $(lastAffected), NOW(), NOW())
     `,
     range,
   )
