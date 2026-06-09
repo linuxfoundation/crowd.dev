@@ -8,8 +8,8 @@ import {
   replacePackageMaintainers,
   touchPackageSyncedAt,
   upsertMaintainer,
-  upsertPackage,
   upsertMavenPackageRepo,
+  upsertPackage,
   upsertRepo,
   upsertVersionsBatch,
 } from '@crowd/data-access-layer'
@@ -352,8 +352,7 @@ async function processPackages(
 ): Promise<BatchResult> {
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
-  if (packages.length === 0)
-    return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
   // Cluster the batch by namespace so artifacts sharing a parent POM are processed
   // adjacently — this is what makes the parent-POM cache effective. The criticality

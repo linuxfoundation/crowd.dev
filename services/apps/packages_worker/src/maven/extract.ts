@@ -292,10 +292,7 @@ async function resolveWithInheritance(
       )
     } else {
       visited.add(parentKey)
-      log.debug(
-        { groupId, artifactId, version },
-        `[hop ${depth + 1}] ${parentKey}`,
-      )
+      log.debug({ groupId, artifactId, version }, `[hop ${depth + 1}] ${parentKey}`)
       const parentFields = await resolveWithInheritance(
         parent.groupId,
         parent.artifactId,

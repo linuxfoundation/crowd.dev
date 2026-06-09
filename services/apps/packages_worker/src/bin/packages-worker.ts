@@ -1,10 +1,10 @@
+import { scheduleMavenCritical } from '../maven/schedule'
 import {
   scheduleDailyDownloadsBackfill,
   scheduleLast30dHistoryBackfill,
   scheduleLatestLast30dRefresh,
   scheduleNpmIngest,
 } from '../npm/schedule'
-import { scheduleMavenCritical } from '../maven/schedule'
 import { scheduleOsvSync } from '../osv/schedule'
 import { svc } from '../service'
 
