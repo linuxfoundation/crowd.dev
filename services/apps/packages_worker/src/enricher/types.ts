@@ -44,6 +44,7 @@ export interface RepoActivitySnapshot {
   issuesOpenNow: number | null
   issueMedianTimeToCloseHours: number | null
   issueMedianTimeToFirstResponseHours: number | null
+  httpRequestCount: number
   rateLimitCost: number
 }
 

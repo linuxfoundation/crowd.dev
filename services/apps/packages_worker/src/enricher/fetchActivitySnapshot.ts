@@ -129,7 +129,6 @@ interface SummaryQueryResult {
   prsOpened: IssueCount
   prsMerged: IssueCount
   prsClosedUnmerged: IssueCount
-  prsOpenNow: IssueCount
   issuesOpened: IssueCount
   issuesClosed: IssueCount
   issuesOpened6m: IssueCount
@@ -161,7 +160,7 @@ const SUMMARY_QUERY = `
     $owner: String!, $name: String!,
     $since12m: GitTimestamp!, $since6m: GitTimestamp!,
     $searchPrsOpened: String!, $searchPrsMerged: String!,
-    $searchPrsClosedUnmerged: String!, $searchPrsOpenNow: String!,
+    $searchPrsClosedUnmerged: String!,
     $searchIssuesOpened: String!, $searchIssuesClosed: String!,
     $searchIssuesOpened6m: String!, $searchIssuesOpenNow: String!
   ) {
@@ -180,7 +179,6 @@ const SUMMARY_QUERY = `
     prsOpened:         search(query: $searchPrsOpened,         type: ISSUE) { issueCount }
     prsMerged:         search(query: $searchPrsMerged,         type: ISSUE) { issueCount }
     prsClosedUnmerged: search(query: $searchPrsClosedUnmerged, type: ISSUE) { issueCount }
-    prsOpenNow:        search(query: $searchPrsOpenNow,        type: ISSUE) { issueCount }
     issuesOpened:      search(query: $searchIssuesOpened,      type: ISSUE) { issueCount }
     issuesClosed:      search(query: $searchIssuesClosed,      type: ISSUE) { issueCount }
     issuesOpened6m:    search(query: $searchIssuesOpened6m,    type: ISSUE) { issueCount }
@@ -212,9 +210,10 @@ async function pagePrs(
   token: string,
   timeoutMs: number,
   windowStart: Date,
-): Promise<{ nodes: PrNode[]; rateLimitCost: number }> {
+): Promise<{ nodes: PrNode[]; rateLimitCost: number; httpRequestCount: number }> {
   const nodes: PrNode[] = []
   let rateLimitCost = 0
+  let httpRequestCount = 0
   let cursor: string | undefined
 
   for (;;) {
@@ -223,6 +222,7 @@ async function pagePrs(
 
     const data = await graphqlRequest<PrPageQueryResult>(PR_PAGE_QUERY, variables, token, timeoutMs)
     rateLimitCost += data.rateLimit.cost
+    httpRequestCount++
 
     const connection = data.repository.pullRequests
     let reachedWindowBoundary = false
@@ -239,7 +239,7 @@ async function pagePrs(
     cursor = connection.pageInfo.endCursor
   }
 
-  return { nodes, rateLimitCost }
+  return { nodes, rateLimitCost, httpRequestCount }
 }
 
 const ISSUE_PAGE_QUERY = `
@@ -265,9 +265,10 @@ async function pageIssues(
   token: string,
   timeoutMs: number,
   windowStart: Date,
-): Promise<{ nodes: IssueNode[]; rateLimitCost: number }> {
+): Promise<{ nodes: IssueNode[]; rateLimitCost: number; httpRequestCount: number }> {
   const nodes: IssueNode[] = []
   let rateLimitCost = 0
+  let httpRequestCount = 0
   let cursor: string | undefined
 
   for (;;) {
@@ -281,6 +282,7 @@ async function pageIssues(
       timeoutMs,
     )
     rateLimitCost += data.rateLimit.cost
+    httpRequestCount++
 
     const connection = data.repository.issues
     let reachedWindowBoundary = false
@@ -297,7 +299,7 @@ async function pageIssues(
     cursor = connection.pageInfo.endCursor
   }
 
-  return { nodes, rateLimitCost }
+  return { nodes, rateLimitCost, httpRequestCount }
 }
 
 export async function fetchActivitySnapshot(
@@ -318,11 +320,10 @@ export async function fetchActivitySnapshot(
       since12m: since12mIso,
       since6m: since6mIso,
       searchPrsOpened: `${repoFilter} is:pr created:>=${since12mDate}`,
-      searchPrsMerged: `${repoFilter} is:pr is:merged merged:>=${since12mDate}`,
+      searchPrsMerged: `${repoFilter} is:pr is:merged created:>=${since12mDate}`,
       searchPrsClosedUnmerged: `${repoFilter} is:pr is:unmerged is:closed created:>=${since12mDate}`,
-      searchPrsOpenNow: `${repoFilter} is:pr is:open`,
       searchIssuesOpened: `${repoFilter} is:issue created:>=${since12mDate}`,
-      searchIssuesClosed: `${repoFilter} is:issue is:closed closed:>=${since12mDate}`,
+      searchIssuesClosed: `${repoFilter} is:issue is:closed created:>=${since12mDate}`,
       searchIssuesOpened6m: `${repoFilter} is:issue created:>=${since6mDate}`,
       searchIssuesOpenNow: `${repoFilter} is:issue is:open`,
     },
@@ -331,6 +332,7 @@ export async function fetchActivitySnapshot(
   )
 
   let totalRateLimitCost = summaryData.rateLimit.cost
+  let totalHttpRequests = 1 // summary query
 
   const commitTarget = summaryData.repository.defaultBranchRef?.target
   const commitsLast12m: number | null = commitTarget?.commits12m?.totalCount ?? null
@@ -345,6 +347,7 @@ export async function fetchActivitySnapshot(
   ])
 
   totalRateLimitCost += prResult.rateLimitCost + issueResult.rateLimitCost
+  totalHttpRequests += prResult.httpRequestCount + issueResult.httpRequestCount
 
   log.debug(
     {
@@ -380,6 +383,7 @@ export async function fetchActivitySnapshot(
     issuesOpenNow: summaryData.issuesOpenNow.issueCount,
     issueMedianTimeToCloseHours: issueMedians.medianTimeToCloseHours,
     issueMedianTimeToFirstResponseHours: issueMedians.medianTimeToFirstResponseHours,
+    httpRequestCount: totalHttpRequests,
     rateLimitCost: totalRateLimitCost,
   }
 }

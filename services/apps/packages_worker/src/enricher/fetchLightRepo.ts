@@ -50,10 +50,9 @@ async function fetchSecurityFileEnabled(
         headers,
         signal: controller.signal,
       })
-      return response.status === 200
-    } catch (err) {
-      log.warn({ url, path, err }, 'Security file check error')
-      return false
+      if (response.status === 200) return true
+      if (response.status === 404) return false
+      throw new Error(`Unexpected status ${response.status} for ${path}`)
     } finally {
       clearTimeout(timeoutId)
     }

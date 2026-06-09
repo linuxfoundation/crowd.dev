@@ -171,7 +171,12 @@ async function runStreamingPool(
   appConfig: GithubAppConfig,
   config: ReturnType<typeof getEnricherConfig>,
   isShuttingDown: () => boolean,
-  metrics: { totalFetched: number; totalRequests: number; startTime: number },
+  metrics: {
+    totalFetched: number
+    totalHttpRequests: number
+    totalRateLimitCost: number
+    startTime: number
+  },
 ): Promise<'exhausted' | 'shutdown'> {
   const parkedUntil = new Map<number, number>()
   const roundRobinIdx = { value: 0 }
@@ -251,7 +256,7 @@ async function runStreamingPool(
             appConfig.privateKeyPem,
             installationId,
           )
-          metrics.totalRequests++
+          metrics.totalHttpRequests++
           const outcome = await fetchWithRetries(row.url, token, config.fetchTimeoutMs)
 
           if (outcome.kind === 'success') {
@@ -266,7 +271,8 @@ async function runStreamingPool(
                 token,
                 config.fetchTimeoutMs,
               )
-              metrics.totalRequests += snapshot.rateLimitCost
+              metrics.totalHttpRequests += snapshot.httpRequestCount
+              metrics.totalRateLimitCost += snapshot.rateLimitCost
               writeBuffer.addSnapshot(snapshot)
             } catch (snapshotErr) {
               if (snapshotErr instanceof FetchError && snapshotErr.kind === 'RATE_LIMIT') {
@@ -312,15 +318,16 @@ async function runStreamingPool(
             log.info(
               {
                 totalFetched: metrics.totalFetched,
-                totalRequests: metrics.totalRequests,
+                totalHttpRequests: metrics.totalHttpRequests,
+                totalRateLimitCost: metrics.totalRateLimitCost,
                 reposPerHour:
                   elapsedHours > 0
                     ? Math.round(metrics.totalFetched / elapsedHours)
                     : metrics.totalFetched,
-                reqsPerHour:
+                httpReqsPerHour:
                   elapsedHours > 0
-                    ? Math.round(metrics.totalRequests / elapsedHours)
-                    : metrics.totalRequests,
+                    ? Math.round(metrics.totalHttpRequests / elapsedHours)
+                    : metrics.totalHttpRequests,
                 flushed,
                 queueDepth: queue.length,
               },
@@ -345,7 +352,12 @@ export async function runEnrichmentLoop(
   config: ReturnType<typeof getEnricherConfig>,
   isShuttingDown: () => boolean,
 ): Promise<void> {
-  const metrics = { totalFetched: 0, totalRequests: 0, startTime: Date.now() }
+  const metrics = {
+    totalFetched: 0,
+    totalHttpRequests: 0,
+    totalRateLimitCost: 0,
+    startTime: Date.now(),
+  }
 
   while (!isShuttingDown()) {
     const outcome = await runStreamingPool(
@@ -360,7 +372,11 @@ export async function runEnrichmentLoop(
     if (outcome === 'shutdown') break
 
     log.info(
-      { totalFetched: metrics.totalFetched, totalRequests: metrics.totalRequests },
+      {
+        totalFetched: metrics.totalFetched,
+        totalHttpRequests: metrics.totalHttpRequests,
+        totalRateLimitCost: metrics.totalRateLimitCost,
+      },
       `All repos processed — sleeping ${config.idleSleepSec}s`,
     )
     await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
