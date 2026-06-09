@@ -28,7 +28,12 @@ UPDATE packages p
        centrality_score   = pu.centrality_score,
        rank_in_ecosystem  = pu.rank_in_ecosystem
   FROM packages_universe pu
- WHERE p.purl = pu.purl;
+ WHERE p.purl = pu.purl
+   AND (
+         p.downloads_last_30d IS DISTINCT FROM pu.downloads_last_30d
+      OR p.centrality_score   IS DISTINCT FROM pu.centrality_score
+      OR p.rank_in_ecosystem  IS DISTINCT FROM pu.rank_in_ecosystem
+   );
 
 -- ── 3. Replace rank_packages_universe() ───────────────────────────────────────
 -- Two overloads exist in the schema:

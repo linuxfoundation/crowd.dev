@@ -36,7 +36,8 @@ export async function mergeCentralityScores(
     `UPDATE packages p
         SET centrality_score = v.score
        FROM unnest($(packageIds)::bigint[], $(scores)::numeric[]) AS v(package_id, score)
-      WHERE p.id = v.package_id`,
+      WHERE p.id = v.package_id
+        AND p.centrality_score IS DISTINCT FROM v.score`,
     {
       packageIds: rows.map((r) => r.packageId),
       scores: rows.map((r) => r.centralityScore),
