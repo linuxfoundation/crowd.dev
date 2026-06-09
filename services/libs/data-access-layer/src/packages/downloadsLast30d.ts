@@ -139,7 +139,7 @@ export async function upsertLast30dDownload(
   startDate: string,
   endDate: string,
   count: number,
-  mirrorToUniverse: boolean,
+  mirrorToPackages: boolean,
 ): Promise<string[]> {
   const row: { changed_fields: string[] } = await qx.selectOne(
     `WITH old AS (
@@ -161,7 +161,7 @@ export async function upsertLast30dDownload(
     { purl, startDate, endDate, count },
   )
   const changed = row.changed_fields
-  if (mirrorToUniverse) {
+  if (mirrorToPackages) {
     const rowCount = await qx.result(
       `UPDATE packages
           SET downloads_last_30d = $(count)

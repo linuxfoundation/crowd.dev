@@ -58,12 +58,15 @@ DROP FUNCTION IF EXISTS rank_packages_universe(numeric, numeric, numeric, jsonb)
 --           + w_transitive * pct_rank( LOG(1 + transitive_dependent_count) ) within ecosystem
 --
 -- Steps:
---   1. Score    — compute impact via weighted PERCENT_RANK()
---   2. Rank     — ROW_NUMBER() per ecosystem, flag top-N as is_critical
+--   1. Score    — compute impact via weighted PERCENT_RANK() (scoped to JSONB ecosystems)
+--   2. Rank     — ROW_NUMBER() per ecosystem, flag top-N as is_critical (scoped to JSONB ecosystems)
 --   2.5 Spotlight — force is_critical = TRUE for rows in package_criticality_spotlight
+--   3. Stamp    — unconditionally set last_rank_pass_at on all scored rows (schema contract)
 --
 -- All weights and the top-N budget are call-time parameters.
 -- ROW_NUMBER() (not RANK()) keeps each ecosystem's critical set exactly at top-N.
+-- Only ecosystems present as keys in critical_top_n_by_ecosystem are scored/ranked;
+-- packages from other ecosystems are not touched.
 
 CREATE OR REPLACE FUNCTION rank_packages(
     weight_downloads            numeric DEFAULT 0.25,
@@ -92,10 +95,10 @@ BEGIN
                   PARTITION BY ecosystem ORDER BY LOG(1 + COALESCE(transitive_dependent_count, 0)))
             )::numeric(10, 4) AS new_impact
         FROM packages
+        WHERE ecosystem IN (SELECT jsonb_object_keys(critical_top_n_by_ecosystem))
     )
     UPDATE packages p
-       SET impact            = ps.new_impact,
-           last_rank_pass_at = NOW()
+       SET impact = ps.new_impact
       FROM percentile_scores ps
      WHERE p.id = ps.id
        AND p.impact IS DISTINCT FROM ps.new_impact;
@@ -112,6 +115,7 @@ BEGIN
             ) AS r
         FROM packages
         WHERE purl IS NOT NULL
+          AND ecosystem IN (SELECT jsonb_object_keys(critical_top_n_by_ecosystem))
     ),
     flagged AS (
         SELECT
@@ -142,6 +146,13 @@ BEGIN
        AND (p.namespace IS NOT DISTINCT FROM s.namespace)
        AND p.name                         = s.name
        AND p.is_critical                  = FALSE;
+
+    -- ── Step 3: stamp last_rank_pass_at unconditionally ───────────────────────
+    -- Schema contract: must be updated on every pass (not only when scores change)
+    -- so stale-detection queries (last_rank_pass_at < NOW() - INTERVAL '8 days') work.
+    UPDATE packages
+       SET last_rank_pass_at = NOW()
+     WHERE ecosystem IN (SELECT jsonb_object_keys(critical_top_n_by_ecosystem));
 
     RETURN QUERY SELECT n_scored, n_ranked;
 END;

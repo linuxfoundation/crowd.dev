@@ -43,7 +43,7 @@ _Avoid_: backfill (that's the one-time historical fill; self-healing is the ongo
 
 ## Relationships
 
-- All packages live in `packages`; `rank_packages_universe()` sets `is_critical = true` on the top-N per ecosystem to define the **Critical slice**.
+- All packages live in `packages`; `rank_packages()` sets `is_critical = true` on the top-N per ecosystem to define the **Critical slice**.
 - A package not in the **Critical slice** has **Window** rows in `downloads_last_30d` but no rows in `downloads_daily`.
 - A package promoted into the **Critical slice** starts accumulating `downloads_daily` rows from the promotion date forward; its **Window** history already exists.
 - Every **Window** is keyed by **purl** — a stable identifier that does not change when packages are re-ranked.
