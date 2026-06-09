@@ -15,9 +15,9 @@ DESCRIPTION >
     - `watchers` is the watcher count (0 if not yet enriched).
     - `openIssues` is the number of open issues (0 if not yet enriched).
     - `lastCommitAt` is the timestamp of the most recent commit (NULL if unknown).
-    - `archived` is 1 if the repository is archived, 0 otherwise (0 default until enriched).
-    - `disabled` is 1 if the repository is disabled, 0 otherwise (0 default until enriched).
-    - `isFork` is 1 if this repository is a fork of another, 0 otherwise (0 default until enriched).
+    - `archived` is 1 if the repository is archived, 0 if not, NULL until the GitHub enricher runs (deps.dev seed does not expose this).
+    - `disabled` is 1 if the repository is disabled, 0 if not, NULL until the GitHub enricher runs.
+    - `isFork` is 1 if this repository is a fork of another, 0 if not, NULL until the GitHub enricher runs.
     - `createdAt` is the repository creation date on GitHub/GitLab — a domain timestamp, not a row-insert timestamp.
     - `homepage` is the project homepage URL (empty string if not provided).
     - `rawProjectType` is the deps.dev project type string (e.g. 'GITHUB', 'GITLAB') for identity resolution.
@@ -42,9 +42,9 @@ SCHEMA >
     `watchers` Int32 `json:$.record.watchers` DEFAULT 0,
     `openIssues` Int32 `json:$.record.open_issues` DEFAULT 0,
     `lastCommitAt` Nullable(DateTime64(3)) `json:$.record.last_commit_at`,
-    `archived` UInt8 `json:$.record.archived` DEFAULT 0,
-    `disabled` UInt8 `json:$.record.disabled` DEFAULT 0,
-    `isFork` UInt8 `json:$.record.is_fork` DEFAULT 0,
+    `archived` Nullable(UInt8) `json:$.record.archived`,
+    `disabled` Nullable(UInt8) `json:$.record.disabled`,
+    `isFork` Nullable(UInt8) `json:$.record.is_fork`,
     `createdAt` Nullable(DateTime64(3)) `json:$.record.created_at`,
     `homepage` String `json:$.record.homepage` DEFAULT '',
     `rawProjectType` String `json:$.record.raw_project_type` DEFAULT '',
