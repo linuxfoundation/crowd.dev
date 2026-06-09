@@ -20,7 +20,9 @@ export async function batchGetStewardship(req: Request, res: Response): Promise<
   const packages: Record<string, object> = {}
   for (const purl of purls) {
     const name = purl.split('/').pop()?.split('@')[0] ?? purl
-    const ecosystem = purl.startsWith('pkg:npm') ? 'npm' : purl.startsWith('pkg:maven') ? 'maven' : 'unknown'
+    let ecosystem = 'unknown'
+    if (purl.startsWith('pkg:npm')) ecosystem = 'npm'
+    else if (purl.startsWith('pkg:maven')) ecosystem = 'maven'
     packages[purl] = {
       name,
       ecosystem,

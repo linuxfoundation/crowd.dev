@@ -40,7 +40,6 @@ components:
       bearerFormat: JWT
 
   schemas:
-
     # ── Stewardship ─────────────────────────────────────────────────────────────
 
     StewardshipStatus:
@@ -338,11 +337,11 @@ components:
             introduced:
               type: string
               nullable: true
-              example: "1.0.0"
+              example: '1.0.0'
             fixed:
               type: string
               nullable: true
-              example: "4.17.21"
+              example: '4.17.21'
             lastAffected:
               type: string
               nullable: true
@@ -438,7 +437,6 @@ components:
         Lifecycle, Health, Impact, and health breakdown are NOT included here —
         Self Serve fetches those from Insights and merges client-side.
       properties:
-
         # ── Identity (packages table) ──────────────────────────────────────────
         purl:
           type: string
@@ -452,7 +450,7 @@ components:
         latestVersion:
           type: string
           nullable: true
-          example: "4.17.21"
+          example: '4.17.21'
         latestReleaseAt:
           type: string
           format: date-time
@@ -509,7 +507,7 @@ components:
           type: string
           nullable: true
           description: Transitive reach percentile label. Source TBD (Insights or packages table).
-          example: "Top 0.4%"
+          example: 'Top 0.4%'
         busFactor:
           type: integer
           nullable: true
@@ -616,7 +614,6 @@ components:
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
 paths:
-
   /packages/{purl}:
     get:
       operationId: getPackage
@@ -652,8 +649,8 @@ paths:
                 purl: pkg:npm/lodash
                 name: lodash
                 ecosystem: npm
-                latestVersion: "4.17.21"
-                latestReleaseAt: "2021-02-20T00:00:00Z"
+                latestVersion: '4.17.21'
+                latestReleaseAt: '2021-02-20T00:00:00Z'
                 downloads: 52142891
                 dependentPackagesCount: 142312
                 dependentReposCount: 39104
@@ -664,14 +661,14 @@ paths:
                   securityAndSupplyChain: 8
                   developmentActivity: 6
                 impact: 71
-                transitiveReach: "Top 0.4%"
+                transitiveReach: 'Top 0.4%'
                 busFactor: 1
                 openVulns:
                   count: 1
                   severity: high
                 repository:
                   url: https://github.com/lodash/lodash
-                  lastCommitAt: "2024-09-14T00:00:00Z"
+                  lastCommitAt: '2024-09-14T00:00:00Z'
                   scorecardScore: 5.2
                   isArchived: false
                 maintainers:
@@ -685,11 +682,11 @@ paths:
                     summary: Prototype pollution via constructor
                     status: open
                     cvss: 9.8
-                    publishedAt: "2022-03-17T00:00:00Z"
+                    publishedAt: '2022-03-17T00:00:00Z'
                     affectedVersionRange:
-                      introduced: "0.0.1"
+                      introduced: '0.0.1'
                       fixed: null
-                      lastAffected: "4.17.21"
+                      lastAffected: '4.17.21'
                 securityContact: null
                 scorecardChecks:
                   - checkName: Branch-Protection
@@ -718,8 +715,8 @@ paths:
                     - userId: jdoe
                       name: Jonathan R.
                       role: lead
-                      assignedAt: "2025-05-15T00:00:00Z"
-                  lastActivityAt: "2025-06-08T00:00:00Z"
+                      assignedAt: '2025-05-15T00:00:00Z'
+                  lastActivityAt: '2025-06-08T00:00:00Z'
                   lastActivityDescription: Escalated — recommending consortium fork
                   assessment:
                     posture: Critical
@@ -729,7 +726,7 @@ paths:
                     flagged: false
                     flagNote: null
                     monitoringPlan: "Watch for new maintainer activity\nWatch registry for ownership transfer"
-                    completedAt: "2025-05-18T00:00:00Z"
+                    completedAt: '2025-05-18T00:00:00Z'
                     completedBy: jdoe
                   findings:
                     - id: 1
@@ -754,14 +751,14 @@ paths:
                       status: done
                       url: null
                       notes: null
-                      completedAt: "2025-05-20T00:00:00Z"
+                      completedAt: '2025-05-20T00:00:00Z'
                     - id: 2
                       findingId: null
                       action: Opened PR re-enabling branch protection
                       status: done
                       url: null
                       notes: null
-                      completedAt: "2025-05-22T00:00:00Z"
+                      completedAt: '2025-05-22T00:00:00Z'
                     - id: 3
                       findingId: null
                       action: Recommended escalation — vendor LTS or consortium fork
@@ -778,14 +775,14 @@ paths:
                       metadata:
                         from: active
                         to: escalated
-                      createdAt: "2025-06-08T00:00:00Z"
+                      createdAt: '2025-06-08T00:00:00Z'
                     - id: 3
                       actorUserId: jdoe
                       actorType: user
                       activityType: remediation_logged
-                      content: "Jonathan R. logged: maintainer unresponsive after 3 attempts"
+                      content: 'Jonathan R. logged: maintainer unresponsive after 3 attempts'
                       metadata: null
-                      createdAt: "2025-06-01T00:00:00Z"
+                      createdAt: '2025-06-01T00:00:00Z'
                     - id: 2
                       actorUserId: jdoe
                       actorType: user
@@ -793,7 +790,7 @@ paths:
                       content: Assessment completed — posture Critical
                       metadata:
                         posture: Critical
-                      createdAt: "2025-05-18T00:00:00Z"
+                      createdAt: '2025-05-18T00:00:00Z'
                     - id: 1
                       actorUserId: null
                       actorType: system
@@ -802,7 +799,7 @@ paths:
                       metadata:
                         userId: jdoe
                         role: lead
-                      createdAt: "2025-05-15T00:00:00Z"
+                      createdAt: '2025-05-15T00:00:00Z'
         '404':
           description: Package not found.
           content:
@@ -910,8 +907,8 @@ paths:
                       - userId: jdoe
                         name: Jonathan R.
                         role: lead
-                        assignedAt: "2025-01-15T10:00:00Z"
-                    lastActivityAt: "2025-06-08T14:23:00Z"
+                        assignedAt: '2025-01-15T10:00:00Z'
+                    lastActivityAt: '2025-06-08T14:23:00Z'
                     lastActivityDescription: Escalated for intervention
                   pkg:pypi/requests: null
         '400':

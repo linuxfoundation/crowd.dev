@@ -24,7 +24,9 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
 
 function mockPackage(purl: string) {
   const name = purl.split('/').pop()?.split('@')[0] ?? purl
-  const ecosystem = purl.startsWith('pkg:npm') ? 'npm' : purl.startsWith('pkg:maven') ? 'maven' : 'unknown'
+  let ecosystem = 'unknown'
+  if (purl.startsWith('pkg:npm')) ecosystem = 'npm'
+  else if (purl.startsWith('pkg:maven')) ecosystem = 'maven'
 
   return {
     purl,
@@ -77,9 +79,17 @@ function mockPackage(purl: string) {
       },
     ],
     scorecardChecks: [
-      { checkName: 'Branch-Protection', score: 3.0, reason: 'Branch protection not enabled for default branch' },
+      {
+        checkName: 'Branch-Protection',
+        score: 3.0,
+        reason: 'Branch protection not enabled for default branch',
+      },
       { checkName: 'Security-Policy', score: 0.0, reason: 'security policy file not detected' },
-      { checkName: 'Maintained', score: 5.0, reason: 'repo was created 9 years ago, has 337 open issues' },
+      {
+        checkName: 'Maintained',
+        score: 5.0,
+        reason: 'repo was created 9 years ago, has 337 open issues',
+      },
     ],
     disclosureReadiness: {
       pvrEnabled: null,

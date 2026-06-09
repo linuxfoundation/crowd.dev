@@ -2,9 +2,10 @@ import { Router } from 'express'
 
 import { NotFoundError } from '@crowd/common'
 
-import { AUTH0_CONFIG } from '../../../conf'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
+
+import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { requireScopes } from '../middlewares/requireScopes'
 import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
