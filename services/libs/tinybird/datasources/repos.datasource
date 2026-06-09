@@ -44,7 +44,7 @@ SCHEMA >
     `archived` UInt8 `json:$.record.archived` DEFAULT 0,
     `disabled` UInt8 `json:$.record.disabled` DEFAULT 0,
     `isFork` UInt8 `json:$.record.is_fork` DEFAULT 0,
-    `createdAt` DateTime64(3) `json:$.record.created_at` DEFAULT '',
+    `createdAt` Nullable(DateTime64(3)) `json:$.record.created_at`,
     `homepage` String `json:$.record.homepage` DEFAULT '',
     `rawProjectType` String `json:$.record.raw_project_type` DEFAULT '',
     `rawProjectName` String `json:$.record.raw_project_name` DEFAULT '',
