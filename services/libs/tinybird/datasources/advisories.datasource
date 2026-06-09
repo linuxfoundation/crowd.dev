@@ -13,8 +13,8 @@ DESCRIPTION >
     - `isCritical` is 1 when cvss >= 7.0 (HIGH or CRITICAL), 0 otherwise — computed from the score.
     - `summary` is a short human-readable description of the vulnerability (empty string if not provided).
     - `details` is the full advisory text (empty string if not provided).
-    - `publishedAt` is when the advisory was first published upstream (empty string if unknown).
-    - `modifiedAt` is when the advisory was last modified upstream; NULL for BQ-sourced rows (empty string if unknown).
+    - `publishedAt` is when the advisory was first published upstream (NULL if unknown).
+    - `modifiedAt` is when the advisory was last modified upstream; NULL for BQ-sourced rows.
     - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
 
 SCHEMA >
