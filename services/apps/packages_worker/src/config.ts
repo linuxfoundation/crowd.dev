@@ -45,3 +45,14 @@ export function getEnricherConfig() {
     fetchTimeoutMs: parseInt(process.env.ENRICHER_FETCH_TIMEOUT_MS ?? '10000', 10),
   }
 }
+
+export function getMavenConfig() {
+  return {
+    batchSize: requireEnvInt('MAVEN_FETCHER_BATCH_SIZE'),
+    concurrency: requireEnvInt('MAVEN_FETCHER_CONCURRENCY'),
+    nonCriticalBatchSize: requireEnvInt('MAVEN_FETCHER_NON_CRITICAL_BATCH_SIZE'),
+    nonCriticalConcurrency: requireEnvInt('MAVEN_FETCHER_NON_CRITICAL_CONCURRENCY'),
+    refreshDays: requireEnvInt('MAVEN_FETCHER_REFRESH_DAYS'),
+    groupDelayMs: requireEnvInt('MAVEN_FETCHER_GROUP_DELAY_MS'),
+  }
+}
