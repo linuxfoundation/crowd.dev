@@ -40,7 +40,7 @@ SCHEMA >
     `forks` Int32 `json:$.record.forks` DEFAULT 0,
     `watchers` Int32 `json:$.record.watchers` DEFAULT 0,
     `openIssues` Int32 `json:$.record.open_issues` DEFAULT 0,
-    `lastCommitAt` DateTime64(3) `json:$.record.last_commit_at` DEFAULT '',
+    `lastCommitAt` Nullable(DateTime64(3)) `json:$.record.last_commit_at`,
     `archived` UInt8 `json:$.record.archived` DEFAULT 0,
     `disabled` UInt8 `json:$.record.disabled` DEFAULT 0,
     `isFork` UInt8 `json:$.record.is_fork` DEFAULT 0,
