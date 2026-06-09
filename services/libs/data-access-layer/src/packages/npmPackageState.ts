@@ -11,8 +11,8 @@ export interface NpmMetadataRunResult {
 }
 
 // Mark a package as metadata-scanned and record the run outcome (+ timestamp). Keyed
-// by purl (from the packages row). metadata_first_scanned_at is kept from the first
-// insert; metadata_run_result/metadata_last_run_at are refreshed on every run.
+// by purl (from the packages row). metadata_run_result/metadata_last_run_at are refreshed
+// on every run — metadata_last_run_at is the authoritative "metadata has run" signal.
 export async function markNpmPackageScanned(
   qx: QueryExecutor,
   purl: string,
@@ -28,7 +28,7 @@ export async function markNpmPackageScanned(
   )
 }
 
-// Critical npm packages in the `packages` table that have never been metadata-scanned.
+// Critical npm packages in the `packages` table whose metadata has never been scanned.
 // Only is_critical packages are enriched — metadata is deep, per-package work, so it is
 // scoped to the critical set (matching the daily-downloads pass).
 // Keyset-paginated on purl so the workflow can drain a large first run across
@@ -45,7 +45,7 @@ export async function getUnscannedNpmPurls(
       WHERE p.ecosystem = 'npm'
         AND p.is_critical = TRUE
         AND p.purl > $(afterPurl)
-        AND s.purl IS NULL
+        AND s.metadata_last_run_at IS NULL
       ORDER BY p.purl
       LIMIT $(batchSize)`,
     { afterPurl, batchSize },
