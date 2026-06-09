@@ -49,11 +49,12 @@ SCHEMA >
     `rawProjectType` String `json:$.record.raw_project_type` DEFAULT '',
     `rawProjectName` String `json:$.record.raw_project_name` DEFAULT '',
     `scorecardScore` Float32 `json:$.record.scorecard_score` DEFAULT 0,
-    `scorecardLastRunAt` DateTime64(3) `json:$.record.scorecard_last_run_at` DEFAULT '',
+    `scorecardLastRunAt` Nullable(DateTime64(3)) `json:$.record.scorecard_last_run_at`,
     `skipEnrichment` UInt8 `json:$.record.skip_enrichment` DEFAULT 0,
-    `lastSyncedAt` DateTime64(3) `json:$.record.last_synced_at`
+    `lastSyncedAt` Nullable(DateTime64(3)) `json:$.record.last_synced_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
 
 ENGINE ReplacingMergeTree
-ENGINE_PARTITION_KEY toYear(lastSyncedAt)
+ENGINE_PARTITION_KEY toYear(updatedAt)
 ENGINE_SORTING_KEY id
-ENGINE_VER lastSyncedAt
+ENGINE_VER updatedAt
