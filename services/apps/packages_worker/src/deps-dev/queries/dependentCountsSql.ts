@@ -9,6 +9,7 @@ WITH purl_map AS (
   FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
   WHERE System IN ('NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO')
     AND Purl IS NOT NULL
+    AND Name NOT LIKE '%>%'
   GROUP BY System, Name
 )
 SELECT

@@ -36,8 +36,8 @@ export async function upsertPackageRepo(
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
      ),
      ins AS (
-       INSERT INTO package_repos (package_id, repo_id, source, confidence)
-       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence))
+       INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at)
+       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence), NOW())
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
          source      = EXCLUDED.source,
          confidence  = EXCLUDED.confidence,

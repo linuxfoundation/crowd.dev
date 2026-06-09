@@ -20,11 +20,12 @@ export async function upsertNpmMaintainers(
          SELECT display_name, email FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
        ),
        ins AS (
-         INSERT INTO maintainers (ecosystem, username, display_name, email)
-         VALUES ('npm', $(username), $(displayName), $(email))
+         INSERT INTO maintainers (ecosystem, username, display_name, email, created_at, updated_at)
+         VALUES ('npm', $(username), $(displayName), $(email), NOW(), NOW())
          ON CONFLICT (ecosystem, username) DO UPDATE SET
            display_name = COALESCE(EXCLUDED.display_name, maintainers.display_name),
-           email        = COALESCE(EXCLUDED.email, maintainers.email)
+           email        = COALESCE(EXCLUDED.email, maintainers.email),
+           updated_at   = EXCLUDED.updated_at
          RETURNING display_name, email
        )
        SELECT array_remove(ARRAY[
@@ -51,9 +52,9 @@ export async function upsertNpmMaintainers(
   const afterMap = new Map<string, string | null>()
   for (const m of maintainers) {
     const row: { maintainer_id: string } | null = await qx.selectOneOrNone(
-      `INSERT INTO package_maintainers (package_id, maintainer_id, role)
-       SELECT $(packageId)::bigint, id, $(role) FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
-       ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role
+      `INSERT INTO package_maintainers (package_id, maintainer_id, role, created_at, updated_at)
+       SELECT $(packageId)::bigint, id, $(role), NOW(), NOW() FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
+       ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role, updated_at = EXCLUDED.updated_at
        RETURNING maintainer_id::text AS maintainer_id`,
       { packageId, role: m.role, username: m.username },
     )

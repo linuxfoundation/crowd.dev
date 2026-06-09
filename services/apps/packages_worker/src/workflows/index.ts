@@ -15,3 +15,4 @@ export {
   ingestDependentCounts,
 } from '../deps-dev/workflows'
 export { osvSync } from '../osv/workflows'
+export { mavenCriticalWorkflow, mavenNonCriticalWorkflow } from '../maven/workflows'

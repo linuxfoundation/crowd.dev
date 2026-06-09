@@ -85,9 +85,9 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'confidence']
 // Staging purl may or may not include @version depending on when the GCS export was taken,
 // so strip on staging side only — packages.purl stays bare and the UNIQUE index is usable.
 const PKGREPOS_MERGE_SQL = `
-INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at)
+INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', s.confidence, NOW()
+  p.id, r.id, 'deps_dev', s.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 JOIN repos r ON r.url = s.canonical_url

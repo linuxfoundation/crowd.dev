@@ -11,7 +11,6 @@ const VALID_KINDS = [
   'advisories',
   'advisory_packages',
   'dependent_counts',
-  'rank',
 ] as const
 
 const HELP = `
@@ -25,7 +24,6 @@ Arguments:
 Options:
   --kinds <k1,k2>        Run only specific job kinds (default: all). Comma-separated:
                            ${VALID_KINDS.join(', ')}
-                         "rank" runs rankPackagesUniverse only (no ingest).
                          "repos" and "package_repos" always run together (one workflow).
                          "advisories" and "advisory_packages" always run together (one workflow).
   --reuse-exports        Skip BQ for any kind that has recent exported data in DB+GCS.
@@ -48,7 +46,6 @@ Examples:
   pnpm trigger-bootstrap:local full CARGO --export-name cargo-may-2026 --deps-table-b
   pnpm trigger-bootstrap:local full --kinds dependent_counts
   pnpm trigger-bootstrap:local full --kinds packages,versions
-  pnpm trigger-bootstrap:local full --kinds rank
 `
 
 async function main(): Promise<void> {

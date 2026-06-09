@@ -19,7 +19,7 @@ async function main() {
   const qx = await getPackagesDb()
   await qx.selectOne('SELECT 1')
   log.info(
-    'Connected to packages-db. Ready — trigger PageRank via run:pagerank or impact score via rank_packages_universe().',
+    'Connected to packages-db. Ready — trigger PageRank via run:pagerank or impact score via rank_packages().',
   )
 
   while (!shuttingDown) {
