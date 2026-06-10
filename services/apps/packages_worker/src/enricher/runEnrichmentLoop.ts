@@ -3,10 +3,12 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getEnricherConfig } from '../config'
 
+import { fetchActivitySnapshot } from './fetchActivitySnapshot'
 import { fetchLightRepo, parseGithubUrl } from './fetchLightRepo'
 import { GithubAppConfig, getInstallationToken } from './githubAppAuth'
-import { FetchError, LightRepoResult } from './types'
+import { FetchError, LightRepoResult, RepoActivitySnapshot } from './types'
 import { bulkUpdateEnrichedRepos, markReposSkipped } from './updateEnrichedRepos'
+import { bulkUpsertRepoActivitySnapshot } from './updateRepoActivitySnapshot'
 
 const log = getServiceChildLogger('github-repos-enricher')
 
@@ -88,6 +90,7 @@ async function fetchWithRetries(
 
 class WriteBuffer {
   private results: LightRepoResult[] = []
+  private snapshots: RepoActivitySnapshot[] = []
   private skipUrls: string[] = []
   private lastFlushAt = Date.now()
   private flushing = false
@@ -96,6 +99,10 @@ class WriteBuffer {
 
   add(result: LightRepoResult): void {
     this.results.push(result)
+  }
+
+  addSnapshot(snapshot: RepoActivitySnapshot): void {
+    this.snapshots.push(snapshot)
   }
 
   addSkip(url: string): void {
@@ -113,13 +120,19 @@ class WriteBuffer {
 
   async flush(): Promise<number> {
     const batch = [...this.results]
+    const snapshotBatch = [...this.snapshots]
     const skips = [...this.skipUrls]
     this.lastFlushAt = Date.now()
     this.flushing = true
     try {
-      await Promise.all([bulkUpdateEnrichedRepos(this.qx, batch), markReposSkipped(this.qx, skips)])
-      // Clear only after both writes succeed — preserves items if the DB call throws
+      await Promise.all([
+        bulkUpdateEnrichedRepos(this.qx, batch),
+        bulkUpsertRepoActivitySnapshot(this.qx, snapshotBatch),
+        markReposSkipped(this.qx, skips),
+      ])
+      // Clear only after all writes succeed — preserves items if the DB call throws
       this.results.splice(0, batch.length)
+      this.snapshots.splice(0, snapshotBatch.length)
       this.skipUrls.splice(0, skips.length)
     } finally {
       this.flushing = false
@@ -158,7 +171,12 @@ async function runStreamingPool(
   appConfig: GithubAppConfig,
   config: ReturnType<typeof getEnricherConfig>,
   isShuttingDown: () => boolean,
-  metrics: { totalFetched: number; totalRequests: number; startTime: number },
+  metrics: {
+    totalFetched: number
+    totalHttpRequests: number
+    totalRateLimitCost: number
+    startTime: number
+  },
 ): Promise<'exhausted' | 'shutdown'> {
   const parkedUntil = new Map<number, number>()
   const roundRobinIdx = { value: 0 }
@@ -194,7 +212,6 @@ async function runStreamingPool(
       fillQueue()
       if (pendingFetch) await pendingFetch
     }
-    // Prefetch next batch when queue gets low
     if (queue.length < DB_FETCH_SIZE / 2 && !pendingFetch && !dbDone) fillQueue()
     return queue.shift() ?? null
   }
@@ -209,13 +226,15 @@ async function runStreamingPool(
         const row = await nextRow()
         if (!row) break
 
+        let parsedUrl: { owner: string; name: string }
         try {
-          parseGithubUrl(row.url)
+          parsedUrl = parseGithubUrl(row.url)
         } catch {
           log.warn({ url: row.url }, 'Skipping non-GitHub URL')
           writeBuffer.addSkip(row.url)
           continue
         }
+        const { owner, name } = parsedUrl
 
         const { installationId, waitMs } = selectInstallation(
           installationIds,
@@ -237,12 +256,43 @@ async function runStreamingPool(
             appConfig.privateKeyPem,
             installationId,
           )
-          metrics.totalRequests++
+          metrics.totalHttpRequests++
           const outcome = await fetchWithRetries(row.url, token, config.fetchTimeoutMs)
 
           if (outcome.kind === 'success') {
             metrics.totalFetched++
             writeBuffer.add(outcome.data)
+
+            try {
+              const snapshot = await fetchActivitySnapshot(
+                row.id,
+                owner,
+                name,
+                token,
+                config.fetchTimeoutMs,
+              )
+              metrics.totalHttpRequests += snapshot.httpRequestCount
+              metrics.totalRateLimitCost += snapshot.rateLimitCost
+              writeBuffer.addSnapshot(snapshot)
+            } catch (snapshotErr) {
+              if (snapshotErr instanceof FetchError && snapshotErr.kind === 'RATE_LIMIT') {
+                const resetAt = snapshotErr.resetAt ?? Date.now() + 60_000
+                parkedUntil.set(installationId, resetAt)
+                log.warn(
+                  { installationId, resetAt: new Date(resetAt).toISOString() },
+                  'Snapshot rate limited — parking installation',
+                )
+              } else {
+                log.warn(
+                  {
+                    url: row.url,
+                    errKind: snapshotErr instanceof FetchError ? snapshotErr.kind : 'UNKNOWN',
+                    errMsg: (snapshotErr as Error).message,
+                  },
+                  'Snapshot fetch failed — skipping snapshot',
+                )
+              }
+            }
           } else if (outcome.kind === 'permanent') {
             writeBuffer.addSkip(row.url)
           }
@@ -268,15 +318,16 @@ async function runStreamingPool(
             log.info(
               {
                 totalFetched: metrics.totalFetched,
-                totalRequests: metrics.totalRequests,
+                totalHttpRequests: metrics.totalHttpRequests,
+                totalRateLimitCost: metrics.totalRateLimitCost,
                 reposPerHour:
                   elapsedHours > 0
                     ? Math.round(metrics.totalFetched / elapsedHours)
                     : metrics.totalFetched,
-                reqsPerHour:
+                httpReqsPerHour:
                   elapsedHours > 0
-                    ? Math.round(metrics.totalRequests / elapsedHours)
-                    : metrics.totalRequests,
+                    ? Math.round(metrics.totalHttpRequests / elapsedHours)
+                    : metrics.totalHttpRequests,
                 flushed,
                 queueDepth: queue.length,
               },
@@ -301,7 +352,12 @@ export async function runEnrichmentLoop(
   config: ReturnType<typeof getEnricherConfig>,
   isShuttingDown: () => boolean,
 ): Promise<void> {
-  const metrics = { totalFetched: 0, totalRequests: 0, startTime: Date.now() }
+  const metrics = {
+    totalFetched: 0,
+    totalHttpRequests: 0,
+    totalRateLimitCost: 0,
+    startTime: Date.now(),
+  }
 
   while (!isShuttingDown()) {
     const outcome = await runStreamingPool(
@@ -316,7 +372,11 @@ export async function runEnrichmentLoop(
     if (outcome === 'shutdown') break
 
     log.info(
-      { totalFetched: metrics.totalFetched, totalRequests: metrics.totalRequests },
+      {
+        totalFetched: metrics.totalFetched,
+        totalHttpRequests: metrics.totalHttpRequests,
+        totalRateLimitCost: metrics.totalRateLimitCost,
+      },
       `All repos processed — sleeping ${config.idleSleepSec}s`,
     )
     await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))

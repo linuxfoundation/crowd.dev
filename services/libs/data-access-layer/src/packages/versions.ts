@@ -24,12 +24,13 @@ export async function upsertNpmVersions(
      ins AS (
        INSERT INTO versions (
          package_id, ecosystem, namespace, name, number,
-         published_at, is_latest, is_prerelease, licenses, last_synced_at
+         published_at, is_latest, is_prerelease, licenses, last_synced_at,
+         created_at
        )
        SELECT $(packageId)::bigint, 'npm', p.namespace, p.name, v.num,
               v.pub::timestamptz, v.latest, v.pre,
               CASE WHEN v.lic IS NULL THEN NULL::text[] ELSE ARRAY[v.lic] END,
-              NOW()
+              NOW(), NOW()
        FROM unnest(
          $(numbers)::text[],
          $(publishedAts)::text[],

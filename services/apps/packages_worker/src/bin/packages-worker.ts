@@ -1,3 +1,4 @@
+import { scheduleMavenCritical } from '../maven/schedule'
 import {
   scheduleDailyDownloadsBackfill,
   scheduleLast30dHistoryBackfill,
@@ -14,5 +15,6 @@ setImmediate(async () => {
   await scheduleLatestLast30dRefresh()
   await scheduleLast30dHistoryBackfill()
   await scheduleOsvSync()
+  await scheduleMavenCritical()
   await svc.start()
 })
