@@ -13,6 +13,8 @@
     "dev:pagerank": "tsx --expose-gc src/criticality/run-pagerank.ts",
     "start:pom-fetcher": "SERVICE=pom-fetcher tsx src/bin/pom-fetcher.ts",
     "backfill:maven": "SERVICE=maven tsx src/bin/maven-backfill.ts",
+    "backfill:stewardship": "SERVICE=stewardship-backfill tsx src/bin/stewardship-backfill.ts",
+    "backfill:stewardship:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=stewardship-backfill LOG_LEVEL=info tsx src/bin/stewardship-backfill.ts",
     "dev:packages-worker": "CROWD_TEMPORAL_TASKQUEUE=packages-worker CROWD_TEMPORAL_NAMESPACE=$CROWD_PACKAGES_TEMPORAL_NAMESPACE SERVICE=packages-worker LOG_LEVEL=trace nodemon --watch src --watch ../../libs --ext ts --exec tsx --inspect=0.0.0.0:9233 src/bin/packages-worker.ts",
     "dev:criticality-worker": "CROWD_TEMPORAL_TASKQUEUE=packages-worker CROWD_TEMPORAL_NAMESPACE=$CROWD_PACKAGES_TEMPORAL_NAMESPACE SERVICE=criticality-worker LOG_LEVEL=trace nodemon --watch src --watch ../../libs --ext ts --exec tsx --inspect=0.0.0.0:9237 src/bin/criticality-worker.ts",
     "start:maven-worker": "CROWD_TEMPORAL_TASKQUEUE=packages-worker CROWD_TEMPORAL_NAMESPACE=$CROWD_PACKAGES_TEMPORAL_NAMESPACE SERVICE=maven-worker tsx src/bin/maven-worker.ts",
