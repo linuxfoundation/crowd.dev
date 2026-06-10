@@ -41,7 +41,7 @@ const job: IJobDefinition = {
     const qx = pgpQx(db)
     const temporal = await getTemporalClient(TEMPORAL_CONFIG())
 
-    ctx.log.info({ count: memberIds.length }, 'Processing members from buffer.')
+    ctx.log.info({ count: memberIds.length }, 'Processing members from queue.')
 
     let processed = 0
 
