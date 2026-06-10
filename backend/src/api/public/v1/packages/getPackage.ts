@@ -29,7 +29,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
 }
 
 function mockPackage(purl: string) {
-  const name = purl.split('/').pop()?.split('@')[0] ?? purl
+  const name = purl.split('/').pop()?.split('@')[0] || purl
   let ecosystem = 'unknown'
   if (purl.startsWith('pkg:npm')) ecosystem = 'npm'
   else if (purl.startsWith('pkg:maven')) ecosystem = 'maven'
