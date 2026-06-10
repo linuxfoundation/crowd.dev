@@ -2,6 +2,7 @@ import { Router } from 'express'
 
 import { NotFoundError } from '@crowd/common'
 
+import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
@@ -13,8 +14,6 @@ import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
 import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
-import { createRateLimiter } from '@/api/apiRateLimiter'
-
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
 
