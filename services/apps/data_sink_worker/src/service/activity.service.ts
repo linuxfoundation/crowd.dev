@@ -1506,17 +1506,23 @@ export default class ActivityService extends LoggerBase {
       ) as boolean
 
       if (!isBot) {
-        const emailDomain = payload.activity.member.identities
-          ?.filter((i) => i.type === MemberIdentityType.EMAIL && i.verified)
-          .map((i) => i.value.split('@')[1]?.toLowerCase())
-          .find((domain) => domain && !isDomainExcluded(domain))
+        // Trust the email the activity arrived with (username only).
+        // Public inbox domains (gmail, etc.) don't identify an org, so they're skipped.
+        const activityEmailDomain = isValidEmail(payload.activity.username)
+          ? payload.activity.username.split('@')[1]?.toLowerCase()
+          : undefined
+
+        const affiliationEmailDomain =
+          activityEmailDomain && !isDomainExcluded(activityEmailDomain)
+            ? activityEmailDomain
+            : undefined
 
         // associate activity with organization
         payload.organizationId = await this.commonMemberService.findAffiliation(
           payload.memberId,
           payload.segmentId,
           payload.activity.timestamp,
-          emailDomain,
+          affiliationEmailDomain,
         )
       } else {
         // for bot members, we don't want to affiliate the activity with an organization

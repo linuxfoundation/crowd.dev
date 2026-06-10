@@ -144,6 +144,81 @@ export async function upsertOrgIdentities(
   }
 }
 
+export type OrganizationVerifiedPrimaryDomains = {
+  orgId: string
+  displayName: string
+  domains: string[]
+}
+
+/**
+ * Fetches verified primary domains grouped by organization ID.
+ * Returns both names and domains in lowercase to safely match against activity emails.
+ */
+export async function fetchManyOrganizationVerifiedPrimaryDomains(
+  qx: QueryExecutor,
+  organizationIds: string[],
+): Promise<OrganizationVerifiedPrimaryDomains[]> {
+  if (organizationIds.length === 0) {
+    return []
+  }
+
+  return qx.select(
+    `
+      SELECT
+        oi."organizationId" AS "orgId",
+        lower(o."displayName") AS "displayName",
+        array_agg(DISTINCT lower(oi.value)) AS domains
+      FROM "organizationIdentities" oi
+      JOIN organizations o ON o.id = oi."organizationId"
+      WHERE oi."organizationId" IN ($(organizationIds:csv))
+        AND oi.type = 'primary-domain'
+        AND oi.verified = true
+      GROUP BY oi."organizationId", o."displayName"
+    `,
+    { organizationIds },
+  )
+}
+
+/**
+ * Prioritizes company affiliations over universities when a member has overlapping timelines.
+ * Without an activity email to prove a school stint, universities can falsely outrank real employers.
+ * Returns the original candidates untouched if no overlap exists.
+ */
+export function preferCompanyOverUniversityWhenOverlapping<T extends { organizationId: string }>(
+  candidates: T[],
+  orgDomains: OrganizationVerifiedPrimaryDomains[],
+): T[] {
+  if (candidates.length < 2) {
+    return candidates
+  }
+
+  // 1. Build a quick lookup map for the organization data
+  const orgsById = new Map(orgDomains.map((org) => [org.orgId, org]))
+
+  const companies: T[] = []
+  const universities: T[] = []
+
+  // 2. Single pass: Check the heuristic and categorize right here
+  for (const candidate of candidates) {
+    const org = orgsById.get(candidate.organizationId)
+
+    // If we find the org, check if it's a university based on name or .edu domain
+    const isUniversity = org
+      ? org.displayName.toLowerCase().includes('university') ||
+        org.domains.some((d) => d.endsWith('.edu'))
+      : false
+
+    if (isUniversity) {
+      universities.push(candidate)
+    } else {
+      companies.push(candidate)
+    }
+  }
+
+  // 3. If there's an overlap, prefer companies. Otherwise, return the original list.
+  return companies.length > 0 && universities.length > 0 ? companies : candidates
+}
+
 export async function findOrgIdByDomain(
   qx: QueryExecutor,
   domains: string[],
