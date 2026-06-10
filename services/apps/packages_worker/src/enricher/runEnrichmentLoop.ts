@@ -352,8 +352,28 @@ async function fetchSnapshotWithRetry(
         { installationId, nextId: next.installationId },
         'Snapshot rate limited — parking installation, retrying with another',
       )
+      try {
+        token = await getInstallationToken(
+          appConfig.appId,
+          appConfig.privateKeyPem,
+          next.installationId,
+        )
+      } catch (mintErr) {
+        if (mintErr instanceof FetchError) {
+          const until =
+            mintErr.kind === 'RATE_LIMIT'
+              ? (mintErr.resetAt ?? Date.now() + 60_000)
+              : Date.now() + MINT_FAILURE_PARK_MS
+          pool.park(next.installationId, until)
+          log.warn(
+            { installationId: next.installationId, errMsg: mintErr.message },
+            'Token mint failed during snapshot retry — skipping snapshot',
+          )
+          return
+        }
+        throw mintErr
+      }
       installationId = next.installationId
-      token = await getInstallationToken(appConfig.appId, appConfig.privateKeyPem, installationId)
     }
   }
 }
