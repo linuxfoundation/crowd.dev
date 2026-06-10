@@ -7,7 +7,8 @@ info:
 
 
     **Authentication:** OAuth 2.0 M2M bearer token.
-    Required scopes: `read:packages`, `read:stewardships`.
+    Package endpoints require `read:packages` or `read:stewardships`.
+    The batch stewardship endpoint requires `read:stewardships` only.
 
 
     **V1 constraints:** All stewardship rows are `unassigned`.
