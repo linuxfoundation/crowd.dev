@@ -1508,14 +1508,11 @@ export default class ActivityService extends LoggerBase {
       if (!isBot) {
         // Trust the email the activity arrived with (username only).
         // Public inbox domains (gmail, etc.) don't identify an org, so they're skipped.
-        const activityEmailDomain = isValidEmail(payload.activity.username)
+        const domain = isValidEmail(payload.activity.username)
           ? payload.activity.username.split('@')[1]?.toLowerCase()
           : undefined
 
-        const affiliationEmailDomain =
-          activityEmailDomain && !isDomainExcluded(activityEmailDomain)
-            ? activityEmailDomain
-            : undefined
+        const affiliationEmailDomain = domain && !isDomainExcluded(domain) ? domain : undefined
 
         // associate activity with organization
         payload.organizationId = await this.commonMemberService.findAffiliation(
