@@ -62,9 +62,8 @@ done; otherwise it continues-as-new with a fixed `cutoff`.
 
 ## 3. last-30d rolling windows (whole universe) — **breadth then depth**
 
-`downloads_last_30d` is filled across the entire `packages_universe` (~10M npm
-rows) by **two cooperating workflows** keyed on two watermarks in
-`npm_package_universe_state`:
+`downloads_last_30d` is filled across all npm rows in `packages` by **two
+cooperating workflows** keyed on two watermarks in `npm_package_universe_state`:
 
 | Watermark                             | Meaning                         | Set by       |
 | ------------------------------------- | ------------------------------- | ------------ |
@@ -72,15 +71,16 @@ rows) by **two cooperating workflows** keyed on two watermarks in
 | `downloads_30d_history_backfilled_at` | full older history filled       | depth (3b)   |
 
 The split makes the work **breadth-first**: the latest 30-day number (the
-product-critical, denormalized `packages_universe.downloads_last_30d`) lands for
-_every_ package before any deep history is fetched, and the history backfill can
-never block the latest-window refresh.
+denormalized `packages.downloads_last_30d`) lands for _every_ package before any
+deep history is fetched, and the history backfill can never block the
+latest-window refresh.
 
 Both share one fetch engine (`processLast30dWindowPlans`): work is grouped **by
 window**, most recent first; unscoped packages are bulk-fetched 128 at a time per
 window, scoped (`@scope/...`) individually; an upsert mirrors to
-`packages_universe` only when the window is the latest. Client errors (404/4xx)
-skip the package and record an error; transient errors (429/5xx/network) throw so
+`packages.downloads_last_30d` only when the window is the latest. Client errors
+(404/4xx) skip the package and record an error; transient errors (429/5xx/network)
+throw so
 Temporal retries the lane — and because progress lives in `downloads_last_30d`, a
 retry skips every already-stored window instead of re-fetching. Each lane
 **heartbeats** after every window so a stall is detected in minutes.
@@ -93,7 +93,7 @@ fills the bulk-128 call; up to 50 rounds, then continue-as-new.
 
 Selects packages due for the current window (`downloads_30d_last_run_at IS NULL
 OR < cutoff`) and fetches **just the latest window** for each, mirroring the count
-to `packages_universe`. The breadth watermark is bumped per package as soon as its
+to `packages.downloads_last_30d`. The breadth watermark is bumped per package as soon as its
 window is processed, so the monthly run touches each package exactly once.
 
 ### 3b. `backfillLast30dHistory` — depth (older history)

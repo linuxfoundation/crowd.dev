@@ -209,7 +209,6 @@ export async function bootstrapOsspckgs(opts: {
       ],
     })
   }
-  // ranking disabled — re-enable by restoring the rankPackagesUniverse activity proxy and calling it here
   if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {
       args: [

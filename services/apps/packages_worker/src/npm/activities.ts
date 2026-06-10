@@ -8,9 +8,9 @@ import {
   getMissingDownloadDates,
   getNpmChangesLastSeq,
   getNpmPackagesNeedingDailyBackfill,
+  getNpmPurlsDueForLast30dHistory,
+  getNpmPurlsDueForLatest30d,
   getNpmPurlsForChangedNames,
-  getNpmUniversePurlsDueForLast30dHistory,
-  getNpmUniversePurlsDueForLatest30d,
   getUnscannedNpmPurls,
   insertDailyDownloads,
   logAuditFieldChanges,
@@ -310,7 +310,7 @@ function utcFirstOfCurrentMonth(): string {
 }
 
 // The current rolling 30-day window: end = 1st of this month, start = end − 30 days
-// (clamped to NPM_EARLIEST). isLatest, so its upsert mirrors to packages_universe.
+// (clamped to NPM_EARLIEST). isLatest, so its upsert mirrors to packages.downloads_last_30d.
 function latestLast30dWindow(end: string): Last30dWindow {
   const startDay = new Date(end + 'T00:00:00Z')
   startDay.setUTCDate(startDay.getUTCDate() - 30)
@@ -496,7 +496,7 @@ async function processLast30dWindowPlans(
 
 // BREADTH lane. Self-selects a disjoint hash-shard of packages due for the current latest
 // 30-day window and fetches just that window for each (bulk-128 for unscoped), mirroring the
-// count to packages_universe.downloads_last_30d. One window per package keeps the lane fast,
+// count to packages.downloads_last_30d. One window per package keeps the lane fast,
 // so the denormalized number lands across the whole universe before any deep history is
 // filled. The breadth watermark (downloads_30d_last_run_at) is bumped per package as soon as
 // its window is processed — even on a client error — so the monthly run touches each once.
@@ -507,7 +507,7 @@ export async function refreshLatestLast30dLane(
   lanes: number,
 ): Promise<{ fetched: number }> {
   const qx = await getPackagesDb()
-  const due = await getNpmUniversePurlsDueForLatest30d(qx, cutoff, batchSize, laneIndex, lanes)
+  const due = await getNpmPurlsDueForLatest30d(qx, cutoff, batchSize, laneIndex, lanes)
   if (due.length === 0) return { fetched: 0 }
 
   const window = latestLast30dWindow(utcFirstOfCurrentMonth())
@@ -554,7 +554,7 @@ export async function backfillLast30dHistoryLane(
   lanes: number,
 ): Promise<{ fetched: number }> {
   const qx = await getPackagesDb()
-  const due = await getNpmUniversePurlsDueForLast30dHistory(qx, batchSize, laneIndex, lanes)
+  const due = await getNpmPurlsDueForLast30dHistory(qx, batchSize, laneIndex, lanes)
   if (due.length === 0) return { fetched: 0 }
 
   const latestEnd = utcFirstOfCurrentMonth()
