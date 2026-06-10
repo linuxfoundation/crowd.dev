@@ -23,7 +23,7 @@ export interface MockPackageDetail {
   assessment: Record<string, never>
   security: {
     securityContacts: null
-    advisories: Array<{ osvId: string; severity: string; resolution: null }>
+    advisories: Array<{ osvId: string; severity: 'critical' | 'high' | 'medium' | 'low'; resolution: null }>
     cvd: { isPvrEnabled: null; hasSecurityPolicyEnabled: null; tier0Steward: null; criticalVulnerabilityFlag: boolean }
   }
   provenance: {

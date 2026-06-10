@@ -679,13 +679,17 @@ paths:
                         - type: 'null'
               example:
                 packages:
-                  pkg:npm/lodash:
+                  pkg:npm/lodash@4.17.21:
                     name: lodash
                     ecosystem: npm
-                    lifecycle: null
-                    health: null
-                    impact: null
-                    openVulns: null
+                    lifecycle: declining
+                    health: 18
+                    impact: 71
+                    openVulns:
+                      low: 0
+                      medium: 0
+                      high: 1
+                      critical: 0
                     stewardship: unassigned
                     stewards: null
                     lastActivityAt: null

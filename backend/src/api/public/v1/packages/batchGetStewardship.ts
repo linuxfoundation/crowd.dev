@@ -15,24 +15,33 @@ const bodySchema = z.object({
     .max(MAX_PURLS, `Maximum ${MAX_PURLS} purls per request`),
 })
 
+interface StewardshipSummary {
+  name: string
+  ecosystem: string
+  lifecycle: string
+  health: number
+  impact: number
+  openVulns: { low: number; medium: number; high: number; critical: number }
+  stewardship: string
+  stewards: null
+  lastActivityAt: null
+  lastActivityDescription: null
+}
+
 // TODO: replace with real DB queries once stewardship tables land
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
   const { purls } = validateOrThrow(bodySchema, req.body)
 
-  const packages: Record<string, object | null> = {}
+  const packages: Record<string, StewardshipSummary | null> = {}
   for (const purl of purls) {
     const detail = MOCK_DETAILS[purl]
     if (!detail) {
       packages[purl] = null
     } else {
-      const { openVulns } = detail.security.advisories.reduce(
-        (acc, a) => {
-          acc.openVulns[a.severity as keyof typeof acc.openVulns] =
-            (acc.openVulns[a.severity as keyof typeof acc.openVulns] ?? 0) + 1
-          return acc
-        },
-        { openVulns: { low: 0, medium: 0, high: 0, critical: 0 } },
-      )
+      const openVulns = { low: 0, medium: 0, high: 0, critical: 0 }
+      for (const advisory of detail.security.advisories) {
+        openVulns[advisory.severity] += 1
+      }
       packages[purl] = {
         name: detail.name,
         ecosystem: detail.ecosystem,
