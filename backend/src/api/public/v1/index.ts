@@ -28,7 +28,7 @@ export function v1Router(): Router {
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
 
   router.post(
-    '/packages\\:batch-stewardship',
+    /^\/packages:batch-stewardship\/?$/,
     oauth2Middleware(AUTH0_CONFIG),
     packagesRateLimiter,
     requireScopes([SCOPES.READ_STEWARDSHIPS]),
