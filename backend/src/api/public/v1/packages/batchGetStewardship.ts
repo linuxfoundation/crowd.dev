@@ -17,8 +17,12 @@ const bodySchema = z.object({
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
   const { purls } = validateOrThrow(bodySchema, req.body)
 
-  const packages: Record<string, object> = {}
+  const packages: Record<string, object | null> = {}
   for (const purl of purls) {
+    if (!purl.startsWith('pkg:')) {
+      packages[purl] = null
+      continue
+    }
     const name = purl.split('/').pop()?.split('@')[0] ?? purl
     let ecosystem = 'unknown'
     if (purl.startsWith('pkg:npm')) ecosystem = 'npm'
@@ -30,9 +34,8 @@ export async function batchGetStewardship(req: Request, res: Response): Promise<
       health: null,
       impact: null,
       openVulns: null,
-      status: 'unassigned',
-      origin: 'auto_imported',
-      stewards: [],
+      stewardship: 'unassigned',
+      stewards: null,
       lastActivityAt: null,
       lastActivityDescription: null,
     }

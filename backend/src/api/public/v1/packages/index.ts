@@ -6,6 +6,8 @@ import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
 import { getPackage } from './getPackage'
+import { getPackagesMetrics } from './getPackagesMetrics'
+import { listPackages } from './listPackages'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
@@ -13,6 +15,18 @@ export function packagesRouter(): Router {
   const router = Router()
 
   router.use(rateLimiter)
+
+  router.get(
+    '/',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS]),
+    safeWrap(listPackages),
+  )
+
+  router.get(
+    '/metrics',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS]),
+    safeWrap(getPackagesMetrics),
+  )
 
   router.get(
     '/:purl',

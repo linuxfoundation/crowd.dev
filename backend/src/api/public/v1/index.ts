@@ -13,8 +13,12 @@ import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
 import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
+import { createRateLimiter } from '@/api/apiRateLimiter'
+
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
+
+const packagesRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
 export function v1Router(): Router {
   const router = Router()
@@ -26,6 +30,7 @@ export function v1Router(): Router {
   router.post(
     '/packages\\:batch-stewardship',
     oauth2Middleware(AUTH0_CONFIG),
+    packagesRateLimiter,
     requireScopes([SCOPES.READ_STEWARDSHIPS]),
     safeWrap(batchGetStewardship),
   )

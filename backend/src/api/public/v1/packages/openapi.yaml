@@ -6,18 +6,11 @@ info:
     Read-only endpoints for the OSSPREY Self Serve program.
 
 
-    **Data split:** CDP serves package identity, repo signals, advisories,
-    maintainers, provenance, and stewardship state. Lifecycle, Health, Impact,
-    and health breakdown are served by the Insights API — Self Serve fetches
-    those separately and merges client-side.
-
-
-    **Authentication:** OAuth 2.0 M2M bearer token (audience-only in v1).
+    **Authentication:** OAuth 2.0 M2M bearer token.
     Required scopes: `read:packages`, `read:stewardships`.
 
 
-    **V1 constraints:** All stewardship rows are `unassigned` / `auto_imported`.
-    Stewards, activity, findings, and remediation arrays are always empty.
+    **V1 constraints:** All stewardship rows are `unassigned`.
     Write endpoints and state transitions are deferred to v2.
 
 servers:
@@ -28,7 +21,7 @@ servers:
 
 tags:
   - name: Packages
-    description: Package detail for the drawer (Overview, Security, Provenance tabs).
+    description: Package list and detail.
   - name: Stewardship
     description: Stewardship state — individual and batch.
 
@@ -40,6 +33,41 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # ── Shared ───────────────────────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: Package not found.
+
+    OpenVulns:
+      type: object
+      description: Open vulnerability counts by severity from advisory_packages + advisories.
+      required: [low, medium, high, critical]
+      properties:
+        low:
+          type: integer
+          example: 0
+        medium:
+          type: integer
+          example: 0
+        high:
+          type: integer
+          example: 1
+        critical:
+          type: integer
+          example: 0
+
     # ── Stewardship ─────────────────────────────────────────────────────────────
 
     StewardshipStatus:
@@ -72,64 +100,42 @@ components:
           type: string
           format: date-time
 
-    OpenVulns:
-      type: object
-      nullable: true
-      description: >
-        Aggregate open vulnerability data from advisory_packages + advisories.
-        Null if no open advisories exist for this package.
-      properties:
-        count:
-          type: integer
-          description: Number of open advisories affecting this package.
-          example: 2
-        severity:
-          type: string
-          enum: [critical, high, medium, low]
-          description: Highest severity among open advisories.
-          example: high
-
-    # Lean shape — used in batch response and embedded in PackageDetail.
+    # Lean shape used in batch response and list items.
     StewardshipSummary:
       type: object
-      required: [status, origin, stewards, lastActivityAt, lastActivityDescription]
+      nullable: true
+      description: Null if the purl is not found in CDP.
+      required: [name, ecosystem, stewardship, stewards, lastActivityAt, lastActivityDescription]
       properties:
-        # ── Package identity ───────────────────────────────────────────────────
         name:
           type: string
           example: lodash
         ecosystem:
           type: string
           example: npm
-        # ── Package signals (from packages table, nullable until columns land) ──
         lifecycle:
           type: string
           enum: [active, stable, declining, abandoned]
           nullable: true
-          description: Lifecycle state. Null until the column is added to packages table.
         health:
           type: integer
           nullable: true
-          description: Health score (0–100). Null until the column is added to packages table.
           example: 52
         impact:
           type: integer
           nullable: true
-          description: Impact score (0–100). Null until the column is added to packages table.
           example: 94
         openVulns:
           $ref: '#/components/schemas/OpenVulns'
-        # ── Stewardship state ──────────────────────────────────────────────────
-        status:
+          nullable: true
+        stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
-        origin:
-          type: string
-          enum: [auto_imported, self_claimed, assigned, opened_for_claim]
         stewards:
-          type: array
-          items:
-            $ref: '#/components/schemas/Steward'
-          description: Empty in v1.
+          nullable: true
+          description: Single steward or null. Empty in v1.
+          oneOf:
+            - $ref: '#/components/schemas/Steward'
+            - type: 'null'
         lastActivityAt:
           type: string
           format: date-time
@@ -138,306 +144,86 @@ components:
         lastActivityDescription:
           type: string
           nullable: true
-          description: Human-readable last activity label. Null in v1.
-          example: Escalated for intervention
+          description: Null in v1.
 
-    StewardshipActivity:
+    # ── Package list item ────────────────────────────────────────────────────────
+
+    PackageListItem:
       type: object
-      required: [id, actorType, activityType, createdAt]
+      required: [purl, name, ecosystem]
       properties:
-        id:
+        purl:
+          type: string
+          description: Used to call GET /packages/{purl} when a row is clicked.
+          example: pkg:npm/lodash
+        name:
+          type: string
+          example: lodash
+        ecosystem:
+          type: string
+          example: npm
+        health:
           type: integer
-          format: int64
-        actorUserId:
-          type: string
           nullable: true
-          description: LFID. Null for system events.
-        actorType:
-          type: string
-          enum: [user, system]
-        activityType:
-          type: string
-          enum:
-            - state_changed
-            - assessment_completed
-            - assessment_flagged
-            - remediation_logged
-            - status_update
-            - escalation
-            - escalation_resolved
-            - blocker_added
-            - blocker_resolved
-            - steward_added
-            - steward_removed
-        content:
-          type: string
-          nullable: true
-        metadata:
-          type: object
-          nullable: true
-          additionalProperties: true
-          description: >
-            JSON context. Shape depends on activityType.
-            E.g. `{"from":"active","to":"needs_attention"}` for state_changed.
-        createdAt:
-          type: string
-          format: date-time
-
-    StewardshipFinding:
-      type: object
-      required: [id, dimension, severity, finding]
-      description: Per-dimension finding from stewardship_findings. Empty in v1.
-      properties:
-        id:
+          example: 18
+        impact:
           type: integer
-          format: int64
-        dimension:
-          type: string
-          enum:
-            - maintainer_health
-            - security_posture
-            - vulnerability_exposure
-            - dependency_risk
-            - supply_chain_integrity
-            - release_health
-        severity:
-          type: string
-          enum: [critical, high, medium, low, informational]
-        finding:
-          type: string
-        evidence:
+          nullable: true
+          example: 71
+        lifecycle:
           type: string
           nullable: true
-
-    RemediationAction:
-      type: object
-      required: [id, action, status]
-      description: Remediation action from stewardship_remediation_actions. Empty in v1.
-      properties:
-        id:
+          enum: [active, stable, declining, abandoned]
+        maintainerBusFactor:
           type: integer
-          format: int64
-        findingId:
-          type: integer
-          format: int64
           nullable: true
-        action:
-          type: string
-        status:
-          type: string
-          enum: [pending, in_progress, done, blocked, abandoned]
-        url:
-          type: string
-          format: uri
+          example: 1
+        openVulns:
+          $ref: '#/components/schemas/OpenVulns'
           nullable: true
-        notes:
-          type: string
+        stewardship:
+          $ref: '#/components/schemas/StewardshipStatus'
+        steward:
           nullable: true
-        completedAt:
-          type: string
-          format: date-time
-          nullable: true
+          description: Single assigned steward or null.
+          oneOf:
+            - $ref: '#/components/schemas/Steward'
+            - type: 'null'
 
-    StewardshipAssessment:
-      type: object
-      nullable: true
-      description: From stewardship_assessments. Null in v1 (assessment flow deferred to v2).
-      properties:
-        posture:
-          type: string
-          enum: [Critical, High, Medium, Low]
-          nullable: true
-        summary:
-          type: string
-          nullable: true
-        draft:
-          type: boolean
-          description: True while assessment is in progress.
-        reviewed:
-          type: boolean
-          description: Admin spot-check done.
-        flagged:
-          type: boolean
-        flagNote:
-          type: string
-          nullable: true
-        monitoringPlan:
-          type: string
-          nullable: true
-          description: Free text. Frontend splits by newline to render as list.
-        completedAt:
-          type: string
-          format: date-time
-          nullable: true
-        completedBy:
-          type: string
-          nullable: true
-          description: LFID of assessor.
-
-    # Full stewardship block for the drawer.
-    StewardshipDetail:
-      allOf:
-        - $ref: '#/components/schemas/StewardshipSummary'
-        - type: object
-          required: [activity, findings, remediationActions]
-          properties:
-            assessment:
-              $ref: '#/components/schemas/StewardshipAssessment'
-            findings:
-              type: array
-              items:
-                $ref: '#/components/schemas/StewardshipFinding'
-              description: Per-dimension findings. Empty in v1.
-            remediationActions:
-              type: array
-              items:
-                $ref: '#/components/schemas/RemediationAction'
-              description: Remediation actions. Empty in v1.
-            activity:
-              type: array
-              items:
-                $ref: '#/components/schemas/StewardshipActivity'
-              description: Append-only log, newest first. Empty in v1.
-
-    # ── Package ──────────────────────────────────────────────────────────────────
+    # ── Package detail ───────────────────────────────────────────────────────────
 
     Advisory:
       type: object
-      required: [id, severity, status]
-      description: Advisory from advisories joined via advisory_affected_ranges.
+      required: [osvId, severity]
       properties:
-        id:
+        osvId:
           type: string
           description: GHSA or CVE identifier.
           example: CVE-2021-44906
         severity:
           type: string
           enum: [critical, high, medium, low]
-        summary:
+        resolution:
           type: string
           nullable: true
-        status:
-          type: string
-          enum: [open, patched]
-          description: Whether the advisory has been patched in a released version.
-        cvss:
-          type: number
-          format: float
-          nullable: true
-          description: CVSS score (0–10).
-        publishedAt:
-          type: string
-          format: date-time
-          nullable: true
-        affectedVersionRange:
-          type: object
-          nullable: true
-          description: Introduced and fixed version from advisory_affected_ranges.
-          properties:
-            introduced:
-              type: string
-              nullable: true
-              example: '1.0.0'
-            fixed:
-              type: string
-              nullable: true
-              example: '4.17.21'
-            lastAffected:
-              type: string
-              nullable: true
+          description: Resolution status. TBD.
 
-    ScorecardCheck:
+    SecurityContact:
       type: object
-      required: [checkName, score]
-      description: Individual check from repo_scorecard_checks.
+      required: [name]
       properties:
-        checkName:
-          type: string
-          example: Branch-Protection
-        score:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 10
-          nullable: true
-        reason:
+        name:
           type: string
           nullable: true
-
-    Maintainer:
-      type: object
-      description: From maintainers + package_maintainers.
-      properties:
-        username:
+        email:
           type: string
-          nullable: true
-        displayName:
-          type: string
-          nullable: true
-        emailHash:
-          type: string
-          nullable: true
-          description: Hashed email (raw email is not stored).
-        url:
-          type: string
-          nullable: true
-
-    ProvenanceMapping:
-      type: object
-      required: [repoUrl, confidence, source]
-      description: One package→repo mapping from package_repos.
-      properties:
-        repoUrl:
-          type: string
-          format: uri
-          example: https://github.com/lodash/lodash
-        confidence:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 1
-          description: Mapping confidence score (0.00–1.00).
-          example: 0.98
-        source:
-          type: string
-          enum: [declared, deps_dev, heuristic, manual]
-          description: How the mapping was determined.
-        verified:
-          type: boolean
-          nullable: true
-
-    Repository:
-      type: object
-      description: From repos table.
-      properties:
-        url:
-          type: string
-          nullable: true
-          example: https://github.com/lodash/lodash
-        lastCommitAt:
-          type: string
-          format: date-time
-          nullable: true
-        scorecardScore:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 10
-          nullable: true
-          description: Aggregate OpenSSF Scorecard score.
-        isArchived:
-          type: boolean
+          format: email
           nullable: true
 
     PackageDetail:
       type: object
-      required: [purl, name, ecosystem, maintainers, advisories, stewardship]
-      description: >
-        Full package data for the drawer (Overview, Security, Provenance tabs).
-        Lifecycle, Health, Impact, and health breakdown are NOT included here —
-        Self Serve fetches those from Insights and merges client-side.
+      required: [purl, name, ecosystem, general, assessment, security, provenance, history]
       properties:
-        # ── Identity (packages table) ──────────────────────────────────────────
         purl:
           type: string
           example: pkg:npm/lodash
@@ -447,173 +233,312 @@ components:
         ecosystem:
           type: string
           example: npm
-        latestVersion:
-          type: string
-          nullable: true
-          example: '4.17.21'
-        latestReleaseAt:
-          type: string
-          format: date-time
-          nullable: true
-        downloads:
-          type: integer
-          nullable: true
-          description: Downloads last month. Null for Maven (Sonatype data not yet ingested).
-          example: 52142891
-        dependentPackagesCount:
-          type: integer
-          nullable: true
-          example: 142312
-        dependentReposCount:
-          type: integer
-          nullable: true
-          example: 39104
-        lifecycle:
-          type: string
-          enum: [active, stable, declining, abandoned]
-          nullable: true
-          description: Null until the column is added to packages table.
-        health:
-          type: integer
-          nullable: true
-          description: Total health score (0–100). Null until the column is added to packages table.
-          example: 18
-        healthBreakdown:
+        general:
           type: object
-          nullable: true
-          description: Sub-scores breakdown. Source TBD (Insights or packages table).
           properties:
-            maintainerHealth:
-              type: integer
+            healthScore:
+              type: object
               nullable: true
-              description: Maintainer health sub-score (max 40).
-              example: 4
-            securityAndSupplyChain:
-              type: integer
+              properties:
+                maintainerHealth:
+                  type: integer
+                  nullable: true
+                  example: 4
+                securitySupplyChain:
+                  type: integer
+                  nullable: true
+                  example: 8
+                developmentActivity:
+                  type: integer
+                  nullable: true
+                  example: 6
+                total:
+                  type: integer
+                  nullable: true
+                  example: 18
+            impact:
+              type: object
               nullable: true
-              description: Security & supply chain sub-score (max 35).
-              example: 8
-            developmentActivity:
-              type: integer
+              properties:
+                impactScore:
+                  type: integer
+                  nullable: true
+                  example: 71
+                downloadsLastMonth:
+                  type: integer
+                  nullable: true
+                  description: Null for Maven (Sonatype data not yet ingested).
+                  example: 52142891
+                dependentPackages:
+                  type: integer
+                  nullable: true
+                  example: 142312
+                dependentRepos:
+                  type: integer
+                  nullable: true
+                  example: 39104
+                transitiveReach:
+                  type: string
+                  nullable: true
+                  example: 'Top 0.4%'
+            riskSignals:
+              type: object
               nullable: true
-              description: Development activity sub-score (max 25).
-              example: 6
-        impact:
-          type: integer
-          nullable: true
-          description: Impact score (0–100). Null until the column is added to packages table.
-          example: 71
-        transitiveReach:
-          type: string
-          nullable: true
-          description: Transitive reach percentile label. Source TBD (Insights or packages table).
-          example: 'Top 0.4%'
-        busFactor:
-          type: integer
-          nullable: true
-          description: Number of distinct maintainers. Computed from COUNT(package_maintainers).
-          example: 1
-        openVulns:
-          $ref: '#/components/schemas/OpenVulns'
-
-        # ── Repo signals (repos table) ─────────────────────────────────────────
-        repository:
-          allOf:
-            - $ref: '#/components/schemas/Repository'
-          nullable: true
-
-        # ── Maintainers (maintainers + package_maintainers) ───────────────────
-        maintainers:
-          type: array
-          items:
-            $ref: '#/components/schemas/Maintainer'
-
-        # ── Security (advisories + advisory_affected_ranges + repo_scorecard_checks) ──
-        securityContact:
-          type: string
-          nullable: true
-          description: >
-            Security contact for this package.
-            From stewardship_assessments.security_contact. Null in v1 (assessment flow deferred to v2).
-        advisories:
-          type: array
-          items:
-            $ref: '#/components/schemas/Advisory'
-          description: Advisories from advisories joined via advisory_packages.
-        scorecardChecks:
-          type: array
-          items:
-            $ref: '#/components/schemas/ScorecardCheck'
-          description: Individual Scorecard checks from repo_scorecard_checks.
-        disclosureReadiness:
+              properties:
+                lifecycle:
+                  type: string
+                  nullable: true
+                  enum: [active, stable, declining, abandoned]
+                maintainerBusFactor:
+                  type: integer
+                  nullable: true
+                  example: 1
+                lastRelease:
+                  type: string
+                  format: date-time
+                  nullable: true
+                hasSecurityFile:
+                  type: boolean
+                  nullable: true
+                openSSFScorecard:
+                  type: number
+                  format: float
+                  nullable: true
+                  example: 5.2
+        assessment:
           type: object
-          description: Disclosure readiness signals for the Security tab.
-          properties:
-            pvrEnabled:
-              type: boolean
-              nullable: true
-              description: >
-                Private Vulnerability Reporting enabled.
-                From stewardship_assessments.disclosure_preference. Null in v1.
-            securityMdPresent:
-              type: boolean
-              nullable: true
-              description: SECURITY.md present in repo. Null until enricher captures this signal.
-            tier0StewardName:
-              type: string
-              nullable: true
-              description: >
-                Name of the Tier 0 steward if assigned.
-                From stewardship_stewards. Null in v1 (no claiming flow yet).
-            hasCriticalAdvisory:
-              type: boolean
-              nullable: true
-              description: >
-                Whether any open advisory has cvss >= 7.0 (advisories.is_critical generated column).
-                Available in v1.
-
-        # ── Provenance (package_repos) ─────────────────────────────────────────
-        provenanceMappings:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProvenanceMapping'
-          description: >
-            Package→repo mappings. Multiple entries possible for monorepos or
-            conflicting sources. Empty if no mapping has been resolved yet.
-        supplyChainIntegrity:
+          description: Stewardship assessment data. Empty in v1 — assessment flow deferred to v2.
+        security:
           type: object
-          description: Supply chain signals. All fields null in v1 — separate ingestion workstream required.
           properties:
-            buildProvenance:
-              type: string
+            securityContacts:
+              type: array
               nullable: true
-              description: SLSA provenance attestation status. Null until ingested.
-            signedReleases:
-              type: string
+              items:
+                $ref: '#/components/schemas/SecurityContact'
+            advisories:
+              type: array
+              items:
+                $ref: '#/components/schemas/Advisory'
+            cvd:
+              type: object
+              description: Coordinated Vulnerability Disclosure readiness signals.
+              properties:
+                isPvrEnabled:
+                  type: boolean
+                  nullable: true
+                  description: Private Vulnerability Reporting enabled. Null in v1.
+                hasSecurityPolicyEnabled:
+                  type: boolean
+                  nullable: true
+                  description: SECURITY.md present in repo. Null until enricher captures this.
+                tier0Steward:
+                  type: string
+                  nullable: true
+                  description: Name of the Tier 0 steward if assigned. Null in v1.
+                criticalVulnerabilityFlag:
+                  type: boolean
+                  nullable: true
+                  description: True if any open advisory has cvss >= 7.0.
+        provenance:
+          type: object
+          properties:
+            repositoryMapping:
+              type: object
               nullable: true
-              description: Whether releases are signed. Null until ingested.
+              properties:
+                declaredRepo:
+                  type: string
+                  format: uri
+                  nullable: true
+                  example: https://github.com/lodash/lodash
+                mappingConfidence:
+                  type: number
+                  format: float
+                  nullable: true
+                  example: 0.98
+                lastCommitAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+            supplyChainIntegrity:
+              type: object
+              description: All fields null in v1 — separate ingestion workstream required.
+              properties:
+                buildProvenance:
+                  type: string
+                  nullable: true
+                signedReleases:
+                  type: string
+                  nullable: true
+        history:
+          type: object
+          description: Package history data. Empty in v1.
 
-        # ── Stewardship (stewardships + stewardship_activity) ─────────────────
-        stewardship:
-          $ref: '#/components/schemas/StewardshipDetail'
+    # ── Metrics ──────────────────────────────────────────────────────────────────
 
-    # ── Errors ───────────────────────────────────────────────────────────────────
-
-    Error:
+    PackagesMetrics:
       type: object
-      required: [error, message]
+      required: [totalPackages, criticalPackages]
       properties:
-        error:
-          type: string
-          example: NOT_FOUND
-        message:
-          type: string
-          example: Package not found.
+        totalPackages:
+          type: integer
+          example: 0
+        criticalPackages:
+          type: integer
+          example: 0
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────────────────────
 paths:
+  /packages:
+    get:
+      operationId: listPackages
+      summary: List packages
+      tags:
+        - Packages
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: ecosystem
+          in: query
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, stable, declining, abandoned]
+        - name: busFactor1Only
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return only packages with bus factor = 1.
+        - name: staleOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return only packages with no release in >= 18 months.
+        - name: unstewardedOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return only packages with stewardship = unassigned.
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, health, impact, openVulns]
+            default: name
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Paginated list of packages.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, filters, sort, packages]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                  filters:
+                    type: object
+                    properties:
+                      ecosystem:
+                        type: string
+                        nullable: true
+                      lifecycle:
+                        type: string
+                        nullable: true
+                      busFactor1Only:
+                        type: boolean
+                      staleOnly:
+                        type: boolean
+                      unstewardedOnly:
+                        type: boolean
+                  sort:
+                    type: object
+                    properties:
+                      by:
+                        type: string
+                      dir:
+                        type: string
+                  packages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageListItem'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packages/metrics:
+    get:
+      operationId: getPackagesMetrics
+      summary: Overview metrics for the list page header
+      tags:
+        - Packages
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      responses:
+        '200':
+          description: Aggregate package metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackagesMetrics'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /packages/{purl}:
     get:
       operationId: getPackage
@@ -622,9 +547,6 @@ paths:
         Returns data for the drawer's Overview, Security, and Provenance tabs.
         The `purl` parameter must be URL-encoded.
         Example: `pkg:npm/lodash` → `pkg%3Anpm%2Flodash`.
-
-
-        In v1 `stewardship.activity` is always an empty array.
       tags:
         - Packages
       security:
@@ -649,157 +571,45 @@ paths:
                 purl: pkg:npm/lodash
                 name: lodash
                 ecosystem: npm
-                latestVersion: '4.17.21'
-                latestReleaseAt: '2021-02-20T00:00:00Z'
-                downloads: 52142891
-                dependentPackagesCount: 142312
-                dependentReposCount: 39104
-                lifecycle: declining
-                health: 18
-                healthBreakdown:
-                  maintainerHealth: 4
-                  securityAndSupplyChain: 8
-                  developmentActivity: 6
-                impact: 71
-                transitiveReach: 'Top 0.4%'
-                busFactor: 1
-                openVulns:
-                  count: 1
-                  severity: high
-                repository:
-                  url: https://github.com/lodash/lodash
-                  lastCommitAt: '2024-09-14T00:00:00Z'
-                  scorecardScore: 5.2
-                  isArchived: false
-                maintainers:
-                  - username: jdalton
-                    displayName: John-David Dalton
-                    emailHash: null
-                    url: https://github.com/jdalton
-                advisories:
-                  - id: CVE-2021-44906
-                    severity: high
-                    summary: Prototype pollution via constructor
-                    status: open
-                    cvss: 9.8
-                    publishedAt: '2022-03-17T00:00:00Z'
-                    affectedVersionRange:
-                      introduced: '0.0.1'
-                      fixed: null
-                      lastAffected: '4.17.21'
-                securityContact: null
-                scorecardChecks:
-                  - checkName: Branch-Protection
-                    score: 3.0
-                    reason: Branch protection not enabled for default branch
-                  - checkName: Security-Policy
-                    score: 0.0
-                    reason: security policy file not detected
-                disclosureReadiness:
-                  pvrEnabled: null
-                  securityMdPresent: false
-                  tier0StewardName: null
-                  hasCriticalAdvisory: true
-                provenanceMappings:
-                  - repoUrl: https://github.com/lodash/lodash
-                    confidence: 0.98
-                    source: declared
-                    verified: true
-                supplyChainIntegrity:
-                  buildProvenance: null
-                  signedReleases: null
-                stewardship:
-                  status: escalated
-                  origin: auto_imported
-                  stewards:
-                    - userId: jdoe
-                      name: Jonathan R.
-                      role: lead
-                      assignedAt: '2025-05-15T00:00:00Z'
-                  lastActivityAt: '2025-06-08T00:00:00Z'
-                  lastActivityDescription: Escalated — recommending consortium fork
-                  assessment:
-                    posture: Critical
-                    summary: Single maintainer, bus factor 1, no security process in place.
-                    draft: false
-                    reviewed: false
-                    flagged: false
-                    flagNote: null
-                    monitoringPlan: "Watch for new maintainer activity\nWatch registry for ownership transfer"
-                    completedAt: '2025-05-18T00:00:00Z'
-                    completedBy: jdoe
-                  findings:
-                    - id: 1
-                      dimension: maintainer_health
-                      severity: critical
-                      finding: Single maintainer, no response to issue filed 6 weeks ago. Bus factor 1.
-                      evidence: null
-                    - id: 2
-                      dimension: release_health
+                general:
+                  healthScore:
+                    maintainerHealth: 4
+                    securitySupplyChain: 8
+                    developmentActivity: 6
+                    total: 18
+                  impact:
+                    impactScore: 71
+                    downloadsLastMonth: 52142891
+                    dependentPackages: 142312
+                    dependentRepos: 39104
+                    transitiveReach: 'Top 0.4%'
+                  riskSignals:
+                    lifecycle: declining
+                    maintainerBusFactor: 1
+                    lastRelease: '2021-02-20T00:00:00Z'
+                    hasSecurityFile: null
+                    openSSFScorecard: 5.2
+                assessment: {}
+                security:
+                  securityContacts: null
+                  advisories:
+                    - osvId: CVE-2021-44906
                       severity: high
-                      finding: Last release 5 years ago. 180+ open issues. Active community forks exist.
-                      evidence: null
-                    - id: 3
-                      dimension: security_posture
-                      severity: high
-                      finding: No SECURITY.md, no disclosure process, releases unsigned.
-                      evidence: null
-                  remediationActions:
-                    - id: 1
-                      findingId: 3
-                      action: Filed issue requesting SECURITY.md + disclosure process (no response)
-                      status: done
-                      url: null
-                      notes: null
-                      completedAt: '2025-05-20T00:00:00Z'
-                    - id: 2
-                      findingId: null
-                      action: Opened PR re-enabling branch protection
-                      status: done
-                      url: null
-                      notes: null
-                      completedAt: '2025-05-22T00:00:00Z'
-                    - id: 3
-                      findingId: null
-                      action: Recommended escalation — vendor LTS or consortium fork
-                      status: pending
-                      url: null
-                      notes: null
-                      completedAt: null
-                  activity:
-                    - id: 4
-                      actorUserId: jdoe
-                      actorType: user
-                      activityType: escalation
-                      content: Escalated — recommending consortium fork
-                      metadata:
-                        from: active
-                        to: escalated
-                      createdAt: '2025-06-08T00:00:00Z'
-                    - id: 3
-                      actorUserId: jdoe
-                      actorType: user
-                      activityType: remediation_logged
-                      content: 'Jonathan R. logged: maintainer unresponsive after 3 attempts'
-                      metadata: null
-                      createdAt: '2025-06-01T00:00:00Z'
-                    - id: 2
-                      actorUserId: jdoe
-                      actorType: user
-                      activityType: assessment_completed
-                      content: Assessment completed — posture Critical
-                      metadata:
-                        posture: Critical
-                      createdAt: '2025-05-18T00:00:00Z'
-                    - id: 1
-                      actorUserId: null
-                      actorType: system
-                      activityType: steward_added
-                      content: Assigned to Jonathan R.
-                      metadata:
-                        userId: jdoe
-                        role: lead
-                      createdAt: '2025-05-15T00:00:00Z'
+                      resolution: null
+                  cvd:
+                    isPvrEnabled: null
+                    hasSecurityPolicyEnabled: null
+                    tier0Steward: null
+                    criticalVulnerabilityFlag: true
+                provenance:
+                  repositoryMapping:
+                    declaredRepo: https://github.com/lodash/lodash
+                    mappingConfidence: 0.98
+                    lastCommitAt: '2024-09-14T00:00:00Z'
+                  supplyChainIntegrity:
+                    buildProvenance: null
+                    signedReleases: null
+                history: {}
         '404':
           description: Package not found.
           content:
@@ -825,18 +635,6 @@ paths:
       summary: Batch stewardship state for a list of purls
       description: >
         Returns lean stewardship state for up to 100 purls in one request.
-
-
-        **Intended flow (admin queue list view):**
-
-        1. Self Serve calls Insights list endpoint → page of N packages with
-           composites (lifecycle, health, impact, open vulns).
-
-        2. Self Serve calls this endpoint with those purls → live stewardship state.
-
-        3. Self Serve merges and renders.
-
-
         Purls not found in CDP return `null`. Always returns HTTP 200.
       tags:
         - Stewardship
@@ -865,7 +663,7 @@ paths:
         '200':
           description: >
             Stewardship state keyed by purl.
-            Unknown purls return `null`.
+            Unknown or invalid purls return `null`.
           content:
             application/json:
               schema:
@@ -883,33 +681,14 @@ paths:
                   pkg:npm/lodash:
                     name: lodash
                     ecosystem: npm
-                    lifecycle: declining
-                    health: 52
-                    impact: 94
-                    openVulns:
-                      count: 1
-                      severity: high
-                    status: unassigned
-                    origin: auto_imported
-                    stewards: []
+                    lifecycle: null
+                    health: null
+                    impact: null
+                    openVulns: null
+                    stewardship: unassigned
+                    stewards: null
                     lastActivityAt: null
                     lastActivityDescription: null
-                  pkg:npm/express:
-                    name: express
-                    ecosystem: npm
-                    lifecycle: active
-                    health: 78
-                    impact: 88
-                    openVulns: null
-                    status: escalated
-                    origin: auto_imported
-                    stewards:
-                      - userId: jdoe
-                        name: Jonathan R.
-                        role: lead
-                        assignedAt: '2025-01-15T10:00:00Z'
-                    lastActivityAt: '2025-06-08T14:23:00Z'
-                    lastActivityDescription: Escalated for intervention
                   pkg:pypi/requests: null
         '400':
           description: Validation error (e.g. more than 100 purls).
@@ -917,9 +696,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: VALIDATION_ERROR
-                message: purls must contain between 1 and 100 items.
         '401':
           description: Missing or invalid bearer token.
           content:
