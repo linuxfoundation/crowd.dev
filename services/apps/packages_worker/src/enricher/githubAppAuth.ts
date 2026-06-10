@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken'
 
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { FetchError } from './types'
+
 const log = getServiceChildLogger('github-app-auth')
 
 const GITHUB_API = 'https://api.github.com'
@@ -80,7 +82,22 @@ export async function getInstallationToken(
 
   if (!resp.ok) {
     const body = await resp.text()
-    throw new Error(
+    if (resp.status === 429 || (resp.status === 403 && body.toLowerCase().includes('rate limit'))) {
+      const retryAfterSec = parseInt(resp.headers.get('retry-after') ?? '0', 10)
+      const resetSec = parseInt(resp.headers.get('x-ratelimit-reset') ?? '0', 10)
+      const resetMs = retryAfterSec
+        ? Date.now() + retryAfterSec * 1000
+        : resetSec
+          ? resetSec * 1000 + 5_000
+          : Date.now() + 65_000
+      throw new FetchError(
+        'RATE_LIMIT',
+        `Rate limited minting token for installation ${installationId}`,
+        resetMs,
+      )
+    }
+    throw new FetchError(
+      'AUTH',
       `Failed to mint token for installation ${installationId} (${resp.status}): ${body}`,
     )
   }
@@ -100,14 +117,15 @@ interface RateLimitEntry {
 }
 
 /**
- * Fetches GraphQL rate limit info for every installation in parallel (one-time startup diagnostic).
- * GET /rate_limit does not consume quota.
+ * Fetches GraphQL rate limit info for every installation in parallel (one-time startup check).
+ * GET /rate_limit does not consume quota. Returns the ids that passed the probe — installations
+ * that fail (IP allowlists, suspended apps) would fail every enrichment request too.
  */
 export async function fetchRateLimitDiagnostics(
   appId: string,
   privateKeyPem: string,
   installationIds: number[],
-): Promise<void> {
+): Promise<number[]> {
   const results = await Promise.all(
     installationIds.map(
       async (id): Promise<RateLimitEntry | { installationId: number; error: string }> => {
@@ -136,26 +154,34 @@ export async function fetchRateLimitDiagnostics(
 
   let totalLimit = 0
   let totalRemaining = 0
-  let failures = 0
+  const healthyIds: number[] = []
+  const failed: Array<{ installationId: number; error: string }> = []
   for (const r of results) {
     if ('error' in r) {
-      failures++
+      failed.push(r)
     } else {
       totalLimit += r.limit
       totalRemaining += r.remaining
+      healthyIds.push(r.installationId)
     }
   }
 
   log.info(
     {
       installations: installationIds.length,
-      failures,
+      failures: failed.length,
       totalLimit,
       totalRemaining,
       totalUsed: totalLimit - totalRemaining,
     },
     'GitHub App rate limit capacity',
   )
+
+  if (failed.length > 0) {
+    log.warn({ failed }, 'Excluding installations that failed the rate limit probe')
+  }
+
+  return healthyIds
 }
 
 export interface GithubAppConfig {

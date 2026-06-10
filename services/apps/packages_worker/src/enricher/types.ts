@@ -46,6 +46,8 @@ export interface RepoActivitySnapshot {
   issueMedianTimeToFirstResponseHours: number | null
   httpRequestCount: number
   rateLimitCost: number
+  rateLimitRemaining: number
+  rateLimitResetAt: string
 }
 
 export type FetchErrorKind = 'RATE_LIMIT' | 'TRANSIENT' | 'NOT_FOUND' | 'AUTH' | 'MALFORMED'

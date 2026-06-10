@@ -100,6 +100,8 @@ function buildDateWindows(): {
 
 interface RateLimit {
   cost: number
+  remaining: number
+  resetAt: string
 }
 
 interface IssueCount {
@@ -164,7 +166,7 @@ const SUMMARY_QUERY = `
     $searchIssuesOpened: String!, $searchIssuesClosed: String!,
     $searchIssuesOpened6m: String!, $searchIssuesOpenNow: String!
   ) {
-    rateLimit { cost }
+    rateLimit { cost remaining resetAt }
     repository(owner: $owner, name: $name) {
       defaultBranchRef {
         target {
@@ -188,7 +190,7 @@ const SUMMARY_QUERY = `
 
 const PR_PAGE_QUERY = `
   query($owner: String!, $name: String!, $cursor: String) {
-    rateLimit { cost }
+    rateLimit { cost remaining resetAt }
     repository(owner: $owner, name: $name) {
       pullRequests(first: ${PAGE_SIZE}, orderBy: { field: CREATED_AT, direction: DESC }, after: $cursor) {
         pageInfo { hasNextPage endCursor }
@@ -210,10 +212,16 @@ async function pagePrs(
   token: string,
   timeoutMs: number,
   windowStart: Date,
-): Promise<{ nodes: PrNode[]; rateLimitCost: number; httpRequestCount: number }> {
+): Promise<{
+  nodes: PrNode[]
+  rateLimitCost: number
+  httpRequestCount: number
+  rateLimit: RateLimit | null
+}> {
   const nodes: PrNode[] = []
   let rateLimitCost = 0
   let httpRequestCount = 0
+  let rateLimit: RateLimit | null = null
   let cursor: string | undefined
 
   for (;;) {
@@ -223,6 +231,7 @@ async function pagePrs(
     const data = await graphqlRequest<PrPageQueryResult>(PR_PAGE_QUERY, variables, token, timeoutMs)
     rateLimitCost += data.rateLimit.cost
     httpRequestCount++
+    rateLimit = data.rateLimit
 
     const connection = data.repository.pullRequests
     let reachedWindowBoundary = false
@@ -239,12 +248,12 @@ async function pagePrs(
     cursor = connection.pageInfo.endCursor
   }
 
-  return { nodes, rateLimitCost, httpRequestCount }
+  return { nodes, rateLimitCost, httpRequestCount, rateLimit }
 }
 
 const ISSUE_PAGE_QUERY = `
   query($owner: String!, $name: String!, $cursor: String) {
-    rateLimit { cost }
+    rateLimit { cost remaining resetAt }
     repository(owner: $owner, name: $name) {
       issues(first: ${PAGE_SIZE}, orderBy: { field: CREATED_AT, direction: DESC }, after: $cursor) {
         pageInfo { hasNextPage endCursor }
@@ -265,10 +274,16 @@ async function pageIssues(
   token: string,
   timeoutMs: number,
   windowStart: Date,
-): Promise<{ nodes: IssueNode[]; rateLimitCost: number; httpRequestCount: number }> {
+): Promise<{
+  nodes: IssueNode[]
+  rateLimitCost: number
+  httpRequestCount: number
+  rateLimit: RateLimit | null
+}> {
   const nodes: IssueNode[] = []
   let rateLimitCost = 0
   let httpRequestCount = 0
+  let rateLimit: RateLimit | null = null
   let cursor: string | undefined
 
   for (;;) {
@@ -283,6 +298,7 @@ async function pageIssues(
     )
     rateLimitCost += data.rateLimit.cost
     httpRequestCount++
+    rateLimit = data.rateLimit
 
     const connection = data.repository.issues
     let reachedWindowBoundary = false
@@ -299,7 +315,7 @@ async function pageIssues(
     cursor = connection.pageInfo.endCursor
   }
 
-  return { nodes, rateLimitCost, httpRequestCount }
+  return { nodes, rateLimitCost, httpRequestCount, rateLimit }
 }
 
 export async function fetchActivitySnapshot(
@@ -363,6 +379,11 @@ export async function fetchActivitySnapshot(
   const prMedians = computePrMedians(prResult.nodes)
   const issueMedians = computeIssueMedians(issueResult.nodes)
 
+  // Lowest remaining across all requests — remaining only decreases within a reset window
+  const lastRateLimit = [summaryData.rateLimit, prResult.rateLimit, issueResult.rateLimit]
+    .filter((rl): rl is RateLimit => rl !== null)
+    .reduce((min, rl) => (rl.remaining < min.remaining ? rl : min))
+
   return {
     repoId,
     snapshotAt: new Date().toISOString(),
@@ -385,5 +406,7 @@ export async function fetchActivitySnapshot(
     issueMedianTimeToFirstResponseHours: issueMedians.medianTimeToFirstResponseHours,
     httpRequestCount: totalHttpRequests,
     rateLimitCost: totalRateLimitCost,
+    rateLimitRemaining: lastRateLimit.remaining,
+    rateLimitResetAt: lastRateLimit.resetAt,
   }
 }

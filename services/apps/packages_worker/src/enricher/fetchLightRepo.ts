@@ -52,6 +52,20 @@ async function fetchSecurityFileEnabled(
       })
       if (response.status === 200) return true
       if (response.status === 404) return false
+      if (response.status === 403) {
+        const body = await response.text()
+        if (body.toLowerCase().includes('rate limit')) {
+          // REST secondary limits send retry-after; primary limits send x-ratelimit-reset
+          const retryAfterSec = parseInt(response.headers.get('retry-after') ?? '0', 10)
+          const resetSec = parseInt(response.headers.get('x-ratelimit-reset') ?? '0', 10)
+          const resetMs = retryAfterSec
+            ? Date.now() + retryAfterSec * 1000
+            : resetSec
+              ? resetSec * 1000 + 5_000
+              : Date.now() + 65_000
+          throw new FetchError('RATE_LIMIT', `Contents API rate limited on ${path}`, resetMs)
+        }
+      }
       throw new Error(`Unexpected status ${response.status} for ${path}`)
     } finally {
       clearTimeout(timeoutId)
@@ -65,6 +79,8 @@ async function fetchSecurityFileEnabled(
     ])
     return root || dotGithub
   } catch (err) {
+    // Rate limits propagate so the caller can park the installation and requeue the repo
+    if (err instanceof FetchError && err.kind === 'RATE_LIMIT') throw err
     log.warn(
       {
         url,
