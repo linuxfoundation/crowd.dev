@@ -13,6 +13,7 @@ import { ingestDependentCounts } from './ingestDependentCounts'
 import { ingestPackages } from './ingestPackages'
 import { ingestRepos } from './ingestRepos'
 import { ingestVersions } from './ingestVersions'
+import { ingestScorecard } from '../../scorecard/workflows'
 
 const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActivities<
   typeof depsDevActivities
@@ -222,6 +223,11 @@ export async function bootstrapOsspckgs(opts: {
           exportName: opts.exportName,
         },
       ],
+    })
+  }
+  if (runs('scorecard')) {
+    await executeChild(ingestScorecard, {
+      args: [{ runId, reuseExports: opts.reuseExports, exportName: opts.exportName }],
     })
   }
 }
