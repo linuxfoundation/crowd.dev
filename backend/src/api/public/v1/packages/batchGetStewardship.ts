@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { extractEcosystem, extractName } from './purl'
+import { MOCK_DETAILS } from './mockData'
 
 const MAX_PURLS = 100
 
@@ -15,35 +15,31 @@ const bodySchema = z.object({
     .max(MAX_PURLS, `Maximum ${MAX_PURLS} purls per request`),
 })
 
-interface StewardshipSummary {
-  name: string
-  ecosystem: string
-  lifecycle: string | null
-  health: number | null
-  impact: number | null
-  openVulns: { low: number; medium: number; high: number; critical: number } | null
-  stewardship: string
-  stewards: null
-  lastActivityAt: string | null
-  lastActivityDescription: string | null
-}
-
 // TODO: replace with real DB queries once stewardship tables land
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
   const { purls } = validateOrThrow(bodySchema, req.body)
 
-  const packages: Record<string, StewardshipSummary | null> = {}
+  const packages: Record<string, object | null> = {}
   for (const purl of purls) {
-    if (!purl.startsWith('pkg:')) {
+    const detail = MOCK_DETAILS[purl]
+    if (!detail) {
       packages[purl] = null
     } else {
+      const { openVulns } = detail.security.advisories.reduce(
+        (acc, a) => {
+          acc.openVulns[a.severity as keyof typeof acc.openVulns] =
+            (acc.openVulns[a.severity as keyof typeof acc.openVulns] ?? 0) + 1
+          return acc
+        },
+        { openVulns: { low: 0, medium: 0, high: 0, critical: 0 } },
+      )
       packages[purl] = {
-        name: extractName(purl),
-        ecosystem: extractEcosystem(purl),
-        lifecycle: null,
-        health: null,
-        impact: null,
-        openVulns: null,
+        name: detail.name,
+        ecosystem: detail.ecosystem,
+        lifecycle: detail.general.riskSignals.lifecycle,
+        health: detail.general.healthScore.total,
+        impact: detail.general.impact.impactScore,
+        openVulns,
         stewardship: 'unassigned',
         stewards: null,
         lastActivityAt: null,
