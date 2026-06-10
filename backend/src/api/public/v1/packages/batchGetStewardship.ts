@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { extractEcosystem, extractName } from './purl'
+
 const MAX_PURLS = 100
 
 const bodySchema = z.object({
@@ -26,12 +28,6 @@ interface StewardshipSummary {
   lastActivityDescription: string | null
 }
 
-function extractName(purl: string): string {
-  const lastSegment = purl.split('/').pop() ?? purl
-  const withoutVersion = lastSegment.split('@')[0]
-  return withoutVersion || purl
-}
-
 // TODO: replace with real DB queries once stewardship tables land
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
   const { purls } = validateOrThrow(bodySchema, req.body)
@@ -41,12 +37,9 @@ export async function batchGetStewardship(req: Request, res: Response): Promise<
     if (!purl.startsWith('pkg:')) {
       packages[purl] = null
     } else {
-      let ecosystem = 'unknown'
-      if (purl.startsWith('pkg:npm')) ecosystem = 'npm'
-      else if (purl.startsWith('pkg:maven')) ecosystem = 'maven'
       packages[purl] = {
         name: extractName(purl),
-        ecosystem,
+        ecosystem: extractEcosystem(purl),
         lifecycle: null,
         health: null,
         impact: null,

@@ -1,10 +1,12 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError } from '@crowd/common'
+import { BadRequestError, NotFoundError } from '@crowd/common'
 
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+
+import { extractEcosystem, extractName } from './purl'
 
 const paramsSchema = z.object({
   purl: z.string().trim().min(1),
@@ -18,7 +20,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   try {
     purl = decodeURIComponent(rawPurl)
   } catch {
-    throw new NotFoundError()
+    throw new BadRequestError('Invalid purl encoding')
   }
 
   if (!purl.startsWith('pkg:')) {
@@ -29,10 +31,8 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
 }
 
 function mockPackage(purl: string) {
-  const name = purl.split('/').pop()?.split('@')[0] || purl
-  let ecosystem = 'unknown'
-  if (purl.startsWith('pkg:npm')) ecosystem = 'npm'
-  else if (purl.startsWith('pkg:maven')) ecosystem = 'maven'
+  const name = extractName(purl)
+  const ecosystem = extractEcosystem(purl)
 
   return {
     purl,
