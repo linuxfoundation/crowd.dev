@@ -146,7 +146,8 @@ export async function fetchLightRepo(
   const resetSec = parseInt(response.headers.get('x-ratelimit-reset') ?? '0', 10)
   const resetMs = resetSec ? resetSec * 1000 + 5_000 : Date.now() + 65_000
 
-  if (response.status === 401) throw new FetchError('AUTH', `401 Unauthorized for ${url}`)
+  // 401 is requester/platform-side (bad token, GitHub auth incident) — never a repo signal
+  if (response.status === 401) throw new FetchError('TRANSIENT', `401 Unauthorized for ${url}`)
 
   if (response.status === 403) {
     const body = await response.text()
