@@ -105,7 +105,8 @@ components:
     StewardshipSummary:
       type: object
       description: Null if the purl is not found in CDP.
-      required: [name, ecosystem, stewardship, stewards, openVulns, lastActivityAt, lastActivityDescription]
+      required:
+        [name, ecosystem, stewardship, stewards, openVulns, lastActivityAt, lastActivityDescription]
       properties:
         name:
           type: string
