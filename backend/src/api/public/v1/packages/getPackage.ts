@@ -8,15 +8,13 @@ import { validateOrThrow } from '@/utils/validation'
 
 import { MOCK_DETAILS } from './mockData'
 
-const paramsSchema = z.object({
+const querySchema = z.object({
   purl: z.string().trim().min(1),
 })
 
 // TODO: replace with real DB queries once packages DB is wired into the backend
 export async function getPackage(req: Request, res: Response): Promise<void> {
-  // Express already decodes route params once; do not call decodeURIComponent again
-  // as it would mutate canonical purls (e.g. %40scope → @scope).
-  const { purl } = validateOrThrow(paramsSchema, req.params)
+  const { purl } = validateOrThrow(querySchema, req.query)
 
   if (!purl.startsWith('pkg:')) {
     throw new NotFoundError()

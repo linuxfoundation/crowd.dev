@@ -540,14 +540,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /packages/{purl}:
+  /packages/detail:
     get:
       operationId: getPackage
       summary: Get full package detail
       description: >
         Returns data for the drawer's Overview, Security, and Provenance tabs.
-        The `purl` parameter must be URL-encoded.
-        Example: `pkg:npm/lodash` → `pkg%3Anpm%2Flodash`.
+        Pass the canonical purl as a query parameter — no URL-encoding needed.
+        Example: `?purl=pkg:npm/lodash@4.17.21`.
       tags:
         - Packages
       security:
@@ -556,11 +556,11 @@ paths:
             - read:stewardships
       parameters:
         - name: purl
-          in: path
+          in: query
           required: true
           schema:
             type: string
-          example: pkg%3Anpm%2Flodash
+          example: 'pkg:npm/lodash@4.17.21'
       responses:
         '200':
           description: Package found.

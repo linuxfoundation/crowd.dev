@@ -32,7 +32,7 @@ export function packagesRouter(): Router {
   )
 
   router.get(
-    '/:purl',
+    '/detail',
     // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
     // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
     safeWrap(getPackage),
