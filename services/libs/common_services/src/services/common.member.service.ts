@@ -210,25 +210,20 @@ export class CommonMemberService extends LoggerBase {
     const currentEmployments = await findMemberWorkExperience(this.qx, memberId, timestamp)
     if (currentEmployments.length > 0) {
       let employments = currentEmployments
-    
+
       if (employments.length > 1) {
-        const organizationIds = [
-          ...new Set(employments.map((row) => row.organizationId)),
-        ]
-    
+        const organizationIds = [...new Set(employments.map((row) => row.organizationId))]
+
         const memberOrgDomains = await fetchManyOrganizationVerifiedPrimaryDomains(
           this.qx,
           organizationIds,
         )
-    
+
         // Also applies when step 2 found a domain but no matching member organization yet
         // (e.g. ingest before stint inference).
-        employments = preferCompanyOverUniversityWhenOverlapping(
-          employments,
-          memberOrgDomains,
-        )
+        employments = preferCompanyOverUniversityWhenOverlapping(employments, memberOrgDomains)
       }
-    
+
       return this.decidePrimaryOrganizationId(employments)
     }
 
