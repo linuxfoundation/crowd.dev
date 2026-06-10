@@ -30,7 +30,8 @@ export function v1Router(): Router {
     /^\/packages:batch-stewardship\/?$/,
     oauth2Middleware(AUTH0_CONFIG),
     packagesRateLimiter,
-    requireScopes([SCOPES.READ_STEWARDSHIPS]),
+    // TODO: restore once read:stewardships is added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_STEWARDSHIPS]),
     safeWrap(batchGetStewardship),
   )
   router.use('/packages', oauth2Middleware(AUTH0_CONFIG), packagesRouter())

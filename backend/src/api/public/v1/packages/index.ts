@@ -18,19 +18,22 @@ export function packagesRouter(): Router {
 
   router.get(
     '/',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
     safeWrap(listPackages),
   )
 
   router.get(
     '/metrics',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
     safeWrap(getPackagesMetrics),
   )
 
   router.get(
     '/:purl',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
     safeWrap(getPackage),
   )
 
