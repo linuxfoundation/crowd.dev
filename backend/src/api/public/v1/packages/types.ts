@@ -1,0 +1,40 @@
+export type StewardshipStatus =
+  | 'unassigned'
+  | 'open'
+  | 'assessing'
+  | 'active'
+  | 'needs_attention'
+  | 'escalated'
+  | 'blocked'
+  | 'inactive'
+
+export type Lifecycle = 'active' | 'stable' | 'declining' | 'abandoned'
+
+export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low'
+
+export interface OpenVulns {
+  low: number
+  medium: number
+  high: number
+  critical: number
+}
+
+export interface Steward {
+  userId: string
+  name: string
+  role: 'lead' | 'co_steward'
+  assignedAt: string
+}
+
+export interface StewardshipSummary {
+  name: string
+  ecosystem: string
+  lifecycle: Lifecycle | null
+  health: number | null
+  impact: number | null
+  openVulns: OpenVulns | null
+  stewardship: StewardshipStatus
+  stewards: Steward | null
+  lastActivityAt: string | null
+  lastActivityDescription: string | null
+}
