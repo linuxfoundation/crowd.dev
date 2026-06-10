@@ -128,10 +128,14 @@ class WriteBuffer {
   }
 
   async flush(): Promise<number> {
+    this.lastFlushAt = Date.now()
+    if (this.results.length === 0 && this.snapshots.length === 0 && this.skipUrls.length === 0) {
+      return 0
+    }
+
     const batch = [...this.results]
     const snapshotBatch = [...this.snapshots]
     const skips = [...this.skipUrls]
-    this.lastFlushAt = Date.now()
     this.flushing = true
     try {
       // The snapshot upsert also updates repos rows — run in one transaction to avoid
@@ -150,7 +154,9 @@ class WriteBuffer {
       log.error(
         {
           errCode: (err as { code?: string }).code,
+          errName: (err as Error).name,
           errMsg: (err as Error).message,
+          errStack: (err as Error).stack,
           flushFailures: this.flushFailures,
           bufferedResults: this.results.length,
           dropBatch,

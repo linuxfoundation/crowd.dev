@@ -66,7 +66,12 @@ async function fetchSecurityFileEnabled(
     return root || dotGithub
   } catch (err) {
     log.warn(
-      { url, errName: (err as Error).name, errMsg: (err as Error).message },
+      {
+        url,
+        errName: (err as Error).name,
+        errMsg: (err as Error).message,
+        errStack: (err as Error).stack,
+      },
       'Security file check failed — securityFileEnabled will be null',
     )
     return null
