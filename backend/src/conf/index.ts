@@ -82,6 +82,10 @@ export const PRODUCT_DB_CONFIG: IDatabaseConfig = config.has('productDb')
   ? config.get<IDatabaseConfig>('productDb')
   : undefined
 
+export const PACKAGES_DB_CONFIG: IDatabaseConfig | undefined = config.has('packagesDb')
+  ? config.get<IDatabaseConfig>('packagesDb')
+  : undefined
+
 export const SEGMENT_CONFIG: SegmentConfiguration = config.get<SegmentConfiguration>('segment')
 
 export const COMPREHEND_CONFIG: ComprehendConfiguration =
