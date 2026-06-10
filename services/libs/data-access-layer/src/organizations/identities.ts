@@ -146,7 +146,7 @@ export async function upsertOrgIdentities(
 
 export type OrganizationVerifiedPrimaryDomains = {
   orgId: string
-  displayName: string
+  displayName: string | null
   domains: string[]
 }
 
@@ -204,7 +204,7 @@ export function preferCompanyOverUniversityWhenOverlapping<T extends { organizat
 
     // If we find the org, check if it's a university based on name or .edu domain
     const isUniversity = org
-      ? org.displayName.toLowerCase().includes('university') ||
+      ? (org.displayName?.includes('university') ?? false) ||
         org.domains.some((d) => d.endsWith('.edu'))
       : false
 
