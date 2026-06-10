@@ -16,6 +16,7 @@ const MAX_RETRIES = 3
 const DB_FETCH_SIZE = 2000
 const WRITE_FLUSH_SIZE = 500
 const WRITE_FLUSH_MS = 5000
+const MAX_FLUSH_FAILURES = 3
 
 // ─── Token selection ─────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ class WriteBuffer {
   private skipUrls: string[] = []
   private lastFlushAt = Date.now()
   private flushing = false
+  private flushFailures = 0
 
   constructor(private readonly qx: QueryExecutor) {}
 
@@ -118,6 +120,13 @@ class WriteBuffer {
     )
   }
 
+  private clearBatch(resultCount: number, snapshotCount: number, skipCount: number): void {
+    this.results.splice(0, resultCount)
+    this.snapshots.splice(0, snapshotCount)
+    this.skipUrls.splice(0, skipCount)
+    this.flushFailures = 0
+  }
+
   async flush(): Promise<number> {
     const batch = [...this.results]
     const snapshotBatch = [...this.snapshots]
@@ -125,19 +134,36 @@ class WriteBuffer {
     this.lastFlushAt = Date.now()
     this.flushing = true
     try {
-      await Promise.all([
-        bulkUpdateEnrichedRepos(this.qx, batch),
-        bulkUpsertRepoActivitySnapshot(this.qx, snapshotBatch),
-        markReposSkipped(this.qx, skips),
-      ])
-      // Clear only after all writes succeed — preserves items if the DB call throws
-      this.results.splice(0, batch.length)
-      this.snapshots.splice(0, snapshotBatch.length)
-      this.skipUrls.splice(0, skips.length)
+      // The snapshot upsert also updates repos rows — run in one transaction to avoid
+      // deadlocking with bulkUpdateEnrichedRepos on overlapping rows (40P01)
+      await this.qx.tx(async (tx) => {
+        await bulkUpdateEnrichedRepos(tx, batch)
+        await markReposSkipped(tx, skips)
+        await bulkUpsertRepoActivitySnapshot(tx, snapshotBatch)
+      })
+      this.clearBatch(batch.length, snapshotBatch.length, skips.length)
+      return batch.length
+    } catch (err) {
+      this.flushFailures++
+      // Dropping is safe: the rolled-back repos stay unsynced, so the next sweep retries them
+      const dropBatch = this.flushFailures >= MAX_FLUSH_FAILURES
+      log.error(
+        {
+          errCode: (err as { code?: string }).code,
+          errMsg: (err as Error).message,
+          flushFailures: this.flushFailures,
+          bufferedResults: this.results.length,
+          dropBatch,
+        },
+        dropBatch
+          ? 'Flush failed repeatedly — dropping batch, repos will be re-enriched next sweep'
+          : 'Flush failed — will retry on next cycle',
+      )
+      if (dropBatch) this.clearBatch(batch.length, snapshotBatch.length, skips.length)
+      return 0
     } finally {
       this.flushing = false
     }
-    return batch.length
   }
 }
 
@@ -202,7 +228,7 @@ async function runStreamingPool(
       })
       .catch((err) => {
         pendingFetch = null
-        log.warn({ err }, 'DB batch fetch failed, will retry')
+        log.warn({ errMsg: (err as Error).message }, 'DB batch fetch failed, will retry')
       })
   }
 
@@ -306,7 +332,15 @@ async function runStreamingPool(
             )
             queue.unshift(row)
           } else {
-            log.error({ url: row.url, err }, 'Unexpected error')
+            log.error(
+              {
+                url: row.url,
+                errName: (err as Error).name,
+                errMsg: (err as Error).message,
+                errStack: (err as Error).stack,
+              },
+              'Unexpected error while enriching repo',
+            )
           }
         }
 
