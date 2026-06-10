@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError } from '@crowd/common'
+import { BadRequestError, NotFoundError } from '@crowd/common'
 
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
@@ -17,7 +17,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   const { purl } = validateOrThrow(querySchema, req.query)
 
   if (!purl.startsWith('pkg:')) {
-    throw new NotFoundError()
+    throw new BadRequestError('Invalid purl format: must start with pkg:')
   }
 
   const detail = MOCK_DETAILS[purl]

@@ -104,7 +104,6 @@ components:
     # Lean shape used in batch response and list items.
     StewardshipSummary:
       type: object
-      nullable: true
       description: Null if the purl is not found in CDP.
       required: [name, ecosystem, stewardship, stewards, lastActivityAt, lastActivityDescription]
       properties:
@@ -115,36 +114,41 @@ components:
           type: string
           example: npm
         lifecycle:
-          type: string
-          enum: [active, stable, declining, abandoned]
-          nullable: true
+          type:
+            - string
+            - 'null'
+          enum: [active, stable, declining, abandoned, null]
         health:
-          type: integer
-          nullable: true
+          type:
+            - integer
+            - 'null'
           example: 52
         impact:
-          type: integer
-          nullable: true
+          type:
+            - integer
+            - 'null'
           example: 94
         openVulns:
-          $ref: '#/components/schemas/OpenVulns'
-          nullable: true
+          oneOf:
+            - $ref: '#/components/schemas/OpenVulns'
+            - type: 'null'
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
-          nullable: true
           description: Single steward or null. Empty in v1.
           oneOf:
             - $ref: '#/components/schemas/Steward'
             - type: 'null'
         lastActivityAt:
-          type: string
+          type:
+            - string
+            - 'null'
           format: date-time
-          nullable: true
           description: Null in v1.
         lastActivityDescription:
-          type: string
-          nullable: true
+          type:
+            - string
+            - 'null'
           description: Null in v1.
 
     # ── Package list item ────────────────────────────────────────────────────────
@@ -155,7 +159,7 @@ components:
       properties:
         purl:
           type: string
-          description: Used to call GET /packages/{purl} when a row is clicked.
+          description: Used to call GET /packages/detail?purl= when a row is clicked.
           example: pkg:npm/lodash
         name:
           type: string
@@ -164,28 +168,32 @@ components:
           type: string
           example: npm
         health:
-          type: integer
-          nullable: true
+          type:
+            - integer
+            - 'null'
           example: 18
         impact:
-          type: integer
-          nullable: true
+          type:
+            - integer
+            - 'null'
           example: 71
         lifecycle:
-          type: string
-          nullable: true
-          enum: [active, stable, declining, abandoned]
+          type:
+            - string
+            - 'null'
+          enum: [active, stable, declining, abandoned, null]
         maintainerBusFactor:
-          type: integer
-          nullable: true
+          type:
+            - integer
+            - 'null'
           example: 1
         openVulns:
-          $ref: '#/components/schemas/OpenVulns'
-          nullable: true
+          oneOf:
+            - $ref: '#/components/schemas/OpenVulns'
+            - type: 'null'
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         steward:
-          nullable: true
           description: Single assigned steward or null.
           oneOf:
             - $ref: '#/components/schemas/Steward'
@@ -205,8 +213,9 @@ components:
           type: string
           enum: [critical, high, medium, low]
         resolution:
-          type: string
-          nullable: true
+          type:
+            - string
+            - 'null'
           description: Resolution status. TBD.
 
     SecurityContact:
@@ -214,12 +223,14 @@ components:
       required: [name]
       properties:
         name:
-          type: string
-          nullable: true
+          type:
+            - string
+            - 'null'
         email:
-          type: string
+          type:
+            - string
+            - 'null'
           format: email
-          nullable: true
 
     PackageDetail:
       type: object
@@ -238,73 +249,90 @@ components:
           type: object
           properties:
             healthScore:
-              type: object
-              nullable: true
+              type:
+                - object
+                - 'null'
               properties:
                 maintainerHealth:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 4
                 securitySupplyChain:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 8
                 developmentActivity:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 6
                 total:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 18
             impact:
-              type: object
-              nullable: true
+              type:
+                - object
+                - 'null'
               properties:
                 impactScore:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 71
                 downloadsLastMonth:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   description: Null for Maven (Sonatype data not yet ingested).
                   example: 52142891
                 dependentPackages:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 142312
                 dependentRepos:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 39104
                 transitiveReach:
-                  type: string
-                  nullable: true
+                  type:
+                    - string
+                    - 'null'
                   example: 'Top 0.4%'
             riskSignals:
-              type: object
-              nullable: true
+              type:
+                - object
+                - 'null'
               properties:
                 lifecycle:
-                  type: string
-                  nullable: true
-                  enum: [active, stable, declining, abandoned]
+                  type:
+                    - string
+                    - 'null'
+                  enum: [active, stable, declining, abandoned, null]
                 maintainerBusFactor:
-                  type: integer
-                  nullable: true
+                  type:
+                    - integer
+                    - 'null'
                   example: 1
                 lastRelease:
-                  type: string
+                  type:
+                    - string
+                    - 'null'
                   format: date-time
-                  nullable: true
                 hasSecurityFile:
-                  type: boolean
-                  nullable: true
+                  type:
+                    - boolean
+                    - 'null'
                 openSSFScorecard:
-                  type: number
+                  type:
+                    - number
+                    - 'null'
                   format: float
-                  nullable: true
                   example: 5.2
         assessment:
           type: object
@@ -313,8 +341,9 @@ components:
           type: object
           properties:
             securityContacts:
-              type: array
-              nullable: true
+              type:
+                - array
+                - 'null'
               items:
                 $ref: '#/components/schemas/SecurityContact'
             advisories:
@@ -326,52 +355,62 @@ components:
               description: Coordinated Vulnerability Disclosure readiness signals.
               properties:
                 isPvrEnabled:
-                  type: boolean
-                  nullable: true
+                  type:
+                    - boolean
+                    - 'null'
                   description: Private Vulnerability Reporting enabled. Null in v1.
                 hasSecurityPolicyEnabled:
-                  type: boolean
-                  nullable: true
+                  type:
+                    - boolean
+                    - 'null'
                   description: SECURITY.md present in repo. Null until enricher captures this.
                 tier0Steward:
-                  type: string
-                  nullable: true
+                  type:
+                    - string
+                    - 'null'
                   description: Name of the Tier 0 steward if assigned. Null in v1.
                 criticalVulnerabilityFlag:
-                  type: boolean
-                  nullable: true
+                  type:
+                    - boolean
+                    - 'null'
                   description: True if any open advisory has cvss >= 7.0.
         provenance:
           type: object
           properties:
             repositoryMapping:
-              type: object
-              nullable: true
+              type:
+                - object
+                - 'null'
               properties:
                 declaredRepo:
-                  type: string
+                  type:
+                    - string
+                    - 'null'
                   format: uri
-                  nullable: true
                   example: https://github.com/lodash/lodash
                 mappingConfidence:
-                  type: number
+                  type:
+                    - number
+                    - 'null'
                   format: float
-                  nullable: true
                   example: 0.98
                 lastCommitAt:
-                  type: string
+                  type:
+                    - string
+                    - 'null'
                   format: date-time
-                  nullable: true
             supplyChainIntegrity:
               type: object
               description: All fields null in v1 — separate ingestion workstream required.
               properties:
                 buildProvenance:
-                  type: string
-                  nullable: true
+                  type:
+                    - string
+                    - 'null'
                 signedReleases:
-                  type: string
-                  nullable: true
+                  type:
+                    - string
+                    - 'null'
         history:
           type: object
           description: Package history data. Empty in v1.
@@ -475,11 +514,13 @@ paths:
                     type: object
                     properties:
                       ecosystem:
-                        type: string
-                        nullable: true
+                        type:
+                          - string
+                          - 'null'
                       lifecycle:
-                        type: string
-                        nullable: true
+                        type:
+                          - string
+                          - 'null'
                       busFactor1Only:
                         type: boolean
                       staleOnly:
@@ -497,6 +538,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/PackageListItem'
+        '400':
+          description: Validation error (e.g. invalid query parameters).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Missing or invalid bearer token.
           content:
@@ -636,7 +683,7 @@ paths:
       summary: Batch stewardship state for a list of purls
       description: >
         Returns lean stewardship state for up to 100 purls in one request.
-        Purls not found in CDP return `null`. Always returns HTTP 200.
+        Purls not found in CDP return `null`.
       tags:
         - Stewardship
       security:

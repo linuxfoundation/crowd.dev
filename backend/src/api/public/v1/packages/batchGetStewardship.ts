@@ -40,7 +40,9 @@ export async function batchGetStewardship(req: Request, res: Response): Promise<
     } else {
       const openVulns = { low: 0, medium: 0, high: 0, critical: 0 }
       for (const advisory of detail.security.advisories) {
-        openVulns[advisory.severity] += 1
+        if (advisory.severity in openVulns) {
+          openVulns[advisory.severity] += 1
+        }
       }
       packages[purl] = {
         name: detail.name,
