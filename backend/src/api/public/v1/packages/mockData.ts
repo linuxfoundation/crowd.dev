@@ -16,15 +16,41 @@ export interface MockPackageDetail {
   name: string
   ecosystem: string
   general: {
-    healthScore: { maintainerHealth: number; securitySupplyChain: number; developmentActivity: number; total: number }
-    impact: { impactScore: number; downloadsLastMonth: number | null; dependentPackages: number; dependentRepos: number; transitiveReach: string }
-    riskSignals: { lifecycle: string; maintainerBusFactor: number; lastRelease: string; hasSecurityFile: null; openSSFScorecard: number }
+    healthScore: {
+      maintainerHealth: number
+      securitySupplyChain: number
+      developmentActivity: number
+      total: number
+    }
+    impact: {
+      impactScore: number
+      downloadsLastMonth: number | null
+      dependentPackages: number
+      dependentRepos: number
+      transitiveReach: string
+    }
+    riskSignals: {
+      lifecycle: string
+      maintainerBusFactor: number
+      lastRelease: string
+      hasSecurityFile: null
+      openSSFScorecard: number
+    }
   }
   assessment: Record<string, never>
   security: {
     securityContacts: null
-    advisories: Array<{ osvId: string; severity: 'critical' | 'high' | 'medium' | 'low'; resolution: null }>
-    cvd: { isPvrEnabled: null; hasSecurityPolicyEnabled: null; tier0Steward: null; criticalVulnerabilityFlag: boolean }
+    advisories: Array<{
+      osvId: string
+      severity: 'critical' | 'high' | 'medium' | 'low'
+      resolution: null
+    }>
+    cvd: {
+      isPvrEnabled: null
+      hasSecurityPolicyEnabled: null
+      tier0Steward: null
+      criticalVulnerabilityFlag: boolean
+    }
   }
   provenance: {
     repositoryMapping: { declaredRepo: string; mappingConfidence: number; lastCommitAt: string }
@@ -78,18 +104,44 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
     name: 'lodash',
     ecosystem: 'npm',
     general: {
-      healthScore: { maintainerHealth: 4, securitySupplyChain: 8, developmentActivity: 6, total: 18 },
-      impact: { impactScore: 71, downloadsLastMonth: 52142891, dependentPackages: 142312, dependentRepos: 39104, transitiveReach: 'Top 0.4%' },
-      riskSignals: { lifecycle: 'declining', maintainerBusFactor: 1, lastRelease: '2021-02-20T00:00:00Z', hasSecurityFile: null, openSSFScorecard: 5.2 },
+      healthScore: {
+        maintainerHealth: 4,
+        securitySupplyChain: 8,
+        developmentActivity: 6,
+        total: 18,
+      },
+      impact: {
+        impactScore: 71,
+        downloadsLastMonth: 52142891,
+        dependentPackages: 142312,
+        dependentRepos: 39104,
+        transitiveReach: 'Top 0.4%',
+      },
+      riskSignals: {
+        lifecycle: 'declining',
+        maintainerBusFactor: 1,
+        lastRelease: '2021-02-20T00:00:00Z',
+        hasSecurityFile: null,
+        openSSFScorecard: 5.2,
+      },
     },
     assessment: {},
     security: {
       securityContacts: null,
       advisories: [{ osvId: 'CVE-2021-44906', severity: 'high', resolution: null }],
-      cvd: { isPvrEnabled: null, hasSecurityPolicyEnabled: null, tier0Steward: null, criticalVulnerabilityFlag: false },
+      cvd: {
+        isPvrEnabled: null,
+        hasSecurityPolicyEnabled: null,
+        tier0Steward: null,
+        criticalVulnerabilityFlag: false,
+      },
     },
     provenance: {
-      repositoryMapping: { declaredRepo: 'https://github.com/lodash/lodash', mappingConfidence: 0.98, lastCommitAt: '2024-09-14T00:00:00Z' },
+      repositoryMapping: {
+        declaredRepo: 'https://github.com/lodash/lodash',
+        mappingConfidence: 0.98,
+        lastCommitAt: '2024-09-14T00:00:00Z',
+      },
       supplyChainIntegrity: { buildProvenance: null, signedReleases: null },
     },
     history: {},
@@ -99,18 +151,44 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
     name: 'commons-lang3',
     ecosystem: 'maven',
     general: {
-      healthScore: { maintainerHealth: 18, securitySupplyChain: 22, developmentActivity: 22, total: 62 },
-      impact: { impactScore: 88, downloadsLastMonth: null, dependentPackages: 89421, dependentRepos: 21033, transitiveReach: 'Top 1.2%' },
-      riskSignals: { lifecycle: 'stable', maintainerBusFactor: 3, lastRelease: '2022-11-05T00:00:00Z', hasSecurityFile: null, openSSFScorecard: 7.1 },
+      healthScore: {
+        maintainerHealth: 18,
+        securitySupplyChain: 22,
+        developmentActivity: 22,
+        total: 62,
+      },
+      impact: {
+        impactScore: 88,
+        downloadsLastMonth: null,
+        dependentPackages: 89421,
+        dependentRepos: 21033,
+        transitiveReach: 'Top 1.2%',
+      },
+      riskSignals: {
+        lifecycle: 'stable',
+        maintainerBusFactor: 3,
+        lastRelease: '2022-11-05T00:00:00Z',
+        hasSecurityFile: null,
+        openSSFScorecard: 7.1,
+      },
     },
     assessment: {},
     security: {
       securityContacts: null,
       advisories: [],
-      cvd: { isPvrEnabled: null, hasSecurityPolicyEnabled: null, tier0Steward: null, criticalVulnerabilityFlag: false },
+      cvd: {
+        isPvrEnabled: null,
+        hasSecurityPolicyEnabled: null,
+        tier0Steward: null,
+        criticalVulnerabilityFlag: false,
+      },
     },
     provenance: {
-      repositoryMapping: { declaredRepo: 'https://github.com/apache/commons-lang', mappingConfidence: 0.99, lastCommitAt: '2024-10-01T00:00:00Z' },
+      repositoryMapping: {
+        declaredRepo: 'https://github.com/apache/commons-lang',
+        mappingConfidence: 0.99,
+        lastCommitAt: '2024-10-01T00:00:00Z',
+      },
       supplyChainIntegrity: { buildProvenance: null, signedReleases: null },
     },
     history: {},
@@ -120,9 +198,26 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
     name: 'minimist',
     ecosystem: 'npm',
     general: {
-      healthScore: { maintainerHealth: 2, securitySupplyChain: 4, developmentActivity: 6, total: 12 },
-      impact: { impactScore: 95, downloadsLastMonth: 102381944, dependentPackages: 321042, dependentRepos: 87231, transitiveReach: 'Top 0.1%' },
-      riskSignals: { lifecycle: 'abandoned', maintainerBusFactor: 1, lastRelease: '2022-03-17T00:00:00Z', hasSecurityFile: null, openSSFScorecard: 2.1 },
+      healthScore: {
+        maintainerHealth: 2,
+        securitySupplyChain: 4,
+        developmentActivity: 6,
+        total: 12,
+      },
+      impact: {
+        impactScore: 95,
+        downloadsLastMonth: 102381944,
+        dependentPackages: 321042,
+        dependentRepos: 87231,
+        transitiveReach: 'Top 0.1%',
+      },
+      riskSignals: {
+        lifecycle: 'abandoned',
+        maintainerBusFactor: 1,
+        lastRelease: '2022-03-17T00:00:00Z',
+        hasSecurityFile: null,
+        openSSFScorecard: 2.1,
+      },
     },
     assessment: {},
     security: {
@@ -131,10 +226,19 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
         { osvId: 'CVE-2021-44906', severity: 'critical', resolution: null },
         { osvId: 'CVE-2020-7598', severity: 'medium', resolution: null },
       ],
-      cvd: { isPvrEnabled: null, hasSecurityPolicyEnabled: null, tier0Steward: null, criticalVulnerabilityFlag: true },
+      cvd: {
+        isPvrEnabled: null,
+        hasSecurityPolicyEnabled: null,
+        tier0Steward: null,
+        criticalVulnerabilityFlag: true,
+      },
     },
     provenance: {
-      repositoryMapping: { declaredRepo: 'https://github.com/minimistjs/minimist', mappingConfidence: 0.97, lastCommitAt: '2022-03-17T00:00:00Z' },
+      repositoryMapping: {
+        declaredRepo: 'https://github.com/minimistjs/minimist',
+        mappingConfidence: 0.97,
+        lastCommitAt: '2022-03-17T00:00:00Z',
+      },
       supplyChainIntegrity: { buildProvenance: null, signedReleases: null },
     },
     history: {},

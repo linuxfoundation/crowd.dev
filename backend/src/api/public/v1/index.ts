@@ -4,9 +4,9 @@ import { NotFoundError } from '@crowd/common'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
+
 // TODO: restore once read:stewardships is added to Auth0 staging tenant
 // import { SCOPES } from '@/security/scopes'
-
 import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 // import { requireScopes } from '../middlewares/requireScopes'

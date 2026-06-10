@@ -4,8 +4,8 @@ import { createRateLimiter } from '@/api/apiRateLimiter'
 // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
 // import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
-// import { SCOPES } from '@/security/scopes'
 
+// import { SCOPES } from '@/security/scopes'
 import { getPackage } from './getPackage'
 import { getPackagesMetrics } from './getPackagesMetrics'
 import { listPackages } from './listPackages'

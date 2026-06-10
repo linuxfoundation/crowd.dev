@@ -28,8 +28,17 @@ const querySchema = z.object({
 
 // TODO: replace with real DB queries once packages DB is wired into the backend
 export async function listPackages(req: Request, res: Response): Promise<void> {
-  const { page, pageSize, ecosystem, lifecycle, busFactor1Only, staleOnly, unstewardedOnly, sortBy, sortDir } =
-    validateOrThrow(querySchema, req.query)
+  const {
+    page,
+    pageSize,
+    ecosystem,
+    lifecycle,
+    busFactor1Only,
+    staleOnly,
+    unstewardedOnly,
+    sortBy,
+    sortDir,
+  } = validateOrThrow(querySchema, req.query)
 
   const staleThreshold = new Date()
   staleThreshold.setMonth(staleThreshold.getMonth() - STALE_MONTHS)
