@@ -24,7 +24,7 @@ DESCRIPTION >
     - `dependentCount` is the number of packages that directly depend on this package (0 if unknown).
     - `transitiveDependentCount` is the number of packages that transitively depend on this package (0 if unknown).
     - `dependentReposCount` is the number of repositories that depend on this package (0 if unknown).
-    - `hasCriticalVulnerability` is 1 if the latest version has an active critical advisory (CVSS >= 7.0), 0 otherwise.
+    - `hasCriticalVulnerability` is 1 if the latest version has an active critical advisory (CVSS >= 7.0) or a MAL-* malicious-package advisory match, 0 otherwise.
     - `impact` is the composite criticality impact score from the ranking function (0 if not yet ranked).
     - `isCritical` is 1 if this package ranks in the top N by ecosystem in the most recent ranking pass, 0 otherwise.
     - `lastRankPassAt` is when the criticality ranking worker last processed this package (NULL if never ranked).
