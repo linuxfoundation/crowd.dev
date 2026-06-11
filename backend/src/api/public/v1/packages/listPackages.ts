@@ -33,7 +33,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     page,
     pageSize,
     ecosystem,
-    lifecycle,
+    lifecycle: _lifecycle,
     busFactor1Only,
     staleOnly,
     unstewardedOnly,
