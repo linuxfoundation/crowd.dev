@@ -94,6 +94,11 @@ export async function listPackagesForApi(
     conditions.push(`(s.status = 'unassigned' OR s.id IS NULL)`)
   }
 
+  if (opts.busFactor1Only) {
+    // References pm_counts LATERAL join below — computed once, used in both WHERE and SELECT
+    conditions.push(`pm_counts.cnt = 1`)
+  }
+
   const where = `WHERE ${conditions.join(' AND ')}`
 
   // health is a v2 field — fall back to name sort
@@ -103,8 +108,8 @@ export async function listPackagesForApi(
   else sortExpr = 'LOWER(p.name)'
   const sortDir = opts.sortDir === 'desc' ? 'DESC' : 'ASC'
 
-  params.limit = opts.pageSize
-  params.offset = (opts.page - 1) * opts.pageSize
+  // Separate paginated params from filter-only params used by the fallback COUNT query
+  const queryParams = { ...params, limit: opts.pageSize, offset: (opts.page - 1) * opts.pageSize }
 
   const rows: PackageListRow[] = await qx.select(
     `
@@ -115,21 +120,42 @@ export async function listPackagesForApi(
       p.impact AS "criticalityScore",
       s.status AS "stewardshipStatus",
       COALESCE(ap_counts.cnt, 0) AS "openVulns",
-      (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
+      pm_counts.cnt AS "maintainerCount",
       COUNT(*) OVER() AS total
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
     LEFT JOIN LATERAL (
       SELECT COUNT(*)::int AS cnt FROM advisory_packages WHERE package_id = p.id
     ) ap_counts ON true
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS cnt FROM package_maintainers pm WHERE pm.package_id = p.id
+    ) pm_counts ON true
     ${where}
     ORDER BY ${sortExpr} ${sortDir} NULLS LAST, p.purl ${sortDir}
     LIMIT $(limit) OFFSET $(offset)
     `,
-    params,
+    queryParams,
   )
 
-  const total = rows.length > 0 ? parseInt(rows[0].total, 10) : 0
+  let total: number
+  if (rows.length > 0) {
+    total = parseInt(rows[0].total, 10)
+  } else {
+    // Window function returns no rows when the page is beyond the result set.
+    // Fall back to a separate COUNT so the caller always gets the real total.
+    const countRow: { count: string } = await qx.selectOne(
+      `SELECT COUNT(*)::text AS count
+       FROM packages p
+       LEFT JOIN stewardships s ON s.package_id = p.id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS cnt FROM package_maintainers pm WHERE pm.package_id = p.id
+       ) pm_counts ON true
+       ${where}`,
+      params,
+    )
+    total = parseInt(countRow.count, 10)
+  }
+
   return { rows, total }
 }
 
