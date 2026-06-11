@@ -23,6 +23,7 @@ const REPO_QUERY = `
       isFork
       createdAt
       isSecurityPolicyEnabled
+      defaultBranchRef { name }
     }
   }
 `
@@ -94,6 +95,105 @@ async function fetchSecurityFileEnabled(
   }
 }
 
+interface BranchProtection {
+  enabled: boolean | null
+  requiredReviews: number | null
+  requiresStatusChecks: boolean | null
+  allowsForcePush: boolean | null
+}
+
+const UNKNOWN_PROTECTION: BranchProtection = {
+  enabled: null,
+  requiredReviews: null,
+  requiresStatusChecks: null,
+  allowsForcePush: null,
+}
+
+interface BranchRule {
+  type: string
+  parameters?: { required_approving_review_count?: number }
+}
+
+async function restGet(path: string, token: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(`${GITHUB_API_URL}${path}`, {
+      headers: { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' },
+      signal: controller.signal,
+    })
+    if (response.status === 403) {
+      const body = await response.text()
+      if (body.toLowerCase().includes('rate limit')) {
+        const retryAfterSec = parseInt(response.headers.get('retry-after') ?? '0', 10)
+        const resetSec = parseInt(response.headers.get('x-ratelimit-reset') ?? '0', 10)
+        const resetMs = retryAfterSec
+          ? Date.now() + retryAfterSec * 1000
+          : resetSec
+            ? resetSec * 1000 + 5_000
+            : Date.now() + 65_000
+        throw new FetchError('RATE_LIMIT', `Rate limited on ${path}`, resetMs)
+      }
+    }
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function fetchBranchProtection(
+  url: string,
+  owner: string,
+  name: string,
+  branch: string,
+  token: string,
+  timeoutMs: number,
+): Promise<BranchProtection> {
+  try {
+    const branchResp = await restGet(
+      `/repos/${owner}/${name}/branches/${encodeURIComponent(branch)}`,
+      token,
+      timeoutMs,
+    )
+    if (branchResp.status !== 200) return UNKNOWN_PROTECTION
+
+    const { protected: isProtected } = (await branchResp.json()) as { protected?: boolean }
+    if (!isProtected) {
+      return {
+        enabled: false,
+        requiredReviews: 0,
+        requiresStatusChecks: false,
+        allowsForcePush: true,
+      }
+    }
+
+    const rulesResp = await restGet(
+      `/repos/${owner}/${name}/rules/branches/${encodeURIComponent(branch)}`,
+      token,
+      timeoutMs,
+    )
+    if (rulesResp.status !== 200) return { ...UNKNOWN_PROTECTION, enabled: true }
+
+    const rules = (await rulesResp.json()) as BranchRule[]
+    if (rules.length === 0) return { ...UNKNOWN_PROTECTION, enabled: true }
+
+    const pullRequestRule = rules.find((r) => r.type === 'pull_request')
+    return {
+      enabled: true,
+      requiredReviews: pullRequestRule?.parameters?.required_approving_review_count ?? null,
+      requiresStatusChecks: rules.some((r) => r.type === 'required_status_checks') ? true : null,
+      allowsForcePush: rules.some((r) => r.type === 'non_fast_forward') ? false : null,
+    }
+  } catch (err) {
+    if (err instanceof FetchError && err.kind === 'RATE_LIMIT') throw err
+    log.warn(
+      { url, errName: (err as Error).name, errMsg: (err as Error).message },
+      'Branch protection check failed — fields will be null',
+    )
+    return UNKNOWN_PROTECTION
+  }
+}
+
 interface RepoGraphqlResponse {
   data?: {
     rateLimit: { limit: number; cost: number; remaining: number; resetAt: string }
@@ -111,6 +211,7 @@ interface RepoGraphqlResponse {
       isFork: boolean
       createdAt: string
       isSecurityPolicyEnabled: boolean
+      defaultBranchRef: { name: string } | null
     } | null
   }
   errors?: Array<{ type?: string; message?: string }>
@@ -177,6 +278,11 @@ export async function fetchLightRepo(
   const repo = json.data?.repository
   if (!repo) throw new FetchError('NOT_FOUND', `No repository data for ${url}`)
 
+  const defaultBranch = repo.defaultBranchRef?.name ?? null
+  const branchProtection = defaultBranch
+    ? await fetchBranchProtection(url, owner, name, defaultBranch, token, timeoutMs)
+    : UNKNOWN_PROTECTION
+
   return {
     url,
     host: 'github',
@@ -198,6 +304,10 @@ export async function fetchLightRepo(
     createdAt: repo.createdAt ?? null,
     securityPolicyEnabled: repo.isSecurityPolicyEnabled ?? null,
     securityFileEnabled,
+    branchProtectionEnabled: branchProtection.enabled,
+    branchProtectionRequiredReviews: branchProtection.requiredReviews,
+    branchProtectionRequiresStatusChecks: branchProtection.requiresStatusChecks,
+    branchProtectionAllowsForcePush: branchProtection.allowsForcePush,
     rateLimit: json.data?.rateLimit ?? null,
   }
 }
