@@ -9,7 +9,12 @@ import {
 } from './schedules/scheduleCleanup'
 
 const config: Config = {
-  envvars: ['CROWD_TINYBIRD_ACCESS_TOKEN'],
+  envvars: [
+    'CROWD_TINYBIRD_ACCESS_TOKEN',
+    'CROWD_API_SERVICE_URL',
+    'CROWD_API_SERVICE_USER_TOKEN',
+    'CROWD_LF_AGENT_USER_ID',
+  ],
   producer: {
     enabled: false,
   },

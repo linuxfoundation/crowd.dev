@@ -5,7 +5,13 @@ import { scheduleGenerateMemberMergeSuggestions } from './schedules/memberMergeS
 import { scheduleGenerateOrganizationMergeSuggestions } from './schedules/organizationMergeSuggestions'
 
 const config: Config = {
-  envvars: [],
+  envvars: [
+    'CROWD_AWS_BEDROCK_ACCESS_KEY_ID',
+    'CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY',
+    'CROWD_API_SERVICE_URL',
+    'CROWD_API_SERVICE_USER_TOKEN',
+    'CROWD_LF_AGENT_USER_ID',
+  ],
   producer: {
     enabled: false,
   },
