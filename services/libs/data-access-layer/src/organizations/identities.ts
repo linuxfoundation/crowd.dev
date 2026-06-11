@@ -173,7 +173,6 @@ export async function fetchManyOrganizationVerifiedPrimaryDomains(
       WHERE oi."organizationId" IN ($(organizationIds:csv))
         AND oi.type = 'primary-domain'
         AND oi.verified = true
-        AND btrim(oi.value) <> ''
       GROUP BY oi."organizationId", o."displayName"
     `,
     { organizationIds },
