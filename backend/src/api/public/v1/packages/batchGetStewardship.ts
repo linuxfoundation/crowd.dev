@@ -37,7 +37,8 @@ export async function batchGetStewardship(req: Request, res: Response): Promise<
         ecosystem: row.ecosystem,
         lifecycle: null,
         health: null,
-        impact: row.criticalityScore != null ? Math.round(Number(row.criticalityScore)) : null,
+        impact:
+          row.criticalityScore != null ? Math.round(Number(row.criticalityScore) * 100) : null,
         openVulns: null,
         stewardship: (row.stewardshipStatus ?? 'unassigned') as StewardshipSummary['stewardship'],
         stewards: null,

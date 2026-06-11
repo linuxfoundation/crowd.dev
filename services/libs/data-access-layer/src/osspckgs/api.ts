@@ -9,6 +9,7 @@ export async function getPackageMetrics(qx: QueryExecutor): Promise<PackageMetri
   const row: { total: string; critical: string } = await qx.selectOne(`
     SELECT
       COUNT(*) AS total,
+      -- TODO: confirm with product whether "critical" here means health=critical, not has_critical_vulnerability
       COUNT(*) FILTER (WHERE has_critical_vulnerability = true) AS critical
     FROM packages
     WHERE is_critical = true
@@ -55,6 +56,7 @@ export interface PackageListRow {
   criticalityScore: number | null
   stewardshipStatus: string | null
   latestReleaseAt: Date | null
+  openVulns: number | null
   total: string
 }
 
@@ -64,7 +66,7 @@ export interface ListPackagesOptions {
   ecosystem?: string
   staleOnly: boolean
   unstewardedOnly: boolean
-  sortBy: 'name' | 'health' | 'impact' | 'openVulns'
+  sortBy: 'name' | 'impact' | 'openVulns'
   sortDir: 'asc' | 'desc'
 }
 
@@ -94,8 +96,11 @@ export async function listPackagesForApi(
 
   const where = `WHERE ${conditions.join(' AND ')}`
 
-  // health, openVulns are v2 fields — fall back to name sort
-  const sortExpr = opts.sortBy === 'impact' ? 'p.impact' : 'LOWER(p.name)'
+  // health is a v2 field — fall back to name sort
+  let sortExpr: string
+  if (opts.sortBy === 'impact') sortExpr = 'p.impact'
+  else if (opts.sortBy === 'openVulns') sortExpr = '"openVulns"'
+  else sortExpr = 'LOWER(p.name)'
   const sortDir = opts.sortDir === 'desc' ? 'DESC' : 'ASC'
 
   params.limit = opts.pageSize
@@ -110,11 +115,12 @@ export async function listPackagesForApi(
       p.impact AS "criticalityScore",
       p.latest_release_at AS "latestReleaseAt",
       s.status AS "stewardshipStatus",
+      (SELECT COUNT(*)::int FROM advisory_packages ap WHERE ap.package_id = p.id) AS "openVulns",
       COUNT(*) OVER() AS total
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
     ${where}
-    ORDER BY ${sortExpr} ${sortDir} NULLS LAST
+    ORDER BY ${sortExpr} ${sortDir} NULLS LAST, p.purl ${sortDir}
     LIMIT $(limit) OFFSET $(offset)
     `,
     params,
@@ -149,11 +155,14 @@ export interface PackageDetailRow {
   hasSecurityPolicy: boolean | null
   // from downloads_last_30d
   downloadsLast30d: string | null
+  maintainerCount: number | null
+  transitiveReach: number | null
 }
 
 export interface AdvisoryRow {
   osvId: string
   severity: string
+  resolution: 'open' | 'patched' | null
 }
 
 export async function getPackageDetailByPurl(
@@ -192,7 +201,18 @@ export async function getPackageDetailByPurl(
         WHERE d.purl = p.purl
         ORDER BY d.end_date DESC
         LIMIT 1
-      ) AS "downloadsLast30d"
+      ) AS "downloadsLast30d",
+      (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
+      -- percentile rank within ecosystem (0=least, 1=most transitive reach)
+      (
+        SELECT r.prank
+        FROM (
+          SELECT purl, PERCENT_RANK() OVER (PARTITION BY ecosystem ORDER BY transitive_dependent_count ASC NULLS FIRST) AS prank
+          FROM packages
+          WHERE ecosystem = p.ecosystem
+        ) r
+        WHERE r.purl = p.purl
+      ) AS "transitiveReach"
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
     LEFT JOIN LATERAL (
@@ -217,10 +237,29 @@ export async function getAdvisoriesByPackageId(
     `
     SELECT
       a.osv_id AS "osvId",
-      LOWER(a.severity) AS severity
+      LOWER(a.severity) AS severity,
+      CASE
+        WHEN p.latest_version IS NULL THEN NULL
+        WHEN COUNT(ar.id) = 0 THEN NULL
+        -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
+        -- Replace with a proper semver comparison function when one is available in the DB.
+        WHEN BOOL_AND(
+          CASE
+            WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
+            WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
+            WHEN ar.fixed_version IS NOT NULL THEN FALSE
+            WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
+            ELSE FALSE
+          END
+        ) THEN 'patched'
+        ELSE 'open'
+      END AS resolution
     FROM advisory_packages ap
     JOIN advisories a ON a.id = ap.advisory_id
+    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    JOIN packages p ON p.id = ap.package_id
     WHERE ap.package_id = $(packageId)::bigint
+    GROUP BY a.osv_id, a.severity, p.latest_version
     `,
     { packageId },
   )

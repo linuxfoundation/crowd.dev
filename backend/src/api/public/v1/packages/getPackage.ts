@@ -37,18 +37,19 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     general: {
       healthScore: null,
       impact: {
-        impactScore: pkg.criticalityScore != null ? Math.round(Number(pkg.criticalityScore)) : null,
+        impactScore:
+          pkg.criticalityScore != null ? Math.round(Number(pkg.criticalityScore) * 100) : null,
         downloadsLastMonth:
           pkg.downloadsLast30d != null ? parseInt(pkg.downloadsLast30d, 10) : null,
         dependentPackages: pkg.dependentPackagesCount ?? null,
         dependentRepos: pkg.dependentReposCount ?? null,
-        transitiveReach: null,
+        transitiveReach: pkg.transitiveReach,
       },
       riskSignals: {
         lifecycle: null,
-        maintainerBusFactor: null,
+        maintainerBusFactor: pkg.maintainerCount,
         lastRelease: pkg.latestReleaseAt ? pkg.latestReleaseAt.toISOString() : null,
-        hasSecurityFile: pkg.hasSecurityFile ?? null,
+        hasSecurityFile: pkg.hasSecurityFile,
         openSSFScorecard: pkg.scorecardScore != null ? Number(pkg.scorecardScore) : null,
       },
     },
@@ -58,11 +59,11 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
       advisories: advisories.map((a) => ({
         osvId: a.osvId,
         severity: a.severity,
-        resolution: null,
+        resolution: a.resolution,
       })),
       cvd: {
         isPvrEnabled: null,
-        hasSecurityPolicyEnabled: pkg.hasSecurityPolicy ?? null,
+        hasSecurityPolicyEnabled: pkg.hasSecurityPolicy,
         tier0Steward: null,
         criticalVulnerabilityFlag: pkg.hasCriticalVulnerability,
       },

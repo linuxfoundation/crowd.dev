@@ -41,6 +41,9 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     sortDir,
   } = validateOrThrow(querySchema, req.query)
 
+  // health is a v2 field with no backing column yet — fall back to name sort
+  const effectiveSortBy = sortBy === 'health' ? 'name' : sortBy
+
   const qx = await getPackagesQx()
   const { rows, total } = await listPackagesForApi(qx, {
     page,
@@ -48,7 +51,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     ecosystem,
     staleOnly,
     unstewardedOnly,
-    sortBy,
+    sortBy: effectiveSortBy,
     sortDir,
   })
 
@@ -57,10 +60,10 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     name: r.name,
     ecosystem: r.ecosystem,
     health: null,
-    impact: r.criticalityScore != null ? Math.round(Number(r.criticalityScore)) : null,
+    impact: r.criticalityScore != null ? Math.round(Number(r.criticalityScore) * 100) : null,
     lifecycle: null,
     maintainerBusFactor: null,
-    openVulns: null,
+    openVulns: r.openVulns,
     stewardship: (r.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
     stewards: null,
   }))
@@ -76,7 +79,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
       staleOnly,
       unstewardedOnly,
     },
-    sort: { by: sortBy, dir: sortDir },
+    sort: { by: effectiveSortBy, dir: sortDir },
     packages,
   })
 }

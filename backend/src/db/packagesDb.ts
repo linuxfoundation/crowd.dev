@@ -12,7 +12,12 @@ export function getPackagesQx(): Promise<QueryExecutor> {
         'Packages DB is not configured — set CROWD_PACKAGES_DB_* environment variables',
       )
     }
-    _init = getDbConnection(PACKAGES_DB_CONFIG).then(pgpQx)
+    _init = getDbConnection(PACKAGES_DB_CONFIG)
+      .then(pgpQx)
+      .catch((err) => {
+        _init = undefined
+        throw err
+      })
   }
   return _init
 }
