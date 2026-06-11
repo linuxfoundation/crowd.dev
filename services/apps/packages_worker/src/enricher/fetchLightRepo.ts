@@ -178,6 +178,8 @@ async function fetchBranchProtection(
     if (rules.length === 0) return { ...UNKNOWN_PROTECTION, enabled: true }
 
     const pullRequestRule = rules.find((r) => r.type === 'pull_request')
+    // Absent rule types stay null, not false: classic protection can coexist with rulesets
+    // on the same branch and its rules are invisible without admin access
     return {
       enabled: true,
       requiredReviews: pullRequestRule?.parameters?.required_approving_review_count ?? null,
