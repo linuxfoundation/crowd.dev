@@ -66,6 +66,6 @@ SCHEMA >
     `createdAt` DateTime64(3) `json:$.record.created_at`
 
 ENGINE ReplacingMergeTree
-ENGINE_PARTITION_KEY toYear(lastSyncedAt)
+ENGINE_PARTITION_KEY toYear(createdAt)
 ENGINE_SORTING_KEY ecosystem, purl
 ENGINE_VER lastSyncedAt
