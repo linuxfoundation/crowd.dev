@@ -168,7 +168,7 @@ async function fetchBranchProtection(
     }
 
     const rulesResp = await restGet(
-      `/repos/${owner}/${name}/rules/branches/${encodeURIComponent(branch)}`,
+      `/repos/${owner}/${name}/rules/branches/${encodeURIComponent(branch)}?per_page=100`,
       token,
       timeoutMs,
     )
