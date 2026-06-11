@@ -62,9 +62,9 @@ export async function captureApiChange<T>(
   let auditOptions: AuditLogRequestOptions
   if (options) {
     auditOptions = convertRepositoryOptions(options)
-  } else if (process.env.CROWD_API_SERVICE_USER_ID) {
+  } else if (process.env.CROWD_LF_AGENT_USER_ID) {
     auditOptions = {
-      actorId: process.env.CROWD_API_SERVICE_USER_ID,
+      actorId: process.env.CROWD_LF_AGENT_USER_ID,
       actorType: ActorType.SERVICE,
       requestId: generateUUIDv1(),
       ipAddress: '127.0.0.1',

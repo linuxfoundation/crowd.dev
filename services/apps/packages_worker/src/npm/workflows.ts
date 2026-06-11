@@ -130,7 +130,7 @@ interface RefreshLatestLast30dState {
 }
 
 // Refresh the current 30-day window for every npm package and mirror it to
-// packages_universe.downloads_last_30d. Runs monthly; continues-as-new until every package's
+// packages.downloads_last_30d. Runs monthly; continues-as-new until every package's
 // latest window for this cutoff is done. Deep history is a separate workflow (below).
 export async function refreshLatestLast30dDownloads(
   state: RefreshLatestLast30dState = {},
