@@ -55,8 +55,8 @@ export interface PackageListRow {
   ecosystem: string
   criticalityScore: number | null
   stewardshipStatus: string | null
-  latestReleaseAt: Date | null
-  openVulns: number | null
+  openVulns: number
+  maintainerCount: number
   total: string
 }
 
@@ -113,9 +113,9 @@ export async function listPackagesForApi(
       p.name,
       p.ecosystem,
       p.impact AS "criticalityScore",
-      p.latest_release_at AS "latestReleaseAt",
       s.status AS "stewardshipStatus",
       COALESCE(ap_counts.cnt, 0) AS "openVulns",
+      (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
       COUNT(*) OVER() AS total
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
@@ -156,9 +156,10 @@ export interface PackageDetailRow {
   scorecardScore: number | null
   hasSecurityFile: boolean | null
   hasSecurityPolicy: boolean | null
+  branchProtectionEnabled: boolean | null
   // from downloads_last_30d
   downloadsLast30d: string | null
-  maintainerCount: number | null
+  maintainerCount: number
   transitiveReach: number | null
 }
 
@@ -197,6 +198,7 @@ export async function getPackageDetailByPurl(
       r.scorecard_score AS "scorecardScore",
       r.security_file_enabled AS "hasSecurityFile",
       r.security_policy_enabled AS "hasSecurityPolicy",
+      r.branch_protection_enabled AS "branchProtectionEnabled",
       -- latest 30-day download count
       (
         SELECT d.count::text

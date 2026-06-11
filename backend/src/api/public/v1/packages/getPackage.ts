@@ -63,7 +63,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
       })),
       cvd: {
         isPvrEnabled: null,
-        hasSecurityPolicyEnabled: pkg.hasSecurityPolicy,
+        hasSecurityPolicyEnabled: pkg.branchProtectionEnabled,
         tier0Steward: null,
         criticalVulnerabilityFlag: pkg.hasCriticalVulnerability,
       },

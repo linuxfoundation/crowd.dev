@@ -62,7 +62,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     health: null,
     impact: r.criticalityScore != null ? Math.round(Number(r.criticalityScore) * 100) : null,
     lifecycle: null,
-    maintainerBusFactor: null,
+    maintainerBusFactor: r.maintainerCount,
     openVulns: r.openVulns,
     stewardship: (r.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
     stewards: null,
