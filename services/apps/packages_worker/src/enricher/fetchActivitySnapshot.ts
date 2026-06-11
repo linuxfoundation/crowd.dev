@@ -46,7 +46,7 @@ async function graphqlRequest<T>(
   const resetSec = parseInt(response.headers.get('x-ratelimit-reset') ?? '0', 10)
   const resetMs = resetSec ? resetSec * 1000 + 5_000 : Date.now() + 65_000
 
-  if (response.status === 401) throw new FetchError('AUTH', '401 Unauthorized')
+  if (response.status === 401) throw new FetchError('TRANSIENT', '401 Unauthorized')
   if (response.status === 403) {
     const body = await response.text()
     if (body.toLowerCase().includes('rate limit'))
@@ -70,16 +70,11 @@ async function graphqlRequest<T>(
   return json.data as T
 }
 
-function toDateString(date: Date): string {
-  return date.toISOString().slice(0, 10)
-}
-
 function buildDateWindows(): {
   since12m: Date
+  since6m: Date
   since12mIso: string
   since6mIso: string
-  since12mDate: string
-  since6mDate: string
 } {
   const now = new Date()
 
@@ -91,19 +86,16 @@ function buildDateWindows(): {
 
   return {
     since12m,
+    since6m,
     since12mIso: since12m.toISOString(),
     since6mIso: since6m.toISOString(),
-    since12mDate: toDateString(since12m),
-    since6mDate: toDateString(since6m),
   }
 }
 
 interface RateLimit {
   cost: number
-}
-
-interface IssueCount {
-  issueCount: number
+  remaining: number
+  resetAt: string
 }
 
 interface CommitHistory {
@@ -125,14 +117,8 @@ interface SummaryQueryResult {
         commitsPrior6m?: CommitHistory
       }
     }
+    openIssues: { totalCount: number }
   }
-  prsOpened: IssueCount
-  prsMerged: IssueCount
-  prsClosedUnmerged: IssueCount
-  issuesOpened: IssueCount
-  issuesClosed: IssueCount
-  issuesOpened6m: IssueCount
-  issuesOpenNow: IssueCount
 }
 
 interface PrPageQueryResult {
@@ -156,15 +142,8 @@ interface IssuePageQueryResult {
 }
 
 const SUMMARY_QUERY = `
-  query(
-    $owner: String!, $name: String!,
-    $since12m: GitTimestamp!, $since6m: GitTimestamp!,
-    $searchPrsOpened: String!, $searchPrsMerged: String!,
-    $searchPrsClosedUnmerged: String!,
-    $searchIssuesOpened: String!, $searchIssuesClosed: String!,
-    $searchIssuesOpened6m: String!, $searchIssuesOpenNow: String!
-  ) {
-    rateLimit { cost }
+  query($owner: String!, $name: String!, $since12m: GitTimestamp!, $since6m: GitTimestamp!) {
+    rateLimit { cost remaining resetAt }
     repository(owner: $owner, name: $name) {
       defaultBranchRef {
         target {
@@ -175,26 +154,21 @@ const SUMMARY_QUERY = `
           }
         }
       }
+      openIssues: issues(states: OPEN) { totalCount }
     }
-    prsOpened:         search(query: $searchPrsOpened,         type: ISSUE) { issueCount }
-    prsMerged:         search(query: $searchPrsMerged,         type: ISSUE) { issueCount }
-    prsClosedUnmerged: search(query: $searchPrsClosedUnmerged, type: ISSUE) { issueCount }
-    issuesOpened:      search(query: $searchIssuesOpened,      type: ISSUE) { issueCount }
-    issuesClosed:      search(query: $searchIssuesClosed,      type: ISSUE) { issueCount }
-    issuesOpened6m:    search(query: $searchIssuesOpened6m,    type: ISSUE) { issueCount }
-    issuesOpenNow:     search(query: $searchIssuesOpenNow,     type: ISSUE) { issueCount }
   }
 `
 
 const PR_PAGE_QUERY = `
   query($owner: String!, $name: String!, $cursor: String) {
-    rateLimit { cost }
+    rateLimit { cost remaining resetAt }
     repository(owner: $owner, name: $name) {
       pullRequests(first: ${PAGE_SIZE}, orderBy: { field: CREATED_AT, direction: DESC }, after: $cursor) {
         pageInfo { hasNextPage endCursor }
         nodes {
           createdAt
           mergedAt
+          closedAt
           author { login }
           comments(first: ${RESPONSES_PER_NODE}) { nodes { createdAt author { login } } }
           reviews(first: ${RESPONSES_PER_NODE})  { nodes { createdAt author { login } } }
@@ -210,10 +184,16 @@ async function pagePrs(
   token: string,
   timeoutMs: number,
   windowStart: Date,
-): Promise<{ nodes: PrNode[]; rateLimitCost: number; httpRequestCount: number }> {
+): Promise<{
+  nodes: PrNode[]
+  rateLimitCost: number
+  httpRequestCount: number
+  rateLimit: RateLimit | null
+}> {
   const nodes: PrNode[] = []
   let rateLimitCost = 0
   let httpRequestCount = 0
+  let rateLimit: RateLimit | null = null
   let cursor: string | undefined
 
   for (;;) {
@@ -223,6 +203,7 @@ async function pagePrs(
     const data = await graphqlRequest<PrPageQueryResult>(PR_PAGE_QUERY, variables, token, timeoutMs)
     rateLimitCost += data.rateLimit.cost
     httpRequestCount++
+    rateLimit = data.rateLimit
 
     const connection = data.repository.pullRequests
     let reachedWindowBoundary = false
@@ -239,12 +220,12 @@ async function pagePrs(
     cursor = connection.pageInfo.endCursor
   }
 
-  return { nodes, rateLimitCost, httpRequestCount }
+  return { nodes, rateLimitCost, httpRequestCount, rateLimit }
 }
 
 const ISSUE_PAGE_QUERY = `
   query($owner: String!, $name: String!, $cursor: String) {
-    rateLimit { cost }
+    rateLimit { cost remaining resetAt }
     repository(owner: $owner, name: $name) {
       issues(first: ${PAGE_SIZE}, orderBy: { field: CREATED_AT, direction: DESC }, after: $cursor) {
         pageInfo { hasNextPage endCursor }
@@ -265,10 +246,16 @@ async function pageIssues(
   token: string,
   timeoutMs: number,
   windowStart: Date,
-): Promise<{ nodes: IssueNode[]; rateLimitCost: number; httpRequestCount: number }> {
+): Promise<{
+  nodes: IssueNode[]
+  rateLimitCost: number
+  httpRequestCount: number
+  rateLimit: RateLimit | null
+}> {
   const nodes: IssueNode[] = []
   let rateLimitCost = 0
   let httpRequestCount = 0
+  let rateLimit: RateLimit | null = null
   let cursor: string | undefined
 
   for (;;) {
@@ -283,6 +270,7 @@ async function pageIssues(
     )
     rateLimitCost += data.rateLimit.cost
     httpRequestCount++
+    rateLimit = data.rateLimit
 
     const connection = data.repository.issues
     let reachedWindowBoundary = false
@@ -299,7 +287,7 @@ async function pageIssues(
     cursor = connection.pageInfo.endCursor
   }
 
-  return { nodes, rateLimitCost, httpRequestCount }
+  return { nodes, rateLimitCost, httpRequestCount, rateLimit }
 }
 
 export async function fetchActivitySnapshot(
@@ -309,24 +297,11 @@ export async function fetchActivitySnapshot(
   token: string,
   timeoutMs: number,
 ): Promise<RepoActivitySnapshot> {
-  const { since12m, since12mIso, since6mIso, since12mDate, since6mDate } = buildDateWindows()
-  const repoFilter = `repo:${owner}/${name}`
+  const { since12m, since6m, since12mIso, since6mIso } = buildDateWindows()
 
   const summaryData = await graphqlRequest<SummaryQueryResult>(
     SUMMARY_QUERY,
-    {
-      owner,
-      name,
-      since12m: since12mIso,
-      since6m: since6mIso,
-      searchPrsOpened: `${repoFilter} is:pr created:>=${since12mDate}`,
-      searchPrsMerged: `${repoFilter} is:pr is:merged created:>=${since12mDate}`,
-      searchPrsClosedUnmerged: `${repoFilter} is:pr is:unmerged is:closed created:>=${since12mDate}`,
-      searchIssuesOpened: `${repoFilter} is:issue created:>=${since12mDate}`,
-      searchIssuesClosed: `${repoFilter} is:issue is:closed created:>=${since12mDate}`,
-      searchIssuesOpened6m: `${repoFilter} is:issue created:>=${since6mDate}`,
-      searchIssuesOpenNow: `${repoFilter} is:issue is:open`,
-    },
+    { owner, name, since12m: since12mIso, since6m: since6mIso },
     token,
     timeoutMs,
   )
@@ -362,6 +337,14 @@ export async function fetchActivitySnapshot(
 
   const prMedians = computePrMedians(prResult.nodes)
   const issueMedians = computeIssueMedians(issueResult.nodes)
+  const issuesOpenedLast6m = issueResult.nodes.filter(
+    (n) => new Date(n.createdAt) >= since6m,
+  ).length
+
+  // Lowest remaining across all requests — remaining only decreases within a reset window
+  const lastRateLimit = [summaryData.rateLimit, prResult.rateLimit, issueResult.rateLimit]
+    .filter((rl): rl is RateLimit => rl !== null)
+    .reduce((min, rl) => (rl.remaining < min.remaining ? rl : min))
 
   return {
     repoId,
@@ -370,20 +353,21 @@ export async function fetchActivitySnapshot(
     commitsLast12m,
     commitsLast6m,
     commitsPrior6m,
-    prsOpenedLast12m: summaryData.prsOpened.issueCount,
-    prsMergedLast12m: summaryData.prsMerged.issueCount,
-    prsClosedUnmerged12m: summaryData.prsClosedUnmerged.issueCount,
+    prsOpenedLast12m: prResult.nodes.length,
+    prsMergedLast12m: prResult.nodes.filter((n) => n.mergedAt).length,
+    prsClosedUnmerged12m: prResult.nodes.filter((n) => n.closedAt && !n.mergedAt).length,
     prMedianTimeToMergeHours: prMedians.medianTimeToMergeHours,
     prMedianTimeToFirstResponseHours: prMedians.medianTimeToFirstResponseHours,
-    issuesOpenedLast12m: summaryData.issuesOpened.issueCount,
-    issuesClosedLast12m: summaryData.issuesClosed.issueCount,
-    issuesOpenedLast6m: summaryData.issuesOpened6m.issueCount,
-    issuesOpenedPrior6m:
-      summaryData.issuesOpened.issueCount - summaryData.issuesOpened6m.issueCount,
-    issuesOpenNow: summaryData.issuesOpenNow.issueCount,
+    issuesOpenedLast12m: issueResult.nodes.length,
+    issuesClosedLast12m: issueResult.nodes.filter((n) => n.closedAt).length,
+    issuesOpenedLast6m,
+    issuesOpenedPrior6m: issueResult.nodes.length - issuesOpenedLast6m,
+    issuesOpenNow: summaryData.repository.openIssues.totalCount,
     issueMedianTimeToCloseHours: issueMedians.medianTimeToCloseHours,
     issueMedianTimeToFirstResponseHours: issueMedians.medianTimeToFirstResponseHours,
     httpRequestCount: totalHttpRequests,
     rateLimitCost: totalRateLimitCost,
+    rateLimitRemaining: lastRateLimit.remaining,
+    rateLimitResetAt: lastRateLimit.resetAt,
   }
 }

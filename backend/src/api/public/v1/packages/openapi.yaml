@@ -1,0 +1,790 @@
+openapi: 3.1.0
+info:
+  title: CDP Public API — Packages & Stewardship
+  version: 1.0.0
+  description: >
+    Read-only endpoints for the OSSPREY Self Serve program.
+
+
+    **Authentication:** OAuth 2.0 M2M bearer token.
+    Package endpoints require `read:packages` or `read:stewardships`.
+    The batch stewardship endpoint requires `read:stewardships` only.
+
+
+    **V1 constraints:** All stewardship rows are `unassigned`.
+    Write endpoints and state transitions are deferred to v2.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+  - url: https://lf-staging.crowd.dev/api/v1
+    description: Staging
+
+tags:
+  - name: Packages
+    description: Package list and detail.
+  - name: Stewardship
+    description: Stewardship state — individual and batch.
+
+components:
+  securitySchemes:
+    M2MBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── Shared ───────────────────────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: Package not found.
+
+    OpenVulns:
+      type: object
+      description: Open vulnerability counts by severity from advisory_packages + advisories.
+      required: [low, medium, high, critical]
+      properties:
+        low:
+          type: integer
+          example: 0
+        medium:
+          type: integer
+          example: 0
+        high:
+          type: integer
+          example: 1
+        critical:
+          type: integer
+          example: 0
+
+    # ── Stewardship ─────────────────────────────────────────────────────────────
+
+    StewardshipStatus:
+      type: string
+      enum:
+        - unassigned
+        - open
+        - assessing
+        - active
+        - needs_attention
+        - escalated
+        - blocked
+        - inactive
+
+    Steward:
+      type: object
+      required: [userId, name, role, assignedAt]
+      properties:
+        userId:
+          type: string
+          description: LFID.
+          example: jdoe
+        name:
+          type: string
+          example: Jonathan R.
+        role:
+          type: string
+          enum: [lead, co_steward]
+        assignedAt:
+          type: string
+          format: date-time
+
+    # Lean shape used in batch response and list items.
+    StewardshipSummary:
+      type: object
+      description: Null if the purl is not found in CDP.
+      required:
+        [name, ecosystem, stewardship, stewards, openVulns, lastActivityAt, lastActivityDescription]
+      properties:
+        name:
+          type: string
+          example: lodash
+        ecosystem:
+          type: string
+          example: npm
+        lifecycle:
+          type:
+            - string
+            - 'null'
+          enum: [active, stable, declining, abandoned, null]
+        health:
+          type:
+            - integer
+            - 'null'
+          example: 52
+        impact:
+          type:
+            - integer
+            - 'null'
+          example: 94
+        openVulns:
+          oneOf:
+            - $ref: '#/components/schemas/OpenVulns'
+            - type: 'null'
+        stewardship:
+          $ref: '#/components/schemas/StewardshipStatus'
+        stewards:
+          description: Assigned stewards or null. Empty in v1.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/Steward'
+            - type: 'null'
+        lastActivityAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Null in v1.
+        lastActivityDescription:
+          type:
+            - string
+            - 'null'
+          description: Null in v1.
+
+    # ── Package list item ────────────────────────────────────────────────────────
+
+    PackageListItem:
+      type: object
+      required: [purl, name, ecosystem]
+      properties:
+        purl:
+          type: string
+          description: Used to call GET /packages/detail?purl= when a row is clicked.
+          example: pkg:npm/lodash
+        name:
+          type: string
+          example: lodash
+        ecosystem:
+          type: string
+          example: npm
+        health:
+          type:
+            - integer
+            - 'null'
+          example: 18
+        impact:
+          type:
+            - integer
+            - 'null'
+          example: 71
+        lifecycle:
+          type:
+            - string
+            - 'null'
+          enum: [active, stable, declining, abandoned, null]
+        maintainerBusFactor:
+          type:
+            - integer
+            - 'null'
+          example: 1
+        openVulns:
+          oneOf:
+            - $ref: '#/components/schemas/OpenVulns'
+            - type: 'null'
+        stewardship:
+          $ref: '#/components/schemas/StewardshipStatus'
+        stewards:
+          description: Assigned stewards or null.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/Steward'
+            - type: 'null'
+
+    # ── Package detail ───────────────────────────────────────────────────────────
+
+    Advisory:
+      type: object
+      required: [osvId, severity]
+      properties:
+        osvId:
+          type: string
+          description: GHSA or CVE identifier.
+          example: CVE-2021-44906
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        resolution:
+          type:
+            - string
+            - 'null'
+          description: Resolution status. TBD.
+
+    SecurityContact:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type:
+            - string
+            - 'null'
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+
+    PackageDetail:
+      type: object
+      required: [purl, name, ecosystem, general, assessment, security, provenance, history]
+      properties:
+        purl:
+          type: string
+          example: pkg:npm/lodash
+        name:
+          type: string
+          example: lodash
+        ecosystem:
+          type: string
+          example: npm
+        general:
+          type: object
+          properties:
+            healthScore:
+              type:
+                - object
+                - 'null'
+              properties:
+                maintainerHealth:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 4
+                securitySupplyChain:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 8
+                developmentActivity:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 6
+                total:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 18
+            impact:
+              type:
+                - object
+                - 'null'
+              properties:
+                impactScore:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 71
+                downloadsLastMonth:
+                  type:
+                    - integer
+                    - 'null'
+                  description: Null for Maven (Sonatype data not yet ingested).
+                  example: 52142891
+                dependentPackages:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 142312
+                dependentRepos:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 39104
+                transitiveReach:
+                  type:
+                    - string
+                    - 'null'
+                  example: 'Top 0.4%'
+            riskSignals:
+              type:
+                - object
+                - 'null'
+              properties:
+                lifecycle:
+                  type:
+                    - string
+                    - 'null'
+                  enum: [active, stable, declining, abandoned, null]
+                maintainerBusFactor:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 1
+                lastRelease:
+                  type:
+                    - string
+                    - 'null'
+                  format: date-time
+                hasSecurityFile:
+                  type:
+                    - boolean
+                    - 'null'
+                openSSFScorecard:
+                  type:
+                    - number
+                    - 'null'
+                  format: float
+                  example: 5.2
+        assessment:
+          type: object
+          description: Stewardship assessment data. Empty in v1 — assessment flow deferred to v2.
+        security:
+          type: object
+          properties:
+            securityContacts:
+              type:
+                - array
+                - 'null'
+              items:
+                $ref: '#/components/schemas/SecurityContact'
+            advisories:
+              type: array
+              items:
+                $ref: '#/components/schemas/Advisory'
+            cvd:
+              type: object
+              description: Coordinated Vulnerability Disclosure readiness signals.
+              properties:
+                isPvrEnabled:
+                  type:
+                    - boolean
+                    - 'null'
+                  description: Private Vulnerability Reporting enabled. Null in v1.
+                hasSecurityPolicyEnabled:
+                  type:
+                    - boolean
+                    - 'null'
+                  description: SECURITY.md present in repo. Null until enricher captures this.
+                tier0Steward:
+                  type:
+                    - string
+                    - 'null'
+                  description: Name of the Tier 0 steward if assigned. Null in v1.
+                criticalVulnerabilityFlag:
+                  type:
+                    - boolean
+                    - 'null'
+                  description: True if any open advisory has cvss >= 7.0.
+        provenance:
+          type: object
+          properties:
+            repositoryMapping:
+              type:
+                - object
+                - 'null'
+              properties:
+                declaredRepo:
+                  type:
+                    - string
+                    - 'null'
+                  format: uri
+                  example: https://github.com/lodash/lodash
+                mappingConfidence:
+                  type:
+                    - number
+                    - 'null'
+                  format: float
+                  example: 0.98
+                lastCommitAt:
+                  type:
+                    - string
+                    - 'null'
+                  format: date-time
+            supplyChainIntegrity:
+              type: object
+              description: All fields null in v1 — separate ingestion workstream required.
+              properties:
+                buildProvenance:
+                  type:
+                    - string
+                    - 'null'
+                signedReleases:
+                  type:
+                    - string
+                    - 'null'
+        stewardship:
+          type: object
+          description: Stewardship state. In v1 always unassigned with no stewards or activity.
+          properties:
+            status:
+              $ref: '#/components/schemas/StewardshipStatus'
+            stewards:
+              description: Assigned stewards or null. Null in v1.
+              oneOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/Steward'
+                - type: 'null'
+            lastActivityAt:
+              type:
+                - string
+                - 'null'
+              format: date-time
+              description: Null in v1.
+        history:
+          type: object
+          description: Package history data. Empty in v1.
+
+    # ── Metrics ──────────────────────────────────────────────────────────────────
+
+    PackagesMetrics:
+      type: object
+      required: [totalPackages, criticalPackages]
+      properties:
+        totalPackages:
+          type: integer
+          example: 0
+        criticalPackages:
+          type: integer
+          example: 0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Paths
+# ──────────────────────────────────────────────────────────────────────────────
+paths:
+  /packages:
+    get:
+      operationId: listPackages
+      summary: List packages
+      tags:
+        - Packages
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: ecosystem
+          in: query
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, stable, declining, abandoned]
+        - name: busFactor1Only
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return only packages with bus factor = 1.
+        - name: staleOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return only packages with no release in >= 18 months.
+        - name: unstewardedOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return only packages with stewardship = unassigned.
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, health, impact, openVulns]
+            default: name
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Paginated list of packages.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, filters, sort, packages]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                  filters:
+                    type: object
+                    properties:
+                      ecosystem:
+                        type:
+                          - string
+                          - 'null'
+                      lifecycle:
+                        type:
+                          - string
+                          - 'null'
+                      busFactor1Only:
+                        type: boolean
+                      staleOnly:
+                        type: boolean
+                      unstewardedOnly:
+                        type: boolean
+                  sort:
+                    type: object
+                    properties:
+                      by:
+                        type: string
+                      dir:
+                        type: string
+                  packages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageListItem'
+        '400':
+          description: Validation error (e.g. invalid query parameters).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packages/metrics:
+    get:
+      operationId: getPackagesMetrics
+      summary: Overview metrics for the list page header
+      tags:
+        - Packages
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      responses:
+        '200':
+          description: Aggregate package metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackagesMetrics'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packages/detail:
+    get:
+      operationId: getPackage
+      summary: Get full package detail
+      description: >
+        Returns data for the drawer's Overview, Security, and Provenance tabs.
+        Pass the canonical purl as a query parameter — no URL-encoding needed.
+        Example: `?purl=pkg:npm/lodash@4.17.21`.
+      tags:
+        - Packages
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+          example: 'pkg:npm/lodash@4.17.21'
+      responses:
+        '200':
+          description: Package found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageDetail'
+              example:
+                purl: pkg:npm/lodash
+                name: lodash
+                ecosystem: npm
+                general:
+                  healthScore:
+                    maintainerHealth: 4
+                    securitySupplyChain: 8
+                    developmentActivity: 6
+                    total: 18
+                  impact:
+                    impactScore: 71
+                    downloadsLastMonth: 52142891
+                    dependentPackages: 142312
+                    dependentRepos: 39104
+                    transitiveReach: 'Top 0.4%'
+                  riskSignals:
+                    lifecycle: declining
+                    maintainerBusFactor: 1
+                    lastRelease: '2021-02-20T00:00:00Z'
+                    hasSecurityFile: null
+                    openSSFScorecard: 5.2
+                assessment: {}
+                security:
+                  securityContacts: null
+                  advisories:
+                    - osvId: CVE-2021-44906
+                      severity: high
+                      resolution: null
+                  cvd:
+                    isPvrEnabled: null
+                    hasSecurityPolicyEnabled: null
+                    tier0Steward: null
+                    criticalVulnerabilityFlag: true
+                provenance:
+                  repositoryMapping:
+                    declaredRepo: https://github.com/lodash/lodash
+                    mappingConfidence: 0.98
+                    lastCommitAt: '2024-09-14T00:00:00Z'
+                  supplyChainIntegrity:
+                    buildProvenance: null
+                    signedReleases: null
+                stewardship:
+                  status: unassigned
+                  stewards: null
+                  lastActivityAt: null
+                history: {}
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packages:batch-stewardship:
+    post:
+      operationId: batchGetStewardship
+      summary: Batch stewardship state for a list of purls
+      description: >
+        Returns lean stewardship state for up to 100 purls in one request.
+        Purls not found in CDP return `null`.
+      tags:
+        - Stewardship
+      security:
+        - M2MBearer:
+            - read:stewardships
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  example:
+                    - pkg:npm/lodash
+                    - pkg:npm/express
+                    - pkg:pypi/requests
+      responses:
+        '200':
+          description: >
+            Stewardship state keyed by purl.
+            Unknown or invalid purls return `null`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packages]
+                properties:
+                  packages:
+                    type: object
+                    additionalProperties:
+                      oneOf:
+                        - $ref: '#/components/schemas/StewardshipSummary'
+                        - type: 'null'
+              example:
+                packages:
+                  pkg:npm/lodash@4.17.21:
+                    name: lodash
+                    ecosystem: npm
+                    lifecycle: declining
+                    health: 18
+                    impact: 71
+                    openVulns:
+                      low: 0
+                      medium: 0
+                      high: 1
+                      critical: 0
+                    stewardship: unassigned
+                    stewards: null
+                    lastActivityAt: null
+                    lastActivityDescription: null
+                  pkg:pypi/requests: null
+        '400':
+          description: Validation error (e.g. more than 100 purls).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken'
 
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { FetchError } from './types'
+
 const log = getServiceChildLogger('github-app-auth')
 
 const GITHUB_API = 'https://api.github.com'
@@ -80,7 +82,22 @@ export async function getInstallationToken(
 
   if (!resp.ok) {
     const body = await resp.text()
-    throw new Error(
+    if (resp.status === 429 || (resp.status === 403 && body.toLowerCase().includes('rate limit'))) {
+      const retryAfterSec = parseInt(resp.headers.get('retry-after') ?? '0', 10)
+      const resetSec = parseInt(resp.headers.get('x-ratelimit-reset') ?? '0', 10)
+      const resetMs = retryAfterSec
+        ? Date.now() + retryAfterSec * 1000
+        : resetSec
+          ? resetSec * 1000 + 5_000
+          : Date.now() + 65_000
+      throw new FetchError(
+        'RATE_LIMIT',
+        `Rate limited minting token for installation ${installationId}`,
+        resetMs,
+      )
+    }
+    throw new FetchError(
+      'AUTH',
       `Failed to mint token for installation ${installationId} (${resp.status}): ${body}`,
     )
   }
@@ -100,23 +117,35 @@ interface RateLimitEntry {
 }
 
 /**
- * Fetches GraphQL rate limit info for every installation in parallel (one-time startup diagnostic).
- * GET /rate_limit does not consume quota.
+ * Fetches GraphQL rate limit info for every installation in parallel (one-time startup check).
+ * GET /rate_limit does not consume quota. Excludes installations that fail permanently
+ * (IP allowlists, suspended apps) — those would fail every enrichment request too.
+ * Transient probe failures stay in the pool; runtime parking handles them if truly broken.
  */
 export async function fetchRateLimitDiagnostics(
   appId: string,
   privateKeyPem: string,
   installationIds: number[],
-): Promise<void> {
+): Promise<number[]> {
   const results = await Promise.all(
     installationIds.map(
-      async (id): Promise<RateLimitEntry | { installationId: number; error: string }> => {
+      async (
+        id,
+      ): Promise<
+        RateLimitEntry | { installationId: number; error: string; permanent: boolean }
+      > => {
         try {
           const token = await getInstallationToken(appId, privateKeyPem, id)
           const resp = await fetch(`${GITHUB_API}/rate_limit`, {
             headers: { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' },
           })
-          if (!resp.ok) return { installationId: id, error: `HTTP ${resp.status}` }
+          if (!resp.ok) {
+            return {
+              installationId: id,
+              error: `HTTP ${resp.status}`,
+              permanent: [401, 403, 404].includes(resp.status),
+            }
+          }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const data = (await resp.json()) as any
           const g = data.resources?.graphql
@@ -128,7 +157,8 @@ export async function fetchRateLimitDiagnostics(
             resetAt: new Date(g.reset * 1000).toISOString(),
           }
         } catch (err) {
-          return { installationId: id, error: (err as Error).message }
+          const permanent = err instanceof FetchError && err.kind === 'AUTH'
+          return { installationId: id, error: (err as Error).message, permanent }
         }
       },
     ),
@@ -136,26 +166,44 @@ export async function fetchRateLimitDiagnostics(
 
   let totalLimit = 0
   let totalRemaining = 0
-  let failures = 0
+  const healthyIds: number[] = []
+  const excluded: Array<{ installationId: number; error: string }> = []
+  const transientFailures: Array<{ installationId: number; error: string }> = []
   for (const r of results) {
     if ('error' in r) {
-      failures++
+      if (r.permanent) {
+        excluded.push({ installationId: r.installationId, error: r.error })
+      } else {
+        transientFailures.push({ installationId: r.installationId, error: r.error })
+        healthyIds.push(r.installationId)
+      }
     } else {
       totalLimit += r.limit
       totalRemaining += r.remaining
+      healthyIds.push(r.installationId)
     }
   }
 
   log.info(
     {
       installations: installationIds.length,
-      failures,
+      excluded: excluded.length,
+      transientFailures: transientFailures.length,
       totalLimit,
       totalRemaining,
       totalUsed: totalLimit - totalRemaining,
     },
     'GitHub App rate limit capacity',
   )
+
+  if (transientFailures.length > 0) {
+    log.warn({ transientFailures }, 'Probe failed transiently — keeping installations in the pool')
+  }
+  if (excluded.length > 0) {
+    log.warn({ excluded }, 'Excluding installations that permanently failed the probe')
+  }
+
+  return healthyIds
 }
 
 export interface GithubAppConfig {
