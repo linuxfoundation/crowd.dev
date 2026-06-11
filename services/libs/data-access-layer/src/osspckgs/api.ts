@@ -64,6 +64,7 @@ export interface ListPackagesOptions {
   page: number
   pageSize: number
   ecosystem?: string
+  name?: string
   staleOnly: boolean
   unstewardedOnly: boolean
   busFactor1Only: boolean
@@ -83,6 +84,11 @@ export async function listPackagesForApi(
   if (opts.ecosystem) {
     conditions.push('p.ecosystem = $(ecosystem)')
     params.ecosystem = opts.ecosystem
+  }
+
+  if (opts.name) {
+    conditions.push('p.name ILIKE $(name)')
+    params.name = `%${opts.name}%`
   }
 
   if (opts.staleOnly) {
