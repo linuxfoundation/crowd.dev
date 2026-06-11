@@ -106,7 +106,12 @@ export async function ingestScorecard(opts: {
   const repoTotalFiles = repoFileNames.length
 
   if (repoTotalFiles === 0) {
-    await mergeStagingToTable({ jobId: reposExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: reposExport.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
   } else {
     const repoTotalRows = repoRowCounts.reduce((a, b) => a + b, 0)
     const repoFilesPerChunk =
@@ -172,7 +177,12 @@ export async function ingestScorecard(opts: {
   const checkTotalFiles = checkFileNames.length
 
   if (checkTotalFiles === 0) {
-    await mergeStagingToTable({ jobId: checksExport.jobId, mergeSql: [], tableNames: [], isFinal: true })
+    await mergeStagingToTable({
+      jobId: checksExport.jobId,
+      mergeSql: [],
+      tableNames: [],
+      isFinal: true,
+    })
     return
   }
 

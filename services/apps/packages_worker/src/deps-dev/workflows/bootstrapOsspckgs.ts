@@ -5,6 +5,7 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import { ingestScorecard } from '../../scorecard/workflows'
 import type * as depsDevActivities from '../activities'
 
 import { ingestAdvisories } from './ingestAdvisories'
@@ -13,7 +14,6 @@ import { ingestDependentCounts } from './ingestDependentCounts'
 import { ingestPackages } from './ingestPackages'
 import { ingestRepos } from './ingestRepos'
 import { ingestVersions } from './ingestVersions'
-import { ingestScorecard } from '../../scorecard/workflows'
 
 const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActivities<
   typeof depsDevActivities
