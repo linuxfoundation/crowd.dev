@@ -15,7 +15,8 @@ const querySchema = z.object({
     .string()
     .trim()
     .min(1)
-    .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' }),
+    .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
+    .transform((v) => v.replace(/@/g, '%40')),
 })
 
 export async function getPackage(req: Request, res: Response): Promise<void> {

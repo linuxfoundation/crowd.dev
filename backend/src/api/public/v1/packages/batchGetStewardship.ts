@@ -13,26 +13,33 @@ const MAX_PURLS = 100
 
 const bodySchema = z.object({
   purls: z
-    .array(z.string().trim().min(1))
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .refine((v) => v.startsWith('pkg:'), { message: 'each purl must start with pkg:' }),
+    )
     .min(1)
     .max(MAX_PURLS, `Maximum ${MAX_PURLS} purls per request`),
 })
 
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
-  const { purls } = validateOrThrow(bodySchema, req.body)
+  const { purls: rawPurls } = validateOrThrow(bodySchema, req.body)
+  const normalizedPurls = rawPurls.map((p) => p.replace(/@/g, '%40'))
 
   const qx = await getPackagesQx()
-  const rows = await getPackagesByStewardshipPurls(qx, purls)
+  const rows = await getPackagesByStewardshipPurls(qx, normalizedPurls)
 
   const byPurl = new Map(rows.map((r) => [r.purl, r]))
 
   const packages: Record<string, StewardshipSummary | null> = {}
-  for (const purl of purls) {
-    const row = byPurl.get(purl)
+  for (let i = 0; i < rawPurls.length; i++) {
+    const row = byPurl.get(normalizedPurls[i])
     if (!row) {
-      packages[purl] = null
+      packages[rawPurls[i]] = null
     } else {
-      packages[purl] = {
+      packages[rawPurls[i]] = {
         name: row.name,
         ecosystem: row.ecosystem,
         lifecycle: null,
