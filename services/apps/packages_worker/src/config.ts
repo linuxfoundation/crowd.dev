@@ -41,7 +41,7 @@ export function getEnricherConfig() {
   return {
     updateIntervalHours: requireEnvInt('ENRICHER_REPO_UPDATE_INTERVAL_HOURS'),
     idleSleepSec: requireEnvInt('ENRICHER_IDLE_SLEEP_SEC'),
-    concurrency: parseInt(process.env.ENRICHER_CONCURRENCY ?? '80', 10),
+    concurrency: parseInt(process.env.ENRICHER_CONCURRENCY ?? '150', 10),
     fetchTimeoutMs: parseInt(process.env.ENRICHER_FETCH_TIMEOUT_MS ?? '10000', 10),
   }
 }
