@@ -21,6 +21,7 @@ const querySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(lifecycleValues).optional(), // TODO: filter not yet implemented in DAL
+  name: z.string().trim().optional(),
   busFactor1Only: booleanQueryParam,
   staleOnly: booleanQueryParam,
   unstewardedOnly: booleanQueryParam,
@@ -34,6 +35,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     pageSize,
     ecosystem,
     lifecycle: _lifecycle,
+    name,
     busFactor1Only,
     staleOnly,
     unstewardedOnly,
@@ -49,6 +51,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     page,
     pageSize,
     ecosystem,
+    name,
     staleOnly,
     unstewardedOnly,
     busFactor1Only,
@@ -76,6 +79,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     filters: {
       ecosystem: ecosystem ?? null,
       lifecycle: null, // TODO: filter not yet implemented in DAL
+      name: name ?? null,
       busFactor1Only,
       staleOnly,
       unstewardedOnly,
