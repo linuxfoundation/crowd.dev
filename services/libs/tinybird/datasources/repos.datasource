@@ -26,6 +26,13 @@ DESCRIPTION >
     - `scorecardLastRunAt` is when the Scorecard was last evaluated (NULL if never run).
     - `skipEnrichment` is 1 if the GitHub enricher should skip this repo (e.g. invalid/transient URLs), 0 otherwise.
     - `lastSyncedAt` is the timestamp of the last GitHub enrichment attempt (NULL if never enriched or transient failure).
+    - `securityPolicyEnabled` is 1 if the repo has a SECURITY.md policy file, 0 if not, NULL until the snapshot enricher runs.
+    - `securityFileEnabled` is 1 if the repo has a security-related file, 0 if not, NULL until the snapshot enricher runs.
+    - `snapshotAt` is when the activity snapshot enricher last processed this repo (NULL if never run).
+    - `branchProtectionEnabled` is 1 if branch protection is enabled on the default branch, 0 if not, NULL until enriched.
+    - `branchProtectionAllowsForcePush` is 1 if force pushes are allowed despite branch protection, 0 if not, NULL until enriched.
+    - `branchProtectionRequiredReviews` is the number of required approving reviews before merging (NULL until enriched).
+    - `branchProtectionRequiresStatusChecks` is 1 if status checks are required before merging, 0 if not, NULL until enriched.
     - `updatedAt` is the row-level audit timestamp used as the Tinybird watermark for sync.
 
 SCHEMA >
@@ -49,10 +56,17 @@ SCHEMA >
     `homepage` String `json:$.record.homepage` DEFAULT '',
     `rawProjectType` String `json:$.record.raw_project_type` DEFAULT '',
     `rawProjectName` String `json:$.record.raw_project_name` DEFAULT '',
-    `scorecardScore` Float32 `json:$.record.scorecard_score` DEFAULT 0,
+    `scorecardScore` String `json:$.record.scorecard_score` DEFAULT '0',
     `scorecardLastRunAt` Nullable(DateTime64(3)) `json:$.record.scorecard_last_run_at`,
     `skipEnrichment` UInt8 `json:$.record.skip_enrichment` DEFAULT 0,
     `lastSyncedAt` Nullable(DateTime64(3)) `json:$.record.last_synced_at`,
+    `securityPolicyEnabled` Nullable(UInt8) `json:$.record.security_policy_enabled`,
+    `securityFileEnabled` Nullable(UInt8) `json:$.record.security_file_enabled`,
+    `snapshotAt` Nullable(DateTime64(3)) `json:$.record.snapshot_at`,
+    `branchProtectionEnabled` Nullable(UInt8) `json:$.record.branch_protection_enabled`,
+    `branchProtectionAllowsForcePush` Nullable(UInt8) `json:$.record.branch_protection_allows_force_push`,
+    `branchProtectionRequiredReviews` Nullable(Int32) `json:$.record.branch_protection_required_reviews`,
+    `branchProtectionRequiresStatusChecks` Nullable(UInt8) `json:$.record.branch_protection_requires_status_checks`,
     `updatedAt` DateTime64(3) `json:$.record.updated_at`
 
 ENGINE ReplacingMergeTree

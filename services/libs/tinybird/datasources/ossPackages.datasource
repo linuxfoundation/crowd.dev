@@ -28,6 +28,9 @@ DESCRIPTION >
     - `impact` is the composite criticality impact score from the ranking function (0 if not yet ranked).
     - `isCritical` is 1 if this package ranks in the top N by ecosystem in the most recent ranking pass, 0 otherwise.
     - `lastRankPassAt` is when the criticality ranking worker last processed this package (NULL if never ranked).
+    - `downloadsLast30d` is the 30-day npm download count cached for ranking (0 if not yet populated).
+    - `centralityScore` is the PageRank-based centrality score stored for future ranking formula use ('0' if not yet computed).
+    - `rankInEcosystem` is the ordinal rank within the ecosystem from the most recent ranking pass (NULL if not yet ranked).
     - `ingestionSource` identifies which worker last wrote the row: 'npm-registry', 'deps_dev', etc. (empty string if unknown).
     - `lastSyncedAt` is when the row was last written by any worker — serves as the updated_at watermark for sync.
     - `createdAt` is the row-insert timestamp — set once on first insert, never updated.
@@ -36,32 +39,35 @@ SCHEMA >
     `id` UInt64 `json:$.record.id`,
     `purl` String `json:$.record.purl`,
     `ecosystem` String `json:$.record.ecosystem`,
-    `namespace` String `json:$.record.namespace` DEFAULT '',
+    `namespace` Nullable(String) `json:$.record.namespace`,
     `name` String `json:$.record.name`,
-    `registryUrl` String `json:$.record.registry_url` DEFAULT '',
-    `status` String `json:$.record.status` DEFAULT '',
-    `description` String `json:$.record.description` DEFAULT '',
-    `homepage` String `json:$.record.homepage` DEFAULT '',
-    `declaredRepositoryUrl` String `json:$.record.declared_repository_url` DEFAULT '',
-    `repositoryUrl` String `json:$.record.repository_url` DEFAULT '',
+    `registryUrl` Nullable(String) `json:$.record.registry_url`,
+    `status` Nullable(String) `json:$.record.status`,
+    `description` Nullable(String) `json:$.record.description`,
+    `homepage` Nullable(String) `json:$.record.homepage`,
+    `declaredRepositoryUrl` Nullable(String) `json:$.record.declared_repository_url`,
+    `repositoryUrl` Nullable(String) `json:$.record.repository_url`,
     `licenses` Array(String) `json:$.record.licenses[:]` DEFAULT [],
-    `licensesRaw` String `json:$.record.licenses_raw` DEFAULT '',
+    `licensesRaw` Nullable(String) `json:$.record.licenses_raw`,
     `keywords` Array(String) `json:$.record.keywords[:]` DEFAULT [],
-    `distTagsLatest` String `json:$.record.dist_tags_latest` DEFAULT '',
-    `distTagsNext` String `json:$.record.dist_tags_next` DEFAULT '',
-    `distTagsBeta` String `json:$.record.dist_tags_beta` DEFAULT '',
-    `versionsCount` UInt32 `json:$.record.versions_count` DEFAULT 0,
-    `latestVersion` String `json:$.record.latest_version` DEFAULT '',
+    `distTagsLatest` Nullable(String) `json:$.record.dist_tags_latest`,
+    `distTagsNext` Nullable(String) `json:$.record.dist_tags_next`,
+    `distTagsBeta` Nullable(String) `json:$.record.dist_tags_beta`,
+    `versionsCount` Nullable(UInt32) `json:$.record.versions_count`,
+    `latestVersion` Nullable(String) `json:$.record.latest_version`,
     `firstReleaseAt` Nullable(DateTime64(3)) `json:$.record.first_release_at`,
     `latestReleaseAt` Nullable(DateTime64(3)) `json:$.record.latest_release_at`,
-    `dependentCount` UInt32 `json:$.record.dependent_count` DEFAULT 0,
-    `transitiveDependentCount` UInt64 `json:$.record.transitive_dependent_count` DEFAULT 0,
-    `dependentReposCount` UInt32 `json:$.record.dependent_repos_count` DEFAULT 0,
+    `dependentCount` Nullable(UInt32) `json:$.record.dependent_count`,
+    `transitiveDependentCount` Nullable(UInt64) `json:$.record.transitive_dependent_count`,
+    `dependentReposCount` Nullable(UInt32) `json:$.record.dependent_repos_count`,
     `hasCriticalVulnerability` UInt8 `json:$.record.has_critical_vulnerability` DEFAULT 0,
-    `impact` Float32 `json:$.record.impact` DEFAULT 0,
+    `impact` Nullable(String) `json:$.record.impact`,
     `isCritical` UInt8 `json:$.record.is_critical` DEFAULT 0,
     `lastRankPassAt` Nullable(DateTime64(3)) `json:$.record.last_rank_pass_at`,
-    `ingestionSource` String `json:$.record.ingestion_source` DEFAULT '',
+    `downloadsLast30d` Nullable(UInt64) `json:$.record.downloads_last_30d`,
+    `centralityScore` Nullable(String) `json:$.record.centrality_score`,
+    `rankInEcosystem` Nullable(UInt32) `json:$.record.rank_in_ecosystem`,
+    `ingestionSource` Nullable(String) `json:$.record.ingestion_source`,
     `lastSyncedAt` DateTime64(3) `json:$.record.last_synced_at`,
     `createdAt` DateTime64(3) `json:$.record.created_at`
 
