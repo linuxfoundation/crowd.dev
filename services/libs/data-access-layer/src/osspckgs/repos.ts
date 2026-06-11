@@ -15,19 +15,20 @@ export async function findRepoIdsByUrl(
  * Inserts or updates a repo row keyed on url.
  * Uses COALESCE so richer data from other enrichers (GitHub, deps.dev) is never
  * overwritten with nulls from a partial write.
+ * `last_synced_at` is intentionally NOT touched here — that column is owned by the
+ * GitHub enricher as its freshness signal. Maven discovery only stamps updated_at.
  * Returns the repo id.
  */
 export async function upsertRepo(qx: QueryExecutor, item: IDbRepoUpsert): Promise<number> {
   const row = await qx.selectOne(
     `
-    INSERT INTO repos (url, host, owner, name, last_synced_at, updated_at)
-    VALUES ($(url), $(host), $(owner), $(name), NOW(), NOW())
+    INSERT INTO repos (url, host, owner, name, updated_at)
+    VALUES ($(url), $(host), $(owner), $(name), NOW())
     ON CONFLICT (url) DO UPDATE SET
-      host           = COALESCE(EXCLUDED.host,  repos.host),
-      owner          = COALESCE(EXCLUDED.owner, repos.owner),
-      name           = COALESCE(EXCLUDED.name,  repos.name),
-      last_synced_at = NOW(),
-      updated_at     = NOW()
+      host       = COALESCE(EXCLUDED.host,  repos.host),
+      owner      = COALESCE(EXCLUDED.owner, repos.owner),
+      name       = COALESCE(EXCLUDED.name,  repos.name),
+      updated_at = NOW()
     RETURNING id
     `,
     item,
