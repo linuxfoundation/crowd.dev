@@ -108,11 +108,7 @@ export async function mergeMembers(
   const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
 
   try {
-    await memberService.merge(primaryMemberId, secondaryMemberId, {
-      currentUser: {
-        id: process.env['CROWD_LF_AGENT_USER_ID'],
-      },
-    })
+    await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
     svc.log.error({ err: error }, 'Failed to merge members')
     throw error
