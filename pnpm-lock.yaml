@@ -1086,6 +1086,9 @@ importers:
       '@crowd/common':
         specifier: workspace:*
         version: link:../../libs/common
+      '@crowd/common_services':
+        specifier: workspace:*
+        version: link:../../libs/common_services
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../../libs/data-access-layer
@@ -1330,18 +1333,18 @@ importers:
       '@temporalio/workflow':
         specifier: ~1.17.2
         version: 1.17.2
-      jsonwebtoken:
-        specifier: ^9.0.0
-        version: 9.0.3
-      semver:
-        specifier: ^7.6.0
-        version: 7.6.0
       axios:
         specifier: ^1.16.1
         version: 1.16.1
       fast-xml-parser:
         specifier: ^5.8.0
         version: 5.8.0
+      jsonwebtoken:
+        specifier: ^9.0.0
+        version: 9.0.3
+      semver:
+        specifier: ^7.6.0
+        version: 7.6.0
       tsx:
         specifier: ^4.7.1
         version: 4.7.3
