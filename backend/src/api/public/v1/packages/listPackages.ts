@@ -20,8 +20,8 @@ const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   ecosystem: z.string().trim().optional(),
-  lifecycle: z.enum(lifecycleValues).optional(),
-  busFactor1Only: booleanQueryParam,
+  lifecycle: z.enum(lifecycleValues).optional(), // TODO: filter not yet implemented in DAL
+  busFactor1Only: booleanQueryParam, // TODO: filter not yet implemented in DAL
   staleOnly: booleanQueryParam,
   unstewardedOnly: booleanQueryParam,
   sortBy: z.enum(['name', 'health', 'impact', 'openVulns']).default('name'),

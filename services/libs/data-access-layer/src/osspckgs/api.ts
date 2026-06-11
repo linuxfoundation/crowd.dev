@@ -115,10 +115,13 @@ export async function listPackagesForApi(
       p.impact AS "criticalityScore",
       p.latest_release_at AS "latestReleaseAt",
       s.status AS "stewardshipStatus",
-      (SELECT COUNT(*)::int FROM advisory_packages ap WHERE ap.package_id = p.id) AS "openVulns",
+      COALESCE(ap_counts.cnt, 0) AS "openVulns",
       COUNT(*) OVER() AS total
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS cnt FROM advisory_packages WHERE package_id = p.id
+    ) ap_counts ON true
     ${where}
     ORDER BY ${sortExpr} ${sortDir} NULLS LAST, p.purl ${sortDir}
     LIMIT $(limit) OFFSET $(offset)
@@ -203,16 +206,17 @@ export async function getPackageDetailByPurl(
         LIMIT 1
       ) AS "downloadsLast30d",
       (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
-      -- percentile rank within ecosystem (0=least, 1=most transitive reach)
-      (
-        SELECT r.prank
-        FROM (
-          SELECT purl, PERCENT_RANK() OVER (PARTITION BY ecosystem ORDER BY transitive_dependent_count ASC NULLS FIRST) AS prank
-          FROM packages
-          WHERE ecosystem = p.ecosystem
-        ) r
-        WHERE r.purl = p.purl
-      ) AS "transitiveReach"
+      -- TODO: precompute and store in packages.transitive_reach_prank; full window scan is too slow at npm scale (~24s for npm)
+      -- (
+      --   SELECT r.prank
+      --   FROM (
+      --     SELECT purl, PERCENT_RANK() OVER (PARTITION BY ecosystem ORDER BY transitive_dependent_count ASC NULLS FIRST) AS prank
+      --     FROM packages
+      --     WHERE ecosystem = p.ecosystem
+      --   ) r
+      --   WHERE r.purl = p.purl
+      -- ) AS "transitiveReach"
+      NULL::float AS "transitiveReach"
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
     LEFT JOIN LATERAL (
