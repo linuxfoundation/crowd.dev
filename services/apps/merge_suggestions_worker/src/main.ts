@@ -9,8 +9,8 @@ const config: Config = {
     'CROWD_AWS_BEDROCK_ACCESS_KEY_ID',
     'CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY',
     'CROWD_API_SERVICE_URL',
-    'CROWD_API_SERVICE_USER_TOKEN',
     'CROWD_LF_AGENT_USER_ID',
+    'CROWD_LF_AGENT_USER_TOKEN',
   ],
   producer: {
     enabled: false,

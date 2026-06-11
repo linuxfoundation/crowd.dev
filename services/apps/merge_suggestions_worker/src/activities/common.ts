@@ -127,7 +127,7 @@ export async function mergeOrganizations(
   const requestOptions = {
     method: 'PUT',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {
