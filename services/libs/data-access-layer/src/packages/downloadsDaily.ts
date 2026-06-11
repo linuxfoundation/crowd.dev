@@ -30,6 +30,9 @@ export interface DailyBackfillCandidate {
 
 // `laneIndex`/`laneCount` shard the due set across concurrent lanes by a stable hash
 // of the purl, so each lane drains a disjoint slice (laneCount=1 ⇒ no sharding).
+// Restricted to is_critical packages — daily downloads are deep per-package history,
+// scoped to the critical set (matching the metadata pass). The 30d download passes run
+// over all npm packages, since their counts feed the criticality ranking.
 export async function getNpmPackagesNeedingDailyBackfill(
   qx: QueryExecutor,
   cutoff: string,
@@ -49,6 +52,7 @@ export async function getNpmPackagesNeedingDailyBackfill(
        FROM packages p
        LEFT JOIN npm_package_state s ON s.purl = p.purl
       WHERE p.ecosystem = 'npm'
+        AND p.is_critical = TRUE
         AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
         AND (s.daily_downloads_last_processed_at IS NULL
              OR s.daily_downloads_last_processed_at < $(cutoff)::timestamptz)
@@ -99,8 +103,8 @@ export async function insertDailyDownloads(
 ): Promise<string[]> {
   if (days.length === 0) return []
   const rowCount = await qx.result(
-    `INSERT INTO downloads_daily (package_id, date, count)
-     SELECT $(packageId)::bigint, d::date, c
+    `INSERT INTO downloads_daily (package_id, date, count, created_at, updated_at)
+     SELECT $(packageId)::bigint, d::date, c, NOW(), NOW()
        FROM unnest($(dates)::text[], $(counts)::bigint[]) AS u(d, c)
      ON CONFLICT (package_id, date) DO NOTHING`,
     { packageId, dates: days.map((d) => d.day), counts: days.map((d) => d.downloads) },

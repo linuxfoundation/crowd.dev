@@ -23,9 +23,9 @@ export async function loadDirectEdges(qx: QueryExecutor, ecosystem: string): Pro
   })
 }
 
-// Bulk-update centrality_score on packages_universe rows by joining through packages.
+// Bulk-update centrality_score on packages rows.
 // Uses unnest — one parameterised query regardless of row count, no string interpolation.
-// Isolated packages (not in the graph) remain NULL; rank_packages_universe() treats
+// Isolated packages (not in the graph) remain NULL; rank_packages() treats
 // NULL as 0 via COALESCE. Idempotent — safe for Temporal retries.
 export async function mergeCentralityScores(
   qx: QueryExecutor,
@@ -33,11 +33,11 @@ export async function mergeCentralityScores(
 ): Promise<void> {
   if (rows.length === 0) return
   await qx.result(
-    `UPDATE packages_universe pu
+    `UPDATE packages p
         SET centrality_score = v.score
        FROM unnest($(packageIds)::bigint[], $(scores)::numeric[]) AS v(package_id, score)
-       JOIN packages p ON p.id = v.package_id
-      WHERE pu.purl = p.purl`,
+      WHERE p.id = v.package_id
+        AND p.centrality_score IS DISTINCT FROM v.score`,
     {
       packageIds: rows.map((r) => r.packageId),
       scores: rows.map((r) => r.centralityScore),

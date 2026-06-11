@@ -9,6 +9,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | ADR                                                 | Title                                    | Status | Date       |
 | --------------------------------------------------- | ---------------------------------------- | ------ | ---------- |
 | [ADR-0001](./0001-oss-packages-design-decisions.md) | OSS packages — design decisions (living) | living | 2026-05-27 |
+| [ADR-0003](./0003-deps-bq-table-selection.md) | Use DependencyGraphEdgesLatest for deps ingestion | accepted | 2026-05-29 |
 
 ## Why ADRs?
 

@@ -1,3 +1,4 @@
+import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
   PgPromiseQueryExecutor,
@@ -107,24 +108,17 @@ export async function mergeMembers(
   primaryMemberId: string,
   secondaryMemberId: string,
 ): Promise<void> {
-  const res = await fetch(
-    `${process.env['CROWD_API_SERVICE_URL']}/member/${primaryMemberId}/merge`,
-    {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        memberToMerge: secondaryMemberId,
-      }),
-    },
-  )
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
 
-  if (res.status !== 200) {
-    const body = await res.text()
-    throw new Error(
-      `Failed to merge member ${primaryMemberId} with ${secondaryMemberId}! Status: ${res.status}, Response: ${body}`,
-    )
+  try {
+    await memberService.merge(primaryMemberId, secondaryMemberId, {
+      currentUser: {
+        id: process.env['CROWD_LF_AGENT_USER_ID'],
+      },
+    })
+  } catch (error) {
+    svc.log.error({ err: error }, 'Failed to merge members')
+    throw error
   }
 }
