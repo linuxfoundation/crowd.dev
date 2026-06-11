@@ -59,7 +59,6 @@ All packages_worker sub-workers live in a single npm package (`services/apps/pac
 services/apps/packages_worker/
   src/
     bin/
-      packages-worker.ts      ← parent / health-check stub
       github-repos-enricher.ts
     enricher/                 ← github-repos-enricher logic
     npm/                      ← npm worker (future)

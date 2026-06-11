@@ -19,7 +19,6 @@ each worker in its own `src/{worker}/` directory with its own entry point.
 services/apps/packages_worker/
   src/
     bin/
-      packages-worker.ts        ← parent stub
       github-repos-enricher.ts  ← existing worker
       <name>.ts                 ← entry point you will create
     github/                     ← existing worker logic
