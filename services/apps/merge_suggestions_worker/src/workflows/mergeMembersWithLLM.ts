@@ -2,20 +2,27 @@ import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
 import { LLMSuggestionVerdictType, MemberMergeSuggestionTable } from '@crowd/types'
 
-import * as commonActivities from '../activities/common'
-import * as memberActivities from '../activities/memberMergeSuggestions'
+import type * as activities from '../activities'
 import { ILLMResult, IProcessMergeMemberSuggestionsWithLLM } from '../types'
 import { removeEmailLikeIdentitiesFromMember } from '../utils'
 
-const memberActivitiesProxy = proxyActivities<typeof memberActivities>({
-  startToCloseTimeout: '1 minute',
+const {
+  getRawMemberMergeSuggestions,
+  getMembersForLLMConsumption,
+  removeMemberMergeSuggestion,
+  addMemberSuggestionToNoMerge,
+} = proxyActivities<typeof activities>({
+  startToCloseTimeout: '2 minutes',
+  retry: { maximumAttempts: 3 },
 })
 
-const commonActivitiesProxy = proxyActivities<typeof commonActivities>({
-  startToCloseTimeout: '5 minute',
+const { getLLMResult, saveLLMVerdict, mergeMembers } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
   retry: {
-    initialInterval: '10 seconds',
-    maximumAttempts: 3,
+    initialInterval: '1 minute',
+    backoffCoefficient: 2,
+    maximumInterval: '4 minutes',
+    maximumAttempts: 4,
   },
 })
 
@@ -60,32 +67,26 @@ export async function mergeMembersWithLLM(
                   - This check must be performed before evaluating any other similarities
                   Print 'true' if they are the same member, 'false' otherwise. No explanation required. Don't print anything else.`
 
-  const suggestions = await memberActivitiesProxy.getRawMemberMergeSuggestions(
-    args.similarity,
-    SUGGESTIONS_PER_RUN,
-  )
+  const suggestions = await getRawMemberMergeSuggestions(args.similarity, SUGGESTIONS_PER_RUN)
 
   if (suggestions.length === 0) {
     return
   }
 
   for (const suggestion of suggestions) {
-    const members = await memberActivitiesProxy.getMembersForLLMConsumption(suggestion)
+    const members = await getMembersForLLMConsumption(suggestion)
 
     if (members.length !== 2) {
       console.log(`Failed getting members data in suggestion. Skipping suggestion: ${suggestion}`)
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW,
-      )
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
+      await removeMemberMergeSuggestion(suggestion, MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW)
+      await removeMemberMergeSuggestion(
         suggestion,
         MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
       )
       continue
     }
 
-    const llmResult: ILLMResult = await commonActivitiesProxy.getLLMResult(
+    const llmResult: ILLMResult = await getLLMResult(
       members.map((member) => removeEmailLikeIdentitiesFromMember(member)),
       MODEL_ID,
       PROMPT,
@@ -93,7 +94,7 @@ export async function mergeMembersWithLLM(
       MODEL_ARGS,
     )
 
-    await commonActivitiesProxy.saveLLMVerdict({
+    await saveLLMVerdict({
       type: LLMSuggestionVerdictType.MEMBER,
       model: MODEL_ID,
       primaryId: suggestion[0],
@@ -109,20 +110,17 @@ export async function mergeMembersWithLLM(
       console.log(
         `LLM verdict says these two members are the same. Merging members: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await commonActivitiesProxy.mergeMembers(suggestion[0], suggestion[1])
+      await mergeMembers(suggestion[0], suggestion[1])
     } else {
       console.log(
         `LLM doesn't think these members are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
+      await removeMemberMergeSuggestion(
         suggestion,
         MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
       )
-      await memberActivitiesProxy.removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW,
-      )
-      await memberActivitiesProxy.addMemberSuggestionToNoMerge(suggestion)
+      await removeMemberMergeSuggestion(suggestion, MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW)
+      await addMemberSuggestionToNoMerge(suggestion)
     }
   }
 

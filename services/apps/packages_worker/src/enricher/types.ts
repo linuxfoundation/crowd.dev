@@ -17,6 +17,10 @@ export interface LightRepoResult {
   createdAt: string | null
   securityPolicyEnabled: boolean | null
   securityFileEnabled: boolean | null
+  branchProtectionEnabled: boolean | null
+  branchProtectionRequiredReviews: number | null
+  branchProtectionRequiresStatusChecks: boolean | null
+  branchProtectionAllowsForcePush: boolean | null
   rateLimit: {
     limit: number
     cost: number
