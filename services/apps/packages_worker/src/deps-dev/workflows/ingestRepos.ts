@@ -58,11 +58,13 @@ const REPOS_PG_COLUMNS = [
   'open_issues',
 ]
 
+// last_synced_at is intentionally left NULL on seed — it is owned by the GitHub
+// enricher as its freshness signal. created_at / updated_at use their column defaults.
 const REPOS_MERGE_SQL = `
 INSERT INTO repos (url, raw_project_type, raw_project_name, host, owner, name,
-                   description, homepage, stars, forks, open_issues, last_synced_at)
+                   description, homepage, stars, forks, open_issues)
 SELECT s.canonical_url, s.raw_project_type, s.raw_project_name, s.host, s.owner, s.name,
-       s.description, s.homepage, s.stars, s.forks, s.open_issues, NOW()
+       s.description, s.homepage, s.stars, s.forks, s.open_issues
 FROM staging.osspckgs_repos_raw s
 ON CONFLICT (url) DO NOTHING
 `

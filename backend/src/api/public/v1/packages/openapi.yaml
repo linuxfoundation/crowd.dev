@@ -105,7 +105,8 @@ components:
     StewardshipSummary:
       type: object
       description: Null if the purl is not found in CDP.
-      required: [name, ecosystem, stewardship, stewards, lastActivityAt, lastActivityDescription]
+      required:
+        [name, ecosystem, stewardship, stewards, openVulns, lastActivityAt, lastActivityDescription]
       properties:
         name:
           type: string
@@ -135,9 +136,11 @@ components:
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
-          description: Single steward or null. Empty in v1.
+          description: Assigned stewards or null. Empty in v1.
           oneOf:
-            - $ref: '#/components/schemas/Steward'
+            - type: array
+              items:
+                $ref: '#/components/schemas/Steward'
             - type: 'null'
         lastActivityAt:
           type:
@@ -193,10 +196,12 @@ components:
             - type: 'null'
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
-        steward:
-          description: Single assigned steward or null.
+        stewards:
+          description: Assigned stewards or null.
           oneOf:
-            - $ref: '#/components/schemas/Steward'
+            - type: array
+              items:
+                $ref: '#/components/schemas/Steward'
             - type: 'null'
 
     # ── Package detail ───────────────────────────────────────────────────────────
@@ -411,6 +416,25 @@ components:
                   type:
                     - string
                     - 'null'
+        stewardship:
+          type: object
+          description: Stewardship state. In v1 always unassigned with no stewards or activity.
+          properties:
+            status:
+              $ref: '#/components/schemas/StewardshipStatus'
+            stewards:
+              description: Assigned stewards or null. Null in v1.
+              oneOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/Steward'
+                - type: 'null'
+            lastActivityAt:
+              type:
+                - string
+                - 'null'
+              format: date-time
+              description: Null in v1.
         history:
           type: object
           description: Package history data. Empty in v1.
@@ -657,6 +681,10 @@ paths:
                   supplyChainIntegrity:
                     buildProvenance: null
                     signedReleases: null
+                stewardship:
+                  status: unassigned
+                  stewards: null
+                  lastActivityAt: null
                 history: {}
         '404':
           description: Package not found.

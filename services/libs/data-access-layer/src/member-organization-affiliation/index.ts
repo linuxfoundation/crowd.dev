@@ -11,6 +11,11 @@ import {
 
 import { findMemberAffiliations } from '../member_segment_affiliations'
 import { IManualAffiliationData } from '../old/apps/data_sink_worker/repo/memberAffiliation.data'
+import {
+  type OrganizationVerifiedPrimaryDomains,
+  fetchManyOrganizationVerifiedPrimaryDomains,
+  preferCompanyOverUniversityWhenOverlapping,
+} from '../organizations/identities'
 import { QueryExecutor } from '../queryExecutor'
 
 import type { MemberOrganizationWithOverrides, TimelineItem } from './types'
@@ -30,6 +35,8 @@ async function prepareMemberOrganizationAffiliationTimeline(
   qx: QueryExecutor,
   memberId: string,
 ): Promise<TimelineItem[]> {
+  let memberOrgDomains: OrganizationVerifiedPrimaryDomains[] = []
+
   const isDateInInterval = (date: Date, start: Date | null, end: Date | null) => {
     return (!start || date >= start) && (!end || date <= end)
   }
@@ -65,6 +72,20 @@ async function prepareMemberOrganizationAffiliationTimeline(
       if (manualAffiliations.length === 1) return manualAffiliations[0]
       // if multiple manual affiliations, pick the one with the longest date range
       return getLongestDateRange(manualAffiliations)
+    }
+
+    const memberOrgs = orgs.filter(isMemberOrganizationWithOverrides)
+    const companyPreferredOrgs = preferCompanyOverUniversityWhenOverlapping(
+      memberOrgs,
+      memberOrgDomains,
+    )
+
+    if (companyPreferredOrgs.length < memberOrgs.length) {
+      const companyPreferredOrgIds = new Set(companyPreferredOrgs.map((row) => row.organizationId))
+      orgs = orgs.filter(
+        (row) =>
+          !isMemberOrganizationWithOverrides(row) || companyPreferredOrgIds.has(row.organizationId),
+      )
     }
 
     // first check if there's a primary work experience
@@ -308,14 +329,58 @@ async function prepareMemberOrganizationAffiliationTimeline(
         .value() ?? null
   }
 
-  // We separate global and manual timelines to prevent 'stale' organizationIds
-  // Member organizations apply globally, while member segment affiliations only override specific segments.
+  const organizationIds = Array.from(
+    new Set(memberOrganizations.map((row: MemberOrganizationWithOverrides) => row.organizationId)),
+  )
+
+  memberOrgDomains = await fetchManyOrganizationVerifiedPrimaryDomains(
+    qx,
+    organizationIds as string[],
+  )
+
+  // Route activities exclusively to ONE timeline pass to prevent double-processing:
+  // 1. If an activity has a verified email domain, it lands in the email timeline.
+  // 2. Otherwise, fallback to the date-based timeline (excluding these known domains).
+  const emailDomains = [...new Set(memberOrgDomains.flatMap((row) => row.domains))]
+  const nonEmailActivityFilter =
+    emailDomains.length > 0 ? { excludeEmailDomains: emailDomains } : {}
+
+  // Separate global and manual timelines to prevent stale data.
+  // Global member orgs apply everywhere; manual segment affiliations act as localized overrides.
   const baseTimeline = buildTimeline(memberOrganizations, fallbackOrganizationId).map((item) => ({
     ...item,
+    ...nonEmailActivityFilter,
     skipManualAffiliationSegments: manualAffiliations.length > 0,
   }))
 
-  // Only keep items with an actual org. Gaps (null org) are already handled by the base timeline.
+  // Activities on a member-org email domain belong to that org, overriding whatever
+  // role the date-based timeline would have picked during an overlap.
+  const domainsByOrgId = _.keyBy(memberOrgDomains, 'orgId')
+  const memberOrgsPerDomain = _.flatMap(memberOrganizations, (memberOrganization) =>
+    (domainsByOrgId[memberOrganization.organizationId]?.domains ?? []).map((domain) => ({
+      memberOrganization,
+      domain,
+    })),
+  )
+
+  const emailAffiliations = _.flatMap(
+    _.groupBy(memberOrgsPerDomain, 'domain'),
+    (entries, matchEmailDomain) => {
+      const primary = selectPrimaryWorkExperience(entries.map((entry) => entry.memberOrganization))
+
+      return [
+        {
+          organizationId: primary.organizationId,
+          dateStart: new Date('1970-01-01').toISOString(),
+          dateEnd: null,
+          matchEmailDomain,
+          skipManualAffiliationSegments: manualAffiliations.length > 0,
+        },
+      ]
+    },
+  )
+
+  // Only keep items with a valid org; gaps (null orgs) are already handled by the base timeline.
   const manualTimeline = _.flatMap(
     _.groupBy(manualAffiliations, 'segmentId'),
     (affiliations, segmentId) => {
@@ -323,8 +388,8 @@ async function prepareMemberOrganizationAffiliationTimeline(
         .filter((item) => item.organizationId !== null)
         .map((item) => ({ ...item, segmentId }))
 
-      // Undated MSAs are invisible to buildTimeline (no dateStart to anchor the loop).
-      // Create a catch-all so the base pass's NOT EXISTS still has a matching manual item.
+      // Manual affiliations without dates are ignored by buildTimeline (no anchor point).
+      // Create a 1970 catch-all so the base pass's SQL `NOT EXISTS` check still matches them.
       if (items.length === 0) {
         const primary = selectPrimaryWorkExperience(affiliations)
         items.push({
@@ -339,7 +404,7 @@ async function prepareMemberOrganizationAffiliationTimeline(
     },
   )
 
-  return [...baseTimeline, ...manualTimeline]
+  return [...baseTimeline, ...manualTimeline, ...emailAffiliations]
 }
 
 async function processAffiliationActivities(
@@ -375,6 +440,19 @@ async function processAffiliationActivities(
   if (affiliation.dateEnd) {
     conditions.push(`ar."timestamp" < $(dateEnd)::date + interval '1 day'`)
     params.dateEnd = affiliation.dateEnd
+  }
+
+  // Give each pass a disjoint slice of activities by email so no row is written twice: matchEmailDomain
+  // takes activities on this org's domain, excludeEmailDomains takes the rest (no '@', or a foreign domain).
+  if (affiliation.matchEmailDomain) {
+    conditions.push(`split_part(lower(ar.username), '@', 2) = $(matchEmailDomain)`)
+    params.matchEmailDomain = affiliation.matchEmailDomain
+  } else if (affiliation.excludeEmailDomains?.length) {
+    conditions.push(`(
+      position('@' in coalesce(ar.username, '')) = 0
+      OR lower(split_part(ar.username, '@', 2)) NOT IN ($(excludeEmailDomains:csv))
+    )`)
+    params.excludeEmailDomains = affiliation.excludeEmailDomains
   }
 
   // Segment filtering (for manual affiliations)
