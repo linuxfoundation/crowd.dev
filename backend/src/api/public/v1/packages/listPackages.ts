@@ -15,17 +15,32 @@ const MAX_PAGE_SIZE = 100
 const booleanQueryParam = z.preprocess((v) => v === 'true', z.boolean()).default(false)
 
 const lifecycleValues = ['active', 'stable', 'declining', 'abandoned'] as const
+const stewardshipStatusValues = [
+  'unassigned',
+  'open',
+  'assessing',
+  'active',
+  'needs_attention',
+  'escalated',
+  'blocked',
+  'inactive',
+] as const
+const healthBandValues = ['healthy', 'fair', 'concerning', 'critical'] as const
+const vulnSeverityValues = ['any', 'high', 'critical'] as const
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   ecosystem: z.string().trim().optional(),
-  lifecycle: z.enum(lifecycleValues).optional(), // TODO: filter not yet implemented in DAL
+  lifecycle: z.enum(lifecycleValues).optional(),
   name: z.string().trim().optional(),
+  status: z.enum(stewardshipStatusValues).optional(),
+  healthBand: z.enum(healthBandValues).optional(),
+  vulnSeverity: z.enum(vulnSeverityValues).optional(),
   busFactor1Only: booleanQueryParam,
   staleOnly: booleanQueryParam,
   unstewardedOnly: booleanQueryParam,
-  sortBy: z.enum(['name', 'health', 'impact', 'openVulns']).default('name'),
+  sortBy: z.enum(['name', 'health', 'impact', 'openVulns', 'risk']).default('name'),
   sortDir: z.enum(['asc', 'desc']).default('asc'),
 })
 
@@ -34,8 +49,11 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     page,
     pageSize,
     ecosystem,
-    lifecycle: _lifecycle,
+    lifecycle,
     name,
+    status,
+    healthBand,
+    vulnSeverity,
     busFactor1Only,
     staleOnly,
     unstewardedOnly,
@@ -43,19 +61,20 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     sortDir,
   } = validateOrThrow(querySchema, req.query)
 
-  // health is a v2 field with no backing column yet — fall back to name sort
-  const effectiveSortBy = sortBy === 'health' ? 'name' : sortBy
-
   const qx = await getPackagesQx()
   const { rows, total } = await listPackagesForApi(qx, {
     page,
     pageSize,
     ecosystem,
+    lifecycle,
     name,
+    status,
+    healthBand,
+    vulnSeverity,
     staleOnly,
     unstewardedOnly,
     busFactor1Only,
-    sortBy: effectiveSortBy,
+    sortBy,
     sortDir,
   })
 
@@ -63,7 +82,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     purl: r.purl,
     name: r.name,
     ecosystem: r.ecosystem,
-    health: null,
+    health: r.scorecardScore != null ? Math.round(Number(r.scorecardScore) * 10) : null,
     impact: r.criticalityScore != null ? Math.round(Number(r.criticalityScore) * 100) : null,
     lifecycle: null,
     maintainerBusFactor: r.maintainerCount,
@@ -78,13 +97,16 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     total,
     filters: {
       ecosystem: ecosystem ?? null,
-      lifecycle: null, // TODO: filter not yet implemented in DAL
+      lifecycle: lifecycle ?? null,
       name: name ?? null,
+      status: status ?? null,
+      healthBand: healthBand ?? null,
+      vulnSeverity: vulnSeverity ?? null,
       busFactor1Only,
       staleOnly,
       unstewardedOnly,
     },
-    sort: { by: effectiveSortBy, dir: sortDir },
+    sort: { by: sortBy, dir: sortDir },
     packages,
   })
 }
