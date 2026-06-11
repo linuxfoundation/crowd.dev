@@ -173,6 +173,7 @@ export async function fetchManyOrganizationVerifiedPrimaryDomains(
       WHERE oi."organizationId" IN ($(organizationIds:csv))
         AND oi.type = 'primary-domain'
         AND oi.verified = true
+        AND btrim(oi.value) <> ''
       GROUP BY oi."organizationId", o."displayName"
     `,
     { organizationIds },
@@ -180,9 +181,7 @@ export async function fetchManyOrganizationVerifiedPrimaryDomains(
 }
 
 /**
- * Prioritizes company affiliations over universities when a member has overlapping timelines.
- * Without an activity email to prove a school stint, universities can falsely outrank real employers.
- * Returns the original candidates untouched if no overlap exists.
+ * Prefer companies over universities (when both exist).
  */
 export function preferCompanyOverUniversityWhenOverlapping<T extends { organizationId: string }>(
   candidates: T[],
