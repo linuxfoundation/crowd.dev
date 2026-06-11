@@ -1,5 +1,5 @@
 DESCRIPTION >
-    - `packages` contains Tier-2 package metadata for tracked OSS packages across multiple ecosystems.
+    - `ossPackages` contains Tier-2 package metadata for tracked OSS packages across multiple ecosystems.
     - Replicated from Postgres packages-db — seeded from deps.dev BigQuery, enriched by registry-specific workers (npm, Maven, etc.).
     - Used to power package search, vulnerability overlays, criticality scoring, and ecosystem health analytics.
     - `id` is the internal primary key.
