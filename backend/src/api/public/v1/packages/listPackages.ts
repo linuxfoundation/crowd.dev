@@ -47,7 +47,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     if (ecosystem && p.ecosystem !== ecosystem) return false
     if (lifecycle && p.lifecycle !== lifecycle) return false
     if (busFactor1Only && p.maintainerBusFactor !== 1) return false
-    if (unstewardedOnly && p.stewardship !== 'unassigned') return false
+    if (unstewardedOnly && p.stewardship !== null && p.stewardship !== 'unassigned') return false
     if (staleOnly) {
       const lastRelease = MOCK_DETAILS[p.purl]?.general.riskSignals.lastRelease
       if (!lastRelease || new Date(lastRelease) >= staleThreshold) return false

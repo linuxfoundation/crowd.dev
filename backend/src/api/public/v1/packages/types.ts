@@ -33,8 +33,8 @@ export interface StewardshipSummary {
   health: number | null
   impact: number | null
   openVulns: OpenVulns | null
-  stewardship: StewardshipStatus
-  stewards: Steward | null
+  stewardship: StewardshipStatus | null
+  stewards: Steward[] | null
   lastActivityAt: string | null
   lastActivityDescription: string | null
 }
