@@ -9,8 +9,8 @@ export interface MockPackageListItem {
   lifecycle: Lifecycle
   maintainerBusFactor: number
   openVulns: OpenVulns
-  stewardship: StewardshipStatus
-  stewards: Steward | null
+  stewardship: StewardshipStatus | null
+  stewards: Steward[] | null
 }
 
 export interface MockPackageDetail {
@@ -60,7 +60,7 @@ export interface MockPackageDetail {
   }
   stewardship: {
     status: StewardshipStatus
-    stewards: Steward | null
+    stewards: Steward[] | null
     lastActivityAt: string | null
   }
   history: Record<string, unknown>

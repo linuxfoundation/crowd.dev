@@ -136,9 +136,11 @@ components:
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
-          description: Single steward or null. Empty in v1.
+          description: Assigned stewards or null. Empty in v1.
           oneOf:
-            - $ref: '#/components/schemas/Steward'
+            - type: array
+              items:
+                $ref: '#/components/schemas/Steward'
             - type: 'null'
         lastActivityAt:
           type:
@@ -195,9 +197,11 @@ components:
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
-          description: Single assigned steward or null.
+          description: Assigned stewards or null.
           oneOf:
-            - $ref: '#/components/schemas/Steward'
+            - type: array
+              items:
+                $ref: '#/components/schemas/Steward'
             - type: 'null'
 
     # ── Package detail ───────────────────────────────────────────────────────────
@@ -419,9 +423,11 @@ components:
             status:
               $ref: '#/components/schemas/StewardshipStatus'
             stewards:
-              description: Single assigned steward or null. Null in v1.
+              description: Assigned stewards or null. Null in v1.
               oneOf:
-                - $ref: '#/components/schemas/Steward'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/Steward'
                 - type: 'null'
             lastActivityAt:
               type:

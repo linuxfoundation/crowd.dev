@@ -38,7 +38,7 @@ export async function batchGetStewardship(req: Request, res: Response): Promise<
         impact: detail.general.impact.impactScore,
         openVulns,
         stewardship: detail.stewardship.status,
-        stewards: null,
+        stewards: detail.stewardship.stewards,
         lastActivityAt: null,
         lastActivityDescription: null,
       }
