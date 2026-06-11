@@ -1,14 +1,16 @@
+import type { Lifecycle, OpenVulns, SeverityLevel, Steward, StewardshipStatus } from './types'
+
 export interface MockPackageListItem {
   purl: string
   name: string
   ecosystem: string
   health: number
   impact: number
-  lifecycle: 'active' | 'stable' | 'declining' | 'abandoned'
+  lifecycle: Lifecycle
   maintainerBusFactor: number
-  openVulns: { low: number; medium: number; high: number; critical: number }
-  stewardship: string
-  steward: null
+  openVulns: OpenVulns
+  stewardship: StewardshipStatus | null
+  stewards: Steward[] | null
 }
 
 export interface MockPackageDetail {
@@ -30,19 +32,19 @@ export interface MockPackageDetail {
       transitiveReach: string
     }
     riskSignals: {
-      lifecycle: string
+      lifecycle: Lifecycle
       maintainerBusFactor: number
       lastRelease: string
       hasSecurityFile: null
       openSSFScorecard: number
     }
   }
-  assessment: Record<string, never>
+  assessment: Record<string, unknown>
   security: {
     securityContacts: null
     advisories: Array<{
       osvId: string
-      severity: 'critical' | 'high' | 'medium' | 'low'
+      severity: SeverityLevel
       resolution: null
     }>
     cvd: {
@@ -56,7 +58,12 @@ export interface MockPackageDetail {
     repositoryMapping: { declaredRepo: string; mappingConfidence: number; lastCommitAt: string }
     supplyChainIntegrity: { buildProvenance: null; signedReleases: null }
   }
-  history: Record<string, never>
+  stewardship: {
+    status: StewardshipStatus
+    stewards: Steward[] | null
+    lastActivityAt: string | null
+  }
+  history: Record<string, unknown>
 }
 
 export const MOCK_PACKAGES: MockPackageListItem[] = [
@@ -70,7 +77,7 @@ export const MOCK_PACKAGES: MockPackageListItem[] = [
     maintainerBusFactor: 1,
     openVulns: { low: 0, medium: 0, high: 1, critical: 0 },
     stewardship: 'unassigned',
-    steward: null,
+    stewards: null,
   },
   {
     purl: 'pkg:maven/org.apache.commons/commons-lang3@3.12.0',
@@ -82,7 +89,7 @@ export const MOCK_PACKAGES: MockPackageListItem[] = [
     maintainerBusFactor: 3,
     openVulns: { low: 0, medium: 0, high: 0, critical: 0 },
     stewardship: 'unassigned',
-    steward: null,
+    stewards: null,
   },
   {
     purl: 'pkg:npm/minimist@1.2.6',
@@ -94,7 +101,7 @@ export const MOCK_PACKAGES: MockPackageListItem[] = [
     maintainerBusFactor: 1,
     openVulns: { low: 0, medium: 1, high: 0, critical: 1 },
     stewardship: 'unassigned',
-    steward: null,
+    stewards: null,
   },
 ]
 
@@ -144,6 +151,7 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
       },
       supplyChainIntegrity: { buildProvenance: null, signedReleases: null },
     },
+    stewardship: { status: 'unassigned', stewards: null, lastActivityAt: null },
     history: {},
   },
   'pkg:maven/org.apache.commons/commons-lang3@3.12.0': {
@@ -191,6 +199,7 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
       },
       supplyChainIntegrity: { buildProvenance: null, signedReleases: null },
     },
+    stewardship: { status: 'unassigned', stewards: null, lastActivityAt: null },
     history: {},
   },
   'pkg:npm/minimist@1.2.6': {
@@ -241,6 +250,7 @@ export const MOCK_DETAILS: Record<string, MockPackageDetail> = {
       },
       supplyChainIntegrity: { buildProvenance: null, signedReleases: null },
     },
+    stewardship: { status: 'unassigned', stewards: null, lastActivityAt: null },
     history: {},
   },
 }
