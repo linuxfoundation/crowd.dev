@@ -26,6 +26,7 @@ export interface ResponseNode {
 export interface PrNode {
   createdAt: string
   mergedAt: string | null
+  closedAt: string | null
   author: { login: string } | null
   comments: { nodes: ResponseNode[] }
   reviews: { nodes: ResponseNode[] }

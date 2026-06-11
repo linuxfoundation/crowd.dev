@@ -243,7 +243,7 @@ export async function getRangesForPackages(qx: QueryExecutor, ids: number[]): Pr
 export async function flipVulnerableFlags(qx: QueryExecutor, ids: number[]): Promise<number> {
   if (ids.length === 0) return 0
   return qx.result(
-    `UPDATE packages SET has_critical_vulnerability = TRUE
+    `UPDATE packages SET has_critical_vulnerability = TRUE, last_synced_at = NOW()
      WHERE id IN ($(ids:csv)) AND has_critical_vulnerability = FALSE`,
     { ids },
   )
@@ -252,7 +252,7 @@ export async function flipVulnerableFlags(qx: QueryExecutor, ids: number[]): Pro
 export async function clearSafeFlags(qx: QueryExecutor, ids: number[]): Promise<number> {
   if (ids.length === 0) return 0
   return qx.result(
-    `UPDATE packages SET has_critical_vulnerability = FALSE
+    `UPDATE packages SET has_critical_vulnerability = FALSE, last_synced_at = NOW()
      WHERE id IN ($(ids:csv)) AND has_critical_vulnerability = TRUE`,
     { ids },
   )
