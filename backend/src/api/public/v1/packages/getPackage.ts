@@ -8,6 +8,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { normalizePurl } from './purl'
 import type { StewardshipStatus } from './types'
 
 const querySchema = z.object({
@@ -16,7 +17,7 @@ const querySchema = z.object({
     .trim()
     .min(1)
     .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
-    .transform((v) => v.replace(/@/g, '%40')),
+    .transform(normalizePurl),
 })
 
 export async function getPackage(req: Request, res: Response): Promise<void> {

@@ -66,6 +66,7 @@ export interface ListPackagesOptions {
   ecosystem?: string
   staleOnly: boolean
   unstewardedOnly: boolean
+  busFactor1Only: boolean
   sortBy: 'name' | 'impact' | 'openVulns'
   sortDir: 'asc' | 'desc'
 }

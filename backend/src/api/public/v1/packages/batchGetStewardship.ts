@@ -7,6 +7,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { normalizePurl } from './purl'
 import type { StewardshipSummary } from './types'
 
 const MAX_PURLS = 100

@@ -21,7 +21,7 @@ const querySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(lifecycleValues).optional(), // TODO: filter not yet implemented in DAL
-  busFactor1Only: booleanQueryParam, // TODO: filter not yet implemented in DAL
+  busFactor1Only: booleanQueryParam,
   staleOnly: booleanQueryParam,
   unstewardedOnly: booleanQueryParam,
   sortBy: z.enum(['name', 'health', 'impact', 'openVulns']).default('name'),
@@ -51,6 +51,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     ecosystem,
     staleOnly,
     unstewardedOnly,
+    busFactor1Only,
     sortBy: effectiveSortBy,
     sortDir,
   })
@@ -74,7 +75,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     total,
     filters: {
       ecosystem: ecosystem ?? null,
-      lifecycle: lifecycle ?? null,
+      lifecycle: null, // TODO: filter not yet implemented in DAL
       busFactor1Only,
       staleOnly,
       unstewardedOnly,
