@@ -18,7 +18,7 @@ DESCRIPTION >
     - `archived` is 1 if the repository is archived, 0 if not, NULL until the GitHub enricher runs (deps.dev seed does not expose this).
     - `disabled` is 1 if the repository is disabled, 0 if not, NULL until the GitHub enricher runs.
     - `isFork` is 1 if this repository is a fork of another, 0 if not, NULL until the GitHub enricher runs.
-    - `createdAt` is the repository creation date on GitHub/GitLab — a domain timestamp, not a row-insert timestamp.
+    - `createdAt` is the row-insert timestamp — set once on first insert via DEFAULT NOW(), never updated.
     - `homepage` is the project homepage URL (empty string if not provided).
     - `rawProjectType` is the deps.dev project type string (e.g. 'GITHUB', 'GITLAB') for identity resolution.
     - `rawProjectName` is the deps.dev project name (e.g. 'github.com/owner/repo') for identity resolution.
@@ -45,7 +45,7 @@ SCHEMA >
     `archived` Nullable(UInt8) `json:$.record.archived`,
     `disabled` Nullable(UInt8) `json:$.record.disabled`,
     `isFork` Nullable(UInt8) `json:$.record.is_fork`,
-    `createdAt` Nullable(DateTime64(3)) `json:$.record.created_at`,
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
     `homepage` String `json:$.record.homepage` DEFAULT '',
     `rawProjectType` String `json:$.record.raw_project_type` DEFAULT '',
     `rawProjectName` String `json:$.record.raw_project_name` DEFAULT '',
