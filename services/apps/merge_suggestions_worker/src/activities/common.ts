@@ -4,6 +4,8 @@ import axios from 'axios'
 import { performance } from 'perf_hooks'
 
 import { IS_LLM_ENABLED } from '@crowd/common'
+import { CommonMemberService } from '@crowd/common_services'
+import { pgpQx } from '@crowd/data-access-layer'
 import { ITenant } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker//types'
 import LLMSuggestionVerdictsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/llmSuggestionVerdicts.repo'
 import TenantRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/tenant.repo'
@@ -102,22 +104,14 @@ export async function mergeMembers(
   primaryMemberId: string,
   secondaryMemberId: string,
 ): Promise<void> {
-  const url = `${process.env['CROWD_API_SERVICE_URL']}/member/${primaryMemberId}/merge`
-  const requestOptions = {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
-      'Content-Type': 'application/json',
-    },
-    data: {
-      memberToMerge: secondaryMemberId,
-    },
-  }
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
 
   try {
-    await axios(url, requestOptions)
+    await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
-    console.log(`Failed merging member wit status [${error.response?.status}]. Skipping!`)
+    svc.log.error({ err: error }, 'Failed to merge members')
+    throw error
   }
 }
 
@@ -129,7 +123,7 @@ export async function mergeOrganizations(
   const requestOptions = {
     method: 'PUT',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {
@@ -141,6 +135,7 @@ export async function mergeOrganizations(
   try {
     await axios(url, requestOptions)
   } catch (error) {
-    console.log(`Failed merging organization with status [${error.response?.status}]. Skipping!`)
+    svc.log.error({ err: error, status: error.response?.status }, 'Failed to merge organization')
+    throw error
   }
 }

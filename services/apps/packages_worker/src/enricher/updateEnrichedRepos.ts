@@ -22,15 +22,22 @@ export async function bulkUpdateEnrichedRepos(
       forks            = v.forks::int,
       watchers         = v.watchers::int,
       open_issues      = v.open_issues::int,
-      last_commit_at   = NULLIF(v.last_commit_at, '')::timestamptz,
-      archived         = v.archived::bool,
-      disabled         = v.disabled::bool,
-      is_fork          = v.is_fork::bool,
+      last_commit_at          = NULLIF(v.last_commit_at, '')::timestamptz,
+      archived                = v.archived::bool,
+      disabled                = v.disabled::bool,
+      is_fork                 = v.is_fork::bool,
+      security_policy_enabled = v.security_policy_enabled::bool,
+      security_file_enabled   = v.security_file_enabled::bool,
+      branch_protection_enabled                = v.branch_protection_enabled::bool,
+      branch_protection_required_reviews       = v.branch_protection_required_reviews::int,
+      branch_protection_requires_status_checks = v.branch_protection_requires_status_checks::bool,
+      branch_protection_allows_force_push      = v.branch_protection_allows_force_push::bool,
       host             = COALESCE(r.host,       v.host),
       owner            = COALESCE(r.owner,      v.owner),
       name             = COALESCE(r.name,       v.name),
       created_at       = COALESCE(r.created_at, NULLIF(v.created_at, '')::timestamptz),
-      last_synced_at   = NOW()
+      last_synced_at   = NOW(),
+      updated_at       = NOW()
     FROM (
       SELECT
         j->>'url'                                             AS url,
@@ -45,6 +52,12 @@ export async function bulkUpdateEnrichedRepos(
         j->>'archived'                                        AS archived,
         j->>'disabled'                                        AS disabled,
         j->>'isFork'                                          AS is_fork,
+        j->>'securityPolicyEnabled'                           AS security_policy_enabled,
+        j->>'securityFileEnabled'                             AS security_file_enabled,
+        j->>'branchProtectionEnabled'                         AS branch_protection_enabled,
+        j->>'branchProtectionRequiredReviews'                 AS branch_protection_required_reviews,
+        j->>'branchProtectionRequiresStatusChecks'            AS branch_protection_requires_status_checks,
+        j->>'branchProtectionAllowsForcePush'                 AS branch_protection_allows_force_push,
         j->>'host'                                            AS host,
         j->>'owner'                                           AS owner,
         j->>'name'                                            AS name,
@@ -65,6 +78,7 @@ export async function markReposSkipped(qx: QueryExecutor, urls: string[]): Promi
     UPDATE repos
     SET
       last_synced_at  = NOW(),
+      updated_at      = NOW(),
       skip_enrichment = true
     WHERE url = ANY($1::text[])
     `,

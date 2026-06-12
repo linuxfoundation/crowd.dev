@@ -47,7 +47,7 @@ export async function criticalityComputePageRank(
   )
   log.info({ ecosystem, iterations, nodeCount: graph.N }, 'PageRank converged')
 
-  // ── Step 4: merge centrality_score into packages_universe
+  // ── Step 4: merge centrality_score into packages
   // Stream map entries into fixed-size chunks — O(CHUNK) extra memory, not O(N).
   const CHUNK = 10_000
   let buffer: Array<{ packageId: number; centralityScore: number }> = []

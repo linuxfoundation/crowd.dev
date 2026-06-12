@@ -3,18 +3,18 @@ version: '3.1'
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
-  SERVICE: packages-worker
-  CROWD_TEMPORAL_TASKQUEUE: packages-worker
+  SERVICE: osv-worker
+  CROWD_TEMPORAL_TASKQUEUE: osv-worker
   CROWD_TEMPORAL_NAMESPACE: ${CROWD_PACKAGES_TEMPORAL_NAMESPACE}
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
 
 services:
-  packages:
+  osv-worker:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run start:packages-worker'
+    command: 'pnpm run start:osv-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -27,11 +27,11 @@ services:
     networks:
       - crowd-bridge
 
-  packages-dev:
+  osv-worker-dev:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run dev:packages-worker'
+    command: 'pnpm run dev:osv-worker'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:
@@ -41,7 +41,7 @@ services:
       - ../../backend/.env.override.composed
     environment:
       <<: *env-args
-    hostname: packages
+    hostname: osv-worker
     networks:
       - crowd-bridge
     volumes:

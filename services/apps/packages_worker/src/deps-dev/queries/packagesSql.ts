@@ -15,6 +15,7 @@ SELECT
 FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
 WHERE System IN (${systems})
   AND Purl IS NOT NULL
+  AND Name NOT LIKE '%>%'
 QUALIFY ROW_NUMBER() OVER (PARTITION BY System, Name ORDER BY UpstreamPublishedAt DESC) = 1
 `
 }
@@ -44,6 +45,7 @@ WITH today AS (
     AND SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
     AND System IN (${systems})
     AND Purl IS NOT NULL
+    AND Name NOT LIKE '%>%'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY System, Name ORDER BY UpstreamPublishedAt DESC) = 1
 ),
 last_watermark AS (
@@ -53,6 +55,8 @@ last_watermark AS (
   WHERE SnapshotAt >= TIMESTAMP('${watermark}')
     AND SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
     AND System IN (${systems})
+    AND Purl IS NOT NULL
+    AND Name NOT LIKE '%>%'
   GROUP BY System, Name
 )
 SELECT t.* EXCEPT(UpstreamPublishedAt)

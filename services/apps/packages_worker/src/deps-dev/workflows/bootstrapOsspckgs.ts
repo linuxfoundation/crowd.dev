@@ -5,6 +5,7 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import { ingestScorecard } from '../../scorecard/workflows'
 import type * as depsDevActivities from '../activities'
 
 import { ingestAdvisories } from './ingestAdvisories'
@@ -209,7 +210,6 @@ export async function bootstrapOsspckgs(opts: {
       ],
     })
   }
-  // ranking disabled — re-enable by restoring the rankPackagesUniverse activity proxy and calling it here
   if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {
       args: [
@@ -223,6 +223,11 @@ export async function bootstrapOsspckgs(opts: {
           exportName: opts.exportName,
         },
       ],
+    })
+  }
+  if (runs('scorecard')) {
+    await executeChild(ingestScorecard, {
+      args: [{ runId, reuseExports: opts.reuseExports, exportName: opts.exportName }],
     })
   }
 }

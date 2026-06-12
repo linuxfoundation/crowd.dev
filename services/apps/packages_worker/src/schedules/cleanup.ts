@@ -20,7 +20,7 @@ export async function scheduleOsspckgsCleanup(): Promise<void> {
       action: {
         type: 'startWorkflow',
         workflowType: cleanupOsspckgs,
-        taskQueue: 'deps-dev-ingest',
+        taskQueue: 'bq-dataset-ingest',
         workflowExecutionTimeout: '1 hour',
         retry: {
           initialInterval: '1 minute',

@@ -11,6 +11,7 @@ SELECT
 FROM \`bigquery-public-data.deps_dev_v1.PackageVersionsLatest\`
 WHERE System IN (${systems})
   AND Purl IS NOT NULL
+  AND Name NOT LIKE '%>%'
 `
 }
 
@@ -34,6 +35,7 @@ WITH today AS (
     AND SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
     AND System IN (${systems})
     AND Purl IS NOT NULL
+    AND Name NOT LIKE '%>%'
 ),
 last_watermark AS (
   SELECT System, Name, Version, MAX(UpstreamPublishedAt) AS UpstreamPublishedAt
@@ -41,6 +43,8 @@ last_watermark AS (
   WHERE SnapshotAt >= TIMESTAMP('${watermark}')
     AND SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
     AND System IN (${systems})
+    AND Purl IS NOT NULL
+    AND Name NOT LIKE '%>%'
   GROUP BY System, Name, Version
 )
 SELECT t.*

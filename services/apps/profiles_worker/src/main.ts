@@ -9,6 +9,13 @@ import {
 } from './schedules/refreshDisplayAggregates'
 
 const config: Config = {
+  envvars: [
+    'CROWD_AWS_BEDROCK_ACCESS_KEY_ID',
+    'CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY',
+    'CROWD_API_SERVICE_URL',
+    'CROWD_LF_AGENT_USER_TOKEN',
+    'CROWD_SEARCH_SYNC_API_URL',
+  ],
   producer: {
     enabled: false,
   },

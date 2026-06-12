@@ -1,0 +1,28 @@
+DESCRIPTION >
+    - `advisoryAffectedRanges` stores the version ranges affected by a security advisory per package.
+    - Replicated from Postgres packages-db — each row defines one vulnerable window (introduced → fixed/last_affected).
+    - Used to determine whether a specific package version falls within a known vulnerable range.
+    - `id` is the internal primary key.
+    - `advisoryPackageId` links to the parent advisory_packages row.
+    - `introducedVersion` is the version where the vulnerability was introduced (empty string if unknown start).
+    - `fixedVersion` is the version where the vulnerability was patched (empty string if no fix exists yet).
+    - `lastAffected` is the last known affected version when there is no fixed version (empty string if not applicable).
+    - `rangeRaw` is the raw AffectedVersions string from the deps.dev BigQuery source (empty string if OSV-sourced).
+    - `unaffectedRaw` is the raw UnaffectedVersions string from deps.dev BigQuery (empty string if OSV-sourced).
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `advisoryPackageId` UInt64 `json:$.record.advisory_package_id`,
+    `introducedVersion` String `json:$.record.introduced_version` DEFAULT '',
+    `fixedVersion` String `json:$.record.fixed_version` DEFAULT '',
+    `lastAffected` String `json:$.record.last_affected` DEFAULT '',
+    `rangeRaw` String `json:$.record.range_raw` DEFAULT '',
+    `unaffectedRaw` String `json:$.record.unaffected_raw` DEFAULT '',
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY advisoryPackageId, id
+ENGINE_VER updatedAt

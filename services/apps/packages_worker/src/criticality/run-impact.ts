@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 /**
- * Trigger rank_packages_universe() on demand.
+ * Trigger rank_packages() on demand.
  *
  * Usage (from services/apps/packages_worker):
  *   pnpm run:impact
@@ -42,7 +42,7 @@ async function main() {
     process.exit(1)
   }
 
-  console.log(`Running rank_packages_universe()`)
+  console.log(`Running rank_packages()`)
   console.log(`  weights: downloads=${wDownloads}  dep_pkgs=${wDepPkgs}  transitive=${wTransitive}`)
   console.log(`  top-n  : ${topN}\n`)
 
@@ -50,15 +50,14 @@ async function main() {
   const t = Date.now()
 
   const [result] = await qx.select(
-    `SELECT * FROM rank_packages_universe($/wDownloads/, $/wDepPkgs/, $/wTransitive/, $/topN/::jsonb)`,
+    `SELECT * FROM rank_packages($/wDownloads/, $/wDepPkgs/, $/wTransitive/, $/topN/::jsonb)`,
     { wDownloads, wDepPkgs, wTransitive, topN },
   )
 
   const elapsed = ((Date.now() - t) / 1000).toFixed(1)
   console.log(`Done in ${elapsed}s`)
-  console.log(`  scored_rows    : ${result.scored_rows?.toLocaleString()}`)
-  console.log(`  ranked_rows    : ${result.ranked_rows?.toLocaleString()}`)
-  console.log(`  propagated_rows: ${result.propagated_rows?.toLocaleString()}`)
+  console.log(`  scored_rows: ${result.scored_rows?.toLocaleString()}`)
+  console.log(`  ranked_rows: ${result.ranked_rows?.toLocaleString()}`)
 
   process.exit(0)
 }

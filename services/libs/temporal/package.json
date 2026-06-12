@@ -11,12 +11,12 @@
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
-    "@temporalio/client": "~1.11.8",
-    "@temporalio/common": "~1.11.8",
-    "@temporalio/proto": "~1.11.8"
+    "@temporalio/client": "~1.17.2",
+    "@temporalio/common": "~1.17.2",
+    "@temporalio/proto": "~1.17.2"
   },
   "devDependencies": {
-    "@types/node": "^18.16.3",
+    "@types/node": "^20.8.2",
     "typescript": "^5.6.3"
   }
 }

@@ -24,14 +24,23 @@ const main = async () => {
   const enricherConfig = getEnricherConfig()
   const appConfig = getGithubAppConfig()
 
-  const installationIds = await resolveInstallations(appConfig)
+  const discoveredIds = await resolveInstallations(appConfig)
 
-  if (installationIds.length === 0) {
+  if (discoveredIds.length === 0) {
     log.error('No GitHub App installations found — cannot build token pool')
     process.exit(1)
   }
 
-  await fetchRateLimitDiagnostics(appConfig.appId, appConfig.privateKeyPem, installationIds)
+  const installationIds = await fetchRateLimitDiagnostics(
+    appConfig.appId,
+    appConfig.privateKeyPem,
+    discoveredIds,
+  )
+
+  if (installationIds.length === 0) {
+    log.error('All installations failed the rate limit probe — cannot build token pool')
+    process.exit(1)
+  }
 
   log.info(
     {

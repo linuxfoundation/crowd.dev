@@ -58,7 +58,7 @@ export async function scheduleOsvSync(): Promise<void> {
       action: {
         type: 'startWorkflow',
         workflowType: osvSync,
-        taskQueue: 'packages-worker',
+        taskQueue: 'osv-worker',
         // Headroom for npm (~1 hour today) + Maven (~5 minutes) + derive
         // (~5 minutes for 600-700k packages); 4 hours leaves space for the
         // upsertOne N+1 deferred fix being slower than expected.
