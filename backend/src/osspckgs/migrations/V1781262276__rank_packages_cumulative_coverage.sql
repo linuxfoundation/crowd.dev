@@ -80,13 +80,8 @@ BEGIN
         SELECT
             id,
             ecosystem,
-            AVG(
-                CASE WHEN cumulative_share_exclusive < coverage_cutoff
-                    THEN 1.0 - cumulative_share_inclusive
-                    ELSE 0.0
-                END
-            )::numeric(10, 4)                              AS new_impact,
-            BOOL_OR(cumulative_share_exclusive < coverage_cutoff) AS new_is_critical
+            AVG(1.0 - cumulative_share_inclusive)::numeric(10, 4) AS new_impact,
+            BOOL_OR(cumulative_share_exclusive < coverage_cutoff)  AS new_is_critical
         FROM walked
         GROUP BY id, ecosystem
     ),
