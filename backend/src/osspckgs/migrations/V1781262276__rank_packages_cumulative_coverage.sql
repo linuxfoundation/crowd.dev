@@ -11,12 +11,15 @@
 
 -- ── 1. package_criticality_spotlight schema change ───────────────────────────
 
-ALTER TABLE package_criticality_spotlight
-    ADD COLUMN package_id bigint NOT NULL REFERENCES packages(id),
-    DROP COLUMN name,
-    DROP COLUMN namespace;
+DROP INDEX IF EXISTS package_criticality_spotlight_ecosystem_coalesce_name_idx;
 
-CREATE UNIQUE INDEX ON package_criticality_spotlight (package_id);
+ALTER TABLE package_criticality_spotlight
+    ADD COLUMN IF NOT EXISTS package_id bigint NOT NULL REFERENCES packages(id),
+    DROP COLUMN IF EXISTS name,
+    DROP COLUMN IF EXISTS namespace;
+
+CREATE UNIQUE INDEX IF NOT EXISTS package_criticality_spotlight_package_id_idx
+    ON package_criticality_spotlight (package_id);
 
 -- ── 2. rank_packages() ───────────────────────────────────────────────────────
 
