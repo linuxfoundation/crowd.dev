@@ -41,10 +41,10 @@ async function main() {
   const qx = await getPackagesDb()
   const t = Date.now()
 
-  const [result] = await qx.select(
-    `SELECT * FROM rank_packages($/cutoff/, $/ecosystems/)`,
-    { cutoff, ecosystems },
-  )
+  const [result] = await qx.select(`SELECT * FROM rank_packages($/cutoff/, $/ecosystems/)`, {
+    cutoff,
+    ecosystems,
+  })
 
   const elapsed = ((Date.now() - t) / 1000).toFixed(1)
   console.log(`Done in ${elapsed}s`)
