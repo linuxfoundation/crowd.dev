@@ -67,6 +67,6 @@
     "@types/semver": "^7.5.8",
     "@types/unzipper": "^0.10.10",
     "nodemon": "^3.0.1",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.6"
   }
 }
