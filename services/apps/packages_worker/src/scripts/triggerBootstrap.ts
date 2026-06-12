@@ -11,6 +11,7 @@ const VALID_KINDS = [
   'advisories',
   'advisory_packages',
   'dependent_counts',
+  'scorecard',
 ] as const
 
 const HELP = `
@@ -129,7 +130,7 @@ async function main(): Promise<void> {
   const tableSuffix = depsTableOption === 'B' ? '-depsB' : ''
   const workflowId = `bootstrap-osspckgs-${mode}${ecosystemSuffix}${reuseSuffix}${tableSuffix}-${Date.now()}`
   const handle = await client.workflow.start(bootstrapOsspckgs, {
-    taskQueue: 'deps-dev-ingest',
+    taskQueue: 'bq-dataset-ingest',
     workflowId,
     args: [{ mode, ecosystems, kinds, reuseExports, depsTableOption, exportName }],
   })
