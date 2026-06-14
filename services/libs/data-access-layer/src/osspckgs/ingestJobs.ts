@@ -9,6 +9,8 @@ export type OsspckgsJobKind =
   | 'advisories'
   | 'advisory_packages'
   | 'dependent_counts'
+  | 'scorecard_repos'
+  | 'scorecard_checks'
 
 export type OsspckgsJobStatus =
   | 'pending'

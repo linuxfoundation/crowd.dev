@@ -11,7 +11,7 @@ export async function scheduleOsspckgsBootstrap(): Promise<void> {
     await temporal.schedule.create({
       scheduleId: 'osspckgs-bootstrap-weekly',
       spec: {
-        cronExpressions: ['0 2 * * 0'],
+        cronExpressions: ['0 2 * * 1'],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
@@ -20,7 +20,7 @@ export async function scheduleOsspckgsBootstrap(): Promise<void> {
       action: {
         type: 'startWorkflow',
         workflowType: bootstrapOsspckgs,
-        taskQueue: 'deps-dev-ingest',
+        taskQueue: 'bq-dataset-ingest',
         workflowExecutionTimeout: '12 hours',
         retry: {
           initialInterval: '1 minute',
