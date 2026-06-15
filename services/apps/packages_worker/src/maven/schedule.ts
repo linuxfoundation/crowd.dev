@@ -34,11 +34,7 @@ export async function scheduleMavenCritical(): Promise<void> {
     await temporal.schedule.create(scheduleOptions)
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      // Schedule exists → delete and recreate so cron/spec changes take effect on
-      // restart (schedule.create is a no-op when the id exists → it would keep the old cron).
-      await temporal.schedule.getHandle('maven-critical').delete()
-      await temporal.schedule.create(scheduleOptions)
-      svc.log.info('Schedule maven-critical recreated (cron synced).')
+      svc.log.info('Schedule maven-critical already exists, skipping creation.')
     } else {
       throw err
     }

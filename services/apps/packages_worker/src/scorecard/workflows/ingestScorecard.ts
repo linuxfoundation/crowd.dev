@@ -21,7 +21,7 @@ const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
 
 const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '30 minutes',
-  retry: { maximumAttempts: 1 },
+  retry: { maximumAttempts: 3, initialInterval: '30 seconds', backoffCoefficient: 2 },
 })
 
 const SCORECARD_REPOS_STAGING_TABLE = 'staging.osspckgs_scorecard_repos_raw'
@@ -50,8 +50,19 @@ SET scorecard_score = CASE
     END,
     scorecard_last_run_at = s.scanned_at::timestamptz,
     updated_at = NOW()
-FROM staging.osspckgs_scorecard_repos_raw s
+FROM (SELECT * FROM staging.osspckgs_scorecard_repos_raw ORDER BY repo_url) s
 WHERE r.url = s.repo_url
+  AND (
+    r.scorecard_score IS DISTINCT FROM CASE
+      WHEN s.score IS NULL
+        OR s.score = 'NaN'::float8
+        OR s.score = 'Infinity'::float8
+        OR s.score = '-Infinity'::float8
+      THEN NULL
+      ELSE s.score::numeric(3,1)
+    END
+    OR r.scorecard_last_run_at IS DISTINCT FROM s.scanned_at::timestamptz
+  )
 `
 
 const SCORECARD_CHECKS_STAGING_TABLE = 'staging.osspckgs_scorecard_checks_raw'
@@ -73,7 +84,11 @@ SELECT r.id,
        s.check_name,
        NULLIF(s.check_score, -1)::numeric(3,1),
        s.check_reason
-FROM staging.osspckgs_scorecard_checks_raw s
+FROM (
+  SELECT DISTINCT ON (repo_url, check_name) repo_url, check_name, check_score, check_reason
+  FROM staging.osspckgs_scorecard_checks_raw
+  ORDER BY repo_url, check_name, check_score DESC NULLS LAST
+) s
 JOIN repos r ON r.url = s.repo_url
 ON CONFLICT (repo_id, check_name) DO UPDATE SET
   score      = EXCLUDED.score,
@@ -95,7 +110,7 @@ export async function ingestScorecard(opts: {
     runId: opts.runId,
     syncMode: 'full',
     snapshotAt: null,
-    maxBytesGb: 10,
+    maxBytesGb: 50,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
   })
@@ -166,7 +181,7 @@ export async function ingestScorecard(opts: {
     runId: opts.runId,
     syncMode: 'full',
     snapshotAt: null,
-    maxBytesGb: 200,
+    maxBytesGb: 500,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
   })

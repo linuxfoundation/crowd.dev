@@ -102,7 +102,6 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
     licensesRaw: null,
     latestVersion: null,
     ingestionSource: 'packages_universe',
-    criticalityScore: pkg.criticalityScore,
     dependentPackagesCount: pkg.dependentPackagesCount,
     dependentReposCount: pkg.dependentReposCount,
   })
@@ -142,7 +141,6 @@ async function processCriticalPackage(
         licensesRaw: null,
         latestVersion: pkg.latestVersion ?? null,
         ingestionSource: 'maven_not_on_central',
-        criticalityScore: pkg.criticalityScore,
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
       })
@@ -178,7 +176,6 @@ async function processCriticalPackage(
       licensesRaw: null,
       latestVersion: null,
       ingestionSource: 'maven_no_version',
-      criticalityScore: pkg.criticalityScore,
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
     })
@@ -189,7 +186,6 @@ async function processCriticalPackage(
   // Phase 2: skip full POM extraction when upstream version matches what we already have.
   if (!forceFullExtraction && version === pkg.latestVersion) {
     await touchPackageSyncedAt(qx, pkg.purl, {
-      criticalityScore: pkg.criticalityScore,
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
     })
@@ -217,7 +213,6 @@ async function processCriticalPackage(
       licensesRaw: null,
       latestVersion: version,
       ingestionSource: 'maven_error',
-      criticalityScore: pkg.criticalityScore,
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,
     })
@@ -246,7 +241,6 @@ async function processCriticalPackage(
         versionsCount: metadata.versions.length > 0 ? metadata.versions.length : null,
         latestReleaseAt: metadata.lastUpdated,
         ingestionSource: 'maven-registry',
-        criticalityScore: pkg.criticalityScore,
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
       })
