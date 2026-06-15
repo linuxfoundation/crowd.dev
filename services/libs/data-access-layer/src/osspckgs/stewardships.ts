@@ -125,22 +125,29 @@ export async function openStewardshipByPurl(
     WITH pkg AS (
       SELECT id FROM packages WHERE purl = $(purl) LIMIT 1
     ),
+    prev AS (
+      SELECT s.status AS old_status
+      FROM stewardships s
+      WHERE s.package_id = (SELECT id FROM pkg)
+    ),
     upserted AS (
       INSERT INTO stewardships (package_id, status, origin, opened_at, last_status_at)
       SELECT id, 'open', 'opened_for_claim', NOW(), NOW()
       FROM pkg
       ON CONFLICT (package_id) DO UPDATE
-        SET status        = 'open',
-            opened_at     = COALESCE(stewardships.opened_at, NOW()),
-            last_status_at = NOW(),
-            updated_at    = NOW()
+        SET status          = 'open',
+            opened_at       = COALESCE(stewardships.opened_at, NOW()),
+            last_status_at  = NOW(),
+            inactive_reason = NULL,
+            updated_at      = NOW()
       RETURNING id, package_id, status, origin, version, opened_at,
                 last_status_at, inactive_reason, created_at, updated_at
     ),
     _log AS (
       INSERT INTO stewardship_activity (stewardship_id, actor_user_id, actor_type, activity_type, content)
-      SELECT id, $(actorUserId), 'user', 'state_changed', 'Opened for stewardship'
+      SELECT upserted.id, $(actorUserId), 'user', 'state_changed', 'Opened for stewardship'
       FROM upserted
+      WHERE NOT EXISTS (SELECT 1 FROM prev WHERE prev.old_status = 'open')
     )
     SELECT * FROM upserted
     `,
