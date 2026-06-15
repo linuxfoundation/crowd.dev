@@ -273,6 +273,7 @@ export interface PackageDetailRow {
   declaredRepositoryUrl: string | null
   repositoryUrl: string | null
   hasCriticalVulnerability: boolean
+  stewardshipId: string | null
   stewardshipStatus: string | null
   stewardshipLastStatusAt: Date | null
   // from package_repos + repos
@@ -315,6 +316,7 @@ export async function getPackageDetailByPurl(
       p.declared_repository_url AS "declaredRepositoryUrl",
       p.repository_url AS "repositoryUrl",
       p.has_critical_vulnerability AS "hasCriticalVulnerability",
+      s.id::text AS "stewardshipId",
       s.status AS "stewardshipStatus",
       s.last_status_at AS "stewardshipLastStatusAt",
       -- best repo link (highest confidence, prefer declared)

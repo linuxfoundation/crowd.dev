@@ -225,6 +225,45 @@ export async function assignSteward(
   })
 }
 
+export interface StewardshipSummary {
+  stewards: StewardshipStewardRecord[]
+  lastActivityAt: string | null
+}
+
+export async function getStewardshipSummary(
+  qx: QueryExecutor,
+  stewardshipId: string,
+): Promise<StewardshipSummary> {
+  const [stewards, activityRow] = await Promise.all([
+    qx.select(
+      `SELECT id, stewardship_id, user_id, role, assigned_at, assigned_by
+       FROM stewardship_stewards
+       WHERE stewardship_id = $(stewardshipId)
+         AND deleted_at IS NULL
+       ORDER BY assigned_at ASC`,
+      { stewardshipId },
+    ) as Promise<Array<Record<string, unknown>>>,
+    qx.selectOneOrNone(
+      `SELECT MAX(created_at) AS last_activity_at
+       FROM stewardship_activity
+       WHERE stewardship_id = $(stewardshipId)`,
+      { stewardshipId },
+    ) as Promise<Record<string, unknown> | null>,
+  ])
+
+  return {
+    stewards: stewards.map((s) => ({
+      id: String(s.id),
+      stewardshipId: String(s.stewardship_id),
+      userId: String(s.user_id),
+      role: String(s.role),
+      assignedAt: toIso(s.assigned_at),
+      assignedBy: s.assigned_by ? String(s.assigned_by) : null,
+    })),
+    lastActivityAt: activityRow?.last_activity_at ? toIso(activityRow.last_activity_at) : null,
+  }
+}
+
 export const ESCALATION_RESOLUTION_PATHS = [
   'lf_staff_review',
   'community_outreach',
