@@ -36,6 +36,7 @@ RUN mkdir -p /.privateer/bin
 WORKDIR /.privateer/bin
 COPY --from=core /app/pvtr ./privateer
 COPY --from=plugin /plugin/github-repo /root/.privateer/bin/github-repo
+RUN echo '{"plugins":[{"name":"github-repo","version":"v0.23.2","binaryPath":"github-repo"}]}' > /root/.privateer/bin/plugins.json
 COPY ./services/apps/security_best_practices_worker/example-config.yml /.privateer/example-config.yml
 
 WORKDIR /usr/crowd/app
