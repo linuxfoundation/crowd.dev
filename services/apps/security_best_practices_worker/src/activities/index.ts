@@ -221,11 +221,18 @@ async function runBinary(
     })
 
     proc.on('close', (code) => {
-      if (code === 0) {
-        svc.log.info(`Binary completed successfully`)
+      // exit code 0 = all tests passed, 1 = some tests failed — both mean the
+      // evaluation ran to completion and wrote its output file
+      if (code === 0 || code === 1) {
+        svc.log.info(`Binary completed with exit code ${code}`)
         resolve({ stdout, stderr })
       } else {
-        reject(new Error(`Binary exited with code ${code}\nStderr:\n${stderr}Stdout:\n${stdout}`))
+        const truncated = (s: string) => (s.length > 500 ? s.slice(0, 500) + '…' : s)
+        reject(
+          new Error(
+            `Binary exited with code ${code}\nStderr:\n${truncated(stderr)}Stdout:\n${truncated(stdout)}`,
+          ),
+        )
       }
     })
   })
