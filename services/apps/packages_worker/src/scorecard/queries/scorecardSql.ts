@@ -1,5 +1,3 @@
-import { SCORECARD_DATASET } from '../../deps-dev/config'
-
 export const SCORECARD_REPOS_SQL = `
 SELECT
   CASE
@@ -8,7 +6,7 @@ SELECT
   END AS repo_url,
   score,
   date AS scanned_at
-FROM \`${SCORECARD_DATASET}.scorecard-v2_latest\`
+FROM \`openssf.scorecardcron.scorecard-v2_latest\`
 WHERE repo.name IS NOT NULL
 `
 
@@ -21,7 +19,7 @@ SELECT
   c.name   AS check_name,
   c.score  AS check_score,
   c.reason AS check_reason
-FROM \`${SCORECARD_DATASET}.scorecard-v2_latest\` r,
+FROM \`openssf.scorecardcron.scorecard-v2_latest\` r,
 UNNEST(r.checks) AS c
 WHERE r.repo.name IS NOT NULL
 `

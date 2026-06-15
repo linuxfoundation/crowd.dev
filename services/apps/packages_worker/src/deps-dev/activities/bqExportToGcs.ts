@@ -150,7 +150,11 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
   log.info({ jobKind, dryRunBytes, maxBytesGb }, 'BQ dry-run complete')
 
-  const ceiling = maxBytesGb * 1e9
+  // Override table is in src/deps-dev/README.md — update it when adding new job kinds.
+  const envKey = `BQ_DATASET_INGEST_${jobKind.toUpperCase().replace(/-/g, '_')}_MAX_BQ_GB`
+  const envOverride = process.env[envKey]
+  const effectiveMaxBytesGb = envOverride ? Number(envOverride) : maxBytesGb
+  const ceiling = effectiveMaxBytesGb * 1e9
   if (dryRunBytes > ceiling) {
     throw new Error(
       `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,

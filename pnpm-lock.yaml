@@ -1315,6 +1315,9 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
+      '@crowd/temporal':
+        specifier: workspace:*
+        version: link:../../libs/temporal
       '@dsnp/parquetjs':
         specifier: ^1.7.0
         version: 1.8.7(bufferutil@4.0.8)(utf-8-validate@5.0.10)
