@@ -261,14 +261,13 @@ export async function getStewardshipSummary(
   }
 }
 
-// TODO: confirm the 6 resolution path values with Joana (CM-1235 ticket says "6 paths" but doesn't define them)
 export const ESCALATION_RESOLUTION_PATHS = [
-  'lf_staff_review',
-  'community_outreach',
-  'corporate_adoption',
-  'transfer_ownership',
-  'fork_and_maintain',
-  'deprecate',
+  'right_of_first_refusal',
+  'replace_the_dependency',
+  'find_vendor_for_lts',
+  'consortium_adopts_maintainership',
+  'compensating_controls_monitor',
+  'namespace_takeover',
 ] as const
 
 export type EscalationResolutionPath = (typeof ESCALATION_RESOLUTION_PATHS)[number]

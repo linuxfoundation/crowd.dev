@@ -113,8 +113,8 @@ components:
           example: '42'
         userId:
           type: string
-          description: LFID of the assigned steward.
-          example: jdoe
+          description: Auth0 sub of the assigned steward.
+          example: abc123
         role:
           type: string
           enum: [lead, co_steward]
@@ -125,19 +125,18 @@ components:
           type:
             - string
             - 'null'
-          description: LFID of the admin who assigned this steward.
-          example: admin-user
+          description: Auth0 sub of the admin who assigned this steward.
+          example: xyz789
 
     EscalationResolutionPath:
       type: string
-      # TODO: confirm the 6 resolution path values with Joana (CM-1235)
       enum:
-        - lf_staff_review
-        - community_outreach
-        - corporate_adoption
-        - transfer_ownership
-        - fork_and_maintain
-        - deprecate
+        - right_of_first_refusal
+        - replace_the_dependency
+        - find_vendor_for_lts
+        - consortium_adopts_maintainership
+        - compensating_controls_monitor
+        - namespace_takeover
 
 paths:
   /stewardships:
@@ -246,13 +245,13 @@ paths:
               properties:
                 userId:
                   type: string
-                  description: LFID of the user to assign as steward.
-                  example: jdoe
+                  description: Auth0 sub of the user to assign as steward.
+                  example: abc123
                 role:
                   type: string
                   enum: [lead, co_steward]
             example:
-              userId: jdoe
+              userId: abc123
               role: lead
       responses:
         '200':
@@ -284,10 +283,10 @@ paths:
                 stewards:
                   - id: '7'
                     stewardshipId: '42'
-                    userId: jdoe
+                    userId: abc123
                     role: lead
                     assignedAt: '2026-06-15T10:05:00Z'
-                    assignedBy: admin-user
+                    assignedBy: xyz789
         '400':
           description: Validation error (e.g. invalid role).
           content:
@@ -349,7 +348,7 @@ paths:
                   description: Optional free-text notes for the activity log.
                   example: Contacted maintainer, no response after 30 days.
             example:
-              resolutionPath: lf_staff_review
+              resolutionPath: right_of_first_refusal
               notes: Contacted maintainer, no response after 30 days.
       responses:
         '200':
