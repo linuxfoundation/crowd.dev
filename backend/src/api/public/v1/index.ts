@@ -4,8 +4,8 @@ import { NotFoundError } from '@crowd/common'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
-
 import { SCOPES } from '@/security/scopes'
+
 import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { requireScopes } from '../middlewares/requireScopes'
@@ -34,7 +34,7 @@ export function v1Router(): Router {
     /^\/packages:batch-stewardship\/?$/,
     oauth2Middleware(AUTH0_CONFIG),
     packagesRateLimiter,
-    requireScopes([SCOPES.READ_STEWARDSHIPS]),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(batchGetStewardship),
   )
   router.use('/packages', oauth2Middleware(AUTH0_CONFIG), packagesRouter())
