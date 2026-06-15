@@ -16,7 +16,7 @@ services:
   dockerhub-sync:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run start:dockerhub-sync'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
@@ -33,7 +33,7 @@ services:
   dockerhub-sync-dev:
     build:
       context: ../../
-      dockerfile: ./scripts/services/docker/Dockerfile.packages-worker
+      dockerfile: ./scripts/services/docker/Dockerfile.packages
     command: 'pnpm run dev:dockerhub-sync'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'

@@ -1,4 +1,4 @@
-import { Client, Connection } from '@temporalio/client'
+import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 
 import { bootstrapOsspckgs } from '../deps-dev/workflows'
 
@@ -115,15 +115,13 @@ async function main(): Promise<void> {
     }
   }
 
-  const serverUrl = process.env.CROWD_TEMPORAL_SERVER_URL
-  const namespace = process.env.CROWD_TEMPORAL_NAMESPACE
-  if (!serverUrl || !namespace) {
+  const cfg = TEMPORAL_CONFIG()
+  if (!cfg.serverUrl || !cfg.namespace) {
     console.error('Missing CROWD_TEMPORAL_SERVER_URL or CROWD_TEMPORAL_NAMESPACE')
     process.exit(1)
   }
 
-  const connection = await Connection.connect({ address: serverUrl })
-  const client = new Client({ connection, namespace })
+  const client = await getTemporalClient(cfg)
 
   const ecosystemSuffix = ecosystems ? `-${ecosystems.join('-').toLowerCase()}` : ''
   const reuseSuffix = reuseExports ? '-reuse' : ''
@@ -144,10 +142,11 @@ async function main(): Promise<void> {
   console.log(
     `Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`,
   )
-  await connection.close()
 }
 
-main().catch((err) => {
-  console.error('Failed to trigger bootstrap:', err)
-  process.exit(1)
-})
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Failed to trigger bootstrap:', err)
+    process.exit(1)
+  })
