@@ -143,7 +143,12 @@ export async function saveOSPSBaselineInsightsToDB(
       securityInsightsEvaluationSuiteId: suite.id,
     })
 
-    const controlEvaluation = await findSuiteControlEvaluation(qx, repo.repoUrl, controlId, suite.id)
+    const controlEvaluation = await findSuiteControlEvaluation(
+      qx,
+      repo.repoUrl,
+      controlId,
+      suite.id,
+    )
     if (!controlEvaluation) {
       throw new Error(
         `Control evaluation not found after insert for repo ${repo.repoUrl}, controlId ${controlId}, suiteId ${suite.id}`,
