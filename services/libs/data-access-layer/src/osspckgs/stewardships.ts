@@ -80,6 +80,10 @@ export async function insertUnassignedStewardships(
   return parseInt(result.count, 10)
 }
 
+function toIso(v: unknown): string {
+  return v instanceof Date ? v.toISOString() : String(v)
+}
+
 function mapStewardshipRow(row: Record<string, unknown>): StewardshipRecord {
   return {
     id: String(row.id),
@@ -87,11 +91,11 @@ function mapStewardshipRow(row: Record<string, unknown>): StewardshipRecord {
     status: row.status as string,
     origin: row.origin as string,
     version: Number(row.version),
-    openedAt: row.opened_at ? String(row.opened_at) : null,
-    lastStatusAt: row.last_status_at ? String(row.last_status_at) : null,
+    openedAt: row.opened_at ? toIso(row.opened_at) : null,
+    lastStatusAt: row.last_status_at ? toIso(row.last_status_at) : null,
     inactiveReason: row.inactive_reason ? String(row.inactive_reason) : null,
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
   }
 }
 
@@ -159,7 +163,8 @@ export async function openStewardshipByPurl(
 /**
  * Assigns a steward to a stewardship. Soft-deletes any existing active entry
  * for the same user (allowing role changes). Logs a steward_added activity.
- * Returns the updated stewardship row and the full active stewards list.
+ * Returns the stewardship row (unchanged by this operation) and the full
+ * active stewards list as of the end of the transaction.
  */
 export async function assignSteward(
   qx: QueryExecutor,
@@ -213,7 +218,7 @@ export async function assignSteward(
         stewardshipId: String(s.stewardship_id),
         userId: String(s.user_id),
         role: String(s.role),
-        assignedAt: String(s.assigned_at),
+        assignedAt: toIso(s.assigned_at),
         assignedBy: s.assigned_by ? String(s.assigned_by) : null,
       })),
     }
@@ -300,11 +305,14 @@ export async function updateStewardshipStatus(
   stewardshipId: number,
   data: {
     status: UpdatableStewardshipStatus
-    inactiveReason?: string
+    inactiveReason?: InactiveReason
     notes?: string
     actorUserId: string
   },
 ): Promise<StewardshipRecord | null> {
+  if (data.status === 'inactive' && !data.inactiveReason) {
+    throw new Error('inactiveReason is required when setting status to inactive')
+  }
   const row: Record<string, unknown> | null = await qx.selectOneOrNone(
     `
     WITH upd AS (
