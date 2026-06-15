@@ -54,6 +54,7 @@ export interface PackageListRow {
   name: string
   ecosystem: string
   criticalityScore: number | null
+  stewardshipId: string | null
   stewardshipStatus: string | null
   openVulns: number
   maintainerCount: number
@@ -226,6 +227,7 @@ export async function listPackagesForApi(
       p.name,
       p.ecosystem,
       p.impact AS "criticalityScore",
+      s.id::text AS "stewardshipId",
       s.status AS "stewardshipStatus",
       COALESCE(ap_counts.cnt, 0) AS "openVulns",
       pm_counts.cnt AS "maintainerCount",

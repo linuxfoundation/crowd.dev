@@ -194,6 +194,12 @@ components:
           oneOf:
             - $ref: '#/components/schemas/OpenVulns'
             - type: 'null'
+        stewardshipId:
+          type:
+            - string
+            - 'null'
+          description: Stewardship ID. Required to call mutation endpoints (assign/escalate/status). Null if no stewardship row exists.
+          example: '42'
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
@@ -420,6 +426,12 @@ components:
           type: object
           description: Stewardship state. In v1 always unassigned with no stewards or activity.
           properties:
+            id:
+              type:
+                - string
+                - 'null'
+              description: Stewardship ID. Required to call mutation endpoints (assign/escalate/status).
+              example: '42'
             status:
               $ref: '#/components/schemas/StewardshipStatus'
             stewards:

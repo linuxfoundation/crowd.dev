@@ -87,6 +87,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     lifecycle: null,
     maintainerBusFactor: r.maintainerCount,
     openVulns: r.openVulns,
+    stewardshipId: r.stewardshipId ?? null,
     stewardship: (r.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
     stewards: null,
   }))

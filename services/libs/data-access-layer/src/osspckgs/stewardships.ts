@@ -180,7 +180,7 @@ export async function openStewardshipByPurl(
 export async function assignSteward(
   qx: QueryExecutor,
   stewardshipId: number,
-  data: { userId: string; role: 'lead' | 'co_steward'; assignedBy: string },
+  data: { userId: string; role: 'lead' | 'co_steward'; assignedBy: string; moveToAssessing?: boolean },
 ): Promise<{ stewardship: StewardshipRecord; stewards: StewardshipStewardRecord[] } | null> {
   return qx.tx(async (tx) => {
     const stewardship = await getStewardshipById(tx, stewardshipId)
@@ -213,6 +213,37 @@ export async function assignSteward(
       },
     )
 
+    let finalStewardship = stewardship
+
+    if (data.moveToAssessing) {
+      const updated: Record<string, unknown> | null = await tx.selectOneOrNone(
+        `
+        WITH upd AS (
+          UPDATE stewardships
+          SET status         = 'assessing',
+              last_status_at = NOW(),
+              resolution_path = NULL,
+              status_note     = NULL,
+              updated_at     = NOW()
+          WHERE id = $(stewardshipId)
+            AND status IN ('unassigned', 'open')
+          RETURNING id, package_id, status, origin, version, opened_at,
+                    last_status_at, inactive_reason, resolution_path, status_note, created_at, updated_at
+        ),
+        _log AS (
+          INSERT INTO stewardship_activity
+            (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata)
+          SELECT id, $(actorUserId), 'user', 'state_changed',
+                 'Status updated to assessing', $(metadata)::jsonb
+          FROM upd
+        )
+        SELECT * FROM upd
+        `,
+        { stewardshipId, actorUserId: data.assignedBy, metadata: JSON.stringify({ status: 'assessing' }) },
+      )
+      if (updated) finalStewardship = mapStewardshipRow(updated)
+    }
+
     const stewards: Array<Record<string, unknown>> = await tx.select(
       `SELECT id, stewardship_id, user_id, role, assigned_at, assigned_by
        FROM stewardship_stewards
@@ -223,7 +254,7 @@ export async function assignSteward(
     )
 
     return {
-      stewardship,
+      stewardship: finalStewardship,
       stewards: stewards.map(mapStewardStewardRow),
     }
   })

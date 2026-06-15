@@ -90,6 +90,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
       },
     },
     stewardship: {
+      id: pkg.stewardshipId ?? null,
       status: (pkg.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
       stewards: stewardshipSummary?.stewards ?? null,
       lastActivityAt: stewardshipSummary?.lastActivityAt ?? null,

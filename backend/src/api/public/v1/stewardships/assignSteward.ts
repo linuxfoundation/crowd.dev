@@ -15,14 +15,20 @@ const paramsSchema = z.object({
 const bodySchema = z.object({
   userId: z.string().trim().min(1),
   role: z.enum(['lead', 'co_steward']),
+  moveToAssessing: z.boolean().optional().default(false),
 })
 
 export async function assignStewardHandler(req: Request, res: Response): Promise<void> {
   const { id } = validateOrThrow(paramsSchema, req.params)
-  const { userId, role } = validateOrThrow(bodySchema, req.body)
+  const { userId, role, moveToAssessing } = validateOrThrow(bodySchema, req.body)
 
   const qx = await getPackagesQx()
-  const result = await assignSteward(qx, id, { userId, role, assignedBy: req.actor.id })
+  const result = await assignSteward(qx, id, {
+    userId,
+    role,
+    assignedBy: req.actor.id,
+    moveToAssessing,
+  })
 
   if (!result) {
     throw new NotFoundError(`Stewardship not found: ${id}`)
