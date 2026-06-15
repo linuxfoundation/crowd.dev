@@ -96,10 +96,18 @@ export async function saveOSPSBaselineInsightsToDB(
   const CATALOG_ID = 'osps-baseline-2026-02'
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   const result = await redisCache.get(key)
+  if (!result) {
+    throw new Error(`No cached privateer result found for key: ${key}`)
+  }
   const parsedResult: ISecurityInsightsPrivateerResult = JSON.parse(result)
-  const evaluationSuite = parsedResult['evaluation-suites'].find(
+  const evaluationSuite = parsedResult['evaluation-suites']?.find(
     (s) => s['catalog-id'] === CATALOG_ID,
   )
+  if (!evaluationSuite) {
+    throw new Error(
+      `No evaluation suite found for catalog '${CATALOG_ID}' in privateer output for repo ${repo.repoUrl}`,
+    )
+  }
 
   const qx = pgpQx(svc.postgres.writer.connection())
 
@@ -114,6 +122,11 @@ export async function saveOSPSBaselineInsightsToDB(
   })
 
   const suite = await findEvaluationSuite(qx, repo.repoUrl, evaluationSuite['catalog-id'])
+  if (!suite) {
+    throw new Error(
+      `Evaluation suite not found after insert for repo ${repo.repoUrl}, catalog ${evaluationSuite['catalog-id']}`,
+    )
+  }
 
   for (const evaluation of evaluationSuite['control-evaluations'].evaluations) {
     const controlId = evaluation.control['entry-id']
@@ -131,6 +144,11 @@ export async function saveOSPSBaselineInsightsToDB(
     })
 
     const controlEvaluation = await findSuiteControlEvaluation(qx, repo.repoUrl, controlId, suite.id)
+    if (!controlEvaluation) {
+      throw new Error(
+        `Control evaluation not found after insert for repo ${repo.repoUrl}, controlId ${controlId}, suiteId ${suite.id}`,
+      )
+    }
     for (const assessment of evaluation['assessment-logs']) {
       const runDuration = assessment.end
         ? `${new Date(assessment.end).getTime() - new Date(assessment.start).getTime()}ms`
