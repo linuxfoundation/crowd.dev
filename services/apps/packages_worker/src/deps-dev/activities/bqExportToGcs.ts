@@ -153,6 +153,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   // Override table is in src/deps-dev/README.md — update it when adding new job kinds.
   const envKey = `BQ_DATASET_INGEST_${jobKind.toUpperCase().replace(/-/g, '_')}_MAX_BQ_GB`
   const envOverride = process.env[envKey]
+  if (envOverride !== undefined && isNaN(Number(envOverride))) {
+    throw new Error(`Invalid env ${envKey}="${envOverride}" — must be a number`)
+  }
   const effectiveMaxBytesGb = envOverride ? Number(envOverride) : maxBytesGb
   const ceiling = effectiveMaxBytesGb * 1e9
   if (dryRunBytes > ceiling) {

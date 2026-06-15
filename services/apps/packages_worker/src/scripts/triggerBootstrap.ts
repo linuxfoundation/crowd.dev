@@ -144,7 +144,9 @@ async function main(): Promise<void> {
   )
 }
 
-main().catch((err) => {
-  console.error('Failed to trigger bootstrap:', err)
-  process.exit(1)
-})
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Failed to trigger bootstrap:', err)
+    process.exit(1)
+  })

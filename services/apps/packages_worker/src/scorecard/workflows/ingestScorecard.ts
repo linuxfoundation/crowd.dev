@@ -87,7 +87,7 @@ SELECT r.id,
 FROM (
   SELECT DISTINCT ON (repo_url, check_name) repo_url, check_name, check_score, check_reason
   FROM staging.osspckgs_scorecard_checks_raw
-  ORDER BY repo_url, check_name
+  ORDER BY repo_url, check_name, check_score DESC NULLS LAST
 ) s
 JOIN repos r ON r.url = s.repo_url
 ON CONFLICT (repo_id, check_name) DO UPDATE SET

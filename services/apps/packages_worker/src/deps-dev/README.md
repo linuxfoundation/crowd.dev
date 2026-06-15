@@ -68,5 +68,5 @@ The override logic lives in `src/deps-dev/activities/bqExportToGcs.ts`.
 | `OSSPCKGS_DEPS_TABLE`           | no       | Set to `B` to use `DependenciesLatest` (ADR-0003 Option B) instead of `DependencyGraphEdgesLatest` |
 | `CROWD_TEMPORAL_SERVER_URL`     | yes      | Temporal server address                              |
 | `CROWD_TEMPORAL_NAMESPACE`      | yes      | Temporal namespace (overrides `backend-config` default) |
-| `CROWD_TEMPORAL_CERTIFICATE`    | yes      | Base64-encoded mTLS client certificate               |
-| `CROWD_TEMPORAL_PRIVATE_KEY`    | yes      | Base64-encoded mTLS private key                      |
+| `CROWD_TEMPORAL_CERTIFICATE`    | prod only | Base64-encoded mTLS client certificate               |
+| `CROWD_TEMPORAL_PRIVATE_KEY`    | prod only | Base64-encoded mTLS private key                      |
