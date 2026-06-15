@@ -94,6 +94,17 @@ components:
             - stepped_down
             - no_longer_critical
             - 'null'
+        resolutionPath:
+          description: Set on `escalated` status. Null for all other statuses.
+          oneOf:
+            - $ref: '#/components/schemas/EscalationResolutionPath'
+            - type: 'null'
+        statusNote:
+          type:
+            - string
+            - 'null'
+          description: Free-text note for the current status. Set by escalate or updateStatus. Null on open.
+          example: Contacted maintainer, no response after 30 days.
         createdAt:
           type: string
           format: date-time
@@ -115,6 +126,12 @@ components:
           type: string
           description: Auth0 sub of the assigned steward.
           example: abc123
+        name:
+          type:
+            - string
+            - 'null'
+          description: Display name of the steward. Null if not available.
+          example: Jonathan R.
         role:
           type: string
           enum: [lead, co_steward]

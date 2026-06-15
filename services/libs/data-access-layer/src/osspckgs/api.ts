@@ -276,6 +276,8 @@ export interface PackageDetailRow {
   stewardshipId: string | null
   stewardshipStatus: string | null
   stewardshipLastStatusAt: Date | null
+  stewardshipResolutionPath: string | null
+  stewardshipStatusNote: string | null
   // from package_repos + repos
   repoUrl: string | null
   repoMappingConfidence: number | null
@@ -319,6 +321,8 @@ export async function getPackageDetailByPurl(
       s.id::text AS "stewardshipId",
       s.status AS "stewardshipStatus",
       s.last_status_at AS "stewardshipLastStatusAt",
+      s.resolution_path AS "stewardshipResolutionPath",
+      s.status_note AS "stewardshipStatusNote",
       -- best repo link (highest confidence, prefer declared)
       r.url AS "repoUrl",
       pr.confidence AS "repoMappingConfidence",
