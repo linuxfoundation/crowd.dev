@@ -96,6 +96,7 @@ class QueueService(BaseService):
             self._connected = True
         except Exception as e:
             self.logger.error(f"Queue connection failed: {e}")
+            await self.disconnect()
             raise QueueConnectionError() from e
 
     async def disconnect(self):
@@ -104,6 +105,7 @@ class QueueService(BaseService):
         """
         if self.kafka_producer is None or self.kafka_producer._closed:
             self.logger.debug("Producer already closed, skipping")
+            self.kafka_producer = None
             self._connected = False
             return
 
@@ -113,6 +115,7 @@ class QueueService(BaseService):
         except Exception as e:
             self.logger.error(f"Error during disconnect: {e}")
         finally:
+            self.kafka_producer = None
             self._connected = False
 
     async def shutdown(self):
