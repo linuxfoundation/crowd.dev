@@ -293,7 +293,6 @@ class OrganizationMergeSuggestionsRepository {
 
                             )
                      )
-                     order by s."organizationId" desc
                      limit $(limit);`
     } else {
       query = `select * from "organizationToMergeRaw" otmr
@@ -314,7 +313,6 @@ class OrganizationMergeSuggestionsRepository {
                      )
                      ${similarityLTEFilter}
                      ${similarityGTEFilter}
-                     order by otmr."organizationId" desc
                      limit $(limit);`
     }
 

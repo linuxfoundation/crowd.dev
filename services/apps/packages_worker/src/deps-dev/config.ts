@@ -10,6 +10,7 @@ function requireEnv(name: string): string {
 export const GCP_PROJECT = requireEnv('OSSPCKGS_GCP_PROJECT')
 export const GCS_BUCKET = requireEnv('OSSPCKGS_GCS_BUCKET')
 export const DEPS_DEV_DATASET = 'bigquery-public-data.deps_dev_v1'
+export const SCORECARD_DATASET = 'openssf.scorecardcron'
 
 // ADR-0003: Option A = DependencyGraphEdgesLatest (prod default, has version_constraint).
 // Set OSSPCKGS_DEPS_TABLE=B locally to use DependenciesLatest (cheaper, no version_constraint).

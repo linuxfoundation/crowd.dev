@@ -21,12 +21,7 @@ export async function findPackageIdsByPurl(
  */
 export type MavenPackageToSync = Pick<
   IDbPackageUniverse,
-  | 'id'
-  | 'namespace'
-  | 'name'
-  | 'criticalityScore'
-  | 'dependentPackagesCount'
-  | 'dependentReposCount'
+  'id' | 'namespace' | 'name' | 'dependentPackagesCount' | 'dependentReposCount'
 > & {
   purl: string
   latestVersion: string | null
@@ -51,7 +46,7 @@ const MAVEN_WORKER_OUTCOMES = [
  * isCritical=true  → Tier 2: reads from `packages` (populated by the criticality
  *                    worker, which writes ingestion_source + last_synced_at).
  *                    A row is due when it hasn't been POM-enriched yet, or is
- *                    stale by refreshDays. Ordered by criticality_score.
+ *                    stale by refreshDays. Ordered by dependent_count.
  * isCritical=false → disabled non-critical path: reads from `packages_universe`.
  *                    Kept for reference only — the universe→packages copy is owned
  *                    by the criticality worker and this path is not scheduled.
@@ -70,7 +65,6 @@ export async function listMavenPackagesToSync(
         p.purl,
         p.namespace,
         p.name,
-        p.criticality_score        AS "criticalityScore",
         p.dependent_count          AS "dependentPackagesCount",
         p.dependent_repos_count    AS "dependentReposCount",
         p.latest_version           AS "latestVersion"
@@ -85,7 +79,7 @@ export async function listMavenPackagesToSync(
           OR p.last_synced_at < NOW() - ($(refreshDays) || ' days')::interval
         )
       ORDER BY
-        p.criticality_score DESC NULLS LAST,
+        p.dependent_count DESC NULLS LAST,
         p.id ASC
       LIMIT $(limit)
       `,
@@ -101,7 +95,6 @@ export async function listMavenPackagesToSync(
       pu.purl,
       pu.namespace,
       pu.name,
-      pu.criticality_score        AS "criticalityScore",
       pu.dependent_count          AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
       p.latest_version            AS "latestVersion"
@@ -136,7 +129,6 @@ export async function touchPackageSyncedAt(
   qx: QueryExecutor,
   purl: string,
   metrics: {
-    criticalityScore: number | null | undefined
     dependentPackagesCount: number | null | undefined
     dependentReposCount: number | null | undefined
   },
@@ -145,14 +137,12 @@ export async function touchPackageSyncedAt(
     `
     UPDATE packages SET
       last_synced_at           = NOW(),
-      criticality_score        = COALESCE($(criticalityScore),       criticality_score),
       dependent_count          = COALESCE($(dependentPackagesCount), dependent_count),
       dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count)
     WHERE purl = $(purl)
     `,
     {
       purl,
-      criticalityScore: metrics.criticalityScore ?? null,
       dependentPackagesCount: metrics.dependentPackagesCount ?? null,
       dependentReposCount: metrics.dependentReposCount ?? null,
     },
@@ -196,13 +186,13 @@ export async function upsertPackage(
         purl, ecosystem, namespace, name,
         description, homepage, registry_url, declared_repository_url, repository_url,
         licenses, licenses_raw, latest_version, versions_count, latest_release_at,
-        criticality_score, dependent_count, dependent_repos_count,
+        dependent_count, dependent_repos_count,
         ingestion_source, last_synced_at, created_at
       ) VALUES (
         $(purl), $(ecosystem), $(namespace), $(name),
         $(description), $(homepage), $(registryUrl), $(declaredRepositoryUrl), $(repositoryUrl),
         $(licenses)::text[], $(licensesRaw), $(latestVersion), $(versionsCount), $(latestReleaseAt),
-        $(criticalityScore), $(dependentPackagesCount), $(dependentReposCount),
+        $(dependentPackagesCount), $(dependentReposCount),
         $(ingestionSource), NOW(), NOW()
       )
       ON CONFLICT (purl) DO UPDATE SET
@@ -216,7 +206,6 @@ export async function upsertPackage(
         latest_version           = COALESCE(EXCLUDED.latest_version,           packages.latest_version),
         versions_count           = COALESCE(EXCLUDED.versions_count,           packages.versions_count),
         latest_release_at        = COALESCE(EXCLUDED.latest_release_at,        packages.latest_release_at),
-        criticality_score        = COALESCE(EXCLUDED.criticality_score,        packages.criticality_score),
         dependent_count          = COALESCE(EXCLUDED.dependent_count,          packages.dependent_count),
         dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
         ingestion_source         = EXCLUDED.ingestion_source,
@@ -246,7 +235,6 @@ export async function upsertPackage(
       repositoryUrl: item.repositoryUrl ?? null,
       versionsCount: item.versionsCount ?? null,
       latestReleaseAt: item.latestReleaseAt ?? null,
-      criticalityScore: item.criticalityScore ?? null,
       dependentPackagesCount: item.dependentPackagesCount ?? null,
       dependentReposCount: item.dependentReposCount ?? null,
     },
