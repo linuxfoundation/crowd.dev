@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { ConflictError, NotFoundError } from '@crowd/common'
+import { NotFoundError } from '@crowd/common'
 import {
   MemberField,
   findMemberById,
@@ -15,6 +15,7 @@ import {
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
 import { created, ok } from '@/utils/api'
+import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -35,25 +36,6 @@ const bodySchema = z
     path: ['verifiedBy'],
   })
 
-type DbConstraintError = Error & {
-  constraint?: string
-  original?: { constraint?: string }
-  parent?: { constraint?: string }
-}
-
-function throwIdentityConflict(
-  error: DbConstraintError,
-  data: { platform: string; value: string; type: MemberIdentityType },
-): never {
-  const constraint = error.constraint ?? error.original?.constraint ?? error.parent?.constraint
-
-  if (constraint === 'uix_memberIdentities_platform_value_type_verified') {
-    throw new ConflictError('Identity already verified on another member', data)
-  }
-
-  throw error
-}
-
 export async function createMemberIdentity(req: Request, res: Response): Promise<void> {
   const { memberId } = validateOrThrow(paramsSchema, req.params)
   const data = validateOrThrow(bodySchema, req.body)
@@ -67,7 +49,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
   // The data-sink writes identity values as trimmed lowercase, so normalize here
   // to keep idempotency checks reliable against existing rows.
   const normalizedValue = data.value.trim().toLowerCase()
-  const conflictContext = { platform: data.platform, value: normalizedValue, type: data.type }
 
   let result!: IMemberIdentity
   let alreadyExisted = false
@@ -121,7 +102,8 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
         } catch (error) {
-          throwIdentityConflict(error as DbConstraintError, conflictContext)
+          const ctx = { platform: data.platform, value: normalizedValue, type: data.type }
+          rethrowDbConflict(error, ctx)
         }
 
         await touchMemberUpdatedAt(tx, memberId)
