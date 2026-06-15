@@ -36,7 +36,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
 
   const [advisories, stewardshipSummary] = await Promise.all([
     getAdvisoriesByPackageId(qx, pkg.id),
-    pkg.stewardshipId ? getStewardshipSummary(qx, pkg.stewardshipId) : null,
+    pkg.stewardshipId ? getStewardshipSummary(qx, Number(pkg.stewardshipId)) : null,
   ])
 
   ok(res, {

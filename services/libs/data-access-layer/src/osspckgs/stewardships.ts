@@ -84,6 +84,17 @@ function toIso(v: unknown): string {
   return v instanceof Date ? v.toISOString() : String(v)
 }
 
+function mapStewardStewardRow(row: Record<string, unknown>): StewardshipStewardRecord {
+  return {
+    id: String(row.id),
+    stewardshipId: String(row.stewardship_id),
+    userId: String(row.user_id),
+    role: String(row.role),
+    assignedAt: toIso(row.assigned_at),
+    assignedBy: row.assigned_by ? String(row.assigned_by) : null,
+  }
+}
+
 function mapStewardshipRow(row: Record<string, unknown>): StewardshipRecord {
   return {
     id: String(row.id),
@@ -213,14 +224,7 @@ export async function assignSteward(
 
     return {
       stewardship,
-      stewards: stewards.map((s) => ({
-        id: String(s.id),
-        stewardshipId: String(s.stewardship_id),
-        userId: String(s.user_id),
-        role: String(s.role),
-        assignedAt: toIso(s.assigned_at),
-        assignedBy: s.assigned_by ? String(s.assigned_by) : null,
-      })),
+      stewards: stewards.map(mapStewardStewardRow),
     }
   })
 }
@@ -232,7 +236,7 @@ export interface StewardshipSummary {
 
 export async function getStewardshipSummary(
   qx: QueryExecutor,
-  stewardshipId: string,
+  stewardshipId: number,
 ): Promise<StewardshipSummary> {
   const [stewards, activityRow] = await Promise.all([
     qx.select(
@@ -252,18 +256,12 @@ export async function getStewardshipSummary(
   ])
 
   return {
-    stewards: stewards.map((s) => ({
-      id: String(s.id),
-      stewardshipId: String(s.stewardship_id),
-      userId: String(s.user_id),
-      role: String(s.role),
-      assignedAt: toIso(s.assigned_at),
-      assignedBy: s.assigned_by ? String(s.assigned_by) : null,
-    })),
+    stewards: stewards.map(mapStewardStewardRow),
     lastActivityAt: activityRow?.last_activity_at ? toIso(activityRow.last_activity_at) : null,
   }
 }
 
+// TODO: confirm the 6 resolution path values with Joana (CM-1235 ticket says "6 paths" but doesn't define them)
 export const ESCALATION_RESOLUTION_PATHS = [
   'lf_staff_review',
   'community_outreach',
@@ -288,9 +286,10 @@ export async function escalateStewardship(
     `
     WITH upd AS (
       UPDATE stewardships
-      SET status         = 'escalated',
-          last_status_at = NOW(),
-          updated_at     = NOW()
+      SET status          = 'escalated',
+          last_status_at  = NOW(),
+          inactive_reason = NULL,
+          updated_at      = NOW()
       WHERE id = $(stewardshipId)
       RETURNING id, package_id, status, origin, version, opened_at,
                 last_status_at, inactive_reason, created_at, updated_at
@@ -349,16 +348,13 @@ export async function updateStewardshipStatus(
     actorUserId: string
   },
 ): Promise<StewardshipRecord | null> {
-  if (data.status === 'inactive' && !data.inactiveReason) {
-    throw new Error('inactiveReason is required when setting status to inactive')
-  }
   const row: Record<string, unknown> | null = await qx.selectOneOrNone(
     `
     WITH upd AS (
       UPDATE stewardships
       SET status          = $(status),
           last_status_at  = NOW(),
-          inactive_reason = CASE WHEN $(status) = 'inactive' THEN $(inactiveReason) ELSE inactive_reason END,
+          inactive_reason = CASE WHEN $(status) = 'inactive' THEN $(inactiveReason) ELSE NULL END,
           updated_at      = NOW()
       WHERE id = $(stewardshipId)
       RETURNING id, package_id, status, origin, version, opened_at,

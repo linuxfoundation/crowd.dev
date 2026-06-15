@@ -15,18 +15,18 @@ const bodySchema = z.object({
     .string()
     .trim()
     .min(1)
-    .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' }),
+    .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
+    .transform(normalizePurl),
 })
 
 export async function openStewardship(req: Request, res: Response): Promise<void> {
-  const { purl: rawPurl } = validateOrThrow(bodySchema, req.body)
-  const purl = normalizePurl(rawPurl)
+  const { purl } = validateOrThrow(bodySchema, req.body)
 
   const qx = await getPackagesQx()
   const stewardship = await openStewardshipByPurl(qx, purl, req.actor.id)
 
   if (!stewardship) {
-    throw new NotFoundError(`Package not found: ${rawPurl}`)
+    throw new NotFoundError(`Package not found: ${purl}`)
   }
 
   ok(res, { stewardship })
