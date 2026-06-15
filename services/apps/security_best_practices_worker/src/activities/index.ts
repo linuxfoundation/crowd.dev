@@ -226,11 +226,13 @@ async function runBinary(
         resolve({ stdout, stderr })
       } else {
         const truncated = (s: string) => (s.length > 500 ? s.slice(0, 500) + '…' : s)
-        reject(
+        const err = Object.assign(
           new Error(
-            `Binary exited with code ${code}\nStderr:\n${truncated(stderr)}Stdout:\n${truncated(stdout)}`,
+            `Binary exited with code ${code}\nStderr:\n${truncated(stderr)}\nStdout:\n${truncated(stdout)}`,
           ),
+          { stdout, stderr },
         )
+        reject(err)
       }
     })
   })
