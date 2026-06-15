@@ -150,9 +150,7 @@ export async function saveOSPSBaselineInsightsToDB(
       )
     }
     for (const assessment of evaluation['assessment-logs']) {
-      const runDuration = assessment.end
-        ? `${new Date(assessment.end).getTime() - new Date(assessment.start).getTime()}ms`
-        : ''
+      const runDuration = computeRunDuration(assessment.start, assessment.end)
       await addControlEvaluationAssessment(qx, {
         applicability: assessment.applicability,
         description: assessment.description,
@@ -191,6 +189,14 @@ export async function saveOSPSBaselineInsightsToRedis(
 ): Promise<void> {
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   await redisCache.set(key, JSON.stringify(insights), 60 * 60 * 24) // 1 day
+}
+
+function computeRunDuration(start: string | undefined, end: string | undefined): string {
+  if (!start || !end) return ''
+  const startMs = new Date(start).getTime()
+  const endMs = new Date(end).getTime()
+  if (isNaN(startMs) || isNaN(endMs) || endMs < startMs) return ''
+  return `${endMs - startMs}ms`
 }
 
 async function cleanupFiles(repoName: string): Promise<void> {
@@ -247,11 +253,13 @@ async function runBinary(
         resolve({ stdout, stderr })
       } else {
         const truncated = (s: string) => (s.length > 500 ? s.slice(0, 500) + '…' : s)
+        const truncStdout = truncated(stdout)
+        const truncStderr = truncated(stderr)
         const err = Object.assign(
           new Error(
-            `Binary exited with code ${code}\nStderr:\n${truncated(stderr)}\nStdout:\n${truncated(stdout)}`,
+            `Binary exited with code ${code}\nStderr:\n${truncStderr}\nStdout:\n${truncStdout}`,
           ),
-          { stdout, stderr },
+          { stdout: truncStdout, stderr: truncStderr },
         )
         reject(err)
       }
