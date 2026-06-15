@@ -132,6 +132,9 @@ export async function saveOSPSBaselineInsightsToDB(
 
     const controlEvaluation = await findSuiteControlEvaluation(qx, repo.repoUrl, controlId, suite.id)
     for (const assessment of evaluation['assessment-logs']) {
+      const runDuration = assessment.end
+        ? `${new Date(assessment.end).getTime() - new Date(assessment.start).getTime()}ms`
+        : ''
       await addControlEvaluationAssessment(qx, {
         applicability: assessment.applicability,
         description: assessment.description,
@@ -141,7 +144,7 @@ export async function saveOSPSBaselineInsightsToDB(
         insightsProjectSlug: repo.insightsProjectSlug,
         requirementId: assessment.requirement['entry-id'],
         result: assessment.result,
-        runDuration: '',
+        runDuration,
         steps: assessment.steps,
         stepsExecuted: assessment['steps-executed'] || 0,
         securityInsightsEvaluationId: controlEvaluation.id,

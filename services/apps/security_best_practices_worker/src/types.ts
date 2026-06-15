@@ -25,6 +25,7 @@ export interface ISecurityInsightsPrivateerResultControlEvaluations {
 
 export interface ISecurityInsightsPrivateerResultAssessment {
   requirement: { 'reference-id': string; 'entry-id': string }
+  plan?: { 'reference-id': string; 'entry-id': string }
   applicability: string[]
   description: string
   result: string
@@ -34,6 +35,7 @@ export interface ISecurityInsightsPrivateerResultAssessment {
   start: string
   end?: string
   recommendation?: string
+  'confidence-level'?: string
 }
 
 export interface IUpsertOSPSBaselineSecurityInsightsParams {
