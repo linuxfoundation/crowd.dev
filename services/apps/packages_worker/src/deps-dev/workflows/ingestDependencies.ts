@@ -38,6 +38,14 @@ const { dropPackageDepsIndexes, rebuildPackageDepsIndexes } = proxyActivities<
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
+const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActivities<
+  typeof depsDevActivities
+>({
+  // FK validation on 1B+ rows can take hours.
+  startToCloseTimeout: '12 hours',
+  retry: { maximumAttempts: 2, initialInterval: '1 minute' },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_deps_raw'
 
 const STAGING_DDL = `
@@ -62,11 +70,11 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_deps_raw (
 const MERGE_SQL = `
 INSERT INTO package_dependencies (
   package_id, version_id, depends_on_id, depends_on_version_id,
-  version_constraint, dependency_kind, is_optional
+  version_constraint, dependency_kind, is_optional, created_at, updated_at
 )
 SELECT
   pv.package_id, pv.id, pd.id, dv.id,
-  sp.version_constraint, 'direct', FALSE
+  sp.version_constraint, 'direct', FALSE, NOW(), NOW()
 FROM staging.osspckgs_deps_raw sp
 JOIN staging.osspckgs_versions_lookup pv ON pv.ecosystem = sp.ecosystem
   AND pv.ns = CASE
@@ -98,11 +106,11 @@ ON CONFLICT (version_id, depends_on_id, dependency_kind) DO NOTHING
 const MERGE_SQL_FULL = `
 INSERT INTO package_dependencies (
   package_id, version_id, depends_on_id, depends_on_version_id,
-  version_constraint, dependency_kind, is_optional
+  version_constraint, dependency_kind, is_optional, created_at, updated_at
 )
 SELECT DISTINCT ON (pv.id, pd.id)
   pv.package_id, pv.id, pd.id, dv.id,
-  sp.version_constraint, 'direct', FALSE
+  sp.version_constraint, 'direct', FALSE, NOW(), NOW()
 FROM staging.osspckgs_deps_raw sp
 JOIN staging.osspckgs_versions_lookup pv ON pv.ecosystem = sp.ecosystem
   AND pv.ns = CASE
@@ -129,13 +137,12 @@ ORDER BY pv.id, pd.id, sp.to_version DESC NULLS LAST
 
 // SET LOCAL scopes settings to this transaction only.
 // synchronous_commit=off skips WAL flush wait — safe for plain INSERT on full loads.
-// session_replication_role=replica disables FK trigger checks — safe because all inserted rows
-// come from JOINs against packages/versions; non-matching rows are filtered before INSERT.
 // max_parallel_workers_per_gather parallelises the SELECT side of INSERT...SELECT.
+// session_replication_role=replica would skip FK trigger checks but requires superuser —
+// blocked on Oracle Cloud managed PostgreSQL regardless of REPLICATION role.
 const MERGE_PREPARE_SQL = [
   `SET LOCAL work_mem = '512MB'`,
   `SET LOCAL synchronous_commit = off`,
-  `SET LOCAL session_replication_role = 'replica'`,
   `SET LOCAL max_parallel_workers_per_gather = 8`,
 ]
 
@@ -159,7 +166,7 @@ export async function ingestDependencies(opts: {
   reuseExports?: boolean
   depsTableOption?: 'A' | 'B'
   exportName?: string
-}): Promise<void> {
+}): Promise<{ rowCountBq: number }> {
   const systems = toSystemsFilter(opts.ecosystems)
   const tableOption = opts.depsTableOption ?? 'A'
   const sql =
@@ -173,77 +180,96 @@ export async function ingestDependencies(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 3000,
+    maxBytesGb: 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
   const totalFiles = fileNames.length
+  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
 
-  if (totalFiles === 0) {
+  if (totalFiles === 0 || totalRows === 0) {
     await mergeStagingToTable({
       jobId: exportResult.jobId,
       mergeSql: [],
       tableNames: [],
       isFinal: true,
     })
-    return
+    return { rowCountBq: exportResult.rowCount }
   }
 
   await createVersionsLookup({ ecosystems: opts.ecosystems })
 
   if (opts.syncMode === 'full') {
+    await dropPackageDepsConstraints()
     await dropPackageDepsIndexes()
   }
 
-  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
-  const filesPerChunk =
-    totalRows > 0
-      ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
-      : Math.min(fileNames.length, 2)
-  const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
-  let priorRowsAffected = 0
-  let priorStagingRows = 0
-  const priorTableRowCounts: Record<string, number> = {}
+  try {
+    const filesPerChunk =
+      totalRows > 0
+        ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
+        : Math.min(fileNames.length, 2)
+    const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
+    let priorRowsAffected = 0
+    let priorStagingRows = 0
+    const priorTableRowCounts: Record<string, number> = {}
 
-  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-    const start = chunkIndex * filesPerChunk
-    const chunk = fileNames.slice(start, start + filesPerChunk)
-    const isFinal = chunkIndex === totalChunks - 1
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * filesPerChunk
+      const chunk = fileNames.slice(start, start + filesPerChunk)
+      const isFinal = chunkIndex === totalChunks - 1
 
-    const { rowsLoaded } = await gcsParquetToStaging({
-      jobId: exportResult.jobId,
-      stagingTable: STAGING_TABLE,
-      stagingDdl: STAGING_DDL,
-      pgColumns: PG_COLUMNS,
-      fileNames: chunk,
-      filesOffset: start,
-      totalFiles,
-      priorStagingRows,
-    })
-    priorStagingRows += rowsLoaded
+      const { rowsLoaded } = await gcsParquetToStaging({
+        jobId: exportResult.jobId,
+        stagingTable: STAGING_TABLE,
+        stagingDdl: STAGING_DDL,
+        pgColumns: PG_COLUMNS,
+        fileNames: chunk,
+        filesOffset: start,
+        totalFiles,
+        priorStagingRows,
+      })
+      priorStagingRows += rowsLoaded
 
-    const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
-      jobId: exportResult.jobId,
-      prepareSql: MERGE_PREPARE_SQL,
-      mergeSql: opts.syncMode === 'full' ? MERGE_SQL_FULL : MERGE_SQL,
-      tableNames: 'package_dependencies',
-      isFinal,
-      priorRowsAffected,
-      priorTableRowCounts,
-      chunkInfo: { index: chunkIndex, total: totalChunks },
-    })
+      const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
+        jobId: exportResult.jobId,
+        prepareSql: MERGE_PREPARE_SQL,
+        mergeSql: opts.syncMode === 'full' ? MERGE_SQL_FULL : MERGE_SQL,
+        tableNames: 'package_dependencies',
+        isFinal,
+        priorRowsAffected,
+        priorTableRowCounts,
+        chunkInfo: { index: chunkIndex, total: totalChunks },
+      })
 
-    priorRowsAffected += rowsAffected
-    if (!isFinal) {
-      for (const [k, v] of Object.entries(tableRowCounts)) {
-        priorTableRowCounts[k] = (priorTableRowCounts[k] ?? 0) + v
+      priorRowsAffected += rowsAffected
+      if (!isFinal) {
+        for (const [k, v] of Object.entries(tableRowCounts)) {
+          priorTableRowCounts[k] = (priorTableRowCounts[k] ?? 0) + v
+        }
       }
     }
-  }
 
-  if (opts.syncMode === 'full') {
-    await rebuildPackageDepsIndexes()
+    if (opts.syncMode === 'full') {
+      await rebuildPackageDepsIndexes()
+      await rebuildPackageDepsConstraints()
+    }
+  } catch (err) {
+    if (opts.syncMode === 'full') {
+      try {
+        await rebuildPackageDepsIndexes()
+      } catch (_) {
+        /* best-effort */
+      }
+      try {
+        await rebuildPackageDepsConstraints()
+      } catch (_) {
+        /* best-effort */
+      }
+    }
+    throw err
   }
+  return { rowCountBq: exportResult.rowCount }
 }

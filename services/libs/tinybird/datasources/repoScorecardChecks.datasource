@@ -1,0 +1,24 @@
+DESCRIPTION >
+    - `repoScorecardChecks` contains per-check OpenSSF Scorecard results for tracked repositories.
+    - Replicated from Postgres packages-db — one row per (repo, check_name) pair; ~18 named checks per repo.
+    - Used to drill into specific security posture signals beyond the aggregate scorecard score on the repos table.
+    - `id` is the internal primary key.
+    - `repoId` links to the parent repos row.
+    - `checkName` is the Scorecard check identifier, e.g. 'Binary-Artifacts', 'Branch-Protection', 'Code-Review'.
+    - `score` is the numeric check score on a 0–10 scale (0 if the check failed or was not applicable).
+    - `reason` is the human-readable explanation of the score (empty string if not provided).
+    - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `repoId` UInt64 `json:$.record.repo_id`,
+    `checkName` String `json:$.record.check_name`,
+    `score` Float32 `json:$.record.score` DEFAULT 0,
+    `reason` String `json:$.record.reason` DEFAULT '',
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY repoId, checkName
+ENGINE_VER updatedAt

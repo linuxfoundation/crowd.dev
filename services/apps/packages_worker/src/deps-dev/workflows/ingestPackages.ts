@@ -48,7 +48,7 @@ INSERT INTO packages (
   ecosystem, namespace, name, purl, description, licenses,
   latest_version, declared_repository_url, homepage,
   first_release_at, latest_release_at, versions_count,
-  ingestion_source, last_synced_at
+  ingestion_source, last_synced_at, created_at
 )
 SELECT
   s.ecosystem,
@@ -65,7 +65,7 @@ SELECT
   s.purl, s.description, s.licenses,
   s.latest_version, s.declared_repo_url, s.homepage,
   s.first_release_at, s.latest_release_at, s.versions_count,
-  'deps_dev', NOW()
+  'deps_dev', NOW(), NOW()
 FROM staging.osspckgs_packages_raw s
 ON CONFLICT DO NOTHING
 `
@@ -94,7 +94,7 @@ export async function ingestPackages(opts: {
   ecosystems?: string[]
   reuseExports?: boolean
   exportName?: string
-}): Promise<void> {
+}): Promise<{ rowCountBq: number }> {
   const systems = toSystemsFilter(opts.ecosystems)
   const sql =
     opts.syncMode === 'full'
@@ -122,7 +122,7 @@ export async function ingestPackages(opts: {
       tableNames: [],
       isFinal: true,
     })
-    return
+    return { rowCountBq: exportResult.rowCount }
   }
 
   const totalRows = rowCounts.reduce((a, b) => a + b, 0)
@@ -170,4 +170,5 @@ export async function ingestPackages(opts: {
       }
     }
   }
+  return { rowCountBq: exportResult.rowCount }
 }

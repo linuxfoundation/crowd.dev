@@ -316,7 +316,6 @@ class MemberMergeSuggestionsRepository {
                      )
                      ${similarityLTEFilter}
                      ${similarityGTEFilter}
-                     order by mtmr."memberId" desc
                      limit $(limit);`
 
     const results: IRawMemberMergeSuggestionResult[] = await this.connection.any(

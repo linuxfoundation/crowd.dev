@@ -1,6 +1,18 @@
-import { Client, Connection } from '@temporalio/client'
+import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 
 import { bootstrapOsspckgs } from '../deps-dev/workflows'
+
+const VALID_KINDS = [
+  'packages',
+  'versions',
+  'package_dependencies',
+  'repos',
+  'package_repos',
+  'advisories',
+  'advisory_packages',
+  'dependent_counts',
+  'scorecard',
+] as const
 
 const HELP = `
 Usage: trigger-bootstrap [full|incremental] [ECOSYSTEMS] [options]
@@ -11,6 +23,10 @@ Arguments:
                          Omit for all 6 ecosystems
 
 Options:
+  --kinds <k1,k2>        Run only specific job kinds (default: all). Comma-separated:
+                           ${VALID_KINDS.join(', ')}
+                         "repos" and "package_repos" always run together (one workflow).
+                         "advisories" and "advisory_packages" always run together (one workflow).
   --reuse-exports        Skip BQ for any kind that has recent exported data in DB+GCS.
                          Falls back to BQ if files are gone or no prior export exists.
   --export-name <name>   Skip BQ entirely for kinds covered by a named export
@@ -29,6 +45,8 @@ Examples:
   pnpm trigger-bootstrap:local full CARGO --deps-table-b
   pnpm trigger-bootstrap:local full CARGO --export-name cargo-may-2026
   pnpm trigger-bootstrap:local full CARGO --export-name cargo-may-2026 --deps-table-b
+  pnpm trigger-bootstrap:local full --kinds dependent_counts
+  pnpm trigger-bootstrap:local full --kinds packages,versions
 `
 
 async function main(): Promise<void> {
@@ -41,6 +59,7 @@ async function main(): Promise<void> {
 
   const reuseExports = args.includes('--reuse-exports')
   const depsTableOption: 'A' | 'B' = args.includes('--deps-table-b') ? 'B' : 'A'
+
   const exportNameIdx = args.indexOf('--export-name')
   if (
     exportNameIdx !== -1 &&
@@ -50,10 +69,26 @@ async function main(): Promise<void> {
     process.exit(1)
   }
   const exportName = exportNameIdx !== -1 ? args[exportNameIdx + 1] : undefined
+
+  const kindsIdx = args.indexOf('--kinds')
+  if (kindsIdx !== -1 && (kindsIdx + 1 >= args.length || args[kindsIdx + 1].startsWith('--'))) {
+    console.error('--kinds requires a value')
+    process.exit(1)
+  }
+  let kinds: string[] | undefined
+  if (kindsIdx !== -1) {
+    kinds = args[kindsIdx + 1].split(',').map((k) => k.trim())
+    const invalid = kinds.filter((k) => !VALID_KINDS.includes(k as (typeof VALID_KINDS)[number]))
+    if (invalid.length > 0) {
+      console.error(`Unknown kind(s): ${invalid.join(', ')}. Valid: ${VALID_KINDS.join(', ')}`)
+      process.exit(1)
+    }
+  }
+
   const positional: string[] = []
   for (let i = 0; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      if (args[i] === '--export-name') i++ // skip value
+      if (args[i] === '--export-name' || args[i] === '--kinds') i++ // skip value
       continue
     }
     positional.push(args[i])
@@ -80,27 +115,26 @@ async function main(): Promise<void> {
     }
   }
 
-  const serverUrl = process.env.CROWD_TEMPORAL_SERVER_URL
-  const namespace = process.env.CROWD_TEMPORAL_NAMESPACE
-  if (!serverUrl || !namespace) {
+  const cfg = TEMPORAL_CONFIG()
+  if (!cfg.serverUrl || !cfg.namespace) {
     console.error('Missing CROWD_TEMPORAL_SERVER_URL or CROWD_TEMPORAL_NAMESPACE')
     process.exit(1)
   }
 
-  const connection = await Connection.connect({ address: serverUrl })
-  const client = new Client({ connection, namespace })
+  const client = await getTemporalClient(cfg)
 
   const ecosystemSuffix = ecosystems ? `-${ecosystems.join('-').toLowerCase()}` : ''
   const reuseSuffix = reuseExports ? '-reuse' : ''
   const tableSuffix = depsTableOption === 'B' ? '-depsB' : ''
   const workflowId = `bootstrap-osspckgs-${mode}${ecosystemSuffix}${reuseSuffix}${tableSuffix}-${Date.now()}`
   const handle = await client.workflow.start(bootstrapOsspckgs, {
-    taskQueue: 'deps-dev-ingest',
+    taskQueue: 'bq-dataset-ingest',
     workflowId,
-    args: [{ mode, ecosystems, reuseExports, depsTableOption, exportName }],
+    args: [{ mode, ecosystems, kinds, reuseExports, depsTableOption, exportName }],
   })
 
   const flags = [
+    kinds ? `--kinds ${kinds.join(',')}` : '',
     reuseExports ? '--reuse-exports' : '',
     depsTableOption === 'B' ? '--deps-table-b' : '',
     exportName ? `--export-name ${exportName}` : '',
@@ -108,10 +142,11 @@ async function main(): Promise<void> {
   console.log(
     `Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`,
   )
-  await connection.close()
 }
 
-main().catch((err) => {
-  console.error('Failed to trigger bootstrap:', err)
-  process.exit(1)
-})
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Failed to trigger bootstrap:', err)
+    process.exit(1)
+  })

@@ -23,7 +23,7 @@
     "@crowd/types": "workspace:*",
     "@types/config": "^3.3.0",
     "@types/express": "^4.17.17",
-    "@types/node": "^18.16.3",
+    "@types/node": "^20.8.2",
     "bunyan-middleware": "^1.0.2",
     "config": "^3.3.9",
     "cors": "^2.8.5",

@@ -5,6 +5,7 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import { ingestScorecard } from '../../scorecard/workflows'
 import type * as depsDevActivities from '../activities'
 
 import { ingestAdvisories } from './ingestAdvisories'
@@ -19,11 +20,6 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActi
 >({
   startToCloseTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
-})
-
-const { rankPackagesUniverse } = proxyActivities<typeof depsDevActivities>({
-  startToCloseTimeout: '1 hour',
-  retry: { maximumAttempts: 2 },
 })
 
 type JobKind =
@@ -60,6 +56,7 @@ const SNAPSHOT_RESOLVED_KINDS: JobKind[] = ['repos', 'dependent_counts']
 export async function bootstrapOsspckgs(opts: {
   mode: 'full' | 'incremental'
   ecosystems?: string[]
+  kinds?: string[]
   reuseExports?: boolean
   depsTableOption?: 'A' | 'B'
   exportName?: string
@@ -79,13 +76,12 @@ export async function bootstrapOsspckgs(opts: {
   // after a partial failure re-processes already-loaded rows via ON CONFLICT DO NOTHING,
   // which is wasteful but safe.
 
-  const jobKinds: JobKind[] = [
-    'packages',
-    'versions',
-    'package_dependencies',
-    'advisories',
-    'advisory_packages',
-  ]
+  const activeKinds = opts.kinds ? new Set(opts.kinds) : null
+  const runs = (kind: string) => !activeKinds || activeKinds.has(kind)
+
+  const jobKinds: JobKind[] = (
+    ['packages', 'versions', 'package_dependencies', 'advisories', 'advisory_packages'] as JobKind[]
+  ).filter((k) => runs(k))
   const watermarks = new Map<JobKind, string | null>()
 
   // B6: resolve the actual available snapshot date from BQ (deps.dev publishes weekly, not daily).
@@ -93,16 +89,19 @@ export async function bootstrapOsspckgs(opts: {
   // tables (PackageVersionToProject, Dependents) that may be on a different cadence than PackageVersions.
   const resolvedSnapshots = new Map<JobKind, string>()
 
-  // Partitioned kinds: only needed for incremental (full mode uses *Latest views, no partition filter)
-  if (opts.mode === 'incremental') {
-    for (const kind of PARTITIONED_KINDS) {
-      const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
-      resolvedSnapshots.set(kind, snapshotDate)
-    }
+  // Partitioned kinds: always resolve so snapshot_at stores a real BQ partition date.
+  // Full mode doesn't use the date in its BQ query (*Latest views, no partition filter)
+  // but the resolved date becomes the watermark for the next incremental run.
+  for (const kind of PARTITIONED_KINDS.filter((k) => runs(k))) {
+    const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
+    resolvedSnapshots.set(kind, snapshotDate)
   }
 
-  // Always resolve snapshot date for kinds that filter by partition date
+  // Always resolve snapshot date for kinds that filter by partition date.
+  // repos/package_repos share one ingestRepos call — resolve repos snapshot when either runs.
   for (const kind of SNAPSHOT_RESOLVED_KINDS) {
+    const shouldResolve = kind === 'repos' ? runs('repos') || runs('package_repos') : runs(kind)
+    if (!shouldResolve) continue
     const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
     resolvedSnapshots.set(kind, snapshotDate)
   }
@@ -140,81 +139,95 @@ export async function bootstrapOsspckgs(opts: {
   // (FK → packages + repos), then versions (FK → packages), then deps (FK → versions),
   // then advisories last.
   // M3: executeChild for retry isolation and history compaction per kind.
-  await executeChild(ingestPackages, {
-    args: [
-      {
-        runId,
-        syncMode: opts.mode,
-        today: snap('packages'),
-        watermark: wm('packages'),
-        ecosystems: opts.ecosystems,
-        reuseExports: opts.reuseExports,
-        exportName: opts.exportName,
-      },
-    ],
-  })
-  await executeChild(ingestDependentCounts, {
-    args: [
-      {
-        runId,
-        snapshotDate: snap('dependent_counts'),
-        reuseExports: opts.reuseExports,
-        exportName: opts.exportName,
-      },
-    ],
-  })
-
-  await executeChild(ingestRepos, {
-    args: [
-      {
-        runId,
-        snapshotDate: snap('repos'),
-        ecosystems: opts.ecosystems,
-        reuseExports: opts.reuseExports,
-        exportName: opts.exportName,
-      },
-    ],
-  })
-
-  await executeChild(ingestVersions, {
-    args: [
-      {
-        runId,
-        syncMode: opts.mode,
-        today: snap('versions'),
-        watermark: wm('versions'),
-        ecosystems: opts.ecosystems,
-        reuseExports: opts.reuseExports,
-        exportName: opts.exportName,
-      },
-    ],
-  })
-  await executeChild(ingestDependencies, {
-    args: [
-      {
-        runId,
-        syncMode: opts.mode,
-        today: snap('package_dependencies'),
-        watermark: wm('package_dependencies'),
-        ecosystems: opts.ecosystems,
-        reuseExports: opts.reuseExports,
-        depsTableOption: opts.depsTableOption,
-        exportName: opts.exportName,
-      },
-    ],
-  })
-  await rankPackagesUniverse()
-  await executeChild(ingestAdvisories, {
-    args: [
-      {
-        runId,
-        syncMode: opts.mode,
-        today,
-        watermark: wm('advisories'),
-        ecosystems: opts.ecosystems,
-        reuseExports: opts.reuseExports,
-        exportName: opts.exportName,
-      },
-    ],
-  })
+  if (runs('packages')) {
+    await executeChild(ingestPackages, {
+      args: [
+        {
+          runId,
+          syncMode: opts.mode,
+          today: snap('packages'),
+          watermark: wm('packages'),
+          ecosystems: opts.ecosystems,
+          reuseExports: opts.reuseExports,
+          exportName: opts.exportName,
+        },
+      ],
+    })
+  }
+  if (runs('dependent_counts')) {
+    await executeChild(ingestDependentCounts, {
+      args: [
+        {
+          runId,
+          snapshotDate: snap('dependent_counts'),
+          reuseExports: opts.reuseExports,
+          exportName: opts.exportName,
+        },
+      ],
+    })
+  }
+  if (runs('repos') || runs('package_repos')) {
+    await executeChild(ingestRepos, {
+      args: [
+        {
+          runId,
+          snapshotDate: snap('repos'),
+          ecosystems: opts.ecosystems,
+          reuseExports: opts.reuseExports,
+          exportName: opts.exportName,
+        },
+      ],
+    })
+  }
+  if (runs('versions')) {
+    await executeChild(ingestVersions, {
+      args: [
+        {
+          runId,
+          syncMode: opts.mode,
+          today: snap('versions'),
+          watermark: wm('versions'),
+          ecosystems: opts.ecosystems,
+          reuseExports: opts.reuseExports,
+          exportName: opts.exportName,
+        },
+      ],
+    })
+  }
+  if (runs('package_dependencies')) {
+    await executeChild(ingestDependencies, {
+      args: [
+        {
+          runId,
+          syncMode: opts.mode,
+          today: snap('package_dependencies'),
+          watermark: wm('package_dependencies'),
+          ecosystems: opts.ecosystems,
+          reuseExports: opts.reuseExports,
+          depsTableOption: opts.depsTableOption,
+          exportName: opts.exportName,
+        },
+      ],
+    })
+  }
+  if (runs('advisories') || runs('advisory_packages')) {
+    await executeChild(ingestAdvisories, {
+      args: [
+        {
+          runId,
+          syncMode: opts.mode,
+          today,
+          watermark: wm('advisories'),
+          ecosystems: opts.ecosystems,
+          reuseExports: opts.reuseExports,
+          exportName: opts.exportName,
+        },
+      ],
+    })
+  }
+  if (runs('scorecard')) {
+    await executeChild(ingestScorecard, {
+      args: [{ runId, reuseExports: opts.reuseExports, exportName: opts.exportName }],
+    })
+  }
 }

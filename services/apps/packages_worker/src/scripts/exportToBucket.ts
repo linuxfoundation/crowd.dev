@@ -16,6 +16,7 @@ import { buildPackagesFullSql } from '../deps-dev/queries/packagesSql'
 import { buildReposSql } from '../deps-dev/queries/reposSql'
 import { toSystemsFilter } from '../deps-dev/queries/systems'
 import { buildVersionsFullSql } from '../deps-dev/queries/versionsSql'
+import { SCORECARD_CHECKS_SQL, SCORECARD_REPOS_SQL } from '../scorecard/queries/scorecardSql'
 
 const HELP = `
 Usage: export-to-bucket <export-name> <parts> [options]
@@ -35,6 +36,8 @@ Arguments:
                    counts            Dependents (snapshot date auto-resolved)
                    advisories        AdvisoriesLatest (no ecosystem filter)
                    advisory_packages AdvisoriesLatest + PackageVersionsLatest
+                   scorecard_repos   OpenSSF Scorecard aggregate scores (scorecard-v2_latest)
+                   scorecard_checks  OpenSSF Scorecard per-check detail (scorecard-v2_latest UNNEST)
 
 Options:
   --ecosystems A,B        Comma-separated ecosystems: CARGO,NPM,MAVEN,GO,PYPI,NUGET
@@ -71,6 +74,8 @@ type ExportPart =
   | 'counts'
   | 'advisories'
   | 'advisory_packages'
+  | 'scorecard_repos'
+  | 'scorecard_checks'
 
 const PART_TO_KIND: Record<ExportPart, OsspckgsJobKind> = {
   packages: 'packages',
@@ -81,6 +86,8 @@ const PART_TO_KIND: Record<ExportPart, OsspckgsJobKind> = {
   counts: 'dependent_counts',
   advisories: 'advisories',
   advisory_packages: 'advisory_packages',
+  scorecard_repos: 'scorecard_repos',
+  scorecard_checks: 'scorecard_checks',
 }
 
 const ALL_PARTS: ExportPart[] = [
@@ -92,6 +99,8 @@ const ALL_PARTS: ExportPart[] = [
   'counts',
   'advisories',
   'advisory_packages',
+  'scorecard_repos',
+  'scorecard_checks',
 ]
 
 async function resolveSnapshotDate(table: string, today: string): Promise<string> {
@@ -289,6 +298,8 @@ async function main(): Promise<void> {
     counts: buildDependentCountsSql(countsSnapshotDate ?? today),
     advisories: ADVISORIES_SQL,
     advisory_packages: buildAdvisoryPackagesSql(systems),
+    scorecard_repos: SCORECARD_REPOS_SQL,
+    scorecard_checks: SCORECARD_CHECKS_SQL,
   }
 
   const ecosystemLabel = ecosystems ? ecosystems.join(',') : 'all'

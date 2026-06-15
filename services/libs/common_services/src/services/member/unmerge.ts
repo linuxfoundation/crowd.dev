@@ -23,6 +23,7 @@ import {
 } from '@crowd/data-access-layer'
 import { addMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
+  deleteMemberSegmentAffiliations,
   findMemberAffiliations,
   moveSelectedAffiliationsBetweenMembers,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
@@ -545,14 +546,17 @@ export async function unmergeMember(
       allowAffiliation: false
     }[] = []
 
+    const orgIdsWithBlockedAffiliations = new Set<string>()
+
     for (const role of rolesToRestore) {
       const newRoleId = await addMemberRole(tx, { ...role, memberId: secondaryId })
-      if (newRoleId) {
-        const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
-        // Only org-level policy blocks are restored here. Pre-merge manual row-level
-        // blocks and isPrimaryWorkExperience flags are not restored because the unmerge
-        // backup does not carry override data.
-        if (isBlocked) {
+      const isBlocked = orgAffiliationPolicies.get(role.organizationId) ?? false
+
+      if (isBlocked) {
+        orgIdsWithBlockedAffiliations.add(role.organizationId)
+
+        if (newRoleId) {
+          // Recreate the block override for restored roles when the org is currently blocked
           overridesToCreate.push({
             memberId: secondaryId,
             memberOrganizationId: newRoleId,
@@ -564,6 +568,14 @@ export async function unmergeMember(
 
     if (overridesToCreate.length > 0) {
       await changeMemberOrganizationAffiliationOverrides(tx, overridesToCreate)
+    }
+
+    // Remove moved MSAs for blocked orgs so they do not re-affiliate the secondary
+    for (const organizationId of orgIdsWithBlockedAffiliations) {
+      await deleteMemberSegmentAffiliations(tx, {
+        memberId: secondaryId,
+        organizationId,
+      })
     }
 
     // Delete stale roles from primary that aren't in the preview

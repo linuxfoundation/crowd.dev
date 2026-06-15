@@ -27,6 +27,7 @@ import {
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
   fetchManyOrganizationAffiliationPolicies,
+  fetchManyOrganizationVerifiedPrimaryDomains,
   fetchMemberOrganizations,
   findAllUnkownDatedOrganizations,
   findIdentitiesForMembers,
@@ -40,10 +41,14 @@ import {
   moveAffiliationsBetweenMembers,
   moveIdentitiesBetweenMembers,
   moveOrgsBetweenMembers,
+  preferCompanyOverUniversityWhenOverlapping,
   updateMember,
 } from '@crowd/data-access-layer'
 import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
-import { findMemberAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import {
+  deleteMemberSegmentAffiliations,
+  findMemberAffiliations,
+} from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -154,6 +159,10 @@ export class CommonMemberService extends LoggerBase {
                   allowAffiliation: false,
                 },
               ])
+              await deleteMemberSegmentAffiliations(this.qx, {
+                memberId,
+                organizationId: org.id,
+              })
             }
 
             await addOrgsToSegments(this.qx, segmentIds, [org.id])
@@ -170,8 +179,9 @@ export class CommonMemberService extends LoggerBase {
     memberId: string,
     segmentId: string,
     timestamp: string,
-    emailDomain?: string,
+    affiliationEmailDomain?: string,
   ): Promise<string | null> {
+    // 1. Manual Segment Affiliations always take absolute priority
     const manualAffiliation = await findMemberManualAffiliation(
       this.qx,
       memberId,
@@ -182,16 +192,42 @@ export class CommonMemberService extends LoggerBase {
       return manualAffiliation.organizationId
     }
 
-    const currentEmployments = await findMemberWorkExperience(
-      this.qx,
-      memberId,
-      timestamp,
-      emailDomain,
-    )
-    if (currentEmployments.length > 0) {
-      return this.decidePrimaryOrganizationId(currentEmployments)
+    // 2. When the activity carries an org email domain, match member orgs by verified primary domain
+    if (affiliationEmailDomain) {
+      const domainEmployments = await findMemberWorkExperience(
+        this.qx,
+        memberId,
+        timestamp,
+        affiliationEmailDomain,
+      )
+
+      if (domainEmployments.length > 0) {
+        return this.decidePrimaryOrganizationId(domainEmployments)
+      }
     }
 
+    // 3. Date matching: work history active at this timestamp
+    const currentEmployments = await findMemberWorkExperience(this.qx, memberId, timestamp)
+    if (currentEmployments.length > 0) {
+      let employments = currentEmployments
+
+      if (employments.length > 1) {
+        const organizationIds = [...new Set(employments.map((row) => row.organizationId))]
+
+        const memberOrgDomains = await fetchManyOrganizationVerifiedPrimaryDomains(
+          this.qx,
+          organizationIds,
+        )
+
+        // Also applies when step 2 found a domain but no matching member organization yet
+        // (e.g. ingest before stint inference).
+        employments = preferCompanyOverUniversityWhenOverlapping(employments, memberOrgDomains)
+      }
+
+      return this.decidePrimaryOrganizationId(employments)
+    }
+
+    // 4. Fallback: Most recent experiences with missing/unknown dates
     const mostRecentUnknownDatedOrgs = await findMostRecentUnknownDatedOrganizations(
       this.qx,
       memberId,
@@ -201,6 +237,7 @@ export class CommonMemberService extends LoggerBase {
       return this.decidePrimaryOrganizationId(mostRecentUnknownDatedOrgs)
     }
 
+    // 5. Last Resort: Any historical undated organization tied to the member
     const allUnkownDAtedOrgs = await findAllUnkownDatedOrganizations(this.qx, memberId)
     if (allUnkownDAtedOrgs.length > 0) {
       return this.decidePrimaryOrganizationId(allUnkownDAtedOrgs)
