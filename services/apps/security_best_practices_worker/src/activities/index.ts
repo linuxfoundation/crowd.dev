@@ -97,7 +97,9 @@ export async function saveOSPSBaselineInsightsToDB(
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   const result = await redisCache.get(key)
   const parsedResult: ISecurityInsightsPrivateerResult = JSON.parse(result)
-  const evaluationSuite = parsedResult.evaluation_suites.find((s) => s.catalog_id === CATALOG_ID)
+  const evaluationSuite = parsedResult['evaluation-suites'].find(
+    (s) => s['catalog-id'] === CATALOG_ID,
+  )
 
   const qx = pgpQx(svc.postgres.writer.connection())
 
@@ -105,35 +107,31 @@ export async function saveOSPSBaselineInsightsToDB(
     repo: repo.repoUrl,
     insightsProjectId: repo.insightsProjectId,
     insightsProjectSlug: repo.insightsProjectSlug,
-    catalogId: evaluationSuite.catalog_id,
+    catalogId: evaluationSuite['catalog-id'],
     name: evaluationSuite.name,
     result: evaluationSuite.result,
-    corruptedState: evaluationSuite.corrupted_state,
+    corruptedState: evaluationSuite['corrupted-state'],
   })
 
-  const suite = await findEvaluationSuite(qx, repo.repoUrl, evaluationSuite.catalog_id)
+  const suite = await findEvaluationSuite(qx, repo.repoUrl, evaluationSuite['catalog-id'])
 
-  for (const evaluation of evaluationSuite.control_evaluations) {
+  for (const evaluation of evaluationSuite['control-evaluations'].evaluations) {
+    const controlId = evaluation.control['entry-id']
     await addSuiteControlEvaluation(qx, {
-      controlId: evaluation['control-id'],
+      controlId,
       name: evaluation.name,
-      corruptedState: evaluation['corrupted-state'],
+      corruptedState: false,
       message: evaluation.message,
       repo: repo.repoUrl,
       insightsProjectId: repo.insightsProjectId,
       insightsProjectSlug: repo.insightsProjectSlug,
-      remediationGuide: evaluation['remediation-guide'] || '',
+      remediationGuide: '',
       result: evaluation.result,
       securityInsightsEvaluationSuiteId: suite.id,
     })
 
-    const controlEvaluation = await findSuiteControlEvaluation(
-      qx,
-      repo.repoUrl,
-      evaluation['control-id'],
-      suite.id,
-    )
-    for (const assessment of evaluation.assessments) {
+    const controlEvaluation = await findSuiteControlEvaluation(qx, repo.repoUrl, controlId, suite.id)
+    for (const assessment of evaluation['assessment-logs']) {
       await addControlEvaluationAssessment(qx, {
         applicability: assessment.applicability,
         description: assessment.description,
@@ -141,17 +139,17 @@ export async function saveOSPSBaselineInsightsToDB(
         repo: repo.repoUrl,
         insightsProjectId: repo.insightsProjectId,
         insightsProjectSlug: repo.insightsProjectSlug,
-        requirementId: assessment['requirement-id'],
+        requirementId: assessment.requirement['entry-id'],
         result: assessment.result,
-        runDuration: assessment['run-duration'] || '',
+        runDuration: '',
         steps: assessment.steps,
         stepsExecuted: assessment['steps-executed'] || 0,
         securityInsightsEvaluationId: controlEvaluation.id,
         recommendation: assessment.recommendation,
         start: assessment.start,
         end: assessment.end,
-        value: assessment.value,
-        changes: assessment.changes,
+        value: null,
+        changes: null,
       })
     }
   }

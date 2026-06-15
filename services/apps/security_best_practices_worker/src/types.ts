@@ -1,28 +1,30 @@
 export interface ISecurityInsightsPrivateerResult {
-  evaluation_suites: ISecurityInsightsPrivateerEvaluationSuite[]
+  'evaluation-suites': ISecurityInsightsPrivateerEvaluationSuite[]
 }
 
 export interface ISecurityInsightsPrivateerEvaluationSuite {
   name: string
-  catalog_id: string
-  start_time: string
-  end_time: string
+  'catalog-id': string
+  'start-time': string
+  'end-time': string
   result: string
-  corrupted_state: boolean
-  control_evaluations: ISecurityInsightsPrivateerResultControlEvaluations[]
+  'corrupted-state': boolean
+  'control-evaluations': {
+    result: string
+    evaluations: ISecurityInsightsPrivateerResultControlEvaluations[]
+  }
 }
 
 export interface ISecurityInsightsPrivateerResultControlEvaluations {
   name: string
-  'control-id': string
+  control: { 'reference-id': string; 'entry-id': string }
   result: string
   message: string
-  'corrupted-state': boolean
-  assessments: ISecurityInsightsPrivateerResultAssessment[]
+  'assessment-logs': ISecurityInsightsPrivateerResultAssessment[]
 }
 
 export interface ISecurityInsightsPrivateerResultAssessment {
-  'requirement-id': string
+  requirement: { 'reference-id': string; 'entry-id': string }
   applicability: string[]
   description: string
   result: string
@@ -31,8 +33,6 @@ export interface ISecurityInsightsPrivateerResultAssessment {
   'steps-executed': number
   start: string
   end?: string
-  value?: unknown
-  changes?: Record<string, unknown>
   recommendation?: string
 }
 
