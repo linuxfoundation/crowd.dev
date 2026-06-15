@@ -17,6 +17,7 @@ import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
+import { stewardshipsRouter } from './stewardships'
 
 const packagesRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
@@ -36,6 +37,7 @@ export function v1Router(): Router {
     safeWrap(batchGetStewardship),
   )
   router.use('/packages', oauth2Middleware(AUTH0_CONFIG), packagesRouter())
+  router.use('/stewardships', oauth2Middleware(AUTH0_CONFIG), stewardshipsRouter())
 
   router.use(() => {
     throw new NotFoundError()
