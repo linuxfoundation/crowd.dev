@@ -151,12 +151,22 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   log.info({ jobKind, dryRunBytes, maxBytesGb }, 'BQ dry-run complete')
 
   // Override table is in src/deps-dev/README.md — update it when adding new job kinds.
-  const envKey = `BQ_DATASET_INGEST_${jobKind.toUpperCase().replace(/-/g, '_')}_MAX_BQ_GB`
-  const envOverride = process.env[envKey]
-  if (envOverride !== undefined && isNaN(Number(envOverride))) {
-    throw new Error(`Invalid env ${envKey}="${envOverride}" — must be a number`)
+  // Mode-specific key takes precedence over the generic key (needed for kinds like "packages"
+  // that have separate full/incremental ceilings: BQ_DATASET_INGEST_PACKAGES_FULL_MAX_BQ_GB).
+  const baseKey = `BQ_DATASET_INGEST_${jobKind.toUpperCase().replace(/-/g, '_')}`
+  const modeKey = `${baseKey}_${syncMode.toUpperCase()}_MAX_BQ_GB`
+  const genericKey = `${baseKey}_MAX_BQ_GB`
+  const activeKey = process.env[modeKey] !== undefined ? modeKey : genericKey
+  const envOverride = process.env[activeKey]
+  if (envOverride !== undefined) {
+    const parsed = Number(envOverride)
+    if (!isFinite(parsed) || parsed <= 0) {
+      throw new Error(
+        `Invalid env ${activeKey}="${envOverride}" — must be a positive finite number`,
+      )
+    }
   }
-  const effectiveMaxBytesGb = envOverride ? Number(envOverride) : maxBytesGb
+  const effectiveMaxBytesGb = envOverride !== undefined ? Number(envOverride) : maxBytesGb
   const ceiling = effectiveMaxBytesGb * 1e9
   if (dryRunBytes > ceiling) {
     throw new Error(

@@ -36,37 +36,40 @@ Every ceiling can be overridden at runtime via an env variable — useful when a
 table grows past the default ceiling without requiring a code deploy:
 
 ```
-BQ_DATASET_INGEST_<KIND>_MAX_BQ_GB=<number>
+BQ_DATASET_INGEST_<KIND>_MAX_BQ_GB=<number>           # applies to all sync modes
+BQ_DATASET_INGEST_<KIND>_<SYNCMODE>_MAX_BQ_GB=<number> # mode-specific, takes precedence
 ```
 
-where `<KIND>` is the job kind in `UPPER_SNAKE_CASE`.
+where `<KIND>` is the job kind in `UPPER_SNAKE_CASE` and `<SYNCMODE>` is `FULL` or `INCREMENTAL`.
+The mode-specific key takes precedence over the generic key. Value must be a positive finite number.
 
 **When adding a new job kind, add a row to this table.**
 
-| Env var override                                       | Default (GB) | Job kind              | Notes                                                     |
-| ------------------------------------------------------ | -----------: | --------------------- | --------------------------------------------------------- |
-| `BQ_DATASET_INGEST_PACKAGES_MAX_BQ_GB`                 | 6000 / 400   | `packages`            | 6000 full, 400 incremental (set in `ingestPackages.ts`)   |
-| `BQ_DATASET_INGEST_VERSIONS_MAX_BQ_GB`                 |          400 | `versions`            |                                                           |
-| `BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES_MAX_BQ_GB`     |        10000 | `package_dependencies`| Incremental always scans ~2 full-day partitions (~3.85TB) |
-| `BQ_DATASET_INGEST_REPOS_MAX_BQ_GB`                    |         2000 | `repos`               |                                                           |
-| `BQ_DATASET_INGEST_PACKAGE_REPOS_MAX_BQ_GB`            |         2000 | `package_repos`       |                                                           |
-| `BQ_DATASET_INGEST_ADVISORIES_MAX_BQ_GB`               |           10 | `advisories`          |                                                           |
-| `BQ_DATASET_INGEST_ADVISORY_PACKAGES_MAX_BQ_GB`        |         1500 | `advisory_packages`   |                                                           |
-| `BQ_DATASET_INGEST_DEPENDENT_COUNTS_MAX_BQ_GB`         |         2000 | `dependent_counts`    |                                                           |
-| `BQ_DATASET_INGEST_SCORECARD_REPOS_MAX_BQ_GB`          |           50 | `scorecard_repos`     |                                                           |
-| `BQ_DATASET_INGEST_SCORECARD_CHECKS_MAX_BQ_GB`         |          500 | `scorecard_checks`    |                                                           |
+| Env var override                                   | Default (GB) | Job kind               | Notes                                                     |
+| -------------------------------------------------- | -----------: | ---------------------- | --------------------------------------------------------- |
+| `BQ_DATASET_INGEST_PACKAGES_FULL_MAX_BQ_GB`        |         6000 | `packages`             | Full only (set in `ingestPackages.ts`)                    |
+| `BQ_DATASET_INGEST_PACKAGES_INCREMENTAL_MAX_BQ_GB` |          400 | `packages`             | Incremental only (set in `ingestPackages.ts`)             |
+| `BQ_DATASET_INGEST_VERSIONS_MAX_BQ_GB`             |          400 | `versions`             |                                                           |
+| `BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES_MAX_BQ_GB` |        10000 | `package_dependencies` | Incremental always scans ~2 full-day partitions (~3.85TB) |
+| `BQ_DATASET_INGEST_REPOS_MAX_BQ_GB`                |         2000 | `repos`                |                                                           |
+| `BQ_DATASET_INGEST_PACKAGE_REPOS_MAX_BQ_GB`        |         2000 | `package_repos`        |                                                           |
+| `BQ_DATASET_INGEST_ADVISORIES_MAX_BQ_GB`           |           10 | `advisories`           |                                                           |
+| `BQ_DATASET_INGEST_ADVISORY_PACKAGES_MAX_BQ_GB`    |         1500 | `advisory_packages`    |                                                           |
+| `BQ_DATASET_INGEST_DEPENDENT_COUNTS_MAX_BQ_GB`     |         2000 | `dependent_counts`     |                                                           |
+| `BQ_DATASET_INGEST_SCORECARD_REPOS_MAX_BQ_GB`      |           50 | `scorecard_repos`      |                                                           |
+| `BQ_DATASET_INGEST_SCORECARD_CHECKS_MAX_BQ_GB`     |          500 | `scorecard_checks`     |                                                           |
 
 The override logic lives in `src/deps-dev/activities/bqExportToGcs.ts`.
 
 ## Environment variables
 
-| Variable                        | Required | Purpose                                              |
-| ------------------------------- | -------- | ---------------------------------------------------- |
-| `OSSPCKGS_GCP_PROJECT`          | yes      | GCP project ID for BQ and GCS                        |
-| `OSSPCKGS_GCS_BUCKET`           | yes      | GCS bucket for Parquet exports                       |
-| `OSSPCKGS_GCP_CREDENTIALS_B64`  | yes      | Base64-encoded GCP service account JSON              |
-| `OSSPCKGS_DEPS_TABLE`           | no       | Set to `B` to use `DependenciesLatest` (ADR-0003 Option B) instead of `DependencyGraphEdgesLatest` |
-| `CROWD_TEMPORAL_SERVER_URL`     | yes      | Temporal server address                              |
-| `CROWD_TEMPORAL_NAMESPACE`      | yes      | Temporal namespace (overrides `backend-config` default) |
-| `CROWD_TEMPORAL_CERTIFICATE`    | prod only | Base64-encoded mTLS client certificate               |
-| `CROWD_TEMPORAL_PRIVATE_KEY`    | prod only | Base64-encoded mTLS private key                      |
+| Variable                       | Required  | Purpose                                                                                            |
+| ------------------------------ | --------- | -------------------------------------------------------------------------------------------------- |
+| `OSSPCKGS_GCP_PROJECT`         | yes       | GCP project ID for BQ and GCS                                                                      |
+| `OSSPCKGS_GCS_BUCKET`          | yes       | GCS bucket for Parquet exports                                                                     |
+| `OSSPCKGS_GCP_CREDENTIALS_B64` | yes       | Base64-encoded GCP service account JSON                                                            |
+| `OSSPCKGS_DEPS_TABLE`          | no        | Set to `B` to use `DependenciesLatest` (ADR-0003 Option B) instead of `DependencyGraphEdgesLatest` |
+| `CROWD_TEMPORAL_SERVER_URL`    | yes       | Temporal server address                                                                            |
+| `CROWD_TEMPORAL_NAMESPACE`     | yes       | Temporal namespace (overrides `backend-config` default)                                            |
+| `CROWD_TEMPORAL_CERTIFICATE`   | prod only | Base64-encoded mTLS client certificate                                                             |
+| `CROWD_TEMPORAL_PRIVATE_KEY`   | prod only | Base64-encoded mTLS private key                                                                    |
