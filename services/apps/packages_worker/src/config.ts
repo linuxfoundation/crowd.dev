@@ -56,3 +56,13 @@ export function getMavenConfig() {
     groupDelayMs: requireEnvInt('MAVEN_FETCHER_GROUP_DELAY_MS'),
   }
 }
+
+export function getDockerhubConfig() {
+  return {
+    hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
+    batchSize: requireEnvInt('DOCKERHUB_BATCH_SIZE'),
+    refreshIntervalHours: requireEnvInt('DOCKERHUB_REFRESH_INTERVAL_HOURS'),
+    discoveryIntervalDays: requireEnvInt('DOCKERHUB_DISCOVERY_INTERVAL_DAYS'),
+    idleSleepSec: requireEnvInt('DOCKERHUB_IDLE_SLEEP_SEC'),
+  }
+}

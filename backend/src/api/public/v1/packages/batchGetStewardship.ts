@@ -1,44 +1,57 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { getPackagesByStewardshipPurls } from '@crowd/data-access-layer'
+
+import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { MOCK_DETAILS } from './mockData'
-import type { OpenVulns, StewardshipSummary } from './types'
+import { normalizePurl } from './purl'
+import type { StewardshipSummary } from './types'
 
 const MAX_PURLS = 100
 
 const bodySchema = z.object({
   purls: z
-    .array(z.string().trim().min(1))
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .refine((v) => v.startsWith('pkg:'), { message: 'each purl must start with pkg:' }),
+    )
     .min(1)
     .max(MAX_PURLS, `Maximum ${MAX_PURLS} purls per request`),
 })
 
-// TODO: replace with real DB queries once stewardship tables land
 export async function batchGetStewardship(req: Request, res: Response): Promise<void> {
-  const { purls } = validateOrThrow(bodySchema, req.body)
+  const { purls: rawPurls } = validateOrThrow(bodySchema, req.body)
+  // Normalize after parsing (not in the schema) so rawPurls keeps the client's
+  // original form — used as the response key so clients can look up their input.
+  const normalizedPurls = rawPurls.map(normalizePurl)
+
+  const qx = await getPackagesQx()
+  const rows = await getPackagesByStewardshipPurls(qx, normalizedPurls)
+
+  const byPurl = new Map(rows.map((r) => [r.purl, r]))
 
   const packages: Record<string, StewardshipSummary | null> = {}
-  for (const purl of purls) {
-    const detail = MOCK_DETAILS[purl]
-    if (!detail) {
-      packages[purl] = null
+  for (let i = 0; i < rawPurls.length; i++) {
+    const row = byPurl.get(normalizedPurls[i])
+    if (!row) {
+      packages[rawPurls[i]] = null
     } else {
-      const openVulns: OpenVulns = { low: 0, medium: 0, high: 0, critical: 0 }
-      for (const advisory of detail.security.advisories) {
-        openVulns[advisory.severity] += 1
-      }
-      packages[purl] = {
-        name: detail.name,
-        ecosystem: detail.ecosystem,
-        lifecycle: detail.general.riskSignals.lifecycle,
-        health: detail.general.healthScore.total,
-        impact: detail.general.impact.impactScore,
-        openVulns,
-        stewardship: detail.stewardship.status,
-        stewards: detail.stewardship.stewards,
+      packages[rawPurls[i]] = {
+        name: row.name,
+        ecosystem: row.ecosystem,
+        lifecycle: null,
+        health: null,
+        impact:
+          row.criticalityScore != null ? Math.round(Number(row.criticalityScore) * 100) : null,
+        openVulns: null,
+        stewardship: (row.stewardshipStatus ?? 'unassigned') as StewardshipSummary['stewardship'],
+        stewards: null,
         lastActivityAt: null,
         lastActivityDescription: null,
       }
