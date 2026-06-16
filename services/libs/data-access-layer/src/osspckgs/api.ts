@@ -92,6 +92,141 @@ const SEVERITY_RANK_EXPR = `MAX(CASE a.severity
     WHEN 'LOW'      THEN 1
     ELSE 0 END)::int`
 
+export interface PackageStatusCounts {
+  all: number
+  unassigned: number
+  open: number
+  assessing: number
+  active: number
+  needs_attention: number
+  escalated: number
+  blocked: number
+  inactive: number
+}
+
+export type StatusCountsOptions = Omit<ListPackagesOptions, 'status' | 'page' | 'pageSize' | 'sortBy' | 'sortDir'>
+
+const ALL_STEWARDSHIP_STATUSES = [
+  'unassigned',
+  'open',
+  'assessing',
+  'active',
+  'needs_attention',
+  'escalated',
+  'blocked',
+  'inactive',
+] as const
+
+/**
+ * Returns per-status counts for the same filter set used by listPackagesForApi, but without
+ * the status filter so the tab bar always shows all status breakdowns for the active filters.
+ */
+export async function getPackageStatusCounts(
+  qx: QueryExecutor,
+  opts: StatusCountsOptions,
+): Promise<PackageStatusCounts> {
+  const conditions: string[] = ['p.is_critical = true']
+  const params: Record<string, unknown> = {}
+
+  if (opts.ecosystem) {
+    conditions.push('p.ecosystem = $(ecosystem)')
+    params.ecosystem = opts.ecosystem
+  }
+
+  if (opts.name) {
+    conditions.push('p.name ILIKE $(name)')
+    params.name = `%${opts.name}%`
+  }
+
+  if (opts.lifecycle) {
+    conditions.push('p.status IS NOT NULL')
+  }
+
+  if (opts.healthBand) {
+    if (opts.healthBand === 'healthy') {
+      conditions.push('r_sc.scorecard_score >= 7.0')
+    } else if (opts.healthBand === 'fair') {
+      conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
+    } else if (opts.healthBand === 'concerning') {
+      conditions.push('r_sc.scorecard_score >= 3.0 AND r_sc.scorecard_score < 5.0')
+    } else {
+      conditions.push('(r_sc.scorecard_score IS NULL OR r_sc.scorecard_score < 3.0)')
+    }
+  }
+
+  if (opts.vulnSeverity) {
+    if (opts.vulnSeverity === 'any') {
+      conditions.push('ap_counts.cnt > 0')
+    } else if (opts.vulnSeverity === 'high') {
+      conditions.push('ap_severity.max_rank >= 3')
+    } else {
+      conditions.push('ap_severity.max_rank >= 4')
+    }
+  }
+
+  if (opts.staleOnly) {
+    conditions.push(
+      `(p.latest_release_at IS NULL OR p.latest_release_at < NOW() - INTERVAL '${STALE_MONTHS} months')`,
+    )
+  }
+
+  if (opts.unstewardedOnly) {
+    conditions.push(`(s.status = 'unassigned' OR s.id IS NULL)`)
+  }
+
+  if (opts.busFactor1Only) {
+    conditions.push(`pm_counts.cnt = 1`)
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`
+
+  const rows: { status: string; count: number }[] = await qx.select(
+    `
+    SELECT
+      COALESCE(s.status, 'unassigned') AS status,
+      COUNT(*)::int AS count
+    FROM packages p
+    LEFT JOIN stewardships s ON s.package_id = p.id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS cnt FROM advisory_packages WHERE package_id = p.id
+    ) ap_counts ON true
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS cnt FROM package_maintainers pm WHERE pm.package_id = p.id
+    ) pm_counts ON true
+    LEFT JOIN LATERAL (
+      SELECT ${SEVERITY_RANK_EXPR} AS max_rank
+      FROM advisory_packages ap
+      JOIN advisories a ON a.id = ap.advisory_id
+      WHERE ap.package_id = p.id
+    ) ap_severity ON true
+    LEFT JOIN LATERAL (
+      SELECT r.scorecard_score
+      FROM package_repos pr
+      JOIN repos r ON r.id = pr.repo_id
+      WHERE pr.package_id = p.id
+      ORDER BY pr.confidence DESC
+      LIMIT 1
+    ) r_sc ON true
+    ${where}
+    GROUP BY COALESCE(s.status, 'unassigned')
+    `,
+    params,
+  )
+
+  const countsMap: Record<string, number> = {}
+  let all = 0
+  for (const row of rows) {
+    countsMap[row.status] = row.count
+    all += row.count
+  }
+
+  const result: PackageStatusCounts = { all, unassigned: 0, open: 0, assessing: 0, active: 0, needs_attention: 0, escalated: 0, blocked: 0, inactive: 0 }
+  for (const status of ALL_STEWARDSHIP_STATUSES) {
+    result[status] = countsMap[status] ?? 0
+  }
+  return result
+}
+
 export async function listPackagesForApi(
   qx: QueryExecutor,
   opts: ListPackagesOptions,

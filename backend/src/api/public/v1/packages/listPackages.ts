@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { listPackagesForApi } from '@crowd/data-access-layer'
+import { getPackageStatusCounts, listPackagesForApi } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
@@ -61,22 +61,13 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     sortDir,
   } = validateOrThrow(querySchema, req.query)
 
+  const filterOpts = { ecosystem, lifecycle, name, healthBand, vulnSeverity, staleOnly, unstewardedOnly, busFactor1Only }
+
   const qx = await getPackagesQx()
-  const { rows, total } = await listPackagesForApi(qx, {
-    page,
-    pageSize,
-    ecosystem,
-    lifecycle,
-    name,
-    status,
-    healthBand,
-    vulnSeverity,
-    staleOnly,
-    unstewardedOnly,
-    busFactor1Only,
-    sortBy,
-    sortDir,
-  })
+  const [{ rows, total }, statusCounts] = await Promise.all([
+    listPackagesForApi(qx, { page, pageSize, status, sortBy, sortDir, ...filterOpts }),
+    getPackageStatusCounts(qx, filterOpts),
+  ])
 
   const packages = rows.map((r) => ({
     purl: r.purl,
@@ -96,6 +87,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     page,
     pageSize,
     total,
+    statusCounts,
     filters: {
       ecosystem: ecosystem ?? null,
       lifecycle: lifecycle ?? null,
