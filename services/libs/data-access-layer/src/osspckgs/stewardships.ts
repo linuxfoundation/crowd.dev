@@ -188,7 +188,12 @@ export async function openStewardshipByPurl(
 export async function assignSteward(
   qx: QueryExecutor,
   stewardshipId: number,
-  data: { userId: string; role: 'lead' | 'co_steward'; assignedBy: string; moveToAssessing?: boolean },
+  data: {
+    userId: string
+    role: 'lead' | 'co_steward'
+    assignedBy: string
+    moveToAssessing?: boolean
+  },
 ): Promise<{ stewardship: StewardshipRecord; stewards: StewardshipStewardRecord[] } | null> {
   return qx.tx(async (tx) => {
     const stewardship = await getStewardshipById(tx, stewardshipId)
@@ -247,7 +252,11 @@ export async function assignSteward(
         )
         SELECT * FROM upd
         `,
-        { stewardshipId, actorUserId: data.assignedBy, metadata: JSON.stringify({ status: 'assessing' }) },
+        {
+          stewardshipId,
+          actorUserId: data.assignedBy,
+          metadata: JSON.stringify({ status: 'assessing' }),
+        },
       )
       if (updated) finalStewardship = mapStewardshipRow(updated)
     }
