@@ -397,14 +397,14 @@ paths:
                     description: Critical packages with status = escalated.
                     example: 8
               example:
-                totalPackages: 617024
+                totalPackages: 1842
                 criticalPackages: 312
-                coveragePercent: 0.1
+                coveragePercent: 33.2
                 coverageTrend: null
-                activeStewards: 3
-                unassignedCritical: 616021
-                needsAttention: 1
-                escalated: 1
+                activeStewards: 42
+                unassignedCritical: 1230
+                needsAttention: 47
+                escalated: 8
         '401':
           description: Missing or invalid bearer token.
           content:
@@ -538,9 +538,9 @@ paths:
             type: string
         - name: ecosystem
           in: query
+          description: Filter by package ecosystem. Not validated server-side — any ecosystem stored in the DB is accepted.
           schema:
             type: string
-            enum: [npm, maven, cargo, pypi]
         - name: lifecycle
           in: query
           schema:

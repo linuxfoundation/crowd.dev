@@ -349,7 +349,7 @@ export async function listStewardshipActivity(
     FROM stewardship_activity sa
     JOIN stewardships s ON s.id = sa.stewardship_id
     JOIN packages p ON p.id = s.package_id
-    ORDER BY sa.created_at DESC
+    ORDER BY sa.created_at DESC, sa.id DESC
     LIMIT $(limit) OFFSET $(offset)
     `,
     { limit: opts.pageSize, offset: (opts.page - 1) * opts.pageSize },

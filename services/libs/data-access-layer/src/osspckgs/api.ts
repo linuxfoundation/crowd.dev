@@ -74,14 +74,15 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   ] = await Promise.all([
     qx.selectOne(`
       SELECT
-        COUNT(*)::text                                                              AS "totalPackages",
-        COUNT(*) FILTER (WHERE p.is_critical = true)::text                         AS "criticalPackages",
-        COUNT(*) FILTER (WHERE p.is_critical = true AND s.status IN ('assessing','active','needs_attention'))::text AS covered,
-        COUNT(*) FILTER (WHERE p.is_critical = true AND s.status = 'needs_attention')::text AS "needsAttention",
-        COUNT(*) FILTER (WHERE p.is_critical = true AND s.status = 'escalated')::text   AS escalated,
-        COUNT(*) FILTER (WHERE p.is_critical = true AND (s.status = 'unassigned' OR s.id IS NULL))::text AS "unassignedCritical"
+        COUNT(*)::text                                                                     AS "totalPackages",
+        COUNT(*) FILTER (WHERE p.has_critical_vulnerability = true)::text                 AS "criticalPackages",
+        COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
+        COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
+        COUNT(*) FILTER (WHERE s.status = 'escalated')::text                              AS escalated,
+        COUNT(*) FILTER (WHERE s.status = 'unassigned' OR s.id IS NULL)::text             AS "unassignedCritical"
       FROM packages p
       LEFT JOIN stewardships s ON s.package_id = p.id
+      WHERE p.is_critical = true
     `),
     qx.selectOne(`
       SELECT COUNT(DISTINCT ss.user_id)::text AS count
@@ -92,13 +93,13 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
     `),
   ])
 
-  const critical = parseInt(counts.criticalPackages, 10)
+  const total = parseInt(counts.totalPackages, 10)
   const covered = parseInt(counts.covered, 10)
 
   return {
-    totalPackages: parseInt(counts.totalPackages, 10),
-    criticalPackages: critical,
-    coveragePercent: critical > 0 ? Math.round((covered / critical) * 1000) / 10 : 0,
+    totalPackages: total,
+    criticalPackages: parseInt(counts.criticalPackages, 10),
+    coveragePercent: total > 0 ? Math.round((covered / total) * 1000) / 10 : 0,
     coverageTrend: null, // TODO: requires snapshot mechanism or stewardship_activity timestamp analysis
     activeStewards: parseInt(stewardRow.count, 10),
     unassignedCritical: parseInt(counts.unassignedCritical, 10),
@@ -425,26 +426,8 @@ export async function listPackagesForApi(
   // Separate paginated params from filter-only params used by the fallback COUNT query
   const queryParams = { ...params, limit: opts.pageSize, offset: (opts.page - 1) * opts.pageSize }
 
-  // Shared LATERAL clauses — included in both the main query and the count fallback
-  // so that WHERE conditions referencing them work in both paths.
-  const stewardsLateral =
-    opts.includeStewards === true
-      ? `
-    LEFT JOIN LATERAL (
-      SELECT COALESCE(
-        json_agg(
-          json_build_object('userId', ss.user_id, 'role', ss.role, 'assignedAt', ss.assigned_at)
-          ORDER BY ss.assigned_at ASC
-        ) FILTER (WHERE ss.id IS NOT NULL),
-        '[]'::json
-      ) AS stewards
-      FROM stewardship_stewards ss
-      WHERE ss.stewardship_id = s.id
-        AND ss.deleted_at IS NULL
-    ) ss_agg ON true`
-      : ''
-
-  const laterals = `
+  // Laterals needed for WHERE filter conditions — included in both the main query and the COUNT fallback.
+  const filterLaterals = `
     LEFT JOIN stewardships s ON s.package_id = p.id
     LEFT JOIN LATERAL (
       SELECT COUNT(*)::int AS cnt FROM advisory_packages WHERE package_id = p.id
@@ -465,11 +448,29 @@ export async function listPackagesForApi(
       WHERE pr.package_id = p.id
       ORDER BY pr.confidence DESC
       LIMIT 1
-    ) r_sc ON true
-    ${stewardsLateral}
-    ${
-      opts.includeLastActivity === true
-        ? `
+    ) r_sc ON true`
+
+  // Additional laterals for SELECT output only — not needed in the COUNT fallback.
+  const stewardsLateral =
+    opts.includeStewards === true
+      ? `
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(
+        json_agg(
+          json_build_object('userId', ss.user_id, 'role', ss.role, 'assignedAt', ss.assigned_at)
+          ORDER BY ss.assigned_at ASC
+        ) FILTER (WHERE ss.id IS NOT NULL),
+        '[]'::json
+      ) AS stewards
+      FROM stewardship_stewards ss
+      WHERE ss.stewardship_id = s.id
+        AND ss.deleted_at IS NULL
+    ) ss_agg ON true`
+      : ''
+
+  const lastActLateral =
+    opts.includeLastActivity === true
+      ? `
     LEFT JOIN LATERAL (
       SELECT sa.activity_type, sa.content, sa.created_at
       FROM stewardship_activity sa
@@ -477,8 +478,11 @@ export async function listPackagesForApi(
       ORDER BY sa.created_at DESC
       LIMIT 1
     ) last_act ON true`
-        : ''
-    }`
+      : ''
+
+  const laterals = `${filterLaterals}
+    ${stewardsLateral}
+    ${lastActLateral}`
 
   const rows: PackageListRow[] = await qx.select(
     `
@@ -518,10 +522,11 @@ export async function listPackagesForApi(
   } else {
     // Window function returns no rows when the page is beyond the result set.
     // Fall back to a separate COUNT so the caller always gets the real total.
+    // Use filterLaterals (not laterals) — stewards/last_act laterals are SELECT-only and not needed here.
     const countRow: { count: string } = await qx.selectOne(
       `SELECT COUNT(*)::text AS count
        FROM packages p
-       ${laterals}
+       ${filterLaterals}
        ${where}`,
       params,
     )
