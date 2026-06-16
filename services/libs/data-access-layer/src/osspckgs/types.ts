@@ -8,7 +8,6 @@ export interface IDbPackageUniverse {
   name: string
   rankInEcosystem: number | null
   isCritical: boolean
-  criticalityScore: number | null
   dependentPackagesCount: number | null
   dependentReposCount: number | null
   downloads30d: bigint | null
@@ -30,7 +29,6 @@ export type IDbPackageUpsert = {
   versionsCount?: number | null
   latestReleaseAt?: Date | null
   ingestionSource: string
-  criticalityScore?: number | null
   dependentPackagesCount?: number | null
   dependentReposCount?: number | null
   registryUrl?: string | null

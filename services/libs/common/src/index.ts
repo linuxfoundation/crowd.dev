@@ -19,6 +19,8 @@ import {
   UnauthorizedError,
 } from './errors/http'
 
+export { getDbConstraint } from './errors/db'
+
 export * from './env'
 export * from './timing'
 export * from './utils'

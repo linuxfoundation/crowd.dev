@@ -15,7 +15,7 @@ SCHEMA >
     `packageId` UInt64 `json:$.record.package_id`,
     `repoId` UInt64 `json:$.record.repo_id`,
     `source` String `json:$.record.source`,
-    `confidence` Float32 `json:$.record.confidence`,
+    `confidence` String `json:$.record.confidence`,
     `verifiedAt` DateTime64(3) `json:$.record.verified_at`,
     `createdAt` DateTime64(3) `json:$.record.created_at`
 

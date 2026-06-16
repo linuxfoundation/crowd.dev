@@ -24,7 +24,7 @@ SCHEMA >
     `sourceUrl` String `json:$.record.source_url` DEFAULT '',
     `aliases` Array(String) `json:$.record.aliases[:]` DEFAULT [],
     `severity` String `json:$.record.severity` DEFAULT '',
-    `cvss` Float32 `json:$.record.cvss` DEFAULT 0,
+    `cvss` String `json:$.record.cvss` DEFAULT '0',
     `cvssSource` String `json:$.record.cvss_source` DEFAULT '',
     `isCritical` UInt8 `json:$.record.is_critical` DEFAULT 0,
     `summary` String `json:$.record.summary` DEFAULT '',
