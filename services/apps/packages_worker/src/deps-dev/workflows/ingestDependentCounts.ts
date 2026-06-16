@@ -84,6 +84,19 @@ export async function ingestDependentCounts(opts: {
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
   const totalFiles = fileNames.length
+  const totalRows = totalFiles > 0 ? rowCounts.reduce((a, b) => a + b, 0) : 0
+
+  const guard = await checkDependentCountsGuard({
+    currentRowCount: totalRows,
+    snapshotDate: opts.snapshotDate,
+  })
+  if (!guard.ok) {
+    throw ApplicationFailure.nonRetryable(
+      `dependent_counts guard failed: ${String(totalRows)} rows vs prev max ${String(guard.prevRowCount)} ` +
+        `(${((guard.dropPct ?? 0) * 100).toFixed(1)}% drop). Slack alert sent. Aborting to preserve existing data.`,
+      'DEPENDENT_COUNTS_GUARD',
+    )
+  }
 
   if (totalFiles === 0) {
     await mergeStagingToTable({
@@ -93,20 +106,6 @@ export async function ingestDependentCounts(opts: {
       isFinal: true,
     })
     return
-  }
-
-  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
-
-  const guard = await checkDependentCountsGuard({
-    currentRowCount: totalRows,
-    snapshotDate: opts.snapshotDate,
-  })
-  if (!guard.ok) {
-    throw ApplicationFailure.nonRetryable(
-      `dependent_counts guard failed: ${totalRows.toLocaleString()} rows vs prev max ${guard.prevRowCount?.toLocaleString()} ` +
-        `(${((guard.dropPct ?? 0) * 100).toFixed(1)}% drop). Slack alert sent. Aborting to preserve existing data.`,
-      'DEPENDENT_COUNTS_GUARD',
-    )
   }
 
   const filesPerChunk =
