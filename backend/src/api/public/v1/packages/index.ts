@@ -12,6 +12,7 @@ import { listPackages } from './listPackages'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
+// TODO[deprecate]: superseded by /v1/akrites/packages — remove once consumers have migrated
 export function packagesRouter(): Router {
   const router = Router()
 

@@ -49,6 +49,7 @@ export async function getPackagesByStewardshipPurls(
   )
 }
 
+// TODO[deprecate]: rename to AkritesMetrics once /v1/ossprey is removed
 export interface OsspreyMetrics {
   totalPackages: number
   criticalPackages: number
@@ -60,6 +61,7 @@ export interface OsspreyMetrics {
   escalated: number
 }
 
+// TODO[deprecate]: rename to getAkritesMetrics once /v1/ossprey is removed
 export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
   const [counts, stewardRow]: [
     {

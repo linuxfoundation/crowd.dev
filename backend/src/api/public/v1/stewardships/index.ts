@@ -13,6 +13,7 @@ import { updateStatusHandler } from './updateStatus'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
+// TODO[deprecate]: superseded by /v1/akrites/stewardships — remove once consumers have migrated
 export function stewardshipsRouter(): Router {
   const router = Router()
 

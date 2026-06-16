@@ -7,6 +7,7 @@ import { metricsHandler } from './metrics'
 import { packageListHandler } from './packageList'
 import { packageScatterHandler } from './packageScatter'
 
+// TODO[deprecate]: superseded by /v1/akrites/ossprey — remove once consumers have migrated
 export function osspreyRouter(): Router {
   const router = Router()
 
