@@ -68,23 +68,13 @@ export async function criticalityComputePageRank(
 export async function rankPackages(): Promise<{ scoredRows: number; rankedRows: number }> {
   const qx = await getPackagesDb()
 
-  // On retry an existing pending/done row may already exist from the prior attempt.
-  // Re-use it to avoid a duplicate row and a redundant rank_packages() call.
+  // On retry, a pending row from the prior attempt may already exist — reuse it.
+  // Do NOT reuse a done row: it belongs to a previous bootstrap run and ranking must re-execute.
   const existing = await qx.selectOneOrNone(
-    `SELECT id, status FROM osspckgs_ingest_jobs
-     WHERE job_kind = 'ranking' AND status IN ('pending', 'done')
+    `SELECT id FROM osspckgs_ingest_jobs
+     WHERE job_kind = 'ranking' AND status = 'pending'
      ORDER BY id DESC LIMIT 1`,
   )
-  if (existing?.status === 'done') {
-    const row = await qx.selectOne(
-      `SELECT row_count_pg, table_row_counts FROM osspckgs_ingest_jobs WHERE id = $(id)`,
-      { id: existing.id },
-    )
-    return {
-      scoredRows: Number(row.row_count_pg ?? 0),
-      rankedRows: Number(row.table_row_counts?.ranked ?? 0),
-    }
-  }
 
   const jobId = existing?.id ?? (await createIngestJob(qx, 'ranking', 'ranking', null))
   try {

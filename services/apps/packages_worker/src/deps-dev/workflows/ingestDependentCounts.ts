@@ -105,6 +105,7 @@ export async function ingestDependentCounts(opts: {
     throw ApplicationFailure.nonRetryable(
       `dependent_counts guard failed: ${totalRows.toLocaleString()} rows vs prev max ${guard.prevRowCount?.toLocaleString()} ` +
         `(${((guard.dropPct ?? 0) * 100).toFixed(1)}% drop). Slack alert sent. Aborting to preserve existing data.`,
+      'DEPENDENT_COUNTS_GUARD',
     )
   }
 

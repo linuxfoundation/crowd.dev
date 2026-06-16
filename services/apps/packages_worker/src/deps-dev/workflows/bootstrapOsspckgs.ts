@@ -1,5 +1,6 @@
 import {
   ApplicationFailure,
+  ChildWorkflowFailure,
   executeChild,
   proxyActivities,
   workflowInfo,
@@ -168,9 +169,11 @@ export async function bootstrapOsspckgs(opts: {
         ],
       })
     } catch (err) {
-      // Only soft-fail on the row-count guard (non-retryable ApplicationFailure — Slack alert already sent).
+      // Only soft-fail on the row-count guard. Child workflow failures are wrapped in
+      // ChildWorkflowFailure — unwrap to inspect the cause.
       // All other errors (BQ timeout, DB failure, etc.) propagate normally.
-      if (!(err instanceof ApplicationFailure) || !err.nonRetryable) {
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'DEPENDENT_COUNTS_GUARD') {
         throw err
       }
     }

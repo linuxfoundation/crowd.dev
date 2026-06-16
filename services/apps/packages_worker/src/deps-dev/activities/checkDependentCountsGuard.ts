@@ -22,8 +22,8 @@ export async function checkDependentCountsGuard(
   const qx = await getPackagesDb()
   const prevRowCount = await dalGetLastCompletedJobRowCount(qx, 'dependent_counts')
 
-  if (prevRowCount === null) {
-    return { ok: true, prevRowCount: null, dropPct: null }
+  if (prevRowCount === null || prevRowCount <= 0) {
+    return { ok: true, prevRowCount, dropPct: null }
   }
 
   const dropPct = (prevRowCount - input.currentRowCount) / prevRowCount
