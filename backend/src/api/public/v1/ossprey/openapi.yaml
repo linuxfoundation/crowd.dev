@@ -312,7 +312,7 @@ components:
           type:
             - string
             - 'null'
-          example: "Escalated with resolution path: right_of_first_refusal"
+          example: 'Escalated with resolution path: right_of_first_refusal'
         metadata:
           type:
             - object
