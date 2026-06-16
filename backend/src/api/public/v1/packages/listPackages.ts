@@ -61,7 +61,16 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     sortDir,
   } = validateOrThrow(querySchema, req.query)
 
-  const filterOpts = { ecosystem, lifecycle, name, healthBand, vulnSeverity, staleOnly, unstewardedOnly, busFactor1Only }
+  const filterOpts = {
+    ecosystem,
+    lifecycle,
+    name,
+    healthBand,
+    vulnSeverity,
+    staleOnly,
+    unstewardedOnly,
+    busFactor1Only,
+  }
 
   const qx = await getPackagesQx()
   const [{ rows, total }, statusCounts] = await Promise.all([

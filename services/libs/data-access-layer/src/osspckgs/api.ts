@@ -104,7 +104,10 @@ export interface PackageStatusCounts {
   inactive: number
 }
 
-export type StatusCountsOptions = Omit<ListPackagesOptions, 'status' | 'page' | 'pageSize' | 'sortBy' | 'sortDir'>
+export type StatusCountsOptions = Omit<
+  ListPackagesOptions,
+  'status' | 'page' | 'pageSize' | 'sortBy' | 'sortDir'
+>
 
 const ALL_STEWARDSHIP_STATUSES = [
   'unassigned',
@@ -220,7 +223,17 @@ export async function getPackageStatusCounts(
     all += row.count
   }
 
-  const result: PackageStatusCounts = { all, unassigned: 0, open: 0, assessing: 0, active: 0, needs_attention: 0, escalated: 0, blocked: 0, inactive: 0 }
+  const result: PackageStatusCounts = {
+    all,
+    unassigned: 0,
+    open: 0,
+    assessing: 0,
+    active: 0,
+    needs_attention: 0,
+    escalated: 0,
+    blocked: 0,
+    inactive: 0,
+  }
   for (const status of ALL_STEWARDSHIP_STATUSES) {
     result[status] = countsMap[status] ?? 0
   }
