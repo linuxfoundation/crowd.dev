@@ -125,9 +125,9 @@ export interface PackageListRow {
   maintainerCount: number
   scorecardScore: number | null
   latestReleaseAt: Date | null
-  lastActivityType: string | null
-  lastActivityContent: string | null
-  lastActivityAt: Date | null
+  lastActivityType?: string | null
+  lastActivityContent?: string | null
+  lastActivityAt?: Date | null
   stewards?: StewardEntry[]
   total: string
 }
@@ -648,6 +648,7 @@ export interface ScatterPoint {
   stewardshipStatus: string | null
   stewardshipId: string | null
   openVulns: number
+  advisoryCount: number
 }
 
 export async function listPackagesForScatter(qx: QueryExecutor): Promise<ScatterPoint[]> {
@@ -696,6 +697,7 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
     stewardshipStatus: r.stewardshipStatus ?? null,
     stewardshipId: r.stewardshipId ?? null,
     openVulns: r.openVulns,
+    advisoryCount: r.openVulns,
   }))
 }
 
