@@ -7,7 +7,8 @@ import { metricsHandler } from './metrics'
 import { packageListHandler } from './packageList'
 import { packageScatterHandler } from './packageScatter'
 
-// TODO[deprecate]: superseded by /v1/akrites/ossprey — remove once consumers have migrated
+// TODO[deprecate]: superseded by /v1/akrites — ossprey endpoints are now at /v1/akrites/metrics,
+// /v1/akrites/packages, /v1/akrites/packages/scatter, /v1/akrites/activity — remove once consumers have migrated
 export function osspreyRouter(): Router {
   const router = Router()
 

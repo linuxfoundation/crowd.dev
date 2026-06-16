@@ -15,28 +15,37 @@ import { escalateHandler } from '../stewardships/escalate'
 import { openStewardship } from '../stewardships/openStewardship'
 import { updateStatusHandler } from '../stewardships/updateStatus'
 
-const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
+// Separate instances match the original per-router isolation: packages and stewardships each had
+// their own createRateLimiter() call, giving independent 60 req/min buckets per IP.
+const packagesRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
+const stewardshipsRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
 export function akritesRouter(): Router {
   const router = Router()
 
   router.get('/metrics', safeWrap(metricsHandler))
-  // /packages/scatter must be registered before /packages to avoid Express treating 'scatter' as a path param
+  // /packages/scatter registered before router.use('/packages', ...) so Express evaluates this
+  // explicit route first; without this ordering the sub-router would receive the request first
+  // and call next() on no match, adding unnecessary overhead.
   router.get('/packages/scatter', safeWrap(packageScatterHandler))
   router.get('/packages', safeWrap(packageListHandler))
   router.get('/activity', safeWrap(activityFeedHandler))
 
   // --- packages ---
-  router.post(/^\/packages:batch-stewardship\/?$/, rateLimiter, safeWrap(batchGetStewardship))
+  router.post(
+    /^\/packages:batch-stewardship\/?$/,
+    packagesRateLimiter,
+    safeWrap(batchGetStewardship),
+  )
   const packagesSubRouter = Router()
-  packagesSubRouter.use(rateLimiter)
+  packagesSubRouter.use(packagesRateLimiter)
   packagesSubRouter.get('/metrics', safeWrap(getPackagesMetrics))
   packagesSubRouter.get('/detail', safeWrap(getPackage))
   router.use('/packages', packagesSubRouter)
 
   // --- stewardships ---
   const stewardshipsSubRouter = Router()
-  stewardshipsSubRouter.use(rateLimiter)
+  stewardshipsSubRouter.use(stewardshipsRateLimiter)
   stewardshipsSubRouter.post('/', safeWrap(openStewardship))
   stewardshipsSubRouter.put('/:id/steward', safeWrap(assignStewardHandler))
   stewardshipsSubRouter.put('/:id/escalate', safeWrap(escalateHandler))
