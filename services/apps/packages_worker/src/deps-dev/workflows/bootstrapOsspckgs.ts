@@ -62,6 +62,7 @@ export async function bootstrapOsspckgs(opts: {
   reuseExports?: boolean
   depsTableOption?: 'A' | 'B'
   exportName?: string
+  snapshotDate?: string // YYYY-MM-DD — override BQ snapshot resolution for all partition-filtered kinds
 }): Promise<void> {
   // B3: deterministic timestamps — workflowInfo().startTime is replay-stable; new Date() is not.
   const start = workflowInfo().startTime
@@ -95,7 +96,8 @@ export async function bootstrapOsspckgs(opts: {
   // Full mode doesn't use the date in its BQ query (*Latest views, no partition filter)
   // but the resolved date becomes the watermark for the next incremental run.
   for (const kind of PARTITIONED_KINDS.filter((k) => runs(k))) {
-    const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
+    const snapshotDate =
+      opts.snapshotDate ?? (await resolveSnapshotDate({ jobKind: kind, today })).snapshotDate
     resolvedSnapshots.set(kind, snapshotDate)
   }
 
@@ -104,7 +106,8 @@ export async function bootstrapOsspckgs(opts: {
   for (const kind of SNAPSHOT_RESOLVED_KINDS) {
     const shouldResolve = kind === 'repos' ? runs('repos') || runs('package_repos') : runs(kind)
     if (!shouldResolve) continue
-    const { snapshotDate } = await resolveSnapshotDate({ jobKind: kind, today })
+    const snapshotDate =
+      opts.snapshotDate ?? (await resolveSnapshotDate({ jobKind: kind, today })).snapshotDate
     resolvedSnapshots.set(kind, snapshotDate)
   }
 
