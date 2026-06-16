@@ -5,6 +5,7 @@ import {
   workflowInfo,
 } from '@temporalio/workflow'
 
+import { rankPackagesWorkflow } from '../../criticality/workflow'
 import { ingestScorecard } from '../../scorecard/workflows'
 import type * as depsDevActivities from '../activities'
 
@@ -155,16 +156,24 @@ export async function bootstrapOsspckgs(opts: {
     })
   }
   if (runs('dependent_counts')) {
-    await executeChild(ingestDependentCounts, {
-      args: [
-        {
-          runId,
-          snapshotDate: snap('dependent_counts'),
-          reuseExports: opts.reuseExports,
-          exportName: opts.exportName,
-        },
-      ],
-    })
+    try {
+      await executeChild(ingestDependentCounts, {
+        args: [
+          {
+            runId,
+            snapshotDate: snap('dependent_counts'),
+            reuseExports: opts.reuseExports,
+            exportName: opts.exportName,
+          },
+        ],
+      })
+    } catch (err) {
+      // Only soft-fail on the row-count guard (non-retryable ApplicationFailure — Slack alert already sent).
+      // All other errors (BQ timeout, DB failure, etc.) propagate normally.
+      if (!(err instanceof ApplicationFailure) || !err.nonRetryable) {
+        throw err
+      }
+    }
   }
   if (runs('repos') || runs('package_repos')) {
     await executeChild(ingestRepos, {
@@ -229,5 +238,8 @@ export async function bootstrapOsspckgs(opts: {
     await executeChild(ingestScorecard, {
       args: [{ runId, reuseExports: opts.reuseExports, exportName: opts.exportName }],
     })
+  }
+  if (runs('ranking')) {
+    await executeChild(rankPackagesWorkflow, { args: [] })
   }
 }

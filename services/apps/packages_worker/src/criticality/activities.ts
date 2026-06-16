@@ -1,5 +1,6 @@
 import { Context } from '@temporalio/activity'
 
+import { createIngestJob, markJobStatus } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
@@ -62,4 +63,45 @@ export async function criticalityComputePageRank(
   if (buffer.length > 0) await mergeCentralityScores(qx, buffer)
 
   return { ecosystem, nodeCount: graph.N, edgeCount, iterations, durationMs: Date.now() - start }
+}
+
+export async function rankPackages(): Promise<{ scoredRows: number; rankedRows: number }> {
+  const qx = await getPackagesDb()
+
+  // On retry an existing pending/done row may already exist from the prior attempt.
+  // Re-use it to avoid a duplicate row and a redundant rank_packages() call.
+  const existing = await qx.selectOneOrNone(
+    `SELECT id, status FROM osspckgs_ingest_jobs
+     WHERE job_kind = 'ranking' AND status IN ('pending', 'done')
+     ORDER BY id DESC LIMIT 1`,
+  )
+  if (existing?.status === 'done') {
+    const row = await qx.selectOne(
+      `SELECT row_count_pg, table_row_counts FROM osspckgs_ingest_jobs WHERE id = $(id)`,
+      { id: existing.id },
+    )
+    return {
+      scoredRows: Number(row.row_count_pg ?? 0),
+      rankedRows: Number(row.table_row_counts?.ranked ?? 0),
+    }
+  }
+
+  const jobId = existing?.id ?? (await createIngestJob(qx, 'ranking', 'ranking', null))
+  try {
+    const [result] = await qx.select(`SELECT * FROM rank_packages()`)
+    const scoredRows = Number(result.scored_rows ?? 0)
+    const rankedRows = Number(result.ranked_rows ?? 0)
+    await markJobStatus(qx, jobId, 'done', {
+      rowCountPg: scoredRows,
+      tableRowCounts: { scored: scoredRows, ranked: rankedRows },
+      finishedAt: new Date(),
+    })
+    return { scoredRows, rankedRows }
+  } catch (err) {
+    await markJobStatus(qx, jobId, 'failed', {
+      errorMessage: (err as Error).message,
+      finishedAt: new Date(),
+    })
+    throw err
+  }
 }
