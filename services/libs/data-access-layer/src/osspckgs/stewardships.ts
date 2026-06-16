@@ -309,6 +309,84 @@ export async function getStewardshipSummary(
   }
 }
 
+export interface ActivityFeedRow {
+  id: string
+  stewardshipId: string
+  packagePurl: string
+  packageName: string
+  packageEcosystem: string
+  actorUserId: string | null
+  // TODO: join actor display name from crowd.dev users/members table (actor_user_id is an Auth0 ID stored in packages DB)
+  actorType: string
+  activityType: string
+  content: string | null
+  metadata: Record<string, unknown> | null
+  stewardshipStatus: string
+  createdAt: string
+  total: string
+}
+
+export async function listStewardshipActivity(
+  qx: QueryExecutor,
+  opts: { page: number; pageSize: number },
+): Promise<{ rows: Omit<ActivityFeedRow, 'total'>[]; total: number }> {
+  const rows: ActivityFeedRow[] = await qx.select(
+    `
+    SELECT
+      sa.id::text                        AS id,
+      sa.stewardship_id::text            AS "stewardshipId",
+      p.purl                             AS "packagePurl",
+      p.name                             AS "packageName",
+      p.ecosystem                        AS "packageEcosystem",
+      sa.actor_user_id                   AS "actorUserId",
+      sa.actor_type                      AS "actorType",
+      sa.activity_type                   AS "activityType",
+      sa.content                         AS content,
+      sa.metadata                        AS metadata,
+      s.status                           AS "stewardshipStatus",
+      sa.created_at                      AS "createdAt",
+      COUNT(*) OVER()::text              AS total
+    FROM stewardship_activity sa
+    JOIN stewardships s ON s.id = sa.stewardship_id
+    JOIN packages p ON p.id = s.package_id
+    ORDER BY sa.created_at DESC, sa.id DESC
+    LIMIT $(limit) OFFSET $(offset)
+    `,
+    { limit: opts.pageSize, offset: (opts.page - 1) * opts.pageSize },
+  )
+
+  let total: number
+  if (rows.length > 0) {
+    total = parseInt(rows[0].total, 10)
+  } else {
+    const countRow: { count: string } = await qx.selectOne(
+      `SELECT COUNT(*)::text AS count
+       FROM stewardship_activity sa
+       JOIN stewardships s ON s.id = sa.stewardship_id
+       JOIN packages p ON p.id = s.package_id`,
+    )
+    total = parseInt(countRow.count, 10)
+  }
+
+  return {
+    rows: rows.map((row) => ({
+      id: row.id,
+      stewardshipId: row.stewardshipId,
+      packagePurl: row.packagePurl,
+      packageName: row.packageName,
+      packageEcosystem: row.packageEcosystem,
+      actorUserId: row.actorUserId,
+      actorType: row.actorType,
+      activityType: row.activityType,
+      content: row.content,
+      metadata: row.metadata as Record<string, unknown> | null,
+      stewardshipStatus: row.stewardshipStatus,
+      createdAt: toIso(row.createdAt),
+    })),
+    total,
+  }
+}
+
 export const ESCALATION_RESOLUTION_PATHS = [
   'right_of_first_refusal',
   'replace_the_dependency',

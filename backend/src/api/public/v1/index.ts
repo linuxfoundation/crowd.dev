@@ -15,6 +15,7 @@ import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
 import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
+import { osspreyRouter } from './ossprey'
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
 import { stewardshipsRouter } from './stewardships'
@@ -38,6 +39,7 @@ export function v1Router(): Router {
   )
   router.use('/packages', oauth2Middleware(AUTH0_CONFIG), packagesRouter())
   router.use('/stewardships', oauth2Middleware(AUTH0_CONFIG), stewardshipsRouter())
+  router.use('/ossprey', oauth2Middleware(AUTH0_CONFIG), osspreyRouter())
 
   router.use(() => {
     throw new NotFoundError()
