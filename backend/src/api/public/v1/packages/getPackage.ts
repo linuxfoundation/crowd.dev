@@ -2,7 +2,11 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { NotFoundError } from '@crowd/common'
-import { getAdvisoriesByPackageId, getPackageDetailByPurl } from '@crowd/data-access-layer'
+import {
+  getAdvisoriesByPackageId,
+  getPackageDetailByPurl,
+  getStewardshipSummary,
+} from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
@@ -30,7 +34,10 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     throw new NotFoundError()
   }
 
-  const advisories = await getAdvisoriesByPackageId(qx, pkg.id)
+  const [advisories, stewardshipSummary] = await Promise.all([
+    getAdvisoriesByPackageId(qx, pkg.id),
+    pkg.stewardshipId ? getStewardshipSummary(qx, Number(pkg.stewardshipId)) : null,
+  ])
 
   ok(res, {
     purl: pkg.purl,
@@ -83,9 +90,12 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
       },
     },
     stewardship: {
+      id: pkg.stewardshipId ?? null,
       status: (pkg.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
-      stewards: null,
-      lastActivityAt: null,
+      stewards: stewardshipSummary?.stewards ?? null,
+      lastActivityAt: stewardshipSummary?.lastActivityAt ?? null,
+      resolutionPath: pkg.stewardshipResolutionPath ?? null,
+      statusNote: pkg.stewardshipStatusNote ?? null,
     },
     history: {},
   })

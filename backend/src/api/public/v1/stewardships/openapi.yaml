@@ -1,0 +1,538 @@
+openapi: 3.1.0
+info:
+  title: CDP Public API — Stewardship Admin Actions
+  version: 1.0.0
+  description: >
+    Write endpoints for OSSPREY Program admin stewardship actions.
+
+
+    **Authentication:** OAuth 2.0 M2M bearer token. All endpoints require `write:stewardships`.
+
+
+    **V1 note:** Scope `write:stewardships` is not yet added to the Auth0 staging tenant —
+    scope enforcement is temporarily disabled. See CM-1235.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+  - url: https://lf-staging.crowd.dev/api/v1
+    description: Staging
+
+tags:
+  - name: Stewardship Actions
+    description: Admin-initiated stewardship mutations.
+
+components:
+  securitySchemes:
+    M2MBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: Stewardship not found.
+
+    StewardshipStatus:
+      type: string
+      enum:
+        - unassigned
+        - open
+        - assessing
+        - active
+        - needs_attention
+        - escalated
+        - blocked
+        - inactive
+
+    StewardshipRecord:
+      type: object
+      required: [id, packageId, status, origin, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: '42'
+        packageId:
+          type: string
+          example: '1234'
+        status:
+          $ref: '#/components/schemas/StewardshipStatus'
+        origin:
+          type: string
+          enum: [auto_imported, self_claimed, assigned, opened_for_claim]
+        version:
+          type: integer
+          example: 1
+        openedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        lastStatusAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        inactiveReason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - quarterly_cadence_missed
+            - stepped_down
+            - no_longer_critical
+            - 'null'
+        resolutionPath:
+          description: Set on `escalated` status. Null for all other statuses.
+          oneOf:
+            - $ref: '#/components/schemas/EscalationResolutionPath'
+            - type: 'null'
+        statusNote:
+          type:
+            - string
+            - 'null'
+          description: Free-text note for the current status. Set by escalate or updateStatus. Null on open.
+          example: Contacted maintainer, no response after 30 days.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StewardRecord:
+      type: object
+      required: [id, stewardshipId, userId, role, assignedAt]
+      properties:
+        id:
+          type: string
+          example: '7'
+        stewardshipId:
+          type: string
+          example: '42'
+        userId:
+          type: string
+          description: Auth0 sub of the assigned steward.
+          example: abc123
+        name:
+          type:
+            - string
+            - 'null'
+          description: Display name of the steward. Null if not available.
+          example: Jonathan R.
+        role:
+          type: string
+          enum: [lead, co_steward]
+        assignedAt:
+          type: string
+          format: date-time
+        assignedBy:
+          type:
+            - string
+            - 'null'
+          description: Auth0 sub of the admin who assigned this steward.
+          example: xyz789
+
+    EscalationResolutionPath:
+      type: string
+      enum:
+        - right_of_first_refusal
+        - replace_the_dependency
+        - find_vendor_for_lts
+        - consortium_adopts_maintainership
+        - compensating_controls_monitor
+        - namespace_takeover
+
+paths:
+  /stewardships:
+    post:
+      operationId: openStewardship
+      summary: Open a package for stewardship
+      description: >
+        Transitions the stewardship status to `open`, marking the package as available for claiming.
+        If a stewardship row does not exist yet, one is created.
+        If the stewardship is already `open`, this is a no-op (idempotent).
+      tags:
+        - Stewardship Actions
+      security:
+        - M2MBearer:
+            - write:stewardships
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purl]
+              properties:
+                purl:
+                  type: string
+                  description: Package URL (must start with `pkg:`).
+                  example: pkg:npm/lodash
+            example:
+              purl: pkg:npm/lodash
+      responses:
+        '200':
+          description: Stewardship opened (or already open).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+              example:
+                stewardship:
+                  id: '42'
+                  packageId: '1234'
+                  status: open
+                  origin: opened_for_claim
+                  version: 1
+                  openedAt: '2026-06-15T10:00:00Z'
+                  lastStatusAt: '2026-06-15T10:00:00Z'
+                  inactiveReason: null
+                  createdAt: '2026-06-15T10:00:00Z'
+                  updatedAt: '2026-06-15T10:00:00Z'
+        '400':
+          description: Validation error (e.g. missing or invalid purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stewardships/{id}/steward:
+    put:
+      operationId: assignSteward
+      summary: Assign a steward to a stewardship
+      description: >
+        Assigns a user as a steward with the given role.
+        If the user is already an active steward, the role is updated (soft-delete + re-insert).
+        Returns the unchanged stewardship record and the full active stewards list after the operation.
+      tags:
+        - Stewardship Actions
+      security:
+        - M2MBearer:
+            - write:stewardships
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Stewardship ID.
+          example: 42
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, role]
+              properties:
+                userId:
+                  type: string
+                  description: Auth0 sub of the user to assign as steward.
+                  example: abc123
+                role:
+                  type: string
+                  enum: [lead, co_steward]
+                moveToAssessing:
+                  type: boolean
+                  default: false
+                  description: >
+                    If true, atomically transitions the stewardship status to `assessing`
+                    in the same transaction as the assignment. Use for the "Assign & move to
+                    Assessing" action to avoid a second round-trip.
+            example:
+              userId: abc123
+              role: lead
+              moveToAssessing: true
+      responses:
+        '200':
+          description: Steward assigned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship, stewards]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+                  stewards:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StewardRecord'
+              example:
+                stewardship:
+                  id: '42'
+                  packageId: '1234'
+                  status: open
+                  origin: opened_for_claim
+                  version: 1
+                  openedAt: '2026-06-15T10:00:00Z'
+                  lastStatusAt: '2026-06-15T10:00:00Z'
+                  inactiveReason: null
+                  createdAt: '2026-06-15T10:00:00Z'
+                  updatedAt: '2026-06-15T10:00:00Z'
+                stewards:
+                  - id: '7'
+                    stewardshipId: '42'
+                    userId: abc123
+                    role: lead
+                    assignedAt: '2026-06-15T10:05:00Z'
+                    assignedBy: xyz789
+        '400':
+          description: Validation error (e.g. invalid role).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Stewardship not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stewardships/{id}/escalate:
+    put:
+      operationId: escalateStewardship
+      summary: Escalate a stewardship
+      description: >
+        Transitions the stewardship to `escalated` status and logs the chosen resolution path
+        in the activity log. Optional free-text notes can be included.
+      tags:
+        - Stewardship Actions
+      security:
+        - M2MBearer:
+            - write:stewardships
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Stewardship ID.
+          example: 42
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolutionPath]
+              properties:
+                resolutionPath:
+                  $ref: '#/components/schemas/EscalationResolutionPath'
+                notes:
+                  type: string
+                  minLength: 1
+                  description: Optional free-text notes for the activity log.
+                  example: Contacted maintainer, no response after 30 days.
+            example:
+              resolutionPath: right_of_first_refusal
+              notes: Contacted maintainer, no response after 30 days.
+      responses:
+        '200':
+          description: Stewardship escalated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+              example:
+                stewardship:
+                  id: '42'
+                  packageId: '1234'
+                  status: escalated
+                  origin: opened_for_claim
+                  version: 1
+                  openedAt: '2026-06-15T10:00:00Z'
+                  lastStatusAt: '2026-06-15T11:00:00Z'
+                  inactiveReason: null
+                  createdAt: '2026-06-15T10:00:00Z'
+                  updatedAt: '2026-06-15T11:00:00Z'
+        '400':
+          description: Validation error (e.g. invalid resolutionPath).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Stewardship not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stewardships/{id}/status:
+    put:
+      operationId: updateStewardshipStatus
+      summary: Update stewardship status
+      description: >
+        Updates the stewardship status and logs a `state_changed` activity entry.
+        Valid target statuses: `assessing`, `active`, `needs_attention`, `blocked`, `inactive`.
+        When transitioning to `inactive`, `inactiveReason` is required.
+      tags:
+        - Stewardship Actions
+      security:
+        - M2MBearer:
+            - write:stewardships
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Stewardship ID.
+          example: 42
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - assessing
+                    - active
+                    - needs_attention
+                    - blocked
+                    - inactive
+                inactiveReason:
+                  type: string
+                  enum:
+                    - quarterly_cadence_missed
+                    - stepped_down
+                    - no_longer_critical
+                  description: Required when `status` is `inactive`.
+                notes:
+                  type: string
+                  minLength: 1
+                  description: Optional free-text notes for the activity log.
+            examples:
+              set_active:
+                summary: Transition to active
+                value:
+                  status: active
+              set_inactive:
+                summary: Transition to inactive (inactiveReason required)
+                value:
+                  status: inactive
+                  inactiveReason: stepped_down
+                  notes: Steward stepped down voluntarily.
+              set_blocked:
+                summary: Transition to blocked
+                value:
+                  status: blocked
+                  notes: Waiting on upstream maintainer response.
+      responses:
+        '200':
+          description: Status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+              example:
+                stewardship:
+                  id: '42'
+                  packageId: '1234'
+                  status: active
+                  origin: opened_for_claim
+                  version: 1
+                  openedAt: '2026-06-15T10:00:00Z'
+                  lastStatusAt: '2026-06-15T12:00:00Z'
+                  inactiveReason: null
+                  createdAt: '2026-06-15T10:00:00Z'
+                  updatedAt: '2026-06-15T12:00:00Z'
+        '400':
+          description: >
+            Validation error.
+            Includes the case where `status` is `inactive` but `inactiveReason` is missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Stewardship not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
