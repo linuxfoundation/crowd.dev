@@ -6,7 +6,7 @@ import {
   memberUnmergeAction,
   memberVerifyIdentityAction,
 } from '@crowd/audit-logs'
-import { ConflictError, InternalError, NotFoundError } from '@crowd/common'
+import { InternalError, NotFoundError } from '@crowd/common'
 import {
   invalidateMemberQueryCache,
   prepareMemberUnmerge,
@@ -31,6 +31,7 @@ import {
 } from '@crowd/types'
 
 import { noContent, ok } from '@/utils/api'
+import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -92,15 +93,9 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
             verifiedBy,
           })
         } catch (error) {
-          const constraint =
-            error.constraint ?? error.original?.constraint ?? error.parent?.constraint
-
-          if (verified && constraint === 'uix_memberIdentities_platform_value_type_verified') {
-            throw new ConflictError('Identity already verified on another member', {
-              platform: identity.platform,
-              value: identity.value,
-              type: identity.type,
-            })
+          if (verified) {
+            const ctx = { platform: identity.platform, value: identity.value, type: identity.type }
+            rethrowDbConflict(error, ctx)
           }
 
           throw error

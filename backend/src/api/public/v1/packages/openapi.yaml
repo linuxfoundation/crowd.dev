@@ -85,14 +85,17 @@ components:
 
     Steward:
       type: object
-      required: [userId, name, role, assignedAt]
+      required: [userId, role, assignedAt]
       properties:
         userId:
           type: string
-          description: LFID.
-          example: jdoe
+          description: Auth0 sub of the assigned steward.
+          example: abc123
         name:
-          type: string
+          type:
+            - string
+            - 'null'
+          description: Display name of the steward. Null if not available.
           example: Jonathan R.
         role:
           type: string
@@ -194,6 +197,12 @@ components:
           oneOf:
             - $ref: '#/components/schemas/OpenVulns'
             - type: 'null'
+        stewardshipId:
+          type:
+            - string
+            - 'null'
+          description: Stewardship ID. Required to call mutation endpoints (assign/escalate/status). Null if no stewardship row exists.
+          example: '42'
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
@@ -418,12 +427,18 @@ components:
                     - 'null'
         stewardship:
           type: object
-          description: Stewardship state. In v1 always unassigned with no stewards or activity.
+          description: Stewardship state.
           properties:
+            id:
+              type:
+                - string
+                - 'null'
+              description: Stewardship ID. Required to call mutation endpoints (assign/escalate/status).
+              example: '42'
             status:
               $ref: '#/components/schemas/StewardshipStatus'
             stewards:
-              description: Assigned stewards or null. Null in v1.
+              description: Assigned stewards or null.
               oneOf:
                 - type: array
                   items:
@@ -434,7 +449,16 @@ components:
                 - string
                 - 'null'
               format: date-time
-              description: Null in v1.
+            resolutionPath:
+              type:
+                - string
+                - 'null'
+              description: Set on `escalated` status. Null for all other statuses.
+            statusNote:
+              type:
+                - string
+                - 'null'
+              description: Free-text note for the current status.
         history:
           type: object
           description: Package history data. Empty in v1.

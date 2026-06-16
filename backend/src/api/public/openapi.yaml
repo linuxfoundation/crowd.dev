@@ -46,15 +46,86 @@ paths:
   # ──────────────────────────────────────────────
   # Members
   # ──────────────────────────────────────────────
+  /members:
+    post:
+      operationId: createMember
+      summary: Create a member profile
+      description: >
+        Create a new member profile in CDP with one or more identities.
+      tags:
+        - Members
+      security:
+        - OAuth2Bearer:
+            - write:members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - displayName
+                - identities
+              properties:
+                displayName:
+                  type: string
+                  minLength: 1
+                  description: Display name for the member profile.
+                identities:
+                  type: array
+                  minItems: 1
+                  description: Initial identities for the member.
+                  items:
+                    $ref: '#/components/schemas/MemberIdentityInput'
+            example:
+              displayName: Jane Doe
+              identities:
+                - value: abc123
+                  platform: lfid
+                  type: username
+                  source: lfxOne
+                  verified: true
+                  verifiedBy: jane@lfx.dev
+      responses:
+        '201':
+          description: Member created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - memberId
+                properties:
+                  memberId:
+                    type: string
+                    format: uuid
+              example:
+                memberId: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Identity already exists on another member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Identity already exists on another member
+
   /members/resolve:
     post:
       operationId: resolveMember
       summary: Resolve a CDP member profile
       description: >
-        Resolve a `memberId` from one or more identities. LFX One should always
-        call this first to obtain the CDP member ID before using other endpoints.
-        Returns 404 if no matching profile exists, or 409 if the provided
-        identities belong to different profiles.
+        Resolve memberId from identities. LFX One should always make a first
+        request to this API to retrieve the corresponding memberId from CDP.
+        If a member is found, use it. If not, create a member.
       tags:
         - Members
       security:
@@ -107,7 +178,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: No matching member profile found.
+          description: Profile not found.
           content:
             application/json:
               schema:
@@ -117,7 +188,7 @@ paths:
                   code: NOT_FOUND
                   message: Member not found
         '409':
-          description: The provided identities belong to different member profiles.
+          description: Multiple member profiles matched.
           content:
             application/json:
               schema:
@@ -125,7 +196,7 @@ paths:
               example:
                 error:
                   code: CONFLICT
-                  message: Conflicting identities
+                  message: Multiple member profiles matched
 
   # ──────────────────────────────────────────────
   # Member Identities
@@ -236,7 +307,7 @@ paths:
         '404':
           $ref: '#/components/responses/MemberNotFound'
         '409':
-          description: Identity already exists on this member or is verified on another.
+          description: Identity already exists on another member.
           content:
             application/json:
               schema:
@@ -244,7 +315,7 @@ paths:
               example:
                 error:
                   code: CONFLICT
-                  message: Identity already exists on this member
+                  message: Identity already exists on another member
 
   /members/{memberId}/identities/{identityId}:
     patch:
@@ -320,7 +391,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/HttpError'
         '409':
-          description: Identity is already verified on another member.
+          description: Identity already exists on another member.
           content:
             application/json:
               schema:
@@ -328,7 +399,7 @@ paths:
               example:
                 error:
                   code: CONFLICT
-                  message: Identity already verified on another member
+                  message: Identity already exists on another member
 
   # ──────────────────────────────────────────────
   # Maintainer Roles
@@ -972,6 +1043,7 @@ components:
           tokenUrl: https://linuxfoundation.auth0.com/oauth/token
           scopes:
             read:members: Read member profiles
+            write:members: Create member profiles
             read:member-identities: Read member identities
             write:member-identities: Create and verify member identities
             read:maintainer-roles: Read maintainer roles
@@ -1008,6 +1080,40 @@ components:
         format: uuid
 
   schemas:
+    MemberIdentityInput:
+      type: object
+      required:
+        - value
+        - platform
+        - type
+        - source
+        - verified
+      properties:
+        value:
+          type: string
+          minLength: 1
+          description: Identity value (e.g. username, email address).
+        platform:
+          type: string
+          minLength: 1
+          description: Platform name (e.g. github, lfid).
+        type:
+          type: string
+          enum:
+            - username
+            - email
+          description: Identity type.
+        source:
+          type: string
+          minLength: 1
+          description: Source system that created this identity.
+        verified:
+          type: boolean
+          description: Whether the identity is verified.
+        verifiedBy:
+          type: string
+          description: Required when `verified` is true. Identifier of who verified.
+
     MemberIdentity:
       type: object
       required:
