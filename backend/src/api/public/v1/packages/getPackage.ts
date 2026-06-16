@@ -94,6 +94,8 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
       status: (pkg.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
       stewards: stewardshipSummary?.stewards ?? null,
       lastActivityAt: stewardshipSummary?.lastActivityAt ?? null,
+      resolutionPath: pkg.stewardshipResolutionPath ?? null,
+      statusNote: pkg.stewardshipStatusNote ?? null,
     },
     history: {},
   })

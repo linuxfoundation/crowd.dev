@@ -9,6 +9,8 @@ export interface StewardshipRecord {
   openedAt: string | null
   lastStatusAt: string | null
   inactiveReason: string | null
+  resolutionPath: string | null
+  statusNote: string | null
   createdAt: string
   updatedAt: string
 }
@@ -17,6 +19,7 @@ export interface StewardshipStewardRecord {
   id: string
   stewardshipId: string
   userId: string
+  name: string | null
   role: string
   assignedAt: string
   assignedBy: string | null
@@ -89,6 +92,7 @@ function mapStewardStewardRow(row: Record<string, unknown>): StewardshipStewardR
     id: String(row.id),
     stewardshipId: String(row.stewardship_id),
     userId: String(row.user_id),
+    name: null,
     role: String(row.role),
     assignedAt: toIso(row.assigned_at),
     assignedBy: row.assigned_by ? String(row.assigned_by) : null,
@@ -105,6 +109,8 @@ function mapStewardshipRow(row: Record<string, unknown>): StewardshipRecord {
     openedAt: row.opened_at ? toIso(row.opened_at) : null,
     lastStatusAt: row.last_status_at ? toIso(row.last_status_at) : null,
     inactiveReason: row.inactive_reason ? String(row.inactive_reason) : null,
+    resolutionPath: row.resolution_path ? String(row.resolution_path) : null,
+    statusNote: row.status_note ? String(row.status_note) : null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   }
@@ -116,7 +122,7 @@ export async function getStewardshipById(
 ): Promise<StewardshipRecord | null> {
   const row: Record<string, unknown> | null = await qx.selectOneOrNone(
     `SELECT id, package_id, status, origin, version, opened_at, last_status_at,
-            inactive_reason, created_at, updated_at
+            inactive_reason, resolution_path, status_note, created_at, updated_at
      FROM stewardships
      WHERE id = $(id)`,
     { id },
@@ -151,12 +157,14 @@ export async function openStewardshipByPurl(
       FROM pkg
       ON CONFLICT (package_id) DO UPDATE
         SET status          = 'open',
-            opened_at       = COALESCE(stewardships.opened_at, NOW()),
+            opened_at       = NOW(),
             last_status_at  = NOW(),
             inactive_reason = NULL,
+            resolution_path = NULL,
+            status_note     = NULL,
             updated_at      = NOW()
       RETURNING id, package_id, status, origin, version, opened_at,
-                last_status_at, inactive_reason, created_at, updated_at
+                last_status_at, inactive_reason, resolution_path, status_note, created_at, updated_at
     ),
     _log AS (
       INSERT INTO stewardship_activity (stewardship_id, actor_user_id, actor_type, activity_type, content)
@@ -319,10 +327,12 @@ export async function escalateStewardship(
       SET status          = 'escalated',
           last_status_at  = NOW(),
           inactive_reason = NULL,
+          resolution_path = $(resolutionPath),
+          status_note     = $(statusNote),
           updated_at      = NOW()
       WHERE id = $(stewardshipId)
       RETURNING id, package_id, status, origin, version, opened_at,
-                last_status_at, inactive_reason, created_at, updated_at
+                last_status_at, inactive_reason, resolution_path, status_note, created_at, updated_at
     ),
     _log AS (
       INSERT INTO stewardship_activity
@@ -335,6 +345,8 @@ export async function escalateStewardship(
     `,
     {
       stewardshipId,
+      resolutionPath: data.resolutionPath,
+      statusNote: data.notes ?? null,
       actorUserId: data.actorUserId,
       content: `Escalated with resolution path: ${data.resolutionPath}`,
       metadata: JSON.stringify({
@@ -384,11 +396,13 @@ export async function updateStewardshipStatus(
       UPDATE stewardships
       SET status          = $(status),
           last_status_at  = NOW(),
-          inactive_reason = CASE WHEN $(status) = 'inactive' THEN $(inactiveReason) ELSE NULL END,
+          inactive_reason = CASE WHEN $(status) = 'inactive' THEN $(inactiveReason) ELSE inactive_reason END,
+          resolution_path = NULL,
+          status_note     = $(statusNote),
           updated_at      = NOW()
       WHERE id = $(stewardshipId)
       RETURNING id, package_id, status, origin, version, opened_at,
-                last_status_at, inactive_reason, created_at, updated_at
+                last_status_at, inactive_reason, resolution_path, status_note, created_at, updated_at
     ),
     _log AS (
       INSERT INTO stewardship_activity
@@ -403,6 +417,7 @@ export async function updateStewardshipStatus(
       stewardshipId,
       status: data.status,
       inactiveReason: data.inactiveReason ?? null,
+      statusNote: data.notes ?? null,
       actorUserId: data.actorUserId,
       content: `Status updated to ${data.status}`,
       metadata: JSON.stringify({
