@@ -441,6 +441,15 @@ export const ESCALATION_RESOLUTION_PATHS = [
 
 export type EscalationResolutionPath = (typeof ESCALATION_RESOLUTION_PATHS)[number]
 
+export const ESCALATION_RESOLUTION_PATH_LABELS: Record<EscalationResolutionPath, string> = {
+  right_of_first_refusal: 'Right of First Refusal',
+  replace_the_dependency: 'Replace the Dependency',
+  find_vendor_for_lts: 'Find Vendor for LTS',
+  consortium_adopts_maintainership: 'Consortium Adopts Maintainership',
+  compensating_controls_monitor: 'Compensating Controls / Monitor',
+  namespace_takeover: 'Namespace Takeover',
+}
+
 /**
  * Escalates a stewardship. Updates status to 'escalated' and logs the
  * chosen resolution path in stewardship_activity metadata.
@@ -478,7 +487,7 @@ export async function escalateStewardship(
       resolutionPath: data.resolutionPath,
       statusNote: data.notes ?? null,
       actorUserId: data.actorUserId,
-      content: `Escalated with resolution path: ${data.resolutionPath}`,
+      content: `Escalated with resolution path: ${ESCALATION_RESOLUTION_PATH_LABELS[data.resolutionPath]}`,
       metadata: JSON.stringify({
         resolutionPath: data.resolutionPath,
         ...(data.notes ? { notes: data.notes } : {}),
