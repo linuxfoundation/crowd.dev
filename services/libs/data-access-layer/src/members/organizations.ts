@@ -58,18 +58,32 @@ export async function fetchMemberOrganizationById(
   )
 }
 
+/**
+ * Fetches member organizations for a source, optionally including soft-deleted rows.
+ */
 export async function fetchMemberOrganizationsBySource(
   qx: QueryExecutor,
   memberId: string,
   source: OrganizationSource,
+  { withDeleted = false }: { withDeleted?: boolean } = {},
 ): Promise<IMemberOrganization[]> {
+  const deletedClause = withDeleted ? '' : 'AND "deletedAt" IS NULL'
+
   return qx.select(
     `
-      SELECT "id", "organizationId", "dateStart", "dateEnd", "title", "memberId", "source"
+      SELECT
+        "id",
+        "organizationId",
+        "dateStart",
+        "dateEnd",
+        "title",
+        "memberId",
+        "source",
+        "deletedAt"
       FROM "memberOrganizations"
       WHERE "memberId" = $(memberId)
         AND "source" = $(source)
-        AND "deletedAt" IS NULL
+        ${deletedClause}
     `,
     { memberId, source },
   )
