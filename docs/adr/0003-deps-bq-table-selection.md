@@ -36,10 +36,11 @@ or add GO/NUGET via Option B only.
 - No migration risk — simpler to stay on the table already coded
 
 ### Negative
-- NUGET and GO not supported; must revisit when either ecosystem is added.
-  Confirmed empirically: full bootstrap of GO against `DependencyGraphEdgesLatest`
-  returns 0 rows — deps.dev does not resolve GO dependency graphs in that table
-  (GO uses Minimal Version Selection, a different resolution model from NPM/MAVEN/PYPI/CARGO).
+- Only NPM, MAVEN, PYPI, CARGO are present in `DependencyGraphEdgesLatest`.
+  GO and NUGET are absent entirely — confirmed via BQ query on the live table
+  (`SELECT System, COUNT(*) … GROUP BY System` returns exactly those 4).
+  GO uses Minimal Version Selection (no graph resolution by deps.dev);
+  NUGET is simply not covered. Must revisit when either ecosystem is added.
 - Full bootstrap ~$1,291 vs ~$494 for NPM+MAVEN (Option B cheaper)
 - Weekly incremental ~$26 vs ~$7 (Option B cheaper)
 

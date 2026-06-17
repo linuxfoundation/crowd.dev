@@ -1,8 +1,11 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
-import { buildDepsFullSql, buildDepsIncrementalSql } from '../queries/depsSql'
-import { toSystemsFilter } from '../queries/systems'
+import {
+  DEPS_DEFAULT_ECOSYSTEMS,
+  buildDepsFullSql,
+  buildDepsIncrementalSql,
+} from '../queries/depsSql'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '2 hours',
@@ -167,12 +170,12 @@ export async function ingestDependencies(opts: {
   depsTableOption?: 'A' | 'B'
   exportName?: string
 }): Promise<{ rowCountBq: number }> {
-  const systems = toSystemsFilter(opts.ecosystems)
+  const ecosystems = opts.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
   const tableOption = opts.depsTableOption ?? 'A'
   const sql =
     opts.syncMode === 'full'
-      ? buildDepsFullSql(systems, tableOption)
-      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', systems, tableOption)
+      ? buildDepsFullSql(ecosystems, tableOption)
+      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'package_dependencies',
