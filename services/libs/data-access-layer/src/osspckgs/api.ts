@@ -49,8 +49,8 @@ export async function getPackagesByStewardshipPurls(
   )
 }
 
+// TODO[deprecate]: rename to AkritesMetrics once /v1/ossprey is removed
 export interface OsspreyMetrics {
-  totalPackages: number
   criticalPackages: number
   coveragePercent: number
   coverageTrend: number | null
@@ -60,10 +60,10 @@ export interface OsspreyMetrics {
   escalated: number
 }
 
+// TODO[deprecate]: rename to getAkritesMetrics once /v1/ossprey is removed
 export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
   const [counts, stewardRow]: [
     {
-      totalPackages: string
       criticalPackages: string
       covered: string
       needsAttention: string
@@ -74,8 +74,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   ] = await Promise.all([
     qx.selectOne(`
       SELECT
-        COUNT(*)::text                                                                     AS "totalPackages",
-        COUNT(*) FILTER (WHERE p.has_critical_vulnerability = true)::text                 AS "criticalPackages",
+        COUNT(*)::text                                                                     AS "criticalPackages",
         COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
         COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
         COUNT(*) FILTER (WHERE s.status = 'escalated')::text                              AS escalated,
@@ -93,12 +92,11 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
     `),
   ])
 
-  const total = parseInt(counts.totalPackages, 10)
+  const total = parseInt(counts.criticalPackages, 10)
   const covered = parseInt(counts.covered, 10)
 
   return {
-    totalPackages: total,
-    criticalPackages: parseInt(counts.criticalPackages, 10),
+    criticalPackages: total,
     coveragePercent: total > 0 ? Math.round((covered / total) * 1000) / 10 : 0,
     coverageTrend: null, // TODO: requires snapshot mechanism or stewardship_activity timestamp analysis
     activeStewards: parseInt(stewardRow.count, 10),
@@ -555,6 +553,9 @@ export interface PackageDetailRow {
   stewardshipLastStatusAt: Date | null
   stewardshipResolutionPath: string | null
   stewardshipStatusNote: string | null
+  stewardshipOrigin: string | null
+  stewardshipVersion: number | null
+  stewardshipOpenedAt: Date | null
   // from package_repos + repos
   repoUrl: string | null
   repoMappingConfidence: number | null
@@ -600,6 +601,9 @@ export async function getPackageDetailByPurl(
       s.last_status_at AS "stewardshipLastStatusAt",
       s.resolution_path AS "stewardshipResolutionPath",
       s.status_note AS "stewardshipStatusNote",
+      s.origin AS "stewardshipOrigin",
+      s.version AS "stewardshipVersion",
+      s.opened_at AS "stewardshipOpenedAt",
       -- best repo link (highest confidence, prefer declared)
       r.url AS "repoUrl",
       pr.confidence AS "repoMappingConfidence",
@@ -690,8 +694,8 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
-      AND p.has_critical_vulnerability = true
     ORDER BY p.impact DESC NULLS LAST, p.purl ASC
+    LIMIT 2000
   `)
 
   return rows.map((r) => ({

@@ -231,6 +231,7 @@ const KIND_TABLES: Record<string, string[]> = {
   advisories: ['advisories'],
   advisory_packages: ['advisory_packages', 'advisory_affected_ranges'],
   dependent_counts: ['packages'],
+  ranking: ['packages'],
 }
 
 const TABLE_ABBREV: Record<string, string> = {
@@ -276,7 +277,7 @@ function extractEcosystem(job: any) {
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 const COL = {
-  id: 5,
+  id: 12,
   kind: 20,
   eco: 10,
   status: 18,
@@ -295,7 +296,7 @@ const COL = {
 function tableHeader() {
   const content =
     ' ' +
-    'ID'.padEnd(COL.id) +
+    'ID  STARTED'.padEnd(COL.id) +
     'KIND'.padEnd(COL.kind) +
     'ECO'.padEnd(COL.eco) +
     'STATUS'.padEnd(COL.status) +
@@ -389,10 +390,15 @@ function tableRow(job: any, selected: boolean) {
     ? A.dim + '—' + A.reset
     : fmtElapsed(job.started_at, job.finished_at)
 
+  const startedTime = job.started_at
+    ? new Date(job.started_at as string).toISOString().slice(11, 16)
+    : '—'
+  const idCell = `${String(job.id)} ${A.dim}${startedTime}${A.reset}${bg}`
+
   return (
     bg +
     ' ' +
-    String(job.id).padEnd(COL.id) +
+    padCell(idCell, COL.id, bg) +
     A.bold +
     truncate(job.job_kind, COL.kind - 1).padEnd(COL.kind) +
     A.reset +
@@ -421,7 +427,7 @@ function tableRow(job: any, selected: boolean) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function renderDetail(job: any, cols: number) {
-  const lines = []
+  const lines: string[] = []
   const sep = A.dim + '─'.repeat(cols - 2) + A.reset
 
   const snapshotDate = job.snapshot_at

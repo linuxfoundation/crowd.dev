@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
 import { buildDependentCountsSql } from '../queries/dependentCountsSql'
@@ -22,6 +22,11 @@ const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
 const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
   retry: { maximumAttempts: 1 },
+})
+
+const { checkDependentCountsGuard } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
 })
 
 const STAGING_TABLE = 'staging.osspckgs_dependent_counts_raw'
@@ -79,6 +84,19 @@ export async function ingestDependentCounts(opts: {
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
   const totalFiles = fileNames.length
+  const totalRows = totalFiles > 0 ? rowCounts.reduce((a, b) => a + b, 0) : 0
+
+  const guard = await checkDependentCountsGuard({
+    currentRowCount: totalRows,
+    snapshotDate: opts.snapshotDate,
+  })
+  if (!guard.ok) {
+    throw ApplicationFailure.nonRetryable(
+      `dependent_counts guard failed: ${String(totalRows)} rows vs prev max ${String(guard.prevRowCount)} ` +
+        `(${((guard.dropPct ?? 0) * 100).toFixed(1)}% drop). Slack alert sent. Aborting to preserve existing data.`,
+      'DEPENDENT_COUNTS_GUARD',
+    )
+  }
 
   if (totalFiles === 0) {
     await mergeStagingToTable({
@@ -90,7 +108,6 @@ export async function ingestDependentCounts(opts: {
     return
   }
 
-  const totalRows = rowCounts.reduce((a, b) => a + b, 0)
   const filesPerChunk =
     totalRows > 0
       ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))

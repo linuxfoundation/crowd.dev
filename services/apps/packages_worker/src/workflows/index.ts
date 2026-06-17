@@ -17,3 +17,4 @@ export {
 export { osvSync } from '../osv/workflows'
 export { mavenCriticalWorkflow, mavenNonCriticalWorkflow } from '../maven/workflows'
 export { ingestScorecard } from '../scorecard/workflows'
+export { rankPackagesWorkflow } from '../criticality/workflow'
