@@ -99,12 +99,13 @@ NODE ai_package_metrics
 SQL >
     SELECT
         insightsProjectId,
-        max(downloadsCount) AS downloads,
-        toInt64(max(downloadsCount))
-        - toInt64(maxIf(downloadsCount, date <= toDate(now() - INTERVAL 30 DAY))) AS downloads30d,
-        max(dockerDownloadsCount) AS dockerPulls,
-        toInt64(max(dockerDownloadsCount)) - toInt64(
-            maxIf(dockerDownloadsCount, date <= toDate(now() - INTERVAL 30 DAY))
+        argMax(downloadsCount, date) AS downloads,
+        toInt64(argMax(downloadsCount, date)) - toInt64(
+            argMaxIf(downloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
+        ) AS downloads30d,
+        argMax(dockerDownloadsCount, date) AS dockerPulls,
+        toInt64(argMax(dockerDownloadsCount, date)) - toInt64(
+            argMaxIf(dockerDownloadsCount, date, date <= toDate(now() - INTERVAL 30 DAY))
         ) AS dockerPulls30d,
         max(dependentReposCount) AS dependentRepos,
         max(dependentPackagesCount) AS dependentPackages
@@ -113,15 +114,26 @@ SQL >
             SELECT
                 insightsProjectId,
                 date,
-                argMax(downloadsCount, updatedAt) AS downloadsCount,
-                argMax(dockerDownloadsCount, updatedAt) AS dockerDownloadsCount,
-                argMax(dependentReposCount, updatedAt) AS dependentReposCount,
-                argMax(dependentPackagesCount, updatedAt) AS dependentPackagesCount
-            FROM packageDownloads
-            WHERE
-                insightsProjectId
-                IN (SELECT DISTINCT insightsProjectId FROM ai_repos WHERE insightsProjectId != '')
-            GROUP BY insightsProjectId, date, ecosystem, repo, name
+                sum(downloadsCount) AS downloadsCount,
+                sum(dockerDownloadsCount) AS dockerDownloadsCount,
+                max(dependentReposCount) AS dependentReposCount,
+                max(dependentPackagesCount) AS dependentPackagesCount
+            FROM
+                (
+                    SELECT
+                        insightsProjectId,
+                        date,
+                        argMax(downloadsCount, updatedAt) AS downloadsCount,
+                        argMax(dockerDownloadsCount, updatedAt) AS dockerDownloadsCount,
+                        argMax(dependentReposCount, updatedAt) AS dependentReposCount,
+                        argMax(dependentPackagesCount, updatedAt) AS dependentPackagesCount
+                    FROM packageDownloads
+                    WHERE
+                        insightsProjectId
+                        IN (SELECT DISTINCT insightsProjectId FROM ai_repos WHERE insightsProjectId != '')
+                    GROUP BY insightsProjectId, date, ecosystem, repo, name
+                )
+            GROUP BY insightsProjectId, date
         )
     GROUP BY insightsProjectId
 
