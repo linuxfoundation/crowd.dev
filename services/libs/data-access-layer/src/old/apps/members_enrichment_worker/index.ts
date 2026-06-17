@@ -198,6 +198,8 @@ export async function fetchMembersForLFIDEnrichment(db: DbStore, limit: number, 
           (mi.type = 'email' and mi.verified)
           )
         AND members."deletedAt" IS NULL
+        AND coalesce((members.attributes -> 'isBot' ->> 'default')::boolean, false) = false
+        AND coalesce((members.attributes -> 'isOrganization' ->> 'default')::boolean, false) = false
         ${idFilter}
       GROUP BY members.id
       ORDER BY members.id desc
