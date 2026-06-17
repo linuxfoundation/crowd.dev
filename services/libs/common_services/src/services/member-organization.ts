@@ -176,7 +176,9 @@ export function inferMemberOrganizationStintChanges(
   const activeRows = normalizedRows.filter((row) => !row.deletedAt)
 
   // Deleted dated rows suppress recreation for dates the user removed
-  const deletedRows = normalizedRows.filter((row) => row.deletedAt && row.dateStart)
+  const deletedRows = normalizedRows.filter(
+    (row): row is typeof row & { dateStart: string } => !!row.deletedAt && !!row.dateStart,
+  )
 
   const sortedDates = orgDates
     .map((entry) => ({
@@ -201,7 +203,7 @@ export function inferMemberOrganizationStintChanges(
       deletedRows.some(
         (row) =>
           row.organizationId === organizationId &&
-          dateIntersects(row.dateStart as string, row.dateEnd, targetDate, targetDate),
+          dateIntersects(row.dateStart, row.dateEnd, targetDate, targetDate),
       )
     ) {
       continue
@@ -299,17 +301,26 @@ export function inferMemberOrganizationStintChanges(
   }
 
   // 7. Map only modified or new stints back to change objects
-  return stints
-    .filter((s) => s.isDirty && s.dateStart && s.dateEnd)
-    .map((s): MemberOrgStintChange => {
-      const payload = {
-        memberId,
-        organizationId: s.organizationId,
-        dateStart: s.dateStart as string,
-        dateEnd: s.dateEnd as string,
-      }
+  return stints.flatMap((s): MemberOrgStintChange[] => {
+    if (!s.isDirty || !s.dateStart || !s.dateEnd) {
+      return []
+    }
 
-      if (s.isNew) return { type: 'insert', ...payload }
-      return { type: 'update', id: s.id as string, ...payload }
-    })
+    const payload = {
+      memberId,
+      organizationId: s.organizationId,
+      dateStart: s.dateStart,
+      dateEnd: s.dateEnd,
+    }
+
+    if (s.isNew) {
+      return [{ type: 'insert', ...payload }]
+    }
+
+    if (!s.id) {
+      return []
+    }
+
+    return [{ type: 'update', id: s.id, ...payload }]
+  })
 }

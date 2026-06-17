@@ -119,7 +119,7 @@ export default class MemberAffiliationsService extends LoggerBase {
 
     const memberOrgIds = [
       data.memberOrganizationId,
-      ...overlappingEmailDomainRows.map((row) => row.id as string),
+      ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
     ]
 
     // Apply the override to hidden grouped rows so the merged work experience has one decision

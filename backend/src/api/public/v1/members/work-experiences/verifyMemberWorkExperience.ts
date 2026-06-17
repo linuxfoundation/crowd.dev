@@ -59,7 +59,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
   const memberOrgIdsToDelete = [
     workExperienceId,
-    ...overlappingEmailDomainRows.map((row) => row.id as string),
+    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
   ]
 
   const verifiedUpdate = { verified, verifiedBy }
@@ -81,13 +81,10 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             verifiedUpdate,
           )
 
-          for (const overlappingRow of overlappingEmailDomainRows) {
-            await updateMemberOrganization(
-              tx,
-              memberId,
-              overlappingRow.id as string,
-              verifiedUpdate,
-            )
+          for (const overlappingRow of overlappingEmailDomainRows.filter(
+            (row): row is typeof row & { id: string } => !!row.id,
+          )) {
+            await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
           }
         } else {
           // Unverifying removes the grouped work experience from both visible and hidden rows

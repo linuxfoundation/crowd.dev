@@ -87,6 +87,10 @@ export default class MemberOrganizationsService extends LoggerBase {
       memberOrganizations.map((mo) => mo.id),
     )
 
+    const overridesByMemberOrganizationId = new Map(
+      affiliationOverrides.map((override) => [override.memberOrganizationId, override]),
+    )
+
     // Create mapping by id to speed up the processing
     const orgById: Record<string, IOrganizationSummary> = organizations.reduce(
       (obj: Record<string, IOrganizationSummary>, org) => ({
@@ -100,7 +104,7 @@ export default class MemberOrganizationsService extends LoggerBase {
     const groupedMemberOrganizations = groupMemberOrganizations(memberOrganizations)
 
     const allOrganizations = groupedMemberOrganizations
-      .filter((mo) => orgById[mo.organizationId]) // Only include non-deleted organizations
+      .filter((mo): mo is typeof mo & { id: string } => !!mo.id && !!orgById[mo.organizationId])
       .map((mo) => {
         const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
           memberOrganizations,
@@ -110,10 +114,9 @@ export default class MemberOrganizationsService extends LoggerBase {
         const relatedIds = [mo.id, ...overlappingEmailDomainRows.map((row) => row.id)]
 
         const relatedOverrides = relatedIds.map((memberOrganizationId) =>
-          affiliationOverrides.find(
-            (override) => override.memberOrganizationId === memberOrganizationId,
-          ),
+          overridesByMemberOrganizationId.get(memberOrganizationId),
         )
+
         const resolvedOverrides = relatedOverrides.filter((override) => !!override)
 
         // Merge override flags from rows that are displayed as one work experience
@@ -132,7 +135,7 @@ export default class MemberOrganizationsService extends LoggerBase {
             ...mo,
             affiliationOverride: {
               memberId,
-              memberOrganizationId: mo.id as string,
+              memberOrganizationId: mo.id,
               allowAffiliation,
               isPrimaryWorkExperience,
             },
@@ -289,9 +292,11 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       const memberOrganizations = await fetchMemberOrganizations(qx, memberId)
 
+      const overlapBasis = { ...existing, ...update }
+
       const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
         memberOrganizations,
-        existing,
+        overlapBasis,
       )
 
       const groupedUpdate = lodash.pickBy(
@@ -306,7 +311,11 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
         for (const overlappingRow of overlappingEmailDomainRows) {
-          await updateMemberOrganization(qx, memberId, overlappingRow.id as string, groupedUpdate)
+          if (!overlappingRow.id) {
+            continue
+          }
+
+          await updateMemberOrganization(qx, memberId, overlappingRow.id, groupedUpdate)
         }
       }
 
@@ -353,7 +362,7 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       const memberOrganizationIdsToDelete = [
         id,
-        ...overlappingEmailDomainRows.map((row) => row.id as string),
+        ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
       ]
 
       // Delete hidden grouped rows with the visible row so list responses stay consistent

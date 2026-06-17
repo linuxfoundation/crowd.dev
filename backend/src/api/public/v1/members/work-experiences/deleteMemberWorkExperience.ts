@@ -46,7 +46,7 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
 
   const memberOrgIdsToDelete = [
     workExperienceId,
-    ...overlappingEmailDomainRows.map((row) => row.id as string),
+    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
   ]
 
   // Delete hidden grouped rows with the visible row so read responses stay consistent

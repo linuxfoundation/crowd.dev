@@ -86,9 +86,11 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)
         await updateMemberOrganization(tx, memberId, workExperienceId, update)
 
+        const overlapBasis = { ...existing, ...update }
+
         const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
           memberOrgs,
-          existing,
+          overlapBasis,
         )
 
         const groupedUpdate: MemberOrganizationUpdate = {}
@@ -105,8 +107,10 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
         }
 
         if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
-          for (const overlappingRow of overlappingEmailDomainRows) {
-            await updateMemberOrganization(tx, memberId, overlappingRow.id as string, groupedUpdate)
+          for (const overlappingRow of overlappingEmailDomainRows.filter(
+            (row): row is typeof row & { id: string } => !!row.id,
+          )) {
+            await updateMemberOrganization(tx, memberId, overlappingRow.id, groupedUpdate)
           }
         }
       })

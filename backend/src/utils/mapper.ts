@@ -39,35 +39,44 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
   const hiddenEmailDomainIds = new Set<string>()
   const displayGroups = new Map<string, { displayRow: T; groupedEmailDomainRows: T[] }>()
 
-  for (const emailDomainRow of emailDomainRows) {
+  for (const emailDomainRow of emailDomainRows.filter(
+    (row): row is T & { id: string } => !!row.id,
+  )) {
     const overlappingNonEmailRows = nonEmailRows.filter((row) =>
       memberOrganizationsOverlap(emailDomainRow, row),
     )
 
     if (overlappingNonEmailRows.length > 0) {
-      const displayRow = [...overlappingNonEmailRows].sort(
-        (a, b) =>
-          getMemberOrganizationSourceRank(a.source) - getMemberOrganizationSourceRank(b.source),
-      )[0]
+      const displayRow = [...overlappingNonEmailRows].sort((a, b) => {
+        const rankDiff =
+          getMemberOrganizationSourceRank(a.source) - getMemberOrganizationSourceRank(b.source)
+        if (rankDiff !== 0) {
+          return rankDiff
+        }
 
-      hiddenEmailDomainIds.add(emailDomainRow.id as string)
+        return (a.id ?? '').localeCompare(b.id ?? '')
+      })[0]
 
-      const existingGroup = displayGroups.get(displayRow.id as string)
-      if (existingGroup) {
-        existingGroup.groupedEmailDomainRows.push(emailDomainRow)
-      } else {
-        displayGroups.set(displayRow.id as string, {
-          displayRow,
-          groupedEmailDomainRows: [emailDomainRow],
-        })
+      if (displayRow.id) {
+        hiddenEmailDomainIds.add(displayRow.id)
+
+        const existingGroup = displayGroups.get(displayRow.id)
+        if (existingGroup) {
+          existingGroup.groupedEmailDomainRows.push(emailDomainRow)
+        } else {
+          displayGroups.set(displayRow.id, {
+            displayRow,
+            groupedEmailDomainRows: [emailDomainRow],
+          })
+        }
       }
     }
   }
 
   return rows
-    .filter((row) => !hiddenEmailDomainIds.has(row.id as string))
+    .filter((row): row is T & { id: string } => !!row.id && !hiddenEmailDomainIds.has(row.id))
     .map((row) => {
-      const group = displayGroups.get(row.id as string)
+      const group = displayGroups.get(row.id)
       if (!group) {
         return row
       }
@@ -96,9 +105,8 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
       if (normalizedEnds.some((date) => date === null)) {
         dateEnd = null
       } else if (normalizedEnds.length > 0) {
-        dateEnd = normalizedEnds.reduce((max, date) =>
-          (date as string) > max ? (date as string) : max,
-        )
+        const datedEnds = normalizedEnds.filter((date): date is string => date !== null)
+        dateEnd = datedEnds.reduce((max, date) => (date > max ? date : max))
       }
 
       return {
