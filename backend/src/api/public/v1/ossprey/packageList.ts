@@ -80,7 +80,11 @@ export async function packageListHandler(req: Request, res: Response): Promise<v
       lastActivity: r.lastActivityAt
         ? {
             type: r.lastActivityType,
-            content: translateActivityContent(r.lastActivityContent ?? null, r.lastActivityType, r.lastActivityMetadata),
+            content: translateActivityContent(
+              r.lastActivityContent ?? null,
+              r.lastActivityType,
+              r.lastActivityMetadata,
+            ),
             at: r.lastActivityAt.toISOString(),
           }
         : null,
