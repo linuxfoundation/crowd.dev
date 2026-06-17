@@ -273,7 +273,9 @@ export async function ingestDependencies(opts: {
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
       const start = chunkIndex * filesPerChunk
       const chunk = fileNames.slice(start, start + filesPerChunk)
-      const isFinal = chunkIndex === totalChunks - 1
+      const isLastChunk = chunkIndex === totalChunks - 1
+      // For full-load (non-fill), don't mark done here — rebuild runs after the chunk loop
+      const isFinal = isLastChunk && !(opts.syncMode === 'full' && !isFill)
 
       const { rowsLoaded } = await gcsParquetToStaging({
         jobId: exportResult.jobId,
@@ -315,6 +317,15 @@ export async function ingestDependencies(opts: {
       await rebuildPackageDepsIndexes()
       await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
       await rebuildPackageDepsConstraints()
+      // Finalize after rebuild — marks done with correct finishedAt
+      await mergeStagingToTable({
+        jobId: exportResult.jobId,
+        mergeSql: [],
+        tableNames: [],
+        isFinal: true,
+        priorRowsAffected,
+        priorTableRowCounts,
+      })
     }
   } catch (err) {
     if (opts.syncMode === 'full' && !isFill) {
