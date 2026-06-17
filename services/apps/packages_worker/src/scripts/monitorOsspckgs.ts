@@ -199,10 +199,11 @@ function padCell(s: string, len: number, bg: string) {
   // eslint-disable-next-line no-control-regex
   const visible = s.replace(/\x1b\[[0-9;]*m/g, '')
   if (visible.length > len) {
-    // Walk raw string, skip escape sequences, cut at len-1 visible chars then add …
+    // Walk raw string, skip escape sequences, cut at len-2 visible chars then add "… "
+    // (space after ellipsis ensures visual gap between columns even when truncated)
     let vis = 0
     let i = 0
-    while (i < s.length && vis < len - 1) {
+    while (i < s.length && vis < len - 2) {
       if (s[i] === '\x1b') {
         const end = s.indexOf('m', i)
         i = end !== -1 ? end + 1 : i + 1
@@ -211,7 +212,7 @@ function padCell(s: string, len: number, bg: string) {
         i++
       }
     }
-    return s.slice(0, i) + A.reset + bg + '…'
+    return s.slice(0, i) + A.reset + bg + '… '
   }
   const pad = Math.max(0, len - visible.length)
   return s + bg + ' '.repeat(pad)
@@ -287,16 +288,16 @@ function extractEcosystem(job: any) {
 const COL = {
   id: 18,
   kind: 20,
-  eco: 10,
-  status: 18,
+  eco: 15,
+  status: 26,
   mode: 6,
   bq: 10,
-  cost: 10,
+  cost: 8,
   files: 24,
-  staging: 12,
+  staging: 10,
   pg: 14,
   table: 18,
-  elapsed: 12,
+  elapsed: 10,
   chunk: 26,
   total: 24,
 }
@@ -716,7 +717,7 @@ function computeChunkEta(job: any) {
   const hist = chunkMergeHistory.get(job.id)
   if (!hist || hist.mergeStart == null) return null
 
-  let rateRowsPerMs
+  let rateRowsPerMs: number
   if (hist.completedChunks.length > 0) {
     // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
     // Most recent chunk contributes ~50% of the rate; history stabilises it.
