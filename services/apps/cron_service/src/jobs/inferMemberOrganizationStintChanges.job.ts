@@ -62,6 +62,7 @@ const job: IJobDefinition = {
             qx,
             memberId,
             OrganizationSource.EMAIL_DOMAIN,
+            { withDeleted: true },
           )
 
           const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, orgDates)
