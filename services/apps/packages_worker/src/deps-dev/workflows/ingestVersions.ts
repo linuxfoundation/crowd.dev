@@ -131,7 +131,7 @@ export async function ingestVersions(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 400,
+    maxBytesGb: opts.syncMode === 'full' ? 800 : 400,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
     ecosystems: opts.ecosystems,

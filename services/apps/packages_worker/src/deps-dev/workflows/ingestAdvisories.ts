@@ -135,7 +135,7 @@ export async function ingestAdvisories(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 10,
+    maxBytesGb: 20,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
     ecosystems: opts.ecosystems,
