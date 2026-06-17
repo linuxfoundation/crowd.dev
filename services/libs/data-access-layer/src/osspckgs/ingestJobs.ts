@@ -44,7 +44,7 @@ export interface MarkJobStatusFields {
   rowCountBq?: number
   rowCountStaging?: number
   rowCountPg?: number
-  tableRowCounts?: Record<string, number>
+  tableRowCounts?: Record<string, number | string | string[]>
   bqBytesBilled?: number
   bqJobId?: string
   bqStats?: BqStats
@@ -301,4 +301,19 @@ export async function markJobStatus(
   }
 
   await qx.result(`UPDATE osspckgs_ingest_jobs SET ${sets.join(', ')} WHERE id = $(jobId)`, params)
+}
+
+// Merges key-value pairs into table_row_counts without changing status.
+// Used to write meta:step and similar display-only tracking keys mid-job.
+export async function mergeJobTableRowCounts(
+  qx: QueryExecutor,
+  jobId: number,
+  kv: Record<string, number | string | string[]>,
+): Promise<void> {
+  await qx.result(
+    `UPDATE osspckgs_ingest_jobs
+     SET table_row_counts = COALESCE(table_row_counts, '{}') || $(kv)
+     WHERE id = $(jobId)`,
+    { jobId, kv },
+  )
 }

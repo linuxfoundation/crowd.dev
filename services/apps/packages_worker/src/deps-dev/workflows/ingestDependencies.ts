@@ -49,6 +49,11 @@ const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActiv
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
+const { setJobStep } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_deps_raw'
 
 const STAGING_DDL = `
@@ -228,6 +233,7 @@ export async function ingestDependencies(opts: {
     maxBytesGb: 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
@@ -244,10 +250,13 @@ export async function ingestDependencies(opts: {
     return { rowCountBq: exportResult.rowCount }
   }
 
+  await setJobStep({ jobId: exportResult.jobId, step: 'creating_lookup' })
   await createVersionsLookup({ ecosystems: opts.ecosystems })
 
   if (opts.syncMode === 'full' && !isFill) {
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_constraints' })
     await dropPackageDepsConstraints()
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_indexes' })
     await dropPackageDepsIndexes()
   }
 
@@ -302,17 +311,21 @@ export async function ingestDependencies(opts: {
     }
 
     if (opts.syncMode === 'full' && !isFill) {
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
       await rebuildPackageDepsIndexes()
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
       await rebuildPackageDepsConstraints()
     }
   } catch (err) {
     if (opts.syncMode === 'full' && !isFill) {
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
         await rebuildPackageDepsIndexes()
       } catch (_) {
         /* best-effort */
       }
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
         await rebuildPackageDepsConstraints()
       } catch (_) {
         /* best-effort */

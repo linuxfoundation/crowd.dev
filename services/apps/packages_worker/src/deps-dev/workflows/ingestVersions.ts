@@ -39,6 +39,11 @@ const { dropVersionsConstraints, rebuildVersionsConstraints } = proxyActivities<
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
+const { setJobStep } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_versions_raw'
 
 const STAGING_DDL = `
@@ -129,6 +134,7 @@ export async function ingestVersions(opts: {
     maxBytesGb: 400,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
@@ -145,7 +151,9 @@ export async function ingestVersions(opts: {
   }
 
   if (opts.syncMode === 'full') {
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_constraints' })
     await dropVersionsConstraints()
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_indexes' })
     await dropVersionsIndexes()
   }
 
@@ -198,17 +206,21 @@ export async function ingestVersions(opts: {
     }
 
     if (opts.syncMode === 'full') {
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
       await rebuildVersionsIndexes()
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
       await rebuildVersionsConstraints()
     }
   } catch (err) {
     if (opts.syncMode === 'full') {
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
         await rebuildVersionsIndexes()
       } catch (_) {
         /* best-effort */
       }
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
         await rebuildVersionsConstraints()
       } catch (_) {
         /* best-effort */

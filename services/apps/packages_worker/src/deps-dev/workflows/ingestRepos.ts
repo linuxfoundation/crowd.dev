@@ -117,6 +117,7 @@ export async function ingestRepos(opts: {
     maxBytesGb: 2000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames: repoFileNames, rowCounts: repoRowCounts } = await listParquetFiles({
@@ -187,6 +188,7 @@ export async function ingestRepos(opts: {
     maxBytesGb: 2000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames: pkgRepoFileNames, rowCounts: pkgRepoRowCounts } = await listParquetFiles({

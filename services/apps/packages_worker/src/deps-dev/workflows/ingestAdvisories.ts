@@ -138,6 +138,7 @@ export async function ingestAdvisories(opts: {
     maxBytesGb: 10,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames: advFileNames, rowCounts: advRowCounts } = await listParquetFiles({
@@ -211,6 +212,7 @@ export async function ingestAdvisories(opts: {
     maxBytesGb: 1500,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames: pkgFileNames, rowCounts: pkgRowCounts } = await listParquetFiles({
