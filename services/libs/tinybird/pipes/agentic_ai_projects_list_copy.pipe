@@ -129,8 +129,7 @@ SQL >
                         argMax(dependentReposCount, updatedAt) AS dependentReposCount,
                         argMax(dependentPackagesCount, updatedAt) AS dependentPackagesCount
                     FROM packageDownloads
-                    WHERE
-                        insightsProjectId IN (SELECT DISTINCT insightsProjectId FROM ai_repos)
+                    WHERE insightsProjectId IN (SELECT DISTINCT insightsProjectId FROM ai_repos)
                     GROUP BY insightsProjectId, date, ecosystem, repo, name
                 )
             GROUP BY insightsProjectId, date
