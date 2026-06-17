@@ -8,15 +8,14 @@ SQL >
 NODE maintainers_roles_copy_member_identities_deduplicated
 SQL >
     SELECT id, memberId
-    FROM (
-        SELECT
-            id,
-            argMax(memberId, updatedAt) AS memberId,
-            argMax(deletedAt, updatedAt) AS deletedAt
-        FROM memberIdentities
-        GROUP BY id
-    )
-    WHERE isNull(deletedAt)
+    FROM
+        (
+            SELECT
+                id, argMax(memberId, updatedAt) AS memberId, argMax(deletedAt, updatedAt) AS deletedAt
+            FROM memberIdentities
+            GROUP BY id
+        ) AS deduped
+    WHERE isNull (deduped.deletedAt)
 
 NODE maintainers_roles_copy_maintainers_deduplicated
 SQL >
