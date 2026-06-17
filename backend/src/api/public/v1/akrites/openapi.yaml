@@ -158,7 +158,6 @@ components:
     OsspreyMetrics:
       type: object
       required:
-        - totalPackages
         - criticalPackages
         - coveragePercent
         - coverageTrend
@@ -167,12 +166,9 @@ components:
         - needsAttention
         - escalated
       properties:
-        totalPackages:
-          type: integer
-          description: Total number of critical packages tracked.
         criticalPackages:
           type: integer
-          description: Critical packages with at least one critical vulnerability.
+          description: Total number of packages marked as critical (is_critical = true).
         coveragePercent:
           type: number
           format: float
@@ -363,14 +359,11 @@ components:
 
     PackageMetrics:
       type: object
-      required: [totalPackages, criticalPackages]
+      required: [criticalPackages]
       properties:
-        totalPackages:
-          type: integer
-          description: Total packages marked as critical.
         criticalPackages:
           type: integer
-          description: Critical packages with has_critical_vulnerability = true.
+          description: Total packages marked as critical (is_critical = true).
 
     Advisory:
       type: object
@@ -387,6 +380,32 @@ components:
           type: string
           nullable: true
 
+    PackageHistoryEvent:
+      type: object
+      required: [id, actorType, activityType, createdAt]
+      properties:
+        id:
+          type: string
+        actorUserId:
+          type: string
+          nullable: true
+        actorType:
+          type: string
+          example: user
+        activityType:
+          type: string
+          example: state_changed
+        content:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
     PackageDetail:
       type: object
       required:
@@ -398,12 +417,18 @@ components:
           type: string
         ecosystem:
           type: string
+        latestVersion:
+          type: string
+          nullable: true
         general:
           type: object
           properties:
             healthScore:
-              type: number
+              type: integer
               nullable: true
+              description: OpenSSF Scorecard score scaled to 0–100 (scorecardScore × 10, rounded).
+            healthBand:
+              $ref: '#/components/schemas/HealthBand'
             impact:
               type: object
               properties:
@@ -412,8 +437,9 @@ components:
                   nullable: true
                   description: Criticality score scaled to 0–100.
                 downloadsLastMonth:
-                  type: integer
+                  type: string
                   nullable: true
+                  description: Raw download count string from the registry.
                 dependentPackages:
                   type: integer
                   nullable: true
@@ -439,13 +465,21 @@ components:
                 hasSecurityFile:
                   type: boolean
                   nullable: true
+                hasSecurityPolicy:
+                  type: boolean
+                  nullable: true
+                  description: repos.security_policy_enabled
+                branchProtectionEnabled:
+                  type: boolean
+                  nullable: true
+                  description: repos.branch_protection_enabled
                 openSSFScorecard:
                   type: number
                   format: float
                   nullable: true
         assessment:
-          type: object
-          description: Reserved for future stewardship assessment fields.
+          nullable: true
+          description: Reserved for future stewardship assessment fields (G1).
         security:
           type: object
           properties:
@@ -462,9 +496,6 @@ components:
               type: object
               properties:
                 isPvrEnabled:
-                  type: boolean
-                  nullable: true
-                hasSecurityPolicyEnabled:
                   type: boolean
                   nullable: true
                 tier0Steward:
@@ -485,6 +516,10 @@ components:
                 mappingConfidence:
                   type: number
                   format: float
+                  nullable: true
+                mappingLabel:
+                  type: string
+                  enum: [High, Medium, Low]
                   nullable: true
                 lastCommitAt:
                   type: string
@@ -509,12 +544,17 @@ components:
               nullable: true
             status:
               $ref: '#/components/schemas/StewardshipStatus'
-            stewards:
-              type: array
+            origin:
+              type: string
               nullable: true
-              items:
-                $ref: '#/components/schemas/StewardEntry'
-            lastActivityAt:
+            version:
+              type: integer
+              nullable: true
+            openedAt:
+              type: string
+              format: date-time
+              nullable: true
+            lastStatusAt:
               type: string
               format: date-time
               nullable: true
@@ -524,9 +564,18 @@ components:
             statusNote:
               type: string
               nullable: true
+            stewards:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/StewardEntry'
+            lastActivityAt:
+              type: string
+              format: date-time
+              nullable: true
         history:
-          type: object
-          description: Reserved for future activity history fields.
+          nullable: true
+          description: Always null in /detail — full history available at GET /packages/history.
 
     PackageStewardshipSummary:
       type: object
@@ -884,6 +933,109 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /akrites/packages/advisories:
+    get:
+      operationId: getAkritesPackageAdvisories
+      summary: Get advisories for a package
+      description: >
+        Returns all open security advisories for a single package identified by
+        PURL. Intended for lazy-loading the Security tab in the package detail drawer.
+      tags:
+        - Packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          description: Package URL (PURL) — must start with `pkg:`.
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Advisory list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [advisories, total]
+                properties:
+                  advisories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Advisory'
+                  total:
+                    type: integer
+        '400':
+          description: Validation error (malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages/history:
+    get:
+      operationId: getAkritesPackageHistory
+      summary: Get stewardship history for a package
+      description: >
+        Returns the full activity log for the stewardship associated with the
+        given PURL, ordered newest-first. Returns an empty list if no stewardship
+        exists. Intended for lazy-loading the History tab in the package detail drawer.
+      tags:
+        - Packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          description: Package URL (PURL) — must start with `pkg:`.
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Stewardship activity history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, total]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageHistoryEvent'
+                  total:
+                    type: integer
+        '400':
+          description: Validation error (malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /akrites/packages:batch-stewardship:
     post:
       operationId: batchGetStewardship
@@ -943,7 +1095,7 @@ paths:
 
   # ── Stewardships ───────────────────────────────────────────────────────────
 
-  /akrites/stewardships:
+  /akrites/stewardships/open:
     post:
       operationId: openStewardship
       summary: Open a stewardship for a package
@@ -995,8 +1147,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /akrites/stewardships/{id}/steward:
-    put:
+  /akrites/stewardships/{id}/assign:
+    post:
       operationId: assignSteward
       summary: Assign a steward to a stewardship
       description: >
@@ -1026,6 +1178,10 @@ paths:
                 role:
                   type: string
                   enum: [lead, co_steward]
+                note:
+                  type: string
+                  minLength: 1
+                  description: Optional note stored in the steward_added activity metadata.
                 moveToAssessing:
                   type: boolean
                   default: false
@@ -1067,7 +1223,7 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /akrites/stewardships/{id}/escalate:
-    put:
+    post:
       operationId: escalateStewardship
       summary: Escalate a stewardship
       description: >
@@ -1125,7 +1281,7 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /akrites/stewardships/{id}/status:
-    put:
+    patch:
       operationId: updateStewardshipStatus
       summary: Update stewardship status
       description: >

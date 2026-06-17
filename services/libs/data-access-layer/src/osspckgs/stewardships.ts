@@ -192,6 +192,7 @@ export async function assignSteward(
     userId: string
     role: 'lead' | 'co_steward'
     assignedBy: string
+    note?: string
     moveToAssessing?: boolean
   },
 ): Promise<{ stewardship: StewardshipRecord; stewards: StewardshipStewardRecord[] } | null> {
@@ -222,7 +223,11 @@ export async function assignSteward(
         stewardshipId,
         actorUserId: data.assignedBy,
         content: `Assigned steward ${data.userId} as ${data.role}`,
-        metadata: JSON.stringify({ userId: data.userId, role: data.role }),
+        metadata: JSON.stringify({
+          userId: data.userId,
+          role: data.role,
+          ...(data.note ? { note: data.note } : {}),
+        }),
       },
     )
 
@@ -385,6 +390,44 @@ export async function listStewardshipActivity(
     })),
     total,
   }
+}
+
+export interface PackageHistoryEvent {
+  id: string
+  actorUserId: string | null
+  actorType: string
+  activityType: string
+  content: string | null
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export async function listPackageHistory(
+  qx: QueryExecutor,
+  stewardshipId: string,
+): Promise<PackageHistoryEvent[]> {
+  const rows: Array<Record<string, unknown>> = await qx.select(
+    `SELECT id::text             AS id,
+            actor_user_id        AS "actorUserId",
+            actor_type           AS "actorType",
+            activity_type        AS "activityType",
+            content,
+            metadata,
+            created_at           AS "createdAt"
+     FROM stewardship_activity
+     WHERE stewardship_id = $(stewardshipId)::bigint
+     ORDER BY created_at DESC`,
+    { stewardshipId },
+  )
+  return rows.map((r) => ({
+    id: r.id as string,
+    actorUserId: r.actorUserId ? String(r.actorUserId) : null,
+    actorType: String(r.actorType),
+    activityType: String(r.activityType),
+    content: r.content ? String(r.content) : null,
+    metadata: r.metadata as Record<string, unknown> | null,
+    createdAt: toIso(r.createdAt),
+  }))
 }
 
 export const ESCALATION_RESOLUTION_PATHS = [
