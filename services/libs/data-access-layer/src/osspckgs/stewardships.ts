@@ -383,7 +383,7 @@ export async function listStewardshipActivity(
       actorUserId: row.actorUserId,
       actorType: row.actorType,
       activityType: row.activityType,
-      content: row.content,
+      content: translateActivityContent(row.content),
       metadata: row.metadata as Record<string, unknown> | null,
       stewardshipStatus: row.stewardshipStatus,
       createdAt: toIso(row.createdAt),
@@ -424,7 +424,7 @@ export async function listPackageHistory(
     actorUserId: r.actorUserId ? String(r.actorUserId) : null,
     actorType: String(r.actorType),
     activityType: String(r.activityType),
-    content: r.content ? String(r.content) : null,
+    content: translateActivityContent(r.content ? String(r.content) : null),
     metadata: r.metadata as Record<string, unknown> | null,
     createdAt: toIso(r.createdAt),
   }))
@@ -448,6 +448,14 @@ export const ESCALATION_RESOLUTION_PATH_LABELS: Record<EscalationResolutionPath,
   consortium_adopts_maintainership: 'Consortium Adopts Maintainership',
   compensating_controls_monitor: 'Compensating Controls / Monitor',
   namespace_takeover: 'Namespace Takeover',
+}
+
+function translateActivityContent(content: string | null): string | null {
+  if (!content) return content
+  return content.replace(/^(Escalated with resolution path: )(\S+)$/, (_, prefix, key) => {
+    const label = ESCALATION_RESOLUTION_PATH_LABELS[key as EscalationResolutionPath]
+    return label ? `${prefix}${label}` : content
+  })
 }
 
 /**
@@ -487,7 +495,7 @@ export async function escalateStewardship(
       resolutionPath: data.resolutionPath,
       statusNote: data.notes ?? null,
       actorUserId: data.actorUserId,
-      content: `Escalated with resolution path: ${ESCALATION_RESOLUTION_PATH_LABELS[data.resolutionPath]}`,
+      content: `Escalated with resolution path: ${data.resolutionPath}`,
       metadata: JSON.stringify({
         resolutionPath: data.resolutionPath,
         ...(data.notes ? { notes: data.notes } : {}),
