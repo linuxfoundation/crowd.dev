@@ -218,12 +218,18 @@ function multiselect {
 SELECTED_SERVICES=()
 
 function select_services() {
-    # Get all services
+    # Get all deployable services from builder definitions
     SERVICES=()
-    while IFS= read -r file; do
-        filename=$(basename "$file" .yaml)
-        SERVICES+=("$filename")
-    done < <(find "$CLI_HOME/services" -name '*.yaml')
+    for env_file in "$CLI_HOME/builders/"*.env; do
+        services_line=$(grep "^SERVICES=" "$env_file" 2>/dev/null || true)
+        if [[ -n "$services_line" ]]; then
+            services_val="${services_line#SERVICES=}"
+            services_val="${services_val//\"/}"
+            for svc in $services_val; do
+                SERVICES+=("$svc")
+            done
+        fi
+    done
 
     # Use fzf if available, fall back to built-in multiselect
     if command -v fzf &>/dev/null; then
@@ -251,7 +257,7 @@ function select_services() {
 
 function deploy_staging() {
     REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-staging-deploy.yaml"
+    WORKFLOW_FILE="lf-oracle-staging-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "
@@ -263,7 +269,7 @@ function deploy_staging() {
 
 function deploy_production() {
     REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-production-deploy.yaml"
+    WORKFLOW_FILE="lf-oracle-production-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "

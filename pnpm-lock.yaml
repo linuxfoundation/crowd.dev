@@ -1315,6 +1315,9 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
+      '@crowd/slack':
+        specifier: workspace:*
+        version: link:../../libs/slack
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal

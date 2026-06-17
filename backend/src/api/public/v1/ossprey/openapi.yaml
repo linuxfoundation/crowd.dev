@@ -1,0 +1,733 @@
+openapi: 3.1.0
+info:
+  title: CDP Public API — OSSPREY Admin Dashboard V2
+  version: 1.0.0
+  description: >
+    Read endpoints for the OSSPREY Admin Dashboard V2.
+
+
+    **Authentication:** OAuth 2.0 bearer token (Auth0 M2M or user session).
+
+
+    **V2 scope:** These endpoints cover the four dashboard tabs (Overview, Queue,
+    Triage Board, Risk Matrix) and the global KPI bar.
+    Package Detail Drawer and write actions are deferred to the next milestone.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+  - url: https://lf-staging.crowd.dev/api/v1
+    description: Staging
+
+tags:
+  - name: Dashboard
+    description: KPI metrics and activity feed (Overview tab).
+  - name: Packages
+    description: Package list and scatter plot (Queue, Triage Board, Risk Matrix tabs).
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid query parameter.
+
+    HealthBand:
+      type: string
+      enum: [healthy, fair, concerning, critical]
+      description: >
+        Server-derived from `scorecardScore` thresholds:
+        `null or < 3.0` → critical · `< 5.0` → concerning · `< 7.0` → fair · `≥ 7.0` → healthy
+
+    StewardshipStatus:
+      type: string
+      enum:
+        - unassigned
+        - open
+        - assessing
+        - active
+        - needs_attention
+        - escalated
+        - blocked
+        - inactive
+
+    Steward:
+      type: object
+      required: [userId, role, assignedAt]
+      properties:
+        userId:
+          type: string
+          description: Auth0 sub of the assigned steward.
+          example: auth0|abc123
+        role:
+          type: string
+          enum: [lead, co_steward]
+        assignedAt:
+          type: string
+          format: date-time
+
+    PackageRow:
+      type: object
+      required:
+        - purl
+        - name
+        - ecosystem
+        - openVulns
+        - maintainerCount
+        - healthBand
+        - stewards
+      properties:
+        purl:
+          type: string
+          example: pkg:npm/lodash@4.17.21
+        name:
+          type: string
+          example: lodash
+        ecosystem:
+          type: string
+          example: npm
+        criticalityScore:
+          type:
+            - number
+            - 'null'
+          description: packages.impact (0–1 float). Multiply × 100 for display score.
+          example: 0.94
+        stewardshipId:
+          type:
+            - string
+            - 'null'
+          example: '4501'
+        stewardshipStatus:
+          oneOf:
+            - $ref: '#/components/schemas/StewardshipStatus'
+            - type: 'null'
+        openVulns:
+          type: integer
+          description: Count of advisory_packages rows for this package.
+          example: 3
+        maxVulnSeverity:
+          type:
+            - string
+            - 'null'
+          enum: [critical, high, medium, low]
+          description: Worst advisory severity. Null if no advisories.
+        maintainerCount:
+          type: integer
+          description: Count of package_maintainers rows. Bus factor proxy.
+          example: 2
+        scorecardScore:
+          type:
+            - number
+            - 'null'
+          description: OpenSSF Scorecard score (0–10). Null if no repo mapped.
+          example: 5.2
+        healthBand:
+          $ref: '#/components/schemas/HealthBand'
+        latestReleaseAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: Used by the frontend to derive the stale flag (≥ 18 months).
+        lastActivity:
+          description: Most recent stewardship activity for this package. Null if none.
+          oneOf:
+            - type: object
+              required: [type, at]
+              properties:
+                type:
+                  type:
+                    - string
+                    - 'null'
+                  example: state_changed
+                content:
+                  type:
+                    - string
+                    - 'null'
+                  example: Moved to active stewardship
+                at:
+                  type: string
+                  format: date-time
+            - type: 'null'
+        stewards:
+          type: array
+          description: Active stewards (deleted_at IS NULL). Empty array if none.
+          items:
+            $ref: '#/components/schemas/Steward'
+
+    StatusCounts:
+      type: object
+      description: Per-status package counts for the tab bar. Computed without the active status filter.
+      required:
+        - all
+        - unassigned
+        - open
+        - assessing
+        - active
+        - needs_attention
+        - escalated
+        - blocked
+        - inactive
+      properties:
+        all:
+          type: integer
+        unassigned:
+          type: integer
+        open:
+          type: integer
+        assessing:
+          type: integer
+        active:
+          type: integer
+        needs_attention:
+          type: integer
+        escalated:
+          type: integer
+        blocked:
+          type: integer
+        inactive:
+          type: integer
+
+    ScatterPoint:
+      type: object
+      required:
+        - purl
+        - name
+        - criticalityScore
+        - healthScore
+        - healthBand
+        - openVulns
+        - advisoryCount
+      properties:
+        purl:
+          type: string
+          example: pkg:npm/lodash@4.17.21
+        name:
+          type: string
+          example: lodash
+        criticalityScore:
+          type: integer
+          description: ROUND(p.impact × 100). Y-axis position (0–100).
+          example: 94
+        healthScore:
+          type: integer
+          description: ROUND(scorecard_score × 10). X-axis position (0–100). 0 if no repo.
+          example: 52
+        healthBand:
+          $ref: '#/components/schemas/HealthBand'
+        stewardshipStatus:
+          oneOf:
+            - $ref: '#/components/schemas/StewardshipStatus'
+            - type: 'null'
+        stewardshipId:
+          type:
+            - string
+            - 'null'
+          example: '4501'
+        openVulns:
+          type: integer
+          example: 3
+        advisoryCount:
+          type: integer
+          description: Alias of openVulns — explicit field for tooltip display.
+          example: 3
+
+    ActivityFeedItem:
+      type: object
+      required:
+        - id
+        - stewardshipId
+        - packagePurl
+        - packageName
+        - packageEcosystem
+        - actorType
+        - activityType
+        - stewardshipStatus
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: '9182736'
+        stewardshipId:
+          type: string
+          example: '4501'
+        packagePurl:
+          type: string
+          example: pkg:npm/minimist@1.2.6
+        packageName:
+          type: string
+          example: minimist
+        packageEcosystem:
+          type: string
+          example: npm
+        actorUserId:
+          type:
+            - string
+            - 'null'
+          description: Auth0 sub. Null for system events.
+          example: auth0|abc123
+        actorName:
+          type:
+            - string
+            - 'null'
+          description: >
+            Display name of the actor. Currently returns actorUserId as a
+            placeholder — will be resolved to a display name once the
+            cross-DB users join is implemented.
+          example: auth0|abc123
+        actorType:
+          type: string
+          enum: [user, system]
+        activityType:
+          type: string
+          enum:
+            - state_changed
+            - steward_added
+            - steward_removed
+            - escalation
+            - escalation_resolved
+            - assessment_started
+            - assessment_completed
+            - assessment_flagged
+            - spot_check
+            - note_added
+          example: escalation
+        content:
+          type:
+            - string
+            - 'null'
+          example: 'Escalated with resolution path: right_of_first_refusal'
+        metadata:
+          type:
+            - object
+            - 'null'
+          additionalProperties: true
+        stewardshipStatus:
+          $ref: '#/components/schemas/StewardshipStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Paths
+# ──────────────────────────────────────────────────────────────────────────────
+paths:
+  /ossprey/metrics:
+    get:
+      operationId: getOsspreyMetrics
+      summary: Global KPI bar metrics
+      description: >
+        Returns the seven aggregate metrics shown in the sticky KPI bar across all
+        four dashboard tabs. Fetch once on page load; refresh after any write action.
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: KPI metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - totalPackages
+                  - criticalPackages
+                  - coveragePercent
+                  - activeStewards
+                  - unassignedCritical
+                  - needsAttention
+                  - escalated
+                properties:
+                  totalPackages:
+                    type: integer
+                    description: Total critical packages (is_critical = true).
+                    example: 1842
+                  criticalPackages:
+                    type: integer
+                    description: Critical packages with at least one critical-severity advisory.
+                    example: 312
+                  coveragePercent:
+                    type: number
+                    format: float
+                    description: >
+                      Percentage of critical packages with status in
+                      (assessing, active, needs_attention). One decimal place.
+                    example: 33.2
+                  coverageTrend:
+                    type:
+                      - number
+                      - 'null'
+                    description: >
+                      Percentage-point change vs. previous month. Null until
+                      snapshot mechanism is implemented.
+                    example: null
+                  activeStewards:
+                    type: integer
+                    description: >
+                      COUNT(DISTINCT user_id) from stewardship_stewards where
+                      deleted_at IS NULL and stewardship status != inactive.
+                    example: 42
+                  unassignedCritical:
+                    type: integer
+                    description: Critical packages with no stewardship row or status = unassigned.
+                    example: 1230
+                  needsAttention:
+                    type: integer
+                    description: Critical packages with status = needs_attention.
+                    example: 47
+                  escalated:
+                    type: integer
+                    description: Critical packages with status = escalated.
+                    example: 8
+              example:
+                totalPackages: 1842
+                criticalPackages: 312
+                coveragePercent: 33.2
+                coverageTrend: null
+                activeStewards: 42
+                unassignedCritical: 1230
+                needsAttention: 47
+                escalated: 8
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ossprey/activity:
+    get:
+      operationId: listStewardshipActivity
+      summary: Paginated stewardship activity feed
+      description: >
+        Returns recent stewardship events across all packages, ordered by most
+        recent first. Used to populate the activity feed on the Overview tab.
+        The frontend groups items by day using `createdAt`.
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        '200':
+          description: Paginated activity feed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows, total, page, pageSize]
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityFeedItem'
+                  total:
+                    type: integer
+                    example: 142
+                  page:
+                    type: integer
+                    example: 1
+                  pageSize:
+                    type: integer
+                    example: 25
+              example:
+                rows:
+                  - id: '9182736'
+                    stewardshipId: '4501'
+                    packagePurl: pkg:maven/org.slf4j/slf4j-api
+                    packageName: slf4j-api
+                    packageEcosystem: maven
+                    actorUserId: auth0|mock-user-alice
+                    actorType: user
+                    activityType: state_changed
+                    content: Assessment complete, moving to active
+                    metadata:
+                      from: assessing
+                      to: active
+                    stewardshipStatus: active
+                    createdAt: '2026-06-14T10:23:00Z'
+                total: 11
+                page: 1
+                pageSize: 25
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ossprey/packages:
+    get:
+      operationId: listOsspreyPackages
+      summary: Filtered paginated package list
+      description: >
+        Returns a paginated, filtered, sorted list of critical packages with their
+        stewardship state and risk signals.
+
+
+        Used by three tabs:
+
+        - **Queue tab** — full table with all filters
+
+        - **Triage Board** — one request per status column, fired in parallel
+          (`?status=X&pageSize=50`)
+
+        - **Summary panel** — click-through navigates to Queue with pre-filled filter
+
+
+        The response always includes `statusCounts` — per-status counts computed
+        without the active `status` filter, used to drive the tab bar badge numbers.
+      tags:
+        - Packages
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+            default: 25
+        - name: name
+          in: query
+          description: Case-insensitive substring search on package name.
+          schema:
+            type: string
+        - name: ecosystem
+          in: query
+          description: Filter by package ecosystem. Not validated server-side — any ecosystem stored in the DB is accepted.
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, stable, declining, abandoned]
+        - name: status
+          in: query
+          description: >
+            Filter by stewardship status. `unassigned` includes packages with
+            no stewardship row (s.id IS NULL).
+          schema:
+            $ref: '#/components/schemas/StewardshipStatus'
+        - name: healthBand
+          in: query
+          schema:
+            $ref: '#/components/schemas/HealthBand'
+        - name: vulnSeverity
+          in: query
+          description: >
+            `any` = at least one open advisory · `high` = worst rank ≥ HIGH ·
+            `critical` = worst rank = CRITICAL · `none` = zero advisories.
+          schema:
+            type: string
+            enum: [any, high, critical, none]
+        - name: staleOnly
+          in: query
+          description: Return only packages with no release in ≥ 18 months.
+          schema:
+            type: boolean
+            default: false
+        - name: unstewardedOnly
+          in: query
+          description: Return only packages with status = unassigned or no stewardship row.
+          schema:
+            type: boolean
+            default: false
+        - name: busFactor1Only
+          in: query
+          description: Return only packages with exactly one maintainer.
+          schema:
+            type: boolean
+            default: false
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [risk, name, impact, openVulns, health]
+            default: risk
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated package list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows, total, page, pageSize, statusCounts]
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageRow'
+                  total:
+                    type: integer
+                    example: 1842
+                  page:
+                    type: integer
+                    example: 1
+                  pageSize:
+                    type: integer
+                    example: 25
+                  statusCounts:
+                    $ref: '#/components/schemas/StatusCounts'
+              example:
+                rows:
+                  - purl: pkg:maven/org.slf4j/slf4j-api
+                    name: slf4j-api
+                    ecosystem: maven
+                    criticalityScore: 0.998
+                    stewardshipId: '101'
+                    stewardshipStatus: active
+                    openVulns: 0
+                    maxVulnSeverity: null
+                    maintainerCount: 2
+                    scorecardScore: 7.5
+                    healthBand: healthy
+                    latestReleaseAt: '2026-04-10T00:00:00Z'
+                    lastActivity:
+                      type: state_changed
+                      content: Assessment complete, moving to active
+                      at: '2026-06-01T10:00:00Z'
+                    stewards:
+                      - userId: auth0|mock-user-alice
+                        role: lead
+                        assignedAt: '2026-01-15T09:00:00Z'
+                total: 9
+                page: 1
+                pageSize: 25
+                statusCounts:
+                  all: 9
+                  unassigned: 1
+                  open: 1
+                  assessing: 1
+                  active: 2
+                  needs_attention: 1
+                  escalated: 1
+                  blocked: 1
+                  inactive: 1
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ossprey/packages/scatter:
+    get:
+      operationId: getOsspreyPackagesScatter
+      summary: Scatter plot data for the Risk Matrix tab
+      description: >
+        Returns all packages where `is_critical = true AND has_critical_vulnerability = true`
+        as lightweight data points for the health-vs-impact scatter plot.
+        No pagination — this filter set is expected to stay around 2 000 packages.
+        Ordered by `impact DESC`.
+
+
+        Dot color is determined by `stewardshipStatus`. Legend checkboxes toggle
+        visibility client-side — no additional API calls needed.
+      tags:
+        - Packages
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Scatter plot data points.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [points, total]
+                properties:
+                  points:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScatterPoint'
+                  total:
+                    type: integer
+                    description: >
+                      Count of packages matching the filter
+                      (is_critical = true AND has_critical_vulnerability = true).
+                      Equals points.length — no separate count query.
+                    example: 2000
+              example:
+                points:
+                  - purl: pkg:maven/org.slf4j/slf4j-api
+                    name: slf4j-api
+                    criticalityScore: 100
+                    healthScore: 75
+                    healthBand: healthy
+                    stewardshipStatus: active
+                    stewardshipId: '101'
+                    openVulns: 0
+                    advisoryCount: 0
+                  - purl: pkg:maven/com.fasterxml.jackson.core/jackson-databind
+                    name: jackson-databind
+                    criticalityScore: 99
+                    healthScore: 0
+                    healthBand: critical
+                    stewardshipStatus: needs_attention
+                    stewardshipId: '102'
+                    openVulns: 2
+                    advisoryCount: 2
+                total: 2000
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

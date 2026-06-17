@@ -1,0 +1,1378 @@
+openapi: 3.1.0
+info:
+  title: CDP Public API — Akrites
+  version: 1.0.0
+  description: >
+    Unified namespace for OSSPREY dashboard read endpoints and stewardship write
+    actions. All routes require an OAuth 2.0 bearer token (Auth0 M2M or user session).
+
+
+    **Rate limits:** packages and stewardships sub-groups each have an independent
+    60 requests/min per-IP bucket.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+  - url: https://lf-staging.crowd.dev/api/v1
+    description: Staging
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Dashboard
+    description: KPI bar metrics and activity feed.
+  - name: Packages
+    description: Package list, scatter plot, detail, and batch stewardship lookup.
+  - name: Stewardships
+    description: Open, assign, escalate, and update stewardship status.
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── Shared primitives ──────────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid query parameter.
+
+    HealthBand:
+      type: string
+      enum: [healthy, fair, concerning, critical]
+      description: >
+        Derived from `scorecardScore`:
+        `null or < 3.0` → critical · `< 5.0` → concerning · `< 7.0` → fair · `≥ 7.0` → healthy
+
+    StewardshipStatus:
+      type: string
+      enum:
+        - unassigned
+        - open
+        - assessing
+        - active
+        - needs_attention
+        - escalated
+        - blocked
+        - inactive
+
+    EscalationResolutionPath:
+      type: string
+      enum:
+        - right_of_first_refusal
+        - replace_the_dependency
+        - find_vendor_for_lts
+        - consortium_adopts_maintainership
+        - compensating_controls_monitor
+        - namespace_takeover
+
+    InactiveReason:
+      type: string
+      enum:
+        - quarterly_cadence_missed
+        - stepped_down
+        - no_longer_critical
+
+    Steward:
+      type: object
+      required: [userId, role, assignedAt]
+      properties:
+        userId:
+          type: string
+          description: Auth0 sub of the assigned steward.
+          example: auth0|abc123
+        role:
+          type: string
+          enum: [lead, co_steward]
+        assignedAt:
+          type: string
+          format: date-time
+
+    StewardshipRecord:
+      type: object
+      required: [id, packageId, status, origin, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        packageId:
+          type: string
+        status:
+          $ref: '#/components/schemas/StewardshipStatus'
+        origin:
+          type: string
+        version:
+          type: integer
+        openedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastStatusAt:
+          type: string
+          format: date-time
+          nullable: true
+        inactiveReason:
+          $ref: '#/components/schemas/InactiveReason'
+          nullable: true
+        resolutionPath:
+          $ref: '#/components/schemas/EscalationResolutionPath'
+          nullable: true
+        statusNote:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StewardEntry:
+      type: object
+      required: [id, stewardshipId, userId, role, assignedAt]
+      properties:
+        id:
+          type: string
+        stewardshipId:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [lead, co_steward]
+        assignedAt:
+          type: string
+          format: date-time
+        assignedBy:
+          type: string
+          nullable: true
+
+    # ── Dashboard schemas ──────────────────────────────────────────────────────
+
+    OsspreyMetrics:
+      type: object
+      required:
+        - criticalPackages
+        - coveragePercent
+        - coverageTrend
+        - activeStewards
+        - unassignedCritical
+        - needsAttention
+        - escalated
+      properties:
+        criticalPackages:
+          type: integer
+          description: Total number of packages marked as critical (is_critical = true).
+        coveragePercent:
+          type: number
+          format: float
+          description: Percentage of critical packages with an active stewardship (assessing, active, or needs_attention).
+        coverageTrend:
+          type: number
+          format: float
+          nullable: true
+          description: Coverage delta vs. previous period. Currently always null (requires snapshot mechanism).
+        activeStewards:
+          type: integer
+          description: Distinct stewards assigned to a non-inactive stewardship.
+        unassignedCritical:
+          type: integer
+          description: Critical packages with no stewardship or status = unassigned.
+        needsAttention:
+          type: integer
+          description: Critical packages whose stewardship status is needs_attention.
+        escalated:
+          type: integer
+          description: Critical packages whose stewardship status is escalated.
+
+    ActivityEntry:
+      type: object
+      required:
+        - id
+        - stewardshipId
+        - packagePurl
+        - packageName
+        - packageEcosystem
+        - actorUserId
+        - actorName
+        - actorType
+        - activityType
+        - stewardshipStatus
+        - createdAt
+      properties:
+        id:
+          type: string
+        stewardshipId:
+          type: string
+        packagePurl:
+          type: string
+        packageName:
+          type: string
+        packageEcosystem:
+          type: string
+        actorUserId:
+          type: string
+          nullable: true
+        actorName:
+          type: string
+          nullable: true
+          description: Display name (currently same as actorUserId; resolution from members table is pending).
+        actorType:
+          type: string
+          example: user
+        activityType:
+          type: string
+          example: status_change
+        content:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        stewardshipStatus:
+          $ref: '#/components/schemas/StewardshipStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Package schemas ────────────────────────────────────────────────────────
+
+    PackageListRow:
+      type: object
+      required:
+        - purl
+        - name
+        - ecosystem
+        - openVulns
+        - maintainerCount
+        - healthBand
+        - stewards
+      properties:
+        purl:
+          type: string
+          example: pkg:npm/%40angular/core@17.0.0
+        name:
+          type: string
+        ecosystem:
+          type: string
+        criticalityScore:
+          type: number
+          format: float
+          nullable: true
+        stewardshipId:
+          type: string
+          nullable: true
+        stewardshipStatus:
+          $ref: '#/components/schemas/StewardshipStatus'
+          nullable: true
+        openVulns:
+          type: integer
+        maxVulnSeverity:
+          type: string
+          enum: [critical, high, medium, low]
+          nullable: true
+        maintainerCount:
+          type: integer
+        scorecardScore:
+          type: number
+          format: float
+          nullable: true
+        healthBand:
+          $ref: '#/components/schemas/HealthBand'
+        latestReleaseAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastActivity:
+          type: object
+          nullable: true
+          required: [type, content, at]
+          properties:
+            type:
+              type: string
+            content:
+              type: string
+              nullable: true
+            at:
+              type: string
+              format: date-time
+        stewards:
+          type: array
+          items:
+            $ref: '#/components/schemas/StewardEntry'
+
+    StatusCounts:
+      type: object
+      description: Count of packages per stewardship status (used to drive filter pill badges).
+      required:
+        [all, unassigned, open, assessing, active, needs_attention, escalated, blocked, inactive]
+      properties:
+        all:
+          type: integer
+          description: Total count across all statuses (matches total from the package list without status filter).
+        unassigned:
+          type: integer
+        open:
+          type: integer
+        assessing:
+          type: integer
+        active:
+          type: integer
+        needs_attention:
+          type: integer
+        escalated:
+          type: integer
+        blocked:
+          type: integer
+        inactive:
+          type: integer
+      example:
+        all: 95
+        unassigned: 42
+        open: 5
+        assessing: 12
+        active: 30
+        needs_attention: 3
+        escalated: 1
+        blocked: 0
+        inactive: 2
+
+    ScatterPoint:
+      type: object
+      required:
+        - purl
+        - name
+        - criticalityScore
+        - healthScore
+        - healthBand
+        - openVulns
+        - advisoryCount
+      properties:
+        purl:
+          type: string
+        name:
+          type: string
+        criticalityScore:
+          type: integer
+          description: Impact score scaled to 0–100.
+        healthScore:
+          type: integer
+          description: OpenSSF Scorecard score scaled to 0–100.
+        healthBand:
+          $ref: '#/components/schemas/HealthBand'
+        stewardshipStatus:
+          $ref: '#/components/schemas/StewardshipStatus'
+          nullable: true
+        stewardshipId:
+          type: string
+          nullable: true
+        openVulns:
+          type: integer
+        advisoryCount:
+          type: integer
+
+    PackageMetrics:
+      type: object
+      required: [criticalPackages]
+      properties:
+        criticalPackages:
+          type: integer
+          description: Total packages marked as critical (is_critical = true).
+
+    Advisory:
+      type: object
+      required: [osvId, severity, resolution]
+      properties:
+        osvId:
+          type: string
+          example: GHSA-xxxx-xxxx-xxxx
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+          nullable: true
+        resolution:
+          type: string
+          nullable: true
+
+    PackageHistoryEvent:
+      type: object
+      required: [id, actorType, activityType, createdAt]
+      properties:
+        id:
+          type: string
+        actorUserId:
+          type: string
+          nullable: true
+        actorType:
+          type: string
+          example: user
+        activityType:
+          type: string
+          example: state_changed
+        content:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PackageDetail:
+      type: object
+      required:
+        [purl, name, ecosystem, general, assessment, security, provenance, stewardship, history]
+      properties:
+        purl:
+          type: string
+        name:
+          type: string
+        ecosystem:
+          type: string
+        latestVersion:
+          type: string
+          nullable: true
+        general:
+          type: object
+          properties:
+            healthScore:
+              type: integer
+              nullable: true
+              description: OpenSSF Scorecard score scaled to 0–100 (scorecardScore × 10, rounded).
+            healthBand:
+              $ref: '#/components/schemas/HealthBand'
+            impact:
+              type: object
+              properties:
+                impactScore:
+                  type: integer
+                  nullable: true
+                  description: Criticality score scaled to 0–100.
+                downloadsLastMonth:
+                  type: string
+                  nullable: true
+                  description: Raw download count string from the registry.
+                dependentPackages:
+                  type: integer
+                  nullable: true
+                dependentRepos:
+                  type: integer
+                  nullable: true
+                transitiveReach:
+                  type: integer
+                  nullable: true
+            riskSignals:
+              type: object
+              properties:
+                lifecycle:
+                  type: string
+                  nullable: true
+                maintainerBusFactor:
+                  type: integer
+                  nullable: true
+                lastRelease:
+                  type: string
+                  format: date-time
+                  nullable: true
+                hasSecurityFile:
+                  type: boolean
+                  nullable: true
+                hasSecurityPolicy:
+                  type: boolean
+                  nullable: true
+                  description: repos.security_policy_enabled
+                branchProtectionEnabled:
+                  type: boolean
+                  nullable: true
+                  description: repos.branch_protection_enabled
+                openSSFScorecard:
+                  type: number
+                  format: float
+                  nullable: true
+        assessment:
+          nullable: true
+          description: Reserved for future stewardship assessment fields (G1).
+        security:
+          type: object
+          properties:
+            securityContacts:
+              type: array
+              nullable: true
+              items:
+                type: string
+            advisories:
+              type: array
+              items:
+                $ref: '#/components/schemas/Advisory'
+            cvd:
+              type: object
+              properties:
+                isPvrEnabled:
+                  type: boolean
+                  nullable: true
+                tier0Steward:
+                  type: string
+                  nullable: true
+                criticalVulnerabilityFlag:
+                  type: boolean
+                  nullable: true
+        provenance:
+          type: object
+          properties:
+            repositoryMapping:
+              type: object
+              properties:
+                declaredRepo:
+                  type: string
+                  nullable: true
+                mappingConfidence:
+                  type: number
+                  format: float
+                  nullable: true
+                mappingLabel:
+                  type: string
+                  enum: [High, Medium, Low]
+                  nullable: true
+                lastCommitAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+            supplyChainIntegrity:
+              type: object
+              properties:
+                buildProvenance:
+                  type: string
+                  nullable: true
+                  description: Not yet ingested.
+                signedReleases:
+                  type: string
+                  nullable: true
+                  description: Not yet ingested.
+        stewardship:
+          type: object
+          properties:
+            id:
+              type: string
+              nullable: true
+            status:
+              $ref: '#/components/schemas/StewardshipStatus'
+            origin:
+              type: string
+              nullable: true
+            version:
+              type: integer
+              nullable: true
+            openedAt:
+              type: string
+              format: date-time
+              nullable: true
+            lastStatusAt:
+              type: string
+              format: date-time
+              nullable: true
+            resolutionPath:
+              $ref: '#/components/schemas/EscalationResolutionPath'
+              nullable: true
+            statusNote:
+              type: string
+              nullable: true
+            stewards:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/StewardEntry'
+            lastActivityAt:
+              type: string
+              format: date-time
+              nullable: true
+        history:
+          nullable: true
+          description: Always null in /detail — full history available at GET /packages/history.
+
+    PackageStewardshipSummary:
+      type: object
+      description: Slim stewardship summary returned per-purl by the batch endpoint.
+      nullable: true
+      required: [name, ecosystem]
+      properties:
+        name:
+          type: string
+        ecosystem:
+          type: string
+        lifecycle:
+          type: string
+          enum: [active, stable, declining, abandoned]
+          nullable: true
+        health:
+          type: number
+          format: float
+          nullable: true
+        impact:
+          type: integer
+          nullable: true
+          description: Criticality score scaled to 0–100.
+        openVulns:
+          type: object
+          nullable: true
+          properties:
+            low:
+              type: integer
+            medium:
+              type: integer
+            high:
+              type: integer
+            critical:
+              type: integer
+        stewardship:
+          $ref: '#/components/schemas/StewardshipStatus'
+          nullable: true
+        stewards:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Steward'
+        lastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastActivityDescription:
+          type: string
+          nullable: true
+
+    # ── Pagination wrapper ─────────────────────────────────────────────────────
+
+    PaginationMeta:
+      type: object
+      required: [total, page, pageSize]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+paths:
+  # ── Dashboard ──────────────────────────────────────────────────────────────
+
+  /akrites/metrics:
+    get:
+      operationId: getAkritesMetrics
+      summary: Get KPI bar metrics
+      description: >
+        Returns aggregate counts that power the global KPI bar on the OSSPREY
+        dashboard (total packages, coverage %, active stewards, unassigned
+        critical, needs-attention, escalated).
+      tags:
+        - Dashboard
+      responses:
+        '200':
+          description: Metrics snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OsspreyMetrics'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/activity:
+    get:
+      operationId: getAkritesActivity
+      summary: Get stewardship activity feed
+      description: >
+        Returns a paginated, reverse-chronological list of stewardship activity
+        events across all packages (status changes, assignments, escalations, etc.).
+      tags:
+        - Dashboard
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        '200':
+          description: Paginated activity feed.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginationMeta'
+                  - type: object
+                    required: [rows]
+                    properties:
+                      rows:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ActivityEntry'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Packages (ossprey-derived read endpoints) ──────────────────────────────
+
+  /akrites/packages:
+    get:
+      operationId: listAkritesPackages
+      summary: List packages with stewardship data
+      description: >
+        Paginated list of critical packages enriched with stewardship status,
+        vulnerability counts, health band, and the latest stewardship activity.
+        Supports rich filtering and sorting.
+      tags:
+        - Packages
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+            default: 25
+        - name: ecosystem
+          in: query
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, stable, declining, abandoned]
+        - name: name
+          in: query
+          description: Substring match on package name.
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/StewardshipStatus'
+        - name: healthBand
+          in: query
+          schema:
+            $ref: '#/components/schemas/HealthBand'
+        - name: vulnSeverity
+          in: query
+          description: >
+            Filter by highest open vulnerability severity present on the package.
+            `none` returns packages with zero vulnerabilities; `any` disables the filter.
+          schema:
+            type: string
+            enum: [any, high, critical, none]
+        - name: staleOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: unstewardedOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: busFactor1Only
+          in: query
+          description: Return only packages whose maintainer count is 1.
+          schema:
+            type: boolean
+            default: false
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, risk, impact, openVulns, health]
+            default: risk
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated package list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginationMeta'
+                  - type: object
+                    required: [rows, statusCounts]
+                    properties:
+                      rows:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PackageListRow'
+                      statusCounts:
+                        $ref: '#/components/schemas/StatusCounts'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages/scatter:
+    get:
+      operationId: getAkritesPackagesScatter
+      summary: Get risk matrix scatter data
+      description: >
+        Returns all critical packages as scatter-plot points with impact score
+        (x-axis) and health score (y-axis). No pagination — the full dataset is
+        returned.
+      tags:
+        - Packages
+      responses:
+        '200':
+          description: Scatter plot dataset.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [points, total]
+                properties:
+                  points:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScatterPoint'
+                  total:
+                    type: integer
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages/metrics:
+    get:
+      operationId: getAkritesPackagesMetrics
+      summary: Get package count metrics
+      description: >
+        Returns total and critical package counts. Lighter alternative to
+        `/akrites/metrics` when only package-level counts are needed.
+      tags:
+        - Packages
+      responses:
+        '200':
+          description: Package count metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageMetrics'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages/detail:
+    get:
+      operationId: getAkritesPackageDetail
+      summary: Get package detail
+      description: >
+        Returns the full detail view for a single package identified by its
+        PURL, including risk signals, security advisories, repository provenance,
+        and current stewardship state.
+      tags:
+        - Packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          description: >
+            Package URL (PURL) — must start with `pkg:`.
+            Version qualifiers are normalised server-side.
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Package detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageDetail'
+        '400':
+          description: Validation error (malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages/advisories:
+    get:
+      operationId: getAkritesPackageAdvisories
+      summary: Get advisories for a package
+      description: >
+        Returns all open security advisories for a single package identified by
+        PURL. Intended for lazy-loading the Security tab in the package detail drawer.
+      tags:
+        - Packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          description: Package URL (PURL) — must start with `pkg:`.
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Advisory list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [advisories, total]
+                properties:
+                  advisories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Advisory'
+                  total:
+                    type: integer
+        '400':
+          description: Validation error (malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages/history:
+    get:
+      operationId: getAkritesPackageHistory
+      summary: Get stewardship history for a package
+      description: >
+        Returns the full activity log for the stewardship associated with the
+        given PURL, ordered newest-first. Returns an empty list if no stewardship
+        exists. Intended for lazy-loading the History tab in the package detail drawer.
+      tags:
+        - Packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          description: Package URL (PURL) — must start with `pkg:`.
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Stewardship activity history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, total]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageHistoryEvent'
+                  total:
+                    type: integer
+        '400':
+          description: Validation error (malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/packages:batch-stewardship:
+    post:
+      operationId: batchGetStewardship
+      summary: Batch stewardship lookup by PURL
+      description: >
+        Given up to 100 PURLs, returns a map of `purl → stewardship summary`
+        for each. Missing packages are returned as `null`. Useful for enriching
+        external package listings with CDP stewardship state.
+      tags:
+        - Packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                    description: Must start with `pkg:`.
+                    example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Per-purl stewardship map.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packages]
+                properties:
+                  packages:
+                    type: object
+                    description: >
+                      Keys are the original PURLs from the request.
+                      Values are null when the package is not found in CDP.
+                    additionalProperties:
+                      oneOf:
+                        - $ref: '#/components/schemas/PackageStewardshipSummary'
+                        - type: 'null'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Stewardships ───────────────────────────────────────────────────────────
+
+  /akrites/stewardships/open:
+    post:
+      operationId: openStewardship
+      summary: Open a stewardship for a package
+      description: >
+        Creates a new stewardship record for the package identified by the given
+        PURL, setting its status to `open`. The authenticated user is recorded
+        as the actor who opened it.
+      tags:
+        - Stewardships
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purl]
+              properties:
+                purl:
+                  type: string
+                  description: Must start with `pkg:`.
+                  example: pkg:npm/%40angular/core@17.0.0
+      responses:
+        '200':
+          description: Stewardship opened.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/stewardships/{id}/assign:
+    post:
+      operationId: assignSteward
+      summary: Assign a steward to a stewardship
+      description: >
+        Assigns a user as a steward (lead or co-steward) for the given
+        stewardship. Optionally transitions the stewardship status to
+        `assessing` in the same operation.
+      tags:
+        - Stewardships
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, role]
+              properties:
+                userId:
+                  type: string
+                  description: Auth0 sub of the user to assign.
+                  example: auth0|abc123
+                role:
+                  type: string
+                  enum: [lead, co_steward]
+                note:
+                  type: string
+                  minLength: 1
+                  description: Optional note stored in the steward_added activity metadata.
+                moveToAssessing:
+                  type: boolean
+                  default: false
+                  description: >
+                    When true, automatically transitions stewardship status to
+                    `assessing` after assignment.
+      responses:
+        '200':
+          description: Steward assigned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship, stewards]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+                  stewards:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StewardEntry'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Stewardship not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/stewardships/{id}/escalate:
+    post:
+      operationId: escalateStewardship
+      summary: Escalate a stewardship
+      description: >
+        Transitions the stewardship to `escalated` status and records the chosen
+        resolution path. Optionally attaches a free-text note.
+      tags:
+        - Stewardships
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolutionPath]
+              properties:
+                resolutionPath:
+                  $ref: '#/components/schemas/EscalationResolutionPath'
+                notes:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: Stewardship escalated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Stewardship not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/stewardships/{id}/status:
+    patch:
+      operationId: updateStewardshipStatus
+      summary: Update stewardship status
+      description: >
+        Updates the stewardship status. Valid target statuses are:
+        `assessing`, `active`, `needs_attention`, `blocked`, `inactive`.
+        When setting `inactive`, `inactiveReason` is required.
+      tags:
+        - Stewardships
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [assessing, active, needs_attention, blocked, inactive]
+                inactiveReason:
+                  $ref: '#/components/schemas/InactiveReason'
+                  description: Required when status is `inactive`.
+                notes:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: Stewardship status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stewardship]
+                properties:
+                  stewardship:
+                    $ref: '#/components/schemas/StewardshipRecord'
+        '400':
+          description: >
+            Validation error. Also returned when `status` is `inactive` but
+            `inactiveReason` is missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Stewardship not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

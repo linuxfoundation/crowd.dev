@@ -27,6 +27,9 @@ Options:
                            ${VALID_KINDS.join(', ')}
                          "repos" and "package_repos" always run together (one workflow).
                          "advisories" and "advisory_packages" always run together (one workflow).
+  --snapshot-date DATE   Override BQ snapshot resolution for all partition-filtered kinds.
+                         Use YYYY-MM-DD. Skips resolveSnapshotDate BQ call and uses this date
+                         directly. Useful for re-running with a known-good older snapshot.
   --reuse-exports        Skip BQ for any kind that has recent exported data in DB+GCS.
                          Falls back to BQ if files are gone or no prior export exists.
   --export-name <name>   Skip BQ entirely for kinds covered by a named export
@@ -47,6 +50,7 @@ Examples:
   pnpm trigger-bootstrap:local full CARGO --export-name cargo-may-2026 --deps-table-b
   pnpm trigger-bootstrap:local full --kinds dependent_counts
   pnpm trigger-bootstrap:local full --kinds packages,versions
+  pnpm trigger-bootstrap:local full --kinds dependent_counts --snapshot-date 2026-06-04
 `
 
 async function main(): Promise<void> {
@@ -70,6 +74,20 @@ async function main(): Promise<void> {
   }
   const exportName = exportNameIdx !== -1 ? args[exportNameIdx + 1] : undefined
 
+  const snapshotDateIdx = args.indexOf('--snapshot-date')
+  if (
+    snapshotDateIdx !== -1 &&
+    (snapshotDateIdx + 1 >= args.length || args[snapshotDateIdx + 1].startsWith('--'))
+  ) {
+    console.error('--snapshot-date requires a value (YYYY-MM-DD)')
+    process.exit(1)
+  }
+  const snapshotDate = snapshotDateIdx !== -1 ? args[snapshotDateIdx + 1] : undefined
+  if (snapshotDate && !/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) {
+    console.error(`--snapshot-date must be YYYY-MM-DD, got: ${snapshotDate}`)
+    process.exit(1)
+  }
+
   const kindsIdx = args.indexOf('--kinds')
   if (kindsIdx !== -1 && (kindsIdx + 1 >= args.length || args[kindsIdx + 1].startsWith('--'))) {
     console.error('--kinds requires a value')
@@ -88,7 +106,7 @@ async function main(): Promise<void> {
   const positional: string[] = []
   for (let i = 0; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      if (args[i] === '--export-name' || args[i] === '--kinds') i++ // skip value
+      if (args[i] === '--export-name' || args[i] === '--kinds' || args[i] === '--snapshot-date') i++ // skip value
       continue
     }
     positional.push(args[i])
@@ -130,11 +148,12 @@ async function main(): Promise<void> {
   const handle = await client.workflow.start(bootstrapOsspckgs, {
     taskQueue: 'bq-dataset-ingest',
     workflowId,
-    args: [{ mode, ecosystems, kinds, reuseExports, depsTableOption, exportName }],
+    args: [{ mode, ecosystems, kinds, reuseExports, depsTableOption, exportName, snapshotDate }],
   })
 
   const flags = [
     kinds ? `--kinds ${kinds.join(',')}` : '',
+    snapshotDate ? `--snapshot-date ${snapshotDate}` : '',
     reuseExports ? '--reuse-exports' : '',
     depsTableOption === 'B' ? '--deps-table-b' : '',
     exportName ? `--export-name ${exportName}` : '',

@@ -13,8 +13,10 @@ import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
 
 import { memberOrganizationAffiliationsRouter } from './affiliations'
+import { akritesRouter } from './akrites'
 import { membersRouter } from './members'
 import { organizationsRouter } from './organizations'
+import { osspreyRouter } from './ossprey'
 import { packagesRouter } from './packages'
 import { batchGetStewardship } from './packages/batchGetStewardship'
 import { stewardshipsRouter } from './stewardships'
@@ -28,6 +30,7 @@ export function v1Router(): Router {
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
 
+  // TODO[deprecate]: /packages, /stewardships, /ossprey are superseded by /akrites — remove once consumers have migrated
   router.post(
     /^\/packages:batch-stewardship\/?$/,
     oauth2Middleware(AUTH0_CONFIG),
@@ -38,6 +41,9 @@ export function v1Router(): Router {
   )
   router.use('/packages', oauth2Middleware(AUTH0_CONFIG), packagesRouter())
   router.use('/stewardships', oauth2Middleware(AUTH0_CONFIG), stewardshipsRouter())
+  router.use('/ossprey', oauth2Middleware(AUTH0_CONFIG), osspreyRouter())
+
+  router.use('/akrites', oauth2Middleware(AUTH0_CONFIG), akritesRouter())
 
   router.use(() => {
     throw new NotFoundError()
