@@ -389,7 +389,8 @@ components:
 
     PackageDetail:
       type: object
-      required: [purl, name, ecosystem, general, assessment, security, provenance, stewardship, history]
+      required:
+        [purl, name, ecosystem, general, assessment, security, provenance, stewardship, history]
       properties:
         purl:
           type: string

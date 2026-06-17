@@ -2,10 +2,10 @@ import { Router } from 'express'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
+
 // TODO: restore once scopes are added to Auth0 staging tenant
 // import { requireScopes } from '@/api/public/middlewares/requireScopes'
 // import { SCOPES } from '@/security/scopes'
-
 import { activityFeedHandler } from '../ossprey/activityFeed'
 import { metricsHandler } from '../ossprey/metrics'
 import { packageListHandler } from '../ossprey/packageList'
