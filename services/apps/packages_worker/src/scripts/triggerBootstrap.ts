@@ -37,6 +37,10 @@ Options:
   --deps-table-b         Use DependenciesLatest instead of DependencyGraphEdgesLatest
                          for deps. Cheaper (~$4.69 vs $12.67 for CARGO) but loses
                          version_constraint. ADR-0003 Option B. Good for local testing.
+  --fill-constraints     Re-export full BQ deps data and upsert version_constraint for
+                         rows where it is currently NULL. Use after a --deps-table-b run
+                         to backfill missing version_constraint values without re-inserting
+                         rows. Only affects package_dependencies.
   --help                 Show this help
 
 Examples:
@@ -63,6 +67,7 @@ async function main(): Promise<void> {
 
   const reuseExports = args.includes('--reuse-exports')
   const depsTableOption: 'A' | 'B' = args.includes('--deps-table-b') ? 'B' : 'A'
+  const fillConstraints = args.includes('--fill-constraints')
 
   const exportNameIdx = args.indexOf('--export-name')
   if (
@@ -148,7 +153,18 @@ async function main(): Promise<void> {
   const handle = await client.workflow.start(bootstrapOsspckgs, {
     taskQueue: 'bq-dataset-ingest',
     workflowId,
-    args: [{ mode, ecosystems, kinds, reuseExports, depsTableOption, exportName, snapshotDate }],
+    args: [
+      {
+        mode,
+        ecosystems,
+        kinds,
+        reuseExports,
+        depsTableOption,
+        exportName,
+        snapshotDate,
+        fillConstraints,
+      },
+    ],
   })
 
   const flags = [
@@ -157,6 +173,7 @@ async function main(): Promise<void> {
     reuseExports ? '--reuse-exports' : '',
     depsTableOption === 'B' ? '--deps-table-b' : '',
     exportName ? `--export-name ${exportName}` : '',
+    fillConstraints ? '--fill-constraints' : '',
   ].filter(Boolean)
   console.log(
     `Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`,
