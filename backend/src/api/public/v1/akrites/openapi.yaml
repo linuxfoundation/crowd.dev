@@ -322,7 +322,8 @@ components:
     StatusCounts:
       type: object
       description: Count of packages per stewardship status (used to drive filter pill badges).
-      required: [all, unassigned, open, assessing, active, needs_attention, escalated, blocked, inactive]
+      required:
+        [all, unassigned, open, assessing, active, needs_attention, escalated, blocked, inactive]
       properties:
         all:
           type: integer
