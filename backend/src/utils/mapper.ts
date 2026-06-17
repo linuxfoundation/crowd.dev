@@ -58,7 +58,7 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
       })[0]
 
       if (displayRow.id) {
-        hiddenEmailDomainIds.add(displayRow.id)
+        hiddenEmailDomainIds.add(emailDomainRow.id)
 
         const existingGroup = displayGroups.get(displayRow.id)
         if (existingGroup) {
