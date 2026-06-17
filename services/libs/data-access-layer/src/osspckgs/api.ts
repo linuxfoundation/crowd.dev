@@ -78,7 +78,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
         COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
         COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
         COUNT(*) FILTER (WHERE s.status = 'escalated')::text                              AS escalated,
-        COUNT(*) FILTER (WHERE s.status = 'unassigned' OR s.id IS NULL)::text             AS "unassignedCritical"
+        COUNT(*) FILTER (WHERE s.status NOT IN ('assessing','active','needs_attention','escalated') OR s.id IS NULL)::text AS "unassignedCritical"
       FROM packages p
       LEFT JOIN stewardships s ON s.package_id = p.id
       WHERE p.is_critical = true
