@@ -11,7 +11,9 @@ SQL >
     FROM
         (
             SELECT
-                id, argMax(memberId, updatedAt) AS memberId, argMax(deletedAt, updatedAt) AS deletedAt
+                id,
+                argMax((memberId, deletedAt), updatedAt).1 AS memberId,
+                argMax((memberId, deletedAt), updatedAt).2 AS deletedAt
             FROM memberIdentities
             GROUP BY id
         ) AS deduped
