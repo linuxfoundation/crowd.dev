@@ -55,8 +55,7 @@ SQL >
     SELECT uniqIf(memberId, memberId != '') AS maintainerCount
     FROM maintainers_roles_copy_ds
     WHERE
-        insightsProjectId = (SELECT insightsProjectId FROM segments_filtered)
-        AND role = 'maintainer'
+        insightsProjectId = (SELECT insightsProjectId FROM segments_filtered) AND role = 'maintainer'
         {% if defined(repos) %}
             AND repoUrl
             IN {{ Array(repos, 'String', description="Filter maintainer repo list", required=False) }}
