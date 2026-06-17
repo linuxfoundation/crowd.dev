@@ -7,12 +7,13 @@ import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   deleteMemberOrganizations,
-  fetchManyMemberOrgsWithOrgData,
+  fetchMemberOrganizations,
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
 
 import { noContent } from '@/utils/api'
+import { getOverlappingEmailDomainMemberOrganizations } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -31,21 +32,31 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Member not found')
   }
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
-
-  const memberOrg = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === workExperienceId)
+  const memberOrgs = await fetchMemberOrganizations(qx, memberId)
+  const memberOrg = memberOrgs.find((mo) => mo.id === workExperienceId)
 
   if (!memberOrg) {
     throw new NotFoundError('Work experience not found')
   }
 
+  const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+    memberOrgs,
+    memberOrg,
+  )
+
+  const memberOrgIdsToDelete = [
+    workExperienceId,
+    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
+  ]
+
+  // Delete hidden grouped rows with the visible row so read responses stay consistent
   await captureApiChange(
     req,
     memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState(memberOrg)
 
       await qx.tx(async (tx) => {
-        await deleteMemberOrganizations(tx, memberId, [workExperienceId])
+        await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete)
       })
 
       // Signal after commit so the workflow sees persisted changes
