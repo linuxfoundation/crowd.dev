@@ -502,6 +502,10 @@ export default class MemberService extends LoggerBase {
             }
           }
 
+          const isBotMember = this.botDetectionService.isFlaggedAsBot(
+            attributes as Record<string, unknown>,
+          )
+
           const emailIdentities = data.identities.filter(
             (i) => i.type === MemberIdentityType.EMAIL && i.verified,
           )
@@ -514,6 +518,7 @@ export default class MemberService extends LoggerBase {
                   orgPromiseCache,
                   effectiveMemberId,
                   activityTimestamp,
+                  isBotMember,
                 ),
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
@@ -693,7 +698,11 @@ export default class MemberService extends LoggerBase {
             }
           }
 
-          if (this.botDetectionService.isFlaggedAsBot(toUpdate.attributes)) {
+          const isBotMember = this.botDetectionService.isFlaggedAsBot(
+            original.attributes as Record<string, unknown>,
+          )
+
+          if (isBotMember) {
             this.log.debug({ memberId: id }, 'Skipping organization creation for bot member')
             return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
@@ -752,6 +761,7 @@ export default class MemberService extends LoggerBase {
                   orgPromiseCache,
                   effectiveMemberId,
                   activityTimestamp,
+                  isBotMember,
                 ),
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
@@ -807,6 +817,7 @@ export default class MemberService extends LoggerBase {
     orgPromiseCache?: Map<string, Promise<string | undefined>>,
     memberId?: string,
     activityTimestamp?: string,
+    isBotMember = false,
   ): Promise<IOrganizationIdSource[]> {
     const orgService = new OrganizationService(this.store, this.log)
     const organizations: IOrganizationIdSource[] = []
@@ -866,7 +877,8 @@ export default class MemberService extends LoggerBase {
           id: orgId,
           source: orgSource,
         })
-        if (memberId && activityTimestamp) {
+
+        if (memberId && activityTimestamp && !isBotMember) {
           await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
         }
       }
