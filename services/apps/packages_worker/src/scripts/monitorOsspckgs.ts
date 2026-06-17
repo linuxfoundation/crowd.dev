@@ -59,7 +59,7 @@ async function fetchJobs() {
     SELECT
       id, job_kind, status, sync_mode,
       snapshot_at, provisional_snapshot_at,
-      gcs_prefix, export_name, ecosystems,
+      gcs_prefix, export_name,
       row_count_bq, row_count_staging, row_count_pg,
       bq_bytes_billed,
       table_row_counts,
