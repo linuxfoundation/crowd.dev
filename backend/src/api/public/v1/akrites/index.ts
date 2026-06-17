@@ -2,6 +2,9 @@ import { Router } from 'express'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
+// TODO: restore once scopes are added to Auth0 staging tenant
+// import { requireScopes } from '@/api/public/middlewares/requireScopes'
+// import { SCOPES } from '@/security/scopes'
 
 import { activityFeedHandler } from '../ossprey/activityFeed'
 import { metricsHandler } from '../ossprey/metrics'
@@ -27,29 +30,61 @@ export function akritesRouter(): Router {
   // /packages/scatter registered before router.use('/packages', ...) so Express evaluates this
   // explicit route first; without this ordering the sub-router would receive the request first
   // and call next() on no match, adding unnecessary overhead.
-  router.get('/packages/scatter', safeWrap(packageScatterHandler))
-  router.get('/packages', safeWrap(packageListHandler))
+  router.get('/packages/scatter', packagesRateLimiter, safeWrap(packageScatterHandler))
+  router.get('/packages', packagesRateLimiter, safeWrap(packageListHandler))
   router.get('/activity', safeWrap(activityFeedHandler))
 
   // --- packages ---
   router.post(
     /^\/packages:batch-stewardship\/?$/,
     packagesRateLimiter,
+    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
     safeWrap(batchGetStewardship),
   )
   const packagesSubRouter = Router()
   packagesSubRouter.use(packagesRateLimiter)
-  packagesSubRouter.get('/metrics', safeWrap(getPackagesMetrics))
-  packagesSubRouter.get('/detail', safeWrap(getPackage))
+  packagesSubRouter.get(
+    '/metrics',
+    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    safeWrap(getPackagesMetrics),
+  )
+  packagesSubRouter.get(
+    '/detail',
+    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
+    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    safeWrap(getPackage),
+  )
   router.use('/packages', packagesSubRouter)
 
   // --- stewardships ---
   const stewardshipsSubRouter = Router()
   stewardshipsSubRouter.use(stewardshipsRateLimiter)
-  stewardshipsSubRouter.post('/', safeWrap(openStewardship))
-  stewardshipsSubRouter.put('/:id/steward', safeWrap(assignStewardHandler))
-  stewardshipsSubRouter.put('/:id/escalate', safeWrap(escalateHandler))
-  stewardshipsSubRouter.put('/:id/status', safeWrap(updateStatusHandler))
+  stewardshipsSubRouter.post(
+    '/',
+    // TODO: restore once write:stewardships is added to Auth0 staging tenant
+    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(openStewardship),
+  )
+  stewardshipsSubRouter.put(
+    '/:id/steward',
+    // TODO: restore once write:stewardships is added to Auth0 staging tenant
+    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(assignStewardHandler),
+  )
+  stewardshipsSubRouter.put(
+    '/:id/escalate',
+    // TODO: restore once write:stewardships is added to Auth0 staging tenant
+    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(escalateHandler),
+  )
+  stewardshipsSubRouter.put(
+    '/:id/status',
+    // TODO: restore once write:stewardships is added to Auth0 staging tenant
+    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(updateStatusHandler),
+  )
   router.use('/stewardships', stewardshipsSubRouter)
 
   return router
