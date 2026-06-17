@@ -8,15 +8,10 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { normalizePurl } from '../packages/purl'
+import { purlFieldSchema } from '../packages/purl'
 
 const bodySchema = z.object({
-  purl: z
-    .string()
-    .trim()
-    .min(1)
-    .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
-    .transform(normalizePurl),
+  purl: purlFieldSchema,
 })
 
 export async function openStewardship(req: Request, res: Response): Promise<void> {

@@ -143,15 +143,26 @@ components:
 
     StewardEntry:
       type: object
-      required: [userId, role, assignedAt]
+      required: [id, stewardshipId, userId, role, assignedAt]
       properties:
+        id:
+          type: string
+        stewardshipId:
+          type: string
         userId:
           type: string
+        name:
+          type: string
+          nullable: true
         role:
           type: string
+          enum: [lead, co_steward]
         assignedAt:
           type: string
           format: date-time
+        assignedBy:
+          type: string
+          nullable: true
 
     # ── Dashboard schemas ──────────────────────────────────────────────────────
 
@@ -311,9 +322,29 @@ components:
     StatusCounts:
       type: object
       description: Count of packages per stewardship status (used to drive filter pill badges).
-      additionalProperties:
-        type: integer
+      required: [all, unassigned, open, assessing, active, needs_attention, escalated, blocked, inactive]
+      properties:
+        all:
+          type: integer
+          description: Total count across all statuses (matches total from the package list without status filter).
+        unassigned:
+          type: integer
+        open:
+          type: integer
+        assessing:
+          type: integer
+        active:
+          type: integer
+        needs_attention:
+          type: integer
+        escalated:
+          type: integer
+        blocked:
+          type: integer
+        inactive:
+          type: integer
       example:
+        all: 95
         unassigned: 42
         open: 5
         assessing: 12

@@ -695,6 +695,7 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
     ) r_sc ON true
     WHERE p.is_critical = true
     ORDER BY p.impact DESC NULLS LAST, p.purl ASC
+    LIMIT 2000
   `)
 
   return rows.map((r) => ({

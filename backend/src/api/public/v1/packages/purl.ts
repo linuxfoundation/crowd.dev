@@ -15,14 +15,14 @@
  */
 import { z } from 'zod'
 
-export const purlQuerySchema = z.object({
-  purl: z
-    .string()
-    .trim()
-    .min(1)
-    .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
-    .transform(normalizePurl),
-})
+export const purlFieldSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
+  .transform(normalizePurl)
+
+export const purlQuerySchema = z.object({ purl: purlFieldSchema })
 
 export function normalizePurl(purl: string): string {
   const withoutQualifiers = purl.replace(/[?#].*$/, '')
