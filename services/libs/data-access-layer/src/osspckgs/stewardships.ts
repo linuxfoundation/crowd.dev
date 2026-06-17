@@ -383,7 +383,11 @@ export async function listStewardshipActivity(
       actorUserId: row.actorUserId,
       actorType: row.actorType,
       activityType: row.activityType,
-      content: row.content,
+      content: translateActivityContent(
+        row.content,
+        row.activityType,
+        row.metadata as Record<string, unknown> | null,
+      ),
       metadata: row.metadata as Record<string, unknown> | null,
       stewardshipStatus: row.stewardshipStatus,
       createdAt: toIso(row.createdAt),
@@ -424,7 +428,11 @@ export async function listPackageHistory(
     actorUserId: r.actorUserId ? String(r.actorUserId) : null,
     actorType: String(r.actorType),
     activityType: String(r.activityType),
-    content: r.content ? String(r.content) : null,
+    content: translateActivityContent(
+      r.content ? String(r.content) : null,
+      String(r.activityType),
+      r.metadata as Record<string, unknown> | null,
+    ),
     metadata: r.metadata as Record<string, unknown> | null,
     createdAt: toIso(r.createdAt),
   }))
@@ -440,6 +448,32 @@ export const ESCALATION_RESOLUTION_PATHS = [
 ] as const
 
 export type EscalationResolutionPath = (typeof ESCALATION_RESOLUTION_PATHS)[number]
+
+export const ESCALATION_RESOLUTION_PATH_LABELS: Record<EscalationResolutionPath, string> = {
+  right_of_first_refusal: 'Right of First Refusal',
+  replace_the_dependency: 'Replace the Dependency',
+  find_vendor_for_lts: 'Find Vendor for LTS',
+  consortium_adopts_maintainership: 'Consortium Adopts Maintainership',
+  compensating_controls_monitor: 'Compensating Controls / Monitor',
+  namespace_takeover: 'Namespace Takeover',
+}
+
+export function translateActivityContent(
+  content: string | null,
+  activityType?: string | null,
+  metadata?: Record<string, unknown> | null,
+): string | null {
+  if (!content) return content
+  if (activityType === 'escalation' && metadata?.resolutionPath) {
+    const label =
+      ESCALATION_RESOLUTION_PATH_LABELS[metadata.resolutionPath as EscalationResolutionPath]
+    if (label) return `Escalated with resolution path: ${label}`
+  }
+  return content.replace(/^(Escalated with resolution path: )(\S+)$/, (_, prefix, key) => {
+    const label = ESCALATION_RESOLUTION_PATH_LABELS[key as EscalationResolutionPath]
+    return label ? `${prefix}${label}` : content
+  })
+}
 
 /**
  * Escalates a stewardship. Updates status to 'escalated' and logs the
