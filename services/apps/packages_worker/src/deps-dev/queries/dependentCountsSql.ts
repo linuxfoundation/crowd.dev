@@ -14,8 +14,8 @@ WITH purl_map AS (
 )
 SELECT
   pm.purl                                                                                                  AS purl,
-  COUNT(DISTINCT IF(d.MinimumDepth = 1, CONCAT(d.Dependent.System, ':', d.Dependent.Name), NULL))         AS dependent_count,
-  COUNT(DISTINCT IF(d.MinimumDepth > 1, CONCAT(d.Dependent.System, ':', d.Dependent.Name), NULL))         AS transitive_dependent_count,
+  COUNT(DISTINCT IF(d.MinimumDepth = 1 AND d.Dependent.Name NOT LIKE '%>%', CONCAT(d.Dependent.System, ':', d.Dependent.Name), NULL))         AS dependent_count,
+  COUNT(DISTINCT IF(d.MinimumDepth > 1 AND d.Dependent.Name NOT LIKE '%>%', CONCAT(d.Dependent.System, ':', d.Dependent.Name), NULL))         AS transitive_dependent_count,
   COUNT(DISTINCT pvp.ProjectName)                                                                          AS dependent_repos_count
 FROM \`bigquery-public-data.deps_dev_v1.Dependents\` d
 JOIN purl_map pm ON pm.System = d.System AND pm.Name = d.Name

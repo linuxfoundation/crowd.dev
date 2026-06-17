@@ -50,6 +50,7 @@
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/database": "workspace:*",
     "@crowd/logging": "workspace:*",
+    "@crowd/slack": "workspace:*",
     "@dsnp/parquetjs": "^1.7.0",
     "@google-cloud/bigquery": "^8.3.1",
     "@google-cloud/storage": "7.19.0",

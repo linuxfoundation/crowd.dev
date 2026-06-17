@@ -646,6 +646,13 @@ export default class ActivityService extends LoggerBase {
       `[ACTIVITY] We still have ${relevantPayloads.length} activities left to process after finding segments!`,
     )
 
+    // relevantPayloads can be drained to zero by the erasure/segment loop above (e.g. all
+    // members flagged for erasure). Calling queryActivityRelations with an empty array would
+    // produce invalid SQL: `timestamp in ()` and a bare `()` group.
+    if (relevantPayloads.length === 0) {
+      return resultMap
+    }
+
     const orConditions = relevantPayloads.map((r) => {
       return {
         and: [

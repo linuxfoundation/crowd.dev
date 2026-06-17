@@ -13,6 +13,17 @@
  * This is always the version separator, not an npm scope (pkg:npm/@babel/core
  * has @babel followed by /core, so it never matches the end-of-string pattern).
  */
+import { z } from 'zod'
+
+export const purlFieldSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((v) => v.startsWith('pkg:'), { message: 'purl must start with pkg:' })
+  .transform(normalizePurl)
+
+export const purlQuerySchema = z.object({ purl: purlFieldSchema })
+
 export function normalizePurl(purl: string): string {
   const withoutQualifiers = purl.replace(/[?#].*$/, '')
   const withoutVersion = withoutQualifiers.replace(/@[^/@]+$/, '')

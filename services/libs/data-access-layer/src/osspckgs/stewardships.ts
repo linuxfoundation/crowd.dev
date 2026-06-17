@@ -192,6 +192,7 @@ export async function assignSteward(
     userId: string
     role: 'lead' | 'co_steward'
     assignedBy: string
+    note?: string
     moveToAssessing?: boolean
   },
 ): Promise<{ stewardship: StewardshipRecord; stewards: StewardshipStewardRecord[] } | null> {
@@ -222,7 +223,11 @@ export async function assignSteward(
         stewardshipId,
         actorUserId: data.assignedBy,
         content: `Assigned steward ${data.userId} as ${data.role}`,
-        metadata: JSON.stringify({ userId: data.userId, role: data.role }),
+        metadata: JSON.stringify({
+          userId: data.userId,
+          role: data.role,
+          ...(data.note ? { note: data.note } : {}),
+        }),
       },
     )
 
@@ -307,6 +312,122 @@ export async function getStewardshipSummary(
     stewards: stewards.map(mapStewardStewardRow),
     lastActivityAt: activityRow?.last_activity_at ? toIso(activityRow.last_activity_at) : null,
   }
+}
+
+export interface ActivityFeedRow {
+  id: string
+  stewardshipId: string
+  packagePurl: string
+  packageName: string
+  packageEcosystem: string
+  actorUserId: string | null
+  // TODO: join actor display name from crowd.dev users/members table (actor_user_id is an Auth0 ID stored in packages DB)
+  actorType: string
+  activityType: string
+  content: string | null
+  metadata: Record<string, unknown> | null
+  stewardshipStatus: string
+  createdAt: string
+  total: string
+}
+
+export async function listStewardshipActivity(
+  qx: QueryExecutor,
+  opts: { page: number; pageSize: number },
+): Promise<{ rows: Omit<ActivityFeedRow, 'total'>[]; total: number }> {
+  const rows: ActivityFeedRow[] = await qx.select(
+    `
+    SELECT
+      sa.id::text                        AS id,
+      sa.stewardship_id::text            AS "stewardshipId",
+      p.purl                             AS "packagePurl",
+      p.name                             AS "packageName",
+      p.ecosystem                        AS "packageEcosystem",
+      sa.actor_user_id                   AS "actorUserId",
+      sa.actor_type                      AS "actorType",
+      sa.activity_type                   AS "activityType",
+      sa.content                         AS content,
+      sa.metadata                        AS metadata,
+      s.status                           AS "stewardshipStatus",
+      sa.created_at                      AS "createdAt",
+      COUNT(*) OVER()::text              AS total
+    FROM stewardship_activity sa
+    JOIN stewardships s ON s.id = sa.stewardship_id
+    JOIN packages p ON p.id = s.package_id
+    ORDER BY sa.created_at DESC, sa.id DESC
+    LIMIT $(limit) OFFSET $(offset)
+    `,
+    { limit: opts.pageSize, offset: (opts.page - 1) * opts.pageSize },
+  )
+
+  let total: number
+  if (rows.length > 0) {
+    total = parseInt(rows[0].total, 10)
+  } else {
+    const countRow: { count: string } = await qx.selectOne(
+      `SELECT COUNT(*)::text AS count
+       FROM stewardship_activity sa
+       JOIN stewardships s ON s.id = sa.stewardship_id
+       JOIN packages p ON p.id = s.package_id`,
+    )
+    total = parseInt(countRow.count, 10)
+  }
+
+  return {
+    rows: rows.map((row) => ({
+      id: row.id,
+      stewardshipId: row.stewardshipId,
+      packagePurl: row.packagePurl,
+      packageName: row.packageName,
+      packageEcosystem: row.packageEcosystem,
+      actorUserId: row.actorUserId,
+      actorType: row.actorType,
+      activityType: row.activityType,
+      content: row.content,
+      metadata: row.metadata as Record<string, unknown> | null,
+      stewardshipStatus: row.stewardshipStatus,
+      createdAt: toIso(row.createdAt),
+    })),
+    total,
+  }
+}
+
+export interface PackageHistoryEvent {
+  id: string
+  actorUserId: string | null
+  actorType: string
+  activityType: string
+  content: string | null
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export async function listPackageHistory(
+  qx: QueryExecutor,
+  stewardshipId: string,
+): Promise<PackageHistoryEvent[]> {
+  const rows: Array<Record<string, unknown>> = await qx.select(
+    `SELECT id::text             AS id,
+            actor_user_id        AS "actorUserId",
+            actor_type           AS "actorType",
+            activity_type        AS "activityType",
+            content,
+            metadata,
+            created_at           AS "createdAt"
+     FROM stewardship_activity
+     WHERE stewardship_id = $(stewardshipId)::bigint
+     ORDER BY created_at DESC`,
+    { stewardshipId },
+  )
+  return rows.map((r) => ({
+    id: r.id as string,
+    actorUserId: r.actorUserId ? String(r.actorUserId) : null,
+    actorType: String(r.actorType),
+    activityType: String(r.activityType),
+    content: r.content ? String(r.content) : null,
+    metadata: r.metadata as Record<string, unknown> | null,
+    createdAt: toIso(r.createdAt),
+  }))
 }
 
 export const ESCALATION_RESOLUTION_PATHS = [

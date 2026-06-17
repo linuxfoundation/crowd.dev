@@ -26,7 +26,7 @@ const stewardshipStatusValues = [
   'inactive',
 ] as const
 const healthBandValues = ['healthy', 'fair', 'concerning', 'critical'] as const
-const vulnSeverityValues = ['any', 'high', 'critical'] as const
+const vulnSeverityValues = ['any', 'high', 'critical', 'none'] as const
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

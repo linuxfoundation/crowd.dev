@@ -15,17 +15,19 @@ const paramsSchema = z.object({
 const bodySchema = z.object({
   userId: z.string().trim().min(1),
   role: z.enum(['lead', 'co_steward']),
+  note: z.string().trim().min(1).optional(),
   moveToAssessing: z.boolean().optional().default(false),
 })
 
 export async function assignStewardHandler(req: Request, res: Response): Promise<void> {
   const { id } = validateOrThrow(paramsSchema, req.params)
-  const { userId, role, moveToAssessing } = validateOrThrow(bodySchema, req.body)
+  const { userId, role, note, moveToAssessing } = validateOrThrow(bodySchema, req.body)
 
   const qx = await getPackagesQx()
   const result = await assignSteward(qx, id, {
     userId,
     role,
+    note,
     assignedBy: req.actor.id,
     moveToAssessing,
   })
