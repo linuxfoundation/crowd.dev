@@ -28,6 +28,10 @@ import {
 } from '@crowd/types'
 
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import {
+  getOverlappingEmailDomainMemberOrganizations,
+  groupMemberOrganizations,
+} from '@/utils/mapper'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -84,7 +88,7 @@ export default class MemberOrganizationsService extends LoggerBase {
     )
 
     // Create mapping by id to speed up the processing
-    const orgByid: Record<string, IOrganizationSummary> = organizations.reduce(
+    const orgById: Record<string, IOrganizationSummary> = organizations.reduce(
       (obj: Record<string, IOrganizationSummary>, org) => ({
         ...obj,
         [org.id]: org,
@@ -93,16 +97,48 @@ export default class MemberOrganizationsService extends LoggerBase {
     )
 
     // Format the results and order by dateStart and dateEnd
-    const allOrganizations = memberOrganizations
-      .filter((mo) => orgByid[mo.organizationId]) // Only include non-deleted organizations
-      .map((mo) => ({
-        ...(orgByid[mo.organizationId] || {}),
-        id: mo.organizationId,
-        memberOrganizations: {
-          ...mo,
-          affiliationOverride: affiliationOverrides.find((ao) => ao.memberOrganizationId === mo.id),
-        },
-      }))
+    const groupedMemberOrganizations = groupMemberOrganizations(memberOrganizations)
+
+    const allOrganizations = groupedMemberOrganizations
+      .filter((mo) => orgById[mo.organizationId]) // Only include non-deleted organizations
+      .map((mo) => {
+        const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+          memberOrganizations,
+          mo,
+        )
+
+        const relatedIds = [mo.id, ...overlappingEmailDomainRows.map((row) => row.id)]
+
+        const relatedOverrides = relatedIds.map((memberOrganizationId) =>
+          affiliationOverrides.find(
+            (override) => override.memberOrganizationId === memberOrganizationId,
+          ),
+        )
+        const resolvedOverrides = relatedOverrides.filter((override) => !!override)
+
+        // Merge override flags from rows that are displayed as one work experience
+        const allowAffiliation =
+          resolvedOverrides.length === 0 ||
+          resolvedOverrides.every((override) => override.allowAffiliation !== false)
+
+        const isPrimaryWorkExperience = resolvedOverrides.some(
+          (override) => override.isPrimaryWorkExperience,
+        )
+
+        return {
+          ...orgById[mo.organizationId],
+          id: mo.organizationId,
+          memberOrganizations: {
+            ...mo,
+            affiliationOverride: {
+              memberId,
+              memberOrganizationId: mo.id as string,
+              allowAffiliation,
+              isPrimaryWorkExperience,
+            },
+          },
+        }
+      })
       .sort((a, b) => {
         if (!a || !b) {
           return 0
@@ -251,6 +287,29 @@ export default class MemberOrganizationsService extends LoggerBase {
         source: OrganizationSource.UI,
       })
 
+      const memberOrganizations = await fetchMemberOrganizations(qx, memberId)
+
+      const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+        memberOrganizations,
+        existing,
+      )
+
+      const groupedUpdate = lodash.pickBy(
+        {
+          // Keep grouped rows aligned for shared display fields; dates stay on the edited row
+          title: data.title,
+          verified: data.verified,
+          verifiedBy: data.verifiedBy,
+        },
+        (value) => value !== undefined,
+      ) as MemberOrganizationUpdate
+
+      if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
+        for (const overlappingRow of overlappingEmailDomainRows) {
+          await updateMemberOrganization(qx, memberId, overlappingRow.id as string, groupedUpdate)
+        }
+      }
+
       // Trigger recalculation for old and new orgs if changed
       const orgsToRecalculate = Array.from(
         new Set([existing.organizationId, data.organizationId]),
@@ -287,7 +346,18 @@ export default class MemberOrganizationsService extends LoggerBase {
         throw new Error404(`Member organization with id ${id} not found!`)
       }
 
-      await deleteMemberOrganizations(qx, memberId, [id], true)
+      const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+        existingMemberOrganizations,
+        memberOrganizationToBeDeleted,
+      )
+
+      const memberOrganizationIdsToDelete = [
+        id,
+        ...overlappingEmailDomainRows.map((row) => row.id as string),
+      ]
+
+      // Delete hidden grouped rows with the visible row so list responses stay consistent
+      await deleteMemberOrganizations(qx, memberId, memberOrganizationIdsToDelete, true)
 
       const result = await this.list(memberId, transaction)
 

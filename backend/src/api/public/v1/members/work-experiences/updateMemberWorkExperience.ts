@@ -8,6 +8,7 @@ import {
   MemberField,
   cleanSoftDeletedMemberOrganization,
   fetchManyMemberOrgsWithOrgData,
+  fetchMemberOrganizations,
   findMemberById,
   optionsQx,
   updateMemberOrganization,
@@ -15,7 +16,11 @@ import {
 import type { MemberOrganizationDateRange, MemberOrganizationUpdate } from '@crowd/types'
 
 import { ok } from '@/utils/api'
-import { toMemberWorkExperience } from '@/utils/mapper'
+import {
+  getOverlappingEmailDomainMemberOrganizations,
+  groupMemberOrganizations,
+  toMemberWorkExperience,
+} from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -45,8 +50,8 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Member not found')
   }
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
-  const existing = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === workExperienceId)
+  const memberOrgs = await fetchMemberOrganizations(qx, memberId)
+  const existing = memberOrgs.find((mo) => mo.id === workExperienceId)
 
   if (!existing) {
     throw new NotFoundError('Work experience not found')
@@ -80,6 +85,30 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
       await qx.tx(async (tx) => {
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)
         await updateMemberOrganization(tx, memberId, workExperienceId, update)
+
+        const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+          memberOrgs,
+          existing,
+        )
+
+        const groupedUpdate: MemberOrganizationUpdate = {}
+
+        // Keep grouped rows aligned for shared display fields; dates stay on the edited row
+        if (data.jobTitle !== undefined) {
+          groupedUpdate.title = data.jobTitle
+        }
+        if (data.verified !== undefined) {
+          groupedUpdate.verified = data.verified
+        }
+        if (data.verifiedBy !== undefined) {
+          groupedUpdate.verifiedBy = data.verifiedBy
+        }
+
+        if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
+          for (const overlappingRow of overlappingEmailDomainRows) {
+            await updateMemberOrganization(tx, memberId, overlappingRow.id as string, groupedUpdate)
+          }
+        }
       })
 
       // Signal after commit so the workflow sees persisted changes
@@ -88,7 +117,10 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
-      const updatedMo = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === workExperienceId)
+
+      const updatedMo = groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
+        (mo) => mo.id === workExperienceId,
+      )
 
       if (!updatedMo) {
         throw new NotFoundError('Work experience not found')

@@ -1,3 +1,4 @@
+import { EPOCH_DATE, dateIntersects } from '@crowd/common'
 import {
   IMemberOrganization,
   MemberOrgDate,
@@ -120,6 +121,30 @@ export function unmergeRoles(
 export const MEMBER_ORG_STINT_CHANGES_QUEUE = 'infer-member-organization-stint-changes:members'
 export const MEMBER_ORG_STINT_CHANGES_DATES_PREFIX = 'infer-member-organization-stint-changes:dates'
 
+const EPOCH_TOLERANCE_MS = 5 * 86_400_000
+
+/**
+ * Converts member organization dates into YYYY-MM-DD and treats epoch-like values as missing.
+ */
+export function normalizeMemberOrganizationDate(
+  date: string | Date | null | undefined,
+): string | null {
+  if (date === null || date === undefined || date === '') {
+    return null
+  }
+
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  if (parsed.getTime() <= EPOCH_DATE.getTime() + EPOCH_TOLERANCE_MS) {
+    return null
+  }
+
+  return parsed.toISOString().split('T')[0]
+}
+
 interface Stint {
   id: string | null
   organizationId: string
@@ -132,29 +157,56 @@ interface Stint {
 type DatedStint = Stint & { dateStart: string; dateEnd: string }
 
 /**
- * Core logic to determine if activity dates should expand existing stints or create new ones
+ * Core logic to determine if activity dates should expand existing stints or create new ones.
  */
 export function inferMemberOrganizationStintChanges(
   memberId: string,
   existingRows: IMemberOrganization[],
   orgDates: MemberOrgDate[],
 ): MemberOrgStintChange[] {
-  const toIso = (v: string | Date) => new Date(v).toISOString().split('T')[0]
   const diff = (a: string, b: string) => Math.abs(Date.parse(b) - Date.parse(a)) / 86_400_000
 
+  // Normalize once so all range comparisons use the same date shape
+  const normalizedRows = existingRows.map((row) => ({
+    ...row,
+    dateStart: normalizeMemberOrganizationDate(row.dateStart),
+    dateEnd: normalizeMemberOrganizationDate(row.dateEnd),
+  }))
+
+  const activeRows = normalizedRows.filter((row) => !row.deletedAt)
+
+  // Deleted dated rows suppress recreation for dates the user removed
+  const deletedRows = normalizedRows.filter((row) => row.deletedAt && row.dateStart)
+
+  const sortedDates = orgDates
+    .map((entry) => ({
+      organizationId: entry.organizationId,
+      date: normalizeMemberOrganizationDate(entry.date),
+    }))
+    .filter((entry): entry is MemberOrgDate => entry.date !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
   // 1. Initialize local state to track modifications and new records
-  const stints: Stint[] = existingRows.map((r) => ({
-    id: r.id ?? null,
-    organizationId: r.organizationId,
-    dateStart: r.dateStart ? toIso(r.dateStart) : null,
-    dateEnd: r.dateEnd ? toIso(r.dateEnd) : null,
+  const stints: Stint[] = activeRows.map((row) => ({
+    id: row.id ?? null,
+    organizationId: row.organizationId,
+    dateStart: row.dateStart,
+    dateEnd: row.dateEnd,
     isDirty: false,
     isNew: false,
   }))
 
-  const sortedDates = [...orgDates].sort((a, b) => a.date.localeCompare(b.date))
-
   for (const { organizationId, date: targetDate } of sortedDates) {
+    if (
+      deletedRows.some(
+        (row) =>
+          row.organizationId === organizationId &&
+          dateIntersects(row.dateStart as string, row.dateEnd, targetDate, targetDate),
+      )
+    ) {
+      continue
+    }
+
     const orgStints = stints.filter((s) => s.organizationId === organizationId)
 
     // 2. Skip if the date is already covered by an existing stint
@@ -248,7 +300,7 @@ export function inferMemberOrganizationStintChanges(
 
   // 7. Map only modified or new stints back to change objects
   return stints
-    .filter((s) => s.isDirty)
+    .filter((s) => s.isDirty && s.dateStart && s.dateEnd)
     .map((s): MemberOrgStintChange => {
       const payload = {
         memberId,
