@@ -52,10 +52,11 @@ SQL >
 NODE maintainers_count
 SQL >
     %
-    SELECT uniq(memberId) AS maintainerCount
+    SELECT uniq(case when memberId != '' then memberId else null end) AS maintainerCount
     FROM maintainers_roles_copy_ds
     WHERE
         insightsProjectId = (SELECT insightsProjectId FROM segments_filtered)
+        AND role = 'maintainer'
         {% if defined(repos) %}
             AND repoUrl
             IN {{ Array(repos, 'String', description="Filter maintainer repo list", required=False) }}
@@ -73,7 +74,7 @@ SQL >
             OR endDate
             >= {% if defined(startDate) %}
                 {{ DateTime(startDate, description="Filter maintainer start date", required=False) }}
-            {% else %} toDateTime64('1970-01-01 00:00:00', 3)
+            {% else %} now()
             {% end %}
         )
 
