@@ -100,27 +100,29 @@ SQL >
     SELECT
         insightsProjectId,
         max(downloadsCount) AS downloads,
-        toInt64(max(downloadsCount)) - toInt64(
-            maxIf(downloadsCount, date <= toDate(now() - INTERVAL 30 DAY))
-        ) AS downloads30d,
+        toInt64(max(downloadsCount))
+        - toInt64(maxIf(downloadsCount, date <= toDate(now() - INTERVAL 30 DAY))) AS downloads30d,
         max(dockerDownloadsCount) AS dockerPulls,
         toInt64(max(dockerDownloadsCount)) - toInt64(
             maxIf(dockerDownloadsCount, date <= toDate(now() - INTERVAL 30 DAY))
         ) AS dockerPulls30d,
         max(dependentReposCount) AS dependentRepos,
         max(dependentPackagesCount) AS dependentPackages
-    FROM (
-        SELECT
-            insightsProjectId,
-            date,
-            argMax(downloadsCount, updatedAt) AS downloadsCount,
-            argMax(dockerDownloadsCount, updatedAt) AS dockerDownloadsCount,
-            argMax(dependentReposCount, updatedAt) AS dependentReposCount,
-            argMax(dependentPackagesCount, updatedAt) AS dependentPackagesCount
-        FROM packageDownloads
-        WHERE insightsProjectId IN (SELECT DISTINCT insightsProjectId FROM ai_repos WHERE insightsProjectId != '')
-        GROUP BY insightsProjectId, date, ecosystem, repo, name
-    )
+    FROM
+        (
+            SELECT
+                insightsProjectId,
+                date,
+                argMax(downloadsCount, updatedAt) AS downloadsCount,
+                argMax(dockerDownloadsCount, updatedAt) AS dockerDownloadsCount,
+                argMax(dependentReposCount, updatedAt) AS dependentReposCount,
+                argMax(dependentPackagesCount, updatedAt) AS dependentPackagesCount
+            FROM packageDownloads
+            WHERE
+                insightsProjectId
+                IN (SELECT DISTINCT insightsProjectId FROM ai_repos WHERE insightsProjectId != '')
+            GROUP BY insightsProjectId, date, ecosystem, repo, name
+        )
     GROUP BY insightsProjectId
 
 NODE pr_metrics
