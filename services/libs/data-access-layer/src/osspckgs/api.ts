@@ -51,6 +51,7 @@ export async function getPackagesByStewardshipPurls(
 
 // TODO[deprecate]: rename to AkritesMetrics once /v1/ossprey is removed
 export interface OsspreyMetrics {
+  totalPackages: number
   criticalPackages: number
   coveragePercent: number
   coverageTrend: number | null
@@ -64,6 +65,7 @@ export interface OsspreyMetrics {
 export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
   const [counts, stewardRow]: [
     {
+      totalPackages: string
       criticalPackages: string
       covered: string
       needsAttention: string
@@ -74,11 +76,12 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   ] = await Promise.all([
     qx.selectOne(`
       SELECT
+        (SELECT reltuples::bigint::text FROM pg_class WHERE relname = 'packages')            AS "totalPackages",
         COUNT(*)::text                                                                     AS "criticalPackages",
         COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
         COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
         COUNT(*) FILTER (WHERE s.status = 'escalated')::text                              AS escalated,
-        COUNT(*) FILTER (WHERE s.status = 'unassigned' OR s.id IS NULL)::text             AS "unassignedCritical"
+        COUNT(*) FILTER (WHERE s.id IS NULL OR s.status IS NULL OR s.status IN ('unassigned','open','blocked','inactive'))::text AS "unassignedCritical"
       FROM packages p
       LEFT JOIN stewardships s ON s.package_id = p.id
       WHERE p.is_critical = true
@@ -96,6 +99,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   const covered = parseInt(counts.covered, 10)
 
   return {
+    totalPackages: parseInt(counts.totalPackages, 10),
     criticalPackages: total,
     coveragePercent: total > 0 ? Math.round((covered / total) * 1000) / 10 : 0,
     coverageTrend: null, // TODO: requires snapshot mechanism or stewardship_activity timestamp analysis
@@ -126,6 +130,7 @@ export interface PackageListRow {
   latestReleaseAt: Date | null
   lastActivityType?: string | null
   lastActivityContent?: string | null
+  lastActivityMetadata?: Record<string, unknown> | null
   lastActivityAt?: Date | null
   stewards?: StewardEntry[]
   total: string
@@ -470,7 +475,7 @@ export async function listPackagesForApi(
     opts.includeLastActivity === true
       ? `
     LEFT JOIN LATERAL (
-      SELECT sa.activity_type, sa.content, sa.created_at
+      SELECT sa.activity_type, sa.content, sa.metadata, sa.created_at
       FROM stewardship_activity sa
       WHERE sa.stewardship_id = s.id
       ORDER BY sa.created_at DESC
@@ -502,7 +507,7 @@ export async function listPackagesForApi(
       pm_counts.cnt AS "maintainerCount",
       r_sc.scorecard_score AS "scorecardScore",
       p.latest_release_at AS "latestReleaseAt",
-      ${opts.includeLastActivity === true ? `last_act.activity_type AS "lastActivityType", last_act.content AS "lastActivityContent", last_act.created_at AS "lastActivityAt",` : ''}
+      ${opts.includeLastActivity === true ? `last_act.activity_type AS "lastActivityType", last_act.content AS "lastActivityContent", last_act.metadata AS "lastActivityMetadata", last_act.created_at AS "lastActivityAt",` : ''}
       ${opts.includeStewards === true ? "COALESCE(ss_agg.stewards, '[]'::json) AS stewards," : ''}
       COUNT(*) OVER() AS total
     FROM packages p
