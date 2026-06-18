@@ -642,6 +642,7 @@ function computeStuckIds(jobList: any[]): Set<number> {
   return result
 }
 let selected = 0
+let scrollOffset = 0
 let detailOpen = false
 let lastRefresh: string | null = null
 let error: string | null = null
@@ -837,13 +838,19 @@ function render() {
   const detailHeight = detailOpen ? Math.min(detailLines.length + 2, Math.floor(rows * 0.55)) : 0
   const listHeight = rows - listStart - detailHeight - 1
 
+  // Keep scrollOffset in bounds so selected row is always visible
+  if (selected < scrollOffset) scrollOffset = selected
+  if (selected >= scrollOffset + listHeight) scrollOffset = selected - listHeight + 1
+  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, jobs.length - listHeight)))
+
   const listEnd = listStart + listHeight
   for (let i = 0; i < listHeight; i++) {
-    const job = jobs[i]
+    const jobIndex = scrollOffset + i
+    const job = jobs[jobIndex]
     if (!job) {
       writeln(listStart + i, 1, '')
     } else {
-      writeln(listStart + i, 1, tableRow(job, i === selected))
+      writeln(listStart + i, 1, tableRow(job, jobIndex === selected))
     }
   }
 
@@ -876,6 +883,7 @@ async function refresh() {
     tableCounts = newTableCounts
     watermarks = newWatermarks
     if (selected >= jobs.length) selected = Math.max(0, jobs.length - 1)
+    scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, jobs.length - 1)))
     stuckIds = computeStuckIds(jobs)
     lastRefresh = new Date().toLocaleTimeString()
     error = null

@@ -36,8 +36,8 @@ const { createVersionsLookup } = proxyActivities<typeof depsDevActivities>({
 const { dropPackageDepsIndexes, rebuildPackageDepsIndexes } = proxyActivities<
   typeof depsDevActivities
 >({
-  // Index builds on 1B+ rows can take hours — long timeout required.
-  startToCloseTimeout: '12 hours',
+  // Index builds + parallel dedup on 1B+ rows — 24h covers worst-case sequential retry.
+  startToCloseTimeout: '24 hours',
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
@@ -45,7 +45,7 @@ const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActiv
   typeof depsDevActivities
 >({
   // FK validation on 1B+ rows can take hours.
-  startToCloseTimeout: '12 hours',
+  startToCloseTimeout: '24 hours',
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
