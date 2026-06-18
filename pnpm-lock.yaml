@@ -1348,6 +1348,9 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.0
         version: 9.0.3
+      pg-copy-streams:
+        specifier: ^7.0.0
+        version: 7.0.0
       semver:
         specifier: ^7.6.0
         version: 7.6.0
@@ -1370,6 +1373,9 @@ importers:
       '@types/node':
         specifier: ^20.8.2
         version: 20.12.7
+      '@types/pg-copy-streams':
+        specifier: ^1.2.5
+        version: 1.2.5
       '@types/semver':
         specifier: ^7.5.8
         version: 7.5.8
@@ -4883,6 +4889,12 @@ packages:
 
   '@types/node@22.19.10':
     resolution: {integrity: sha512-tF5VOugLS/EuDlTBijk0MqABfP8UxgYazTLo3uIn3b4yJgg26QRbVYJYsDtHrjdDUIRfP70+VfhTTc+CE1yskw==}
+
+  '@types/pg-copy-streams@1.2.5':
+    resolution: {integrity: sha512-7D6/GYW2uHIaVU6S/5omI+6RZnwlZBpLQDZAH83xX1rjxAOK0f6/deKyyUTewxqts145VIGn6XWYz1YGf50G5g==}
+
+  '@types/pg@8.20.0':
+    resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
 
   '@types/q@1.5.8':
     resolution: {integrity: sha512-hroOstUScF6zhIi+5+x0dzqrHA1EJi+Irri6b1fxolMTqqHIV/Cg77EtnQcZqZCu8hR3mX2BzIxN4/GzI68Kfw==}
@@ -8700,6 +8712,9 @@ packages:
   pg-connection-string@2.6.4:
     resolution: {integrity: sha512-v+Z7W/0EO707aNMaAEfiGnGL9sxxumwLl2fJvCQtMn9Fxsg+lPpPkdcyBSv/KFgpGdYkMfn+EI1Or2EHjpgLCA==}
 
+  pg-copy-streams@7.0.0:
+    resolution: {integrity: sha512-zBvnY6wtaBRE2ae2xXWOOGMaNVPkXh1vhypAkNSKgMdciJeTyIQAHZaEeRAxUjs/p1El5jgzYmwG5u871Zj3dQ==}
+
   pg-cursor@2.12.0:
     resolution: {integrity: sha512-rppw54OnuYZfMUjiJI2zJMwAjjt2V9EtLUb+t7V5tqwSE5Jxod+7vA7Y0FI6Nq976jNLciA0hoVkwvjjB8qzEw==}
     peerDependencies:
@@ -10026,7 +10041,7 @@ packages:
 
   uuid@3.3.2:
     resolution: {integrity: sha512-yXJmeNaw3DnnKAOKJE51sL/ZaYfWJRl1pK9dr19YFCu0ObS231AB1/LbqTKRAQ5kw8A90rA6fr4riOUpTZvQZA==}
-    deprecated: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@8.3.2:
@@ -10472,8 +10487,8 @@ snapshots:
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sso-oidc': 3.572.0
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -10667,11 +10682,11 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sso-oidc@3.572.0':
+  '@aws-sdk/client-sso-oidc@3.572.0(@aws-sdk/client-sts@3.572.0)':
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -10710,6 +10725,7 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.6.2
     transitivePeerDependencies:
+      - '@aws-sdk/client-sts'
       - aws-crt
 
   '@aws-sdk/client-sso@3.556.0':
@@ -10885,11 +10901,11 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sts@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)':
+  '@aws-sdk/client-sts@3.572.0':
     dependencies:
       '@aws-crypto/sha256-browser': 3.0.0
       '@aws-crypto/sha256-js': 3.0.0
-      '@aws-sdk/client-sso-oidc': 3.572.0
+      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/core': 3.572.0
       '@aws-sdk/credential-provider-node': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/middleware-host-header': 3.567.0
@@ -10928,7 +10944,6 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.6.2
     transitivePeerDependencies:
-      - '@aws-sdk/client-sso-oidc'
       - aws-crt
 
   '@aws-sdk/client-sts@3.985.0':
@@ -11094,7 +11109,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-ini@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)(@aws-sdk/client-sts@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/credential-provider-env': 3.568.0
       '@aws-sdk/credential-provider-process': 3.572.0
       '@aws-sdk/credential-provider-sso': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
@@ -11271,7 +11286,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-web-identity@3.568.0(@aws-sdk/client-sts@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sts': 3.572.0(@aws-sdk/client-sso-oidc@3.572.0)
+      '@aws-sdk/client-sts': 3.572.0
       '@aws-sdk/types': 3.567.0
       '@smithy/property-provider': 2.2.0
       '@smithy/types': 2.12.0
@@ -11583,7 +11598,7 @@ snapshots:
 
   '@aws-sdk/token-providers@3.572.0(@aws-sdk/client-sso-oidc@3.572.0)':
     dependencies:
-      '@aws-sdk/client-sso-oidc': 3.572.0
+      '@aws-sdk/client-sso-oidc': 3.572.0(@aws-sdk/client-sts@3.572.0)
       '@aws-sdk/types': 3.567.0
       '@smithy/property-provider': 2.2.0
       '@smithy/shared-ini-file-loader': 2.4.0
@@ -14028,6 +14043,17 @@ snapshots:
   '@types/node@22.19.10':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/pg-copy-streams@1.2.5':
+    dependencies:
+      '@types/node': 20.12.7
+      '@types/pg': 8.20.0
+
+  '@types/pg@8.20.0':
+    dependencies:
+      '@types/node': 20.12.7
+      pg-protocol: 1.6.1
+      pg-types: 2.2.0
 
   '@types/q@1.5.8': {}
 
@@ -18373,6 +18399,8 @@ snapshots:
     optional: true
 
   pg-connection-string@2.6.4: {}
+
+  pg-copy-streams@7.0.0: {}
 
   pg-cursor@2.12.0(pg@8.11.5):
     dependencies:
