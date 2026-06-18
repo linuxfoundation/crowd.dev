@@ -14,9 +14,9 @@ export async function upsertNpmMaintainers(
 ): Promise<string[]> {
   const changed = new Set<string>()
 
-  // Lock maintainers rows in a deterministic (username) order so concurrent ingest lanes
-  // enriching different packages that share maintainers can't acquire the row locks in cyclic order
-  const ordered = [...maintainers].sort((a, b) => a.username.localeCompare(b.username))
+  const ordered = [...maintainers].sort((a, b) =>
+    a.username < b.username ? -1 : a.username > b.username ? 1 : 0,
+  )
 
   for (const m of ordered) {
     const row: { changed_fields: string[] } = await qx.selectOne(
