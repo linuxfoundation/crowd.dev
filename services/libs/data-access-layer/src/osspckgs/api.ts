@@ -51,6 +51,7 @@ export async function getPackagesByStewardshipPurls(
 
 // TODO[deprecate]: rename to AkritesMetrics once /v1/ossprey is removed
 export interface OsspreyMetrics {
+  totalPackages: number
   criticalPackages: number
   coveragePercent: number
   coverageTrend: number | null
@@ -64,6 +65,7 @@ export interface OsspreyMetrics {
 export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
   const [counts, stewardRow]: [
     {
+      totalPackages: string
       criticalPackages: string
       covered: string
       needsAttention: string
@@ -74,6 +76,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   ] = await Promise.all([
     qx.selectOne(`
       SELECT
+        (SELECT COUNT(*)::text FROM packages)                                               AS "totalPackages",
         COUNT(*)::text                                                                     AS "criticalPackages",
         COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
         COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
@@ -96,6 +99,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   const covered = parseInt(counts.covered, 10)
 
   return {
+    totalPackages: parseInt(counts.totalPackages, 10),
     criticalPackages: total,
     coveragePercent: total > 0 ? Math.round((covered / total) * 1000) / 10 : 0,
     coverageTrend: null, // TODO: requires snapshot mechanism or stewardship_activity timestamp analysis
