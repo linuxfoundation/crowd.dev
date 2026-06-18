@@ -76,7 +76,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   ] = await Promise.all([
     qx.selectOne(`
       SELECT
-        (SELECT COUNT(*)::text FROM packages)                                               AS "totalPackages",
+        (SELECT reltuples::bigint::text FROM pg_class WHERE relname = 'packages')            AS "totalPackages",
         COUNT(*)::text                                                                     AS "criticalPackages",
         COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
         COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
