@@ -78,20 +78,8 @@ const detailsOffset = ref<number>(0);
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
 const segments = computed(() => (selectedProjectGroup.value?.id === props.projectGroup
-  ? [
-    selectedProjectGroup.value?.id,
-    ...selectedProjectGroup.value.projects.map((p) => [
-      ...p.subprojects.map((sp) => sp.id),
-    ]).flat(),
-  ]
-  : [
-    props.projectGroup,
-    ...selectedProjectGroup.value.projects
-      .filter((p) => p.id === props.projectGroup)
-      .map((p) => [
-        ...p.subprojects.map((sp) => sp.id),
-      ]).flat(),
-  ]));
+  ? [selectedProjectGroup.value?.id]
+  : [props.projectGroup]));
 
 const loadMergeSuggestions = () => {
   loading.value = true;
