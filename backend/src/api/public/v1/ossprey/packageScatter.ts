@@ -9,8 +9,21 @@ import { validateOrThrow } from '@/utils/validation'
 
 import { STEWARDSHIP_STATUS_VALUES } from '../packages/types'
 
+const statusEnum = z.enum(STEWARDSHIP_STATUS_VALUES)
+
+function normalizeToArray(v: unknown): unknown[] | undefined {
+  if (v === undefined) return undefined
+  if (Array.isArray(v)) return v
+  if (typeof v === 'string' && v.includes(','))
+    return v
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  return [v]
+}
+
 const scatterQuerySchema = z.object({
-  status: z.enum(STEWARDSHIP_STATUS_VALUES).optional(),
+  status: z.preprocess(normalizeToArray, z.array(statusEnum).min(1)).optional(),
 })
 
 export async function packageScatterHandler(req: Request, res: Response): Promise<void> {

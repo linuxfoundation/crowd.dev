@@ -667,17 +667,16 @@ export interface ScatterPoint {
 
 export async function listPackagesForScatter(
   qx: QueryExecutor,
-  options: { status?: string } = {},
+  options: { status?: string[] } = {},
 ): Promise<ScatterPoint[]> {
   const { status } = options
 
   // 'unassigned' covers packages with no stewardship row (s.id IS NULL) in addition
-  // to rows explicitly marked unassigned. All other statuses filter via s.status directly.
+  // to rows explicitly marked unassigned. All other statuses filter via s.status = ANY(...).
   // The query always uses LEFT JOIN — the filter is applied in the WHERE clause, not the join.
-  const statusFilter = status
-    ? status === 'unassigned'
-      ? `AND (s.status = 'unassigned' OR s.id IS NULL)`
-      : `AND s.status = $(status)`
+  const includesUnassigned = status?.includes('unassigned') ?? false
+  const statusFilter = status?.length
+    ? `AND (s.status = ANY($(status)::text[])${includesUnassigned ? ' OR s.id IS NULL' : ''})`
     : ''
 
   const rows: Array<{
