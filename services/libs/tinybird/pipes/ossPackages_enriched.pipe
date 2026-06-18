@@ -1,0 +1,434 @@
+NODE ossPackages_enriched_packages
+SQL >
+    SELECT * FROM ossPackages FINAL
+
+NODE ossPackages_enriched_repos
+SQL >
+    SELECT
+        id AS repoId,
+        archived,
+        lastCommitAt,
+        scorecardScore,
+        securityPolicyEnabled,
+        branchProtectionEnabled,
+        branchProtectionRequiredReviews,
+        branchProtectionRequiresStatusChecks,
+        branchProtectionAllowsForcePush
+    FROM repos FINAL
+
+NODE ossPackages_enriched_pkg_repo
+SQL >
+    SELECT packageId, argMax(repoId, (toFloat64OrZero(confidence), verifiedAt)) AS repoId, 1 AS hasRepo
+    FROM packageRepos FINAL
+    GROUP BY packageId
+
+NODE ossPackages_enriched_snapshot
+SQL >
+    SELECT
+        repoId,
+        1 AS hasSnapshot,
+        commitsLast6m,
+        commitsPrior6m,
+        issuesOpenedLast6m,
+        issuesOpenedPrior6m,
+        issuesOpenedLast12m,
+        issuesClosedLast12m,
+        prsOpenedLast12m,
+        prsMergedLast12m,
+        prsClosedUnmerged12m,
+        issuesOpenNow,
+        issueMedianTimeToCloseHours,
+        prMedianTimeToMergeHours,
+        prMedianTimeToFirstResponseHours,
+        multiIf(
+            prMedianTimeToFirstResponseHours IS NOT NULL
+            AND issueMedianTimeToFirstResponseHours IS NOT NULL,
+            (prMedianTimeToFirstResponseHours + issueMedianTimeToFirstResponseHours) / 2,
+            prMedianTimeToFirstResponseHours IS NOT NULL,
+            prMedianTimeToFirstResponseHours,
+            issueMedianTimeToFirstResponseHours IS NOT NULL,
+            issueMedianTimeToFirstResponseHours,
+            NULL
+        ) AS combinedResponseHours
+    FROM repoActivitySnapshot FINAL
+
+NODE ossPackages_enriched_maintainers
+SQL >
+    SELECT
+        pm.packageId AS packageId,
+        count() AS maintainersCount,
+        uniqExactIf(
+            lower(arrayElement(splitByChar('@', m.email), -1)),
+            m.email != '' AND position(m.email, '@') > 0
+        ) AS emailDomains
+    FROM packageMaintainers AS pm FINAL
+    LEFT JOIN maintainers AS m FINAL ON pm.maintainerId = m.id
+    GROUP BY pm.packageId
+
+NODE ossPackages_enriched_release
+SQL >
+    SELECT
+        packageId,
+        max(publishedAt) AS maxPublished,
+        arrayElement(
+            arraySort(x -> (- toUnixTimestamp(x)), groupArray(publishedAt)), 2
+        ) AS secondPublished
+    FROM versions FINAL
+    WHERE isNotNull(publishedAt)
+    GROUP BY packageId
+
+NODE ossPackages_enriched_open_vulns
+SQL >
+    SELECT
+        ap.packageId AS packageId,
+        uniqExactIf(a.id, lower(a.severity) = 'critical') AS criticalOpen,
+        uniqExactIf(a.id, lower(a.severity) = 'high') AS highOpen,
+        uniqExactIf(a.id, lower(a.severity) = 'medium') AS mediumOpen,
+        max(
+            (aar.introducedVersion != '' AND vi.introducedAt IS NULL)
+            OR (aar.fixedVersion != '' AND vf.fixedAt IS NULL)
+            OR (aar.lastAffected != '' AND vl.lastAffectedAt IS NULL)
+        ) AS boundUnresolved
+    FROM ossPackages_enriched_packages AS p
+    INNER JOIN advisoryPackages AS ap FINAL ON ap.packageId = p.id
+    INNER JOIN advisories AS a FINAL ON a.id = ap.advisoryId
+    INNER JOIN advisoryAffectedRanges AS aar FINAL ON aar.advisoryPackageId = ap.id
+    LEFT JOIN
+        (SELECT packageId, number, publishedAt AS introducedAt FROM versions FINAL) AS vi
+        ON vi.packageId = p.id
+        AND vi.number = aar.introducedVersion
+    LEFT JOIN
+        (SELECT packageId, number, publishedAt AS fixedAt FROM versions FINAL) AS vf
+        ON vf.packageId = p.id
+        AND vf.number = aar.fixedVersion
+    LEFT JOIN
+        (SELECT packageId, number, publishedAt AS lastAffectedAt FROM versions FINAL) AS vl
+        ON vl.packageId = p.id
+        AND vl.number = aar.lastAffected
+    WHERE
+        p.latestReleaseAt IS NOT NULL
+        AND (
+            aar.introducedVersion = ''
+            OR vi.introducedAt IS NULL
+            OR p.latestReleaseAt >= vi.introducedAt
+        )
+        AND (aar.fixedVersion = '' OR vf.fixedAt IS NULL OR p.latestReleaseAt < vf.fixedAt)
+        AND (
+            aar.lastAffected = '' OR vl.lastAffectedAt IS NULL OR p.latestReleaseAt <= vl.lastAffectedAt
+        )
+    GROUP BY ap.packageId
+
+NODE ossPackages_enriched_dep_vulns
+SQL >
+    SELECT
+        pd.packageId AS packageId,
+        uniqExactIf(pd.dependsOnId, dep.hasCriticalVulnerability = 1) AS vulnerableDeps,
+        1 AS hasDeps
+    FROM packageDependencies AS pd FINAL
+    INNER JOIN
+        (SELECT id, hasCriticalVulnerability FROM ossPackages_enriched_packages) AS dep
+        ON pd.dependsOnId = dep.id
+    WHERE pd.dependencyKind = 'direct'
+    GROUP BY pd.packageId
+
+NODE ossPackages_enriched_repo_orgs
+SQL >
+    SELECT url, max(organizationCount) AS organizationCount, 1 AS inRepositories
+    FROM repositories_populated_ds
+    GROUP BY url
+
+NODE ossPackages_enriched_scored
+SQL >
+    SELECT
+        p.*,
+        multiIf(
+            coalesce(r.archived, 0) = 1,
+            'archived',
+            coalesce(snap.hasSnapshot, 0) = 0,
+            'active',
+            (
+                isNotNull(r.lastCommitAt)
+                AND r.lastCommitAt < subtractMonths(now(), 18)
+                AND (
+                    snap.prMedianTimeToFirstResponseHours IS NULL
+                    OR (
+                        coalesce(snap.issuesOpenedLast12m, 0) = 0
+                        AND coalesce(snap.prsOpenedLast12m, 0) = 0
+                    )
+                )
+            ),
+            'abandoned',
+            (
+                coalesce(snap.commitsLast6m, 0) < coalesce(snap.commitsPrior6m, 0) * 0.5
+                AND coalesce(snap.issuesOpenedLast6m, 0) > coalesce(snap.issuesOpenedPrior6m, 0)
+            ),
+            'declining',
+            (
+                isNotNull(p.latestReleaseAt)
+                AND p.latestReleaseAt > subtractMonths(now(), 12)
+                AND coalesce(snap.issuesOpenNow, 0) < 50
+                AND p.hasCriticalVulnerability = 0
+                AND coalesce(snap.commitsLast6m, 0) < coalesce(snap.commitsPrior6m, 0) * 0.5
+            ),
+            'stable',
+            'active'
+        ) AS lifecycleLabel,
+        -- Maintainer Health (<=40)
+        multiIf(
+            coalesce(mh.maintainersCount, 0) >= 5,
+            18,
+            coalesce(mh.maintainersCount, 0) >= 3,
+            15,
+            coalesce(mh.maintainersCount, 0) = 2,
+            6,
+            coalesce(mh.maintainersCount, 0) = 1,
+            3,
+            0
+        ) AS busFactor,
+        multiIf(
+            coalesce(ro.inRepositories, 0) = 1,
+            multiIf(
+                coalesce(ro.organizationCount, 0) >= 3,
+                7,
+                coalesce(ro.organizationCount, 0) = 2,
+                5,
+                coalesce(ro.organizationCount, 0) = 1,
+                2,
+                0
+            ),
+            multiIf(
+                coalesce(mh.emailDomains, 0) >= 3,
+                7,
+                coalesce(mh.emailDomains, 0) = 2,
+                5,
+                coalesce(mh.emailDomains, 0) = 1,
+                2,
+                0
+            )
+        ) AS orgDiversity,
+        multiIf(
+            snap.combinedResponseHours IS NULL,
+            0,
+            snap.combinedResponseHours < 24,
+            15,
+            snap.combinedResponseHours < 72,
+            12,
+            snap.combinedResponseHours < 168,
+            9,
+            snap.combinedResponseHours < 720,
+            5,
+            snap.combinedResponseHours < 2160,
+            2,
+            0
+        ) AS responsiveness,
+        toUInt8(busFactor + orgDiversity + responsiveness) AS maintainerHealthScore,
+        -- Security & Supply Chain (<=35)
+        if(
+            p.latestReleaseAt IS NULL,
+            0,
+            greatest(
+                0,
+                10
+                - 6 * coalesce(ov.criticalOpen, 0)
+                - 3 * coalesce(ov.highOpen, 0)
+                - coalesce(ov.mediumOpen, 0)
+            )
+        ) AS openVulns,
+        round(toFloat64OrZero(r.scorecardScore) * 0.7) AS scorecardSub,
+        multiIf(
+            coalesce(dv.vulnerableDeps, 0) = 0,
+            5,
+            coalesce(dv.vulnerableDeps, 0) <= 2,
+            3,
+            coalesce(dv.vulnerableDeps, 0) <= 5,
+            1,
+            0
+        ) AS dependencyHealth,
+        (
+            (coalesce(r.securityPolicyEnabled, 0) = 1) * 2
+            + (coalesce(r.branchProtectionEnabled, 0) = 1) * 2
+            + (coalesce(r.branchProtectionRequiredReviews, 0) >= 1) * 1
+            + (coalesce(r.branchProtectionRequiresStatusChecks, 0) = 1) * 1
+            + (coalesce(r.branchProtectionAllowsForcePush, 1) = 0) * 1
+        ) AS securityPractices,
+        0 AS supplyChainIntegrity,
+        toUInt8(
+            openVulns + scorecardSub + dependencyHealth + securityPractices + supplyChainIntegrity
+        ) AS securitySupplyChainScore,
+        -- Development Activity (<=25)
+        multiIf(
+            rel.maxPublished IS NULL,
+            0,
+            dateDiff('day', rel.maxPublished, now()) < 90
+            AND dateDiff('day', rel.secondPublished, rel.maxPublished) < 90,
+            8,
+            dateDiff('day', rel.maxPublished, now()) < 180,
+            6,
+            dateDiff('day', rel.maxPublished, now()) < 365,
+            4,
+            dateDiff('day', rel.maxPublished, now()) < 730,
+            2,
+            0
+        ) AS releaseCadence,
+        multiIf(
+            coalesce(snap.hasSnapshot, 0) = 1,
+            multiIf(
+                coalesce(snap.commitsLast6m, 0) >= 50,
+                5,
+                coalesce(snap.commitsLast6m, 0) >= 20,
+                4,
+                coalesce(snap.commitsLast6m, 0) >= 5,
+                3,
+                coalesce(snap.commitsLast6m, 0) >= 1,
+                1,
+                0
+            ),
+            isNotNull(r.lastCommitAt) AND r.lastCommitAt > subtractMonths(now(), 3),
+            4,
+            isNotNull(r.lastCommitAt) AND r.lastCommitAt > subtractMonths(now(), 12),
+            2,
+            0
+        ) AS commitActivity,
+        (
+            multiIf(
+                coalesce(snap.issuesOpenedLast12m, 0) = 0,
+                0,
+                snap.issuesClosedLast12m / snap.issuesOpenedLast12m >= 0.8,
+                4,
+                snap.issuesClosedLast12m / snap.issuesOpenedLast12m >= 0.5,
+                2,
+                0
+            ) + multiIf(
+                snap.issueMedianTimeToCloseHours IS NULL,
+                0,
+                snap.issueMedianTimeToCloseHours < 168,
+                3,
+                snap.issueMedianTimeToCloseHours < 720,
+                2,
+                0
+            )
+        ) AS issueResolution,
+        (
+            multiIf(
+                coalesce(snap.prsMergedLast12m, 0) + coalesce(snap.prsClosedUnmerged12m, 0) = 0,
+                0,
+                snap.prsMergedLast12m / (snap.prsMergedLast12m + snap.prsClosedUnmerged12m) >= 0.7,
+                3,
+                snap.prsMergedLast12m / (snap.prsMergedLast12m + snap.prsClosedUnmerged12m) >= 0.4,
+                1,
+                0
+            ) + multiIf(
+                snap.prMedianTimeToMergeHours IS NULL,
+                0,
+                snap.prMedianTimeToMergeHours < 168,
+                2,
+                snap.prMedianTimeToMergeHours < 720,
+                1,
+                0
+            )
+        ) AS prMergeHealth,
+        toUInt8(
+            releaseCadence + commitActivity + issueResolution + prMergeHealth
+        ) AS developmentActivityScore,
+        toUInt8(
+            maintainerHealthScore + securitySupplyChainScore + developmentActivityScore
+        ) AS healthScore,
+        multiIf(
+            healthScore >= 85,
+            'excellent',
+            healthScore >= 70,
+            'healthy',
+            healthScore >= 50,
+            'fair',
+            healthScore >= 30,
+            'concerning',
+            'critical'
+        ) AS healthLabel,
+        toJSONString(
+            map(
+                'bus_factor',
+                if(coalesce(mh.maintainersCount, 0) > 0, 'available', 'blocked'),
+                'org_diversity',
+                multiIf(
+                    coalesce(ro.inRepositories, 0) = 1,
+                    'available',
+                    coalesce(mh.maintainersCount, 0) > 0,
+                    'partial',
+                    'blocked'
+                ),
+                'responsiveness',
+                if(snap.combinedResponseHours IS NULL, 'blocked', 'available'),
+                'open_vulnerabilities',
+                multiIf(
+                    p.latestReleaseAt IS NULL,
+                    'blocked',
+                    coalesce(ov.boundUnresolved, 0) = 1,
+                    'partial',
+                    'available'
+                ),
+                'scorecard',
+                if(toFloat64OrZero(r.scorecardScore) > 0, 'available', 'blocked'),
+                'dependency_health',
+                if(coalesce(dv.hasDeps, 0) = 1, 'available', 'blocked'),
+                'security_practices',
+                if(r.branchProtectionEnabled IS NULL, 'partial', 'available'),
+                'supply_chain_integrity',
+                'blocked',
+                'release_cadence',
+                if(rel.maxPublished IS NULL, 'blocked', 'available'),
+                'commit_activity',
+                multiIf(
+                    coalesce(snap.hasSnapshot, 0) = 1,
+                    'available',
+                    isNotNull(r.lastCommitAt),
+                    'partial',
+                    'blocked'
+                ),
+                'issue_resolution',
+                if(
+                    coalesce(snap.hasSnapshot, 0) = 1 AND coalesce(snap.issuesOpenedLast12m, 0) > 0,
+                    'available',
+                    'blocked'
+                ),
+                'pr_merge_health',
+                if(
+                    coalesce(snap.hasSnapshot, 0) = 1
+                    AND coalesce(snap.prsMergedLast12m, 0) + coalesce(snap.prsClosedUnmerged12m, 0) > 0,
+                    'available',
+                    'blocked'
+                )
+            )
+        ) AS signalCoverageHealth
+    FROM ossPackages_enriched_packages AS p
+    LEFT JOIN ossPackages_enriched_pkg_repo AS pr ON p.id = pr.packageId
+    LEFT JOIN ossPackages_enriched_repos AS r ON pr.repoId = r.repoId
+    LEFT JOIN ossPackages_enriched_snapshot AS snap ON pr.repoId = snap.repoId
+    LEFT JOIN ossPackages_enriched_maintainers AS mh ON p.id = mh.packageId
+    LEFT JOIN ossPackages_enriched_release AS rel ON p.id = rel.packageId
+    LEFT JOIN ossPackages_enriched_open_vulns AS ov ON p.id = ov.packageId
+    LEFT JOIN ossPackages_enriched_dep_vulns AS dv ON p.id = dv.packageId
+    LEFT JOIN ossPackages_enriched_repo_orgs AS ro ON p.repositoryUrl = ro.url
+
+NODE ossPackages_enriched_result
+SQL >
+    SELECT
+        * EXCEPT (
+            busFactor,
+            orgDiversity,
+            responsiveness,
+            openVulns,
+            scorecardSub,
+            dependencyHealth,
+            securityPractices,
+            supplyChainIntegrity,
+            releaseCadence,
+            commitActivity,
+            issueResolution,
+            prMergeHealth
+        )
+    FROM ossPackages_enriched_scored
+
+TYPE COPY
+TARGET_DATASOURCE ossPackages_enriched_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 2 * * *

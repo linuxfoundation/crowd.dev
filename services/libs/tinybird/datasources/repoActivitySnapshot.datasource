@@ -1,0 +1,42 @@
+DESCRIPTION >
+    - `repoActivitySnapshot` holds per-repository activity health metrics over a rolling window (default 12 months).
+    - Replicated from Postgres packages-db — computed by the github-repos-enricher worker from the GitHub API (commits, PRs, issues).
+    - One row per repo; a row is absent until the enricher has reached that repo, so consumers must treat a missing row as "no signal" (degraded path).
+    - Used to derive package lifecycle (active / stable / declining / abandoned) by joining repos -> packageRepos -> packages.
+    - `repoId` links to the parent repos row — the primary key.
+    - `snapshotAt` is when this snapshot was computed — also the updatedAt watermark for Tinybird sync.
+    - `windowMonths` is the rolling window length the metrics were computed over (default 12).
+    - `commitsLast12m`, `commitsLast6m`, `commitsPrior6m` are commit counts for the trailing 12m, the most recent 6m, and the 6m before that (NULL if not computed).
+    - `prsOpenedLast12m`, `prsMergedLast12m`, `prsClosedUnmerged12m` are PR counts opened / merged / closed-without-merge in the trailing 12m (NULL if not computed).
+    - `prMedianTimeToMergeHours` is the median hours from PR open to merge (NULL if no merged PRs in window).
+    - `prMedianTimeToFirstResponseHours` is the median hours to first non-author response on a PR (NULL if no PRs or no responses in window).
+    - `issuesOpenedLast12m`, `issuesClosedLast12m` are issue counts opened / closed in the trailing 12m (NULL if not computed).
+    - `issuesOpenedLast6m`, `issuesOpenedPrior6m` are issues opened in the most recent 6m and the 6m before that (NULL if not computed).
+    - `issuesOpenNow` is the current count of open issues (NULL if not computed).
+    - `issueMedianTimeToCloseHours` is the median hours from issue open to close (NULL if no closed issues in window).
+    - `issueMedianTimeToFirstResponseHours` is the median hours to first non-author response on an issue (NULL if no issues or no responses in window).
+
+SCHEMA >
+    `repoId` UInt64 `json:$.record.repo_id`,
+    `snapshotAt` DateTime64(3) `json:$.record.snapshot_at`,
+    `windowMonths` UInt16 `json:$.record.window_months` DEFAULT 12,
+    `commitsLast12m` Nullable(Int32) `json:$.record.commits_last_12m`,
+    `commitsLast6m` Nullable(Int32) `json:$.record.commits_last_6m`,
+    `commitsPrior6m` Nullable(Int32) `json:$.record.commits_prior_6m`,
+    `prsOpenedLast12m` Nullable(Int32) `json:$.record.prs_opened_last_12m`,
+    `prsMergedLast12m` Nullable(Int32) `json:$.record.prs_merged_last_12m`,
+    `prsClosedUnmerged12m` Nullable(Int32) `json:$.record.prs_closed_unmerged_12m`,
+    `prMedianTimeToMergeHours` Nullable(Int32) `json:$.record.pr_median_time_to_merge_hours`,
+    `prMedianTimeToFirstResponseHours` Nullable(Int32) `json:$.record.pr_median_time_to_first_response_hours`,
+    `issuesOpenedLast12m` Nullable(Int32) `json:$.record.issues_opened_last_12m`,
+    `issuesClosedLast12m` Nullable(Int32) `json:$.record.issues_closed_last_12m`,
+    `issuesOpenedLast6m` Nullable(Int32) `json:$.record.issues_opened_last_6m`,
+    `issuesOpenedPrior6m` Nullable(Int32) `json:$.record.issues_opened_prior_6m`,
+    `issuesOpenNow` Nullable(Int32) `json:$.record.issues_open_now`,
+    `issueMedianTimeToCloseHours` Nullable(Int32) `json:$.record.issue_median_time_to_close_hours`,
+    `issueMedianTimeToFirstResponseHours` Nullable(Int32) `json:$.record.issue_median_time_to_first_response_hours`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(snapshotAt)
+ENGINE_SORTING_KEY repoId
+ENGINE_VER snapshotAt
