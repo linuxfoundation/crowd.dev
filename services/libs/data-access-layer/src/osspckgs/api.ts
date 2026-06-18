@@ -665,7 +665,21 @@ export interface ScatterPoint {
   advisoryCount: number
 }
 
-export async function listPackagesForScatter(qx: QueryExecutor): Promise<ScatterPoint[]> {
+export async function listPackagesForScatter(
+  qx: QueryExecutor,
+  options: { status?: string } = {},
+): Promise<ScatterPoint[]> {
+  const { status } = options
+
+  // 'unassigned' covers packages with no stewardship row (s.id IS NULL) in addition
+  // to rows explicitly marked unassigned. All other statuses filter via s.status directly.
+  // The query always uses LEFT JOIN — the filter is applied in the WHERE clause, not the join.
+  const statusFilter = status
+    ? status === 'unassigned'
+      ? `AND (s.status = 'unassigned' OR s.id IS NULL)`
+      : `AND s.status = $(status)`
+    : ''
+
   const rows: Array<{
     purl: string
     name: string
@@ -675,16 +689,17 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
     stewardshipId: string | null
     stewardshipStatus: string | null
     openVulns: number
-  }> = await qx.select(`
+  }> = await qx.select(
+    `
     SELECT
       p.purl,
       p.name,
-      ROUND(COALESCE(p.impact, 0) * 100)::int        AS "criticalityScore",
-      ROUND(COALESCE(r_sc.scorecard_score, 0) * 10)::int AS "healthScore",
-      r_sc.scorecard_score                            AS "scorecardScoreRaw",
-      s.id::text                                      AS "stewardshipId",
-      s.status                                        AS "stewardshipStatus",
-      COALESCE(ap_counts.cnt, 0)                      AS "openVulns"
+      ROUND(COALESCE(p.impact, 0) * 100)::int             AS "criticalityScore",
+      ROUND(COALESCE(r_sc.scorecard_score, 0) * 10)::int  AS "healthScore",
+      r_sc.scorecard_score                                 AS "scorecardScoreRaw",
+      s.id::text                                           AS "stewardshipId",
+      s.status                                             AS "stewardshipStatus",
+      COALESCE(ap_counts.cnt, 0)                           AS "openVulns"
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
     LEFT JOIN LATERAL (
@@ -699,9 +714,12 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
+    ${statusFilter}
     ORDER BY p.impact DESC NULLS LAST, p.purl ASC
     LIMIT 2000
-  `)
+    `,
+    { status },
+  )
 
   return rows.map((r) => ({
     purl: r.purl,
