@@ -96,8 +96,18 @@ export async function saveOSPSBaselineInsightsToDB(
   const CATALOG_ID = 'osps-baseline-2026-02'
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   const result = await redisCache.get(key)
+  if (!result) {
+    throw new Error(`No cached privateer result found for key: ${key}`)
+  }
   const parsedResult: ISecurityInsightsPrivateerResult = JSON.parse(result)
-  const evaluationSuite = parsedResult.evaluation_suites.find((s) => s.catalog_id === CATALOG_ID)
+  const evaluationSuite = parsedResult['evaluation-suites']?.find(
+    (s) => s['catalog-id'] === CATALOG_ID,
+  )
+  if (!evaluationSuite) {
+    throw new Error(
+      `No evaluation suite found for catalog '${CATALOG_ID}' in privateer output for repo ${repo.repoUrl}`,
+    )
+  }
 
   const qx = pgpQx(svc.postgres.writer.connection())
 
@@ -105,24 +115,30 @@ export async function saveOSPSBaselineInsightsToDB(
     repo: repo.repoUrl,
     insightsProjectId: repo.insightsProjectId,
     insightsProjectSlug: repo.insightsProjectSlug,
-    catalogId: evaluationSuite.catalog_id,
+    catalogId: evaluationSuite['catalog-id'],
     name: evaluationSuite.name,
     result: evaluationSuite.result,
-    corruptedState: evaluationSuite.corrupted_state,
+    corruptedState: evaluationSuite['corrupted-state'],
   })
 
-  const suite = await findEvaluationSuite(qx, repo.repoUrl, evaluationSuite.catalog_id)
+  const suite = await findEvaluationSuite(qx, repo.repoUrl, evaluationSuite['catalog-id'])
+  if (!suite) {
+    throw new Error(
+      `Evaluation suite not found after insert for repo ${repo.repoUrl}, catalog ${evaluationSuite['catalog-id']}`,
+    )
+  }
 
-  for (const evaluation of evaluationSuite.control_evaluations) {
+  for (const evaluation of evaluationSuite['control-evaluations'].evaluations) {
+    const controlId = evaluation.control['entry-id']
     await addSuiteControlEvaluation(qx, {
-      controlId: evaluation['control-id'],
+      controlId,
       name: evaluation.name,
-      corruptedState: evaluation['corrupted-state'],
+      corruptedState: false,
       message: evaluation.message,
       repo: repo.repoUrl,
       insightsProjectId: repo.insightsProjectId,
       insightsProjectSlug: repo.insightsProjectSlug,
-      remediationGuide: evaluation['remediation-guide'] || '',
+      remediationGuide: '',
       result: evaluation.result,
       securityInsightsEvaluationSuiteId: suite.id,
     })
@@ -130,10 +146,16 @@ export async function saveOSPSBaselineInsightsToDB(
     const controlEvaluation = await findSuiteControlEvaluation(
       qx,
       repo.repoUrl,
-      evaluation['control-id'],
+      controlId,
       suite.id,
     )
-    for (const assessment of evaluation.assessments) {
+    if (!controlEvaluation) {
+      throw new Error(
+        `Control evaluation not found after insert for repo ${repo.repoUrl}, controlId ${controlId}, suiteId ${suite.id}`,
+      )
+    }
+    for (const assessment of evaluation['assessment-logs']) {
+      const runDuration = computeRunDuration(assessment.start, assessment.end)
       await addControlEvaluationAssessment(qx, {
         applicability: assessment.applicability,
         description: assessment.description,
@@ -141,17 +163,17 @@ export async function saveOSPSBaselineInsightsToDB(
         repo: repo.repoUrl,
         insightsProjectId: repo.insightsProjectId,
         insightsProjectSlug: repo.insightsProjectSlug,
-        requirementId: assessment['requirement-id'],
+        requirementId: assessment.requirement['entry-id'],
         result: assessment.result,
-        runDuration: assessment['run-duration'] || '',
+        runDuration,
         steps: assessment.steps,
         stepsExecuted: assessment['steps-executed'] || 0,
         securityInsightsEvaluationId: controlEvaluation.id,
         recommendation: assessment.recommendation,
         start: assessment.start,
         end: assessment.end,
-        value: assessment.value,
-        changes: assessment.changes,
+        value: null,
+        changes: null,
       })
     }
   }
@@ -172,6 +194,14 @@ export async function saveOSPSBaselineInsightsToRedis(
 ): Promise<void> {
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   await redisCache.set(key, JSON.stringify(insights), 60 * 60 * 24) // 1 day
+}
+
+function computeRunDuration(start: string | undefined, end: string | undefined): string {
+  if (!start || !end) return ''
+  const startMs = new Date(start).getTime()
+  const endMs = new Date(end).getTime()
+  if (isNaN(startMs) || isNaN(endMs) || endMs < startMs) return ''
+  return `${endMs - startMs}ms`
 }
 
 async function cleanupFiles(repoName: string): Promise<void> {
@@ -221,11 +251,22 @@ async function runBinary(
     })
 
     proc.on('close', (code) => {
-      if (code === 0) {
-        svc.log.info(`Binary completed successfully`)
+      // exit code 0 = all tests passed, 1 = some tests failed — both mean the
+      // evaluation ran to completion and wrote its output file
+      if (code === 0 || code === 1) {
+        svc.log.info(`Binary completed with exit code ${code}`)
         resolve({ stdout, stderr })
       } else {
-        reject(new Error(`Binary exited with code ${code}\nStderr:\n${stderr}Stdout:\n${stdout}`))
+        const truncated = (s: string) => (s.length > 500 ? s.slice(0, 500) + '…' : s)
+        const truncStdout = truncated(stdout)
+        const truncStderr = truncated(stderr)
+        const err = Object.assign(
+          new Error(
+            `Binary exited with code ${code}\nStderr:\n${truncStderr}\nStdout:\n${truncStdout}`,
+          ),
+          { stdout: truncStdout, stderr: truncStderr },
+        )
+        reject(err)
       }
     })
   })

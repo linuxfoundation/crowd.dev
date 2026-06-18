@@ -9,6 +9,9 @@ export type OsspckgsJobKind =
   | 'advisories'
   | 'advisory_packages'
   | 'dependent_counts'
+  | 'scorecard_repos'
+  | 'scorecard_checks'
+  | 'ranking'
 
 export type OsspckgsJobStatus =
   | 'pending'
@@ -20,7 +23,7 @@ export type OsspckgsJobStatus =
   | 'failed'
   | 'cleaned'
 
-export type OsspckgsSyncMode = 'full' | 'incremental'
+export type OsspckgsSyncMode = 'full' | 'incremental' | 'ranking'
 
 export interface BqStats {
   jobId: string
@@ -181,6 +184,31 @@ export async function updateLoadingProgress(
      WHERE id = $(jobId)`,
     { jobId, done, total },
   )
+}
+
+// Returns the MAX row_count_bq across the last 5 completed jobs for this kind.
+// Using MAX over recent jobs rather than the latest single job means one anomalous
+// run (e.g. a bad upstream snapshot) cannot corrupt the baseline for the next guard check.
+export async function getLastCompletedJobRowCount(
+  qx: QueryExecutor,
+  jobKind: OsspckgsJobKind,
+): Promise<number | null> {
+  const row = await qx.selectOneOrNone(
+    `
+    SELECT MAX(row_count_bq) AS row_count_bq
+    FROM (
+      SELECT row_count_bq
+      FROM osspckgs_ingest_jobs
+      WHERE job_kind = $(jobKind)
+        AND status IN ('done', 'cleaned')
+        AND row_count_bq IS NOT NULL
+      ORDER BY id DESC
+      LIMIT 5
+    ) recent
+    `,
+    { jobKind },
+  )
+  return row?.row_count_bq != null ? Number(row.row_count_bq) : null
 }
 
 // Inserts a new job row with status 'pending', returns the new id.

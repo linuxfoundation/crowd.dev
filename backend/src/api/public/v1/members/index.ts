@@ -4,6 +4,7 @@ import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
+import { createMember } from './createMember'
 import { createMemberIdentity } from './identities/createMemberIdentity'
 import { getMemberIdentities } from './identities/getMemberIdentities'
 import { verifyMemberIdentity } from './identities/verifyMemberIdentity'
@@ -19,6 +20,8 @@ import { verifyMemberWorkExperience } from './work-experiences/verifyMemberWorkE
 
 export function membersRouter(): Router {
   const router = Router()
+
+  router.post('/', requireScopes([SCOPES.WRITE_MEMBERS]), safeWrap(createMember))
 
   router.post('/resolve', requireScopes([SCOPES.READ_MEMBERS]), safeWrap(resolveMemberByIdentities))
 

@@ -41,7 +41,7 @@ export function getEnricherConfig() {
   return {
     updateIntervalHours: requireEnvInt('ENRICHER_REPO_UPDATE_INTERVAL_HOURS'),
     idleSleepSec: requireEnvInt('ENRICHER_IDLE_SLEEP_SEC'),
-    concurrency: parseInt(process.env.ENRICHER_CONCURRENCY ?? '80', 10),
+    concurrency: parseInt(process.env.ENRICHER_CONCURRENCY ?? '150', 10),
     fetchTimeoutMs: parseInt(process.env.ENRICHER_FETCH_TIMEOUT_MS ?? '10000', 10),
   }
 }
@@ -54,5 +54,15 @@ export function getMavenConfig() {
     nonCriticalConcurrency: requireEnvInt('MAVEN_FETCHER_NON_CRITICAL_CONCURRENCY'),
     refreshDays: requireEnvInt('MAVEN_FETCHER_REFRESH_DAYS'),
     groupDelayMs: requireEnvInt('MAVEN_FETCHER_GROUP_DELAY_MS'),
+  }
+}
+
+export function getDockerhubConfig() {
+  return {
+    hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
+    batchSize: requireEnvInt('DOCKERHUB_BATCH_SIZE'),
+    refreshIntervalHours: requireEnvInt('DOCKERHUB_REFRESH_INTERVAL_HOURS'),
+    discoveryIntervalDays: requireEnvInt('DOCKERHUB_DISCOVERY_INTERVAL_DAYS'),
+    idleSleepSec: requireEnvInt('DOCKERHUB_IDLE_SLEEP_SEC'),
   }
 }

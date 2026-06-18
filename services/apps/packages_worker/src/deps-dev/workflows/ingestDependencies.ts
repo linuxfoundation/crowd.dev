@@ -180,7 +180,7 @@ export async function ingestDependencies(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 3000,
+    maxBytesGb: 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
   })

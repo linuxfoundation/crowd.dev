@@ -3,18 +3,21 @@ version: '3.1'
 x-env-args: &env-args
   DOCKER_BUILDKIT: 1
   NODE_ENV: docker
-  SERVICE: deps-dev-ingest
-  CROWD_TEMPORAL_TASKQUEUE: deps-dev-ingest
-  CROWD_TEMPORAL_NAMESPACE: ${CROWD_PACKAGES_TEMPORAL_NAMESPACE}
+  SERVICE: dockerhub-sync
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
+  DOCKERHUB_API_BASE_URL: 'https://hub.docker.com/v2'
+  DOCKERHUB_BATCH_SIZE: '100'
+  DOCKERHUB_REFRESH_INTERVAL_HOURS: '24'
+  DOCKERHUB_DISCOVERY_INTERVAL_DAYS: '14'
+  DOCKERHUB_IDLE_SLEEP_SEC: '60'
 
 services:
-  deps-dev-ingest:
+  dockerhub-sync:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run start:deps-dev-ingest'
+    command: 'pnpm run start:dockerhub-sync'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     env_file:
       - ../../backend/.env.dist.local
@@ -27,11 +30,11 @@ services:
     networks:
       - crowd-bridge
 
-  deps-dev-ingest-dev:
+  dockerhub-sync-dev:
     build:
       context: ../../
       dockerfile: ./scripts/services/docker/Dockerfile.packages
-    command: 'pnpm run dev:deps-dev-ingest'
+    command: 'pnpm run dev:dockerhub-sync'
     working_dir: /usr/crowd/app/services/apps/packages_worker
     # user: '${USER_ID}:${GROUP_ID}'
     env_file:
@@ -41,7 +44,7 @@ services:
       - ../../backend/.env.override.composed
     environment:
       <<: *env-args
-    hostname: deps-dev-ingest
+    hostname: dockerhub-sync
     networks:
       - crowd-bridge
     volumes:

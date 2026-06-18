@@ -11,6 +11,7 @@ const config: Config = {
     'CROWD_ENRICHMENT_SERP_API_KEY',
     'CROWD_ENRICHMENT_CRUSTDATA_URL',
     'CROWD_ENRICHMENT_CRUSTDATA_API_KEY',
+    'CROWD_LF_AGENT_USER_ID',
   ],
   producer: {
     enabled: false,

@@ -11,4 +11,15 @@ export type TimelineItem = {
   organizationId: string | null
   segmentId?: string
   skipManualAffiliationSegments?: boolean
+
+  /**
+   * Routes activities by their email domain so timeline passes never overwrite each other.
+   * Claims activities that match this specific organization domain.
+   */
+  matchEmailDomain?: string
+
+  /**
+   * Excludes activities belonging to these specific email domains from being claimed.
+   */
+  excludeEmailDomains?: string[]
 }
