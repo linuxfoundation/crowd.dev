@@ -1,12 +1,15 @@
-export type StewardshipStatus =
-  | 'unassigned'
-  | 'open'
-  | 'assessing'
-  | 'active'
-  | 'needs_attention'
-  | 'escalated'
-  | 'blocked'
-  | 'inactive'
+export const STEWARDSHIP_STATUS_VALUES = [
+  'unassigned',
+  'open',
+  'assessing',
+  'active',
+  'needs_attention',
+  'escalated',
+  'blocked',
+  'inactive',
+] as const
+
+export type StewardshipStatus = (typeof STEWARDSHIP_STATUS_VALUES)[number]
 
 export type Lifecycle = 'active' | 'stable' | 'declining' | 'abandoned'
 
