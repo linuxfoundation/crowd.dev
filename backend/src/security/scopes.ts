@@ -13,6 +13,7 @@ export const SCOPES = {
   READ_AFFILIATIONS: 'read:affiliations',
   READ_PACKAGES: 'read:packages',
   READ_STEWARDSHIPS: 'read:stewardships',
+  WRITE_STEWARDSHIPS: 'write:stewardships',
 } as const
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES]

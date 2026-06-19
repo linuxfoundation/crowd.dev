@@ -7,7 +7,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import type { StewardshipStatus } from './types'
+import { STEWARDSHIP_STATUS_VALUES, type StewardshipStatus } from './types'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
@@ -15,16 +15,6 @@ const MAX_PAGE_SIZE = 100
 const booleanQueryParam = z.preprocess((v) => v === 'true', z.boolean()).default(false)
 
 const lifecycleValues = ['active', 'stable', 'declining', 'abandoned'] as const
-const stewardshipStatusValues = [
-  'unassigned',
-  'open',
-  'assessing',
-  'active',
-  'needs_attention',
-  'escalated',
-  'blocked',
-  'inactive',
-] as const
 const healthBandValues = ['healthy', 'fair', 'concerning', 'critical'] as const
 const vulnSeverityValues = ['any', 'high', 'critical', 'none'] as const
 
@@ -34,7 +24,7 @@ const querySchema = z.object({
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(lifecycleValues).optional(),
   name: z.string().trim().optional(),
-  status: z.enum(stewardshipStatusValues).optional(),
+  status: z.enum(STEWARDSHIP_STATUS_VALUES).optional(),
   healthBand: z.enum(healthBandValues).optional(),
   vulnSeverity: z.enum(vulnSeverityValues).optional(),
   busFactor1Only: booleanQueryParam,
