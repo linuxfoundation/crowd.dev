@@ -33,6 +33,7 @@ SQL >
                         ('OSPS-BR-04', 'Build and Release', 2),
                         ('OSPS-BR-05', 'Build and Release', 2),
                         ('OSPS-BR-06', 'Build and Release', 2),
+                        ('OSPS-BR-07', 'Build and Release', 2),
                         -- Documentation
                         ('OSPS-DO-01', 'Documentation', 3),
                         ('OSPS-DO-02', 'Documentation', 3),
