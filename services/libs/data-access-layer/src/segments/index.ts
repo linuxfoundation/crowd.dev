@@ -198,7 +198,8 @@ export async function getSegmentSubprojects(
         join segment_level sl on (sl.level = 'child' and s.id = sl.id)
             or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" is not null)
             or (sl.level = 'grandparent' and s."grandparentSlug" = sl.slug)
-        where status = 'active';
+        where status = 'active'
+          and s."tenantId" = $(tenantId);
     `,
     {
       tenantId: DEFAULT_TENANT_ID,

@@ -554,10 +554,12 @@ export default class SegmentService extends LoggerBase {
     return getSegmentSubprojects(qx, segments)
   }
 
-  static getTenantActivityTypes(subprojects: any): ActivityTypeSettings {
+  static getTenantActivityTypes(
+    subprojects: Array<SegmentData | SegmentRawData>,
+  ): ActivityTypeSettings {
     return subprojects.reduce(
       (acc: ActivityTypeSettings, subproject) => {
-        const activityTypes = buildSegmentActivityTypes(subproject)
+        const activityTypes = buildSegmentActivityTypes(subproject as SegmentRawData)
 
         return {
           custom: {

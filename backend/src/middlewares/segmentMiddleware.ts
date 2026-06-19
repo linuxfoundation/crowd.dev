@@ -9,17 +9,14 @@ export async function segmentMiddleware(req: Request, _res: Response, next: Next
     const options = req as unknown as IRepositoryOptions
     const segmentRepository = new SegmentRepository(options)
 
-    // Query parameters take precedence; request body acts as the fallback.
-    const rawSegments = req.query.segments ?? (req.body as Record<string, unknown>)?.segments
+    const querySegments = toStringArray(req.query.segments)
+    const bodySegments = toStringArray((req.body as Record<string, unknown>)?.segments)
 
-    // Express can parse segments as a single string or an array (?segments=a vs ?segments=a&segments=b).
-    // Normalize into a clean, flat array of non-empty strings.
-    const segmentIds = toStringArray(rawSegments)
+    const segmentIds = querySegments.length > 0 ? querySegments : bodySegments
 
     if (segmentIds.length > 0) {
       options.currentSegments = await segmentRepository.findInIds(segmentIds)
     } else {
-      // No segmentIds in the request — use the first subproject as the default
       const { rows } = await segmentRepository.querySubprojects({ limit: 1, offset: 0 })
       options.currentSegments = rows
     }

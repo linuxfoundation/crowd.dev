@@ -124,6 +124,15 @@ export default class ActivityService extends LoggerBase {
 
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
+    if (subprojectIds.length === 0) {
+      return {
+        count: 0,
+        rows: [],
+        limit,
+        offset,
+      }
+    }
+
     const activitiyTypes = SegmentRepository.getActivityTypes(this.options)
 
     const page = await queryActivities(
