@@ -1,6 +1,7 @@
 import lodash from 'lodash'
 import cloneDeep from 'lodash.clonedeep'
 
+import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations'
 import { ActivityTypeSettings, PlatformType, SegmentData, SegmentRawData } from '@crowd/types'
 
@@ -154,6 +155,64 @@ export function isSegmentProject(segment: SegmentData | SegmentRawData): boolean
 
 export function isSegmentSubproject(segment: SegmentData | SegmentRawData): boolean {
   return segment.slug != null && segment.parentSlug != null && segment.grandparentSlug != null
+}
+
+export async function getSegmentSubprojects(
+  qx: QueryExecutor,
+  segmentIds: string[],
+): Promise<SegmentRawData[]> {
+  if (segmentIds.length === 0) {
+    return []
+  }
+
+  return qx.select(
+    `
+      with input_segment AS (
+        select
+          id,
+          slug,
+          "parentSlug",
+          "grandparentSlug"
+        from segments
+        where id = ANY($(segmentIds)::UUID[])
+          and "tenantId" = $(tenantId)
+      ),
+      segment_level AS (
+        select
+          case
+            when "parentSlug" is not null and "grandparentSlug" is not null
+                then 'child'
+            when "parentSlug" is not null and "grandparentSlug" is null
+                then 'parent'
+            when "parentSlug" is null and "grandparentSlug" is null
+                then 'grandparent'
+            end as level,
+          id,
+          slug,
+          "parentSlug",
+          "grandparentSlug"
+        from input_segment
+      )
+        select s.*
+        from segments s
+        join segment_level sl on (sl.level = 'child' and s.id = sl.id)
+            or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" is not null)
+            or (sl.level = 'grandparent' and s."grandparentSlug" = sl.slug)
+        where status = 'active';
+    `,
+    {
+      tenantId: DEFAULT_TENANT_ID,
+      segmentIds,
+    },
+  )
+}
+
+export async function getSegmentSubprojectIds(
+  qx: QueryExecutor,
+  segmentIds: string[],
+): Promise<string[]> {
+  const subprojects = await getSegmentSubprojects(qx, segmentIds)
+  return subprojects.map((s) => s.id)
 }
 
 export function buildSegmentActivityTypes(segment: SegmentRawData): ActivityTypeSettings {

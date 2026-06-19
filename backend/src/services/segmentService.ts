@@ -11,6 +11,7 @@ import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   buildSegmentActivityTypes,
+  getSegmentSubprojects,
   isSegmentSubproject,
 } from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
@@ -21,6 +22,7 @@ import {
   SegmentCriteria,
   SegmentData,
   SegmentLevel,
+  SegmentRawData,
   SegmentUpdateData,
 } from '@crowd/types'
 
@@ -547,37 +549,29 @@ export default class SegmentService extends LoggerBase {
     await segmentRepository.addActivityChannel(segment.id, data.platform, data.channel)
   }
 
-  async getSegmentSubprojects(segments: string[]) {
-    const segmentRepository = new SegmentRepository(this.options)
-    const subprojects = await segmentRepository.getSegmentSubprojects(segments)
-    return subprojects
+  async getSegmentSubprojects(segments: string[]): Promise<SegmentRawData[]> {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    return getSegmentSubprojects(qx, segments)
   }
 
-  async getTenantSubprojects() {
-    const segmentRepository = new SegmentRepository(this.options)
+  static getTenantActivityTypes(subprojects: any): ActivityTypeSettings {
+    return subprojects.reduce(
+      (acc: ActivityTypeSettings, subproject) => {
+        const activityTypes = buildSegmentActivityTypes(subproject)
 
-    const { rows } = await segmentRepository.querySubprojects({})
-    return rows
-  }
-
-  static async getTenantActivityTypes(subprojects: any) {
-    if (!subprojects) {
-      return { custom: {}, default: {} }
-    }
-    return subprojects.reduce((acc: any, subproject) => {
-      const activityTypes = buildSegmentActivityTypes(subproject)
-
-      return {
-        custom: {
-          ...acc.custom,
-          ...activityTypes.custom,
-        },
-        default: {
-          ...acc.default,
-          ...activityTypes.default,
-        },
-      }
-    }, {})
+        return {
+          custom: {
+            ...acc.custom,
+            ...activityTypes.custom,
+          },
+          default: {
+            ...acc.default,
+            ...activityTypes.default,
+          },
+        }
+      },
+      { custom: {}, default: {} } as ActivityTypeSettings,
+    )
   }
 
   static async getTenantActivityChannels(segments: string[], options: any) {

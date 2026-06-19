@@ -13,6 +13,7 @@ import {
 } from '@crowd/data-access-layer/src/integrations'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getReposGroupedByOrgForIntegrations } from '@crowd/data-access-layer/src/repositories'
+import { getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
 import { IntegrationRunState, PlatformType } from '@crowd/types'
 
 import SequelizeFilterUtils from '../utils/sequelizeFilterUtils'
@@ -66,10 +67,15 @@ class IntegrationRepository {
 
     const transaction = SequelizeRepository.getTransaction(options)
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     let record = await options.database.integration.findOne({
       where: {
         id,
-        segmentId: SequelizeRepository.getSegmentIds(options),
+        segmentId: subprojectIds,
       },
       transaction,
     })
@@ -445,11 +451,17 @@ class IntegrationRepository {
       }
     }
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     const parser = new QueryParser(
       {
         nestedFields: {
           sentiment: 'sentiment.sentiment',
         },
+        withSegments: false,
       },
       options,
     )
@@ -461,11 +473,14 @@ class IntegrationRepository {
       offset,
     })
 
+    const segmentWhere = { segmentId: subprojectIds }
+    const where = parsed.where ? { [Op.and]: [parsed.where, segmentWhere] } : segmentWhere
+
     let {
       rows,
       count, // eslint-disable-line prefer-const
     } = await options.database.integration.findAndCountAll({
-      ...(parsed.where ? { where: parsed.where } : {}),
+      where,
       ...(parsed.having ? { having: parsed.having } : {}),
       order: parsed.order,
       limit: limit ? parsed.limit : undefined,
