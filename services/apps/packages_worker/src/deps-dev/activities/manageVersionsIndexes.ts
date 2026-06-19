@@ -91,13 +91,13 @@ export async function rebuildVersionsIndexes(): Promise<{
   )
   const rebuilt: string[] = []
 
-  // Build indexes in parallel — each needs its own connection.
+  // Build indexes in parallel — each on its own connection so they run concurrently.
   // maintenance_work_mem per connection: with 32 partitions and default 64MB, PG spills to
   // disk on every partition; 2GB lets the sort fit in RAM and cuts build time dramatically.
-  // Build indexes in parallel — each on its own connection so they run concurrently.
   await Promise.all(
     toRebuild.map(async (idx) => {
       const conn = await getPackagesDb()
+      await conn.result(`SET LOCAL maintenance_work_mem = '2GB'`)
       log.info({ columns: idx.columns }, 'Creating index on versions')
       await conn.result(idx.createSql)
       rebuilt.push(idx.columns)

@@ -273,7 +273,7 @@ function monitor_workflow() {
             --workflow "$WORKFLOW_FILE" \
             --limit 1 \
             --json databaseId \
-            --jq '.[0].databaseId' 2>/dev/null || echo "")
+            --jq '.[0].databaseId // empty' 2>/dev/null || echo "")
 
         if [[ -n "$CANDIDATE" ]] && ! echo "$EXISTING_IDS" | grep -q "^${CANDIDATE}$"; then
             RUN_ID="$CANDIDATE"
