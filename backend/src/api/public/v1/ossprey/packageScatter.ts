@@ -24,7 +24,7 @@ function normalizeToArray(v: unknown): unknown[] | undefined {
 
 const scatterQuerySchema = z.object({
   status: z.preprocess(normalizeToArray, z.array(statusEnum).min(1)).optional(),
-  ecosystem: z.string().optional(),
+  ecosystem: z.string().min(1).optional(),
 })
 
 export async function packageScatterHandler(req: Request, res: Response): Promise<void> {
