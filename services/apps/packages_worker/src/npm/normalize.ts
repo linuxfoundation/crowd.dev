@@ -59,24 +59,28 @@ export function normalizeLicenses(packument: Packument): string[] {
 // A version's `license` field comes in several shapes: a plain SPDX string ("MIT"),
 // an object ({ type, url }), or the legacy array form ([{ type, file }, ...]). Passing those
 // raw into a text column would persist objects/arrays, so collapse every shape to a single
-// string (OR-joined for the array form) or null. Non-string `type` values are dropped.
+// string (OR-joined for the array form) or null. Non-string or blank `type` values are dropped.
 export function versionLicense(raw: unknown): string | null {
   if (raw == null) return null
-  if (typeof raw === 'string') return raw || null
+  if (typeof raw === 'string') return blankToNull(raw)
   if (Array.isArray(raw)) {
     const types = raw
-      .map((l) => (typeof l === 'string' ? l : licenseType(l)))
-      .filter((t): t is string => Boolean(t))
+      .map((l) => (typeof l === 'string' ? blankToNull(l) : licenseType(l)))
+      .filter((t): t is string => t !== null)
     return types.length ? types.join(' OR ') : null
   }
   return licenseType(raw)
 }
 
-// Extract a string `type` from a license object, or null if absent/non-string.
 function licenseType(v: unknown): string | null {
   if (typeof v !== 'object' || v === null) return null
   const type = (v as { type?: unknown }).type
-  return typeof type === 'string' ? type : null
+  return typeof type === 'string' ? blankToNull(type) : null
+}
+
+function blankToNull(s: string): string | null {
+  const trimmed = s.trim()
+  return trimmed || null
 }
 
 function clean(s: string): string {
