@@ -65,6 +65,9 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const concurrencyIdx = args.indexOf('--concurrency')
   const concurrency = concurrencyIdx !== -1 ? Number(args[concurrencyIdx + 1]) : 8
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new Error(`--concurrency must be a positive integer, got: ${args[concurrencyIdx + 1]}`)
+  }
   const dryRun = args.includes('--dry-run')
 
   if (dryRun) log.info('DRY RUN — counting only')

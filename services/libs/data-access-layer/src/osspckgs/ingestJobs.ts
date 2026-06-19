@@ -312,7 +312,7 @@ export async function mergeJobTableRowCounts(
 ): Promise<void> {
   await qx.result(
     `UPDATE osspckgs_ingest_jobs
-     SET table_row_counts = COALESCE(table_row_counts, '{}') || $(kv)
+     SET table_row_counts = COALESCE(table_row_counts, '{}'::jsonb) || $(kv)::jsonb
      WHERE id = $(jobId)`,
     { jobId, kv },
   )

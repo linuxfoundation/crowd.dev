@@ -97,9 +97,11 @@ export async function rebuildVersionsIndexes(): Promise<{
   await Promise.all(
     toRebuild.map(async (idx) => {
       const conn = await getPackagesDb()
-      await conn.result(`SET LOCAL maintenance_work_mem = '2GB'`)
-      log.info({ columns: idx.columns }, 'Creating index on versions')
-      await conn.result(idx.createSql)
+      await conn.tx(async (t) => {
+        await t.result(`SET LOCAL maintenance_work_mem = '2GB'`)
+        log.info({ columns: idx.columns }, 'Creating index on versions')
+        await t.result(idx.createSql)
+      })
       rebuilt.push(idx.columns)
     }),
   )
