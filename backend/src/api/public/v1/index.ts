@@ -34,7 +34,7 @@ export function v1Router(): Router {
     /^\/packages:batch-stewardship\/?$/,
     oauth2Middleware(AUTH0_CONFIG),
     packagesRateLimiter,
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
     safeWrap(batchGetStewardship),
   )
   router.use('/packages', oauth2Middleware(AUTH0_CONFIG), packagesRouter())
