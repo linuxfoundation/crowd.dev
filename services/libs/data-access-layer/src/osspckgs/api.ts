@@ -667,18 +667,18 @@ export interface ScatterPoint {
 
 export async function listPackagesForScatter(
   qx: QueryExecutor,
-  options: { status?: string } = {},
+  options: { status?: string[]; ecosystem?: string } = {},
 ): Promise<ScatterPoint[]> {
-  const { status } = options
+  const { status, ecosystem } = options
 
   // 'unassigned' covers packages with no stewardship row (s.id IS NULL) in addition
-  // to rows explicitly marked unassigned. All other statuses filter via s.status directly.
+  // to rows explicitly marked unassigned. All other statuses filter via s.status = ANY(...).
   // The query always uses LEFT JOIN — the filter is applied in the WHERE clause, not the join.
-  const statusFilter = status
-    ? status === 'unassigned'
-      ? `AND (s.status = 'unassigned' OR s.id IS NULL)`
-      : `AND s.status = $(status)`
+  const includesUnassigned = status?.includes('unassigned') ?? false
+  const statusFilter = status?.length
+    ? `AND (s.status = ANY($(status)::text[])${includesUnassigned ? ' OR s.id IS NULL' : ''})`
     : ''
+  const ecosystemFilter = ecosystem ? `AND p.ecosystem = $(ecosystem)` : ''
 
   const rows: Array<{
     purl: string
@@ -715,10 +715,11 @@ export async function listPackagesForScatter(
     ) r_sc ON true
     WHERE p.is_critical = true
     ${statusFilter}
+    ${ecosystemFilter}
     ORDER BY p.impact DESC NULLS LAST, p.purl ASC
     LIMIT 2000
     `,
-    { status },
+    { status, ecosystem },
   )
 
   return rows.map((r) => ({
