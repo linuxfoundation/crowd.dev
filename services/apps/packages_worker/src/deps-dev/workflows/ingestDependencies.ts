@@ -216,8 +216,9 @@ export async function ingestDependencies(opts: {
   fillConstraints?: boolean // re-export full BQ data, upsert version_constraint only where NULL
 }): Promise<{ rowCountBq: number }> {
   const ecosystems = opts.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
-  const tableOption = opts.depsTableOption ?? 'A'
   const isFill = opts.fillConstraints === true
+  // Fill mode forces Option A — Option B selects NULL for version_constraint, making the fill a no-op.
+  const tableOption = isFill ? 'A' : (opts.depsTableOption ?? 'A')
   // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
   const sql =
     opts.syncMode === 'full' || isFill
