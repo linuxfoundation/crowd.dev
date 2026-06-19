@@ -20,7 +20,7 @@ export function packagesRouter(): Router {
   const router = Router()
 
   router.use(rateLimiter)
-  router.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'))
+  router.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'))
 
   router.get('/', safeWrap(listPackages))
   router.get('/metrics', safeWrap(getPackagesMetrics))

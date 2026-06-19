@@ -24,41 +24,59 @@ const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 export function akritesRouter(): Router {
   const router = Router()
 
-  router.get('/metrics', safeWrap(metricsHandler))
+  router.get(
+    '/metrics',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(metricsHandler),
+  )
   // /packages/scatter registered before router.use('/packages', ...) so Express evaluates this
   // explicit route first; without this ordering the sub-router would receive the request first
   // and call next() on no match, adding unnecessary overhead.
-  router.get('/packages/scatter', rateLimiter, safeWrap(packageScatterHandler))
-  router.get('/packages', rateLimiter, safeWrap(packageListHandler))
-  router.get('/activity', safeWrap(activityFeedHandler))
+  router.get(
+    '/packages/scatter',
+    rateLimiter,
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(packageScatterHandler),
+  )
+  router.get(
+    '/packages',
+    rateLimiter,
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(packageListHandler),
+  )
+  router.get(
+    '/activity',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(activityFeedHandler),
+  )
 
   // --- packages ---
   router.post(
     /^\/packages:batch-stewardship\/?$/,
     rateLimiter,
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(batchGetStewardship),
   )
   const packagesSubRouter = Router()
   packagesSubRouter.use(rateLimiter)
   packagesSubRouter.get(
     '/metrics',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackagesMetrics),
   )
   packagesSubRouter.get(
     '/detail',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackage),
   )
   packagesSubRouter.get(
     '/advisories',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackageAdvisories),
   )
   packagesSubRouter.get(
     '/history',
-    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackageHistory),
   )
   router.use('/packages', packagesSubRouter)
