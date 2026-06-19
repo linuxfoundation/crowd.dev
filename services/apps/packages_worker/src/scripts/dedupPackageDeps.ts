@@ -22,8 +22,9 @@ const log = getServiceChildLogger('dedupPackageDeps')
 const NUM_PARTITIONS = 64
 
 async function processPartition(p: number, dryRun: boolean): Promise<number> {
+  log.info({ partition: p }, dryRun ? 'counting partition' : 'deduping partition')
   const conn = await getPackagesDb()
-  return conn.tx(async (tx) => {
+  const count = await conn.tx(async (tx) => {
     await tx.result(`SET LOCAL work_mem = '2GB'`)
     if (dryRun) {
       const row = await tx.selectOne(`
@@ -57,6 +58,8 @@ async function processPartition(p: number, dryRun: boolean): Promise<number> {
       WHERE pd.id = dupes.id AND pd.depends_on_id = dupes.depends_on_id
     `)
   })
+  log.info({ partition: p, count }, dryRun ? 'partition counted' : 'partition done')
+  return count
 }
 
 async function main(): Promise<void> {
@@ -75,9 +78,8 @@ async function main(): Promise<void> {
       (_, i) => batch + i,
     )
     const counts = await Promise.all(partitions.map((p) => processPartition(p, dryRun)))
-    const batchTotal = counts.reduce((s, n) => s + n, 0)
-    total += batchTotal
-    log.info({ partitions, batchTotal, total }, dryRun ? 'batch counted' : 'batch done')
+    total += counts.reduce((s, n) => s + n, 0)
+    log.info({ partitions, total }, dryRun ? 'batch counted' : 'batch done')
   }
 
   log.info({ total }, dryRun ? 'duplicates found' : 'dedup complete')
