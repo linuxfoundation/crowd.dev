@@ -451,16 +451,14 @@ class IntegrationRepository {
       }
     }
 
-    const qx = SequelizeRepository.getQueryExecutor(options)
-    const currentSegments = SequelizeRepository.getSegmentIds(options)
-
-    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
-
     const parser = new QueryParser(
       {
         nestedFields: {
           sentiment: 'sentiment.sentiment',
         },
+        // QueryParser filters on req.currentSegments directly (e.g., projectGroupId).
+        // Since integrations are stored per subproject, segment filtering is applied manually below
+        // after expanding to subprojectIds.
         withSegments: false,
       },
       options,
@@ -472,6 +470,11 @@ class IntegrationRepository {
       limit,
       offset,
     })
+
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     const segmentWhere = { segmentId: subprojectIds }
     const where = parsed.where ? { [Op.and]: [parsed.where, segmentWhere] } : segmentWhere
