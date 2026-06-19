@@ -18,3 +18,13 @@ BEGIN
 END$$;
 
 ALTER TABLE public.repo_activity_snapshot REPLICA IDENTITY FULL;
+
+-- ─── 3. packages enriched health/lifecycle fields (synced back from Tinybird) ───
+ALTER TABLE packages
+  ADD COLUMN IF NOT EXISTS lifecycle_label              text,
+  ADD COLUMN IF NOT EXISTS health_score                 smallint,
+  ADD COLUMN IF NOT EXISTS health_label                 text,
+  ADD COLUMN IF NOT EXISTS maintainer_health_score      smallint,
+  ADD COLUMN IF NOT EXISTS security_supply_chain_score  smallint,
+  ADD COLUMN IF NOT EXISTS development_activity_score   smallint,
+  ADD COLUMN IF NOT EXISTS signal_coverage_health       jsonb;
