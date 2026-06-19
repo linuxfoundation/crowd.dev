@@ -233,7 +233,7 @@ export async function ingestDependencies(opts: {
     maxBytesGb: opts.syncMode === 'full' || isFill ? 25000 : 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
-    ecosystems: opts.ecosystems,
+    ecosystems,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
