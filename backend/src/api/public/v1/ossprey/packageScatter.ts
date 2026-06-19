@@ -24,11 +24,12 @@ function normalizeToArray(v: unknown): unknown[] | undefined {
 
 const scatterQuerySchema = z.object({
   status: z.preprocess(normalizeToArray, z.array(statusEnum).min(1)).optional(),
+  ecosystem: z.string().optional(),
 })
 
 export async function packageScatterHandler(req: Request, res: Response): Promise<void> {
-  const { status } = validateOrThrow(scatterQuerySchema, req.query)
+  const { status, ecosystem } = validateOrThrow(scatterQuerySchema, req.query)
   const qx = await getPackagesQx()
-  const points = await listPackagesForScatter(qx, { status })
+  const points = await listPackagesForScatter(qx, { status, ecosystem })
   ok(res, { points, total: points.length })
 }
