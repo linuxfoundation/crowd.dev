@@ -126,11 +126,17 @@ components:
           type: string
           description: Auth0 sub of the assigned steward.
           example: abc123
-        name:
+        username:
           type:
             - string
             - 'null'
-          description: Display name of the steward. Null if not available.
+          description: Username of the steward in LFX. Null if not provided at assignment time.
+          example: jonathanr
+        displayName:
+          type:
+            - string
+            - 'null'
+          description: Display name of the steward. Null if not provided at assignment time.
           example: Jonathan R.
         role:
           type: string

@@ -151,7 +151,10 @@ components:
           type: string
         userId:
           type: string
-        name:
+        username:
+          type: string
+          nullable: true
+        displayName:
           type: string
           nullable: true
         role:

@@ -112,6 +112,8 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
 
 export interface StewardEntry {
   userId: string
+  username: string | null
+  displayName: string | null
   role: string
   assignedAt: string
 }
@@ -460,7 +462,7 @@ export async function listPackagesForApi(
     LEFT JOIN LATERAL (
       SELECT COALESCE(
         json_agg(
-          json_build_object('userId', ss.user_id, 'role', ss.role, 'assignedAt', ss.assigned_at)
+          json_build_object('userId', ss.user_id, 'username', ss.username, 'displayName', ss.display_name, 'role', ss.role, 'assignedAt', ss.assigned_at)
           ORDER BY ss.assigned_at ASC
         ) FILTER (WHERE ss.id IS NOT NULL),
         '[]'::json

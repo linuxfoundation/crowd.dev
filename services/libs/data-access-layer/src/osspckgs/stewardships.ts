@@ -19,7 +19,8 @@ export interface StewardshipStewardRecord {
   id: string
   stewardshipId: string
   userId: string
-  name: string | null
+  username: string | null
+  displayName: string | null
   role: string
   assignedAt: string
   assignedBy: string | null
@@ -92,7 +93,8 @@ function mapStewardStewardRow(row: Record<string, unknown>): StewardshipStewardR
     id: String(row.id),
     stewardshipId: String(row.stewardship_id),
     userId: String(row.user_id),
-    name: null,
+    username: row.username ? String(row.username) : null,
+    displayName: row.display_name ? String(row.display_name) : null,
     role: String(row.role),
     assignedAt: toIso(row.assigned_at),
     assignedBy: row.assigned_by ? String(row.assigned_by) : null,
@@ -190,6 +192,8 @@ export async function assignSteward(
   stewardshipId: number,
   data: {
     userId: string
+    username?: string
+    displayName?: string
     role: 'lead' | 'co_steward'
     assignedBy: string
     note?: string
@@ -211,9 +215,16 @@ export async function assignSteward(
     )
 
     await tx.result(
-      `INSERT INTO stewardship_stewards (stewardship_id, user_id, role, assigned_by)
-       VALUES ($(stewardshipId), $(userId), $(role), $(assignedBy))`,
-      { stewardshipId, userId: data.userId, role: data.role, assignedBy: data.assignedBy },
+      `INSERT INTO stewardship_stewards (stewardship_id, user_id, username, display_name, role, assigned_by)
+       VALUES ($(stewardshipId), $(userId), $(username), $(displayName), $(role), $(assignedBy))`,
+      {
+        stewardshipId,
+        userId: data.userId,
+        username: data.username ?? null,
+        displayName: data.displayName ?? null,
+        role: data.role,
+        assignedBy: data.assignedBy,
+      },
     )
 
     await tx.result(
@@ -222,9 +233,11 @@ export async function assignSteward(
       {
         stewardshipId,
         actorUserId: data.assignedBy,
-        content: `Assigned steward ${data.userId} as ${data.role}`,
+        content: `Assigned steward ${data.displayName ?? data.username ?? data.userId} as ${data.role}`,
         metadata: JSON.stringify({
           userId: data.userId,
+          ...(data.username ? { username: data.username } : {}),
+          ...(data.displayName ? { displayName: data.displayName } : {}),
           role: data.role,
           ...(data.note ? { note: data.note } : {}),
         }),
@@ -267,7 +280,7 @@ export async function assignSteward(
     }
 
     const stewards: Array<Record<string, unknown>> = await tx.select(
-      `SELECT id, stewardship_id, user_id, role, assigned_at, assigned_by
+      `SELECT id, stewardship_id, user_id, username, display_name, role, assigned_at, assigned_by
        FROM stewardship_stewards
        WHERE stewardship_id = $(stewardshipId)
          AND deleted_at IS NULL
@@ -293,7 +306,7 @@ export async function getStewardshipSummary(
 ): Promise<StewardshipSummary> {
   const [stewards, activityRow] = await Promise.all([
     qx.select(
-      `SELECT id, stewardship_id, user_id, role, assigned_at, assigned_by
+      `SELECT id, stewardship_id, user_id, username, display_name, role, assigned_at, assigned_by
        FROM stewardship_stewards
        WHERE stewardship_id = $(stewardshipId)
          AND deleted_at IS NULL
