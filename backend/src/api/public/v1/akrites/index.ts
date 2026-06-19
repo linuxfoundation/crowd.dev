@@ -66,10 +66,26 @@ export function akritesRouter(): Router {
   // --- stewardships ---
   const stewardshipsSubRouter = Router()
   stewardshipsSubRouter.use(rateLimiter)
-  stewardshipsSubRouter.post('/open', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(openStewardship))
-  stewardshipsSubRouter.post('/:id/assign', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(assignStewardHandler))
-  stewardshipsSubRouter.post('/:id/escalate', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(escalateHandler))
-  stewardshipsSubRouter.patch('/:id/status', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(updateStatusHandler))
+  stewardshipsSubRouter.post(
+    '/open',
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(openStewardship),
+  )
+  stewardshipsSubRouter.post(
+    '/:id/assign',
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(assignStewardHandler),
+  )
+  stewardshipsSubRouter.post(
+    '/:id/escalate',
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(escalateHandler),
+  )
+  stewardshipsSubRouter.patch(
+    '/:id/status',
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(updateStatusHandler),
+  )
   router.use('/stewardships', stewardshipsSubRouter)
 
   return router

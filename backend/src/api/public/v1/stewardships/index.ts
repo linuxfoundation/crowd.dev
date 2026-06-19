@@ -20,11 +20,19 @@ export function stewardshipsRouter(): Router {
 
   router.post('/', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(openStewardship))
 
-  router.put('/:id/steward', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(assignStewardHandler))
+  router.put(
+    '/:id/steward',
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(assignStewardHandler),
+  )
 
   router.put('/:id/escalate', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(escalateHandler))
 
-  router.put('/:id/status', requireScopes([SCOPES.WRITE_STEWARDSHIPS]), safeWrap(updateStatusHandler))
+  router.put(
+    '/:id/status',
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    safeWrap(updateStatusHandler),
+  )
 
   return router
 }
