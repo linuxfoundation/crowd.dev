@@ -196,7 +196,7 @@ export async function getSegmentSubprojects(
         select s.*
         from segments s
         join segment_level sl on (sl.level = 'child' and s.id = sl.id)
-            or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" is not null)
+            or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" = sl."parentSlug")
             or (sl.level = 'grandparent' and s."grandparentSlug" = sl.slug)
         where status = 'active'
           and s."tenantId" = $(tenantId);

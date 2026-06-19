@@ -3,7 +3,7 @@ import { NextFunction, Request, Response } from 'express'
 import { IRepositoryOptions } from '../database/repositories/IRepositoryOptions'
 import SegmentRepository from '../database/repositories/segmentRepository'
 
-/** Resolves active segment(s) from the request and sets `req.currentSegments` for downstream handlers. */
+/** Resolves segment(s) from the request and sets `req.currentSegments` for downstream handlers. */
 export async function segmentMiddleware(req: Request, _res: Response, next: NextFunction) {
   try {
     const options = req as unknown as IRepositoryOptions
