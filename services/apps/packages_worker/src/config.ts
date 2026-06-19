@@ -57,6 +57,12 @@ export function getMavenConfig() {
   }
 }
 
+export function getCargoConfig() {
+  return {
+    dumpUrl: process.env.CARGO_DUMP_URL ?? 'https://static.crates.io/db-dump.tar.gz',
+  }
+}
+
 export function getDockerhubConfig() {
   return {
     hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
