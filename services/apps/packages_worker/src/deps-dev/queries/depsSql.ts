@@ -159,12 +159,12 @@ WHERE l.to_name IS NULL`,
     AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
 )`,
       `watermark_go AS (
-  SELECT g.Name, g.Version, d.Name AS to_name
+  SELECT g.Name, g.Version, d.Name AS to_name, d.Requirement
   FROM \`bigquery-public-data.deps_dev_v1.GoRequirements\` g,
   UNNEST(g.DirectDependencies) AS d
   WHERE g.SnapshotAt >= TIMESTAMP('${watermark}')
     AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY g.Name, g.Version, d.Name
+  GROUP BY g.Name, g.Version, d.Name, d.Requirement
 )`,
     )
     selects.push(
@@ -172,6 +172,7 @@ WHERE l.to_name IS NULL`,
 FROM today_go t
 LEFT JOIN watermark_go l
   ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
+  AND l.Requirement = t.version_constraint
 WHERE l.to_name IS NULL`,
     )
   }
@@ -193,13 +194,13 @@ WHERE l.to_name IS NULL`,
     AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
 )`,
       `watermark_nuget AS (
-  SELECT n.Name, n.Version, dep.Name AS to_name
+  SELECT n.Name, n.Version, dep.Name AS to_name, dep.Requirement
   FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirements\` n,
   UNNEST(n.DependencyGroups) AS grp,
   UNNEST(grp.Dependencies) AS dep
   WHERE n.SnapshotAt >= TIMESTAMP('${watermark}')
     AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY n.Name, n.Version, dep.Name
+  GROUP BY n.Name, n.Version, dep.Name, dep.Requirement
 )`,
     )
     selects.push(
@@ -207,6 +208,7 @@ WHERE l.to_name IS NULL`,
 FROM today_nuget t
 LEFT JOIN watermark_nuget l
   ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
+  AND l.Requirement = t.version_constraint
 WHERE l.to_name IS NULL`,
     )
   }
@@ -279,12 +281,12 @@ WHERE l.to_name IS NULL`,
     AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
 )`,
       `watermark_go AS (
-  SELECT g.Name, g.Version, d.Name AS to_name
+  SELECT g.Name, g.Version, d.Name AS to_name, d.Requirement
   FROM \`bigquery-public-data.deps_dev_v1.GoRequirements\` g,
   UNNEST(g.DirectDependencies) AS d
   WHERE g.SnapshotAt >= TIMESTAMP('${watermark}')
     AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY g.Name, g.Version, d.Name
+  GROUP BY g.Name, g.Version, d.Name, d.Requirement
 )`,
     )
     selects.push(
@@ -292,6 +294,7 @@ WHERE l.to_name IS NULL`,
 FROM today_go t
 LEFT JOIN watermark_go l
   ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
+  AND l.Requirement = t.version_constraint
 WHERE l.to_name IS NULL`,
     )
   }
@@ -313,13 +316,13 @@ WHERE l.to_name IS NULL`,
     AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
 )`,
       `watermark_nuget AS (
-  SELECT n.Name, n.Version, dep.Name AS to_name
+  SELECT n.Name, n.Version, dep.Name AS to_name, dep.Requirement
   FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirements\` n,
   UNNEST(n.DependencyGroups) AS grp,
   UNNEST(grp.Dependencies) AS dep
   WHERE n.SnapshotAt >= TIMESTAMP('${watermark}')
     AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY n.Name, n.Version, dep.Name
+  GROUP BY n.Name, n.Version, dep.Name, dep.Requirement
 )`,
     )
     selects.push(
@@ -327,6 +330,7 @@ WHERE l.to_name IS NULL`,
 FROM today_nuget t
 LEFT JOIN watermark_nuget l
   ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
+  AND l.Requirement = t.version_constraint
 WHERE l.to_name IS NULL`,
     )
   }

@@ -252,7 +252,7 @@ export async function ingestDependencies(opts: {
   }
 
   await setJobStep({ jobId: exportResult.jobId, step: 'creating_lookup' })
-  await createVersionsLookup({ ecosystems: opts.ecosystems })
+  await createVersionsLookup({ ecosystems })
 
   if (opts.syncMode === 'full' && !isFill) {
     await setJobStep({ jobId: exportResult.jobId, step: 'drop_constraints' })
