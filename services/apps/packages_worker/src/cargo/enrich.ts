@@ -1,4 +1,5 @@
 import { QueryExecutor } from '@crowd/data-access-layer'
+import { getServiceChildLogger } from '@crowd/logging'
 
 import { STAGING_SCHEMA } from './loadDump'
 import {
@@ -9,31 +10,41 @@ import {
   EnrichVersionsResult,
 } from './types'
 
+const log = getServiceChildLogger('cargo-enrich')
+
 export const AUDIT_WORKER = 'cargo-registry'
 const INGESTION_SOURCE = 'cargo-registry'
-// 'declared' + 0.8: same convention npm/maven use for a manifest-declared repo URL.
-const REPO_LINK_SOURCE = 'declared'
+const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest-declared repo URLs
 const REPO_LINK_CONFIDENCE = 0.8
-// Audit diffs join/DISTINCT over millions of rows (versions); the default 4MB
-// spills to disk. Run each phase in a tx with a raised work_mem.
-const WORK_MEM = '512MB'
 
-function withWorkMem<T>(qx: QueryExecutor, fn: (tx: QueryExecutor) => Promise<T>): Promise<T> {
+// synchronous_commit off: skip WAL fsync on bulk writes — job is idempotent.
+const WORK_MEM = '512MB'
+const SYNC_COMMIT = 'off'
+
+// Reads settings back after applying — fails loudly if they didn't take.
+async function withTunedSession<T>(
+  qx: QueryExecutor,
+  phase: string,
+  fn: (tx: QueryExecutor) => Promise<T>,
+): Promise<T> {
   return qx.tx(async (tx) => {
     await tx.result(`SET LOCAL work_mem = '${WORK_MEM}'`)
+    await tx.result(`SET LOCAL synchronous_commit = ${SYNC_COMMIT}`)
+    const s = await tx.selectOne(
+      `SELECT current_setting('work_mem') AS work_mem,
+              current_setting('synchronous_commit') AS synchronous_commit`,
+    )
+    if (s.work_mem !== WORK_MEM || s.synchronous_commit !== SYNC_COMMIT) {
+      throw new Error(`cargo enrich (${phase}) session settings not applied: ${JSON.stringify(s)}`)
+    }
+    log.info({ phase, ...s }, 'enrich session tuned')
     return fn(tx)
   })
 }
 
-// Each phase writes its target and records changed field names into the
-// audit_changes scratch table in one set-based statement; flushAudit aggregates
-// them per purl. created_at/updated_at default to NOW(); freshness uses the
-// columns each table already owns (last_synced_at, verified_at).
-
-// Updates matched cargo package rows; nullable metadata is COALESCEd so a dump
-// null can't wipe an existing value. repository_url is left to the GitHub enricher.
+// Nullable fields are COALESCEd — dump nulls don't wipe existing values.
 export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesResult> {
-  const row = await withWorkMem(qx, (tx) =>
+  const row = await withTunedSession(qx, 'packages', (tx) =>
     tx.selectOne(
       `WITH snap AS (
          SELECT p.id, p.status, p.description, p.homepage, p.declared_repository_url,
@@ -98,16 +109,14 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
   return { updated: row.updated }
 }
 
-// Upserts every version of each matched crate. namespace/name come from the
-// package row; the SPDX string is stored as a one-element text[]. Audits new
-// versions and changed per-version fields.
+// namespace/name from the package row; license stored as ARRAY[spdx_string].
 export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsResult> {
-  const row = await withWorkMem(qx, (tx) =>
+  const row = await withTunedSession(qx, 'versions', (tx) =>
     tx.selectOne(
       `WITH old AS (
          SELECT v.package_id, v.number, v.published_at, v.is_latest, v.is_prerelease, v.licenses
          FROM versions v
-         WHERE v.package_id IN (SELECT DISTINCT package_id FROM ${STAGING_SCHEMA}.enrich_versions)
+         WHERE v.package_id IN (SELECT package_id FROM ${STAGING_SCHEMA}.enrich_versions)
        ),
        ins AS (
          INSERT INTO versions (
@@ -150,10 +159,9 @@ export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsR
   return { upserted: row.upserted }
 }
 
-// Writes only url + sanitized host (the rest of the repos row is the GitHub
-// enricher's) and links each package to it. Audits new repos and new/changed links.
+// Writes only url + host — other repo fields belong to the GitHub enricher.
 export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult> {
-  return withWorkMem(qx, async (tx) => {
+  return withTunedSession(qx, 'repos', async (tx) => {
     const repoRow = await tx.selectOne(
       `WITH new_repos AS (
          INSERT INTO repos (url, host, updated_at)
@@ -214,7 +222,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        ),
        ins_audit AS (
          INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
-         SELECT DISTINCT package_id, field FROM diff RETURNING 1
+         SELECT package_id, field FROM diff RETURNING 1
        )
        SELECT (SELECT COUNT(*) FROM ins)::int AS links`,
       { source: REPO_LINK_SOURCE, confidence: REPO_LINK_CONFIDENCE },
@@ -224,17 +232,15 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
   })
 }
 
-// Upserts owners as cargo maintainers (keyed by github login) and fully replaces
-// each package's links. role is always 'owner'. Audits new/changed maintainers
-// (fanned to their packages) and membership changes.
+// Fully replaces each package's maintainer links (role='owner').
 export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMaintainersResult> {
-  return withWorkMem(qx, async (tx) => {
+  return withTunedSession(qx, 'maintainers', async (tx) => {
     await tx.result(
       `DROP TABLE IF EXISTS ${STAGING_SCHEMA}.mnt_before;
        CREATE TABLE ${STAGING_SCHEMA}.mnt_before AS
        SELECT pm.package_id, pm.maintainer_id
        FROM package_maintainers pm
-       WHERE pm.package_id IN (SELECT DISTINCT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers)`,
+       WHERE pm.package_id IN (SELECT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers)`,
     )
 
     const mntRow = await tx.selectOne(
@@ -272,12 +278,12 @@ export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMainta
 
     await tx.result(
       `DELETE FROM package_maintainers
-       WHERE package_id IN (SELECT DISTINCT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers)`,
+       WHERE package_id IN (SELECT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers)`,
     )
 
     const links = await tx.result(
       `INSERT INTO package_maintainers (package_id, maintainer_id, role, created_at, updated_at)
-       SELECT DISTINCT em.package_id, m.id, 'owner', NOW(), NOW()
+       SELECT em.package_id, m.id, 'owner', NOW(), NOW()
        FROM ${STAGING_SCHEMA}.enrich_maintainers em
        JOIN maintainers m ON m.ecosystem = 'cargo' AND m.username = em.github_login
        ON CONFLICT (package_id, maintainer_id) DO NOTHING`,
@@ -291,10 +297,10 @@ export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMainta
          (SELECT package_id, maintainer_id FROM ${STAGING_SCHEMA}.mnt_before
           EXCEPT
           SELECT package_id, maintainer_id FROM package_maintainers
-          WHERE package_id IN (SELECT DISTINCT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers))
+          WHERE package_id IN (SELECT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers))
          UNION
          (SELECT package_id, maintainer_id FROM package_maintainers
-          WHERE package_id IN (SELECT DISTINCT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers)
+          WHERE package_id IN (SELECT package_id FROM ${STAGING_SCHEMA}.enrich_maintainers)
           EXCEPT
           SELECT package_id, maintainer_id FROM ${STAGING_SCHEMA}.mnt_before)
        ) d`,
@@ -304,10 +310,9 @@ export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMainta
   })
 }
 
-// Inserts per-day download totals, batched by date (downloads_daily is range-
-// partitioned by date). DO NOTHING preserves recorded history; new days audited.
+// Batched by date — downloads_daily is range-partitioned. DO NOTHING preserves history.
 export async function enrichDownloadsDaily(qx: QueryExecutor): Promise<EnrichDownloadsDailyResult> {
-  return withWorkMem(qx, async (tx) => {
+  return withTunedSession(qx, 'downloadsDaily', async (tx) => {
     const dates: Array<{ date: string }> = await tx.select(
       `SELECT DISTINCT date::text AS date FROM ${STAGING_SCHEMA}.enrich_downloads_daily ORDER BY date`,
     )
@@ -337,8 +342,6 @@ export async function enrichDownloadsDaily(qx: QueryExecutor): Promise<EnrichDow
   })
 }
 
-// Aggregates the staged field-change names into audit_field_changes — one row
-// per purl with the union of changed fields across all phases.
 export async function flushAudit(qx: QueryExecutor): Promise<number> {
   return qx.result(
     `INSERT INTO audit_field_changes (worker, purl, changed_fields)

@@ -26,9 +26,7 @@ import {
 
 const log = getServiceChildLogger('cargo-activity')
 
-// Downloads + extracts the crates.io dump, then stages and denormalizes it into
-// the cargo_sync schema. Config is read here (not at module load) so the
-// workflow bundle can import this file for type discovery without env set.
+// Config read at call time — workflow bundle imports this file for type discovery without env.
 export async function cargoDownloadAndLoad(): Promise<LoadResult> {
   const { dumpUrl } = getCargoConfig()
   const dumpDir = await downloadAndExtractDump(dumpUrl)
@@ -63,9 +61,7 @@ export async function cargoFlushAudit(): Promise<number> {
   return flushAudit(await getPackagesDb())
 }
 
-// Best-effort teardown: drops the staging schema and removes the extracted dump.
-// A crashed run is self-healing anyway — loadDump rebuilds the schema and dump.ts
-// clears DUMP_DIR on the next run.
+// Best-effort: a crashed run self-heals on next run (schema rebuilt, DUMP_DIR cleared).
 export async function cargoCleanup(): Promise<void> {
   const qx = await getPackagesDb()
   await qx.result(`DROP SCHEMA IF EXISTS ${STAGING_SCHEMA} CASCADE`)

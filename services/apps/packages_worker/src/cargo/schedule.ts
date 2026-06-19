@@ -5,8 +5,7 @@ import { cargoSyncWorkflow } from '../workflows'
 
 const SCHEDULE_ID = 'cargo-registry-sync'
 
-// Daily at 06:00 UTC — clear of the 03:00–05:00 window other ingest jobs use,
-// and well after the crates.io dump publishes (~02:00 UTC).
+// 06:00 UTC: after crates.io publishes (~02:00 UTC), clear of 03:00–05:00 ingest window.
 export async function scheduleCargoSync(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')

@@ -8,7 +8,6 @@ const RETRY = {
   maximumAttempts: 3,
 }
 
-// One long operation, no checkpoints; download has its own timeout.
 const { cargoDownloadAndLoad } = proxyActivities<typeof activities>({
   startToCloseTimeout: '90 minutes',
   retry: RETRY,
@@ -27,8 +26,7 @@ const {
   retry: RETRY,
 })
 
-// Sequential to cap peak DB load; phases touch disjoint tables. flushAudit must
-// follow them all; cleanup last.
+// Sequential: phases touch disjoint tables; flushAudit before cleanup.
 export async function cargoSyncWorkflow(): Promise<void> {
   const load = await cargoDownloadAndLoad()
   log.info('cargoSync loaded dump', { ...load })

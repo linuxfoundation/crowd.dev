@@ -14,11 +14,7 @@ const log = getServiceChildLogger('cargo-load')
 
 export const STAGING_SCHEMA = 'cargo_sync'
 
-// Minimal staging schema: only the dump tables that feed an enriched field.
-// Column order matches each CSV header exactly (cross-checked against the dump's
-// import.sql) so `COPY ... FROM STDIN CSV HEADER` maps by position. IDs and the
-// one date column are typed for fast joins; everything else is text. Each table
-// is dropped first so a stale leftover from a crashed run can't collide.
+// Column order matches each CSV header exactly so COPY FROM STDIN CSV HEADER maps by position.
 const STAGING_DDL = `
   DROP TABLE IF EXISTS ${STAGING_SCHEMA}.crates CASCADE;
   CREATE TABLE ${STAGING_SCHEMA}.crates (
@@ -68,8 +64,7 @@ const STAGING_DDL = `
   );
 `
 
-// Load order. Only crates needs NUL stripping (readme blobs contain NUL bytes,
-// which PostgreSQL COPY rejects in text data).
+// crates.csv needs NUL stripping — readme blobs contain 0x00 bytes that COPY rejects.
 const CSV_FILES: Array<{ table: string; file: string; stripNul?: boolean }> = [
   { table: 'crates', file: 'crates.csv', stripNul: true },
   { table: 'versions', file: 'versions.csv' },
@@ -82,7 +77,6 @@ const CSV_FILES: Array<{ table: string; file: string; stripNul?: boolean }> = [
   { table: 'oauth_github', file: 'oauth_github.csv' },
 ]
 
-// Drops NUL (0x00) bytes from a byte stream. Clean chunks pass through untouched.
 const stripNul = (): Transform =>
   new Transform({
     transform(chunk: Buffer, _enc, cb) {
@@ -98,8 +92,7 @@ async function copyCsv(
 ): Promise<number> {
   const con = await db.connect()
   try {
-    // The @types/pg COPY overload doesn't line up with @types/pg-copy-streams'
-    // Submittable, so reach the raw client through `any` for this one call.
+    // @types/pg-copy-streams Submittable doesn't match @types/pg's query overload.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: CopyStreamQuery = (con.client as any).query(
       copyFrom(`COPY ${STAGING_SCHEMA}.${table} FROM STDIN CSV HEADER`),
@@ -110,9 +103,7 @@ async function copyCsv(
     con.done()
     return rows
   } catch (err) {
-    // A failed COPY can leave the client unusable — destroy it (kill=true)
-    // instead of returning it to the pool.
-    con.done(true)
+    con.done(true) // destroy — a failed COPY can leave the client unusable
     throw new Error(`Failed to COPY ${table} from ${csvPath}: ${(err as Error).message}`)
   }
 }
@@ -130,9 +121,6 @@ const STAGING_INDEXES = `
   CREATE INDEX ON ${STAGING_SCHEMA}.crates_keywords (crate_id);
 `
 
-// Per-crate scratch aggregates, grouped by the integer crate_id for fast hash
-// joins over version_downloads (34M rows) and dependencies (28M rows). Both
-// download aggregates use the same 30-day window as packages.downloads_last_30d.
 const AGGREGATIONS = `
   DROP TABLE IF EXISTS ${STAGING_SCHEMA}.agg_downloads_30d CASCADE;
   CREATE TABLE ${STAGING_SCHEMA}.agg_downloads_30d AS
@@ -191,12 +179,6 @@ const AGGREGATIONS = `
   CREATE INDEX ON ${STAGING_SCHEMA}.agg_version_stats (crate_id);
 `
 
-// Resolves each crate to its existing cargo package row (purl is unique on both
-// sides, so the match is 1:1) and denormalizes the scratch aggregates into the
-// package_id-keyed tables the enrich phases consume. Crates with no matching
-// package drop out here — the enrich phases never recompute the purl or touch
-// crates again. The purl normalization (lowercase, hyphen→underscore) matches
-// how cargo packages are keyed in packages-db.
 const DENORMALIZE = `
   DROP TABLE IF EXISTS ${STAGING_SCHEMA}.crate_package CASCADE;
   CREATE TABLE ${STAGING_SCHEMA}.crate_package AS
@@ -235,6 +217,7 @@ const DENORMALIZE = `
   LEFT JOIN ${STAGING_SCHEMA}.agg_keywords kw       ON kw.crate_id = c.id;
   CREATE INDEX ON ${STAGING_SCHEMA}.enrich_packages (package_id);
 
+  -- Incremental: only crates newer than packages.latest_release_at (read before enrichPackages overwrites it).
   DROP TABLE IF EXISTS ${STAGING_SCHEMA}.enrich_versions CASCADE;
   CREATE TABLE ${STAGING_SCHEMA}.enrich_versions AS
   SELECT
@@ -246,7 +229,10 @@ const DENORMALIZE = `
     NULLIF(v.license, '')                AS license
   FROM ${STAGING_SCHEMA}.versions v
   JOIN ${STAGING_SCHEMA}.crate_package cp     ON cp.crate_id = v.crate_id
-  LEFT JOIN ${STAGING_SCHEMA}.default_versions dv ON dv.crate_id = v.crate_id;
+  JOIN packages p                             ON p.id = cp.package_id
+  JOIN ${STAGING_SCHEMA}.agg_version_stats vs ON vs.crate_id = v.crate_id
+  LEFT JOIN ${STAGING_SCHEMA}.default_versions dv ON dv.crate_id = v.crate_id
+  WHERE p.latest_release_at IS NULL OR vs.latest_release_at > p.latest_release_at;
   CREATE INDEX ON ${STAGING_SCHEMA}.enrich_versions (package_id);
 
   DROP TABLE IF EXISTS ${STAGING_SCHEMA}.enrich_maintainers CASCADE;
@@ -265,17 +251,11 @@ const DENORMALIZE = `
   JOIN ${STAGING_SCHEMA}.crate_package cp ON cp.crate_id = dd.crate_id;
   CREATE INDEX ON ${STAGING_SCHEMA}.enrich_downloads_daily (date);
 
-  -- Scratch sink for audit field-change names; each enrich phase appends
-  -- (package_id, field) rows, flushAudit aggregates them per purl.
+  -- Audit scratch: enrich phases append (package_id, field); flushAudit aggregates per purl.
   DROP TABLE IF EXISTS ${STAGING_SCHEMA}.audit_changes CASCADE;
   CREATE TABLE ${STAGING_SCHEMA}.audit_changes (package_id bigint, field text);
 `
 
-// loadDump stages the crates.io dump CSVs into the cargo_sync schema, builds
-// indexes, aggregates per-crate metrics, then denormalizes everything into the
-// package_id-keyed enrich_* tables the enrichment phases consume. dumpDir is the
-// extracted dump root; CSVs live under <dumpDir>/data. Safe to re-run: the schema
-// is rebuilt from scratch on every call.
 export async function loadDump(
   qx: QueryExecutor,
   db: DbConnection,
@@ -306,8 +286,7 @@ export async function loadDump(
   log.info('Building staging indexes...')
   await qx.result(STAGING_INDEXES)
 
-  // Give the planner real stats on the freshly loaded tables before the heavy
-  // joins, and pre-empt autoanalyze from firing mid-aggregation.
+  // Prevent autoanalyze mid-aggregation and give the planner accurate stats.
   log.info('Analyzing staging tables...')
   await qx.result(`ANALYZE ${STAGING_SCHEMA}.crates, ${STAGING_SCHEMA}.versions,
                    ${STAGING_SCHEMA}.version_downloads, ${STAGING_SCHEMA}.dependencies,
@@ -315,11 +294,8 @@ export async function loadDump(
                    ${STAGING_SCHEMA}.oauth_github, ${STAGING_SCHEMA}.crates_keywords,
                    ${STAGING_SCHEMA}.keywords`)
 
-  // Aggregations and denormalization share one transaction with a tuned work_mem
-  // so the large hash joins/group-bys have enough memory on a single session.
-  // Parallel gather is disabled: on a just-loaded dataset its workers contend for
-  // shared-memory segments (dsm) and fail non-deterministically; serial is fine
-  // for a daily batch.
+  // work_mem: hash joins stay in RAM. max_parallel_workers=0: parallel workers
+  // contend on dsm over fresh tables and fail non-deterministically.
   log.info('Aggregating and denormalizing...')
   let matched = 0
   await qx.tx(async (tx) => {

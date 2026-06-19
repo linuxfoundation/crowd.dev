@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 const execFileAsync = promisify(execFile)
 
 export const DUMP_DIR = '/tmp/cargo-dump'
-const DOWNLOAD_TIMEOUT_MS = 60 * 60 * 1000 // 1 hour — dump is ~1.3 GB compressed
+const DOWNLOAD_TIMEOUT_MS = 60 * 60 * 1000
 
 async function downloadTarball(url: string, target: string): Promise<void> {
   const ac = new AbortController()
@@ -41,8 +41,6 @@ async function downloadTarball(url: string, target: string): Promise<void> {
   }
 }
 
-// downloadAndExtractDump downloads the crates.io db-dump tarball and extracts
-// it into DUMP_DIR (stripping the dated subdirectory). Returns DUMP_DIR.
 export async function downloadAndExtractDump(url: string): Promise<string> {
   await rm(DUMP_DIR, { recursive: true, force: true })
   await mkdir(DUMP_DIR, { recursive: true })
