@@ -6,7 +6,7 @@ import { compareVersion } from '../versionCompare'
 // the contract is -1/0/1, but we only care about the sign.
 const sign = (n: number | null) => (n === null ? null : Math.sign(n))
 
-describe('compareVersion — npm (semver)', () => {
+describe('compareVersion — npm/cargo (semver)', () => {
   it.each([
     ['1.2.3', '1.2.4', -1],
     ['1.2.4', '1.2.3', 1],
@@ -20,11 +20,21 @@ describe('compareVersion — npm (semver)', () => {
     expect(sign(compareVersion('npm', a, b))).toBe(expected)
   })
 
-  it('returns null for unparseable npm versions', () => {
-    expect(compareVersion('npm', 'not-a-version-at-all', '1.0.0')).toBeNull()
+  it.each([
+    ['0.1.0', '0.2.0', -1],
+    ['1.0.0', '1.0.0', 0],
+    ['2.0.0', '1.9.9', 1],
+    ['0.3.0-alpha.1', '0.3.0', -1],
+  ])('compareVersion("cargo", %s, %s) sign = %s', (a, b, expected) => {
+    expect(sign(compareVersion('cargo', a, b))).toBe(expected)
   })
 
-  it('returns null for short / lossy npm versions instead of coercing', () => {
+  it('returns null for unparseable semver versions', () => {
+    expect(compareVersion('npm', 'not-a-version-at-all', '1.0.0')).toBeNull()
+    expect(compareVersion('cargo', 'not-a-version-at-all', '1.0.0')).toBeNull()
+  })
+
+  it('returns null for short / lossy versions instead of coercing', () => {
     // Under-flag over mis-flag: semver.coerce would map "1.2" → "1.2.0" and
     // "1.2-junk-3" → "1.2.3", which can flip has_critical_vulnerability on
     // a malformed introduced/fixed boundary. We prefer null (no match).
@@ -76,7 +86,6 @@ describe('compareVersion — maven (ComparableVersion-style)', () => {
 describe('compareVersion — unsupported ecosystems', () => {
   it('returns null for ecosystems we have no comparator for', () => {
     expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()
-    expect(compareVersion('crates.io', '0.1', '0.2')).toBeNull()
   })
 
   it('rejects titlecase "Maven" — production storage is always lowercase', () => {

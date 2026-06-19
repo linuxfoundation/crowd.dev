@@ -124,18 +124,23 @@ async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatche
     }
 
     // 429 / 5xx / network → bubble up so Temporal retries the activity with exponential backoff.
-    if (!isClientError(packumentResult.statusCode, packumentResult.kind)) {
+    // MALFORMED is permanent (a 200 body that isn't a packument — retrying won't change it),
+    // so it takes the quick-retry-then-skip path below instead of poisoning the lane forever.
+    if (
+      !isClientError(packumentResult.statusCode, packumentResult.kind) &&
+      packumentResult.kind !== 'MALFORMED'
+    ) {
       throw new Error(`Failed to fetch packument for ${name}: ${packumentResult.message}`)
     }
 
-    // 4xx → quick retry a few times (1s, 2s); give up and skip after the last attempt.
+    // 4xx/MALFORMED → quick retry a few times (1s, 2s); give up and skip after the last attempt.
     if (attempt < INGEST_4XX_ATTEMPTS) {
       await sleep(attempt * INGEST_4XX_BACKOFF_MS)
       continue
     }
     log.warn(
       { purl, statusCode: packumentResult.statusCode, kind: packumentResult.kind },
-      'npm packument 4xx after fast retries — marking scanned and skipping',
+      'npm packument 4xx/malformed after fast retries — marking scanned and skipping',
     )
     await markNpmPackageScanned(qx, purl, {
       status: 'error',

@@ -15,6 +15,7 @@ import {
   normalizeLicenses,
   parseNpmName,
   stripNullBytesDeep,
+  versionLicense,
 } from './normalize'
 import type { FundingEntry, Packument } from './types'
 
@@ -98,7 +99,7 @@ export async function upsertPackage(
         publishedAt: time[number] ?? null,
         isLatest: number === latestVersion,
         isPrerelease: isPrerelease(number),
-        license: v.license ?? licenses[0] ?? null,
+        license: versionLicense(v.license) ?? licenses[0] ?? null,
       })),
     )
     verChanged.forEach((f) => changed.add(f))
