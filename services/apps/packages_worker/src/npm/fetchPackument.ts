@@ -70,10 +70,12 @@ function asUnpublishedStub(v: unknown): Packument | null {
   const o = v as Record<string, unknown>
   if (typeof o.name !== 'string' || typeof o.time !== 'object' || o.time === null) return null
   const t = o.time as Record<string, unknown>
-  if (!('unpublished' in t)) return null
+  const unpublished = t.unpublished
+  if (typeof unpublished !== 'object' || unpublished === null) return null
+  if (typeof (unpublished as Record<string, unknown>).time !== 'string') return null
   const time: Record<string, string> = {}
   for (const [key, value] of Object.entries(t)) {
     if (typeof value === 'string') time[key] = value
   }
-  return { name: o.name, 'dist-tags': {}, versions: {}, time, unpublished: t.unpublished }
+  return { name: o.name, 'dist-tags': {}, versions: {}, time, unpublished }
 }
