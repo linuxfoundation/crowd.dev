@@ -33,4 +33,3 @@ export interface EnrichMaintainersResult {
 export interface EnrichDownloadsDailyResult {
   inserted: number
 }
-
