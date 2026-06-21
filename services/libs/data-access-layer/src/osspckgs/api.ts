@@ -170,7 +170,7 @@ const STALE_MONTHS = 18
 
 // Severity stored as uppercase in advisories table.
 // Ranks: CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1
-const SEVERITY_RANK_EXPR = `MAX(CASE a.severity
+export const SEVERITY_RANK_EXPR = `MAX(CASE a.severity
     WHEN 'CRITICAL' THEN 4
     WHEN 'HIGH'     THEN 3
     WHEN 'MEDIUM'   THEN 2
