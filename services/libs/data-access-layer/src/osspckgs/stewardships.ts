@@ -19,7 +19,8 @@ export interface StewardshipStewardRecord {
   id: string
   stewardshipId: string
   userId: string
-  name: string | null
+  username: string | null
+  displayName: string | null
   role: string
   assignedAt: string
   assignedBy: string | null
@@ -87,15 +88,33 @@ function toIso(v: unknown): string {
   return v instanceof Date ? v.toISOString() : String(v)
 }
 
+async function fetchActiveStewards(
+  qx: QueryExecutor,
+  stewardshipId: number,
+): Promise<StewardshipStewardRecord[]> {
+  const rows: Array<Record<string, unknown>> = await qx.select(
+    `SELECT ss.id, ss.stewardship_id, ss.user_id, ss.role, ss.assigned_at, ss.assigned_by,
+            st.username, st.display_name
+     FROM stewardship_stewards ss
+     LEFT JOIN stewards st ON st.user_id = ss.user_id
+     WHERE ss.stewardship_id = $(stewardshipId)
+       AND ss.deleted_at IS NULL
+     ORDER BY ss.assigned_at ASC`,
+    { stewardshipId },
+  )
+  return rows.map(mapStewardStewardRow)
+}
+
 function mapStewardStewardRow(row: Record<string, unknown>): StewardshipStewardRecord {
   return {
     id: String(row.id),
     stewardshipId: String(row.stewardship_id),
     userId: String(row.user_id),
-    name: null,
+    username: (row.username as string) ?? null,
+    displayName: (row.display_name as string) ?? null,
     role: String(row.role),
     assignedAt: toIso(row.assigned_at),
-    assignedBy: row.assigned_by ? String(row.assigned_by) : null,
+    assignedBy: (row.assigned_by as string) ?? null,
   }
 }
 
@@ -190,6 +209,8 @@ export async function assignSteward(
   stewardshipId: number,
   data: {
     userId: string
+    username?: string | null
+    displayName?: string | null
     role: 'lead' | 'co_steward'
     assignedBy: string
     note?: string
@@ -199,6 +220,18 @@ export async function assignSteward(
   return qx.tx(async (tx) => {
     const stewardship = await getStewardshipById(tx, stewardshipId)
     if (!stewardship) return null
+
+    if (data.username != null && data.displayName != null) {
+      await tx.result(
+        `INSERT INTO stewards (user_id, username, display_name, updated_at)
+         VALUES ($(userId), $(username), $(displayName), NOW())
+         ON CONFLICT (user_id) DO UPDATE
+           SET username     = EXCLUDED.username,
+               display_name = EXCLUDED.display_name,
+               updated_at   = NOW()`,
+        { userId: data.userId, username: data.username, displayName: data.displayName },
+      )
+    }
 
     // Soft-delete existing active entry for this user (handles role changes).
     await tx.result(
@@ -266,18 +299,9 @@ export async function assignSteward(
       if (updated) finalStewardship = mapStewardshipRow(updated)
     }
 
-    const stewards: Array<Record<string, unknown>> = await tx.select(
-      `SELECT id, stewardship_id, user_id, role, assigned_at, assigned_by
-       FROM stewardship_stewards
-       WHERE stewardship_id = $(stewardshipId)
-         AND deleted_at IS NULL
-       ORDER BY assigned_at ASC`,
-      { stewardshipId },
-    )
-
     return {
       stewardship: finalStewardship,
-      stewards: stewards.map(mapStewardStewardRow),
+      stewards: await fetchActiveStewards(tx, stewardshipId),
     }
   })
 }
@@ -292,14 +316,7 @@ export async function getStewardshipSummary(
   stewardshipId: number,
 ): Promise<StewardshipSummary> {
   const [stewards, activityRow] = await Promise.all([
-    qx.select(
-      `SELECT id, stewardship_id, user_id, role, assigned_at, assigned_by
-       FROM stewardship_stewards
-       WHERE stewardship_id = $(stewardshipId)
-         AND deleted_at IS NULL
-       ORDER BY assigned_at ASC`,
-      { stewardshipId },
-    ) as Promise<Array<Record<string, unknown>>>,
+    fetchActiveStewards(qx, stewardshipId),
     qx.selectOneOrNone(
       `SELECT MAX(created_at) AS last_activity_at
        FROM stewardship_activity
@@ -309,7 +326,7 @@ export async function getStewardshipSummary(
   ])
 
   return {
-    stewards: stewards.map(mapStewardStewardRow),
+    stewards,
     lastActivityAt: activityRow?.last_activity_at ? toIso(activityRow.last_activity_at) : null,
   }
 }
