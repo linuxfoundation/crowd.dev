@@ -510,6 +510,10 @@ export async function listMyPackages(
   if (opts.status) {
     conditions.push('s.status = $(status)')
     params.status = opts.status
+  } else {
+    conditions.push(
+      "s.status IN ('assessing', 'active', 'needs_attention', 'escalated', 'blocked')",
+    )
   }
 
   if (opts.search) {
