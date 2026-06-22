@@ -16,6 +16,8 @@ import { getPackageHistory } from '../packages/getPackageHistory'
 import { getPackagesMetrics } from '../packages/getPackagesMetrics'
 import { assignStewardHandler } from '../stewardships/assignSteward'
 import { escalateHandler } from '../stewardships/escalate'
+import { getMyActivityHandler } from '../stewardships/getMyActivity'
+import { getMyPackagesHandler } from '../stewardships/getMyPackages'
 import { openStewardship } from '../stewardships/openStewardship'
 import { updateStatusHandler } from '../stewardships/updateStatus'
 
@@ -84,6 +86,16 @@ export function akritesRouter(): Router {
   // --- stewardships ---
   const stewardshipsSubRouter = Router()
   stewardshipsSubRouter.use(rateLimiter)
+  stewardshipsSubRouter.get(
+    '/me/packages',
+    requireScopes([SCOPES.READ_STEWARDSHIPS]),
+    safeWrap(getMyPackagesHandler),
+  )
+  stewardshipsSubRouter.get(
+    '/me/activity',
+    requireScopes([SCOPES.READ_STEWARDSHIPS]),
+    safeWrap(getMyActivityHandler),
+  )
   stewardshipsSubRouter.post(
     '/open',
     requireScopes([SCOPES.WRITE_STEWARDSHIPS]),

@@ -34,7 +34,7 @@ import {
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
 import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { findSegmentById } from '@crowd/data-access-layer/src/segments'
+import { findSegmentById, getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
 import {
   IMemberRenderFriendlyRole,
   IMemberRoleWithOrganization,
@@ -163,11 +163,12 @@ class OrganizationRepository {
       await OrganizationRepository.setIdentities(record.id, data.identities, options)
     }
 
-    await addOrgsToSegments(
-      optionsQx(options),
-      options.currentSegments.map((s) => s.id),
-      [record.id],
-    )
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
+    await addOrgsToSegments(qx, subprojectIds, [record.id])
 
     return this.findById(record.id, options)
   }
@@ -182,10 +183,15 @@ class OrganizationRepository {
 
     const bulkDeleteOrganizationSegments = `DELETE FROM "organizationSegments" WHERE "organizationId" in (:organizationIds) and "segmentId" in (:segmentIds);`
 
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     await seq.query(bulkDeleteOrganizationSegments, {
       replacements: {
         organizationIds,
-        segmentIds: SequelizeRepository.getSegmentIds(options),
+        segmentIds: subprojectIds,
       },
       type: QueryTypes.DELETE,
       transaction,
@@ -430,11 +436,12 @@ class OrganizationRepository {
     }
 
     if (data.segments) {
-      await addOrgsToSegments(
-        optionsQx(options),
-        options.currentSegments.map((s) => s.id),
-        [record.id],
-      )
+      const qx = SequelizeRepository.getQueryExecutor(options)
+      const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+      const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
+      await addOrgsToSegments(qx, subprojectIds, [record.id])
     }
 
     await captureApiChange(
@@ -1618,7 +1625,10 @@ class OrganizationRepository {
 
   static async findAllAutocomplete(query, limit, options: IRepositoryOptions) {
     const tenant = SequelizeRepository.getCurrentTenant(options)
-    const segmentIds = SequelizeRepository.getSegmentIds(options)
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     const records = await options.database.sequelize.query(
       `
@@ -1642,7 +1652,7 @@ class OrganizationRepository {
         replacements: {
           limit: limit ? Number(limit) : 20,
           tenantId: tenant.id,
-          segmentIds,
+          segmentIds: subprojectIds,
           queryLike: `%${query}%`,
           queryExact: query,
           uuid: validator.isUUID(query) ? query : null,
@@ -1757,9 +1767,7 @@ class OrganizationRepository {
     const qx = SequelizeRepository.getQueryExecutor(options)
     const activityTypes = SegmentRepository.getActivityTypes(options)
 
-    const subprojectIds = (
-      await new SegmentRepository(options).getSegmentSubprojects(currentSegments)
-    ).map((s) => s.id)
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     const result = await queryActivities(
       {
