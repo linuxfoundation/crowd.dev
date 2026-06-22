@@ -49,26 +49,29 @@ export async function fetchManyMemberIdentities(
   )
 }
 
-export async function checkMemberIdentityExistence(
+interface FindMemberIdentityConflictParams {
+  value: IMemberIdentity['value']
+  platform: IMemberIdentity['platform']
+  type: IMemberIdentity['type']
+  excludeMemberId?: string
+}
+
+export async function findMemberIdentityConflict(
   qx: QueryExecutor,
-  value: string,
-  platform: string,
-  type: MemberIdentityType,
-): Promise<IMemberIdentity[]> {
-  return qx.select(
+  params: FindMemberIdentityConflictParams,
+): Promise<{ id: string; memberId: string } | null> {
+  return qx.selectOneOrNone(
     `
       SELECT id, "memberId"
       FROM "memberIdentities"
       WHERE platform = $(platform)
         AND type = $(type)
         AND lower(value) = lower($(value))
-        AND "deletedAt" IS NULL;
+        AND "deletedAt" IS NULL
+        ${params.excludeMemberId ? 'AND "memberId" <> $(excludeMemberId)' : ''}
+      LIMIT 1;
     `,
-    {
-      value,
-      platform,
-      type,
-    },
+    params,
   )
 }
 
