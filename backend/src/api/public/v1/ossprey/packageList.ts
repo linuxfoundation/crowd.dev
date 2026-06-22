@@ -22,6 +22,7 @@ const querySchema = z.object({
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(['active', 'stable', 'declining', 'abandoned']).optional(),
   name: z.string().trim().optional(),
+  purl: z.string().trim().optional(),
   status: z
     .enum([
       'unassigned',
@@ -50,6 +51,7 @@ export async function packageListHandler(req: Request, res: Response): Promise<v
     ecosystem: params.ecosystem,
     lifecycle: params.lifecycle,
     name: params.name,
+    purl: params.purl,
     healthBand: params.healthBand,
     vulnSeverity: params.vulnSeverity,
     staleOnly: params.staleOnly,

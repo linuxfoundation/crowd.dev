@@ -154,6 +154,7 @@ export interface ListPackagesOptions {
   ecosystem?: string
   lifecycle?: string
   name?: string
+  purl?: string
   status?: string
   healthBand?: HealthBand
   vulnSeverity?: VulnSeverityFilter
@@ -223,7 +224,12 @@ export async function getPackageStatusCounts(
 
   if (opts.name) {
     conditions.push('p.name ILIKE $(name)')
-    params.name = `%${opts.name}%`
+    params.name = opts.name
+  }
+
+  if (opts.purl) {
+    conditions.push('p.purl ILIKE $(purl)')
+    params.purl = opts.purl
   }
 
   if (opts.lifecycle) {
@@ -341,7 +347,12 @@ export async function listPackagesForApi(
 
   if (opts.name) {
     conditions.push('p.name ILIKE $(name)')
-    params.name = `%${opts.name}%`
+    params.name = opts.name
+  }
+
+  if (opts.purl) {
+    conditions.push('p.purl ILIKE $(purl)')
+    params.purl = opts.purl
   }
 
   // Exclude packages with no registry status when a lifecycle filter is active.
