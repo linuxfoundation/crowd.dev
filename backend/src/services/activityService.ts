@@ -108,6 +108,10 @@ export default class ActivityService extends LoggerBase {
 
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
+    if (subprojectIds.length === 0) {
+      return {}
+    }
+
     return SegmentService.getTenantActivityChannels(subprojectIds, this.options)
   }
 

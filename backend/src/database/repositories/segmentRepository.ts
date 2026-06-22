@@ -296,6 +296,10 @@ class SegmentRepository extends RepositoryBase<
   }
 
   async fetchTenantActivityChannels(segmentIds: string[]) {
+    if (segmentIds.length === 0) {
+      return {}
+    }
+
     const transaction = this.transaction
 
     const records = await this.options.database.sequelize.query(
