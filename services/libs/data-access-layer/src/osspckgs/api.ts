@@ -51,6 +51,7 @@ export async function getPackagesByStewardshipPurls(
 
 // TODO[deprecate]: rename to AkritesMetrics once /v1/ossprey is removed
 export interface OsspreyMetrics {
+  totalPackages: number
   criticalPackages: number
   coveragePercent: number
   coverageTrend: number | null
@@ -64,6 +65,7 @@ export interface OsspreyMetrics {
 export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
   const [counts, stewardRow]: [
     {
+      totalPackages: string
       criticalPackages: string
       covered: string
       needsAttention: string
@@ -74,6 +76,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   ] = await Promise.all([
     qx.selectOne(`
       SELECT
+        (SELECT reltuples::bigint::text FROM pg_class WHERE relname = 'packages')            AS "totalPackages",
         COUNT(*)::text                                                                     AS "criticalPackages",
         COUNT(*) FILTER (WHERE s.status IN ('assessing','active','needs_attention'))::text AS covered,
         COUNT(*) FILTER (WHERE s.status = 'needs_attention')::text                        AS "needsAttention",
@@ -96,6 +99,7 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
   const covered = parseInt(counts.covered, 10)
 
   return {
+    totalPackages: parseInt(counts.totalPackages, 10),
     criticalPackages: total,
     coveragePercent: total > 0 ? Math.round((covered / total) * 1000) / 10 : 0,
     coverageTrend: null, // TODO: requires snapshot mechanism or stewardship_activity timestamp analysis
@@ -108,6 +112,8 @@ export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetri
 
 export interface StewardEntry {
   userId: string
+  username: string | null
+  displayName: string | null
   role: string
   assignedAt: string
 }
@@ -164,7 +170,7 @@ const STALE_MONTHS = 18
 
 // Severity stored as uppercase in advisories table.
 // Ranks: CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1
-const SEVERITY_RANK_EXPR = `MAX(CASE a.severity
+export const SEVERITY_RANK_EXPR = `MAX(CASE a.severity
     WHEN 'CRITICAL' THEN 4
     WHEN 'HIGH'     THEN 3
     WHEN 'MEDIUM'   THEN 2
@@ -456,12 +462,19 @@ export async function listPackagesForApi(
     LEFT JOIN LATERAL (
       SELECT COALESCE(
         json_agg(
-          json_build_object('userId', ss.user_id, 'role', ss.role, 'assignedAt', ss.assigned_at)
+          json_build_object(
+            'userId', ss.user_id,
+            'username', st.username,
+            'displayName', st.display_name,
+            'role', ss.role,
+            'assignedAt', ss.assigned_at
+          )
           ORDER BY ss.assigned_at ASC
         ) FILTER (WHERE ss.id IS NOT NULL),
         '[]'::json
       ) AS stewards
       FROM stewardship_stewards ss
+      LEFT JOIN stewards st ON st.user_id = ss.user_id
       WHERE ss.stewardship_id = s.id
         AND ss.deleted_at IS NULL
     ) ss_agg ON true`
@@ -661,7 +674,21 @@ export interface ScatterPoint {
   advisoryCount: number
 }
 
-export async function listPackagesForScatter(qx: QueryExecutor): Promise<ScatterPoint[]> {
+export async function listPackagesForScatter(
+  qx: QueryExecutor,
+  options: { status?: string[]; ecosystem?: string } = {},
+): Promise<ScatterPoint[]> {
+  const { status, ecosystem } = options
+
+  // 'unassigned' covers packages with no stewardship row (s.id IS NULL) in addition
+  // to rows explicitly marked unassigned. All other statuses filter via s.status = ANY(...).
+  // The query always uses LEFT JOIN — the filter is applied in the WHERE clause, not the join.
+  const includesUnassigned = status?.includes('unassigned') ?? false
+  const statusFilter = status?.length
+    ? `AND (s.status = ANY($(status)::text[])${includesUnassigned ? ' OR s.id IS NULL' : ''})`
+    : ''
+  const ecosystemFilter = ecosystem ? `AND p.ecosystem = $(ecosystem)` : ''
+
   const rows: Array<{
     purl: string
     name: string
@@ -671,16 +698,17 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
     stewardshipId: string | null
     stewardshipStatus: string | null
     openVulns: number
-  }> = await qx.select(`
+  }> = await qx.select(
+    `
     SELECT
       p.purl,
       p.name,
-      ROUND(COALESCE(p.impact, 0) * 100)::int        AS "criticalityScore",
-      ROUND(COALESCE(r_sc.scorecard_score, 0) * 10)::int AS "healthScore",
-      r_sc.scorecard_score                            AS "scorecardScoreRaw",
-      s.id::text                                      AS "stewardshipId",
-      s.status                                        AS "stewardshipStatus",
-      COALESCE(ap_counts.cnt, 0)                      AS "openVulns"
+      ROUND(COALESCE(p.impact, 0) * 100)::int             AS "criticalityScore",
+      ROUND(COALESCE(r_sc.scorecard_score, 0) * 10)::int  AS "healthScore",
+      r_sc.scorecard_score                                 AS "scorecardScoreRaw",
+      s.id::text                                           AS "stewardshipId",
+      s.status                                             AS "stewardshipStatus",
+      COALESCE(ap_counts.cnt, 0)                           AS "openVulns"
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
     LEFT JOIN LATERAL (
@@ -695,9 +723,13 @@ export async function listPackagesForScatter(qx: QueryExecutor): Promise<Scatter
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
+    ${statusFilter}
+    ${ecosystemFilter}
     ORDER BY p.impact DESC NULLS LAST, p.purl ASC
     LIMIT 2000
-  `)
+    `,
+    { status, ecosystem },
+  )
 
   return rows.map((r) => ({
     purl: r.purl,

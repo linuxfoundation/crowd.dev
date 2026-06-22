@@ -51,7 +51,7 @@ import {
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
 import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
+import { fetchManySegments, getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
 import { ActivityDisplayService } from '@crowd/integrations'
 import {
   ALL_PLATFORM_TYPES,
@@ -148,6 +148,9 @@ class MemberRepository {
     )
 
     const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     if (data.identities) {
       for (const i of data.identities as IMemberIdentity[]) {
@@ -182,11 +185,7 @@ class MemberRepository {
       }
     }
 
-    await includeMemberToSegments(
-      qx,
-      record.id,
-      options.currentSegments.map((s) => s.id),
-    )
+    await includeMemberToSegments(qx, record.id, subprojectIds)
 
     const memberService = new CommonMemberService(optionsQx(options), options.temporal, options.log)
 
@@ -194,7 +193,7 @@ class MemberRepository {
       record.id,
       data.organizations,
       true,
-      options.currentSegments.map((s) => s.id),
+      subprojectIds,
       options,
     )
 
@@ -234,10 +233,15 @@ class MemberRepository {
 
     const bulkDeleteMemberSegments = `DELETE FROM "memberSegments" WHERE "memberId" in (:memberIds) and "segmentId" in (:segmentIds);`
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     await seq.query(bulkDeleteMemberSegments, {
       replacements: {
         memberIds,
-        segmentIds: SequelizeRepository.getSegmentIds(options),
+        segmentIds: subprojectIds,
       },
       type: QueryTypes.DELETE,
       transaction,
@@ -294,11 +298,9 @@ class MemberRepository {
     const HIGH_CONFIDENCE_LOWER_BOUND = 0.9
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
-    const currentSegments = SequelizeRepository.getSegmentIds(options)
-
-    const segmentIds = (
-      await new SegmentRepository(options).getSegmentSubprojects(currentSegments)
-    ).map((s) => s.id)
+    // Member segments are aggregated at each hierarchy level (group -> project -> subproject).
+    // Match the selected segment ID directly; do not expand to leaf subprojects.
+    const segmentIds = SequelizeRepository.getSegmentIds(options)
 
     if (segmentIds.length === 0) {
       return args.countOnly
@@ -888,13 +890,19 @@ class MemberRepository {
       !manualChange, // no need to track for audit if it's not a manual change
     )
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const subprojectIds = await getSegmentSubprojectIds(
+      qx,
+      SequelizeRepository.getSegmentIds(options),
+    )
+
     const memberService = new CommonMemberService(optionsQx(options), options.temporal, options.log)
 
     await memberService.updateMemberOrganizations(
       record.id,
       data.organizations,
       data.organizationsReplace,
-      options.currentSegments.map((s) => s.id),
+      subprojectIds,
       options,
     )
 
@@ -915,11 +923,7 @@ class MemberRepository {
     }
 
     if (options.currentSegments && options.currentSegments.length > 0) {
-      await includeMemberToSegments(
-        optionsQx(options),
-        record.id,
-        options.currentSegments.map((s) => s.id),
-      )
+      await includeMemberToSegments(qx, record.id, subprojectIds)
     }
 
     // Before upserting identities, check if they already exist
@@ -997,8 +1001,6 @@ class MemberRepository {
         }
       }
     }
-
-    const qx = SequelizeRepository.getQueryExecutor(options)
 
     if (data.identitiesToCreate && data.identitiesToCreate.length > 0) {
       for (const i of data.identitiesToCreate) {
@@ -1801,6 +1803,11 @@ class MemberRepository {
 
     const where = { [Op.and]: whereAnd }
 
+    const qx = SequelizeRepository.getQueryExecutor(options)
+    const currentSegments = SequelizeRepository.getSegmentIds(options)
+
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+
     const records = await options.database.member.findAll({
       attributes: ['id', 'displayName', 'attributes'],
       where,
@@ -1816,7 +1823,7 @@ class MemberRepository {
           model: options.database.segment,
           as: 'segments',
           where: {
-            id: SequelizeRepository.getSegmentIds(options),
+            id: subprojectIds,
           },
         },
       ],

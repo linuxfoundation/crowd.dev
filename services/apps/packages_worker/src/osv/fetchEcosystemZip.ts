@@ -70,7 +70,8 @@ export async function* fetchEcosystemZip(
   await mkdir(ecoDir, { recursive: true })
   const zipPath = path.join(ecoDir, 'all.zip')
 
-  const url = `${baseUrl.replace(/\/$/, '')}/${ecosystem}/all.zip`
+  const bucketEcosystem = ecosystem === 'cargo' ? 'crates.io' : ecosystem
+  const url = `${baseUrl.replace(/\/$/, '')}/${bucketEcosystem}/all.zip`
 
   try {
     await downloadZip(url, zipPath)

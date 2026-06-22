@@ -14,3 +14,13 @@ export * from './deps-dev/activities'
 export { osvSyncEcosystem, osvDeriveCriticalFlag } from './osv/activities'
 export { processMavenCriticalBatch, processMavenNonCriticalBatch } from './maven/activities'
 export { criticalityComputePageRank, rankPackages } from './criticality/activities'
+export {
+  cargoDownloadAndLoad,
+  cargoEnrichPackages,
+  cargoEnrichVersions,
+  cargoEnrichRepos,
+  cargoEnrichMaintainers,
+  cargoEnrichDownloadsDaily,
+  cargoFlushAudit,
+  cargoCleanup,
+} from './cargo/activities'

@@ -1,11 +1,10 @@
 import { Router } from 'express'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
+import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
+import { SCOPES } from '@/security/scopes'
 
-// TODO: restore once scopes are added to Auth0 staging tenant
-// import { requireScopes } from '@/api/public/middlewares/requireScopes'
-// import { SCOPES } from '@/security/scopes'
 import { activityFeedHandler } from '../ossprey/activityFeed'
 import { metricsHandler } from '../ossprey/metrics'
 import { packageListHandler } from '../ossprey/packageList'
@@ -17,6 +16,8 @@ import { getPackageHistory } from '../packages/getPackageHistory'
 import { getPackagesMetrics } from '../packages/getPackagesMetrics'
 import { assignStewardHandler } from '../stewardships/assignSteward'
 import { escalateHandler } from '../stewardships/escalate'
+import { getMyActivityHandler } from '../stewardships/getMyActivity'
+import { getMyPackagesHandler } from '../stewardships/getMyPackages'
 import { openStewardship } from '../stewardships/openStewardship'
 import { updateStatusHandler } from '../stewardships/updateStatus'
 
@@ -25,46 +26,59 @@ const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 export function akritesRouter(): Router {
   const router = Router()
 
-  router.get('/metrics', safeWrap(metricsHandler))
+  router.get(
+    '/metrics',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(metricsHandler),
+  )
   // /packages/scatter registered before router.use('/packages', ...) so Express evaluates this
   // explicit route first; without this ordering the sub-router would receive the request first
   // and call next() on no match, adding unnecessary overhead.
-  router.get('/packages/scatter', rateLimiter, safeWrap(packageScatterHandler))
-  router.get('/packages', rateLimiter, safeWrap(packageListHandler))
-  router.get('/activity', safeWrap(activityFeedHandler))
+  router.get(
+    '/packages/scatter',
+    rateLimiter,
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(packageScatterHandler),
+  )
+  router.get(
+    '/packages',
+    rateLimiter,
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(packageListHandler),
+  )
+  router.get(
+    '/activity',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(activityFeedHandler),
+  )
 
   // --- packages ---
   router.post(
     /^\/packages:batch-stewardship\/?$/,
     rateLimiter,
-    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
-    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(batchGetStewardship),
   )
   const packagesSubRouter = Router()
   packagesSubRouter.use(rateLimiter)
   packagesSubRouter.get(
     '/metrics',
-    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
-    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackagesMetrics),
   )
   packagesSubRouter.get(
     '/detail',
-    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
-    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackage),
   )
   packagesSubRouter.get(
     '/advisories',
-    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
-    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackageAdvisories),
   )
   packagesSubRouter.get(
     '/history',
-    // TODO: restore once read:packages + read:stewardships are added to Auth0 staging tenant
-    // requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
     safeWrap(getPackageHistory),
   )
   router.use('/packages', packagesSubRouter)
@@ -72,28 +86,34 @@ export function akritesRouter(): Router {
   // --- stewardships ---
   const stewardshipsSubRouter = Router()
   stewardshipsSubRouter.use(rateLimiter)
+  stewardshipsSubRouter.get(
+    '/me/packages',
+    requireScopes([SCOPES.READ_STEWARDSHIPS]),
+    safeWrap(getMyPackagesHandler),
+  )
+  stewardshipsSubRouter.get(
+    '/me/activity',
+    requireScopes([SCOPES.READ_STEWARDSHIPS]),
+    safeWrap(getMyActivityHandler),
+  )
   stewardshipsSubRouter.post(
     '/open',
-    // TODO: restore once write:stewardships is added to Auth0 staging tenant
-    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
     safeWrap(openStewardship),
   )
   stewardshipsSubRouter.post(
     '/:id/assign',
-    // TODO: restore once write:stewardships is added to Auth0 staging tenant
-    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
     safeWrap(assignStewardHandler),
   )
   stewardshipsSubRouter.post(
     '/:id/escalate',
-    // TODO: restore once write:stewardships is added to Auth0 staging tenant
-    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
     safeWrap(escalateHandler),
   )
   stewardshipsSubRouter.patch(
     '/:id/status',
-    // TODO: restore once write:stewardships is added to Auth0 staging tenant
-    // requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
+    requireScopes([SCOPES.WRITE_STEWARDSHIPS]),
     safeWrap(updateStatusHandler),
   )
   router.use('/stewardships', stewardshipsSubRouter)

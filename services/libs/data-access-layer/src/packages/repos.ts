@@ -5,22 +5,31 @@ export async function getOrCreateRepoByUrl(
   url: string,
   host: string,
 ): Promise<{ id: string; changedFields: string[] }> {
-  const row: { id: string; created: boolean } = await qx.selectOne(
-    `
-    WITH ins AS (
-      INSERT INTO repos (url, host) VALUES ($(url), $(host))
-      ON CONFLICT (url) DO NOTHING
-      RETURNING id
-    )
-    SELECT id::text AS id, true AS created FROM ins
-    UNION ALL
-    SELECT id::text AS id, false AS created
-      FROM repos
-     WHERE url = $(url) AND NOT EXISTS (SELECT 1 FROM ins)
-    `,
+  // Repos are shared across packages (every package in a monorepo points at one repo)
+  // so this is by far the common case
+  const existing: { id: string } | null = await qx.selectOneOrNone(
+    `SELECT id::text AS id FROM repos WHERE url = $(url)`,
+    { url },
+  )
+  if (existing) return { id: existing.id, changedFields: [] }
+
+  // Not seen yet — try to create it. ON CONFLICT DO NOTHING so a concurrent ingest lane creating
+  // the same shared repo doesn't raise a unique violation.
+  const inserted: { id: string } | null = await qx.selectOneOrNone(
+    `INSERT INTO repos (url, host) VALUES ($(url), $(host))
+     ON CONFLICT (url) DO NOTHING
+     RETURNING id::text AS id`,
     { url, host },
   )
-  return { id: row.id, changedFields: row.created ? ['repos.url', 'repos.host'] : [] }
+  if (inserted) return { id: inserted.id, changedFields: ['repos.url', 'repos.host'] }
+
+  // Lost the race: another lane committed the same url between our SELECT and INSERT, so
+  // ON CONFLICT DO NOTHING returned no row. Re-read in a fresh statement — under READ COMMITTED
+  const row: { id: string } = await qx.selectOne(
+    `SELECT id::text AS id FROM repos WHERE url = $(url)`,
+    { url },
+  )
+  return { id: row.id, changedFields: [] }
 }
 
 export async function upsertPackageRepo(

@@ -48,11 +48,34 @@ export async function fetchPackument(
     return { kind: 'MALFORMED', message: 'invalid JSON' }
   }
 
-  if (!isPackument(json)) return { kind: 'MALFORMED', message: 'unexpected shape' }
+  if (!isPackument(json)) {
+    const stub = asUnpublishedStub(json)
+    if (stub) return stub
+    return { kind: 'MALFORMED', message: 'unexpected shape' }
+  }
   delete (json as unknown as Record<string, unknown>).readme
   return json
 }
 
 function isPackument(v: unknown): v is Packument {
   return typeof v === 'object' && v !== null && 'name' in v && 'versions' in v && 'dist-tags' in v
+}
+
+// A fully unpublished package returns HTTP 200 with a stub document — just name + time,
+// where time.unpublished records the unpublish event; there are no versions/dist-tags keys,
+// so isPackument rejects it. Normalize the stub into an empty packument with `unpublished`
+// set, so ingest stores status='unpublished' instead of erroring on shape.
+function asUnpublishedStub(v: unknown): Packument | null {
+  if (typeof v !== 'object' || v === null) return null
+  const o = v as Record<string, unknown>
+  if (typeof o.name !== 'string' || typeof o.time !== 'object' || o.time === null) return null
+  const t = o.time as Record<string, unknown>
+  const unpublished = t.unpublished
+  if (typeof unpublished !== 'object' || unpublished === null) return null
+  if (typeof (unpublished as Record<string, unknown>).time !== 'string') return null
+  const time: Record<string, string> = {}
+  for (const [key, value] of Object.entries(t)) {
+    if (typeof value === 'string') time[key] = value
+  }
+  return { name: o.name, 'dist-tags': {}, versions: {}, time, unpublished }
 }

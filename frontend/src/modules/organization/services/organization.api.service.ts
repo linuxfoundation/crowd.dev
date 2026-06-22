@@ -1,6 +1,5 @@
 import authAxios from '@/shared/axios/auth-axios';
 import { Organization } from '@/modules/organization/types/Organization';
-import { getSegmentsFromProjectGroup } from '@/utils/segments';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import { storeToRefs } from 'pinia';
 
@@ -33,10 +32,7 @@ export class OrganizationApiService {
     const lsSegmentsStore = useLfSegmentsStore();
     const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
 
-    const segments = [
-      ...getSegmentsFromProjectGroup(selectedProjectGroup.value),
-      selectedProjectGroup.value?.id,
-    ];
+    const segments = [selectedProjectGroup.value?.id];
 
     const data = {
       limit,

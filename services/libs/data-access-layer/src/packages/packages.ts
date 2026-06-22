@@ -66,7 +66,11 @@ export async function upsertNpmPackage(
          dist_tags_latest        = EXCLUDED.dist_tags_latest,
          dist_tags_next          = EXCLUDED.dist_tags_next,
          dist_tags_beta          = EXCLUDED.dist_tags_beta,
-         versions_count          = EXCLUDED.versions_count,
+         -- An unpublished stub reports 0 versions; don't clobber a previously-known count
+         -- (keep it consistent with the version rows that are retained on unpublish).
+         versions_count          = CASE WHEN EXCLUDED.versions_count = 0
+                                        THEN packages.versions_count
+                                        ELSE EXCLUDED.versions_count END,
          latest_version          = EXCLUDED.latest_version,
          first_release_at        = EXCLUDED.first_release_at,
          latest_release_at       = EXCLUDED.latest_release_at,

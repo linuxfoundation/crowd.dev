@@ -295,59 +295,6 @@ class SegmentRepository extends RepositoryBase<
     }, {})
   }
 
-  async getSegmentSubprojects(segments: string[]) {
-    if (segments.length === 0) return []
-
-    const transaction = this.transaction
-
-    const records = await this.options.database.sequelize.query(
-      `
-      with input_segment AS (
-        select
-          id,
-          slug,
-          "parentSlug",
-          "grandparentSlug"
-        from segments
-        where id in (:segmentIds)
-          and "tenantId" = :tenantId
-      ),
-      segment_level AS (
-        select
-          case
-            when "parentSlug" is not null and "grandparentSlug" is not null
-                then 'child'
-            when "parentSlug" is not null and "grandparentSlug" is null
-                then 'parent'
-            when "parentSlug" is null and "grandparentSlug" is null
-                then 'grandparent'
-            end as level,
-          id,
-          slug,
-          "parentSlug",
-          "grandparentSlug"
-        from input_segment
-      )
-        select s.*
-        from segments s
-        join segment_level sl on (sl.level = 'child' and s.id = sl.id)
-            or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" is not null)
-            or (sl.level = 'grandparent' and s."grandparentSlug" = sl.slug)
-        where status = 'active';
-      `,
-      {
-        replacements: {
-          tenantId: this.options.currentTenant.id,
-          segmentIds: segments,
-        },
-        type: QueryTypes.SELECT,
-        transaction,
-      },
-    )
-
-    return records
-  }
-
   async fetchTenantActivityChannels(segmentIds: string[]) {
     const transaction = this.transaction
 
