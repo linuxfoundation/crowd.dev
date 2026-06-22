@@ -1361,8 +1361,8 @@ importers:
         specifier: ^5.6.3
         version: 5.6.3
       undici:
-        specifier: ^5.29.0
-        version: 5.29.0
+        specifier: ^6.27.0
+        version: 6.27.0
       unzipper:
         specifier: ^0.12.3
         version: 0.12.3
@@ -4836,6 +4836,9 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
+  '@types/estree@1.0.9':
+    resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+
   '@types/express-serve-static-core@4.19.0':
     resolution: {integrity: sha512-bGyep3JqPCRry1wq+O5n7oiBgGWmeIJXPjXXCo8EK0u8duZGSYar7cGqd3ML2JUsLGeB7fmc06KYo9fLGWqPvQ==}
 
@@ -8182,8 +8185,8 @@ packages:
     engines: {node: '>= 4.4.x'}
     hasBin: true
 
-  needle@https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
-    resolution: {tarball: https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b}
+  needle@git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
+    resolution: {commit: 84d28b5f2c3916db1e7eb84aeaa9d976cc40054b, repo: git@github.com:clearbit/needle.git, type: git}
     version: 0.7.10
     engines: {node: '>= 0.10.x'}
     hasBin: true
@@ -9957,6 +9960,10 @@ packages:
   undici@5.29.0:
     resolution: {integrity: sha512-raqeBD6NQK4SkWhQzeYKd1KmIG6dllBOTt55Rmkt4HtI9mwdWtJljnrXjAFUBLTSN67HWrOIZ3EPF4kjUw80Bg==}
     engines: {node: '>=14.0'}
+
+  undici@6.27.0:
+    resolution: {integrity: sha512-YmfV3YnEDzXRC5lZ2jWtWWHKGUm1zIt8AhesR1tens+HTNv+YZlN/dp6G727LOvMJ8xjP9Be7Y2Sdr96LDm+pg==}
+    engines: {node: '>=18.17'}
 
   unicorn-magic@0.1.0:
     resolution: {integrity: sha512-lRfVq8fE8gz6QMBuDM6a+LO3IAzTi05H6gCVaUpir2E1Rwpo4ZUog45KpNXKC/Mn3Yb9UDuHumeFTo9iV/D9FQ==}
@@ -13980,11 +13987,14 @@ snapshots:
 
   '@types/eslint@9.6.1':
     dependencies:
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.9
       '@types/json-schema': 7.0.15
     optional: true
 
   '@types/estree@1.0.8': {}
+
+  '@types/estree@1.0.9':
+    optional: true
 
   '@types/express-serve-static-core@4.19.0':
     dependencies:
@@ -15081,7 +15091,7 @@ snapshots:
       bluebird: 2.11.0
       create-error: 0.3.1
       lodash: 4.17.21
-      needle: https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b
+      needle: git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b
 
   cli-boxes@2.2.1: {}
 
@@ -17823,7 +17833,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  needle@https://codeload.github.com/clearbit/needle/tar.gz/84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
+  needle@git+https://git@github.com:clearbit/needle.git#84d28b5f2c3916db1e7eb84aeaa9d976cc40054b:
     dependencies:
       iconv-lite: 0.4.24
 
@@ -19822,6 +19832,8 @@ snapshots:
   undici@5.29.0:
     dependencies:
       '@fastify/busboy': 2.1.1
+
+  undici@6.27.0: {}
 
   unicorn-magic@0.1.0: {}
 
