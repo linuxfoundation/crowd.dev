@@ -24,7 +24,8 @@ export interface OpenVulns {
 
 export interface Steward {
   userId: string
-  name: string
+  username: string | null
+  displayName: string | null
   role: 'lead' | 'co_steward'
   assignedAt: string
 }
