@@ -40,20 +40,20 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
 }
 
 async function readCsvHeader(csvPath: string): Promise<string[]> {
-  const rl = createInterface({ input: createReadStream(csvPath), crlfDelay: Infinity })
+  const source = createReadStream(csvPath)
+  const rl = createInterface({ input: source, crlfDelay: Infinity })
   try {
-    for await (const line of rl) return line.split(',').map((c) => c.trim())
+    for await (const line of rl) {
+      return line.split(',').map((c) => c.trim())
+    }
   } finally {
     rl.close()
+    source.destroy()
   }
   throw new Error(`CSV has no header line: ${csvPath}`)
 }
 
-async function buildStagingTable(
-  qx: QueryExecutor,
-  table: string,
-  csvPath: string,
-): Promise<void> {
+async function buildStagingTable(qx: QueryExecutor, table: string, csvPath: string): Promise<void> {
   const cols = await readCsvHeader(csvPath)
   const missing = (REQUIRED_COLUMNS[table] ?? []).filter((c) => !cols.includes(c))
   if (missing.length) {
@@ -63,7 +63,7 @@ async function buildStagingTable(
     )
   }
   const types = COLUMN_TYPES[table] ?? {}
-  const ddl = cols.map((c) => `"${c}" ${types[c] ?? 'text'}`).join(', ')
+  const ddl = cols.map((c) => `"${c.replace(/"/g, '""')}" ${types[c] ?? 'text'}`).join(', ')
   await qx.result(
     `DROP TABLE IF EXISTS ${STAGING_SCHEMA}.${table} CASCADE; CREATE TABLE ${STAGING_SCHEMA}.${table} (${ddl})`,
   )
