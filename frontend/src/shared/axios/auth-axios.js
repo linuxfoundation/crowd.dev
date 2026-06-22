@@ -46,8 +46,7 @@ authAxios.interceptors.request.use(
         segments = options.data.segments;
       } else if (hasSegmentsQueryParams) {
         segments = options.params.segments;
-        // If neither body or query params have segments, use the selected project group id.
-        // The backend segment middleware resolves it to the correct leaf sub-projects.
+        // Default to the selected project group when no segments are specified.
       } else if (selectedProjectGroup.value?.id) {
         segments = [selectedProjectGroup.value.id];
       }

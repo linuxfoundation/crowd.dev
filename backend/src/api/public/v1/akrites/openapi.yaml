@@ -1127,6 +1127,299 @@ paths:
 
   # ── Stewardships ───────────────────────────────────────────────────────────
 
+  /akrites/stewardships/me/packages:
+    get:
+      operationId: getMyPackages
+      summary: List packages stewarded by the authenticated user
+      description: >
+        Returns a paginated list of packages where the authenticated user
+        (`req.actor.id`) is an active steward (`lead` or `co_steward`).
+        Includes package metadata, health, open vulnerabilities, last activity,
+        and the user's role and stewardship status.
+        The `meta.statusCounts` object always reflects counts across **all**
+        of the user's stewardships, regardless of the active `status` filter,
+        so the tab bar can render all buckets at once.
+      tags:
+        - Stewardships
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: status
+          in: query
+          description: Filter by stewardship status.
+          schema:
+            type: string
+            enum: [assessing, active, needs_attention, escalated, blocked]
+        - name: search
+          in: query
+          description: Case-insensitive substring match on package name or PURL.
+          schema:
+            type: string
+        - name: ecosystem
+          in: query
+          schema:
+            type: string
+            enum: [npm, maven, pypi, go, cargo]
+        - name: healthBand
+          in: query
+          schema:
+            type: string
+            enum: [healthy, fair, concerning, critical]
+        - name: vulnSeverity
+          in: query
+          description: Filter to packages with at least one vulnerability of this severity or worse.
+          schema:
+            type: string
+            enum: [high, critical]
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [risk, health, vulns, name, last_activity]
+            default: risk
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated list of the user's stewarded packages.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - purl
+                        - name
+                        - ecosystem
+                        - openVulns
+                        - stewardshipId
+                        - stewardshipStatus
+                        - myRole
+                      properties:
+                        purl:
+                          type: string
+                          example: pkg:npm/minimist
+                        name:
+                          type: string
+                          example: minimist
+                        ecosystem:
+                          type: string
+                          example: npm
+                        lifecycle:
+                          type: string
+                          nullable: true
+                          example: abandoned
+                        healthScore:
+                          type: integer
+                          minimum: 0
+                          maximum: 100
+                          nullable: true
+                          description: Scorecard score scaled to 0–100.
+                        healthBand:
+                          type: string
+                          enum: [healthy, fair, concerning, critical]
+                        openVulns:
+                          type: integer
+                          example: 2
+                        vulnSeverity:
+                          type: string
+                          enum: [critical, high, medium, low]
+                          nullable: true
+                          description: Worst open vulnerability severity.
+                        lastActivityDescription:
+                          type: string
+                          nullable: true
+                          example: Escalated for intervention
+                        lastActivityAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        stewardshipId:
+                          type: string
+                          example: '42'
+                        stewardshipStatus:
+                          type: string
+                          enum: [assessing, active, needs_attention, escalated, blocked]
+                        myRole:
+                          type: string
+                          enum: [lead, co_steward]
+                  meta:
+                    type: object
+                    required: [total, page, pageSize, statusCounts]
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      pageSize:
+                        type: integer
+                      statusCounts:
+                        type: object
+                        required: [assessing, active, needs_attention, escalated, blocked]
+                        properties:
+                          assessing:
+                            type: integer
+                          active:
+                            type: integer
+                          needs_attention:
+                            type: integer
+                          escalated:
+                            type: integer
+                          blocked:
+                            type: integer
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites/stewardships/me/activity:
+    get:
+      operationId: getMyActivity
+      summary: Latest activity feed for the authenticated user's stewardships
+      description: >
+        Returns the most recent stewardship activity events scoped to packages
+        where the authenticated user is an active steward. Results are
+        **deduplicated by stewardship** — only the single most recent event per
+        package is returned — and sorted newest-first.
+        Designed to power the "Latest activity" strip on the My Stewardships
+        page. Default `pageSize` is 3 (one card per attention-needed status);
+        increase for a "load more" experience.
+      tags:
+        - Stewardships
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 3
+        - name: status
+          in: query
+          description: >
+            Comma-separated list of stewardship statuses to filter.
+            Example: `needs_attention,blocked,escalated,assessing`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deduplicated activity feed for the user's stewardships.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - stewardshipId
+                        - packageName
+                        - purl
+                        - packageEcosystem
+                        - stewardshipStatus
+                        - activityType
+                        - createdAt
+                      properties:
+                        stewardshipId:
+                          type: string
+                          example: '42'
+                        packageName:
+                          type: string
+                          example: jackson-databind
+                        purl:
+                          type: string
+                          example: pkg:maven/com.fasterxml.jackson.core/jackson-databind
+                        packageEcosystem:
+                          type: string
+                          example: maven
+                        stewardshipStatus:
+                          type: string
+                          enum:
+                            [
+                              assessing,
+                              active,
+                              needs_attention,
+                              escalated,
+                              blocked,
+                              unassigned,
+                              open,
+                              inactive,
+                            ]
+                        activityType:
+                          type: string
+                          example: advisory_detected
+                        description:
+                          type: string
+                          nullable: true
+                          example: New security advisory detected
+                        createdAt:
+                          type: string
+                          format: date-time
+                        suggestedAction:
+                          type: string
+                          nullable: true
+                          description: Label for the primary CTA button on the activity card.
+                          example: Review & respond
+                  meta:
+                    type: object
+                    required: [total, page, pageSize]
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      pageSize:
+                        type: integer
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /akrites/stewardships/open:
     post:
       operationId: openStewardship
