@@ -126,12 +126,18 @@ components:
           type: string
           description: Auth0 sub of the assigned steward.
           example: abc123
-        name:
+        username:
           type:
             - string
             - 'null'
-          description: Display name of the steward. Null if not available.
-          example: Jonathan R.
+          description: LFX username of the steward. Null if not yet stored.
+          example: joanagmaia
+        displayName:
+          type:
+            - string
+            - 'null'
+          description: Full display name of the steward. Null if not yet stored.
+          example: Joana Maia
         role:
           type: string
           enum: [lead, co_steward]
@@ -264,6 +270,14 @@ paths:
                   type: string
                   description: Auth0 sub of the user to assign as steward.
                   example: abc123
+                username:
+                  type: string
+                  description: LFX username of the steward. When provided together with displayName, stored for display purposes.
+                  example: joanagmaia
+                displayName:
+                  type: string
+                  description: Full display name of the steward. When provided together with username, stored for display purposes.
+                  example: Joana Maia
                 role:
                   type: string
                   enum: [lead, co_steward]

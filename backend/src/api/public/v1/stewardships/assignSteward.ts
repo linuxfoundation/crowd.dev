@@ -12,20 +12,32 @@ const paramsSchema = z.object({
   id: z.coerce.number().int().positive(),
 })
 
-const bodySchema = z.object({
-  userId: z.string().trim().min(1),
-  role: z.enum(['lead', 'co_steward']),
-  note: z.string().trim().min(1).optional(),
-  moveToAssessing: z.boolean().optional().default(false),
-})
+const bodySchema = z
+  .object({
+    userId: z.string().trim().min(1),
+    username: z.string().trim().min(1).optional().nullable(),
+    displayName: z.string().trim().min(1).optional().nullable(),
+    role: z.enum(['lead', 'co_steward']),
+    note: z.string().trim().min(1).optional(),
+    moveToAssessing: z.boolean().optional().default(false),
+  })
+  .refine((d) => (d.username == null) === (d.displayName == null), {
+    message: 'username and displayName must both be provided or both be absent',
+    path: ['displayName'],
+  })
 
 export async function assignStewardHandler(req: Request, res: Response): Promise<void> {
   const { id } = validateOrThrow(paramsSchema, req.params)
-  const { userId, role, note, moveToAssessing } = validateOrThrow(bodySchema, req.body)
+  const { userId, username, displayName, role, note, moveToAssessing } = validateOrThrow(
+    bodySchema,
+    req.body,
+  )
 
   const qx = await getPackagesQx()
   const result = await assignSteward(qx, id, {
     userId,
+    username,
+    displayName,
     role,
     note,
     assignedBy: req.actor.id,
