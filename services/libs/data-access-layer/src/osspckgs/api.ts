@@ -154,6 +154,7 @@ export interface ListPackagesOptions {
   ecosystem?: string
   lifecycle?: string
   name?: string
+  purl?: string
   status?: string
   healthBand?: HealthBand
   vulnSeverity?: VulnSeverityFilter
@@ -224,6 +225,11 @@ export async function getPackageStatusCounts(
   if (opts.name) {
     conditions.push('p.name ILIKE $(name)')
     params.name = `%${opts.name}%`
+  }
+
+  if (opts.purl) {
+    conditions.push('p.purl ILIKE $(purl)')
+    params.purl = `%${opts.purl}%`
   }
 
   if (opts.lifecycle) {
@@ -344,6 +350,11 @@ export async function listPackagesForApi(
     params.name = `%${opts.name}%`
   }
 
+  if (opts.purl) {
+    conditions.push('p.purl ILIKE $(purl)')
+    params.purl = `%${opts.purl}%`
+  }
+
   // Exclude packages with no registry status when a lifecycle filter is active.
   // Full lifecycle column support is pending; this prevents null-lifecycle rows
   // from leaking into filtered results.
@@ -429,7 +440,24 @@ export async function listPackagesForApi(
   const sortDir = opts.sortDir === 'desc' ? 'DESC' : 'ASC'
 
   // Separate paginated params from filter-only params used by the fallback COUNT query
-  const queryParams = { ...params, limit: opts.pageSize, offset: (opts.page - 1) * opts.pageSize }
+  const queryParams: Record<string, unknown> = {
+    ...params,
+    limit: opts.pageSize,
+    offset: (opts.page - 1) * opts.pageSize,
+  }
+
+  // Float exact name/purl matches to the top while still returning all partial matches via ILIKE.
+  const exactParts: string[] = []
+  if (opts.name) {
+    exactParts.push('p.name ILIKE $(name_exact)')
+    queryParams.name_exact = opts.name
+  }
+  if (opts.purl) {
+    exactParts.push('p.purl ILIKE $(purl_exact)')
+    queryParams.purl_exact = opts.purl
+  }
+  const exactSort =
+    exactParts.length > 0 ? `CASE WHEN ${exactParts.join(' OR ')} THEN 0 ELSE 1 END` : ''
 
   // Laterals needed for WHERE filter conditions — included in both the main query and the COUNT fallback.
   const filterLaterals = `
@@ -522,7 +550,7 @@ export async function listPackagesForApi(
     FROM packages p
     ${laterals}
     ${where}
-    ORDER BY ${sortExpr} ${sortDir} NULLS LAST, p.purl ${sortDir}
+    ORDER BY ${[exactSort, `${sortExpr} ${sortDir} NULLS LAST`, `p.purl ${sortDir}`].filter(Boolean).join(', ')}
     LIMIT $(limit) OFFSET $(offset)
     `,
     queryParams,

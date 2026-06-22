@@ -7,6 +7,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { purlFilterSchema } from './purl'
 import { STEWARDSHIP_STATUS_VALUES, type StewardshipStatus } from './types'
 
 const DEFAULT_PAGE_SIZE = 20
@@ -24,6 +25,7 @@ const querySchema = z.object({
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(lifecycleValues).optional(),
   name: z.string().trim().optional(),
+  purl: purlFilterSchema,
   status: z.enum(STEWARDSHIP_STATUS_VALUES).optional(),
   healthBand: z.enum(healthBandValues).optional(),
   vulnSeverity: z.enum(vulnSeverityValues).optional(),
@@ -41,6 +43,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     ecosystem,
     lifecycle,
     name,
+    purl,
     status,
     healthBand,
     vulnSeverity,
@@ -55,6 +58,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     ecosystem,
     lifecycle,
     name,
+    purl,
     healthBand,
     vulnSeverity,
     staleOnly,
@@ -91,6 +95,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
       ecosystem: ecosystem ?? null,
       lifecycle: lifecycle ?? null,
       name: name ?? null,
+      purl: purl ?? null,
       status: status ?? null,
       healthBand: healthBand ?? null,
       vulnSeverity: vulnSeverity ?? null,
