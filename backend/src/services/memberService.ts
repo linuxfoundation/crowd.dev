@@ -22,7 +22,11 @@ import {
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
 import { QueryExecutor, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
+import {
+  decrementMemberMergeSuggestionCounts,
+  fetchManySegments,
+  getMembersCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import {
   IMemberIdentity,
@@ -777,6 +781,14 @@ export default class MemberService extends LoggerBase {
       })
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      const qx = SequelizeRepository.getQueryExecutor(this.options)
+      const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(qx, [
+        memberOneId,
+        memberTwoId,
+      ])
+
+      await decrementMemberMergeSuggestionCounts(qx, projectGroupSegmentIds)
 
       return { status: 200 }
     } catch (error) {

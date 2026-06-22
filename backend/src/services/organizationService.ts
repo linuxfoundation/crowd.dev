@@ -29,7 +29,11 @@ import {
   findOrgById,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
-import { findLfSegmentByName } from '@crowd/data-access-layer/src/segments'
+import {
+  decrementOrganizationMergeSuggestionCounts,
+  findLfSegmentByName,
+  getOrganizationsCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import {
@@ -722,6 +726,13 @@ export default class OrganizationService extends LoggerBase {
 
           await SequelizeRepository.commitTransaction(tx)
 
+          const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+            originalId,
+            toMergeId,
+          ])
+
+          await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
+
           this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
 
           await setMergeAction(
@@ -832,6 +843,14 @@ export default class OrganizationService extends LoggerBase {
       })
 
       await SequelizeRepository.commitTransaction(transaction)
+
+      const qx = SequelizeRepository.getQueryExecutor(this.options)
+      const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+        organizationId,
+        noMergeId,
+      ])
+
+      await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
 

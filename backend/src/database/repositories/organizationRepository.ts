@@ -34,7 +34,11 @@ import {
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
 import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { findSegmentById, getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
+import {
+  findSegmentById,
+  getSegmentMergeSuggestionCounts,
+  getSegmentSubprojectIds,
+} from '@crowd/data-access-layer/src/segments'
 import {
   IMemberRenderFriendlyRole,
   IMemberRoleWithOrganization,
@@ -789,57 +793,19 @@ class OrganizationRepository {
   }
 
   static async countOrganizationMergeSuggestions(
-    organizationFilter: string,
-    similarityFilter: string,
-    displayNameFilter: string,
-    replacements: {
-      segmentIds: string[]
-      organizationId?: string
-      displayName?: string
-      mergeActionType: MergeActionType
-      mergeActionStatus: MergeActionState
-    },
+    segmentIds: string[],
     options: IRepositoryOptions,
   ): Promise<number> {
-    const organizationsJoin = displayNameFilter
-      ? `JOIN organizations o1 ON o1.id = otm."organizationId"
-         JOIN organizations o2 ON o2.id = otm."toMergeId"`
-      : ''
+    if (segmentIds.length !== 1) {
+      return 0
+    }
 
-    const result = await options.database.sequelize.query(
-      `
-      SELECT COUNT(DISTINCT Greatest(
-        Hashtext(Concat(otm."organizationId", otm."toMergeId")),
-        Hashtext(Concat(otm."toMergeId", otm."organizationId"))
-      )) AS total_count
-      FROM "organizationToMerge" otm
-      ${organizationsJoin}
-      LEFT JOIN "mergeActions" ma
-        ON ma.type = :mergeActionType
-        AND (
-          (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
-          OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
-        )
-      WHERE EXISTS (
-          SELECT 1 FROM "organizationSegmentsAgg" os1
-          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
-      )
-      AND EXISTS (
-          SELECT 1 FROM "organizationSegmentsAgg" os2
-          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
-      )
-      AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
-        ${organizationFilter}
-        ${similarityFilter}
-        ${displayNameFilter}
-      `,
-      {
-        replacements,
-        type: QueryTypes.SELECT,
-      },
+    const counts = await getSegmentMergeSuggestionCounts(
+      SequelizeRepository.getQueryExecutor(options),
+      segmentIds[0],
     )
 
-    return result[0]?.total_count || 0
+    return counts?.organizationMergeSuggestionsCount ?? 0
   }
 
   static async findOrganizationsWithMergeSuggestions(
@@ -880,48 +846,32 @@ class OrganizationRepository {
       ? ` and (o1."displayName" ilike :displayName OR o2."displayName" ilike :displayName)`
       : ''
 
-    let order =
-      '"organizationsToMerge".similarity desc, "organizationsToMerge"."id", "organizationsToMerge"."toMergeId"'
+    let order = 'otm.similarity desc, otm."organizationId", otm."toMergeId"'
 
     if (args.orderBy?.length > 0) {
       order = ''
       for (const orderBy of args.orderBy) {
         const [field, direction] = orderBy.split('_')
         if (['similarity'].includes(field) && ['asc', 'desc'].includes(direction.toLowerCase())) {
-          order += `"organizationsToMerge".${field} ${direction}, `
+          order += `otm.${field} ${direction}, `
         }
       }
 
-      order += '"organizationsToMerge"."id", "organizationsToMerge"."toMergeId"'
+      order += 'otm."organizationId", otm."toMergeId"'
     }
 
     if (args.countOnly) {
-      const totalCount = await this.countOrganizationMergeSuggestions(
-        organizationFilter,
-        similarityFilter,
-        displayNameFilter,
-        {
-          segmentIds,
-          displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
-          organizationId: args?.filter?.organizationId,
-          mergeActionType: MergeActionType.ORG,
-          mergeActionStatus: MergeActionState.ERROR,
-        },
-        options,
-      )
+      const totalCount = await this.countOrganizationMergeSuggestions(segmentIds, options)
 
       return { count: totalCount }
     }
 
     const orgs = await options.database.sequelize.query(
-      `WITH
-      cte AS (
+      `
         SELECT
-          Greatest(Hashtext(Concat(otm."organizationId", otm."toMergeId")), Hashtext(Concat(otm."toMergeId", otm."organizationId"))) as hash,
-          otm."organizationId" as id,
+          otm."organizationId" AS id,
           otm."toMergeId",
-          o1."createdAt",
-          otm."similarity",
+          otm.similarity,
           o1."displayName" as "primaryDisplayName",
           o1.logo as "primaryLogo",
           o2."displayName" as "secondaryDisplayName",
@@ -949,51 +899,13 @@ class OrganizationRepository {
             SELECT 1 FROM "organizationSegmentsAgg" os2
             WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
         )
-        AND (ma.id IS NULL OR ma.state = :mergeActionStatus)
+        AND (ma.id IS NULL OR ma.state = :mergeActionState)
           ${organizationFilter}
           ${similarityFilter}
           ${displayNameFilter}
-      ),
-
-      count_cte AS (
-        SELECT COUNT(DISTINCT hash) AS total_count
-        FROM cte
-      ),
-
-      final_select AS (
-        SELECT DISTINCT ON (hash)
-          id,
-          "toMergeId",
-          "primaryDisplayName",
-          "primaryLogo",
-          "secondaryDisplayName",
-          "secondaryLogo",
-          "createdAt",
-          "similarity",
-          "primarySegmentId",
-          "secondarySegmentId"
-        FROM cte
-        ORDER BY hash, id
-      )
-
-      SELECT
-        "organizationsToMerge".id,
-        "organizationsToMerge"."toMergeId",
-        "organizationsToMerge"."primaryDisplayName",
-        "organizationsToMerge"."primaryLogo",
-        "organizationsToMerge"."secondaryDisplayName",
-        "organizationsToMerge"."secondaryLogo",
-        "organizationsToMerge"."primarySegmentId",
-        "organizationsToMerge"."secondarySegmentId",
-        count_cte."total_count",
-        "organizationsToMerge"."similarity"
-      FROM
-        final_select AS "organizationsToMerge",
-        count_cte
-      ORDER BY
-        ${order}
-      LIMIT :limit OFFSET :offset
-    `,
+        ORDER BY ${order}
+        LIMIT :limit OFFSET :offset
+      `,
       {
         replacements: {
           segmentIds,
@@ -1001,7 +913,7 @@ class OrganizationRepository {
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           mergeActionType: MergeActionType.ORG,
-          mergeActionStatus: MergeActionState.ERROR,
+          mergeActionState: MergeActionState.ERROR,
           organizationId: args?.filter?.organizationId,
         },
         type: QueryTypes.SELECT,
@@ -1060,12 +972,17 @@ class OrganizationRepository {
         })
       })
 
-      return { rows: result, count: orgs[0].total_count, limit: args.limit, offset: args.offset }
+      return {
+        rows: result,
+        count: await this.countOrganizationMergeSuggestions(segmentIds, options),
+        limit: args.limit,
+        offset: args.offset,
+      }
     }
 
     return {
       rows: [{ organizations: [], similarity: 0 }],
-      count: 0,
+      count: await this.countOrganizationMergeSuggestions(segmentIds, options),
       limit: args.limit,
       offset: args.offset,
     }

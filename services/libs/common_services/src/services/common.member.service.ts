@@ -56,6 +56,10 @@ import {
 } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
+import {
+  decrementMemberMergeSuggestionCounts,
+  getMembersCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { Client as TemporalClient } from '@crowd/temporal'
 import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
@@ -439,6 +443,13 @@ export class CommonMemberService extends LoggerBase {
               secondMemberSegments.map((s) => s.id),
             )
           })
+
+          const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
+            originalId,
+            toMergeId,
+          ])
+          
+          await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
 
           this.log.info({ originalId, toMergeId }, '[Merge Members] - Transaction commited! ')
 
