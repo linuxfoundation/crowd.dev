@@ -793,19 +793,56 @@ class OrganizationRepository {
   }
 
   static async countOrganizationMergeSuggestions(
-    segmentIds: string[],
+    organizationFilter: string,
+    similarityFilter: string,
+    displayNameFilter: string,
+    replacements: {
+      segmentIds: string[]
+      organizationId?: string
+      displayName?: string
+    },
     options: IRepositoryOptions,
   ): Promise<number> {
-    if (segmentIds.length !== 1) {
-      return 0
-    }
+    const organizationsJoin = displayNameFilter
+      ? `JOIN organizations o1 ON o1.id = otm."organizationId"
+         JOIN organizations o2 ON o2.id = otm."toMergeId"`
+      : ''
 
-    const counts = await getSegmentMergeSuggestionCounts(
-      SequelizeRepository.getQueryExecutor(options),
-      segmentIds[0],
+    const result = await options.database.sequelize.query(
+      `
+      SELECT COUNT(*) AS total_count
+      FROM "organizationToMerge" otm
+      ${organizationsJoin}
+      LEFT JOIN "mergeActions" ma
+        ON ma.type = :mergeActionType
+        AND (
+          (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+          OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
+        )
+      WHERE EXISTS (
+          SELECT 1 FROM "organizationSegmentsAgg" os1
+          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+      )
+      AND EXISTS (
+          SELECT 1 FROM "organizationSegmentsAgg" os2
+          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+      )
+      AND (ma.id IS NULL OR ma.state = :mergeActionState)
+        ${organizationFilter}
+        ${similarityFilter}
+        ${displayNameFilter}
+      `,
+      {
+        replacements: {
+          ...replacements,
+          mergeActionType: MergeActionType.ORG,
+          mergeActionState: MergeActionState.ERROR,
+        },
+        type: QueryTypes.SELECT,
+      },
     )
 
-    return counts?.organizationMergeSuggestionsCount ?? 0
+    return result[0]?.total_count || 0
   }
 
   static async findOrganizationsWithMergeSuggestions(
@@ -860,10 +897,34 @@ class OrganizationRepository {
       order += 'otm."organizationId", otm."toMergeId"'
     }
 
-    if (args.countOnly) {
-      const totalCount = await this.countOrganizationMergeSuggestions(segmentIds, options)
+    const hasCountFilters = Boolean(
+      args.filter?.organizationId || args.filter?.displayName || args.filter?.similarity?.length,
+    )
 
-      return { count: totalCount }
+    const getTotalCount = async (): Promise<number> => {
+      if (segmentIds.length === 1 && !hasCountFilters) {
+        const counts = await getSegmentMergeSuggestionCounts(
+          SequelizeRepository.getQueryExecutor(options),
+          segmentIds[0],
+        )
+        return counts?.organizationMergeSuggestionsCount ?? 0
+      }
+
+      return this.countOrganizationMergeSuggestions(
+        organizationFilter,
+        similarityFilter,
+        displayNameFilter,
+        {
+          segmentIds,
+          organizationId: args?.filter?.organizationId,
+          displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
+        },
+        options,
+      )
+    }
+
+    if (args.countOnly) {
+      return { count: await getTotalCount() }
     }
 
     const orgs = await options.database.sequelize.query(
@@ -974,7 +1035,7 @@ class OrganizationRepository {
 
       return {
         rows: result,
-        count: await this.countOrganizationMergeSuggestions(segmentIds, options),
+        count: await getTotalCount(),
         limit: args.limit,
         offset: args.offset,
       }
@@ -982,7 +1043,7 @@ class OrganizationRepository {
 
     return {
       rows: [{ organizations: [], similarity: 0 }],
-      count: await this.countOrganizationMergeSuggestions(segmentIds, options),
+      count: await getTotalCount(),
       limit: args.limit,
       offset: args.offset,
     }

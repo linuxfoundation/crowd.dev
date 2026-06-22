@@ -255,19 +255,57 @@ class MemberRepository {
   }
 
   static async countMemberMergeSuggestions(
-    segmentIds: string[],
+    memberFilter: string,
+    similarityFilter: string,
+    displayNameFilter: string,
+    replacements: {
+      segmentIds: string[]
+      memberId?: string
+      displayName?: string
+    },
     options: IRepositoryOptions,
   ): Promise<number> {
-    if (segmentIds.length !== 1) {
-      return 0
-    }
+    const membersJoin = displayNameFilter
+      ? `JOIN members m ON m.id = mtm."memberId"
+         JOIN members m2 ON m2.id = mtm."toMergeId"`
+      : ''
 
-    const counts = await getSegmentMergeSuggestionCounts(
-      SequelizeRepository.getQueryExecutor(options),
-      segmentIds[0],
+    const totalCount = await options.database.sequelize.query(
+      `
+        SELECT
+            COUNT(*) AS count
+        FROM "memberToMerge" mtm
+        ${membersJoin}
+        LEFT JOIN "mergeActions" ma
+          ON ma.type = :mergeActionType
+          AND (
+            (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+            OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+          )
+        WHERE EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms
+            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
+        )
+        AND EXISTS (
+            SELECT 1 FROM "memberSegmentsAgg" ms2
+            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
+        )
+        AND (ma.id IS NULL OR ma.state = :mergeActionState)
+          ${memberFilter}
+          ${similarityFilter}
+          ${displayNameFilter}
+      `,
+      {
+        replacements: {
+          ...replacements,
+          mergeActionType: MergeActionType.MEMBER,
+          mergeActionState: MergeActionState.ERROR,
+        },
+        type: QueryTypes.SELECT,
+      },
     )
 
-    return counts?.memberMergeSuggestionsCount ?? 0
+    return totalCount[0]?.count || 0
   }
 
   static async findMembersWithMergeSuggestions(
@@ -336,10 +374,35 @@ class MemberRepository {
       order += 'mtm."memberId", mtm."toMergeId"'
     }
 
-    if (args.countOnly) {
-      const totalCount = await this.countMemberMergeSuggestions(segmentIds, options)
+    const hasCountFilters = Boolean(
+      args.filter?.memberId || args.filter?.displayName || args.filter?.similarity?.length,
+    )
 
-      return { count: totalCount }
+    const getTotalCount = async (): Promise<number> => {
+      if (segmentIds.length === 1 && !hasCountFilters) {
+        const counts = await getSegmentMergeSuggestionCounts(
+          SequelizeRepository.getQueryExecutor(options),
+          segmentIds[0],
+        )
+
+        return counts?.memberMergeSuggestionsCount ?? 0
+      }
+
+      return this.countMemberMergeSuggestions(
+        memberFilter,
+        similarityFilter,
+        displayNameFilter,
+        {
+          segmentIds,
+          memberId: args?.filter?.memberId,
+          displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
+        },
+        options,
+      )
+    }
+
+    if (args.countOnly) {
+      return { count: await getTotalCount() }
     }
 
     const mems = await options.database.sequelize.query(
@@ -484,14 +547,12 @@ class MemberRepository {
         }))
       }
 
-      const totalCount = await this.countMemberMergeSuggestions(segmentIds, options)
-
-      return { rows: result, count: totalCount, limit: args.limit, offset: args.offset }
+      return { rows: result, count: await getTotalCount(), limit: args.limit, offset: args.offset }
     }
 
     return {
       rows: [{ members: [], similarity: 0 }],
-      count: await this.countMemberMergeSuggestions(segmentIds, options),
+      count: await getTotalCount(),
       limit: args.limit,
       offset: args.offset,
     }
