@@ -15,6 +15,12 @@
  */
 import { z } from 'zod'
 
+export function normalizePurl(purl: string): string {
+  const withoutQualifiers = purl.replace(/[?#].*$/, '')
+  const withoutVersion = withoutQualifiers.replace(/@[^/@]+$/, '')
+  return withoutVersion.replace(/@/g, '%40')
+}
+
 export const purlFieldSchema = z
   .string()
   .trim()
@@ -24,8 +30,6 @@ export const purlFieldSchema = z
 
 export const purlQuerySchema = z.object({ purl: purlFieldSchema })
 
-export function normalizePurl(purl: string): string {
-  const withoutQualifiers = purl.replace(/[?#].*$/, '')
-  const withoutVersion = withoutQualifiers.replace(/@[^/@]+$/, '')
-  return withoutVersion.replace(/@/g, '%40')
-}
+// Loose schema for search filters: normalizes without requiring the pkg: prefix,
+// so partial inputs (e.g. "@babel/core" or "lodash") are accepted.
+export const purlFilterSchema = z.string().trim().transform(normalizePurl).optional()

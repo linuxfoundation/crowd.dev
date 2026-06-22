@@ -7,6 +7,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { purlFilterSchema } from './purl'
 import { STEWARDSHIP_STATUS_VALUES, type StewardshipStatus } from './types'
 
 const DEFAULT_PAGE_SIZE = 20
@@ -24,7 +25,7 @@ const querySchema = z.object({
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(lifecycleValues).optional(),
   name: z.string().trim().optional(),
-  purl: z.string().trim().optional(),
+  purl: purlFilterSchema,
   status: z.enum(STEWARDSHIP_STATUS_VALUES).optional(),
   healthBand: z.enum(healthBandValues).optional(),
   vulnSeverity: z.enum(vulnSeverityValues).optional(),
