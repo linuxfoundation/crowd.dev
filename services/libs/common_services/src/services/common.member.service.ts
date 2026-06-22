@@ -444,12 +444,20 @@ export class CommonMemberService extends LoggerBase {
             )
           })
 
-          const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
-            originalId,
-            toMergeId,
-          ])
-          
-          await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
+          try {
+            const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
+              originalId,
+              toMergeId,
+            ])
+
+            await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
+          } catch (error) {
+            this.log.error(
+              error,
+              { originalId, toMergeId },
+              'Failed to decrement member merge suggestion counts after merge',
+            )
+          }
 
           this.log.info({ originalId, toMergeId }, '[Merge Members] - Transaction commited! ')
 
