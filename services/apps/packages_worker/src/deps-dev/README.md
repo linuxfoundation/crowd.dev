@@ -50,7 +50,7 @@ The mode-specific key takes precedence over the generic key. Value must be a pos
 | `BQ_DATASET_INGEST_PACKAGES_FULL_MAX_BQ_GB`        |         6000 | `packages`             | Full only (set in `ingestPackages.ts`)                    |
 | `BQ_DATASET_INGEST_PACKAGES_INCREMENTAL_MAX_BQ_GB` |          400 | `packages`             | Incremental only (set in `ingestPackages.ts`)             |
 | `BQ_DATASET_INGEST_VERSIONS_MAX_BQ_GB`             |          400 | `versions`             |                                                           |
-| `BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES_MAX_BQ_GB` |        10000 | `package_dependencies` | Incremental always scans ~2 full-day partitions (~3.85TB) |
+| `BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES_MAX_BQ_GB` | 25000 full / 10000 incr | `package_dependencies` | Full scans `*Latest`. Incremental is a snapshot edge-diff (today vs watermark partitions of `DependencyGraphEdges` + `GoRequirements` + `NuGetRequirements`), matched on `(root, to_name)` excluding the resolved `to_version` to drop re-resolution churn (~4.1TB, Option A). Mode-specific `…_FULL_…` / `…_INCREMENTAL_…` keys take precedence. |
 | `BQ_DATASET_INGEST_REPOS_MAX_BQ_GB`                |         2000 | `repos`                |                                                           |
 | `BQ_DATASET_INGEST_PACKAGE_REPOS_MAX_BQ_GB`        |         2000 | `package_repos`        |                                                           |
 | `BQ_DATASET_INGEST_ADVISORIES_MAX_BQ_GB`           |           10 | `advisories`           |                                                           |

@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
 import {
@@ -51,6 +51,11 @@ const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActiv
 
 const { setJobStep } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
+const { checkEdgeSnapshotQuality } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
 })
 
@@ -219,6 +224,22 @@ export async function ingestDependencies(opts: {
   const isFill = opts.fillConstraints === true
   // Fill mode forces Option A — Option B selects NULL for version_constraint, making the fill a no-op.
   const tableOption = isFill ? 'A' : (opts.depsTableOption ?? 'A')
+
+  // Guard against corrupt deps.dev resolved-graph snapshots BEFORE the (multi-hour) export.
+  // Skip when reusing a prior export — we're re-importing already-validated parquet, not
+  // scanning the live snapshot. Both full (*Latest = newest snapshot) and incremental can hit
+  // a bad snapshot, so the guard runs for both. Probes only resolved-graph ecosystems; a clean
+  // GO/NUGET-only run finds no canaries and passes through.
+  if (!opts.reuseExports) {
+    const guard = await checkEdgeSnapshotQuality({ snapshotDate: opts.today, ecosystems })
+    if (!guard.ok) {
+      throw ApplicationFailure.nonRetryable(
+        `edge snapshot quality guard failed for ${opts.today}: ${guard.reason}. ` +
+          `Slack alert sent. Aborting before export to preserve existing package_dependencies and compute.`,
+        'EDGE_SNAPSHOT_GUARD',
+      )
+    }
+  }
   // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
   const sql =
     opts.syncMode === 'full' || isFill
@@ -231,6 +252,10 @@ export async function ingestDependencies(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
+    // Full/fill scan the *Latest views (everything) → 25000. Incremental is a snapshot edge-diff
+    // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements);
+    // measured ~4.1TB for Option A. 10000 leaves ~2.4x headroom and still trips a runaway full-table
+    // scan. Overridable via BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
     maxBytesGb: opts.syncMode === 'full' || isFill ? 25000 : 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,

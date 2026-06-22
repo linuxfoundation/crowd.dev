@@ -211,21 +211,33 @@ export async function bootstrapOsspckgs(opts: {
     })
   }
   if (runs('package_dependencies')) {
-    await executeChild(ingestDependencies, {
-      args: [
-        {
-          runId,
-          syncMode: opts.mode,
-          today: snap('package_dependencies'),
-          watermark: wm('package_dependencies'),
-          ecosystems: opts.ecosystems,
-          reuseExports: opts.reuseExports,
-          depsTableOption: opts.depsTableOption,
-          exportName: opts.exportName,
-          fillConstraints: opts.fillConstraints,
-        },
-      ],
-    })
+    try {
+      await executeChild(ingestDependencies, {
+        args: [
+          {
+            runId,
+            syncMode: opts.mode,
+            today: snap('package_dependencies'),
+            watermark: wm('package_dependencies'),
+            ecosystems: opts.ecosystems,
+            reuseExports: opts.reuseExports,
+            depsTableOption: opts.depsTableOption,
+            exportName: opts.exportName,
+            fillConstraints: opts.fillConstraints,
+          },
+        ],
+      })
+    } catch (err) {
+      // Only soft-fail on the edge-snapshot quality guard (corrupt deps.dev resolved-graph
+      // snapshot). Skipping leaves existing package_dependencies untouched and lets the rest
+      // of the bootstrap proceed; the next healthy snapshot ingests naturally. Mirror the
+      // dependent_counts guard: unwrap the ChildWorkflowFailure to inspect the cause; all
+      // other errors propagate.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'EDGE_SNAPSHOT_GUARD') {
+        throw err
+      }
+    }
   }
   if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {
