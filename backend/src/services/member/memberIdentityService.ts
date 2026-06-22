@@ -64,7 +64,7 @@ export default class MemberIdentityService extends LoggerBase {
             data.platform,
             data.type,
           )
-        
+
           if (existingIdentities.length > 0) {
             throw new Error409(
               this.options.language,
@@ -215,12 +215,7 @@ export default class MemberIdentityService extends LoggerBase {
           const platform = data.platform ?? currentIdentity.platform
           const type = data.type ?? currentIdentity.type
 
-          const existingIdentities = await checkMemberIdentityExistence(
-            qx,
-            value,
-            platform,
-            type,
-          )
+          const existingIdentities = await checkMemberIdentityExistence(qx, value, platform, type)
           const conflict = existingIdentities.find((identity) => identity.memberId !== memberId)
           if (conflict) {
             throw new Error409(
