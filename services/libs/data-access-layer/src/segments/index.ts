@@ -193,7 +193,7 @@ export async function getSegmentSubprojects(
           "grandparentSlug"
         from input_segment
       )
-        select s.*
+        select distinct s.*
         from segments s
         join segment_level sl on (sl.level = 'child' and s.id = sl.id)
             or (sl.level = 'parent' and s."parentSlug" = sl.slug and s."grandparentSlug" = sl."parentSlug")

@@ -10,7 +10,6 @@ import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { getDataSinkWorkerEmitter } from '@/serverless/utils/queueService'
 
 import ActivityRepository from '../database/repositories/activityRepository'
-import SegmentRepository from '../database/repositories/segmentRepository'
 import {
   UsernameIdentities,
   mapUsernameToIdentities,
@@ -122,9 +121,9 @@ export default class ActivityService extends LoggerBase {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
     const currentSegments = SequelizeRepository.getSegmentIds(this.options)
 
-    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
+    const subprojects = await getSegmentSubprojects(qx, currentSegments)
 
-    if (subprojectIds.length === 0) {
+    if (subprojects.length === 0) {
       return {
         count: 0,
         rows: [],
@@ -133,11 +132,11 @@ export default class ActivityService extends LoggerBase {
       }
     }
 
-    const activitiyTypes = SegmentRepository.getActivityTypes(this.options)
+    const activitiyTypes = SegmentService.getTenantActivityTypes(subprojects)
 
     const page = await queryActivities(
       {
-        segmentIds: subprojectIds,
+        segmentIds: subprojects.map((s) => s.id),
         filter,
         orderBy,
         limit,
