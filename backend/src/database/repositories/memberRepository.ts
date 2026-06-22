@@ -283,7 +283,7 @@ class MemberRepository {
 
     if (segmentIds.length === 0) {
       return args.countOnly
-        ? { count: '0' }
+        ? { count: 0 }
         : {
             rows: [{ members: [], similarity: 0 }],
             count: 0,
