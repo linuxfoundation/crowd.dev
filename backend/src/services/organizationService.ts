@@ -726,13 +726,6 @@ export default class OrganizationService extends LoggerBase {
 
           await SequelizeRepository.commitTransaction(tx)
 
-          const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
-            originalId,
-            toMergeId,
-          ])
-
-          await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
-
           this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
 
           await setMergeAction(
@@ -748,6 +741,15 @@ export default class OrganizationService extends LoggerBase {
           return { original, toMerge }
         }),
       )
+
+      const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+        originalId,
+        toMergeId,
+      ])
+
+      // Precomputed per-project-group counts are only refreshed by cron every few hours.
+      // Decrement here so merges from the UI are reflected immediately.
+      await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
 
       await this.options.temporal.workflow.start('finishOrganizationMerging', {
         taskQueue: 'entity-merging',
@@ -823,39 +825,30 @@ export default class OrganizationService extends LoggerBase {
 
   async addToNoMerge(organizationId: string, noMergeId: string): Promise<void> {
     const transaction = await SequelizeRepository.createTransaction(this.options)
+    const txOptions = { ...this.options, transaction }
 
     try {
-      await OrganizationRepository.addNoMerge(organizationId, noMergeId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.addNoMerge(noMergeId, organizationId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.removeToMerge(organizationId, noMergeId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.removeToMerge(noMergeId, organizationId, {
-        ...this.options,
-        transaction,
-      })
+      await OrganizationRepository.addNoMerge(organizationId, noMergeId, txOptions)
+      await OrganizationRepository.addNoMerge(noMergeId, organizationId, txOptions)
+      await OrganizationRepository.removeToMerge(organizationId, noMergeId, txOptions)
+      await OrganizationRepository.removeToMerge(noMergeId, organizationId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
-
-      const qx = SequelizeRepository.getQueryExecutor(this.options)
-      const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
-        organizationId,
-        noMergeId,
-      ])
-
-      await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
 
       throw error
     }
+
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+      organizationId,
+      noMergeId,
+    ])
+
+    // Precomputed per-project-group counts are only refreshed by cron every few hours.
+    // Decrement here so no-merge from the UI is reflected immediately.
+    await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
   }
 
   async createOrUpdate(

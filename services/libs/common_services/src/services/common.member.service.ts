@@ -444,21 +444,6 @@ export class CommonMemberService extends LoggerBase {
             )
           })
 
-          try {
-            const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
-              originalId,
-              toMergeId,
-            ])
-
-            await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
-          } catch (error) {
-            this.log.error(
-              error,
-              { originalId, toMergeId },
-              'Failed to decrement member merge suggestion counts after merge',
-            )
-          }
-
           this.log.info({ originalId, toMergeId }, '[Merge Members] - Transaction commited! ')
 
           await setMergeAction(this.qx, MergeActionType.MEMBER, originalId, toMergeId, {
@@ -468,6 +453,15 @@ export class CommonMemberService extends LoggerBase {
           return { original, toMerge }
         }),
       )
+
+      const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
+        originalId,
+        toMergeId,
+      ])
+
+      // Precomputed per-project-group counts are only refreshed by cron every few hours.
+      // Decrement here so merges from the UI are reflected immediately.
+      await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
 
       await this.temporal.workflow.start('finishMemberMerging', {
         taskQueue: 'entity-merging',
