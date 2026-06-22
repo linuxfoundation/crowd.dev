@@ -2,7 +2,7 @@
 import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { Error409 } from '@crowd/common'
+import { Error404, Error409 } from '@crowd/common'
 import { createMemberIdentity, findIdentitiesForMembers, optionsQx } from '@crowd/data-access-layer'
 import {
   checkMemberIdentityExistence,
@@ -62,7 +62,9 @@ export default class MemberIdentityService extends LoggerBase {
             qx,
             data.value,
             data.platform,
+            data.type,
           )
+        
           if (existingIdentities.length > 0) {
             throw new Error409(
               this.options.language,
@@ -134,6 +136,7 @@ export default class MemberIdentityService extends LoggerBase {
               qx,
               identity.value,
               identity.platform,
+              identity.type,
             )
 
             if (existingIdentities.length > 0) {
@@ -203,20 +206,29 @@ export default class MemberIdentityService extends LoggerBase {
 
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
-          // Check if identity already exists
+          const currentIdentity = memberIdentities.find((identity) => identity.id === id)
+          if (!currentIdentity) {
+            throw new Error404(this.options.language, 'errors.notFound.message')
+          }
+
+          const value = data.value ?? currentIdentity.value
+          const platform = data.platform ?? currentIdentity.platform
+          const type = data.type ?? currentIdentity.type
+
           const existingIdentities = await checkMemberIdentityExistence(
             qx,
-            data.value,
-            data.platform,
+            value,
+            platform,
+            type,
           )
-          const filteredExistingIdentities = existingIdentities.filter((i) => i.id !== id)
-          if (filteredExistingIdentities.length > 0) {
+          const conflict = existingIdentities.find((identity) => identity.memberId !== memberId)
+          if (conflict) {
             throw new Error409(
               this.options.language,
               'errors.alreadyExists',
               // @ts-ignore
               JSON.stringify({
-                memberId: filteredExistingIdentities[0].memberId,
+                memberId: conflict.memberId,
               }),
             )
           }

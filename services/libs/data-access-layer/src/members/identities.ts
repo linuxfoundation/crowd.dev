@@ -53,16 +53,16 @@ export async function checkMemberIdentityExistence(
   qx: QueryExecutor,
   value: string,
   platform: string,
-  type?: MemberIdentityType,
+  type: MemberIdentityType,
 ): Promise<IMemberIdentity[]> {
-  return await qx.select(
+  return qx.select(
     `
-        SELECT id, "memberId", verified
-        FROM "memberIdentities"
-        WHERE "value" = $(value)
-          AND "platform" = $(platform)
-          ${type ? 'AND "type" = $(type)' : ''}
-          AND "deletedAt" is null;
+      SELECT id, "memberId"
+      FROM "memberIdentities"
+      WHERE platform = $(platform)
+        AND type = $(type)
+        AND lower(value) = lower($(value))
+        AND "deletedAt" IS NULL;
     `,
     {
       value,
