@@ -45,6 +45,66 @@ components:
               type: string
               example: Stewardship not found.
 
+    ActivityActor:
+      type: object
+      required: [userId]
+      description: Profile of the actor who performed an activity. Stored as a snapshot on the activity log.
+      properties:
+        userId:
+          type: string
+          description: Auth0 sub of the actor.
+          example: auth0|abc123
+        username:
+          type:
+            - string
+            - 'null'
+          description: LFX username of the actor.
+          example: gaspergrom
+        displayName:
+          type:
+            - string
+            - 'null'
+          description: Full display name of the actor.
+          example: Gašper Grom
+        avatarUrl:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Avatar URL of the actor.
+          example: 'https://avatars.githubusercontent.com/u/12345'
+
+    ActorInput:
+      type: object
+      required: [userId]
+      description: >
+        Profile of the actor performing this action. Stored as a snapshot on the activity log.
+        `userId` is required. All other fields are optional and can be null.
+      properties:
+        userId:
+          type: string
+          description: Auth0 sub of the actor. Must match the authenticated user's token sub.
+          example: auth0|abc123
+        username:
+          type:
+            - string
+            - 'null'
+          description: LFX username of the actor.
+          example: gaspergrom
+        displayName:
+          type:
+            - string
+            - 'null'
+          description: Full display name of the actor.
+          example: Gašper Grom
+        avatarUrl:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Avatar URL of the actor.
+          example: 'https://avatars.githubusercontent.com/u/12345'
+
     StewardshipStatus:
       type: string
       enum:
@@ -187,8 +247,14 @@ paths:
                   type: string
                   description: Package URL (must start with `pkg:`).
                   example: pkg:npm/lodash
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             example:
               purl: pkg:npm/lodash
+              actor:
+                username: gaspergrom
+                displayName: Gašper Grom
+                avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Stewardship opened (or already open).
@@ -288,10 +354,16 @@ paths:
                     If true, atomically transitions the stewardship status to `assessing`
                     in the same transaction as the assignment. Use for the "Assign & move to
                     Assessing" action to avoid a second round-trip.
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             example:
               userId: abc123
               role: lead
               moveToAssessing: true
+              actor:
+                username: gaspergrom
+                displayName: Gašper Grom
+                avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Steward assigned.
@@ -386,9 +458,15 @@ paths:
                   minLength: 1
                   description: Optional free-text notes for the activity log.
                   example: Contacted maintainer, no response after 30 days.
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             example:
               resolutionPath: right_of_first_refusal
               notes: Contacted maintainer, no response after 30 days.
+              actor:
+                username: gaspergrom
+                displayName: Gašper Grom
+                avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Stewardship escalated.
@@ -485,22 +563,36 @@ paths:
                   type: string
                   minLength: 1
                   description: Optional free-text notes for the activity log.
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             examples:
               set_active:
                 summary: Transition to active
                 value:
                   status: active
+                  actor:
+                    username: gaspergrom
+                    displayName: Gašper Grom
+                    avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
               set_inactive:
                 summary: Transition to inactive (inactiveReason required)
                 value:
                   status: inactive
                   inactiveReason: stepped_down
                   notes: Steward stepped down voluntarily.
+                  actor:
+                    username: gaspergrom
+                    displayName: Gašper Grom
+                    avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
               set_blocked:
                 summary: Transition to blocked
                 value:
                   status: blocked
                   notes: Waiting on upstream maintainer response.
+                  actor:
+                    username: gaspergrom
+                    displayName: Gašper Grom
+                    avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Status updated.

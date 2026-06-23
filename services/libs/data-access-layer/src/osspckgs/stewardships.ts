@@ -1,11 +1,18 @@
 import { QueryExecutor } from '../queryExecutor'
 
+import { buildHealthBandCondition } from './api'
 import {
   SEVERITY_RANK_EXPR,
   STEWARD_DISPLAY_NAME_METADATA,
   STEWARD_MENTIONED_JOIN,
 } from './sqlFragments'
 
+export interface ActivityActor {
+  userId: string | null
+  username: string | null
+  displayName: string | null
+  avatarUrl: string | null
+}
 export interface StewardshipRecord {
   id: string
   packageId: string
@@ -165,6 +172,9 @@ export async function openStewardshipByPurl(
   qx: QueryExecutor,
   purl: string,
   actorUserId: string,
+  actorUsername?: string | null,
+  actorDisplayName?: string | null,
+  actorAvatarUrl?: string | null,
 ): Promise<StewardshipRecord | null> {
   const row: Record<string, unknown> | null = await qx.selectOneOrNone(
     `
@@ -192,14 +202,22 @@ export async function openStewardshipByPurl(
                 last_status_at, inactive_reason, resolution_path, status_note, created_at, updated_at
     ),
     _log AS (
-      INSERT INTO stewardship_activity (stewardship_id, actor_user_id, actor_type, activity_type, content)
-      SELECT upserted.id, $(actorUserId), 'user', 'state_changed', 'Opened for stewardship'
+      INSERT INTO stewardship_activity
+        (stewardship_id, actor_user_id, actor_type, activity_type, content, actor_username, actor_display_name, actor_avatar_url)
+      SELECT upserted.id, $(actorUserId), 'user', 'state_changed', 'Opened for stewardship',
+             $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
       FROM upserted
       WHERE NOT EXISTS (SELECT 1 FROM prev WHERE prev.old_status = 'open')
     )
     SELECT * FROM upserted
     `,
-    { purl, actorUserId },
+    {
+      purl,
+      actorUserId,
+      actorUsername: actorUsername ?? null,
+      actorDisplayName: actorDisplayName ?? null,
+      actorAvatarUrl: actorAvatarUrl ?? null,
+    },
   )
   return row ? mapStewardshipRow(row) : null
 }
@@ -219,6 +237,9 @@ export async function assignSteward(
     displayName?: string | null
     role: 'lead' | 'co_steward'
     assignedBy: string
+    actorUsername?: string | null
+    actorDisplayName?: string | null
+    actorAvatarUrl?: string | null
     note?: string
     moveToAssessing?: boolean
   },
@@ -256,11 +277,16 @@ export async function assignSteward(
     )
 
     await tx.result(
-      `INSERT INTO stewardship_activity (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata)
-       VALUES ($(stewardshipId), $(actorUserId), 'user', 'steward_added', $(content), $(metadata)::jsonb)`,
+      `INSERT INTO stewardship_activity
+         (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
+       VALUES ($(stewardshipId), $(actorUserId), 'user', 'steward_added', $(content), $(metadata)::jsonb,
+               $(actorUsername), $(actorDisplayName), $(actorAvatarUrl))`,
       {
         stewardshipId,
         actorUserId: data.assignedBy,
+        actorUsername: data.actorUsername ?? null,
+        actorDisplayName: data.actorDisplayName ?? null,
+        actorAvatarUrl: data.actorAvatarUrl ?? null,
         content: `Assigned steward ${data.userId} as ${data.role}`,
         metadata: JSON.stringify({
           userId: data.userId,
@@ -290,9 +316,10 @@ export async function assignSteward(
         ),
         _log AS (
           INSERT INTO stewardship_activity
-            (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata)
+            (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
           SELECT id, $(actorUserId), 'user', 'state_changed',
-                 'Status updated to assessing', $(metadata)::jsonb
+                 'Status updated to assessing', $(metadata)::jsonb,
+                 $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
           FROM upd
         )
         SELECT * FROM upd
@@ -300,6 +327,9 @@ export async function assignSteward(
         {
           stewardshipId,
           actorUserId: data.assignedBy,
+          actorUsername: data.actorUsername ?? null,
+          actorDisplayName: data.actorDisplayName ?? null,
+          actorAvatarUrl: data.actorAvatarUrl ?? null,
           metadata: JSON.stringify({ status: 'assessing' }),
         },
       )
@@ -344,8 +374,7 @@ export interface ActivityFeedRow {
   packagePurl: string
   packageName: string
   packageEcosystem: string
-  actorUserId: string | null
-  // TODO: join actor display name from crowd.dev users/members table (actor_user_id is an Auth0 ID stored in packages DB)
+  actor: ActivityActor
   actorType: string
   activityType: string
   content: string | null
@@ -361,7 +390,7 @@ export async function listStewardshipActivity(
   qx: QueryExecutor,
   opts: { page: number; pageSize: number },
 ): Promise<{ rows: Omit<ActivityFeedRow, 'total'>[]; total: number }> {
-  const rows: ActivityFeedRow[] = await qx.select(
+  const rows: Array<Record<string, unknown>> = await qx.select(
     `
     SELECT
       sa.id::text                        AS id,
@@ -370,6 +399,9 @@ export async function listStewardshipActivity(
       p.name                             AS "packageName",
       p.ecosystem                        AS "packageEcosystem",
       sa.actor_user_id                   AS "actorUserId",
+      sa.actor_username                  AS "actorUsername",
+      sa.actor_display_name              AS "actorDisplayName",
+      sa.actor_avatar_url                AS "actorAvatarUrl",
       sa.actor_type                      AS "actorType",
       sa.activity_type                   AS "activityType",
       sa.content                         AS content,
@@ -389,7 +421,7 @@ export async function listStewardshipActivity(
 
   let total: number
   if (rows.length > 0) {
-    total = parseInt(rows[0].total, 10)
+    total = parseInt(rows[0].total as string, 10)
   } else {
     const countRow: { count: string } = await qx.selectOne(
       `SELECT COUNT(*)::text AS count
@@ -402,21 +434,26 @@ export async function listStewardshipActivity(
 
   return {
     rows: rows.map((row) => ({
-      id: row.id,
-      stewardshipId: row.stewardshipId,
-      packagePurl: row.packagePurl,
-      packageName: row.packageName,
-      packageEcosystem: row.packageEcosystem,
-      actorUserId: row.actorUserId,
-      actorType: row.actorType,
-      activityType: row.activityType,
+      id: row.id as string,
+      stewardshipId: row.stewardshipId as string,
+      packagePurl: row.packagePurl as string,
+      packageName: row.packageName as string,
+      packageEcosystem: row.packageEcosystem as string,
+      actor: {
+        userId: row.actorUserId ? String(row.actorUserId) : null,
+        username: row.actorUsername ? String(row.actorUsername) : null,
+        displayName: row.actorDisplayName ? String(row.actorDisplayName) : null,
+        avatarUrl: row.actorAvatarUrl ? String(row.actorAvatarUrl) : null,
+      },
+      actorType: row.actorType as string,
+      activityType: row.activityType as string,
       content: translateActivityContent(
-        row.content,
-        row.activityType,
+        row.content ? String(row.content) : null,
+        row.activityType ? String(row.activityType) : null,
         row.metadata as Record<string, unknown> | null,
       ),
       metadata: row.metadata as Record<string, unknown> | null,
-      stewardshipStatus: row.stewardshipStatus,
+      stewardshipStatus: row.stewardshipStatus as string,
       createdAt: toIso(row.createdAt),
     })),
     total,
@@ -425,7 +462,7 @@ export async function listStewardshipActivity(
 
 export interface PackageHistoryEvent {
   id: string
-  actorUserId: string | null
+  actor: ActivityActor
   actorType: string
   activityType: string
   content: string | null
@@ -440,6 +477,9 @@ export async function listPackageHistory(
   const rows: Array<Record<string, unknown>> = await qx.select(
     `SELECT sa.id::text             AS id,
             sa.actor_user_id        AS "actorUserId",
+            sa.actor_username       AS "actorUsername",
+            sa.actor_display_name   AS "actorDisplayName",
+            sa.actor_avatar_url     AS "actorAvatarUrl",
             sa.actor_type           AS "actorType",
             sa.activity_type        AS "activityType",
             sa.content,
@@ -453,7 +493,12 @@ export async function listPackageHistory(
   )
   return rows.map((r) => ({
     id: r.id as string,
-    actorUserId: r.actorUserId ? String(r.actorUserId) : null,
+    actor: {
+      userId: r.actorUserId ? String(r.actorUserId) : null,
+      username: r.actorUsername ? String(r.actorUsername) : null,
+      displayName: r.actorDisplayName ? String(r.actorDisplayName) : null,
+      avatarUrl: r.actorAvatarUrl ? String(r.actorAvatarUrl) : null,
+    },
     actorType: String(r.actorType),
     activityType: String(r.activityType),
     content: translateActivityContent(
@@ -477,6 +522,7 @@ export interface MyPackageRow {
   lastActivityContent: string | null
   lastActivityType: string | null
   lastActivityMetadata: Record<string, unknown> | null
+  lastActivityDescription: string | null
   lastActivityAt: Date | null
   stewardshipId: string
   stewardshipStatus: string
@@ -536,15 +582,7 @@ export async function listMyPackages(
   }
 
   if (opts.healthBand) {
-    if (opts.healthBand === 'healthy') {
-      conditions.push('r_sc.scorecard_score >= 7.0')
-    } else if (opts.healthBand === 'fair') {
-      conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
-    } else if (opts.healthBand === 'concerning') {
-      conditions.push('r_sc.scorecard_score >= 3.0 AND r_sc.scorecard_score < 5.0')
-    } else {
-      conditions.push('(r_sc.scorecard_score IS NULL OR r_sc.scorecard_score < 3.0)')
-    }
+    conditions.push(buildHealthBandCondition('r_sc.scorecard_score', opts.healthBand))
   }
 
   if (opts.vulnSeverity) {
@@ -699,13 +737,14 @@ export async function listMyPackages(
       scorecardScore: row.scorecardScore != null ? Number(row.scorecardScore) : null,
       openVulns: Number(row.openVulns),
       maxVulnSeverity: row.maxVulnSeverity ?? null,
-      lastActivityContent: translateActivityContent(
-        row.lastActivityContent ?? null,
-        row.lastActivityType,
-        row.lastActivityMetadata as Record<string, unknown> | null,
-      ),
+      lastActivityContent: row.lastActivityContent ?? null,
       lastActivityType: row.lastActivityType ?? null,
       lastActivityMetadata: row.lastActivityMetadata ?? null,
+      lastActivityDescription: translateActivityContent(
+        row.lastActivityContent ?? null,
+        row.lastActivityType ?? null,
+        row.lastActivityMetadata ?? null,
+      ),
       lastActivityAt: row.lastActivityAt ?? null,
       stewardshipId: row.stewardshipId,
       stewardshipStatus: row.stewardshipStatus,
@@ -733,15 +772,15 @@ export async function listMyActivity(
     offset: (opts.page - 1) * opts.pageSize,
   }
 
-  const statusFilter =
-    opts.status && opts.status.length > 0 ? 'AND s.status = ANY($(statusFilter))' : ''
-  if (opts.status && opts.status.length > 0) {
+  const hasStatusFilter = opts.status && opts.status.length > 0
+  const statusFilter = hasStatusFilter ? 'AND s.status = ANY($(statusFilter))' : ''
+  if (hasStatusFilter) {
     params.statusFilter = opts.status
   }
 
   // DISTINCT ON keeps the most recent event per stewardship; the outer query
   // re-sorts newest-first after deduplication and applies pagination.
-  const rows: ActivityFeedRow[] = await qx.select(
+  const rows: Array<Record<string, unknown>> = await qx.select(
     `
     SELECT
       sub.id,
@@ -750,6 +789,9 @@ export async function listMyActivity(
       sub."packageName",
       sub."packageEcosystem",
       sub."actorUserId",
+      sub."actorUsername",
+      sub."actorDisplayName",
+      sub."actorAvatarUrl",
       sub."actorType",
       sub."activityType",
       sub.content,
@@ -765,6 +807,9 @@ export async function listMyActivity(
         p.name                             AS "packageName",
         p.ecosystem                        AS "packageEcosystem",
         sa.actor_user_id                   AS "actorUserId",
+        sa.actor_username                  AS "actorUsername",
+        sa.actor_display_name              AS "actorDisplayName",
+        sa.actor_avatar_url                AS "actorAvatarUrl",
         sa.actor_type                      AS "actorType",
         sa.activity_type                   AS "activityType",
         sa.content                         AS content,
@@ -790,7 +835,7 @@ export async function listMyActivity(
 
   let total: number
   if (rows.length > 0) {
-    total = parseInt(rows[0].total, 10)
+    total = parseInt(rows[0].total as string, 10)
   } else {
     const countParams: Record<string, unknown> = { userId: opts.userId }
     if (opts.status && opts.status.length > 0) {
@@ -814,21 +859,26 @@ export async function listMyActivity(
 
   return {
     rows: rows.map((row) => ({
-      id: row.id,
-      stewardshipId: row.stewardshipId,
-      packagePurl: row.packagePurl,
-      packageName: row.packageName,
-      packageEcosystem: row.packageEcosystem,
-      actorUserId: row.actorUserId,
-      actorType: row.actorType,
-      activityType: row.activityType,
+      id: row.id as string,
+      stewardshipId: row.stewardshipId as string,
+      packagePurl: row.packagePurl as string,
+      packageName: row.packageName as string,
+      packageEcosystem: row.packageEcosystem as string,
+      actor: {
+        userId: row.actorUserId ? String(row.actorUserId) : null,
+        username: row.actorUsername ? String(row.actorUsername) : null,
+        displayName: row.actorDisplayName ? String(row.actorDisplayName) : null,
+        avatarUrl: row.actorAvatarUrl ? String(row.actorAvatarUrl) : null,
+      },
+      actorType: row.actorType as string,
+      activityType: row.activityType as string,
       content: translateActivityContent(
-        row.content,
-        row.activityType,
+        row.content ? String(row.content) : null,
+        row.activityType ? String(row.activityType) : null,
         row.metadata as Record<string, unknown> | null,
       ),
       metadata: row.metadata as Record<string, unknown> | null,
-      stewardshipStatus: row.stewardshipStatus,
+      stewardshipStatus: row.stewardshipStatus as string,
       createdAt: toIso(row.createdAt),
     })),
     total,
@@ -886,7 +936,14 @@ export function translateActivityContent(
 export async function escalateStewardship(
   qx: QueryExecutor,
   stewardshipId: number,
-  data: { resolutionPath: EscalationResolutionPath; notes?: string; actorUserId: string },
+  data: {
+    resolutionPath: EscalationResolutionPath
+    notes?: string
+    actorUserId: string
+    actorUsername?: string | null
+    actorDisplayName?: string | null
+    actorAvatarUrl?: string | null
+  },
 ): Promise<StewardshipRecord | null> {
   const row: Record<string, unknown> | null = await qx.selectOneOrNone(
     `
@@ -904,9 +961,9 @@ export async function escalateStewardship(
     ),
     _log AS (
       INSERT INTO stewardship_activity
-        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata)
+        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
       SELECT id, $(actorUserId), 'user', 'escalation',
-             $(content), $(metadata)::jsonb
+             $(content), $(metadata)::jsonb, $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
       FROM upd
     )
     SELECT * FROM upd
@@ -916,6 +973,9 @@ export async function escalateStewardship(
       resolutionPath: data.resolutionPath,
       statusNote: data.notes ?? null,
       actorUserId: data.actorUserId,
+      actorUsername: data.actorUsername ?? null,
+      actorDisplayName: data.actorDisplayName ?? null,
+      actorAvatarUrl: data.actorAvatarUrl ?? null,
       content: `Escalated with resolution path: ${data.resolutionPath}`,
       metadata: JSON.stringify({
         resolutionPath: data.resolutionPath,
@@ -956,6 +1016,9 @@ export async function updateStewardshipStatus(
     inactiveReason?: InactiveReason
     notes?: string
     actorUserId: string
+    actorUsername?: string | null
+    actorDisplayName?: string | null
+    actorAvatarUrl?: string | null
   },
 ): Promise<StewardshipRecord | null> {
   const row: Record<string, unknown> | null = await qx.selectOneOrNone(
@@ -974,9 +1037,9 @@ export async function updateStewardshipStatus(
     ),
     _log AS (
       INSERT INTO stewardship_activity
-        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata)
+        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
       SELECT id, $(actorUserId), 'user', 'state_changed',
-             $(content), $(metadata)::jsonb
+             $(content), $(metadata)::jsonb, $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
       FROM upd
     )
     SELECT * FROM upd
@@ -987,6 +1050,9 @@ export async function updateStewardshipStatus(
       inactiveReason: data.inactiveReason ?? null,
       statusNote: data.notes ?? null,
       actorUserId: data.actorUserId,
+      actorUsername: data.actorUsername ?? null,
+      actorDisplayName: data.actorDisplayName ?? null,
+      actorAvatarUrl: data.actorAvatarUrl ?? null,
       content: `Status updated to ${data.status}`,
       metadata: JSON.stringify({
         status: data.status,

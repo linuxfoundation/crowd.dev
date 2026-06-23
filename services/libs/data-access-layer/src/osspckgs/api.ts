@@ -154,6 +154,13 @@ export function computeHealthBand(scorecardScore: number | null): HealthBand {
   return 'healthy'
 }
 
+export function buildHealthBandCondition(scoreColumn: string, band: HealthBand): string {
+  if (band === 'healthy') return `${scoreColumn} >= 7.0`
+  if (band === 'fair') return `${scoreColumn} >= 5.0 AND ${scoreColumn} < 7.0`
+  if (band === 'concerning') return `${scoreColumn} >= 3.0 AND ${scoreColumn} < 5.0`
+  return `(${scoreColumn} IS NULL OR ${scoreColumn} < 3.0)`
+}
+
 export interface ListPackagesOptions {
   page: number
   pageSize: number

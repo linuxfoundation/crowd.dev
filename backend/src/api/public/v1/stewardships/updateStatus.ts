@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError } from '@crowd/common'
+import { BadRequestError, NotFoundError } from '@crowd/common'
 import {
   INACTIVE_REASONS,
   STEWARDSHIP_UPDATABLE_STATUSES,
@@ -12,6 +12,8 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { actorInputSchema } from './actorSchema'
+
 const paramsSchema = z.object({
   id: z.coerce.number().int().positive(),
 })
@@ -21,6 +23,7 @@ const bodySchema = z
     status: z.enum(STEWARDSHIP_UPDATABLE_STATUSES),
     inactiveReason: z.enum(INACTIVE_REASONS).optional(),
     notes: z.string().trim().min(1).optional(),
+    actor: actorInputSchema,
   })
   .refine((d) => d.status !== 'inactive' || !!d.inactiveReason, {
     message: 'inactiveReason is required when status is inactive',
@@ -29,7 +32,11 @@ const bodySchema = z
 
 export async function updateStatusHandler(req: Request, res: Response): Promise<void> {
   const { id } = validateOrThrow(paramsSchema, req.params)
-  const { status, inactiveReason, notes } = validateOrThrow(bodySchema, req.body)
+  const { status, inactiveReason, notes, actor } = validateOrThrow(bodySchema, req.body)
+
+  if (actor.userId !== req.actor.id) {
+    throw new BadRequestError('actor.userId must match the authenticated user id')
+  }
 
   const qx = await getPackagesQx()
   const stewardship = await updateStewardshipStatus(qx, id, {
@@ -37,6 +44,9 @@ export async function updateStatusHandler(req: Request, res: Response): Promise<
     inactiveReason,
     notes,
     actorUserId: req.actor.id,
+    actorUsername: actor.username ?? null,
+    actorDisplayName: actor.displayName ?? null,
+    actorAvatarUrl: actor.avatarUrl ?? null,
   })
 
   if (!stewardship) {

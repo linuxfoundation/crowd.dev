@@ -1,11 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import {
-  computeHealthBand,
-  listMyPackages,
-  translateActivityContent,
-} from '@crowd/data-access-layer'
+import { computeHealthBand, listMyPackages } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
@@ -42,11 +38,7 @@ export async function getMyPackagesHandler(req: Request, res: Response): Promise
       healthBand: computeHealthBand(r.scorecardScore),
       openVulns: r.openVulns,
       vulnSeverity: r.maxVulnSeverity,
-      lastActivityDescription: translateActivityContent(
-        r.lastActivityContent,
-        r.lastActivityType,
-        r.lastActivityMetadata,
-      ),
+      lastActivityDescription: r.lastActivityDescription,
       lastActivityAt: r.lastActivityAt ? r.lastActivityAt.toISOString() : null,
       stewardshipId: r.stewardshipId,
       stewardshipStatus: r.stewardshipStatus,

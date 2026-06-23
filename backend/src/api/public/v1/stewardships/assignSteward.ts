@@ -1,12 +1,14 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError } from '@crowd/common'
+import { BadRequestError, NotFoundError } from '@crowd/common'
 import { assignSteward } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
+
+import { actorInputSchema } from './actorSchema'
 
 const paramsSchema = z.object({
   id: z.coerce.number().int().positive(),
@@ -20,6 +22,7 @@ const bodySchema = z
     role: z.enum(['lead', 'co_steward']),
     note: z.string().trim().min(1).optional(),
     moveToAssessing: z.boolean().optional().default(false),
+    actor: actorInputSchema,
   })
   .refine((d) => (d.username == null) === (d.displayName == null), {
     message: 'username and displayName must both be provided or both be absent',
@@ -28,10 +31,14 @@ const bodySchema = z
 
 export async function assignStewardHandler(req: Request, res: Response): Promise<void> {
   const { id } = validateOrThrow(paramsSchema, req.params)
-  const { userId, username, displayName, role, note, moveToAssessing } = validateOrThrow(
+  const { userId, username, displayName, role, note, moveToAssessing, actor } = validateOrThrow(
     bodySchema,
     req.body,
   )
+
+  if (actor.userId !== req.actor.id) {
+    throw new BadRequestError('actor.userId must match the authenticated user id')
+  }
 
   const qx = await getPackagesQx()
   const result = await assignSteward(qx, id, {
@@ -41,6 +48,9 @@ export async function assignStewardHandler(req: Request, res: Response): Promise
     role,
     note,
     assignedBy: req.actor.id,
+    actorUsername: actor.username ?? null,
+    actorDisplayName: actor.displayName ?? null,
+    actorAvatarUrl: actor.avatarUrl ?? null,
     moveToAssessing,
   })
 
