@@ -930,8 +930,8 @@ class OrganizationRepository {
         displayNameFilter,
         {
           segmentIds,
-          organizationId: args?.filter?.organizationId,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
+          organizationId: args?.filter?.organizationId,
         },
         options,
       )

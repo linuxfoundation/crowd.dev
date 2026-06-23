@@ -407,8 +407,8 @@ class MemberRepository {
         displayNameFilter,
         {
           segmentIds,
-          memberId: args?.filter?.memberId,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
+          memberId: args?.filter?.memberId,
         },
         options,
       )
