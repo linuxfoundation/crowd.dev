@@ -32,7 +32,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     throw new NotFoundError()
   }
 
-  const [advisories, stewardshipSummary] = await Promise.all([
+  const [{ rows: advisories }, stewardshipSummary] = await Promise.all([
     getAdvisoriesByPackageId(qx, pkg.id),
     pkg.stewardshipId ? getStewardshipSummary(qx, Number(pkg.stewardshipId)) : null,
   ])

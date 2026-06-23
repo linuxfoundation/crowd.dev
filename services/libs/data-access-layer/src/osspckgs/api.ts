@@ -783,35 +783,52 @@ export async function listPackagesForScatter(
 export async function getAdvisoriesByPackageId(
   qx: QueryExecutor,
   packageId: string,
-): Promise<AdvisoryRow[]> {
-  return qx.select(
-    `
-    SELECT
-      a.osv_id AS "osvId",
-      LOWER(a.severity) AS severity,
-      CASE
-        WHEN p.latest_version IS NULL THEN NULL
-        WHEN COUNT(ar.id) = 0 THEN NULL
-        -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
-        -- Replace with a proper semver comparison function when one is available in the DB.
-        WHEN BOOL_AND(
-          CASE
-            WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
-            WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
-            WHEN ar.fixed_version IS NOT NULL THEN FALSE
-            WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
-            ELSE FALSE
-          END
-        ) THEN 'patched'
-        ELSE 'open'
-      END AS resolution
-    FROM advisory_packages ap
-    JOIN advisories a ON a.id = ap.advisory_id
-    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
-    JOIN packages p ON p.id = ap.package_id
-    WHERE ap.package_id = $(packageId)::bigint
-    GROUP BY a.osv_id, a.severity, p.latest_version
-    `,
-    { packageId },
-  )
+  opts?: { page: number; pageSize: number },
+): Promise<{ rows: AdvisoryRow[]; total: number }> {
+  const cte = `
+    WITH advisory_data AS (
+      SELECT
+        a.osv_id AS "osvId",
+        LOWER(a.severity) AS severity,
+        CASE
+          WHEN p.latest_version IS NULL THEN NULL
+          WHEN COUNT(ar.id) = 0 THEN NULL
+          -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
+          -- Replace with a proper semver comparison function when one is available in the DB.
+          WHEN BOOL_AND(
+            CASE
+              WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
+              WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
+              WHEN ar.fixed_version IS NOT NULL THEN FALSE
+              WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
+              ELSE FALSE
+            END
+          ) THEN 'patched'
+          ELSE 'open'
+        END AS resolution
+      FROM advisory_packages ap
+      JOIN advisories a ON a.id = ap.advisory_id
+      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+      JOIN packages p ON p.id = ap.package_id
+      WHERE ap.package_id = $(packageId)::bigint
+      GROUP BY a.osv_id, a.severity, p.latest_version
+    )
+  `
+
+  const paginationClause = opts ? `LIMIT $(limit) OFFSET $(offset)` : ''
+
+  const rows = (await qx.select(
+    `${cte} SELECT * FROM advisory_data ORDER BY "osvId" ${paginationClause}`,
+    { packageId, limit: opts?.pageSize, offset: opts ? (opts.page - 1) * opts.pageSize : 0 },
+  )) as AdvisoryRow[]
+
+  if (!opts) {
+    return { rows, total: rows.length }
+  }
+
+  const countResult = (await qx.selectOne(`${cte} SELECT COUNT(*) AS total FROM advisory_data`, {
+    packageId,
+  })) as { total: string }
+
+  return { rows, total: Number(countResult.total) }
 }
