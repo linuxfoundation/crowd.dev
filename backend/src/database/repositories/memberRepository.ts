@@ -276,12 +276,6 @@ class MemberRepository {
             COUNT(*) AS count
         FROM "memberToMerge" mtm
         ${membersJoin}
-        LEFT JOIN "mergeActions" ma
-          ON ma.type = :mergeActionType
-          AND (
-            (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
-            OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
-          )
         WHERE EXISTS (
             SELECT 1 FROM "memberSegmentsAgg" ms
             WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
@@ -290,7 +284,16 @@ class MemberRepository {
             SELECT 1 FROM "memberSegmentsAgg" ms2
             WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
-        AND (ma.id IS NULL OR ma.state = :mergeActionState)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "mergeActions" ma
+          WHERE ma.type = :mergeActionType
+            AND ma.state <> :mergeActionState
+            AND (
+              (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+              OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+            )
+        )
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -379,10 +382,14 @@ class MemberRepository {
     )
 
     const getTotalCount = async (): Promise<number> => {
-      if (segmentIds.length === 1 && !hasCountFilters) {
+      const projectGroupSegment = options.currentSegments?.find(
+        (s) => s.parentId == null && s.grandparentId == null,
+      )
+
+      if (projectGroupSegment && !hasCountFilters) {
         const counts = await getSegmentMergeSuggestionCounts(
           SequelizeRepository.getQueryExecutor(options),
-          segmentIds[0],
+          projectGroupSegment?.id,
         )
 
         return counts?.memberMergeSuggestionsCount ?? 0
@@ -419,12 +426,6 @@ class MemberRepository {
         FROM "memberToMerge" mtm
         JOIN members m ON m.id = mtm."memberId"
         JOIN members m2 ON m2.id = mtm."toMergeId"
-        LEFT JOIN "mergeActions" ma
-          ON ma.type = :mergeActionType
-          AND (
-            (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
-            OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
-          )
         WHERE EXISTS (
             SELECT 1 FROM "memberSegmentsAgg" ms
             WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
@@ -433,7 +434,16 @@ class MemberRepository {
             SELECT 1 FROM "memberSegmentsAgg" ms2
             WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
-        AND (ma.id IS NULL OR ma.state = :mergeActionState)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "mergeActions" ma
+          WHERE ma.type = :mergeActionType
+            AND ma.state <> :mergeActionState
+            AND (
+              (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+              OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+            )
+        )
         AND mtm.similarity IS NOT NULL
           ${memberFilter}
           ${similarityFilter}

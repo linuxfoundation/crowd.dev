@@ -593,12 +593,6 @@ export async function calculateSegmentMemberMergeSuggestionsCount(
     `
       SELECT COUNT(*) AS count
       FROM "memberToMerge" mtm
-      LEFT JOIN "mergeActions" ma
-        ON ma.type = $(mergeActionType)
-        AND (
-          (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
-          OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
-        )
       WHERE EXISTS (
         SELECT 1
         FROM "memberSegmentsAgg" ms
@@ -611,7 +605,16 @@ export async function calculateSegmentMemberMergeSuggestionsCount(
         WHERE ms2."memberId" = mtm."toMergeId"
           AND ms2."segmentId" = $(segmentId)
       )
-      AND (ma.id IS NULL OR ma.state = $(mergeActionState))
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "mergeActions" ma
+        WHERE ma.type = $(mergeActionType)
+          AND ma.state <> $(mergeActionState)
+          AND (
+            (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+            OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+          )
+      )
     `,
     {
       segmentId,
@@ -631,12 +634,6 @@ export async function calculateSegmentOrganizationMergeSuggestionsCount(
     `
       SELECT COUNT(*) AS count
       FROM "organizationToMerge" otm
-      LEFT JOIN "mergeActions" ma
-        ON ma.type = $(mergeActionType)
-        AND (
-          (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
-          OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
-        )
       WHERE EXISTS (
         SELECT 1
         FROM "organizationSegmentsAgg" os1
@@ -649,7 +646,16 @@ export async function calculateSegmentOrganizationMergeSuggestionsCount(
         WHERE os2."organizationId" = otm."toMergeId"
           AND os2."segmentId" = $(segmentId)
       )
-      AND (ma.id IS NULL OR ma.state = $(mergeActionState))
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "mergeActions" ma
+        WHERE ma.type = $(mergeActionType)
+          AND ma.state <> $(mergeActionState)
+          AND (
+            (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
+          )
+      )
     `,
     {
       segmentId,
