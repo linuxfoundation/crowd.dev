@@ -110,6 +110,7 @@ export async function ingestPackages(opts: {
     maxBytesGb: opts.syncMode === 'full' ? 6000 : 400,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })

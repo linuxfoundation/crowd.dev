@@ -24,6 +24,7 @@ export interface BqExportToGcsInput {
   maxBytesGb: number
   reuseExports?: boolean
   exportName?: string
+  ecosystems?: string[]
 }
 
 export interface BqExportToGcsOutput {
@@ -34,7 +35,17 @@ export interface BqExportToGcsOutput {
 }
 
 export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExportToGcsOutput> {
-  const { jobKind, sql, runId, syncMode, snapshotAt, maxBytesGb, reuseExports, exportName } = input
+  const {
+    jobKind,
+    sql,
+    runId,
+    syncMode,
+    snapshotAt,
+    maxBytesGb,
+    reuseExports,
+    exportName,
+    ecosystems,
+  } = input
 
   // Named exports use a stable GCS path independent of runId so they survive across bootstrap runs.
   const namedGcsPrefix = exportName
@@ -93,7 +104,10 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           gcsPrefix: namedPrefix,
           rowCountBq: 0,
           bqBytesBilled: 0,
-          tableRowCounts: { 'bq:export': 0 },
+          tableRowCounts: {
+            'bq:export': 0,
+            ...(ecosystems ? { 'meta:ecosystems': ecosystems } : {}),
+          },
         })
         return { gcsPrefix: namedPrefix, rowCount: 0, bqBytesBilled: 0, jobId }
       }
@@ -177,8 +191,10 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   const provisionalDate = snapshotAt ? new Date(snapshotAt) : null
   const jobId = await createIngestJob(qx, jobKind, syncMode, provisionalDate, exportName)
 
-  // H7: mark exporting before we start the BQ job
-  await markJobStatus(qx, jobId, 'exporting')
+  // H7: mark exporting before we start the BQ job; store ecosystems filter in table_row_counts JSONB.
+  await markJobStatus(qx, jobId, 'exporting', {
+    ...(ecosystems ? { tableRowCounts: { 'meta:ecosystems': ecosystems } } : {}),
+  })
 
   // B9: wrap in SELECT * FROM (...) so QUALIFY / top-level set ops don't break EXPORT DATA syntax.
   // CREATE TEMP TABLE first so BQ materializes the result before exporting — direct EXPORT DATA

@@ -1,4 +1,5 @@
 export * from './bqExportToGcs'
+export * from './setJobStep'
 export * from './createVersionsLookup'
 export * from './managePackageDepsConstraints'
 export * from './managePackageDepsIndexes'

@@ -110,10 +110,12 @@ const STATUS_ICON = {
   cleaned: '–',
 }
 
-function statusStr(status: string) {
-  const c = STATUS_COLOR[status as keyof typeof STATUS_COLOR] ?? ''
-  const i = STATUS_ICON[status as keyof typeof STATUS_ICON] ?? '?'
-  return `${c}${i} ${status}${A.reset}`
+function statusStr(status: string, step?: string | null, stuck?: boolean) {
+  const c = stuck ? A.yellow : (STATUS_COLOR[status as keyof typeof STATUS_COLOR] ?? '')
+  const i = stuck ? '⚠' : (STATUS_ICON[status as keyof typeof STATUS_ICON] ?? '?')
+  const label =
+    step && !['done', 'failed', 'cleaned'].includes(status) ? `${status}·${step}` : status
+  return `${c}${i} ${label}${A.reset}`
 }
 
 function fmtNum(n: unknown) {
@@ -197,10 +199,11 @@ function padCell(s: string, len: number, bg: string) {
   // eslint-disable-next-line no-control-regex
   const visible = s.replace(/\x1b\[[0-9;]*m/g, '')
   if (visible.length > len) {
-    // Walk raw string, skip escape sequences, cut at len-1 visible chars then add …
+    // Walk raw string, skip escape sequences, cut at len-2 visible chars then add "… "
+    // (space after ellipsis ensures visual gap between columns even when truncated)
     let vis = 0
     let i = 0
-    while (i < s.length && vis < len - 1) {
+    while (i < s.length && vis < len - 2) {
       if (s[i] === '\x1b') {
         const end = s.indexOf('m', i)
         i = end !== -1 ? end + 1 : i + 1
@@ -209,7 +212,7 @@ function padCell(s: string, len: number, bg: string) {
         i++
       }
     }
-    return s.slice(0, i) + A.reset + bg + '…'
+    return s.slice(0, i) + A.reset + bg + '… '
   }
   const pad = Math.max(0, len - visible.length)
   return s + bg + ' '.repeat(pad)
@@ -265,10 +268,16 @@ async function fetchTableCounts(): Promise<Record<string, number>> {
 
 const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo']
 
-// Parses ecosystem names from gcs_prefix or export_name.
-// Looks for -<eco>- or -<eco>/ patterns so "go" doesn't match inside "cargo".
+// Reads ecosystems from table_row_counts['meta:ecosystems'] (new jobs) or falls back to
+// parsing gcs_prefix/export_name for jobs created before the meta key was added.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractEcosystem(job: any) {
+  const trc = job.table_row_counts ?? {}
+  const meta = trc['meta:ecosystems']
+  if (Array.isArray(meta) && meta.length > 0) {
+    return meta.map((e: string) => e.toLowerCase()).join(',')
+  }
+  // Fallback: parse GCS path for old rows
   const src = [job.gcs_prefix ?? '', job.export_name ?? ''].join(' ').toLowerCase()
   const found = KNOWN_ECOSYSTEMS.filter((e) => new RegExp(`(^|[-/,])${e}([-/,]|$)`).test(src))
   return found.length > 0 ? found.join(',') : null
@@ -277,18 +286,18 @@ function extractEcosystem(job: any) {
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 const COL = {
-  id: 12,
+  id: 18,
   kind: 20,
-  eco: 10,
-  status: 18,
+  eco: 15,
+  status: 26,
   mode: 6,
   bq: 10,
-  cost: 10,
+  cost: 8,
   files: 24,
-  staging: 12,
+  staging: 10,
   pg: 14,
   table: 18,
-  elapsed: 12,
+  elapsed: 10,
   chunk: 26,
   total: 24,
 }
@@ -393,7 +402,17 @@ function tableRow(job: any, selected: boolean) {
   const startedTime = job.started_at
     ? new Date(job.started_at as string).toISOString().slice(11, 16)
     : '—'
-  const idCell = `${String(job.id)} ${A.dim}${startedTime}${A.reset}${bg}`
+  const isFinished = ['done', 'failed', 'cleaned'].includes(job.status)
+  const jobDuration =
+    isFinished && job.started_at && job.finished_at
+      ? fmtEtaStr(
+          new Date(job.finished_at as string).getTime() -
+            new Date(job.started_at as string).getTime(),
+        )
+      : null
+  const idCell = jobDuration
+    ? `${String(job.id)} ${A.dim}${startedTime} ${jobDuration}${A.reset}${bg}`
+    : `${String(job.id)} ${A.dim}${startedTime}${A.reset}${bg}`
 
   return (
     bg +
@@ -408,7 +427,17 @@ function tableRow(job: any, selected: boolean) {
       COL.eco,
       bg,
     ) +
-    padCell(statusStr(job.status), COL.status, bg) +
+    padCell(
+      statusStr(
+        job.status,
+        typeof (job.table_row_counts ?? {})['meta:step'] === 'string'
+          ? (job.table_row_counts['meta:step'] as string)
+          : null,
+        stuckIds.has(job.id as number),
+      ),
+      COL.status,
+      bg,
+    ) +
     padCell(fmtMode(job.sync_mode), COL.mode, bg) +
     padCell(fmtCompact(job.row_count_bq), COL.bq, bg) +
     padCell(fmtUsd(job.bq_bytes_billed), COL.cost, bg) +
@@ -436,8 +465,13 @@ function renderDetail(job: any, cols: number) {
       ? A.dim + String(job.provisional_snapshot_at).slice(0, 10) + ' (provisional)' + A.reset
       : A.dim + '—' + A.reset
 
+  const trcStep =
+    typeof (job.table_row_counts ?? {})['meta:step'] === 'string'
+      ? (job.table_row_counts['meta:step'] as string)
+      : null
+  const isStuckJob = stuckIds.has(job.id as number)
   lines.push(
-    ` ${A.bold}Job #${job.id} — ${job.job_kind}${A.reset}   ${statusStr(job.status)}  ${A.dim}${job.sync_mode}${A.reset}`,
+    ` ${A.bold}Job #${job.id} — ${job.job_kind}${A.reset}   ${statusStr(job.status, trcStep, isStuckJob)}  ${A.dim}${job.sync_mode}${A.reset}`,
   )
   lines.push(` ${sep}`)
   lines.push(` ${A.dim}snapshot:${A.reset}  ${snapshotDate}`)
@@ -507,7 +541,11 @@ function renderDetail(job: any, cols: number) {
 
     const ref = stagRows || bqRows // prefer staging as denominator for final rows
     const finalKeys = Object.keys(trc).filter(
-      (k) => !k.startsWith('bq:') && !k.startsWith('staging:') && !k.startsWith('progress:'),
+      (k) =>
+        !k.startsWith('bq:') &&
+        !k.startsWith('staging:') &&
+        !k.startsWith('progress:') &&
+        !k.startsWith('meta:'),
     )
     if (finalKeys.length > 0) {
       for (const k of finalKeys) {
@@ -578,7 +616,33 @@ function renderDetail(job: any, cols: number) {
 let jobs: any[] = []
 let tableCounts: Record<string, number> = {}
 let watermarks: Record<string, string> = {}
+let stuckIds: Set<number> = new Set()
+
+// A job is "stuck" when it's still in a non-terminal state but a newer job of the same kind
+// has already completed — meaning the workflow died without ever finishing this job.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function computeStuckIds(jobList: any[]): Set<number> {
+  const latestDone = new Map<string, number>()
+  for (const job of jobList) {
+    if (['done', 'cleaned'].includes(job.status) && job.started_at) {
+      const t = new Date(job.started_at as string).getTime()
+      if (!latestDone.has(job.job_kind) || t > (latestDone.get(job.job_kind) ?? 0)) {
+        latestDone.set(job.job_kind, t)
+      }
+    }
+  }
+  const result = new Set<number>()
+  for (const job of jobList) {
+    if (['done', 'failed', 'cleaned', 'pending'].includes(job.status)) continue
+    const latest = latestDone.get(job.job_kind)
+    if (latest && job.started_at && new Date(job.started_at as string).getTime() < latest) {
+      result.add(job.id as number)
+    }
+  }
+  return result
+}
 let selected = 0
+let scrollOffset = 0
 let detailOpen = false
 let lastRefresh: string | null = null
 let error: string | null = null
@@ -654,7 +718,7 @@ function computeChunkEta(job: any) {
   const hist = chunkMergeHistory.get(job.id)
   if (!hist || hist.mergeStart == null) return null
 
-  let rateRowsPerMs
+  let rateRowsPerMs: number
   if (hist.completedChunks.length > 0) {
     // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
     // Most recent chunk contributes ~50% of the rate; history stabilises it.
@@ -774,13 +838,19 @@ function render() {
   const detailHeight = detailOpen ? Math.min(detailLines.length + 2, Math.floor(rows * 0.55)) : 0
   const listHeight = rows - listStart - detailHeight - 1
 
+  // Keep scrollOffset in bounds so selected row is always visible
+  if (selected < scrollOffset) scrollOffset = selected
+  if (selected >= scrollOffset + listHeight) scrollOffset = selected - listHeight + 1
+  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, jobs.length - listHeight)))
+
   const listEnd = listStart + listHeight
   for (let i = 0; i < listHeight; i++) {
-    const job = jobs[i]
+    const jobIndex = scrollOffset + i
+    const job = jobs[jobIndex]
     if (!job) {
       writeln(listStart + i, 1, '')
     } else {
-      writeln(listStart + i, 1, tableRow(job, i === selected))
+      writeln(listStart + i, 1, tableRow(job, jobIndex === selected))
     }
   }
 
@@ -813,6 +883,8 @@ async function refresh() {
     tableCounts = newTableCounts
     watermarks = newWatermarks
     if (selected >= jobs.length) selected = Math.max(0, jobs.length - 1)
+    scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, jobs.length - 1)))
+    stuckIds = computeStuckIds(jobs)
     lastRefresh = new Date().toLocaleTimeString()
     error = null
   } catch (e) {

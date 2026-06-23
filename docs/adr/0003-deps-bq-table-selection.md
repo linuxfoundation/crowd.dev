@@ -1,4 +1,4 @@
-# ADR-0003: Use DependencyGraphEdgesLatest for deps ingestion; defer DependenciesLatest until NUGET needed
+# ADR-0003: Use DependencyGraphEdgesLatest for deps ingestion; defer DependenciesLatest until NUGET or GO needed
 
 **Date**: 2026-05-29
 **Status**: accepted
@@ -14,9 +14,9 @@ NPM + MAVEN only.
 ## Decision
 Use `DependencyGraphEdgesLatest` (Option A) with `From.Name = Name AND
 From.Version = Version` as the depth-1 filter. Switch to `DependenciesLatest`
-(Option B) only when NUGET ingestion is required, since Option A does not
-support NUGET. At that point evaluate whether to migrate all ecosystems or
-add NUGET via Option B only.
+(Option B) only when NUGET or GO ingestion is required, since Option A does not
+support either ecosystem. At that point evaluate whether to migrate all ecosystems
+or add GO/NUGET via Option B only.
 
 ## Alternatives Considered
 
@@ -27,7 +27,7 @@ add NUGET via Option B only.
   e.g. `^1.2.3`); only exposes resolved version
 - **Why not**: NPM and MAVEN are the only ecosystems needed now. Option A
   retains `version_constraint` which has security feature value. Cost delta is
-  acceptable for the current scope. Re-evaluate when NUGET is required.
+  acceptable for the current scope. Re-evaluate when NUGET or GO is required.
 
 ## Consequences
 
@@ -36,11 +36,15 @@ add NUGET via Option B only.
 - No migration risk — simpler to stay on the table already coded
 
 ### Negative
-- NUGET not supported; must revisit when NUGET ingestion is added
+- Only NPM, MAVEN, PYPI, CARGO are present in `DependencyGraphEdgesLatest`.
+  GO and NUGET are absent entirely — confirmed via BQ query on the live table
+  (`SELECT System, COUNT(*) … GROUP BY System` returns exactly those 4).
+  GO uses Minimal Version Selection (no graph resolution by deps.dev);
+  NUGET is simply not covered. Must revisit when either ecosystem is added.
 - Full bootstrap ~$1,291 vs ~$494 for NPM+MAVEN (Option B cheaper)
 - Weekly incremental ~$26 vs ~$7 (Option B cheaper)
 
 ### Risks
-- If NUGET is added before a re-evaluation, the team may miss that Option B
+- If NUGET or GO is added before a re-evaluation, the team may miss that Option B
   is required. Mitigation: this ADR and the note in
   `personal/osspckgs-bq-cost-report.txt` flag the trigger condition.

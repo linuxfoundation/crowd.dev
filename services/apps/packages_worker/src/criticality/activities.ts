@@ -78,6 +78,7 @@ export async function rankPackages(): Promise<{ scoredRows: number; rankedRows: 
 
   const jobId = existing?.id ?? (await createIngestJob(qx, 'ranking', 'ranking', null))
   try {
+    await markJobStatus(qx, jobId, 'merging')
     const [result] = await qx.select(`SELECT * FROM rank_packages()`)
     const scoredRows = Number(result.scored_rows ?? 0)
     const rankedRows = Number(result.ranked_rows ?? 0)

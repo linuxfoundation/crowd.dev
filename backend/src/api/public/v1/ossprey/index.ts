@@ -1,6 +1,8 @@
 import { Router } from 'express'
 
+import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
+import { SCOPES } from '@/security/scopes'
 
 import { activityFeedHandler } from './activityFeed'
 import { metricsHandler } from './metrics'
@@ -12,11 +14,27 @@ import { packageScatterHandler } from './packageScatter'
 export function osspreyRouter(): Router {
   const router = Router()
 
-  router.get('/metrics', safeWrap(metricsHandler))
+  router.get(
+    '/metrics',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(metricsHandler),
+  )
   // /packages/scatter must be registered before /packages to avoid Express treating 'scatter' as a path param
-  router.get('/packages/scatter', safeWrap(packageScatterHandler))
-  router.get('/packages', safeWrap(packageListHandler))
-  router.get('/activity', safeWrap(activityFeedHandler))
+  router.get(
+    '/packages/scatter',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(packageScatterHandler),
+  )
+  router.get(
+    '/packages',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(packageListHandler),
+  )
+  router.get(
+    '/activity',
+    requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'),
+    safeWrap(activityFeedHandler),
+  )
 
   return router
 }
