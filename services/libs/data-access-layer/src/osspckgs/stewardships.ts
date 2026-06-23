@@ -1,6 +1,10 @@
 import { QueryExecutor } from '../queryExecutor'
 
-import { SEVERITY_RANK_EXPR } from './api'
+import {
+  SEVERITY_RANK_EXPR,
+  STEWARD_DISPLAY_NAME_METADATA,
+  STEWARD_MENTIONED_JOIN,
+} from './sqlFragments'
 
 export interface StewardshipRecord {
   id: string
@@ -351,16 +355,7 @@ export interface ActivityFeedRow {
   total: string
 }
 
-export const STEWARD_MENTIONED_JOIN = `
-  LEFT JOIN stewards st_mentioned
-    ON sa.activity_type = 'steward_added'
-    AND st_mentioned.user_id = (sa.metadata->>'userId')`
-
-export const STEWARD_DISPLAY_NAME_METADATA = `CASE
-        WHEN sa.activity_type = 'steward_added' AND st_mentioned.display_name IS NOT NULL
-        THEN COALESCE(sa.metadata, '{}'::jsonb) || jsonb_build_object('stewardDisplayName', st_mentioned.display_name)
-        ELSE sa.metadata
-      END`
+export { STEWARD_DISPLAY_NAME_METADATA, STEWARD_MENTIONED_JOIN } from './sqlFragments'
 
 export async function listStewardshipActivity(
   qx: QueryExecutor,
@@ -704,7 +699,11 @@ export async function listMyPackages(
       scorecardScore: row.scorecardScore != null ? Number(row.scorecardScore) : null,
       openVulns: Number(row.openVulns),
       maxVulnSeverity: row.maxVulnSeverity ?? null,
-      lastActivityContent: row.lastActivityContent ?? null,
+      lastActivityContent: translateActivityContent(
+        row.lastActivityContent ?? null,
+        row.lastActivityType,
+        row.lastActivityMetadata as Record<string, unknown> | null,
+      ),
       lastActivityType: row.lastActivityType ?? null,
       lastActivityMetadata: row.lastActivityMetadata ?? null,
       lastActivityAt: row.lastActivityAt ?? null,
