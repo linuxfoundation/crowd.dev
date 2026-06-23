@@ -797,7 +797,7 @@ class OrganizationRepository {
     similarityFilter: string,
     displayNameFilter: string,
     replacements: {
-      segmentIds: string[]
+      segmentId: string
       organizationId?: string
       displayName?: string
     },
@@ -815,11 +815,11 @@ class OrganizationRepository {
       ${organizationsJoin}
       WHERE EXISTS (
           SELECT 1 FROM "organizationSegmentsAgg" os1
-          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+          WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" = :segmentId
       )
       AND EXISTS (
           SELECT 1 FROM "organizationSegmentsAgg" os2
-          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+          WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" = :segmentId
       )
       AND NOT EXISTS (
         SELECT 1
@@ -856,8 +856,8 @@ class OrganizationRepository {
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
     // Organization segments are aggregated at each hierarchy level (group -> project -> subproject).
-    // Match the selected segment ID(s) directly; do not expand to leaf subprojects.
-    const segmentIds = SequelizeRepository.getSegmentIds(options)
+    // Merge suggestions are scoped to a single project group segment; do not expand to leaf subprojects.
+    const projectGroupSegment = SequelizeRepository.getStrictlySingleProjectGroupSegment(options)
 
     let similarityFilter = ''
     const similarityConditions = []
@@ -905,17 +905,7 @@ class OrganizationRepository {
     )
 
     const getTotalCount = async (): Promise<number> => {
-      const projectGroupSegment = options.currentSegments?.find(
-        (s) => s.parentId == null && s.grandparentId == null,
-      )
-
       if (!hasCountFilters) {
-        if (!projectGroupSegment) {
-          throw new Error(
-            'A project group segment is required for unfiltered merge suggestion counts.',
-          )
-        }
-
         const counts = await getSegmentMergeSuggestionCounts(
           SequelizeRepository.getQueryExecutor(options),
           projectGroupSegment.id,
@@ -929,7 +919,7 @@ class OrganizationRepository {
         similarityFilter,
         displayNameFilter,
         {
-          segmentIds,
+          segmentId: projectGroupSegment.id,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           organizationId: args?.filter?.organizationId,
         },
@@ -952,21 +942,21 @@ class OrganizationRepository {
           o2."displayName" as "secondaryDisplayName",
           o2.logo as "secondaryLogo",
           (SELECT os1."segmentId" FROM "organizationSegmentsAgg" os1
-           WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+           WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" = :segmentId
            LIMIT 1) as "primarySegmentId",
           (SELECT os2."segmentId" FROM "organizationSegmentsAgg" os2
-           WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+           WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" = :segmentId
            LIMIT 1) as "secondarySegmentId"
         FROM "organizationToMerge" otm
         JOIN organizations o1 ON o1.id = otm."organizationId"
         JOIN organizations o2 ON o2.id = otm."toMergeId"
         WHERE EXISTS (
             SELECT 1 FROM "organizationSegmentsAgg" os1
-            WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" IN (:segmentIds)
+            WHERE os1."organizationId" = otm."organizationId" AND os1."segmentId" = :segmentId
         )
         AND EXISTS (
             SELECT 1 FROM "organizationSegmentsAgg" os2
-            WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" IN (:segmentIds)
+            WHERE os2."organizationId" = otm."toMergeId" AND os2."segmentId" = :segmentId
         )
         AND NOT EXISTS (
           SELECT 1
@@ -986,7 +976,7 @@ class OrganizationRepository {
       `,
       {
         replacements: {
-          segmentIds,
+          segmentId: projectGroupSegment.id,
           limit: args.limit,
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
