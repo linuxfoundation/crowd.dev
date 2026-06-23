@@ -386,10 +386,16 @@ class MemberRepository {
         (s) => s.parentId == null && s.grandparentId == null,
       )
 
-      if (projectGroupSegment && !hasCountFilters) {
+      if (!hasCountFilters) {
+        if (!projectGroupSegment) {
+          throw new Error(
+            'A project group segment is required for unfiltered merge suggestion counts.',
+          )
+        }
+
         const counts = await getSegmentMergeSuggestionCounts(
           SequelizeRepository.getQueryExecutor(options),
-          projectGroupSegment?.id,
+          projectGroupSegment.id,
         )
 
         return counts?.memberMergeSuggestionsCount ?? 0
