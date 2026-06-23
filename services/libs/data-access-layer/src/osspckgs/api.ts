@@ -787,7 +787,6 @@ export async function getAdvisoriesByPackageId(
   opts?: {
     page: number
     pageSize: number
-    version?: string
     severities?: string[]
     resolutions?: ('open' | 'patched')[]
     critical?: boolean
@@ -800,16 +799,16 @@ export async function getAdvisoriesByPackageId(
         LOWER(a.severity) AS severity,
         a.is_critical AS "isCritical",
         CASE
-          WHEN COALESCE($(version), p.latest_version) IS NULL THEN NULL
+          WHEN p.latest_version IS NULL THEN NULL
           WHEN COUNT(ar.id) = 0 THEN NULL
           -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
           -- Replace with a proper semver comparison function when one is available in the DB.
           WHEN BOOL_AND(
             CASE
               WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
-              WHEN ar.fixed_version IS NOT NULL AND COALESCE($(version), p.latest_version) >= ar.fixed_version THEN TRUE
+              WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
               WHEN ar.fixed_version IS NOT NULL THEN FALSE
-              WHEN ar.last_affected IS NOT NULL AND COALESCE($(version), p.latest_version) > ar.last_affected THEN TRUE
+              WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
               ELSE FALSE
             END
           ) THEN 'patched'
@@ -839,7 +838,6 @@ export async function getAdvisoriesByPackageId(
   const paginationClause = opts ? `LIMIT $(limit) OFFSET $(offset)` : ''
   const params = {
     packageId,
-    version: opts?.version ?? null,
     severities: opts?.severities ?? null,
     resolutions: opts?.resolutions ?? null,
     critical: opts?.critical ?? null,

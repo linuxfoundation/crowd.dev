@@ -30,12 +30,6 @@ export function normalizePurl(purl: string): string {
   return withoutVersion.replace(/@/g, '%40')
 }
 
-export function extractPurlVersion(purl: string): string | null {
-  const withoutQualifiers = stripQualifiers(purl)
-  const match = withoutQualifiers.match(/@([^/@]+)$/)
-  return match ? match[1] : null
-}
-
 export const purlFieldSchema = z
   .string()
   .trim()

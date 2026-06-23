@@ -8,7 +8,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { extractPurlVersion, purlQuerySchema } from './purl'
+import { purlQuerySchema } from './purl'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
@@ -28,8 +28,8 @@ function toStringArray(v: unknown): unknown {
 const querySchema = purlQuerySchema.extend({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-  severity: z.preprocess(toStringArray, z.array(z.enum(SEVERITY_VALUES)).optional()).optional(),
-  resolution: z.preprocess(toStringArray, z.array(z.enum(RESOLUTION_VALUES)).optional()).optional(),
+  severity: z.preprocess(toStringArray, z.array(z.enum(SEVERITY_VALUES)).optional()),
+  resolution: z.preprocess(toStringArray, z.array(z.enum(RESOLUTION_VALUES)).optional()),
   critical: z
     .preprocess((v) => {
       if (v === 'true') return true
@@ -40,9 +40,6 @@ const querySchema = purlQuerySchema.extend({
 })
 
 export async function getPackageAdvisories(req: Request, res: Response): Promise<void> {
-  const rawPurl = typeof req.query.purl === 'string' ? req.query.purl : ''
-  const version = extractPurlVersion(rawPurl)
-
   const { purl, page, pageSize, severity, resolution, critical } = validateOrThrow(
     querySchema,
     req.query,
@@ -58,7 +55,6 @@ export async function getPackageAdvisories(req: Request, res: Response): Promise
   const { rows, total } = await getAdvisoriesByPackageId(qx, pkg.id, {
     page,
     pageSize,
-    version: version ?? undefined,
     severities: severity,
     resolutions: resolution,
     critical,
