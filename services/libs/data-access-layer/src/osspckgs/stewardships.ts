@@ -261,6 +261,7 @@ export async function assignSteward(
         metadata: JSON.stringify({
           userId: data.userId,
           role: data.role,
+          ...(data.displayName != null ? { stewardDisplayName: data.displayName } : {}),
           ...(data.note ? { note: data.note } : {}),
         }),
       },
@@ -350,6 +351,17 @@ export interface ActivityFeedRow {
   total: string
 }
 
+const STEWARD_MENTIONED_JOIN = `
+  LEFT JOIN stewards st_mentioned
+    ON sa.activity_type = 'steward_added'
+    AND st_mentioned.user_id = (sa.metadata->>'userId')`
+
+const STEWARD_DISPLAY_NAME_METADATA = `CASE
+        WHEN sa.activity_type = 'steward_added' AND st_mentioned.display_name IS NOT NULL
+        THEN COALESCE(sa.metadata, '{}'::jsonb) || jsonb_build_object('stewardDisplayName', st_mentioned.display_name)
+        ELSE sa.metadata
+      END`
+
 export async function listStewardshipActivity(
   qx: QueryExecutor,
   opts: { page: number; pageSize: number },
@@ -366,13 +378,14 @@ export async function listStewardshipActivity(
       sa.actor_type                      AS "actorType",
       sa.activity_type                   AS "activityType",
       sa.content                         AS content,
-      sa.metadata                        AS metadata,
+      ${STEWARD_DISPLAY_NAME_METADATA}   AS metadata,
       s.status                           AS "stewardshipStatus",
       sa.created_at                      AS "createdAt",
       COUNT(*) OVER()::text              AS total
     FROM stewardship_activity sa
     JOIN stewardships s ON s.id = sa.stewardship_id
     JOIN packages p ON p.id = s.package_id
+    ${STEWARD_MENTIONED_JOIN}
     ORDER BY sa.created_at DESC, sa.id DESC
     LIMIT $(limit) OFFSET $(offset)
     `,
@@ -430,16 +443,17 @@ export async function listPackageHistory(
   stewardshipId: string,
 ): Promise<PackageHistoryEvent[]> {
   const rows: Array<Record<string, unknown>> = await qx.select(
-    `SELECT id::text             AS id,
-            actor_user_id        AS "actorUserId",
-            actor_type           AS "actorType",
-            activity_type        AS "activityType",
-            content,
-            metadata,
-            created_at           AS "createdAt"
-     FROM stewardship_activity
-     WHERE stewardship_id = $(stewardshipId)::bigint
-     ORDER BY created_at DESC`,
+    `SELECT sa.id::text             AS id,
+            sa.actor_user_id        AS "actorUserId",
+            sa.actor_type           AS "actorType",
+            sa.activity_type        AS "activityType",
+            sa.content,
+            ${STEWARD_DISPLAY_NAME_METADATA} AS metadata,
+            sa.created_at           AS "createdAt"
+     FROM stewardship_activity sa
+     ${STEWARD_MENTIONED_JOIN}
+     WHERE sa.stewardship_id = $(stewardshipId)::bigint
+     ORDER BY sa.created_at DESC`,
     { stewardshipId },
   )
   return rows.map((r) => ({
@@ -753,12 +767,13 @@ export async function listMyActivity(
         sa.actor_type                      AS "actorType",
         sa.activity_type                   AS "activityType",
         sa.content                         AS content,
-        sa.metadata                        AS metadata,
+        ${STEWARD_DISPLAY_NAME_METADATA}   AS metadata,
         s.status                           AS "stewardshipStatus",
         sa.created_at                      AS "createdAt"
       FROM stewardship_activity sa
       JOIN stewardships s ON s.id = sa.stewardship_id
       JOIN packages p ON p.id = s.package_id
+      ${STEWARD_MENTIONED_JOIN}
       WHERE s.id IN (
         SELECT stewardship_id FROM stewardship_stewards
         WHERE user_id = $(userId) AND deleted_at IS NULL
@@ -845,6 +860,13 @@ export function translateActivityContent(
   metadata?: Record<string, unknown> | null,
 ): string | null {
   if (!content) return content
+  if (activityType === 'steward_added') {
+    const displayName = metadata?.stewardDisplayName as string | undefined
+    const role = metadata?.role as string | undefined
+    if (displayName && role) {
+      return `Assigned steward ${displayName} as ${role}`
+    }
+  }
   if (activityType === 'escalation' && metadata?.resolutionPath) {
     const label =
       ESCALATION_RESOLUTION_PATH_LABELS[metadata.resolutionPath as EscalationResolutionPath]

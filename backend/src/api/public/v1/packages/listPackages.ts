@@ -68,7 +68,15 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
 
   const qx = await getPackagesQx()
   const [{ rows, total }, statusCounts] = await Promise.all([
-    listPackagesForApi(qx, { page, pageSize, status, sortBy, sortDir, ...filterOpts }),
+    listPackagesForApi(qx, {
+      page,
+      pageSize,
+      status,
+      sortBy,
+      sortDir,
+      ...filterOpts,
+      includeStewards: true,
+    }),
     getPackageStatusCounts(qx, filterOpts),
   ])
 
@@ -83,7 +91,7 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     openVulns: r.openVulns,
     stewardshipId: r.stewardshipId ?? null,
     stewardship: (r.stewardshipStatus ?? 'unassigned') as StewardshipStatus,
-    stewards: null,
+    stewards: r.stewards ?? [],
   }))
 
   ok(res, {

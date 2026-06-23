@@ -91,7 +91,13 @@ components:
           type: string
           description: Auth0 sub of the assigned steward.
           example: abc123
-        name:
+        username:
+          type:
+            - string
+            - 'null'
+          description: Username of the steward. Null if not available.
+          example: jrodriguez
+        displayName:
           type:
             - string
             - 'null'
@@ -206,12 +212,10 @@ components:
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
-          description: Assigned stewards or null.
-          oneOf:
-            - type: array
-              items:
-                $ref: '#/components/schemas/Steward'
-            - type: 'null'
+          description: Assigned stewards. Empty array if none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Steward'
 
     # ── Package detail ───────────────────────────────────────────────────────────
 
