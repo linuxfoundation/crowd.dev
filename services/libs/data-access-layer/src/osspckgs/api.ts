@@ -783,7 +783,7 @@ export async function listPackagesForScatter(
 export async function getAdvisoriesByPackageId(
   qx: QueryExecutor,
   packageId: string,
-  opts?: { page: number; pageSize: number },
+  opts?: { page: number; pageSize: number; version?: string; severities?: string[] },
 ): Promise<{ rows: AdvisoryRow[]; total: number }> {
   const cte = `
     WITH advisory_data AS (
@@ -791,16 +791,16 @@ export async function getAdvisoriesByPackageId(
         a.osv_id AS "osvId",
         LOWER(a.severity) AS severity,
         CASE
-          WHEN p.latest_version IS NULL THEN NULL
+          WHEN COALESCE($(version), p.latest_version) IS NULL THEN NULL
           WHEN COUNT(ar.id) = 0 THEN NULL
           -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
           -- Replace with a proper semver comparison function when one is available in the DB.
           WHEN BOOL_AND(
             CASE
               WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
-              WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
+              WHEN ar.fixed_version IS NOT NULL AND COALESCE($(version), p.latest_version) >= ar.fixed_version THEN TRUE
               WHEN ar.fixed_version IS NOT NULL THEN FALSE
-              WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
+              WHEN ar.last_affected IS NOT NULL AND COALESCE($(version), p.latest_version) > ar.last_affected THEN TRUE
               ELSE FALSE
             END
           ) THEN 'patched'
@@ -815,25 +815,37 @@ export async function getAdvisoriesByPackageId(
     )
   `
 
+  const severityClause = opts?.severities?.length
+    ? `WHERE severity = ANY($(severities)::text[])`
+    : ''
   const paginationClause = opts ? `LIMIT $(limit) OFFSET $(offset)` : ''
+  const params = {
+    packageId,
+    version: opts?.version ?? null,
+    severities: opts?.severities ?? null,
+    limit: opts?.pageSize,
+    offset: opts ? (opts.page - 1) * opts.pageSize : 0,
+  }
 
   const rows = (await qx.select(
     `${cte} SELECT * FROM advisory_data
+     ${severityClause}
      ORDER BY
        CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'moderate' THEN 3 WHEN 'low' THEN 4 ELSE 5 END,
        CASE resolution WHEN 'open' THEN 1 WHEN 'patched' THEN 2 ELSE 3 END,
        "osvId"
      ${paginationClause}`,
-    { packageId, limit: opts?.pageSize, offset: opts ? (opts.page - 1) * opts.pageSize : 0 },
+    params,
   )) as AdvisoryRow[]
 
   if (!opts) {
     return { rows, total: rows.length }
   }
 
-  const countResult = (await qx.selectOne(`${cte} SELECT COUNT(*) AS total FROM advisory_data`, {
-    packageId,
-  })) as { total: string }
+  const countResult = (await qx.selectOne(
+    `${cte} SELECT COUNT(*) AS total FROM advisory_data ${severityClause}`,
+    params,
+  )) as { total: string }
 
   return { rows, total: Number(countResult.total) }
 }
