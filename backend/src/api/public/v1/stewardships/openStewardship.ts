@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { BadRequestError, NotFoundError } from '@crowd/common'
+import { NotFoundError } from '@crowd/common'
 import { openStewardshipByPurl } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
@@ -19,10 +19,6 @@ const bodySchema = z.object({
 
 export async function openStewardship(req: Request, res: Response): Promise<void> {
   const { purl, actor } = validateOrThrow(bodySchema, req.body)
-
-  if (actor.userId !== req.actor.id) {
-    throw new BadRequestError('actor.userId must match the authenticated user id')
-  }
 
   const qx = await getPackagesQx()
   const stewardship = await openStewardshipByPurl(

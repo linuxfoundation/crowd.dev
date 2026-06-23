@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { BadRequestError, NotFoundError } from '@crowd/common'
+import { NotFoundError } from '@crowd/common'
 import {
   INACTIVE_REASONS,
   STEWARDSHIP_UPDATABLE_STATUSES,
@@ -33,10 +33,6 @@ const bodySchema = z
 export async function updateStatusHandler(req: Request, res: Response): Promise<void> {
   const { id } = validateOrThrow(paramsSchema, req.params)
   const { status, inactiveReason, notes, actor } = validateOrThrow(bodySchema, req.body)
-
-  if (actor.userId !== req.actor.id) {
-    throw new BadRequestError('actor.userId must match the authenticated user id')
-  }
 
   const qx = await getPackagesQx()
   const stewardship = await updateStewardshipStatus(qx, id, {
