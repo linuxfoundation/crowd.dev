@@ -86,20 +86,25 @@ export async function rebuildVersionsIndexes(): Promise<{
   const existing: Array<{ indexdef: string }> = await qx.select(NON_CONSTRAINT_INDEXES_SQL)
   const existingDefs = existing.map((r) => r.indexdef.toLowerCase())
 
+  const toRebuild = SECONDARY_INDEXES.filter(
+    (idx) => !existingDefs.some((def) => def.includes(idx.matchString ?? `(${idx.columns})`)),
+  )
   const rebuilt: string[] = []
 
-  for (const idx of SECONDARY_INDEXES) {
-    const alreadyExists = existingDefs.some((def) =>
-      def.includes(idx.matchString ?? `(${idx.columns})`),
-    )
-    if (alreadyExists) {
-      log.info({ columns: idx.columns }, 'Index already exists, skipping')
-      continue
-    }
-    log.info({ columns: idx.columns }, 'Creating index on versions')
-    await qx.result(idx.createSql)
-    rebuilt.push(idx.columns)
-  }
+  // Build indexes in parallel — each on its own connection so they run concurrently.
+  // maintenance_work_mem per connection: with 32 partitions and default 64MB, PG spills to
+  // disk on every partition; 2GB lets the sort fit in RAM and cuts build time dramatically.
+  await Promise.all(
+    toRebuild.map(async (idx) => {
+      const conn = await getPackagesDb()
+      await conn.tx(async (t) => {
+        await t.result(`SET LOCAL maintenance_work_mem = '2GB'`)
+        log.info({ columns: idx.columns }, 'Creating index on versions')
+        await t.result(idx.createSql)
+      })
+      rebuilt.push(idx.columns)
+    }),
+  )
 
   // Remove cross-chunk duplicates before rebuilding the UNIQUE constraint.
   // versions is HASH-partitioned by package_id (32 partitions). Loop over each partition table

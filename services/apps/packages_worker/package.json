@@ -39,6 +39,8 @@
     "backfill:stewardship:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=stewardship-backfill LOG_LEVEL=info tsx src/bin/stewardship-backfill.ts",
     "monitor:osspckgs": "SERVICE=bq-dataset-ingest tsx src/scripts/monitorOsspckgs.ts",
     "monitor:osspckgs:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/monitorOsspckgs.ts",
+    "dedup-package-deps": "SERVICE=bq-dataset-ingest tsx src/scripts/dedupPackageDeps.ts",
+    "dedup-package-deps:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=bq-dataset-ingest tsx src/scripts/dedupPackageDeps.ts",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",

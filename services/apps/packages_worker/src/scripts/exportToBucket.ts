@@ -10,7 +10,7 @@ import { extractBqStats } from '../deps-dev/bqStats'
 import { GCS_BUCKET, bigquery, bucket } from '../deps-dev/config'
 import { ADVISORIES_SQL, buildAdvisoryPackagesSql } from '../deps-dev/queries/advisoriesSql'
 import { buildDependentCountsSql } from '../deps-dev/queries/dependentCountsSql'
-import { buildDepsFullSql } from '../deps-dev/queries/depsSql'
+import { DEPS_DEFAULT_ECOSYSTEMS, buildDepsFullSql } from '../deps-dev/queries/depsSql'
 import { buildPackageReposSql } from '../deps-dev/queries/packageReposSql'
 import { buildPackagesFullSql } from '../deps-dev/queries/packagesSql'
 import { buildReposSql } from '../deps-dev/queries/reposSql'
@@ -292,7 +292,7 @@ async function main(): Promise<void> {
   const SQL_BY_PART: Record<ExportPart, string> = {
     packages: buildPackagesFullSql(systems),
     versions: buildVersionsFullSql(systems),
-    deps: buildDepsFullSql(systems, depsTableOption),
+    deps: buildDepsFullSql(ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS, depsTableOption),
     repos: buildReposSql(reposSnapshotDate ?? today, systems),
     package_repos: buildPackageReposSql(reposSnapshotDate ?? today, systems),
     counts: buildDependentCountsSql(countsSnapshotDate ?? today),

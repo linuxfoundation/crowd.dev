@@ -39,6 +39,11 @@ const { dropVersionsConstraints, rebuildVersionsConstraints } = proxyActivities<
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
+const { setJobStep } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_versions_raw'
 
 const STAGING_DDL = `
@@ -126,9 +131,10 @@ export async function ingestVersions(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 400,
+    maxBytesGb: opts.syncMode === 'full' ? 800 : 400,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
@@ -145,7 +151,9 @@ export async function ingestVersions(opts: {
   }
 
   if (opts.syncMode === 'full') {
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_constraints' })
     await dropVersionsConstraints()
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_indexes' })
     await dropVersionsIndexes()
   }
 
@@ -163,7 +171,9 @@ export async function ingestVersions(opts: {
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
       const start = chunkIndex * filesPerChunk
       const chunk = fileNames.slice(start, start + filesPerChunk)
-      const isFinal = chunkIndex === totalChunks - 1
+      const isLastChunk = chunkIndex === totalChunks - 1
+      // For full-load, don't mark done here — rebuild runs after the chunk loop
+      const isFinal = isLastChunk && opts.syncMode !== 'full'
 
       const { rowsLoaded } = await gcsParquetToStaging({
         jobId: exportResult.jobId,
@@ -198,17 +208,30 @@ export async function ingestVersions(opts: {
     }
 
     if (opts.syncMode === 'full') {
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
       await rebuildVersionsIndexes()
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
       await rebuildVersionsConstraints()
+      // Finalize after rebuild — marks done with correct finishedAt
+      await mergeStagingToTable({
+        jobId: exportResult.jobId,
+        mergeSql: [],
+        tableNames: [],
+        isFinal: true,
+        priorRowsAffected,
+        priorTableRowCounts,
+      })
     }
   } catch (err) {
     if (opts.syncMode === 'full') {
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
         await rebuildVersionsIndexes()
       } catch (_) {
         /* best-effort */
       }
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
         await rebuildVersionsConstraints()
       } catch (_) {
         /* best-effort */

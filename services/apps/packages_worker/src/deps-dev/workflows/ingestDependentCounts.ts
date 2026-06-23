@@ -29,6 +29,11 @@ const { checkDependentCountsGuard } = proxyActivities<typeof depsDevActivities>(
   retry: { maximumAttempts: 3 },
 })
 
+const { setJobStep } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_dependent_counts_raw'
 
 // Two-statement DDL: DROP before CREATE so an existing table with the old dependent_packages_count
@@ -86,6 +91,7 @@ export async function ingestDependentCounts(opts: {
   const totalFiles = fileNames.length
   const totalRows = totalFiles > 0 ? rowCounts.reduce((a, b) => a + b, 0) : 0
 
+  await setJobStep({ jobId: exportResult.jobId, step: 'guard_check' })
   const guard = await checkDependentCountsGuard({
     currentRowCount: totalRows,
     snapshotDate: opts.snapshotDate,
