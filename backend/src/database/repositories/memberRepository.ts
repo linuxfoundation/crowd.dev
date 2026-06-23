@@ -259,7 +259,7 @@ class MemberRepository {
     similarityFilter: string,
     displayNameFilter: string,
     replacements: {
-      segmentId: string
+      segmentIds: string[]
       memberId?: string
       displayName?: string
     },
@@ -278,11 +278,11 @@ class MemberRepository {
         ${membersJoin}
         WHERE EXISTS (
             SELECT 1 FROM "memberSegmentsAgg" ms
-            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" = :segmentId
+            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
         )
         AND EXISTS (
             SELECT 1 FROM "memberSegmentsAgg" ms2
-            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" = :segmentId
+            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
         AND NOT EXISTS (
           SELECT 1
@@ -319,8 +319,17 @@ class MemberRepository {
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
     // Member segments are aggregated at each hierarchy level (group -> project -> subproject).
-    // Merge suggestions are scoped to a single project group segment; do not expand to leaf subprojects.
     const projectGroupSegment = SequelizeRepository.getStrictlySingleProjectGroupSegment(options)
+
+    let segmentIds: string[]
+
+    if (args.filter?.projectIds?.length) {
+      segmentIds = args.filter.projectIds
+    } else if (args.filter?.subprojectIds?.length) {
+      segmentIds = args.filter.subprojectIds
+    } else {
+      segmentIds = [projectGroupSegment.id]
+    }
 
     let similarityFilter = ''
     const similarityConditions = []
@@ -366,12 +375,16 @@ class MemberRepository {
       order += 'mtm."memberId", mtm."toMergeId"'
     }
 
+    const hasProjectFilter = Boolean(
+      args.filter?.projectIds?.length || args.filter?.subprojectIds?.length,
+    )
+
     const hasCountFilters = Boolean(
       args.filter?.memberId || args.filter?.displayName || args.filter?.similarity?.length,
     )
 
     const getTotalCount = async (): Promise<number> => {
-      if (!hasCountFilters) {
+      if (!hasCountFilters && !hasProjectFilter) {
         const counts = await getSegmentMergeSuggestionCounts(
           SequelizeRepository.getQueryExecutor(options),
           projectGroupSegment.id,
@@ -385,7 +398,7 @@ class MemberRepository {
         similarityFilter,
         displayNameFilter,
         {
-          segmentId: projectGroupSegment.id,
+          segmentIds,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           memberId: args?.filter?.memberId,
         },
@@ -413,11 +426,11 @@ class MemberRepository {
         JOIN members m2 ON m2.id = mtm."toMergeId"
         WHERE EXISTS (
             SELECT 1 FROM "memberSegmentsAgg" ms
-            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" = :segmentId
+            WHERE ms."memberId" = mtm."memberId" AND ms."segmentId" IN (:segmentIds)
         )
         AND EXISTS (
             SELECT 1 FROM "memberSegmentsAgg" ms2
-            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" = :segmentId
+            WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
         AND NOT EXISTS (
           SELECT 1
@@ -439,7 +452,7 @@ class MemberRepository {
       `,
       {
         replacements: {
-          segmentId: projectGroupSegment.id,
+          segmentIds,
           limit: args.limit,
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
