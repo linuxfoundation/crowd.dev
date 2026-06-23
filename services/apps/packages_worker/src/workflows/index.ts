@@ -19,3 +19,4 @@ export { mavenCriticalWorkflow, mavenNonCriticalWorkflow } from '../maven/workfl
 export { ingestScorecard } from '../scorecard/workflows'
 export { rankPackagesWorkflow } from '../criticality/workflow'
 export { cargoSyncWorkflow } from '../cargo/workflows'
+export { enrichGoVersions, enrichGoStatus } from '../go/workflows'
