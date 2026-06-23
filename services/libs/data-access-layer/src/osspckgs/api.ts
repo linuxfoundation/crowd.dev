@@ -818,7 +818,12 @@ export async function getAdvisoriesByPackageId(
   const paginationClause = opts ? `LIMIT $(limit) OFFSET $(offset)` : ''
 
   const rows = (await qx.select(
-    `${cte} SELECT * FROM advisory_data ORDER BY "osvId" ${paginationClause}`,
+    `${cte} SELECT * FROM advisory_data
+     ORDER BY
+       CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'moderate' THEN 3 WHEN 'low' THEN 4 ELSE 5 END,
+       CASE resolution WHEN 'open' THEN 1 WHEN 'patched' THEN 2 ELSE 3 END,
+       "osvId"
+     ${paginationClause}`,
     { packageId, limit: opts?.pageSize, offset: opts ? (opts.page - 1) * opts.pageSize : 0 },
   )) as AdvisoryRow[]
 
