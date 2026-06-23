@@ -38,21 +38,26 @@ CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_scorecard_repos_raw (
 // Cast to timestamptz happens in merge SQL.
 const SCORECARD_REPOS_PG_COLUMNS = ['repo_url', 'score', 'scanned_at']
 
+// Two-CTE pattern prevents deadlocks with concurrent repos UPDATE transactions
+// (e.g. github-repos-enricher). `locked` materialises candidates then acquires
+// row-level locks in ascending repos.id order — consistent ordering eliminates
+// the circular-wait condition. The outer UPDATE touches already-locked rows only.
 const SCORECARD_REPOS_MERGE_SQL = `
-UPDATE repos r
-SET scorecard_score = CASE
+WITH candidates AS (
+  SELECT
+    r.id,
+    CASE
       WHEN s.score IS NULL
         OR s.score = 'NaN'::float8
         OR s.score = 'Infinity'::float8
         OR s.score = '-Infinity'::float8
       THEN NULL
       ELSE s.score::numeric(3,1)
-    END,
-    scorecard_last_run_at = s.scanned_at::timestamptz,
-    updated_at = NOW()
-FROM (SELECT * FROM staging.osspckgs_scorecard_repos_raw ORDER BY repo_url) s
-WHERE r.url = s.repo_url
-  AND (
+    END AS new_score,
+    s.scanned_at::timestamptz AS new_scanned_at
+  FROM staging.osspckgs_scorecard_repos_raw s
+  JOIN repos r ON r.url = s.repo_url
+  WHERE
     r.scorecard_score IS DISTINCT FROM CASE
       WHEN s.score IS NULL
         OR s.score = 'NaN'::float8
@@ -62,7 +67,16 @@ WHERE r.url = s.repo_url
       ELSE s.score::numeric(3,1)
     END
     OR r.scorecard_last_run_at IS DISTINCT FROM s.scanned_at::timestamptz
-  )
+),
+locked AS (
+  SELECT * FROM candidates ORDER BY id FOR UPDATE
+)
+UPDATE repos r
+SET scorecard_score       = locked.new_score,
+    scorecard_last_run_at = locked.new_scanned_at,
+    updated_at            = NOW()
+FROM locked
+WHERE r.id = locked.id
 `
 
 const SCORECARD_CHECKS_STAGING_TABLE = 'staging.osspckgs_scorecard_checks_raw'

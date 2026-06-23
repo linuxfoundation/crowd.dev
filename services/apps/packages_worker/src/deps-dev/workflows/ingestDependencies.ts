@@ -1,8 +1,11 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
-import { buildDepsFullSql, buildDepsIncrementalSql } from '../queries/depsSql'
-import { toSystemsFilter } from '../queries/systems'
+import {
+  DEPS_DEFAULT_ECOSYSTEMS,
+  buildDepsFullSql,
+  buildDepsIncrementalSql,
+} from '../queries/depsSql'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '2 hours',
@@ -33,8 +36,8 @@ const { createVersionsLookup } = proxyActivities<typeof depsDevActivities>({
 const { dropPackageDepsIndexes, rebuildPackageDepsIndexes } = proxyActivities<
   typeof depsDevActivities
 >({
-  // Index builds on 1B+ rows can take hours — long timeout required.
-  startToCloseTimeout: '12 hours',
+  // Index builds + parallel dedup on 1B+ rows — 24h covers worst-case sequential retry.
+  startToCloseTimeout: '24 hours',
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
@@ -42,8 +45,13 @@ const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActiv
   typeof depsDevActivities
 >({
   // FK validation on 1B+ rows can take hours.
-  startToCloseTimeout: '12 hours',
+  startToCloseTimeout: '24 hours',
   retry: { maximumAttempts: 2, initialInterval: '1 minute' },
+})
+
+const { setJobStep } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
 })
 
 const STAGING_TABLE = 'staging.osspckgs_deps_raw'
@@ -135,6 +143,45 @@ LEFT JOIN versions dv ON dv.package_id = pd.id AND dv.number = sp.to_version
 ORDER BY pv.id, pd.id, sp.to_version DESC NULLS LAST
 `
 
+// Fill-constraints variant: UNIQUE constraint stays in place (not dropped), so ON CONFLICT is valid.
+// Upserts version_constraint only for rows where it is currently NULL — safe to run against a table
+// already populated by --deps-table-b (which sets version_constraint = NULL for all rows).
+// DISTINCT ON matches MERGE_SQL_FULL to resolve duplicate (root, dep) pairs from BQ before the upsert.
+const MERGE_SQL_FILL_CONSTRAINTS = `
+INSERT INTO package_dependencies (
+  package_id, version_id, depends_on_id, depends_on_version_id,
+  version_constraint, dependency_kind, is_optional, created_at, updated_at
+)
+SELECT DISTINCT ON (pv.id, pd.id)
+  pv.package_id, pv.id, pd.id, dv.id,
+  sp.version_constraint, 'direct', FALSE, NOW(), NOW()
+FROM staging.osspckgs_deps_raw sp
+JOIN staging.osspckgs_versions_lookup pv ON pv.ecosystem = sp.ecosystem
+  AND pv.ns = CASE
+      WHEN sp.ecosystem = 'maven'   THEN SPLIT_PART(sp.root_name, ':', 1)
+      WHEN sp.root_name LIKE '@%/%' THEN SPLIT_PART(sp.root_name, '/', 1)
+      ELSE '' END
+  AND pv.name = CASE
+      WHEN sp.ecosystem = 'maven'   THEN SPLIT_PART(sp.root_name, ':', 2)
+      WHEN sp.root_name LIKE '@%/%' THEN SPLIT_PART(sp.root_name, '/', 2)
+      ELSE sp.root_name END
+  AND pv.number = sp.root_version
+JOIN packages pd ON pd.ecosystem = sp.ecosystem
+  AND COALESCE(pd.namespace, '') = CASE
+      WHEN sp.ecosystem = 'maven'  THEN SPLIT_PART(sp.to_name, ':', 1)
+      WHEN sp.to_name LIKE '@%/%'  THEN SPLIT_PART(sp.to_name, '/', 1)
+      ELSE '' END
+  AND pd.name = CASE
+      WHEN sp.ecosystem = 'maven'  THEN SPLIT_PART(sp.to_name, ':', 2)
+      WHEN sp.to_name LIKE '@%/%'  THEN SPLIT_PART(sp.to_name, '/', 2)
+      ELSE sp.to_name END
+LEFT JOIN versions dv ON dv.package_id = pd.id AND dv.number = sp.to_version
+ORDER BY pv.id, pd.id, sp.to_version DESC NULLS LAST
+ON CONFLICT (version_id, depends_on_id, dependency_kind) DO UPDATE
+  SET version_constraint = EXCLUDED.version_constraint
+  WHERE package_dependencies.version_constraint IS NULL
+`
+
 // SET LOCAL scopes settings to this transaction only.
 // synchronous_commit=off skips WAL flush wait — safe for plain INSERT on full loads.
 // max_parallel_workers_per_gather parallelises the SELECT side of INSERT...SELECT.
@@ -166,13 +213,17 @@ export async function ingestDependencies(opts: {
   reuseExports?: boolean
   depsTableOption?: 'A' | 'B'
   exportName?: string
+  fillConstraints?: boolean // re-export full BQ data, upsert version_constraint only where NULL
 }): Promise<{ rowCountBq: number }> {
-  const systems = toSystemsFilter(opts.ecosystems)
-  const tableOption = opts.depsTableOption ?? 'A'
+  const ecosystems = opts.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
+  const isFill = opts.fillConstraints === true
+  // Fill mode forces Option A — Option B selects NULL for version_constraint, making the fill a no-op.
+  const tableOption = isFill ? 'A' : (opts.depsTableOption ?? 'A')
+  // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
   const sql =
-    opts.syncMode === 'full'
-      ? buildDepsFullSql(systems, tableOption)
-      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', systems, tableOption)
+    opts.syncMode === 'full' || isFill
+      ? buildDepsFullSql(ecosystems, tableOption)
+      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'package_dependencies',
@@ -180,9 +231,10 @@ export async function ingestDependencies(opts: {
     runId: opts.runId,
     syncMode: opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: 10000,
+    maxBytesGb: opts.syncMode === 'full' || isFill ? 25000 : 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
+    ecosystems,
   })
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
@@ -199,10 +251,13 @@ export async function ingestDependencies(opts: {
     return { rowCountBq: exportResult.rowCount }
   }
 
-  await createVersionsLookup({ ecosystems: opts.ecosystems })
+  await setJobStep({ jobId: exportResult.jobId, step: 'creating_lookup' })
+  await createVersionsLookup({ ecosystems })
 
-  if (opts.syncMode === 'full') {
+  if (opts.syncMode === 'full' && !isFill) {
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_constraints' })
     await dropPackageDepsConstraints()
+    await setJobStep({ jobId: exportResult.jobId, step: 'drop_indexes' })
     await dropPackageDepsIndexes()
   }
 
@@ -219,7 +274,9 @@ export async function ingestDependencies(opts: {
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
       const start = chunkIndex * filesPerChunk
       const chunk = fileNames.slice(start, start + filesPerChunk)
-      const isFinal = chunkIndex === totalChunks - 1
+      const isLastChunk = chunkIndex === totalChunks - 1
+      // For full-load (non-fill), don't mark done here — rebuild runs after the chunk loop
+      const isFinal = isLastChunk && !(opts.syncMode === 'full' && !isFill)
 
       const { rowsLoaded } = await gcsParquetToStaging({
         jobId: exportResult.jobId,
@@ -236,7 +293,11 @@ export async function ingestDependencies(opts: {
       const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
         jobId: exportResult.jobId,
         prepareSql: MERGE_PREPARE_SQL,
-        mergeSql: opts.syncMode === 'full' ? MERGE_SQL_FULL : MERGE_SQL,
+        mergeSql: isFill
+          ? MERGE_SQL_FILL_CONSTRAINTS
+          : opts.syncMode === 'full'
+            ? MERGE_SQL_FULL
+            : MERGE_SQL,
         tableNames: 'package_dependencies',
         isFinal,
         priorRowsAffected,
@@ -252,18 +313,31 @@ export async function ingestDependencies(opts: {
       }
     }
 
-    if (opts.syncMode === 'full') {
+    if (opts.syncMode === 'full' && !isFill) {
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
       await rebuildPackageDepsIndexes()
+      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
       await rebuildPackageDepsConstraints()
+      // Finalize after rebuild — marks done with correct finishedAt
+      await mergeStagingToTable({
+        jobId: exportResult.jobId,
+        mergeSql: [],
+        tableNames: [],
+        isFinal: true,
+        priorRowsAffected,
+        priorTableRowCounts,
+      })
     }
   } catch (err) {
-    if (opts.syncMode === 'full') {
+    if (opts.syncMode === 'full' && !isFill) {
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
         await rebuildPackageDepsIndexes()
       } catch (_) {
         /* best-effort */
       }
       try {
+        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
         await rebuildPackageDepsConstraints()
       } catch (_) {
         /* best-effort */

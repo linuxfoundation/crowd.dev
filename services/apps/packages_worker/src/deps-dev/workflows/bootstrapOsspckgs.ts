@@ -63,6 +63,7 @@ export async function bootstrapOsspckgs(opts: {
   depsTableOption?: 'A' | 'B'
   exportName?: string
   snapshotDate?: string // YYYY-MM-DD — override BQ snapshot resolution for all partition-filtered kinds
+  fillConstraints?: boolean // re-export full deps BQ data, upsert version_constraint where NULL
 }): Promise<void> {
   // B3: deterministic timestamps — workflowInfo().startTime is replay-stable; new Date() is not.
   const start = workflowInfo().startTime
@@ -221,6 +222,7 @@ export async function bootstrapOsspckgs(opts: {
           reuseExports: opts.reuseExports,
           depsTableOption: opts.depsTableOption,
           exportName: opts.exportName,
+          fillConstraints: opts.fillConstraints,
         },
       ],
     })
