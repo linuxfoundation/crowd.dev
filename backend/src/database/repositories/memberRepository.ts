@@ -442,7 +442,6 @@ class MemberRepository {
               OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
             )
         )
-        AND mtm.similarity IS NOT NULL
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
