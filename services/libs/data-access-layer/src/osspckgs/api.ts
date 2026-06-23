@@ -1,5 +1,7 @@
 import { QueryExecutor } from '../queryExecutor'
 
+import { STEWARD_DISPLAY_NAME_METADATA, STEWARD_MENTIONED_JOIN } from './stewardships'
+
 export interface PackageMetrics {
   totalPackages: number
   criticalPackages: number
@@ -512,8 +514,10 @@ export async function listPackagesForApi(
     opts.includeLastActivity === true
       ? `
     LEFT JOIN LATERAL (
-      SELECT sa.activity_type, sa.content, sa.metadata, sa.created_at
+      SELECT sa.activity_type, sa.content, sa.created_at,
+        ${STEWARD_DISPLAY_NAME_METADATA} AS metadata
       FROM stewardship_activity sa
+      ${STEWARD_MENTIONED_JOIN}
       WHERE sa.stewardship_id = s.id
       ORDER BY sa.created_at DESC
       LIMIT 1

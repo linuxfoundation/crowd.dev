@@ -351,12 +351,12 @@ export interface ActivityFeedRow {
   total: string
 }
 
-const STEWARD_MENTIONED_JOIN = `
+export const STEWARD_MENTIONED_JOIN = `
   LEFT JOIN stewards st_mentioned
     ON sa.activity_type = 'steward_added'
     AND st_mentioned.user_id = (sa.metadata->>'userId')`
 
-const STEWARD_DISPLAY_NAME_METADATA = `CASE
+export const STEWARD_DISPLAY_NAME_METADATA = `CASE
         WHEN sa.activity_type = 'steward_added' AND st_mentioned.display_name IS NOT NULL
         THEN COALESCE(sa.metadata, '{}'::jsonb) || jsonb_build_object('stewardDisplayName', st_mentioned.display_name)
         ELSE sa.metadata
@@ -607,8 +607,10 @@ export async function listMyPackages(
 
   const displayLaterals = `
     LEFT JOIN LATERAL (
-      SELECT sa.content, sa.activity_type, sa.metadata, sa.created_at
+      SELECT sa.content, sa.activity_type, sa.created_at,
+        ${STEWARD_DISPLAY_NAME_METADATA} AS metadata
       FROM stewardship_activity sa
+      ${STEWARD_MENTIONED_JOIN}
       WHERE sa.stewardship_id = s.id
       ORDER BY sa.created_at DESC
       LIMIT 1
