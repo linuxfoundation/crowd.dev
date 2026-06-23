@@ -37,6 +37,5 @@ SCHEMA >
     `issueMedianTimeToFirstResponseHours` Nullable(Int32) `json:$.record.issue_median_time_to_first_response_hours`
 
 ENGINE ReplacingMergeTree
-ENGINE_PARTITION_KEY toYear(snapshotAt)
 ENGINE_SORTING_KEY repoId
 ENGINE_VER snapshotAt

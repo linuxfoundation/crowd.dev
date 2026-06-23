@@ -352,7 +352,7 @@ SQL >
                 multiIf(
                     coalesce(ro.inRepositories, 0) = 1,
                     'available',
-                    coalesce(mh.maintainersCount, 0) > 0,
+                    coalesce(mh.emailDomains, 0) > 0,
                     'partial',
                     'blocked'
                 ),
@@ -371,7 +371,13 @@ SQL >
                 'dependency_health',
                 if(coalesce(dv.hasDeps, 0) = 1, 'available', 'blocked'),
                 'security_practices',
-                if(r.branchProtectionEnabled IS NULL, 'partial', 'available'),
+                multiIf(
+                    r.repoId IS NULL,
+                    'blocked',
+                    r.branchProtectionEnabled IS NULL,
+                    'partial',
+                    'available'
+                ),
                 'supply_chain_integrity',
                 'blocked',
                 'release_cadence',
