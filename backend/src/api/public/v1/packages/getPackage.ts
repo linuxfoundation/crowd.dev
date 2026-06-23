@@ -74,6 +74,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         osvId: a.osvId,
         severity: a.severity,
         resolution: a.resolution,
+        isCritical: a.isCritical,
       })),
       cvd: {
         isPvrEnabled: null,

@@ -624,6 +624,7 @@ export interface AdvisoryRow {
   osvId: string
   severity: string
   resolution: 'open' | 'patched' | null
+  isCritical: boolean
 }
 
 export async function getPackageDetailByPurl(
@@ -783,13 +784,21 @@ export async function listPackagesForScatter(
 export async function getAdvisoriesByPackageId(
   qx: QueryExecutor,
   packageId: string,
-  opts?: { page: number; pageSize: number; version?: string; severities?: string[] },
+  opts?: {
+    page: number
+    pageSize: number
+    version?: string
+    severities?: string[]
+    resolutions?: ('open' | 'patched')[]
+    critical?: boolean
+  },
 ): Promise<{ rows: AdvisoryRow[]; total: number }> {
   const cte = `
     WITH advisory_data AS (
       SELECT
         a.osv_id AS "osvId",
         LOWER(a.severity) AS severity,
+        a.is_critical AS "isCritical",
         CASE
           WHEN COALESCE($(version), p.latest_version) IS NULL THEN NULL
           WHEN COUNT(ar.id) = 0 THEN NULL
@@ -811,25 +820,36 @@ export async function getAdvisoriesByPackageId(
       LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
       JOIN packages p ON p.id = ap.package_id
       WHERE ap.package_id = $(packageId)::bigint
-      GROUP BY a.osv_id, a.severity, p.latest_version
+      GROUP BY a.osv_id, a.severity, a.is_critical, p.latest_version
     )
   `
 
-  const severityClause = opts?.severities?.length
-    ? `WHERE severity = ANY($(severities)::text[])`
-    : ''
+  const conditions: string[] = []
+  if (opts?.severities?.length) {
+    conditions.push('severity = ANY($(severities)::text[])')
+  }
+  if (opts?.resolutions?.length) {
+    conditions.push('resolution = ANY($(resolutions)::text[])')
+  }
+  if (opts?.critical !== undefined) {
+    conditions.push('"isCritical" = $(critical)')
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   const paginationClause = opts ? `LIMIT $(limit) OFFSET $(offset)` : ''
   const params = {
     packageId,
     version: opts?.version ?? null,
     severities: opts?.severities ?? null,
+    resolutions: opts?.resolutions ?? null,
+    critical: opts?.critical ?? null,
     limit: opts?.pageSize,
     offset: opts ? (opts.page - 1) * opts.pageSize : 0,
   }
 
   const rows = (await qx.select(
     `${cte} SELECT * FROM advisory_data
-     ${severityClause}
+     ${whereClause}
      ORDER BY
        CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'moderate' THEN 3 WHEN 'low' THEN 4 ELSE 5 END,
        CASE resolution WHEN 'open' THEN 1 WHEN 'patched' THEN 2 ELSE 3 END,
@@ -843,7 +863,7 @@ export async function getAdvisoriesByPackageId(
   }
 
   const countResult = (await qx.selectOne(
-    `${cte} SELECT COUNT(*) AS total FROM advisory_data ${severityClause}`,
+    `${cte} SELECT COUNT(*) AS total FROM advisory_data ${whereClause}`,
     params,
   )) as { total: string }
 

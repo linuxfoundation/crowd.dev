@@ -399,18 +399,22 @@ components:
 
     Advisory:
       type: object
-      required: [osvId, severity, resolution]
+      required: [osvId, severity, resolution, isCritical]
       properties:
         osvId:
           type: string
           example: GHSA-xxxx-xxxx-xxxx
         severity:
           type: string
-          enum: [critical, high, medium, low]
+          enum: [critical, high, moderate, low]
           nullable: true
         resolution:
           type: string
+          enum: [open, patched]
           nullable: true
+        isCritical:
+          type: boolean
+          description: True when CVSS score >= 7.0.
 
     PackageHistoryEvent:
       type: object
@@ -1000,6 +1004,30 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: severity
+          in: query
+          required: false
+          description: Filter by severity. Accepts comma-separated values or multiple params.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [critical, high, moderate, low]
+        - name: resolution
+          in: query
+          required: false
+          description: Filter by resolution status. Accepts comma-separated values or multiple params.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [open, patched]
+        - name: critical
+          in: query
+          required: false
+          description: Filter by criticality flag (CVSS >= 7.0).
+          schema:
+            type: boolean
       responses:
         '200':
           description: Paginated advisory list.
