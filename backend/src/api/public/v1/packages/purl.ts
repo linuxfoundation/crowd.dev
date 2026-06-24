@@ -15,8 +15,17 @@
  */
 import { z } from 'zod'
 
+function stripQualifiers(purl: string): string {
+  const q = purl.indexOf('?')
+  const h = purl.indexOf('#')
+  if (q === -1 && h === -1) return purl
+  if (q === -1) return purl.slice(0, h)
+  if (h === -1) return purl.slice(0, q)
+  return purl.slice(0, Math.min(q, h))
+}
+
 export function normalizePurl(purl: string): string {
-  const withoutQualifiers = purl.replace(/[?#].*$/, '')
+  const withoutQualifiers = stripQualifiers(purl)
   const withoutVersion = withoutQualifiers.replace(/@[^/@]+$/, '')
   return withoutVersion.replace(/@/g, '%40')
 }

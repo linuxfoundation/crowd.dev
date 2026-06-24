@@ -399,18 +399,22 @@ components:
 
     Advisory:
       type: object
-      required: [osvId, severity, resolution]
+      required: [osvId, severity, resolution, isCritical]
       properties:
         osvId:
           type: string
           example: GHSA-xxxx-xxxx-xxxx
         severity:
           type: string
-          enum: [critical, high, medium, low]
+          enum: [critical, high, moderate, low]
           nullable: true
         resolution:
           type: string
+          enum: [open, patched]
           nullable: true
+        isCritical:
+          type: boolean
+          description: True when CVSS score >= 7.0.
 
     PackageHistoryEvent:
       type: object
@@ -970,8 +974,9 @@ paths:
       operationId: getAkritesPackageAdvisories
       summary: Get advisories for a package
       description: >
-        Returns all open security advisories for a single package identified by
-        PURL. Intended for lazy-loading the Security tab in the package detail drawer.
+        Returns a paginated list of security advisories for a single package
+        identified by PURL. Intended for lazy-loading the Security tab in the
+        package detail drawer.
       tags:
         - Packages
       parameters:
@@ -982,21 +987,66 @@ paths:
           schema:
             type: string
             example: pkg:npm/%40angular/core@17.0.0
+        - name: page
+          in: query
+          required: false
+          description: Page number (1-based).
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of advisories per page (max 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: severity
+          in: query
+          required: false
+          description: Filter by severity. Accepts comma-separated values or multiple params.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [critical, high, moderate, low]
+        - name: resolution
+          in: query
+          required: false
+          description: Filter by resolution status. Accepts comma-separated values or multiple params.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [open, patched]
+        - name: critical
+          in: query
+          required: false
+          description: Filter by criticality flag (CVSS >= 7.0).
+          schema:
+            type: boolean
       responses:
         '200':
-          description: Advisory list.
+          description: Paginated advisory list.
           content:
             application/json:
               schema:
                 type: object
-                required: [advisories, total]
+                required: [page, pageSize, total, advisories]
                 properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
                   advisories:
                     type: array
                     items:
                       $ref: '#/components/schemas/Advisory'
-                  total:
-                    type: integer
         '400':
           description: Validation error (malformed purl).
           content:

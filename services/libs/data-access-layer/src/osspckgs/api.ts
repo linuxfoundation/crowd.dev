@@ -1,5 +1,11 @@
 import { QueryExecutor } from '../queryExecutor'
 
+import {
+  SEVERITY_RANK_EXPR,
+  STEWARD_DISPLAY_NAME_METADATA,
+  STEWARD_MENTIONED_JOIN,
+} from './sqlFragments'
+
 export interface PackageMetrics {
   totalPackages: number
   criticalPackages: number
@@ -129,7 +135,10 @@ export interface PackageListRow {
   maxVulnSeverity: 'critical' | 'high' | 'medium' | 'low' | null
   maintainerCount: number
   scorecardScore: number | null
+  healthScore: number | null
+  healthLabel: string | null
   latestReleaseAt: Date | null
+  lifecycleLabel: string | null
   lastActivityType?: string | null
   lastActivityContent?: string | null
   lastActivityMetadata?: Record<string, unknown> | null
@@ -138,7 +147,7 @@ export interface PackageListRow {
   total: string
 }
 
-export type HealthBand = 'healthy' | 'fair' | 'concerning' | 'critical'
+export type HealthBand = 'excellent' | 'healthy' | 'fair' | 'concerning' | 'critical'
 export type VulnSeverityFilter = 'any' | 'high' | 'critical' | 'none'
 
 export function computeHealthBand(scorecardScore: number | null): HealthBand {
@@ -146,6 +155,13 @@ export function computeHealthBand(scorecardScore: number | null): HealthBand {
   if (scorecardScore < 5.0) return 'concerning'
   if (scorecardScore < 7.0) return 'fair'
   return 'healthy'
+}
+
+export function buildHealthBandCondition(scoreColumn: string, band: HealthBand): string {
+  if (band === 'healthy') return `${scoreColumn} >= 7.0`
+  if (band === 'fair') return `${scoreColumn} >= 5.0 AND ${scoreColumn} < 7.0`
+  if (band === 'concerning') return `${scoreColumn} >= 3.0 AND ${scoreColumn} < 5.0`
+  return `(${scoreColumn} IS NULL OR ${scoreColumn} < 3.0)`
 }
 
 export interface ListPackagesOptions {
@@ -167,16 +183,9 @@ export interface ListPackagesOptions {
   sortDir: 'asc' | 'desc'
 }
 
-const STALE_MONTHS = 18
+export { SEVERITY_RANK_EXPR } from './sqlFragments'
 
-// Severity stored as uppercase in advisories table.
-// Ranks: CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1
-export const SEVERITY_RANK_EXPR = `MAX(CASE a.severity
-    WHEN 'CRITICAL' THEN 4
-    WHEN 'HIGH'     THEN 3
-    WHEN 'MEDIUM'   THEN 2
-    WHEN 'LOW'      THEN 1
-    ELSE 0 END)::int`
+const STALE_MONTHS = 18
 
 export interface PackageStatusCounts {
   all: number
@@ -233,11 +242,14 @@ export async function getPackageStatusCounts(
   }
 
   if (opts.lifecycle) {
-    conditions.push('p.status IS NOT NULL')
+    conditions.push('p.lifecycle_label = $(lifecycle)')
+    params.lifecycle = opts.lifecycle
   }
 
   if (opts.healthBand) {
-    if (opts.healthBand === 'healthy') {
+    if (opts.healthBand === 'excellent') {
+      conditions.push("p.health_label = 'excellent'")
+    } else if (opts.healthBand === 'healthy') {
       conditions.push('r_sc.scorecard_score >= 7.0')
     } else if (opts.healthBand === 'fair') {
       conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
@@ -355,11 +367,9 @@ export async function listPackagesForApi(
     params.purl = `%${opts.purl}%`
   }
 
-  // Exclude packages with no registry status when a lifecycle filter is active.
-  // Full lifecycle column support is pending; this prevents null-lifecycle rows
-  // from leaking into filtered results.
   if (opts.lifecycle) {
-    conditions.push('p.status IS NOT NULL')
+    conditions.push('p.lifecycle_label = $(lifecycle)')
+    params.lifecycle = opts.lifecycle
   }
 
   if (opts.status) {
@@ -375,7 +385,10 @@ export async function listPackagesForApi(
   if (opts.healthBand) {
     // scorecard_score is 0–10; multiply by 10 to get 0–100 health score.
     // Packages with no linked repo (scorecard_score IS NULL) fall into 'critical'.
-    if (opts.healthBand === 'healthy') {
+    // 'excellent' is Tinybird-enriched (health_score ≥ 85); filter on the stored label directly.
+    if (opts.healthBand === 'excellent') {
+      conditions.push("p.health_label = 'excellent'")
+    } else if (opts.healthBand === 'healthy') {
       conditions.push('r_sc.scorecard_score >= 7.0')
     } else if (opts.healthBand === 'fair') {
       conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
@@ -512,8 +525,10 @@ export async function listPackagesForApi(
     opts.includeLastActivity === true
       ? `
     LEFT JOIN LATERAL (
-      SELECT sa.activity_type, sa.content, sa.metadata, sa.created_at
+      SELECT sa.activity_type, sa.content, sa.created_at,
+        ${STEWARD_DISPLAY_NAME_METADATA} AS metadata
       FROM stewardship_activity sa
+      ${STEWARD_MENTIONED_JOIN}
       WHERE sa.stewardship_id = s.id
       ORDER BY sa.created_at DESC
       LIMIT 1
@@ -543,9 +558,12 @@ export async function listPackagesForApi(
       END AS "maxVulnSeverity",
       pm_counts.cnt AS "maintainerCount",
       r_sc.scorecard_score AS "scorecardScore",
+      p.health_score AS "healthScore",
+      p.health_label AS "healthLabel",
+      p.lifecycle_label AS "lifecycleLabel",
       p.latest_release_at AS "latestReleaseAt",
       ${opts.includeLastActivity === true ? `last_act.activity_type AS "lastActivityType", last_act.content AS "lastActivityContent", last_act.metadata AS "lastActivityMetadata", last_act.created_at AS "lastActivityAt",` : ''}
-      ${opts.includeStewards === true ? "COALESCE(ss_agg.stewards, '[]'::json) AS stewards," : ''}
+      ${opts.includeStewards === true ? 'ss_agg.stewards AS stewards,' : ''}
       COUNT(*) OVER() AS total
     FROM packages p
     ${laterals}
@@ -610,12 +628,21 @@ export interface PackageDetailRow {
   downloadsLast30d: string | null
   maintainerCount: number
   transitiveReach: number | null
+  // Tinybird-enriched health fields
+  healthScore: number | null
+  healthLabel: string | null
+  maintainerHealthScore: number | null
+  securitySupplyChainScore: number | null
+  developmentActivityScore: number | null
+  lifecycleLabel: string | null
+  signalCoverageHealth: Record<string, unknown> | null
 }
 
 export interface AdvisoryRow {
   osvId: string
   severity: string
   resolution: 'open' | 'patched' | null
+  isCritical: boolean
 }
 
 export async function getPackageDetailByPurl(
@@ -663,6 +690,13 @@ export async function getPackageDetailByPurl(
         LIMIT 1
       ) AS "downloadsLast30d",
       (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
+      p.health_score AS "healthScore",
+      p.health_label AS "healthLabel",
+      p.maintainer_health_score AS "maintainerHealthScore",
+      p.security_supply_chain_score AS "securitySupplyChainScore",
+      p.development_activity_score AS "developmentActivityScore",
+      p.lifecycle_label AS "lifecycleLabel",
+      p.signal_coverage_health AS "signalCoverageHealth",
       -- TODO: precompute and store in packages.transitive_reach_prank; full window scan is too slow at npm scale (~24s for npm)
       -- (
       --   SELECT r.prank
@@ -775,35 +809,86 @@ export async function listPackagesForScatter(
 export async function getAdvisoriesByPackageId(
   qx: QueryExecutor,
   packageId: string,
-): Promise<AdvisoryRow[]> {
-  return qx.select(
-    `
-    SELECT
-      a.osv_id AS "osvId",
-      LOWER(a.severity) AS severity,
-      CASE
-        WHEN p.latest_version IS NULL THEN NULL
-        WHEN COUNT(ar.id) = 0 THEN NULL
-        -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
-        -- Replace with a proper semver comparison function when one is available in the DB.
-        WHEN BOOL_AND(
-          CASE
-            WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
-            WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
-            WHEN ar.fixed_version IS NOT NULL THEN FALSE
-            WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
-            ELSE FALSE
-          END
-        ) THEN 'patched'
-        ELSE 'open'
-      END AS resolution
-    FROM advisory_packages ap
-    JOIN advisories a ON a.id = ap.advisory_id
-    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
-    JOIN packages p ON p.id = ap.package_id
-    WHERE ap.package_id = $(packageId)::bigint
-    GROUP BY a.osv_id, a.severity, p.latest_version
-    `,
-    { packageId },
-  )
+  opts?: {
+    page: number
+    pageSize: number
+    severities?: string[]
+    resolutions?: ('open' | 'patched')[]
+    critical?: boolean
+  },
+): Promise<{ rows: AdvisoryRow[]; total: number }> {
+  const cte = `
+    WITH advisory_data AS (
+      SELECT
+        a.osv_id AS "osvId",
+        LOWER(a.severity) AS severity,
+        a.is_critical AS "isCritical",
+        CASE
+          WHEN p.latest_version IS NULL THEN NULL
+          WHEN COUNT(ar.id) = 0 THEN NULL
+          -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
+          -- Replace with a proper semver comparison function when one is available in the DB.
+          WHEN BOOL_AND(
+            CASE
+              WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
+              WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
+              WHEN ar.fixed_version IS NOT NULL THEN FALSE
+              WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
+              ELSE FALSE
+            END
+          ) THEN 'patched'
+          ELSE 'open'
+        END AS resolution
+      FROM advisory_packages ap
+      JOIN advisories a ON a.id = ap.advisory_id
+      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+      JOIN packages p ON p.id = ap.package_id
+      WHERE ap.package_id = $(packageId)::bigint
+      GROUP BY a.osv_id, a.severity, a.is_critical, p.latest_version
+    )
+  `
+
+  const conditions: string[] = []
+  if (opts?.severities?.length) {
+    conditions.push('severity = ANY($(severities)::text[])')
+  }
+  if (opts?.resolutions?.length) {
+    conditions.push('resolution = ANY($(resolutions)::text[])')
+  }
+  if (opts?.critical !== undefined) {
+    conditions.push('"isCritical" = $(critical)')
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  const paginationClause = opts ? `LIMIT $(limit) OFFSET $(offset)` : ''
+  const params = {
+    packageId,
+    severities: opts?.severities ?? null,
+    resolutions: opts?.resolutions ?? null,
+    critical: opts?.critical ?? null,
+    limit: opts?.pageSize,
+    offset: opts ? (opts.page - 1) * opts.pageSize : 0,
+  }
+
+  const rows = (await qx.select(
+    `${cte} SELECT * FROM advisory_data
+     ${whereClause}
+     ORDER BY
+       CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'moderate' THEN 3 WHEN 'low' THEN 4 ELSE 5 END,
+       CASE resolution WHEN 'open' THEN 1 WHEN 'patched' THEN 2 ELSE 3 END,
+       "osvId"
+     ${paginationClause}`,
+    params,
+  )) as AdvisoryRow[]
+
+  if (!opts) {
+    return { rows, total: rows.length }
+  }
+
+  const countResult = (await qx.selectOne(
+    `${cte} SELECT COUNT(*) AS total FROM advisory_data ${whereClause}`,
+    params,
+  )) as { total: string }
+
+  return { rows, total: Number(countResult.total) }
 }
