@@ -291,6 +291,11 @@ components:
                     - integer
                     - 'null'
                   example: 18
+                label:
+                  type:
+                    - string
+                    - 'null'
+                  example: Good
             impact:
               type:
                 - object
@@ -466,6 +471,12 @@ components:
         history:
           type: object
           description: Package history data. Empty in v1.
+        signalCoverageHealth:
+          type:
+            - object
+            - 'null'
+          description: Signal coverage health data enriched by Tinybird. Null until enriched.
+          additionalProperties: true
 
     # ── Metrics ──────────────────────────────────────────────────────────────────
 

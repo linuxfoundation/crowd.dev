@@ -618,6 +618,14 @@ export interface PackageDetailRow {
   downloadsLast30d: string | null
   maintainerCount: number
   transitiveReach: number | null
+  // Tinybird-enriched health fields
+  healthScore: number | null
+  healthLabel: string | null
+  maintainerHealthScore: number | null
+  securitySupplyChainScore: number | null
+  developmentActivityScore: number | null
+  lifecycleLabel: string | null
+  signalCoverageHealth: Record<string, unknown> | null
 }
 
 export interface AdvisoryRow {
@@ -672,6 +680,13 @@ export async function getPackageDetailByPurl(
         LIMIT 1
       ) AS "downloadsLast30d",
       (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
+      p.health_score AS "healthScore",
+      p.health_label AS "healthLabel",
+      p.maintainer_health_score AS "maintainerHealthScore",
+      p.security_supply_chain_score AS "securitySupplyChainScore",
+      p.development_activity_score AS "developmentActivityScore",
+      p.lifecycle_label AS "lifecycleLabel",
+      p.signal_coverage_health AS "signalCoverageHealth",
       -- TODO: precompute and store in packages.transitive_reach_prank; full window scan is too slow at npm scale (~24s for npm)
       -- (
       --   SELECT r.prank
