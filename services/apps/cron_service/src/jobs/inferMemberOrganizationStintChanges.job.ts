@@ -15,9 +15,9 @@ import {
   fetchMemberOrganizationsBySource,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
-import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members/base'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
+import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members/base'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { REDIS_CONFIG, RedisCache, RedisClient, getRedisClient } from '@crowd/redis'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
@@ -53,10 +53,7 @@ const job: IJobDefinition = {
         const member = await findMemberById(qx, memberId, [MemberField.ID])
 
         if (!member) {
-          ctx.log.warn(
-            { memberId },
-            'Member no longer exists, removing from queue.',
-          )
+          ctx.log.warn({ memberId }, 'Member no longer exists, removing from queue.')
 
           await purgeMember(redis, memberId)
           continue
