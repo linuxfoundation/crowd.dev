@@ -5,7 +5,7 @@ const ZERO_TIME = '0001-01-01T00:00:00Z'
 
 // GOPROXY spec: uppercase letters in a module path are escaped as '!' + lowercase.
 export function escapeModulePath(module: string): string {
-  return module.replace(/[A-Z]/g, (c) => '!' + c.toLowerCase())
+  return module.replace(/!/g, '!!').replace(/[A-Z]/g, (c) => '!' + c.toLowerCase())
 }
 
 export async function fetchLatest(

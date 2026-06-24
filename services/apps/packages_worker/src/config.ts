@@ -66,7 +66,7 @@ export function getCargoConfig() {
 export function getGoConfig() {
   return {
     fetchTimeoutMs: parseInt(process.env.GO_FETCH_TIMEOUT_MS ?? '15000', 10),
-    proxyConcurrency: parseInt(process.env.GO_PROXY_CONCURRENCY ?? '10', 10),
+    proxyConcurrency: Math.max(1, parseInt(process.env.GO_PROXY_CONCURRENCY ?? '10', 10)),
   }
 }
 

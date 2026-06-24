@@ -55,7 +55,11 @@ async function getPage(url: string, timeoutMs: number): Promise<VersionsPage | F
       return { kind: 'NOT_FOUND', statusCode: res.status, message: `${res.status}` }
     }
     if (res.status !== 200) {
-      return { kind: 'TRANSIENT', statusCode: res.status, message: `unexpected status ${res.status}` }
+      return {
+        kind: 'TRANSIENT',
+        statusCode: res.status,
+        message: `unexpected status ${res.status}`,
+      }
     }
     try {
       return (await res.json()) as VersionsPage
@@ -73,12 +77,14 @@ async function getPage(url: string, timeoutMs: number): Promise<VersionsPage | F
 export async function fetchStatus(
   module: string,
   timeoutMs: number,
+  onHeartbeat?: () => void,
 ): Promise<GoStatusResult | FetchError> {
   let token: string | undefined
   let versionsCount: number | null = null
   for (let page = 0; page < MAX_PAGES; page++) {
     const url = `${BASE}/v1beta/versions/${module}${token ? `?token=${encodeURIComponent(token)}` : ''}`
     const result = await getPage(url, timeoutMs)
+    onHeartbeat?.()
     if (isFetchError(result)) return result
 
     if (versionsCount === null && typeof result.total === 'number') versionsCount = result.total
@@ -86,7 +92,10 @@ export async function fetchStatus(
     const latestVersion = items.find((i) => i.latestVersion)?.latestVersion
     const match = latestVersion ? items.find((i) => i.version === latestVersion) : undefined
     if (match) {
-      return { status: match.deprecated || match.retracted ? 'deprecated' : 'active', versionsCount }
+      return {
+        status: match.deprecated || match.retracted ? 'deprecated' : 'active',
+        versionsCount,
+      }
     }
 
     if (!result.nextPageToken) break

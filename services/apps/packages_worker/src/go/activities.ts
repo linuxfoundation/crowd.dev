@@ -16,6 +16,7 @@ const log = getServiceChildLogger('go')
 const PROXY_SOURCE = 'go-proxy'
 const PKGGODEV_SOURCE = 'pkg-go-dev'
 
+// TODO: filter to critical packages once computed
 async function getGoBatch(
   qx: QueryExecutor,
   afterPurl: string,
@@ -24,7 +25,7 @@ async function getGoBatch(
   return qx.select(
     `SELECT purl, name FROM packages
      WHERE ecosystem = 'go' AND purl > $(after)
-     ORDER BY purl ASC
+     ORDER BY last_synced_at ASC NULLS FIRST, purl ASC
      LIMIT $(limit)`,
     { after: afterPurl, limit: batchSize },
   )
@@ -68,7 +69,12 @@ export async function enrichGoVersionsBatch(
          (SELECT v FROM old) IS DISTINCT FROM (SELECT v FROM upd) AS v_changed,
          (SELECT t FROM old) IS DISTINCT FROM (SELECT t FROM upd) AS t_changed,
          (SELECT r FROM old) IS DISTINCT FROM (SELECT r FROM upd) AS r_changed`,
-      { version: result.version, releaseAt: result.releaseAt, repoUrl: result.repoUrl, purl: row.purl },
+      {
+        version: result.version,
+        releaseAt: result.releaseAt,
+        repoUrl: result.repoUrl,
+        purl: row.purl,
+      },
     )
     const changedFields = [
       changed?.v_changed ? 'packages.latest_version' : null,
@@ -96,8 +102,9 @@ export async function enrichGoStatusBatch(
 
   const { fetchTimeoutMs } = getGoConfig()
   for (const row of rows) {
-    Context.current().heartbeat(row.purl)
-    const result = await fetchStatus(row.name, fetchTimeoutMs)
+    const result = await fetchStatus(row.name, fetchTimeoutMs, () =>
+      Context.current().heartbeat(row.purl),
+    )
     if (isFetchError(result)) {
       log.warn(
         { purl: row.purl, name: row.name, kind: result.kind, statusCode: result.statusCode },
