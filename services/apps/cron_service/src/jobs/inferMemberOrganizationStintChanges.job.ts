@@ -15,9 +15,9 @@ import {
   fetchMemberOrganizationsBySource,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
+import { MemberField, findMemberById } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
-import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members/base'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { REDIS_CONFIG, RedisCache, RedisClient, getRedisClient } from '@crowd/redis'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
@@ -48,21 +48,21 @@ const job: IJobDefinition = {
 
     for (const memberId of memberIds) {
       try {
+        const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+        const rawMembers = await redis.sMembers(datesKey)
+
+        if (!rawMembers?.length) {
+          await purgeMember(redis, memberId)
+          continue
+        }
+
         // Skip if the member was hard-deleted (e.g., due to merge) after being queued.
-        // This prevents memberOrganizations foreign key violations from stale Redis entries.
+        // This prevents memberOrganizations foreign key (FK) violations from stale Redis entries.
         const member = await findMemberById(qx, memberId, [MemberField.ID])
 
         if (!member) {
           ctx.log.warn({ memberId }, 'Member no longer exists, removing from queue.')
 
-          await purgeMember(redis, memberId)
-          continue
-        }
-
-        const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
-        const rawMembers = await redis.sMembers(datesKey)
-
-        if (!rawMembers?.length) {
           await purgeMember(redis, memberId)
           continue
         }
