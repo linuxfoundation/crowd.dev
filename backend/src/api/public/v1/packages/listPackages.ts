@@ -1,7 +1,11 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { getPackageStatusCounts, listPackagesForApi } from '@crowd/data-access-layer'
+import {
+  computeHealthBand,
+  getPackageStatusCounts,
+  listPackagesForApi,
+} from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
@@ -84,9 +88,12 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     purl: r.purl,
     name: r.name,
     ecosystem: r.ecosystem,
-    health: r.scorecardScore != null ? Math.round(Number(r.scorecardScore) * 10) : null,
+    health: {
+      score: r.scorecardScore != null ? Math.round(Number(r.scorecardScore) * 10) : null,
+      label: r.healthLabel ?? computeHealthBand(r.scorecardScore),
+    },
     impact: r.criticalityScore != null ? Math.round(Number(r.criticalityScore) * 100) : null,
-    lifecycle: null,
+    lifecycle: r.lifecycleLabel,
     maintainerBusFactor: r.maintainerCount,
     openVulns: r.openVulns,
     stewardshipId: r.stewardshipId ?? null,

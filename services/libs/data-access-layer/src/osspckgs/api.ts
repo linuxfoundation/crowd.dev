@@ -135,7 +135,9 @@ export interface PackageListRow {
   maxVulnSeverity: 'critical' | 'high' | 'medium' | 'low' | null
   maintainerCount: number
   scorecardScore: number | null
+  healthLabel: string | null
   latestReleaseAt: Date | null
+  lifecycleLabel: string | null
   lastActivityType?: string | null
   lastActivityContent?: string | null
   lastActivityMetadata?: Record<string, unknown> | null
@@ -551,7 +553,9 @@ export async function listPackagesForApi(
       END AS "maxVulnSeverity",
       pm_counts.cnt AS "maintainerCount",
       r_sc.scorecard_score AS "scorecardScore",
+      p.health_label AS "healthLabel",
       p.latest_release_at AS "latestReleaseAt",
+      p.lifecycle_label AS "lifecycleLabel",
       ${opts.includeLastActivity === true ? `last_act.activity_type AS "lastActivityType", last_act.content AS "lastActivityContent", last_act.metadata AS "lastActivityMetadata", last_act.created_at AS "lastActivityAt",` : ''}
       ${opts.includeStewards === true ? 'ss_agg.stewards AS stewards,' : ''}
       COUNT(*) OVER() AS total

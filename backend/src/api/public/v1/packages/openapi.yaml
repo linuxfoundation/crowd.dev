@@ -180,10 +180,20 @@ components:
           type: string
           example: npm
         health:
-          type:
-            - integer
-            - 'null'
-          example: 18
+          type: object
+          required: [score, label]
+          properties:
+            score:
+              type:
+                - integer
+                - 'null'
+              description: Health score (0–100) derived from OpenSSF Scorecard. Null if no repo is linked.
+              example: 18
+            label:
+              type: string
+              enum: [healthy, fair, concerning, critical]
+              description: 'Derived from score: healthy ≥70, fair 50–69, concerning 30–49, critical <30 or null.'
+              example: critical
         impact:
           type:
             - integer
@@ -814,7 +824,9 @@ paths:
                     name: lodash
                     ecosystem: npm
                     lifecycle: declining
-                    health: 18
+                    health:
+                      score: 18
+                      label: critical
                     impact: 71
                     openVulns:
                       low: 0
