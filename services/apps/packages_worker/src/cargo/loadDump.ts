@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs'
 import * as path from 'node:path'
+import { createInterface } from 'node:readline'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { CopyStreamQuery, from as copyFrom } from 'pg-copy-streams'
@@ -14,55 +15,59 @@ const log = getServiceChildLogger('cargo-load')
 
 export const STAGING_SCHEMA = 'cargo_sync'
 
-// Column order matches each CSV header exactly so COPY FROM STDIN CSV HEADER maps by position.
-const STAGING_DDL = `
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.crates CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.crates (
-    created_at text, description text, documentation text, homepage text,
-    id integer, max_features text, max_upload_size text, name text,
-    readme text, repository text, trustpub_only text, updated_at text
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.versions CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.versions (
-    bin_names text, categories text, checksum text, crate_id integer,
-    crate_size text, created_at text, description text, documentation text,
-    downloads text, edition text, features text, has_lib text, homepage text,
-    id integer, keywords text, license text, links text, num text,
-    num_no_build text, published_by text, repository text, rust_version text,
-    updated_at text, yanked text
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.default_versions CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.default_versions (
-    crate_id integer, num_versions integer, version_id integer
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.version_downloads CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.version_downloads (
-    date date, downloads integer, version_id integer
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.dependencies CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.dependencies (
-    crate_id integer, default_features text, explicit_name text, features text,
-    id integer, kind integer, optional text, req text, target text,
-    version_id integer
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.keywords CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.keywords (
-    crates_cnt integer, created_at text, id integer, keyword text
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.crates_keywords CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.crates_keywords (
-    crate_id integer, keyword_id integer
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.crate_owners CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.crate_owners (
-    crate_id integer, created_at text, created_by text, owner_id integer,
-    owner_kind integer
-  );
-  DROP TABLE IF EXISTS ${STAGING_SCHEMA}.oauth_github CASCADE;
-  CREATE TABLE ${STAGING_SCHEMA}.oauth_github (
-    account_id text, avatar text, login text, user_id integer
-  );
-`
+const COLUMN_TYPES: Record<string, Record<string, string>> = {
+  crates: { id: 'integer' },
+  versions: { crate_id: 'integer', id: 'integer' },
+  default_versions: { crate_id: 'integer', num_versions: 'integer', version_id: 'integer' },
+  version_downloads: { date: 'date', downloads: 'integer', version_id: 'integer' },
+  dependencies: { crate_id: 'integer', id: 'integer', kind: 'integer', version_id: 'integer' },
+  keywords: { crates_cnt: 'integer', id: 'integer' },
+  crates_keywords: { crate_id: 'integer', keyword_id: 'integer' },
+  crate_owners: { crate_id: 'integer', owner_id: 'integer', owner_kind: 'integer' },
+  oauth_github: { user_id: 'integer' },
+}
+
+const REQUIRED_COLUMNS: Record<string, string[]> = {
+  crates: ['id', 'name', 'description', 'homepage', 'repository'],
+  versions: ['id', 'crate_id', 'created_at', 'num', 'license', 'yanked'],
+  default_versions: ['crate_id', 'version_id'],
+  version_downloads: ['date', 'downloads', 'version_id'],
+  dependencies: ['crate_id', 'version_id', 'kind'],
+  keywords: ['id', 'keyword'],
+  crates_keywords: ['crate_id', 'keyword_id'],
+  crate_owners: ['crate_id', 'owner_id', 'owner_kind'],
+  oauth_github: ['user_id', 'login'],
+}
+
+async function readCsvHeader(csvPath: string): Promise<string[]> {
+  const source = createReadStream(csvPath)
+  const rl = createInterface({ input: source, crlfDelay: Infinity })
+  try {
+    for await (const line of rl) {
+      return line.split(',').map((c) => c.trim())
+    }
+  } finally {
+    rl.close()
+    source.destroy()
+  }
+  throw new Error(`CSV has no header line: ${csvPath}`)
+}
+
+async function buildStagingTable(qx: QueryExecutor, table: string, csvPath: string): Promise<void> {
+  const cols = await readCsvHeader(csvPath)
+  const missing = (REQUIRED_COLUMNS[table] ?? []).filter((c) => !cols.includes(c))
+  if (missing.length) {
+    throw new Error(
+      `cargo dump ${table}.csv is missing required column(s) [${missing.join(', ')}] — ` +
+        `crates.io schema changed; header was [${cols.join(', ')}]`,
+    )
+  }
+  const types = COLUMN_TYPES[table] ?? {}
+  const ddl = cols.map((c) => `"${c.replace(/"/g, '""')}" ${types[c] ?? 'text'}`).join(', ')
+  await qx.result(
+    `DROP TABLE IF EXISTS ${STAGING_SCHEMA}.${table} CASCADE; CREATE TABLE ${STAGING_SCHEMA}.${table} (${ddl})`,
+  )
+}
 
 // crates.csv needs NUL stripping — readme blobs contain 0x00 bytes that COPY rejects.
 const CSV_FILES: Array<{ table: string; file: string; stripNul?: boolean }> = [
@@ -92,7 +97,9 @@ async function copyCsv(
 ): Promise<number> {
   const con = await db.connect()
   try {
-    // @types/pg-copy-streams Submittable doesn't match @types/pg's query overload.
+    // pg-promise's bundled IClient.query types only return Promise<IResult> — they lack node-pg's
+    // `query<T extends Submittable>(qs: T): T` stream overload. At runtime con.client IS a node-pg
+    // Client and returns the CopyStreamQuery, so cast through to recover it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: CopyStreamQuery = (con.client as any).query(
       copyFrom(`COPY ${STAGING_SCHEMA}.${table} FROM STDIN CSV HEADER`),
@@ -265,14 +272,13 @@ export async function loadDump(
   const dataDir = path.join(dumpDir, 'data')
 
   log.info('Creating staging schema...')
-  await qx.result(
-    `CREATE SCHEMA IF NOT EXISTS ${STAGING_SCHEMA};
-     ${STAGING_DDL}`,
-  )
+  await qx.result(`CREATE SCHEMA IF NOT EXISTS ${STAGING_SCHEMA}`)
 
   const counts: Record<string, number> = {}
   for (const { table, file, stripNul: doStripNul } of CSV_FILES) {
-    counts[table] = await copyCsv(db, table, path.join(dataDir, file), doStripNul ?? false)
+    const csvPath = path.join(dataDir, file)
+    await buildStagingTable(qx, table, csvPath)
+    counts[table] = await copyCsv(db, table, csvPath, doStripNul ?? false)
     log.info({ table, rows: counts[table] }, 'Loaded staging table')
   }
 

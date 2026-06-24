@@ -1,4 +1,7 @@
-import { getLastCompletedJobRowCount as dalGetLastCompletedJobRowCount } from '@crowd/data-access-layer'
+import {
+  OsspckgsJobKind,
+  getLastCompletedJobRowCount as dalGetLastCompletedJobRowCount,
+} from '@crowd/data-access-layer'
 import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 
 import { getPackagesDb } from '../../db'
@@ -6,6 +9,9 @@ import { getPackagesDb } from '../../db'
 export interface CheckDependentCountsGuardInput {
   currentRowCount: number
   snapshotDate: string
+  // Which dependent-counts job kind to baseline against. The three ways each guard against their
+  // own history: 'dependent_counts' (edges) | 'dependent_counts_go' | 'dependent_counts_nuget'.
+  jobKind?: OsspckgsJobKind
 }
 
 export interface CheckDependentCountsGuardOutput {
@@ -20,7 +26,8 @@ export async function checkDependentCountsGuard(
   input: CheckDependentCountsGuardInput,
 ): Promise<CheckDependentCountsGuardOutput> {
   const qx = await getPackagesDb()
-  const prevRowCount = await dalGetLastCompletedJobRowCount(qx, 'dependent_counts')
+  const jobKind = input.jobKind ?? 'dependent_counts'
+  const prevRowCount = await dalGetLastCompletedJobRowCount(qx, jobKind)
 
   if (prevRowCount === null || prevRowCount <= 0) {
     return { ok: true, prevRowCount, dropPct: null }
@@ -32,7 +39,7 @@ export async function checkDependentCountsGuard(
     sendSlackNotification(
       SlackChannel.CDP_CRITICAL_ALERTS,
       SlackPersona.CRITICAL_ALERTER,
-      ':warning: dependent_counts row count anomaly detected',
+      `:warning: ${jobKind} row count anomaly detected`,
       [
         {
           title: 'Snapshot',

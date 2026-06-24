@@ -25,6 +25,13 @@ export interface BqExportToGcsInput {
   reuseExports?: boolean
   exportName?: string
   ecosystems?: string[]
+  // Script mode (GO/NUGET reverse transitive closure). When true, `sql` is a full multi-statement
+  // BQ script (semi-naive fixpoint over TEMP tables) that ends by creating `TEMP TABLE _export_data`
+  // holding the final result set. The activity appends only the EXPORT DATA statement instead of
+  // wrapping `sql` in a subquery (a script cannot be a subquery). The up-front dry-run ceiling check
+  // is replaced by a server-side maximumBytesBilled cap, since a dry-run only validates the first
+  // statement and cannot predict the WHILE loop's total scan. See ADR-0004.
+  isScript?: boolean
 }
 
 export interface BqExportToGcsOutput {
@@ -45,6 +52,7 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     reuseExports,
     exportName,
     ecosystems,
+    isScript,
   } = input
 
   // Named exports use a stable GCS path independent of runId so they survive across bootstrap runs.
@@ -159,11 +167,8 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     }
   }
 
-  // M4: explicit location to avoid cross-region error when account default != US
-  const [dryRunJob] = await bigquery.createQueryJob({ query: sql, dryRun: true, location: 'US' })
-  const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
-  log.info({ jobKind, dryRunBytes, maxBytesGb }, 'BQ dry-run complete')
-
+  // Resolve the effective byte ceiling first — both the single-SELECT dry-run check and the
+  // script-mode maximumBytesBilled cap derive from it.
   // Override table is in src/deps-dev/README.md — update it when adding new job kinds.
   // Mode-specific key takes precedence over the generic key (needed for kinds like "packages"
   // that have separate full/incremental ceilings: BQ_DATASET_INGEST_PACKAGES_FULL_MAX_BQ_GB).
@@ -182,10 +187,21 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   }
   const effectiveMaxBytesGb = envOverride !== undefined ? Number(envOverride) : maxBytesGb
   const ceiling = effectiveMaxBytesGb * 1e9
-  if (dryRunBytes > ceiling) {
-    throw new Error(
-      `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,
-    )
+
+  // Single-SELECT exports: dry-run up-front, abort if the scan exceeds the ceiling.
+  // Script exports (isScript): a dry-run only validates the first statement and cannot price the
+  // semi-naive WHILE loop, so the dry-run is skipped here; the ceiling is instead enforced
+  // server-side via maximumBytesBilled on the real job below (see ADR-0004).
+  if (!isScript) {
+    // M4: explicit location to avoid cross-region error when account default != US
+    const [dryRunJob] = await bigquery.createQueryJob({ query: sql, dryRun: true, location: 'US' })
+    const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
+    log.info({ jobKind, dryRunBytes, maxBytesGb }, 'BQ dry-run complete')
+    if (dryRunBytes > ceiling) {
+      throw new Error(
+        `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,
+      )
+    }
   }
 
   const provisionalDate = snapshotAt ? new Date(snapshotAt) : null
@@ -196,12 +212,14 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     ...(ecosystems ? { tableRowCounts: { 'meta:ecosystems': ecosystems } } : {}),
   })
 
-  // B9: wrap in SELECT * FROM (...) so QUALIFY / top-level set ops don't break EXPORT DATA syntax.
-  // CREATE TEMP TABLE first so BQ materializes the result before exporting — direct EXPORT DATA
-  // from a subquery produces O(rows) micro-files (~1 KB each); a temp table forces proper sharding.
-  const innerSql = sql.replace(/;\s*$/, '')
-  const exportSql = `
-CREATE TEMP TABLE _export_data AS SELECT * FROM (${innerSql});
+  // Both modes finish by exporting from a `_export_data` TEMP table — materializing first forces
+  // BQ to shard the parquet output properly (direct EXPORT DATA from a subquery emits O(rows)
+  // ~1 KB micro-files).
+  // - Single-SELECT: wrap `sql` in SELECT * FROM (...) so QUALIFY / top-level set ops don't break
+  //   the CREATE TEMP TABLE, then export.
+  // - Script (isScript): the script already builds `_export_data` as its final statement, so we
+  //   append only the EXPORT DATA — its temp tables run inline and auto-drop when the session ends.
+  const exportTail = `
 EXPORT DATA OPTIONS(
   uri='${gcsPrefix}*.parquet',
   format='PARQUET',
@@ -209,10 +227,19 @@ EXPORT DATA OPTIONS(
   overwrite=true
 ) AS SELECT * FROM _export_data;
 `
+  const exportSql = isScript
+    ? `${sql.replace(/;\s*$/, '')};\n${exportTail}`
+    : `\nCREATE TEMP TABLE _export_data AS SELECT * FROM (${sql.replace(/;\s*$/, '')});\n${exportTail}`
 
-  log.info({ jobKind, jobId, gcsPrefix }, 'Starting BQ export')
+  log.info({ jobKind, jobId, gcsPrefix, isScript: Boolean(isScript) }, 'Starting BQ export')
 
-  const [job] = await bigquery.createQueryJob({ query: exportSql, location: 'US' })
+  const [job] = await bigquery.createQueryJob({
+    query: exportSql,
+    location: 'US',
+    // Server-side runaway guard for script mode — aborts the job if a statement scans beyond the
+    // ceiling. Single-SELECT mode is already gated by the dry-run check above.
+    ...(isScript ? { maximumBytesBilled: String(Math.floor(ceiling)) } : {}),
+  })
   await job.promise()
   const bqStats = await extractBqStats(job, bigquery)
 

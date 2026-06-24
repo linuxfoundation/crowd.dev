@@ -33,9 +33,12 @@ type JobKind =
   | 'advisories'
   | 'advisory_packages'
   | 'dependent_counts'
+  | 'dependent_counts_go'
+  | 'dependent_counts_nuget'
 
 // deps.dev retains weekly snapshots for ~3 years; 1095 days (3 years) gives comfortable headroom.
 // advisories/advisory_packages use AdvisoriesLatest (no partition history) → effectively unlimited.
+// dependent_counts_go/_nuget read *RequirementsLatest (no partition history) → effectively unlimited.
 const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   packages: 1095,
   repos: 1095,
@@ -45,6 +48,8 @@ const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   advisories: 999_999,
   advisory_packages: 999_999,
   dependent_counts: 1095,
+  dependent_counts_go: 999_999,
+  dependent_counts_nuget: 999_999,
 }
 
 // Kinds whose incremental diff is driven by a BQ partition snapshot date.
@@ -176,6 +181,36 @@ export async function bootstrapOsspckgs(opts: {
       // Only soft-fail on the row-count guard. Child workflow failures are wrapped in
       // ChildWorkflowFailure — unwrap to inspect the cause.
       // All other errors (BQ timeout, DB failure, etc.) propagate normally.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'DEPENDENT_COUNTS_GUARD') {
+        throw err
+      }
+    }
+  }
+  // GO/NUGET reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
+  // NuGetRequirementsLatest), computed via the exact reverse transitive closure script. The manifests
+  // are *Latest views (no resolution needed); `today` is the snapshot_at stamp AND the anchor for the
+  // dependent_repos partition window (latest PackageVersionToProject snapshot within 60 days). Each
+  // guards against its own history and merges a disjoint purl space, so an edge-snapshot corruption
+  // that aborts `dependent_counts` never blocks these.
+  for (const variant of ['go', 'nuget'] as const) {
+    const kind = `dependent_counts_${variant}` as const
+    if (!runs(kind)) continue
+    try {
+      await executeChild(ingestDependentCounts, {
+        args: [
+          {
+            runId,
+            snapshotDate: today,
+            variant,
+            reuseExports: opts.reuseExports,
+            exportName: opts.exportName,
+          },
+        ],
+        workflowId: `${runId}-${kind}`,
+      })
+    } catch (err) {
+      // Soft-fail only on the row-count guard, mirroring the edge dependent_counts handling above.
       const cause = err instanceof ChildWorkflowFailure ? err.cause : err
       if (!(cause instanceof ApplicationFailure) || cause.type !== 'DEPENDENT_COUNTS_GUARD') {
         throw err

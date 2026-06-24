@@ -12,6 +12,8 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { purlFilterSchema } from '../packages/purl'
+
 const MAX_PAGE_SIZE = 250
 
 const boolParam = z.preprocess((v) => v === 'true', z.boolean()).default(false)
@@ -22,6 +24,7 @@ const querySchema = z.object({
   ecosystem: z.string().trim().optional(),
   lifecycle: z.enum(['active', 'stable', 'declining', 'abandoned']).optional(),
   name: z.string().trim().optional(),
+  purl: purlFilterSchema,
   status: z
     .enum([
       'unassigned',
@@ -50,6 +53,7 @@ export async function packageListHandler(req: Request, res: Response): Promise<v
     ecosystem: params.ecosystem,
     lifecycle: params.lifecycle,
     name: params.name,
+    purl: params.purl,
     healthBand: params.healthBand,
     vulnSeverity: params.vulnSeverity,
     staleOnly: params.staleOnly,

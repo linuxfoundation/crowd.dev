@@ -75,7 +75,6 @@
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.0",
     "@types/node": "^20.8.2",
-    "@types/pg-copy-streams": "^1.2.5",
     "@types/semver": "^7.5.8",
     "@types/unzipper": "^0.10.10",
     "nodemon": "^3.0.1",
