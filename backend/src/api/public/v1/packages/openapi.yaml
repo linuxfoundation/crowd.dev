@@ -268,9 +268,26 @@ components:
           properties:
             healthScore:
               type:
+                - integer
+                - 'null'
+              description: Composite health score (0–100). Tinybird-enriched when available, null otherwise.
+              example: 18
+            healthScoreDetails:
+              type:
                 - object
                 - 'null'
+              description: Breakdown of the composite health score. Null until Tinybird enrichment runs.
               properties:
+                total:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 18
+                label:
+                  type:
+                    - string
+                    - 'null'
+                  example: Good
                 maintainerHealth:
                   type:
                     - integer
@@ -286,16 +303,13 @@ components:
                     - integer
                     - 'null'
                   example: 6
-                total:
-                  type:
-                    - integer
-                    - 'null'
-                  example: 18
-                label:
-                  type:
-                    - string
-                    - 'null'
-                  example: Good
+            healthBand:
+              type:
+                - string
+                - 'null'
+              enum: [healthy, fair, concerning, critical, null]
+              description: Derived from Tinybird health score when available, OpenSSF Scorecard otherwise.
+              example: concerning
             impact:
               type:
                 - object
@@ -683,11 +697,14 @@ paths:
                 name: lodash
                 ecosystem: npm
                 general:
-                  healthScore:
+                  healthScore: 18
+                  healthScoreDetails:
+                    total: 18
+                    label: critical
                     maintainerHealth: 4
                     securitySupplyChain: 8
                     developmentActivity: 6
-                    total: 18
+                  healthBand: critical
                   impact:
                     impactScore: 71
                     downloadsLastMonth: 52142891
