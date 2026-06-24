@@ -15,6 +15,13 @@ import { validateOrThrow } from '@/utils/validation'
 import { purlQuerySchema } from './purl'
 import type { StewardshipStatus } from './types'
 
+function snakeToCamelKeys(obj: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (obj === null) return null
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]),
+  )
+}
+
 function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' | null {
   if (confidence === null) return null
   if (confidence >= 0.8) return 'High'
@@ -75,7 +82,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         openSSFScorecard: scorecardScore,
       },
     },
-    signalCoverageHealth: pkg.signalCoverageHealth,
+    signalCoverageHealth: snakeToCamelKeys(pkg.signalCoverageHealth),
     assessment: null,
     security: {
       securityContacts: null,
