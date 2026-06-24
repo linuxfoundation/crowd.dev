@@ -11,7 +11,9 @@ export const STEWARDSHIP_STATUS_VALUES = [
 
 export type StewardshipStatus = (typeof STEWARDSHIP_STATUS_VALUES)[number]
 
-export type Lifecycle = 'active' | 'stable' | 'declining' | 'abandoned'
+export const LIFECYCLE_VALUES = ['active', 'stable', 'declining', 'abandoned', 'archived'] as const
+
+export type Lifecycle = (typeof LIFECYCLE_VALUES)[number]
 
 export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low'
 

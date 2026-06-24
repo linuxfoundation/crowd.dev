@@ -11,7 +11,7 @@ export interface PackageMetrics {
   criticalPackages: number
 }
 
-export async function getPackageMetrics(qx: QueryExecutor): Promise<PackageMetrics> {
+export async function getPackageMetrics(qx: QueryExecutor): Promise {
   const row: { total: string; critical: string } = await qx.selectOne(`
     SELECT
       COUNT(*) AS total,
@@ -34,10 +34,7 @@ export interface PackageStewardshipRow {
   stewardshipStatus: string | null
 }
 
-export async function getPackagesByStewardshipPurls(
-  qx: QueryExecutor,
-  purls: string[],
-): Promise<PackageStewardshipRow[]> {
+export async function getPackagesByStewardshipPurls(qx: QueryExecutor, purls: string[]): Promise {
   if (purls.length === 0) return []
   return qx.select(
     `
@@ -68,7 +65,7 @@ export interface OsspreyMetrics {
 }
 
 // TODO[deprecate]: rename to getAkritesMetrics once /v1/ossprey is removed
-export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
+export async function getOsspreyMetrics(qx: QueryExecutor): Promise {
   const [counts, stewardRow]: [
     {
       totalPackages: string
@@ -135,18 +132,19 @@ export interface PackageListRow {
   maxVulnSeverity: 'critical' | 'high' | 'medium' | 'low' | null
   maintainerCount: number
   scorecardScore: number | null
+  healthScore: number | null
   healthLabel: string | null
   latestReleaseAt: Date | null
   lifecycleLabel: string | null
   lastActivityType?: string | null
   lastActivityContent?: string | null
-  lastActivityMetadata?: Record<string, unknown> | null
+  lastActivityMetadata?: Record | null
   lastActivityAt?: Date | null
   stewards?: StewardEntry[]
   total: string
 }
 
-export type HealthBand = 'healthy' | 'fair' | 'concerning' | 'critical'
+export type HealthBand = 'excellent' | 'healthy' | 'fair' | 'concerning' | 'critical'
 export type VulnSeverityFilter = 'any' | 'high' | 'critical' | 'none'
 
 export function computeHealthBand(scorecardScore: number | null): HealthBand {
@@ -198,10 +196,7 @@ export interface PackageStatusCounts {
   inactive: number
 }
 
-export type StatusCountsOptions = Omit<
-  ListPackagesOptions,
-  'status' | 'page' | 'pageSize' | 'sortBy' | 'sortDir'
->
+export type StatusCountsOptions = Omit
 
 const ALL_STEWARDSHIP_STATUSES = [
   'unassigned',
@@ -221,9 +216,9 @@ const ALL_STEWARDSHIP_STATUSES = [
 export async function getPackageStatusCounts(
   qx: QueryExecutor,
   opts: StatusCountsOptions,
-): Promise<PackageStatusCounts> {
+): Promise {
   const conditions: string[] = ['p.is_critical = true']
-  const params: Record<string, unknown> = {}
+  const params: Record = {}
 
   if (opts.ecosystem) {
     conditions.push('p.ecosystem = $(ecosystem)')
@@ -241,11 +236,14 @@ export async function getPackageStatusCounts(
   }
 
   if (opts.lifecycle) {
-    conditions.push('p.status IS NOT NULL')
+    conditions.push('p.lifecycle_label = $(lifecycle)')
+    params.lifecycle = opts.lifecycle
   }
 
   if (opts.healthBand) {
-    if (opts.healthBand === 'healthy') {
+    if (opts.healthBand === 'excellent') {
+      conditions.push("p.health_label = 'excellent'")
+    } else if (opts.healthBand === 'healthy') {
       conditions.push('r_sc.scorecard_score >= 7.0')
     } else if (opts.healthBand === 'fair') {
       conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
@@ -317,7 +315,7 @@ export async function getPackageStatusCounts(
     params,
   )
 
-  const countsMap: Record<string, number> = {}
+  const countsMap: Record = {}
   let all = 0
   for (const row of rows) {
     countsMap[row.status] = row.count
@@ -341,12 +339,9 @@ export async function getPackageStatusCounts(
   return result
 }
 
-export async function listPackagesForApi(
-  qx: QueryExecutor,
-  opts: ListPackagesOptions,
-): Promise<{ rows: PackageListRow[]; total: number }> {
+export async function listPackagesForApi(qx: QueryExecutor, opts: ListPackagesOptions): Promise {
   const conditions: string[] = ['p.is_critical = true']
-  const params: Record<string, unknown> = {}
+  const params: Record = {}
 
   if (opts.ecosystem) {
     conditions.push('p.ecosystem = $(ecosystem)')
@@ -363,11 +358,9 @@ export async function listPackagesForApi(
     params.purl = `%${opts.purl}%`
   }
 
-  // Exclude packages with no registry status when a lifecycle filter is active.
-  // Full lifecycle column support is pending; this prevents null-lifecycle rows
-  // from leaking into filtered results.
   if (opts.lifecycle) {
-    conditions.push('p.status IS NOT NULL')
+    conditions.push('p.lifecycle_label = $(lifecycle)')
+    params.lifecycle = opts.lifecycle
   }
 
   if (opts.status) {
@@ -383,7 +376,10 @@ export async function listPackagesForApi(
   if (opts.healthBand) {
     // scorecard_score is 0–10; multiply by 10 to get 0–100 health score.
     // Packages with no linked repo (scorecard_score IS NULL) fall into 'critical'.
-    if (opts.healthBand === 'healthy') {
+    // 'excellent' is Tinybird-enriched (health_score ≥ 85); filter on the stored label directly.
+    if (opts.healthBand === 'excellent') {
+      conditions.push("p.health_label = 'excellent'")
+    } else if (opts.healthBand === 'healthy') {
       conditions.push('r_sc.scorecard_score >= 7.0')
     } else if (opts.healthBand === 'fair') {
       conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
@@ -448,7 +444,7 @@ export async function listPackagesForApi(
   const sortDir = opts.sortDir === 'desc' ? 'DESC' : 'ASC'
 
   // Separate paginated params from filter-only params used by the fallback COUNT query
-  const queryParams: Record<string, unknown> = {
+  const queryParams: Record = {
     ...params,
     limit: opts.pageSize,
     offset: (opts.page - 1) * opts.pageSize,
@@ -553,6 +549,7 @@ export async function listPackagesForApi(
       END AS "maxVulnSeverity",
       pm_counts.cnt AS "maintainerCount",
       r_sc.scorecard_score AS "scorecardScore",
+      p.health_score AS "healthScore",
       p.health_label AS "healthLabel",
       p.latest_release_at AS "latestReleaseAt",
       p.lifecycle_label AS "lifecycleLabel",
@@ -629,7 +626,7 @@ export interface PackageDetailRow {
   securitySupplyChainScore: number | null
   developmentActivityScore: number | null
   lifecycleLabel: string | null
-  signalCoverageHealth: Record<string, unknown> | null
+  signalCoverageHealth: Record | null
 }
 
 export interface AdvisoryRow {
@@ -639,10 +636,7 @@ export interface AdvisoryRow {
   isCritical: boolean
 }
 
-export async function getPackageDetailByPurl(
-  qx: QueryExecutor,
-  purl: string,
-): Promise<PackageDetailRow | null> {
+export async function getPackageDetailByPurl(qx: QueryExecutor, purl: string): Promise {
   return qx.selectOneOrNone(
     `
     SELECT
@@ -733,7 +727,7 @@ export interface ScatterPoint {
 export async function listPackagesForScatter(
   qx: QueryExecutor,
   options: { status?: string[]; ecosystem?: string } = {},
-): Promise<ScatterPoint[]> {
+): Promise {
   const { status, ecosystem } = options
 
   // 'unassigned' covers packages with no stewardship row (s.id IS NULL) in addition
@@ -745,16 +739,7 @@ export async function listPackagesForScatter(
     : ''
   const ecosystemFilter = ecosystem ? `AND p.ecosystem = $(ecosystem)` : ''
 
-  const rows: Array<{
-    purl: string
-    name: string
-    criticalityScore: number
-    healthScore: number
-    scorecardScoreRaw: number | null
-    stewardshipId: string | null
-    stewardshipStatus: string | null
-    openVulns: number
-  }> = await qx.select(
+  const rows: Array = await qx.select(
     `
     SELECT
       p.purl,
@@ -810,7 +795,7 @@ export async function getAdvisoriesByPackageId(
     resolutions?: ('open' | 'patched')[]
     critical?: boolean
   },
-): Promise<{ rows: AdvisoryRow[]; total: number }> {
+): Promise {
   const cte = `
     WITH advisory_data AS (
       SELECT

@@ -12,22 +12,22 @@ import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 import { purlFilterSchema } from './purl'
-import { STEWARDSHIP_STATUS_VALUES, type StewardshipStatus } from './types'
+import { LIFECYCLE_VALUES, STEWARDSHIP_STATUS_VALUES, type StewardshipStatus } from './types'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
 
 const booleanQueryParam = z.preprocess((v) => v === 'true', z.boolean()).default(false)
 
-const lifecycleValues = ['active', 'stable', 'declining', 'abandoned'] as const
-const healthBandValues = ['healthy', 'fair', 'concerning', 'critical'] as const
+const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
+const healthBandValues = ['excellent', 'healthy', 'fair', 'concerning', 'critical'] as const
 const vulnSeverityValues = ['any', 'high', 'critical', 'none'] as const
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   ecosystem: z.string().trim().optional(),
-  lifecycle: z.enum(lifecycleValues).optional(),
+  lifecycle: z.enum(LIFECYCLE_VALUES).optional(),
   name: z.string().trim().optional(),
   purl: purlFilterSchema,
   status: z.enum(STEWARDSHIP_STATUS_VALUES).optional(),
@@ -89,11 +89,12 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     name: r.name,
     ecosystem: r.ecosystem,
     health: {
-      score: r.scorecardScore != null ? Math.round(Number(r.scorecardScore) * 10) : null,
+      score: r.healthScore ?? (r.scorecardScore != null ? Math.round(r.scorecardScore * 10) : null),
       label: r.healthLabel ?? computeHealthBand(r.scorecardScore),
     },
-    impact: r.criticalityScore != null ? Math.round(Number(r.criticalityScore) * 100) : null,
-    lifecycle: r.lifecycleLabel,
+    impact: r.criticalityScore != null ? Math.round(r.criticalityScore * 100) : null,
+    lifecycle:
+      r.lifecycleLabel != null && LIFECYCLE_SET.has(r.lifecycleLabel) ? r.lifecycleLabel : null,
     maintainerBusFactor: r.maintainerCount,
     openVulns: r.openVulns,
     stewardshipId: r.stewardshipId ?? null,

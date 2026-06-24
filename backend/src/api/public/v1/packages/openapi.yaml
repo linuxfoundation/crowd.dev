@@ -127,7 +127,7 @@ components:
           type:
             - string
             - 'null'
-          enum: [active, stable, declining, abandoned, null]
+          enum: [active, stable, declining, abandoned, archived, null]
         health:
           type:
             - integer
@@ -187,12 +187,12 @@ components:
               type:
                 - integer
                 - 'null'
-              description: Health score (0–100) derived from OpenSSF Scorecard. Null if no repo is linked.
+              description: Health score (0–100). Tinybird composite score when enriched, OpenSSF Scorecard × 10 otherwise. Null if neither is available.
               example: 18
             label:
               type: string
-              enum: [healthy, fair, concerning, critical]
-              description: 'Derived from score: healthy ≥70, fair 50–69, concerning 30–49, critical <30 or null.'
+              enum: [excellent, healthy, fair, concerning, critical]
+              description: 'Tinybird band when enriched (excellent ≥85, healthy 70–84, fair 50–69, concerning 30–49, critical <30), scorecard band otherwise.'
               example: critical
         impact:
           type:
@@ -203,7 +203,7 @@ components:
           type:
             - string
             - 'null'
-          enum: [active, stable, declining, abandoned, null]
+          enum: [active, stable, declining, abandoned, archived, null]
         maintainerBusFactor:
           type:
             - integer
@@ -317,7 +317,7 @@ components:
               type:
                 - string
                 - 'null'
-              enum: [healthy, fair, concerning, critical, null]
+              enum: [excellent, healthy, fair, concerning, critical, null]
               description: Derived from Tinybird health score when available, OpenSSF Scorecard otherwise.
               example: concerning
             impact:
@@ -360,7 +360,7 @@ components:
                   type:
                     - string
                     - 'null'
-                  enum: [active, stable, declining, abandoned, null]
+                  enum: [active, stable, declining, abandoned, archived, null]
                 maintainerBusFactor:
                   type:
                     - integer
@@ -551,7 +551,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [active, stable, declining, abandoned]
+            enum: [active, stable, declining, abandoned, archived]
         - name: busFactor1Only
           in: query
           schema:
