@@ -11,7 +11,7 @@ export interface PackageMetrics {
   criticalPackages: number
 }
 
-export async function getPackageMetrics(qx: QueryExecutor): Promise {
+export async function getPackageMetrics(qx: QueryExecutor): Promise<PackageMetrics> {
   const row: { total: string; critical: string } = await qx.selectOne(`
     SELECT
       COUNT(*) AS total,
@@ -34,7 +34,10 @@ export interface PackageStewardshipRow {
   stewardshipStatus: string | null
 }
 
-export async function getPackagesByStewardshipPurls(qx: QueryExecutor, purls: string[]): Promise {
+export async function getPackagesByStewardshipPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<PackageStewardshipRow[]> {
   if (purls.length === 0) return []
   return qx.select(
     `
@@ -65,7 +68,7 @@ export interface OsspreyMetrics {
 }
 
 // TODO[deprecate]: rename to getAkritesMetrics once /v1/ossprey is removed
-export async function getOsspreyMetrics(qx: QueryExecutor): Promise {
+export async function getOsspreyMetrics(qx: QueryExecutor): Promise<OsspreyMetrics> {
   const [counts, stewardRow]: [
     {
       totalPackages: string
@@ -138,7 +141,7 @@ export interface PackageListRow {
   lifecycleLabel: string | null
   lastActivityType?: string | null
   lastActivityContent?: string | null
-  lastActivityMetadata?: Record | null
+  lastActivityMetadata?: Record<string, unknown> | null
   lastActivityAt?: Date | null
   stewards?: StewardEntry[]
   total: string
@@ -196,7 +199,10 @@ export interface PackageStatusCounts {
   inactive: number
 }
 
-export type StatusCountsOptions = Omit
+export type StatusCountsOptions = Omit<
+  ListPackagesOptions,
+  'status' | 'page' | 'pageSize' | 'sortBy' | 'sortDir'
+>
 
 const ALL_STEWARDSHIP_STATUSES = [
   'unassigned',
@@ -216,9 +222,9 @@ const ALL_STEWARDSHIP_STATUSES = [
 export async function getPackageStatusCounts(
   qx: QueryExecutor,
   opts: StatusCountsOptions,
-): Promise {
+): Promise<PackageStatusCounts> {
   const conditions: string[] = ['p.is_critical = true']
-  const params: Record = {}
+  const params: Record<string, unknown> = {}
 
   if (opts.ecosystem) {
     conditions.push('p.ecosystem = $(ecosystem)')
@@ -315,7 +321,7 @@ export async function getPackageStatusCounts(
     params,
   )
 
-  const countsMap: Record = {}
+  const countsMap: Record<string, number> = {}
   let all = 0
   for (const row of rows) {
     countsMap[row.status] = row.count
@@ -339,9 +345,12 @@ export async function getPackageStatusCounts(
   return result
 }
 
-export async function listPackagesForApi(qx: QueryExecutor, opts: ListPackagesOptions): Promise {
+export async function listPackagesForApi(
+  qx: QueryExecutor,
+  opts: ListPackagesOptions,
+): Promise<{ rows: PackageListRow[]; total: number }> {
   const conditions: string[] = ['p.is_critical = true']
-  const params: Record = {}
+  const params: Record<string, unknown> = {}
 
   if (opts.ecosystem) {
     conditions.push('p.ecosystem = $(ecosystem)')
@@ -444,7 +453,7 @@ export async function listPackagesForApi(qx: QueryExecutor, opts: ListPackagesOp
   const sortDir = opts.sortDir === 'desc' ? 'DESC' : 'ASC'
 
   // Separate paginated params from filter-only params used by the fallback COUNT query
-  const queryParams: Record = {
+  const queryParams: Record<string, unknown> = {
     ...params,
     limit: opts.pageSize,
     offset: (opts.page - 1) * opts.pageSize,
@@ -551,8 +560,8 @@ export async function listPackagesForApi(qx: QueryExecutor, opts: ListPackagesOp
       r_sc.scorecard_score AS "scorecardScore",
       p.health_score AS "healthScore",
       p.health_label AS "healthLabel",
-      p.latest_release_at AS "latestReleaseAt",
       p.lifecycle_label AS "lifecycleLabel",
+      p.latest_release_at AS "latestReleaseAt",
       ${opts.includeLastActivity === true ? `last_act.activity_type AS "lastActivityType", last_act.content AS "lastActivityContent", last_act.metadata AS "lastActivityMetadata", last_act.created_at AS "lastActivityAt",` : ''}
       ${opts.includeStewards === true ? 'ss_agg.stewards AS stewards,' : ''}
       COUNT(*) OVER() AS total
@@ -626,7 +635,7 @@ export interface PackageDetailRow {
   securitySupplyChainScore: number | null
   developmentActivityScore: number | null
   lifecycleLabel: string | null
-  signalCoverageHealth: Record | null
+  signalCoverageHealth: Record<string, unknown> | null
 }
 
 export interface AdvisoryRow {
@@ -636,7 +645,10 @@ export interface AdvisoryRow {
   isCritical: boolean
 }
 
-export async function getPackageDetailByPurl(qx: QueryExecutor, purl: string): Promise {
+export async function getPackageDetailByPurl(
+  qx: QueryExecutor,
+  purl: string,
+): Promise<PackageDetailRow | null> {
   return qx.selectOneOrNone(
     `
     SELECT
@@ -727,7 +739,7 @@ export interface ScatterPoint {
 export async function listPackagesForScatter(
   qx: QueryExecutor,
   options: { status?: string[]; ecosystem?: string } = {},
-): Promise {
+): Promise<ScatterPoint[]> {
   const { status, ecosystem } = options
 
   // 'unassigned' covers packages with no stewardship row (s.id IS NULL) in addition
@@ -739,7 +751,16 @@ export async function listPackagesForScatter(
     : ''
   const ecosystemFilter = ecosystem ? `AND p.ecosystem = $(ecosystem)` : ''
 
-  const rows: Array = await qx.select(
+  const rows: Array<{
+    purl: string
+    name: string
+    criticalityScore: number
+    healthScore: number
+    scorecardScoreRaw: number | null
+    stewardshipId: string | null
+    stewardshipStatus: string | null
+    openVulns: number
+  }> = await qx.select(
     `
     SELECT
       p.purl,
@@ -795,7 +816,7 @@ export async function getAdvisoriesByPackageId(
     resolutions?: ('open' | 'patched')[]
     critical?: boolean
   },
-): Promise {
+): Promise<{ rows: AdvisoryRow[]; total: number }> {
   const cte = `
     WITH advisory_data AS (
       SELECT

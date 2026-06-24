@@ -263,7 +263,11 @@ components:
           description: ROUND(scorecard_score × 10). X-axis position (0–100). 0 if no repo.
           example: 52
         healthBand:
-          $ref: '#/components/schemas/HealthBand'
+          type: string
+          enum: [healthy, fair, concerning, critical]
+          description: >
+            Falls back to scorecard thresholds — never 'excellent' (scatter uses
+            scorecard score only, not Tinybird health_label).
         stewardshipStatus:
           oneOf:
             - $ref: '#/components/schemas/StewardshipStatus'

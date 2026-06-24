@@ -12,7 +12,13 @@ import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 import { purlFilterSchema } from './purl'
-import { LIFECYCLE_VALUES, STEWARDSHIP_STATUS_VALUES, type StewardshipStatus } from './types'
+import {
+  HEALTH_BAND_SET,
+  HEALTH_BAND_VALUES,
+  LIFECYCLE_VALUES,
+  STEWARDSHIP_STATUS_VALUES,
+  type StewardshipStatus,
+} from './types'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
@@ -20,7 +26,6 @@ const MAX_PAGE_SIZE = 100
 const booleanQueryParam = z.preprocess((v) => v === 'true', z.boolean()).default(false)
 
 const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
-const healthBandValues = ['excellent', 'healthy', 'fair', 'concerning', 'critical'] as const
 const vulnSeverityValues = ['any', 'high', 'critical', 'none'] as const
 
 const querySchema = z.object({
@@ -31,7 +36,7 @@ const querySchema = z.object({
   name: z.string().trim().optional(),
   purl: purlFilterSchema,
   status: z.enum(STEWARDSHIP_STATUS_VALUES).optional(),
-  healthBand: z.enum(healthBandValues).optional(),
+  healthBand: z.enum(HEALTH_BAND_VALUES).optional(),
   vulnSeverity: z.enum(vulnSeverityValues).optional(),
   busFactor1Only: booleanQueryParam,
   staleOnly: booleanQueryParam,
@@ -90,7 +95,10 @@ export async function listPackages(req: Request, res: Response): Promise<void> {
     ecosystem: r.ecosystem,
     health: {
       score: r.healthScore ?? (r.scorecardScore != null ? Math.round(r.scorecardScore * 10) : null),
-      label: r.healthLabel ?? computeHealthBand(r.scorecardScore),
+      label:
+        r.healthLabel != null && HEALTH_BAND_SET.has(r.healthLabel)
+          ? r.healthLabel
+          : computeHealthBand(r.scorecardScore),
     },
     impact: r.criticalityScore != null ? Math.round(r.criticalityScore * 100) : null,
     lifecycle:

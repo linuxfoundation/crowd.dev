@@ -13,7 +13,9 @@ import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 import { purlQuerySchema } from './purl'
-import type { StewardshipStatus } from './types'
+import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type StewardshipStatus } from './types'
+
+const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
 
 function snakeToCamelKeys(obj: Record<string, unknown> | null): Record<string, unknown> | null {
   if (obj === null) return null
@@ -47,7 +49,6 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   const scorecardScore = pkg.scorecardScore != null ? Number(pkg.scorecardScore) : null
   const mappingConfidence =
     pkg.repoMappingConfidence != null ? Number(pkg.repoMappingConfidence) : null
-  const healthBandScore = pkg.healthScore !== null ? pkg.healthScore / 10 : scorecardScore
 
   ok(res, {
     purl: pkg.purl,
@@ -58,22 +59,28 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
       healthScore: pkg.healthScore,
       healthScoreDetails: {
         total: pkg.healthScore,
-        label: pkg.healthLabel,
+        label:
+          pkg.healthLabel != null && HEALTH_BAND_SET.has(pkg.healthLabel) ? pkg.healthLabel : null,
         maintainerHealth: pkg.maintainerHealthScore,
         securitySupplyChain: pkg.securitySupplyChainScore,
         developmentActivity: pkg.developmentActivityScore,
       },
-      healthBand: computeHealthBand(healthBandScore),
+      healthBand:
+        pkg.healthLabel != null && HEALTH_BAND_SET.has(pkg.healthLabel)
+          ? pkg.healthLabel
+          : computeHealthBand(scorecardScore),
       impact: {
-        impactScore:
-          pkg.criticalityScore != null ? Math.round(Number(pkg.criticalityScore) * 100) : null,
+        impactScore: pkg.criticalityScore != null ? Math.round(pkg.criticalityScore * 100) : null,
         downloadsLastMonth: pkg.downloadsLast30d ?? null,
         dependentPackages: pkg.dependentPackagesCount ?? null,
         dependentRepos: pkg.dependentReposCount ?? null,
         transitiveReach: pkg.transitiveReach,
       },
       riskSignals: {
-        lifecycle: pkg.lifecycleLabel,
+        lifecycle:
+          pkg.lifecycleLabel != null && LIFECYCLE_SET.has(pkg.lifecycleLabel)
+            ? pkg.lifecycleLabel
+            : null,
         maintainerBusFactor: pkg.maintainerCount,
         lastRelease: pkg.latestReleaseAt ? pkg.latestReleaseAt.toISOString() : null,
         hasSecurityFile: pkg.hasSecurityFile,

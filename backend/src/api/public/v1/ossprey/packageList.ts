@@ -13,7 +13,7 @@ import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 import { purlFilterSchema } from '../packages/purl'
-import { LIFECYCLE_VALUES } from '../packages/types'
+import { HEALTH_BAND_SET, HEALTH_BAND_VALUES, LIFECYCLE_VALUES } from '../packages/types'
 
 const MAX_PAGE_SIZE = 250
 const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
@@ -39,7 +39,7 @@ const querySchema = z.object({
       'inactive',
     ])
     .optional(),
-  healthBand: z.enum(['excellent', 'healthy', 'fair', 'concerning', 'critical']).optional(),
+  healthBand: z.enum(HEALTH_BAND_VALUES).optional(),
   vulnSeverity: z.enum(['any', 'high', 'critical', 'none']).optional(),
   staleOnly: boolParam,
   unstewardedOnly: boolParam,
@@ -85,7 +85,10 @@ export async function packageListHandler(req: Request, res: Response): Promise<v
       health: {
         score:
           r.healthScore ?? (r.scorecardScore != null ? Math.round(r.scorecardScore * 10) : null),
-        label: r.healthLabel ?? computeHealthBand(r.scorecardScore),
+        label:
+          r.healthLabel != null && HEALTH_BAND_SET.has(r.healthLabel)
+            ? r.healthLabel
+            : computeHealthBand(r.scorecardScore),
       },
       lifecycle:
         r.lifecycleLabel != null && LIFECYCLE_SET.has(r.lifecycleLabel) ? r.lifecycleLabel : null,

@@ -15,6 +15,18 @@ export const LIFECYCLE_VALUES = ['active', 'stable', 'declining', 'abandoned', '
 
 export type Lifecycle = (typeof LIFECYCLE_VALUES)[number]
 
+export const HEALTH_BAND_VALUES = [
+  'excellent',
+  'healthy',
+  'fair',
+  'concerning',
+  'critical',
+] as const
+
+export type HealthBand = (typeof HEALTH_BAND_VALUES)[number]
+
+export const HEALTH_BAND_SET = new Set<string>(HEALTH_BAND_VALUES)
+
 export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low'
 
 export interface OpenVulns {
