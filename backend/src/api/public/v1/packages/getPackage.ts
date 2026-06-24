@@ -32,7 +32,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     throw new NotFoundError()
   }
 
-  const [advisories, stewardshipSummary] = await Promise.all([
+  const [{ rows: advisories }, stewardshipSummary] = await Promise.all([
     getAdvisoriesByPackageId(qx, pkg.id),
     pkg.stewardshipId ? getStewardshipSummary(qx, Number(pkg.stewardshipId)) : null,
   ])
@@ -40,6 +40,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   const scorecardScore = pkg.scorecardScore != null ? Number(pkg.scorecardScore) : null
   const mappingConfidence =
     pkg.repoMappingConfidence != null ? Number(pkg.repoMappingConfidence) : null
+  const healthBandScore = pkg.healthScore !== null ? pkg.healthScore / 10 : scorecardScore
 
   ok(res, {
     purl: pkg.purl,
@@ -47,8 +48,15 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     ecosystem: pkg.ecosystem,
     latestVersion: pkg.latestVersion ?? null,
     general: {
-      healthScore: scorecardScore !== null ? Math.round(scorecardScore * 10) : null,
-      healthBand: computeHealthBand(scorecardScore),
+      healthScore: pkg.healthScore,
+      healthScoreDetails: {
+        total: pkg.healthScore,
+        label: pkg.healthLabel,
+        maintainerHealth: pkg.maintainerHealthScore,
+        securitySupplyChain: pkg.securitySupplyChainScore,
+        developmentActivity: pkg.developmentActivityScore,
+      },
+      healthBand: computeHealthBand(healthBandScore),
       impact: {
         impactScore:
           pkg.criticalityScore != null ? Math.round(Number(pkg.criticalityScore) * 100) : null,
@@ -58,7 +66,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         transitiveReach: pkg.transitiveReach,
       },
       riskSignals: {
-        lifecycle: null,
+        lifecycle: pkg.lifecycleLabel,
         maintainerBusFactor: pkg.maintainerCount,
         lastRelease: pkg.latestReleaseAt ? pkg.latestReleaseAt.toISOString() : null,
         hasSecurityFile: pkg.hasSecurityFile,
@@ -67,6 +75,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         openSSFScorecard: scorecardScore,
       },
     },
+    signalCoverageHealth: pkg.signalCoverageHealth,
     assessment: null,
     security: {
       securityContacts: null,
@@ -74,6 +83,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         osvId: a.osvId,
         severity: a.severity,
         resolution: a.resolution,
+        isCritical: a.isCritical,
       })),
       cvd: {
         isPvrEnabled: null,
