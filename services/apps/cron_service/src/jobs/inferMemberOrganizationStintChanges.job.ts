@@ -7,15 +7,16 @@ import {
   signalMemberUpdate,
 } from '@crowd/common_services'
 import {
+  MemberField,
   QueryExecutor,
   changeMemberOrganizationAffiliationOverrides,
   createMemberOrganization,
   deleteUndatedMemberOrganizations,
   fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationsBySource,
+  findMemberById,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
-import { MemberField, findMemberById } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
