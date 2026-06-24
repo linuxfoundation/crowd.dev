@@ -56,6 +56,10 @@ import {
 } from '@crowd/data-access-layer/src/mergeActions/repo'
 import { IWorkExperienceData } from '@crowd/data-access-layer/src/old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { addOrgsToSegments } from '@crowd/data-access-layer/src/organizations'
+import {
+  decrementMemberMergeSuggestionCounts,
+  getMembersCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { Logger, LoggerBase } from '@crowd/logging'
 import { Client as TemporalClient } from '@crowd/temporal'
 import { MergeActionState, MergeActionStep, MergeActionType } from '@crowd/types'
@@ -449,6 +453,15 @@ export class CommonMemberService extends LoggerBase {
           return { original, toMerge }
         }),
       )
+
+      const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(this.qx, [
+        originalId,
+        toMergeId,
+      ])
+
+      // Precomputed per-project-group counts are only refreshed by cron every few hours.
+      // Decrement here so merges from the UI are reflected immediately.
+      await decrementMemberMergeSuggestionCounts(this.qx, projectGroupSegmentIds)
 
       await this.temporal.workflow.start('finishMemberMerging', {
         taskQueue: 'entity-merging',

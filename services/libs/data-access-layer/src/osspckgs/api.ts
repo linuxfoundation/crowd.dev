@@ -135,7 +135,10 @@ export interface PackageListRow {
   maxVulnSeverity: 'critical' | 'high' | 'medium' | 'low' | null
   maintainerCount: number
   scorecardScore: number | null
+  healthScore: number | null
+  healthLabel: string | null
   latestReleaseAt: Date | null
+  lifecycleLabel: string | null
   lastActivityType?: string | null
   lastActivityContent?: string | null
   lastActivityMetadata?: Record<string, unknown> | null
@@ -144,7 +147,7 @@ export interface PackageListRow {
   total: string
 }
 
-export type HealthBand = 'healthy' | 'fair' | 'concerning' | 'critical'
+export type HealthBand = 'excellent' | 'healthy' | 'fair' | 'concerning' | 'critical'
 export type VulnSeverityFilter = 'any' | 'high' | 'critical' | 'none'
 
 export function computeHealthBand(scorecardScore: number | null): HealthBand {
@@ -239,11 +242,14 @@ export async function getPackageStatusCounts(
   }
 
   if (opts.lifecycle) {
-    conditions.push('p.status IS NOT NULL')
+    conditions.push('p.lifecycle_label = $(lifecycle)')
+    params.lifecycle = opts.lifecycle
   }
 
   if (opts.healthBand) {
-    if (opts.healthBand === 'healthy') {
+    if (opts.healthBand === 'excellent') {
+      conditions.push("p.health_label = 'excellent'")
+    } else if (opts.healthBand === 'healthy') {
       conditions.push('r_sc.scorecard_score >= 7.0')
     } else if (opts.healthBand === 'fair') {
       conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
@@ -361,11 +367,9 @@ export async function listPackagesForApi(
     params.purl = `%${opts.purl}%`
   }
 
-  // Exclude packages with no registry status when a lifecycle filter is active.
-  // Full lifecycle column support is pending; this prevents null-lifecycle rows
-  // from leaking into filtered results.
   if (opts.lifecycle) {
-    conditions.push('p.status IS NOT NULL')
+    conditions.push('p.lifecycle_label = $(lifecycle)')
+    params.lifecycle = opts.lifecycle
   }
 
   if (opts.status) {
@@ -381,7 +385,10 @@ export async function listPackagesForApi(
   if (opts.healthBand) {
     // scorecard_score is 0–10; multiply by 10 to get 0–100 health score.
     // Packages with no linked repo (scorecard_score IS NULL) fall into 'critical'.
-    if (opts.healthBand === 'healthy') {
+    // 'excellent' is Tinybird-enriched (health_score ≥ 85); filter on the stored label directly.
+    if (opts.healthBand === 'excellent') {
+      conditions.push("p.health_label = 'excellent'")
+    } else if (opts.healthBand === 'healthy') {
       conditions.push('r_sc.scorecard_score >= 7.0')
     } else if (opts.healthBand === 'fair') {
       conditions.push('r_sc.scorecard_score >= 5.0 AND r_sc.scorecard_score < 7.0')
@@ -551,6 +558,9 @@ export async function listPackagesForApi(
       END AS "maxVulnSeverity",
       pm_counts.cnt AS "maintainerCount",
       r_sc.scorecard_score AS "scorecardScore",
+      p.health_score AS "healthScore",
+      p.health_label AS "healthLabel",
+      p.lifecycle_label AS "lifecycleLabel",
       p.latest_release_at AS "latestReleaseAt",
       ${opts.includeLastActivity === true ? `last_act.activity_type AS "lastActivityType", last_act.content AS "lastActivityContent", last_act.metadata AS "lastActivityMetadata", last_act.created_at AS "lastActivityAt",` : ''}
       ${opts.includeStewards === true ? 'ss_agg.stewards AS stewards,' : ''}

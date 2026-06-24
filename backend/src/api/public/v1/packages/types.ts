@@ -11,7 +11,21 @@ export const STEWARDSHIP_STATUS_VALUES = [
 
 export type StewardshipStatus = (typeof STEWARDSHIP_STATUS_VALUES)[number]
 
-export type Lifecycle = 'active' | 'stable' | 'declining' | 'abandoned'
+export const LIFECYCLE_VALUES = ['active', 'stable', 'declining', 'abandoned', 'archived'] as const
+
+export type Lifecycle = (typeof LIFECYCLE_VALUES)[number]
+
+export const HEALTH_BAND_VALUES = [
+  'excellent',
+  'healthy',
+  'fair',
+  'concerning',
+  'critical',
+] as const
+
+export type HealthBand = (typeof HEALTH_BAND_VALUES)[number]
+
+export const HEALTH_BAND_SET = new Set<string>(HEALTH_BAND_VALUES)
 
 export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low'
 

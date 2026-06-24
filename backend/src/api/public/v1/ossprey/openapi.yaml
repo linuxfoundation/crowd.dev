@@ -50,10 +50,11 @@ components:
 
     HealthBand:
       type: string
-      enum: [healthy, fair, concerning, critical]
+      enum: [excellent, healthy, fair, concerning, critical]
       description: >
-        Server-derived from `scorecardScore` thresholds:
-        `null or < 3.0` → critical · `< 5.0` → concerning · `< 7.0` → fair · `≥ 7.0` → healthy
+        Tinybird band when enriched (excellent ≥85, healthy 70–84, fair 50–69,
+        concerning 30–49, critical <30). Falls back to scorecard thresholds:
+        `null or < 3.0` → critical · `< 5.0` → concerning · `< 7.0` → fair · `≥ 7.0` → healthy.
 
     StewardshipStatus:
       type: string
@@ -90,7 +91,7 @@ components:
         - ecosystem
         - openVulns
         - maintainerCount
-        - healthBand
+        - health
         - stewards
       properties:
         purl:
@@ -102,12 +103,6 @@ components:
         ecosystem:
           type: string
           example: npm
-        criticalityScore:
-          type:
-            - number
-            - 'null'
-          description: packages.impact (0–1 float). Multiply × 100 for display score.
-          example: 0.94
         stewardshipId:
           type:
             - string
@@ -131,14 +126,52 @@ components:
           type: integer
           description: Count of package_maintainers rows. Bus factor proxy.
           example: 2
+        criticalityScore:
+          type:
+            - number
+            - 'null'
+          description: Raw criticality score (0–1 float). Use `impact` for display.
+          example: 0.94
+        impact:
+          type:
+            - integer
+            - 'null'
+          description: Display score (0–100). criticalityScore × 100, rounded. Null if no score.
+          example: 94
         scorecardScore:
           type:
             - number
             - 'null'
           description: OpenSSF Scorecard score (0–10). Null if no repo mapped.
           example: 5.2
-        healthBand:
-          $ref: '#/components/schemas/HealthBand'
+        health:
+          type: object
+          required: [score, label]
+          properties:
+            score:
+              type:
+                - integer
+                - 'null'
+              description: >
+                Health score (0–100). Tinybird composite score when enriched,
+                OpenSSF Scorecard × 10 otherwise. Null if neither is available.
+              example: 52
+            label:
+              type:
+                - string
+                - 'null'
+              enum: [excellent, healthy, fair, concerning, critical, null]
+              description: >
+                Tinybird band when enriched (excellent ≥85, healthy 70–84,
+                fair 50–69, concerning 30–49, critical <30), scorecard band otherwise.
+              example: fair
+        lifecycle:
+          type:
+            - string
+            - 'null'
+          enum: [active, stable, declining, abandoned, archived, null]
+          description: Tinybird-enriched lifecycle label. Null if not yet enriched.
+          example: active
         latestReleaseAt:
           type:
             - string
@@ -230,7 +263,11 @@ components:
           description: ROUND(scorecard_score × 10). X-axis position (0–100). 0 if no repo.
           example: 52
         healthBand:
-          $ref: '#/components/schemas/HealthBand'
+          type: string
+          enum: [healthy, fair, concerning, critical]
+          description: >
+            Falls back to scorecard thresholds — never 'excellent' (scatter uses
+            scorecard score only, not Tinybird health_label).
         stewardshipStatus:
           oneOf:
             - $ref: '#/components/schemas/StewardshipStatus'
@@ -545,7 +582,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [active, stable, declining, abandoned]
+            enum: [active, stable, declining, abandoned, archived]
         - name: status
           in: query
           description: >
@@ -625,13 +662,17 @@ paths:
                     name: slf4j-api
                     ecosystem: maven
                     criticalityScore: 0.998
+                    impact: 100
                     stewardshipId: '101'
                     stewardshipStatus: active
                     openVulns: 0
                     maxVulnSeverity: null
                     maintainerCount: 2
                     scorecardScore: 7.5
-                    healthBand: healthy
+                    health:
+                      score: 75
+                      label: healthy
+                    lifecycle: active
                     latestReleaseAt: '2026-04-10T00:00:00Z'
                     lastActivity:
                       type: state_changed

@@ -22,7 +22,11 @@ import {
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
 import { QueryExecutor, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { fetchManySegments } from '@crowd/data-access-layer/src/segments'
+import {
+  decrementMemberMergeSuggestionCounts,
+  fetchManySegments,
+  getMembersCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import {
   IMemberIdentity,
@@ -757,33 +761,32 @@ export default class MemberService extends LoggerBase {
    */
   async addToNoMerge(memberOneId, memberTwoId) {
     const transaction = await SequelizeRepository.createTransaction(this.options)
+    const txOptions = { ...this.options, transaction }
 
     try {
-      await MemberRepository.addNoMerge(memberOneId, memberTwoId, {
-        ...this.options,
-        transaction,
-      })
-      await MemberRepository.addNoMerge(memberTwoId, memberOneId, {
-        ...this.options,
-        transaction,
-      })
-      await MemberRepository.removeToMerge(memberOneId, memberTwoId, {
-        ...this.options,
-        transaction,
-      })
-      await MemberRepository.removeToMerge(memberTwoId, memberOneId, {
-        ...this.options,
-        transaction,
-      })
+      await MemberRepository.addNoMerge(memberOneId, memberTwoId, txOptions)
+      await MemberRepository.addNoMerge(memberTwoId, memberOneId, txOptions)
+      await MemberRepository.removeToMerge(memberOneId, memberTwoId, txOptions)
+      await MemberRepository.removeToMerge(memberTwoId, memberOneId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
-
-      return { status: 200 }
     } catch (error) {
       await SequelizeRepository.rollbackTransaction(transaction)
 
       throw error
     }
+
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const projectGroupSegmentIds = await getMembersCommonProjectGroupSegmentIds(qx, [
+      memberOneId,
+      memberTwoId,
+    ])
+
+    // Precomputed per-project-group counts are only refreshed by cron every few hours.
+    // Decrement here so no-merge from the UI is reflected immediately.
+    await decrementMemberMergeSuggestionCounts(qx, projectGroupSegmentIds)
+
+    return { status: 200 }
   }
 
   async update(

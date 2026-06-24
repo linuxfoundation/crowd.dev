@@ -51,7 +51,11 @@ import {
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
 import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { fetchManySegments, getSegmentSubprojectIds } from '@crowd/data-access-layer/src/segments'
+import {
+  fetchManySegments,
+  getSegmentMergeSuggestionCounts,
+  getSegmentSubprojectIds,
+} from '@crowd/data-access-layer/src/segments'
 import { ActivityDisplayService } from '@crowd/integrations'
 import {
   ALL_PLATFORM_TYPES,
@@ -63,6 +67,8 @@ import {
   MemberIdentityType,
   MemberSegmentAffiliation,
   MemberSegmentAffiliationJoined,
+  MergeActionState,
+  MergeActionType,
   PlatformType,
   SegmentType,
   TemporalWorkflowId,
@@ -278,12 +284,26 @@ class MemberRepository {
             SELECT 1 FROM "memberSegmentsAgg" ms2
             WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "mergeActions" ma
+          WHERE ma.type = :mergeActionType
+            AND ma.state <> :mergeActionState
+            AND (
+              (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+              OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+            )
+        )
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
       `,
       {
-        replacements,
+        replacements: {
+          ...replacements,
+          mergeActionType: MergeActionType.MEMBER,
+          mergeActionState: MergeActionState.ERROR,
+        },
         type: QueryTypes.SELECT,
       },
     )
@@ -299,18 +319,16 @@ class MemberRepository {
     const MEDIUM_CONFIDENCE_LOWER_BOUND = 0.7
 
     // Member segments are aggregated at each hierarchy level (group -> project -> subproject).
-    // Match the selected segment ID directly; do not expand to leaf subprojects.
-    const segmentIds = SequelizeRepository.getSegmentIds(options)
+    const projectGroupSegment = SequelizeRepository.getStrictlySingleProjectGroupSegment(options)
 
-    if (segmentIds.length === 0) {
-      return args.countOnly
-        ? { count: '0' }
-        : {
-            rows: [{ members: [], similarity: 0 }],
-            count: 0,
-            limit: args.limit,
-            offset: args.offset,
-          }
+    let segmentIds: string[]
+
+    if (args.filter?.projectIds?.length) {
+      segmentIds = args.filter.projectIds
+    } else if (args.filter?.subprojectIds?.length) {
+      segmentIds = args.filter.subprojectIds
+    } else {
+      segmentIds = [projectGroupSegment.id]
     }
 
     let similarityFilter = ''
@@ -357,8 +375,25 @@ class MemberRepository {
       order += 'mtm."memberId", mtm."toMergeId"'
     }
 
-    if (args.countOnly) {
-      const totalCount = await this.countMemberMergeSuggestions(
+    const hasProjectFilter = Boolean(
+      args.filter?.projectIds?.length || args.filter?.subprojectIds?.length,
+    )
+
+    const hasCountFilters = Boolean(
+      args.filter?.memberId || args.filter?.displayName || args.filter?.similarity?.length,
+    )
+
+    const getTotalCount = async (): Promise<number> => {
+      if (!hasCountFilters && !hasProjectFilter) {
+        const counts = await getSegmentMergeSuggestionCounts(
+          SequelizeRepository.getQueryExecutor(options),
+          projectGroupSegment.id,
+        )
+
+        return counts?.memberMergeSuggestionsCount ?? 0
+      }
+
+      return this.countMemberMergeSuggestions(
         memberFilter,
         similarityFilter,
         displayNameFilter,
@@ -369,8 +404,10 @@ class MemberRepository {
         },
         options,
       )
+    }
 
-      return { count: totalCount }
+    if (args.countOnly) {
+      return { count: await getTotalCount() }
     }
 
     const mems = await options.database.sequelize.query(
@@ -395,7 +432,16 @@ class MemberRepository {
             SELECT 1 FROM "memberSegmentsAgg" ms2
             WHERE ms2."memberId" = mtm."toMergeId" AND ms2."segmentId" IN (:segmentIds)
         )
-        AND mtm.similarity IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "mergeActions" ma
+          WHERE ma.type = :mergeActionType
+            AND ma.state <> :mergeActionState
+            AND (
+              (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+              OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+            )
+        )
           ${memberFilter}
           ${similarityFilter}
           ${displayNameFilter}
@@ -410,6 +456,8 @@ class MemberRepository {
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           memberId: args?.filter?.memberId,
+          mergeActionType: MergeActionType.MEMBER,
+          mergeActionState: MergeActionState.ERROR,
         },
         type: QueryTypes.SELECT,
       },
@@ -506,24 +554,12 @@ class MemberRepository {
         }))
       }
 
-      const totalCount = await this.countMemberMergeSuggestions(
-        memberFilter,
-        similarityFilter,
-        displayNameFilter,
-        {
-          segmentIds,
-          memberId: args?.filter?.memberId,
-          displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
-        },
-        options,
-      )
-
-      return { rows: result, count: totalCount, limit: args.limit, offset: args.offset }
+      return { rows: result, count: await getTotalCount(), limit: args.limit, offset: args.offset }
     }
 
     return {
       rows: [{ members: [], similarity: 0 }],
-      count: 0,
+      count: await getTotalCount(),
       limit: args.limit,
       offset: args.offset,
     }
