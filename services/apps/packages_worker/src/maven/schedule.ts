@@ -32,6 +32,7 @@ export async function scheduleMavenIngestion(): Promise<void> {
       action: {
         type: 'startWorkflow',
         workflowType: ingestMavenPackages,
+        workflowId: 'maven-daily-enrichment',
         taskQueue: 'packages-worker',
         workflowRunTimeout: '24 hours',
         retry: {
