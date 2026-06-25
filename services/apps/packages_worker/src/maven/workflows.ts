@@ -11,15 +11,10 @@ const acts = proxyActivities<typeof activities>({
   },
 })
 
-const BATCHES_PER_RUN = 5
-
 export async function ingestMavenPackages(): Promise<void> {
-  for (let i = 0; i < BATCHES_PER_RUN; i++) {
-    const result = await acts.processMavenCriticalBatch()
-    if (result.processed + result.skipped + result.error + result.unchanged === 0) {
-      return
-    }
+  const result = await acts.processMavenCriticalBatch()
+  if (result.processed + result.skipped + result.error + result.unchanged === 0) {
+    return
   }
-
   await continueAsNew<typeof ingestMavenPackages>()
 }

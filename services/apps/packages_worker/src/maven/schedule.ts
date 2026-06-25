@@ -12,8 +12,11 @@ export async function scheduleMavenIngestion(): Promise<void> {
   try {
     await temporal.schedule.getHandle(LEGACY_SCHEDULE_ID).delete()
     svc.log.info({ scheduleId: LEGACY_SCHEDULE_ID }, 'Deleted legacy schedule.')
-  } catch {
-    // Not found — nothing to clean up.
+  } catch (err) {
+    svc.log.warn(
+      { err, scheduleId: LEGACY_SCHEDULE_ID },
+      'Failed to delete legacy schedule (may not exist).',
+    )
   }
 
   try {
