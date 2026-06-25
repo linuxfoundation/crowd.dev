@@ -18,7 +18,10 @@ SQL >
 
 NODE ossPackages_enriched_pkg_repo
 SQL >
-    SELECT packageId, argMax(repoId, (toFloat64OrZero(confidence), verifiedAt, repoId)) AS repoId, 1 AS hasRepo
+    SELECT
+        packageId,
+        argMax(repoId, (toFloat64OrZero(confidence), verifiedAt, repoId)) AS repoId,
+        1 AS hasRepo
     FROM packageRepos FINAL
     GROUP BY packageId
 
