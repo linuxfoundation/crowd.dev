@@ -2776,14 +2776,13 @@ export default class IntegrationService {
     } catch (err) {
       this.options.log.error(
         {
-          err,
           errMessage: err?.message,
           errName: err?.name,
           errStack: err?.stack,
           gitlabStatus: err?.response?.status,
           gitlabError: err?.response?.data,
           gitlabUrl: err?.config?.url,
-          isAxiosError: !!err?.isAxiosError,
+          gitlabMethod: err?.config?.method,
         },
         'gitlabConnect failed',
       )
