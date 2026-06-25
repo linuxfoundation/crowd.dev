@@ -14,7 +14,7 @@ const acts = proxyActivities<typeof activities>({
 export async function ingestMavenPackages(): Promise<void> {
   const result = await acts.processMavenCriticalBatch()
   if (result.processed + result.skipped + result.unchanged === 0) {
-    log.info({ ...result }, 'Maven ingestion complete — no more work, exiting.')
+    log.info('Maven ingestion complete — no more work, exiting.', { ...result })
     return
   }
   await continueAsNew<typeof ingestMavenPackages>()
