@@ -2774,6 +2774,18 @@ export default class IntegrationService {
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (err) {
+      this.options.log.error(
+        {
+          errMessage: err?.message,
+          errName: err?.name,
+          errStack: err?.stack,
+          gitlabStatus: err?.response?.status,
+          gitlabError: err?.response?.data,
+          gitlabUrl: err?.config?.url,
+          gitlabMethod: err?.config?.method,
+        },
+        'gitlabConnect failed',
+      )
       await SequelizeRepository.rollbackTransaction(transaction)
       throw err
     }
