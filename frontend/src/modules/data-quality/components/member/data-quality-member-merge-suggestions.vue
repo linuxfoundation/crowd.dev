@@ -18,7 +18,7 @@
           </div>
         </template>
       </lf-data-quality-member-merge-suggestions-item>
-      <div v-if="mergeSuggestions.length < total" class="pt-4">
+      <div v-if="hasMore" class="pt-4">
         <lf-button
           type="primary-ghost"
           loading-text="Loading suggestions..."
@@ -73,7 +73,7 @@ const props = defineProps<{
 const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
-const total = ref(0);
+const hasMore = ref(false);
 const mergeSuggestions = ref<any[]>([]);
 
 const isModalOpen = ref<boolean>(false);
@@ -91,7 +91,7 @@ const loadMergeSuggestions = () => {
     segments: segments.value,
   })
     .then((res) => {
-      total.value = +res.count;
+      hasMore.value = Boolean(res.hasMore);
       const rows = res.rows.filter((s: any) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];

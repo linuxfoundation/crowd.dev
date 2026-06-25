@@ -3,7 +3,14 @@ import cloneDeep from 'lodash.clonedeep'
 
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations'
-import { ActivityTypeSettings, PlatformType, SegmentData, SegmentRawData } from '@crowd/types'
+import {
+  ActivityTypeSettings,
+  MergeActionState,
+  MergeActionType,
+  PlatformType,
+  SegmentData,
+  SegmentRawData,
+} from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
@@ -557,4 +564,286 @@ export async function getSubProjectsCount(
     projectsTotal: parseInt(result.projectsTotal) || 0,
     projectsLast30Days: parseInt(result.projectsLast30Days) || 0,
   }
+}
+
+export async function fetchProjectGroupSegmentIds(qx: QueryExecutor): Promise<string[]> {
+  const rows: { id: string }[] = await qx.select(
+    `
+      SELECT id
+      FROM segments
+      WHERE "parentId" IS NULL
+        AND "grandparentId" IS NULL
+        AND "tenantId" = $(tenantId)
+        AND status = 'active'
+      ORDER BY id
+    `,
+    {
+      tenantId: DEFAULT_TENANT_ID,
+    },
+  )
+
+  return rows.map((row) => row.id)
+}
+
+export async function calculateSegmentMemberMergeSuggestionsCount(
+  qx: QueryExecutor,
+  segmentId: string,
+): Promise<number> {
+  const result = await qx.selectOne(
+    `
+      SELECT COUNT(*) AS count
+      FROM "memberToMerge" mtm
+      WHERE EXISTS (
+        SELECT 1
+        FROM "memberSegmentsAgg" ms
+        WHERE ms."memberId" = mtm."memberId"
+          AND ms."segmentId" = $(segmentId)
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM "memberSegmentsAgg" ms2
+        WHERE ms2."memberId" = mtm."toMergeId"
+          AND ms2."segmentId" = $(segmentId)
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "mergeActions" ma
+        WHERE ma.type = $(mergeActionType)
+          AND ma.state <> $(mergeActionState)
+          AND (
+            (ma."primaryId" = mtm."memberId" AND ma."secondaryId" = mtm."toMergeId")
+            OR (ma."primaryId" = mtm."toMergeId" AND ma."secondaryId" = mtm."memberId")
+          )
+      )
+    `,
+    {
+      segmentId,
+      mergeActionType: MergeActionType.MEMBER,
+      mergeActionState: MergeActionState.ERROR,
+    },
+  )
+
+  return Number(result.count)
+}
+
+export async function calculateSegmentOrganizationMergeSuggestionsCount(
+  qx: QueryExecutor,
+  segmentId: string,
+): Promise<number> {
+  const result = await qx.selectOne(
+    `
+      SELECT COUNT(*) AS count
+      FROM "organizationToMerge" otm
+      WHERE EXISTS (
+        SELECT 1
+        FROM "organizationSegmentsAgg" os1
+        WHERE os1."organizationId" = otm."organizationId"
+          AND os1."segmentId" = $(segmentId)
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM "organizationSegmentsAgg" os2
+        WHERE os2."organizationId" = otm."toMergeId"
+          AND os2."segmentId" = $(segmentId)
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "mergeActions" ma
+        WHERE ma.type = $(mergeActionType)
+          AND ma.state <> $(mergeActionState)
+          AND (
+            (ma."primaryId" = otm."organizationId" AND ma."secondaryId" = otm."toMergeId")
+            OR (ma."primaryId" = otm."toMergeId" AND ma."secondaryId" = otm."organizationId")
+          )
+      )
+    `,
+    {
+      segmentId,
+      mergeActionType: MergeActionType.ORG,
+      mergeActionState: MergeActionState.ERROR,
+    },
+  )
+
+  return Number(result.count)
+}
+
+interface SegmentMergeSuggestionCounts {
+  memberMergeSuggestionsCount: number
+  organizationMergeSuggestionsCount: number
+}
+
+export async function upsertSegmentMergeSuggestionCounts(
+  qx: QueryExecutor,
+  segmentId: string,
+  data: SegmentMergeSuggestionCounts,
+): Promise<void> {
+  const { memberMergeSuggestionsCount, organizationMergeSuggestionsCount } = data
+
+  await qx.result(
+    `
+      INSERT INTO "segmentMergeSuggestionCounts" (
+        "segmentId",
+        "memberMergeSuggestionsCount",
+        "organizationMergeSuggestionsCount",
+        "updatedAt"
+      )
+      VALUES (
+        $(segmentId),
+        $(memberMergeSuggestionsCount),
+        $(organizationMergeSuggestionsCount),
+        now()
+      )
+      ON CONFLICT ("segmentId")
+      DO UPDATE SET
+        "memberMergeSuggestionsCount" = EXCLUDED."memberMergeSuggestionsCount",
+        "organizationMergeSuggestionsCount" = EXCLUDED."organizationMergeSuggestionsCount",
+        "updatedAt" = EXCLUDED."updatedAt"
+    `,
+    {
+      segmentId,
+      memberMergeSuggestionsCount,
+      organizationMergeSuggestionsCount,
+    },
+  )
+}
+
+export async function getSegmentMergeSuggestionCounts(
+  qx: QueryExecutor,
+  segmentId: string,
+): Promise<SegmentMergeSuggestionCounts | null> {
+  const result = await qx.selectOneOrNone(
+    `
+      SELECT
+        "memberMergeSuggestionsCount",
+        "organizationMergeSuggestionsCount"
+      FROM "segmentMergeSuggestionCounts"
+      WHERE "segmentId" = $(segmentId)
+    `,
+    {
+      segmentId,
+    },
+  )
+
+  if (!result) {
+    return null
+  }
+
+  return {
+    memberMergeSuggestionsCount: Number(result.memberMergeSuggestionsCount),
+    organizationMergeSuggestionsCount: Number(result.organizationMergeSuggestionsCount),
+  }
+}
+
+export async function getMembersCommonProjectGroupSegmentIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<string[]> {
+  if (!memberIds || memberIds.length !== 2) {
+    throw new Error('Exactly two memberIds are required')
+  }
+
+  const [memberId, otherMemberId] = memberIds
+
+  const rows: { segmentId: string }[] = await qx.select(
+    `
+      SELECT DISTINCT ms."segmentId"
+      FROM "memberSegmentsAgg" ms
+      INNER JOIN "memberSegmentsAgg" ms2
+        ON ms."segmentId" = ms2."segmentId"
+      INNER JOIN segments s
+        ON s.id = ms."segmentId"
+      WHERE ms."memberId" = $(memberId)
+        AND ms2."memberId" = $(otherMemberId)
+        AND s."parentId" IS NULL
+        AND s."grandparentId" IS NULL
+        AND s."tenantId" = $(tenantId)
+        AND s.status = 'active'
+    `,
+    {
+      memberId,
+      otherMemberId,
+      tenantId: DEFAULT_TENANT_ID,
+    },
+  )
+
+  return rows.map((row) => row.segmentId)
+}
+
+export async function getOrganizationsCommonProjectGroupSegmentIds(
+  qx: QueryExecutor,
+  organizationIds: string[],
+): Promise<string[]> {
+  if (!organizationIds || organizationIds.length !== 2) {
+    throw new Error('Exactly two organizationIds are required')
+  }
+
+  const [organizationId, otherOrganizationId] = organizationIds
+
+  const rows: { segmentId: string }[] = await qx.select(
+    `
+      SELECT DISTINCT os1."segmentId"
+      FROM "organizationSegmentsAgg" os1
+      INNER JOIN "organizationSegmentsAgg" os2
+        ON os1."segmentId" = os2."segmentId"
+      INNER JOIN segments s
+        ON s.id = os1."segmentId"
+      WHERE os1."organizationId" = $(organizationId)
+        AND os2."organizationId" = $(otherOrganizationId)
+        AND s."parentId" IS NULL
+        AND s."grandparentId" IS NULL
+        AND s."tenantId" = $(tenantId)
+        AND s.status = 'active'
+    `,
+    {
+      organizationId,
+      otherOrganizationId,
+      tenantId: DEFAULT_TENANT_ID,
+    },
+  )
+
+  return rows.map((row) => row.segmentId)
+}
+
+export async function decrementMemberMergeSuggestionCounts(
+  qx: QueryExecutor,
+  segmentIds: string[],
+): Promise<void> {
+  if (segmentIds.length === 0) {
+    return
+  }
+
+  await qx.result(
+    `
+      UPDATE "segmentMergeSuggestionCounts"
+      SET
+        "memberMergeSuggestionsCount" = GREATEST(0, "memberMergeSuggestionsCount" - 1),
+        "updatedAt" = now()
+      WHERE "segmentId" IN ($(segmentIds:csv))
+    `,
+    {
+      segmentIds,
+    },
+  )
+}
+
+export async function decrementOrganizationMergeSuggestionCounts(
+  qx: QueryExecutor,
+  segmentIds: string[],
+): Promise<void> {
+  if (segmentIds.length === 0) {
+    return
+  }
+
+  await qx.result(
+    `
+      UPDATE "segmentMergeSuggestionCounts"
+      SET
+        "organizationMergeSuggestionsCount" = GREATEST(0, "organizationMergeSuggestionsCount" - 1),
+        "updatedAt" = now()
+      WHERE "segmentId" IN ($(segmentIds:csv))
+    `,
+    {
+      segmentIds,
+    },
+  )
 }

@@ -1,0 +1,29 @@
+DESCRIPTION >
+    Sink pipe that exports per-package enrichment (health/lifecycle) fields back to Kafka so a
+    Kafka Connect JDBC sink can update the Postgres `packages` rows. Scoped to critical packages
+    (isCritical = 1), since enrichment is only computed/meaningful for the tracked set. Columns
+    are aliased to the snake_case Postgres column names so the JDBC sink maps field -> column 1:1.
+    Runs daily after `ossPackages_enriched.pipe` (the 02:30 UTC enrichment COPY) has refreshed
+    `ossPackages_enriched_ds`.
+
+NODE ossPackages_enriched_sink_select
+SQL >
+    SELECT
+        purl,
+        lifecycleLabel AS lifecycle_label,
+        healthScore AS health_score,
+        healthLabel AS health_label,
+        maintainerHealthScore AS maintainer_health_score,
+        securitySupplyChainScore AS security_supply_chain_score,
+        developmentActivityScore AS development_activity_score,
+        signalCoverageHealth AS signal_coverage_health
+    FROM ossPackages_enriched_ds
+    WHERE isCritical = 1
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE 0 4 * * *
+EXPORT_FORMAT json
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC ossPackages_enriched_sink

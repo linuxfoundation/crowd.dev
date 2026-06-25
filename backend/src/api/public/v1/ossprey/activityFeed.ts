@@ -25,8 +25,7 @@ export async function activityFeedHandler(req: Request, res: Response): Promise<
       packagePurl: r.packagePurl,
       packageName: r.packageName,
       packageEcosystem: r.packageEcosystem,
-      actorUserId: r.actorUserId,
-      actorName: r.actorUserId, // TODO: resolve display name from crowd.dev users/members table by actorUserId
+      actor: r.actor,
       actorType: r.actorType,
       activityType: r.activityType,
       content: r.content,

@@ -7,7 +7,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || currentOffset <= 0 || count === 0"
+            :disabled="loading || currentOffset <= 0 || !hasSuggestion"
             :icon-only="true"
             @click="fetch(currentOffset - 1)"
           >
@@ -16,7 +16,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || currentOffset >= count - 1 || count === 0"
+            :disabled="loading || !hasMore"
             :icon-only="true"
             @click="fetch(currentOffset + 1)"
           >
@@ -26,16 +26,10 @@
 
         <app-loading v-if="loading" height="16px" width="128px" radius="3px" />
         <div
-          v-else-if="Math.ceil(count) > 1"
+          v-else-if="hasSuggestion"
           class="text-xs leading-5 text-gray-500"
         >
-          <div>{{ currentOffset + 1 }} of {{ Math.ceil(count) }} suggestions</div>
-        </div>
-        <div
-          v-else-if="Math.ceil(count) === 1"
-          class="text-xs leading-5 text-gray-500"
-        >
-          <div>1 suggestion</div>
+          <div>Suggestion {{ currentOffset + 1 }}</div>
         </div>
         <div
           v-else
@@ -48,7 +42,7 @@
         <app-member-merge-similarity v-if="!loading && organizationsToMerge.similarity" :similarity="organizationsToMerge.similarity" />
         <lf-button
           type="secondary"
-          :disabled="loading || isEditLockedForSampleData || count === 0"
+          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
           :loading="sendingIgnore"
           @click="ignoreSuggestion()"
         >
@@ -56,7 +50,7 @@
         </lf-button>
         <lf-button
           type="primary"
-          :disabled="loading || isEditLockedForSampleData || count === 0"
+          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
@@ -66,7 +60,7 @@
       </div>
     </header>
 
-    <div v-if="loading || count > 0">
+    <div v-if="loading || hasSuggestion">
       <!-- Comparison -->
       <!-- Loading -->
       <div v-if="loading" class="flex p-5">
@@ -175,7 +169,8 @@ const { trackEvent } = useProductTracking();
 const organizationsToMerge = ref([]);
 const primary = ref(0);
 const currentOffset = ref(0);
-const count = ref(0);
+const hasMore = ref(false);
+const hasSuggestion = ref(false);
 const loading = ref(false);
 
 const sendingIgnore = ref(false);
@@ -211,25 +206,45 @@ const preview = computed(() => {
   return mergedOrganizations;
 });
 
-const fetch = (page) => {
+const updateSuggestionsState = (res) => {
+  hasMore.value = Boolean(res.hasMore);
+  const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
+
+  if (rows.length > 0) {
+    hasSuggestion.value = true;
+    [organizationsToMerge.value] = rows;
+  } else {
+    hasSuggestion.value = false;
+    organizationsToMerge.value = [];
+  }
+};
+
+const fetch = (page, trackNavigation = true) => {
   if (page > -1) {
     currentOffset.value = page;
   }
 
-  trackEvent({
-    key: FeatureEventKey.NAVIGATE_ORGANIZATIONS_MERGE_SUGGESTIONS,
-    type: EventType.FEATURE,
-  });
+  if (trackNavigation) {
+    trackEvent({
+      key: FeatureEventKey.NAVIGATE_ORGANIZATIONS_MERGE_SUGGESTIONS,
+      type: EventType.FEATURE,
+    });
+  }
 
   loading.value = true;
 
-  OrganizationService.fetchMergeSuggestions(1, currentOffset.value, props.query ?? {})
+  return OrganizationService.fetchMergeSuggestions(1, currentOffset.value, props.query ?? {})
     .then((res) => {
       currentOffset.value = +res.offset;
-      count.value = res.count;
-      [organizationsToMerge.value] = res.rows;
+
+      updateSuggestionsState(res);
+
+      if (!hasSuggestion.value && currentOffset.value > 0) {
+        return fetch(currentOffset.value - 1, false);
+      }
 
       primary.value = 0;
+      return undefined;
     })
     .catch(() => {
       ToastStore.error(
@@ -259,8 +274,7 @@ const ignoreSuggestion = () => {
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
 
-      const nextIndex = currentOffset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : currentOffset.value;
-      fetch(nextIndex);
+      fetch(currentOffset.value);
       changed.value = true;
     })
     .catch((error) => {
@@ -307,8 +321,7 @@ const mergeSuggestion = () => {
 
       loadingMessage();
 
-      const nextIndex = currentOffset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : currentOffset.value;
-      fetch(nextIndex);
+      fetch(currentOffset.value);
       changed.value = true;
     })
     .catch((error) => {

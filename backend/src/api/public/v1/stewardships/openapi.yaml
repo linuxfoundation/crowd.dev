@@ -13,9 +13,9 @@ info:
     scope enforcement is temporarily disabled. See CM-1235.
 
 servers:
-  - url: https://cm.lfx.dev/api/v1
+  - url: https://cm.lfx.dev/api/v1/akrites
     description: Production
-  - url: https://lf-staging.crowd.dev/api/v1
+  - url: https://lf-staging.crowd.dev/api/v1/akrites
     description: Staging
 
 tags:
@@ -44,6 +44,69 @@ components:
             message:
               type: string
               example: Stewardship not found.
+
+    ActivityActor:
+      type: object
+      required: [userId]
+      description: Profile of the actor who performed an activity. Stored as a snapshot on the activity log.
+      properties:
+        userId:
+          type: string
+          description: Auth0 sub of the actor.
+          example: auth0|abc123
+        username:
+          type:
+            - string
+            - 'null'
+          description: LFX username of the actor.
+          example: gaspergrom
+        displayName:
+          type:
+            - string
+            - 'null'
+          description: Full display name of the actor.
+          example: Gašper Grom
+        avatarUrl:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Avatar URL of the actor.
+          example: 'https://avatars.githubusercontent.com/u/12345'
+
+    ActorInput:
+      type: object
+      required: [userId]
+      description: >
+        Profile of the actor performing this action. Stored as a snapshot on the activity log.
+        `userId` is required. All other fields are optional and can be null.
+      properties:
+        userId:
+          type: string
+          minLength: 1
+          description: Auth0 sub of the actor. Must match the authenticated user's token sub.
+          example: auth0|abc123
+        username:
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          description: LFX username of the actor.
+          example: gaspergrom
+        displayName:
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          description: Full display name of the actor.
+          example: Gašper Grom
+        avatarUrl:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Avatar URL of the actor.
+          example: 'https://avatars.githubusercontent.com/u/12345'
 
     StewardshipStatus:
       type: string
@@ -162,7 +225,7 @@ components:
         - namespace_takeover
 
 paths:
-  /stewardships:
+  /stewardships/open:
     post:
       operationId: openStewardship
       summary: Open a package for stewardship
@@ -181,14 +244,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [purl]
+              required: [purl, actor]
               properties:
                 purl:
                   type: string
                   description: Package URL (must start with `pkg:`).
                   example: pkg:npm/lodash
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             example:
               purl: pkg:npm/lodash
+              actor:
+                userId: auth0|abc123
+                username: gaspergrom
+                displayName: Gašper Grom
+                avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Stewardship opened (or already open).
@@ -237,8 +307,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /stewardships/{id}/steward:
-    put:
+  /stewardships/{id}/assign:
+    post:
       operationId: assignSteward
       summary: Assign a steward to a stewardship
       description: >
@@ -264,23 +334,39 @@ paths:
           application/json:
             schema:
               type: object
-              required: [userId, role]
+              required: [steward, actor]
               properties:
-                userId:
+                steward:
+                  type: object
+                  required: [userId, role]
+                  description: >
+                    The user to assign as steward.
+                    `username` and `displayName` must be provided together or both omitted — sending one without the other returns 400.
+                  properties:
+                    userId:
+                      type: string
+                      minLength: 1
+                      description: Auth0 sub of the user to assign as steward.
+                      example: abc123
+                    username:
+                      type:
+                        - string
+                        - 'null'
+                      description: LFX username of the steward. Must be provided together with `displayName`.
+                      example: joanagmaia
+                    displayName:
+                      type:
+                        - string
+                        - 'null'
+                      description: Full display name of the steward. Must be provided together with `username`.
+                      example: Joana Maia
+                    role:
+                      type: string
+                      enum: [lead, co_steward]
+                note:
                   type: string
-                  description: Auth0 sub of the user to assign as steward.
-                  example: abc123
-                username:
-                  type: string
-                  description: LFX username of the steward. When provided together with displayName, stored for display purposes.
-                  example: joanagmaia
-                displayName:
-                  type: string
-                  description: Full display name of the steward. When provided together with username, stored for display purposes.
-                  example: Joana Maia
-                role:
-                  type: string
-                  enum: [lead, co_steward]
+                  minLength: 1
+                  description: Optional free-text note for the activity log.
                 moveToAssessing:
                   type: boolean
                   default: false
@@ -288,10 +374,18 @@ paths:
                     If true, atomically transitions the stewardship status to `assessing`
                     in the same transaction as the assignment. Use for the "Assign & move to
                     Assessing" action to avoid a second round-trip.
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             example:
-              userId: abc123
-              role: lead
+              steward:
+                userId: abc123
+                role: lead
               moveToAssessing: true
+              actor:
+                userId: auth0|xyz
+                username: gaspergrom
+                displayName: Gašper Grom
+                avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Steward assigned.
@@ -352,7 +446,7 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /stewardships/{id}/escalate:
-    put:
+    post:
       operationId: escalateStewardship
       summary: Escalate a stewardship
       description: >
@@ -377,7 +471,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [resolutionPath]
+              required: [resolutionPath, actor]
               properties:
                 resolutionPath:
                   $ref: '#/components/schemas/EscalationResolutionPath'
@@ -386,9 +480,16 @@ paths:
                   minLength: 1
                   description: Optional free-text notes for the activity log.
                   example: Contacted maintainer, no response after 30 days.
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             example:
               resolutionPath: right_of_first_refusal
               notes: Contacted maintainer, no response after 30 days.
+              actor:
+                userId: auth0|abc123
+                username: gaspergrom
+                displayName: Gašper Grom
+                avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Stewardship escalated.
@@ -438,7 +539,7 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /stewardships/{id}/status:
-    put:
+    patch:
       operationId: updateStewardshipStatus
       summary: Update stewardship status
       description: >
@@ -464,7 +565,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [status]
+              required: [status, actor]
               properties:
                 status:
                   type: string
@@ -485,22 +586,39 @@ paths:
                   type: string
                   minLength: 1
                   description: Optional free-text notes for the activity log.
+                actor:
+                  $ref: '#/components/schemas/ActorInput'
             examples:
               set_active:
                 summary: Transition to active
                 value:
                   status: active
+                  actor:
+                    userId: auth0|abc123
+                    username: gaspergrom
+                    displayName: Gašper Grom
+                    avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
               set_inactive:
                 summary: Transition to inactive (inactiveReason required)
                 value:
                   status: inactive
                   inactiveReason: stepped_down
                   notes: Steward stepped down voluntarily.
+                  actor:
+                    userId: auth0|abc123
+                    username: gaspergrom
+                    displayName: Gašper Grom
+                    avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
               set_blocked:
                 summary: Transition to blocked
                 value:
                   status: blocked
                   notes: Waiting on upstream maintainer response.
+                  actor:
+                    userId: auth0|abc123
+                    username: gaspergrom
+                    displayName: Gašper Grom
+                    avatarUrl: 'https://avatars.githubusercontent.com/u/12345'
       responses:
         '200':
           description: Status updated.

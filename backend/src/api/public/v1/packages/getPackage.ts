@@ -13,7 +13,16 @@ import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
 import { purlQuerySchema } from './purl'
-import type { StewardshipStatus } from './types'
+import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type StewardshipStatus } from './types'
+
+const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
+
+function snakeToCamelKeys(obj: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (obj === null) return null
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]),
+  )
+}
 
 function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' | null {
   if (confidence === null) return null
@@ -32,7 +41,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     throw new NotFoundError()
   }
 
-  const [advisories, stewardshipSummary] = await Promise.all([
+  const [{ rows: advisories }, stewardshipSummary] = await Promise.all([
     getAdvisoriesByPackageId(qx, pkg.id),
     pkg.stewardshipId ? getStewardshipSummary(qx, Number(pkg.stewardshipId)) : null,
   ])
@@ -47,18 +56,31 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     ecosystem: pkg.ecosystem,
     latestVersion: pkg.latestVersion ?? null,
     general: {
-      healthScore: scorecardScore !== null ? Math.round(scorecardScore * 10) : null,
-      healthBand: computeHealthBand(scorecardScore),
+      healthScore: pkg.healthScore,
+      healthScoreDetails: {
+        total: pkg.healthScore,
+        label:
+          pkg.healthLabel != null && HEALTH_BAND_SET.has(pkg.healthLabel) ? pkg.healthLabel : null,
+        maintainerHealth: pkg.maintainerHealthScore,
+        securitySupplyChain: pkg.securitySupplyChainScore,
+        developmentActivity: pkg.developmentActivityScore,
+      },
+      healthBand:
+        pkg.healthLabel != null && HEALTH_BAND_SET.has(pkg.healthLabel)
+          ? pkg.healthLabel
+          : computeHealthBand(scorecardScore),
       impact: {
-        impactScore:
-          pkg.criticalityScore != null ? Math.round(Number(pkg.criticalityScore) * 100) : null,
+        impactScore: pkg.criticalityScore != null ? Math.round(pkg.criticalityScore * 100) : null,
         downloadsLastMonth: pkg.downloadsLast30d ?? null,
         dependentPackages: pkg.dependentPackagesCount ?? null,
         dependentRepos: pkg.dependentReposCount ?? null,
         transitiveReach: pkg.transitiveReach,
       },
       riskSignals: {
-        lifecycle: null,
+        lifecycle:
+          pkg.lifecycleLabel != null && LIFECYCLE_SET.has(pkg.lifecycleLabel)
+            ? pkg.lifecycleLabel
+            : null,
         maintainerBusFactor: pkg.maintainerCount,
         lastRelease: pkg.latestReleaseAt ? pkg.latestReleaseAt.toISOString() : null,
         hasSecurityFile: pkg.hasSecurityFile,
@@ -67,6 +89,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         openSSFScorecard: scorecardScore,
       },
     },
+    signalCoverageHealth: snakeToCamelKeys(pkg.signalCoverageHealth),
     assessment: null,
     security: {
       securityContacts: null,
@@ -74,6 +97,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         osvId: a.osvId,
         severity: a.severity,
         resolution: a.resolution,
+        isCritical: a.isCritical,
       })),
       cvd: {
         isPvrEnabled: null,

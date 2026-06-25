@@ -91,7 +91,13 @@ components:
           type: string
           description: Auth0 sub of the assigned steward.
           example: abc123
-        name:
+        username:
+          type:
+            - string
+            - 'null'
+          description: Username of the steward. Null if not available.
+          example: jrodriguez
+        displayName:
           type:
             - string
             - 'null'
@@ -121,7 +127,7 @@ components:
           type:
             - string
             - 'null'
-          enum: [active, stable, declining, abandoned, null]
+          enum: [active, stable, declining, abandoned, archived, null]
         health:
           type:
             - integer
@@ -174,10 +180,20 @@ components:
           type: string
           example: npm
         health:
-          type:
-            - integer
-            - 'null'
-          example: 18
+          type: object
+          required: [score, label]
+          properties:
+            score:
+              type:
+                - integer
+                - 'null'
+              description: Health score (0–100). Tinybird composite score when enriched, OpenSSF Scorecard × 10 otherwise. Null if neither is available.
+              example: 18
+            label:
+              type: string
+              enum: [excellent, healthy, fair, concerning, critical]
+              description: 'Tinybird band when enriched (excellent ≥85, healthy 70–84, fair 50–69, concerning 30–49, critical <30), scorecard band otherwise.'
+              example: critical
         impact:
           type:
             - integer
@@ -187,7 +203,7 @@ components:
           type:
             - string
             - 'null'
-          enum: [active, stable, declining, abandoned, null]
+          enum: [active, stable, declining, abandoned, archived, null]
         maintainerBusFactor:
           type:
             - integer
@@ -206,12 +222,10 @@ components:
         stewardship:
           $ref: '#/components/schemas/StewardshipStatus'
         stewards:
-          description: Assigned stewards or null.
-          oneOf:
-            - type: array
-              items:
-                $ref: '#/components/schemas/Steward'
-            - type: 'null'
+          description: Assigned stewards. Empty array if none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Steward'
 
     # ── Package detail ───────────────────────────────────────────────────────────
 
@@ -264,9 +278,26 @@ components:
           properties:
             healthScore:
               type:
+                - integer
+                - 'null'
+              description: Composite health score (0–100). Tinybird-enriched when available, null otherwise.
+              example: 18
+            healthScoreDetails:
+              type:
                 - object
                 - 'null'
+              description: Breakdown of the composite health score. Null until Tinybird enrichment runs.
               properties:
+                total:
+                  type:
+                    - integer
+                    - 'null'
+                  example: 18
+                label:
+                  type:
+                    - string
+                    - 'null'
+                  example: Good
                 maintainerHealth:
                   type:
                     - integer
@@ -282,11 +313,13 @@ components:
                     - integer
                     - 'null'
                   example: 6
-                total:
-                  type:
-                    - integer
-                    - 'null'
-                  example: 18
+            healthBand:
+              type:
+                - string
+                - 'null'
+              enum: [excellent, healthy, fair, concerning, critical, null]
+              description: Derived from Tinybird health score when available, OpenSSF Scorecard otherwise.
+              example: concerning
             impact:
               type:
                 - object
@@ -327,7 +360,7 @@ components:
                   type:
                     - string
                     - 'null'
-                  enum: [active, stable, declining, abandoned, null]
+                  enum: [active, stable, declining, abandoned, archived, null]
                 maintainerBusFactor:
                   type:
                     - integer
@@ -462,6 +495,12 @@ components:
         history:
           type: object
           description: Package history data. Empty in v1.
+        signalCoverageHealth:
+          type:
+            - object
+            - 'null'
+          description: Signal coverage health data enriched by Tinybird. Null until enriched.
+          additionalProperties: true
 
     # ── Metrics ──────────────────────────────────────────────────────────────────
 
@@ -512,7 +551,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [active, stable, declining, abandoned]
+            enum: [active, stable, declining, abandoned, archived]
         - name: busFactor1Only
           in: query
           schema:
@@ -668,11 +707,14 @@ paths:
                 name: lodash
                 ecosystem: npm
                 general:
-                  healthScore:
+                  healthScore: 18
+                  healthScoreDetails:
+                    total: 18
+                    label: critical
                     maintainerHealth: 4
                     securitySupplyChain: 8
                     developmentActivity: 6
-                    total: 18
+                  healthBand: critical
                   impact:
                     impactScore: 71
                     downloadsLastMonth: 52142891
@@ -782,7 +824,9 @@ paths:
                     name: lodash
                     ecosystem: npm
                     lifecycle: declining
-                    health: 18
+                    health:
+                      score: 18
+                      label: critical
                     impact: 71
                     openVulns:
                       low: 0

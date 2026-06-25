@@ -12,7 +12,7 @@ export {
 } from './npm/activities'
 export * from './deps-dev/activities'
 export { osvSyncEcosystem, osvDeriveCriticalFlag } from './osv/activities'
-export { processMavenCriticalBatch, processMavenNonCriticalBatch } from './maven/activities'
+export { processMavenCriticalBatch } from './maven/activities'
 export { criticalityComputePageRank, rankPackages } from './criticality/activities'
 export {
   cargoDownloadAndLoad,
@@ -24,3 +24,4 @@ export {
   cargoFlushAudit,
   cargoCleanup,
 } from './cargo/activities'
+export { enrichGoVersionsBatch, enrichGoStatusBatch } from './go/activities'
