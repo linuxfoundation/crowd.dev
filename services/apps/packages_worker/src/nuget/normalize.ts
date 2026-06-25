@@ -65,22 +65,16 @@ export function normalizeNuGetPackage(
   )
 
   const description =
-    searchResult?.description ||
-    searchResult?.summary ||
-    latestListedEntry?.description ||
-    null
+    searchResult?.description || searchResult?.summary || latestListedEntry?.description || null
 
-  const homepage =
-    searchResult?.projectUrl || latestListedEntry?.projectUrl || null
+  const homepage = searchResult?.projectUrl || latestListedEntry?.projectUrl || null
 
-  const declaredRepositoryUrl =
-    latestEntry4License?.repository?.url
-      ? latestEntry4License.repository.url
-      : null
+  const declaredRepositoryUrl = latestEntry4License?.repository?.url
+    ? latestEntry4License.repository.url
+    : null
   const repositoryUrl = normalizeRepoUrl(declaredRepositoryUrl)
 
-  const keywords =
-    searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
+  const keywords = searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
 
   let status: 'active' | 'deprecated' | 'unpublished'
   if (listedEntries.length === 0) {
@@ -93,23 +87,20 @@ export function normalizeNuGetPackage(
 
   const publishedDates = allEntries
     .filter((e) => e.published)
-    .map((e) => new Date(e.published!))
+    .map((e) => new Date(e.published as string))
     .filter((d) => !isNaN(d.getTime()))
     .sort((a, b) => a.getTime() - b.getTime())
 
   const firstReleaseAt = publishedDates.length > 0 ? publishedDates[0] : null
 
   const latestEntry4Date = latestListedEntry ?? latestEntry
-  const latestReleaseAt =
-    latestEntry4Date?.published ? new Date(latestEntry4Date.published) : null
+  const latestReleaseAt = latestEntry4Date?.published ? new Date(latestEntry4Date.published) : null
 
   const totalDownloads = searchResult?.totalDownloads ?? 0
 
   const owners = searchResult?.owners ?? []
 
-  const authors = parseAuthors(
-    searchResult?.authors ?? latestEntry4License?.authors,
-  )
+  const authors = parseAuthors(searchResult?.authors ?? latestEntry4License?.authors)
 
   const searchVersionMap = new Map<string, number>()
   if (searchResult?.versions) {

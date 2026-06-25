@@ -72,9 +72,9 @@ export function getGoConfig() {
 
 export function getNuGetConfig() {
   return {
-    batchSize: parseInt(process.env.NUGET_FETCHER_BATCH_SIZE ?? '500', 10),
-    concurrency: parseInt(process.env.NUGET_FETCHER_CONCURRENCY ?? '8', 10),
-    groupDelayMs: parseInt(process.env.NUGET_FETCHER_GROUP_DELAY_MS ?? '250', 10),
+    batchSize: parseInt(process.env.NUGET_FETCHER_BATCH_SIZE ?? '1000', 10),
+    concurrency: parseInt(process.env.NUGET_FETCHER_CONCURRENCY ?? '20', 10),
+    groupDelayMs: parseInt(process.env.NUGET_FETCHER_GROUP_DELAY_MS ?? '0', 10),
     isCritical: (process.env.NUGET_FETCHER_IS_CRITICAL ?? 'false') === 'true',
     userAgent: process.env.NUGET_USER_AGENT,
   }

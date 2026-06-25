@@ -193,7 +193,11 @@ async function processPackage(
   return 'processed'
 }
 
-export async function processBatch(qx: QueryExecutor, config: NuGetConfig, today: string): Promise<BatchResult> {
+export async function processBatch(
+  qx: QueryExecutor,
+  config: NuGetConfig,
+  today: string,
+): Promise<BatchResult> {
   const packages = await listNuGetPackagesToSync(qx, {
     limit: config.batchSize,
     isCritical: config.isCritical,

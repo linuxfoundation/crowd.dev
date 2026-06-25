@@ -1,6 +1,11 @@
 import axios from 'axios'
 
-import { NuGetFetchError, NuGetRegistrationIndex, NuGetRegistrationPage, NuGetSearchItem } from './types'
+import {
+  NuGetFetchError,
+  NuGetRegistrationIndex,
+  NuGetRegistrationPage,
+  NuGetSearchItem,
+} from './types'
 
 const SERVICE_INDEX_URL = 'https://api.nuget.org/v3/index.json'
 

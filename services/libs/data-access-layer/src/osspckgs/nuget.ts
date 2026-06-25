@@ -1,6 +1,6 @@
-import { QueryExecutor } from '../queryExecutor'
 import { insertDailyDownloads } from '../packages/downloadsDaily'
 import { upsertLast30dDownload } from '../packages/downloadsLast30d'
+import { QueryExecutor } from '../queryExecutor'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,8 +30,8 @@ export type IDbNuGetPackageUpsert = {
   latestReleaseAt: Date | null
   registryUrl: string | null
   ingestionSource: string
-  dependentPackagesCount?: number | null
-  dependentReposCount?: number | null
+  dependentPackagesCount: number | null
+  dependentReposCount: number | null
 }
 
 export type IDbNuGetVersionUpsert = {
@@ -67,13 +67,15 @@ export async function upsertNuGetPackage(
         description, homepage, declared_repository_url, repository_url,
         licenses, licenses_raw, keywords, status,
         latest_version, versions_count, first_release_at, latest_release_at,
-        registry_url, ingestion_source, last_synced_at, created_at
+        registry_url, ingestion_source, dependent_count, dependent_repos_count,
+        last_synced_at, created_at
       ) VALUES (
         $(purl), 'nuget', NULL, $(name),
         $(description), $(homepage), $(declaredRepositoryUrl), $(repositoryUrl),
         $(licenses)::text[], $(licensesRaw), $(keywords)::text[], $(status),
         $(latestVersion), $(versionsCount), $(firstReleaseAt), $(latestReleaseAt),
-        $(registryUrl), $(ingestionSource), NOW(), NOW()
+        $(registryUrl), $(ingestionSource), $(dependentPackagesCount), $(dependentReposCount),
+        NOW(), NOW()
       )
       ON CONFLICT (purl) DO UPDATE SET
         description              = COALESCE(EXCLUDED.description,              packages.description),
@@ -90,6 +92,8 @@ export async function upsertNuGetPackage(
         latest_release_at        = COALESCE(EXCLUDED.latest_release_at,        packages.latest_release_at),
         registry_url             = COALESCE(EXCLUDED.registry_url,             packages.registry_url),
         ingestion_source         = EXCLUDED.ingestion_source,
+        dependent_count          = COALESCE(EXCLUDED.dependent_count,          packages.dependent_count),
+        dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
         last_synced_at           = NOW()
       RETURNING id, description, homepage, declared_repository_url, repository_url,
                 licenses, licenses_raw, keywords, status,
@@ -132,6 +136,8 @@ export async function upsertNuGetPackage(
       latestReleaseAt: item.latestReleaseAt ?? null,
       registryUrl: item.registryUrl ?? null,
       ingestionSource: item.ingestionSource,
+      dependentPackagesCount: item.dependentPackagesCount ?? null,
+      dependentReposCount: item.dependentReposCount ?? null,
     },
   )
   return { id: row.id as number, changedFields: row.changed_fields as string[] }
@@ -216,7 +222,9 @@ export async function upsertNuGetVersionsBatch(
       isPreleases: deduped.map((v) => v.isPrerelease),
       isYankeds: deduped.map((v) => v.isYanked ?? null),
       licenses: deduped.map((v) => (v.licenses && v.licenses.length > 0 ? v.licenses[0] : null)),
-      downloadCounts: deduped.map((v) => (v.downloadCount !== null ? Number(v.downloadCount) : null)),
+      downloadCounts: deduped.map((v) =>
+        v.downloadCount !== null ? Number(v.downloadCount) : null,
+      ),
     },
   )
   return row.changed_fields
@@ -277,7 +285,8 @@ export async function recordNuGetDownloadSnapshot(
     `SELECT total_downloads FROM packages WHERE id = $(packageId)`,
     { packageId },
   )
-  const prev: number | null = prevRow?.total_downloads ?? null
+  const prev: number | null =
+    prevRow?.total_downloads != null ? Number(prevRow.total_downloads) : null
 
   if (prev !== null && totalDownloads > prev) {
     const delta = totalDownloads - prev
@@ -288,7 +297,9 @@ export async function recordNuGetDownloadSnapshot(
   }
 
   const updated = await qx.result(
-    `UPDATE packages SET total_downloads = $(totalDownloads) WHERE id = $(packageId) AND total_downloads IS DISTINCT FROM $(totalDownloads)`,
+    `UPDATE packages SET total_downloads = $(totalDownloads)
+      WHERE id = $(packageId)
+        AND (total_downloads IS NULL OR total_downloads < $(totalDownloads))`,
     { totalDownloads, packageId },
   )
   if (updated > 0) changed.push('packages.total_downloads')
