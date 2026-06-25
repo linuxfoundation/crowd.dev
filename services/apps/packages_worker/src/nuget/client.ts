@@ -25,11 +25,10 @@ interface ResolvedEndpoints {
 
 let cachedEndpoints: ResolvedEndpoints | null = null
 
-async function resolveEndpoints(userAgent?: string): Promise<ResolvedEndpoints> {
+async function resolveEndpoints(): Promise<ResolvedEndpoints> {
   if (cachedEndpoints) return cachedEndpoints
 
   const resp = await axios.get<ServiceIndex>(SERVICE_INDEX_URL, {
-    headers: userAgent ? { 'User-Agent': userAgent } : {},
     timeout: 10000,
   })
 
@@ -68,9 +67,8 @@ function classifyError(err: unknown): NuGetFetchError | null {
 
 export async function fetchSearch(
   packageId: string,
-  userAgent?: string,
 ): Promise<NuGetSearchItem | NuGetFetchError> {
-  const { searchBaseUrl } = await resolveEndpoints(userAgent)
+  const { searchBaseUrl } = await resolveEndpoints()
   const lowerPackageId = packageId.toLowerCase()
 
   try {
@@ -82,7 +80,6 @@ export async function fetchSearch(
         take: 20,
       },
       headers: {
-        ...(userAgent ? { 'User-Agent': userAgent } : {}),
         'Accept-Encoding': 'gzip',
       },
       timeout: 15000,
@@ -100,15 +97,9 @@ export async function fetchSearch(
   }
 }
 
-async function fetchRegistrationPage(
-  pageId: string,
-  userAgent?: string,
-): Promise<NuGetRegistrationPage> {
+async function fetchRegistrationPage(pageId: string): Promise<NuGetRegistrationPage> {
   const resp = await axios.get<NuGetRegistrationPage>(pageId, {
-    headers: {
-      ...(userAgent ? { 'User-Agent': userAgent } : {}),
-      'Accept-Encoding': 'gzip',
-    },
+    headers: { 'Accept-Encoding': 'gzip' },
     timeout: 15000,
   })
   return resp.data
@@ -116,19 +107,15 @@ async function fetchRegistrationPage(
 
 export async function fetchRegistration(
   packageId: string,
-  userAgent?: string,
 ): Promise<NuGetRegistrationIndex | NuGetFetchError> {
-  const { registrationBaseUrl } = await resolveEndpoints(userAgent)
+  const { registrationBaseUrl } = await resolveEndpoints()
   const lowerId = packageId.toLowerCase()
 
   try {
     const resp = await axios.get<NuGetRegistrationIndex>(
       `${registrationBaseUrl}${lowerId}/index.json`,
       {
-        headers: {
-          ...(userAgent ? { 'User-Agent': userAgent } : {}),
-          'Accept-Encoding': 'gzip',
-        },
+        headers: { 'Accept-Encoding': 'gzip' },
         timeout: 15000,
       },
     )
@@ -139,7 +126,7 @@ export async function fetchRegistration(
       const page = index.items[i]
       if (!page.items) {
         try {
-          const fullPage = await fetchRegistrationPage(page['@id'], userAgent)
+          const fullPage = await fetchRegistrationPage(page['@id'])
           index.items[i] = { ...page, items: fullPage.items ?? [] }
         } catch {
           index.items[i] = { ...page, items: [] }

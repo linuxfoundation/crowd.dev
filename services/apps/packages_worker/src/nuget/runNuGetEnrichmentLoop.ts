@@ -56,8 +56,8 @@ async function processPackage(
   const packageId = pkg.name
 
   const [searchResult, registrationResult] = await Promise.all([
-    fetchSearch(packageId, config.userAgent),
-    fetchRegistration(packageId, config.userAgent),
+    fetchSearch(packageId),
+    fetchRegistration(packageId),
   ])
 
   if (isNuGetFetchError(registrationResult)) {

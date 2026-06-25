@@ -76,7 +76,6 @@ export function getNuGetConfig() {
     concurrency: parseInt(process.env.NUGET_FETCHER_CONCURRENCY ?? '20', 10),
     groupDelayMs: parseInt(process.env.NUGET_FETCHER_GROUP_DELAY_MS ?? '0', 10),
     isCritical: (process.env.NUGET_FETCHER_IS_CRITICAL ?? 'false') === 'true',
-    userAgent: process.env.NUGET_USER_AGENT,
   }
 }
 
