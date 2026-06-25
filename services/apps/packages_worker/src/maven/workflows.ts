@@ -13,7 +13,7 @@ const acts = proxyActivities<typeof activities>({
 
 export async function ingestMavenPackages(): Promise<void> {
   const result = await acts.processMavenCriticalBatch()
-  if (result.processed + result.skipped + result.error + result.unchanged === 0) {
+  if (result.processed + result.skipped + result.unchanged === 0) {
     return
   }
   await continueAsNew<typeof ingestMavenPackages>()
