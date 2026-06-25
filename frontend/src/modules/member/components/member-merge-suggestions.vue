@@ -7,7 +7,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || offset <= 0 || count === 0"
+            :disabled="loading || offset <= 0 || !hasSuggestion"
             :icon-only="true"
             @click="fetch(offset - 1)"
           >
@@ -16,7 +16,7 @@
           <lf-button
             type="secondary"
             size="small"
-            :disabled="loading || offset >= count - 1 || count === 0"
+            :disabled="loading || !hasMore"
             :icon-only="true"
             @click="fetch(offset + 1)"
           >
@@ -26,16 +26,10 @@
 
         <app-loading v-if="loading" height="16px" width="128px" radius="3px" />
         <div
-          v-else-if="Math.ceil(count) > 1"
+          v-else-if="hasSuggestion"
           class="text-xs leading-5 text-gray-500"
         >
-          <div>{{ offset + 1 }} of {{ Math.ceil(count) }} suggestions</div>
-        </div>
-        <div
-          v-else-if="Math.ceil(count) === 1"
-          class="text-xs leading-5 text-gray-500"
-        >
-          <div>1 suggestion</div>
+          <div>Suggestion {{ offset + 1 }}</div>
         </div>
         <div
           v-else
@@ -48,7 +42,7 @@
         <app-member-merge-similarity v-if="!loading && membersToMerge.similarity" :similarity="membersToMerge.similarity" />
         <lf-button
           type="secondary"
-          :disabled="loading || isEditLockedForSampleData || count === 0"
+          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
           :loading="sendingIgnore"
           @click="ignoreSuggestion()"
         >
@@ -56,7 +50,7 @@
         </lf-button>
         <lf-button
           type="primary"
-          :disabled="loading || isEditLockedForSampleData || count === 0"
+          :disabled="loading || isEditLockedForSampleData || !hasSuggestion"
           :loading="sendingMerge"
           @click="mergeSuggestion()"
         >
@@ -66,7 +60,7 @@
       </div>
     </header>
 
-    <div v-if="loading || count > 0">
+    <div v-if="loading || hasSuggestion">
       <!-- Comparison -->
       <!-- Loading -->
       <div v-if="loading" class="flex p-5">
@@ -170,7 +164,8 @@ const { getContributorMergeActions } = useContributorStore();
 const membersToMerge = ref([]);
 const primary = ref(0);
 const offset = ref(props.offset);
-const count = ref(0);
+const hasMore = ref(false);
+const hasSuggestion = ref(false);
 const loading = ref(false);
 
 const sendingIgnore = ref(false);
@@ -204,6 +199,19 @@ const preview = computed(() => {
   return mergedMembers;
 });
 
+const updateSuggestionsState = (res) => {
+  hasMore.value = Boolean(res.hasMore);
+  const rows = res.rows.filter((suggestion) => suggestion.similarity > 0);
+
+  if (rows.length > 0) {
+    hasSuggestion.value = true;
+    [membersToMerge.value] = rows;
+  } else {
+    hasSuggestion.value = false;
+    membersToMerge.value = [];
+  }
+};
+
 const fetch = (page) => {
   if (page > -1) {
     offset.value = page;
@@ -216,13 +224,18 @@ const fetch = (page) => {
 
   loading.value = true;
 
-  MemberService.fetchMergeSuggestions(1, offset.value, props.query ?? {})
+  return MemberService.fetchMergeSuggestions(1, offset.value, props.query ?? {})
     .then((res) => {
       offset.value = +res.offset;
-      count.value = res.count;
-      [membersToMerge.value] = res.rows;
+
+      updateSuggestionsState(res);
+
+      if (!hasSuggestion.value && offset.value > 0) {
+        return fetch(offset.value - 1);
+      }
 
       primary.value = 0;
+      return undefined;
     })
     .catch(() => {
       ToastStore.error(
@@ -252,8 +265,7 @@ const ignoreSuggestion = () => {
     .then(() => {
       ToastStore.success('Merging suggestion ignored successfully');
       getContributorMergeActions();
-      const nextIndex = offset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : offset.value;
-      fetch(nextIndex);
+      fetch(offset.value);
       changed.value = true;
     })
     .catch((error) => {
@@ -304,8 +316,7 @@ const mergeSuggestion = () => {
       );
       primary.value = 0;
 
-      const nextIndex = offset.value >= (count.value - 1) ? Math.max(count.value - 2, 0) : offset.value;
-      fetch(nextIndex);
+      fetch(offset.value);
       changed.value = true;
     })
     .catch((error) => {
