@@ -410,6 +410,9 @@ class MemberRepository {
       return { count: await getTotalCount() }
     }
 
+    const pageLimit = args.limit
+    const queryLimit = pageLimit + 1
+
     const mems = await options.database.sequelize.query(
       `
         SELECT
@@ -452,7 +455,7 @@ class MemberRepository {
       {
         replacements: {
           segmentIds,
-          limit: args.limit,
+          limit: queryLimit,
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           memberId: args?.filter?.memberId,
@@ -463,7 +466,10 @@ class MemberRepository {
       },
     )
 
-    if (mems.length > 0) {
+    const hasMore = mems.length > pageLimit
+    const pageRows = hasMore ? mems.slice(0, pageLimit) : mems
+
+    if (pageRows.length > 0) {
       let result
 
       if (args.detail) {
@@ -522,7 +528,7 @@ class MemberRepository {
           }
         }
 
-        for (const mem of mems) {
+        for (const mem of pageRows) {
           memberPromises.push(findMemberInfo(mem.id))
           toMergePromises.push(findMemberInfo(mem.toMergeId))
         }
@@ -532,10 +538,10 @@ class MemberRepository {
 
         result = memberResults.map((i, idx) => ({
           members: [i, memberToMergeResults[idx]],
-          similarity: mems[idx].similarity,
+          similarity: pageRows[idx].similarity,
         }))
       } else {
-        result = mems.map((i) => ({
+        result = pageRows.map((i) => ({
           members: [
             {
               id: i.id,
@@ -554,12 +560,12 @@ class MemberRepository {
         }))
       }
 
-      return { rows: result, count: await getTotalCount(), limit: args.limit, offset: args.offset }
+      return { rows: result, hasMore, limit: args.limit, offset: args.offset }
     }
 
     return {
       rows: [{ members: [], similarity: 0 }],
-      count: await getTotalCount(),
+      hasMore: false,
       limit: args.limit,
       offset: args.offset,
     }

@@ -944,6 +944,9 @@ class OrganizationRepository {
       return { count: await getTotalCount() }
     }
 
+    const pageLimit = args.limit
+    const queryLimit = pageLimit + 1
+
     const orgs = await options.database.sequelize.query(
       `
         SELECT
@@ -990,7 +993,7 @@ class OrganizationRepository {
       {
         replacements: {
           segmentIds,
-          limit: args.limit,
+          limit: queryLimit,
           offset: args.offset,
           displayName: args?.filter?.displayName ? `${args.filter.displayName}%` : undefined,
           mergeActionType: MergeActionType.ORG,
@@ -1001,14 +1004,17 @@ class OrganizationRepository {
       },
     )
 
-    if (orgs.length > 0) {
+    const hasMore = orgs.length > pageLimit
+    const pageRows = hasMore ? orgs.slice(0, pageLimit) : orgs
+
+    if (pageRows.length > 0) {
       let result
 
       if (args.detail) {
         const organizationPromises = []
         const toMergePromises = []
 
-        for (const org of orgs) {
+        for (const org of pageRows) {
           organizationPromises.push(
             OrganizationRepository.findById(org.id, options, org.primarySegmentId),
           )
@@ -1022,10 +1028,10 @@ class OrganizationRepository {
 
         result = organizationResults.map((i, idx) => ({
           organizations: [i, organizationToMergeResults[idx]],
-          similarity: orgs[idx].similarity,
+          similarity: pageRows[idx].similarity,
         }))
       } else {
-        result = orgs.map((o) => ({
+        result = pageRows.map((o) => ({
           organizations: [
             {
               id: o.id,
@@ -1055,7 +1061,7 @@ class OrganizationRepository {
 
       return {
         rows: result,
-        count: await getTotalCount(),
+        hasMore,
         limit: args.limit,
         offset: args.offset,
       }
@@ -1063,7 +1069,7 @@ class OrganizationRepository {
 
     return {
       rows: [{ organizations: [], similarity: 0 }],
-      count: await getTotalCount(),
+      hasMore: false,
       limit: args.limit,
       offset: args.offset,
     }
