@@ -19,20 +19,3 @@ export async function processMavenCriticalBatch(): Promise<BatchResult> {
   log.info({ ...result }, 'Maven critical batch complete')
   return result
 }
-
-export async function processMavenNonCriticalBatch(): Promise<BatchResult> {
-  const config = getMavenConfig()
-  const qx = await getPackagesDb()
-  // Non-critical is DB-only (no POM fetch); the flag is unused on this path.
-  const result = await processBatch(qx, config, false, false)
-  log.info(
-    {
-      processed: result.processed,
-      skipped: result.skipped,
-      unchanged: result.unchanged,
-      error: result.error,
-    },
-    'Maven non-critical batch complete',
-  )
-  return result
-}

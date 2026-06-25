@@ -1,78 +1,49 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../service'
-import { mavenCriticalWorkflow } from '../workflows'
+import { ingestMavenPackages } from '../workflows'
 
-export async function scheduleMavenCritical(): Promise<void> {
+const LEGACY_SCHEDULE_ID = 'maven-critical'
+
+export async function scheduleMavenIngestion(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')
 
-  const scheduleOptions: Parameters<typeof temporal.schedule.create>[0] = {
-    scheduleId: 'maven-critical',
-    spec: {
-      cronExpressions: ['*/1 * * * *'],
-    },
-    policies: {
-      overlap: ScheduleOverlapPolicy.SKIP,
-      catchupWindow: '1 hour',
-    },
-    action: {
-      type: 'startWorkflow',
-      workflowType: mavenCriticalWorkflow,
-      taskQueue: 'packages-worker',
-      workflowExecutionTimeout: '15 minutes',
-      retry: {
-        initialInterval: '30 seconds',
-        backoffCoefficient: 2,
-        maximumAttempts: 3,
-      },
-      args: [],
-    },
+  try {
+    await temporal.schedule.getHandle(LEGACY_SCHEDULE_ID).delete()
+    svc.log.info({ scheduleId: LEGACY_SCHEDULE_ID }, 'Deleted legacy schedule.')
+  } catch {
+    // Not found — nothing to clean up.
   }
 
   try {
-    await temporal.schedule.create(scheduleOptions)
+    await temporal.schedule.create({
+      scheduleId: 'maven-ingestion',
+      spec: {
+        cronExpressions: ['0 0 * * *'],
+      },
+      policies: {
+        overlap: ScheduleOverlapPolicy.SKIP,
+        catchupWindow: '1 hour',
+      },
+      action: {
+        type: 'startWorkflow',
+        workflowType: ingestMavenPackages,
+        taskQueue: 'packages-worker',
+        workflowRunTimeout: '24 hours',
+        retry: {
+          initialInterval: '30 seconds',
+          backoffCoefficient: 2,
+          maximumAttempts: 3,
+        },
+        args: [],
+      },
+    })
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info('Schedule maven-critical already exists, skipping creation.')
+      svc.log.info('Schedule maven-ingestion already exists, skipping creation.')
     } else {
       throw err
     }
   }
 }
-
-// export async function scheduleMavenNonCritical(): Promise<void> {
-//   const { temporal } = svc
-//   if (!temporal) throw new Error('Temporal client not initialized')
-
-//   try {
-//     await temporal.schedule.create({
-//       scheduleId: 'maven-non-critical',
-//       spec: {
-//         cronExpressions: ['*/10 * * * *'],
-//       },
-//       policies: {
-//         overlap: ScheduleOverlapPolicy.SKIP,
-//         catchupWindow: '1 hour',
-//       },
-//       action: {
-//         type: 'startWorkflow',
-//         workflowType: mavenNonCriticalWorkflow,
-//         taskQueue: 'packages-worker',
-//         workflowExecutionTimeout: '5 minutes',
-//         retry: {
-//           initialInterval: '30 seconds',
-//           backoffCoefficient: 2,
-//           maximumAttempts: 3,
-//         },
-//         args: [],
-//       },
-//     })
-//   } catch (err) {
-//     if (err instanceof ScheduleAlreadyRunning) {
-//       svc.log.info('Schedule maven-non-critical already registered.')
-//     } else {
-//       throw err
-//     }
-// }
-// }
