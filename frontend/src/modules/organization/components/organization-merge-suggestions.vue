@@ -219,15 +219,17 @@ const updateSuggestionsState = (res) => {
   }
 };
 
-const fetch = (page) => {
+const fetch = (page, trackNavigation = true) => {
   if (page > -1) {
     currentOffset.value = page;
   }
 
-  trackEvent({
-    key: FeatureEventKey.NAVIGATE_ORGANIZATIONS_MERGE_SUGGESTIONS,
-    type: EventType.FEATURE,
-  });
+  if (trackNavigation) {
+    trackEvent({
+      key: FeatureEventKey.NAVIGATE_ORGANIZATIONS_MERGE_SUGGESTIONS,
+      type: EventType.FEATURE,
+    });
+  }
 
   loading.value = true;
 
@@ -238,7 +240,7 @@ const fetch = (page) => {
       updateSuggestionsState(res);
 
       if (!hasSuggestion.value && currentOffset.value > 0) {
-        return fetch(currentOffset.value - 1);
+        return fetch(currentOffset.value - 1, false);
       }
 
       primary.value = 0;
