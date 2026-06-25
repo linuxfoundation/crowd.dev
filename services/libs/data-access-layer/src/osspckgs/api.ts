@@ -436,7 +436,7 @@ export async function listPackagesForApi(
   } else if (opts.sortBy === 'openVulns') {
     sortExpr = '"openVulns"'
   } else if (opts.sortBy === 'health') {
-    sortExpr = 'r_sc.scorecard_score'
+    sortExpr = 'COALESCE(p.health_score, r_sc.scorecard_score * 10)'
   } else if (opts.sortBy === 'risk') {
     // Composite risk score: impact + health deficit + vuln exposure + bus factor + staleness
     sortExpr = `(
@@ -451,6 +451,7 @@ export async function listPackagesForApi(
     sortExpr = 'LOWER(p.name)'
   }
   const sortDir = opts.sortDir === 'desc' ? 'DESC' : 'ASC'
+  const nullsDir = sortDir === 'ASC' ? 'NULLS FIRST' : 'NULLS LAST'
 
   // Separate paginated params from filter-only params used by the fallback COUNT query
   const queryParams: Record<string, unknown> = {
@@ -568,7 +569,7 @@ export async function listPackagesForApi(
     FROM packages p
     ${laterals}
     ${where}
-    ORDER BY ${[exactSort, `${sortExpr} ${sortDir} NULLS LAST`, `p.purl ${sortDir}`].filter(Boolean).join(', ')}
+    ORDER BY ${[exactSort, `${sortExpr} ${sortDir} ${nullsDir}`, `p.purl ${sortDir}`].filter(Boolean).join(', ')}
     LIMIT $(limit) OFFSET $(offset)
     `,
     queryParams,
