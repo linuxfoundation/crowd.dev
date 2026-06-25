@@ -51,6 +51,7 @@ async function fetchProjectsForGroup(accessToken: string, group: any) {
 }
 
 export async function fetchGitlabGroupProjects(accessToken: string, groups: any[]) {
+  const CONCURRENCY = 10
   const groupProjects: Record<number, any[]> = {}
 
   for (let i = 0; i < groups.length; i += CONCURRENCY) {
