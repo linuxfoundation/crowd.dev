@@ -23,7 +23,7 @@ export async function scheduleMavenIngestion(): Promise<void> {
     await temporal.schedule.create({
       scheduleId: 'maven-ingestion',
       spec: {
-        cronExpressions: ['0 0 * * *'],
+        cronExpressions: ['0 9 * * *'],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
