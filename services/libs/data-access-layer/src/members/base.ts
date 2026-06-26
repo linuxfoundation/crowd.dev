@@ -248,16 +248,12 @@ export async function queryMembersAdvanced(
   if (countOnly && cachedCount !== null) {
     log.info(
       { countCacheKey, segmentId, search: normalizedSearch },
-      'Members advanced count cache hit — returning cached count, scheduling background refresh',
+      'Members advanced count cache hit — returning cached count',
     )
-    refreshCountCacheInBackground(bgQx, redis, countCacheKey, {
-      filter,
-      search: normalizedSearch,
-      segmentId,
-      include,
-      includeAllAttributes,
-      attributeSettings,
-    })
+    // No background refresh for count hits: the count is a single integer with a 6h TTL,
+    // refreshing it on every hit would fire a COUNT(*) query per request, defeating the cache.
+    // The count is kept fresh by: (1) full-result refreshes that also write countCacheKey,
+    // (2) natural TTL expiry, (3) explicit cache invalidation on member updates.
     return {
       rows: [],
       count: cachedCount,
