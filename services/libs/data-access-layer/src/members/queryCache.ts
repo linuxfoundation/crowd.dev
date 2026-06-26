@@ -118,9 +118,12 @@ export class MemberQueryCache {
 
   async invalidateByPattern(pattern: string): Promise<void> {
     try {
-      const keysDeleted = await this.cache.deleteByKeyPattern(pattern)
+      const [resultsDeleted, countsDeleted] = await Promise.all([
+        this.cache.deleteByKeyPattern(pattern),
+        this.countCache.deleteByKeyPattern(pattern),
+      ])
       log.info(
-        `Invalidated member query cache by pattern: ${keysDeleted} entries deleted for pattern ${pattern}`,
+        `Invalidated member query cache by pattern: ${resultsDeleted} result entries, ${countsDeleted} count entries deleted for pattern ${pattern}`,
       )
     } catch (error) {
       log.warn('Error invalidating member query cache by pattern', { error, pattern })
