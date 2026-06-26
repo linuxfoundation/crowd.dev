@@ -1,39 +1,30 @@
 /**
- * Gerrit Activities Cleanup Script
+ * Activities Cleanup Script (by platform + type)
  *
- * PROBLEM:
- * Gerrit activities need to be cleaned up from both PostgreSQL and Tinybird
- * based on specific platform and type filters with a date cutoff.
- *
- * SOLUTION:
- * This script deletes activities from Gerrit platform across:
- * - PostgreSQL (activityRelations table only)
- * - Tinybird (activities and activityRelations tables)
- *
- * Filters:
- * - platform = 'gerrit'
- * - type in ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created')
- * - updatedAt < '2025-12-15'
+ * Deletes activities from PostgreSQL (activityRelations) and Tinybird
+ * (activities and activityRelations datasources) for a given platform and
+ * one or more activity types, optionally bounded by a date cutoff.
  *
  * Usage:
- *   # Via package.json script (recommended):
- *   pnpm run cleanup-gerrit-activities -- [--dry-run] [--tb-token <token>]
+ *   pnpm run cleanup-activities-by-platform-and-type -- \
+ *     --platform <platform> \
+ *     --types <type1,type2,...> \
+ *     [--before <YYYY-MM-DD>] \
+ *     [--dry-run] \
+ *     [--tb-token <token>]
  *
- *   # Or directly with tsx:
- *   npx tsx src/bin/cleanup-gerrit-activities.ts [--dry-run] [--tb-token <token>]
+ * Required:
+ *   --platform   Platform name (e.g. 'gitlab', 'gerrit')
+ *   --types      Comma-separated activity types (e.g. 'merge_request-closed')
  *
- * Options:
- *   --dry-run          Display what would be deleted without actually deleting anything
- *   --tb-token         Tinybird API token to use (overrides CROWD_TINYBIRD_ACTIVITIES_TOKEN environment variable)
+ * Optional:
+ *   --before     Only delete rows with updatedAt < this date (YYYY-MM-DD)
+ *   --dry-run    Report what would be deleted without deleting
+ *   --tb-token   Override CROWD_TINYBIRD_ACTIVITIES_TOKEN
  *
  * Environment Variables Required:
- *   CROWD_DB_WRITE_HOST - Postgres write host
- *   CROWD_DB_PORT - Postgres port
- *   CROWD_DB_USERNAME - Postgres username
- *   CROWD_DB_PASSWORD - Postgres password
- *   CROWD_DB_DATABASE - Postgres database name
- *   CROWD_TINYBIRD_BASE_URL - Tinybird API base URL
- *   CROWD_TINYBIRD_ACTIVITIES_TOKEN - Tinybird API token
+ *   CROWD_DB_WRITE_HOST, CROWD_DB_PORT, CROWD_DB_USERNAME, CROWD_DB_PASSWORD,
+ *   CROWD_DB_DATABASE, CROWD_TINYBIRD_BASE_URL, CROWD_TINYBIRD_ACTIVITIES_TOKEN
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -46,7 +37,12 @@ import {
 import { QueryExecutor, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
-const log = getServiceChildLogger('cleanup-gerrit-activities-script')
+const log = getServiceChildLogger('cleanup-activities-by-platform-and-type-script')
+
+// Identifiers passed to Tinybird filters are interpolated, not parameterized,
+// so guard against injection by requiring conservative character sets.
+const IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 interface DeletionStatus {
   success: boolean
@@ -54,10 +50,17 @@ interface DeletionStatus {
   error?: string
 }
 
+interface CleanupFilters {
+  platform: string
+  types: string[]
+  before?: string
+}
+
 interface CleanupResult {
   status: 'success' | 'failure'
   startTime: string
   endTime: string
+  filters: CleanupFilters
   totalBatches: number
   failedBatches: number
   deletions: {
@@ -69,9 +72,21 @@ interface CleanupResult {
   }
 }
 
-/**
- * Initialize Postgres connection using QueryExecutor
- */
+function quote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+function buildWhereClause(filters: CleanupFilters): string {
+  const clauses = [
+    `platform = ${quote(filters.platform)}`,
+    `type IN (${filters.types.map(quote).join(', ')})`,
+  ]
+  if (filters.before) {
+    clauses.push(`updatedAt < ${quote(filters.before)}`)
+  }
+  return clauses.join(' AND ')
+}
+
 async function initPostgresClient(): Promise<QueryExecutor> {
   log.info('Initializing Postgres connection...')
 
@@ -89,11 +104,13 @@ async function initPostgresClient(): Promise<QueryExecutor> {
 async function queryAndProcessActivityIdsInBatches(
   tinybird: TinybirdClient,
   postgres: QueryExecutor,
+  filters: CleanupFilters,
   dryRun: boolean,
   onBatchProcessed: () => void,
 ): Promise<number> {
-  log.info('Querying activity IDs from Tinybird for Gerrit cleanup...')
+  log.info('Querying activity IDs from Tinybird...')
 
+  const where = buildWhereClause(filters)
   const BATCH_SIZE = 10000
   let offset = 0
   let hasMore = true
@@ -102,7 +119,7 @@ async function queryAndProcessActivityIdsInBatches(
 
   try {
     while (hasMore) {
-      const query = `SELECT DISTINCT activityId FROM activityRelations WHERE platform = 'gerrit' AND type IN ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created') AND updatedAt < '2025-12-15' ORDER BY activityId LIMIT ${BATCH_SIZE} OFFSET ${offset} FORMAT JSON`
+      const query = `SELECT DISTINCT activityId FROM activityRelations WHERE ${where} ORDER BY activityId LIMIT ${BATCH_SIZE} OFFSET ${offset} FORMAT JSON`
       log.info(`Querying batch: offset=${offset}, limit=${BATCH_SIZE}`)
 
       const result = await tinybird.executeSql<{ data: Array<{ activityId: string }> }>(query)
@@ -152,9 +169,6 @@ async function queryAndProcessActivityIdsInBatches(
   }
 }
 
-/**
- * Delete activity relations from Postgres using activity IDs
- */
 async function deleteActivityRelationsFromPostgres(
   postgres: QueryExecutor,
   activityIds: string[],
@@ -193,11 +207,9 @@ async function deleteActivityRelationsFromPostgres(
   }
 }
 
-/**
- * Delete activities from Tinybird using the delete API
- */
 async function deleteActivitiesFromTinybird(
   tinybird: TinybirdClient,
+  filters: CleanupFilters,
   dryRun = false,
 ): Promise<{
   activities: DeletionStatus
@@ -209,11 +221,11 @@ async function deleteActivitiesFromTinybird(
     activityRelations: { success: false } as DeletionStatus,
   }
 
+  const deleteCondition = buildWhereClause(filters)
+
   if (dryRun) {
-    log.info('[DRY RUN] Would delete activities from Tinybird using Gerrit filters...')
-    log.info(
-      `[DRY RUN] Filters: platform='gerrit', type in ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created'), updatedAt < '2025-12-15'`,
-    )
+    log.info('[DRY RUN] Would delete activities from Tinybird...')
+    log.info(`[DRY RUN] Condition: ${deleteCondition}`)
     log.info(`[DRY RUN] Would delete from 'activities' datasource`)
     log.info(`[DRY RUN] Would delete from 'activityRelations' datasource`)
     return {
@@ -223,20 +235,15 @@ async function deleteActivitiesFromTinybird(
     }
   }
 
-  log.info('Deleting activities from Tinybird using Gerrit filters...')
+  log.info(`Deleting activities from Tinybird with condition: ${deleteCondition}`)
 
   const triggeredJobIds: string[] = []
 
-  // Define deletion conditions
-  const activitiesDeleteCondition = `platform = 'gerrit' AND type IN ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created') AND updatedAt < '2025-12-15'`
-  const activityRelationsDeleteCondition = `platform = 'gerrit' AND type IN ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created') AND updatedAt < '2025-12-15'`
-
-  // Delete from activities datasource
   try {
     log.info('Triggering deletion job for activities datasource...')
     const activitiesJobResponse = await tinybird.deleteDatasource(
       'activities',
-      activitiesDeleteCondition,
+      deleteCondition,
       true,
       false, // Don't wait
     )
@@ -254,12 +261,11 @@ async function deleteActivitiesFromTinybird(
     }
   }
 
-  // Delete from activityRelations datasource
   try {
     log.info('Triggering deletion job for activityRelations datasource...')
     const activityRelationsJobResponse = await tinybird.deleteDatasource(
       'activityRelations',
-      activityRelationsDeleteCondition,
+      deleteCondition,
       true,
       false, // Don't wait
     )
@@ -287,30 +293,24 @@ async function deleteActivitiesFromTinybird(
   }
 }
 
-/**
- * Main cleanup process
- */
-async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
+async function runCleanup(
+  filters: CleanupFilters,
+  dryRun = false,
+  tbToken?: string,
+): Promise<void> {
   const startTime = new Date().toISOString()
   let failedBatches = 0
   let totalBatches = 0
 
-  if (dryRun) {
-    log.info(`\n${'='.repeat(80)}`)
-    log.info(`[DRY RUN MODE] Gerrit Activities Cleanup`)
-    log.info(`${'='.repeat(80)}`)
-  } else {
-    log.info(`\n${'='.repeat(80)}`)
-    log.info(`Gerrit Activities Cleanup`)
-    log.info(`${'='.repeat(80)}`)
-  }
+  log.info(`\n${'='.repeat(80)}`)
+  log.info(`${dryRun ? '[DRY RUN MODE] ' : ''}Activities Cleanup`)
+  log.info(`Filters: ${buildWhereClause(filters)}`)
+  log.info(`${'='.repeat(80)}`)
 
   try {
-    // Initialize database clients
     const postgres = await initPostgresClient()
     const tinybird = new TinybirdClient(tbToken)
 
-    // Track deletion statuses
     const allDeletionStatuses = {
       postgres: { success: true } as DeletionStatus,
       tinybird: {
@@ -319,13 +319,13 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
       },
     }
 
-    // Step 1: Query activity IDs from Tinybird in batches and delete from Postgres as we go
     log.info(
       'Step 1: Processing activity IDs in batches from Tinybird and deleting from Postgres...',
     )
     const totalProcessed = await queryAndProcessActivityIdsInBatches(
       tinybird,
       postgres,
+      filters,
       dryRun,
       () => {
         totalBatches++
@@ -334,17 +334,15 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
 
     if (totalProcessed === 0) {
       log.info('No activities to delete, skipping Tinybird deletion steps')
-      log.info(`✓ Completed ${dryRun ? 'dry run for' : 'cleanup for'} Gerrit activities`)
+      log.info(`✓ Completed ${dryRun ? 'dry run' : 'cleanup'}`)
       return
     }
 
     log.info(`✓ Completed processing ${totalProcessed} activities from Postgres`)
 
-    // Step 2: Delete from Tinybird in a single operation per datasource
     log.info('Step 2: Triggering Tinybird deletions...')
-    const tinybirdStatuses = await deleteActivitiesFromTinybird(tinybird, dryRun)
+    const tinybirdStatuses = await deleteActivitiesFromTinybird(tinybird, filters, dryRun)
 
-    // Track failures from Tinybird
     if (!tinybirdStatuses.activities.success) {
       allDeletionStatuses.tinybird.activities = tinybirdStatuses.activities
       failedBatches++
@@ -354,7 +352,6 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
       failedBatches++
     }
 
-    // Wait for all Tinybird deletion jobs to complete
     if (!dryRun && tinybirdStatuses.jobIds.length > 0) {
       log.info(
         `Waiting for ${tinybirdStatuses.jobIds.length} Tinybird deletion job(s) to complete...`,
@@ -368,21 +365,24 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
       }
     }
 
-    // Create cleanup result
     const endTime = new Date().toISOString()
     const result: CleanupResult = {
       status: failedBatches > 0 ? 'failure' : 'success',
       startTime,
       endTime,
+      filters,
       totalBatches,
       failedBatches,
       deletions: allDeletionStatuses,
     }
 
-    // Save results to file
+    const safeSuffix = `${filters.platform}_${filters.types.join('-')}`.replace(
+      /[^A-Za-z0-9_-]/g,
+      '_',
+    )
     const jsonFilePath = path.join(
       '/tmp',
-      `cleanup_gerrit_activities_${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+      `cleanup_activities_${safeSuffix}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
     )
     try {
       fs.writeFileSync(jsonFilePath, JSON.stringify(result, null, 2), 'utf-8')
@@ -391,7 +391,6 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
       log.error(`Failed to write cleanup results to ${jsonFilePath}: ${error.message}`)
     }
 
-    // Summary
     log.info(`\n${'='.repeat(80)}`)
     log.info('Cleanup Summary')
     log.info(`${'='.repeat(80)}`)
@@ -423,62 +422,98 @@ async function runCleanup(dryRun = false, tbToken?: string): Promise<void> {
       process.exit(1)
     }
   } catch (error) {
-    log.error(`Failed to run Gerrit cleanup: ${error.message}`)
+    log.error(`Failed to run cleanup: ${error.message}`)
     throw error
   }
 }
 
-/**
- * Main entry point
- */
+function getFlagValue(args: string[], name: string): string | undefined {
+  const idx = args.indexOf(name)
+  if (idx === -1) return undefined
+  if (idx + 1 >= args.length) {
+    log.error(`Error: ${name} requires a value`)
+    process.exit(1)
+  }
+  return args[idx + 1]
+}
+
+function printHelp(): void {
+  log.info(`
+    Usage:
+      pnpm run cleanup-activities-by-platform-and-type -- \\
+        --platform <platform> \\
+        --types <type1,type2,...> \\
+        [--before <YYYY-MM-DD>] \\
+        [--dry-run] \\
+        [--tb-token <token>]
+
+    Required:
+      --platform   Platform name (e.g. 'gitlab', 'gerrit')
+      --types      Comma-separated activity types (e.g. 'merge_request-closed')
+
+    Optional:
+      --before     Only delete rows with updatedAt < this date (YYYY-MM-DD)
+      --dry-run    Report what would be deleted without deleting
+      --tb-token   Override CROWD_TINYBIRD_ACTIVITIES_TOKEN
+
+    Examples:
+      # Dry run: see how many gitlab merge_request-closed rows would be deleted
+      pnpm run cleanup-activities-by-platform-and-type -- \\
+        --platform gitlab --types merge_request-closed --dry-run
+
+      # Actual cleanup
+      pnpm run cleanup-activities-by-platform-and-type -- \\
+        --platform gitlab --types merge_request-closed
+  `)
+}
+
 async function main() {
   const args = process.argv.slice(2)
 
-  // Parse flags
-  const dryRunIndex = args.indexOf('--dry-run')
-  const tbTokenIndex = args.indexOf('--tb-token')
-  const dryRun = dryRunIndex !== -1
-
-  // Extract tb-token value if provided
-  let tbToken: string | undefined
-  if (tbTokenIndex !== -1) {
-    if (tbTokenIndex + 1 >= args.length) {
-      log.error('Error: --tb-token requires a value')
-      process.exit(1)
-    }
-    tbToken = args[tbTokenIndex + 1]
+  if (args.includes('--help') || args.includes('-h') || args.length === 0) {
+    printHelp()
+    process.exit(args.length === 0 ? 1 : 0)
   }
 
-  // Check for help flag or no valid arguments
-  if (args.includes('--help') || args.includes('-h')) {
-    log.info(`
-      Usage:
-        # Via package.json script (recommended):
-        pnpm run cleanup-gerrit-activities -- [--dry-run] [--tb-token <token>]
-        
-        # Or directly with tsx:
-        npx tsx src/bin/cleanup-gerrit-activities.ts [--dry-run] [--tb-token <token>]
-      
-      Options:
-        --dry-run: (optional) Display what would be deleted without actually deleting anything
-        --tb-token: (optional) Tinybird API token to use (overrides CROWD_TINYBIRD_ACTIVITIES_TOKEN environment variable)
-      
-      Examples:
-        # Run cleanup
-        pnpm run cleanup-gerrit-activities
-        
-        # Dry run to preview what would be deleted
-        pnpm run cleanup-gerrit-activities -- --dry-run
-        
-        # Use custom Tinybird token
-        pnpm run cleanup-gerrit-activities -- --tb-token your-token-here
-      
-      Filters applied:
-        - platform = 'gerrit'
-        - type in ('changeset-merged', 'changeset-abandoned', 'patchset_approval-created')
-        - updatedAt < '2025-12-15'
-    `)
-    process.exit(0)
+  const dryRun = args.includes('--dry-run')
+  const tbToken = getFlagValue(args, '--tb-token')
+  const platform = getFlagValue(args, '--platform')
+  const typesArg = getFlagValue(args, '--types')
+  const before = getFlagValue(args, '--before')
+
+  if (!platform) {
+    log.error('Error: --platform is required')
+    printHelp()
+    process.exit(1)
+  }
+  if (!IDENTIFIER_PATTERN.test(platform)) {
+    log.error(`Error: invalid --platform value '${platform}' (allowed: ${IDENTIFIER_PATTERN})`)
+    process.exit(1)
+  }
+
+  if (!typesArg) {
+    log.error('Error: --types is required (comma-separated)')
+    printHelp()
+    process.exit(1)
+  }
+  const types = typesArg
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+  if (types.length === 0) {
+    log.error('Error: --types must contain at least one value')
+    process.exit(1)
+  }
+  for (const t of types) {
+    if (!IDENTIFIER_PATTERN.test(t)) {
+      log.error(`Error: invalid type '${t}' (allowed: ${IDENTIFIER_PATTERN})`)
+      process.exit(1)
+    }
+  }
+
+  if (before && !DATE_PATTERN.test(before)) {
+    log.error(`Error: --before must match YYYY-MM-DD, got '${before}'`)
+    process.exit(1)
   }
 
   if (dryRun) {
@@ -488,9 +523,9 @@ async function main() {
   }
 
   try {
-    await runCleanup(dryRun, tbToken)
+    await runCleanup({ platform, types, before }, dryRun, tbToken)
   } catch (error) {
-    log.error(error, 'Failed to run Gerrit cleanup script')
+    log.error(error, 'Failed to run cleanup script')
     log.error(`\n❌ Error: ${error.message}`)
     process.exit(1)
   }
