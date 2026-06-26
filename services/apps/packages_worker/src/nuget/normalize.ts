@@ -19,6 +19,8 @@ function isPrerelease(version: string): boolean {
   return version.includes('-')
 }
 
+const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
+
 function normalizeRepoUrl(url: string | undefined): string | null {
   if (!url) return null
   return url
@@ -27,6 +29,15 @@ function normalizeRepoUrl(url: string | undefined): string | null {
     .replace(/^git\+/, '')
     .replace(/^git:\/\//, 'https://')
     .replace(/^http:\/\/github\.com\//, 'https://github.com/')
+}
+
+function isScmUrl(url: string | undefined): boolean {
+  if (!url) return false
+  try {
+    return SCM_HOSTS.some((h) => new URL(url).hostname.endsWith(h))
+  } catch {
+    return false
+  }
 }
 
 function parseLicense(
@@ -69,10 +80,19 @@ export function normalizeNuGetPackage(
 
   const homepage = searchResult?.projectUrl || latestListedEntry?.projectUrl || null
 
-  const declaredRepositoryUrl = latestEntry4License?.repository?.url
-    ? latestEntry4License.repository.url
-    : null
-  const repositoryUrl = normalizeRepoUrl(declaredRepositoryUrl)
+  // Scan all entries (prefer latest listed, then any) for a nuspec <repository> url.
+  // Fall back to a SCM-shaped projectUrl/homepage when no nuspec repository is present.
+  const entriesForRepo = latestListedEntry
+    ? [
+        latestListedEntry,
+        ...listedEntries.slice(0, -1).reverse(),
+        ...(latestEntry ? [latestEntry] : []),
+      ]
+    : [...allEntries].reverse()
+  const nuspecRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const declaredRepositoryUrl = nuspecRepoUrl ?? null
+  const repoCandidate = nuspecRepoUrl ?? (isScmUrl(homepage) ? homepage : null)
+  const repositoryUrl = normalizeRepoUrl(repoCandidate ?? undefined)
 
   const keywords = searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
 
@@ -85,16 +105,25 @@ export function normalizeNuGetPackage(
     status = 'active'
   }
 
+  // NuGet stamps unlisted versions with 1900-01-01T00:00:00Z as a sentinel — exclude them.
   const publishedDates = allEntries
     .filter((e) => e.published)
     .map((e) => new Date(e.published as string))
-    .filter((d) => !isNaN(d.getTime()))
+    .filter((d) => !isNaN(d.getTime()) && d.getUTCFullYear() > 1900)
     .sort((a, b) => a.getTime() - b.getTime())
 
   const firstReleaseAt = publishedDates.length > 0 ? publishedDates[0] : null
 
   const latestEntry4Date = latestListedEntry ?? latestEntry
-  const latestReleaseAt = latestEntry4Date?.published ? new Date(latestEntry4Date.published) : null
+  const latestReleaseAtRaw = latestEntry4Date?.published
+    ? new Date(latestEntry4Date.published)
+    : null
+  const latestReleaseAt =
+    latestReleaseAtRaw &&
+    !isNaN(latestReleaseAtRaw.getTime()) &&
+    latestReleaseAtRaw.getUTCFullYear() > 1900
+      ? latestReleaseAtRaw
+      : null
 
   const totalDownloads = searchResult?.totalDownloads ?? 0
 
@@ -136,7 +165,7 @@ export function normalizeNuGetPackage(
     latestVersion,
     versionsCount: allEntries.length,
     firstReleaseAt,
-    latestReleaseAt: latestReleaseAt && !isNaN(latestReleaseAt.getTime()) ? latestReleaseAt : null,
+    latestReleaseAt,
     totalDownloads,
     owners,
     authors,

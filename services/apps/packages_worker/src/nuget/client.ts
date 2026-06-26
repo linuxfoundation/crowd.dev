@@ -65,9 +65,7 @@ function classifyError(err: unknown): NuGetFetchError | null {
   return null
 }
 
-export async function fetchSearch(
-  packageId: string,
-): Promise<NuGetSearchItem | NuGetFetchError> {
+export async function fetchSearch(packageId: string): Promise<NuGetSearchItem | NuGetFetchError> {
   const { searchBaseUrl } = await resolveEndpoints()
   const lowerPackageId = packageId.toLowerCase()
 
@@ -97,12 +95,21 @@ export async function fetchSearch(
   }
 }
 
-async function fetchRegistrationPage(pageId: string): Promise<NuGetRegistrationPage> {
-  const resp = await axios.get<NuGetRegistrationPage>(pageId, {
-    headers: { 'Accept-Encoding': 'gzip' },
-    timeout: 15000,
-  })
-  return resp.data
+async function fetchRegistrationPage(
+  pageId: string,
+  maxAttempts = 2,
+): Promise<NuGetRegistrationPage> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const resp = await axios.get<NuGetRegistrationPage>(pageId, {
+        headers: { 'Accept-Encoding': 'gzip' },
+        timeout: 15000,
+      })
+      return resp.data
+    } catch (err) {
+      if (attempt >= maxAttempts) throw err
+    }
+  }
 }
 
 export async function fetchRegistration(
@@ -125,12 +132,8 @@ export async function fetchRegistration(
     for (let i = 0; i < index.items.length; i++) {
       const page = index.items[i]
       if (!page.items) {
-        try {
-          const fullPage = await fetchRegistrationPage(page['@id'])
-          index.items[i] = { ...page, items: fullPage.items ?? [] }
-        } catch {
-          index.items[i] = { ...page, items: [] }
-        }
+        const fullPage = await fetchRegistrationPage(page['@id'])
+        index.items[i] = { ...page, items: fullPage.items ?? [] }
       }
     }
 

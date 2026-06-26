@@ -8,8 +8,6 @@ export type NuGetPackageToSync = {
   id: number
   purl: string
   name: string
-  dependentPackagesCount: number | null
-  dependentReposCount: number | null
   latestVersion: string | null
 }
 
@@ -30,8 +28,6 @@ export type IDbNuGetPackageUpsert = {
   latestReleaseAt: Date | null
   registryUrl: string | null
   ingestionSource: string
-  dependentPackagesCount: number | null
-  dependentReposCount: number | null
 }
 
 export type IDbNuGetVersionUpsert = {
@@ -67,21 +63,22 @@ export async function upsertNuGetPackage(
         description, homepage, declared_repository_url, repository_url,
         licenses, licenses_raw, keywords, status,
         latest_version, versions_count, first_release_at, latest_release_at,
-        registry_url, ingestion_source, dependent_count, dependent_repos_count,
+        registry_url, ingestion_source,
         last_synced_at, created_at
       ) VALUES (
         $(purl), 'nuget', NULL, $(name),
         $(description), $(homepage), $(declaredRepositoryUrl), $(repositoryUrl),
         $(licenses)::text[], $(licensesRaw), $(keywords)::text[], $(status),
         $(latestVersion), $(versionsCount), $(firstReleaseAt), $(latestReleaseAt),
-        $(registryUrl), $(ingestionSource), $(dependentPackagesCount), $(dependentReposCount),
+        $(registryUrl), $(ingestionSource),
         NOW(), NOW()
       )
       ON CONFLICT (purl) DO UPDATE SET
         description              = COALESCE(EXCLUDED.description,              packages.description),
         homepage                 = COALESCE(EXCLUDED.homepage,                 packages.homepage),
         declared_repository_url  = COALESCE(EXCLUDED.declared_repository_url,  packages.declared_repository_url),
-        repository_url           = COALESCE(EXCLUDED.repository_url,           packages.repository_url),
+        repository_url           = COALESCE(EXCLUDED.repository_url,           packages.repository_url,
+                                            packages.declared_repository_url),
         licenses                 = COALESCE(EXCLUDED.licenses,                 packages.licenses),
         licenses_raw             = COALESCE(EXCLUDED.licenses_raw,             packages.licenses_raw),
         keywords                 = COALESCE(EXCLUDED.keywords,                 packages.keywords),
@@ -92,8 +89,6 @@ export async function upsertNuGetPackage(
         latest_release_at        = COALESCE(EXCLUDED.latest_release_at,        packages.latest_release_at),
         registry_url             = COALESCE(EXCLUDED.registry_url,             packages.registry_url),
         ingestion_source         = EXCLUDED.ingestion_source,
-        dependent_count          = COALESCE(EXCLUDED.dependent_count,          packages.dependent_count),
-        dependent_repos_count    = COALESCE(EXCLUDED.dependent_repos_count,    packages.dependent_repos_count),
         last_synced_at           = NOW()
       RETURNING id, description, homepage, declared_repository_url, repository_url,
                 licenses, licenses_raw, keywords, status,
@@ -136,8 +131,6 @@ export async function upsertNuGetPackage(
       latestReleaseAt: item.latestReleaseAt ?? null,
       registryUrl: item.registryUrl ?? null,
       ingestionSource: item.ingestionSource,
-      dependentPackagesCount: item.dependentPackagesCount ?? null,
-      dependentReposCount: item.dependentReposCount ?? null,
     },
   )
   return { id: row.id as number, changedFields: row.changed_fields as string[] }
@@ -246,9 +239,7 @@ export async function listNuGetPackagesToSync(
       p.id,
       p.purl,
       p.name,
-      p.dependent_count        AS "dependentPackagesCount",
-      p.dependent_repos_count  AS "dependentReposCount",
-      p.latest_version         AS "latestVersion"
+      p.latest_version AS "latestVersion"
     FROM packages p
     WHERE
       p.ecosystem = 'nuget'
@@ -264,6 +255,16 @@ export async function listNuGetPackagesToSync(
     LIMIT $(limit)
     `,
     { limit, workerOutcomes: NUGET_WORKER_OUTCOMES },
+  )
+}
+
+// ─── Error outcome ────────────────────────────────────────────────────────────
+
+export async function markNuGetPackageError(qx: QueryExecutor, purl: string): Promise<void> {
+  await qx.result(
+    `UPDATE packages SET ingestion_source = 'nuget_error', last_synced_at = NOW()
+      WHERE purl = $(purl)`,
+    { purl },
   )
 }
 

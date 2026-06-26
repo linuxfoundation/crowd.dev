@@ -4,6 +4,7 @@ import {
   QueryExecutor,
   listNuGetPackagesToSync,
   logAuditFieldChange,
+  markNuGetPackageError,
   recordNuGetDownloadSnapshot,
   replacePackageMaintainers,
   upsertMaintainer,
@@ -79,14 +80,13 @@ async function processPackage(
         latestReleaseAt: null,
         registryUrl: nugetRegistryUrl(packageId),
         ingestionSource: 'nuget_not_found',
-        dependentPackagesCount: pkg.dependentPackagesCount,
-        dependentReposCount: pkg.dependentReposCount,
       })
       log.warn({ purl: pkg.purl }, 'Package not found on NuGet registry — writing minimal record')
       return 'skipped'
     }
     if (registrationResult.kind === 'RATE_LIMIT') {
       log.warn({ purl: pkg.purl }, 'Rate limited by NuGet registry — will retry next pass')
+      await markNuGetPackageError(qx, pkg.purl)
       return 'error'
     }
     throw new Error(
@@ -119,8 +119,6 @@ async function processPackage(
         latestReleaseAt: normalized.latestReleaseAt,
         registryUrl: nugetRegistryUrl(packageId),
         ingestionSource: 'nuget-registry',
-        dependentPackagesCount: pkg.dependentPackagesCount,
-        dependentReposCount: pkg.dependentReposCount,
       })
       pkgChanged.forEach((f) => changed.add(f))
 
@@ -224,6 +222,11 @@ export async function processBatch(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
+          try {
+            await markNuGetPackageError(qx, pkg.purl)
+          } catch {
+            // best-effort — don't let a failed mark crash the batch
+          }
           counts.error++
         }
       }),
