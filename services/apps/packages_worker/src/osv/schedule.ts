@@ -11,7 +11,7 @@ const SCHEDULE_ID = 'osv-advisories-sync'
 // validate the env input against this list and refuse to register the
 // schedule on a mismatch — better a loud startup error than a silent miss.
 // Add new entries here when v1 expands beyond npm + Maven.
-const VALID_ECOSYSTEMS = ['npm', 'Maven', 'cargo'] as const
+const VALID_ECOSYSTEMS = ['npm', 'Maven', 'cargo', 'NuGet'] as const
 
 function getEcosystems(): string[] {
   const raw = process.env.OSV_ECOSYSTEMS
