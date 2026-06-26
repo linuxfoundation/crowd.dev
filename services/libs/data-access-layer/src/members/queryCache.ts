@@ -83,8 +83,15 @@ export class MemberQueryCache {
   }
 
   async getCount(cacheKey: string): Promise<number | null> {
-    const cachedCount = await this.countCache.get(cacheKey)
-    return cachedCount ? parseInt(cachedCount, 10) : null
+    try {
+      const cachedCount = await this.countCache.get(cacheKey)
+      if (!cachedCount) return null
+      const parsed = parseInt(cachedCount, 10)
+      return isNaN(parsed) ? null : parsed
+    } catch (error) {
+      log.warn('Error retrieving count from cache', { error })
+      return null
+    }
   }
 
   async setCount(cacheKey: string, count: number, ttlSeconds: number): Promise<void> {

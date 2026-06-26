@@ -205,7 +205,7 @@ export async function queryMembersAdvanced(
     limit,
     offset,
     orderBy,
-    search: search || null,
+    search: search?.trim() || null,
     segmentId,
   })
 
