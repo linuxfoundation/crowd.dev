@@ -115,7 +115,11 @@ SQL >
         argMin(
             updatedAt,
             if(
-                type IN ('pull_request-reviewed', 'merge_request-review-changes-requested')
+                type IN (
+                    'pull_request-reviewed',
+                    'merge_request-review-changes-requested',
+                    'merge_request-review-approved'
+                )
                 OR (
                     type = 'patchset_approval-created'
                     AND splitByChar('-', sourceParentId)[1] = prSourceId
@@ -126,7 +130,11 @@ SQL >
         ) AS reviewedUpdatedAt,
         min(
             if(
-                type IN ('pull_request-reviewed', 'merge_request-review-changes-requested')
+                type IN (
+                    'pull_request-reviewed',
+                    'merge_request-review-changes-requested',
+                    'merge_request-review-approved'
+                )
                 OR (
                     type = 'patchset_approval-created'
                     AND splitByChar('-', sourceParentId)[1] = prSourceId
