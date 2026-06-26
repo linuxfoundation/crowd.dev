@@ -195,8 +195,11 @@ export async function queryMembersAdvanced(
   // Initialize cache
   const cache = new MemberQueryCache(redis)
 
-  // Build cache key — countOnly is excluded so count and full-result caches share the same key.
-  // Normalize empty search to null so "" and null produce the same key (buildSearchCTE treats them identically).
+  // Normalize search once: trim whitespace, lowercase (buildSearchCTE lowercases anyway),
+  // convert empty string to null so "" and null hash identically.
+  const normalizedSearch = search?.trim().toLowerCase() || null
+
+  // Full result key — includes pagination and projection so page 1 and page 2 are separate entries.
   const cacheKey = cache.buildCacheKey({
     fields,
     filter,
@@ -205,18 +208,26 @@ export async function queryMembersAdvanced(
     limit,
     offset,
     orderBy,
-    search: search?.trim() || null,
+    search: normalizedSearch,
+    segmentId,
+  })
+
+  // Count key — excludes pagination/projection and include flags since the count query
+  // only depends on filter, search, and segmentId (buildCountQuery hardcodes includeMemberOrgs=false).
+  const countCacheKey = cache.buildCountCacheKey({
+    filter,
+    search: normalizedSearch,
     segmentId,
   })
 
   // Try to get from cache first
   const cachedResult = countOnly ? null : await cache.get(cacheKey)
-  const cachedCount = countOnly ? await cache.getCount(cacheKey) : null
+  const cachedCount = countOnly ? await cache.getCount(countCacheKey) : null
 
   if (cachedResult) {
     refreshCacheInBackground(bgQx, redis, cacheKey, {
       filter,
-      search,
+      search: normalizedSearch,
       limit,
       offset,
       orderBy,
@@ -233,16 +244,16 @@ export async function queryMembersAdvanced(
   }
 
   if (countOnly && cachedCount !== null) {
-    refreshCountCacheInBackground(bgQx, redis, cacheKey, {
+    refreshCountCacheInBackground(bgQx, redis, countCacheKey, {
       filter,
-      search,
+      search: normalizedSearch,
       segmentId,
       include,
       includeAllAttributes,
       attributeSettings,
     })
 
-    log.debug(`Members advanced count query cache hit: ${cacheKey}`)
+    log.debug(`Members advanced count query cache hit: ${countCacheKey}`)
     return {
       rows: [],
       count: cachedCount,
@@ -253,7 +264,7 @@ export async function queryMembersAdvanced(
 
   return await executeQuery(qx, redis, cacheKey, {
     filter,
-    search,
+    search: normalizedSearch,
     limit,
     offset,
     orderBy,
@@ -299,6 +310,11 @@ export async function executeQuery(
   }: IQueryMembersAdvancedParams,
 ): Promise<PageData<IDbMemberData>> {
   const cache = new MemberQueryCache(redis)
+  const countCacheKey = cache.buildCountCacheKey({
+    filter,
+    search: search ?? null,
+    segmentId,
+  })
   const withAggregates = !!segmentId
   const searchConfig = buildSearchCTE(search)
 
@@ -352,8 +368,7 @@ export async function executeQuery(
     const result = await qx.selectOne(countQuery, params)
     const count = parseInt(result.count, 10)
 
-    // Cache the count
-    await cache.setCount(cacheKey, count, 21600) // 6 hours TTL
+    await cache.setCount(countCacheKey, count, 21600)
 
     return {
       rows: [],
@@ -540,8 +555,8 @@ export async function executeQuery(
   const result = { rows, count, limit, offset }
 
   await Promise.all([
-    cache.set(cacheKey, result, 21600), // 6 hours TTL
-    cache.setCount(cacheKey, count, 21600), // also warm count cache so countOnly=true hits next time
+    cache.set(cacheKey, result, 21600),
+    cache.setCount(countCacheKey, count, 21600),
   ])
 
   return result

@@ -30,8 +30,8 @@ export class MemberQueryCache {
     filter?: Record<string, unknown>
     include?: IncludeOptions
     includeAllAttributes?: boolean
-    limit: number
-    offset: number
+    limit?: number
+    offset?: number
     orderBy?: string
     search?: string
     segmentId?: string
@@ -59,6 +59,18 @@ export class MemberQueryCache {
     }
 
     return `members_advanced:${hash}`
+  }
+
+  buildCountCacheKey(params: {
+    filter?: Record<string, unknown>
+    search?: string
+    segmentId?: string
+  }): string {
+    return this.buildCacheKey({
+      filter: params.filter,
+      search: params.search,
+      segmentId: params.segmentId,
+    })
   }
 
   async get(cacheKey: string): Promise<PageData<IDbMemberData> | null> {
