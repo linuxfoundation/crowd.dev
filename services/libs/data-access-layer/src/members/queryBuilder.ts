@@ -464,9 +464,13 @@ export const buildCountQuery = ({
     searchConfig.join,
   ].filter(Boolean)
 
+  // When withAggregates is true the join is on memberSegmentsAgg_pkey (unique on memberId+segmentId),
+  // so there are no duplicate m.id values — COUNT(*) is equivalent to COUNT(DISTINCT m.id) but cheaper.
+  const countExpr = withAggregates ? 'COUNT(*)' : 'COUNT(DISTINCT m.id)'
+
   return `
     ${ctes.length > 0 ? `WITH ${ctes.join(',\n')}` : ''}
-    SELECT COUNT(DISTINCT m.id) AS count
+    SELECT ${countExpr} AS count
     FROM members m
     ${joins.join('\n')}
     WHERE (${filterString})

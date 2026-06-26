@@ -26,7 +26,6 @@ export class MemberQueryCache {
   }
 
   buildCacheKey(params: {
-    countOnly?: boolean
     fields?: string[]
     filter?: Record<string, unknown>
     include?: IncludeOptions
@@ -39,7 +38,6 @@ export class MemberQueryCache {
   }): string {
     const cleanParams = Object.fromEntries(
       Object.entries({
-        countOnly: params.countOnly,
         fields: params.fields?.sort(),
         filter: params.filter,
         include: params.include,
@@ -90,7 +88,11 @@ export class MemberQueryCache {
   }
 
   async setCount(cacheKey: string, count: number, ttlSeconds: number): Promise<void> {
-    await this.countCache.set(cacheKey, count.toString(), ttlSeconds)
+    try {
+      await this.countCache.set(cacheKey, count.toString(), ttlSeconds)
+    } catch (error) {
+      log.warn('Error saving count to cache', { error })
+    }
   }
 
   async invalidateAll(): Promise<void> {

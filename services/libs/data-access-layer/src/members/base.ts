@@ -195,9 +195,9 @@ export async function queryMembersAdvanced(
   // Initialize cache
   const cache = new MemberQueryCache(redis)
 
-  // Build cache key
+  // Build cache key — countOnly is excluded so count and full-result caches share the same key.
+  // Normalize empty search to null so "" and null produce the same key (buildSearchCTE treats them identically).
   const cacheKey = cache.buildCacheKey({
-    countOnly,
     fields,
     filter,
     include,
@@ -205,13 +205,13 @@ export async function queryMembersAdvanced(
     limit,
     offset,
     orderBy,
-    search,
+    search: search || null,
     segmentId,
   })
 
   // Try to get from cache first
   const cachedResult = countOnly ? null : await cache.get(cacheKey)
-  const cachedCount = countOnly ? null : await cache.getCount(cacheKey)
+  const cachedCount = countOnly ? await cache.getCount(cacheKey) : null
 
   if (cachedResult) {
     refreshCacheInBackground(bgQx, redis, cacheKey, {
@@ -343,7 +343,9 @@ export async function executeQuery(
     withAggregates,
     searchConfig,
     filterString,
-    includeMemberOrgs: include.memberOrganizations,
+    // Count never needs org data in SELECT — filterHasMo inside buildCountQuery already
+    // handles the case where the filter itself references mo.* columns.
+    includeMemberOrgs: false,
   })
 
   if (countOnly) {
@@ -537,7 +539,10 @@ export async function executeQuery(
 
   const result = { rows, count, limit, offset }
 
-  await cache.set(cacheKey, result, 21600) // 6 hours TTL
+  await Promise.all([
+    cache.set(cacheKey, result, 21600), // 6 hours TTL
+    cache.setCount(cacheKey, count, 21600), // also warm count cache so countOnly=true hits next time
+  ])
 
   return result
 }
