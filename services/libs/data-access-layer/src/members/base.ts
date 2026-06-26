@@ -225,6 +225,10 @@ export async function queryMembersAdvanced(
   const cachedCount = countOnly ? await cache.getCount(countCacheKey) : null
 
   if (cachedResult) {
+    log.info(
+      { cacheKey, segmentId, search: normalizedSearch, limit, offset, orderBy },
+      'Members advanced query cache hit — returning cached result, scheduling background refresh',
+    )
     refreshCacheInBackground(bgQx, redis, cacheKey, {
       filter,
       search: normalizedSearch,
@@ -238,12 +242,14 @@ export async function queryMembersAdvanced(
       includeAllAttributes,
       attributeSettings,
     })
-
-    log.info(`Members advanced query cache hit: ${cacheKey}`)
     return cachedResult
   }
 
   if (countOnly && cachedCount !== null) {
+    log.info(
+      { countCacheKey, segmentId, search: normalizedSearch },
+      'Members advanced count cache hit — returning cached count, scheduling background refresh',
+    )
     refreshCountCacheInBackground(bgQx, redis, countCacheKey, {
       filter,
       search: normalizedSearch,
@@ -252,8 +258,6 @@ export async function queryMembersAdvanced(
       includeAllAttributes,
       attributeSettings,
     })
-
-    log.debug(`Members advanced count query cache hit: ${countCacheKey}`)
     return {
       rows: [],
       count: cachedCount,
@@ -262,19 +266,65 @@ export async function queryMembersAdvanced(
     }
   }
 
-  return await executeQuery(qx, redis, cacheKey, {
-    filter,
-    search: normalizedSearch,
-    limit,
-    offset,
-    orderBy,
-    segmentId,
-    countOnly,
-    fields,
-    include,
-    includeAllAttributes,
-    attributeSettings,
-  })
+  log.info(
+    {
+      cacheKey,
+      countCacheKey,
+      segmentId,
+      search: normalizedSearch,
+      limit,
+      offset,
+      orderBy,
+      countOnly,
+    },
+    'Members advanced query cache miss — executing query synchronously',
+  )
+
+  try {
+    return await executeQuery(qx, redis, cacheKey, {
+      filter,
+      search: normalizedSearch,
+      limit,
+      offset,
+      orderBy,
+      segmentId,
+      countOnly,
+      fields,
+      include,
+      includeAllAttributes,
+      attributeSettings,
+    })
+  } catch (error) {
+    log.warn(
+      { cacheKey, countCacheKey, segmentId, search: normalizedSearch, countOnly, err: error },
+      'Members advanced query failed on cache miss — scheduling background refresh for next retry',
+    )
+    if (countOnly) {
+      refreshCountCacheInBackground(bgQx, redis, countCacheKey, {
+        filter,
+        search: normalizedSearch,
+        segmentId,
+        include,
+        includeAllAttributes,
+        attributeSettings,
+      })
+    } else {
+      refreshCacheInBackground(bgQx, redis, cacheKey, {
+        filter,
+        search: normalizedSearch,
+        limit,
+        offset,
+        orderBy,
+        segmentId,
+        countOnly: false,
+        fields,
+        include,
+        includeAllAttributes,
+        attributeSettings,
+      })
+    }
+    throw error
+  }
 }
 
 export async function executeQuery(
@@ -567,29 +617,36 @@ async function refreshCacheInBackground(
   redis: RedisClient,
   cacheKey: string,
   params: IQueryMembersAdvancedParams,
+  countOnly = false,
 ): Promise<void> {
+  const label = countOnly ? 'count cache' : 'query cache'
+  const cache = new MemberQueryCache(redis)
+  const acquired = await cache.tryAcquireRefreshLock(cacheKey)
+  if (!acquired) {
+    log.debug(
+      { cacheKey },
+      `Members advanced ${label} refresh already in progress — skipping duplicate`,
+    )
+    return
+  }
   try {
-    log.info(`Refreshing members advanced query cache in background: ${cacheKey}`)
-    await executeQuery(qx, redis, cacheKey, params)
-    log.info(`Members advanced query cache refreshed in background: ${cacheKey}`)
+    log.info({ cacheKey }, `Members advanced ${label} background refresh started`)
+    await executeQuery(qx, redis, cacheKey, countOnly ? { ...params, countOnly: true } : params)
+    log.info({ cacheKey }, `Members advanced ${label} background refresh completed`)
   } catch (error) {
-    log.warn('Background cache refresh failed:', error)
+    log.warn({ cacheKey, err: error }, `Members advanced ${label} background refresh failed`)
+  } finally {
+    await cache.releaseRefreshLock(cacheKey)
   }
 }
 
-async function refreshCountCacheInBackground(
+function refreshCountCacheInBackground(
   qx: QueryExecutor,
   redis: RedisClient,
   cacheKey: string,
   params: IQueryMembersAdvancedParams,
 ): Promise<void> {
-  try {
-    log.info(`Refreshing members advanced count cache in background: ${cacheKey}`)
-    await executeQuery(qx, redis, cacheKey, { ...params, countOnly: true })
-    log.info(`Members advanced count cache refreshed in background: ${cacheKey}`)
-  } catch (error) {
-    log.warn('Background count cache refresh failed:', error)
-  }
+  return refreshCacheInBackground(qx, redis, cacheKey, params, true)
 }
 
 export async function queryMembers<T extends MemberField>(
