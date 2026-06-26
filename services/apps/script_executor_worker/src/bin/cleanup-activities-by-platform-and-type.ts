@@ -17,6 +17,7 @@
  *   pnpm run cleanup-activities-by-platform-and-type -- \
  *     --platform <platform> \
  *     --types <type1,type2,...> \
+ *     [--segment-id <uuid>] \
  *     [--before <YYYY-MM-DD>] \
  *     [--dry-run] \
  *     [--yes|-y] \
@@ -27,6 +28,7 @@
  *   --types      Comma-separated activity types (e.g. 'merge_request-closed')
  *
  * Optional:
+ *   --segment-id Restrict deletion to a single segment (UUID)
  *   --before     Only delete rows with "updatedAt" < this date (YYYY-MM-DD)
  *   --dry-run    Report what would be deleted without deleting
  *   --yes / -y   Skip the interactive confirmation prompt
@@ -54,6 +56,7 @@ const log = getServiceChildLogger('cleanup-activities-by-platform-and-type-scrip
 // so guard against injection by requiring conservative character sets.
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 const POSTGRES_BATCH_SIZE = 10000
 const TINYBIRD_JOB_POLL_INTERVAL_MS = 60_000
@@ -62,6 +65,7 @@ const TINYBIRD_JOB_TIMEOUT_MS = 6 * 60 * 60 * 1000 // 6h: bulk deletes can be sl
 interface CleanupFilters {
   platform: string
   types: string[]
+  segmentId?: string
   before?: string
 }
 
@@ -101,6 +105,9 @@ function buildTinybirdFilterClause(filters: CleanupFilters): string {
   const parts = [`platform = '${filters.platform}'`]
   const typesList = filters.types.map((t) => `'${t}'`).join(', ')
   parts.push(`type IN (${typesList})`)
+  if (filters.segmentId) {
+    parts.push(`segmentId = '${filters.segmentId}'`)
+  }
   if (filters.before) {
     parts.push(`updatedAt < '${filters.before}'`)
   }
@@ -120,6 +127,10 @@ function buildPostgresFilter(filters: CleanupFilters): {
   const values: Record<string, unknown> = {
     platform: filters.platform,
     types: filters.types,
+  }
+  if (filters.segmentId) {
+    conditions.push(`"segmentId" = $(segmentId)`)
+    values.segmentId = filters.segmentId
   }
   if (filters.before) {
     conditions.push(`"updatedAt" < $(beforeDate)`)
@@ -468,6 +479,7 @@ function printHelp(): void {
       pnpm run cleanup-activities-by-platform-and-type -- \\
         --platform <platform> \\
         --types <type1,type2,...> \\
+        [--segment-id <uuid>] \\
         [--before <YYYY-MM-DD>] \\
         [--dry-run] \\
         [--yes|-y] \\
@@ -478,6 +490,7 @@ function printHelp(): void {
       --types      Comma-separated activity types (e.g. 'merge_request-closed')
 
     Optional:
+      --segment-id Restrict deletion to a single segment (UUID)
       --before     Only delete rows with "updatedAt" < this date (YYYY-MM-DD)
       --dry-run    Report what would be deleted without deleting
       --yes / -y   Skip the interactive confirmation prompt
@@ -507,6 +520,7 @@ async function main() {
   const tbToken = getFlagValue(args, '--tb-token')
   const platform = getFlagValue(args, '--platform')
   const typesArg = getFlagValue(args, '--types')
+  const segmentId = getFlagValue(args, '--segment-id')
   const before = getFlagValue(args, '--before')
 
   if (!platform) {
@@ -546,6 +560,11 @@ async function main() {
     }
   }
 
+  if (segmentId && !UUID_PATTERN.test(segmentId)) {
+    log.error(`Error: --segment-id must be a UUID, got '${segmentId}'`)
+    process.exit(1)
+  }
+
   if (dryRun) {
     log.info(`\n${'='.repeat(80)}`)
     log.info('🧪 DRY RUN MODE - No data will be deleted')
@@ -553,7 +572,7 @@ async function main() {
   }
 
   try {
-    await runCleanup({ platform, types, before }, dryRun, skipConfirm, tbToken)
+    await runCleanup({ platform, types, segmentId, before }, dryRun, skipConfirm, tbToken)
   } catch (error) {
     log.error(error, 'Failed to run cleanup script')
     log.error(`\n❌ Error: ${error.message}`)
