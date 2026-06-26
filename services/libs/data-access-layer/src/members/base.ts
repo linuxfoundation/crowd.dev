@@ -569,7 +569,9 @@ async function refreshCacheInBackground(
   params: IQueryMembersAdvancedParams,
 ): Promise<void> {
   try {
+    log.info(`Refreshing members advanced query cache in background: ${cacheKey}`)
     await executeQuery(qx, redis, cacheKey, params)
+    log.info(`Members advanced query cache refreshed in background: ${cacheKey}`)
   } catch (error) {
     log.warn('Background cache refresh failed:', error)
   }
@@ -584,6 +586,7 @@ async function refreshCountCacheInBackground(
   try {
     log.info(`Refreshing members advanced count cache in background: ${cacheKey}`)
     await executeQuery(qx, redis, cacheKey, { ...params, countOnly: true })
+    log.info(`Members advanced count cache refreshed in background: ${cacheKey}`)
   } catch (error) {
     log.warn('Background count cache refresh failed:', error)
   }
