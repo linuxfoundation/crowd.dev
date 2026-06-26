@@ -456,16 +456,24 @@ export async function executeQuery(
     offset,
   })
 
+  // Skip the count sub-query if the count is already cached — saves a full table scan
+  // on every page navigation after the first (page 2, 3, ... all share the same countCacheKey).
+  const cachedCount = await cache.getCount(countCacheKey)
   const [rows, countResult] = await Promise.all([
     qx.select(mainQuery, params),
-    qx.selectOne(countQuery, params),
+    cachedCount === null ? qx.selectOne(countQuery, params) : Promise.resolve(null),
   ])
 
-  const count = parseInt(countResult.count, 10)
+  const count = cachedCount !== null ? cachedCount : parseInt(countResult?.count ?? '0', 10)
   const memberIds = rows.map((org) => org.id)
 
   if (memberIds.length === 0) {
-    return { rows: [], count, limit, offset }
+    const emptyResult = { rows: [], count, limit, offset }
+    await Promise.all([
+      cache.set(cacheKey, emptyResult, 21600),
+      cachedCount === null ? cache.setCount(countCacheKey, count, 21600) : Promise.resolve(),
+    ])
+    return emptyResult
   }
 
   const [memberOrganizations, identities, memberSegments, maintainerRoles] = await Promise.all([
