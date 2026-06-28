@@ -110,6 +110,17 @@ WHILE new_pairs > 0 AND iter < ${MAX_CLOSURE_ITERATIONS} DO
   SET iter = iter + 1;
 END WHILE;
 
+-- 5b. The loop exits on convergence (new_pairs = 0) OR the iteration cap. If it stopped on the cap
+--     with pairs still pending, the closure is INCOMPLETE: transitive_dependent_count would be
+--     silently undercounted and the row-count guard wouldn't catch it (row volume stays ~flat).
+--     Fail the job loudly instead of exporting partial counts. Raising the cap is the fix only if
+--     the graph legitimately deepened past it.
+IF new_pairs > 0 THEN
+  RAISE USING MESSAGE = FORMAT(
+    '${system} reverse-dependent closure did not converge within ${MAX_CLOSURE_ITERATIONS} iterations (new_pairs=%d still pending) - aborting to avoid undercounting transitive dependents',
+    new_pairs);
+END IF;
+
 -- 6. repo mapping for the all-depth dependent_repos_count: latest source repo per package within a
 --    60-day window anchored on the run date. Literal date bounds prune partitions (a subquery-derived
 --    SnapshotAt = (SELECT MAX ...) would NOT prune and scans the whole table).
