@@ -196,7 +196,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     // M4: explicit location to avoid cross-region error when account default != US
     const [dryRunJob] = await bigquery.createQueryJob({ query: sql, dryRun: true, location: 'US' })
     const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
-    log.info({ jobKind, dryRunBytes, maxBytesGb }, 'BQ dry-run complete')
+    // Log the effective ceiling (env override may differ from the default maxBytesGb) and the
+    // computed byte ceiling, so ops can see what the abort decision is actually compared against.
+    log.info({ jobKind, dryRunBytes, maxBytesGb, effectiveMaxBytesGb, ceiling }, 'BQ dry-run complete')
     if (dryRunBytes > ceiling) {
       throw new Error(
         `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,

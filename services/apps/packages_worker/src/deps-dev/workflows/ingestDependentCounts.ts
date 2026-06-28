@@ -64,7 +64,7 @@ interface VariantConfig {
   // When true, buildSql returns a multi-statement BQ script (the GO/NUGET exact reverse transitive
   // closure) that ends by creating TEMP TABLE _export_data, rather than a single SELECT. The export
   // activity then appends only EXPORT DATA and enforces the byte ceiling via maximumBytesBilled
-  // instead of a dry-run. See ADR-0004. Left unset (single-SELECT) until the closure SQL lands.
+  // instead of a dry-run. See ADR-0004. Unset (single-SELECT) for the edges variant; set for GO/NUGET.
   isScript?: boolean
 }
 

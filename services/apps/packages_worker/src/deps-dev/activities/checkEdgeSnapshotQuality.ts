@@ -22,8 +22,13 @@ import { assertSnapshotDate } from '../queries/depsSql'
 // produced by the resolution pipeline and were unaffected, so they are not probed here.
 
 export interface CheckEdgeSnapshotQualityInput {
-  snapshotDate: string // YYYY-MM-DD — the resolved BQ partition date being ingested
+  snapshotDate: string // YYYY-MM-DD — the BQ partition the incremental diff reads (ignored when fullScan)
   ecosystems: string[]
+  // Probe the SAME source the ingest reads, so the guard validates the snapshot that actually gets
+  // ingested. Full/fill scan the *Latest views (newest snapshot, no date filter) → probe *Latest.
+  // Incremental reads the `snapshotDate` partition → probe that partition. Without this, a full run
+  // with an older --snapshot-date would validate a stale partition while ingesting a corrupt *Latest.
+  fullScan: boolean
 }
 
 export interface CanaryStat {
@@ -99,8 +104,6 @@ export async function checkEdgeSnapshotQuality(
     return { ok: true, canaries: [] }
   }
 
-  assertSnapshotDate(input.snapshotDate)
-
   // Group canaries by system into `(System = x AND Name IN (...))` predicates so the filter prunes
   // on the (System, Name, Version) clustering — keeps the probe in the single-GB / pennies range.
   const bySystem = new Map<string, string[]>()
@@ -116,6 +119,22 @@ export async function checkEdgeSnapshotQuality(
     )
     .join('\n        OR ')
 
+  // Probe the same source the ingest reads (see fullScan): full/fill scan the *Latest view (newest
+  // snapshot, no date filter); incremental reads the `snapshotDate` partition. The date is only
+  // interpolated (and validated) on the partition path; *Latest needs no date.
+  let edgesTable: string
+  let snapshotFilter: string
+  if (input.fullScan) {
+    edgesTable = 'bigquery-public-data.deps_dev_v1.DependencyGraphEdgesLatest'
+    snapshotFilter = ''
+  } else {
+    assertSnapshotDate(input.snapshotDate)
+    edgesTable = 'bigquery-public-data.deps_dev_v1.DependencyGraphEdges'
+    snapshotFilter = `e.SnapshotAt >= TIMESTAMP('${input.snapshotDate}')
+      AND e.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${input.snapshotDate}', INTERVAL 1 DAY))
+      AND `
+  }
+
   // Direct edges only (From = graph root), matching what the ingest reads. %T formats NULLs
   // as the literal "NULL" so COUNT(DISTINCT ...) isn't nulled out by unresolved To.Version.
   const query = `
@@ -124,10 +143,8 @@ export async function checkEdgeSnapshotQuality(
       e.Name   AS name,
       COUNT(*) AS row_count,
       COUNT(DISTINCT FORMAT('%T|%T|%T', e.From.Version, e.To.Name, e.To.Version)) AS edge_count
-    FROM \`bigquery-public-data.deps_dev_v1.DependencyGraphEdges\` e
-    WHERE e.SnapshotAt >= TIMESTAMP('${input.snapshotDate}')
-      AND e.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${input.snapshotDate}', INTERVAL 1 DAY))
-      AND e.From.Name = e.Name AND e.From.Version = e.Version
+    FROM \`${edgesTable}\` e
+    WHERE ${snapshotFilter}e.From.Name = e.Name AND e.From.Version = e.Version
       AND (
         ${systemPredicates}
       )

@@ -224,6 +224,9 @@ export async function ingestDependencies(opts: {
   const isFill = opts.fillConstraints === true
   // Fill mode forces Option A — Option B selects NULL for version_constraint, making the fill a no-op.
   const tableOption = isFill ? 'A' : (opts.depsTableOption ?? 'A')
+  // Full/fill scan the *Latest views; incremental reads the `today` partition. Drives both the SQL
+  // source below and which source the guard probes — they must match.
+  const fullScan = opts.syncMode === 'full' || isFill
 
   // Guard against corrupt deps.dev resolved-graph snapshots BEFORE the (multi-hour) export.
   // Skip when reusing a prior export — we're re-importing already-validated parquet, not
@@ -231,7 +234,7 @@ export async function ingestDependencies(opts: {
   // a bad snapshot, so the guard runs for both. Probes only resolved-graph ecosystems; a clean
   // GO/NUGET-only run finds no canaries and passes through.
   if (!opts.reuseExports) {
-    const guard = await checkEdgeSnapshotQuality({ snapshotDate: opts.today, ecosystems })
+    const guard = await checkEdgeSnapshotQuality({ snapshotDate: opts.today, ecosystems, fullScan })
     if (!guard.ok) {
       throw ApplicationFailure.nonRetryable(
         `edge snapshot quality guard failed for ${opts.today}: ${guard.reason}. ` +
@@ -241,10 +244,9 @@ export async function ingestDependencies(opts: {
     }
   }
   // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
-  const sql =
-    opts.syncMode === 'full' || isFill
-      ? buildDepsFullSql(ecosystems, tableOption)
-      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
+  const sql = fullScan
+    ? buildDepsFullSql(ecosystems, tableOption)
+    : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'package_dependencies',
