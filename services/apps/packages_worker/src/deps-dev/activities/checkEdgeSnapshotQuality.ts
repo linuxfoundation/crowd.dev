@@ -162,8 +162,11 @@ export async function checkEdgeSnapshotQuality(
   const overDuplicated = present.filter((c) => c.ratio !== null && c.ratio > DUP_RATIO_REJECT)
   const minPresent = Math.ceil(activeCanaries.length / 2)
   const massCollapse = present.length < minPresent
-  const majorityOverDuplicated = overDuplicated.length >= Math.ceil(present.length / 2)
-  const ok = !massCollapse && !majorityOverDuplicated
+  // Reject at HALF-OR-MORE (not strict majority): if half the high-fanout canaries show ×100
+  // duplication the snapshot is corrupt enough to abort. Bias toward rejecting — a false reject
+  // just skips one cycle (existing rows preserved), a false accept burns ~5h on ~550M garbage rows.
+  const halfOrMoreOverDuplicated = overDuplicated.length >= Math.ceil(present.length / 2)
+  const ok = !massCollapse && !halfOrMoreOverDuplicated
 
   if (ok) {
     return { ok: true, canaries }
