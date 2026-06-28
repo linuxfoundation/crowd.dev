@@ -203,7 +203,8 @@ export async function checkEdgeSnapshotQuality(
     [
       {
         title: 'Snapshot',
-        text: input.snapshotDate,
+        // Full/fill probe *Latest (no partition filter), so the literal date isn't what was scanned.
+        text: input.fullScan ? `${input.snapshotDate} (probed *Latest)` : input.snapshotDate,
       },
       {
         title: 'Canaries',

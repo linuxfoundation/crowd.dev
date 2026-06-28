@@ -201,7 +201,10 @@ export async function bootstrapOsspckgs(opts: {
         args: [
           {
             runId,
-            snapshotDate: today,
+            // Honor --snapshot-date like the partition kinds do (snap()). The closure reads *Latest
+            // manifests regardless, but anchors the dependent_repos 60-day window on this date, so a
+            // recovery run with an override must use it for a consistent window.
+            snapshotDate: opts.snapshotDate ?? today,
             variant,
             reuseExports: opts.reuseExports,
             exportName: opts.exportName,
