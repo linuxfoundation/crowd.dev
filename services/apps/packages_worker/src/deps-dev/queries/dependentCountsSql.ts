@@ -1,3 +1,5 @@
+import { assertSnapshotDate } from './depsSql'
+
 // The deps.dev `Dependents` reverse index only covers the resolved-graph ecosystems
 // {NPM, MAVEN, PYPI, CARGO} — GO and NUGET are entirely absent from the table (verified via BQ
 // 2026-06-17). GO/NUGET dependent counts are produced separately by inverting their manifest tables
@@ -11,6 +13,7 @@
 const EDGE_DEPENDENT_SYSTEMS = `('NPM', 'MAVEN', 'PYPI', 'CARGO')`
 
 export function buildDependentCountsSql(snapshotDate: string): string {
+  assertSnapshotDate(snapshotDate)
   return `
 WITH purl_map AS (
   SELECT System, Name, ANY_VALUE(REGEXP_REPLACE(Purl, r'@[^@]+$', '')) AS purl
@@ -69,6 +72,7 @@ function buildClosureScript(
   edgesSql: string,
   snapshotDate: string,
 ): string {
+  assertSnapshotDate(snapshotDate)
   return `
 DECLARE new_pairs INT64 DEFAULT 1;
 DECLARE iter INT64 DEFAULT 0;
