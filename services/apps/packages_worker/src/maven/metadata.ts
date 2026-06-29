@@ -111,7 +111,9 @@ export async function resolveVersionsList(
     } catch (err) {
       if (axios.isAxiosError(err)) {
         const status = err.response?.status
-        if (status === 404) return { kind: 'NOT_FOUND' }
+        // 404 = standard not-found. 401 = JitPack's response for packages that
+        // don't exist as public builds (JitPack uses 401 instead of 404 here).
+        if (status === 404 || status === 401) return { kind: 'NOT_FOUND' }
         // 429 = explicit rate limit, 403 = CDN throttle (Maven Central uses both)
         if ((status === 429 || status === 403) && attempt < MAX_RETRIES) {
           const delay = RETRY_BASE_MS * 2 ** attempt + Math.random() * 500
