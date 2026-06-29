@@ -18,6 +18,7 @@ import { getMavenConfig } from '../config'
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
+import { resolveRegistryBaseUrl, resolveRegistryPageUrl } from './registry'
 
 const log = getServiceChildLogger('maven')
 
@@ -41,9 +42,6 @@ type PackageRow = MavenPackageToSync
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mavenRegistryUrl(groupId: string, artifactId: string): string {
-  return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
-}
 
 async function writeRepoLink(
   qx: QueryExecutor,
@@ -95,7 +93,7 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
     name: pkg.name,
     description: null,
     homepage: null,
-    registryUrl: pkg.namespace ? mavenRegistryUrl(pkg.namespace, pkg.name) : null,
+    registryUrl: pkg.namespace ? resolveRegistryPageUrl(pkg.namespace, pkg.name) : null,
     declaredRepositoryUrl: null,
     repositoryUrl: null,
     licenses: null,
@@ -122,8 +120,10 @@ async function processCriticalPackage(
     return { status: 'skipped' }
   }
 
+  const baseUrl = resolveRegistryBaseUrl(groupId)
+
   // Phase 1: lightweight metadata fetch to get the current upstream version.
-  const metadata = await resolveVersionsList(groupId, artifactId)
+  const metadata = await resolveVersionsList(groupId, artifactId, baseUrl)
 
   if (isMavenFetchError(metadata)) {
     if (metadata.kind === 'NOT_FOUND') {
@@ -134,7 +134,7 @@ async function processCriticalPackage(
         name: artifactId,
         description: null,
         homepage: null,
-        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrl(groupId, artifactId),
         declaredRepositoryUrl: null,
         repositoryUrl: null,
         licenses: null,
@@ -144,7 +144,7 @@ async function processCriticalPackage(
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
       })
-      log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
+      log.warn({ groupId, artifactId, baseUrl }, 'Not found in registry — writing minimal record')
       return { status: 'skipped' }
     }
     if (metadata.kind === 'RATE_LIMIT') {
@@ -169,7 +169,7 @@ async function processCriticalPackage(
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrl(groupId, artifactId),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -195,7 +195,7 @@ async function processCriticalPackage(
 
   // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
   // transaction so partial writes never leave the package in an inconsistent state.
-  const result = await extractArtifact(groupId, artifactId, version)
+  const result = await extractArtifact(groupId, artifactId, version, baseUrl)
 
   if (result.error) {
     log.warn({ groupId, artifactId, version, error: result.error }, 'POM extraction failed')
@@ -206,7 +206,7 @@ async function processCriticalPackage(
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrl(groupId, artifactId),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -232,7 +232,7 @@ async function processCriticalPackage(
         name: artifactId,
         description: result.description,
         homepage: result.homepageUrl,
-        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrl(groupId, artifactId),
         declaredRepositoryUrl: result.scmUrl,
         repositoryUrl,
         licenses: result.licenses.length > 0 ? result.licenses : null,

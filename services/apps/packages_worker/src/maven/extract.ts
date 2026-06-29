@@ -7,6 +7,8 @@ import { XMLParser } from 'fast-xml-parser'
 
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { resolveRegistryBaseUrl } from './registry'
+
 const log = getServiceChildLogger('maven')
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,14 +58,6 @@ interface PomPerson {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// Lazy getter — evaluated at call time so the entry point can set MAVEN_FETCHER_BASE_URL
-// before the first HTTP request without worrying about module load order.
-// Backfill sets MAVEN_FETCHER_BASE_URL from MAVEN_FETCHER_BASE_URL_BACKFILL (GCS mirror);
-// the incremental Temporal worker sets it from MAVEN_FETCHER_BASE_URL_INCREMENTAL (repo1).
-function getMavenRepo(): string {
-  return process.env.MAVEN_FETCHER_BASE_URL ?? 'https://repo1.maven.org/maven2'
-}
-
 const REQUEST_TIMEOUT_MS = 15_000
 
 const parser = new XMLParser({
@@ -108,9 +102,9 @@ async function getWithRetry(url: string): Promise<string> {
 
 // ─── POM fetch ────────────────────────────────────────────────────────────────
 
-export function buildPomUrl(groupId: string, artifactId: string, version: string): string {
+export function buildPomUrl(groupId: string, artifactId: string, version: string, baseUrl?: string): string {
   const groupPath = groupId.replace(/\./g, '/')
-  return `${getMavenRepo()}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
+  return `${baseUrl ?? resolveRegistryBaseUrl(groupId)}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
 }
 
 export async function fetchPom(
@@ -190,6 +184,7 @@ async function fetchPomCached(
   groupId: string,
   artifactId: string,
   version: string,
+  baseUrl?: string,
 ): Promise<PomData | null> {
   const key = pomCacheKey(groupId, artifactId, version)
 
@@ -208,7 +203,7 @@ async function fetchPomCached(
   }
 
   pomCacheStats.misses++
-  const promise = fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version))
+  const promise = fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version, baseUrl))
     .then((pom) => {
       if (pom) cacheSet(key, pom)
       return pom
@@ -270,8 +265,9 @@ async function resolveWithInheritance(
   version: string,
   depth = 0,
   visited = new Set<string>(),
+  baseUrl?: string,
 ): Promise<ResolvedFields> {
-  const pom = await fetchPomCached(groupId, artifactId, version)
+  const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
   if (!pom) return emptyFields(depth)
 
   const licenses = extractLicenses(pom)
@@ -299,6 +295,7 @@ async function resolveWithInheritance(
         parent.version,
         depth + 1,
         visited,
+        resolveRegistryBaseUrl(parent.groupId),
       )
       return {
         description: extractStr(pom.description) ?? parentFields.description,
@@ -337,10 +334,11 @@ export async function extractArtifactDirect(
   groupId: string,
   artifactId: string,
   version: string,
+  baseUrl?: string,
 ): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
-  const pomUrl = buildPomUrl(groupId, artifactId, version)
-  const pom = await fetchPomCached(groupId, artifactId, version)
+  const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
+  const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
 
   if (!pom) {
     return {
@@ -391,11 +389,12 @@ export async function extractArtifact(
   groupId: string,
   artifactId: string,
   version: string,
+  baseUrl?: string,
 ): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
 
-  const pomUrl = buildPomUrl(groupId, artifactId, version)
-  const rootPom = await fetchPomCached(groupId, artifactId, version)
+  const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
+  const rootPom = await fetchPomCached(groupId, artifactId, version, baseUrl)
   if (!rootPom) {
     return {
       groupId,
@@ -415,7 +414,7 @@ export async function extractArtifact(
   }
 
   try {
-    const resolved = await resolveWithInheritance(groupId, artifactId, version)
+    const resolved = await resolveWithInheritance(groupId, artifactId, version, 0, new Set(), baseUrl)
     return {
       groupId,
       artifactId,
