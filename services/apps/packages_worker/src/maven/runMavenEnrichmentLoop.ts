@@ -18,7 +18,13 @@ import { getMavenConfig } from '../config'
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
-import { resolveRegistryBaseUrl, resolveRegistryPageUrl } from './registry'
+import {
+  MAVEN_CENTRAL_BASE_URL,
+  isAlternativeRegistry,
+  resolveRegistryBaseUrl,
+  resolveRegistryPageUrl,
+  resolveRegistryPageUrlFromBase,
+} from './registry'
 
 const log = getServiceChildLogger('maven')
 
@@ -115,10 +121,25 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
     return { status: 'skipped' }
   }
 
-  const baseUrl = resolveRegistryBaseUrl(groupId)
+  let baseUrl = resolveRegistryBaseUrl(groupId)
 
   // Phase 1: lightweight metadata fetch to get the current upstream version.
-  const metadata = await resolveVersionsList(groupId, artifactId, baseUrl)
+  let metadata = await resolveVersionsList(groupId, artifactId, baseUrl)
+
+  // If the primary (non-Central) registry returned NOT_FOUND, try Maven Central as a
+  // fallback. This handles artifacts that share a namespace with non-Central packages but
+  // are themselves published on Central — e.g. com.google.firebase:firebase-admin is the
+  // server-side Java SDK on Central, while most com.google.firebase artifacts are Android
+  // SDKs on Google Maven.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isAlternativeRegistry(groupId)) {
+    const centralUrl = process.env.MAVEN_FETCHER_BASE_URL ?? MAVEN_CENTRAL_BASE_URL
+    const centralMetadata = await resolveVersionsList(groupId, artifactId, centralUrl)
+    if (!isMavenFetchError(centralMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary registry — resolved via Maven Central fallback')
+      baseUrl = centralUrl
+      metadata = centralMetadata
+    }
+  }
 
   if (isMavenFetchError(metadata)) {
     if (metadata.kind === 'NOT_FOUND') {
@@ -129,7 +150,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         name: artifactId,
         description: null,
         homepage: null,
-        registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: null,
         repositoryUrl: null,
         licenses: null,
@@ -164,7 +185,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -201,7 +222,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -227,7 +248,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         name: artifactId,
         description: result.description,
         homepage: result.homepageUrl,
-        registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: result.scmUrl,
         repositoryUrl,
         licenses: result.licenses.length > 0 ? result.licenses : null,

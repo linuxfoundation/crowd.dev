@@ -11,7 +11,7 @@
  * metadata.xml / POM fetch logic works — only the base URL changes.
  */
 
-const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
+export const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
 
 interface RegistryEntry {
   prefix: string
@@ -25,10 +25,10 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
-  // com.google.android (bare, no sub-namespace) are legacy SDK stubs on Maven Central —
-  // only sub-namespaces like com.google.android.gms.* live on Google Maven.
+  // com.google.android — all artifacts (bare namespace and sub-namespaces like
+  // com.google.android.gms.*) are on Google Maven, not Maven Central.
   {
-    prefix: 'com.google.android.',
+    prefix: 'com.google.android',
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
@@ -137,7 +137,9 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
 ]
 
 function findEntry(groupId: string): RegistryEntry | undefined {
-  return ALTERNATIVE_REGISTRIES.find((r) => groupId.startsWith(r.prefix))
+  return ALTERNATIVE_REGISTRIES.find(
+    (r) => groupId === r.prefix || groupId.startsWith(r.prefix + '.'),
+  )
 }
 
 /**
@@ -155,10 +157,40 @@ export function resolveRegistryBaseUrl(groupId: string): string {
 }
 
 /**
+ * Returns true when the given groupId maps to a non-Central registry.
+ * Used in the enrichment loop to decide whether a Central fallback lookup is worth trying
+ * (e.g. com.google.firebase:firebase-admin is a server-side Java SDK on Central, while
+ * most com.google.firebase artifacts are Android SDKs on Google Maven).
+ */
+export function isAlternativeRegistry(groupId: string): boolean {
+  return findEntry(groupId) !== undefined
+}
+
+/**
  * Returns a human-browsable URL for the given artifact in its authoritative registry.
  */
 export function resolveRegistryPageUrl(groupId: string, artifactId: string): string {
   const entry = findEntry(groupId)
   if (entry) return entry.pageUrl(groupId, artifactId)
   return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
+}
+
+/**
+ * Like resolveRegistryPageUrl, but uses the resolved base URL to determine which
+ * registry page to show. When the artifact was actually fetched from Maven Central
+ * (e.g. via the Central fallback after the primary alternative registry 404'd), the
+ * namespace-based routing would point at the wrong registry page — this overrides it.
+ */
+export function resolveRegistryPageUrlFromBase(
+  groupId: string,
+  artifactId: string,
+  resolvedBaseUrl: string,
+): string {
+  const isCentral =
+    resolvedBaseUrl === MAVEN_CENTRAL_BASE_URL ||
+    resolvedBaseUrl === process.env.MAVEN_FETCHER_BASE_URL
+  if (isCentral) {
+    return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
+  }
+  return resolveRegistryPageUrl(groupId, artifactId)
 }
