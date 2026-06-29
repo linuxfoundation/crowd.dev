@@ -12,10 +12,8 @@ import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
 import { isPrerelease } from './normalize'
+import { resolveRegistryBaseUrl } from './registry'
 
-function getMavenRepo(): string {
-  return process.env.MAVEN_FETCHER_BASE_URL ?? 'https://repo1.maven.org/maven2'
-}
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 3
 const RETRY_BASE_MS = 2_000
@@ -78,9 +76,10 @@ export function pickStableRelease(candidate: string | null, versions: string[]):
 export async function resolveVersionsList(
   groupId: string,
   artifactId: string,
+  baseUrl?: string,
 ): Promise<MavenVersionsMetadata | MavenFetchError> {
   const groupPath = groupId.replace(/\./g, '/')
-  const url = `${getMavenRepo()}/${groupPath}/${artifactId}/maven-metadata.xml`
+  const url = `${baseUrl ?? resolveRegistryBaseUrl(groupId)}/${groupPath}/${artifactId}/maven-metadata.xml`
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -132,8 +131,9 @@ export async function resolveVersionsList(
 export async function resolveLatestVersion(
   groupId: string,
   artifactId: string,
+  baseUrl?: string,
 ): Promise<string | null> {
-  const meta = await resolveVersionsList(groupId, artifactId)
+  const meta = await resolveVersionsList(groupId, artifactId, baseUrl)
   if (isMavenFetchError(meta)) return null
   return meta.releaseVersion
 }

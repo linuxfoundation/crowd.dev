@@ -18,6 +18,13 @@ import { getMavenConfig } from '../config'
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
+import {
+  MAVEN_CENTRAL_BASE_URL,
+  isAlternativeRegistry,
+  resolveRegistryBaseUrl,
+  resolveRegistryPageUrl,
+  resolveRegistryPageUrlFromBase,
+} from './registry'
 
 const log = getServiceChildLogger('maven')
 
@@ -36,21 +43,14 @@ interface CriticalPackageResult {
   status: CriticalStatus
 }
 
+// prettier-ignore
 type MavenConfig = ReturnType<typeof getMavenConfig>
 type PackageRow = MavenPackageToSync
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mavenRegistryUrl(groupId: string, artifactId: string): string {
-  return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
-}
-
-async function writeRepoLink(
-  qx: QueryExecutor,
-  packageId: number,
-  repositoryUrl: string | null,
-  changed: Set<string>,
-): Promise<void> {
+// prettier-ignore
+async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed: Set<string>): Promise<void> {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
@@ -67,6 +67,7 @@ async function writeRepoLink(
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
 // rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
 // can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
+// prettier-ignore
 async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -87,6 +88,7 @@ async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Prom
 
 // ─── Non-critical: copy universe stats into packages ─────────────────────────
 
+// prettier-ignore
 async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise<void> {
   await upsertPackage(qx, {
     purl: pkg.purl,
@@ -95,7 +97,7 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
     name: pkg.name,
     description: null,
     homepage: null,
-    registryUrl: pkg.namespace ? mavenRegistryUrl(pkg.namespace, pkg.name) : null,
+    registryUrl: pkg.namespace ? resolveRegistryPageUrl(pkg.namespace, pkg.name) : null,
     declaredRepositoryUrl: null,
     repositoryUrl: null,
     licenses: null,
@@ -109,11 +111,8 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
 
 // ─── Critical: full POM extraction ───────────────────────────────────────────
 
-async function processCriticalPackage(
-  qx: QueryExecutor,
-  pkg: PackageRow,
-  forceFullExtraction: boolean,
-): Promise<CriticalPackageResult> {
+// prettier-ignore
+async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceFullExtraction: boolean): Promise<CriticalPackageResult> {
   const groupId = pkg.namespace
   const artifactId = pkg.name
 
@@ -122,8 +121,25 @@ async function processCriticalPackage(
     return { status: 'skipped' }
   }
 
+  let baseUrl = resolveRegistryBaseUrl(groupId)
+
   // Phase 1: lightweight metadata fetch to get the current upstream version.
-  const metadata = await resolveVersionsList(groupId, artifactId)
+  let metadata = await resolveVersionsList(groupId, artifactId, baseUrl)
+
+  // If the primary (non-Central) registry returned NOT_FOUND, try Maven Central as a
+  // fallback. This handles artifacts that share a namespace with non-Central packages but
+  // are themselves published on Central — e.g. com.google.firebase:firebase-admin is the
+  // server-side Java SDK on Central, while most com.google.firebase artifacts are Android
+  // SDKs on Google Maven.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isAlternativeRegistry(groupId)) {
+    const centralUrl = process.env.MAVEN_FETCHER_BASE_URL ?? MAVEN_CENTRAL_BASE_URL
+    const centralMetadata = await resolveVersionsList(groupId, artifactId, centralUrl)
+    if (!isMavenFetchError(centralMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary registry — resolved via Maven Central fallback')
+      baseUrl = centralUrl
+      metadata = centralMetadata
+    }
+  }
 
   if (isMavenFetchError(metadata)) {
     if (metadata.kind === 'NOT_FOUND') {
@@ -134,7 +150,7 @@ async function processCriticalPackage(
         name: artifactId,
         description: null,
         homepage: null,
-        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: null,
         repositoryUrl: null,
         licenses: null,
@@ -144,7 +160,7 @@ async function processCriticalPackage(
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
       })
-      log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
+      log.warn({ groupId, artifactId, baseUrl }, 'Not found in registry — writing minimal record')
       return { status: 'skipped' }
     }
     if (metadata.kind === 'RATE_LIMIT') {
@@ -169,7 +185,7 @@ async function processCriticalPackage(
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -195,7 +211,7 @@ async function processCriticalPackage(
 
   // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
   // transaction so partial writes never leave the package in an inconsistent state.
-  const result = await extractArtifact(groupId, artifactId, version)
+  const result = await extractArtifact(groupId, artifactId, version, baseUrl)
 
   if (result.error) {
     log.warn({ groupId, artifactId, version, error: result.error }, 'POM extraction failed')
@@ -206,7 +222,7 @@ async function processCriticalPackage(
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -232,7 +248,7 @@ async function processCriticalPackage(
         name: artifactId,
         description: result.description,
         homepage: result.homepageUrl,
-        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: result.scmUrl,
         repositoryUrl,
         licenses: result.licenses.length > 0 ? result.licenses : null,
@@ -317,12 +333,8 @@ async function processCriticalPackage(
 
 // ─── Batch processing ─────────────────────────────────────────────────────────
 
-export async function processBatch(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isCritical: boolean,
-  forceFullExtraction: boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+export async function processBatch(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
   const refreshDays = config.refreshDays
 
@@ -332,13 +344,8 @@ export async function processBatch(
 }
 
 // Runs a concrete list of packages through the enrichment pipeline.
-async function processPackages(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  packages: PackageRow[],
-  isCritical: boolean,
-  forceFullExtraction: boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+async function processPackages(qx: QueryExecutor, config: MavenConfig, packages: PackageRow[], isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
   if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
@@ -401,12 +408,8 @@ async function processPackages(
 
 // ─── Phase runner ─────────────────────────────────────────────────────────────
 
-async function runPhase(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isCritical: boolean,
-  isShuttingDown: () => boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, isShuttingDown: () => boolean): Promise<BatchResult> {
   const label = isCritical ? 'critical' : 'non-critical'
   const total: BatchResult = {
     processed: 0,
@@ -461,10 +464,7 @@ async function runPhase(
  * triggered manually (e.g. `pnpm backfill:maven` execed into the packages-worker
  * container).
  */
-export async function runMavenCriticalBackfill(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isShuttingDown: () => boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+export async function runMavenCriticalBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
   return runPhase(qx, config, true, isShuttingDown)
 }
