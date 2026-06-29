@@ -173,8 +173,9 @@ class MaintainerService(BaseService):
     ) -> list[tuple[MaintainerInfoItem, str]]:
         # Centralised resolver used by both the first-run and incremental paths so
         # they share identical lookup + fallback semantics. The semaphore caps DB
-        # concurrency at 3 (large MAINTAINERS files can carry thousands of entries).
-        semaphore = asyncio.Semaphore(3)
+        # concurrency at MAX_CONCURRENT_CHUNKS (large MAINTAINERS files can carry
+        # thousands of entries).
+        semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
 
         async def resolve(m: MaintainerInfoItem) -> tuple[MaintainerInfoItem, str | None]:
             async with semaphore:
@@ -195,14 +196,21 @@ class MaintainerService(BaseService):
         self, repo_url: str, repo_id: str, maintainers: list[MaintainerInfoItem]
     ):
         resolved = await self._resolve_maintainers(maintainers)
-        for maintainer, identity_id in resolved:
-            role = maintainer.normalized_title
-            original_role = self.make_role(maintainer.title)
-            await upsert_maintainer(repo_id, identity_id, repo_url, role, original_role)
-            self.logger.info(
-                f"Successfully upserted maintainer {maintainer.github_username} "
-                f"with identity_id {identity_id}"
-            )
+        # Preserve the previous behaviour of running upserts concurrently so first-run
+        # processing of large MAINTAINERS files (thousands of entries) doesn't serialise.
+        semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
+
+        async def upsert(maintainer: MaintainerInfoItem, identity_id: str) -> None:
+            async with semaphore:
+                role = maintainer.normalized_title
+                original_role = self.make_role(maintainer.title)
+                await upsert_maintainer(repo_id, identity_id, repo_url, role, original_role)
+                self.logger.info(
+                    f"Successfully upserted maintainer {maintainer.github_username} "
+                    f"with identity_id {identity_id}"
+                )
+
+        await asyncio.gather(*[upsert(m, identity_id) for m, identity_id in resolved])
 
     async def compare_and_update_maintainers(
         self,
@@ -243,13 +251,34 @@ class MaintainerService(BaseService):
                 f"with identity_id {identity_id} role {role}"
             )
 
-        for identity_id, role in current_by_key:
-            if (identity_id, role) not in new_by_key:
-                self.logger.info(
-                    f"Maintainer with identity {identity_id} role {role} no longer exists, "
-                    f"updating its endDate..."
+        # Defensive guard for the end-date pass: the previous implementation keyed
+        # the "new" set by github_username, so any maintainer present in the source
+        # was unconditionally in that set and never wrongly end-dated. The identity-
+        # based key now only contains successfully resolved entries, so resolution
+        # failures (transient DB issues, stale extraction values) could end-date a
+        # maintainer who is still in the file. Skip end-dating when the current
+        # row's identifying value still appears in the extracted source.
+        mentioned_values = set()
+        for m in maintainers:
+            for v in (m.github_username, m.email):
+                if v and v != "unknown":
+                    mentioned_values.add(v.lower())
+
+        for (identity_id, role), current in current_by_key.items():
+            if (identity_id, role) in new_by_key:
+                continue
+            current_value = (current.get("github_username") or "").lower()
+            if current_value and current_value in mentioned_values:
+                self.logger.warning(
+                    f"Maintainer with identity {identity_id} role {role} could not be "
+                    f"re-resolved but is still mentioned in the source; skipping end-date"
                 )
-                await set_maintainer_end_date(repo_id, identity_id, role, change_date)
+                continue
+            self.logger.info(
+                f"Maintainer with identity {identity_id} role {role} no longer exists, "
+                f"updating its endDate..."
+            )
+            await set_maintainer_end_date(repo_id, identity_id, role, change_date)
 
     async def save_maintainers(
         self,

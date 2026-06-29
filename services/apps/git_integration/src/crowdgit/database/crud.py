@@ -410,11 +410,17 @@ async def get_maintainers_for_repo(repo_id: str):
     # actually persists. A stricter read filter hides rows from the incremental diff,
     # which leads to spurious re-inserts and missed end-dates for email-linked
     # maintainers (e.g. platform='git' rows on the linux kernel repo).
+    #
+    # endDate IS NULL keeps the comparison set limited to active maintainers, matching
+    # the previous behaviour for email-linked maintainers (where the old platform filter
+    # incidentally excluded them and let the "new maintainer" branch reactivate them
+    # via the upsert's `endDate = NULL` on conflict). Without this, end-dated rows would
+    # sit in the comparison set and block reactivation when the maintainer reappears.
     maintainers_sql_query = """
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
-        WHERE mi."repoId" = $1 AND mem."deletedAt" is null
+        WHERE mi."repoId" = $1 AND mi."endDate" IS NULL AND mem."deletedAt" is null
         """
     return await query(
         maintainers_sql_query,
