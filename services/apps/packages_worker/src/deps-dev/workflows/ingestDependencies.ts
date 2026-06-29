@@ -259,13 +259,17 @@ export async function ingestDependencies(opts: {
     jobKind: 'package_dependencies',
     sql,
     runId: opts.runId,
-    syncMode: opts.syncMode,
+    // Report the PHYSICAL scan mode, not the requested one. A fill run (fillConstraints) forces a
+    // full *Latest scan even when opts.syncMode is 'incremental'; passing the raw mode would record
+    // the job as incremental and make bqExportToGcs pick the INCREMENTAL byte-ceiling env override
+    // for a query that's actually full. fullScan already gates the SQL + maxBytesGb below.
+    syncMode: fullScan ? 'full' : opts.syncMode,
     snapshotAt: opts.today,
     // Full/fill scan the *Latest views (everything) → 25000. Incremental is a snapshot edge-diff
     // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements);
     // measured ~4.1TB for Option A. 10000 leaves ~2.4x headroom and still trips a runaway full-table
     // scan. Overridable via BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
-    maxBytesGb: opts.syncMode === 'full' || isFill ? 25000 : 10000,
+    maxBytesGb: fullScan ? 25000 : 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
     ecosystems,
