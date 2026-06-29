@@ -15,8 +15,10 @@ describe('resolveRegistryBaseUrl', () => {
     )
   })
 
-  it('returns Maven Central for bare com.google.android (legacy SDK stubs on Central)', () => {
-    expect(resolveRegistryBaseUrl('com.google.android')).toBe('https://repo1.maven.org/maven2')
+  it('returns Google Maven for bare com.google.android (legacy Android SDK stubs)', () => {
+    expect(resolveRegistryBaseUrl('com.google.android')).toBe(
+      'https://dl.google.com/dl/android/maven2',
+    )
   })
 
   it('returns Google Maven for android.arch (pre-AndroidX Architecture Components)', () => {

@@ -11,7 +11,7 @@
  * metadata.xml / POM fetch logic works — only the base URL changes.
  */
 
-const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
+export const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
 
 interface RegistryEntry {
   prefix: string
@@ -25,10 +25,10 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
-  // com.google.android (bare, no sub-namespace) are legacy SDK stubs on Maven Central —
-  // only sub-namespaces like com.google.android.gms.* live on Google Maven.
+  // com.google.android — all artifacts (bare namespace and sub-namespaces like
+  // com.google.android.gms.*) are on Google Maven, not Maven Central.
   {
-    prefix: 'com.google.android.',
+    prefix: 'com.google.android',
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
@@ -152,6 +152,16 @@ export function resolveRegistryBaseUrl(groupId: string): string {
   const entry = findEntry(groupId)
   if (entry) return entry.baseUrl
   return process.env.MAVEN_FETCHER_BASE_URL ?? MAVEN_CENTRAL_BASE_URL
+}
+
+/**
+ * Returns true when the given groupId maps to a non-Central registry.
+ * Used in the enrichment loop to decide whether a Central fallback lookup is worth trying
+ * (e.g. com.google.firebase:firebase-admin is a server-side Java SDK on Central, while
+ * most com.google.firebase artifacts are Android SDKs on Google Maven).
+ */
+export function isAlternativeRegistry(groupId: string): boolean {
+  return findEntry(groupId) !== undefined
 }
 
 /**
