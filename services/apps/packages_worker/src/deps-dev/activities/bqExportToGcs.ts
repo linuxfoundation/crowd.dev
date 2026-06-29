@@ -198,7 +198,10 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
     // Log the effective ceiling (env override may differ from the default maxBytesGb) and the
     // computed byte ceiling, so ops can see what the abort decision is actually compared against.
-    log.info({ jobKind, dryRunBytes, maxBytesGb, effectiveMaxBytesGb, ceiling }, 'BQ dry-run complete')
+    log.info(
+      { jobKind, dryRunBytes, maxBytesGb, effectiveMaxBytesGb, ceiling },
+      'BQ dry-run complete',
+    )
     if (dryRunBytes > ceiling) {
       throw new Error(
         `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,

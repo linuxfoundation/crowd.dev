@@ -233,7 +233,14 @@ export async function ingestDependencies(opts: {
   // scanning the live snapshot. Both full (*Latest = newest snapshot) and incremental can hit
   // a bad snapshot, so the guard runs for both. Probes only resolved-graph ecosystems; a clean
   // GO/NUGET-only run finds no canaries and passes through.
-  if (!opts.reuseExports) {
+  //
+  // Option A only: the guard's canary ratios are DependencyGraphEdges-schema-specific. Option B
+  // ingests the separate Dependencies/DependenciesLatest table, which the 2026-06 corruption was
+  // never observed in and has no calibrated baseline — probing Edges there would "validate" a table
+  // we don't ingest (false confidence) and could abort a healthy Option B run when only Edges is bad.
+  // Option B is a manual, non-scheduled cost-experiment path (--deps-table-b); leave it unguarded by
+  // design rather than invent a guard for an unproven threat. Option A is the production default.
+  if (!opts.reuseExports && tableOption === 'A') {
     const guard = await checkEdgeSnapshotQuality({ snapshotDate: opts.today, ecosystems, fullScan })
     if (!guard.ok) {
       throw ApplicationFailure.nonRetryable(

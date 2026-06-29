@@ -68,13 +68,12 @@ The override logic lives in `src/deps-dev/activities/bqExportToGcs.ts`.
 
 ## Environment variables
 
-| Variable                       | Required  | Purpose                                                                                            |
-| ------------------------------ | --------- | -------------------------------------------------------------------------------------------------- |
-| `OSSPCKGS_GCP_PROJECT`         | yes       | GCP project ID for BQ and GCS                                                                      |
-| `OSSPCKGS_GCS_BUCKET`          | yes       | GCS bucket for Parquet exports                                                                     |
-| `OSSPCKGS_GCP_CREDENTIALS_B64` | yes       | Base64-encoded GCP service account JSON                                                            |
-| `OSSPCKGS_DEPS_TABLE`          | no        | Set to `B` to use `DependenciesLatest` (ADR-0003 Option B) instead of `DependencyGraphEdgesLatest` |
-| `CROWD_TEMPORAL_SERVER_URL`    | yes       | Temporal server address                                                                            |
-| `CROWD_TEMPORAL_NAMESPACE`     | yes       | Temporal namespace (overrides `backend-config` default)                                            |
-| `CROWD_TEMPORAL_CERTIFICATE`   | prod only | Base64-encoded mTLS client certificate                                                             |
-| `CROWD_TEMPORAL_PRIVATE_KEY`   | prod only | Base64-encoded mTLS private key                                                                    |
+| Variable                       | Required  | Purpose                                                 |
+| ------------------------------ | --------- | ------------------------------------------------------- |
+| `OSSPCKGS_GCP_PROJECT`         | yes       | GCP project ID for BQ and GCS                           |
+| `OSSPCKGS_GCS_BUCKET`          | yes       | GCS bucket for Parquet exports                          |
+| `OSSPCKGS_GCP_CREDENTIALS_B64` | yes       | Base64-encoded GCP service account JSON                 |
+| `CROWD_TEMPORAL_SERVER_URL`    | yes       | Temporal server address                                 |
+| `CROWD_TEMPORAL_NAMESPACE`     | yes       | Temporal namespace (overrides `backend-config` default) |
+| `CROWD_TEMPORAL_CERTIFICATE`   | prod only | Base64-encoded mTLS client certificate                  |
+| `CROWD_TEMPORAL_PRIVATE_KEY`   | prod only | Base64-encoded mTLS private key                         |
