@@ -148,6 +148,22 @@ describe('resolveRegistryBaseUrl', () => {
       'https://repo.jenkins-ci.org/public',
     )
   })
+
+  it('returns JitPack for io.github namespace', () => {
+    expect(resolveRegistryBaseUrl('io.github.resilience4j')).toBe('https://jitpack.io')
+  })
+
+  it('returns JitPack for bare io.github (exact match)', () => {
+    expect(resolveRegistryBaseUrl('io.github')).toBe('https://jitpack.io')
+  })
+
+  it('returns JitPack for com.github namespace', () => {
+    expect(resolveRegistryBaseUrl('com.github.ben-manes')).toBe('https://jitpack.io')
+  })
+
+  it('does not match io.githubfoo — prefix boundary must end at a dot', () => {
+    expect(resolveRegistryBaseUrl('io.githubfoo')).toBe(MAVEN_CENTRAL_BASE_URL)
+  })
 })
 
 describe('resolveRegistryPageUrl', () => {
@@ -173,6 +189,22 @@ describe('resolveRegistryPageUrl', () => {
     expect(resolveRegistryPageUrl('org.apache.commons', 'commons-lang3')).toBe(
       'https://central.sonatype.com/artifact/org.apache.commons/commons-lang3',
     )
+  })
+
+  it('returns JitPack browse URL for io.github', () => {
+    expect(resolveRegistryPageUrl('io.github.resilience4j', 'resilience4j-core')).toBe(
+      'https://jitpack.io/#resilience4j/resilience4j-core',
+    )
+  })
+
+  it('returns JitPack browse URL for com.github', () => {
+    expect(resolveRegistryPageUrl('com.github.ben-manes', 'caffeine')).toBe(
+      'https://jitpack.io/#ben-manes/caffeine',
+    )
+  })
+
+  it('returns JitPack browse URL for bare io.github prefix without leaking the prefix into the path', () => {
+    expect(resolveRegistryPageUrl('io.github', 'some-lib')).toBe('https://jitpack.io/#/some-lib')
   })
 })
 

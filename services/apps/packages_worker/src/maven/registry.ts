@@ -99,6 +99,21 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     baseUrl: 'https://plugins.gradle.org/m2',
     pageUrl: (g, a) => `https://plugins.gradle.org/m2/${g.replace(/\./g, '/')}/${a}/`,
   },
+  // JitPack builds and serves artifacts directly from GitHub/GitLab/Bitbucket source repos.
+  // The io.github.<username> and com.github.<username> groupId conventions are JitPack-specific
+  // and will never resolve on Maven Central.
+  {
+    prefix: 'io.github',
+    baseUrl: 'https://jitpack.io',
+    pageUrl: (g, a) =>
+      `https://jitpack.io/#${g.startsWith('io.github.') ? g.slice('io.github.'.length) : ''}/${a}`,
+  },
+  {
+    prefix: 'com.github',
+    baseUrl: 'https://jitpack.io',
+    pageUrl: (g, a) =>
+      `https://jitpack.io/#${g.startsWith('com.github.') ? g.slice('com.github.'.length) : ''}/${a}`,
+  },
   {
     prefix: 'com.cloudbees.plugins',
     baseUrl: 'https://repo.jenkins-ci.org/public',
