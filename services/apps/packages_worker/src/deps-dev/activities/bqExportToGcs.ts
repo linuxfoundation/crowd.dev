@@ -279,7 +279,7 @@ EXPORT DATA OPTIONS(
     return { gcsPrefix, rowCount, bqBytesBilled: bqStats.bqBytesBilled, jobId }
   } catch (err) {
     await markJobStatus(qx, jobId, 'failed', {
-      errorMessage: (err as Error).message,
+      errorMessage: err instanceof Error ? err.message : String(err),
       finishedAt: new Date(),
     })
     throw err

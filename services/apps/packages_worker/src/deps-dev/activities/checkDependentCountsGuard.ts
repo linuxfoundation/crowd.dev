@@ -1,7 +1,5 @@
-import {
-  OsspckgsJobKind,
-  getLastCompletedJobRowCount as dalGetLastCompletedJobRowCount,
-} from '@crowd/data-access-layer'
+import { getLastCompletedJobRowCount as dalGetLastCompletedJobRowCount } from '@crowd/data-access-layer'
+import type { OsspckgsJobKind } from '@crowd/data-access-layer'
 import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 
 import { getPackagesDb } from '../../db'

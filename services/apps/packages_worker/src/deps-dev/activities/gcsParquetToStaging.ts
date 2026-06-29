@@ -181,7 +181,7 @@ export async function gcsParquetToStaging(input: GcsToStagingInput): Promise<Gcs
     return { rowsLoaded: totalLoaded }
   } catch (err) {
     await markJobStatus(qx, jobId, 'failed', {
-      errorMessage: (err as Error).message,
+      errorMessage: err instanceof Error ? err.message : String(err),
       finishedAt: new Date(),
     })
     throw err

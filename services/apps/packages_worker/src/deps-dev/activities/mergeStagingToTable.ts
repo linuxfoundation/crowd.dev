@@ -101,7 +101,7 @@ export async function mergeStagingToTable(input: MergeStagingInput): Promise<Mer
     return { rowsAffected, tableRowCounts }
   } catch (err) {
     await markJobStatus(qx, jobId, 'failed', {
-      errorMessage: (err as Error).message,
+      errorMessage: err instanceof Error ? err.message : String(err),
       finishedAt: new Date(),
     })
     throw err
