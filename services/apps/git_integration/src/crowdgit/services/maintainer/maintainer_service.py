@@ -156,10 +156,8 @@ class MaintainerService(BaseService):
     async def _resolve_identity(
         self, github_username: str | None, email: str | None
     ) -> str | None:
-        # Try github username first, fall back to email. The fallback exists because
-        # extraction frequently emits github_username="unknown" (e.g. the linux
-        # MAINTAINERS file has ~4k entries with only an email and no github handle),
-        # and because a wrong/stale username should not block a valid email match.
+        # Fall back to email when github_username is missing/"unknown" — the AI
+        # extractor emits "unknown" for ~4k entries on the linux MAINTAINERS file.
         if github_username and github_username != "unknown":
             identity_id = await find_github_identity(github_username)
             if identity_id:
@@ -171,10 +169,7 @@ class MaintainerService(BaseService):
     async def _resolve_maintainers(
         self, maintainers: list[MaintainerInfoItem]
     ) -> list[tuple[MaintainerInfoItem, str]]:
-        # Centralised resolver used by both the first-run and incremental paths so
-        # they share identical lookup + fallback semantics. The semaphore caps DB
-        # concurrency at MAX_CONCURRENT_CHUNKS (large MAINTAINERS files can carry
-        # thousands of entries).
+        # Shared by first-run and incremental paths so lookup semantics stay identical.
         semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
 
         async def resolve(m: MaintainerInfoItem) -> tuple[MaintainerInfoItem, str | None]:
@@ -196,8 +191,7 @@ class MaintainerService(BaseService):
         self, repo_url: str, repo_id: str, maintainers: list[MaintainerInfoItem]
     ):
         resolved = await self._resolve_maintainers(maintainers)
-        # Preserve the previous behaviour of running upserts concurrently so first-run
-        # processing of large MAINTAINERS files (thousands of entries) doesn't serialise.
+        # Concurrent upserts: large MAINTAINERS files carry thousands of entries.
         semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
 
         async def upsert(maintainer: MaintainerInfoItem, identity_id: str) -> None:
@@ -222,18 +216,15 @@ class MaintainerService(BaseService):
         self.logger.info(f"Comparing and updating maintainers for repo: {repo_id}")
         current_maintainers = await get_maintainers_for_repo(repo_id)
 
-        # Key by (identityId, role) — matches the unique index on maintainersInternal
-        # (repoId, identityId, role) so the diff aligns with what the DB can actually
-        # hold. The previous github_username key collapsed every "unknown" extraction
-        # into a single slot, which on the linux MAINTAINERS file (~4k unknowns)
-        # silently dropped most email-only maintainers and left them unlinked.
+        # Key by (identityId, role) — keying by github_username collapsed every
+        # "unknown" extraction into one slot, silently dropping most email-only
+        # maintainers (~4k of 4216 entries on the linux MAINTAINERS file).
         current_by_key: dict[tuple[str, str], dict] = {
             (m["identityId"], m["role"]): m for m in current_maintainers
         }
 
-        # Resolve first so the comparison is identity-based, not username-based:
-        # the same person may extract with different github_username strings across
-        # runs (or "unknown") yet still resolve to the same memberIdentity.
+        # Resolve before keying so the comparison is identity-based: the same
+        # person may extract with different github_username values across runs.
         resolved = await self._resolve_maintainers(maintainers)
         new_by_key: dict[tuple[str, str], MaintainerInfoItem] = {
             (identity_id, m.normalized_title): m for m, identity_id in resolved
@@ -251,13 +242,9 @@ class MaintainerService(BaseService):
                 f"with identity_id {identity_id} role {role}"
             )
 
-        # Defensive guard for the end-date pass: the previous implementation keyed
-        # the "new" set by github_username, so any maintainer present in the source
-        # was unconditionally in that set and never wrongly end-dated. The identity-
-        # based key now only contains successfully resolved entries, so resolution
-        # failures (transient DB issues, stale extraction values) could end-date a
-        # maintainer who is still in the file. Skip end-dating when the current
-        # row's identifying value still appears in the extracted source.
+        # Safety guard: a maintainer whose identity resolution fails (transient DB
+        # issue, stale extraction value) is absent from new_by_key but may still be
+        # in the source. Don't end-date if their identifying value is still present.
         mentioned_values = set()
         for m in maintainers:
             for v in (m.github_username, m.email):

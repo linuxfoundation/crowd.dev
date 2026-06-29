@@ -405,17 +405,10 @@ async def update_maintainer_run(repo_id: str, maintainer_file: str):
 
 
 async def get_maintainers_for_repo(repo_id: str):
-    # No extra platform/type/verified filter here on purpose: the read set must
-    # mirror what the write path (find_github_identity / find_maintainer_identity_by_email)
-    # actually persists. A stricter read filter hides rows from the incremental diff,
-    # which leads to spurious re-inserts and missed end-dates for email-linked
-    # maintainers (e.g. platform='git' rows on the linux kernel repo).
-    #
-    # endDate IS NULL keeps the comparison set limited to active maintainers, matching
-    # the previous behaviour for email-linked maintainers (where the old platform filter
-    # incidentally excluded them and let the "new maintainer" branch reactivate them
-    # via the upsert's `endDate = NULL` on conflict). Without this, end-dated rows would
-    # sit in the comparison set and block reactivation when the maintainer reappears.
+    # Read filter mirrors the write path: no platform/type/verified narrowing
+    # (otherwise email-linked rows like platform='git' are hidden from the diff).
+    # endDate IS NULL keeps only active rows so reappearing maintainers hit the
+    # "new" branch and get reactivated by upsert_maintainer's ON CONFLICT clause.
     maintainers_sql_query = """
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
             FROM "maintainersInternal" mi
