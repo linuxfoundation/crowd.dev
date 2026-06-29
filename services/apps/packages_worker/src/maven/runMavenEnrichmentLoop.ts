@@ -37,18 +37,17 @@ interface CriticalPackageResult {
   status: CriticalStatus
 }
 
-type MavenConfig = ReturnType<typeof getMavenConfig>
+type MavenConfig = ReturnType
 type PackageRow = MavenPackageToSync
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
 
 async function writeRepoLink(
   qx: QueryExecutor,
   packageId: number,
   repositoryUrl: string | null,
-  changed: Set<string>,
-): Promise<void> {
+  changed: Set,
+): Promise {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
@@ -65,7 +64,7 @@ async function writeRepoLink(
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
 // rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
 // can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
-async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+async function withDeadlockRetry<T>(fn: () => Promise, maxAttempts = 4): Promise {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn()
@@ -85,7 +84,7 @@ async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Prom
 
 // ─── Non-critical: copy universe stats into packages ─────────────────────────
 
-async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise<void> {
+async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise {
   await upsertPackage(qx, {
     purl: pkg.purl,
     ecosystem: 'maven',
@@ -111,7 +110,7 @@ async function processCriticalPackage(
   qx: QueryExecutor,
   pkg: PackageRow,
   forceFullExtraction: boolean,
-): Promise<CriticalPackageResult> {
+): Promise {
   const groupId = pkg.namespace
   const artifactId = pkg.name
 
@@ -273,7 +272,7 @@ async function processCriticalPackage(
         return ka < kb ? -1 : ka > kb ? 1 : 0
       })
 
-      const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
+      const maintainerLinks: Array = []
       for (const person of allPeople) {
         const username = person.username ?? person.email ?? person.displayName
         if (!username) continue
@@ -322,7 +321,7 @@ export async function processBatch(
   config: MavenConfig,
   isCritical: boolean,
   forceFullExtraction: boolean,
-): Promise<BatchResult> {
+): Promise {
   const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
   const refreshDays = config.refreshDays
 
@@ -338,7 +337,7 @@ async function processPackages(
   packages: PackageRow[],
   isCritical: boolean,
   forceFullExtraction: boolean,
-): Promise<BatchResult> {
+): Promise {
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
   if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
@@ -406,7 +405,7 @@ async function runPhase(
   config: MavenConfig,
   isCritical: boolean,
   isShuttingDown: () => boolean,
-): Promise<BatchResult> {
+): Promise {
   const label = isCritical ? 'critical' : 'non-critical'
   const total: BatchResult = {
     processed: 0,
@@ -465,6 +464,6 @@ export async function runMavenCriticalBackfill(
   qx: QueryExecutor,
   config: MavenConfig,
   isShuttingDown: () => boolean,
-): Promise<BatchResult> {
+): Promise {
   return runPhase(qx, config, true, isShuttingDown)
 }

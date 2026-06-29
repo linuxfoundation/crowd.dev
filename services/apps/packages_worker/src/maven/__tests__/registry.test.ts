@@ -22,33 +22,23 @@ describe('resolveRegistryBaseUrl', () => {
   })
 
   it('returns Gradle Plugin Portal for gradle.plugin namespace', () => {
-    expect(resolveRegistryBaseUrl('gradle.plugin.name.remal')).toBe(
-      'https://plugins.gradle.org/m2',
-    )
+    expect(resolveRegistryBaseUrl('gradle.plugin.name.remal')).toBe('https://plugins.gradle.org/m2')
   })
 
   it('returns Jenkins repo for org.jenkins-ci namespace', () => {
-    expect(resolveRegistryBaseUrl('org.jenkins-ci.main')).toBe(
-      'https://repo.jenkins-ci.org/public',
-    )
+    expect(resolveRegistryBaseUrl('org.jenkins-ci.main')).toBe('https://repo.jenkins-ci.org/public')
   })
 
   it('returns Jenkins repo for io.jenkins namespace', () => {
-    expect(resolveRegistryBaseUrl('io.jenkins.plugins')).toBe(
-      'https://repo.jenkins-ci.org/public',
-    )
+    expect(resolveRegistryBaseUrl('io.jenkins.plugins')).toBe('https://repo.jenkins-ci.org/public')
   })
 
   it('returns Maven Central for unknown namespace', () => {
-    expect(resolveRegistryBaseUrl('org.apache.commons')).toBe(
-      'https://repo1.maven.org/maven2',
-    )
+    expect(resolveRegistryBaseUrl('org.apache.commons')).toBe('https://repo1.maven.org/maven2')
   })
 
   it('does not match androidx prefix for unrelated namespace', () => {
-    expect(resolveRegistryBaseUrl('com.android.tools')).toBe(
-      'https://repo1.maven.org/maven2',
-    )
+    expect(resolveRegistryBaseUrl('com.android.tools')).toBe('https://repo1.maven.org/maven2')
   })
 })
 

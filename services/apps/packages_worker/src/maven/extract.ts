@@ -72,11 +72,11 @@ const parser = new XMLParser({
 const MAX_RETRIES = 3
 const RETRY_BASE_MS = 2_000
 
-async function sleep(ms: number): Promise<void> {
+async function sleep(ms: number): Promise {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function getWithRetry(url: string): Promise<string> {
+async function getWithRetry(url: string): Promise {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await axios.get<string>(url, {
@@ -102,7 +102,12 @@ async function getWithRetry(url: string): Promise<string> {
 
 // ─── POM fetch ────────────────────────────────────────────────────────────────
 
-export function buildPomUrl(groupId: string, artifactId: string, version: string, baseUrl?: string): string {
+export function buildPomUrl(
+  groupId: string,
+  artifactId: string,
+  version: string,
+  baseUrl?: string,
+): string {
   const groupPath = groupId.replace(/\./g, '/')
   return `${baseUrl ?? resolveRegistryBaseUrl(groupId)}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
 }
@@ -112,7 +117,7 @@ export async function fetchPom(
   artifactId: string,
   version: string,
   url: string,
-): Promise<PomData | null> {
+): Promise {
   try {
     const data = await getWithRetry(url)
     const parsed = parser.parse(data)
@@ -154,7 +159,7 @@ export async function fetchPom(
 const POM_CACHE_MAX_ENTRIES = 5_000
 
 const pomCache = new Map<string, PomData>()
-const inFlight = new Map<string, Promise<PomData | null>>()
+const inFlight = new Map<string, Promise>()
 const pomCacheStats = { hits: 0, coalesced: 0, misses: 0, evictions: 0 }
 
 function pomCacheKey(groupId: string, artifactId: string, version: string): string {
@@ -185,7 +190,7 @@ async function fetchPomCached(
   artifactId: string,
   version: string,
   baseUrl?: string,
-): Promise<PomData | null> {
+): Promise {
   const key = pomCacheKey(groupId, artifactId, version)
 
   const cached = pomCache.get(key)
@@ -203,7 +208,12 @@ async function fetchPomCached(
   }
 
   pomCacheStats.misses++
-  const promise = fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version, baseUrl))
+  const promise = fetchPom(
+    groupId,
+    artifactId,
+    version,
+    buildPomUrl(groupId, artifactId, version, baseUrl),
+  )
     .then((pom) => {
       if (pom) cacheSet(key, pom)
       return pom
@@ -266,7 +276,7 @@ async function resolveWithInheritance(
   depth = 0,
   visited = new Set<string>(),
   baseUrl?: string,
-): Promise<ResolvedFields> {
+): Promise {
   const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
   if (!pom) return emptyFields(depth)
 
@@ -335,7 +345,7 @@ export async function extractArtifactDirect(
   artifactId: string,
   version: string,
   baseUrl?: string,
-): Promise<PomExtractionResult> {
+): Promise {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
   const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
   const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
@@ -390,7 +400,7 @@ export async function extractArtifact(
   artifactId: string,
   version: string,
   baseUrl?: string,
-): Promise<PomExtractionResult> {
+): Promise {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
 
   const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
@@ -414,7 +424,14 @@ export async function extractArtifact(
   }
 
   try {
-    const resolved = await resolveWithInheritance(groupId, artifactId, version, 0, new Set(), baseUrl)
+    const resolved = await resolveWithInheritance(
+      groupId,
+      artifactId,
+      version,
+      0,
+      new Set(),
+      baseUrl,
+    )
     return {
       groupId,
       artifactId,
@@ -498,9 +515,7 @@ function extractLicenses(pom: PomData): string[] {
   const raw = pom.licenses?.license
   if (!raw) return []
   const list = Array.isArray(raw) ? raw : [raw]
-  return (list as Array<{ name?: unknown }>)
-    .map((l) => extractStr(l?.name))
-    .filter((n): n is string => n !== null)
+  return (list as Array).map((l) => extractStr(l?.name)).filter((n): n is string => n !== null)
 }
 
 function extractPersons(raw: unknown, role: 'author' | 'maintainer'): PomMaintainer[] {
