@@ -188,6 +188,9 @@ SQL >
     LEFT JOIN
         vulnerability_scans vs final
         ON vs.repoUrl = insights_projects_populated_copy_flatten_projects.repository
+    WHERE
+        insights_projects_populated_copy_flatten_projects.repository
+        NOT IN (SELECT url FROM repositories FINAL WHERE archived = true)
     group by insightsProjectId
 
 NODE insights_projects_populated_copy_results
