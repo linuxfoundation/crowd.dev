@@ -315,6 +315,11 @@ export default class IntegrationService {
   async destroyAll(ids) {
     const toRemoveRepo = new Set<string>()
     let segmentId
+    // Collect GitLab webhook info before opening the transaction so external HTTP calls
+    // don't hold the DB connection idle long enough to trigger a connection timeout.
+    const gitlabWebhookRemovals: Array<{ token: string; projectIds: number[]; hookIds: number[] }> =
+      []
+
     const transaction = await SequelizeRepository.createTransaction(this.options)
 
     try {
@@ -446,11 +451,11 @@ export default class IntegrationService {
         }
 
         if (integration.platform === PlatformType.GITLAB && integration.settings.webhooks) {
-          await removeGitlabWebhooks(
-            integration.token,
-            integration.settings.webhooks.map((hook) => hook.projectId),
-            integration.settings.webhooks.map((hook) => hook.hookId),
-          )
+          gitlabWebhookRemovals.push({
+            token: integration.token,
+            projectIds: integration.settings.webhooks.map((hook) => hook.projectId),
+            hookIds: integration.settings.webhooks.map((hook) => hook.hookId),
+          })
         }
 
         if (integration.platform === PlatformType.GIT) {
@@ -495,6 +500,14 @@ export default class IntegrationService {
       await SequelizeRepository.rollbackTransaction(transaction)
       throw error
     }
+
+    // Remove GitLab webhooks after the transaction commits — these are external HTTP calls
+    // and must not hold a DB connection open.
+    await Promise.all(
+      gitlabWebhookRemovals.map(({ token, projectIds, hookIds }) =>
+        removeGitlabWebhooks(token, projectIds, hookIds),
+      ),
+    )
   }
 
   async findById(id) {

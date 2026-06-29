@@ -98,6 +98,7 @@ SQL >
         and (
             type = 'pull_request-reviewed'
             OR type = 'merge_request-review-changes-requested'
+            OR type = 'merge_request-review-approved'
             OR type = 'patchset_approval-created'
         )
         {% if defined(bucket_id) %}
