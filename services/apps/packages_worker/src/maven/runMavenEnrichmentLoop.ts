@@ -23,6 +23,7 @@ import {
   isAlternativeRegistry,
   resolveRegistryBaseUrl,
   resolveRegistryPageUrl,
+  resolveRegistryPageUrlFromBase,
 } from './registry'
 
 const log = getServiceChildLogger('maven')
@@ -149,7 +150,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         name: artifactId,
         description: null,
         homepage: null,
-        registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: null,
         repositoryUrl: null,
         licenses: null,
@@ -184,7 +185,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -221,7 +222,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -247,7 +248,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         name: artifactId,
         description: result.description,
         homepage: result.homepageUrl,
-        registryUrl: resolveRegistryPageUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: result.scmUrl,
         repositoryUrl,
         licenses: result.licenses.length > 0 ? result.licenses : null,

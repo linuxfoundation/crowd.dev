@@ -137,7 +137,9 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
 ]
 
 function findEntry(groupId: string): RegistryEntry | undefined {
-  return ALTERNATIVE_REGISTRIES.find((r) => groupId.startsWith(r.prefix))
+  return ALTERNATIVE_REGISTRIES.find(
+    (r) => groupId === r.prefix || groupId.startsWith(r.prefix + '.'),
+  )
 }
 
 /**
@@ -171,4 +173,24 @@ export function resolveRegistryPageUrl(groupId: string, artifactId: string): str
   const entry = findEntry(groupId)
   if (entry) return entry.pageUrl(groupId, artifactId)
   return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
+}
+
+/**
+ * Like resolveRegistryPageUrl, but uses the resolved base URL to determine which
+ * registry page to show. When the artifact was actually fetched from Maven Central
+ * (e.g. via the Central fallback after the primary alternative registry 404'd), the
+ * namespace-based routing would point at the wrong registry page — this overrides it.
+ */
+export function resolveRegistryPageUrlFromBase(
+  groupId: string,
+  artifactId: string,
+  resolvedBaseUrl: string,
+): string {
+  const isCentral =
+    resolvedBaseUrl === MAVEN_CENTRAL_BASE_URL ||
+    resolvedBaseUrl === process.env.MAVEN_FETCHER_BASE_URL
+  if (isCentral) {
+    return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
+  }
+  return resolveRegistryPageUrl(groupId, artifactId)
 }

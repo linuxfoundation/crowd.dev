@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveRegistryBaseUrl, resolveRegistryPageUrl } from '../registry'
+import {
+  MAVEN_CENTRAL_BASE_URL,
+  resolveRegistryBaseUrl,
+  resolveRegistryPageUrl,
+  resolveRegistryPageUrlFromBase,
+} from '../registry'
 
 describe('resolveRegistryBaseUrl', () => {
   it('returns Google Maven for androidx namespace', () => {
@@ -19,6 +24,11 @@ describe('resolveRegistryBaseUrl', () => {
     expect(resolveRegistryBaseUrl('com.google.android')).toBe(
       'https://dl.google.com/dl/android/maven2',
     )
+  })
+
+  it('does not match com.google.androidx — prefix boundary must end at a dot', () => {
+    // com.google.android prefix must not bleed into unrelated com.google.android* strings
+    expect(resolveRegistryBaseUrl('com.google.androidx')).toBe(MAVEN_CENTRAL_BASE_URL)
   })
 
   it('returns Google Maven for android.arch (pre-AndroidX Architecture Components)', () => {
@@ -163,5 +173,24 @@ describe('resolveRegistryPageUrl', () => {
     expect(resolveRegistryPageUrl('org.apache.commons', 'commons-lang3')).toBe(
       'https://central.sonatype.com/artifact/org.apache.commons/commons-lang3',
     )
+  })
+})
+
+describe('resolveRegistryPageUrlFromBase', () => {
+  it('returns Sonatype Central URL when resolvedBaseUrl is Maven Central', () => {
+    expect(
+      resolveRegistryPageUrlFromBase(
+        'com.google.firebase',
+        'firebase-admin',
+        MAVEN_CENTRAL_BASE_URL,
+      ),
+    ).toBe('https://central.sonatype.com/artifact/com.google.firebase/firebase-admin')
+  })
+
+  it('returns alternative registry page URL when resolvedBaseUrl is not Central', () => {
+    const googleMavenUrl = 'https://dl.google.com/dl/android/maven2'
+    expect(
+      resolveRegistryPageUrlFromBase('com.google.firebase', 'firebase-analytics', googleMavenUrl),
+    ).toBe('https://maven.google.com/web/index.html#com.google.firebase:firebase-analytics')
   })
 })
