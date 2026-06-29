@@ -156,8 +156,10 @@ class MaintainerService(BaseService):
     async def _resolve_identity(
         self, github_username: str | None, email: str | None
     ) -> str | None:
-        # Fall back from github username to email so a wrong/missing username
-        # does not prevent an email match.
+        # Try github username first, fall back to email. The fallback exists because
+        # extraction frequently emits github_username="unknown" (e.g. the linux
+        # MAINTAINERS file has ~4k entries with only an email and no github handle),
+        # and because a wrong/stale username should not block a valid email match.
         if github_username and github_username != "unknown":
             identity_id = await find_github_identity(github_username)
             if identity_id:
@@ -169,6 +171,9 @@ class MaintainerService(BaseService):
     async def _resolve_maintainers(
         self, maintainers: list[MaintainerInfoItem]
     ) -> list[tuple[MaintainerInfoItem, str]]:
+        # Centralised resolver used by both the first-run and incremental paths so
+        # they share identical lookup + fallback semantics. The semaphore caps DB
+        # concurrency at 3 (large MAINTAINERS files can carry thousands of entries).
         semaphore = asyncio.Semaphore(3)
 
         async def resolve(m: MaintainerInfoItem) -> tuple[MaintainerInfoItem, str | None]:
@@ -209,13 +214,18 @@ class MaintainerService(BaseService):
         self.logger.info(f"Comparing and updating maintainers for repo: {repo_id}")
         current_maintainers = await get_maintainers_for_repo(repo_id)
 
-        # Key by (identityId, role) — the natural unique tuple for a linked maintainer.
-        # Keying by github_username collapses every "unknown" extraction into one slot,
-        # which silently drops most email-only maintainers (e.g. linux MAINTAINERS).
+        # Key by (identityId, role) — matches the unique index on maintainersInternal
+        # (repoId, identityId, role) so the diff aligns with what the DB can actually
+        # hold. The previous github_username key collapsed every "unknown" extraction
+        # into a single slot, which on the linux MAINTAINERS file (~4k unknowns)
+        # silently dropped most email-only maintainers and left them unlinked.
         current_by_key: dict[tuple[str, str], dict] = {
             (m["identityId"], m["role"]): m for m in current_maintainers
         }
 
+        # Resolve first so the comparison is identity-based, not username-based:
+        # the same person may extract with different github_username strings across
+        # runs (or "unknown") yet still resolve to the same memberIdentity.
         resolved = await self._resolve_maintainers(maintainers)
         new_by_key: dict[tuple[str, str], MaintainerInfoItem] = {
             (identity_id, m.normalized_title): m for m, identity_id in resolved

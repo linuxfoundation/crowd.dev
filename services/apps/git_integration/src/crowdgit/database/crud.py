@@ -405,6 +405,11 @@ async def update_maintainer_run(repo_id: str, maintainer_file: str):
 
 
 async def get_maintainers_for_repo(repo_id: str):
+    # No extra platform/type/verified filter here on purpose: the read set must
+    # mirror what the write path (find_github_identity / find_maintainer_identity_by_email)
+    # actually persists. A stricter read filter hides rows from the incremental diff,
+    # which leads to spurious re-inserts and missed end-dates for email-linked
+    # maintainers (e.g. platform='git' rows on the linux kernel repo).
     maintainers_sql_query = """
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
             FROM "maintainersInternal" mi
