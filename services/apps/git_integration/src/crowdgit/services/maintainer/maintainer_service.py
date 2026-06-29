@@ -153,43 +153,51 @@ class MaintainerService(BaseService):
         )
         return slugify(title)
 
+    async def _resolve_identity(
+        self, github_username: str | None, email: str | None
+    ) -> str | None:
+        # Fall back from github username to email so a wrong/missing username
+        # does not prevent an email match.
+        if github_username and github_username != "unknown":
+            identity_id = await find_github_identity(github_username)
+            if identity_id:
+                return identity_id
+        if email and email != "unknown":
+            return await find_maintainer_identity_by_email(email)
+        return None
+
+    async def _resolve_maintainers(
+        self, maintainers: list[MaintainerInfoItem]
+    ) -> list[tuple[MaintainerInfoItem, str]]:
+        semaphore = asyncio.Semaphore(3)
+
+        async def resolve(m: MaintainerInfoItem) -> tuple[MaintainerInfoItem, str | None]:
+            async with semaphore:
+                identity_id = await self._resolve_identity(m.github_username, m.email)
+                return m, identity_id
+
+        results = await asyncio.gather(*[resolve(m) for m in maintainers])
+
+        resolved: list[tuple[MaintainerInfoItem, str]] = []
+        for m, identity_id in results:
+            if identity_id is None:
+                self.logger.warning(f"Identity not found for maintainer: {m}")
+                continue
+            resolved.append((m, identity_id))
+        return resolved
+
     async def insert_new_maintainers(
         self, repo_url: str, repo_id: str, maintainers: list[MaintainerInfoItem]
     ):
-        async def process_maintainer(maintainer: MaintainerInfoItem):
-            self.logger.info(f"Processing maintainer: {maintainer.github_username}")
+        resolved = await self._resolve_maintainers(maintainers)
+        for maintainer, identity_id in resolved:
             role = maintainer.normalized_title
             original_role = self.make_role(maintainer.title)
-            # Find the identity in the database
-            github_username = maintainer.github_username
-            email = maintainer.email
-
-            if github_username == "unknown" and email == "unknown":
-                self.logger.warning("username & email with value 'unknown' aborting")
-                return
-            identity_id = (
-                await find_github_identity(github_username)
-                if github_username != "unknown"
-                else await find_maintainer_identity_by_email(email)
+            await upsert_maintainer(repo_id, identity_id, repo_url, role, original_role)
+            self.logger.info(
+                f"Successfully upserted maintainer {maintainer.github_username} "
+                f"with identity_id {identity_id}"
             )
-            self.logger.debug(
-                f"Found identity_id for {github_username}: {identity_id} (type: {type(identity_id)})"
-            )
-            if identity_id:
-                await upsert_maintainer(repo_id, identity_id, repo_url, role, original_role)
-                self.logger.info(
-                    f"Successfully upserted maintainer {github_username} with identity_id {identity_id}"
-                )
-            else:
-                self.logger.warning(f"Identity not found for GitHub user: {maintainer}")
-
-        semaphore = asyncio.Semaphore(3)
-
-        async def process_with_semaphore(maintainer: MaintainerInfoItem):
-            async with semaphore:
-                await process_maintainer(maintainer)
-
-        await asyncio.gather(*[process_with_semaphore(maintainer) for maintainer in maintainers])
 
     async def compare_and_update_maintainers(
         self,
@@ -200,63 +208,38 @@ class MaintainerService(BaseService):
     ):
         self.logger.info(f"Comparing and updating maintainers for repo: {repo_id}")
         current_maintainers = await get_maintainers_for_repo(repo_id)
-        current_maintainers_dict = {m["github_username"]: m for m in current_maintainers}
-        new_maintainers_dict = {m.github_username: m for m in maintainers}
 
-        for github_username, maintainer in new_maintainers_dict.items():
-            role = maintainer.normalized_title
-            original_role = self.make_role(maintainer.title)
-            if github_username == "unknown" and maintainer.email in ("unknown", None):
-                self.logger.warning(
-                    f"Skipping unknown github_username & email with title {maintainer.title}"
-                )
+        # Key by (identityId, role) — the natural unique tuple for a linked maintainer.
+        # Keying by github_username collapses every "unknown" extraction into one slot,
+        # which silently drops most email-only maintainers (e.g. linux MAINTAINERS).
+        current_by_key: dict[tuple[str, str], dict] = {
+            (m["identityId"], m["role"]): m for m in current_maintainers
+        }
+
+        resolved = await self._resolve_maintainers(maintainers)
+        new_by_key: dict[tuple[str, str], MaintainerInfoItem] = {
+            (identity_id, m.normalized_title): m for m, identity_id in resolved
+        }
+
+        for (identity_id, role), maintainer in new_by_key.items():
+            if (identity_id, role) in current_by_key:
                 continue
-            elif github_username not in current_maintainers_dict:
-                # New maintainer
-                identity_id = (
-                    await find_github_identity(github_username)
-                    if github_username != "unknown"
-                    else await find_maintainer_identity_by_email(maintainer.email)
-                )
-                self.logger.info(f"Found new maintainer {github_username} to be inserted")
-                if identity_id:
-                    await upsert_maintainer(
-                        repo_id, identity_id, repo_url, role, original_role, start_date=change_date
-                    )
-                    self.logger.info(
-                        f"Successfully inserted new maintainer {github_username} with identity_id {identity_id}"
-                    )
-                else:
-                    # will happen for new users if their identity isn't created yet but should be fixed on the next iteration
-                    self.logger.warning(f"Identity not found for username: {github_username}")
-            else:
-                # Existing maintainer
-                current_maintainer = current_maintainers_dict[github_username]
-                if current_maintainer["role"] != role:
-                    # Role has changed: we update maintainer
-                    self.logger.info(
-                        f"Role changed from {current_maintainer['role']} to {role} for maintainer {current_maintainer['identityId']}"
-                    )
-                    await upsert_maintainer(
-                        repo_id,
-                        current_maintainer["identityId"],
-                        repo_url,
-                        role,
-                        original_role,
-                        change_date,
-                    )
+            original_role = self.make_role(maintainer.title)
+            await upsert_maintainer(
+                repo_id, identity_id, repo_url, role, original_role, start_date=change_date
+            )
+            self.logger.info(
+                f"Inserted new maintainer {maintainer.github_username} "
+                f"with identity_id {identity_id} role {role}"
+            )
 
-        for github_username, current_maintainer in current_maintainers_dict.items():
-            if github_username not in new_maintainers_dict:
+        for identity_id, role in current_by_key:
+            if (identity_id, role) not in new_by_key:
                 self.logger.info(
-                    f"Maintainer {github_username} with identity {current_maintainer['identityId']} no longer exists, updating its endDate..."
+                    f"Maintainer with identity {identity_id} role {role} no longer exists, "
+                    f"updating its endDate..."
                 )
-                await set_maintainer_end_date(
-                    repo_id,
-                    current_maintainer["identityId"],
-                    current_maintainer["role"],
-                    change_date,
-                )
+                await set_maintainer_end_date(repo_id, identity_id, role, change_date)
 
     async def save_maintainers(
         self,

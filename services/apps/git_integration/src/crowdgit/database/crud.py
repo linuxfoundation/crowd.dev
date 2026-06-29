@@ -409,7 +409,7 @@ async def get_maintainers_for_repo(repo_id: str):
         SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
-        WHERE mi."repoId" = $1 AND mem.platform = 'github' AND mem.type = 'username' and mem.verified = True AND mem."deletedAt" is null
+        WHERE mi."repoId" = $1 AND mem."deletedAt" is null
         """
     return await query(
         maintainers_sql_query,
