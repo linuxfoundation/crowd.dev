@@ -29,8 +29,16 @@ describe('resolveRegistryBaseUrl', () => {
     expect(resolveRegistryBaseUrl('org.jenkins-ci.main')).toBe('https://repo.jenkins-ci.org/public')
   })
 
-  it('returns Jenkins repo for io.jenkins namespace', () => {
+  it('returns Jenkins repo for io.jenkins.plugins namespace', () => {
     expect(resolveRegistryBaseUrl('io.jenkins.plugins')).toBe('https://repo.jenkins-ci.org/public')
+  })
+
+  it('returns Jenkins repo for io.jenkins.blueocean namespace', () => {
+    expect(resolveRegistryBaseUrl('io.jenkins.blueocean')).toBe('https://repo.jenkins-ci.org/public')
+  })
+
+  it('returns Maven Central for io.jenkins.tools (publishes on Central, not Jenkins repo)', () => {
+    expect(resolveRegistryBaseUrl('io.jenkins.tools')).toBe('https://repo1.maven.org/maven2')
   })
 
   it('returns Maven Central for unknown namespace', () => {

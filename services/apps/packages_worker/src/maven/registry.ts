@@ -5,7 +5,7 @@
  * to their own Maven-compatible repository and will always 404 on Central:
  *   - Google Maven  (androidx.*, com.google.android.*, com.google.firebase.*)
  *   - Gradle Plugin Portal  (gradle.plugin.*)
- *   - Jenkins  (org.jenkins-ci.*, io.jenkins.*)
+ *   - Jenkins  (org.jenkins-ci.*, io.jenkins.plugins.*, io.jenkins.blueocean.*)
  *
  * All these repos expose the standard Maven repository layout, so the same
  * metadata.xml / POM fetch logic works — only the base URL changes.
@@ -45,8 +45,15 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     baseUrl: 'https://repo.jenkins-ci.org/public',
     pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
   },
+  // io.jenkins.tools.*, io.jenkins.lib.*, io.jenkins.test.* publish on Maven Central —
+  // only the plugin and blueocean sub-namespaces are exclusive to Jenkins repo.
   {
-    prefix: 'io.jenkins',
+    prefix: 'io.jenkins.plugins',
+    baseUrl: 'https://repo.jenkins-ci.org/public',
+    pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
+  },
+  {
+    prefix: 'io.jenkins.blueocean',
     baseUrl: 'https://repo.jenkins-ci.org/public',
     pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
   },
