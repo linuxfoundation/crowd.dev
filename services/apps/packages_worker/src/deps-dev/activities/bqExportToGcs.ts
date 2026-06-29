@@ -217,14 +217,18 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     ...(ecosystems ? { tableRowCounts: { 'meta:ecosystems': ecosystems } } : {}),
   })
 
-  // Both modes finish by exporting from a `_export_data` TEMP table — materializing first forces
-  // BQ to shard the parquet output properly (direct EXPORT DATA from a subquery emits O(rows)
-  // ~1 KB micro-files).
-  // - Single-SELECT: wrap `sql` in SELECT * FROM (...) so QUALIFY / top-level set ops don't break
-  //   the CREATE TEMP TABLE, then export.
-  // - Script (isScript): the script already builds `_export_data` as its final statement, so we
-  //   append only the EXPORT DATA — its temp tables run inline and auto-drop when the session ends.
-  const exportTail = `
+  // From here the row is 'exporting'; any BQ failure (incl. script-mode maximumBytesBilled aborts)
+  // must flip it to 'failed' with the reason, else it stays stuck 'exporting' forever and the
+  // failure reason is lost to monitoring. Mirrors the rankPackages pattern (criticality/activities).
+  try {
+    // Both modes finish by exporting from a `_export_data` TEMP table — materializing first forces
+    // BQ to shard the parquet output properly (direct EXPORT DATA from a subquery emits O(rows)
+    // ~1 KB micro-files).
+    // - Single-SELECT: wrap `sql` in SELECT * FROM (...) so QUALIFY / top-level set ops don't break
+    //   the CREATE TEMP TABLE, then export.
+    // - Script (isScript): the script already builds `_export_data` as its final statement, so we
+    //   append only the EXPORT DATA — its temp tables run inline and auto-drop when the session ends.
+    const exportTail = `
 EXPORT DATA OPTIONS(
   uri='${gcsPrefix}*.parquet',
   format='PARQUET',
@@ -232,45 +236,52 @@ EXPORT DATA OPTIONS(
   overwrite=true
 ) AS SELECT * FROM _export_data;
 `
-  const exportSql = isScript
-    ? `${sql.replace(/;\s*$/, '')};\n${exportTail}`
-    : `\nCREATE TEMP TABLE _export_data AS SELECT * FROM (${sql.replace(/;\s*$/, '')});\n${exportTail}`
+    const exportSql = isScript
+      ? `${sql.replace(/;\s*$/, '')};\n${exportTail}`
+      : `\nCREATE TEMP TABLE _export_data AS SELECT * FROM (${sql.replace(/;\s*$/, '')});\n${exportTail}`
 
-  log.info({ jobKind, jobId, gcsPrefix, isScript: Boolean(isScript) }, 'Starting BQ export')
+    log.info({ jobKind, jobId, gcsPrefix, isScript: Boolean(isScript) }, 'Starting BQ export')
 
-  const [job] = await bigquery.createQueryJob({
-    query: exportSql,
-    location: 'US',
-    // Server-side runaway guard for script mode — aborts the job if a statement scans beyond the
-    // ceiling. Single-SELECT mode is already gated by the dry-run check above.
-    ...(isScript ? { maximumBytesBilled: String(Math.floor(ceiling)) } : {}),
-  })
-  await job.promise()
-  const bqStats = await extractBqStats(job, bigquery)
+    const [job] = await bigquery.createQueryJob({
+      query: exportSql,
+      location: 'US',
+      // Server-side runaway guard for script mode — aborts the job if a statement scans beyond the
+      // ceiling. Single-SELECT mode is already gated by the dry-run check above.
+      ...(isScript ? { maximumBytesBilled: String(Math.floor(ceiling)) } : {}),
+    })
+    await job.promise()
+    const bqStats = await extractBqStats(job, bigquery)
 
-  const rowCount = bqStats.outputRows ?? 0
+    const rowCount = bqStats.outputRows ?? 0
 
-  await markJobStatus(qx, jobId, 'exported', {
-    gcsPrefix,
-    rowCountBq: rowCount,
-    bqBytesBilled: bqStats.bqBytesBilled,
-    bqJobId: bqStats.bqJobId,
-    bqStats,
-    tableRowCounts: { 'bq:export': rowCount },
-  })
-
-  log.info(
-    {
-      jobKind,
-      jobId,
-      rowCount,
+    await markJobStatus(qx, jobId, 'exported', {
+      gcsPrefix,
+      rowCountBq: rowCount,
+      bqBytesBilled: bqStats.bqBytesBilled,
       bqJobId: bqStats.bqJobId,
-      totalBytesProcessed: bqStats.totalBytesProcessed,
-      totalSlotMs: bqStats.totalSlotMs,
-      durationMs: bqStats.durationMs,
-    },
-    'BQ export complete',
-  )
+      bqStats,
+      tableRowCounts: { 'bq:export': rowCount },
+    })
 
-  return { gcsPrefix, rowCount, bqBytesBilled: bqStats.bqBytesBilled, jobId }
+    log.info(
+      {
+        jobKind,
+        jobId,
+        rowCount,
+        bqJobId: bqStats.bqJobId,
+        totalBytesProcessed: bqStats.totalBytesProcessed,
+        totalSlotMs: bqStats.totalSlotMs,
+        durationMs: bqStats.durationMs,
+      },
+      'BQ export complete',
+    )
+
+    return { gcsPrefix, rowCount, bqBytesBilled: bqStats.bqBytesBilled, jobId }
+  } catch (err) {
+    await markJobStatus(qx, jobId, 'failed', {
+      errorMessage: (err as Error).message,
+      finishedAt: new Date(),
+    })
+    throw err
+  }
 }
