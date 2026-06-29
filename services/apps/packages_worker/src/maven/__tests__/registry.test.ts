@@ -79,6 +79,12 @@ describe('resolveRegistryBaseUrl', () => {
     expect(resolveRegistryBaseUrl('org.apache.commons')).toBe('https://repo1.maven.org/maven2')
   })
 
+  it('returns Google Maven for com.android.tools.analytics-library (Android Studio analytics)', () => {
+    expect(resolveRegistryBaseUrl('com.android.tools.analytics-library')).toBe(
+      'https://dl.google.com/dl/android/maven2',
+    )
+  })
+
   it('returns Google Maven for com.android.tools.adblib (Android Debug Bridge Library)', () => {
     expect(resolveRegistryBaseUrl('com.android.tools.adblib')).toBe(
       'https://dl.google.com/dl/android/maven2',

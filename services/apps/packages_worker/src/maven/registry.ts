@@ -55,6 +55,11 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
   {
+    prefix: 'com.android.tools.analytics-library',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
     prefix: 'com.android.tools.adblib',
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
