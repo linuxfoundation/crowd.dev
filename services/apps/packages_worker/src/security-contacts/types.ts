@@ -58,3 +58,11 @@ export interface RepoTarget {
   homepage: string | null
   packages: RepoPackage[]
 }
+
+export interface ExtractorDeps {
+  fetchTimeoutMs: number
+  /** Mints a GitHub installation token; only the authed extractors (A2/A3) use it. */
+  getToken?: () => Promise<string>
+}
+
+export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>
