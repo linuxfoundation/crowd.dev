@@ -37,17 +37,14 @@ interface CriticalPackageResult {
   status: CriticalStatus
 }
 
-type MavenConfig = ReturnType
+// prettier-ignore
+type MavenConfig = ReturnType<typeof getMavenConfig>
 type PackageRow = MavenPackageToSync
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function writeRepoLink(
-  qx: QueryExecutor,
-  packageId: number,
-  repositoryUrl: string | null,
-  changed: Set,
-): Promise {
+// prettier-ignore
+async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed: Set<string>): Promise<void> {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
@@ -64,7 +61,8 @@ async function writeRepoLink(
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
 // rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
 // can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
-async function withDeadlockRetry<T>(fn: () => Promise, maxAttempts = 4): Promise {
+// prettier-ignore
+async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn()
@@ -84,7 +82,8 @@ async function withDeadlockRetry<T>(fn: () => Promise, maxAttempts = 4): Promise
 
 // ─── Non-critical: copy universe stats into packages ─────────────────────────
 
-async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise {
+// prettier-ignore
+async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise<void> {
   await upsertPackage(qx, {
     purl: pkg.purl,
     ecosystem: 'maven',
@@ -106,11 +105,8 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
 
 // ─── Critical: full POM extraction ───────────────────────────────────────────
 
-async function processCriticalPackage(
-  qx: QueryExecutor,
-  pkg: PackageRow,
-  forceFullExtraction: boolean,
-): Promise {
+// prettier-ignore
+async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceFullExtraction: boolean): Promise<CriticalPackageResult> {
   const groupId = pkg.namespace
   const artifactId = pkg.name
 
@@ -272,7 +268,7 @@ async function processCriticalPackage(
         return ka < kb ? -1 : ka > kb ? 1 : 0
       })
 
-      const maintainerLinks: Array = []
+      const maintainerLinks: Array<{ maintainerId: number; role: 'author' | 'maintainer' }> = []
       for (const person of allPeople) {
         const username = person.username ?? person.email ?? person.displayName
         if (!username) continue
@@ -316,12 +312,8 @@ async function processCriticalPackage(
 
 // ─── Batch processing ─────────────────────────────────────────────────────────
 
-export async function processBatch(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isCritical: boolean,
-  forceFullExtraction: boolean,
-): Promise {
+// prettier-ignore
+export async function processBatch(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
   const refreshDays = config.refreshDays
 
@@ -331,13 +323,8 @@ export async function processBatch(
 }
 
 // Runs a concrete list of packages through the enrichment pipeline.
-async function processPackages(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  packages: PackageRow[],
-  isCritical: boolean,
-  forceFullExtraction: boolean,
-): Promise {
+// prettier-ignore
+async function processPackages(qx: QueryExecutor, config: MavenConfig, packages: PackageRow[], isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
   if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
@@ -400,12 +387,8 @@ async function processPackages(
 
 // ─── Phase runner ─────────────────────────────────────────────────────────────
 
-async function runPhase(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isCritical: boolean,
-  isShuttingDown: () => boolean,
-): Promise {
+// prettier-ignore
+async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, isShuttingDown: () => boolean): Promise<BatchResult> {
   const label = isCritical ? 'critical' : 'non-critical'
   const total: BatchResult = {
     processed: 0,
@@ -460,10 +443,7 @@ async function runPhase(
  * triggered manually (e.g. `pnpm backfill:maven` execed into the packages-worker
  * container).
  */
-export async function runMavenCriticalBackfill(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isShuttingDown: () => boolean,
-): Promise {
+// prettier-ignore
+export async function runMavenCriticalBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
   return runPhase(qx, config, true, isShuttingDown)
 }

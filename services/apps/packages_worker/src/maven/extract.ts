@@ -72,11 +72,13 @@ const parser = new XMLParser({
 const MAX_RETRIES = 3
 const RETRY_BASE_MS = 2_000
 
-async function sleep(ms: number): Promise {
+// prettier-ignore
+async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function getWithRetry(url: string): Promise {
+// prettier-ignore
+async function getWithRetry(url: string): Promise<string> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await axios.get<string>(url, {
@@ -112,12 +114,8 @@ export function buildPomUrl(
   return `${baseUrl ?? resolveRegistryBaseUrl(groupId)}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
 }
 
-export async function fetchPom(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  url: string,
-): Promise {
+// prettier-ignore
+export async function fetchPom(groupId: string, artifactId: string, version: string, url: string): Promise<PomData | null> {
   try {
     const data = await getWithRetry(url)
     const parsed = parser.parse(data)
@@ -159,7 +157,8 @@ export async function fetchPom(
 const POM_CACHE_MAX_ENTRIES = 5_000
 
 const pomCache = new Map<string, PomData>()
-const inFlight = new Map<string, Promise>()
+// prettier-ignore
+const inFlight = new Map<string, Promise<PomData | null>>()
 const pomCacheStats = { hits: 0, coalesced: 0, misses: 0, evictions: 0 }
 
 function pomCacheKey(groupId: string, artifactId: string, version: string): string {
@@ -185,12 +184,8 @@ function cacheSet(key: string, pom: PomData): void {
  *                await it instead of issuing a duplicate request.
  * - Miss       → performs the network fetch; caches the result only if non-null.
  */
-async function fetchPomCached(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  baseUrl?: string,
-): Promise {
+// prettier-ignore
+async function fetchPomCached(groupId: string, artifactId: string, version: string, baseUrl?: string): Promise<PomData | null> {
   const key = pomCacheKey(groupId, artifactId, version)
 
   const cached = pomCache.get(key)
@@ -269,14 +264,8 @@ interface ResolvedFields {
   hops: number
 }
 
-async function resolveWithInheritance(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  depth = 0,
-  visited = new Set<string>(),
-  baseUrl?: string,
-): Promise {
+// prettier-ignore
+async function resolveWithInheritance(groupId: string, artifactId: string, version: string, depth = 0, visited = new Set<string>(), baseUrl?: string): Promise<ResolvedFields> {
   const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
   if (!pom) return emptyFields(depth)
 
@@ -340,12 +329,8 @@ async function resolveWithInheritance(
  * Currently unused: kept as a lightweight option for high-throughput paths that
  * don't need parent inheritance.
  */
-export async function extractArtifactDirect(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  baseUrl?: string,
-): Promise {
+// prettier-ignore
+export async function extractArtifactDirect(groupId: string, artifactId: string, version: string, baseUrl?: string): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
   const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
   const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
@@ -395,12 +380,8 @@ export async function extractArtifactDirect(
  * the parent chain to inherit licenses and SCM when not in the direct POM.
  * Always returns a result object; errors are captured in `result.error`.
  */
-export async function extractArtifact(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  baseUrl?: string,
-): Promise {
+// prettier-ignore
+export async function extractArtifact(groupId: string, artifactId: string, version: string, baseUrl?: string): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
 
   const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
@@ -515,7 +496,9 @@ function extractLicenses(pom: PomData): string[] {
   const raw = pom.licenses?.license
   if (!raw) return []
   const list = Array.isArray(raw) ? raw : [raw]
-  return (list as Array).map((l) => extractStr(l?.name)).filter((n): n is string => n !== null)
+  return (list as { name?: unknown }[])
+    .map((l) => extractStr(l?.name))
+    .filter((n): n is string => n !== null)
 }
 
 function extractPersons(raw: unknown, role: 'author' | 'maintainer'): PomMaintainer[] {

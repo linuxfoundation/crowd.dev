@@ -25,8 +25,57 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
+  // com.google.android (bare, no sub-namespace) are legacy SDK stubs on Maven Central —
+  // only sub-namespaces like com.google.android.gms.* live on Google Maven.
   {
-    prefix: 'com.google.android',
+    prefix: 'com.google.android.',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  // Pre-AndroidX and Android tooling namespaces — all published on Google Maven.
+  // android.arch.* = old Architecture Components (pre-1.0 / pre-AndroidX)
+  // com.android.support = Support Library (pre-AndroidX; post-migration moved to androidx.*)
+  // com.android.support.test = old Android testing support (pre-AndroidX test, includes Espresso)
+  // com.android.tools.build = Android Gradle Plugin, Jetifier, and related build tooling
+  // com.android.tools.utp = Android Unified Test Platform
+  // com.android.identity = Android Identity Credential library
+  {
+    prefix: 'android.arch',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.android.identity',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.android.support',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.android.tools.adblib',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.android.tools.build',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.android.tools.utp',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.google.mediapipe',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
+    prefix: 'com.google.testing.platform',
     baseUrl: 'https://dl.google.com/dl/android/maven2',
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
@@ -36,12 +85,35 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
   },
   {
+    prefix: 'com.google.mlkit',
+    baseUrl: 'https://dl.google.com/dl/android/maven2',
+    pageUrl: (g, a) => `https://maven.google.com/web/index.html#${g}:${a}`,
+  },
+  {
     prefix: 'gradle.plugin',
     baseUrl: 'https://plugins.gradle.org/m2',
     pageUrl: (g, a) => `https://plugins.gradle.org/m2/${g.replace(/\./g, '/')}/${a}/`,
   },
   {
+    prefix: 'com.cloudbees.plugins',
+    baseUrl: 'https://repo.jenkins-ci.org/public',
+    pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
+  },
+  {
     prefix: 'org.jenkins-ci',
+    baseUrl: 'https://repo.jenkins-ci.org/public',
+    pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
+  },
+  // org.jenkinsci.plugins = standard Jenkins community plugin namespace
+  {
+    prefix: 'org.jenkinsci.plugins',
+    baseUrl: 'https://repo.jenkins-ci.org/public',
+    pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
+  },
+  // org.kohsuke.stapler is the Jenkins HTTP routing framework (by Jenkins creator Kohsuke
+  // Kawaguchi) — published on Jenkins repo, never on Maven Central.
+  {
+    prefix: 'org.kohsuke.stapler',
     baseUrl: 'https://repo.jenkins-ci.org/public',
     pageUrl: (g, a) => `https://repo.jenkins-ci.org/public/${g.replace(/\./g, '/')}/${a}/`,
   },
