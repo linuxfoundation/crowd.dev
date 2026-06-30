@@ -12,6 +12,7 @@
  */
 
 export const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
+export const GRADLE_PLUGIN_PORTAL_BASE_URL = 'https://plugins.gradle.org/m2'
 
 interface RegistryEntry {
   prefix: string
@@ -96,8 +97,8 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
   },
   {
     prefix: 'gradle.plugin',
-    baseUrl: 'https://plugins.gradle.org/m2',
-    pageUrl: (g, a) => `https://plugins.gradle.org/m2/${g.replace(/\./g, '/')}/${a}/`,
+    baseUrl: GRADLE_PLUGIN_PORTAL_BASE_URL,
+    pageUrl: (g, a) => `${GRADLE_PLUGIN_PORTAL_BASE_URL}/${g.replace(/\./g, '/')}/${a}/`,
   },
   // JitPack builds and serves artifacts directly from GitHub/GitLab/Bitbucket source repos.
   // The io.github.<username> and com.github.<username> groupId conventions are JitPack-specific
@@ -206,6 +207,9 @@ export function resolveRegistryPageUrlFromBase(
     resolvedBaseUrl === process.env.MAVEN_FETCHER_BASE_URL
   if (isCentral) {
     return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
+  }
+  if (resolvedBaseUrl === GRADLE_PLUGIN_PORTAL_BASE_URL) {
+    return `${GRADLE_PLUGIN_PORTAL_BASE_URL}/${groupId.replace(/\./g, '/')}/${artifactId}/`
   }
   return resolveRegistryPageUrl(groupId, artifactId)
 }

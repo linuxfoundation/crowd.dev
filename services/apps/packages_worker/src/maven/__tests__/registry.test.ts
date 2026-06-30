@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  GRADLE_PLUGIN_PORTAL_BASE_URL,
   MAVEN_CENTRAL_BASE_URL,
   resolveRegistryBaseUrl,
   resolveRegistryPageUrl,
@@ -224,5 +225,15 @@ describe('resolveRegistryPageUrlFromBase', () => {
     expect(
       resolveRegistryPageUrlFromBase('com.google.firebase', 'firebase-analytics', googleMavenUrl),
     ).toBe('https://maven.google.com/web/index.html#com.google.firebase:firebase-analytics')
+  })
+
+  it('returns Gradle Plugin Portal path when resolvedBaseUrl is Gradle Plugin Portal', () => {
+    expect(
+      resolveRegistryPageUrlFromBase(
+        'io.github.trueangle',
+        'gradle-plugin',
+        GRADLE_PLUGIN_PORTAL_BASE_URL,
+      ),
+    ).toBe('https://plugins.gradle.org/m2/io/github/trueangle/gradle-plugin/')
   })
 })
