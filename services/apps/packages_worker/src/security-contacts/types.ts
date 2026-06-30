@@ -61,8 +61,10 @@ export interface RepoTarget {
 
 export interface ExtractorDeps {
   fetchTimeoutMs: number
-  /** Mints a GitHub installation token; only the authed extractors (A2/A3) use it. */
-  getToken?: () => Promise<string>
+  /** Sent on registry calls; required (crates.io rejects requests without an identifying UA). */
+  userAgent: string
+  /** Mints a GitHub installation token (null if unavailable); authed extractors fall back to unauth. */
+  getToken?: () => Promise<string | null>
 }
 
 export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>

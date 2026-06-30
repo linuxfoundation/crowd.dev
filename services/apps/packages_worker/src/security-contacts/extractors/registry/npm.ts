@@ -1,5 +1,5 @@
-import { ProvenanceEntry, RawContact, RepoPackage } from '../../types'
-import { fetchJson, isEmail } from '../http'
+import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
+import { fetchJson, isEmail, registryHeaders } from '../http'
 
 import { ParsedPurl } from './purl'
 
@@ -50,11 +50,11 @@ export function mapNpm(doc: unknown, sourceUrl: string, fetchedAt: string): RawC
 
 export async function fetchNpm(
   parsed: ParsedPurl,
-  _pkg: RepoPackage,
   timeoutMs: number,
-): Promise<RawContact[]> {
+  userAgent: string,
+): Promise<ExtractorResult> {
   const url = `https://registry.npmjs.org/${npmPackagePath(parsed)}`
-  const { json } = await fetchJson(url, timeoutMs)
-  if (!json) return []
-  return mapNpm(json, url, new Date().toISOString())
+  const { json } = await fetchJson(url, timeoutMs, registryHeaders(userAgent))
+  if (!json) return { contacts: [], policies: {} }
+  return { contacts: mapNpm(json, url, new Date().toISOString()), policies: {} }
 }

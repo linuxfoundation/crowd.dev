@@ -3,7 +3,23 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getSecurityContactsConfig } from '../config'
 
-import { RepoPackage, RepoTarget } from './types'
+import { extractPvr } from './extractors/pvr'
+import { extractManifest } from './extractors/registry'
+import { extractSecurityContactsFile } from './extractors/securityContactsFile'
+import { extractSecurityInsights } from './extractors/securityInsights'
+import { extractSecurityMd } from './extractors/securityMd'
+import { extractSecurityTxt } from './extractors/securityTxt'
+import { getSecurityContactsToken } from './githubToken'
+import { reconcile } from './reconcile'
+import {
+  Extractor,
+  ExtractorDeps,
+  RawContact,
+  RepoPackage,
+  RepoPolicies,
+  RepoTarget,
+} from './types'
+import { writeContacts } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts')
 
@@ -14,6 +30,15 @@ export interface BatchResult {
   processed: number
 }
 
+const EXTRACTORS: Extractor[] = [
+  extractSecurityInsights, // A1
+  extractPvr, // A2
+  extractSecurityContactsFile, // A3
+  extractSecurityTxt, // A4
+  extractSecurityMd, // B1
+  extractManifest, // B2
+]
+
 interface SweepRow {
   id: string
   url: string
@@ -21,12 +46,6 @@ interface SweepRow {
   packages: RepoPackage[] | null
 }
 
-/**
- * One page of github repos linked to an is_critical package whose contacts are
- * missing or stale. Progress is driven by repos.contacts_last_refreshed (bumped
- * once a repo is evaluated), so each invocation naturally advances to the next
- * unprocessed repos — no cross-invocation cursor needed.
- */
 async function fetchBatch(qx: QueryExecutor, config: Config): Promise<SweepRow[]> {
   return qx.select(
     `
@@ -51,12 +70,7 @@ async function fetchBatch(qx: QueryExecutor, config: Config): Promise<SweepRow[]
 }
 
 function toTarget(row: SweepRow): RepoTarget {
-  return {
-    repoId: row.id,
-    url: row.url,
-    homepage: row.homepage,
-    packages: row.packages ?? [],
-  }
+  return { repoId: row.id, url: row.url, homepage: row.homepage, packages: row.packages ?? [] }
 }
 
 async function runWithConcurrency<T>(
@@ -75,37 +89,51 @@ async function runWithConcurrency<T>(
   )
 }
 
-/**
- * Step 2 placeholder pipeline: builds the RepoTarget and logs it. Extractors,
- * reconcile, score and write are wired in later steps; until then we bump
- * contacts_last_refreshed so the sweep makes progress and the workflow can drain.
- */
-async function processRepo(target: RepoTarget): Promise<void> {
-  log.trace(
-    { repoId: target.repoId, url: target.url, packages: target.packages.length },
-    'Evaluated repo (pipeline not yet wired)',
-  )
-}
+async function processRepo(
+  target: RepoTarget,
+  deps: ExtractorDeps,
+  qx: QueryExecutor,
+): Promise<void> {
+  // One failing extractor must not sink the repo.
+  const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-/** Marks repos as evaluated. In Step 6 this moves into the per-repo write tx. */
-async function markRefreshed(qx: QueryExecutor, repoIds: string[]): Promise<void> {
-  if (repoIds.length === 0) return
-  await qx.result(
-    `UPDATE repos SET contacts_last_refreshed = NOW() WHERE id = ANY($(repoIds)::bigint[])`,
-    { repoIds },
-  )
+  let contacts: RawContact[] = []
+  const policies: Partial<RepoPolicies> = {}
+  for (const r of results) {
+    if (r.status !== 'fulfilled') {
+      log.warn({ repoId: target.repoId, errMsg: r.reason?.message }, 'Extractor failed')
+      continue
+    }
+    contacts.push(...r.value.contacts)
+    for (const [key, value] of Object.entries(r.value.policies)) {
+      if (!(policies as Record<string, unknown>)[key] && value != null) {
+        ;(policies as Record<string, unknown>)[key] = value
+      }
+    }
+  }
+
+  // A2 veto: B1 may emit a github-pvr contact from redirect language; drop it when A2
+  // authoritatively reports PVR disabled (Option C from the design discussion).
+  if (policies.pvrEnabled === false) {
+    contacts = contacts.filter((c) => c.channel !== 'github-pvr')
+  }
+
+  const scored = reconcile(contacts)
+  await writeContacts(qx, target.repoId, scored, policies)
 }
 
 export async function processBatch(qx: QueryExecutor, config: Config): Promise<BatchResult> {
   const batch = await fetchBatch(qx, config)
   if (batch.length === 0) return { processed: 0 }
 
+  const deps: ExtractorDeps = {
+    fetchTimeoutMs: config.fetchTimeoutMs,
+    userAgent: config.userAgent,
+    getToken: getSecurityContactsToken,
+  }
+
   const targets = batch.map(toTarget)
-  await runWithConcurrency(targets, config.concurrency, processRepo)
-  await markRefreshed(
-    qx,
-    targets.map((t) => t.repoId),
-  )
+  await runWithConcurrency(targets, config.concurrency, (target) => processRepo(target, deps, qx))
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }

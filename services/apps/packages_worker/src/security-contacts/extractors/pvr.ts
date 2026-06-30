@@ -43,7 +43,8 @@ export const extractPvr: Extractor = async (target, deps) => {
   }
 
   // The endpoint works unauthenticated, but we use the token pool for rate-limit budget.
-  const headers = deps.getToken ? githubAuthHeaders(await deps.getToken()) : {}
+  const token = deps.getToken ? await deps.getToken() : null
+  const headers = token ? githubAuthHeaders(token) : {}
   const { json } = await fetchJson(
     `${GITHUB_API}/repos/${owner}/${name}/private-vulnerability-reporting`,
     deps.fetchTimeoutMs,

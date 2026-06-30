@@ -1,17 +1,29 @@
-import { Extractor, RawContact, RepoPackage, RepoPolicies } from '../../types'
+import { Extractor, ExtractorResult, RawContact, RepoPolicies } from '../../types'
 
+import { fetchCargo } from './cargo'
+import { fetchComposer } from './composer'
+import { fetchMaven } from './maven'
 import { fetchNpm } from './npm'
-import { parsePurl } from './purl'
+import { fetchNuget } from './nuget'
+import { ParsedPurl, parsePurl } from './purl'
+import { fetchPypi } from './pypi'
+import { fetchRubygems } from './rubygems'
 
 type EcosystemFetcher = (
-  parsed: ReturnType<typeof parsePurl> & object,
-  pkg: RepoPackage,
+  parsed: ParsedPurl,
   timeoutMs: number,
-) => Promise<RawContact[]>
+  userAgent: string,
+) => Promise<ExtractorResult>
 
-// Keyed by the lowercased packages.ecosystem value. go has no manifest contacts.
+// Keyed by the lowercased packages.ecosystem value. go has no package-manifest contacts.
 const FETCHERS: Record<string, EcosystemFetcher> = {
   npm: fetchNpm,
+  pypi: fetchPypi,
+  maven: fetchMaven,
+  cargo: fetchCargo,
+  nuget: fetchNuget,
+  rubygems: fetchRubygems,
+  composer: fetchComposer,
 }
 
 export const extractManifest: Extractor = async (target, deps) => {
@@ -30,7 +42,13 @@ export const extractManifest: Extractor = async (target, deps) => {
     if (!parsed) continue
 
     try {
-      contacts.push(...(await fetcher(parsed, pkg, deps.fetchTimeoutMs)))
+      const result = await fetcher(parsed, deps.fetchTimeoutMs, deps.userAgent)
+      contacts.push(...result.contacts)
+      for (const [key, value] of Object.entries(result.policies)) {
+        if (!(policies as Record<string, unknown>)[key] && value != null) {
+          ;(policies as Record<string, unknown>)[key] = value
+        }
+      }
     } catch {
       // one bad package must not sink the rest
       continue

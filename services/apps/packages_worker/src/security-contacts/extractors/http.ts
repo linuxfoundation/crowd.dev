@@ -1,6 +1,12 @@
 export const RAW_BASE = 'https://raw.githubusercontent.com'
 export const GITHUB_API = 'https://api.github.com'
 
+// crates.io rejects requests without a descriptive User-Agent (HTTP 403); harmless elsewhere.
+// https://crates.io/policies#crawlers
+export function registryHeaders(userAgent: string): Record<string, string> {
+  return { 'User-Agent': userAgent }
+}
+
 export interface FetchTextResult {
   status: number
   text: string | null
@@ -48,9 +54,15 @@ export function githubAuthHeaders(token: string): Record<string, string> {
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+const EMAIL_GLOBAL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
 
 export function isEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim())
+}
+
+// Pulls all email addresses out of free-form strings like "Name <a@b.com>, Name2 <c@d.com>".
+export function extractEmails(value: string): string[] {
+  return value.match(EMAIL_GLOBAL_RE) ?? []
 }
 
 /** Returns the login if the URL is a bare github profile (github.com/<login>), else null. */

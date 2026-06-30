@@ -66,7 +66,7 @@ export const extractSecurityContactsFile: Extractor = async (target, deps) => {
   const fetchedAt = new Date().toISOString()
   const prov = (): ProvenanceEntry[] => [{ source: SOURCE, sourceTier: 'A', path: PATH, fetchedAt }]
 
-  const token = deps.getToken ? await deps.getToken() : undefined
+  const token = (deps.getToken ? await deps.getToken() : null) ?? undefined
   const contacts: RawContact[] = []
 
   for (const entry of parseSecurityContacts(text)) {
