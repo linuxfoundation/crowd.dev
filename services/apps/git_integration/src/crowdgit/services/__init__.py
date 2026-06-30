@@ -1,4 +1,5 @@
 from crowdgit.services.base.base_service import BaseService
+from crowdgit.services.affiliation.affiliation_service import AffiliationService
 from crowdgit.services.clone.clone_service import CloneService
 from crowdgit.services.commit.commit_service import CommitService
 from crowdgit.services.license.license_service import LicenseService
@@ -17,5 +18,6 @@ __all__ = [
     "SoftwareValueService",
     "VulnerabilityScannerService",
     "MaintainerService",
+    "AffiliationService",
     "QueueService",
 ]
