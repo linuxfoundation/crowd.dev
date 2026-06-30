@@ -115,6 +115,7 @@ class AffiliationFileNotFoundError(CrowdGitError):
 class AffiliationAnalysisError(CrowdGitError):
     error_message: str = "Could not parse the affiliation file"
     error_code: ErrorCode = ErrorCode.AFFILIATION_ANALYSIS_FAILED
+    retain_file_hash: bool = False
 
 
 @dataclass
