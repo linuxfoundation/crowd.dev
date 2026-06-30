@@ -1,12 +1,11 @@
 from datetime import datetime, timezone
 
 from loguru import logger
-from pydantic import TypeAdapter, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from crowdgit.enums import RepositoryPriority, RepositoryState
 from crowdgit.errors import RepoLockingError
-from crowdgit.models.affiliation_info import AffiliationInfoItem
+from crowdgit.models.affiliation_info import RepoAffiliationRegistry
 from crowdgit.models.repository import Repository
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.settings import (
@@ -556,24 +555,7 @@ async def save_service_execution(service_execution: ServiceExecution) -> None:
         # Do not re-raise - we don't want metrics saving to disrupt main operations
 
 
-_AFFILIATION_SNAPSHOT_ADAPTER = TypeAdapter(list[AffiliationInfoItem])
-
-
-def parse_affiliation_snapshot(snapshot) -> list[AffiliationInfoItem] | None:
-    if isinstance(snapshot, dict) and "affiliations" in snapshot:
-        snapshot = snapshot["affiliations"]
-    try:
-        return _AFFILIATION_SNAPSHOT_ADAPTER.validate_python(snapshot)
-    except ValidationError as error:
-        logger.warning(f"Invalid affiliation snapshot in registry, will re-parse: {error}")
-        return None
-
-
-def dump_affiliation_snapshot(affiliations: list[AffiliationInfoItem]) -> list[dict]:
-    return [item.model_dump() for item in affiliations]
-
-
-async def get_repo_affiliation_registry(repo_id: str):
+async def get_repo_affiliation_registry(repo_id: str) -> RepoAffiliationRegistry | None:
     sql_query = """
         SELECT "filePath", "fileHash", "status", "snapshot", "lastRunAt"
         FROM git."repoAffiliationRegistry"
@@ -584,28 +566,12 @@ async def get_repo_affiliation_registry(repo_id: str):
         return None
 
     row = dict(result)
-    snapshot = row.get("snapshot")
-    if snapshot is not None:
-        snapshot = parse_affiliation_snapshot(snapshot)
-
-    return {
-        "file_path": row.get("filePath"),
-        "file_hash": row.get("fileHash"),
-        "status": row.get("status"),
-        "snapshot": snapshot,
-        "last_run_at": row.get("lastRunAt"),
-    }
+    row["repoId"] = repo_id
+    return RepoAffiliationRegistry.from_db(row)
 
 
-async def upsert_repo_affiliation_registry(
-    repo_id: str,
-    *,
-    file_path: str | None,
-    file_hash: str | None,
-    status: str,
-    snapshot: list[AffiliationInfoItem] | None,
-) -> None:
-    snapshot_json = dump_affiliation_snapshot(snapshot) if snapshot is not None else None
+async def upsert_repo_affiliation_registry(registry: RepoAffiliationRegistry) -> None:
+    snapshot_json = registry.snapshot_for_db()
     sql_query = """
         INSERT INTO git."repoAffiliationRegistry" (
             "repoId", "filePath", "fileHash", "status", "snapshot", "lastRunAt", "updatedAt"
@@ -621,7 +587,13 @@ async def upsert_repo_affiliation_registry(
     """
     await execute(
         sql_query,
-        (repo_id, file_path, file_hash, status, snapshot_json),
+        (
+            registry.repo_id,
+            registry.file_path,
+            registry.file_hash,
+            registry.status,
+            snapshot_json,
+        ),
     )
 
 
@@ -778,9 +750,9 @@ async def fetch_segment_affiliations(member_ids: list[str], segment_id: str) -> 
     )
 
 
-async def insert_member_organizations(rows: list[dict]) -> int:
+async def insert_member_organizations(rows: list[dict]) -> None:
     if not rows:
-        return 0
+        return
 
     sql_query = """
         INSERT INTO "memberOrganizations"(
@@ -808,12 +780,11 @@ async def insert_member_organizations(rows: list[dict]) -> int:
             for row in rows
         ],
     )
-    return len(rows)
 
 
-async def insert_member_segment_affiliations(rows: list[dict]) -> int:
+async def insert_member_segment_affiliations(rows: list[dict]) -> None:
     if not rows:
-        return 0
+        return
 
     sql_query = """
         INSERT INTO "memberSegmentAffiliations"(
@@ -839,4 +810,3 @@ async def insert_member_segment_affiliations(rows: list[dict]) -> int:
             for row in rows
         ],
     )
-    return len(rows)
