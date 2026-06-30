@@ -25,6 +25,7 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
+import { proxyUrl } from '../proxies'
 
 import { NPM_EARLIEST, computeChunks } from './downloadGaps'
 import { fetchChangesSince, fetchCurrentSeq } from './fetchChanges'
@@ -35,7 +36,7 @@ import {
 } from './fetchDownloads'
 import { fetchPackument } from './fetchPackument'
 import { Last30dWindow, computeMissingLast30dWindows } from './last30dGaps'
-import { laneCount, proxyForLane, proxyUrl } from './proxies'
+import { laneCount, proxyForLane } from './proxies'
 import { isFetchError } from './types'
 import { upsertPackage } from './upsertPackage'
 
