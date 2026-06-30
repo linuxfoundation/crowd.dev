@@ -11,6 +11,7 @@ from slugify import slugify
 from crowdgit.database.crud import (
     find_github_identity,
     find_maintainer_identity_by_email,
+    get_github_maintainer_usernames_for_repo,
     get_maintainers_for_repo,
     save_service_execution,
     set_maintainer_end_date,
@@ -242,20 +243,36 @@ class MaintainerService(BaseService):
                 f"with identity_id {identity_id} role {role}"
             )
 
-        # Safety guard: a maintainer whose identity resolution fails (transient DB
-        # issue, stale extraction value) is absent from new_by_key but may still be
-        # in the source. Don't end-date if their identifying value is still present.
-        mentioned_values = set()
+        # Safety guard scoped to entries whose identity resolution FAILED this run.
+        # A maintainer who resolves but ends up under a different (identityId, role)
+        # — i.e. a role change — must still be end-dated on the old role row, so we
+        # only protect values from extractor entries that did not resolve. Matching
+        # is kind-aware so a GitHub username "foo" cannot collide with a same-named
+        # handle on another platform (different person).
+        resolved_ids = {id(m) for m, _ in resolved}
+        unresolved_usernames: set[str] = set()
+        unresolved_emails: set[str] = set()
         for m in maintainers:
-            for v in (m.github_username, m.email):
-                if v and v != "unknown":
-                    mentioned_values.add(v.lower())
+            if id(m) in resolved_ids:
+                continue
+            if m.github_username and m.github_username != "unknown":
+                unresolved_usernames.add(m.github_username.lower())
+            if m.email and m.email != "unknown":
+                unresolved_emails.add(m.email.lower())
 
         for (identity_id, role), current in current_by_key.items():
             if (identity_id, role) in new_by_key:
                 continue
-            current_value = (current.get("github_username") or "").lower()
-            if current_value and current_value in mentioned_values:
+            current_value = (current.get("identity_value") or "").lower()
+            current_platform = current.get("platform")
+            current_type = current.get("type")
+            is_github_username = current_platform == "github" and current_type == "username"
+            is_email = current_type == "email"
+            skip_end_date = bool(current_value) and (
+                (is_github_username and current_value in unresolved_usernames)
+                or (is_email and current_value in unresolved_emails)
+            )
+            if skip_end_date:
                 self.logger.warning(
                     f"Maintainer with identity {identity_id} role {role} could not be "
                     f"re-resolved but is still mentioned in the source; skipping end-date"
@@ -950,12 +967,13 @@ class MaintainerService(BaseService):
         if not parent_repo or not extracted_maintainers:
             return extracted_maintainers
 
-        parent_repo_maintainers = await get_maintainers_for_repo(parent_repo.id)
-        if not parent_repo_maintainers:
-            self.logger.info(f"No maintainers found for parent repo {parent_repo.url}")
+        # Dedicated github-username lookup: get_maintainers_for_repo now returns any
+        # identity type (email-linked rows included), but this filter compares against
+        # extracted github_username values, so we must narrow to platform='github'/type='username'.
+        parent_github_usernames = await get_github_maintainer_usernames_for_repo(parent_repo.id)
+        if not parent_github_usernames:
+            self.logger.info(f"No github-username maintainers found for parent repo {parent_repo.url}")
             return extracted_maintainers
-
-        parent_github_usernames = {m["github_username"] for m in parent_repo_maintainers}
 
         fork_only_maintainers = [
             maintainer
