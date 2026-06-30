@@ -311,10 +311,8 @@ class AffiliationService(BaseService):
         matches = await self.find_known_file_matches(repo_path)
 
         if len(matches) == 1:
-            only_match = matches[0]
-            if self.is_text_file_path(only_match):
-                self.logger.info(f"Affiliation file: {only_match}")
-                return only_match, ai_cost
+            self.logger.info(f"Affiliation file: {matches[0]}")
+            return matches[0], ai_cost
 
         if len(matches) > 1:
             candidates = matches
