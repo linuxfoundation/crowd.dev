@@ -272,14 +272,9 @@ class AffiliationService(BaseService):
 
         total_cost = 0.0
         batch_size = self.FILE_PICKER_BATCH_SIZE
-        total_batches = (len(candidates) + batch_size - 1) // batch_size
 
-        for batch_index, batch_start in enumerate(range(0, len(candidates), batch_size), start=1):
+        for batch_start in range(0, len(candidates), batch_size):
             batch = candidates[batch_start : batch_start + batch_size]
-            self.logger.debug(
-                f"Picking affiliation file with AI "
-                f"(batch {batch_index}/{total_batches}, {len(batch)} candidates)"
-            )
             candidates_with_previews = await self.format_candidates_with_previews(repo_path, batch)
             prompt = self.get_file_picker_prompt(
                 repo_url,
@@ -292,9 +287,7 @@ class AffiliationService(BaseService):
             if result.output.file_name is not None:
                 picked_path = result.output.file_name
                 if picked_path not in batch:
-                    self.logger.debug(
-                        f"AI picked path not in candidate batch, skipping: {picked_path!r}"
-                    )
+                    self.logger.debug(f"AI picked invalid path, skipping: {picked_path!r}")
                     continue
                 full_path = os.path.join(repo_path, picked_path)
                 if not await aiofiles.os.path.isfile(full_path):
@@ -316,25 +309,19 @@ class AffiliationService(BaseService):
         ai_cost = 0.0
 
         matches = await self.find_known_file_matches(repo_path)
-        self.logger.debug(f"Known filename matches: {len(matches)}")
 
         if len(matches) == 1:
-            self.logger.info(f"Affiliation file: {matches[0]}")
-            return matches[0], ai_cost
+            only_match = matches[0]
+            if self.is_text_file_path(only_match):
+                self.logger.info(f"Affiliation file: {only_match}")
+                return only_match, ai_cost
 
         if len(matches) > 1:
             candidates = [path for path in matches if self.is_text_file_path(path)]
             root_files_only = False
-            if len(matches) != len(candidates):
-                self.logger.debug(
-                    f"Skipped {len(matches) - len(candidates)} known matches with non-text extensions"
-                )
         else:
             candidates = await self.list_root_text_files(repo_path)
             root_files_only = True
-            self.logger.debug(
-                f"No known filename matches, checking {len(candidates)} repo root files with AI"
-            )
 
         if not candidates:
             return None, ai_cost
@@ -360,7 +347,6 @@ class AffiliationService(BaseService):
         if saved_file_path:
             saved_on_disk = os.path.join(repo_path, saved_file_path)
             if await aiofiles.os.path.isfile(saved_on_disk):
-                self.logger.debug(f"Using saved affiliation file: {saved_file_path}")
                 return saved_file_path, 0.0
             self.logger.info("Saved affiliation file is missing, looking for a new one")
 
@@ -483,18 +469,12 @@ class AffiliationService(BaseService):
                 if not affiliations:
                     return [], parse_result.cost
 
-                raw_count = len(affiliations)
                 normalized = self.normalize_parsed_affiliations(affiliations)
 
                 if not normalized:
                     raise AffiliationAnalysisError(
                         retain_file_hash=True,
                         error_message="Affiliation file had rows but none were usable",
-                    )
-
-                if len(normalized) < raw_count:
-                    self.logger.debug(
-                        f"Dropped {raw_count - len(normalized)} rows missing email, github, or domain"
                     )
 
                 return normalized, parse_result.cost
@@ -506,7 +486,6 @@ class AffiliationService(BaseService):
                 error_message="Unexpected response while parsing the affiliation file",
             )
 
-        self.logger.debug("Affiliation file is large, parsing in chunks")
         chunks: list[str] = []
         remaining = content
         while remaining:
@@ -542,18 +521,12 @@ class AffiliationService(BaseService):
             total_cost += chunk_result.cost
 
         if affiliations:
-            raw_count = len(affiliations)
             normalized = self.normalize_parsed_affiliations(affiliations)
 
             if not normalized:
                 raise AffiliationAnalysisError(
                     retain_file_hash=True,
                     error_message="Affiliation file had rows but none were usable",
-                )
-
-            if len(normalized) < raw_count:
-                self.logger.debug(
-                    f"Dropped {raw_count - len(normalized)} rows missing email, github, or domain"
                 )
 
             return normalized, total_cost
@@ -577,13 +550,11 @@ class AffiliationService(BaseService):
 
         if not needs_parse:
             if not existing_snapshot:
-                self.logger.debug("Using cached empty snapshot, file unchanged")
                 return [], 0.0
 
             applyable = self.normalize_parsed_affiliations(existing_snapshot)
 
             if applyable:
-                self.logger.debug("Using cached snapshot, file unchanged")
                 return applyable, 0.0
 
             self.logger.info("Cached snapshot had no usable rows, reparsing file")
@@ -598,7 +569,6 @@ class AffiliationService(BaseService):
         Repos with a saved file use the update interval; repos still searching use the retry interval.
         """
         if registry is None or registry.get("last_run_at") is None:
-            self.logger.debug("First affiliation run for this repo")
             return True, 0.0
 
         time_since_last_run = datetime.now(timezone.utc) - registry["last_run_at"]
@@ -606,18 +576,10 @@ class AffiliationService(BaseService):
 
         if registry.get("file_path"):
             remaining_hours = max(0, AFFILIATION_UPDATE_INTERVAL_HOURS - hours_since_last_run)
-            self.logger.debug(
-                f"Last run {hours_since_last_run:.1f}h ago, "
-                f"update interval is {AFFILIATION_UPDATE_INTERVAL_HOURS}h"
-            )
             return hours_since_last_run >= AFFILIATION_UPDATE_INTERVAL_HOURS, remaining_hours
 
         required_hours = AFFILIATION_RETRY_INTERVAL_DAYS * 24
         remaining_hours = max(0, required_hours - hours_since_last_run)
-        self.logger.debug(
-            f"Last run {hours_since_last_run:.1f}h ago, "
-            f"retry interval is {AFFILIATION_RETRY_INTERVAL_DAYS}d"
-        )
         return hours_since_last_run >= required_hours, remaining_hours
 
     @staticmethod
@@ -626,6 +588,63 @@ class AffiliationService(BaseService):
         if date_start is None and date_end is None:
             return True
         return date_start is not None and date_end is None
+
+    @staticmethod
+    def affiliation_identity_key(item: AffiliationInfoItem) -> tuple[str, str, str] | None:
+        domain = item.organization.domain
+        if not domain:
+            return None
+        domain = domain.lower()
+        if item.contributor.github:
+            return ("github", item.contributor.github.lower(), domain)
+        if item.contributor.email:
+            return ("email", item.contributor.email.lower(), domain)
+        return None
+
+    async def exclude_parent_repo_affiliations(
+        self,
+        parent_repo: Repository,
+        extracted_affiliations: list[AffiliationInfoItem] | None,
+    ) -> list[AffiliationInfoItem] | None:
+        if not parent_repo or not extracted_affiliations:
+            return extracted_affiliations
+
+        parent_registry = await get_repo_affiliation_registry(parent_repo.id)
+        parent_repo_affiliations = (
+            parent_registry.get("snapshot") if parent_registry else None
+        ) or []
+        if not parent_repo_affiliations:
+            return extracted_affiliations
+
+        parent_affiliation_keys = {
+            key
+            for item in parent_repo_affiliations
+            if (key := self.affiliation_identity_key(item)) is not None
+        }
+
+        fork_only_affiliations = [
+            affiliation
+            for affiliation in extracted_affiliations
+            if (key := self.affiliation_identity_key(affiliation)) is None
+            or key not in parent_affiliation_keys
+        ]
+
+        return fork_only_affiliations
+
+    @staticmethod
+    def resolve_registry_status(
+        affiliations: list[AffiliationInfoItem],
+        registry: dict | None,
+        file_hash: str,
+    ) -> str:
+        if (
+            registry
+            and registry.get("status") == AffiliationRegistryStatus.UNUSABLE.value
+            and registry.get("file_hash") == file_hash
+            and not affiliations
+        ):
+            return AffiliationRegistryStatus.UNUSABLE.value
+        return AffiliationRegistryStatus.SUCCESS.value
 
     def has_undated_affiliation_for_org(
         self, existing_rows: list[dict], organization_id: str
@@ -702,17 +721,14 @@ class AffiliationService(BaseService):
 
         unique_pairs: list[tuple[str, str]] = []
         seen_pairs: set[tuple[str, str]] = set()
-        skipped_unresolved = 0
 
         for member_idx, org_idx in row_identity_refs:
             if member_idx is None or org_idx is None:
-                skipped_unresolved += 1
                 continue
 
             member_id = resolved_members[member_idx].get("member_id")
             organization_id = resolved_organizations[org_idx].get("organization_id")
             if not member_id or not organization_id:
-                skipped_unresolved += 1
                 continue
 
             pair = (member_id, organization_id)
@@ -722,9 +738,7 @@ class AffiliationService(BaseService):
             unique_pairs.append(pair)
 
         if not unique_pairs:
-            self.logger.debug(
-                f"No member/org pairs resolved ({skipped_unresolved} rows could not be matched)"
-            )
+            self.logger.debug("No member/org pairs resolved")
             return
 
         member_ids_to_fetch = list({member_id for member_id, _ in unique_pairs})
@@ -765,6 +779,7 @@ class AffiliationService(BaseService):
         # await insert_member_organizations(mo_inserts)
         # await insert_member_segment_affiliations(msa_inserts)
 
+        # TODO: Remove this after testing
         self.logger.debug(
             f"Apply dry run: {len(mo_inserts)} MO and {len(msa_inserts)} MSA rows ready to write"
         )
@@ -822,13 +837,18 @@ class AffiliationService(BaseService):
             )
             ai_cost += parse_cost
 
+            if repository.parent_repo:
+                affiliations = await self.exclude_parent_repo_affiliations(
+                    repository.parent_repo, affiliations
+                )
+
             await self.apply_affiliations(repository, affiliations)
 
             await upsert_repo_affiliation_registry(
                 repository.id,
                 file_path=latest_file_path,
                 file_hash=file_hash,
-                status=AffiliationRegistryStatus.SUCCESS.value,
+                status=self.resolve_registry_status(affiliations, registry, file_hash),
                 snapshot=affiliations,
             )
 
@@ -854,7 +874,11 @@ class AffiliationService(BaseService):
                 repository.id,
                 file_path=latest_file_path,
                 file_hash=latest_file_hash if e.retain_file_hash else None,
-                status=AffiliationRegistryStatus.ERROR.value,
+                status=(
+                    AffiliationRegistryStatus.UNUSABLE.value
+                    if e.retain_file_hash
+                    else AffiliationRegistryStatus.ERROR.value
+                ),
                 snapshot=[]
                 if e.retain_file_hash
                 else (registry.get("snapshot") if registry else None),
@@ -877,7 +901,7 @@ class AffiliationService(BaseService):
 
             service_execution = ServiceExecution(
                 repo_id=repository.id,
-                operation_type=OperationType.REPO_AFFILIATION,
+                operation_type=OperationType.AFFILIATION,
                 status=execution_status,
                 error_code=error_code,
                 error_message=error_message,

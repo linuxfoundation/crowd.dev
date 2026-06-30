@@ -73,6 +73,7 @@ class ExecutionStatus(str, Enum):
 class AffiliationRegistryStatus(str, Enum):
     SUCCESS = "success"
     NOT_FOUND = "not_found"
+    UNUSABLE = "unusable"
     ERROR = "error"
 
 
@@ -82,6 +83,6 @@ class OperationType(str, Enum):
     CLONE = "Clone"
     COMMIT = "Commit"
     MAINTAINER = "Maintainer"
-    REPO_AFFILIATION = "RepoAffiliation"
+    AFFILIATION = "Affiliation"
     SOFTWARE_VALUE = "SoftwareValue"
     VULNERABILITY_SCAN = "VulnerabilityScanner"
