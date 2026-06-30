@@ -22,7 +22,6 @@ from crowdgit.errors import (
     AffiliationAnalysisError,
     AffiliationFileNotFoundError,
     AffiliationIntervalNotElapsedError,
-    CommandExecutionError,
     CrowdGitError,
 )
 from crowdgit.models import CloneBatchInfo, Repository
@@ -32,6 +31,7 @@ from crowdgit.models.affiliation_info import (
     AffiliationInfoItem,
     AffiliationOrganization,
     AffiliationParseOutput,
+    RepoAffiliationRegistry,
 )
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
@@ -112,8 +112,6 @@ class AffiliationService(BaseService):
                 ["rg", "--files", "--hidden", *glob_args, "."],
                 cwd=repo_path,
             )
-        except CommandExecutionError:
-            return []
         except FileNotFoundError:
             self.logger.warning("Ripgrep not found, known filename search is unavailable")
             return []
@@ -131,7 +129,7 @@ class AffiliationService(BaseService):
             if self.path_matches_known_name(line, known_name):
                 matches.append(line)
 
-        return sorted(matches)
+        return matches
 
     async def find_known_file_matches(self, repo_path: str) -> list[str]:
         matches: set[str] = set()
@@ -299,7 +297,7 @@ class AffiliationService(BaseService):
         return None, total_cost
 
     async def discover_affiliation_file(
-        self, repo_path: str, repo_url: str = ""
+        self, repo_path: str, repo_url: str
     ) -> tuple[str | None, float]:
         """
         Find the affiliation mapping file before parsing content.
@@ -339,7 +337,7 @@ class AffiliationService(BaseService):
         self,
         repo_path: str,
         saved_file_path: str | None,
-        repo_url: str = "",
+        repo_url: str,
     ) -> tuple[str | None, float]:
         """
         Use the saved affiliation file path when it still exists; otherwise run discovery.
@@ -454,9 +452,7 @@ class AffiliationService(BaseService):
 
         return normalized
 
-    async def parse_affiliations(
-        self, filename: str, content: str, repo_url: str = ""
-    ) -> tuple[list[AffiliationInfoItem], float]:
+    async def parse_affiliations(self, content: str) -> tuple[list[AffiliationInfoItem], float]:
         """Extract affiliations with AI, splitting large files into chunks when needed."""
         if len(content) <= self.MAX_CHUNK_SIZE:
             parse_result = await invoke_bedrock(
@@ -535,17 +531,15 @@ class AffiliationService(BaseService):
 
     async def resolve_snapshot(
         self,
-        registry: dict | None,
-        file_path: str,
+        registry: RepoAffiliationRegistry | None,
         content: str,
         file_hash: str,
-        repo_url: str = "",
     ) -> tuple[list[AffiliationInfoItem], float]:
         """
         Reuse the saved snapshot when the file is unchanged, otherwise re-parse.
         """
-        stored_hash = registry.get("file_hash") if registry else None
-        existing_snapshot = registry.get("snapshot") if registry else None
+        stored_hash = registry.file_hash if registry else None
+        existing_snapshot = registry.snapshot if registry else None
         needs_parse = file_hash != stored_hash or existing_snapshot is None
 
         if not needs_parse:
@@ -559,22 +553,24 @@ class AffiliationService(BaseService):
 
             self.logger.info("Cached snapshot had no usable rows, reparsing file")
 
-        affiliations, parse_cost = await self.parse_affiliations(file_path, content, repo_url)
+        affiliations, parse_cost = await self.parse_affiliations(content)
         return affiliations, parse_cost
 
-    async def check_if_interval_elapsed(self, registry: dict | None) -> tuple[bool, float]:
+    async def check_if_interval_elapsed(
+        self, registry: RepoAffiliationRegistry | None
+    ) -> tuple[bool, float]:
         """
         Check whether enough time has passed since the last affiliation run.
 
         Repos with a saved file use the update interval; repos still searching use the retry interval.
         """
-        if registry is None or registry.get("last_run_at") is None:
+        if registry is None or registry.last_run_at is None:
             return True, 0.0
 
-        time_since_last_run = datetime.now(timezone.utc) - registry["last_run_at"]
+        time_since_last_run = datetime.now(timezone.utc) - registry.last_run_at
         hours_since_last_run = time_since_last_run.total_seconds() / 3600
 
-        if registry.get("file_path"):
+        if registry.file_path:
             remaining_hours = max(0, AFFILIATION_UPDATE_INTERVAL_HOURS - hours_since_last_run)
             return hours_since_last_run >= AFFILIATION_UPDATE_INTERVAL_HOURS, remaining_hours
 
@@ -610,9 +606,7 @@ class AffiliationService(BaseService):
             return extracted_affiliations
 
         parent_registry = await get_repo_affiliation_registry(parent_repo.id)
-        parent_repo_affiliations = (
-            parent_registry.get("snapshot") if parent_registry else None
-        ) or []
+        parent_repo_affiliations = parent_registry.snapshot if parent_registry else None
         if not parent_repo_affiliations:
             return extracted_affiliations
 
@@ -634,13 +628,13 @@ class AffiliationService(BaseService):
     @staticmethod
     def resolve_registry_status(
         affiliations: list[AffiliationInfoItem],
-        registry: dict | None,
+        registry: RepoAffiliationRegistry | None,
         file_hash: str,
     ) -> str:
         if (
             registry
-            and registry.get("status") == AffiliationRegistryStatus.UNUSABLE.value
-            and registry.get("file_hash") == file_hash
+            and registry.status == AffiliationRegistryStatus.UNUSABLE.value
+            and registry.file_hash == file_hash
             and not affiliations
         ):
             return AffiliationRegistryStatus.UNUSABLE.value
@@ -799,13 +793,18 @@ class AffiliationService(BaseService):
         registry = await get_repo_affiliation_registry(repository.id)
 
         try:
-            has_interval_elapsed, _ = await self.check_if_interval_elapsed(registry)
+            has_interval_elapsed, remaining_hours = await self.check_if_interval_elapsed(registry)
             if not has_interval_elapsed:
-                raise AffiliationIntervalNotElapsedError()
+                raise AffiliationIntervalNotElapsedError(
+                    error_message=(
+                        f"Too soon since the last affiliation run. "
+                        f"Remaining: {remaining_hours:.2f} hours"
+                    )
+                )
 
             self.logger.info("Starting affiliations")
 
-            saved_file_path = registry.get("file_path") if registry else None
+            saved_file_path = registry.file_path if registry else None
             latest_file_path, discovery_cost = await self.resolve_affiliation_file(
                 batch_info.repo_path,
                 saved_file_path,
@@ -815,11 +814,13 @@ class AffiliationService(BaseService):
 
             if not latest_file_path:
                 await upsert_repo_affiliation_registry(
-                    repository.id,
-                    file_path=None,
-                    file_hash=None,
-                    status=AffiliationRegistryStatus.NOT_FOUND.value,
-                    snapshot=None,
+                    RepoAffiliationRegistry(
+                        repo_id=repository.id,
+                        file_path=None,
+                        file_hash=None,
+                        status=AffiliationRegistryStatus.NOT_FOUND.value,
+                        snapshot=None,
+                    )
                 )
                 raise AffiliationFileNotFoundError(ai_cost=ai_cost)
 
@@ -830,10 +831,8 @@ class AffiliationService(BaseService):
 
             affiliations, parse_cost = await self.resolve_snapshot(
                 registry,
-                latest_file_path,
                 content,
                 file_hash,
-                repository.url,
             )
             ai_cost += parse_cost
 
@@ -845,11 +844,13 @@ class AffiliationService(BaseService):
             await self.apply_affiliations(repository, affiliations)
 
             await upsert_repo_affiliation_registry(
-                repository.id,
-                file_path=latest_file_path,
-                file_hash=file_hash,
-                status=self.resolve_registry_status(affiliations, registry, file_hash),
-                snapshot=affiliations,
+                RepoAffiliationRegistry(
+                    repo_id=repository.id,
+                    file_path=latest_file_path,
+                    file_hash=file_hash,
+                    status=self.resolve_registry_status(affiliations, registry, file_hash),
+                    snapshot=affiliations,
+                )
             )
 
             self.logger.info(f"Finished with {len(affiliations)} rows from {latest_file_path}")
@@ -871,17 +872,19 @@ class AffiliationService(BaseService):
             error_message = e.error_message
             error_code = e.error_code.value
             await upsert_repo_affiliation_registry(
-                repository.id,
-                file_path=latest_file_path,
-                file_hash=latest_file_hash if e.retain_file_hash else None,
-                status=(
-                    AffiliationRegistryStatus.UNUSABLE.value
+                RepoAffiliationRegistry(
+                    repo_id=repository.id,
+                    file_path=latest_file_path,
+                    file_hash=latest_file_hash if e.retain_file_hash else None,
+                    status=(
+                        AffiliationRegistryStatus.UNUSABLE.value
+                        if e.retain_file_hash
+                        else AffiliationRegistryStatus.ERROR.value
+                    ),
+                    snapshot=[]
                     if e.retain_file_hash
-                    else AffiliationRegistryStatus.ERROR.value
-                ),
-                snapshot=[]
-                if e.retain_file_hash
-                else (registry.get("snapshot") if registry else None),
+                    else (registry.snapshot if registry else None),
+                )
             )
             self.logger.warning(error_message)
 
