@@ -290,8 +290,18 @@ class AffiliationService(BaseService):
             total_cost += result.cost
 
             if result.output.file_name is not None:
-                self.logger.info(f"Affiliation file: {result.output.file_name} (AI)")
-                return result.output.file_name, total_cost
+                picked_path = result.output.file_name
+                if picked_path not in batch:
+                    self.logger.debug(
+                        f"AI picked path not in candidate batch, skipping: {picked_path!r}"
+                    )
+                    continue
+                full_path = os.path.join(repo_path, picked_path)
+                if not await aiofiles.os.path.isfile(full_path):
+                    self.logger.debug(f"AI picked path not on disk, skipping: {picked_path!r}")
+                    continue
+                self.logger.info(f"Affiliation file: {picked_path} (AI)")
+                return picked_path, total_cost
 
         return None, total_cost
 
@@ -471,13 +481,16 @@ class AffiliationService(BaseService):
             affiliations = parse_result.output.affiliations
             if affiliations is not None:
                 if not affiliations:
-                    raise AffiliationAnalysisError()
+                    return [], parse_result.cost
 
                 raw_count = len(affiliations)
                 normalized = self.normalize_parsed_affiliations(affiliations)
 
                 if not normalized:
-                    raise AffiliationAnalysisError()
+                    raise AffiliationAnalysisError(
+                        retain_file_hash=True,
+                        error_message="Affiliation file had rows but none were usable",
+                    )
 
                 if len(normalized) < raw_count:
                     self.logger.debug(
@@ -487,7 +500,7 @@ class AffiliationService(BaseService):
                 return normalized, parse_result.cost
 
             if parse_result.output.error == "not_found":
-                raise AffiliationAnalysisError()
+                return [], parse_result.cost
 
             raise AffiliationAnalysisError(
                 error_message="Unexpected response while parsing the affiliation file",
@@ -533,7 +546,10 @@ class AffiliationService(BaseService):
             normalized = self.normalize_parsed_affiliations(affiliations)
 
             if not normalized:
-                raise AffiliationAnalysisError()
+                raise AffiliationAnalysisError(
+                    retain_file_hash=True,
+                    error_message="Affiliation file had rows but none were usable",
+                )
 
             if len(normalized) < raw_count:
                 self.logger.debug(
@@ -542,7 +558,7 @@ class AffiliationService(BaseService):
 
             return normalized, total_cost
 
-        raise AffiliationAnalysisError()
+        return [], total_cost
 
     async def resolve_snapshot(
         self,
@@ -557,11 +573,13 @@ class AffiliationService(BaseService):
         """
         stored_hash = registry.get("file_hash") if registry else None
         existing_snapshot = registry.get("snapshot") if registry else None
-        needs_parse = (
-            file_hash != stored_hash or existing_snapshot is None or not existing_snapshot
-        )
+        needs_parse = file_hash != stored_hash or existing_snapshot is None
 
         if not needs_parse:
+            if not existing_snapshot:
+                self.logger.debug("Using cached empty snapshot, file unchanged")
+                return [], 0.0
+
             applyable = self.normalize_parsed_affiliations(existing_snapshot)
 
             if applyable:
@@ -762,6 +780,7 @@ class AffiliationService(BaseService):
         error_message = None
         ai_cost = 0.0
         latest_file_path: str | None = None
+        latest_file_hash: str | None = None
         registry = await get_repo_affiliation_registry(repository.id)
 
         try:
@@ -792,6 +811,7 @@ class AffiliationService(BaseService):
             file_path_on_disk = os.path.join(batch_info.repo_path, latest_file_path)
             content = await self.read_text_file(file_path_on_disk)
             file_hash = self.compute_file_hash(content)
+            latest_file_hash = file_hash
 
             affiliations, parse_cost = await self.resolve_snapshot(
                 registry,
@@ -833,9 +853,11 @@ class AffiliationService(BaseService):
             await upsert_repo_affiliation_registry(
                 repository.id,
                 file_path=latest_file_path,
-                file_hash=None,
+                file_hash=latest_file_hash if e.retain_file_hash else None,
                 status=AffiliationRegistryStatus.ERROR.value,
-                snapshot=registry.get("snapshot") if registry else None,
+                snapshot=[]
+                if e.retain_file_hash
+                else (registry.get("snapshot") if registry else None),
             )
             self.logger.warning(error_message)
 

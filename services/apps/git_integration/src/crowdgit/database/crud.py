@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from loguru import logger
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from crowdgit.enums import RepositoryPriority, RepositoryState
@@ -559,10 +559,14 @@ async def save_service_execution(service_execution: ServiceExecution) -> None:
 _AFFILIATION_SNAPSHOT_ADAPTER = TypeAdapter(list[AffiliationInfoItem])
 
 
-def parse_affiliation_snapshot(snapshot) -> list[AffiliationInfoItem]:
+def parse_affiliation_snapshot(snapshot) -> list[AffiliationInfoItem] | None:
     if isinstance(snapshot, dict) and "affiliations" in snapshot:
         snapshot = snapshot["affiliations"]
-    return _AFFILIATION_SNAPSHOT_ADAPTER.validate_python(snapshot)
+    try:
+        return _AFFILIATION_SNAPSHOT_ADAPTER.validate_python(snapshot)
+    except ValidationError as error:
+        logger.warning(f"Invalid affiliation snapshot in registry, will re-parse: {error}")
+        return None
 
 
 def dump_affiliation_snapshot(affiliations: list[AffiliationInfoItem]) -> list[dict]:
