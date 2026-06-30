@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   GRADLE_PLUGIN_PORTAL_BASE_URL,
+  JITPACK_BASE_URL,
   MAVEN_CENTRAL_BASE_URL,
+  isJitpackNamespace,
+  jitpackPageUrl,
   resolveRegistryBaseUrl,
   resolveRegistryPageUrl,
   resolveRegistryPageUrlFromBase,
@@ -150,19 +153,19 @@ describe('resolveRegistryBaseUrl', () => {
     )
   })
 
-  it('returns JitPack for io.github namespace', () => {
-    expect(resolveRegistryBaseUrl('io.github.resilience4j')).toBe('https://jitpack.io')
+  it('returns Maven Central for io.github namespace (JitPack is a fallback, not primary)', () => {
+    expect(resolveRegistryBaseUrl('io.github.resilience4j')).toBe(MAVEN_CENTRAL_BASE_URL)
   })
 
-  it('returns JitPack for bare io.github (exact match)', () => {
-    expect(resolveRegistryBaseUrl('io.github')).toBe('https://jitpack.io')
+  it('returns Maven Central for bare io.github', () => {
+    expect(resolveRegistryBaseUrl('io.github')).toBe(MAVEN_CENTRAL_BASE_URL)
   })
 
-  it('returns JitPack for com.github namespace', () => {
-    expect(resolveRegistryBaseUrl('com.github.ben-manes')).toBe('https://jitpack.io')
+  it('returns Maven Central for com.github namespace (JitPack is a fallback, not primary)', () => {
+    expect(resolveRegistryBaseUrl('com.github.ben-manes')).toBe(MAVEN_CENTRAL_BASE_URL)
   })
 
-  it('does not match io.githubfoo — prefix boundary must end at a dot', () => {
+  it('returns Maven Central for io.githubfoo (no dot boundary)', () => {
     expect(resolveRegistryBaseUrl('io.githubfoo')).toBe(MAVEN_CENTRAL_BASE_URL)
   })
 })
@@ -192,20 +195,16 @@ describe('resolveRegistryPageUrl', () => {
     )
   })
 
-  it('returns JitPack browse URL for io.github', () => {
+  it('returns Maven Central URL for io.github (Central is primary)', () => {
     expect(resolveRegistryPageUrl('io.github.resilience4j', 'resilience4j-core')).toBe(
-      'https://jitpack.io/#resilience4j/resilience4j-core',
+      'https://central.sonatype.com/artifact/io.github.resilience4j/resilience4j-core',
     )
   })
 
-  it('returns JitPack browse URL for com.github', () => {
+  it('returns Maven Central URL for com.github (Central is primary)', () => {
     expect(resolveRegistryPageUrl('com.github.ben-manes', 'caffeine')).toBe(
-      'https://jitpack.io/#ben-manes/caffeine',
+      'https://central.sonatype.com/artifact/com.github.ben-manes/caffeine',
     )
-  })
-
-  it('returns JitPack browse URL for bare io.github prefix without leaking the prefix into the path', () => {
-    expect(resolveRegistryPageUrl('io.github', 'some-lib')).toBe('https://jitpack.io/#/some-lib')
   })
 })
 
@@ -235,5 +234,56 @@ describe('resolveRegistryPageUrlFromBase', () => {
         GRADLE_PLUGIN_PORTAL_BASE_URL,
       ),
     ).toBe('https://plugins.gradle.org/m2/io/github/trueangle/gradle-plugin/')
+  })
+
+  it('returns JitPack browse URL when resolvedBaseUrl is JitPack', () => {
+    expect(
+      resolveRegistryPageUrlFromBase('io.github.trueangle', 'gradle-plugin', JITPACK_BASE_URL),
+    ).toBe('https://jitpack.io/#trueangle/gradle-plugin')
+  })
+})
+
+describe('isJitpackNamespace', () => {
+  it('returns true for io.github.* packages', () => {
+    expect(isJitpackNamespace('io.github.resilience4j')).toBe(true)
+  })
+
+  it('returns true for bare io.github', () => {
+    expect(isJitpackNamespace('io.github')).toBe(true)
+  })
+
+  it('returns true for com.github.* packages', () => {
+    expect(isJitpackNamespace('com.github.ben-manes')).toBe(true)
+  })
+
+  it('returns true for bare com.github', () => {
+    expect(isJitpackNamespace('com.github')).toBe(true)
+  })
+
+  it('returns false for io.githubfoo (no dot boundary)', () => {
+    expect(isJitpackNamespace('io.githubfoo')).toBe(false)
+  })
+
+  it('returns false for unrelated namespaces', () => {
+    expect(isJitpackNamespace('org.apache.commons')).toBe(false)
+    expect(isJitpackNamespace('io.jenkins.plugins')).toBe(false)
+  })
+})
+
+describe('jitpackPageUrl', () => {
+  it('strips io.github. prefix from groupId', () => {
+    expect(jitpackPageUrl('io.github.resilience4j', 'resilience4j-core')).toBe(
+      'https://jitpack.io/#resilience4j/resilience4j-core',
+    )
+  })
+
+  it('strips com.github. prefix from groupId', () => {
+    expect(jitpackPageUrl('com.github.ben-manes', 'caffeine')).toBe(
+      'https://jitpack.io/#ben-manes/caffeine',
+    )
+  })
+
+  it('handles bare io.github with no sub-namespace', () => {
+    expect(jitpackPageUrl('io.github', 'some-lib')).toBe('https://jitpack.io/#/some-lib')
   })
 })

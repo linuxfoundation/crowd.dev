@@ -12,7 +12,7 @@ import axios from 'axios'
 import { XMLParser } from 'fast-xml-parser'
 
 import { isPrerelease } from './normalize'
-import { resolveRegistryBaseUrl } from './registry'
+import { JITPACK_BASE_URL, resolveRegistryBaseUrl } from './registry'
 
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 3
@@ -115,7 +115,7 @@ export async function resolveVersionsList(
         // that don't exist as public builds. Scoped to JitPack only — other
         // registries may return 401 for auth failures, which should not be
         // silently treated as a missing package.
-        if (status === 404 || (status === 401 && url.includes('jitpack.io')))
+        if (status === 404 || (status === 401 && url.startsWith(JITPACK_BASE_URL + '/')))
           return { kind: 'NOT_FOUND' }
         // 429 = explicit rate limit, 403 = CDN throttle (Maven Central uses both)
         if ((status === 429 || status === 403) && attempt < MAX_RETRIES) {

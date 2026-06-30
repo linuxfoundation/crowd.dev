@@ -9,10 +9,17 @@
  *
  * All these repos expose the standard Maven repository layout, so the same
  * metadata.xml / POM fetch logic works — only the base URL changes.
+ *
+ * JitPack (io.github.*, com.github.*) is NOT listed here as a primary registry
+ * because many well-known artifacts under those prefixes are published on Maven
+ * Central (e.g. io.github.resilience4j, com.github.ben-manes:caffeine). Maven
+ * Central is tried first; JitPack is used only as a fallback when Central returns
+ * NOT_FOUND (see the enrichment loop).
  */
 
 export const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
 export const GRADLE_PLUGIN_PORTAL_BASE_URL = 'https://plugins.gradle.org/m2'
+export const JITPACK_BASE_URL = 'https://jitpack.io'
 
 interface RegistryEntry {
   prefix: string
@@ -100,21 +107,6 @@ const ALTERNATIVE_REGISTRIES: RegistryEntry[] = [
     baseUrl: GRADLE_PLUGIN_PORTAL_BASE_URL,
     pageUrl: (g, a) => `${GRADLE_PLUGIN_PORTAL_BASE_URL}/${g.replace(/\./g, '/')}/${a}/`,
   },
-  // JitPack builds and serves artifacts directly from GitHub/GitLab/Bitbucket source repos.
-  // The io.github.<username> and com.github.<username> groupId conventions are JitPack-specific
-  // and will never resolve on Maven Central.
-  {
-    prefix: 'io.github',
-    baseUrl: 'https://jitpack.io',
-    pageUrl: (g, a) =>
-      `https://jitpack.io/#${g.startsWith('io.github.') ? g.slice('io.github.'.length) : ''}/${a}`,
-  },
-  {
-    prefix: 'com.github',
-    baseUrl: 'https://jitpack.io',
-    pageUrl: (g, a) =>
-      `https://jitpack.io/#${g.startsWith('com.github.') ? g.slice('com.github.'.length) : ''}/${a}`,
-  },
   {
     prefix: 'com.cloudbees.plugins',
     baseUrl: 'https://repo.jenkins-ci.org/public',
@@ -183,6 +175,30 @@ export function isAlternativeRegistry(groupId: string): boolean {
 }
 
 /**
+ * Returns true for io.github.* and com.github.* groupIds — the JitPack namespace
+ * convention. Maven Central is tried first for these; JitPack is the fallback.
+ */
+export function isJitpackNamespace(groupId: string): boolean {
+  return (
+    groupId === 'io.github' ||
+    groupId.startsWith('io.github.') ||
+    groupId === 'com.github' ||
+    groupId.startsWith('com.github.')
+  )
+}
+
+/** Returns a human-browsable JitPack URL for an io.github.* or com.github.* artifact. */
+export function jitpackPageUrl(groupId: string, artifactId: string): string {
+  if (groupId.startsWith('io.github.')) {
+    return `${JITPACK_BASE_URL}/#${groupId.slice('io.github.'.length)}/${artifactId}`
+  }
+  if (groupId.startsWith('com.github.')) {
+    return `${JITPACK_BASE_URL}/#${groupId.slice('com.github.'.length)}/${artifactId}`
+  }
+  return `${JITPACK_BASE_URL}/#/${artifactId}`
+}
+
+/**
  * Returns a human-browsable URL for the given artifact in its authoritative registry.
  */
 export function resolveRegistryPageUrl(groupId: string, artifactId: string): string {
@@ -210,6 +226,9 @@ export function resolveRegistryPageUrlFromBase(
   }
   if (resolvedBaseUrl === GRADLE_PLUGIN_PORTAL_BASE_URL) {
     return `${GRADLE_PLUGIN_PORTAL_BASE_URL}/${groupId.replace(/\./g, '/')}/${artifactId}/`
+  }
+  if (resolvedBaseUrl === JITPACK_BASE_URL) {
+    return jitpackPageUrl(groupId, artifactId)
   }
   return resolveRegistryPageUrl(groupId, artifactId)
 }
