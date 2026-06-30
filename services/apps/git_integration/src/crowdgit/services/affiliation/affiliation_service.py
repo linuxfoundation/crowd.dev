@@ -101,7 +101,9 @@ class AffiliationService(BaseService):
         """Find repo paths whose basename matches a known affiliation filename."""
         glob_patterns = [f"**/{known_name}"]
         if not known_name.startswith("."):
-            glob_patterns.append(f"**/{known_name}.*")
+            for extension in self.TEXT_FILE_EXTENSIONS:
+                if extension:
+                    glob_patterns.append(f"**/{known_name}{extension}")
 
         glob_args = ["--glob", "!.git/"]
         for pattern in glob_patterns:
@@ -126,7 +128,7 @@ class AffiliationService(BaseService):
                 continue
             if line.startswith("./"):
                 line = line[2:]
-            if self.path_matches_known_name(line, known_name):
+            if self.path_matches_known_name(line, known_name) and self.is_text_file_path(line):
                 matches.append(line)
 
         return matches
@@ -315,7 +317,7 @@ class AffiliationService(BaseService):
                 return only_match, ai_cost
 
         if len(matches) > 1:
-            candidates = [path for path in matches if self.is_text_file_path(path)]
+            candidates = matches
             root_files_only = False
         else:
             candidates = await self.list_root_text_files(repo_path)
