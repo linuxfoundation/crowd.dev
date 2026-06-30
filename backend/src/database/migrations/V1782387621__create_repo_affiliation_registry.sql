@@ -1,7 +1,7 @@
 create table if not exists git."repoAffiliationRegistry" (
   "repoId"     uuid primary key references public.repositories(id) on delete cascade,
   "filePath"   text,
-  "fileSha"    text,
+  "fileHash"   text,
   "status"     text not null,
   "snapshot"   jsonb,
   "lastRunAt"  timestamptz,
