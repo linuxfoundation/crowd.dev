@@ -14,8 +14,6 @@ from crowdgit.database.crud import (
     find_many_member_ids_by_identities,
     find_many_organization_ids_by_identities,
     get_repo_affiliation_registry,
-    insert_member_organizations,
-    insert_member_segment_affiliations,
     save_service_execution,
     upsert_repo_affiliation_registry,
 )
@@ -82,7 +80,8 @@ class AffiliationService(BaseService):
             return safe_decode(await f.read())
 
     @staticmethod
-    def compute_file_sha(content: str) -> str:
+    def compute_file_hash(content: str) -> str:
+        """SHA-256 hex digest of UTF-8 file content (not a Git blob SHA)."""
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -163,9 +162,7 @@ class AffiliationService(BaseService):
 
         return sorted(files)
 
-    async def read_file_start_preview(
-        self, repo_path: str, relative_path: str
-    ) -> str | None:
+    async def read_file_start_preview(self, repo_path: str, relative_path: str) -> str | None:
         """Read a short preview of a candidate file for the discovery AI prompt."""
         full_path = os.path.join(repo_path, relative_path)
         if not await aiofiles.os.path.isfile(full_path):
@@ -185,9 +182,7 @@ class AffiliationService(BaseService):
             self.logger.debug(f"Could not read preview for {relative_path}: {repr(error)}")
             return None
 
-    async def format_candidates_with_previews(
-        self, repo_path: str, candidates: list[str]
-    ) -> str:
+    async def format_candidates_with_previews(self, repo_path: str, candidates: list[str]) -> str:
         blocks: list[str] = []
         for relative_path in candidates:
             preview = await self.read_file_start_preview(repo_path, relative_path)
@@ -285,9 +280,7 @@ class AffiliationService(BaseService):
                 f"Picking affiliation file with AI "
                 f"(batch {batch_index}/{total_batches}, {len(batch)} candidates)"
             )
-            candidates_with_previews = await self.format_candidates_with_previews(
-                repo_path, batch
-            )
+            candidates_with_previews = await self.format_candidates_with_previews(repo_path, batch)
             prompt = self.get_file_picker_prompt(
                 repo_url,
                 candidates_with_previews=candidates_with_previews,
@@ -475,9 +468,13 @@ class AffiliationService(BaseService):
                 pydantic_model=AffiliationParseOutput,
             )
 
-            if parse_result.output.affiliations:
-                raw_count = len(parse_result.output.affiliations)
-                normalized = self.normalize_parsed_affiliations(parse_result.output.affiliations)
+            affiliations = parse_result.output.affiliations
+            if affiliations is not None:
+                if not affiliations:
+                    raise AffiliationAnalysisError()
+
+                raw_count = len(affiliations)
+                normalized = self.normalize_parsed_affiliations(affiliations)
 
                 if not normalized:
                     raise AffiliationAnalysisError()
@@ -552,38 +549,31 @@ class AffiliationService(BaseService):
         registry: dict | None,
         file_path: str,
         content: str,
-        file_sha: str,
+        file_hash: str,
         repo_url: str = "",
     ) -> tuple[list[AffiliationInfoItem], float]:
         """
         Reuse the saved snapshot when the file is unchanged, otherwise re-parse.
         """
-        stored_sha = registry.get("file_sha") if registry else None
+        stored_hash = registry.get("file_hash") if registry else None
         existing_snapshot = registry.get("snapshot") if registry else None
         needs_parse = (
-            file_sha != stored_sha
-            or existing_snapshot is None
-            or not existing_snapshot
+            file_hash != stored_hash or existing_snapshot is None or not existing_snapshot
         )
 
         if not needs_parse:
-            if existing_snapshot:
-                applyable = self.normalize_parsed_affiliations(existing_snapshot)
+            applyable = self.normalize_parsed_affiliations(existing_snapshot)
 
-                if applyable:
-                    self.logger.debug("Using cached snapshot, file unchanged")
-                    return applyable, 0.0
+            if applyable:
+                self.logger.debug("Using cached snapshot, file unchanged")
+                return applyable, 0.0
 
-                self.logger.info("Cached snapshot had no usable rows, reparsing file")
-            else:
-                return existing_snapshot, 0.0
+            self.logger.info("Cached snapshot had no usable rows, reparsing file")
 
         affiliations, parse_cost = await self.parse_affiliations(file_path, content, repo_url)
         return affiliations, parse_cost
 
-    async def check_if_interval_elapsed(
-        self, registry: dict | None
-    ) -> tuple[bool, float]:
+    async def check_if_interval_elapsed(self, registry: dict | None) -> tuple[bool, float]:
         """
         Check whether enough time has passed since the last affiliation run.
 
@@ -696,7 +686,7 @@ class AffiliationService(BaseService):
         seen_pairs: set[tuple[str, str]] = set()
         skipped_unresolved = 0
 
-        for (member_idx, org_idx) in row_identity_refs:
+        for member_idx, org_idx in row_identity_refs:
             if member_idx is None or org_idx is None:
                 skipped_unresolved += 1
                 continue
@@ -739,9 +729,7 @@ class AffiliationService(BaseService):
             existing_msas = segment_affiliations_by_member.get(member_id, [])
 
             if not self.has_undated_affiliation_for_org(existing_mos, organization_id):
-                mo_inserts.append(
-                    {"member_id": member_id, "organization_id": organization_id}
-                )
+                mo_inserts.append({"member_id": member_id, "organization_id": organization_id})
 
             if self.has_undated_affiliation_for_org(existing_msas, organization_id):
                 continue
@@ -755,7 +743,7 @@ class AffiliationService(BaseService):
                 }
             )
 
-        # TODO: Enable CDP writes after testing is complete
+        # TODO: Enable CDP writes after testing (import insert_member_* from crud)
         # await insert_member_organizations(mo_inserts)
         # await insert_member_segment_affiliations(msa_inserts)
 
@@ -795,7 +783,7 @@ class AffiliationService(BaseService):
                 await upsert_repo_affiliation_registry(
                     repository.id,
                     file_path=None,
-                    file_sha=None,
+                    file_hash=None,
                     status=AffiliationRegistryStatus.NOT_FOUND.value,
                     snapshot=None,
                 )
@@ -803,13 +791,13 @@ class AffiliationService(BaseService):
 
             file_path_on_disk = os.path.join(batch_info.repo_path, latest_file_path)
             content = await self.read_text_file(file_path_on_disk)
-            file_sha = self.compute_file_sha(content)
+            file_hash = self.compute_file_hash(content)
 
             affiliations, parse_cost = await self.resolve_snapshot(
                 registry,
                 latest_file_path,
                 content,
-                file_sha,
+                file_hash,
                 repository.url,
             )
             ai_cost += parse_cost
@@ -819,14 +807,12 @@ class AffiliationService(BaseService):
             await upsert_repo_affiliation_registry(
                 repository.id,
                 file_path=latest_file_path,
-                file_sha=file_sha,
+                file_hash=file_hash,
                 status=AffiliationRegistryStatus.SUCCESS.value,
                 snapshot=affiliations,
             )
 
-            self.logger.info(
-                f"Finished with {len(affiliations)} rows from {latest_file_path}"
-            )
+            self.logger.info(f"Finished with {len(affiliations)} rows from {latest_file_path}")
 
         except AffiliationIntervalNotElapsedError as e:
             execution_status = ExecutionStatus.FAILURE
@@ -847,7 +833,7 @@ class AffiliationService(BaseService):
             await upsert_repo_affiliation_registry(
                 repository.id,
                 file_path=latest_file_path,
-                file_sha=None,
+                file_hash=None,
                 status=AffiliationRegistryStatus.ERROR.value,
                 snapshot=registry.get("snapshot") if registry else None,
             )
