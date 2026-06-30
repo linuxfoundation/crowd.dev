@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 
 from loguru import logger
+from pydantic import TypeAdapter
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from crowdgit.enums import RepositoryPriority, RepositoryState
 from crowdgit.errors import RepoLockingError
+from crowdgit.models.affiliation_info import AffiliationInfoItem
 from crowdgit.models.repository import Repository
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.settings import (
@@ -552,3 +554,284 @@ async def save_service_execution(service_execution: ServiceExecution) -> None:
             f"error: {e}"
         )
         # Do not re-raise - we don't want metrics saving to disrupt main operations
+
+
+_AFFILIATION_SNAPSHOT_ADAPTER = TypeAdapter(list[AffiliationInfoItem])
+
+
+def parse_affiliation_snapshot(snapshot) -> list[AffiliationInfoItem]:
+    if isinstance(snapshot, dict) and "affiliations" in snapshot:
+        snapshot = snapshot["affiliations"]
+    return _AFFILIATION_SNAPSHOT_ADAPTER.validate_python(snapshot)
+
+
+def dump_affiliation_snapshot(affiliations: list[AffiliationInfoItem]) -> list[dict]:
+    return [item.model_dump() for item in affiliations]
+
+
+async def get_repo_affiliation_registry(repo_id: str):
+    sql_query = """
+        SELECT "filePath", "fileSha", "status", "snapshot", "lastRunAt"
+        FROM git."repoAffiliationRegistry"
+        WHERE "repoId" = $1
+    """
+    result = await fetchrow(sql_query, (repo_id,))
+    if not result:
+        return None
+
+    row = dict(result)
+    snapshot = row.get("snapshot")
+    if snapshot is not None:
+        snapshot = parse_affiliation_snapshot(snapshot)
+
+    return {
+        "file_path": row.get("filePath"),
+        "file_sha": row.get("fileSha"),
+        "status": row.get("status"),
+        "snapshot": snapshot,
+        "last_run_at": row.get("lastRunAt"),
+    }
+
+
+async def upsert_repo_affiliation_registry(
+    repo_id: str,
+    *,
+    file_path: str | None,
+    file_sha: str | None,
+    status: str,
+    snapshot: list[AffiliationInfoItem] | None,
+) -> None:
+    snapshot_json = dump_affiliation_snapshot(snapshot) if snapshot is not None else None
+    sql_query = """
+        INSERT INTO git."repoAffiliationRegistry" (
+            "repoId", "filePath", "fileSha", "status", "snapshot", "lastRunAt", "updatedAt"
+        )
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+        ON CONFLICT ("repoId") DO UPDATE SET
+            "filePath" = EXCLUDED."filePath",
+            "fileSha" = EXCLUDED."fileSha",
+            "status" = EXCLUDED."status",
+            "snapshot" = EXCLUDED."snapshot",
+            "lastRunAt" = NOW(),
+            "updatedAt" = NOW()
+    """
+    await execute(
+        sql_query,
+        (repo_id, file_path, file_sha, status, snapshot_json),
+    )
+
+
+async def find_many_member_ids_by_identities(identities: list[dict]) -> list[dict]:
+    if not identities:
+        return []
+
+    values_parts: list[str] = []
+    params: list[str | bool | int] = []
+    param_index = 1
+    for idx, identity in enumerate(identities):
+        values_parts.append(
+            f"(${param_index}, ${param_index + 1}, ${param_index + 2}, ${param_index + 3}, ${param_index + 4})"
+        )
+        params.extend(
+            [
+                idx,
+                identity["type"],
+                identity.get("verified", True),
+                identity.get("platform"),
+                identity["value"],
+            ]
+        )
+        param_index += 5
+
+    matches_by_idx: dict[int, set[str]] = {}
+    rows = await query(
+        f"""
+        WITH input_identities (idx, identity_type, verified, platform, value) AS (
+            VALUES {", ".join(values_parts)}
+        )
+        SELECT i.idx, mi."memberId"
+        FROM input_identities i
+        LEFT JOIN "memberIdentities" mi
+            ON mi.type = i.identity_type
+            AND mi.verified = i.verified
+            AND lower(mi.value) = lower(i.value)
+            AND (i.platform IS NULL OR mi.platform = i.platform)
+            AND mi."deletedAt" IS NULL
+        ORDER BY i.idx
+        """,
+        tuple(params),
+    )
+    for row in rows:
+        if row["memberId"] is None:
+            continue
+        matches_by_idx.setdefault(row["idx"], set()).add(str(row["memberId"]))
+
+    results: list[dict] = []
+    for idx, identity in enumerate(identities):
+        member_ids = matches_by_idx.get(idx, set())
+        member_id = next(iter(member_ids)) if len(member_ids) == 1 else None
+        results.append(
+            {
+                "type": identity["type"],
+                "platform": identity.get("platform"),
+                "value": identity["value"],
+                "verified": identity.get("verified", True),
+                "member_id": member_id,
+            }
+        )
+
+    return results
+
+
+async def find_many_organization_ids_by_identities(identities: list[dict]) -> list[dict]:
+    if not identities:
+        return []
+
+    values_parts: list[str] = []
+    params: list[str | bool | int] = []
+    param_index = 1
+    for idx, identity in enumerate(identities):
+        values_parts.append(f"(${param_index}, ${param_index + 1}, ${param_index + 2}, ${param_index + 3})")
+        params.extend(
+            [
+                idx,
+                identity["type"],
+                identity.get("verified", True),
+                identity["value"],
+            ]
+        )
+        param_index += 4
+
+    matches_by_idx: dict[int, set[str]] = {}
+    rows = await query(
+        f"""
+        WITH input_identities (idx, identity_type, verified, value) AS (
+            VALUES {", ".join(values_parts)}
+        )
+        SELECT i.idx, oi."organizationId"
+        FROM input_identities i
+        LEFT JOIN "organizationIdentities" oi
+            ON oi.type = i.identity_type
+            AND oi.verified = i.verified
+            AND lower(oi.value) = lower(i.value)
+        ORDER BY i.idx
+        """,
+        tuple(params),
+    )
+    for row in rows:
+        if row["organizationId"] is None:
+            continue
+        matches_by_idx.setdefault(row["idx"], set()).add(str(row["organizationId"]))
+
+    results: list[dict] = []
+    for idx, identity in enumerate(identities):
+        organization_ids = matches_by_idx.get(idx, set())
+        organization_id = next(iter(organization_ids)) if len(organization_ids) == 1 else None
+        results.append(
+            {
+                "type": identity["type"],
+                "value": identity["value"],
+                "verified": identity.get("verified", True),
+                "organization_id": organization_id,
+            }
+        )
+
+    return results
+
+
+async def fetch_member_organizations(member_ids: list[str]) -> list[dict]:
+    if not member_ids:
+        return []
+
+    return await query(
+        """
+        SELECT "memberId", "organizationId", "dateStart", "dateEnd", source
+        FROM "memberOrganizations"
+        WHERE "memberId" = ANY($1::uuid[])
+            AND "deletedAt" IS NULL
+        """,
+        (member_ids,),
+    )
+
+
+async def fetch_segment_affiliations(member_ids: list[str], segment_id: str) -> list[dict]:
+    """MSA rows are per segment — filter by segment_id so guards match this repo's project."""
+    if not member_ids:
+        return []
+
+    return await query(
+        """
+        SELECT "memberId", "segmentId", "organizationId", "dateStart", "dateEnd", verified
+        FROM "memberSegmentAffiliations"
+        WHERE "memberId" = ANY($1::uuid[])
+            AND "segmentId" = $2::uuid
+            AND "deletedAt" IS NULL
+            AND "organizationId" IS NOT NULL
+        """,
+        (member_ids, segment_id),
+    )
+
+
+async def insert_member_organizations(rows: list[dict]) -> int:
+    if not rows:
+        return 0
+
+    sql_query = """
+        INSERT INTO "memberOrganizations"(
+            "memberId",
+            "organizationId",
+            "dateStart",
+            "dateEnd",
+            "title",
+            source,
+            verified,
+            "createdAt",
+            "updatedAt"
+        )
+        VALUES ($1, $2, NULL, NULL, NULL, $3, false, NOW(), NOW())
+        ON CONFLICT ("memberId", "organizationId", "dateStart", "dateEnd") DO NOTHING
+    """
+    await executemany(
+        sql_query,
+        [
+            (
+                row["member_id"],
+                row["organization_id"],
+                row.get("source", "project-registry"),
+            )
+            for row in rows
+        ],
+    )
+    return len(rows)
+
+
+async def insert_member_segment_affiliations(rows: list[dict]) -> int:
+    if not rows:
+        return 0
+
+    sql_query = """
+        INSERT INTO "memberSegmentAffiliations"(
+            id,
+            "memberId",
+            "segmentId",
+            "organizationId",
+            "dateStart",
+            "dateEnd",
+            verified
+        )
+        VALUES (gen_random_uuid(), $1, $2, $3, NULL, NULL, $4)
+    """
+    await executemany(
+        sql_query,
+        [
+            (
+                row["member_id"],
+                row["segment_id"],
+                row["organization_id"],
+                row.get("verified", False),
+            )
+            for row in rows
+        ],
+    )
+    return len(rows)
+
