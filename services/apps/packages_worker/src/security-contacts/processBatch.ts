@@ -56,7 +56,7 @@ async function fetchBatch(qx: QueryExecutor, config: Config): Promise<SweepRow[]
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-    WHERE r.host = 'github'
+    WHERE r.host IN ('github', 'github.com')
       AND (
         r.contacts_last_refreshed IS NULL
         OR r.contacts_last_refreshed < NOW() - INTERVAL '$(updateIntervalHours) hours'
