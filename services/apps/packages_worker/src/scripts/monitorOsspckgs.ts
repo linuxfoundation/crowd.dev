@@ -710,8 +710,10 @@ function updateChunkHistory(job: any, now: number) {
 }
 
 // ETA to finish merging the current staging chunk.
-// Uses historical merge rate from completed chunks when available; falls back to overall job
-// throughput (includes loading time, so slightly conservative) when none observed yet.
+// Uses historical merge rate from completed chunks only. With no chunk history yet
+// (e.g. monitor started mid-merge) there is no trustworthy throughput signal — pgRows/elapsed
+// is diluted by the export+download phases where pgRows is ~0 and mis-projects by ~30x — so we
+// show "—" until a chunk boundary is observed rather than print a wildly wrong number.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeChunkEta(job: any) {
   if (job.status !== 'merging') return null
@@ -719,29 +721,20 @@ function computeChunkEta(job: any) {
   if (!stagingRows) return null
   const hist = chunkMergeHistory.get(job.id)
   if (!hist || hist.mergeStart == null) return null
+  if (hist.completedChunks.length === 0) return null
 
-  let rateRowsPerMs: number
-  if (hist.completedChunks.length > 0) {
-    // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
-    // Most recent chunk contributes ~50% of the rate; history stabilises it.
-    const chunks = hist.completedChunks
-    let weightedRate = 0,
-      totalWeight = 0
-    for (let i = 0; i < chunks.length; i++) {
-      const w = Math.pow(2, i)
-      weightedRate += (chunks[i].stagingRows / chunks[i].durationMs) * w
-      totalWeight += w
-    }
-    if (totalWeight === 0) return null
-    rateRowsPerMs = weightedRate / totalWeight
-  } else {
-    // No completed chunks observed — derive rate from overall job progress (conservative: includes loading)
-    const pgRows = Number(job.row_count_pg) || 0
-    if (!pgRows || !job.started_at) return null
-    const jobElapsedMs = Date.now() - new Date(job.started_at).getTime()
-    if (jobElapsedMs < 10000) return null
-    rateRowsPerMs = pgRows / jobElapsedMs
+  // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
+  // Most recent chunk contributes ~50% of the rate; history stabilises it.
+  const chunks = hist.completedChunks
+  let weightedRate = 0,
+    totalWeight = 0
+  for (let i = 0; i < chunks.length; i++) {
+    const w = Math.pow(2, i)
+    weightedRate += (chunks[i].stagingRows / chunks[i].durationMs) * w
+    totalWeight += w
   }
+  if (totalWeight === 0) return null
+  const rateRowsPerMs = weightedRate / totalWeight
 
   const estimatedDurationMs = stagingRows / rateRowsPerMs
   const elapsedMs = Date.now() - hist.mergeStart
