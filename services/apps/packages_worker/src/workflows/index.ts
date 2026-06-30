@@ -6,7 +6,6 @@ export {
 } from '../npm/workflows'
 export {
   bootstrapOsspckgs,
-  cleanupOsspckgs,
   ingestPackages,
   ingestVersions,
   ingestRepos,
@@ -20,3 +19,4 @@ export { ingestScorecard } from '../scorecard/workflows'
 export { rankPackagesWorkflow } from '../criticality/workflow'
 export { cargoSyncWorkflow } from '../cargo/workflows'
 export { enrichGoVersions, enrichGoStatus } from '../go/workflows'
+export { ingestNuGetPackages } from '../nuget/workflows'

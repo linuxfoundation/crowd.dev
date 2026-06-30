@@ -50,51 +50,60 @@ export async function mergeStagingToTable(input: MergeStagingInput): Promise<Mer
   const qx = await getPackagesDb()
 
   await markJobStatus(qx, jobId, 'merging')
+  // Row is 'merging' from here; a merge failure must flip it to 'failed' with the reason rather
+  // than leave it stuck 'merging'. Mirrors the rankPackages pattern (criticality/activities).
+  try {
+    let rowsAffected = 0
+    const tableRowCounts: Record<string, number> = {}
 
-  let rowsAffected = 0
-  const tableRowCounts: Record<string, number> = {}
-
-  await qx.tx(async (tx) => {
-    for (const sql of prepareStatements) {
-      await tx.result(sql)
-    }
-    for (let i = 0; i < statements.length; i++) {
-      const count = await tx.result(statements[i])
-      rowsAffected += count
-      const table = names[i] ?? `table_${i}`
-      tableRowCounts[table] = (tableRowCounts[table] ?? 0) + count
-    }
-  })
-
-  if (chunkInfo) {
-    log.info(
-      { jobId, rowsAffected, tableRowCounts, chunk: `${chunkInfo.index + 1}/${chunkInfo.total}` },
-      'Chunk merge complete',
-    )
-  }
-
-  if (!isFinal) {
-    await markJobStatus(qx, jobId, 'merging', {
-      rowCountPg: priorRowsAffected + rowsAffected,
+    await qx.tx(async (tx) => {
+      for (const sql of prepareStatements) {
+        await tx.result(sql)
+      }
+      for (let i = 0; i < statements.length; i++) {
+        const count = await tx.result(statements[i])
+        rowsAffected += count
+        const table = names[i] ?? `table_${i}`
+        tableRowCounts[table] = (tableRowCounts[table] ?? 0) + count
+      }
     })
-  }
 
-  if (isFinal) {
-    const totalRowsAffected = priorRowsAffected + rowsAffected
-    const totalTableRowCounts: Record<string, number> = { ...priorTableRowCounts }
-    for (const [table, count] of Object.entries(tableRowCounts)) {
-      totalTableRowCounts[table] = (totalTableRowCounts[table] ?? 0) + count
+    if (chunkInfo) {
+      log.info(
+        { jobId, rowsAffected, tableRowCounts, chunk: `${chunkInfo.index + 1}/${chunkInfo.total}` },
+        'Chunk merge complete',
+      )
     }
-    await markJobStatus(qx, jobId, 'done', {
+
+    if (!isFinal) {
+      await markJobStatus(qx, jobId, 'merging', {
+        rowCountPg: priorRowsAffected + rowsAffected,
+      })
+    }
+
+    if (isFinal) {
+      const totalRowsAffected = priorRowsAffected + rowsAffected
+      const totalTableRowCounts: Record<string, number> = { ...priorTableRowCounts }
+      for (const [table, count] of Object.entries(tableRowCounts)) {
+        totalTableRowCounts[table] = (totalTableRowCounts[table] ?? 0) + count
+      }
+      await markJobStatus(qx, jobId, 'done', {
+        finishedAt: new Date(),
+        rowCountPg: totalRowsAffected,
+        tableRowCounts: totalTableRowCounts,
+      })
+      log.info(
+        { jobId, rowsAffected: totalRowsAffected, tableRowCounts: totalTableRowCounts },
+        'Merge complete',
+      )
+    }
+
+    return { rowsAffected, tableRowCounts }
+  } catch (err) {
+    await markJobStatus(qx, jobId, 'failed', {
+      errorMessage: err instanceof Error ? err.message : String(err),
       finishedAt: new Date(),
-      rowCountPg: totalRowsAffected,
-      tableRowCounts: totalTableRowCounts,
     })
-    log.info(
-      { jobId, rowsAffected: totalRowsAffected, tableRowCounts: totalTableRowCounts },
-      'Merge complete',
-    )
+    throw err
   }
-
-  return { rowsAffected, tableRowCounts }
 }

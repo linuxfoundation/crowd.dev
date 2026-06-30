@@ -204,7 +204,7 @@ SQL >
         ) AS vulnerabilities30d
     FROM vulnerabilities v FINAL
     JOIN repositories r FINAL ON v.repoUrl = r.url
-    WHERE v.repoUrl IN (SELECT url FROM ai_repos)
+    WHERE v.repoUrl IN (SELECT url FROM ai_repos) AND r.archived = false
     GROUP BY r.insightsProjectId
 
 NODE final_join

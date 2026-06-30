@@ -50,7 +50,7 @@ import {
   includeMemberToSegments,
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
-import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { optionsBgQx, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   fetchManySegments,
   getSegmentMergeSuggestionCounts,
@@ -1259,7 +1259,7 @@ class MemberRepository {
     let memberResponse = null
 
     const qx = optionsQx(options)
-    const bgQx = optionsQx({ ...options, transaction: null })
+    const bgQx = optionsBgQx(options)
 
     memberResponse = await queryMembersAdvanced(qx, bgQx, options.redis, {
       filter: { id: { eq: id } },
