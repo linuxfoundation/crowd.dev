@@ -33,9 +33,12 @@ type JobKind =
   | 'advisories'
   | 'advisory_packages'
   | 'dependent_counts'
+  | 'dependent_counts_go'
+  | 'dependent_counts_nuget'
 
 // deps.dev retains weekly snapshots for ~3 years; 1095 days (3 years) gives comfortable headroom.
 // advisories/advisory_packages use AdvisoriesLatest (no partition history) → effectively unlimited.
+// dependent_counts_go/_nuget read *RequirementsLatest (no partition history) → effectively unlimited.
 const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   packages: 1095,
   repos: 1095,
@@ -45,6 +48,8 @@ const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   advisories: 999_999,
   advisory_packages: 999_999,
   dependent_counts: 1095,
+  dependent_counts_go: 999_999,
+  dependent_counts_nuget: 999_999,
 }
 
 // Kinds whose incremental diff is driven by a BQ partition snapshot date.
@@ -182,6 +187,39 @@ export async function bootstrapOsspckgs(opts: {
       }
     }
   }
+  // GO/NUGET reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
+  // NuGetRequirementsLatest), computed via the exact reverse transitive closure script. The manifests
+  // are *Latest views (no resolution needed); `today` is the snapshot_at stamp AND the anchor for the
+  // dependent_repos partition window (latest PackageVersionToProject snapshot within 60 days). Each
+  // guards against its own history and merges a disjoint purl space, so an edge-snapshot corruption
+  // that aborts `dependent_counts` never blocks these.
+  for (const variant of ['go', 'nuget'] as const) {
+    const kind = `dependent_counts_${variant}` as const
+    if (!runs(kind)) continue
+    try {
+      await executeChild(ingestDependentCounts, {
+        args: [
+          {
+            runId,
+            // Honor --snapshot-date like the partition kinds do (snap()). The closure reads *Latest
+            // manifests regardless, but anchors the dependent_repos 60-day window on this date, so a
+            // recovery run with an override must use it for a consistent window.
+            snapshotDate: opts.snapshotDate ?? today,
+            variant,
+            reuseExports: opts.reuseExports,
+            exportName: opts.exportName,
+          },
+        ],
+        workflowId: `${runId}-${kind}`,
+      })
+    } catch (err) {
+      // Soft-fail only on the row-count guard, mirroring the edge dependent_counts handling above.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'DEPENDENT_COUNTS_GUARD') {
+        throw err
+      }
+    }
+  }
   if (runs('repos') || runs('package_repos')) {
     await executeChild(ingestRepos, {
       args: [
@@ -211,21 +249,33 @@ export async function bootstrapOsspckgs(opts: {
     })
   }
   if (runs('package_dependencies')) {
-    await executeChild(ingestDependencies, {
-      args: [
-        {
-          runId,
-          syncMode: opts.mode,
-          today: snap('package_dependencies'),
-          watermark: wm('package_dependencies'),
-          ecosystems: opts.ecosystems,
-          reuseExports: opts.reuseExports,
-          depsTableOption: opts.depsTableOption,
-          exportName: opts.exportName,
-          fillConstraints: opts.fillConstraints,
-        },
-      ],
-    })
+    try {
+      await executeChild(ingestDependencies, {
+        args: [
+          {
+            runId,
+            syncMode: opts.mode,
+            today: snap('package_dependencies'),
+            watermark: wm('package_dependencies'),
+            ecosystems: opts.ecosystems,
+            reuseExports: opts.reuseExports,
+            depsTableOption: opts.depsTableOption,
+            exportName: opts.exportName,
+            fillConstraints: opts.fillConstraints,
+          },
+        ],
+      })
+    } catch (err) {
+      // Only soft-fail on the edge-snapshot quality guard (corrupt deps.dev resolved-graph
+      // snapshot). Skipping leaves existing package_dependencies untouched and lets the rest
+      // of the bootstrap proceed; the next healthy snapshot ingests naturally. Mirror the
+      // dependent_counts guard: unwrap the ChildWorkflowFailure to inspect the cause; all
+      // other errors propagate.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'EDGE_SNAPSHOT_GUARD') {
+        throw err
+      }
+    }
   }
   if (runs('advisories') || runs('advisory_packages')) {
     await executeChild(ingestAdvisories, {

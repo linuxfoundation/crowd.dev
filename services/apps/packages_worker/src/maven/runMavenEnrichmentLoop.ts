@@ -19,8 +19,11 @@ import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
 import {
+  GRADLE_PLUGIN_PORTAL_BASE_URL,
+  JITPACK_BASE_URL,
   MAVEN_CENTRAL_BASE_URL,
   isAlternativeRegistry,
+  isJitpackNamespace,
   resolveRegistryBaseUrl,
   resolveRegistryPageUrl,
   resolveRegistryPageUrlFromBase,
@@ -138,6 +141,32 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
       log.info({ groupId, artifactId }, 'Not found in primary registry — resolved via Maven Central fallback')
       baseUrl = centralUrl
       metadata = centralMetadata
+    }
+  }
+
+  // Second fallback: JitPack for io.github.* / com.github.* packages not found on
+  // Maven Central. These namespaces are also used by well-known Central artifacts
+  // (e.g. resilience4j, caffeine), so Central is tried first; JitPack is the fallback
+  // for packages that genuinely live only on JitPack.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isJitpackNamespace(groupId)) {
+    const jitpackMetadata = await resolveVersionsList(groupId, artifactId, JITPACK_BASE_URL)
+    if (!isMavenFetchError(jitpackMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found on Maven Central — resolved via JitPack fallback')
+      baseUrl = JITPACK_BASE_URL
+      metadata = jitpackMetadata
+    }
+  }
+
+  // Third fallback: Gradle Plugin Portal. Plugins can be published under any groupId
+  // (not just gradle.plugin.*), so this is worth trying for all NOT_FOUND packages.
+  // Skip when GPP is already the primary registry (gradle.plugin.*) to avoid a
+  // redundant second call to the same URL.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && baseUrl !== GRADLE_PLUGIN_PORTAL_BASE_URL) {
+    const gradlePortalMetadata = await resolveVersionsList(groupId, artifactId, GRADLE_PLUGIN_PORTAL_BASE_URL)
+    if (!isMavenFetchError(gradlePortalMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary/Central — resolved via Gradle Plugin Portal fallback')
+      baseUrl = GRADLE_PLUGIN_PORTAL_BASE_URL
+      metadata = gradlePortalMetadata
     }
   }
 

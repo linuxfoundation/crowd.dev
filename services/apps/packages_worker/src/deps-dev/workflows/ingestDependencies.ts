@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { ApplicationFailure, proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
 import {
@@ -51,6 +51,11 @@ const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActiv
 
 const { setJobStep } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
+const { checkEdgeSnapshotQuality } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '5 minutes',
   retry: { maximumAttempts: 3 },
 })
 
@@ -219,19 +224,52 @@ export async function ingestDependencies(opts: {
   const isFill = opts.fillConstraints === true
   // Fill mode forces Option A — Option B selects NULL for version_constraint, making the fill a no-op.
   const tableOption = isFill ? 'A' : (opts.depsTableOption ?? 'A')
+  // Full/fill scan the *Latest views; incremental reads the `today` partition. Drives both the SQL
+  // source below and which source the guard probes — they must match.
+  const fullScan = opts.syncMode === 'full' || isFill
+
+  // Guard against corrupt deps.dev resolved-graph snapshots BEFORE the (multi-hour) export.
+  // Skip when reusing a prior export — we're re-importing already-validated parquet, not
+  // scanning the live snapshot. Both full (*Latest = newest snapshot) and incremental can hit
+  // a bad snapshot, so the guard runs for both. Probes only resolved-graph ecosystems; a clean
+  // GO/NUGET-only run finds no canaries and passes through.
+  //
+  // Option A only: the guard's canary ratios are DependencyGraphEdges-schema-specific. Option B
+  // ingests the separate Dependencies/DependenciesLatest table, which the 2026-06 corruption was
+  // never observed in and has no calibrated baseline — probing Edges there would "validate" a table
+  // we don't ingest (false confidence) and could abort a healthy Option B run when only Edges is bad.
+  // Option B is a manual, non-scheduled cost-experiment path (--deps-table-b); leave it unguarded by
+  // design rather than invent a guard for an unproven threat. Option A is the production default.
+  if (!opts.reuseExports && tableOption === 'A') {
+    const guard = await checkEdgeSnapshotQuality({ snapshotDate: opts.today, ecosystems, fullScan })
+    if (!guard.ok) {
+      throw ApplicationFailure.nonRetryable(
+        `edge snapshot quality guard failed for ${opts.today}: ${guard.reason}. ` +
+          `Slack alert sent. Aborting before export to preserve existing package_dependencies and compute.`,
+        'EDGE_SNAPSHOT_GUARD',
+      )
+    }
+  }
   // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
-  const sql =
-    opts.syncMode === 'full' || isFill
-      ? buildDepsFullSql(ecosystems, tableOption)
-      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
+  const sql = fullScan
+    ? buildDepsFullSql(ecosystems, tableOption)
+    : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
 
   const exportResult = await bqExportToGcs({
     jobKind: 'package_dependencies',
     sql,
     runId: opts.runId,
-    syncMode: opts.syncMode,
+    // Report the PHYSICAL scan mode, not the requested one. A fill run (fillConstraints) forces a
+    // full *Latest scan even when opts.syncMode is 'incremental'; passing the raw mode would record
+    // the job as incremental and make bqExportToGcs pick the INCREMENTAL byte-ceiling env override
+    // for a query that's actually full. fullScan already gates the SQL + maxBytesGb below.
+    syncMode: fullScan ? 'full' : opts.syncMode,
     snapshotAt: opts.today,
-    maxBytesGb: opts.syncMode === 'full' || isFill ? 25000 : 10000,
+    // Full/fill scan the *Latest views (everything) → 25000. Incremental is a snapshot edge-diff
+    // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements);
+    // measured ~4.1TB for Option A. 10000 leaves ~2.4x headroom and still trips a runaway full-table
+    // scan. Overridable via BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
+    maxBytesGb: fullScan ? 25000 : 10000,
     reuseExports: opts.reuseExports,
     exportName: opts.exportName,
     ecosystems,

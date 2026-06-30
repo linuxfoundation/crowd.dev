@@ -11,6 +11,8 @@ const VALID_KINDS = [
   'advisories',
   'advisory_packages',
   'dependent_counts',
+  'dependent_counts_go',
+  'dependent_counts_nuget',
   'scorecard',
 ] as const
 
@@ -27,6 +29,8 @@ Options:
                            ${VALID_KINDS.join(', ')}
                          "repos" and "package_repos" always run together (one workflow).
                          "advisories" and "advisory_packages" always run together (one workflow).
+                         "dependent_counts" = edges (NPM/MAVEN/PYPI/CARGO) only; GO and NUGET
+                         reverse counts run as "dependent_counts_go" / "dependent_counts_nuget".
   --snapshot-date DATE   Override BQ snapshot resolution for all partition-filtered kinds.
                          Use YYYY-MM-DD. Skips resolveSnapshotDate BQ call and uses this date
                          directly. Useful for re-running with a known-good older snapshot.
