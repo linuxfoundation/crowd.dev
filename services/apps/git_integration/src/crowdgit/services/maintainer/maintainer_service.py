@@ -972,7 +972,9 @@ class MaintainerService(BaseService):
         # extracted github_username values, so we must narrow to platform='github'/type='username'.
         parent_github_usernames = await get_github_maintainer_usernames_for_repo(parent_repo.id)
         if not parent_github_usernames:
-            self.logger.info(f"No github-username maintainers found for parent repo {parent_repo.url}")
+            self.logger.info(
+                f"No github-username maintainers found for parent repo {parent_repo.url}"
+            )
             return extracted_maintainers
 
         fork_only_maintainers = [
