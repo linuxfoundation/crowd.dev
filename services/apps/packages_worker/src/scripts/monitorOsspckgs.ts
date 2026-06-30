@@ -755,34 +755,30 @@ function computeChunkEta(job: any) {
 }
 
 // ETA for the entire job (all remaining files + merges).
-// Uses job.started_at so rate includes both loading and merging time naturally.
+// Driven by file progress, not pgRows-vs-bqRows: pgRows is the merged delta and
+// converges to staging size (after dedup), never to the raw BQ scan count — so a
+// bqRows target overstates remaining work, and a pgRows/total-elapsed rate is diluted
+// by the export+download+staging phases where pgRows is still 0. Files are the unit
+// that actually advances, and elapsed already amortizes every per-file phase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeTotalEta(job: any) {
   if (!['loading', 'merging'].includes(job.status)) return null
-  const pgRows = Number(job.row_count_pg) || 0
   const trc = job.table_row_counts ?? {}
   const filesDone = Number(trc['progress:done']) || 0
   const filesTotal = Number(trc['progress:total']) || 0
-  const stagingRows = Number(job.row_count_staging) || 0
-  if (!filesDone || !filesTotal || !pgRows || !job.started_at) return null
-  const bqRows = Number(job.row_count_bq) || 0
-  const rowsPerFile =
-    bqRows > 0 && filesTotal > 0
-      ? bqRows / filesTotal
-      : stagingRows > 0
-        ? stagingRows / filesDone
-        : 0
-  if (!rowsPerFile) return null
-  const estimatedTotal = bqRows > 0 ? bqRows : rowsPerFile * filesTotal
-  if (pgRows >= estimatedTotal) return null
+  if (!filesDone || !filesTotal || !job.started_at) return null
+  if (filesDone >= filesTotal) return null
   const elapsedMs = Date.now() - new Date(job.started_at).getTime()
-  if (elapsedMs < 10000 || pgRows < 1000) return null
-  const ratePerMs = pgRows / elapsedMs
-  if (ratePerMs <= 0) return null
+  if (elapsedMs < 10000) return null
+  const msPerFile = elapsedMs / filesDone
+  const remainingMs = msPerFile * (filesTotal - filesDone)
+  if (remainingMs <= 0) return null
+  // Throughput display: staging rows landed per minute over the whole job.
+  const stagingRows = Number(job.row_count_staging) || 0
   return {
-    ms: (estimatedTotal - pgRows) / ratePerMs,
-    ratio: Math.min(pgRows / estimatedTotal, 1),
-    ratePerMin: ratePerMs * 60000,
+    ms: remainingMs,
+    ratio: filesDone / filesTotal,
+    ratePerMin: stagingRows > 0 ? (stagingRows / elapsedMs) * 60000 : 0,
   }
 }
 
