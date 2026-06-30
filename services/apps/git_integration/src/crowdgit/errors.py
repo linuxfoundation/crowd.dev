@@ -108,7 +108,7 @@ class MaintainerIntervalNotElapsedError(CrowdGitError):
 class AffiliationFileNotFoundError(CrowdGitError):
     error_message: str = "No affiliation file found in this repository"
     error_code: ErrorCode = ErrorCode.NO_AFFILIATION_FILE
-    ai_cost: int = 0
+    ai_cost: float = 0.0
 
 
 @dataclass
@@ -121,7 +121,7 @@ class AffiliationAnalysisError(CrowdGitError):
 class AffiliationIntervalNotElapsedError(CrowdGitError):
     error_message: str = "Too soon since the last affiliation run"
     error_code: ErrorCode = ErrorCode.AFFILIATION_INTERVAL_NOT_ELAPSED
-    ai_cost: int = 0
+    ai_cost: float = 0.0
 
 
 @dataclass

@@ -543,7 +543,7 @@ def dump_affiliation_snapshot(affiliations: list[AffiliationInfoItem]) -> list[d
 
 async def get_repo_affiliation_registry(repo_id: str):
     sql_query = """
-        SELECT "filePath", "fileSha", "status", "snapshot", "lastRunAt"
+        SELECT "filePath", "fileHash", "status", "snapshot", "lastRunAt"
         FROM git."repoAffiliationRegistry"
         WHERE "repoId" = $1
     """
@@ -558,7 +558,7 @@ async def get_repo_affiliation_registry(repo_id: str):
 
     return {
         "file_path": row.get("filePath"),
-        "file_sha": row.get("fileSha"),
+        "file_hash": row.get("fileHash"),
         "status": row.get("status"),
         "snapshot": snapshot,
         "last_run_at": row.get("lastRunAt"),
@@ -569,19 +569,19 @@ async def upsert_repo_affiliation_registry(
     repo_id: str,
     *,
     file_path: str | None,
-    file_sha: str | None,
+    file_hash: str | None,
     status: str,
     snapshot: list[AffiliationInfoItem] | None,
 ) -> None:
     snapshot_json = dump_affiliation_snapshot(snapshot) if snapshot is not None else None
     sql_query = """
         INSERT INTO git."repoAffiliationRegistry" (
-            "repoId", "filePath", "fileSha", "status", "snapshot", "lastRunAt", "updatedAt"
+            "repoId", "filePath", "fileHash", "status", "snapshot", "lastRunAt", "updatedAt"
         )
         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
         ON CONFLICT ("repoId") DO UPDATE SET
             "filePath" = EXCLUDED."filePath",
-            "fileSha" = EXCLUDED."fileSha",
+            "fileHash" = EXCLUDED."fileHash",
             "status" = EXCLUDED."status",
             "snapshot" = EXCLUDED."snapshot",
             "lastRunAt" = NOW(),
@@ -589,7 +589,7 @@ async def upsert_repo_affiliation_registry(
     """
     await execute(
         sql_query,
-        (repo_id, file_path, file_sha, status, snapshot_json),
+        (repo_id, file_path, file_hash, status, snapshot_json),
     )
 
 
@@ -663,7 +663,9 @@ async def find_many_organization_ids_by_identities(identities: list[dict]) -> li
     params: list[str | bool | int] = []
     param_index = 1
     for idx, identity in enumerate(identities):
-        values_parts.append(f"(${param_index}, ${param_index + 1}, ${param_index + 2}, ${param_index + 3})")
+        values_parts.append(
+            f"(${param_index}, ${param_index + 1}, ${param_index + 2}, ${param_index + 3})"
+        )
         params.extend(
             [
                 idx,
@@ -806,4 +808,3 @@ async def insert_member_segment_affiliations(rows: list[dict]) -> int:
         ],
     )
     return len(rows)
-
