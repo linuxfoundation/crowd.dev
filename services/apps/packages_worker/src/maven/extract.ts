@@ -46,7 +46,6 @@ interface PomData {
   scm?: { url?: unknown; connection?: unknown }
   developers?: { developer?: unknown }
   contributors?: { contributor?: unknown }
-  organization?: { name?: unknown; url?: unknown }
   parent?: { groupId?: unknown; artifactId?: unknown; version?: unknown }
 }
 
@@ -262,7 +261,6 @@ interface ResolvedFields {
   homepageUrl: string | null
   developers: PomMaintainer[]
   contributors: PomMaintainer[]
-  organization: { name: string; url: string | null } | null
   hops: number
 }
 
@@ -275,15 +273,13 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
   const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
   const developers = extractPersons(pom.developers?.developer, 'author')
   const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
-  const organization = extractOrganization(pom)
 
   const missingLicense = licenses.length === 0
   const missingScm = !scmUrl
   const missingDevelopers = developers.length === 0 || contributors.length === 0
-  const missingOrg = !organization
   const parent = extractParent(pom)
 
-  if (parent && (missingLicense || missingScm || missingDevelopers || missingOrg)) {
+  if (parent && (missingLicense || missingScm || missingDevelopers)) {
     const parentKey = `${parent.groupId}:${parent.artifactId}:${parent.version}`
     if (depth >= MAX_PARENT_DEPTH || visited.has(parentKey)) {
       log.warn(
@@ -309,7 +305,6 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
         homepageUrl: extractStr(pom.url) ?? parentFields.homepageUrl,
         developers: developers.length > 0 ? developers : parentFields.developers,
         contributors: contributors.length > 0 ? contributors : parentFields.contributors,
-        organization: organization ?? parentFields.organization,
         hops: parentFields.hops,
       }
     }
@@ -323,7 +318,6 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
     homepageUrl: extractStr(pom.url),
     developers,
     contributors,
-    organization,
     hops: depth,
   }
 }
@@ -363,13 +357,7 @@ export async function extractArtifactDirect(groupId: string, artifactId: string,
   const licenses = extractLicenses(pom)
   const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
   const developers = extractPersons(pom.developers?.developer, 'author')
-  const organization = extractOrganization(pom)
-  const rawContributors = extractPersons(pom.contributors?.contributor, 'maintainer')
-  const noPersonnel = developers.length === 0 && rawContributors.length === 0
-  const contributors =
-    noPersonnel && organization
-      ? [orgToMaintainer(organization)]
-      : rawContributors
+  const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
 
   return {
     groupId,
@@ -426,11 +414,6 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
       new Set(),
       baseUrl,
     )
-    const noPersonnel = resolved.developers.length === 0 && resolved.contributors.length === 0
-    const contributors =
-      noPersonnel && resolved.organization
-        ? [orgToMaintainer(resolved.organization)]
-        : resolved.contributors
     return {
       groupId,
       artifactId,
@@ -442,7 +425,7 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
       scmUrl: resolved.scmUrl,
       homepageUrl: resolved.homepageUrl,
       developers: resolved.developers,
-      contributors,
+      contributors: resolved.contributors,
       parentHops: resolved.hops,
       error: null,
     }
@@ -533,26 +516,6 @@ function extractPersons(raw: unknown, role: 'author' | 'maintainer'): PomMaintai
     }))
 }
 
-function extractOrganization(pom: PomData): { name: string; url: string | null } | null {
-  const name = extractStr(pom.organization?.name)
-  if (!name) return null
-  return { name, url: extractStr(pom.organization?.url) }
-}
-
-function orgToMaintainer(org: { name: string; url: string | null }): PomMaintainer {
-  const normalized = org.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-  return {
-    username: normalized || null,
-    displayName: org.name,
-    email: null,
-    url: org.url,
-    role: 'maintainer',
-  }
-}
-
 function extractParent(
   pom: PomData,
 ): { groupId: string; artifactId: string; version: string } | null {
@@ -574,7 +537,6 @@ function emptyFields(hops: number): ResolvedFields {
     homepageUrl: null,
     developers: [],
     contributors: [],
-    organization: null,
     hops,
   }
 }
