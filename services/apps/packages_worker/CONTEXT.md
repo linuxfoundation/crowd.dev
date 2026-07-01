@@ -1,6 +1,6 @@
 # OSS Packages
 
-Tracks open-source packages across ecosystems (npm, Maven). All packages live in `packages`; criticality scoring ranks them in place and marks the top-N per ecosystem as `is_critical = true`.
+Tracks open-source packages across ecosystems (npm, pypi, maven, go, nuget, cargo — the set grows as ecosystems are onboarded). All packages live in `packages`; criticality scoring ranks them in place and marks the top-N per ecosystem as `is_critical = true`.
 
 ## Language
 
@@ -25,7 +25,7 @@ Package URL (`pkg:npm/react`, `pkg:maven/org.apache/commons`). The canonical cro
 _Avoid_: package id (that's the `packages.id` bigserial)
 
 **Ecosystem**:
-A package registry namespace — `npm`, `maven`. Lowercase.
+A package registry namespace — `npm`, `pypi`, `maven`, `go`, `nuget`, `cargo`. Lowercase. Open set — new ecosystems are onboarded over time.
 _Avoid_: system (deps.dev's term), registry
 
 **Packument**:
@@ -38,8 +38,18 @@ One rolling 30-day span in `downloads_last_30d`, identified by its `end_date` (a
 _Avoid_: month, period, snapshot
 
 **Self-healing**:
-A workflow that recomputes the full set of expected rows on every run, diffs against what's in the DB, and fills only the gaps. No assumption of continuity between runs.
+A workflow that recomputes the full set of expected rows on every run, diffs against what's in the DB, and fills only the gaps. No assumption of continuity between runs. **npm downloads only** — pypi downloads deliberately do NOT self-heal (see **Trailing re-scan** / **Latest-window refresh**).
 _Avoid_: backfill (that's the one-time historical fill; self-healing is the ongoing property)
+
+**Trailing re-scan** (pypi daily):
+The pypi daily downloads workflow re-scans a fixed 2-day trailing window (`[today−2, today−1]`) every run and upserts. It corrects a partial most-recent partition but does **not** diff against the DB or fill older gaps. Missed days are recovered only by **Backfill**.
+_Avoid_: self-healing (that's the npm gap-filling property)
+
+**Latest-window refresh** (pypi 30d):
+The pypi 30d workflow, given no `fromDate`, computes and ingests only the latest **Window** (idempotent upsert, mirrored to `packages.downloads_last_30d`). It does not gap-fill missed months; those are recovered by **Backfill**.
+
+**Backfill**:
+A manual, one-time run over an explicit date range to fill history or recover gaps — pypi daily takes `{startDate, endDate}`, pypi 30d takes `{fromDate}` (enumerates every monthly **Window** from then to the latest). For pypi downloads this is the *only* gap-recovery mechanism; scheduled runs are fixed-window, not self-healing.
 
 ## Relationships
 
