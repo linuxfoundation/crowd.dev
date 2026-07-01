@@ -19,6 +19,7 @@
     "script:continue-run": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/continue-run.ts",
     "script:trigger-webhook": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/trigger-webhook.ts",
     "script:send-weekly-analytics-email": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/send-weekly-analytics-email.ts",
+    "script:merge-members": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/merge-members.ts",
     "script:merge-organizations": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/merge-organizations.ts",
     "script:refresh-materialized-views": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/refresh-materialized-views.ts",
     "script:unmerge-members": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/unmerge-members.ts",

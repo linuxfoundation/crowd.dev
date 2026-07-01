@@ -97,7 +97,9 @@ async function copyCsv(
 ): Promise<number> {
   const con = await db.connect()
   try {
-    // @types/pg-copy-streams Submittable doesn't match @types/pg's query overload.
+    // pg-promise's bundled IClient.query types only return Promise<IResult> — they lack node-pg's
+    // `query<T extends Submittable>(qs: T): T` stream overload. At runtime con.client IS a node-pg
+    // Client and returns the CopyStreamQuery, so cast through to recover it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: CopyStreamQuery = (con.client as any).query(
       copyFrom(`COPY ${STAGING_SCHEMA}.${table} FROM STDIN CSV HEADER`),

@@ -83,6 +83,34 @@ describe('compareVersion — maven (ComparableVersion-style)', () => {
   })
 })
 
+describe('compareVersion — nuget (semver)', () => {
+  it.each([
+    ['1.0.0', '2.0.0', -1],
+    ['2.0.0', '1.0.0', 1],
+    ['1.0.0', '1.0.0', 0],
+    ['1.10.0', '1.9.0', 1], // numeric, not lex
+    ['1.0.0-alpha', '1.0.0', -1], // prerelease < release
+    ['1.0.0-beta', '1.0.0-rc', -1],
+    // Real-world CVE boundary: Newtonsoft.Json < 13.0.1 deserialization vuln
+    ['13.0.0', '13.0.1', -1],
+    ['13.0.1', '13.0.1', 0],
+    ['13.0.2', '13.0.1', 1],
+  ])('compareVersion("nuget", %s, %s) sign = %s', (a, b, expected) => {
+    expect(sign(compareVersion('nuget', a, b))).toBe(expected)
+  })
+
+  it('returns null for unparseable nuget versions', () => {
+    expect(compareVersion('nuget', 'not-a-version', '1.0.0')).toBeNull()
+  })
+
+  it('rejects titlecase "NuGet" — production storage is always lowercase', () => {
+    // OSV records arrive with ecosystem="NuGet"; parseOsvRecord lowercases to
+    // "nuget" before writing to packages-db. The comparator is keyed on the
+    // same lowercase form. A titlecase call means the caller skipped normalization.
+    expect(compareVersion('NuGet', '1.0.0', '2.0.0')).toBeNull()
+  })
+})
+
 describe('compareVersion — unsupported ecosystems', () => {
   it('returns null for ecosystems we have no comparator for', () => {
     expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()

@@ -30,3 +30,4 @@ export {
   ingestPypiPackageBatch,
   pypiStopAfterFirstPage,
 } from './pypi/activities'
+export { processNuGetBatch } from './nuget/activities'

@@ -234,6 +234,8 @@ const KIND_TABLES: Record<string, string[]> = {
   advisories: ['advisories'],
   advisory_packages: ['advisory_packages', 'advisory_affected_ranges'],
   dependent_counts: ['packages'],
+  dependent_counts_go: ['packages'],
+  dependent_counts_nuget: ['packages'],
   ranking: ['packages'],
   pypi_downloads_30d: ['downloads_last_30d', 'packages'],
   pypi_downloads_daily: ['downloads_daily'],

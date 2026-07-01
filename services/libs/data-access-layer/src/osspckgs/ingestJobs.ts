@@ -9,6 +9,8 @@ export type OsspckgsJobKind =
   | 'advisories'
   | 'advisory_packages'
   | 'dependent_counts'
+  | 'dependent_counts_go'
+  | 'dependent_counts_nuget'
   | 'scorecard_repos'
   | 'scorecard_checks'
   | 'ranking'

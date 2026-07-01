@@ -21,7 +21,7 @@ import {
   insertMemberSegmentAggregates,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
-import { QueryExecutor, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor, optionsBgQx, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   decrementMemberMergeSuggestionCounts,
   fetchManySegments,
@@ -944,7 +944,7 @@ export default class MemberService extends LoggerBase {
 
   async findAllAutocomplete(data) {
     const qx = optionsQx(this.options)
-    const bgQx = optionsQx({ ...this.options, transaction: null })
+    const bgQx = optionsBgQx(this.options)
 
     return queryMembersAdvanced(qx, bgQx, this.options.redis, {
       filter: data.filter,
@@ -970,7 +970,7 @@ export default class MemberService extends LoggerBase {
     }
 
     const qx = optionsQx(this.options)
-    const bgQx = optionsQx({ ...this.options, transaction: null })
+    const bgQx = optionsBgQx(this.options)
 
     return queryMembersAdvanced(qx, bgQx, this.options.redis, {
       ...data,

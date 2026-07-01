@@ -7,6 +7,8 @@ import { XMLParser } from 'fast-xml-parser'
 
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { resolveRegistryBaseUrl } from './registry'
+
 const log = getServiceChildLogger('maven')
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,14 +58,6 @@ interface PomPerson {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// Lazy getter — evaluated at call time so the entry point can set MAVEN_FETCHER_BASE_URL
-// before the first HTTP request without worrying about module load order.
-// Backfill sets MAVEN_FETCHER_BASE_URL from MAVEN_FETCHER_BASE_URL_BACKFILL (GCS mirror);
-// the incremental Temporal worker sets it from MAVEN_FETCHER_BASE_URL_INCREMENTAL (repo1).
-function getMavenRepo(): string {
-  return process.env.MAVEN_FETCHER_BASE_URL ?? 'https://repo1.maven.org/maven2'
-}
-
 const REQUEST_TIMEOUT_MS = 15_000
 
 const parser = new XMLParser({
@@ -78,10 +72,12 @@ const parser = new XMLParser({
 const MAX_RETRIES = 3
 const RETRY_BASE_MS = 2_000
 
+// prettier-ignore
 async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+// prettier-ignore
 async function getWithRetry(url: string): Promise<string> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -108,17 +104,18 @@ async function getWithRetry(url: string): Promise<string> {
 
 // ─── POM fetch ────────────────────────────────────────────────────────────────
 
-export function buildPomUrl(groupId: string, artifactId: string, version: string): string {
-  const groupPath = groupId.replace(/\./g, '/')
-  return `${getMavenRepo()}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
-}
-
-export async function fetchPom(
+export function buildPomUrl(
   groupId: string,
   artifactId: string,
   version: string,
-  url: string,
-): Promise<PomData | null> {
+  baseUrl?: string,
+): string {
+  const groupPath = groupId.replace(/\./g, '/')
+  return `${baseUrl ?? resolveRegistryBaseUrl(groupId)}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}.pom`
+}
+
+// prettier-ignore
+export async function fetchPom(groupId: string, artifactId: string, version: string, url: string): Promise<PomData | null> {
   try {
     const data = await getWithRetry(url)
     const parsed = parser.parse(data)
@@ -160,6 +157,7 @@ export async function fetchPom(
 const POM_CACHE_MAX_ENTRIES = 5_000
 
 const pomCache = new Map<string, PomData>()
+// prettier-ignore
 const inFlight = new Map<string, Promise<PomData | null>>()
 const pomCacheStats = { hits: 0, coalesced: 0, misses: 0, evictions: 0 }
 
@@ -186,11 +184,8 @@ function cacheSet(key: string, pom: PomData): void {
  *                await it instead of issuing a duplicate request.
  * - Miss       → performs the network fetch; caches the result only if non-null.
  */
-async function fetchPomCached(
-  groupId: string,
-  artifactId: string,
-  version: string,
-): Promise<PomData | null> {
+// prettier-ignore
+async function fetchPomCached(groupId: string, artifactId: string, version: string, baseUrl?: string): Promise<PomData | null> {
   const key = pomCacheKey(groupId, artifactId, version)
 
   const cached = pomCache.get(key)
@@ -208,7 +203,12 @@ async function fetchPomCached(
   }
 
   pomCacheStats.misses++
-  const promise = fetchPom(groupId, artifactId, version, buildPomUrl(groupId, artifactId, version))
+  const promise = fetchPom(
+    groupId,
+    artifactId,
+    version,
+    buildPomUrl(groupId, artifactId, version, baseUrl),
+  )
     .then((pom) => {
       if (pom) cacheSet(key, pom)
       return pom
@@ -264,14 +264,9 @@ interface ResolvedFields {
   hops: number
 }
 
-async function resolveWithInheritance(
-  groupId: string,
-  artifactId: string,
-  version: string,
-  depth = 0,
-  visited = new Set<string>(),
-): Promise<ResolvedFields> {
-  const pom = await fetchPomCached(groupId, artifactId, version)
+// prettier-ignore
+async function resolveWithInheritance(groupId: string, artifactId: string, version: string, depth = 0, visited = new Set<string>(), baseUrl?: string): Promise<ResolvedFields> {
+  const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
   if (!pom) return emptyFields(depth)
 
   const licenses = extractLicenses(pom)
@@ -281,9 +276,10 @@ async function resolveWithInheritance(
 
   const missingLicense = licenses.length === 0
   const missingScm = !scmUrl
+  const missingDevelopers = developers.length === 0 || contributors.length === 0
   const parent = extractParent(pom)
 
-  if (parent && (missingLicense || missingScm)) {
+  if (parent && (missingLicense || missingScm || missingDevelopers)) {
     const parentKey = `${parent.groupId}:${parent.artifactId}:${parent.version}`
     if (depth >= MAX_PARENT_DEPTH || visited.has(parentKey)) {
       log.warn(
@@ -299,6 +295,7 @@ async function resolveWithInheritance(
         parent.version,
         depth + 1,
         visited,
+        resolveRegistryBaseUrl(parent.groupId),
       )
       return {
         description: extractStr(pom.description) ?? parentFields.description,
@@ -333,14 +330,11 @@ async function resolveWithInheritance(
  * Currently unused: kept as a lightweight option for high-throughput paths that
  * don't need parent inheritance.
  */
-export async function extractArtifactDirect(
-  groupId: string,
-  artifactId: string,
-  version: string,
-): Promise<PomExtractionResult> {
+// prettier-ignore
+export async function extractArtifactDirect(groupId: string, artifactId: string, version: string, baseUrl?: string): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
-  const pomUrl = buildPomUrl(groupId, artifactId, version)
-  const pom = await fetchPomCached(groupId, artifactId, version)
+  const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
+  const pom = await fetchPomCached(groupId, artifactId, version, baseUrl)
 
   if (!pom) {
     return {
@@ -387,15 +381,12 @@ export async function extractArtifactDirect(
  * the parent chain to inherit licenses and SCM when not in the direct POM.
  * Always returns a result object; errors are captured in `result.error`.
  */
-export async function extractArtifact(
-  groupId: string,
-  artifactId: string,
-  version: string,
-): Promise<PomExtractionResult> {
+// prettier-ignore
+export async function extractArtifact(groupId: string, artifactId: string, version: string, baseUrl?: string): Promise<PomExtractionResult> {
   const purl = `pkg:maven/${groupId}/${artifactId}@${version}`
 
-  const pomUrl = buildPomUrl(groupId, artifactId, version)
-  const rootPom = await fetchPomCached(groupId, artifactId, version)
+  const pomUrl = buildPomUrl(groupId, artifactId, version, baseUrl)
+  const rootPom = await fetchPomCached(groupId, artifactId, version, baseUrl)
   if (!rootPom) {
     return {
       groupId,
@@ -415,7 +406,14 @@ export async function extractArtifact(
   }
 
   try {
-    const resolved = await resolveWithInheritance(groupId, artifactId, version)
+    const resolved = await resolveWithInheritance(
+      groupId,
+      artifactId,
+      version,
+      0,
+      new Set(),
+      baseUrl,
+    )
     return {
       groupId,
       artifactId,
@@ -499,7 +497,7 @@ function extractLicenses(pom: PomData): string[] {
   const raw = pom.licenses?.license
   if (!raw) return []
   const list = Array.isArray(raw) ? raw : [raw]
-  return (list as Array<{ name?: unknown }>)
+  return (list as { name?: unknown }[])
     .map((l) => extractStr(l?.name))
     .filter((n): n is string => n !== null)
 }
