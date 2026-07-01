@@ -39,7 +39,7 @@ const options = [
     typeLabel: '{underline userId}',
     type: String,
     description:
-      'The unique ID of a user that will be merged into the first one. This one will be destroyed. You can provide multiple ids here separated by comma.',
+      'User ID of the user performing the merge.',
   },
   {
     name: 'help',
