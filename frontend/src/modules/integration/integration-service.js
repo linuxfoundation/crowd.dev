@@ -316,6 +316,16 @@ export class IntegrationService {
     return response.data;
   }
 
+  static async schedConnect(id, settings, segmentId) {
+    const response = await authAxios.post('/sched-connect', {
+      id,
+      settings,
+      segments: [segmentId],
+    });
+
+    return response.data;
+  }
+
   static async gerritConnect(remote, segments = []) {
     const response = await authAxios.put('/gerrit-connect', {
       remote,

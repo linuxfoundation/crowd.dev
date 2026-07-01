@@ -151,7 +151,9 @@ const tab = ref('all');
 
 const platformsByStatus = computed(() => {
   const statusConfig = lfIntegrationStatusesTabs[tab.value];
-  const all = Object.keys(lfIntegrations(useGitHubNango.value));
+  const all = Object.keys(lfIntegrations(useGitHubNango.value)).filter(
+    (platform) => platform !== 'sched' || isTeamUser.value,
+  );
   if (!statusConfig) {
     return all;
   }
