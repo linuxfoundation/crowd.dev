@@ -82,6 +82,7 @@ export async function upsertPypiVersions(
   qx: QueryExecutor,
   packageId: string,
   versions: PypiVersionInput[],
+  latestNumber: string | null,
 ): Promise<string[]> {
   if (versions.length === 0) return []
   const row: { changed_fields: string[] } = await qx.selectOne(
@@ -138,17 +139,17 @@ export async function upsertPypiVersions(
     },
   )
 
-  // Clear a stale is_latest on any OTHER version of this package — e.g. a previously-latest
-  // version whose files were all deleted, so it is not in this batch and would otherwise keep
-  // is_latest = true alongside the new latest.
-  const latestNumbers = versions.filter((v) => v.isLatest).map((v) => v.number)
-  if (latestNumbers.length > 0) {
+  // Clear a stale is_latest on every OTHER version of this package. Anchored on the declared
+  // latest (info.version) — NOT on what's in this batch — so a previously-latest version whose
+  // files were all deleted (and is therefore omitted from the batch) can't keep is_latest = true
+  // alongside the new latest. When no latest is known, leave flags untouched rather than wipe all.
+  if (latestNumber != null) {
     await qx.result(
       `UPDATE versions SET is_latest = false
          WHERE package_id = $(packageId)::bigint
            AND is_latest = true
-           AND NOT (number = ANY($(latestNumbers)::text[]))`,
-      { packageId, latestNumbers },
+           AND number <> $(latestNumber)`,
+      { packageId, latestNumber },
     )
   }
 

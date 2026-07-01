@@ -7,7 +7,7 @@ export interface NpmMaintainerInput {
   role: 'author' | 'maintainer'
 }
 
-export async function upsertNpmMaintainers(
+export async function upsertPackageMaintainers(
   qx: QueryExecutor,
   packageId: string,
   maintainers: NpmMaintainerInput[],

@@ -45,12 +45,9 @@ const { getCriticalPypiCount } = proxyActivities<typeof pypiDownloadsActivities>
   retry: { maximumAttempts: 3 },
 })
 
-// Per-window 30-day scans can reach ~1.5 TiB worst case; daily scans are far smaller but a wide
-// backfill multiplies by the day count. Defaults guard against runaway scans and are overridable
-// per kind via BQ_DATASET_INGEST_PYPI_DOWNLOADS_{30D,DAILY}_MAX_BQ_GB.
-// A single 30d window scans ~31 day-partitions; measured at ~4.56 TB (≈147 GB/day averaged over
-// a month — weekdays are heavier than the weekend sample). Ceiling sits above that with headroom;
-// raise it if a future month exceeds it. Daily scans its 2-day trailing window (~300 GB).
+// Per-kind ceilings guard against runaway BQ scans; override via
+// BQ_DATASET_INGEST_PYPI_DOWNLOADS_{30D,DAILY}_MAX_BQ_GB. Defaults sized from the measured
+// ~4.56 TB/30d window and ~300 GB daily 2-day window, with headroom.
 const MAX_BYTES_GB_30D = 6000
 const MAX_BYTES_GB_DAILY = 2000
 
@@ -181,6 +178,11 @@ export async function ingestPypiDownloadsDaily(opts: {
   const runId = start.toISOString().replace(/[:.]/g, '-')
   const today = start.toISOString().slice(0, 10)
 
+  // A backfill must supply BOTH bounds; a single bound is a mistake, not a partial range —
+  // fail loudly rather than silently scanning the default 2-day window.
+  if (Boolean(opts.startDate) !== Boolean(opts.endDate)) {
+    throw new Error('ingestPypiDownloadsDaily: startDate and endDate must be provided together')
+  }
   const range =
     opts.startDate && opts.endDate
       ? { startDate: opts.startDate, endDate: opts.endDate }

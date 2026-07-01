@@ -1,9 +1,9 @@
 import {
   getOrCreateRepoByUrl,
   upsertNpmFundingLinks,
-  upsertNpmMaintainers,
   upsertNpmPackage,
   upsertNpmVersions,
+  upsertPackageMaintainers,
   upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -106,7 +106,7 @@ export async function upsertPackage(
     verChanged.forEach((f) => changed.add(f))
 
     if (maintainers.length > 0) {
-      const mChanged = await upsertNpmMaintainers(t, pkgId, maintainers)
+      const mChanged = await upsertPackageMaintainers(t, pkgId, maintainers)
       mChanged.forEach((f) => changed.add(f))
     }
 

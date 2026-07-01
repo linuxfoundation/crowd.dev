@@ -72,8 +72,8 @@ export async function upsertNpmPackage(
                                         THEN packages.versions_count
                                         ELSE EXCLUDED.versions_count END,
          latest_version          = EXCLUDED.latest_version,
-         first_release_at        = EXCLUDED.first_release_at,
-         latest_release_at       = EXCLUDED.latest_release_at,
+         first_release_at        = COALESCE(EXCLUDED.first_release_at, packages.first_release_at),
+         latest_release_at       = COALESCE(EXCLUDED.latest_release_at, packages.latest_release_at),
          ingestion_source        = EXCLUDED.ingestion_source,
          last_synced_at          = EXCLUDED.last_synced_at
        RETURNING id, namespace, name, status, registry_url, description, homepage,
@@ -173,8 +173,8 @@ export async function upsertPypiPackage(
                                         THEN packages.versions_count
                                         ELSE EXCLUDED.versions_count END,
          latest_version          = EXCLUDED.latest_version,
-         first_release_at        = EXCLUDED.first_release_at,
-         latest_release_at       = EXCLUDED.latest_release_at,
+         first_release_at        = COALESCE(EXCLUDED.first_release_at, packages.first_release_at),
+         latest_release_at       = COALESCE(EXCLUDED.latest_release_at, packages.latest_release_at),
          ingestion_source        = EXCLUDED.ingestion_source,
          last_synced_at          = EXCLUDED.last_synced_at
        RETURNING id, namespace, name, status, registry_url, description, homepage,

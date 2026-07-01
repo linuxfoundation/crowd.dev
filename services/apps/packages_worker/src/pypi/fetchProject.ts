@@ -6,7 +6,7 @@ const REGISTRY = 'https://pypi.org/pypi'
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
 
 // Fetch a project's metadata from the PyPI JSON API.
-// Error's handled with respect to their types (retryable or not)
+// Errors are handled per their type (retryable or not):
 // 404 → NOT_FOUND (skip)
 // 429 → RATE_LIMIT and 5xx/network → TRANSIENT (Temporal retries)
 // malformed body → MALFORMED (skip).

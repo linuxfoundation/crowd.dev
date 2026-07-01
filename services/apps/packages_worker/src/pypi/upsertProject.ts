@@ -1,7 +1,7 @@
 import {
   getOrCreateRepoByUrl,
   upsertNpmFundingLinks,
-  upsertNpmMaintainers,
+  upsertPackageMaintainers,
   upsertPackageRepo,
   upsertPypiPackage,
   upsertPypiVersions,
@@ -91,12 +91,12 @@ export async function upsertProject(
     }
 
     if (versionRows.length > 0) {
-      const verChanged = await upsertPypiVersions(t, pkgId, versionRows)
+      const verChanged = await upsertPypiVersions(t, pkgId, versionRows, latestVersion)
       verChanged.forEach((f) => changed.add(f))
     }
 
     if (maintainers.length > 0) {
-      const mChanged = await upsertNpmMaintainers(t, pkgId, maintainers, 'pypi')
+      const mChanged = await upsertPackageMaintainers(t, pkgId, maintainers, 'pypi')
       mChanged.forEach((f) => changed.add(f))
     }
 
