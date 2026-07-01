@@ -8,7 +8,7 @@ import {
   RepoPolicies,
 } from '../types'
 
-import { RAW_BASE, fetchText, githubHandleFromUrl } from './http'
+import { githubHandleFromUrl } from './http'
 
 const SOURCE = 'security.md'
 const PATHS = ['SECURITY.md', '.github/SECURITY.md', 'docs/SECURITY.md']
@@ -110,10 +110,7 @@ export const extractSecurityMd: Extractor = async (target, deps) => {
 
   const fetchedAt = new Date().toISOString()
   for (const path of PATHS) {
-    const { text } = await fetchText(
-      `${RAW_BASE}/${owner}/${name}/HEAD/${path}`,
-      deps.fetchTimeoutMs,
-    )
+    const { text } = await deps.githubGet(`/repos/${owner}/${name}/contents/${path}`, { raw: true })
     if (text) return parseSecurityMd(text, owner, name, path, fetchedAt)
   }
 

@@ -1,8 +1,6 @@
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
 import { Extractor, ExtractorResult } from '../types'
 
-import { GITHUB_API, fetchJson, githubAuthHeaders } from './http'
-
 const SOURCE = 'pvr'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -46,15 +44,10 @@ export const extractPvr: Extractor = async (target, deps) => {
     return { contacts: [], policies: {} }
   }
 
-  // The endpoint works unauthenticated, but we use the token pool for rate-limit budget.
-  const token = deps.getToken ? await deps.getToken() : null
-  const headers = token ? githubAuthHeaders(token) : {}
-  const { json } = await fetchJson(
-    `${GITHUB_API}/repos/${owner}/${name}/private-vulnerability-reporting`,
-    deps.fetchTimeoutMs,
-    headers,
+  const { text } = await deps.githubGet(
+    `/repos/${owner}/${name}/private-vulnerability-reporting`,
   )
-  if (!json) return { contacts: [], policies: {} }
+  if (!text) return { contacts: [], policies: {} }
 
-  return mapPvr(json, owner, name, new Date().toISOString())
+  return mapPvr(JSON.parse(text), owner, name, new Date().toISOString())
 }

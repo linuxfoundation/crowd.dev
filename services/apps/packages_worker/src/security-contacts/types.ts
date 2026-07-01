@@ -63,12 +63,22 @@ export interface RepoTarget {
   packages: RepoPackage[]
 }
 
+/** Result of a GitHub API GET routed through the rate-limit-aware pool. */
+export interface GithubGetResult {
+  status: number
+  /** Response body (raw file text or JSON string); null for absent resources (404/410/422). */
+  text: string | null
+}
+
 export interface ExtractorDeps {
   fetchTimeoutMs: number
   /** Sent on registry calls; required (crates.io rejects requests without an identifying UA). */
   userAgent: string
-  /** Mints a GitHub installation token (null if unavailable); authed extractors fall back to unauth. */
-  getToken?: () => Promise<string | null>
+  /**
+   * Pool-aware, rate-limit-safe GitHub API GET. Handles installation selection, budget parking,
+   * and 429/secondary-limit backoff internally. `raw` selects the raw media type (file contents).
+   */
+  githubGet: (path: string, opts?: { raw?: boolean }) => Promise<GithubGetResult>
 }
 
 export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>

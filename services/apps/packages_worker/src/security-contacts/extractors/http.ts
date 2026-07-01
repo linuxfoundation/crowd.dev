@@ -1,6 +1,3 @@
-export const RAW_BASE = 'https://raw.githubusercontent.com'
-export const GITHUB_API = 'https://api.github.com'
-
 // crates.io rejects requests without a descriptive User-Agent (HTTP 403); harmless elsewhere.
 // https://crates.io/policies#crawlers
 export function registryHeaders(userAgent: string): Record<string, string> {
@@ -8,10 +5,36 @@ export function registryHeaders(userAgent: string): Record<string, string> {
 }
 
 // Genuinely-absent / not-determinable → null body; every other non-200 throws so transient
-// failures (429/5xx/...) are treated as failures and the pipeline preserves data instead of
+// failures (5xx/...) are treated as failures and the pipeline preserves data instead of
 // wiping it. 422 is included because GitHub's PVR endpoint returns it (per-repo, non-transient)
 // when the flag can't be determined — that must read as "unknown", not block the whole repo.
 const ABSENT_STATUSES = new Set([404, 410, 422])
+
+// Registry rate-limit / overload responses: retried in-process (honoring Retry-After) so a brief
+// throttle doesn't fail the extractor and cost the repo a whole refresh cadence.
+const RATE_LIMIT_STATUSES = new Set([429, 503])
+const MAX_RATE_LIMIT_RETRIES = 3
+
+async function fetchWithRetry(
+  url: string,
+  timeoutMs: number,
+  headers: Record<string, string>,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    let res: Response
+    try {
+      res = await fetch(url, { headers, signal: controller.signal })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+    if (!RATE_LIMIT_STATUSES.has(res.status) || attempt >= MAX_RATE_LIMIT_RETRIES) return res
+    const retryAfterSec = parseInt(res.headers.get('retry-after') ?? '0', 10)
+    const waitMs = retryAfterSec ? retryAfterSec * 1000 : Math.min(30_000, 1_000 * 2 ** attempt)
+    await new Promise((r) => setTimeout(r, waitMs))
+  }
+}
 
 export interface FetchTextResult {
   status: number
@@ -23,16 +46,10 @@ export async function fetchText(
   timeoutMs: number,
   headers: Record<string, string> = {},
 ): Promise<FetchTextResult> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, { headers, signal: controller.signal })
-    if (res.status === 200) return { status: 200, text: await res.text() }
-    if (ABSENT_STATUSES.has(res.status)) return { status: res.status, text: null }
-    throw new Error(`fetchText ${url} failed: HTTP ${res.status}`)
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  const res = await fetchWithRetry(url, timeoutMs, headers)
+  if (res.status === 200) return { status: 200, text: await res.text() }
+  if (ABSENT_STATUSES.has(res.status)) return { status: res.status, text: null }
+  throw new Error(`fetchText ${url} failed: HTTP ${res.status}`)
 }
 
 export interface FetchJsonResult {
@@ -45,20 +62,10 @@ export async function fetchJson(
   timeoutMs: number,
   headers: Record<string, string> = {},
 ): Promise<FetchJsonResult> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, { headers, signal: controller.signal })
-    if (res.status === 200) return { status: 200, json: await res.json() }
-    if (ABSENT_STATUSES.has(res.status)) return { status: res.status, json: null }
-    throw new Error(`fetchJson ${url} failed: HTTP ${res.status}`)
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
-
-export function githubAuthHeaders(token: string): Record<string, string> {
-  return { Authorization: `bearer ${token}`, Accept: 'application/vnd.github+json' }
+  const res = await fetchWithRetry(url, timeoutMs, headers)
+  if (res.status === 200) return { status: 200, json: await res.json() }
+  if (ABSENT_STATUSES.has(res.status)) return { status: res.status, json: null }
+  throw new Error(`fetchJson ${url} failed: HTTP ${res.status}`)
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/

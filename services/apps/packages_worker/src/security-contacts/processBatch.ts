@@ -10,7 +10,7 @@ import { extractSecurityContactsFile } from './extractors/securityContactsFile'
 import { extractSecurityInsights } from './extractors/securityInsights'
 import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
-import { getSecurityContactsToken } from './githubToken'
+import { githubApiGet } from './githubToken'
 import { reconcile } from './reconcile'
 import {
   Extractor,
@@ -37,7 +37,9 @@ const DAILY_INTERVAL_HOURS = 20 // repos never evaluated or with no contacts yet
 const WEEKLY_INTERVAL_HOURS = 156 // already-enriched repos (have contacts)
 
 // Tuned for throughput within the platform ceilings:
-//  - CONCURRENCY: parallel repos; safe against GitHub REST secondary limits given the token pool.
+//  - CONCURRENCY: parallel repos. GitHub calls go through the authed Contents API via a
+//    rate-limit-aware pool (per-installation budget parking + app-wide concurrency gate +
+//    Retry-After backoff in githubToken), so high repo concurrency won't trip GitHub limits.
 //  - FETCH_TIMEOUT_MS: generous enough for slow registries (Maven metadata/POM) without hanging slots.
 //  - BATCH_SIZE: bounded by the 30-min activity timeout (worst case: an all-cargo batch throttled
 //    to crates.io's 1 req/s finishes ~8 min).
@@ -159,7 +161,7 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   const deps: ExtractorDeps = {
     fetchTimeoutMs: FETCH_TIMEOUT_MS,
     userAgent: config.userAgent,
-    getToken: getSecurityContactsToken,
+    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
   }
 
   const targets = batch.map(toTarget)

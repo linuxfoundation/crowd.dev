@@ -1,9 +1,9 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
-import { Extractor, ProvenanceEntry, RawContact } from '../types'
+import { ExtractorDeps, ProvenanceEntry, RawContact, Extractor } from '../types'
 
-import { GITHUB_API, RAW_BASE, fetchJson, fetchText, githubAuthHeaders, isEmail } from './http'
+import { isEmail } from './http'
 
 const log = getServiceChildLogger('security-contacts:security_contacts-file')
 
@@ -34,16 +34,11 @@ export function parseSecurityContacts(text: string): SecurityContactEntry[] {
 
 async function resolvePublicEmail(
   login: string,
-  timeoutMs: number,
-  token?: string,
+  githubGet: ExtractorDeps['githubGet'],
 ): Promise<string | null> {
   try {
-    const { json } = await fetchJson(
-      `${GITHUB_API}/users/${login}`,
-      timeoutMs,
-      token ? githubAuthHeaders(token) : {},
-    )
-    const email = (json as { email?: unknown } | null)?.email
+    const { text } = await githubGet(`/users/${login}`)
+    const email = (text ? (JSON.parse(text) as { email?: unknown }) : null)?.email
     return typeof email === 'string' && isEmail(email) ? email : null
   } catch (err) {
     log.warn({ login, errMsg: (err as Error).message }, 'Handle email resolution failed')
@@ -60,18 +55,16 @@ export const extractSecurityContactsFile: Extractor = async (target, deps) => {
     return { contacts: [], policies: {} }
   }
 
-  const { text } = await fetchText(`${RAW_BASE}/${owner}/${name}/HEAD/${PATH}`, deps.fetchTimeoutMs)
+  const { text } = await deps.githubGet(`/repos/${owner}/${name}/contents/${PATH}`, { raw: true })
   if (!text) return { contacts: [], policies: {} }
 
   const fetchedAt = new Date().toISOString()
   const prov = (): ProvenanceEntry[] => [{ source: SOURCE, sourceTier: 'A', path: PATH, fetchedAt }]
 
-  const token = (deps.getToken ? await deps.getToken() : null) ?? undefined
   const contacts: RawContact[] = []
 
   for (const entry of parseSecurityContacts(text)) {
-    const email =
-      entry.email ?? (await resolvePublicEmail(entry.handle, deps.fetchTimeoutMs, token))
+    const email = entry.email ?? (await resolvePublicEmail(entry.handle, deps.githubGet))
     if (email) {
       // handle = the username this email was resolved from (used for identity-linking).
       contacts.push({
