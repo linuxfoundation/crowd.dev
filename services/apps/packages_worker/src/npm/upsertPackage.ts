@@ -8,13 +8,14 @@ import {
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
+
 import {
   collectMaintainers,
   extractRepo,
   isPrerelease,
   normalizeLicenses,
   parseNpmName,
-  stripNullBytesDeep,
   versionLicense,
 } from './normalize'
 import type { FundingEntry, Packument } from './types'

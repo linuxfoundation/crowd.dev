@@ -137,5 +137,20 @@ export async function upsertPypiVersions(
       licenses: versions.map((v) => v.license),
     },
   )
+
+  // Clear a stale is_latest on any OTHER version of this package — e.g. a previously-latest
+  // version whose files were all deleted, so it is not in this batch and would otherwise keep
+  // is_latest = true alongside the new latest.
+  const latestNumbers = versions.filter((v) => v.isLatest).map((v) => v.number)
+  if (latestNumbers.length > 0) {
+    await qx.result(
+      `UPDATE versions SET is_latest = false
+         WHERE package_id = $(packageId)::bigint
+           AND is_latest = true
+           AND NOT (number = ANY($(latestNumbers)::text[]))`,
+      { packageId, latestNumbers },
+    )
+  }
+
   return row.changed_fields
 }

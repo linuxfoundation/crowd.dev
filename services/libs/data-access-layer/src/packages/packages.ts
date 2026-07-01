@@ -225,3 +225,12 @@ export async function getTrackedNpmPackages(
     firstReleaseAt: r.first_release_at,
   }))
 }
+
+// How many critical PyPI packages exist — a cheap guard so the daily downloads workflow can
+// skip its BigQuery scan entirely when there are none to ingest (the merge scopes to is_critical).
+export async function getCriticalPypiPackageCount(qx: QueryExecutor): Promise<number> {
+  const row: { count: string } = await qx.selectOne(
+    `SELECT COUNT(*)::text AS count FROM packages WHERE ecosystem = 'pypi' AND is_critical = TRUE`,
+  )
+  return Number(row.count)
+}

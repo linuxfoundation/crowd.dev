@@ -235,6 +235,8 @@ const KIND_TABLES: Record<string, string[]> = {
   advisory_packages: ['advisory_packages', 'advisory_affected_ranges'],
   dependent_counts: ['packages'],
   ranking: ['packages'],
+  pypi_downloads_30d: ['downloads_last_30d', 'packages'],
+  pypi_downloads_daily: ['downloads_daily'],
 }
 
 const TABLE_ABBREV: Record<string, string> = {
@@ -246,6 +248,8 @@ const TABLE_ABBREV: Record<string, string> = {
   advisories: 'adv',
   advisory_packages: 'ap',
   advisory_affected_ranges: 'ar',
+  downloads_last_30d: 'dl30d',
+  downloads_daily: 'dldaily',
 }
 
 async function fetchTableCounts(): Promise<Record<string, number>> {
@@ -256,7 +260,8 @@ async function fetchTableCounts(): Promise<Record<string, number>> {
     WHERE relname IN (
       'packages', 'versions', 'package_dependencies',
       'repos', 'package_repos',
-      'advisories', 'advisory_packages', 'advisory_affected_ranges'
+      'advisories', 'advisory_packages', 'advisory_affected_ranges',
+      'downloads_daily', 'downloads_last_30d'
     )
   `)
   const result: Record<string, number> = {}

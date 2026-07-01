@@ -9,40 +9,17 @@ import {
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
+  buildVersionRows,
   classifyProjectUrls,
   collectPypiMaintainers,
-  isPypiPrerelease,
   parseKeywords,
   pypiNameFromPurl,
   resolvePypiLicenses,
-  stripNullBytesDeep,
 } from './normalize'
-import type { PyPiProject, PyPiReleaseFile } from './types'
-
-interface PypiVersionRow {
-  number: string
-  publishedAt: string | null
-  isLatest: boolean
-  isPrerelease: boolean
-  isYanked: boolean
-  license: string | null
-}
-
-function fileUploadTimes(files: PyPiReleaseFile[]): string[] {
-  return files
-    .map((f) => f.upload_time_iso_8601)
-    .filter((t): t is string => typeof t === 'string' && t.length > 0)
-}
-
-function minStr(arr: string[]): string | null {
-  return arr.length ? arr.reduce((a, b) => (a < b ? a : b)) : null
-}
-
-function maxStr(arr: string[]): string | null {
-  return arr.length ? arr.reduce((a, b) => (a > b ? a : b)) : null
-}
+import type { PyPiProject } from './types'
 
 export async function upsertProject(
   qx: QueryExecutor,
@@ -73,26 +50,11 @@ export async function upsertProject(
   const latestVersion = info.version ?? null
   const packageLicense = licenses[0] ?? null
 
-  const allUploadTimes: string[] = []
-  const versionRows: PypiVersionRow[] = []
-  for (const [number, files] of Object.entries(releases)) {
-    // A version whose files were all deleted has an empty array — no release artifact,
-    // so skip it (it would carry no publish date and inflate the version count).
-    if (!Array.isArray(files) || files.length === 0) continue
-    const times = fileUploadTimes(files)
-    allUploadTimes.push(...times)
-    versionRows.push({
-      number,
-      publishedAt: minStr(times),
-      isLatest: number === latestVersion,
-      isPrerelease: isPypiPrerelease(number),
-      isYanked: files.every((f) => f.yanked === true),
-      license: packageLicense,
-    })
-  }
-
-  const firstReleaseAt = minStr(allUploadTimes)
-  const latestReleaseAt = maxStr(allUploadTimes)
+  const { versionRows, firstReleaseAt, latestReleaseAt } = buildVersionRows(
+    releases,
+    latestVersion,
+    packageLicense,
+  )
 
   const changed = new Set<string>()
 

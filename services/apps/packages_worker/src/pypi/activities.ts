@@ -1,4 +1,5 @@
-import { ProxyAgent, type Dispatcher } from 'undici'
+import { Context } from '@temporalio/activity'
+import { type Dispatcher, ProxyAgent } from 'undici'
 
 import {
   getUnscannedPypiPurls,
@@ -10,22 +11,18 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
 import { proxyUrl } from '../proxies'
+import { isClientError } from '../utils/isClientError'
 
 import { fetchProject } from './fetchProject'
 import { pypiNameFromPurl } from './normalize'
 import { pypiProxyPool } from './proxies'
+import { INGEST_MAX_ATTEMPTS } from './retryPolicy'
 import { isFetchError } from './types'
 import { upsertProject } from './upsertProject'
 
 const log = getServiceChildLogger('pypi')
 
 const WORKER = 'pypi'
-
-// 4xx (404 or any other client error like a malformed/illegal project name that
-// leaked into `packages`). 429 is excluded — it's transient and rides the slow path.
-function isClientError(code: number | undefined, kind: string): boolean {
-  return kind === 'NOT_FOUND' || (code !== undefined && code >= 400 && code < 500 && code !== 429)
-}
 
 // 4xx/malformed get a few quick in-lane retries with a small linear backoff, then the
 // package is given up on and marked scanned. 429/5xx/network throw and ride Temporal's
@@ -70,7 +67,7 @@ function sleep(ms: number): Promise<void> {
 
 // Fully enrich a single package. `purl` is the source-of-truth identifier from the
 // packages row; the PyPI project name (for the HTTP fetch) is derived from it.
-async function ingestOne(
+export async function ingestOne(
   qx: QueryExecutor,
   purl: string,
   dispatcher?: Dispatcher,
@@ -109,6 +106,37 @@ async function ingestOne(
   }
 }
 
+// Process purls sequentially. On a transient throw, rethrow so Temporal retries the whole
+// batch — UNTIL those retries are exhausted (attempt >= INGEST_MAX_ATTEMPTS), after which the
+// one offending package is marked scanned-error and the loop continues, so a single
+// persistently-failing package can't stall the keyset cursor for everything after it.
+export async function ingestPurlsWithGiveUp(
+  qx: QueryExecutor,
+  purls: string[],
+  attempt: number,
+  ingest: (purl: string, index: number) => Promise<void>,
+): Promise<void> {
+  let i = 0
+  for (const purl of purls) {
+    const index = i++
+    try {
+      await ingest(purl, index)
+    } catch (err) {
+      // Retry via Temporal while attempts remain; then mark scanned-error and continue.
+      if (attempt < INGEST_MAX_ATTEMPTS) throw err
+      log.warn(
+        { purl, attempt, err: String(err) },
+        'pypi transient failure after max attempts — marking scanned(error) and continuing',
+      )
+      await markPypiPackageScanned(qx, purl, {
+        status: 'error',
+        attempts: attempt,
+        message: String(err),
+      })
+    }
+  }
+}
+
 export async function getUnscannedPypiBatch(
   afterPurl: string,
   batchSize: number,
@@ -135,14 +163,15 @@ export async function ingestPypiPackageBatch(purls: string[]): Promise<void> {
   // configured proxy pool per package so traffic spreads over all IPs; when disabled the
   // pool is empty and `dispatcher` stays undefined (direct egress). One ProxyAgent per
   // proxy, reused for the whole batch and closed at the end.
+  const attempt = Context.current().info.attempt
+
   const agents = pypiProxyPool().map((p) => new ProxyAgent(proxyUrl(p)))
   try {
-    let i = 0
-    for (const purl of purls) {
+    await ingestPurlsWithGiveUp(qx, purls, attempt, async (purl, i) => {
       await sleep(ingestSleepMs())
-      const dispatcher = agents.length ? agents[i++ % agents.length] : undefined
+      const dispatcher = agents.length ? agents[i % agents.length] : undefined
       await ingestOne(qx, purl, dispatcher)
-    }
+    })
   } finally {
     await Promise.all(agents.map((a) => a.close()))
   }

@@ -13,6 +13,8 @@ export {
   ingestDependencies,
   ingestAdvisories,
   ingestDependentCounts,
+  ingestPypiDownloadsLast30d,
+  ingestPypiDownloadsDaily,
 } from '../deps-dev/workflows'
 export { osvSync } from '../osv/workflows'
 export { ingestMavenPackages } from '../maven/workflows'

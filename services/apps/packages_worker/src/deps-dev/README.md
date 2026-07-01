@@ -58,6 +58,8 @@ The mode-specific key takes precedence over the generic key. Value must be a pos
 | `BQ_DATASET_INGEST_DEPENDENT_COUNTS_MAX_BQ_GB`     |         2000 | `dependent_counts`     |                                                           |
 | `BQ_DATASET_INGEST_SCORECARD_REPOS_MAX_BQ_GB`      |           50 | `scorecard_repos`      |                                                           |
 | `BQ_DATASET_INGEST_SCORECARD_CHECKS_MAX_BQ_GB`     |          500 | `scorecard_checks`     |                                                           |
+| `BQ_DATASET_INGEST_PYPI_DOWNLOADS_30D_MAX_BQ_GB`   |         6000 | `pypi_downloads_30d`   | Per 30-day window scan (~4.56 TB measured; set in `ingestPypiDownloads.ts`) |
+| `BQ_DATASET_INGEST_PYPI_DOWNLOADS_DAILY_MAX_BQ_GB` |         2000 | `pypi_downloads_daily` | Scales with backfill range; raise for long backfills      |
 
 The override logic lives in `src/deps-dev/activities/bqExportToGcs.ts`.
 

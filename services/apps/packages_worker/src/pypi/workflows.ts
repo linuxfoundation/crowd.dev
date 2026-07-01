@@ -1,13 +1,16 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
 import type * as activities from './activities'
+import { INGEST_MAX_ATTEMPTS } from './retryPolicy'
 
 const acts = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
   retry: {
     initialInterval: '30 seconds',
     backoffCoefficient: 2,
-    maximumAttempts: 5,
+    // Kept in lockstep with the activity's give-up threshold (ingestPurlsWithGiveUp): a
+    // package is only abandoned once these Temporal retries are exhausted.
+    maximumAttempts: INGEST_MAX_ATTEMPTS,
   },
 })
 

@@ -18,39 +18,45 @@ export async function fetchProject(
 ): Promise<PyPiProject | FetchError> {
   const url = `${REGISTRY}/${encodeURIComponent(name)}/json`
   const abort = new AbortController()
+  // The 30s timer must cover the body read too, not just the headers — clear it only in the
+  // finally below, once the whole response (including res.json()) is done.
   const timer = setTimeout(() => abort.abort(), 30_000)
-  let res: Response
   try {
-    // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
-    const init: RequestInit & { dispatcher?: Dispatcher } = {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': USER_AGENT,
-      },
-      signal: abort.signal,
+    let res: Response
+    try {
+      // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
+      const init: RequestInit & { dispatcher?: Dispatcher } = {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': USER_AGENT,
+        },
+        signal: abort.signal,
+      }
+      if (dispatcher) init.dispatcher = dispatcher
+      res = await fetch(url, init as RequestInit)
+    } catch (err) {
+      return { kind: 'TRANSIENT', message: String(err) }
     }
-    if (dispatcher) init.dispatcher = dispatcher
-    res = await fetch(url, init as RequestInit)
-  } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+
+    if (res.status === 404)
+      return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
+    if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
+    if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+
+    let json: unknown
+    try {
+      json = await res.json()
+    } catch {
+      // A body that stalls past the timeout aborts here — that's transient (retry), not malformed.
+      if (abort.signal.aborted) return { kind: 'TRANSIENT', message: 'body read timed out' }
+      return { kind: 'MALFORMED', message: 'invalid JSON' }
+    }
+
+    if (!isPyPiProject(json)) return { kind: 'MALFORMED', message: 'unexpected shape' }
+    return json
   } finally {
     clearTimeout(timer)
   }
-
-  if (res.status === 404)
-    return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
-  if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
-
-  let json: unknown
-  try {
-    json = await res.json()
-  } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
-  }
-
-  if (!isPyPiProject(json)) return { kind: 'MALFORMED', message: 'unexpected shape' }
-  return json
 }
 
 function isPyPiProject(v: unknown): v is PyPiProject {

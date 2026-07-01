@@ -1,34 +1,12 @@
-import type { PyPiInfo } from './types'
+import type { PyPiInfo, PyPiReleaseFile } from './types'
 
 const PURL_PYPI_PREFIX = 'pkg:pypi/'
-
-// Postgres text columns cannot store NUL (U+0000). Built at runtime so there is no
-// NUL literal in the source.
-const NUL_GLOBAL = new RegExp(String.fromCharCode(0), 'g')
 
 // The PyPI project name from a purl. PyPI purls are `pkg:pypi/<name>` (no namespace);
 // the name segment is percent-encoded per the purl spec, so decode it to get the
 // registry name used by the JSON API.
 export function pypiNameFromPurl(purl: string): string {
   return decodeURIComponent(purl.slice(PURL_PYPI_PREFIX.length))
-}
-
-// Strip NUL bytes in place from every string before persisting — otherwise the
-// inlined value breaks the PostgreSQL wire protocol ("invalid message format").
-export function stripNullBytesDeep<T>(value: T): T {
-  if (typeof value === 'string') {
-    return value.replace(NUL_GLOBAL, '') as T
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) value[i] = stripNullBytesDeep(value[i])
-    return value
-  }
-  if (value !== null && typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    for (const k of Object.keys(obj)) obj[k] = stripNullBytesDeep(obj[k])
-    return value
-  }
-  return value
 }
 
 function blankToNull(s: string | null | undefined): string | null {
@@ -174,14 +152,13 @@ function peopleForRole(
   const nameParts = nameField ? splitList(nameField) : []
   const raw: Array<{ name: string | null; email: string | null }> = []
 
-  if (emailParts.length) {
-    // Modern packages put "Name <email>" (often several, comma-separated) in *_email.
-    emailParts.forEach((part, i) => {
-      const pe = parseNameEmail(part)
-      raw.push({ name: pe.name ?? nameParts[i] ?? null, email: pe.email })
-    })
-  } else if (nameParts.length) {
-    nameParts.forEach((n) => raw.push({ name: blankToNull(n), email: null }))
+  // Modern packages put "Name <email>" (often several, comma-separated) in *_email. Pair names
+  // and email entries by index, iterating the LONGER of the two so surplus names aren't dropped
+  // — older metadata commonly lists several names but only a single email.
+  const count = Math.max(emailParts.length, nameParts.length)
+  for (let i = 0; i < count; i++) {
+    const pe = emailParts[i] ? parseNameEmail(emailParts[i]) : { name: null, email: null }
+    raw.push({ name: pe.name ?? nameParts[i] ?? null, email: pe.email })
   }
 
   const out: PypiPerson[] = []
@@ -273,4 +250,63 @@ export function parseKeywords(raw: string | null | undefined): string[] {
       .map((k) => k.trim())
       .filter(Boolean),
   )
+}
+
+export interface PypiVersionRow {
+  number: string
+  publishedAt: string | null
+  isLatest: boolean
+  isPrerelease: boolean
+  isYanked: boolean
+  license: string | null
+}
+
+function fileUploadTimes(files: PyPiReleaseFile[]): string[] {
+  return files
+    .map((f) => f.upload_time_iso_8601)
+    .filter((t): t is string => typeof t === 'string' && t.length > 0)
+}
+
+function minStr(arr: string[]): string | null {
+  return arr.length ? arr.reduce((a, b) => (a < b ? a : b)) : null
+}
+
+function maxStr(arr: string[]): string | null {
+  return arr.length ? arr.reduce((a, b) => (a > b ? a : b)) : null
+}
+
+// Derive per-version rows and the package's first/latest release timestamps from PyPI's
+// `releases` map. A version whose files were all deleted has an empty array — no release
+// artifact — so it is skipped (it carries no publish date and would inflate the version count).
+// A release is yanked only when every one of its files is yanked; publish dates come from the
+// min/max upload time across a release's files.
+export function buildVersionRows(
+  releases: Record<string, PyPiReleaseFile[]>,
+  latestVersion: string | null,
+  license: string | null,
+): {
+  versionRows: PypiVersionRow[]
+  firstReleaseAt: string | null
+  latestReleaseAt: string | null
+} {
+  const allUploadTimes: string[] = []
+  const versionRows: PypiVersionRow[] = []
+  for (const [number, files] of Object.entries(releases)) {
+    if (!Array.isArray(files) || files.length === 0) continue
+    const times = fileUploadTimes(files)
+    allUploadTimes.push(...times)
+    versionRows.push({
+      number,
+      publishedAt: minStr(times),
+      isLatest: number === latestVersion,
+      isPrerelease: isPypiPrerelease(number),
+      isYanked: files.every((f) => f.yanked === true),
+      license,
+    })
+  }
+  return {
+    versionRows,
+    firstReleaseAt: minStr(allUploadTimes),
+    latestReleaseAt: maxStr(allUploadTimes),
+  }
 }

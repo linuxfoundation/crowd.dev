@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildVersionRows,
   classifyProjectUrls,
   collectPypiMaintainers,
   isPypiPrerelease,
   parseKeywords,
   pypiNameFromPurl,
   resolvePypiLicenses,
-  stripNullBytesDeep,
 } from '../normalize'
-import type { PyPiInfo } from '../types'
+import type { PyPiInfo, PyPiReleaseFile } from '../types'
 
 function info(partial: Partial<PyPiInfo>): PyPiInfo {
   return { name: 'demo', ...partial }
@@ -26,12 +26,64 @@ describe('pypiNameFromPurl', () => {
   })
 })
 
-describe('stripNullBytesDeep', () => {
-  it('removes NUL bytes from nested strings', () => {
-    const nul = String.fromCharCode(0)
-    const v = stripNullBytesDeep({ a: `x${nul}y`, b: [`p${nul}`, 'q'] })
-    expect(v.a).toBe('xy')
-    expect(v.b).toEqual(['p', 'q'])
+describe('buildVersionRows', () => {
+  const file = (partial: Partial<PyPiReleaseFile>): PyPiReleaseFile => ({ ...partial })
+
+  it('skips releases whose files were all deleted (empty array)', () => {
+    const { versionRows, firstReleaseAt, latestReleaseAt } = buildVersionRows(
+      {
+        '1.0': [file({ upload_time_iso_8601: '2020-01-01T00:00:00Z' })],
+        '1.1': [], // all files deleted
+      },
+      '1.1',
+      'MIT',
+    )
+    expect(versionRows.map((r) => r.number)).toEqual(['1.0'])
+    expect(firstReleaseAt).toBe('2020-01-01T00:00:00Z')
+    expect(latestReleaseAt).toBe('2020-01-01T00:00:00Z')
+  })
+
+  it('marks a release yanked only when every file is yanked', () => {
+    const { versionRows } = buildVersionRows(
+      {
+        '1.0': [file({ yanked: true }), file({ yanked: false })],
+        '2.0': [file({ yanked: true }), file({ yanked: true })],
+      },
+      '2.0',
+      null,
+    )
+    const byNumber = Object.fromEntries(versionRows.map((r) => [r.number, r]))
+    expect(byNumber['1.0'].isYanked).toBe(false)
+    expect(byNumber['2.0'].isYanked).toBe(true)
+  })
+
+  it('flags isLatest, derives publishedAt from the earliest file, and spans first/latest release', () => {
+    const { versionRows, firstReleaseAt, latestReleaseAt } = buildVersionRows(
+      {
+        '1.0': [
+          file({ upload_time_iso_8601: '2021-06-01T00:00:00Z' }),
+          file({ upload_time_iso_8601: '2021-05-01T00:00:00Z' }),
+        ],
+        '2.0': [file({ upload_time_iso_8601: '2022-01-01T00:00:00Z' })],
+      },
+      '2.0',
+      'Apache-2.0',
+    )
+    const byNumber = Object.fromEntries(versionRows.map((r) => [r.number, r]))
+    expect(byNumber['1.0'].publishedAt).toBe('2021-05-01T00:00:00Z') // earliest file
+    expect(byNumber['1.0'].isLatest).toBe(false)
+    expect(byNumber['2.0'].isLatest).toBe(true)
+    expect(byNumber['2.0'].license).toBe('Apache-2.0')
+    expect(firstReleaseAt).toBe('2021-05-01T00:00:00Z')
+    expect(latestReleaseAt).toBe('2022-01-01T00:00:00Z')
+  })
+
+  it('returns empty rows and null dates for no releases', () => {
+    expect(buildVersionRows({}, null, null)).toEqual({
+      versionRows: [],
+      firstReleaseAt: null,
+      latestReleaseAt: null,
+    })
   })
 })
 
@@ -156,6 +208,16 @@ describe('collectPypiMaintainers', () => {
     const people = collectPypiMaintainers(info({ author_email: 'solo@x.com' }))
     expect(people).toEqual([
       { username: 'solo@x.com', displayName: null, email: 'solo@x.com', role: 'author' },
+    ])
+  })
+
+  it('keeps surplus names when there are fewer emails than names', () => {
+    const people = collectPypiMaintainers(
+      info({ author: 'Alice Smith, Bob Jones', author_email: 'alice@x.com' }),
+    )
+    expect(people).toEqual([
+      { username: 'Alice Smith', displayName: 'Alice Smith', email: 'alice@x.com', role: 'author' },
+      { username: 'Bob Jones', displayName: 'Bob Jones', email: null, role: 'author' },
     ])
   })
 
