@@ -858,21 +858,13 @@ class AffiliationService(BaseService):
             self.logger.info(f"Finished with {len(affiliations)} rows from {latest_file_path}")
 
         except AffiliationIntervalNotElapsedError as e:
-            execution_status = ExecutionStatus.FAILURE
-            error_message = e.error_message
-            error_code = e.error_code.value
+            self.logger.info(e.error_message)
 
         except AffiliationFileNotFoundError as e:
-            execution_status = ExecutionStatus.FAILURE
-            error_message = e.error_message
-            error_code = e.error_code.value
             ai_cost = e.ai_cost
-            self.logger.info(error_message)
+            self.logger.info(e.error_message)
 
         except AffiliationAnalysisError as e:
-            execution_status = ExecutionStatus.FAILURE
-            error_message = e.error_message
-            error_code = e.error_code.value
             await upsert_repo_affiliation_registry(
                 RepoAffiliationRegistry(
                     repo_id=repository.id,
@@ -888,7 +880,13 @@ class AffiliationService(BaseService):
                     else (registry.snapshot if registry else None),
                 )
             )
-            self.logger.warning(error_message)
+            if e.retain_file_hash:
+                self.logger.info(e.error_message)
+            else:
+                execution_status = ExecutionStatus.FAILURE
+                error_message = e.error_message
+                error_code = e.error_code.value
+                self.logger.warning(error_message)
 
         except Exception as e:
             execution_status = ExecutionStatus.FAILURE

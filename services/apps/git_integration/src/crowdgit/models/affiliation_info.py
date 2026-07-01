@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import orjson
 from loguru import logger
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -71,6 +72,14 @@ class RepoAffiliationRegistry(BaseModel):
 
     @staticmethod
     def _parse_snapshot(snapshot) -> list[AffiliationInfoItem] | None:
+        if isinstance(snapshot, str | bytes):
+            try:
+                snapshot = orjson.loads(snapshot)
+            except orjson.JSONDecodeError as error:
+                logger.warning(
+                    f"Invalid affiliation snapshot JSON in registry, will re-parse: {error}"
+                )
+                return None
         if isinstance(snapshot, dict) and "affiliations" in snapshot:
             snapshot = snapshot["affiliations"]
         try:
@@ -79,7 +88,7 @@ class RepoAffiliationRegistry(BaseModel):
             logger.warning(f"Invalid affiliation snapshot in registry, will re-parse: {error}")
             return None
 
-    def snapshot_for_db(self) -> list[dict] | None:
+    def snapshot_for_db(self) -> str | None:
         if self.snapshot is None:
             return None
-        return [item.model_dump() for item in self.snapshot]
+        return orjson.dumps([item.model_dump() for item in self.snapshot]).decode()

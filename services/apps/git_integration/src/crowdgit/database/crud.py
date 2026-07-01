@@ -574,7 +574,7 @@ async def upsert_repo_affiliation_registry(registry: RepoAffiliationRegistry) ->
         INSERT INTO git."repoAffiliationRegistry" (
             "repoId", "filePath", "fileHash", "status", "snapshot", "lastRunAt", "updatedAt"
         )
-        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW())
         ON CONFLICT ("repoId") DO UPDATE SET
             "filePath" = EXCLUDED."filePath",
             "fileHash" = EXCLUDED."fileHash",
@@ -604,7 +604,8 @@ async def find_many_member_ids_by_identities(identities: list[dict]) -> list[dic
     param_index = 1
     for idx, identity in enumerate(identities):
         values_parts.append(
-            f"(${param_index}, ${param_index + 1}, ${param_index + 2}, ${param_index + 3}, ${param_index + 4})"
+            f"(${param_index}::int, ${param_index + 1}::text, ${param_index + 2}::boolean,"
+            f" ${param_index + 3}::text, ${param_index + 4}::text)"
         )
         params.extend(
             [
@@ -666,7 +667,8 @@ async def find_many_organization_ids_by_identities(identities: list[dict]) -> li
     param_index = 1
     for idx, identity in enumerate(identities):
         values_parts.append(
-            f"(${param_index}, ${param_index + 1}, ${param_index + 2}, ${param_index + 3})"
+            f"(${param_index}::int, ${param_index + 1}::text,"
+            f" ${param_index + 2}::boolean, ${param_index + 3}::text)"
         )
         params.extend(
             [
