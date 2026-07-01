@@ -90,8 +90,8 @@ export function parseSecurityMd(
     }
   }
 
-  // PVR redirect language corroborates A2. Emitted unconditionally here; the pipeline
-  // vetoes it when A2 reports PVR disabled. TODO(CM-1243): apply the A2 veto in Step 6.
+  // PVR redirect language corroborates A2. Emitted unconditionally; processBatch vetoes it
+  // when A2 authoritatively reports PVR disabled.
   if (PVR_RE.test(text)) {
     add('github-pvr', `https://github.com/${owner}/${name}/security/advisories/new`)
   }

@@ -10,7 +10,7 @@ const SOURCE = 'npm-registry'
 function npmPackagePath(parsed: ParsedPurl): string {
   const full = parsed.namespace ? `${parsed.namespace}/${parsed.name}` : parsed.name
   // Scoped packages must percent-encode the slash for the registry path.
-  return full.startsWith('@') ? full.replace('/', '%2F') : full
+  return full.startsWith('@') ? full.replaceAll('/', '%2F') : full
 }
 
 export function mapNpm(doc: unknown, sourceUrl: string, fetchedAt: string): RawContact[] {

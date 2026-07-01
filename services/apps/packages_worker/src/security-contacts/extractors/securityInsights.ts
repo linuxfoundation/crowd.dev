@@ -45,6 +45,22 @@ function classifyValue(raw: string): { channel: ContactChannel; value: string } 
   return { channel: 'github-handle', value: v }
 }
 
+// project-si-source may only point at trusted raw-content hosts (SSRF guard).
+const REDIRECT_ALLOWED_HOSTS = new Set([
+  'raw.githubusercontent.com',
+  'gist.githubusercontent.com',
+  'gitlab.com',
+])
+
+function isAllowedRedirect(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && REDIRECT_ALLOWED_HOSTS.has(u.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 // MAINTAINERS.md / OWNERS.md links are documents, not contacts.
 function isDocumentUrl(value: string): boolean {
   const v = value.toLowerCase()
@@ -211,7 +227,9 @@ export const extractSecurityInsights: Extractor = async (target, deps) => {
     }
 
     const redirect = (doc as any)?.header?.['project-si-source']
-    if (typeof redirect === 'string' && /^https?:\/\//i.test(redirect)) {
+    // Only follow redirects to trusted raw-content hosts — a repo-controlled URL must not
+    // be able to point the worker at internal/metadata endpoints (SSRF).
+    if (typeof redirect === 'string' && isAllowedRedirect(redirect)) {
       const redirected = await fetchText(redirect, deps.fetchTimeoutMs)
       if (redirected.text) return parseSecurityInsights(redirected.text, redirect, fetchedAt)
     }

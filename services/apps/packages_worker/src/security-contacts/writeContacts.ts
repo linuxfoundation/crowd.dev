@@ -4,8 +4,8 @@ import { RepoPolicies, ScoredContact } from './types'
 
 /**
  * Idempotent per-repo recompute: replace the repo's security_contacts rows and refresh
- * the policy columns in one transaction. pvr_enabled uses COALESCE so an "unknown" result
- * (A2 endpoint failure) never clears a previously known value.
+ * the policy columns in one transaction. Policy columns use COALESCE so a run that doesn't
+ * rediscover a field (partial/failed extractor pass) never clears a previously known value.
  */
 export async function writeContacts(
   qx: QueryExecutor,
@@ -36,11 +36,13 @@ export async function writeContacts(
     }
 
     await tx.result(
+      // COALESCE preserves previously stored values when a run doesn't (re)discover a field —
+      // a partial/failed extractor pass must not wipe still-valid policy URLs or the PVR flag.
       `UPDATE repos SET
-         security_policy_url         = $(securityPolicyUrl),
-         vulnerability_reporting_url = $(vulnerabilityReportingUrl),
-         bug_bounty_url              = $(bugBountyUrl),
-         security_txt_url            = $(securityTxtUrl),
+         security_policy_url         = COALESCE($(securityPolicyUrl), security_policy_url),
+         vulnerability_reporting_url = COALESCE($(vulnerabilityReportingUrl), vulnerability_reporting_url),
+         bug_bounty_url              = COALESCE($(bugBountyUrl), bug_bounty_url),
+         security_txt_url            = COALESCE($(securityTxtUrl), security_txt_url),
          pvr_enabled                 = COALESCE($(pvrEnabled), pvr_enabled),
          contacts_last_refreshed     = NOW()
        WHERE id = $(repoId)`,

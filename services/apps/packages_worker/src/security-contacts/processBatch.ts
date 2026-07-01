@@ -56,7 +56,7 @@ async function fetchBatch(qx: QueryExecutor, config: Config): Promise<SweepRow[]
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-    WHERE r.host IN ('github', 'github.com')
+    WHERE r.host = 'github'
       AND (
         r.contacts_last_refreshed IS NULL
         OR r.contacts_last_refreshed < NOW() - INTERVAL '$(updateIntervalHours) hours'
@@ -96,6 +96,13 @@ async function processRepo(
 ): Promise<void> {
   // One failing extractor must not sink the repo.
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
+
+  // If every extractor failed (e.g. a transient network outage), skip the write entirely so we
+  // don't delete previously good contacts/policies; leaving contacts_last_refreshed retries next sweep.
+  if (results.every((r) => r.status === 'rejected')) {
+    log.warn({ repoId: target.repoId }, 'All extractors failed — skipping write to preserve data')
+    return
+  }
 
   let contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
