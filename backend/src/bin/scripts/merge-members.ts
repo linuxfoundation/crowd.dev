@@ -34,6 +34,14 @@ const options = [
       'The unique ID of a member that will be merged into the first one. This one will be destroyed. You can provide multiple ids here separated by comma.',
   },
   {
+    name: 'userId',
+    alias: 'u',
+    typeLabel: '{underline userId}',
+    type: String,
+    description:
+      'The unique ID of a user that will be merged into the first one. This one will be destroyed. You can provide multiple ids here separated by comma.',
+  },
+  {
     name: 'help',
     alias: 'h',
     type: Boolean,
@@ -65,6 +73,8 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
     const originalId = parameters.originalId
     const targetIds = parameters.targetId.split(',')
 
+    const userId = parameters.userId
+
     const options = await SequelizeRepository.getDefaultIRepositoryOptions()
     const qx = SequelizeRepository.getQueryExecutor(options)
 
@@ -74,6 +84,7 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
     ])
 
     options.currentTenant = { id: originalMember.tenantId }
+    options.currentUser = { id: userId }
 
     for (const targetId of targetIds) {
       const targetMember = await findMemberById(qx, targetId, [
@@ -89,7 +100,7 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
         log.info(`Merging ${targetId} into ${originalId}...`)
         const service = new CommonMemberService(optionsQx(options), options.temporal, log)
         try {
-          await service.merge(originalId, targetId)
+          await service.merge(originalId, targetId, options)
         } catch (err) {
           log.error(`Error merging members: ${err.message}`)
           process.exit(1)
