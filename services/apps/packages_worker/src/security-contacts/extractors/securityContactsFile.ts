@@ -73,11 +73,11 @@ export const extractSecurityContactsFile: Extractor = async (target, deps) => {
     const email =
       entry.email ?? (await resolvePublicEmail(entry.handle, deps.fetchTimeoutMs, token))
     if (email) {
-      // name = handle so the reconciler can identity-link this to a bare handle from another source
+      // handle = the username this email was resolved from (used for identity-linking).
       contacts.push({
         channel: 'email',
         value: email,
-        name: entry.handle,
+        handle: entry.handle,
         role: 'security-team',
         tier: 'A',
         provenance: prov(),

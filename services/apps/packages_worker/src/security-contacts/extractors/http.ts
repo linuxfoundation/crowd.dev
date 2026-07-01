@@ -7,6 +7,10 @@ export function registryHeaders(userAgent: string): Record<string, string> {
   return { 'User-Agent': userAgent }
 }
 
+// Genuinely-absent → null body; every other non-200 throws so transient failures (429/5xx/...)
+// are treated as failures and the pipeline preserves existing data instead of wiping it.
+const ABSENT_STATUSES = new Set([404, 410])
+
 export interface FetchTextResult {
   status: number
   text: string | null
@@ -21,8 +25,9 @@ export async function fetchText(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(url, { headers, signal: controller.signal })
-    if (res.status !== 200) return { status: res.status, text: null }
-    return { status: 200, text: await res.text() }
+    if (res.status === 200) return { status: 200, text: await res.text() }
+    if (ABSENT_STATUSES.has(res.status)) return { status: res.status, text: null }
+    throw new Error(`fetchText ${url} failed: HTTP ${res.status}`)
   } finally {
     clearTimeout(timeoutId)
   }
@@ -42,8 +47,9 @@ export async function fetchJson(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(url, { headers, signal: controller.signal })
-    if (res.status !== 200) return { status: res.status, json: null }
-    return { status: 200, json: await res.json() }
+    if (res.status === 200) return { status: 200, json: await res.json() }
+    if (ABSENT_STATUSES.has(res.status)) return { status: res.status, json: null }
+    throw new Error(`fetchJson ${url} failed: HTTP ${res.status}`)
   } finally {
     clearTimeout(timeoutId)
   }

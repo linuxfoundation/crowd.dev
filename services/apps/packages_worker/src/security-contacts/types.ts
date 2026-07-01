@@ -25,6 +25,8 @@ export interface RawContact {
   value: string
   role: ContactRole
   name?: string
+  /** Username an A3 email was resolved from — used only to identity-link a bare github-handle. */
+  handle?: string
   tier: SourceTier
   provenance: ProvenanceEntry[]
 }

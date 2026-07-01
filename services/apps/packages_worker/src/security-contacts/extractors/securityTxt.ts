@@ -9,6 +9,12 @@ const PLATFORM_HOSTS = new Set(['github.com', 'www.github.com', 'gitlab.com', 'b
 
 const FIELD_RE = /^([A-Za-z-]+):\s*(.+?)\s*$/
 
+// target.homepage is externally-sourced. Requiring https already blocks the classic SSRF target
+// (cloud-metadata IMDS is http-only); we also reject obvious loopback/localhost.
+function isBlockedHost(h: string): boolean {
+  return h === 'localhost' || h === '::1' || h === '0.0.0.0' || h.startsWith('127.')
+}
+
 export function parseSecurityTxt(
   text: string,
   sourceUrl: string,
@@ -65,12 +71,13 @@ export const extractSecurityTxt: Extractor = async (target, deps) => {
   let host: string
   try {
     const u = new URL(target.homepage)
+    if (u.protocol !== 'https:') return { contacts: [], policies: {} }
     origin = u.origin
     host = u.hostname.toLowerCase()
   } catch {
     return { contacts: [], policies: {} }
   }
-  if (PLATFORM_HOSTS.has(host)) return { contacts: [], policies: {} }
+  if (PLATFORM_HOSTS.has(host) || isBlockedHost(host)) return { contacts: [], policies: {} }
 
   const url = `${origin}/.well-known/security.txt`
   const { text } = await fetchText(url, deps.fetchTimeoutMs)

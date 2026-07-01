@@ -2,6 +2,7 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getSecurityContactsConfig } from '../config'
+import { mapWithConcurrency } from '../utils/concurrency'
 
 import { extractPvr } from './extractors/pvr'
 import { extractManifest } from './extractors/registry'
@@ -19,7 +20,7 @@ import {
   RepoPolicies,
   RepoTarget,
 } from './types'
-import { writeContacts } from './writeContacts'
+import { markRepoAttempted, writeContacts } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts')
 
@@ -101,22 +102,6 @@ function toTarget(row: SweepRow): RepoTarget {
   return { repoId: row.id, url: row.url, homepage: row.homepage, packages: row.packages ?? [] }
 }
 
-async function runWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  task: (item: T) => Promise<void>,
-): Promise<void> {
-  let idx = 0
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-      while (idx < items.length) {
-        const item = items[idx++]
-        await task(item)
-      }
-    }),
-  )
-}
-
 async function processRepo(
   target: RepoTarget,
   deps: ExtractorDeps,
@@ -125,10 +110,10 @@ async function processRepo(
   // One failing extractor must not sink the repo.
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-  // If every extractor failed (e.g. a transient network outage), skip the write entirely so we
-  // don't delete previously good contacts/policies; leaving contacts_last_refreshed retries next sweep.
+  // Every extractor failed (transient outage) — preserve existing data, just record the attempt.
   if (results.every((r) => r.status === 'rejected')) {
-    log.warn({ repoId: target.repoId }, 'All extractors failed — skipping write to preserve data')
+    log.warn({ repoId: target.repoId }, 'All extractors failed — preserving existing data')
+    await markRepoAttempted(qx, target.repoId)
     return
   }
 
@@ -168,7 +153,7 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   }
 
   const targets = batch.map(toTarget)
-  await runWithConcurrency(targets, CONCURRENCY, (target) => processRepo(target, deps, qx))
+  await mapWithConcurrency(targets, CONCURRENCY, (target) => processRepo(target, deps, qx))
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }

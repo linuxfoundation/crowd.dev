@@ -50,6 +50,7 @@ function mergeInto(target: RawContact, src: RawContact): void {
   target.role = higherRole(target.role, src.role)
   target.tier = higherTier(target.tier, src.tier)
   if (!target.name && src.name) target.name = src.name
+  if (!target.handle && src.handle) target.handle = src.handle
 }
 
 function exactMatchMerge(contacts: RawContact[]): RawContact[] {
@@ -66,13 +67,12 @@ function exactMatchMerge(contacts: RawContact[]): RawContact[] {
   return [...byKey.values()]
 }
 
-// Collapse a resolved handle into its email: extractors set the email contact's
-// `name` to the originating handle, so a github-handle whose value matches becomes
-// redundant once the email is known. The email (higher-quality) channel is kept.
+// Collapse a bare github-handle into the email A3 resolved it from, matched via the explicit
+// `handle` field (never the display name, to avoid merging unrelated people who share a name).
 function identityLinkMerge(contacts: RawContact[]): RawContact[] {
   const emailByHandle = new Map<string, RawContact>()
   for (const c of contacts) {
-    if (c.channel === 'email' && c.name) emailByHandle.set(c.name.toLowerCase(), c)
+    if (c.channel === 'email' && c.handle) emailByHandle.set(c.handle.toLowerCase(), c)
   }
 
   const out: RawContact[] = []

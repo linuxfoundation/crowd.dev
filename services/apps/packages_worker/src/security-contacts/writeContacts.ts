@@ -7,6 +7,14 @@ import { RepoPolicies, ScoredContact } from './types'
  * the policy columns in one transaction. Policy columns use COALESCE so a run that doesn't
  * rediscover a field (partial/failed extractor pass) never clears a previously known value.
  */
+// Records the attempt without touching contacts/policies — preserves existing data on total
+// failure while advancing contacts_last_refreshed so the repo isn't reprocessed this sweep.
+export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Promise<void> {
+  await qx.result('UPDATE repos SET contacts_last_refreshed = NOW() WHERE id = $(repoId)', {
+    repoId,
+  })
+}
+
 export async function writeContacts(
   qx: QueryExecutor,
   repoId: string,
