@@ -3,6 +3,7 @@ import commandLineUsage from 'command-line-usage'
 import * as fs from 'fs'
 import path from 'path'
 
+import { generateUUIDv1 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import { optionsQx } from '@crowd/data-access-layer'
 import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members'
@@ -85,6 +86,15 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
     options.currentTenant = { id: originalMember.tenantId }
     options.currentUser = { id: userId }
 
+    const ctx = {
+      ...options,
+      requestId: generateUUIDv1(),
+      userData: {
+        ip: '127.0.0.1',
+        userAgent: 'merge-members-script',
+      },
+    }
+
     for (const targetId of targetIds) {
       const targetMember = await findMemberById(qx, targetId, [
         MemberField.ID,
@@ -99,7 +109,7 @@ if (parameters.help || !parameters.originalId || !parameters.targetId) {
         log.info(`Merging ${targetId} into ${originalId}...`)
         const service = new CommonMemberService(optionsQx(options), options.temporal, log)
         try {
-          await service.merge(originalId, targetId, options)
+          await service.merge(originalId, targetId, ctx)
         } catch (err) {
           log.error(`Error merging members: ${err.message}`)
           process.exit(1)
