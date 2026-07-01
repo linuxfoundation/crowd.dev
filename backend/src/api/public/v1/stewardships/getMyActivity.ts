@@ -65,7 +65,7 @@ export async function getMyActivityHandler(req: Request, res: Response): Promise
       description: r.content,
       actor: r.actor,
       createdAt: r.createdAt,
-      suggestedAction: SUGGESTED_ACTIONS[r.stewardshipStatus] ?? null,
+      suggestedAction: SUGGESTED_ACTIONS[r.currentStewardshipStatus] ?? null,
     })),
     meta: {
       total,
