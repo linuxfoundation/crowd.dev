@@ -557,7 +557,7 @@ async def save_service_execution(service_execution: ServiceExecution) -> None:
 
 async def get_repo_affiliation_registry(repo_id: str) -> RepoAffiliationRegistry | None:
     sql_query = """
-        SELECT "filePath", "fileHash", "status", "snapshot", "lastRunAt"
+        SELECT "repoId", "filePath", "fileHash", "status", "snapshot", "lastRunAt"
         FROM git."repoAffiliationRegistry"
         WHERE "repoId" = $1
     """
@@ -565,9 +565,7 @@ async def get_repo_affiliation_registry(repo_id: str) -> RepoAffiliationRegistry
     if not result:
         return None
 
-    row = dict(result)
-    row["repoId"] = repo_id
-    return RepoAffiliationRegistry.from_db(row)
+    return RepoAffiliationRegistry.from_db(dict(result))
 
 
 async def upsert_repo_affiliation_registry(registry: RepoAffiliationRegistry) -> None:

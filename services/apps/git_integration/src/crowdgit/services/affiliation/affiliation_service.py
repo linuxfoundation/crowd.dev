@@ -543,7 +543,9 @@ class AffiliationService(BaseService):
         needs_parse = file_hash != stored_hash or existing_snapshot is None
 
         if not needs_parse:
-            if not existing_snapshot:
+            if not existing_snapshot or (
+                registry and registry.status == AffiliationRegistryStatus.UNUSABLE.value
+            ):
                 return [], 0.0
 
             applyable = self.normalize_parsed_affiliations(existing_snapshot)
