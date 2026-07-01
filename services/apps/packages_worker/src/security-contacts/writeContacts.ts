@@ -46,9 +46,14 @@ export async function writeContacts(
     await tx.result(
       // COALESCE preserves previously stored values when a run doesn't (re)discover a field —
       // a partial/failed extractor pass must not wipe still-valid policy URLs or the PVR flag.
+      // vulnerability_reporting_url is PVR-derived, so when PVR is authoritatively resolved we
+      // overwrite it (clearing it once PVR is disabled); otherwise it is preserved.
       `UPDATE repos SET
          security_policy_url         = COALESCE($(securityPolicyUrl), security_policy_url),
-         vulnerability_reporting_url = COALESCE($(vulnerabilityReportingUrl), vulnerability_reporting_url),
+         vulnerability_reporting_url = CASE WHEN $(pvrResolved)
+                                        THEN $(vulnerabilityReportingUrl)
+                                        ELSE COALESCE($(vulnerabilityReportingUrl), vulnerability_reporting_url)
+                                      END,
          bug_bounty_url              = COALESCE($(bugBountyUrl), bug_bounty_url),
          security_txt_url            = COALESCE($(securityTxtUrl), security_txt_url),
          pvr_enabled                 = COALESCE($(pvrEnabled), pvr_enabled),
@@ -58,6 +63,7 @@ export async function writeContacts(
         repoId,
         securityPolicyUrl: policies.securityPolicyUrl ?? null,
         vulnerabilityReportingUrl: policies.vulnerabilityReportingUrl ?? null,
+        pvrResolved: policies.pvrEnabled !== undefined,
         bugBountyUrl: policies.bugBountyUrl ?? null,
         securityTxtUrl: policies.securityTxtUrl ?? null,
         pvrEnabled: policies.pvrEnabled ?? null,

@@ -163,6 +163,9 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
       await processRepo(target, deps, qx)
     } catch (err) {
       log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
+      // Best-effort mark so a persistently-failing repo drains on cadence rather than making the
+      // sweep hot-loop (it would otherwise stay eligible and keep processed > 0 forever).
+      await markRepoAttempted(qx, target.repoId).catch(() => undefined)
     }
   })
 
