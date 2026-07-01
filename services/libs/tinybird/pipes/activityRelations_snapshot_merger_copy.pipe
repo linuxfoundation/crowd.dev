@@ -14,12 +14,17 @@ SQL >
         (
             Select max(snapshotId)::DateTime from activityRelations_enriched_deduplicated_ds
         ) as maxSnapshotID
-    SELECT * REPLACE (maxSnapshotID::DateTime + interval 1 day AS snapshotId)
-    FROM activityRelations_enriched_deduplicated_ds
-    where
-        snapshotId = maxSnapshotID
-        and (segmentId, timestamp, type, platform, channel, sourceId)
-        NOT IN (SELECT segmentId, timestamp, type, platform, channel, sourceId FROM realtime_snapshot)
+    SELECT h.* REPLACE (maxSnapshotID::DateTime + interval 1 day AS snapshotId)
+    FROM activityRelations_enriched_deduplicated_ds h
+    LEFT ANTI JOIN realtime_snapshot r
+        ON  h.segmentId  = r.segmentId
+        AND h.timestamp  = r.timestamp
+        AND h.type       = r.type
+        AND h.platform   = r.platform
+        AND h.channel    = r.channel
+        AND h.sourceId   = r.sourceId
+    WHERE h.snapshotId = maxSnapshotID
+    SETTINGS join_algorithm = 'grace_hash'
 
 NODE merged_snapshots
 SQL >
