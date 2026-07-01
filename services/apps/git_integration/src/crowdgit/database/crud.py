@@ -765,7 +765,9 @@ async def insert_member_organizations(rows: list[dict]) -> None:
             "updatedAt"
         )
         VALUES ($1, $2, NULL, NULL, NULL, $3, false, NOW(), NOW())
-        ON CONFLICT ("memberId", "organizationId", "dateStart", "dateEnd") DO NOTHING
+        ON CONFLICT ("memberId", "organizationId")
+            WHERE ("dateStart" IS NULL AND "dateEnd" IS NULL)
+        DO NOTHING
     """
     await executemany(
         sql_query,
