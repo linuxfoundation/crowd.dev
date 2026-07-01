@@ -203,9 +203,9 @@ export async function openStewardshipByPurl(
     ),
     _log AS (
       INSERT INTO stewardship_activity
-        (stewardship_id, actor_user_id, actor_type, activity_type, content, actor_username, actor_display_name, actor_avatar_url)
+        (stewardship_id, actor_user_id, actor_type, activity_type, content, actor_username, actor_display_name, actor_avatar_url, status_at_time)
       SELECT upserted.id, $(actorUserId), 'user', 'state_changed', 'Opened for stewardship',
-             $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
+             $(actorUsername), $(actorDisplayName), $(actorAvatarUrl), 'open'
       FROM upserted
       WHERE NOT EXISTS (SELECT 1 FROM prev WHERE prev.old_status = 'open')
     )
@@ -278,9 +278,9 @@ export async function assignSteward(
 
     await tx.result(
       `INSERT INTO stewardship_activity
-         (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
+         (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url, status_at_time)
        VALUES ($(stewardshipId), $(actorUserId), 'user', 'steward_added', $(content), $(metadata)::jsonb,
-               $(actorUsername), $(actorDisplayName), $(actorAvatarUrl))`,
+               $(actorUsername), $(actorDisplayName), $(actorAvatarUrl), $(statusAtTime))`,
       {
         stewardshipId,
         actorUserId: data.assignedBy,
@@ -288,6 +288,7 @@ export async function assignSteward(
         actorDisplayName: data.actorDisplayName ?? null,
         actorAvatarUrl: data.actorAvatarUrl ?? null,
         content: `Assigned steward ${data.userId} as ${data.role}`,
+        statusAtTime: stewardship.status,
         metadata: JSON.stringify({
           userId: data.userId,
           role: data.role,
@@ -316,10 +317,10 @@ export async function assignSteward(
         ),
         _log AS (
           INSERT INTO stewardship_activity
-            (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
+            (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url, status_at_time)
           SELECT id, $(actorUserId), 'user', 'state_changed',
                  'Status updated to assessing', $(metadata)::jsonb,
-                 $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
+                 $(actorUsername), $(actorDisplayName), $(actorAvatarUrl), 'assessing'
           FROM upd
         )
         SELECT * FROM upd
@@ -380,6 +381,7 @@ export interface ActivityFeedRow {
   content: string | null
   metadata: Record<string, unknown> | null
   stewardshipStatus: string
+  currentStewardshipStatus: string
   createdAt: string
   total: string
 }
@@ -406,7 +408,8 @@ export async function listStewardshipActivity(
       sa.activity_type                   AS "activityType",
       sa.content                         AS content,
       ${STEWARD_DISPLAY_NAME_METADATA}   AS metadata,
-      s.status                           AS "stewardshipStatus",
+      COALESCE(sa.status_at_time, s.status) AS "stewardshipStatus",
+      s.status                           AS "currentStewardshipStatus",
       sa.created_at                      AS "createdAt",
       COUNT(*) OVER()::text              AS total
     FROM stewardship_activity sa
@@ -454,6 +457,7 @@ export async function listStewardshipActivity(
       ),
       metadata: row.metadata as Record<string, unknown> | null,
       stewardshipStatus: row.stewardshipStatus as string,
+      currentStewardshipStatus: row.currentStewardshipStatus as string,
       createdAt: toIso(row.createdAt),
     })),
     total,
@@ -797,6 +801,7 @@ export async function listMyActivity(
       sub.content,
       sub.metadata,
       sub."stewardshipStatus",
+      sub."currentStewardshipStatus",
       sub."createdAt",
       COUNT(*) OVER()::text AS total
     FROM (
@@ -814,7 +819,8 @@ export async function listMyActivity(
         sa.activity_type                   AS "activityType",
         sa.content                         AS content,
         ${STEWARD_DISPLAY_NAME_METADATA}   AS metadata,
-        s.status                           AS "stewardshipStatus",
+        COALESCE(sa.status_at_time, s.status) AS "stewardshipStatus",
+        s.status                           AS "currentStewardshipStatus",
         sa.created_at                      AS "createdAt"
       FROM stewardship_activity sa
       JOIN stewardships s ON s.id = sa.stewardship_id
@@ -879,6 +885,7 @@ export async function listMyActivity(
       ),
       metadata: row.metadata as Record<string, unknown> | null,
       stewardshipStatus: row.stewardshipStatus as string,
+      currentStewardshipStatus: row.currentStewardshipStatus as string,
       createdAt: toIso(row.createdAt),
     })),
     total,
@@ -961,9 +968,9 @@ export async function escalateStewardship(
     ),
     _log AS (
       INSERT INTO stewardship_activity
-        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
+        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url, status_at_time)
       SELECT id, $(actorUserId), 'user', 'escalation',
-             $(content), $(metadata)::jsonb, $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
+             $(content), $(metadata)::jsonb, $(actorUsername), $(actorDisplayName), $(actorAvatarUrl), 'escalated'
       FROM upd
     )
     SELECT * FROM upd
@@ -1037,9 +1044,9 @@ export async function updateStewardshipStatus(
     ),
     _log AS (
       INSERT INTO stewardship_activity
-        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url)
+        (stewardship_id, actor_user_id, actor_type, activity_type, content, metadata, actor_username, actor_display_name, actor_avatar_url, status_at_time)
       SELECT id, $(actorUserId), 'user', 'state_changed',
-             $(content), $(metadata)::jsonb, $(actorUsername), $(actorDisplayName), $(actorAvatarUrl)
+             $(content), $(metadata)::jsonb, $(actorUsername), $(actorDisplayName), $(actorAvatarUrl), $(status)
       FROM upd
     )
     SELECT * FROM upd
