@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import aiofiles
 import aiofiles.os
+from pydantic import ValidationError
 
 from crowdgit.database.crud import (
     fetch_member_organizations,
@@ -459,11 +460,25 @@ class AffiliationService(BaseService):
 
     async def parse_affiliations(self, content: str) -> tuple[list[AffiliationInfoItem], float]:
         """Extract affiliations with AI, splitting large files into chunks when needed."""
+
+        async def invoke_parse(file_content: str):
+            for attempt in range(2):
+                try:
+                    return await invoke_bedrock(
+                        self.get_extraction_prompt(file_content),
+                        pydantic_model=AffiliationParseOutput,
+                    )
+                except ValidationError:
+                    if attempt == 0:
+                        self.logger.info("Malformed affiliation parse response, retrying once")
+                        continue
+                    raise AffiliationAnalysisError(
+                        retain_file_hash=True,
+                        error_message="Affiliation file could not be parsed cleanly after retry",
+                    ) from None
+
         if len(content) <= self.MAX_CHUNK_SIZE:
-            parse_result = await invoke_bedrock(
-                self.get_extraction_prompt(content),
-                pydantic_model=AffiliationParseOutput,
-            )
+            parse_result = await invoke_parse(content)
 
             affiliations = parse_result.output.affiliations
             if affiliations is not None:
@@ -504,10 +519,7 @@ class AffiliationService(BaseService):
 
         async def process_chunk(chunk: str):
             async with semaphore:
-                return await invoke_bedrock(
-                    self.get_extraction_prompt(chunk),
-                    pydantic_model=AffiliationParseOutput,
-                )
+                return await invoke_parse(chunk)
 
         chunk_results = await asyncio.gather(*[process_chunk(chunk) for chunk in chunks])
 
@@ -807,7 +819,7 @@ class AffiliationService(BaseService):
                     )
                 )
 
-            self.logger.info("Starting affiliations")
+            self.logger.info(f"Starting affiliations processing for repo: {batch_info.remote}")
 
             saved_file_path = registry.file_path if registry else None
             latest_file_path, discovery_cost = await self.resolve_affiliation_file(
