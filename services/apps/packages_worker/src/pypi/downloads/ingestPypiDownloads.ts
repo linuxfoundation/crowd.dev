@@ -1,11 +1,13 @@
 import { proxyActivities, workflowInfo } from '@temporalio/workflow'
 
-import type * as depsDevActivities from '../activities'
+import type * as depsDevActivities from '../../deps-dev/activities'
+
+import type * as pypiDownloadsActivities from './getCriticalPypiCount'
 import {
   computeLast30dWindows,
   defaultDailyRange,
   utcFirstOfCurrentMonth,
-} from '../queries/pypiDownloadsDates'
+} from './pypiDownloadsDates'
 import {
   PYPI_DOWNLOADS_30D_KIND,
   PYPI_DOWNLOADS_30D_STAGING,
@@ -15,7 +17,7 @@ import {
   buildPypiDownloads30dSql,
   buildPypiDownloadsDailyMergeSql,
   buildPypiDownloadsDailySql,
-} from '../queries/pypiDownloadsSql'
+} from './pypiDownloadsSql'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
@@ -38,7 +40,7 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 1 },
 })
 
-const { getCriticalPypiCount } = proxyActivities<typeof depsDevActivities>({
+const { getCriticalPypiCount } = proxyActivities<typeof pypiDownloadsActivities>({
   startToCloseTimeout: '1 minute',
   retry: { maximumAttempts: 3 },
 })

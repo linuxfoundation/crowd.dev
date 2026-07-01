@@ -2,7 +2,7 @@ import { scheduleOsspckgsBootstrap } from '../deps-dev/schedules/bootstrap'
 import {
   schedulePypiDownloads30d,
   schedulePypiDownloadsDaily,
-} from '../deps-dev/schedules/pypiDownloads'
+} from '../pypi/downloads/pypiDownloads'
 import { svc } from '../service'
 
 setImmediate(async () => {

@@ -1,5 +1,4 @@
 export * from './bqExportToGcs'
-export * from './getCriticalPypiCount'
 export * from './setJobStep'
 export * from './createVersionsLookup'
 export * from './managePackageDepsConstraints'

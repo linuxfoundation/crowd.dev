@@ -30,4 +30,5 @@ export {
   ingestPypiPackageBatch,
   pypiStopAfterFirstPage,
 } from './pypi/activities'
+export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'

@@ -1,7 +1,8 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../../service'
-import { ingestPypiDownloadsDaily, ingestPypiDownloadsLast30d } from '../workflows'
+
+import { ingestPypiDownloadsDaily, ingestPypiDownloadsLast30d } from './ingestPypiDownloads'
 
 // Last-30d downloads for all pypi packages. Runs on the 4th of the month (06:00 UTC) — a few
 // days after the window's end (1st of the month) so the BigQuery partitions have settled. No

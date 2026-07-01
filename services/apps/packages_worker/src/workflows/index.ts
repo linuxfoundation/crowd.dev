@@ -12,8 +12,6 @@ export {
   ingestDependencies,
   ingestAdvisories,
   ingestDependentCounts,
-  ingestPypiDownloadsLast30d,
-  ingestPypiDownloadsDaily,
 } from '../deps-dev/workflows'
 export { osvSync } from '../osv/workflows'
 export { ingestMavenPackages } from '../maven/workflows'
@@ -22,4 +20,8 @@ export { rankPackagesWorkflow } from '../criticality/workflow'
 export { cargoSyncWorkflow } from '../cargo/workflows'
 export { enrichGoVersions, enrichGoStatus } from '../go/workflows'
 export { ingestPypiPackages } from '../pypi/workflows'
+export {
+  ingestPypiDownloadsLast30d,
+  ingestPypiDownloadsDaily,
+} from '../pypi/downloads/ingestPypiDownloads'
 export { ingestNuGetPackages } from '../nuget/workflows'
