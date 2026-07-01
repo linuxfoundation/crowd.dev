@@ -30,6 +30,20 @@ export interface BatchResult {
   processed: number
 }
 
+// Two-tier refresh cadence (the worker runs on a daily cron). Just under 24h/168h so a repo
+// processed at ~06:00 is eligible again at the next daily/weekly tick rather than slipping a day.
+const DAILY_INTERVAL_HOURS = 20 // repos never evaluated or with no contacts yet
+const WEEKLY_INTERVAL_HOURS = 156 // already-enriched repos (have contacts)
+
+// Tuned for throughput within the platform ceilings:
+//  - CONCURRENCY: parallel repos; safe against GitHub REST secondary limits given the token pool.
+//  - FETCH_TIMEOUT_MS: generous enough for slow registries (Maven metadata/POM) without hanging slots.
+//  - BATCH_SIZE: bounded by the 30-min activity timeout (worst case: an all-cargo batch throttled
+//    to crates.io's 1 req/s finishes ~8 min).
+const CONCURRENCY = 100
+const FETCH_TIMEOUT_MS = 15000
+const BATCH_SIZE = 500
+
 const EXTRACTORS: Extractor[] = [
   extractSecurityInsights, // A1
   extractPvr, // A2
@@ -46,7 +60,7 @@ interface SweepRow {
   packages: RepoPackage[] | null
 }
 
-async function fetchBatch(qx: QueryExecutor, config: Config): Promise<SweepRow[]> {
+async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
   return qx.select(
     `
     SELECT r.id::text AS id,
@@ -58,14 +72,28 @@ async function fetchBatch(qx: QueryExecutor, config: Config): Promise<SweepRow[]
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
     WHERE r.host = 'github'
       AND (
+        -- never evaluated → always eligible
         r.contacts_last_refreshed IS NULL
-        OR r.contacts_last_refreshed < NOW() - INTERVAL '$(updateIntervalHours) hours'
+        -- evaluated but no contacts found yet → retry on the daily cadence
+        OR (
+          NOT EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id)
+          AND r.contacts_last_refreshed < NOW() - INTERVAL '$(dailyIntervalHours) hours'
+        )
+        -- already enriched (has contacts) → refresh on the weekly cadence
+        OR (
+          EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id)
+          AND r.contacts_last_refreshed < NOW() - INTERVAL '$(weeklyIntervalHours) hours'
+        )
       )
     GROUP BY r.id
     ORDER BY r.id
     LIMIT $(batchSize)
     `,
-    { batchSize: config.batchSize, updateIntervalHours: config.updateIntervalHours },
+    {
+      batchSize: BATCH_SIZE,
+      dailyIntervalHours: DAILY_INTERVAL_HOURS,
+      weeklyIntervalHours: WEEKLY_INTERVAL_HOURS,
+    },
   )
 }
 
@@ -130,17 +158,17 @@ async function processRepo(
 }
 
 export async function processBatch(qx: QueryExecutor, config: Config): Promise<BatchResult> {
-  const batch = await fetchBatch(qx, config)
+  const batch = await fetchBatch(qx)
   if (batch.length === 0) return { processed: 0 }
 
   const deps: ExtractorDeps = {
-    fetchTimeoutMs: config.fetchTimeoutMs,
+    fetchTimeoutMs: FETCH_TIMEOUT_MS,
     userAgent: config.userAgent,
     getToken: getSecurityContactsToken,
   }
 
   const targets = batch.map(toTarget)
-  await runWithConcurrency(targets, config.concurrency, (target) => processRepo(target, deps, qx))
+  await runWithConcurrency(targets, CONCURRENCY, (target) => processRepo(target, deps, qx))
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }

@@ -48,14 +48,8 @@ export function getEnricherConfig() {
 
 export function getSecurityContactsConfig() {
   return {
-    // A repo is re-evaluated once its contacts are older than this many hours.
-    updateIntervalHours: requireEnvInt('SECURITY_CONTACTS_UPDATE_INTERVAL_HOURS'),
     // Sent on all registry calls; crates.io rejects requests without an identifying UA.
     userAgent: requireEnv('SECURITY_CONTACTS_USER_AGENT'),
-    // Lower than the enricher: each repo fans out to several HTTP calls across extractors
-    concurrency: parseInt(process.env.SECURITY_CONTACTS_CONCURRENCY ?? '20', 10),
-    fetchTimeoutMs: parseInt(process.env.SECURITY_CONTACTS_FETCH_TIMEOUT_MS ?? '10000', 10),
-    batchSize: parseInt(process.env.SECURITY_CONTACTS_BATCH_SIZE ?? '500', 10),
   }
 }
 

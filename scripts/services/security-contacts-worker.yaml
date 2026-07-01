@@ -7,7 +7,6 @@ x-env-args: &env-args
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
   CROWD_TEMPORAL_TASKQUEUE: packages-worker
-  SECURITY_CONTACTS_UPDATE_INTERVAL_HOURS: '24'
 
 services:
   security-contacts-worker:
