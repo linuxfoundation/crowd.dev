@@ -107,12 +107,17 @@ async function processRepo(
   deps: ExtractorDeps,
   qx: QueryExecutor,
 ): Promise<void> {
-  // One failing extractor must not sink the repo.
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-  // Every extractor failed (transient outage) — preserve existing data, just record the attempt.
-  if (results.every((r) => r.status === 'rejected')) {
-    log.warn({ repoId: target.repoId }, 'All extractors failed — preserving existing data')
+  // Replace the repo's contacts only when every extractor succeeded. If any failed (transient
+  // error — non-200s throw), a destructive rewrite would drop contacts a failed tier-A/B extractor
+  // still has, so preserve existing data and just record the attempt; retried next cadence.
+  const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+  if (failed) {
+    log.warn(
+      { repoId: target.repoId, errMsg: failed.reason?.message },
+      'Extractor failed — preserving existing data',
+    )
     await markRepoAttempted(qx, target.repoId)
     return
   }
@@ -120,10 +125,7 @@ async function processRepo(
   let contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
   for (const r of results) {
-    if (r.status !== 'fulfilled') {
-      log.warn({ repoId: target.repoId, errMsg: r.reason?.message }, 'Extractor failed')
-      continue
-    }
+    if (r.status !== 'fulfilled') continue
     contacts.push(...r.value.contacts)
     for (const [key, value] of Object.entries(r.value.policies)) {
       if (!(policies as Record<string, unknown>)[key] && value != null) {
@@ -153,7 +155,16 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   }
 
   const targets = batch.map(toTarget)
-  await mapWithConcurrency(targets, CONCURRENCY, (target) => processRepo(target, deps, qx))
+  // Isolate per-repo failures: mapWithConcurrency is fail-fast, so a single repo's DB error must
+  // not abort the batch (and, across Temporal retries, halt the whole sweep). Unmarked repos on
+  // error are simply retried next sweep.
+  await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
+    try {
+      await processRepo(target, deps, qx)
+    } catch (err) {
+      log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
+    }
+  })
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }

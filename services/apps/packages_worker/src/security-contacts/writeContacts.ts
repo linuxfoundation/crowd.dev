@@ -2,11 +2,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { RepoPolicies, ScoredContact } from './types'
 
-/**
- * Idempotent per-repo recompute: replace the repo's security_contacts rows and refresh
- * the policy columns in one transaction. Policy columns use COALESCE so a run that doesn't
- * rediscover a field (partial/failed extractor pass) never clears a previously known value.
- */
 // Records the attempt without touching contacts/policies — preserves existing data on total
 // failure while advancing contacts_last_refreshed so the repo isn't reprocessed this sweep.
 export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Promise<void> {
@@ -15,6 +10,11 @@ export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Prom
   })
 }
 
+/**
+ * Idempotent per-repo recompute: replace the repo's security_contacts rows and refresh
+ * the policy columns in one transaction. Policy columns use COALESCE so a run that doesn't
+ * rediscover a field (partial/failed extractor pass) never clears a previously known value.
+ */
 export async function writeContacts(
   qx: QueryExecutor,
   repoId: string,
