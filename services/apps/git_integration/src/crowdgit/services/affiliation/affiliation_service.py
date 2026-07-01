@@ -509,9 +509,7 @@ class AffiliationService(BaseService):
                     pydantic_model=AffiliationParseOutput,
                 )
 
-        chunk_results = await asyncio.gather(
-            *[process_chunk(chunk) for chunk in chunks]
-        )
+        chunk_results = await asyncio.gather(*[process_chunk(chunk) for chunk in chunks])
 
         affiliations: list[AffiliationInfoItem] = []
         total_cost = 0.0
