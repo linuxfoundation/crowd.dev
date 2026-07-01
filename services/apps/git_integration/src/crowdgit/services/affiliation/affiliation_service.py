@@ -502,7 +502,7 @@ class AffiliationService(BaseService):
 
         semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CHUNKS)
 
-        async def process_chunk(chunk_index: int, chunk: str):
+        async def process_chunk(chunk: str):
             async with semaphore:
                 return await invoke_bedrock(
                     self.get_extraction_prompt(chunk),
@@ -510,7 +510,7 @@ class AffiliationService(BaseService):
                 )
 
         chunk_results = await asyncio.gather(
-            *[process_chunk(i, chunk) for i, chunk in enumerate(chunks, 1)]
+            *[process_chunk(chunk) for chunk in chunks]
         )
 
         affiliations: list[AffiliationInfoItem] = []
