@@ -22,6 +22,7 @@ from crowdgit.errors import (
     AffiliationAnalysisError,
     AffiliationFileNotFoundError,
     AffiliationIntervalNotElapsedError,
+    CommandExecutionError,
     CrowdGitError,
 )
 from crowdgit.models import CloneBatchInfo, Repository
@@ -97,46 +98,50 @@ class AffiliationService(BaseService):
         stem, _ = os.path.splitext(basename)
         return stem == known_name
 
-    async def find_files_by_known_name(self, repo_path: str, known_name: str) -> list[str]:
-        """Find repo paths whose basename matches a known affiliation filename."""
-        glob_patterns = [f"**/{known_name}"]
-        if not known_name.startswith("."):
-            for extension in self.TEXT_FILE_EXTENSIONS:
-                if extension:
-                    glob_patterns.append(f"**/{known_name}{extension}")
+    @classmethod
+    def is_known_affiliation_filename(cls, relative_path: str) -> bool:
+        return any(
+            cls.path_matches_known_name(relative_path, known_name)
+            for known_name in cls.KNOWN_FILE_NAMES
+        )
 
+    async def find_known_file_matches(self, repo_path: str) -> list[str]:
+        """Find repo paths whose basename matches a known affiliation filename."""
         glob_args = ["--glob", "!.git/"]
-        for pattern in glob_patterns:
-            glob_args.extend(["--iglob", pattern])
+        for known_name in self.KNOWN_FILE_NAMES:
+            glob_patterns = [f"**/{known_name}"]
+            if not known_name.startswith("."):
+                for extension in self.TEXT_FILE_EXTENSIONS:
+                    if extension:
+                        glob_patterns.append(f"**/{known_name}{extension}")
+            for pattern in glob_patterns:
+                glob_args.extend(["--iglob", pattern])
 
         try:
             output = await run_shell_command(
                 ["rg", "--files", "--hidden", *glob_args, "."],
                 cwd=repo_path,
             )
+        except CommandExecutionError:
+            self.logger.info("Ripgrep found no affiliation files by filename")
+            return []
         except FileNotFoundError:
             self.logger.warning("Ripgrep not found, known filename search is unavailable")
             return []
         except Exception as e:
-            self.logger.warning(f"Known filename search failed for {known_name!r}: {repr(e)}")
+            self.logger.warning(f"Known filename search failed: {repr(e)}")
             return []
 
-        matches: list[str] = []
+        matches: set[str] = set()
         for line in output.strip().split("\n"):
             line = line.strip()
             if not line:
                 continue
             if line.startswith("./"):
                 line = line[2:]
-            if self.path_matches_known_name(line, known_name) and self.is_text_file_path(line):
-                matches.append(line)
+            if self.is_known_affiliation_filename(line) and self.is_text_file_path(line):
+                matches.add(line)
 
-        return matches
-
-    async def find_known_file_matches(self, repo_path: str) -> list[str]:
-        matches: set[str] = set()
-        for known_name in self.KNOWN_FILE_NAMES:
-            matches.update(await self.find_files_by_known_name(repo_path, known_name))
         return sorted(matches)
 
     @classmethod
