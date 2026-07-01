@@ -6,7 +6,6 @@ export {
 } from '../npm/workflows'
 export {
   bootstrapOsspckgs,
-  cleanupOsspckgs,
   ingestPackages,
   ingestVersions,
   ingestRepos,

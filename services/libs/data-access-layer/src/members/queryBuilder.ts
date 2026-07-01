@@ -422,12 +422,14 @@ export const buildQuery = ({
     Boolean,
   )
 
+  const needsMemberEnrichments = filterHasMe || fields.includes('me.')
+
   const joins = [
     withAggregates
       ? `INNER JOIN "memberSegmentsAgg" msa ON msa."memberId" = m.id AND msa."segmentId" = $(segmentId)`
       : '',
     needsMemberOrgs ? `LEFT JOIN member_orgs mo ON mo."memberId" = m.id` : '',
-    `LEFT JOIN "memberEnrichments" me ON me."memberId" = m.id`,
+    needsMemberEnrichments ? `LEFT JOIN "memberEnrichments" me ON me."memberId" = m.id` : '',
     searchConfig.join,
   ].filter(Boolean)
 
@@ -464,9 +466,15 @@ export const buildCountQuery = ({
     searchConfig.join,
   ].filter(Boolean)
 
+  // COUNT(*) is safe only when every join is guaranteed one-to-one per member:
+  // - memberSegmentsAgg is unique on (memberId, segmentId) with segmentId fixed → safe
+  // - member_orgs CTE uses ARRAY_AGG GROUP BY memberId → one row per member → safe
+  // - memberEnrichments may have multiple rows per member → COUNT(*) would overcount
+  const countExpr = withAggregates && !filterHasMe ? 'COUNT(*)' : 'COUNT(DISTINCT m.id)'
+
   return `
     ${ctes.length > 0 ? `WITH ${ctes.join(',\n')}` : ''}
-    SELECT COUNT(DISTINCT m.id) AS count
+    SELECT ${countExpr} AS count
     FROM members m
     ${joins.join('\n')}
     WHERE (${filterString})

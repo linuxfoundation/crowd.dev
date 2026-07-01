@@ -4,7 +4,6 @@ import {
   continueAsNew,
   proxyActivities,
   startChild,
-  workflowInfo,
 } from '@temporalio/workflow'
 
 import { IMemberUnmergeBackup, IUnmergeBackup, MemberIdentityType } from '@crowd/types'
@@ -24,8 +23,6 @@ const common = proxyActivities<typeof commonActivities>({
 })
 
 export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
-  const info = workflowInfo()
-
   // check if memberId exist in db before unmerging
   const member = await activity.findMemberById(args.memberId)
 
@@ -92,9 +89,18 @@ export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
       // 2. wait for temporal async stuff to complete
       // 3. call the same workflow again for the unmerged secondary member
 
+      // Fetch each backup in its own activity — listing 10 backups in one result can exceed
+      // Temporal's 2MB activity payload limit on polluted members.
+      const unmergeBackup = await activity.findMergeActionUnmergeBackup(mergeAction.id)
+
+      if (!unmergeBackup) {
+        console.log(`Merge action ${mergeAction.id} has no unmerge backup, skipping!`)
+        continue
+      }
+
       await common.unmergeMembers(
         mergeAction.primaryId,
-        mergeAction.unmergeBackup as IUnmergeBackup<IMemberUnmergeBackup>,
+        unmergeBackup as IUnmergeBackup<IMemberUnmergeBackup>,
       )
 
       const workflowId = `finishMemberUnmerging/${mergeAction.primaryId}/${mergeAction.secondaryId}`
@@ -102,7 +108,7 @@ export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
       await common.waitForTemporalWorkflowExecutionFinish(workflowId)
 
       await startChild(dissectMember, {
-        workflowId: `${info.workflowId}/${mergeAction.secondaryId}`,
+        workflowId: `dissectMember/${mergeAction.secondaryId}`,
         cancellationType: ChildWorkflowCancellationType.ABANDON,
         parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON,
         retry: {

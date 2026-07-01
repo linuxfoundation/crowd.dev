@@ -90,9 +90,123 @@ WHERE d.System IN (${filter})
   return parts.join('\nUNION ALL\n')
 }
 
-// --- Incremental SQL helpers ---
-// Uses base tables (GoRequirements, NuGetRequirements, DependencyGraphEdges) with SnapshotAt filter.
-// All CTEs combined in one WITH clause so UNION ALL can reference them freely.
+// --- Incremental SQL helpers (snapshot edge-diff) ---
+//
+// Diff today's direct edges against the watermark (last successfully ingested) snapshot, matched on
+// the edge identity (ecosystem, root_name, root_version, to_name) — deliberately EXCLUDING the
+// resolved dependency version (to_version) and the requirement string from the match key.
+//
+// Why exclude to_version: a version's declared direct dependencies are immutable (manifest), but
+// deps.dev RE-RESOLVES each dependency's concrete version every snapshot (a range like "^4.17.0"
+// resolves to whatever patch is newest that week). Including to_version in the match makes every
+// stable edge look "new" whenever any dependency ships a patch — the re-resolution churn that
+// produced the ~555M-row exports. Matching on (root, to_name) only:
+//   - drops that churn, AND
+//   - still catches genuinely-new edges: brand-new versions' edges AND edges deps.dev resolved
+//     LATE for already-published versions. (A version lands in PackageVersions on publish, but its
+//     resolved graph can appear a snapshot or more later — measured ~14% of edge-bearing versions.
+//     A version-level diff misses those; an edge-level diff catches them, because the edge is
+//     simply new vs the watermark.)
+//
+// Consistent with how PG stores the data: the unique key is (version_id, depends_on_id,
+// dependency_kind) — depends_on_version_id is NOT in it and the merge is ON CONFLICT DO NOTHING, so
+// depends_on_version_id is never updated. to_version / version_constraint are still SELECTed (to
+// populate the columns on first insert) but are not part of the diff key; the today CTEs collapse
+// to one row per edge identity via GROUP BY + MAX (also defuses ×100 duplication if a corrupt
+// snapshot ever slips past the edge-quality guard).
+//
+// All CTEs go into one WITH clause so each branch's UNION ALL SELECT can reference its CTE pair.
+
+const DEPS_DEV = 'bigquery-public-data.deps_dev_v1'
+
+// Snapshot dates always arrive as YYYY-MM-DD (resolveSnapshotDate slices the timestamp;
+// bootstrap uses toISOString().slice(0,10)). Validate before embedding in SQL so a malformed or
+// operator-supplied value fails loudly instead of producing broken — or injectable — SQL.
+export function assertSnapshotDate(date: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`Invalid snapshot date '${date}' — expected YYYY-MM-DD`)
+  }
+}
+
+// SnapshotAt is not exactly midnight, so filter by a [date, date+1day) range, never `= TIMESTAMP(date)`.
+function snapshotRange(col: string, date: string): string {
+  assertSnapshotDate(date)
+  return `${col} >= TIMESTAMP('${date}')
+    AND ${col} <  TIMESTAMP(DATE_ADD(DATE '${date}', INTERVAL 1 DAY))`
+}
+
+// Anti-join: today edges not present in the watermark snapshot, matched on the edge identity.
+function antiJoinSelect(todayCte: string, watermarkCte: string): string {
+  return `SELECT t.ecosystem, t.root_name, t.root_version, t.to_name, t.to_version, t.version_constraint
+FROM ${todayCte} t
+LEFT JOIN ${watermarkCte} l
+  ON l.ecosystem = t.ecosystem AND l.root_name = t.root_name
+ AND l.root_version = t.root_version AND l.to_name = t.to_name
+WHERE l.to_name IS NULL`
+}
+
+// GO + NUGET come from manifest tables (GoRequirements / NuGetRequirements) regardless of Option
+// A/B, so their incremental branches are shared. Each returns its today + watermark CTEs + select.
+function goIncrementalBranch(today: string, watermark: string): { ctes: string[]; select: string } {
+  return {
+    ctes: [
+      `today_go AS (
+  SELECT
+    'go'                 AS ecosystem,
+    g.Name               AS root_name,
+    g.Version            AS root_version,
+    d.Name               AS to_name,
+    CAST(NULL AS STRING) AS to_version,
+    MAX(d.Requirement)   AS version_constraint
+  FROM \`${DEPS_DEV}.GoRequirements\` g,
+  UNNEST(g.DirectDependencies) AS d
+  WHERE ${snapshotRange('g.SnapshotAt', today)}
+  GROUP BY 1, 2, 3, 4
+)`,
+      `watermark_go AS (
+  SELECT 'go' AS ecosystem, g.Name AS root_name, g.Version AS root_version, d.Name AS to_name
+  FROM \`${DEPS_DEV}.GoRequirements\` g,
+  UNNEST(g.DirectDependencies) AS d
+  WHERE ${snapshotRange('g.SnapshotAt', watermark)}
+  GROUP BY 1, 2, 3, 4
+)`,
+    ],
+    select: antiJoinSelect('today_go', 'watermark_go'),
+  }
+}
+
+function nugetIncrementalBranch(
+  today: string,
+  watermark: string,
+): { ctes: string[]; select: string } {
+  return {
+    ctes: [
+      `today_nuget AS (
+  SELECT
+    'nuget'              AS ecosystem,
+    n.Name               AS root_name,
+    n.Version            AS root_version,
+    dep.Name             AS to_name,
+    CAST(NULL AS STRING) AS to_version,
+    MAX(dep.Requirement) AS version_constraint
+  FROM \`${DEPS_DEV}.NuGetRequirements\` n,
+  UNNEST(n.DependencyGroups) AS grp,
+  UNNEST(grp.Dependencies) AS dep
+  WHERE ${snapshotRange('n.SnapshotAt', today)}
+  GROUP BY 1, 2, 3, 4
+)`,
+      `watermark_nuget AS (
+  SELECT 'nuget' AS ecosystem, n.Name AS root_name, n.Version AS root_version, dep.Name AS to_name
+  FROM \`${DEPS_DEV}.NuGetRequirements\` n,
+  UNNEST(n.DependencyGroups) AS grp,
+  UNNEST(grp.Dependencies) AS dep
+  WHERE ${snapshotRange('n.SnapshotAt', watermark)}
+  GROUP BY 1, 2, 3, 4
+)`,
+    ],
+    select: antiJoinSelect('today_nuget', 'watermark_nuget'),
+  }
+}
 
 export function buildDepsIncrementalSqlA(
   today: string,
@@ -111,106 +225,40 @@ export function buildDepsIncrementalSqlA(
     ctes.push(
       `today_edges AS (
   SELECT
-    LOWER(e.System) AS ecosystem,
-    e.Name          AS root_name,
-    e.Version       AS root_version,
-    e.To.Name       AS to_name,
-    e.To.Version    AS to_version,
-    e.Requirement   AS version_constraint
-  FROM \`bigquery-public-data.deps_dev_v1.DependencyGraphEdges\` e
-  WHERE e.SnapshotAt >= TIMESTAMP('${today}')
-    AND e.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
+    LOWER(e.System)    AS ecosystem,
+    e.Name             AS root_name,
+    e.Version          AS root_version,
+    e.To.Name          AS to_name,
+    MAX(e.To.Version)  AS to_version,
+    MAX(e.Requirement) AS version_constraint
+  FROM \`${DEPS_DEV}.DependencyGraphEdges\` e
+  WHERE ${snapshotRange('e.SnapshotAt', today)}
     AND e.System IN (${filter})
     AND e.From.Name = e.Name AND e.From.Version = e.Version
+  GROUP BY 1, 2, 3, 4
 )`,
       `watermark_edges AS (
-  SELECT e.System, e.Name, e.Version, e.To.Name AS to_name, e.To.Version AS to_version
-  FROM \`bigquery-public-data.deps_dev_v1.DependencyGraphEdges\` e
-  WHERE e.SnapshotAt >= TIMESTAMP('${watermark}')
-    AND e.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
+  SELECT LOWER(e.System) AS ecosystem, e.Name AS root_name, e.Version AS root_version, e.To.Name AS to_name
+  FROM \`${DEPS_DEV}.DependencyGraphEdges\` e
+  WHERE ${snapshotRange('e.SnapshotAt', watermark)}
     AND e.System IN (${filter})
     AND e.From.Name = e.Name AND e.From.Version = e.Version
-  GROUP BY e.System, e.Name, e.Version, e.To.Name, e.To.Version
+  GROUP BY 1, 2, 3, 4
 )`,
     )
-    selects.push(
-      `SELECT t.*
-FROM today_edges t
-LEFT JOIN watermark_edges l
-  ON LOWER(l.System) = t.ecosystem AND l.Name = t.root_name AND l.Version = t.root_version
- AND l.to_name = t.to_name AND l.to_version = t.to_version
-WHERE l.to_name IS NULL`,
-    )
+    selects.push(antiJoinSelect('today_edges', 'watermark_edges'))
   }
 
   if (includeGo) {
-    ctes.push(
-      `today_go AS (
-  SELECT
-    'go'                   AS ecosystem,
-    g.Name                 AS root_name,
-    g.Version              AS root_version,
-    d.Name                 AS to_name,
-    CAST(NULL AS STRING)   AS to_version,
-    d.Requirement          AS version_constraint
-  FROM \`bigquery-public-data.deps_dev_v1.GoRequirements\` g,
-  UNNEST(g.DirectDependencies) AS d
-  WHERE g.SnapshotAt >= TIMESTAMP('${today}')
-    AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
-)`,
-      `watermark_go AS (
-  SELECT g.Name, g.Version, d.Name AS to_name, d.Requirement
-  FROM \`bigquery-public-data.deps_dev_v1.GoRequirements\` g,
-  UNNEST(g.DirectDependencies) AS d
-  WHERE g.SnapshotAt >= TIMESTAMP('${watermark}')
-    AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY g.Name, g.Version, d.Name, d.Requirement
-)`,
-    )
-    selects.push(
-      `SELECT t.*
-FROM today_go t
-LEFT JOIN watermark_go l
-  ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
-  AND l.Requirement = t.version_constraint
-WHERE l.to_name IS NULL`,
-    )
+    const { ctes: goCtes, select } = goIncrementalBranch(today, watermark)
+    ctes.push(...goCtes)
+    selects.push(select)
   }
 
   if (includeNuget) {
-    ctes.push(
-      `today_nuget AS (
-  SELECT
-    'nuget'                AS ecosystem,
-    n.Name                 AS root_name,
-    n.Version              AS root_version,
-    dep.Name               AS to_name,
-    CAST(NULL AS STRING)   AS to_version,
-    dep.Requirement        AS version_constraint
-  FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirements\` n,
-  UNNEST(n.DependencyGroups) AS grp,
-  UNNEST(grp.Dependencies) AS dep
-  WHERE n.SnapshotAt >= TIMESTAMP('${today}')
-    AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
-)`,
-      `watermark_nuget AS (
-  SELECT n.Name, n.Version, dep.Name AS to_name, dep.Requirement
-  FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirements\` n,
-  UNNEST(n.DependencyGroups) AS grp,
-  UNNEST(grp.Dependencies) AS dep
-  WHERE n.SnapshotAt >= TIMESTAMP('${watermark}')
-    AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY n.Name, n.Version, dep.Name, dep.Requirement
-)`,
-    )
-    selects.push(
-      `SELECT t.*
-FROM today_nuget t
-LEFT JOIN watermark_nuget l
-  ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
-  AND l.Requirement = t.version_constraint
-WHERE l.to_name IS NULL`,
-    )
+    const { ctes: nugetCtes, select } = nugetIncrementalBranch(today, watermark)
+    ctes.push(...nugetCtes)
+    selects.push(select)
   }
 
   return `WITH\n${ctes.join(',\n')}\n${selects.join('\nUNION ALL\n')}`
@@ -237,102 +285,36 @@ export function buildDepsIncrementalSqlB(
     d.Name                    AS root_name,
     d.Version                 AS root_version,
     d.Dependency.Name         AS to_name,
-    d.Dependency.Version      AS to_version,
+    MAX(d.Dependency.Version) AS to_version,
     CAST(NULL AS STRING)      AS version_constraint
-  FROM \`bigquery-public-data.deps_dev_v1.Dependencies\` d
-  WHERE d.SnapshotAt >= TIMESTAMP('${today}')
-    AND d.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
+  FROM \`${DEPS_DEV}.Dependencies\` d
+  WHERE ${snapshotRange('d.SnapshotAt', today)}
     AND d.System IN (${filter})
     AND d.MinimumDepth = 1
+  GROUP BY 1, 2, 3, 4
 )`,
       `watermark_deps AS (
-  SELECT d.System, d.Name, d.Version, d.Dependency.Name AS to_name, d.Dependency.Version AS to_version
-  FROM \`bigquery-public-data.deps_dev_v1.Dependencies\` d
-  WHERE d.SnapshotAt >= TIMESTAMP('${watermark}')
-    AND d.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
+  SELECT LOWER(d.System) AS ecosystem, d.Name AS root_name, d.Version AS root_version, d.Dependency.Name AS to_name
+  FROM \`${DEPS_DEV}.Dependencies\` d
+  WHERE ${snapshotRange('d.SnapshotAt', watermark)}
     AND d.System IN (${filter})
     AND d.MinimumDepth = 1
-  GROUP BY d.System, d.Name, d.Version, d.Dependency.Name, d.Dependency.Version
+  GROUP BY 1, 2, 3, 4
 )`,
     )
-    selects.push(
-      `SELECT t.*
-FROM today_deps t
-LEFT JOIN watermark_deps l
-  ON LOWER(l.System) = t.ecosystem AND l.Name = t.root_name AND l.Version = t.root_version
- AND l.to_name = t.to_name AND l.to_version = t.to_version
-WHERE l.to_name IS NULL`,
-    )
+    selects.push(antiJoinSelect('today_deps', 'watermark_deps'))
   }
 
   if (includeGo) {
-    ctes.push(
-      `today_go AS (
-  SELECT
-    'go'                   AS ecosystem,
-    g.Name                 AS root_name,
-    g.Version              AS root_version,
-    d.Name                 AS to_name,
-    CAST(NULL AS STRING)   AS to_version,
-    d.Requirement          AS version_constraint
-  FROM \`bigquery-public-data.deps_dev_v1.GoRequirements\` g,
-  UNNEST(g.DirectDependencies) AS d
-  WHERE g.SnapshotAt >= TIMESTAMP('${today}')
-    AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
-)`,
-      `watermark_go AS (
-  SELECT g.Name, g.Version, d.Name AS to_name, d.Requirement
-  FROM \`bigquery-public-data.deps_dev_v1.GoRequirements\` g,
-  UNNEST(g.DirectDependencies) AS d
-  WHERE g.SnapshotAt >= TIMESTAMP('${watermark}')
-    AND g.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY g.Name, g.Version, d.Name, d.Requirement
-)`,
-    )
-    selects.push(
-      `SELECT t.*
-FROM today_go t
-LEFT JOIN watermark_go l
-  ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
-  AND l.Requirement = t.version_constraint
-WHERE l.to_name IS NULL`,
-    )
+    const { ctes: goCtes, select } = goIncrementalBranch(today, watermark)
+    ctes.push(...goCtes)
+    selects.push(select)
   }
 
   if (includeNuget) {
-    ctes.push(
-      `today_nuget AS (
-  SELECT
-    'nuget'                AS ecosystem,
-    n.Name                 AS root_name,
-    n.Version              AS root_version,
-    dep.Name               AS to_name,
-    CAST(NULL AS STRING)   AS to_version,
-    dep.Requirement        AS version_constraint
-  FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirements\` n,
-  UNNEST(n.DependencyGroups) AS grp,
-  UNNEST(grp.Dependencies) AS dep
-  WHERE n.SnapshotAt >= TIMESTAMP('${today}')
-    AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${today}', INTERVAL 1 DAY))
-)`,
-      `watermark_nuget AS (
-  SELECT n.Name, n.Version, dep.Name AS to_name, dep.Requirement
-  FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirements\` n,
-  UNNEST(n.DependencyGroups) AS grp,
-  UNNEST(grp.Dependencies) AS dep
-  WHERE n.SnapshotAt >= TIMESTAMP('${watermark}')
-    AND n.SnapshotAt <  TIMESTAMP(DATE_ADD(DATE '${watermark}', INTERVAL 1 DAY))
-  GROUP BY n.Name, n.Version, dep.Name, dep.Requirement
-)`,
-    )
-    selects.push(
-      `SELECT t.*
-FROM today_nuget t
-LEFT JOIN watermark_nuget l
-  ON l.Name = t.root_name AND l.Version = t.root_version AND l.to_name = t.to_name
-  AND l.Requirement = t.version_constraint
-WHERE l.to_name IS NULL`,
-    )
+    const { ctes: nugetCtes, select } = nugetIncrementalBranch(today, watermark)
+    ctes.push(...nugetCtes)
+    selects.push(select)
   }
 
   return `WITH\n${ctes.join(',\n')}\n${selects.join('\nUNION ALL\n')}`
