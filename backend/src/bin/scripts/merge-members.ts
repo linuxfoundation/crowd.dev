@@ -38,8 +38,7 @@ const options = [
     alias: 'u',
     typeLabel: '{underline userId}',
     type: String,
-    description:
-      'User ID of the user performing the merge.',
+    description: 'User ID of the user performing the merge.',
   },
   {
     name: 'help',
