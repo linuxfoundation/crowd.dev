@@ -4,7 +4,6 @@ import {
   continueAsNew,
   proxyActivities,
   startChild,
-  workflowInfo,
 } from '@temporalio/workflow'
 
 import { IMemberUnmergeBackup, IUnmergeBackup, MemberIdentityType } from '@crowd/types'
@@ -24,8 +23,6 @@ const common = proxyActivities<typeof commonActivities>({
 })
 
 export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
-  const info = workflowInfo()
-
   // check if memberId exist in db before unmerging
   const member = await activity.findMemberById(args.memberId)
 
@@ -102,7 +99,7 @@ export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
       await common.waitForTemporalWorkflowExecutionFinish(workflowId)
 
       await startChild(dissectMember, {
-        workflowId: `${info.workflowId}/${mergeAction.secondaryId}`,
+        workflowId: `dissectMember/${mergeAction.secondaryId}`,
         cancellationType: ChildWorkflowCancellationType.ABANDON,
         parentClosePolicy: ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON,
         retry: {
