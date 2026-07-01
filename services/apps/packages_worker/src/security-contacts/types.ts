@@ -58,6 +58,8 @@ export interface RepoTarget {
   repoId: string
   url: string
   homepage: string | null
+  /** From the enricher; null = not yet enriched. Archived repos can't be queried for PVR. */
+  archived: boolean | null
   packages: RepoPackage[]
 }
 

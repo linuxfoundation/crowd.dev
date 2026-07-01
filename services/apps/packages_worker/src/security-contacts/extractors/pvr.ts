@@ -34,6 +34,10 @@ export function mapPvr(
 }
 
 export const extractPvr: Extractor = async (target, deps) => {
+  // GitHub's PVR endpoint rejects archived (and private) repos with 422; skip the call for
+  // known-archived repos. Non-archived-yet-unknown repos still get the 422→unknown safety net.
+  if (target.archived) return { contacts: [], policies: {} }
+
   let owner: string
   let name: string
   try {

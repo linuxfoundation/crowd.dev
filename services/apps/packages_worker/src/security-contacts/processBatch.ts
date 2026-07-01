@@ -58,6 +58,7 @@ interface SweepRow {
   id: string
   url: string
   homepage: string | null
+  archived: boolean | null
   packages: RepoPackage[] | null
 }
 
@@ -67,6 +68,7 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
     SELECT r.id::text AS id,
            r.url,
            r.homepage,
+           r.archived,
            json_agg(json_build_object('purl', p.purl, 'ecosystem', p.ecosystem)) AS packages
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
@@ -99,7 +101,13 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
 }
 
 function toTarget(row: SweepRow): RepoTarget {
-  return { repoId: row.id, url: row.url, homepage: row.homepage, packages: row.packages ?? [] }
+  return {
+    repoId: row.id,
+    url: row.url,
+    homepage: row.homepage,
+    archived: row.archived,
+    packages: row.packages ?? [],
+  }
 }
 
 async function processRepo(

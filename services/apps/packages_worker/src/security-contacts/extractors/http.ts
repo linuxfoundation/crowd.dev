@@ -7,9 +7,11 @@ export function registryHeaders(userAgent: string): Record<string, string> {
   return { 'User-Agent': userAgent }
 }
 
-// Genuinely-absent → null body; every other non-200 throws so transient failures (429/5xx/...)
-// are treated as failures and the pipeline preserves existing data instead of wiping it.
-const ABSENT_STATUSES = new Set([404, 410])
+// Genuinely-absent / not-determinable → null body; every other non-200 throws so transient
+// failures (429/5xx/...) are treated as failures and the pipeline preserves data instead of
+// wiping it. 422 is included because GitHub's PVR endpoint returns it (per-repo, non-transient)
+// when the flag can't be determined — that must read as "unknown", not block the whole repo.
+const ABSENT_STATUSES = new Set([404, 410, 422])
 
 export interface FetchTextResult {
   status: number
