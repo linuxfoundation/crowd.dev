@@ -89,9 +89,18 @@ export async function dissectMember(args: IDissectMemberArgs): Promise<void> {
       // 2. wait for temporal async stuff to complete
       // 3. call the same workflow again for the unmerged secondary member
 
+      // Fetch each backup in its own activity — listing 10 backups in one result can exceed
+      // Temporal's 2MB activity payload limit on polluted members.
+      const unmergeBackup = await activity.findMergeActionUnmergeBackup(mergeAction.id)
+
+      if (!unmergeBackup) {
+        console.log(`Merge action ${mergeAction.id} has no unmerge backup, skipping!`)
+        continue
+      }
+
       await common.unmergeMembers(
         mergeAction.primaryId,
-        mergeAction.unmergeBackup as IUnmergeBackup<IMemberUnmergeBackup>,
+        unmergeBackup as IUnmergeBackup<IMemberUnmergeBackup>,
       )
 
       const workflowId = `finishMemberUnmerging/${mergeAction.primaryId}/${mergeAction.secondaryId}`
