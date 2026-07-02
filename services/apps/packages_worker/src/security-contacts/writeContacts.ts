@@ -13,6 +13,11 @@ export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Prom
 
 // Assumes at most one writer per repoId at a time (enforced via heartbeat/cancellation in
 // processBatch.ts and a non-overlapping schedule in schedule.ts) — no locking here.
+//
+// Soft-delete: mark every currently-active row stale, then upsert this pass's contacts, which
+// revives (clears deleted_at on) whatever was rediscovered. Anything not rediscovered stays
+// soft-deleted instead of being destroyed, preserving history. Readers of this table must filter
+// on deleted_at IS NULL.
 export async function writeContacts(
   qx: QueryExecutor,
   repoId: string,
@@ -20,7 +25,10 @@ export async function writeContacts(
   policies: Partial<RepoPolicies>,
 ): Promise<void> {
   await qx.tx(async (tx) => {
-    await tx.result('DELETE FROM security_contacts WHERE repo_id = $(repoId)', { repoId })
+    await tx.result(
+      'UPDATE security_contacts SET deleted_at = NOW(), updated_at = NOW() WHERE repo_id = $(repoId) AND deleted_at IS NULL',
+      { repoId },
+    )
 
     if (contacts.length > 0) {
       await tx.result(
@@ -37,6 +45,15 @@ export async function writeContacts(
             confidence: c.confidence,
             provenance: JSON.stringify(c.provenance),
           })),
+          `(repo_id, channel, value) DO UPDATE SET
+             role = EXCLUDED.role,
+             name = EXCLUDED.name,
+             score = EXCLUDED.score,
+             confidence = EXCLUDED.confidence,
+             provenance = EXCLUDED.provenance,
+             last_refreshed = NOW(),
+             updated_at = NOW(),
+             deleted_at = NULL`,
         ),
       )
     }
