@@ -1,7 +1,7 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
-import { ExtractorDeps, ProvenanceEntry, RawContact, Extractor } from '../types'
+import { Extractor, ExtractorDeps, ProvenanceEntry, RawContact } from '../types'
 
 import { isEmail } from './http'
 

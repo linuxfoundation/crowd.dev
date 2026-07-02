@@ -80,7 +80,16 @@ export const extractSecurityTxt: Extractor = async (target, deps) => {
   if (PLATFORM_HOSTS.has(host) || isBlockedHost(host)) return { contacts: [], policies: {} }
 
   const url = `${origin}/.well-known/security.txt`
-  const { text } = await fetchText(url, deps.fetchTimeoutMs)
+  // The homepage is an arbitrary external host — frequently bot-protected or flaky (403/429/5xx/522,
+  // DNS errors). A4 is a best-effort fallback, so a fetch failure must NOT fail the repo and discard
+  // the other extractors' results (which would then never be written, since these hosts block us
+  // persistently). Treat any error as "no security.txt".
+  let text: string | null
+  try {
+    ;({ text } = await fetchText(url, deps.fetchTimeoutMs))
+  } catch {
+    return { contacts: [], policies: {} }
+  }
   if (!text) return { contacts: [], policies: {} }
 
   return parseSecurityTxt(text, url, new Date().toISOString())

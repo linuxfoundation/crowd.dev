@@ -44,9 +44,7 @@ export const extractPvr: Extractor = async (target, deps) => {
     return { contacts: [], policies: {} }
   }
 
-  const { text } = await deps.githubGet(
-    `/repos/${owner}/${name}/private-vulnerability-reporting`,
-  )
+  const { text } = await deps.githubGet(`/repos/${owner}/${name}/private-vulnerability-reporting`)
   if (!text) return { contacts: [], policies: {} }
 
   return mapPvr(JSON.parse(text), owner, name, new Date().toISOString())
