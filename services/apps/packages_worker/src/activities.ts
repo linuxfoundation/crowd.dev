@@ -26,3 +26,4 @@ export {
 } from './cargo/activities'
 export { enrichGoVersionsBatch, enrichGoStatusBatch } from './go/activities'
 export { processNuGetBatch } from './nuget/activities'
+export { processSecurityContactsBatch } from './security-contacts/activities'

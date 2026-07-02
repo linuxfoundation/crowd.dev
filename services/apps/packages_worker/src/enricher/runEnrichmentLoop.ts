@@ -6,6 +6,7 @@ import { getEnricherConfig } from '../config'
 import { fetchActivitySnapshot } from './fetchActivitySnapshot'
 import { fetchLightRepo, parseGithubUrl } from './fetchLightRepo'
 import { GithubAppConfig, getInstallationToken } from './githubAppAuth'
+import { InstallationPool } from './installationPool'
 import { FetchError, LightRepoResult, RepoActivitySnapshot } from './types'
 import { bulkUpdateEnrichedRepos, markReposSkipped } from './updateEnrichedRepos'
 import { bulkUpsertRepoActivitySnapshot } from './updateRepoActivitySnapshot'
@@ -17,64 +18,10 @@ const DB_FETCH_SIZE = 2000
 const WRITE_FLUSH_SIZE = 500
 const WRITE_FLUSH_MS = 5000
 const MAX_FLUSH_FAILURES = 3
-// Park an installation before GitHub starts rejecting — avoids a failed request + requeue
-const PROACTIVE_PARK_REMAINING = 50
 // Rate-limited snapshots retry once with another installation before being skipped
 const SNAPSHOT_RATE_LIMIT_RETRIES = 1
 // Installations whose token mint fails (e.g. org IP allowlist) sit out for an hour
 const MINT_FAILURE_PARK_MS = 60 * 60 * 1000
-
-// ─── Installation pool ────────────────────────────────────────────────────────
-
-/** Round-robins over installations, skipping ones parked until their rate-limit reset. */
-class InstallationPool {
-  private readonly parkedUntil = new Map<number, number>()
-  private roundRobinIdx = 0
-
-  constructor(private readonly ids: number[]) {}
-
-  select(): { installationId: number; waitMs: number } {
-    const now = Date.now()
-    const n = this.ids.length
-
-    for (let i = 0; i < n; i++) {
-      const idx = (this.roundRobinIdx + i) % n
-      const id = this.ids[idx]
-      if ((this.parkedUntil.get(id) ?? 0) <= now) {
-        this.roundRobinIdx = (idx + 1) % n
-        return { installationId: id, waitMs: 0 }
-      }
-    }
-
-    let soonestReset = Infinity
-    let soonestId = this.ids[0]
-    for (const id of this.ids) {
-      const reset = this.parkedUntil.get(id) ?? 0
-      if (reset < soonestReset) {
-        soonestReset = reset
-        soonestId = id
-      }
-    }
-    return { installationId: soonestId, waitMs: Math.max(1_000, soonestReset - now) }
-  }
-
-  park(installationId: number, untilMs: number): void {
-    this.parkedUntil.set(installationId, untilMs)
-  }
-
-  parkIfBudgetLow(
-    installationId: number,
-    remaining: number | null | undefined,
-    resetAt: string | null | undefined,
-  ): void {
-    if (remaining == null || resetAt == null || remaining >= PROACTIVE_PARK_REMAINING) return
-    this.park(installationId, new Date(resetAt).getTime() + 5_000)
-    log.info(
-      { installationId, remaining, resetAt },
-      'Budget low — proactively parking installation',
-    )
-  }
-}
 
 // ─── Fetch with retries ───────────────────────────────────────────────────────
 

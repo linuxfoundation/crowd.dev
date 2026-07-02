@@ -46,6 +46,13 @@ export function getEnricherConfig() {
   }
 }
 
+export function getSecurityContactsConfig() {
+  return {
+    // Sent on all registry calls; crates.io rejects requests without an identifying UA.
+    userAgent: requireEnv('SECURITY_CONTACTS_USER_AGENT'),
+  }
+}
+
 export function getMavenConfig() {
   return {
     batchSize: requireEnvInt('MAVEN_FETCHER_BATCH_SIZE'),
