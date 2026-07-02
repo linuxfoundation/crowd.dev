@@ -20,6 +20,35 @@ const ROLE_PRIORITY: Record<ContactRole, number> = {
 
 const TIER_RANK: Record<SourceTier, number> = { A: 4, B: 3, C: 2, D: 1 }
 
+// RFC 2606 reserved domains — always unedited template placeholders (e.g. security@example.com).
+const PLACEHOLDER_EMAIL_DOMAINS = new Set([
+  'example.com',
+  'example.org',
+  'example.net',
+  'example.edu',
+])
+
+// Generic GitHub/Dependabot help pages that templated SECURITY.md files link to — never a
+// project-specific contact, unlike an actual github.com/<owner>/<repo>/... URL.
+const GENERIC_URL_HOSTS = new Set(['docs.github.com', 'dependabot.com', 'www.dependabot.com'])
+
+function isJunkContact(c: RawContact): boolean {
+  if (c.channel === 'email') {
+    const domain = c.value.split('@')[1]?.toLowerCase().trim()
+    return domain != null && PLACEHOLDER_EMAIL_DOMAINS.has(domain)
+  }
+  if (c.channel === 'url' || c.channel === 'web-form') {
+    let host: string
+    try {
+      host = new URL(c.value).hostname.toLowerCase()
+    } catch {
+      return true
+    }
+    return GENERIC_URL_HOSTS.has(host) || host === 'localhost' || host.startsWith('127.')
+  }
+  return false
+}
+
 function normalizeValue(channel: ContactChannel, value: string): string {
   const v = value.trim()
   return channel === 'email' || channel === 'github-handle' ? v.toLowerCase() : v
@@ -90,7 +119,7 @@ function identityLinkMerge(contacts: RawContact[]): RawContact[] {
 }
 
 export function reconcile(contacts: RawContact[], now: Date = new Date()): ScoredContact[] {
-  const merged = identityLinkMerge(exactMatchMerge(contacts))
+  const merged = identityLinkMerge(exactMatchMerge(contacts.filter((c) => !isJunkContact(c))))
 
   const scored: ScoredContact[] = merged.map((c) => {
     const contact = { ...c, provenance: dedupeProvenance(c.provenance) }
