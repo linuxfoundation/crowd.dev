@@ -7,7 +7,6 @@ import * as activities from '../../activities'
 import { ILFIDEnrichmentGithubProfile } from '../../sources/lfid/types'
 
 const {
-  refreshToken,
   getEnrichmentLFAuth0,
   getIdentitiesExistInOtherMembers,
   updateMemberWithEnrichmentData,
@@ -22,8 +21,7 @@ const {
   },
 })
 
-export async function enrichMemberWithLFAuth0(member: IMember): Promise<void> {
-  const token = await refreshToken()
+export async function enrichMemberWithLFAuth0(token: string, member: IMember): Promise<void> {
   const enriched = await getEnrichmentLFAuth0(token, member)
 
   if (enriched) {
