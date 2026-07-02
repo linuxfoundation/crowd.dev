@@ -55,6 +55,8 @@ export const extractSecurityContactsFile: Extractor = async (target, deps) => {
     return { contacts: [], policies: {} }
   }
 
+  if (deps.repoTree.paths && !deps.repoTree.paths.has(PATH)) return { contacts: [], policies: {} }
+
   const { text } = await deps.githubGet(`/repos/${owner}/${name}/contents/${PATH}`, { raw: true })
   if (!text) return { contacts: [], policies: {} }
 

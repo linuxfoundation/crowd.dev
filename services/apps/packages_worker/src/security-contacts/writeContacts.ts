@@ -1,20 +1,18 @@
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { prepareBulkInsert } from '@crowd/data-access-layer/src/utils'
 
 import { RepoPolicies, ScoredContact } from './types'
 
-// Records the attempt without touching contacts/policies — preserves existing data on total
-// failure while advancing contacts_last_refreshed so the repo isn't reprocessed this sweep.
+// Advances contacts_last_refreshed without touching contacts/policies, so a failed pass doesn't
+// wipe existing data but still isn't reprocessed this sweep.
 export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Promise<void> {
   await qx.result('UPDATE repos SET contacts_last_refreshed = NOW() WHERE id = $(repoId)', {
     repoId,
   })
 }
 
-/**
- * Idempotent per-repo recompute: replace the repo's security_contacts rows and refresh
- * the policy columns in one transaction. Policy columns use COALESCE so a run that doesn't
- * rediscover a field (partial/failed extractor pass) never clears a previously known value.
- */
+// Assumes at most one writer per repoId at a time (enforced via heartbeat/cancellation in
+// processBatch.ts and a non-overlapping schedule in schedule.ts) — no locking here.
 export async function writeContacts(
   qx: QueryExecutor,
   repoId: string,
@@ -24,30 +22,28 @@ export async function writeContacts(
   await qx.tx(async (tx) => {
     await tx.result('DELETE FROM security_contacts WHERE repo_id = $(repoId)', { repoId })
 
-    for (const c of contacts) {
+    if (contacts.length > 0) {
       await tx.result(
-        `INSERT INTO security_contacts
-           (repo_id, channel, value, role, name, score, confidence, provenance, last_refreshed)
-         VALUES
-           ($(repoId), $(channel), $(value), $(role), $(name), $(score), $(confidence), $(provenance)::jsonb, NOW())`,
-        {
-          repoId,
-          channel: c.channel,
-          value: c.value,
-          role: c.role,
-          name: c.name ?? null,
-          score: c.score,
-          confidence: c.confidence,
-          provenance: JSON.stringify(c.provenance),
-        },
+        prepareBulkInsert(
+          'security_contacts',
+          ['repo_id', 'channel', 'value', 'role', 'name', 'score', 'confidence', 'provenance'],
+          contacts.map((c) => ({
+            repo_id: repoId,
+            channel: c.channel,
+            value: c.value,
+            role: c.role,
+            name: c.name ?? null,
+            score: c.score,
+            confidence: c.confidence,
+            provenance: JSON.stringify(c.provenance),
+          })),
+        ),
       )
     }
 
     await tx.result(
-      // COALESCE preserves previously stored values when a run doesn't (re)discover a field —
-      // a partial/failed extractor pass must not wipe still-valid policy URLs or the PVR flag.
-      // vulnerability_reporting_url is PVR-derived, so when PVR is authoritatively resolved we
-      // overwrite it (clearing it once PVR is disabled); otherwise it is preserved.
+      // COALESCE preserves a field a partial/failed pass didn't rediscover. vulnerability_reporting_url
+      // is PVR-derived, so it's overwritten only once PVR is authoritatively resolved.
       `UPDATE repos SET
          security_policy_url         = COALESCE($(securityPolicyUrl), security_policy_url),
          vulnerability_reporting_url = CASE WHEN $(pvrResolved)

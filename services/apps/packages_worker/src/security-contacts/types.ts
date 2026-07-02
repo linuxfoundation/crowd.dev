@@ -79,6 +79,8 @@ export interface ExtractorDeps {
    * and 429/secondary-limit backoff internally. `raw` selects the raw media type (file contents).
    */
   githubGet: (path: string, opts?: { raw?: boolean }) => Promise<GithubGetResult>
+  /** Default-branch file paths from one git-tree call; `null` means unresolved — probe as before. */
+  repoTree: { paths: Set<string> | null }
 }
 
 export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>
