@@ -13,30 +13,54 @@ export async function upsertMaintainer(
   const row = await qx.selectOne(
     `
     WITH old AS (
-      SELECT display_name, url, email
+      SELECT display_name, url, email, github_login
         FROM maintainers WHERE ecosystem = $(ecosystem) AND username = $(username)
     ),
     ins AS (
-      INSERT INTO maintainers (ecosystem, username, display_name, url, email, created_at, updated_at)
-      VALUES ($(ecosystem), $(username), $(displayName), $(url), $(email), NOW(), NOW())
+      INSERT INTO maintainers (ecosystem, username, display_name, url, email, github_login, created_at, updated_at)
+      VALUES ($(ecosystem), $(username), $(displayName), $(url), $(email), $(githubLogin), NOW(), NOW())
       ON CONFLICT (ecosystem, username) DO UPDATE SET
         display_name = COALESCE(EXCLUDED.display_name, maintainers.display_name),
         url          = COALESCE(EXCLUDED.url,          maintainers.url),
         email        = COALESCE(EXCLUDED.email,        maintainers.email),
+        github_login = COALESCE(EXCLUDED.github_login, maintainers.github_login),
         updated_at   = NOW()
-      RETURNING id, display_name, url, email
+      RETURNING id, display_name, url, email, github_login
     )
     SELECT ins.id,
            array_remove(ARRAY[
              CASE WHEN o.display_name IS DISTINCT FROM ins.display_name THEN 'maintainers.display_name' END,
              CASE WHEN o.url          IS DISTINCT FROM ins.url          THEN 'maintainers.url' END,
-             CASE WHEN o.email        IS DISTINCT FROM ins.email        THEN 'maintainers.email' END
+             CASE WHEN o.email        IS DISTINCT FROM ins.email        THEN 'maintainers.email' END,
+             CASE WHEN o.github_login IS DISTINCT FROM ins.github_login THEN 'maintainers.github_login' END
            ], NULL) AS changed_fields
     FROM ins LEFT JOIN old o ON true
     `,
-    item,
+    { ...item, githubLogin: item.githubLogin ?? null },
   )
   return { id: row.id as number, changedFields: row.changed_fields as string[] }
+}
+
+/**
+ * Inserts a package→maintainer link if it doesn't already exist.
+ * Returns the id of the newly inserted row, or null if it already existed.
+ * Non-destructive: never deletes or modifies existing links.
+ */
+export async function insertPackageMaintainerLink(
+  qx: QueryExecutor,
+  packageId: number,
+  maintainerId: number,
+  role: 'author' | 'maintainer' | null,
+  ingestionSource?: string | null,
+): Promise<number | null> {
+  const row = await qx.selectOneOrNone(
+    `INSERT INTO package_maintainers (package_id, maintainer_id, role, ingestion_source, created_at, updated_at)
+     VALUES ($(packageId), $(maintainerId), $(role), $(ingestionSource), NOW(), NOW())
+     ON CONFLICT (package_id, maintainer_id) DO NOTHING
+     RETURNING id`,
+    { packageId, maintainerId, role, ingestionSource: ingestionSource ?? null },
+  )
+  return row?.id ?? null
 }
 
 /**
