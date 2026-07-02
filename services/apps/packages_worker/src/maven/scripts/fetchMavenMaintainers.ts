@@ -79,9 +79,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function safeGet<T>(client: AxiosInstance, url: string): Promise<T | null> {
+async function safeGet<T>(
+  client: AxiosInstance,
+  url: string,
+  params?: Record<string, string>,
+): Promise<T | null> {
   try {
-    const res = await client.get<T>(url)
+    const res = await client.get<T>(url, { params })
     return res.data
   } catch (err) {
     if (axios.isAxiosError(err)) {
@@ -92,9 +96,9 @@ async function safeGet<T>(client: AxiosInstance, url: string): Promise<T | null>
         const wait = reset ? Math.max(0, Number(reset) * 1000 - Date.now()) + 1000 : 60_000
         console.warn(`  Rate limited — waiting ${Math.round(wait / 1000)}s`)
         await sleep(wait)
-        return safeGet<T>(client, url)
+        return safeGet<T>(client, url, params)
       }
-      console.warn(`  HTTP ${status} for ${url.replace(/([?&]api_key=)[^&]+/, '$1[redacted]')}`)
+      console.warn(`  HTTP ${status} for ${url}`)
     }
     return null
   }
@@ -198,7 +202,8 @@ async function getLibIoRepoUrl(groupId: string, artifactId: string): Promise<str
   if (!LIBRARIES_IO_KEY) return null
   const data = await safeGet<LibIoPackage>(
     libIo,
-    `/maven/${encodeURIComponent(`${groupId}:${artifactId}`)}?api_key=${LIBRARIES_IO_KEY}`,
+    `/maven/${encodeURIComponent(`${groupId}:${artifactId}`)}`,
+    { api_key: LIBRARIES_IO_KEY },
   )
   return data?.repository_url ?? null
 }
