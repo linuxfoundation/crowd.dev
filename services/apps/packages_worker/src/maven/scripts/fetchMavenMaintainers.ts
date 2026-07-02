@@ -25,6 +25,8 @@ import { extractArtifact, normalizeScmUrl } from '../extract'
 import { resolveLatestVersion } from '../metadata'
 import { resolveRegistryBaseUrl } from '../registry'
 
+import { parseCsv } from './csv'
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const LIBRARIES_IO_KEY = process.env.LIBRARIES_IO_API_KEY ?? ''
@@ -84,83 +86,31 @@ async function safeGet<T>(
   url: string,
   params?: Record<string, string>,
 ): Promise<T | null> {
-  try {
-    const res = await client.get<T>(url, { params })
-    return res.data
-  } catch (err) {
-    if (axios.isAxiosError(err)) {
-      const status = err.response?.status
-      if (status === 404 || status === 422) return null
-      if (status === 403 || status === 429) {
-        const reset = err.response?.headers?.['x-ratelimit-reset']
-        const wait = reset ? Math.max(0, Number(reset) * 1000 - Date.now()) + 1000 : 60_000
-        console.warn(`  Rate limited — waiting ${Math.round(wait / 1000)}s`)
-        await sleep(wait)
-        return safeGet<T>(client, url, params)
+  const MAX_RETRIES = 5
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await client.get<T>(url, { params })
+      return res.data
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status
+        if (status === 404 || status === 422) return null
+        if (status === 403 || status === 429) {
+          const reset = err.response?.headers?.['x-ratelimit-reset']
+          const wait = reset ? Math.max(0, Number(reset) * 1000 - Date.now()) + 1000 : 60_000
+          console.warn(
+            `  Rate limited (attempt ${attempt + 1}/${MAX_RETRIES}) — waiting ${Math.round(wait / 1000)}s`,
+          )
+          await sleep(wait)
+          continue
+        }
+        console.warn(`  HTTP ${status} for ${url}`)
       }
-      console.warn(`  HTTP ${status} for ${url}`)
-    }
-    return null
-  }
-}
-
-// ─── CSV parser ───────────────────────────────────────────────────────────────
-
-function parseCsv(content: string): Record<string, string>[] {
-  const rows: string[][] = []
-  let cur = ''
-  let inQuote = false
-  let row: string[] = []
-
-  for (let i = 0; i < content.length; i++) {
-    const ch = content[i]
-    const next = content[i + 1]
-
-    if (inQuote) {
-      if (ch === '"' && next === '"') {
-        cur += '"'
-        i++
-      } else if (ch === '"') {
-        inQuote = false
-      } else {
-        cur += ch
-      }
-    } else {
-      if (ch === '"') {
-        inQuote = true
-      } else if (ch === ',') {
-        row.push(cur)
-        cur = ''
-      } else if (ch === '\r' && next === '\n') {
-        row.push(cur)
-        cur = ''
-        rows.push(row)
-        row = []
-        i++
-      } else if (ch === '\n') {
-        row.push(cur)
-        cur = ''
-        rows.push(row)
-        row = []
-      } else {
-        cur += ch
-      }
+      return null
     }
   }
-  if (cur || row.length) {
-    row.push(cur)
-    rows.push(row)
-  }
-
-  if (rows.length === 0) return []
-  const headers = rows[0]
-  return rows.slice(1).map((r) => {
-    const obj: Record<string, string> = {}
-    headers.forEach((h, i) => {
-      obj[h.trim()] = (r[i] ?? '').trim()
-    })
-    return obj
-  })
+  console.warn(`  Giving up after ${MAX_RETRIES} rate-limit retries: ${url}`)
+  return null
 }
 
 function csvEscape(value: string): string {

@@ -74,12 +74,26 @@ export async function replacePackageMaintainers(
   links: Array<Pick<IDbPackageMaintainerUpsert, 'maintainerId' | 'role'>>,
 ): Promise<string[]> {
   const before: Array<{ maintainer_id: number; role: string | null }> = await qx.select(
-    `SELECT maintainer_id, role FROM package_maintainers WHERE package_id = $(packageId)`,
+    `SELECT maintainer_id, role FROM package_maintainers
+     WHERE package_id = $(packageId) AND ingestion_source IS DISTINCT FROM 'manual_csv'`,
     { packageId },
   )
   const beforeMap = new Map(before.map((r) => [r.maintainer_id, r.role]))
 
-  await qx.result(`DELETE FROM package_maintainers WHERE package_id = $(packageId)`, { packageId })
+  await qx.result(
+    `DELETE FROM package_maintainers
+     WHERE package_id = $(packageId) AND ingestion_source IS DISTINCT FROM 'manual_csv'`,
+    { packageId },
+  )
+
+  // Surviving manual_csv links must be excluded from the changedFields diff —
+  // they are pre-existing and should not appear as "added" in afterMap comparisons.
+  const manualCsvRows: Array<{ maintainer_id: number }> = await qx.select(
+    `SELECT maintainer_id FROM package_maintainers
+     WHERE package_id = $(packageId) AND ingestion_source = 'manual_csv'`,
+    { packageId },
+  )
+  const manualCsvIds = new Set(manualCsvRows.map((r) => r.maintainer_id))
 
   const afterMap = new Map<number, string | null>()
   for (const { maintainerId, role } of links) {
@@ -97,6 +111,7 @@ export async function replacePackageMaintainers(
     if (!afterMap.has(id)) changed.add('package_maintainers.maintainer_id')
   }
   for (const [id, role] of afterMap) {
+    if (manualCsvIds.has(id)) continue
     if (!beforeMap.has(id)) changed.add('package_maintainers.maintainer_id')
     else if (beforeMap.get(id) !== role) changed.add('package_maintainers.role')
   }
