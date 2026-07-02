@@ -50,7 +50,7 @@ export async function insertPackageMaintainerLink(
   qx: QueryExecutor,
   packageId: number,
   maintainerId: number,
-  role: 'author' | 'maintainer' | null,
+  role: 'author' | 'maintainer' | 'contributor' | null,
   ingestionSource?: string | null,
 ): Promise<number | null> {
   const row = await qx.selectOneOrNone(

@@ -51,7 +51,7 @@ export type IDbMaintainerUpsert = {
 export type IDbPackageMaintainerUpsert = {
   packageId: number
   maintainerId: number
-  role: 'author' | 'maintainer' | null
+  role: 'author' | 'maintainer' | 'contributor' | null
   ingestionSource?: string | null
 }
 

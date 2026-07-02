@@ -12,7 +12,7 @@
  *   --dry-run   Print what would be inserted without touching the DB
  *
  * Usage:
- *   tsx src/scripts/importMaintainersFromCsv.ts <input.csv> [--dry-run]
+ *   tsx src/maven/scripts/importMaintainersFromCsv.ts <input.csv> [--dry-run]
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -87,9 +87,10 @@ function parseCsv(content: string): Record<string, string>[] {
 
 // ─── Role normalisation ───────────────────────────────────────────────────────
 
-function normaliseRole(raw: string): 'author' | 'maintainer' | null {
+function normaliseRole(raw: string): 'author' | 'maintainer' | 'contributor' | null {
   if (raw === 'author') return 'author'
   if (raw === 'maintainer') return 'maintainer'
+  if (raw === 'contributor') return 'contributor'
   return null
 }
 
@@ -101,7 +102,9 @@ async function main() {
   const inputPath = args.find((a) => !a.startsWith('--'))
 
   if (!inputPath) {
-    console.error('Usage: tsx src/scripts/importMaintainersFromCsv.ts <input.csv> [--dry-run]')
+    console.error(
+      'Usage: tsx src/maven/scripts/importMaintainersFromCsv.ts <input.csv> [--dry-run]',
+    )
     process.exit(1)
   }
 
@@ -225,8 +228,9 @@ async function main() {
     `-- Deletes only the package_maintainers rows inserted by this import.`,
     `-- Maintainer profiles in the maintainers table are left intact.`,
     ``,
-    `DELETE FROM package_maintainers`,
-    `WHERE id IN (${insertedPmIds.join(', ')});`,
+    insertedPmIds.length > 0
+      ? `DELETE FROM package_maintainers WHERE id IN (${insertedPmIds.join(', ')});`
+      : `-- Nothing was inserted — no rows to roll back.`,
     ``,
     `-- Rows deleted: ${insertedPmIds.length}`,
   ].join('\n')
@@ -240,7 +244,7 @@ async function main() {
   console.log(`  package_maintainers inserted: ${insertedLinks}`)
   console.log(`  package_maintainers skipped (already existed): ${skippedLinks}`)
   console.log(`\n  Rollback file: ${rollbackPath}`)
-  console.log(`  To revert: psql \$OSSPCKGS_DB_URL -f ${rollbackPath}`)
+  console.log(`  To revert: psql $OSSPCKGS_DB_URL -f ${rollbackPath}`)
 }
 
 main().catch((err) => {

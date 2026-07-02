@@ -5,7 +5,8 @@ DESCRIPTION >
     - `id` is the internal primary key.
     - `packageId` links to the parent packages row.
     - `maintainerId` links to the parent maintainers row.
-    - `role` is the maintainer's role on the package: 'author', 'maintainer', or empty string if not specified.
+    - `role` is the maintainer's role on the package: 'author', 'maintainer', 'contributor', or empty string if not specified.
+    - `ingestionSource` identifies where this link came from (e.g. 'manual_csv'); empty string for auto-enriched rows.
     - `createdAt` and `updatedAt` are row-level audit timestamps for Tinybird watermark-based sync.
 
 SCHEMA >
