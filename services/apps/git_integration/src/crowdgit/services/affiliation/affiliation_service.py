@@ -357,18 +357,18 @@ class AffiliationService(BaseService):
 
         for row in rows:
             raw_contributor = row.contributor
-            github = cls._strip(raw_contributor.github)
-            if github:
-                github = github.lstrip("@").lower()
             email = cls._strip(raw_contributor.email)
             if email:
                 email = email.replace("!", "@").lower()
+            github = cls._strip(raw_contributor.github)
+            if github:
+                github = github.lstrip("@").lower()
             name = cls._strip(raw_contributor.name)
 
-            if github:
-                contributor_key = ("github", github)
-            elif email:
+            if email:
                 contributor_key = ("email", email)
+            elif github:
+                contributor_key = ("github", github)
             else:
                 continue
 
@@ -584,10 +584,10 @@ class AffiliationService(BaseService):
         contributor: AffiliationContributor, domain: str
     ) -> tuple[str, str, str] | None:
         domain = domain.lower()
-        if contributor.github:
-            return ("github", contributor.github.lower(), domain)
         if contributor.email:
             return ("email", contributor.email.lower(), domain)
+        if contributor.github:
+            return ("github", contributor.github.lower(), domain)
         return None
 
     async def exclude_parent_repo_affiliations(
@@ -665,23 +665,23 @@ class AffiliationService(BaseService):
         for entry in affiliations:
             contributor = entry.contributor
             member_idx: int | None = None
-            if contributor.github:
+            if contributor.email:
+                member_idx = len(member_identity_inputs)
+                member_identity_inputs.append(
+                    {
+                        "type": "username",
+                        "platform": "git",
+                        "value": contributor.email,
+                        "verified": True,
+                    }
+                )
+            elif contributor.github:
                 member_idx = len(member_identity_inputs)
                 member_identity_inputs.append(
                     {
                         "type": "username",
                         "platform": "github",
                         "value": contributor.github,
-                        "verified": True,
-                    }
-                )
-            elif contributor.email:
-                member_idx = len(member_identity_inputs)
-                member_identity_inputs.append(
-                    {
-                        "type": "email",
-                        "platform": None,
-                        "value": contributor.email,
                         "verified": True,
                     }
                 )

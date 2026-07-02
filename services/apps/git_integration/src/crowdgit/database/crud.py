@@ -630,7 +630,7 @@ async def find_many_member_ids_by_identities(identities: list[dict]) -> list[dic
             ON mi.type = i.identity_type
             AND mi.verified = i.verified
             AND lower(mi.value) = lower(i.value)
-            AND (i.platform IS NULL OR mi.platform = i.platform)
+            AND mi.platform = i.platform
             AND mi."deletedAt" IS NULL
         ORDER BY i.idx
         """,
