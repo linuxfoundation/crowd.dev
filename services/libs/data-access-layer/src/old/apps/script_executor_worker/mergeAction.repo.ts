@@ -19,7 +19,16 @@ class MergeActionRepository {
   ) {
     let rows: IMergeAction[] = []
     let query = `
-        select * from "mergeActions" ma
+        select
+          ma.id,
+          ma.type,
+          ma."primaryId",
+          ma."secondaryId",
+          ma."createdAt",
+          ma."updatedAt",
+          ma.step,
+          ma.state
+        from "mergeActions" ma
         where 
           ma."state" = 'merged' and 
           ma."primaryId" = $(memberId) and 
@@ -60,6 +69,20 @@ class MergeActionRepository {
     }
 
     return rows
+  }
+
+  async findMergeActionUnmergeBackup(mergeActionId: string) {
+    const rows = await this.connection.query(
+      `
+      select ma."unmergeBackup"
+      from "mergeActions" ma
+      where ma.id = $(mergeActionId)
+        and ma."unmergeBackup" is not null
+      `,
+      { mergeActionId },
+    )
+
+    return rows[0]?.unmergeBackup ?? null
   }
 
   async findMergeActionsWithDeletedSecondaryEntities(

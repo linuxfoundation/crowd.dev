@@ -25,4 +25,11 @@ export {
   cargoCleanup,
 } from './cargo/activities'
 export { enrichGoVersionsBatch, enrichGoStatusBatch } from './go/activities'
+export {
+  getUnscannedPypiBatch,
+  ingestPypiPackageBatch,
+  pypiStopAfterFirstPage,
+} from './pypi/activities'
+export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'
+export { processSecurityContactsBatch } from './security-contacts/activities'

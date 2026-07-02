@@ -25,6 +25,8 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
+import { proxyUrl } from '../proxies'
+import { isClientError } from '../utils/isClientError'
 
 import { NPM_EARLIEST, computeChunks } from './downloadGaps'
 import { fetchChangesSince, fetchCurrentSeq } from './fetchChanges'
@@ -35,7 +37,7 @@ import {
 } from './fetchDownloads'
 import { fetchPackument } from './fetchPackument'
 import { Last30dWindow, computeMissingLast30dWindows } from './last30dGaps'
-import { laneCount, proxyForLane, proxyUrl } from './proxies'
+import { laneCount, proxyForLane } from './proxies'
 import { isFetchError } from './types'
 import { upsertPackage } from './upsertPackage'
 
@@ -92,13 +94,6 @@ export async function pollNpmChanges(): Promise<PollNpmChangesResult> {
 export async function commitNpmChangesSeq(lastSeq: string): Promise<void> {
   const qx = await getPackagesDb()
   await setNpmChangesLastSeq(qx, lastSeq)
-}
-
-// 4xx (404 or any other client error like 405 from a malformed/illegal npm name —
-// e.g. deps.dev dependency-chain strings that leaked into `packages`). 429 is
-// excluded — it's transient and handled by the slow exponential path.
-function isClientError(code: number | undefined, kind: string): boolean {
-  return kind === 'NOT_FOUND' || (code !== undefined && code >= 400 && code < 500 && code !== 429)
 }
 
 // 4xx errors get a few quick in-lane retries with a small linear backoff (1s, 2s),

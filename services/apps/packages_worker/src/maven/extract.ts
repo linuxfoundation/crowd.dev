@@ -276,9 +276,10 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
 
   const missingLicense = licenses.length === 0
   const missingScm = !scmUrl
+  const missingDevelopers = developers.length === 0 || contributors.length === 0
   const parent = extractParent(pom)
 
-  if (parent && (missingLicense || missingScm)) {
+  if (parent && (missingLicense || missingScm || missingDevelopers)) {
     const parentKey = `${parent.groupId}:${parent.artifactId}:${parent.version}`
     if (depth >= MAX_PARENT_DEPTH || visited.has(parentKey)) {
       log.warn(

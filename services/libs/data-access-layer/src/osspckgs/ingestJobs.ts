@@ -14,6 +14,8 @@ export type OsspckgsJobKind =
   | 'scorecard_repos'
   | 'scorecard_checks'
   | 'ranking'
+  | 'pypi_downloads_30d'
+  | 'pypi_downloads_daily'
 
 export type OsspckgsJobStatus =
   | 'pending'
