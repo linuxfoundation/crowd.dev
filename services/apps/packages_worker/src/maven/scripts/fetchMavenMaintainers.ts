@@ -15,7 +15,7 @@
  *
  * Usage:
  *   LIBRARIES_IO_API_KEY=xxx GITHUB_TOKEN=yyy \
- *     tsx src/scripts/fetchMavenMaintainers.ts /path/to/packages_top500.csv [output.csv]
+ *     tsx src/maven/scripts/fetchMavenMaintainers.ts /path/to/packages_top500.csv [output.csv]
  */
 import axios, { AxiosInstance } from 'axios'
 import * as fs from 'fs'
@@ -94,7 +94,7 @@ async function safeGet<T>(client: AxiosInstance, url: string): Promise<T | null>
         await sleep(wait)
         return safeGet<T>(client, url)
       }
-      console.warn(`  HTTP ${status} for ${url}`)
+      console.warn(`  HTTP ${status} for ${url.replace(/([?&]api_key=)[^&]+/, '$1[redacted]')}`)
     }
     return null
   }
@@ -358,10 +358,11 @@ function parseCODEOWNERS(content: string): string[] {
   for (const line of content.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed || trimmed.startsWith('#')) continue
-    // Match @login — skip @org/team (contain a slash after @)
+    // Match @login — skip @org/team entries (slash immediately after the handle)
     let match: RegExpExecArray | null
     const re = /@([a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)/g
     while ((match = re.exec(trimmed)) !== null) {
+      if (trimmed[match.index + match[0].length] === '/') continue
       const login = match[1].toLowerCase()
       if (!seen.has(login)) {
         seen.add(login)
@@ -447,8 +448,9 @@ async function fetchTopContributors(
 ): Promise<GithubContributor[]> {
   const results: GithubContributor[] = []
   let page = 1
+  let hasMore = true
 
-  while (true) {
+  while (hasMore) {
     const data = await safeGet<GithubContributor[]>(
       github,
       `/repos/${owner}/${repo}/contributors?per_page=100&page=${page}&anon=false`,
@@ -458,13 +460,11 @@ async function fetchTopContributors(
     const users = data.filter((c) => c.type === 'User')
     results.push(...users)
 
-    // Stop if we've hit the requested limit (0 = unlimited)
-    if (limit > 0 && results.length >= limit) break
-    // Stop if GitHub returned fewer than a full page — no more pages
-    if (data.length < 100) break
-
-    page++
-    await sleep(GITHUB_DELAY_MS)
+    hasMore = data.length === 100 && (limit === 0 || results.length < limit)
+    if (hasMore) {
+      page++
+      await sleep(GITHUB_DELAY_MS)
+    }
   }
 
   return limit > 0 ? results.slice(0, limit) : results
@@ -658,7 +658,7 @@ async function main() {
   const inputPath = process.argv[2]
   if (!inputPath) {
     console.error(
-      'Usage: LIBRARIES_IO_API_KEY=xxx GITHUB_TOKEN=yyy tsx src/scripts/fetchMavenMaintainers.ts <input.csv> [output.csv]',
+      'Usage: LIBRARIES_IO_API_KEY=xxx GITHUB_TOKEN=yyy tsx src/maven/scripts/fetchMavenMaintainers.ts <input.csv> [output.csv]',
     )
     process.exit(1)
   }
@@ -676,8 +676,9 @@ async function main() {
   const CSV_HEADER =
     'package_purl,package_namespace,package_name,github_repo,repo_source,maintainer_github_login,maintainer_display_name,maintainer_email,maintainer_url,role,source,contributions,notes'
 
-  const lines: string[] = [CSV_HEADER]
+  const resultsByIndex: MaintainerRow[][] = new Array(rows.length)
   const stats = { codeowners: 0, maintainers_file: 0, contributors: 0, none: 0 }
+  let completed = 0
 
   // Concurrency 3 — Libraries.io rate limit is the bottleneck
   await withConcurrency(rows, 3, async (row, i) => {
@@ -685,7 +686,7 @@ async function main() {
     process.stdout.write(`[${i + 1}/${rows.length}] ${pkg} ... `)
 
     const results = await enrichPackage(row)
-    for (const r of results) lines.push(toCsvLine(r))
+    resultsByIndex[i] = results
 
     const source = results[0]?.source ?? ''
     if (source === 'codeowners') stats.codeowners++
@@ -695,15 +696,19 @@ async function main() {
 
     console.log(`${results.length} maintainer(s) [${source || 'none'}]`)
 
-    // Checkpoint every 50 packages — safe to re-run
-    if ((i + 1) % 50 === 0) {
-      fs.writeFileSync(outputPath, lines.join('\n'))
-      console.log(`  ✓ checkpoint saved (${i + 1} done)`)
+    // Checkpoint every 50 packages — write rows in original input order
+    completed++
+    if (completed % 50 === 0) {
+      const checkpointLines = [CSV_HEADER, ...resultsByIndex.flat().map(toCsvLine)]
+      fs.writeFileSync(outputPath, checkpointLines.join('\n'))
+      console.log(`  ✓ checkpoint saved (${completed} done)`)
     }
   })
 
+  const lines = [CSV_HEADER, ...resultsByIndex.flat().map(toCsvLine)]
   fs.writeFileSync(outputPath, lines.join('\n'))
   console.log(`\nDone. ${lines.length - 1} rows written to: ${outputPath}`)
+
   console.log(
     `  CODEOWNERS: ${stats.codeowners} | MAINTAINERS file: ${stats.maintainers_file} | contributors fallback: ${stats.contributors} | not found: ${stats.none}`,
   )
