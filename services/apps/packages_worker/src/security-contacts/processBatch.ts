@@ -1,9 +1,13 @@
+import { cancellationSignal, heartbeat } from '@temporalio/activity'
+
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getSecurityContactsConfig } from '../config'
+import { parseGithubUrl } from '../enricher/fetchLightRepo'
 import { mapWithConcurrency } from '../utils/concurrency'
 
+import { fetchRepoTree } from './extractors/gitTree'
 import { extractPvr } from './extractors/pvr'
 import { extractManifest } from './extractors/registry'
 import { extractSecurityContactsFile } from './extractors/securityContactsFile'
@@ -114,9 +118,19 @@ function toTarget(row: SweepRow): RepoTarget {
 
 async function processRepo(
   target: RepoTarget,
-  deps: ExtractorDeps,
+  baseDeps: Omit<ExtractorDeps, 'repoTree'>,
   qx: QueryExecutor,
 ): Promise<void> {
+  // One tree fetch per repo, shared by extractors that probe well-known paths (see gitTree.ts).
+  let repoTree: ExtractorDeps['repoTree'] = { paths: null }
+  try {
+    const { owner, name } = parseGithubUrl(target.url)
+    repoTree = await fetchRepoTree(owner, name, baseDeps.githubGet)
+  } catch {
+    // not a github.com URL
+  }
+  const deps: ExtractorDeps = { ...baseDeps, repoTree }
+
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
   // Replace the repo's contacts only when every extractor succeeded. If any failed (transient
@@ -158,17 +172,20 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   const batch = await fetchBatch(qx)
   if (batch.length === 0) return { processed: 0 }
 
-  const deps: ExtractorDeps = {
+  const deps: Omit<ExtractorDeps, 'repoTree'> = {
     fetchTimeoutMs: FETCH_TIMEOUT_MS,
     userAgent: config.userAgent,
     githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
   }
 
   const targets = batch.map(toTarget)
-  // Isolate per-repo failures: mapWithConcurrency is fail-fast, so a single repo's DB error must
-  // not abort the batch (and, across Temporal retries, halt the whole sweep). Unmarked repos on
-  // error are simply retried next sweep.
+  // mapWithConcurrency is fail-fast: a per-repo DB error is caught below so it doesn't abort the
+  // batch, but a cancelled task (superseded by a newer activity attempt, see workflows.ts) is
+  // left to throw so it stops scheduling further repos instead of racing the new attempt.
   await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
+    if (cancellationSignal().aborted) {
+      throw new Error('Security contacts batch cancelled — superseded by a newer activity attempt')
+    }
     try {
       await processRepo(target, deps, qx)
     } catch (err) {
@@ -176,6 +193,8 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
       // Best-effort mark so a persistently-failing repo drains on cadence rather than making the
       // sweep hot-loop (it would otherwise stay eligible and keep processed > 0 forever).
       await markRepoAttempted(qx, target.repoId).catch(() => undefined)
+    } finally {
+      heartbeat()
     }
   })
 
