@@ -1,4 +1,4 @@
-import { parseProxies, proxyCount, type ProxyEndpoint } from '../proxies'
+import { type ProxyEndpoint, parseProxies, proxyCount } from '../proxies'
 
 // Global kill-switch for the npm proxy layer. When off (the default), every npm worker
 // runs a single direct lane (no ProxyAgent) — see laneCount/proxyForLane.
