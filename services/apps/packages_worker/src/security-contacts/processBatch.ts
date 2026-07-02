@@ -171,7 +171,13 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   const targets = batch.map(toTarget)
   // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
   // every concurrency slot is still busy, so this can't rely on task completions alone.
-  const heartbeatTimer = setInterval(() => heartbeat(), 30_000)
+  const heartbeatTimer = setInterval(() => {
+    try {
+      heartbeat()
+    } catch (err) {
+      log.warn({ errMsg: (err as Error).message }, 'Heartbeat failed')
+    }
+  }, 30_000)
   try {
     // A cancelled task (superseded by a newer activity attempt) is left to throw so it stops
     // scheduling further repos instead of racing the new attempt.
