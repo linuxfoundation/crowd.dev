@@ -49,7 +49,7 @@ _Avoid_: self-healing (that's the npm gap-filling property)
 The pypi 30d workflow, given no `fromDate`, computes and ingests only the latest **Window** (idempotent upsert, mirrored to `packages.downloads_last_30d`). It does not gap-fill missed months; those are recovered by **Backfill**.
 
 **Backfill**:
-A manual, one-time run over an explicit date range to fill history or recover gaps — pypi daily takes `{startDate, endDate}`, pypi 30d takes `{fromDate}` (enumerates every monthly **Window** from then to the latest). For pypi downloads this is the *only* gap-recovery mechanism; scheduled runs are fixed-window, not self-healing.
+A manual, one-time run over an explicit date range to fill history or recover gaps — pypi daily takes `{startDate, endDate}`, pypi 30d takes `{fromDate}` (enumerates every monthly **Window** from then to the latest). For pypi downloads this is the _only_ gap-recovery mechanism; scheduled runs are fixed-window, not self-healing.
 
 ## Relationships
 
