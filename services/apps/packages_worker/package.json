@@ -51,6 +51,8 @@
     "dev:nuget-worker:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && CROWD_TEMPORAL_TASKQUEUE=nuget-worker SERVICE=nuget-worker LOG_LEVEL=trace nodemon --watch src --watch ../../libs --ext ts --exec tsx --inspect=0.0.0.0:9242 src/bin/nuget-worker.ts",
     "backfill:maven": "SERVICE=maven tsx src/bin/maven-backfill.ts",
     "backfill:maven:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven LOG_LEVEL=info tsx src/bin/maven-backfill.ts",
+    "import:maven-maintainers": "SERVICE=maven tsx src/maven/scripts/importMaintainersFromCsv.ts",
+    "import:maven-maintainers:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven tsx src/maven/scripts/importMaintainersFromCsv.ts",
     "backfill:stewardship": "SERVICE=stewardship-backfill tsx src/bin/stewardship-backfill.ts",
     "backfill:stewardship:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=stewardship-backfill LOG_LEVEL=info tsx src/bin/stewardship-backfill.ts",
     "monitor:osspckgs": "SERVICE=bq-dataset-ingest tsx src/scripts/monitorOsspckgs.ts",
