@@ -85,12 +85,12 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
         r.contacts_last_refreshed IS NULL
         -- evaluated but no contacts found yet → retry on the daily cadence
         OR (
-          NOT EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id)
+          NOT EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id AND sc.deleted_at IS NULL)
           AND r.contacts_last_refreshed < NOW() - INTERVAL '$(dailyIntervalHours) hours'
         )
         -- already enriched (has contacts) → refresh on the weekly cadence
         OR (
-          EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id)
+          EXISTS (SELECT 1 FROM security_contacts sc WHERE sc.repo_id = r.id AND sc.deleted_at IS NULL)
           AND r.contacts_last_refreshed < NOW() - INTERVAL '$(weeklyIntervalHours) hours'
         )
       )
