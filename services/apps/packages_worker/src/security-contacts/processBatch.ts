@@ -179,24 +179,31 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   }
 
   const targets = batch.map(toTarget)
-  // mapWithConcurrency is fail-fast: a per-repo DB error is caught below so it doesn't abort the
-  // batch, but a cancelled task (superseded by a newer activity attempt, see workflows.ts) is
-  // left to throw so it stops scheduling further repos instead of racing the new attempt.
-  await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
-    if (cancellationSignal().aborted) {
-      throw new Error('Security contacts batch cancelled — superseded by a newer activity attempt')
-    }
-    try {
-      await processRepo(target, deps, qx)
-    } catch (err) {
-      log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
-      // Best-effort mark so a persistently-failing repo drains on cadence rather than making the
-      // sweep hot-loop (it would otherwise stay eligible and keep processed > 0 forever).
-      await markRepoAttempted(qx, target.repoId).catch(() => undefined)
-    } finally {
-      heartbeat()
-    }
-  })
+  // Heartbeat on a fixed cadence rather than per-repo completion: a single repo's extractors
+  // (sequential per-package registry fetches, cargo throttling) can outlast the 2-minute
+  // heartbeatTimeout even while every CONCURRENCY slot is still busy, so relying on task
+  // completions to drive the heartbeat can miss the deadline.
+  const heartbeatTimer = setInterval(() => heartbeat(), 30_000)
+  try {
+    // mapWithConcurrency is fail-fast: a per-repo DB error is caught below so it doesn't abort
+    // the batch, but a cancelled task (superseded by a newer activity attempt, see workflows.ts)
+    // is left to throw so it stops scheduling further repos instead of racing the new attempt.
+    await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
+      if (cancellationSignal().aborted) {
+        throw new Error('Security contacts batch cancelled — superseded by a newer activity attempt')
+      }
+      try {
+        await processRepo(target, deps, qx)
+      } catch (err) {
+        log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
+        // Best-effort mark so a persistently-failing repo drains on cadence rather than making the
+        // sweep hot-loop (it would otherwise stay eligible and keep processed > 0 forever).
+        await markRepoAttempted(qx, target.repoId).catch(() => undefined)
+      }
+    })
+  } finally {
+    clearInterval(heartbeatTimer)
+  }
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }
