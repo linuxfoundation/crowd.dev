@@ -4,15 +4,11 @@ export function registryHeaders(userAgent: string): Record<string, string> {
   return { 'User-Agent': userAgent }
 }
 
-// Genuinely-absent / not-determinable → null body; every other non-200 throws so transient
-// failures (5xx/...) are treated as failures and the pipeline preserves data instead of
-// wiping it. 422 is included because GitHub's PVR endpoint returns it (per-repo, non-transient)
-// when the flag can't be determined — that must read as "unknown", not block the whole repo.
-// 451 (Unavailable For Legal Reasons) is likewise permanent.
+// Genuinely-absent/not-determinable → null body; every other non-200 throws so the pipeline
+// preserves existing data instead of wiping it. 422 covers GitHub's PVR "can't determine".
 const ABSENT_STATUSES = new Set([404, 410, 422, 451])
 
-// Registry rate-limit / overload responses: retried in-process (honoring Retry-After) so a brief
-// throttle doesn't fail the extractor and cost the repo a whole refresh cadence.
+// Retried in-process (honoring Retry-After) so a brief throttle doesn't cost a whole cadence.
 const RATE_LIMIT_STATUSES = new Set([429, 503])
 const MAX_RATE_LIMIT_RETRIES = 3
 

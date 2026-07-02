@@ -35,18 +35,11 @@ export interface BatchResult {
   processed: number
 }
 
-// Two-tier refresh cadence (the worker runs on a daily cron). Just under 24h/168h so a repo
-// processed at ~06:00 is eligible again at the next daily/weekly tick rather than slipping a day.
-const DAILY_INTERVAL_HOURS = 20 // repos never evaluated or with no contacts yet
-const WEEKLY_INTERVAL_HOURS = 156 // already-enriched repos (have contacts)
+// Just under 24h/168h so a repo processed at ~06:00 is still eligible at the next tick.
+const DAILY_INTERVAL_HOURS = 20 // no contacts found yet
+const WEEKLY_INTERVAL_HOURS = 156 // already has contacts
 
-// Tuned for throughput within the platform ceilings:
-//  - CONCURRENCY: parallel repos. GitHub calls go through the authed Contents API via a
-//    rate-limit-aware pool (per-installation budget parking + app-wide concurrency gate +
-//    Retry-After backoff in githubToken), so high repo concurrency won't trip GitHub limits.
-//  - FETCH_TIMEOUT_MS: generous enough for slow registries (Maven metadata/POM) without hanging slots.
-//  - BATCH_SIZE: bounded by the 30-min activity timeout (worst case: an all-cargo batch throttled
-//    to crates.io's 1 req/s finishes ~8 min).
+// GitHub calls are rate-limit-aware (see githubToken.ts), so high repo concurrency is safe.
 const CONCURRENCY = 100
 const FETCH_TIMEOUT_MS = 15000
 const BATCH_SIZE = 500
@@ -121,7 +114,7 @@ async function processRepo(
   baseDeps: Omit<ExtractorDeps, 'repoTree'>,
   qx: QueryExecutor,
 ): Promise<void> {
-  // One tree fetch per repo, shared by extractors that probe well-known paths (see gitTree.ts).
+  // One tree fetch per repo, shared by extractors that probe well-known paths.
   let repoTree: ExtractorDeps['repoTree'] = { paths: null }
   try {
     const { owner, name } = parseGithubUrl(target.url)
@@ -133,9 +126,7 @@ async function processRepo(
 
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-  // Replace the repo's contacts only when every extractor succeeded. If any failed (transient
-  // error — non-200s throw), a destructive rewrite would drop contacts a failed tier-A/B extractor
-  // still has, so preserve existing data and just record the attempt; retried next cadence.
+  // Write only when every extractor succeeded, so a failed one can't wipe contacts it didn't see.
   const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
   if (failed) {
     log.warn(
@@ -158,8 +149,7 @@ async function processRepo(
     }
   }
 
-  // A2 veto: B1 may emit a github-pvr contact from redirect language; drop it when A2
-  // authoritatively reports PVR disabled (Option C from the design discussion).
+  // A2 veto: drop B1's github-pvr guess when A2 authoritatively reports PVR disabled.
   if (policies.pvrEnabled === false) {
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
@@ -179,15 +169,12 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   }
 
   const targets = batch.map(toTarget)
-  // Heartbeat on a fixed cadence rather than per-repo completion: a single repo's extractors
-  // (sequential per-package registry fetches, cargo throttling) can outlast the 2-minute
-  // heartbeatTimeout even while every CONCURRENCY slot is still busy, so relying on task
-  // completions to drive the heartbeat can miss the deadline.
+  // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
+  // every concurrency slot is still busy, so this can't rely on task completions alone.
   const heartbeatTimer = setInterval(() => heartbeat(), 30_000)
   try {
-    // mapWithConcurrency is fail-fast: a per-repo DB error is caught below so it doesn't abort
-    // the batch, but a cancelled task (superseded by a newer activity attempt, see workflows.ts)
-    // is left to throw so it stops scheduling further repos instead of racing the new attempt.
+    // A cancelled task (superseded by a newer activity attempt) is left to throw so it stops
+    // scheduling further repos instead of racing the new attempt.
     await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
       if (cancellationSignal().aborted) {
         throw new Error('Security contacts batch cancelled — superseded by a newer activity attempt')
@@ -196,8 +183,7 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
         await processRepo(target, deps, qx)
       } catch (err) {
         log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
-        // Best-effort mark so a persistently-failing repo drains on cadence rather than making the
-        // sweep hot-loop (it would otherwise stay eligible and keep processed > 0 forever).
+        // Best-effort: keeps a persistently-failing repo from hot-looping the sweep.
         await markRepoAttempted(qx, target.repoId).catch(() => undefined)
       }
     })

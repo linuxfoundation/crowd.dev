@@ -3,21 +3,17 @@ import { prepareBulkInsert } from '@crowd/data-access-layer/src/utils'
 
 import { RepoPolicies, ScoredContact } from './types'
 
-// Advances contacts_last_refreshed without touching contacts/policies, so a failed pass doesn't
-// wipe existing data but still isn't reprocessed this sweep.
+// Advances contacts_last_refreshed only, so a failed pass isn't reprocessed this sweep.
 export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Promise<void> {
   await qx.result('UPDATE repos SET contacts_last_refreshed = NOW() WHERE id = $(repoId)', {
     repoId,
   })
 }
 
-// Assumes at most one writer per repoId at a time (enforced via heartbeat/cancellation in
-// processBatch.ts and a non-overlapping schedule in schedule.ts) — no locking here.
+// Assumes at most one writer per repoId at a time (see processBatch.ts/schedule.ts) — no locking.
 //
-// Soft-delete: mark every currently-active row stale, then upsert this pass's contacts, which
-// revives (clears deleted_at on) whatever was rediscovered. Anything not rediscovered stays
-// soft-deleted instead of being destroyed, preserving history. Readers of this table must filter
-// on deleted_at IS NULL.
+// Soft-delete: mark every active row stale, then upsert this pass's contacts, reviving whatever
+// was rediscovered. Readers of this table must filter on deleted_at IS NULL.
 export async function writeContacts(
   qx: QueryExecutor,
   repoId: string,
@@ -59,8 +55,7 @@ export async function writeContacts(
     }
 
     await tx.result(
-      // COALESCE preserves a field a partial/failed pass didn't rediscover. vulnerability_reporting_url
-      // is PVR-derived, so it's overwritten only once PVR is authoritatively resolved.
+      // vulnerability_reporting_url is overwritten only once PVR is authoritatively resolved.
       `UPDATE repos SET
          security_policy_url         = COALESCE($(securityPolicyUrl), security_policy_url),
          vulnerability_reporting_url = CASE WHEN $(pvrResolved)
