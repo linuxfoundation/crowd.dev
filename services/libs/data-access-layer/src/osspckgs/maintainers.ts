@@ -100,7 +100,7 @@ export async function replacePackageMaintainers(
     await qx.result(
       `INSERT INTO package_maintainers (package_id, maintainer_id, role, created_at, updated_at)
        VALUES ($(packageId), $(maintainerId), $(role), NOW(), NOW())
-       ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+       ON CONFLICT (package_id, maintainer_id) DO NOTHING`,
       { packageId, maintainerId, role },
     )
     afterMap.set(maintainerId, role)
