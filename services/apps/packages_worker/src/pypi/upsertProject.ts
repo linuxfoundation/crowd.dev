@@ -26,8 +26,8 @@ export async function upsertProject(
   project: PyPiProject,
   purl: string,
 ): Promise<{ purl: string; changedFields: string[] }> {
+  stripNullBytesDeep(project)
   const info = project.info
-  stripNullBytesDeep(info)
 
   const name = info.name
   const status = info.yanked ? 'yanked' : 'active'

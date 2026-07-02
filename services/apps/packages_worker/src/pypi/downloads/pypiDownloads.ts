@@ -35,7 +35,7 @@ export async function schedulePypiDownloads30d(): Promise<void> {
 }
 
 // Daily downloads for the critical pypi subset. Runs daily at 06:00 UTC; no args → the workflow
-// scans the self-healing 2-day trailing window.
+// scans the 2-day trailing re-scan window.
 export async function schedulePypiDownloadsDaily(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')

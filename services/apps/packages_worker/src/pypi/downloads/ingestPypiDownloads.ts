@@ -168,8 +168,8 @@ export async function ingestPypiDownloadsLast30d(opts: { fromDate?: string }): P
   }
 }
 
-// Daily downloads for the critical pypi subset. Scheduled daily with no range → the last 2-day
-// self-healing window. Pass an explicit startDate/endDate to backfill an arbitrary range.
+// Daily downloads for the critical pypi subset. Scheduled daily with no range → the 2-day
+// trailing re-scan window. Pass an explicit startDate/endDate to backfill an arbitrary range.
 export async function ingestPypiDownloadsDaily(opts: {
   startDate?: string
   endDate?: string

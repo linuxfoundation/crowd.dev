@@ -57,7 +57,7 @@ describe('computeLast30dWindows', () => {
 
 // ── Criterion 3: daily trailing window + first-of-month helper ─────────────────────────────
 describe('defaultDailyRange', () => {
-  it('defaults to a 2-day self-healing window [today-2, today-1]', () => {
+  it('defaults to a 2-day trailing re-scan window [today-2, today-1]', () => {
     expect(defaultDailyRange('2026-06-30')).toEqual({
       startDate: '2026-06-28',
       endDate: '2026-06-29',

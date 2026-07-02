@@ -58,7 +58,7 @@ export function computeLast30dWindows(
 // re-scanned once on the next run and corrected, while keeping the daily BigQuery scan small.
 const DAILY_TRAILING_DAYS = 2
 
-// Default daily trailing window: [today - 2, today - 1] inclusive (self-healing).
+// Default daily trailing re-scan window: [today - 2, today - 1] inclusive.
 export function defaultDailyRange(today: string): { startDate: string; endDate: string } {
   return { startDate: addDaysUTC(today, -DAILY_TRAILING_DAYS), endDate: addDaysUTC(today, -1) }
 }

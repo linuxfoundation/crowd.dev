@@ -1,6 +1,6 @@
 import { QueryExecutor } from '../queryExecutor'
 
-export interface NpmMaintainerInput {
+export interface PackageMaintainerInput {
   username: string
   displayName: string | null
   email: string | null
@@ -10,7 +10,7 @@ export interface NpmMaintainerInput {
 export async function upsertPackageMaintainers(
   qx: QueryExecutor,
   packageId: string,
-  maintainers: NpmMaintainerInput[],
+  maintainers: PackageMaintainerInput[],
   ecosystem = 'npm',
 ): Promise<string[]> {
   const changed = new Set<string>()
