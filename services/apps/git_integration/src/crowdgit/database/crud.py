@@ -754,60 +754,98 @@ async def insert_member_organizations(rows: list[dict]) -> None:
     if not rows:
         return
 
-    sql_query = """
+    undated_rows: list[tuple] = []
+    open_ended_rows: list[tuple] = []
+    dated_rows: list[tuple] = []
+
+    for row in rows:
+        params = (
+            row["member_id"],
+            row["organization_id"],
+            row.get("date_start"),
+            row.get("date_end"),
+            row["source"],
+        )
+        date_start = row.get("date_start")
+        date_end = row.get("date_end")
+        if date_start is None and date_end is None:
+            undated_rows.append(params)
+        elif date_end is None:
+            open_ended_rows.append(params)
+        else:
+            dated_rows.append(params)
+
+    insert_sql = """
         INSERT INTO "memberOrganizations"(
             "memberId",
             "organizationId",
             "dateStart",
             "dateEnd",
-            "title",
+            title,
             source,
-            verified,
             "createdAt",
             "updatedAt"
         )
-        VALUES ($1, $2, NULL, NULL, NULL, $3, false, NOW(), NOW())
-        ON CONFLICT ("memberId", "organizationId")
-            WHERE ("dateStart" IS NULL AND "dateEnd" IS NULL)
-        DO NOTHING
+        VALUES ($1, $2, $3, $4, NULL, $5, NOW(), NOW())
     """
-    await executemany(
-        sql_query,
-        [
-            (
-                row["member_id"],
-                row["organization_id"],
-                row.get("source", "project-registry"),
-            )
-            for row in rows
-        ],
-    )
+
+    if undated_rows:
+        sql = (
+            insert_sql
+            + """
+            ON CONFLICT ("memberId", "organizationId")
+                WHERE ("dateStart" IS NULL AND "dateEnd" IS NULL AND "deletedAt" IS NULL)
+            DO NOTHING
+        """
+        )
+        await executemany(sql, undated_rows)
+
+    if open_ended_rows:
+        sql = (
+            insert_sql
+            + """
+            ON CONFLICT ("memberId", "organizationId", "dateStart")
+                WHERE ("dateEnd" IS NULL AND "deletedAt" IS NULL)
+            DO NOTHING
+        """
+        )
+        await executemany(sql, open_ended_rows)
+
+    if dated_rows:
+        sql = (
+            insert_sql
+            + """
+            ON CONFLICT ("memberId", "organizationId", "dateStart", "dateEnd")
+                WHERE ("deletedAt" IS NULL)
+            DO NOTHING
+        """
+        )
+        await executemany(sql, dated_rows)
 
 
 async def insert_member_segment_affiliations(rows: list[dict]) -> None:
     if not rows:
         return
 
-    sql_query = """
+    await executemany(
+        """
         INSERT INTO "memberSegmentAffiliations"(
             id,
             "memberId",
             "segmentId",
             "organizationId",
             "dateStart",
-            "dateEnd",
-            verified
+            "dateEnd"
         )
-        VALUES (gen_random_uuid(), $1, $2, $3, NULL, NULL, $4)
-    """
-    await executemany(
-        sql_query,
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+        """,
         [
             (
                 row["member_id"],
                 row["segment_id"],
                 row["organization_id"],
-                row.get("verified", False),
+                row.get("date_start"),
+                row.get("date_end"),
             )
             for row in rows
         ],

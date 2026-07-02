@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import orjson
 from loguru import logger
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 
 class AffiliationContributor(BaseModel):
@@ -15,14 +15,36 @@ class AffiliationContributor(BaseModel):
     github: str | None = None
 
 
-class AffiliationOrganization(BaseModel):
+class AffiliationOrganizationFields(BaseModel):
+    """Organization fields as returned by the parse AI (flat rows)."""
+
     name: str | None = None
     domain: str | None = None
+    date_start: date | None = Field(default=None, alias="dateStart")
+    date_end: date | None = Field(default=None, alias="dateEnd")
+    is_unaffiliated: bool = Field(default=False, alias="isUnaffiliated")
+
+    model_config = {"populate_by_name": True}
 
 
-class AffiliationInfoItem(BaseModel):
+class AffiliationParseRow(BaseModel):
     contributor: AffiliationContributor
-    organization: AffiliationOrganization
+    organization: AffiliationOrganizationFields
+
+
+class AffiliationOrganizationStint(BaseModel):
+    name: str | None = None
+    domain: str
+    date_start: date | None = Field(default=None, alias="dateStart")
+    date_end: date | None = Field(default=None, alias="dateEnd")
+    is_unaffiliated: bool = Field(default=False, alias="isUnaffiliated")
+
+    model_config = {"populate_by_name": True}
+
+
+class AffiliationContributorEntry(BaseModel):
+    contributor: AffiliationContributor
+    organizations: list[AffiliationOrganizationStint]
 
 
 class AffiliationFile(BaseModel):
@@ -31,11 +53,11 @@ class AffiliationFile(BaseModel):
 
 
 class AffiliationParseOutput(BaseModel):
-    affiliations: list[AffiliationInfoItem] | None = None
+    affiliations: list[AffiliationParseRow] | None = None
     error: str | None = None
 
 
-_SNAPSHOT_ADAPTER = TypeAdapter(list[AffiliationInfoItem])
+_SNAPSHOT_ADAPTER = TypeAdapter(list[AffiliationContributorEntry])
 
 
 class RepoAffiliationRegistry(BaseModel):
@@ -43,7 +65,7 @@ class RepoAffiliationRegistry(BaseModel):
     file_path: str | None = None
     file_hash: str | None = None
     status: str
-    snapshot: list[AffiliationInfoItem] | None = None
+    snapshot: list[AffiliationContributorEntry] | None = None
     last_run_at: datetime | None = None
 
     @classmethod
@@ -71,7 +93,7 @@ class RepoAffiliationRegistry(BaseModel):
         return cls(**row)
 
     @staticmethod
-    def _parse_snapshot(snapshot) -> list[AffiliationInfoItem] | None:
+    def _parse_snapshot(snapshot) -> list[AffiliationContributorEntry] | None:
         if isinstance(snapshot, str | bytes):
             try:
                 snapshot = orjson.loads(snapshot)
@@ -91,4 +113,6 @@ class RepoAffiliationRegistry(BaseModel):
     def snapshot_for_db(self) -> str | None:
         if self.snapshot is None:
             return None
-        return orjson.dumps([item.model_dump() for item in self.snapshot]).decode()
+        return orjson.dumps(
+            [item.model_dump(mode="json", by_alias=True) for item in self.snapshot]
+        ).decode()
