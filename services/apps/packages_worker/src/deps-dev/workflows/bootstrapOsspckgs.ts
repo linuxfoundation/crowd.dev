@@ -69,11 +69,16 @@ export async function bootstrapOsspckgs(opts: {
   exportName?: string
   snapshotDate?: string // YYYY-MM-DD — override BQ snapshot resolution for all partition-filtered kinds
   fillConstraints?: boolean // re-export full deps BQ data, upsert version_constraint where NULL
+  resumeJobId?: number // resume a partially-merged package_dependencies job by id (skips its BQ export)
 }): Promise<void> {
   // B3: deterministic timestamps — workflowInfo().startTime is replay-stable; new Date() is not.
   const start = workflowInfo().startTime
   const runId = start.toISOString().replace(/[:.]/g, '-')
   const today = start.toISOString().slice(0, 10)
+
+  // Resume mode reuses a prior job's export, so there is no fresh BQ export to validate. Skip the
+  // incremental watermark/partition checks below — the resumed partition may not match `today`.
+  const resume = opts.resumeJobId != null
 
   // Recovery: each child workflow updates osspckgs_ingest_jobs independently.
   // If a child fails mid-bootstrap, re-run with the SAME mode.
@@ -119,7 +124,7 @@ export async function bootstrapOsspckgs(opts: {
 
   // Validate all watermarks up-front before touching BQ (fail fast, not mid-run)
   for (const jobKind of jobKinds) {
-    if (opts.mode === 'incremental') {
+    if (opts.mode === 'incremental' && !resume) {
       const { snapshotAt } = await getLastSnapshot({ jobKind })
       if (!snapshotAt) {
         throw new ApplicationFailure(`No watermark for ${jobKind} — run full bootstrap first`)
@@ -262,6 +267,7 @@ export async function bootstrapOsspckgs(opts: {
             depsTableOption: opts.depsTableOption,
             exportName: opts.exportName,
             fillConstraints: opts.fillConstraints,
+            resumeJobId: opts.resumeJobId,
           },
         ],
       })

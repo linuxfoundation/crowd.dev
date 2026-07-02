@@ -45,6 +45,10 @@ Options:
                          rows where it is currently NULL. Use after a --deps-table-b run
                          to backfill missing version_constraint values without re-inserting
                          rows. Only affects package_dependencies.
+  --resume-job <id>      Resume a partially-merged package_dependencies job by id. Skips BQ,
+                         reuses that job's exact parquet export, and restarts the chunk loop
+                         where its staging load left off (idempotent ON CONFLICT overlap).
+                         Requires: --kinds package_dependencies AND (incremental | --fill-constraints).
   --help                 Show this help
 
 Examples:
@@ -59,6 +63,7 @@ Examples:
   pnpm trigger-bootstrap:local full --kinds dependent_counts
   pnpm trigger-bootstrap:local full --kinds packages,versions
   pnpm trigger-bootstrap:local full --kinds dependent_counts --snapshot-date 2026-06-04
+  pnpm trigger-bootstrap:local incremental --kinds package_dependencies --resume-job 194
 `
 
 async function main(): Promise<void> {
@@ -97,6 +102,23 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
+  const resumeJobIdx = args.indexOf('--resume-job')
+  if (
+    resumeJobIdx !== -1 &&
+    (resumeJobIdx + 1 >= args.length || args[resumeJobIdx + 1].startsWith('--'))
+  ) {
+    console.error('--resume-job requires a value (numeric job id)')
+    process.exit(1)
+  }
+  let resumeJobId: number | undefined
+  if (resumeJobIdx !== -1) {
+    resumeJobId = Number(args[resumeJobIdx + 1])
+    if (!Number.isInteger(resumeJobId) || resumeJobId <= 0) {
+      console.error(`--resume-job must be a positive integer, got: ${args[resumeJobIdx + 1]}`)
+      process.exit(1)
+    }
+  }
+
   const kindsIdx = args.indexOf('--kinds')
   if (kindsIdx !== -1 && (kindsIdx + 1 >= args.length || args[kindsIdx + 1].startsWith('--'))) {
     console.error('--kinds requires a value')
@@ -115,7 +137,13 @@ async function main(): Promise<void> {
   const positional: string[] = []
   for (let i = 0; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      if (args[i] === '--export-name' || args[i] === '--kinds' || args[i] === '--snapshot-date') i++ // skip value
+      if (
+        args[i] === '--export-name' ||
+        args[i] === '--kinds' ||
+        args[i] === '--snapshot-date' ||
+        args[i] === '--resume-job'
+      )
+        i++ // skip value
       continue
     }
     positional.push(args[i])
@@ -142,6 +170,21 @@ async function main(): Promise<void> {
     }
   }
 
+  // Resume is deps-only and merge-idempotent-only: it re-runs already-committed chunks, safe under
+  // incremental (ON CONFLICT DO NOTHING) or --fill-constraints (ON CONFLICT DO UPDATE), not a full load.
+  if (resumeJobId !== undefined) {
+    if (!kinds || kinds.length !== 1 || kinds[0] !== 'package_dependencies') {
+      console.error('--resume-job requires: --kinds package_dependencies (resume is deps-only)')
+      process.exit(1)
+    }
+    if (mode !== 'incremental' && !fillConstraints) {
+      console.error(
+        '--resume-job requires incremental mode or --fill-constraints (idempotent merges only)',
+      )
+      process.exit(1)
+    }
+  }
+
   const cfg = TEMPORAL_CONFIG()
   if (!cfg.serverUrl || !cfg.namespace) {
     console.error('Missing CROWD_TEMPORAL_SERVER_URL or CROWD_TEMPORAL_NAMESPACE')
@@ -153,7 +196,8 @@ async function main(): Promise<void> {
   const ecosystemSuffix = ecosystems ? `-${ecosystems.join('-').toLowerCase()}` : ''
   const reuseSuffix = reuseExports ? '-reuse' : ''
   const tableSuffix = depsTableOption === 'B' ? '-depsB' : ''
-  const workflowId = `bootstrap-osspckgs-${mode}${ecosystemSuffix}${reuseSuffix}${tableSuffix}-${Date.now()}`
+  const resumeSuffix = resumeJobId !== undefined ? `-resume${resumeJobId}` : ''
+  const workflowId = `bootstrap-osspckgs-${mode}${ecosystemSuffix}${reuseSuffix}${tableSuffix}${resumeSuffix}-${Date.now()}`
   const handle = await client.workflow.start(bootstrapOsspckgs, {
     taskQueue: 'bq-dataset-ingest',
     workflowId,
@@ -167,6 +211,7 @@ async function main(): Promise<void> {
         exportName,
         snapshotDate,
         fillConstraints,
+        resumeJobId,
       },
     ],
   })
@@ -178,6 +223,7 @@ async function main(): Promise<void> {
     depsTableOption === 'B' ? '--deps-table-b' : '',
     exportName ? `--export-name ${exportName}` : '',
     fillConstraints ? '--fill-constraints' : '',
+    resumeJobId !== undefined ? `--resume-job ${resumeJobId}` : '',
   ].filter(Boolean)
   console.log(
     `Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`,

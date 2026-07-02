@@ -24,8 +24,15 @@ const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
 })
 
 const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
-  startToCloseTimeout: '2 hours',
+  // A single ~1M-row chunk merge into the live-index/live-FK package_dependencies table (incremental
+  // does not drop indexes) can run long; 4h gives headroom over the previously-observed 2h overrun.
+  startToCloseTimeout: '4 hours',
   retry: { maximumAttempts: 1 },
+})
+
+const { getResumeExport } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
 })
 
 const { createVersionsLookup } = proxyActivities<typeof depsDevActivities>({
@@ -219,6 +226,9 @@ export async function ingestDependencies(opts: {
   depsTableOption?: 'A' | 'B'
   exportName?: string
   fillConstraints?: boolean // re-export full BQ data, upsert version_constraint only where NULL
+  // Resume a partially-merged prior job: skip the BQ export, reuse that job's exact parquet files,
+  // and restart the chunk loop where its staging load left off. Idempotent modes only (see gate).
+  resumeJobId?: number
 }): Promise<{ rowCountBq: number }> {
   const ecosystems = opts.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
   const isFill = opts.fillConstraints === true
@@ -228,56 +238,127 @@ export async function ingestDependencies(opts: {
   // source below and which source the guard probes — they must match.
   const fullScan = opts.syncMode === 'full' || isFill
 
-  // Guard against corrupt deps.dev resolved-graph snapshots BEFORE the (multi-hour) export.
-  // Skip when reusing a prior export — we're re-importing already-validated parquet, not
-  // scanning the live snapshot. Both full (*Latest = newest snapshot) and incremental can hit
-  // a bad snapshot, so the guard runs for both. Probes only resolved-graph ecosystems; a clean
-  // GO/NUGET-only run finds no canaries and passes through.
-  //
-  // Option A only: the guard's canary ratios are DependencyGraphEdges-schema-specific. Option B
-  // ingests the separate Dependencies/DependenciesLatest table, which the 2026-06 corruption was
-  // never observed in and has no calibrated baseline — probing Edges there would "validate" a table
-  // we don't ingest (false confidence) and could abort a healthy Option B run when only Edges is bad.
-  // Option B is a manual, non-scheduled cost-experiment path (--deps-table-b); leave it unguarded by
-  // design rather than invent a guard for an unproven threat. Option A is the production default.
-  if (!opts.reuseExports && tableOption === 'A') {
-    const guard = await checkEdgeSnapshotQuality({ snapshotDate: opts.today, ecosystems, fullScan })
-    if (!guard.ok) {
+  const resume = opts.resumeJobId != null
+
+  // Resume is only safe for idempotent merges: incremental uses ON CONFLICT DO NOTHING and fill uses
+  // ON CONFLICT DO UPDATE, so re-running an overlapping chunk no-ops. A full (non-fill) load uses a
+  // plain INSERT with the UNIQUE constraint dropped, so a re-merged chunk would duplicate rows.
+  if (resume && fullScan && !isFill) {
+    throw ApplicationFailure.nonRetryable(
+      `resume (resumeJobId) is not supported for full loads — plain INSERT would duplicate rows. ` +
+        `Use incremental or --fill-constraints.`,
+      'RESUME_UNSUPPORTED',
+    )
+  }
+
+  let exportResult: { jobId: number; gcsPrefix: string; rowCount: number }
+  // Files already loaded into staging by the prior (resumed) job, and rows it had already merged.
+  let resumeProgressDone = 0
+  let resumeRowCountPg = 0
+  if (opts.resumeJobId != null) {
+    // Reuse the prior job's exact export by id — bypasses reuse-by-kind (which excludes 'failed'
+    // jobs and could grab a different, older export) and skips the multi-hour BQ scan entirely.
+    // Validate hard here (non-retryable) so a bad id fails immediately instead of corrupting state.
+    const prior = await getResumeExport({ jobId: opts.resumeJobId })
+    if (!prior) {
       throw ApplicationFailure.nonRetryable(
-        `edge snapshot quality guard failed for ${opts.today}: ${guard.reason}. ` +
-          `Slack alert sent. Aborting before export to preserve existing package_dependencies and compute.`,
-        'EDGE_SNAPSHOT_GUARD',
+        `resume job ${opts.resumeJobId} not found`,
+        'RESUME_INVALID',
       )
     }
-  }
-  // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
-  const sql = fullScan
-    ? buildDepsFullSql(ecosystems, tableOption)
-    : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
+    if (prior.jobKind !== 'package_dependencies') {
+      throw ApplicationFailure.nonRetryable(
+        `resume job ${opts.resumeJobId} is kind '${prior.jobKind}', expected 'package_dependencies'`,
+        'RESUME_INVALID',
+      )
+    }
+    // Resumable = has an export to reuse with unfinished merge work: exported (no chunk merged yet),
+    // loading/merging (interrupted mid-run), failed (the common case). done = nothing to do;
+    // cleaned = parquet already deleted; pending/exporting = no export produced yet.
+    const RESUMABLE_STATUSES = ['exported', 'loading', 'merging', 'failed']
+    if (!RESUMABLE_STATUSES.includes(prior.status)) {
+      throw ApplicationFailure.nonRetryable(
+        `resume job ${opts.resumeJobId} has status '${prior.status}' — not resumable ` +
+          `(expected one of: ${RESUMABLE_STATUSES.join(', ')})`,
+        'RESUME_INVALID',
+      )
+    }
+    if (!prior.gcsPrefix) {
+      throw ApplicationFailure.nonRetryable(
+        `resume job ${opts.resumeJobId} has no gcs_prefix — nothing was exported to resume from`,
+        'RESUME_INVALID',
+      )
+    }
+    exportResult = { jobId: prior.jobId, gcsPrefix: prior.gcsPrefix, rowCount: 0 }
+    resumeProgressDone = prior.progressDone
+    resumeRowCountPg = prior.rowCountPg
+  } else {
+    // Guard against corrupt deps.dev resolved-graph snapshots BEFORE the (multi-hour) export.
+    // Skip when reusing a prior export — we're re-importing already-validated parquet, not
+    // scanning the live snapshot. Both full (*Latest = newest snapshot) and incremental can hit
+    // a bad snapshot, so the guard runs for both. Probes only resolved-graph ecosystems; a clean
+    // GO/NUGET-only run finds no canaries and passes through.
+    //
+    // Option A only: the guard's canary ratios are DependencyGraphEdges-schema-specific. Option B
+    // ingests the separate Dependencies/DependenciesLatest table, which the 2026-06 corruption was
+    // never observed in and has no calibrated baseline — probing Edges there would "validate" a table
+    // we don't ingest (false confidence) and could abort a healthy Option B run when only Edges is bad.
+    // Option B is a manual, non-scheduled cost-experiment path (--deps-table-b); leave it unguarded by
+    // design rather than invent a guard for an unproven threat. Option A is the production default.
+    if (!opts.reuseExports && tableOption === 'A') {
+      const guard = await checkEdgeSnapshotQuality({
+        snapshotDate: opts.today,
+        ecosystems,
+        fullScan,
+      })
+      if (!guard.ok) {
+        throw ApplicationFailure.nonRetryable(
+          `edge snapshot quality guard failed for ${opts.today}: ${guard.reason}. ` +
+            `Slack alert sent. Aborting before export to preserve existing package_dependencies and compute.`,
+          'EDGE_SNAPSHOT_GUARD',
+        )
+      }
+    }
+    // Fill mode always uses full SQL — needs all rows to find which have NULL version_constraint in DB.
+    const sql = fullScan
+      ? buildDepsFullSql(ecosystems, tableOption)
+      : buildDepsIncrementalSql(opts.today, opts.watermark ?? '', ecosystems, tableOption)
 
-  const exportResult = await bqExportToGcs({
-    jobKind: 'package_dependencies',
-    sql,
-    runId: opts.runId,
-    // Report the PHYSICAL scan mode, not the requested one. A fill run (fillConstraints) forces a
-    // full *Latest scan even when opts.syncMode is 'incremental'; passing the raw mode would record
-    // the job as incremental and make bqExportToGcs pick the INCREMENTAL byte-ceiling env override
-    // for a query that's actually full. fullScan already gates the SQL + maxBytesGb below.
-    syncMode: fullScan ? 'full' : opts.syncMode,
-    snapshotAt: opts.today,
-    // Full/fill scan the *Latest views (everything) → 25000. Incremental is a snapshot edge-diff
-    // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements);
-    // measured ~4.1TB for Option A. 10000 leaves ~2.4x headroom and still trips a runaway full-table
-    // scan. Overridable via BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
-    maxBytesGb: fullScan ? 25000 : 10000,
-    reuseExports: opts.reuseExports,
-    exportName: opts.exportName,
-    ecosystems,
-  })
+    exportResult = await bqExportToGcs({
+      jobKind: 'package_dependencies',
+      sql,
+      runId: opts.runId,
+      // Report the PHYSICAL scan mode, not the requested one. A fill run (fillConstraints) forces a
+      // full *Latest scan even when opts.syncMode is 'incremental'; passing the raw mode would record
+      // the job as incremental and make bqExportToGcs pick the INCREMENTAL byte-ceiling env override
+      // for a query that's actually full. fullScan already gates the SQL + maxBytesGb below.
+      syncMode: fullScan ? 'full' : opts.syncMode,
+      snapshotAt: opts.today,
+      // Full/fill scan the *Latest views (everything) → 25000. Incremental is a snapshot edge-diff
+      // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements);
+      // measured ~4.1TB for Option A. 10000 leaves ~2.4x headroom and still trips a runaway full-table
+      // scan. Overridable via BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
+      maxBytesGb: fullScan ? 25000 : 10000,
+      reuseExports: opts.reuseExports,
+      exportName: opts.exportName,
+      ecosystems,
+    })
+  }
 
   const { fileNames, rowCounts } = await listParquetFiles({ gcsPrefix: exportResult.gcsPrefix })
   const totalFiles = fileNames.length
   const totalRows = rowCounts.reduce((a, b) => a + b, 0)
+
+  // Resume must find the exact parquet it recorded. Empty means GCS expired/deleted the files —
+  // fail loudly rather than fall through to the 0-row early-return below, which would mark the
+  // job 'done' and silently abandon the un-merged tail.
+  if (opts.resumeJobId != null && (totalFiles === 0 || totalRows === 0)) {
+    throw ApplicationFailure.nonRetryable(
+      `resume job ${opts.resumeJobId}: no parquet files at ${exportResult.gcsPrefix} ` +
+        `(export expired or deleted) — run a fresh export instead of --resume-job`,
+      'RESUME_INVALID',
+    )
+  }
 
   if (totalFiles === 0 || totalRows === 0) {
     await mergeStagingToTable({
@@ -305,11 +386,18 @@ export async function ingestDependencies(opts: {
         ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
         : Math.min(fileNames.length, 2)
     const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
-    let priorRowsAffected = 0
+    // Resume: the prior job recorded files loaded (progress:done) but not a per-merge-chunk index,
+    // and the merge lags the load by up to one chunk. Restart one chunk before where the load
+    // stopped and let ON CONFLICT no-op the overlap. Clamp to [0, totalChunks). Seed priorRowsAffected
+    // with the prior job's merged count so the final 'done' row_count_pg stays roughly accurate.
+    const startChunk = resume
+      ? Math.max(0, Math.min(Math.floor(resumeProgressDone / filesPerChunk) - 1, totalChunks - 1))
+      : 0
+    let priorRowsAffected = resume ? resumeRowCountPg : 0
     let priorStagingRows = 0
     const priorTableRowCounts: Record<string, number> = {}
 
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+    for (let chunkIndex = startChunk; chunkIndex < totalChunks; chunkIndex++) {
       const start = chunkIndex * filesPerChunk
       const chunk = fileNames.slice(start, start + filesPerChunk)
       const isLastChunk = chunkIndex === totalChunks - 1
