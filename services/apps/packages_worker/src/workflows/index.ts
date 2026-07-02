@@ -25,3 +25,4 @@ export {
   ingestPypiDownloadsDaily,
 } from '../pypi/downloads/ingestPypiDownloads'
 export { ingestNuGetPackages } from '../nuget/workflows'
+export { ingestSecurityContacts } from '../security-contacts/workflows'
