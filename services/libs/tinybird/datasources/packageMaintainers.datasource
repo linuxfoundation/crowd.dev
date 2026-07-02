@@ -13,6 +13,7 @@ SCHEMA >
     `packageId` UInt64 `json:$.record.package_id`,
     `maintainerId` UInt64 `json:$.record.maintainer_id`,
     `role` String `json:$.record.role` DEFAULT '',
+    `ingestionSource` String `json:$.record.ingestion_source` DEFAULT '',
     `createdAt` DateTime64(3) `json:$.record.created_at`,
     `updatedAt` DateTime64(3) `json:$.record.updated_at`
 

@@ -43,6 +43,7 @@ export type IDbMaintainerUpsert = {
   displayName: string | null
   url: string | null
   email: string | null
+  githubLogin?: string | null
 }
 
 // ─── package_maintainers ──────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export type IDbPackageMaintainerUpsert = {
   packageId: number
   maintainerId: number
   role: 'author' | 'maintainer' | null
+  ingestionSource?: string | null
 }
 
 // ─── versions ─────────────────────────────────────────────────────────────────
