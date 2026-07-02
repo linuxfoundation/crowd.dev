@@ -348,6 +348,13 @@ class AffiliationService(BaseService):
         stripped = value.strip()
         return stripped or None
 
+    @staticmethod
+    def _parse_optional_date(value: str | None) -> date | None:
+        stripped = AffiliationService._strip(value)
+        if not stripped:
+            return None
+        return date.fromisoformat(stripped)
+
     @classmethod
     def group_parse_rows(
         cls, rows: list[AffiliationParseRow]
@@ -384,8 +391,8 @@ class AffiliationService(BaseService):
                 stint = AffiliationOrganizationStint(
                     name="Individual",
                     domain="individual-noaccount.com",
-                    date_start=organization.date_start,
-                    date_end=organization.date_end,
+                    date_start=cls._parse_optional_date(organization.date_start),
+                    date_end=cls._parse_optional_date(organization.date_end),
                     is_unaffiliated=True,
                 )
             elif not domain:
@@ -394,8 +401,8 @@ class AffiliationService(BaseService):
                 stint = AffiliationOrganizationStint(
                     name=cls._strip(organization.name),
                     domain=domain.lower(),
-                    date_start=organization.date_start,
-                    date_end=organization.date_end,
+                    date_start=cls._parse_optional_date(organization.date_start),
+                    date_end=cls._parse_optional_date(organization.date_end),
                     is_unaffiliated=False,
                 )
 

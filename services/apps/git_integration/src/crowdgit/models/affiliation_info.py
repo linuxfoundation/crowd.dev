@@ -20,8 +20,8 @@ class AffiliationOrganizationFields(BaseModel):
 
     name: str | None = None
     domain: str | None = None
-    date_start: date | None = Field(default=None, alias="dateStart")
-    date_end: date | None = Field(default=None, alias="dateEnd")
+    date_start: str | None = Field(default=None, alias="dateStart")
+    date_end: str | None = Field(default=None, alias="dateEnd")
     is_unaffiliated: bool = Field(default=False, alias="isUnaffiliated")
 
     model_config = {"populate_by_name": True}
