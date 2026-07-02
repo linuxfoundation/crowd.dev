@@ -17,7 +17,8 @@ const GITHUB_API = 'https://api.github.com'
 
 // Genuinely-absent / not-determinable → null body (see http.ts for the same set). 422 covers the
 // PVR endpoint returning "can't determine" per-repo; it must read as unknown, not a hard failure.
-const ABSENT_STATUSES = new Set([404, 410, 422])
+// 451 (Unavailable For Legal Reasons) is likewise permanent.
+const ABSENT_STATUSES = new Set([404, 410, 422, 451])
 
 // App-wide ceiling on concurrent GitHub requests. GitHub's secondary limit rejects bursts of
 // >100 concurrent requests from one app; staying under that (across all installations) is the
