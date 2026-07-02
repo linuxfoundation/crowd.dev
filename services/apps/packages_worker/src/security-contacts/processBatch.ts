@@ -183,12 +183,17 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
     // scheduling further repos instead of racing the new attempt.
     await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
       if (cancellationSignal().aborted) {
-        throw new Error('Security contacts batch cancelled — superseded by a newer activity attempt')
+        throw new Error(
+          'Security contacts batch cancelled — superseded by a newer activity attempt',
+        )
       }
       try {
         await processRepo(target, deps, qx)
       } catch (err) {
-        log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
+        log.error(
+          { repoId: target.repoId, errMsg: (err as Error).message },
+          'Repo processing failed',
+        )
         // Best-effort: keeps a persistently-failing repo from hot-looping the sweep.
         await markRepoAttempted(qx, target.repoId).catch(() => undefined)
       }
