@@ -109,7 +109,9 @@ export const extractSecurityMd: Extractor = async (target, deps) => {
   }
 
   const fetchedAt = new Date().toISOString()
+  const { paths: treePaths } = deps.repoTree
   for (const path of PATHS) {
+    if (treePaths && !treePaths.has(path)) continue
     const { text } = await deps.githubGet(`/repos/${owner}/${name}/contents/${path}`, { raw: true })
     if (text) return parseSecurityMd(text, owner, name, path, fetchedAt)
   }
