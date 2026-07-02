@@ -32,18 +32,27 @@ const PLACEHOLDER_EMAIL_DOMAINS = new Set([
 // project-specific contact, unlike an actual github.com/<owner>/<repo>/... URL.
 const GENERIC_URL_HOSTS = new Set(['docs.github.com', 'dependabot.com', 'www.dependabot.com'])
 
+const HAS_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i
+
+// Some upstream sources (e.g. SECURITY-INSIGHTS {type:"url"} entries) don't enforce a scheme —
+// only add one to resolve the host, never mutate the stored contact value.
+function urlHost(value: string): string | null {
+  const candidate = HAS_SCHEME_RE.test(value) ? value : `https://${value}`
+  try {
+    return new URL(candidate).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 function isJunkContact(c: RawContact): boolean {
   if (c.channel === 'email') {
     const domain = c.value.split('@')[1]?.toLowerCase().trim()
     return domain != null && PLACEHOLDER_EMAIL_DOMAINS.has(domain)
   }
   if (c.channel === 'url' || c.channel === 'web-form') {
-    let host: string
-    try {
-      host = new URL(c.value).hostname.toLowerCase()
-    } catch {
-      return true
-    }
+    const host = urlHost(c.value)
+    if (host == null) return true
     return GENERIC_URL_HOSTS.has(host) || host === 'localhost' || host.startsWith('127.')
   }
   return false
