@@ -334,6 +334,7 @@ async def find_github_identity(github_username: str):
     WHERE
         platform = 'github'
         AND value = $1
+        AND "verified" = TRUE
         AND "deletedAt" is null
     LIMIT 1
     """
@@ -405,16 +406,43 @@ async def update_maintainer_run(repo_id: str, maintainer_file: str):
 
 
 async def get_maintainers_for_repo(repo_id: str):
+    # Active rows only (endDate IS NULL) — reappearing maintainers hit the "new"
+    # branch and get reactivated by upsert_maintainer's ON CONFLICT clause.
+    # verified=TRUE mirrors find_github_identity / find_maintainer_identity_by_email.
+    # platform/type are returned so the diff's safety guard can match identifiers
+    # by kind and avoid cross-platform value collisions (e.g. a GitHub username
+    # "foo" colliding with a same-named handle on another platform).
     maintainers_sql_query = """
-        SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId", mem.value as github_username
+        SELECT mi.role, mi."originalRole", mi."repoUrl", mi."repoId", mi."identityId",
+               mem.value as identity_value, mem.platform, mem.type
             FROM "maintainersInternal" mi
             JOIN "memberIdentities" mem ON mi."identityId" = mem.id
-        WHERE mi."repoId" = $1 AND mem.platform = 'github' AND mem.type = 'username' and mem.verified = True AND mem."deletedAt" is null
+        WHERE mi."repoId" = $1
+          AND mi."endDate" IS NULL
+          AND mem."verified" = TRUE
+          AND mem."deletedAt" is null
         """
     return await query(
         maintainers_sql_query,
         (repo_id,),
     )
+
+
+async def get_github_maintainer_usernames_for_repo(repo_id: str) -> set[str]:
+    """Return GitHub usernames of active maintainers for fork/parent-repo filtering."""
+    sql_query = """
+        SELECT mem.value
+            FROM "maintainersInternal" mi
+            JOIN "memberIdentities" mem ON mi."identityId" = mem.id
+        WHERE mi."repoId" = $1
+          AND mi."endDate" IS NULL
+          AND mem.platform = 'github'
+          AND mem.type = 'username'
+          AND mem."verified" = TRUE
+          AND mem."deletedAt" is null
+        """
+    rows = await query(sql_query, (repo_id,))
+    return {row["value"] for row in rows}
 
 
 async def set_maintainer_end_date(
