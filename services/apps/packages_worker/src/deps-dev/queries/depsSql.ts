@@ -22,7 +22,7 @@ FROM \`bigquery-public-data.deps_dev_v1.GoRequirementsLatest\` g,
 UNNEST(g.DirectDependencies) AS d`
 
 // NuGet groups deps by TargetFramework — flatten all groups, dedup handled downstream
-// by DISTINCT ON in MERGE_SQL_FULL and ON CONFLICT in MERGE_SQL.
+// by ON CONFLICT in MERGE_SQL (and DISTINCT ON in the fill-constraints variant).
 const NUGET_FULL_PART = `
 SELECT
   'nuget'                AS ecosystem,

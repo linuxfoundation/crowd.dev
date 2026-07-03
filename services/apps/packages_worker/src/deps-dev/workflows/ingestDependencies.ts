@@ -24,8 +24,8 @@ const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
 })
 
 const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
-  // A single ~1M-row chunk merge into the live-index/live-FK package_dependencies table (incremental
-  // does not drop indexes) can run long; 4h gives headroom over the previously-observed 2h overrun.
+  // A single ~1M-row chunk merge into the live-index/live-FK package_dependencies table can run
+  // long; 4h gives headroom over the previously-observed 2h overrun.
   startToCloseTimeout: '4 hours',
   retry: { maximumAttempts: 1 },
 })
@@ -38,22 +38,6 @@ const { getResumeExport } = proxyActivities<typeof depsDevActivities>({
 const { createVersionsLookup } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '2 hours',
   retry: { maximumAttempts: 2, initialInterval: '30 seconds' },
-})
-
-const { dropPackageDepsIndexes, rebuildPackageDepsIndexes } = proxyActivities<
-  typeof depsDevActivities
->({
-  // Index builds + parallel dedup on 1B+ rows — 24h covers worst-case sequential retry.
-  startToCloseTimeout: '24 hours',
-  retry: { maximumAttempts: 2, initialInterval: '1 minute' },
-})
-
-const { dropPackageDepsConstraints, rebuildPackageDepsConstraints } = proxyActivities<
-  typeof depsDevActivities
->({
-  // FK validation on 1B+ rows can take hours.
-  startToCloseTimeout: '24 hours',
-  retry: { maximumAttempts: 2, initialInterval: '1 minute' },
 })
 
 const { setJobStep } = proxyActivities<typeof depsDevActivities>({
@@ -119,46 +103,10 @@ LEFT JOIN versions dv ON dv.package_id = pd.id AND dv.number = sp.to_version
 ON CONFLICT (version_id, depends_on_id, dependency_kind) DO NOTHING
 `
 
-// Full-load variant: UNIQUE constraint is dropped before the chunk loop so plain INSERT is safe.
-// DISTINCT ON (pv.id, pd.id) deduplicates before INSERT — BQ can emit multiple rows for the same
-// (root_name, root_version, to_name) with different to_version values; both resolve to the same
-// (version_id, depends_on_id) pair, which violates the UNIQUE constraint on rebuild.
-const MERGE_SQL_FULL = `
-INSERT INTO package_dependencies (
-  package_id, version_id, depends_on_id, depends_on_version_id,
-  version_constraint, dependency_kind, is_optional, created_at, updated_at
-)
-SELECT DISTINCT ON (pv.id, pd.id)
-  pv.package_id, pv.id, pd.id, dv.id,
-  sp.version_constraint, 'direct', FALSE, NOW(), NOW()
-FROM staging.osspckgs_deps_raw sp
-JOIN staging.osspckgs_versions_lookup pv ON pv.ecosystem = sp.ecosystem
-  AND pv.ns = CASE
-      WHEN sp.ecosystem = 'maven'   THEN SPLIT_PART(sp.root_name, ':', 1)
-      WHEN sp.root_name LIKE '@%/%' THEN SPLIT_PART(sp.root_name, '/', 1)
-      ELSE '' END
-  AND pv.name = CASE
-      WHEN sp.ecosystem = 'maven'   THEN SPLIT_PART(sp.root_name, ':', 2)
-      WHEN sp.root_name LIKE '@%/%' THEN SPLIT_PART(sp.root_name, '/', 2)
-      ELSE sp.root_name END
-  AND pv.number = sp.root_version
-JOIN packages pd ON pd.ecosystem = sp.ecosystem
-  AND COALESCE(pd.namespace, '') = CASE
-      WHEN sp.ecosystem = 'maven'  THEN SPLIT_PART(sp.to_name, ':', 1)
-      WHEN sp.to_name LIKE '@%/%'  THEN SPLIT_PART(sp.to_name, '/', 1)
-      ELSE '' END
-  AND pd.name = CASE
-      WHEN sp.ecosystem = 'maven'  THEN SPLIT_PART(sp.to_name, ':', 2)
-      WHEN sp.to_name LIKE '@%/%'  THEN SPLIT_PART(sp.to_name, '/', 2)
-      ELSE sp.to_name END
-LEFT JOIN versions dv ON dv.package_id = pd.id AND dv.number = sp.to_version
-ORDER BY pv.id, pd.id, sp.to_version DESC NULLS LAST
-`
-
-// Fill-constraints variant: UNIQUE constraint stays in place (not dropped), so ON CONFLICT is valid.
-// Upserts version_constraint only for rows where it is currently NULL — safe to run against a table
-// already populated by --deps-table-b (which sets version_constraint = NULL for all rows).
-// DISTINCT ON matches MERGE_SQL_FULL to resolve duplicate (root, dep) pairs from BQ before the upsert.
+// Fill-constraints variant: UNIQUE constraint stays in place, so ON CONFLICT is valid. Upserts
+// version_constraint only for rows where it is currently NULL — safe to run against a table already
+// populated by --deps-table-b (which sets version_constraint = NULL for all rows). DISTINCT ON
+// resolves duplicate (root, dep) pairs from BQ (same root/dep, different to_version) before the upsert.
 const MERGE_SQL_FILL_CONSTRAINTS = `
 INSERT INTO package_dependencies (
   package_id, version_id, depends_on_id, depends_on_version_id,
@@ -195,7 +143,7 @@ ON CONFLICT (version_id, depends_on_id, dependency_kind) DO UPDATE
 `
 
 // SET LOCAL scopes settings to this transaction only.
-// synchronous_commit=off skips WAL flush wait — safe for plain INSERT on full loads.
+// synchronous_commit=off skips WAL flush wait — safe for these re-runnable ON CONFLICT merges.
 // max_parallel_workers_per_gather parallelises the SELECT side of INSERT...SELECT.
 // session_replication_role=replica would skip FK trigger checks but requires superuser —
 // blocked on Oracle Cloud managed PostgreSQL regardless of REPLICATION role.
@@ -239,17 +187,6 @@ export async function ingestDependencies(opts: {
   const fullScan = opts.syncMode === 'full' || isFill
 
   const resume = opts.resumeJobId != null
-
-  // Resume is only safe for idempotent merges: incremental uses ON CONFLICT DO NOTHING and fill uses
-  // ON CONFLICT DO UPDATE, so re-running an overlapping chunk no-ops. A full (non-fill) load uses a
-  // plain INSERT with the UNIQUE constraint dropped, so a re-merged chunk would duplicate rows.
-  if (resume && fullScan && !isFill) {
-    throw ApplicationFailure.nonRetryable(
-      `resume (resumeJobId) is not supported for full loads — plain INSERT would duplicate rows. ` +
-        `Use incremental or --fill-constraints.`,
-      'RESUME_UNSUPPORTED',
-    )
-  }
 
   let exportResult: { jobId: number; gcsPrefix: string; rowCount: number }
   // Files already loaded into staging by the prior (resumed) job, and rows it had already merged.
@@ -373,108 +310,62 @@ export async function ingestDependencies(opts: {
   await setJobStep({ jobId: exportResult.jobId, step: 'creating_lookup' })
   await createVersionsLookup({ ecosystems })
 
-  if (opts.syncMode === 'full' && !isFill) {
-    await setJobStep({ jobId: exportResult.jobId, step: 'drop_constraints' })
-    await dropPackageDepsConstraints()
-    await setJobStep({ jobId: exportResult.jobId, step: 'drop_indexes' })
-    await dropPackageDepsIndexes()
+  const filesPerChunk =
+    totalRows > 0
+      ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
+      : Math.min(fileNames.length, 2)
+  const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
+  // Resume: the prior job recorded files loaded (progress:done) but not a per-merge-chunk index,
+  // and the merge lags the load by up to one chunk. Restart one chunk before where the load
+  // stopped and let ON CONFLICT no-op the overlap. Clamp to [0, totalChunks). Seed priorRowsAffected
+  // with the prior job's merged count so the final 'done' row_count_pg stays roughly accurate.
+  const startChunk = resume
+    ? Math.max(0, Math.min(Math.floor(resumeProgressDone / filesPerChunk) - 1, totalChunks - 1))
+    : 0
+  let priorRowsAffected = resume ? resumeRowCountPg : 0
+  let priorStagingRows = 0
+  const priorTableRowCounts: Record<string, number> = {}
+
+  // Advance the phase label to 'merging' before the loop. The merge itself sets status='merging'
+  // but never a step, so without this the monitor keeps showing the last phase (creating_lookup)
+  // alongside the 'merging' status. Set once, not per chunk.
+  await setJobStep({ jobId: exportResult.jobId, step: 'merging' })
+
+  for (let chunkIndex = startChunk; chunkIndex < totalChunks; chunkIndex++) {
+    const start = chunkIndex * filesPerChunk
+    const chunk = fileNames.slice(start, start + filesPerChunk)
+    const isFinal = chunkIndex === totalChunks - 1
+
+    const { rowsLoaded } = await gcsParquetToStaging({
+      jobId: exportResult.jobId,
+      stagingTable: STAGING_TABLE,
+      stagingDdl: STAGING_DDL,
+      pgColumns: PG_COLUMNS,
+      fileNames: chunk,
+      filesOffset: start,
+      totalFiles,
+      priorStagingRows,
+    })
+    priorStagingRows += rowsLoaded
+
+    const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
+      jobId: exportResult.jobId,
+      prepareSql: MERGE_PREPARE_SQL,
+      mergeSql: isFill ? MERGE_SQL_FILL_CONSTRAINTS : MERGE_SQL,
+      tableNames: 'package_dependencies',
+      isFinal,
+      priorRowsAffected,
+      priorTableRowCounts,
+      chunkInfo: { index: chunkIndex, total: totalChunks },
+    })
+
+    priorRowsAffected += rowsAffected
+    if (!isFinal) {
+      for (const [k, v] of Object.entries(tableRowCounts)) {
+        priorTableRowCounts[k] = (priorTableRowCounts[k] ?? 0) + v
+      }
+    }
   }
 
-  try {
-    const filesPerChunk =
-      totalRows > 0
-        ? Math.max(1, Math.round((ROWS_PER_CHUNK * fileNames.length) / totalRows))
-        : Math.min(fileNames.length, 2)
-    const totalChunks = Math.ceil(fileNames.length / filesPerChunk)
-    // Resume: the prior job recorded files loaded (progress:done) but not a per-merge-chunk index,
-    // and the merge lags the load by up to one chunk. Restart one chunk before where the load
-    // stopped and let ON CONFLICT no-op the overlap. Clamp to [0, totalChunks). Seed priorRowsAffected
-    // with the prior job's merged count so the final 'done' row_count_pg stays roughly accurate.
-    const startChunk = resume
-      ? Math.max(0, Math.min(Math.floor(resumeProgressDone / filesPerChunk) - 1, totalChunks - 1))
-      : 0
-    let priorRowsAffected = resume ? resumeRowCountPg : 0
-    let priorStagingRows = 0
-    const priorTableRowCounts: Record<string, number> = {}
-
-    // Advance the phase label to 'merging' before the loop. The merge itself sets status='merging'
-    // but never a step, so without this the monitor keeps showing the last phase (creating_lookup for
-    // fill/incremental, drop_indexes for full) alongside the 'merging' status. Set once, not per chunk.
-    await setJobStep({ jobId: exportResult.jobId, step: 'merging' })
-
-    for (let chunkIndex = startChunk; chunkIndex < totalChunks; chunkIndex++) {
-      const start = chunkIndex * filesPerChunk
-      const chunk = fileNames.slice(start, start + filesPerChunk)
-      const isLastChunk = chunkIndex === totalChunks - 1
-      // For full-load (non-fill), don't mark done here — rebuild runs after the chunk loop
-      const isFinal = isLastChunk && !(opts.syncMode === 'full' && !isFill)
-
-      const { rowsLoaded } = await gcsParquetToStaging({
-        jobId: exportResult.jobId,
-        stagingTable: STAGING_TABLE,
-        stagingDdl: STAGING_DDL,
-        pgColumns: PG_COLUMNS,
-        fileNames: chunk,
-        filesOffset: start,
-        totalFiles,
-        priorStagingRows,
-      })
-      priorStagingRows += rowsLoaded
-
-      const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
-        jobId: exportResult.jobId,
-        prepareSql: MERGE_PREPARE_SQL,
-        mergeSql: isFill
-          ? MERGE_SQL_FILL_CONSTRAINTS
-          : opts.syncMode === 'full'
-            ? MERGE_SQL_FULL
-            : MERGE_SQL,
-        tableNames: 'package_dependencies',
-        isFinal,
-        priorRowsAffected,
-        priorTableRowCounts,
-        chunkInfo: { index: chunkIndex, total: totalChunks },
-      })
-
-      priorRowsAffected += rowsAffected
-      if (!isFinal) {
-        for (const [k, v] of Object.entries(tableRowCounts)) {
-          priorTableRowCounts[k] = (priorTableRowCounts[k] ?? 0) + v
-        }
-      }
-    }
-
-    if (opts.syncMode === 'full' && !isFill) {
-      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
-      await rebuildPackageDepsIndexes()
-      await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
-      await rebuildPackageDepsConstraints()
-      // Finalize after rebuild — marks done with correct finishedAt
-      await mergeStagingToTable({
-        jobId: exportResult.jobId,
-        mergeSql: [],
-        tableNames: [],
-        isFinal: true,
-        priorRowsAffected,
-        priorTableRowCounts,
-      })
-    }
-  } catch (err) {
-    if (opts.syncMode === 'full' && !isFill) {
-      try {
-        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_indexes' })
-        await rebuildPackageDepsIndexes()
-      } catch (_) {
-        /* best-effort */
-      }
-      try {
-        await setJobStep({ jobId: exportResult.jobId, step: 'rebuild_constraints' })
-        await rebuildPackageDepsConstraints()
-      } catch (_) {
-        /* best-effort */
-      }
-    }
-    throw err
-  }
   return { rowCountBq: exportResult.rowCount }
 }
