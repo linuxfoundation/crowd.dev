@@ -183,8 +183,9 @@ export async function ingestDependencies(opts: {
   // and restart the chunk loop where its staging load left off. Idempotent modes only (see gate).
   resumeJobId?: number
 }): Promise<{ rowCountBq: number }> {
-  const ecosystems = opts.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
-  const isFill = opts.fillConstraints === true
+  // let: on resume these are overridden with the prior export's stored settings (see resume block).
+  let ecosystems = opts.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
+  let isFill = opts.fillConstraints === true
   // Fill mode forces Option A — Option B selects NULL for version_constraint, making the fill a no-op.
   const tableOption = isFill ? 'A' : (opts.depsTableOption ?? 'A')
   // Full/fill scan the *Latest views; incremental reads the `today` partition. Drives both the SQL
@@ -234,6 +235,13 @@ export async function ingestDependencies(opts: {
     exportResult = { jobId: prior.jobId, gcsPrefix: prior.gcsPrefix, rowCount: 0 }
     resumeProgressDone = prior.progressDone
     resumeRowCountPg = prior.rowCountPg
+    // Reprocess the export with its ORIGINAL settings, not the current CLI opts. A narrower
+    // ecosystems list would drop versions-lookup rows (deps silently unmerged); the wrong fill flag
+    // would pick ON CONFLICT DO NOTHING and skip the version_constraint backfill. Pre-meta jobs (no
+    // stored ecosystems) fall back to all ecosystems — a superset lookup never drops rows. fill is
+    // OR'd with the current flag so an explicit --fill-constraints still works for pre-meta jobs.
+    ecosystems = prior.ecosystems ?? DEPS_DEFAULT_ECOSYSTEMS
+    isFill = prior.fill || isFill
   } else {
     // Guard against corrupt deps.dev resolved-graph snapshots BEFORE the (multi-hour) export.
     // Skip when reusing a prior export — we're re-importing already-validated parquet, not
@@ -284,6 +292,8 @@ export async function ingestDependencies(opts: {
       reuseExports: opts.reuseExports,
       exportName: opts.exportName,
       ecosystems,
+      // Persist fill in the job meta so a later --resume-job restores the upsert merge (see resume block).
+      isFill,
     })
   }
 

@@ -15,6 +15,8 @@ export interface GetResumeExportOutput {
   progressDone: number
   progressTotal: number
   rowCountPg: number
+  ecosystems: string[] | null
+  fill: boolean
 }
 
 // Pure fetch of a prior job's resume-relevant fields (export path, status, file-load progress,
@@ -38,5 +40,7 @@ export async function getResumeExport(
     progressDone: job.progressDone,
     progressTotal: job.progressTotal,
     rowCountPg: job.rowCountPg,
+    ecosystems: job.ecosystems,
+    fill: job.fill,
   }
 }

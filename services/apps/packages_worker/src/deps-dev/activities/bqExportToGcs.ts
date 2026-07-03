@@ -32,6 +32,12 @@ export interface BqExportToGcsInput {
   // is replaced by a server-side maximumBytesBilled cap, since a dry-run only validates the first
   // statement and cannot predict the WHILE loop's total scan. See ADR-0004.
   isScript?: boolean
+  // Fill-constraints run (package_dependencies only): the export is a full Option-A scan but the
+  // downstream merge upserts version_constraint (ON CONFLICT DO UPDATE) instead of DO NOTHING. Full
+  // and fill produce identical parquet, so sync_mode alone can't tell them apart — persist it in the
+  // job meta so a --resume-job run reprocesses the export with the correct merge instead of silently
+  // reverting to DO NOTHING (which skips the backfill).
+  isFill?: boolean
 }
 
 export interface BqExportToGcsOutput {
@@ -53,6 +59,7 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     exportName,
     ecosystems,
     isScript,
+    isFill,
   } = input
 
   // Named exports use a stable GCS path independent of runId so they survive across bootstrap runs.
@@ -115,6 +122,7 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           tableRowCounts: {
             'bq:export': 0,
             ...(ecosystems ? { 'meta:ecosystems': ecosystems } : {}),
+            ...(isFill ? { 'meta:fill': 1 } : {}),
           },
         })
         return { gcsPrefix: namedPrefix, rowCount: 0, bqBytesBilled: 0, jobId }
@@ -212,9 +220,13 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   const provisionalDate = snapshotAt ? new Date(snapshotAt) : null
   const jobId = await createIngestJob(qx, jobKind, syncMode, provisionalDate, exportName)
 
-  // H7: mark exporting before we start the BQ job; store ecosystems filter in table_row_counts JSONB.
+  // H7: mark exporting before we start the BQ job; store ecosystems filter + fill flag in the
+  // table_row_counts JSONB so --resume-job can restore the original export's settings.
+  const exportMeta: Record<string, string | number | string[]> = {}
+  if (ecosystems) exportMeta['meta:ecosystems'] = ecosystems
+  if (isFill) exportMeta['meta:fill'] = 1
   await markJobStatus(qx, jobId, 'exporting', {
-    ...(ecosystems ? { tableRowCounts: { 'meta:ecosystems': ecosystems } } : {}),
+    ...(Object.keys(exportMeta).length > 0 ? { tableRowCounts: exportMeta } : {}),
   })
 
   // From here the row is 'exporting'; any BQ failure (incl. script-mode maximumBytesBilled aborts)

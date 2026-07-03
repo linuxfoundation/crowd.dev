@@ -104,12 +104,20 @@ export async function getIngestJobForResume(
   progressDone: number
   progressTotal: number
   rowCountPg: number
+  // Original export parameters, so resume reprocesses the export with the SAME settings rather than
+  // whatever the current CLI opts happen to be: ecosystems (drives the versions-lookup filter) and
+  // fill (drives the merge SQL — fill upserts version_constraint, non-fill is ON CONFLICT DO NOTHING).
+  // ecosystems is null for jobs exported before the meta key existed; fill defaults to false.
+  ecosystems: string[] | null
+  fill: boolean
 } | null> {
   const row = await qx.selectOneOrNone(
     `
     SELECT id, job_kind, status, sync_mode, gcs_prefix, row_count_pg,
            COALESCE((table_row_counts->>'progress:done')::int, 0)  AS progress_done,
-           COALESCE((table_row_counts->>'progress:total')::int, 0) AS progress_total
+           COALESCE((table_row_counts->>'progress:total')::int, 0) AS progress_total,
+           table_row_counts->'meta:ecosystems'                     AS ecosystems,
+           COALESCE((table_row_counts->>'meta:fill')::bool, false)  AS fill
     FROM osspckgs_ingest_jobs
     WHERE id = $(id)
     `,
@@ -125,6 +133,8 @@ export async function getIngestJobForResume(
         progressDone: Number(row.progress_done ?? 0),
         progressTotal: Number(row.progress_total ?? 0),
         rowCountPg: Number(row.row_count_pg ?? 0),
+        ecosystems: (row.ecosystems as string[] | null) ?? null,
+        fill: Boolean(row.fill),
       }
     : null
 }
