@@ -142,43 +142,50 @@ class AffiliationService(BaseService):
         records contributor-to-employer/organization mappings.
         """
         return f"""
-        Your task is to identify the file that records which organization or employer
-        contributors represent when contributing to this repository.
+        Identify the repository file that matches the criteria below.
 
         <repository_url>
         {repo_url}
         </repository_url>
 
         <what_to_find>
-        The target file records contributor-to-employer/organization mappings.
+        Find the file that explicitly records contributor affiliations: which
+        organization or employer a contributor belongs to.
 
-        Contributors may be identified by name, email address, or GitHub username.
-        Organizations may be identified by their name, domain,
-        or contact email address.
-
-        There is no standard filename or file format. The file may be plain text,
-        CSV, YAML, JSON, Markdown, or another text-based format.
-
-        Judge candidates primarily by their contents. Filenames are only hints.
+        The mapping must be stated by the file, for example:
+        - an organization, company, employer, or affiliation field on each contributor
+        - contributors grouped under the organization they belong to
+        - explicit domain/email-pattern rules that the file defines for assigning
+          contributors to organizations
         </what_to_find>
 
         <what_to_reject>
-        Reject candidates whose preview shows:
-        - Source code or scripts (for example, shebangs, imports, or function/class definitions)
-        - Generic contributor or author credits
-        - Governance files that lack organization or employer information
+        Reject candidates whose preview does not explicitly associate contributors
+        with organizations, including:
+        - Lists of names, emails, or usernames with no stated organization
+        (e.g. AUTHORS, CONTRIBUTORS, CREDITS).
+        - Identity or alias mappings such as .mailmap.
+        - Governance or ownership files that name people but not their employer
+        (e.g. OWNERS, CODEOWNERS, MAINTAINERS without organization information).
+        - Source code, scripts, or configuration files.
+
+        Email addresses and email domains alone do not make a file a match, unless
+        the file explicitly defines those domains or patterns as affiliation rules.
         </what_to_reject>
 
         <candidates>
-        Each candidate includes its repository-relative path and a preview from the
-        beginning of the file. The preview is only a partial view of the file.
+        Each candidate includes its repository-relative path and a preview from
+        the beginning of the file. The preview is only a partial view of the file.
 
+        Base your decision only on the provided preview.
         {candidates_with_previews}
         </candidates>
 
         <rules>
+        - Judge candidates by their content, not their filename.
         - Return the repository-relative path exactly as shown in the candidates.
         - If no candidate matches, return {{"error": "not_found"}}.
+        - Prefer precision over recall. The wrong file is worse than no file.
         </rules>
 
         <output_format>
@@ -267,11 +274,10 @@ class AffiliationService(BaseService):
         """
 
         return f"""
-        Your task is to extract contributor-to-employer/organization mappings from the file content below.
-
         <what_to_extract>
 
-        Identify contributor-to-organization mappings in the file content.
+        Extract, per person, the organization or employer the file explicitly
+        assigns to each contributor.
 
         Emit one entry per contributor-organization pair.
 
@@ -282,12 +288,19 @@ class AffiliationService(BaseService):
         - Reproduce identifiers as written. Do not normalize, reformat, or repair them.
 
         Organization:
-        - Provide the organization name when the file gives one.
-        - Provide the organization's primary domain: use a domain present in the
-          file, otherwise infer it from the organization name when you are confident.
-        - If the file marks a contributor as not employed / independent / unaffiliated
-          / personal / no organization, set "isUnaffiliated" to true and set
-          "domain" to "unknown". Do not invent a company or domain for these.
+        - Only record an organization the file explicitly ties to the contributor.
+          Do not infer one from a plain email, email domain, username, or repo/project name.
+          It is valid to use an email/domain pattern only when the file itself explicitly
+          defines that pattern as an affiliation rule.
+        - name: the organization name the file states, else null.
+        - domain: use a domain the file states; otherwise infer it from the stated
+          organization name only when confident (e.g. "Google" -> google.com), else null.
+          Never infer a domain from an email.
+        - isUnaffiliated: set true only when the file explicitly marks the person as
+          independent / unaffiliated / personal / no employer — not as a fallback when
+          the organization is merely missing. When true, set name and domain to null.
+        - If the file states neither an organization nor explicit unaffiliation for a
+          person, do not emit a row for them.
 
         Time period (only when the file states it):
         - "dateStart" and "dateEnd" as ISO dates (YYYY-MM-DD).
@@ -321,7 +334,7 @@ class AffiliationService(BaseService):
             }},
             "organization": {{
                 "name": "... or null",
-                "domain": "...",
+                "domain": "... or null",
                 "dateStart": "YYYY-MM-DD or null",
                 "dateEnd": "YYYY-MM-DD or null",
                 "isUnaffiliated": false
@@ -384,8 +397,6 @@ class AffiliationService(BaseService):
             organization = row.organization
             is_unaffiliated = organization.is_unaffiliated
             domain = cls._strip(organization.domain)
-            if domain and domain.lower() in {"unknown", "no@organization.net"}:
-                is_unaffiliated = True
 
             if is_unaffiliated:
                 stint = AffiliationOrganizationStint(
