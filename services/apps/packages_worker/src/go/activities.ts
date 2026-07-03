@@ -16,7 +16,9 @@ const log = getServiceChildLogger('go')
 const PROXY_SOURCE = 'go-proxy'
 const PKGGODEV_SOURCE = 'pkg-go-dev'
 
-// TODO: filter to critical packages once computed
+// Critical packages sort first so a batch is filled from them before any non-critical
+// package is considered — if the upstream registry starts rate-limiting mid-run, it's the
+// non-critical tail of the batch that gets skipped, not the critical packages.
 async function getGoBatch(
   qx: QueryExecutor,
   afterPurl: string,
@@ -25,7 +27,7 @@ async function getGoBatch(
   return qx.select(
     `SELECT purl, name FROM packages
      WHERE ecosystem = 'go' AND purl > $(after)
-     ORDER BY last_synced_at ASC NULLS FIRST, purl ASC
+     ORDER BY is_critical DESC, last_synced_at ASC NULLS FIRST, purl ASC
      LIMIT $(limit)`,
     { after: afterPurl, limit: batchSize },
   )
