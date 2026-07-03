@@ -86,8 +86,6 @@ export async function findLatestExportedJobByKind(
     : null
 }
 
-// Returns an existing exported job for the given GCS prefix so callers can
-// skip re-running the BQ export when retrying a failed workflow.
 // Loads the fields needed to resume a partially-merged chunked job by id: the exact GCS export
 // path (so the same parquet files — and therefore the same chunk boundaries — are re-listed) plus
 // the file-level load progress and rows-merged-so-far. progressDone/progressTotal come from the
@@ -139,6 +137,8 @@ export async function getIngestJobForResume(
     : null
 }
 
+// Returns an existing exported job for the given GCS prefix so callers can
+// skip re-running the BQ export when retrying a failed workflow.
 export async function findExportedJobByGcsPrefix(
   qx: QueryExecutor,
   gcsPrefix: string,
