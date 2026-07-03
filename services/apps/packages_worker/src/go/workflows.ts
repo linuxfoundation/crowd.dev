@@ -15,24 +15,22 @@ const acts = proxyActivities<typeof activities>({
 const BATCH = 100
 const ROUNDS_PER_RUN = 200
 
-interface ScanState {
-  runStartedAt: string
+const START_CURSOR = { criticalAfter: '', after: '' }
+
+export async function enrichGoVersions(cursor = START_CURSOR): Promise<void> {
+  for (let r = 0; r < ROUNDS_PER_RUN; r++) {
+    const next = await acts.enrichGoVersionsBatch(cursor, BATCH)
+    if (next === null) return
+    cursor = next
+  }
+  await continueAsNew<typeof enrichGoVersions>(cursor)
 }
 
-export async function enrichGoVersions(state?: ScanState): Promise<void> {
-  const runStartedAt = state?.runStartedAt ?? (await acts.getGoRunStartedAt())
+export async function enrichGoStatus(cursor = START_CURSOR): Promise<void> {
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const count = await acts.enrichGoVersionsBatch(runStartedAt, BATCH)
-    if (count === 0) return
+    const next = await acts.enrichGoStatusBatch(cursor, BATCH)
+    if (next === null) return
+    cursor = next
   }
-  await continueAsNew<typeof enrichGoVersions>({ runStartedAt })
-}
-
-export async function enrichGoStatus(state?: ScanState): Promise<void> {
-  const runStartedAt = state?.runStartedAt ?? (await acts.getGoRunStartedAt())
-  for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const count = await acts.enrichGoStatusBatch(runStartedAt, BATCH)
-    if (count === 0) return
-  }
-  await continueAsNew<typeof enrichGoStatus>({ runStartedAt })
+  await continueAsNew<typeof enrichGoStatus>(cursor)
 }

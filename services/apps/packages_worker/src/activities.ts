@@ -24,7 +24,7 @@ export {
   cargoFlushAudit,
   cargoCleanup,
 } from './cargo/activities'
-export { enrichGoVersionsBatch, enrichGoStatusBatch, getGoRunStartedAt } from './go/activities'
+export { enrichGoVersionsBatch, enrichGoStatusBatch } from './go/activities'
 export {
   getUnscannedPypiBatch,
   ingestPypiPackageBatch,
