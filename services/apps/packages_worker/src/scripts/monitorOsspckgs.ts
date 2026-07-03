@@ -22,6 +22,8 @@ const A = {
   altOn: '\x1b[?1049h',
   altOff: '\x1b[?1049l',
   clear: '\x1b[2J\x1b[H',
+  home: '\x1b[H', // cursor to top-left without clearing — overwrite in place (no flicker)
+  eos: '\x1b[0J', // erase from cursor to end of screen — clears leftover rows from a taller frame
   // fg
   black: '\x1b[30m',
   red: '\x1b[31m',
@@ -44,10 +46,18 @@ const move = (row: number, col: number) => `${ESC}${row};${col}H`
 const clearLine = () => `${ESC}2K`
 const w = process.stdout
 
+// When frameBuf is non-null a render() is in progress: accumulate the whole frame into one string
+// and flush it with a single w.write() so the terminal paints it as one frame (no partial-frame
+// flicker). Outside render(), write() flushes immediately as before.
+let frameBuf: string | null = null
+let maxRow = 0
+
 function write(s: string) {
-  w.write(s)
+  if (frameBuf !== null) frameBuf += s
+  else w.write(s)
 }
 function writeln(row: number, col: number, s: string) {
+  if (row > maxRow) maxRow = row
   write(move(row, col) + clearLine() + s)
 }
 
@@ -786,7 +796,17 @@ function computeTotalEta(job: any) {
 
 function render() {
   const { rows, columns } = process.stdout
-  write(A.reset + A.hide + A.clear)
+  // Buffer the whole frame, then flush once. Home (not clear) + overwrite-in-place kills the flicker;
+  // eos at the end erases any rows a shorter frame left behind (e.g. detail panel closed, resize).
+  frameBuf = ''
+  maxRow = 0
+  write(A.reset + A.hide + A.home)
+  const flush = () => {
+    write(move(maxRow + 1, 1) + A.eos + A.show)
+    const out = frameBuf ?? ''
+    frameBuf = null
+    w.write(out)
+  }
 
   const refreshStr = lastRefresh ? `last refresh: ${lastRefresh}` : 'loading…'
   const title = ` ${A.bold}${A.cyan}OSSPCKGS Monitor${A.reset}  ${A.dim}${refreshStr}${A.reset}`
@@ -796,7 +816,7 @@ function render() {
 
   if (error) {
     writeln(3, 1, `${A.red}DB Error: ${error}${A.reset}`)
-    write(A.show)
+    flush()
     return
   }
 
@@ -865,7 +885,7 @@ function render() {
     }
   }
 
-  write(A.show)
+  flush()
 }
 
 // ── Data ───────────────────────────────────────────────────────────────────────
