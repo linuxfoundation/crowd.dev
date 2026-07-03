@@ -192,6 +192,10 @@ class OrganizationRepository {
     const qx = SequelizeRepository.getQueryExecutor(options)
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
+    if (subprojectIds.length === 0) {
+      return
+    }
+
     await seq.query(bulkDeleteOrganizationSegments, {
       replacements: {
         organizationIds,
