@@ -285,7 +285,7 @@ async function fetchTableCounts(): Promise<Record<string, number>> {
 
 // ── Ecosystem extraction ───────────────────────────────────────────────────────
 
-const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo']
+const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo', 'rubygems']
 
 // Reads ecosystems from table_row_counts['meta:ecosystems'] (new jobs) or falls back to
 // parsing gcs_prefix/export_name for jobs created before the meta key was added.

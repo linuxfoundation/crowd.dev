@@ -21,8 +21,8 @@ Usage: trigger-bootstrap [full|incremental] [ECOSYSTEMS] [options]
 
 Arguments:
   full | incremental     Sync mode (default: full)
-  ECOSYSTEMS             Comma-separated list: CARGO,NPM,MAVEN,GO,PYPI,NUGET
-                         Omit for all 6 ecosystems
+  ECOSYSTEMS             Comma-separated list: CARGO,NPM,MAVEN,GO,PYPI,NUGET,RUBYGEMS
+                         Omit for all 7 ecosystems
 
 Options:
   --kinds <k1,k2>        Run only specific job kinds (default: all). Comma-separated:
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     ? positional[1].split(',').map((e) => e.trim().toUpperCase())
     : undefined
 
-  const VALID_ECOSYSTEMS = new Set(['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO'])
+  const VALID_ECOSYSTEMS = new Set(['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO', 'RUBYGEMS'])
   if (ecosystems) {
     const invalid = ecosystems.filter((e) => !VALID_ECOSYSTEMS.has(e))
     if (invalid.length > 0) {
