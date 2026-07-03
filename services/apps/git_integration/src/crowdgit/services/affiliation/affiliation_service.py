@@ -610,13 +610,35 @@ class AffiliationService(BaseService):
 
     @staticmethod
     def affiliation_stint_key(
-        contributor: AffiliationContributor, domain: str
-    ) -> tuple[str, str, str] | None:
-        domain = domain.lower()
+        contributor: AffiliationContributor,
+        organization: AffiliationOrganizationStint,
+    ) -> tuple[str, str, str, date | None, date | None, bool] | None:
+        domain = organization.domain.lower()
+        date_start = organization.date_start
+        date_end = organization.date_end
+        if isinstance(date_start, datetime):
+            date_start = date_start.date()
+        if isinstance(date_end, datetime):
+            date_end = date_end.date()
+
         if contributor.email:
-            return ("email", contributor.email.lower(), domain)
+            return (
+                "email",
+                contributor.email.lower(),
+                domain,
+                date_start,
+                date_end,
+                organization.is_unaffiliated,
+            )
         if contributor.github:
-            return ("github", contributor.github.lower(), domain)
+            return (
+                "github",
+                contributor.github.lower(),
+                domain,
+                date_start,
+                date_end,
+                organization.is_unaffiliated,
+            )
         return None
 
     async def exclude_parent_repo_affiliations(
@@ -636,7 +658,7 @@ class AffiliationService(BaseService):
             key
             for entry in parent_snapshot
             for organization in entry.organizations
-            if (key := self.affiliation_stint_key(entry.contributor, organization.domain))
+            if (key := self.affiliation_stint_key(entry.contributor, organization))
         }
 
         fork_entries: list[AffiliationContributorEntry] = []
@@ -644,7 +666,7 @@ class AffiliationService(BaseService):
             organizations = [
                 organization
                 for organization in entry.organizations
-                if (key := self.affiliation_stint_key(entry.contributor, organization.domain))
+                if (key := self.affiliation_stint_key(entry.contributor, organization))
                 is None
                 or key not in parent_stint_keys
             ]
