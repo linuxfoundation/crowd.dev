@@ -738,9 +738,7 @@ class AffiliationService(BaseService):
             batch = organization_identity_inputs[
                 batch_start : batch_start + self.IDENTITY_LOOKUP_BATCH_SIZE
             ]
-            resolved_organizations.extend(
-                await find_many_organization_ids_by_identities(batch)
-            )
+            resolved_organizations.extend(await find_many_organization_ids_by_identities(batch))
 
         resolved_stints: list[tuple[str, str, AffiliationOrganizationStint]] = []
         seen_stints: set[tuple[str, str, date | None, date | None]] = set()
