@@ -53,6 +53,9 @@ class AffiliationService(BaseService):
     FILE_PICKER_PREVIEW_MAX_CHARS = 400
     FILE_PICKER_BATCH_SIZE = 20
 
+    # Conservative safety limit to stay well below asyncpg's bind parameter cap
+    IDENTITY_LOOKUP_BATCH_SIZE = 500
+
     TEXT_FILE_EXTENSIONS = (
         "",
         ".md",
@@ -366,7 +369,10 @@ class AffiliationService(BaseService):
         stripped = AffiliationService._strip(value)
         if not stripped:
             return None
-        return date.fromisoformat(stripped)
+        try:
+            return date.fromisoformat(stripped)
+        except ValueError:
+            return None
 
     @classmethod
     def group_parse_rows(
@@ -718,10 +724,23 @@ class AffiliationService(BaseService):
                 )
                 stint_refs.append((member_idx, org_idx, organization))
 
-        resolved_members = await find_many_member_ids_by_identities(member_identity_inputs)
-        resolved_organizations = await find_many_organization_ids_by_identities(
-            organization_identity_inputs
-        )
+        resolved_members: list[dict] = []
+        for batch_start in range(0, len(member_identity_inputs), self.IDENTITY_LOOKUP_BATCH_SIZE):
+            batch = member_identity_inputs[
+                batch_start : batch_start + self.IDENTITY_LOOKUP_BATCH_SIZE
+            ]
+            resolved_members.extend(await find_many_member_ids_by_identities(batch))
+
+        resolved_organizations: list[dict] = []
+        for batch_start in range(
+            0, len(organization_identity_inputs), self.IDENTITY_LOOKUP_BATCH_SIZE
+        ):
+            batch = organization_identity_inputs[
+                batch_start : batch_start + self.IDENTITY_LOOKUP_BATCH_SIZE
+            ]
+            resolved_organizations.extend(
+                await find_many_organization_ids_by_identities(batch)
+            )
 
         resolved_stints: list[tuple[str, str, AffiliationOrganizationStint]] = []
         seen_stints: set[tuple[str, str, date | None, date | None]] = set()
