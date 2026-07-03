@@ -667,23 +667,24 @@ async def find_many_organization_ids_by_identities(identities: list[dict]) -> li
     param_index = 1
     for idx, identity in enumerate(identities):
         values_parts.append(
-            f"(${param_index}::int, ${param_index + 1}::text,"
-            f" ${param_index + 2}::boolean, ${param_index + 3}::text)"
+            f"(${param_index}::int, ${param_index + 1}::text, ${param_index + 2}::boolean,"
+            f" ${param_index + 3}::text, ${param_index + 4}::text)"
         )
         params.extend(
             [
                 idx,
                 identity["type"],
                 identity.get("verified", True),
+                identity["platform"],
                 identity["value"],
             ]
         )
-        param_index += 4
+        param_index += 5
 
     matches_by_idx: dict[int, set[str]] = {}
     rows = await query(
         f"""
-        WITH input_identities (idx, identity_type, verified, value) AS (
+        WITH input_identities (idx, identity_type, verified, platform, value) AS (
             VALUES {", ".join(values_parts)}
         )
         SELECT i.idx, oi."organizationId"
@@ -691,6 +692,7 @@ async def find_many_organization_ids_by_identities(identities: list[dict]) -> li
         LEFT JOIN "organizationIdentities" oi
             ON oi.type = i.identity_type
             AND oi.verified = i.verified
+            AND oi.platform = i.platform
             AND lower(oi.value) = lower(i.value)
         ORDER BY i.idx
         """,
@@ -708,6 +710,7 @@ async def find_many_organization_ids_by_identities(identities: list[dict]) -> li
         results.append(
             {
                 "type": identity["type"],
+                "platform": identity["platform"],
                 "value": identity["value"],
                 "verified": identity.get("verified", True),
                 "organization_id": organization_id,

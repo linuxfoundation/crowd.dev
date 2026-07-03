@@ -412,7 +412,7 @@ class AffiliationService(BaseService):
             if is_unaffiliated:
                 stint = AffiliationOrganizationStint(
                     name="Individual",
-                    domain="individual-noaccount.com",
+                    domain="nonameaccount.com",
                     date_start=cls._parse_optional_date(organization.date_start),
                     date_end=cls._parse_optional_date(organization.date_end),
                     is_unaffiliated=True,
@@ -744,6 +744,7 @@ class AffiliationService(BaseService):
                 organization_identity_inputs.append(
                     {
                         "type": "primary-domain",
+                        "platform": "email",
                         "value": organization.domain,
                         "verified": True,
                     }
