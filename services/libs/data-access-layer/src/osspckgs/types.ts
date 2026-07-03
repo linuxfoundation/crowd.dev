@@ -35,6 +35,24 @@ export type IDbPackageUpsert = {
   repositoryUrl?: string | null
 }
 
+// ─── sonatype popularity ──────────────────────────────────────────────────────
+
+/**
+ * Sonatype popularity signal for a single Maven component (one row per
+ * groupId:artifactId). Only the sonatype_* fields plus the identity columns are
+ * carried — deps.dev / Maven enrichment backfills everything else later.
+ */
+export type IDbSonatypePopularityUpsert = {
+  purl: string
+  ecosystem: string
+  namespace: string // Maven groupId
+  name: string // Maven artifactId
+  sonatypePopularityScore: number
+  sonatypeRank: number
+  sonatypeTier: string
+  sonatypeSnapshotAt: Date
+}
+
 // ─── maintainers ──────────────────────────────────────────────────────────────
 
 export type IDbMaintainerUpsert = {
