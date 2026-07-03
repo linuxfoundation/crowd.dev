@@ -22,18 +22,14 @@ const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
 
 const querySchema = z.union([
-  z
-    .object({
-      domain: z.string().trim().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      name: z.string().trim().min(1),
-      page: z.coerce.number().int().min(1).default(1),
-      pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-    })
-    .strict(),
+  z.object({
+    domain: z.string().trim().min(1),
+  }),
+  z.object({
+    name: z.string().trim().min(1),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+  }),
 ])
 
 export async function getOrganization(req: Request, res: Response): Promise<void> {
