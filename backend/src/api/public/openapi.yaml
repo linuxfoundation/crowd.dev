@@ -779,8 +779,14 @@ paths:
   /organizations:
     get:
       operationId: getOrganization
-      summary: Look up an organization by domain
-      description: Find a verified organization by its primary domain.
+      summary: Look up or search organizations
+      description: >
+        Look up a single verified organization by its primary domain (`domain`),
+        or search organizations by display name (`name`). Exactly one of the two
+        query parameters must be provided.
+
+        When `name` is provided the response is a paginated list; when `domain`
+        is provided the response is a single organization object.
       tags:
         - Organizations
       security:
@@ -789,23 +795,70 @@ paths:
       parameters:
         - name: domain
           in: query
-          required: true
-          description: Primary domain of the organization.
+          required: false
+          description: Primary domain of the organization. Mutually exclusive with `name`.
           schema:
             type: string
             minLength: 1
           example: linuxfoundation.org
+        - name: name
+          in: query
+          required: false
+          description: >
+            Display name to search for (case-insensitive substring match).
+            Mutually exclusive with `domain`.
+          schema:
+            type: string
+            minLength: 1
+          example: Linux Foundation
+        - name: page
+          in: query
+          required: false
+          description: Page number (1-based). Only used when `name` is provided.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of results per page (max 100). Only used when `name` is provided.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         '200':
-          description: Organization found.
+          description: >
+            Organization found (domain lookup) or search results returned (name search).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Organization'
-              example:
-                id: 550e8400-e29b-41d4-a716-446655440000
-                name: Linux Foundation
-                logo: https://example.com/logo.png
+                oneOf:
+                  - $ref: '#/components/schemas/Organization'
+                  - $ref: '#/components/schemas/OrganizationSearchResponse'
+              examples:
+                domainLookup:
+                  summary: Single organization by domain
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    name: Linux Foundation
+                    logo: https://example.com/logo.png
+                nameSearch:
+                  summary: Paginated name search results
+                  value:
+                    organizations:
+                      - id: 550e8400-e29b-41d4-a716-446655440000
+                        name: Linux Foundation
+                        domains:
+                          - linuxfoundation.org
+                        logo: https://example.com/logo.png
+                    page: 1
+                    pageSize: 20
+                    total: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1243,6 +1296,11 @@ components:
             - string
             - 'null'
           description: URL of the organization logo.
+        domains:
+          type: array
+          items:
+            type: string
+          description: Verified primary domains for the organization. Empty when none are on record.
         jobTitle:
           type:
             - string
@@ -1541,6 +1599,50 @@ components:
         logo:
           type: string
           description: URL of the organization logo. Only present if available.
+
+    OrganizationWithDomains:
+      type: object
+      required:
+        - id
+        - name
+        - domains
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Display name of the organization.
+        domains:
+          type: array
+          items:
+            type: string
+          description: Verified primary domains for the organization.
+        logo:
+          type: string
+          description: URL of the organization logo. Only present if available.
+
+    OrganizationSearchResponse:
+      type: object
+      required:
+        - organizations
+        - page
+        - pageSize
+        - total
+      properties:
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationWithDomains'
+        page:
+          type: integer
+          description: Current page number (1-based).
+        pageSize:
+          type: integer
+          description: Number of results per page.
+        total:
+          type: integer
+          description: Total number of matching organizations.
 
     HttpError:
       type: object

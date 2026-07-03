@@ -149,6 +149,41 @@ export async function findOrganizationsByName(
   )
 }
 
+export interface IOrganizationSearchResult {
+  id: string
+  displayName: string
+  logo: string | null
+  total: number
+}
+
+export async function searchOrganizationsByName(
+  qx: QueryExecutor,
+  name: string,
+  options: { limit: number; offset: number },
+): Promise<{ rows: Omit<IOrganizationSearchResult, 'total'>[]; total: number }> {
+  const { limit, offset } = options
+  const rows: IOrganizationSearchResult[] = await qx.select(
+    `
+      SELECT
+        o.id,
+        o."displayName",
+        o.logo,
+        COUNT(*) OVER() AS total
+      FROM organizations o
+      WHERE o."displayName" ILIKE $(pattern)
+        AND o."deletedAt" IS NULL
+      ORDER BY o."displayName"
+      LIMIT $(limit) OFFSET $(offset)
+    `,
+    { pattern: `%${name}%`, limit, offset },
+  )
+  const total = rows.length > 0 ? Number(rows[0].total) : 0
+  return {
+    rows: rows.map((r) => ({ id: r.id, displayName: r.displayName, logo: r.logo ?? null })),
+    total,
+  }
+}
+
 export async function findOrgByVerifiedDomain(
   qx: QueryExecutor,
   identity: IOrganizationIdentity,

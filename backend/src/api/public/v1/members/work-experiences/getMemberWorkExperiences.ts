@@ -5,6 +5,7 @@ import { NotFoundError } from '@crowd/common'
 import {
   MemberField,
   fetchManyMemberOrgsWithOrgData,
+  fetchManyOrganizationVerifiedPrimaryDomains,
   findMemberById,
   optionsQx,
 } from '@crowd/data-access-layer'
@@ -28,8 +29,14 @@ export async function getMemberWorkExperiences(req: Request, res: Response): Pro
   }
 
   const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
-  const workExperiences = groupMemberOrganizations(orgsMap.get(memberId) ?? []).map(
-    toMemberWorkExperience,
+  const grouped = groupMemberOrganizations(orgsMap.get(memberId) ?? [])
+
+  const orgIds = [...new Set(grouped.map((r) => r.organizationId).filter(Boolean))]
+  const primaryDomains = await fetchManyOrganizationVerifiedPrimaryDomains(qx, orgIds)
+  const domainsMap = new Map(primaryDomains.map((d) => [d.orgId, d.domains]))
+
+  const workExperiences = grouped.map((role) =>
+    toMemberWorkExperience(role, domainsMap.get(role.organizationId) ?? []),
   )
 
   ok(res, { memberId, workExperiences })
