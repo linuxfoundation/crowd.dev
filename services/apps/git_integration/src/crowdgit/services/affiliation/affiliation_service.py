@@ -666,8 +666,7 @@ class AffiliationService(BaseService):
             organizations = [
                 organization
                 for organization in entry.organizations
-                if (key := self.affiliation_stint_key(entry.contributor, organization))
-                is None
+                if (key := self.affiliation_stint_key(entry.contributor, organization)) is None
                 or key not in parent_stint_keys
             ]
             if organizations:
