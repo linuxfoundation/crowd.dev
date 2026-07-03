@@ -47,7 +47,7 @@ RETRYABLE_CLONE_ERRORS = (RateLimitError, NetworkError, RemoteServerError)
 
 retry_on_clone_error = retry(
     retry=retry_if_exception_type(RETRYABLE_CLONE_ERRORS),
-    stop=stop_after_attempt(6),
+    stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=5, min=5, max=120),
     reraise=True,
 )
@@ -190,9 +190,14 @@ class CloneService(BaseService):
         Perform minimal clone of depth=1
         """
         self.logger.info("Initializing minimal clone")
-        await run_shell_command(
-            ["git", "clone", "--depth=1", "--no-tags", "--single-branch", remote, "."], cwd=path
-        )
+        base_cmd = ["git", "clone", "--depth=1", "--no-tags", "--single-branch"]
+        try:
+            await run_shell_command([*base_cmd, f"{remote}.git", "."], cwd=path)
+        except Exception:
+            self.logger.warning(
+                f"Clone with .git suffix failed, falling back to bare URL: {remote}"
+            )
+            await run_shell_command([*base_cmd, remote, "."], cwd=path)
         self.logger.info("Minimal clone initialized successfully")
 
     async def _get_repo_size_mb(self, repo_path: str) -> float:
@@ -377,9 +382,14 @@ class CloneService(BaseService):
     async def _perform_full_clone(self, repo_path: str, remote: str):
         """Perform full repository clone"""
         self.logger.info(f"Performing full clone for repo {remote}...")
-        await run_shell_command(
-            ["git", "clone", "--no-tags", "--single-branch", remote, "."], cwd=repo_path
-        )
+        base_cmd = ["git", "clone", "--no-tags", "--single-branch"]
+        try:
+            await run_shell_command([*base_cmd, f"{remote}.git", "."], cwd=repo_path)
+        except Exception:
+            self.logger.warning(
+                f"Clone with .git suffix failed, falling back to bare URL: {remote}"
+            )
+            await run_shell_command([*base_cmd, remote, "."], cwd=repo_path)
         self.logger.info(f"Successfully completed full clone of repository: {remote}")
 
     async def has_default_branch_changed(self, remote: str, saved_branch: str | None) -> bool:
