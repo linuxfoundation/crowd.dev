@@ -19,7 +19,7 @@ export interface PccParquetRow {
   DESCRIPTION: string | null
   PROJECT_LOGO: string | null
   PROJECT_STATUS: string | null
-  PROJECT_MATURITY_LEVEL: string | null
+  PROJECT_ADMIN_CATEGORY: string | null
   /** ID of the ancestor at this hierarchy level (hierarchy_level=1 → leaf itself). */
   MAPPED_PROJECT_ID: string | null
   /** Name of the ancestor at this hierarchy level. */

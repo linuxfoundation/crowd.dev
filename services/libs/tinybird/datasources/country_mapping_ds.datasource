@@ -1,8 +1,10 @@
 SCHEMA >
-    `country` String,
-    `flag` String,
-    `country_code` String,
-    `timezone_offset` Int16
+    `country` String `json:$.country`,
+    `flag` String `json:$.flag`,
+    `country_code` String `json:$.country_code`,
+    `timezone_offset` Int16 `json:$.timezone_offset`,
+    `region` String `json:$.region`,
+    `subregion` String `json:$.subregion`
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY flag, country_code, timezone_offset

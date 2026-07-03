@@ -244,6 +244,10 @@ class MemberRepository {
 
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
+    if (subprojectIds.length === 0) {
+      return
+    }
+
     await seq.query(bulkDeleteMemberSegments, {
       replacements: {
         memberIds,
