@@ -152,8 +152,7 @@ export async function findOrganizationsByName(
 export interface IOrganizationSearchResult {
   id: string
   displayName: string
-  logo: string | null
-  total: number
+  total: string
 }
 
 export async function searchOrganizationsByName(
@@ -167,7 +166,6 @@ export async function searchOrganizationsByName(
       SELECT
         o.id,
         o."displayName",
-        o.logo,
         COUNT(*) OVER() AS total
       FROM organizations o
       WHERE o."displayName" ILIKE $(pattern)
@@ -179,7 +177,7 @@ export async function searchOrganizationsByName(
   )
   const total = rows.length > 0 ? Number(rows[0].total) : 0
   return {
-    rows: rows.map((r) => ({ id: r.id, displayName: r.displayName, logo: r.logo ?? null })),
+    rows: rows.map((r) => ({ id: r.id, displayName: r.displayName })),
     total,
   }
 }

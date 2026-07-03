@@ -36,20 +36,18 @@ describe('searchOrganizationsByName', () => {
   })
 
   it('strips the internal total column from returned rows', async () => {
-    mockSelect.mockResolvedValueOnce([
-      { id: 'org-1', displayName: 'Acme Corp', logo: null, total: '1' },
-    ])
+    mockSelect.mockResolvedValueOnce([{ id: 'org-1', displayName: 'Acme Corp', total: '1' }])
 
     const { rows } = await searchOrganizationsByName(mockQx, 'acme', { limit: 20, offset: 0 })
 
     expect(rows[0]).not.toHaveProperty('total')
-    expect(rows[0]).toEqual({ id: 'org-1', displayName: 'Acme Corp', logo: null })
+    expect(rows[0]).toEqual({ id: 'org-1', displayName: 'Acme Corp' })
   })
 
   it('reads total from the first row', async () => {
     mockSelect.mockResolvedValueOnce([
-      { id: 'org-1', displayName: 'Acme Corp', logo: null, total: '42' },
-      { id: 'org-2', displayName: 'Acme Ltd', logo: null, total: '42' },
+      { id: 'org-1', displayName: 'Acme Corp', total: '42' },
+      { id: 'org-2', displayName: 'Acme Ltd', total: '42' },
     ])
 
     const { total } = await searchOrganizationsByName(mockQx, 'acme', { limit: 20, offset: 0 })

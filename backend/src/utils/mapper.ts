@@ -123,13 +123,13 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
     })
 }
 
-export function toMemberWorkExperience(mo: IMemberRoleWithOrganization, domains: string[] = []) {
+export function toMemberWorkExperience(mo: IMemberRoleWithOrganization, domains?: string[]) {
   return {
     id: mo.id,
     organizationId: mo.organizationId,
     organizationName: mo.organizationName,
     organizationLogo: mo.organizationLogo,
-    domains,
+    ...(domains !== undefined ? { domains } : {}),
     jobTitle: mo.title ?? null,
     verified: mo.verified ?? false,
     verifiedBy: mo.verifiedBy ?? null,
