@@ -397,6 +397,31 @@ components:
           type: integer
           description: Total packages marked as critical (is_critical = true).
 
+    SecurityContactConfidence:
+      type: string
+      enum: [PRIMARY, SECONDARY, FALLBACK, NONE]
+
+    SecurityContact:
+      type: object
+      required: [channel, value, role, confidence, score]
+      properties:
+        channel:
+          type: string
+          enum: [email, github-pvr, url, github-handle, web-form]
+        value:
+          type: string
+          example: security@expressjs.com
+        role:
+          type: string
+          enum: [security-team, maintainer, admin, committer, org-owner]
+        confidence:
+          $ref: '#/components/schemas/SecurityContactConfidence'
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
     Advisory:
       type: object
       required: [osvId, severity, resolution, isCritical]
@@ -522,8 +547,32 @@ components:
             securityContacts:
               type: array
               nullable: true
+              description: >-
+                null when the linked repo has not yet been swept by the security-contacts
+                pipeline; empty array when swept with no contacts found. Provenance and
+                internal scoring metadata are never included.
               items:
-                type: string
+                $ref: '#/components/schemas/SecurityContact'
+            packageConfidence:
+              allOf:
+                - $ref: '#/components/schemas/SecurityContactConfidence'
+              nullable: true
+              description: Confidence band of the highest-scoring contact in securityContacts.
+            securityPolicies:
+              type: object
+              properties:
+                securityPolicyUrl:
+                  type: string
+                  nullable: true
+                vulnerabilityReportingUrl:
+                  type: string
+                  nullable: true
+                bugBountyUrl:
+                  type: string
+                  nullable: true
+                pvrEnabled:
+                  type: boolean
+                  nullable: true
             advisories:
               type: array
               items:
