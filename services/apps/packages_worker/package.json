@@ -53,6 +53,8 @@
     "backfill:maven:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven LOG_LEVEL=info tsx src/bin/maven-backfill.ts",
     "import:maven-maintainers": "SERVICE=maven tsx src/maven/scripts/importMaintainersFromCsv.ts",
     "import:maven-maintainers:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven tsx src/maven/scripts/importMaintainersFromCsv.ts",
+    "import:sonatype-popularity": "SERVICE=maven tsx src/maven/scripts/importSonatypePopularityFromCsv.ts",
+    "import:sonatype-popularity:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven tsx src/maven/scripts/importSonatypePopularityFromCsv.ts",
     "backfill:stewardship": "SERVICE=stewardship-backfill tsx src/bin/stewardship-backfill.ts",
     "backfill:stewardship:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=stewardship-backfill LOG_LEVEL=info tsx src/bin/stewardship-backfill.ts",
     "monitor:osspckgs": "SERVICE=bq-dataset-ingest tsx src/scripts/monitorOsspckgs.ts",
