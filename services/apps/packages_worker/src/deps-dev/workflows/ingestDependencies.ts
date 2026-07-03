@@ -76,7 +76,7 @@ INSERT INTO package_dependencies (
   package_id, version_id, depends_on_id, depends_on_version_id,
   version_constraint, dependency_kind, is_optional, created_at, updated_at
 )
-SELECT
+SELECT DISTINCT ON (pv.id, pd.id)
   pv.package_id, pv.id, pd.id, dv.id,
   sp.version_constraint, 'direct', FALSE, NOW(), NOW()
 FROM staging.osspckgs_deps_raw sp
@@ -100,6 +100,11 @@ JOIN packages pd ON pd.ecosystem = sp.ecosystem
       WHEN sp.to_name LIKE '@%/%'  THEN SPLIT_PART(sp.to_name, '/', 2)
       ELSE sp.to_name END
 LEFT JOIN versions dv ON dv.package_id = pd.id AND dv.number = sp.to_version
+-- DISTINCT ON collapses duplicate (root, dep) pairs BQ emits with different resolved to_version;
+-- ORDER BY keeps the highest to_version (best-resolvable depends_on_version_id), matching the fill
+-- variant. ON CONFLICT then handles cross-chunk / pre-existing rows. Full lost this when MERGE_SQL_FULL
+-- (which had the same DISTINCT ON) was removed with the drop/rebuild-index step.
+ORDER BY pv.id, pd.id, sp.to_version DESC NULLS LAST
 ON CONFLICT (version_id, depends_on_id, dependency_kind) DO NOTHING
 `
 

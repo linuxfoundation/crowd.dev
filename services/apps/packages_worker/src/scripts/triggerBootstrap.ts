@@ -48,7 +48,8 @@ Options:
   --resume-job <id>      Resume a partially-merged package_dependencies job by id. Skips BQ,
                          reuses that job's exact parquet export, and restarts the chunk loop
                          where its staging load left off (idempotent ON CONFLICT overlap).
-                         Requires: --kinds package_dependencies AND (incremental | --fill-constraints).
+                         Requires: --kinds package_dependencies. Works in any mode (all deps
+                         merges are idempotent).
   --help                 Show this help
 
 Examples:
@@ -170,17 +171,12 @@ async function main(): Promise<void> {
     }
   }
 
-  // Resume is deps-only and merge-idempotent-only: it re-runs already-committed chunks, safe under
-  // incremental (ON CONFLICT DO NOTHING) or --fill-constraints (ON CONFLICT DO UPDATE), not a full load.
+  // Resume is deps-only: it re-runs already-committed chunks. Safe in every mode because all deps
+  // merges are now idempotent — full and incremental use ON CONFLICT DO NOTHING, --fill-constraints
+  // uses ON CONFLICT DO UPDATE. (Full became idempotent when the drop/rebuild-index step was removed.)
   if (resumeJobId !== undefined) {
     if (!kinds || kinds.length !== 1 || kinds[0] !== 'package_dependencies') {
       console.error('--resume-job requires: --kinds package_dependencies (resume is deps-only)')
-      process.exit(1)
-    }
-    if (mode !== 'incremental' && !fillConstraints) {
-      console.error(
-        '--resume-job requires incremental mode or --fill-constraints (idempotent merges only)',
-      )
       process.exit(1)
     }
   }

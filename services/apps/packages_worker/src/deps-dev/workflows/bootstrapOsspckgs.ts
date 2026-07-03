@@ -93,6 +93,18 @@ export async function bootstrapOsspckgs(opts: {
   const activeKinds = opts.kinds ? new Set(opts.kinds) : null
   const runs = (kind: string) => !activeKinds || activeKinds.has(kind)
 
+  // Resume reuses a prior package_dependencies export and skips watermark/partition validation.
+  // Hard-enforce it targets ONLY package_dependencies so a stray resumeJobId can't silently run other
+  // kinds without their safety checks. The CLI validates this too; this is the fail-fast backstop.
+  if (
+    resume &&
+    !(activeKinds && activeKinds.size === 1 && activeKinds.has('package_dependencies'))
+  ) {
+    throw new ApplicationFailure(
+      'resumeJobId is only valid with kinds=[package_dependencies] — refusing to skip validation for other kinds',
+    )
+  }
+
   const jobKinds: JobKind[] = (
     ['packages', 'versions', 'package_dependencies', 'advisories', 'advisory_packages'] as JobKind[]
   ).filter((k) => runs(k))

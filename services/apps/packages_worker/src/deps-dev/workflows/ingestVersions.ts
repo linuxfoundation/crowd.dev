@@ -25,6 +25,11 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 1 },
 })
 
+const { setJobStep } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 3 },
+})
+
 const STAGING_TABLE = 'staging.osspckgs_versions_raw'
 
 const STAGING_DDL = `
@@ -46,11 +51,15 @@ INSERT INTO versions (
   package_id, ecosystem, namespace, name, number, published_at, is_prerelease, licenses, last_synced_at,
   created_at
 )
-SELECT
+SELECT DISTINCT ON (p.id, s.number)
   p.id, s.ecosystem, p.namespace, p.name, s.number, s.published_at, s.is_prerelease, s.licenses, NOW(),
   NOW()
 FROM staging.osspckgs_versions_raw s
 JOIN packages p ON p.purl = s.purl
+-- DISTINCT ON + ORDER BY keeps the most recently published row when BQ emits duplicate
+-- (purl, number) rows with differing published_at/licenses, so ON CONFLICT DO NOTHING no longer
+-- retains an arbitrary insert-order row.
+ORDER BY p.id, s.number, s.published_at DESC NULLS LAST
 ON CONFLICT (package_id, number) DO NOTHING
 `
 
@@ -126,6 +135,10 @@ export async function ingestVersions(opts: {
   let priorRowsAffected = 0
   let priorStagingRows = 0
   const priorTableRowCounts: Record<string, number> = {}
+
+  // Mark the phase before the loop so the monitor shows 'merging' instead of the stale prior step
+  // (e.g. 'loading') during the merge — mirrors ingestDependencies.
+  await setJobStep({ jobId: exportResult.jobId, step: 'merging' })
 
   for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
     const start = chunkIndex * filesPerChunk
