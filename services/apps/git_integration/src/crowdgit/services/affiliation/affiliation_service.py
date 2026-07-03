@@ -301,9 +301,16 @@ class AffiliationService(BaseService):
           It is valid to use an email/domain pattern only when the file itself explicitly
           defines that pattern as an affiliation rule.
         - name: the organization name the file states, else null.
-        - domain: use a domain the file states; otherwise infer it from the stated
-          organization name only when confident (e.g. "Google" -> google.com), else null.
-          Never infer a domain from an email.
+        - domain: choose the organization's domain in this order:
+          1. a domain the file explicitly states for the organization;
+          2. a domain you can infer confidently from the stated organization name
+             (e.g. "Google" -> google.com);
+          3. only when the file explicitly ties an organization to this contributor
+             AND provides that same contributor's email, the domain of that email
+             (e.g. company "Ericsson Software Technology" + "john@est.tech" -> est.tech).
+          Otherwise null. An email domain is a domain source only for an organization
+          the file has already named for that person — never use it to invent or guess
+          an organization that the file does not state.
         - isUnaffiliated: set true only when the file explicitly marks the person as
           independent / unaffiliated / personal / no employer — not as a fallback when
           the organization is merely missing. When true, set name and domain to null.
