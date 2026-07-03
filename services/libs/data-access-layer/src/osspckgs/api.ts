@@ -595,6 +595,16 @@ export async function listPackagesForApi(
   return { rows, total }
 }
 
+export type SecurityContactConfidence = 'PRIMARY' | 'SECONDARY' | 'FALLBACK' | 'NONE'
+
+export interface SecurityContactRow {
+  channel: string
+  value: string
+  role: string
+  confidence: SecurityContactConfidence
+  score: number
+}
+
 export interface PackageDetailRow {
   id: string
   purl: string
@@ -625,6 +635,12 @@ export interface PackageDetailRow {
   hasSecurityFile: boolean | null
   hasSecurityPolicy: boolean | null
   branchProtectionEnabled: boolean | null
+  pvrEnabled: boolean | null
+  securityPolicyUrl: string | null
+  vulnerabilityReportingUrl: string | null
+  bugBountyUrl: string | null
+  contactsLastRefreshed: Date | null
+  securityContacts: SecurityContactRow[] | null
   // from downloads_last_30d
   downloadsLast30d: string | null
   maintainerCount: number
@@ -637,6 +653,13 @@ export interface PackageDetailRow {
   developmentActivityScore: number | null
   lifecycleLabel: string | null
   signalCoverageHealth: Record<string, unknown> | null
+}
+
+export function securityContactConfidenceBand(score: number): SecurityContactConfidence {
+  if (score >= 0.8) return 'PRIMARY'
+  if (score >= 0.55) return 'SECONDARY'
+  if (score >= 0.3) return 'FALLBACK'
+  return 'NONE'
 }
 
 export interface AdvisoryRow {
@@ -682,6 +705,21 @@ export async function getPackageDetailByPurl(
       r.security_file_enabled AS "hasSecurityFile",
       r.security_policy_enabled AS "hasSecurityPolicy",
       r.branch_protection_enabled AS "branchProtectionEnabled",
+      r.pvr_enabled AS "pvrEnabled",
+      r.security_policy_url AS "securityPolicyUrl",
+      r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
+      r.bug_bounty_url AS "bugBountyUrl",
+      r.contacts_last_refreshed AS "contactsLastRefreshed",
+      (
+        SELECT json_agg(sc ORDER BY sc.score DESC)
+        FROM (
+          SELECT channel, value, role, confidence, score
+          FROM security_contacts
+          WHERE repo_id = pr.repo_id AND deleted_at IS NULL
+          ORDER BY score DESC
+          LIMIT 5
+        ) sc
+      ) AS "securityContacts",
       -- latest 30-day download count
       (
         SELECT d.count::text
