@@ -4,8 +4,6 @@ export type ContactChannel = 'email' | 'github-pvr' | 'url' | 'github-handle' | 
 
 export type ContactRole = 'security-team' | 'maintainer' | 'admin' | 'committer' | 'org-owner'
 
-export type ConfidenceBand = SecurityContactConfidence
-
 export type SourceTier = 'A' | 'B' | 'C' | 'D'
 
 /** Where a single contact value was observed, for auditability and corroboration scoring. */
@@ -31,7 +29,7 @@ export interface RawContact {
 
 export interface ScoredContact extends RawContact {
   score: number
-  confidence: ConfidenceBand
+  confidence: SecurityContactConfidence
 }
 
 export interface RepoPolicies {

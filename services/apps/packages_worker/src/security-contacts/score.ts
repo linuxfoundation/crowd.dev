@@ -1,6 +1,9 @@
-import { securityContactConfidenceBand } from '@crowd/data-access-layer/src/osspckgs/api'
+import {
+  SecurityContactConfidence,
+  securityContactConfidenceBand,
+} from '@crowd/data-access-layer/src/osspckgs/api'
 
-import { ConfidenceBand, ContactChannel, ProvenanceEntry, RawContact, SourceTier } from './types'
+import { ContactChannel, ProvenanceEntry, RawContact, SourceTier } from './types'
 
 const WEIGHTS = { tier: 0.55, channel: 0.2, freshness: 0.15, corroboration: 0.1 }
 
@@ -86,14 +89,10 @@ function corroborationScore(provenance: ProvenanceEntry[]): number {
   return 0
 }
 
-export function confidenceBand(score: number): ConfidenceBand {
-  return securityContactConfidenceBand(score)
-}
-
 export function scoreContact(
   contact: RawContact,
   now: Date = new Date(),
-): { score: number; confidence: ConfidenceBand } {
+): { score: number; confidence: SecurityContactConfidence } {
   const raw =
     WEIGHTS.tier * TIER_SCORE[contact.tier] +
     WEIGHTS.channel * channelQuality(contact.channel, contact.value) +
@@ -102,5 +101,5 @@ export function scoreContact(
     (contact.channel === 'github-handle' ? HANDLE_ONLY_PENALTY : 0)
 
   const score = Math.round(Math.min(1, Math.max(0, raw)) * 1000) / 1000
-  return { score, confidence: confidenceBand(score) }
+  return { score, confidence: securityContactConfidenceBand(score) }
 }
