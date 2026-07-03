@@ -397,6 +397,11 @@ export async function ingestDependencies(opts: {
     let priorStagingRows = 0
     const priorTableRowCounts: Record<string, number> = {}
 
+    // Advance the phase label to 'merging' before the loop. The merge itself sets status='merging'
+    // but never a step, so without this the monitor keeps showing the last phase (creating_lookup for
+    // fill/incremental, drop_indexes for full) alongside the 'merging' status. Set once, not per chunk.
+    await setJobStep({ jobId: exportResult.jobId, step: 'merging' })
+
     for (let chunkIndex = startChunk; chunkIndex < totalChunks; chunkIndex++) {
       const start = chunkIndex * filesPerChunk
       const chunk = fileNames.slice(start, start + filesPerChunk)

@@ -114,7 +114,9 @@ function statusStr(status: string, step?: string | null, stuck?: boolean) {
   const c = stuck ? A.yellow : (STATUS_COLOR[status as keyof typeof STATUS_COLOR] ?? '')
   const i = stuck ? '⚠' : (STATUS_ICON[status as keyof typeof STATUS_ICON] ?? '?')
   const label =
-    step && !['done', 'failed', 'cleaned'].includes(status) ? `${status}·${step}` : status
+    step && step !== status && !['done', 'failed', 'cleaned'].includes(status)
+      ? `${status}·${step}`
+      : status
   return `${c}${i} ${label}${A.reset}`
 }
 
