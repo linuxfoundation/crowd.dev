@@ -1,3 +1,5 @@
+import { securityContactConfidenceBand } from '@crowd/data-access-layer/src/osspckgs/api'
+
 import { ConfidenceBand, ContactChannel, ProvenanceEntry, RawContact, SourceTier } from './types'
 
 const WEIGHTS = { tier: 0.55, channel: 0.2, freshness: 0.15, corroboration: 0.1 }
@@ -85,10 +87,7 @@ function corroborationScore(provenance: ProvenanceEntry[]): number {
 }
 
 export function confidenceBand(score: number): ConfidenceBand {
-  if (score >= 0.8) return 'PRIMARY'
-  if (score >= 0.55) return 'SECONDARY'
-  if (score >= 0.3) return 'FALLBACK'
-  return 'NONE'
+  return securityContactConfidenceBand(score)
 }
 
 export function scoreContact(
