@@ -19,6 +19,13 @@ function isPrerelease(version: string): boolean {
   return version.includes('-')
 }
 
+// NuGet stamps unlisted versions with 1900-01-01T00:00:00Z as a sentinel — treat as absent.
+function parsePublishedDate(published: string | undefined): Date | null {
+  if (!published) return null
+  const date = new Date(published)
+  return !isNaN(date.getTime()) && date.getUTCFullYear() > 1900 ? date : null
+}
+
 const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
 
 function normalizeRepoUrl(url: string | undefined): string | null {
@@ -105,25 +112,15 @@ export function normalizeNuGetPackage(
     status = 'active'
   }
 
-  // NuGet stamps unlisted versions with 1900-01-01T00:00:00Z as a sentinel — exclude them.
   const publishedDates = allEntries
-    .filter((e) => e.published)
-    .map((e) => new Date(e.published as string))
-    .filter((d) => !isNaN(d.getTime()) && d.getUTCFullYear() > 1900)
+    .map((e) => parsePublishedDate(e.published))
+    .filter((d): d is Date => d !== null)
     .sort((a, b) => a.getTime() - b.getTime())
 
   const firstReleaseAt = publishedDates.length > 0 ? publishedDates[0] : null
 
   const latestEntry4Date = latestListedEntry ?? latestEntry
-  const latestReleaseAtRaw = latestEntry4Date?.published
-    ? new Date(latestEntry4Date.published)
-    : null
-  const latestReleaseAt =
-    latestReleaseAtRaw &&
-    !isNaN(latestReleaseAtRaw.getTime()) &&
-    latestReleaseAtRaw.getUTCFullYear() > 1900
-      ? latestReleaseAtRaw
-      : null
+  const latestReleaseAt = parsePublishedDate(latestEntry4Date?.published)
 
   const totalDownloads = searchResult?.totalDownloads ?? 0
 
@@ -144,7 +141,7 @@ export function normalizeNuGetPackage(
     const { licenses: vLicenses } = parseLicense(entry.licenseExpression, entry.licenseUrl)
     return {
       number: ver,
-      publishedAt: entry.published ? new Date(entry.published) : null,
+      publishedAt: parsePublishedDate(entry.published),
       isLatest: ver === latestVersion,
       isPrerelease: isPrerelease(ver),
       isYanked: entry.listed === false,
