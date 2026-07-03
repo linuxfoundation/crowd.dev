@@ -160,20 +160,25 @@ class AffiliationService(BaseService):
         - contributors grouped under the organization they belong to
         - explicit domain/email-pattern rules that the file defines for assigning
           contributors to organizations
+
+        What decides a match is the content, not the file's name or purpose. Any
+        file qualifies when it states an organization per person — including
+        governance or ownership files (e.g. OWNERS, MAINTAINERS) when they carry
+        an explicit organization/employer for each person. Try to capture these.
         </what_to_find>
 
         <what_to_reject>
-        Reject candidates whose preview does not explicitly associate contributors
-        with organizations, including:
-        - Lists of names, emails, or usernames with no stated organization
-        (e.g. AUTHORS, CONTRIBUTORS, CREDITS).
-        - Identity or alias mappings such as .mailmap.
-        - Governance or ownership files that name people but not their employer
-        (e.g. OWNERS, CODEOWNERS, MAINTAINERS without organization information).
-        - Source code, scripts, or configuration files.
+        The deciding factor is whether the file states an organization per person.
+        Reject a candidate when it only identifies people without that, including:
+        - lists of names, emails, or usernames with no organization
+          (e.g. AUTHORS, CONTRIBUTORS, CREDITS)
+        - identity or alias mappings (e.g. .mailmap)
+        - role or ownership files that name people but not their employer
+          (e.g. OWNERS, CODEOWNERS, MAINTAINERS without organization information)
+        - source code, scripts, or configuration
 
-        Email addresses and email domains alone do not make a file a match, unless
-        the file explicitly defines those domains or patterns as affiliation rules.
+        An email address or its domain is not an organization, unless the file
+        explicitly defines that domain or pattern as an affiliation rule.
         </what_to_reject>
 
         <candidates>
