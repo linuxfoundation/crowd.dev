@@ -20,19 +20,32 @@ vi.mock('../../segments', () => ({ findLfSegmentByName: vi.fn() }))
 
 describe('searchOrganizationsByName', () => {
   let mockSelect: ReturnType<typeof vi.fn>
+  let mockSelectOne: ReturnType<typeof vi.fn>
   let mockQx: QueryExecutor
 
   beforeEach(() => {
     mockSelect = vi.fn()
-    mockQx = { select: mockSelect } as unknown as QueryExecutor
+    mockSelectOne = vi.fn()
+    mockQx = { select: mockSelect, selectOne: mockSelectOne } as unknown as QueryExecutor
   })
 
-  it('returns empty rows and zero total when DB returns no rows', async () => {
+  it('returns empty rows and zero total when DB returns no rows at offset 0', async () => {
     mockSelect.mockResolvedValueOnce([])
 
     const result = await searchOrganizationsByName(mockQx, 'acme', { limit: 20, offset: 0 })
 
     expect(result).toEqual({ rows: [], total: 0 })
+    expect(mockSelectOne).not.toHaveBeenCalled()
+  })
+
+  it('runs a COUNT fallback when the page is empty but offset > 0', async () => {
+    mockSelect.mockResolvedValueOnce([])
+    mockSelectOne.mockResolvedValueOnce({ total: '42' })
+
+    const result = await searchOrganizationsByName(mockQx, 'acme', { limit: 20, offset: 100 })
+
+    expect(mockSelectOne).toHaveBeenCalledOnce()
+    expect(result).toEqual({ rows: [], total: 42 })
   })
 
   it('strips the internal total column from returned rows', async () => {
@@ -64,8 +77,18 @@ describe('searchOrganizationsByName', () => {
     expect(params.pattern).toBe('%linux%')
   })
 
+  it('escapes % and _ wildcards in the user input', async () => {
+    mockSelect.mockResolvedValueOnce([])
+
+    await searchOrganizationsByName(mockQx, '50%_off', { limit: 10, offset: 0 })
+
+    const [, params] = mockSelect.mock.calls[0]
+    expect(params.pattern).toBe('%50\\%\\_off%')
+  })
+
   it('passes limit and offset to the query', async () => {
     mockSelect.mockResolvedValueOnce([])
+    mockSelectOne.mockResolvedValueOnce({ total: '0' })
 
     await searchOrganizationsByName(mockQx, 'linux', { limit: 5, offset: 40 })
 

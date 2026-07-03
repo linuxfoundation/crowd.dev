@@ -24,9 +24,11 @@ const MAX_PAGE_SIZE = 100
 const querySchema = z.union([
   z.object({
     domain: z.string().trim().min(1),
+    name: z.undefined().optional(),
   }),
   z.object({
     name: z.string().trim().min(1),
+    domain: z.undefined().optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
   }),
@@ -58,7 +60,12 @@ export async function getOrganization(req: Request, res: Response): Promise<void
     const org = await findOrgById(qx, organizationId, [
       OrganizationField.ID,
       OrganizationField.DISPLAY_NAME,
+      OrganizationField.DELETED_AT,
     ])
+
+    if (!org || org.deletedAt) {
+      throw new NotFoundError('Organization not found')
+    }
 
     const attributes = await findOrgAttributes(qx, organizationId)
     const logo = attributes.find((a) => a.name === 'logo')?.value

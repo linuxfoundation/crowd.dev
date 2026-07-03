@@ -161,6 +161,10 @@ export async function searchOrganizationsByName(
   options: { limit: number; offset: number },
 ): Promise<{ rows: Omit<IOrganizationSearchResult, 'total'>[]; total: number }> {
   const { limit, offset } = options
+  // Escape LIKE wildcards in user input so callers can't broaden the match.
+  const escaped = name.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+  const pattern = `%${escaped}%`
+
   const rows: IOrganizationSearchResult[] = await qx.select(
     `
       SELECT
@@ -168,18 +172,37 @@ export async function searchOrganizationsByName(
         o."displayName",
         COUNT(*) OVER() AS total
       FROM organizations o
-      WHERE o."displayName" ILIKE $(pattern)
+      WHERE o."displayName" ILIKE $(pattern) ESCAPE '\\'
         AND o."deletedAt" IS NULL
-      ORDER BY o."displayName"
+      ORDER BY o."displayName", o.id
       LIMIT $(limit) OFFSET $(offset)
     `,
-    { pattern: `%${name}%`, limit, offset },
+    { pattern, limit, offset },
   )
-  const total = rows.length > 0 ? Number(rows[0].total) : 0
-  return {
-    rows: rows.map((r) => ({ id: r.id, displayName: r.displayName })),
-    total,
+
+  if (rows.length > 0) {
+    return {
+      rows: rows.map((r) => ({ id: r.id, displayName: r.displayName })),
+      total: Number(rows[0].total),
+    }
   }
+
+  // Empty page. If offset > 0, matches may exist beyond it — run a real COUNT.
+  if (offset === 0) {
+    return { rows: [], total: 0 }
+  }
+
+  const countRow = await qx.selectOne(
+    `
+      SELECT COUNT(*)::text AS total
+      FROM organizations o
+      WHERE o."displayName" ILIKE $(pattern) ESCAPE '\\'
+        AND o."deletedAt" IS NULL
+    `,
+    { pattern },
+  )
+
+  return { rows: [], total: Number(countRow.total) }
 }
 
 export async function findOrgByVerifiedDomain(
