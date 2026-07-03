@@ -16,30 +16,36 @@ const log = getServiceChildLogger('go')
 const PROXY_SOURCE = 'go-proxy'
 const PKGGODEV_SOURCE = 'pkg-go-dev'
 
-// Critical packages sort first so a batch is filled from them before any non-critical
-// package is considered — if the upstream registry starts rate-limiting mid-run, it's the
-// non-critical tail of the batch that gets skipped, not the critical packages.
+// No purl cursor: is_critical DESC + last_synced_at ASC means every call surfaces the
+// highest-priority not-yet-synced-this-run rows first, and rows we just synced sink to the
+// back (last_synced_at = NOW()) so the next call naturally picks up where this one left off.
+// runStartedAt bounds the run — once every row has last_synced_at >= runStartedAt, this
+// returns empty and the workflow ends for the day.
 async function getGoBatch(
   qx: QueryExecutor,
-  afterPurl: string,
+  runStartedAt: string,
   batchSize: number,
 ): Promise<Array<{ purl: string; name: string }>> {
   return qx.select(
     `SELECT purl, name FROM packages
-     WHERE ecosystem = 'go' AND purl > $(after)
+     WHERE ecosystem = 'go' AND (last_synced_at IS NULL OR last_synced_at < $(runStartedAt))
      ORDER BY is_critical DESC, last_synced_at ASC NULLS FIRST, purl ASC
      LIMIT $(limit)`,
-    { after: afterPurl, limit: batchSize },
+    { runStartedAt, limit: batchSize },
   )
 }
 
+export async function getGoRunStartedAt(): Promise<string> {
+  return new Date().toISOString()
+}
+
 export async function enrichGoVersionsBatch(
-  afterPurl: string,
+  runStartedAt: string,
   batchSize: number,
-): Promise<string | null> {
+): Promise<number> {
   const qx = await getPackagesDb()
-  const rows = await getGoBatch(qx, afterPurl, batchSize)
-  if (rows.length === 0) return null
+  const rows = await getGoBatch(qx, runStartedAt, batchSize)
+  if (rows.length === 0) return 0
 
   const { fetchTimeoutMs, proxyConcurrency } = getGoConfig()
 
@@ -51,6 +57,12 @@ export async function enrichGoVersionsBatch(
         { purl: row.purl, name: row.name, kind: result.kind, statusCode: result.statusCode },
         'go proxy fetch failed — skipping package',
       )
+      // Touch last_synced_at even on failure so this row sinks behind unprocessed ones and
+      // isn't re-selected into every subsequent batch for the rest of this run. It'll be
+      // retried on tomorrow's run.
+      await qx.result(`UPDATE packages SET last_synced_at = NOW() WHERE purl = $(purl)`, {
+        purl: row.purl,
+      })
       return
     }
     const changed = await qx.selectOne(
@@ -91,16 +103,16 @@ export async function enrichGoVersionsBatch(
   }
 
   log.info({ count: rows.length, concurrency: proxyConcurrency }, 'Enriched go versions batch')
-  return rows[rows.length - 1].purl
+  return rows.length
 }
 
 export async function enrichGoStatusBatch(
-  afterPurl: string,
+  runStartedAt: string,
   batchSize: number,
-): Promise<string | null> {
+): Promise<number> {
   const qx = await getPackagesDb()
-  const rows = await getGoBatch(qx, afterPurl, batchSize)
-  if (rows.length === 0) return null
+  const rows = await getGoBatch(qx, runStartedAt, batchSize)
+  if (rows.length === 0) return 0
 
   const { fetchTimeoutMs } = getGoConfig()
   for (const row of rows) {
@@ -112,6 +124,12 @@ export async function enrichGoStatusBatch(
         { purl: row.purl, name: row.name, kind: result.kind, statusCode: result.statusCode },
         'pkg.go.dev fetch failed — skipping package',
       )
+      // Touch last_synced_at even on failure so this row sinks behind unprocessed ones and
+      // isn't re-selected into every subsequent batch for the rest of this run. It'll be
+      // retried on tomorrow's run.
+      await qx.result(`UPDATE packages SET last_synced_at = NOW() WHERE purl = $(purl)`, {
+        purl: row.purl,
+      })
       continue
     }
     const changed = await qx.selectOne(
@@ -139,5 +157,5 @@ export async function enrichGoStatusBatch(
   }
 
   log.info({ count: rows.length }, 'Enriched go status batch')
-  return rows[rows.length - 1].purl
+  return rows.length
 }

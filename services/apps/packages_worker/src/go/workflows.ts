@@ -16,25 +16,23 @@ const BATCH = 100
 const ROUNDS_PER_RUN = 200
 
 interface ScanState {
-  cursor: string
+  runStartedAt: string
 }
 
-export async function enrichGoVersions(state: ScanState = { cursor: '' }): Promise<void> {
-  let { cursor } = state
+export async function enrichGoVersions(state?: ScanState): Promise<void> {
+  const runStartedAt = state?.runStartedAt ?? (await acts.getGoRunStartedAt())
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const next = await acts.enrichGoVersionsBatch(cursor, BATCH)
-    if (next === null) return
-    cursor = next
+    const count = await acts.enrichGoVersionsBatch(runStartedAt, BATCH)
+    if (count === 0) return
   }
-  await continueAsNew<typeof enrichGoVersions>({ cursor })
+  await continueAsNew<typeof enrichGoVersions>({ runStartedAt })
 }
 
-export async function enrichGoStatus(state: ScanState = { cursor: '' }): Promise<void> {
-  let { cursor } = state
+export async function enrichGoStatus(state?: ScanState): Promise<void> {
+  const runStartedAt = state?.runStartedAt ?? (await acts.getGoRunStartedAt())
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const next = await acts.enrichGoStatusBatch(cursor, BATCH)
-    if (next === null) return
-    cursor = next
+    const count = await acts.enrichGoStatusBatch(runStartedAt, BATCH)
+    if (count === 0) return
   }
-  await continueAsNew<typeof enrichGoStatus>({ cursor })
+  await continueAsNew<typeof enrichGoStatus>({ runStartedAt })
 }
