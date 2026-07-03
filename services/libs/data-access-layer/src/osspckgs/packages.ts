@@ -1,6 +1,6 @@
 import { QueryExecutor } from '../queryExecutor'
 
-import { IDbPackageUniverse, IDbPackageUpsert } from './types'
+import { IDbPackageUniverse, IDbPackageUpsert, IDbSonatypePopularityUpsert } from './types'
 
 export async function findPackageIdsByPurl(
   qx: QueryExecutor,
@@ -240,4 +240,64 @@ export async function upsertPackage(
     },
   )
   return { id: row.id as number, changedFields: row.changed_fields as string[] }
+}
+
+// ─── sonatype popularity upsert ────────────────────────────────────────────────
+
+/**
+ * Upserts the Sonatype popularity signal for a Maven component, keyed by the
+ * composite identity (ecosystem, namespace, name) — not purl — so it is immune
+ * to purl format and matches the granularity of the unique index.
+ *
+ * Insert-if-missing: Sonatype's list is "what industry actually uses", so some
+ * rows may not exist in `packages` yet. Those are inserted with
+ * ingestion_source='sonatype' and only the identity + sonatype_* columns; the
+ * rest is backfilled later by deps.dev / Maven enrichment.
+ *
+ * On conflict only the sonatype_* fields are updated — ingestion_source is
+ * deliberately preserved so we never clobber how an existing row was ingested.
+ *
+ * Returns whether the row was inserted (true) or updated (false).
+ */
+export async function upsertSonatypePopularity(
+  qx: QueryExecutor,
+  item: IDbSonatypePopularityUpsert,
+): Promise<{ id: number; inserted: boolean }> {
+  const row = await qx.selectOne(
+    `
+    WITH existing AS (
+      -- Evaluated against the pre-INSERT snapshot, so it reflects whether the row
+      -- already existed. More robust than the xmax=0 trick for insert-vs-update.
+      SELECT id FROM packages
+       WHERE ecosystem = $(ecosystem)
+         AND COALESCE(namespace, '') = COALESCE($(namespace), '')
+         AND name = $(name)
+    ),
+    ins AS (
+      INSERT INTO packages (
+        purl, ecosystem, namespace, name,
+        sonatype_popularity_score, sonatype_rank, sonatype_tier,
+        sonatype_snapshot_at, sonatype_updated_at,
+        ingestion_source
+      ) VALUES (
+        $(purl), $(ecosystem), $(namespace), $(name),
+        $(sonatypePopularityScore), $(sonatypeRank), $(sonatypeTier),
+        $(sonatypeSnapshotAt), NOW(),
+        'sonatype'
+      )
+      ON CONFLICT (ecosystem, COALESCE(namespace, ''), name) DO UPDATE SET
+        sonatype_popularity_score = EXCLUDED.sonatype_popularity_score,
+        sonatype_rank             = EXCLUDED.sonatype_rank,
+        sonatype_tier             = EXCLUDED.sonatype_tier,
+        sonatype_snapshot_at      = EXCLUDED.sonatype_snapshot_at,
+        sonatype_updated_at       = NOW()
+        -- ingestion_source intentionally left untouched on update
+      RETURNING id
+    )
+    SELECT ins.id, NOT EXISTS (SELECT 1 FROM existing) AS inserted
+      FROM ins
+    `,
+    item,
+  )
+  return { id: row.id as number, inserted: row.inserted as boolean }
 }
