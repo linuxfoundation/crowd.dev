@@ -180,7 +180,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       pccSlug: leafSlug,
       name,
       status: mappedStatus,
-      maturity: trimOrNull(firstRaw.PROJECT_MATURITY_LEVEL),
+      maturity: trimOrNull(firstRaw.PROJECT_ADMIN_CATEGORY),
       description: trimOrNull(firstRaw.DESCRIPTION),
       logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
       segmentIdFromSnowflake: trimOrNull(firstRaw.SEGMENT_ID),
