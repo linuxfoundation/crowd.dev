@@ -87,10 +87,12 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           { jobKind, exportName, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
           'exportName match — skipping BQ, loading from named export',
         )
-        // A --fill-constraints run reusing an existing export must still stamp meta:fill on the
-        // reused row, else a later --resume-job reads fill=false and reverts the merge to
-        // ON CONFLICT DO NOTHING — silently skipping the version_constraint backfill.
-        if (isFill) await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': 1 })
+        // The reusing run drives the chunk merge on this same job row, so meta:fill must reflect
+        // THIS run's intent — write it both ways. Setting it (fill run) stops a later --resume-job
+        // reverting to ON CONFLICT DO NOTHING and skipping the version_constraint backfill; clearing
+        // it (non-fill run reusing a row an earlier fill run set) stops resume forcing an unintended
+        // upsert. Absent and 0 both read back as fill=false (COALESCE in getIngestJobForResume).
+        await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': isFill ? 1 : 0 })
         return {
           gcsPrefix: prior.gcsPrefix,
           rowCount: prior.rowCountBq,
@@ -148,9 +150,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           { jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
           'reuseExports=true — skipping BQ, loading from prior export',
         )
-        // See named-export path above: persist meta:fill so a later --resume-job keeps the
-        // fill-constraints merge instead of reverting to ON CONFLICT DO NOTHING.
-        if (isFill) await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': 1 })
+        // See named-export path above: write THIS run's fill intent both ways so a later
+        // --resume-job matches the most recent run instead of a stale meta value.
+        await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': isFill ? 1 : 0 })
         return {
           gcsPrefix: prior.gcsPrefix,
           rowCount: prior.rowCountBq,
@@ -179,9 +181,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
         { jobKind, jobId: existing.id, gcsPrefix },
         'GCS files already exist — reusing export',
       )
-      // Same-runId reuse (Temporal retry): the export row already has meta:fill from its own
-      // 'exporting' write, but re-stamp defensively so the fill flag can never be lost on reuse.
-      if (isFill) await mergeJobTableRowCounts(qx, existing.id, { 'meta:fill': 1 })
+      // Same-runId reuse (Temporal retry): re-stamp THIS run's fill intent both ways so the flag
+      // always matches the most recent run and can never be lost or left stale on reuse.
+      await mergeJobTableRowCounts(qx, existing.id, { 'meta:fill': isFill ? 1 : 0 })
       return { gcsPrefix, rowCount: existing.rowCountBq, bqBytesBilled: 0, jobId: existing.id }
     }
   }
