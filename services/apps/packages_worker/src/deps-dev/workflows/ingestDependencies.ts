@@ -285,9 +285,10 @@ export async function ingestDependencies(opts: {
       syncMode: fullScan ? 'full' : opts.syncMode,
       snapshotAt: opts.today,
       // Full/fill scan the *Latest views (everything) → 25000. Incremental is a snapshot edge-diff
-      // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements);
-      // measured ~4.1TB for Option A. 10000 leaves ~2.4x headroom and still trips a runaway full-table
-      // scan. Overridable via BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
+      // (today vs watermark partitions of DependencyGraphEdges + GoRequirements + NuGetRequirements +
+      // RubyGemsRequirements); measured ~4.1TB for Option A (pre-RubyGems, which adds a small increment).
+      // 10000 leaves ~2.4x headroom and still trips a runaway full-table scan. Overridable via
+      // BQ_DATASET_INGEST_PACKAGE_DEPENDENCIES[_INCREMENTAL]_MAX_BQ_GB (see README).
       maxBytesGb: fullScan ? 25000 : 10000,
       reuseExports: opts.reuseExports,
       exportName: opts.exportName,
