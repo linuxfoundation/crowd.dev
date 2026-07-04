@@ -197,6 +197,7 @@ export async function ingestDependencies(opts: {
   let exportResult: { jobId: number; gcsPrefix: string; rowCount: number }
   // Files already loaded into staging by the prior (resumed) job, and rows it had already merged.
   let resumeProgressDone = 0
+  let resumeProgressTotal = 0
   let resumeRowCountPg = 0
   if (opts.resumeJobId != null) {
     // Reuse the prior job's exact export by id — bypasses reuse-by-kind (which excludes 'failed'
@@ -234,6 +235,7 @@ export async function ingestDependencies(opts: {
     }
     exportResult = { jobId: prior.jobId, gcsPrefix: prior.gcsPrefix, rowCount: 0 }
     resumeProgressDone = prior.progressDone
+    resumeProgressTotal = prior.progressTotal
     resumeRowCountPg = prior.rowCountPg
     // Reprocess the export with its ORIGINAL settings, not the current CLI opts. A narrower
     // ecosystems list would drop versions-lookup rows (deps silently unmerged); the wrong fill flag
@@ -309,6 +311,20 @@ export async function ingestDependencies(opts: {
     throw ApplicationFailure.nonRetryable(
       `resume job ${opts.resumeJobId}: no parquet files at ${exportResult.gcsPrefix} ` +
         `(export expired or deleted) — run a fresh export instead of --resume-job`,
+      'RESUME_INVALID',
+    )
+  }
+
+  // The stored progress:done maps to chunk boundaries computed from the file count the prior run
+  // saw (progress:total). If the re-listed count differs (objects deleted, prefix re-exported), the
+  // boundaries no longer align: startChunk can clamp past the un-merged files and the loop marks the
+  // job 'done' having skipped them. Fail loudly instead. Only when the prior run actually recorded
+  // progress (>0) — a fresh 'exported' resume has progress:total 0 and restarts from chunk 0 safely.
+  if (resume && resumeProgressTotal > 0 && totalFiles !== resumeProgressTotal) {
+    throw ApplicationFailure.nonRetryable(
+      `resume job ${opts.resumeJobId}: parquet file count changed since the prior run ` +
+        `(recorded ${resumeProgressTotal}, now ${totalFiles} at ${exportResult.gcsPrefix}) — ` +
+        `the export was modified or re-exported; run a fresh export instead of --resume-job`,
       'RESUME_INVALID',
     )
   }
