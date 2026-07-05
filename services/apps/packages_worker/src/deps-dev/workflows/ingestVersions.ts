@@ -21,7 +21,10 @@ const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
 })
 
 const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
-  startToCloseTimeout: '1 hour',
+  // A single ~1M-row chunk merge into the live-index/live-constraint versions table can run long;
+  // 4h matches ingestDependencies and gives headroom over the previously-observed 2h overrun. The
+  // merge is non-retryable (maximumAttempts: 1), so too short a timeout fails the whole ingest.
+  startToCloseTimeout: '4 hours',
   retry: { maximumAttempts: 1 },
 })
 
