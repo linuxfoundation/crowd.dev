@@ -765,7 +765,7 @@ export async function getObsoleteSourcesOfMember(
 }
 
 export async function refreshMemberEnrichmentMaterializedView(mvName: string): Promise<void> {
-  await refreshMaterializedView(svc.postgres.writer.connection(), mvName)
+  await refreshMaterializedView(svc.postgres.writer.connection(), mvName, true)
 }
 
 interface IWorkExperienceChanges {

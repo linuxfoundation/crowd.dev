@@ -86,6 +86,57 @@ export async function findLatestExportedJobByKind(
     : null
 }
 
+// Loads the fields needed to resume a partially-merged chunked job by id: the exact GCS export
+// path (so the same parquet files — and therefore the same chunk boundaries — are re-listed) plus
+// the file-level load progress and rows-merged-so-far. progressDone/progressTotal come from the
+// table_row_counts JSONB written by updateLoadingProgress. Returns null if the job id is unknown.
+export async function getIngestJobForResume(
+  qx: QueryExecutor,
+  id: number,
+): Promise<{
+  id: number
+  jobKind: string
+  status: string
+  syncMode: string
+  gcsPrefix: string | null
+  progressDone: number
+  progressTotal: number
+  rowCountPg: number
+  // Original export parameters, so resume reprocesses the export with the SAME settings rather than
+  // whatever the current CLI opts happen to be: ecosystems (drives the versions-lookup filter) and
+  // fill (drives the merge SQL — fill upserts version_constraint, non-fill is ON CONFLICT DO NOTHING).
+  // ecosystems is null for jobs exported before the meta key existed; fill defaults to false.
+  ecosystems: string[] | null
+  fill: boolean
+} | null> {
+  const row = await qx.selectOneOrNone(
+    `
+    SELECT id, job_kind, status, sync_mode, gcs_prefix, row_count_pg,
+           COALESCE((table_row_counts->>'progress:done')::int, 0)  AS progress_done,
+           COALESCE((table_row_counts->>'progress:total')::int, 0) AS progress_total,
+           table_row_counts->'meta:ecosystems'                     AS ecosystems,
+           COALESCE((table_row_counts->>'meta:fill')::bool, false)  AS fill
+    FROM osspckgs_ingest_jobs
+    WHERE id = $(id)
+    `,
+    { id },
+  )
+  return row
+    ? {
+        id: Number(row.id),
+        jobKind: row.job_kind as string,
+        status: row.status as string,
+        syncMode: row.sync_mode as string,
+        gcsPrefix: (row.gcs_prefix as string | null) ?? null,
+        progressDone: Number(row.progress_done ?? 0),
+        progressTotal: Number(row.progress_total ?? 0),
+        rowCountPg: Number(row.row_count_pg ?? 0),
+        ecosystems: (row.ecosystems as string[] | null) ?? null,
+        fill: Boolean(row.fill),
+      }
+    : null
+}
+
 // Returns an existing exported job for the given GCS prefix so callers can
 // skip re-running the BQ export when retrying a failed workflow.
 export async function findExportedJobByGcsPrefix(

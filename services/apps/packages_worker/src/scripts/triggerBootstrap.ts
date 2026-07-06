@@ -21,8 +21,8 @@ Usage: trigger-bootstrap [full|incremental] [ECOSYSTEMS] [options]
 
 Arguments:
   full | incremental     Sync mode (default: full)
-  ECOSYSTEMS             Comma-separated list: CARGO,NPM,MAVEN,GO,PYPI,NUGET
-                         Omit for all 6 ecosystems
+  ECOSYSTEMS             Comma-separated list: CARGO,NPM,MAVEN,GO,PYPI,NUGET,RUBYGEMS
+                         Omit for all 7 ecosystems
 
 Options:
   --kinds <k1,k2>        Run only specific job kinds (default: all). Comma-separated:
@@ -45,6 +45,11 @@ Options:
                          rows where it is currently NULL. Use after a --deps-table-b run
                          to backfill missing version_constraint values without re-inserting
                          rows. Only affects package_dependencies.
+  --resume-job <id>      Resume a partially-merged package_dependencies job by id. Skips BQ,
+                         reuses that job's exact parquet export, and restarts the chunk loop
+                         where its staging load left off (idempotent ON CONFLICT overlap).
+                         Requires: --kinds package_dependencies. Works in any mode (all deps
+                         merges are idempotent).
   --help                 Show this help
 
 Examples:
@@ -59,6 +64,7 @@ Examples:
   pnpm trigger-bootstrap:local full --kinds dependent_counts
   pnpm trigger-bootstrap:local full --kinds packages,versions
   pnpm trigger-bootstrap:local full --kinds dependent_counts --snapshot-date 2026-06-04
+  pnpm trigger-bootstrap:local incremental --kinds package_dependencies --resume-job 194
 `
 
 async function main(): Promise<void> {
@@ -97,6 +103,23 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
+  const resumeJobIdx = args.indexOf('--resume-job')
+  if (
+    resumeJobIdx !== -1 &&
+    (resumeJobIdx + 1 >= args.length || args[resumeJobIdx + 1].startsWith('--'))
+  ) {
+    console.error('--resume-job requires a value (numeric job id)')
+    process.exit(1)
+  }
+  let resumeJobId: number | undefined
+  if (resumeJobIdx !== -1) {
+    resumeJobId = Number(args[resumeJobIdx + 1])
+    if (!Number.isInteger(resumeJobId) || resumeJobId <= 0) {
+      console.error(`--resume-job must be a positive integer, got: ${args[resumeJobIdx + 1]}`)
+      process.exit(1)
+    }
+  }
+
   const kindsIdx = args.indexOf('--kinds')
   if (kindsIdx !== -1 && (kindsIdx + 1 >= args.length || args[kindsIdx + 1].startsWith('--'))) {
     console.error('--kinds requires a value')
@@ -115,7 +138,13 @@ async function main(): Promise<void> {
   const positional: string[] = []
   for (let i = 0; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      if (args[i] === '--export-name' || args[i] === '--kinds' || args[i] === '--snapshot-date') i++ // skip value
+      if (
+        args[i] === '--export-name' ||
+        args[i] === '--kinds' ||
+        args[i] === '--snapshot-date' ||
+        args[i] === '--resume-job'
+      )
+        i++ // skip value
       continue
     }
     positional.push(args[i])
@@ -131,13 +160,23 @@ async function main(): Promise<void> {
     ? positional[1].split(',').map((e) => e.trim().toUpperCase())
     : undefined
 
-  const VALID_ECOSYSTEMS = new Set(['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO'])
+  const VALID_ECOSYSTEMS = new Set(['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO', 'RUBYGEMS'])
   if (ecosystems) {
     const invalid = ecosystems.filter((e) => !VALID_ECOSYSTEMS.has(e))
     if (invalid.length > 0) {
       console.error(
         `Unknown ecosystem(s): ${invalid.join(', ')}. Valid: ${[...VALID_ECOSYSTEMS].join(', ')}`,
       )
+      process.exit(1)
+    }
+  }
+
+  // Resume is deps-only: it re-runs already-committed chunks. Safe in every mode because all deps
+  // merges are now idempotent — full and incremental use ON CONFLICT DO NOTHING, --fill-constraints
+  // uses ON CONFLICT DO UPDATE. (Full became idempotent when the drop/rebuild-index step was removed.)
+  if (resumeJobId !== undefined) {
+    if (!kinds || kinds.length !== 1 || kinds[0] !== 'package_dependencies') {
+      console.error('--resume-job requires: --kinds package_dependencies (resume is deps-only)')
       process.exit(1)
     }
   }
@@ -153,7 +192,8 @@ async function main(): Promise<void> {
   const ecosystemSuffix = ecosystems ? `-${ecosystems.join('-').toLowerCase()}` : ''
   const reuseSuffix = reuseExports ? '-reuse' : ''
   const tableSuffix = depsTableOption === 'B' ? '-depsB' : ''
-  const workflowId = `bootstrap-osspckgs-${mode}${ecosystemSuffix}${reuseSuffix}${tableSuffix}-${Date.now()}`
+  const resumeSuffix = resumeJobId !== undefined ? `-resume${resumeJobId}` : ''
+  const workflowId = `bootstrap-osspckgs-${mode}${ecosystemSuffix}${reuseSuffix}${tableSuffix}${resumeSuffix}-${Date.now()}`
   const handle = await client.workflow.start(bootstrapOsspckgs, {
     taskQueue: 'bq-dataset-ingest',
     workflowId,
@@ -167,6 +207,7 @@ async function main(): Promise<void> {
         exportName,
         snapshotDate,
         fillConstraints,
+        resumeJobId,
       },
     ],
   })
@@ -178,6 +219,7 @@ async function main(): Promise<void> {
     depsTableOption === 'B' ? '--deps-table-b' : '',
     exportName ? `--export-name ${exportName}` : '',
     fillConstraints ? '--fill-constraints' : '',
+    resumeJobId !== undefined ? `--resume-job ${resumeJobId}` : '',
   ].filter(Boolean)
   console.log(
     `Started workflow ${handle.workflowId}${ecosystems ? ` (ecosystems: ${ecosystems.join(', ')})` : ''}${flags.length ? ` [${flags.join(' ')}]` : ''}`,
