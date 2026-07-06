@@ -17,7 +17,7 @@ import type { MemberOrganizationDateRange, MemberOrganizationUpdate } from '@cro
 
 import { ok } from '@/utils/api'
 import {
-  getOverlappingEmailDomainMemberOrganizations,
+  getOverlappingGroupedMemberOrganizations,
   groupMemberOrganizations,
   toMemberWorkExperience,
 } from '@/utils/mapper'
@@ -88,7 +88,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
 
         const overlapBasis = { ...existing, ...update }
 
-        const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+        const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
           memberOrgs,
           overlapBasis,
         )
@@ -106,8 +106,8 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           groupedUpdate.verifiedBy = data.verifiedBy
         }
 
-        if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
-          for (const overlappingRow of overlappingEmailDomainRows.filter(
+        if (overlappingGroupedRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
+          for (const overlappingRow of overlappingGroupedRows.filter(
             (row): row is typeof row & { id: string } => !!row.id,
           )) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, groupedUpdate)
