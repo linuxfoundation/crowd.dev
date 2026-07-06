@@ -815,8 +815,11 @@ function prepareWorkExperiences(
   newVersion: IMemberEnrichmentDataNormalizedOrganization[],
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): IWorkExperienceChanges {
-  // we delete all the work experiences that were not manually created
-  const toDelete = oldVersion.filter((c) => c.source !== OrganizationSource.UI)
+  // we delete all the work experiences that were not manually created or from the project registry.
+  const toDelete = oldVersion.filter(
+    (c) =>
+      c.source !== OrganizationSource.UI && c.source !== OrganizationSource.PROJECT_REGISTRY,
+  )
 
   const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

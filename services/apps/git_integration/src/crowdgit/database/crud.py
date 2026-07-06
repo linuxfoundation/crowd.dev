@@ -726,10 +726,9 @@ async def fetch_member_organizations(member_ids: list[str]) -> list[dict]:
 
     return await query(
         """
-        SELECT "memberId", "organizationId", "dateStart", "dateEnd", source
+        SELECT "memberId", "organizationId", "dateStart", "dateEnd", source, "deletedAt"
         FROM "memberOrganizations"
         WHERE "memberId" = ANY($1::uuid[])
-            AND "deletedAt" IS NULL
         """,
         (member_ids,),
     )
@@ -742,11 +741,10 @@ async def fetch_segment_affiliations(member_ids: list[str], segment_id: str) -> 
 
     return await query(
         """
-        SELECT "memberId", "segmentId", "organizationId", "dateStart", "dateEnd", verified
+        SELECT "memberId", "segmentId", "organizationId", "dateStart", "dateEnd", verified, "deletedAt"
         FROM "memberSegmentAffiliations"
         WHERE "memberId" = ANY($1::uuid[])
             AND "segmentId" = $2::uuid
-            AND "deletedAt" IS NULL
             AND "organizationId" IS NOT NULL
         """,
         (member_ids, segment_id),

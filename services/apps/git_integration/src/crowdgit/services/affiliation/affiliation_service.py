@@ -617,6 +617,44 @@ class AffiliationService(BaseService):
                 return True
         return False
 
+    def is_blocked_by_deleted_row(
+        self,
+        deleted_rows: list[dict],
+        organization_id: str,
+        date_start: date | None,
+        date_end: date | None,
+    ) -> bool:
+        """True when a soft-deleted stint should not be re-created from the file."""
+        incoming_undated = date_start is None and date_end is None
+        for row in deleted_rows:
+            if str(row["organizationId"]) != organization_id:
+                continue
+
+            existing_start = row.get("dateStart")
+            existing_end = row.get("dateEnd")
+            if isinstance(existing_start, datetime):
+                existing_start = existing_start.date()
+            if isinstance(existing_end, datetime):
+                existing_end = existing_end.date()
+
+            if incoming_undated:
+                if existing_start is None and existing_end is None:
+                    return True
+                if self.is_undated_or_open_ended(existing_start, existing_end):
+                    return True
+                continue
+
+            if existing_start is None and existing_end is None:
+                continue
+
+            min_date = date.min
+            max_date = date.max
+            if (existing_start or min_date) <= (date_end or max_date) and (
+                existing_end or max_date
+            ) >= (date_start or min_date):
+                return True
+        return False
+
     @staticmethod
     def affiliation_stint_key(
         contributor: AffiliationContributor,
@@ -801,16 +839,30 @@ class AffiliationService(BaseService):
             return
 
         member_ids_to_fetch = list({member_id for member_id, _, _ in resolved_stints})
-        member_organizations = await fetch_member_organizations(member_ids_to_fetch)
-        segment_affiliations = await fetch_segment_affiliations(member_ids_to_fetch, segment_id)
+        all_member_organizations = await fetch_member_organizations(member_ids_to_fetch)
+        all_segment_affiliations = await fetch_segment_affiliations(
+            member_ids_to_fetch, segment_id
+        )
 
         member_organizations_by_member: dict[str, list[dict]] = {}
-        for row in member_organizations:
-            member_organizations_by_member.setdefault(str(row["memberId"]), []).append(row)
+        deleted_member_organizations_by_member: dict[str, list[dict]] = {}
+        for row in all_member_organizations:
+            member_id = str(row["memberId"])
+            if row.get("deletedAt"):
+                if row.get("source") != "project-registry":
+                    continue
+                deleted_member_organizations_by_member.setdefault(member_id, []).append(row)
+            else:
+                member_organizations_by_member.setdefault(member_id, []).append(row)
 
         segment_affiliations_by_member: dict[str, list[dict]] = {}
-        for row in segment_affiliations:
-            segment_affiliations_by_member.setdefault(str(row["memberId"]), []).append(row)
+        deleted_segment_affiliations_by_member: dict[str, list[dict]] = {}
+        for row in all_segment_affiliations:
+            member_id = str(row["memberId"])
+            if row.get("deletedAt"):
+                deleted_segment_affiliations_by_member.setdefault(member_id, []).append(row)
+            else:
+                segment_affiliations_by_member.setdefault(member_id, []).append(row)
 
         mo_inserts: list[dict] = []
         msa_inserts: list[dict] = []
@@ -818,10 +870,16 @@ class AffiliationService(BaseService):
         for member_id, organization_id, organization in resolved_stints:
             existing_mos = member_organizations_by_member.get(member_id, [])
             existing_msas = segment_affiliations_by_member.get(member_id, [])
+            deleted_mos = deleted_member_organizations_by_member.get(member_id, [])
+            deleted_msas = deleted_segment_affiliations_by_member.get(member_id, [])
             date_start = organization.date_start
             date_end = organization.date_end
 
-            if not self.has_existing_stint(existing_mos, organization_id, date_start, date_end):
+            if not self.has_existing_stint(
+                existing_mos, organization_id, date_start, date_end
+            ) and not self.is_blocked_by_deleted_row(
+                deleted_mos, organization_id, date_start, date_end
+            ):
                 mo_inserts.append(
                     {
                         "member_id": member_id,
@@ -832,7 +890,11 @@ class AffiliationService(BaseService):
                     }
                 )
 
-            if not self.has_existing_stint(existing_msas, organization_id, date_start, date_end):
+            if not self.has_existing_stint(
+                existing_msas, organization_id, date_start, date_end
+            ) and not self.is_blocked_by_deleted_row(
+                deleted_msas, organization_id, date_start, date_end
+            ):
                 msa_inserts.append(
                     {
                         "member_id": member_id,
