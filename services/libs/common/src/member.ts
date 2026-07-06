@@ -91,9 +91,10 @@ export const calculateReach = (oldReach: any, newReach: any): { total: number } 
  */
 export function getMemberOrganizationSourceRank(source: string | null | undefined): number {
   if (source === OrganizationSource.UI) return 0
-  if (source === OrganizationSource.EMAIL_DOMAIN) return 1
-  if (source?.startsWith('enrichment-')) return 2
-  return 3
+  if (source === OrganizationSource.PROJECT_REGISTRY) return 1
+  if (source === OrganizationSource.EMAIL_DOMAIN) return 2
+  if (source?.startsWith('enrichment-')) return 3
+  return 4
 }
 
 /**

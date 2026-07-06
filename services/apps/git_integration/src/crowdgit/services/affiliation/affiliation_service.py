@@ -15,6 +15,8 @@ from crowdgit.database.crud import (
     find_many_member_ids_by_identities,
     find_many_organization_ids_by_identities,
     get_repo_affiliation_registry,
+    insert_member_organizations,
+    insert_member_segment_affiliations,
     save_service_execution,
     upsert_repo_affiliation_registry,
 )
@@ -841,9 +843,8 @@ class AffiliationService(BaseService):
                     }
                 )
 
-        # TODO: Enable CDP writes after testing (import insert_member_* from crud)
-        # await insert_member_organizations(mo_inserts)
-        # await insert_member_segment_affiliations(msa_inserts)
+        await insert_member_organizations(mo_inserts)
+        await insert_member_segment_affiliations(msa_inserts)
 
     async def process_affiliations(
         self,
