@@ -28,10 +28,7 @@ import {
 } from '@crowd/types'
 
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import {
-  getOverlappingEmailDomainMemberOrganizations,
-  groupMemberOrganizations,
-} from '@/utils/mapper'
+import { getOverlappingGroupedMemberOrganizations, groupMemberOrganizations } from '@/utils/mapper'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -106,12 +103,12 @@ export default class MemberOrganizationsService extends LoggerBase {
     const allOrganizations = groupedMemberOrganizations
       .filter((mo): mo is typeof mo & { id: string } => !!mo.id && !!orgById[mo.organizationId])
       .map((mo) => {
-        const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+        const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
           memberOrganizations,
           mo,
         )
 
-        const relatedIds = [mo.id, ...overlappingEmailDomainRows.map((row) => row.id)]
+        const relatedIds = [mo.id, ...overlappingGroupedRows.map((row) => row.id)]
 
         const relatedOverrides = relatedIds.map((memberOrganizationId) =>
           overridesByMemberOrganizationId.get(memberOrganizationId),
@@ -294,7 +291,7 @@ export default class MemberOrganizationsService extends LoggerBase {
 
       const overlapBasis = { ...existing, ...update }
 
-      const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+      const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
         memberOrganizations,
         overlapBasis,
       )
@@ -309,8 +306,8 @@ export default class MemberOrganizationsService extends LoggerBase {
         (value) => value !== undefined,
       ) as MemberOrganizationUpdate
 
-      if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
-        for (const overlappingRow of overlappingEmailDomainRows) {
+      if (overlappingGroupedRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
+        for (const overlappingRow of overlappingGroupedRows) {
           if (!overlappingRow.id) {
             continue
           }
@@ -355,14 +352,14 @@ export default class MemberOrganizationsService extends LoggerBase {
         throw new Error404(`Member organization with id ${id} not found!`)
       }
 
-      const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
+      const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
         existingMemberOrganizations,
         memberOrganizationToBeDeleted,
       )
 
       const memberOrganizationIdsToDelete = [
         id,
-        ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
+        ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
       ]
 
       // Delete hidden grouped rows with the visible row so list responses stay consistent

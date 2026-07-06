@@ -6,6 +6,7 @@ import {
   getAdvisoriesByPackageId,
   getPackageDetailByPurl,
   getStewardshipSummary,
+  securityContactConfidenceBand,
 } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
@@ -50,6 +51,21 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   const mappingConfidence =
     pkg.repoMappingConfidence != null ? Number(pkg.repoMappingConfidence) : null
 
+  const securityContacts =
+    pkg.contactsLastRefreshed == null
+      ? null
+      : (pkg.securityContacts ?? []).map((c) => ({
+          channel: c.channel,
+          value: c.value,
+          role: c.role,
+          confidence: c.confidence,
+          score: Number(c.score),
+        }))
+  const packageConfidence =
+    securityContacts && securityContacts.length > 0
+      ? securityContactConfidenceBand(Math.max(...securityContacts.map((c) => c.score)))
+      : null
+
   ok(res, {
     purl: pkg.purl,
     name: pkg.name,
@@ -92,7 +108,14 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     signalCoverageHealth: snakeToCamelKeys(pkg.signalCoverageHealth),
     assessment: null,
     security: {
-      securityContacts: null,
+      securityContacts,
+      packageConfidence,
+      securityPolicies: {
+        securityPolicyUrl: pkg.securityPolicyUrl ?? null,
+        vulnerabilityReportingUrl: pkg.vulnerabilityReportingUrl ?? null,
+        bugBountyUrl: pkg.bugBountyUrl ?? null,
+        pvrEnabled: pkg.pvrEnabled ?? null,
+      },
       advisories: advisories.map((a) => ({
         osvId: a.osvId,
         severity: a.severity,
@@ -100,7 +123,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         isCritical: a.isCritical,
       })),
       cvd: {
-        isPvrEnabled: null,
+        isPvrEnabled: pkg.pvrEnabled ?? null,
         tier0Steward: null,
         criticalVulnerabilityFlag: pkg.hasCriticalVulnerability,
       },

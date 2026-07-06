@@ -13,7 +13,7 @@ import {
 } from '@crowd/data-access-layer'
 
 import { noContent } from '@/utils/api'
-import { getOverlappingEmailDomainMemberOrganizations } from '@/utils/mapper'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -39,14 +39,11 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
-  const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
-    memberOrgs,
-    memberOrg,
-  )
+  const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
 
   const memberOrgIdsToDelete = [
     workExperienceId,
-    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
+    ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
   ]
 
   // Delete hidden grouped rows with the visible row so read responses stay consistent

@@ -17,7 +17,7 @@ import { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
 
 import { ok } from '@/utils/api'
 import {
-  getOverlappingEmailDomainMemberOrganizations,
+  getOverlappingGroupedMemberOrganizations,
   groupMemberOrganizations,
   toMemberWorkExperience,
 } from '@/utils/mapper'
@@ -52,14 +52,11 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
-  const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
-    memberOrgs,
-    memberOrg,
-  )
+  const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
 
   const memberOrgIdsToDelete = [
     workExperienceId,
-    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
+    ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
   ]
 
   const verifiedUpdate = { verified, verifiedBy }
@@ -81,7 +78,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             verifiedUpdate,
           )
 
-          for (const overlappingRow of overlappingEmailDomainRows.filter(
+          for (const overlappingRow of overlappingGroupedRows.filter(
             (row): row is typeof row & { id: string } => !!row.id,
           )) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
