@@ -24,10 +24,9 @@ function isCollapsibleMemberOrganization<T extends IMemberOrganization>(row: T):
     .split(',')
     .map((value) => value.trim())
     .some((value) =>
-      [
-        OrganizationSource.EMAIL_DOMAIN,
-        OrganizationSource.PROJECT_REGISTRY,
-      ].includes(value as OrganizationSource),
+      [OrganizationSource.EMAIL_DOMAIN, OrganizationSource.PROJECT_REGISTRY].includes(
+        value as OrganizationSource,
+      ),
     )
 }
 
@@ -107,9 +106,7 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
   for (const collapsibleRow of collapsibleRows) {
     if (hiddenCollapsibleIds.has(collapsibleRow.id)) {
       const displayRowId = resolveDisplayRowId(collapsibleRow.id)
-      const displayRow = rows.find(
-        (row): row is T & { id: string } => row.id === displayRowId,
-      )
+      const displayRow = rows.find((row): row is T & { id: string } => row.id === displayRowId)
 
       if (displayRow) {
         const existingGroup = displayGroups.get(displayRowId)
