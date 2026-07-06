@@ -817,8 +817,7 @@ function prepareWorkExperiences(
 ): IWorkExperienceChanges {
   // we delete all the work experiences that were not manually created or from the project registry.
   const toDelete = oldVersion.filter(
-    (c) =>
-      c.source !== OrganizationSource.UI && c.source !== OrganizationSource.PROJECT_REGISTRY,
+    (c) => c.source !== OrganizationSource.UI && c.source !== OrganizationSource.PROJECT_REGISTRY,
   )
 
   const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
