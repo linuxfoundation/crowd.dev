@@ -766,7 +766,7 @@ export async function findOrganizationByNameOrDomain(
   }
 
   const domainSelect = domain
-    ? 'lower($(domain)) AS domain'
+    ? 'lower(oi.value) AS domain'
     : `(
         SELECT lower(oi_domain.value)
         FROM "organizationIdentities" oi_domain

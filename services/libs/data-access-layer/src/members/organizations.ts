@@ -263,7 +263,10 @@ export async function fetchManyMemberOrgsWithOrgData(
   }
 
   for (const role of memberRoles) {
-    result.get(role.memberId)!.push(role)
+    const roles = result.get(role.memberId)
+    if (roles) {
+      roles.push(role)
+    }
   }
 
   return result
