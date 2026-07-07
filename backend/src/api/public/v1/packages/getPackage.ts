@@ -1,5 +1,4 @@
 import { createHash } from 'crypto'
-
 import type { Request, Response } from 'express'
 
 import { NotFoundError } from '@crowd/common'

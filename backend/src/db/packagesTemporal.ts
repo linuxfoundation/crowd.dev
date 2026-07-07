@@ -1,5 +1,5 @@
-import { Client, Connection, getDataConverter } from '@crowd/temporal'
 import { IS_DEV_ENV, SERVICE } from '@crowd/common'
+import { Client, Connection, getDataConverter } from '@crowd/temporal'
 
 import { PACKAGES_TEMPORAL_CONFIG } from '@/conf'
 
@@ -11,9 +11,7 @@ let _init: Promise<Client> | undefined
 export function getPackagesTemporalClient(): Promise<Client> {
   if (!_init) {
     if (!PACKAGES_TEMPORAL_CONFIG?.serverUrl) {
-      throw new Error(
-        'Packages Temporal is not configured — set CROWD_PACKAGES_TEMPORAL_NAMESPACE',
-      )
+      throw new Error('Packages Temporal is not configured — set CROWD_PACKAGES_TEMPORAL_NAMESPACE')
     }
 
     const cfg = PACKAGES_TEMPORAL_CONFIG
