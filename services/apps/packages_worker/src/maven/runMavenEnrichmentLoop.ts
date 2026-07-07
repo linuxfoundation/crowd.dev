@@ -53,7 +53,7 @@ type PackageRow = MavenPackageToSync
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // prettier-ignore
-async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed: Set<string>): Promise<void> {
+export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>): Promise<void> {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
@@ -64,7 +64,7 @@ async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl
     source: 'declared',
     confidence: 0.8,
   })
-  repoChanged.forEach((f) => changed.add(f))
+  repoChanged.forEach((f) => changed?.add(f))
 }
 
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
