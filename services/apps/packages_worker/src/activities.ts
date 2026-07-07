@@ -32,4 +32,7 @@ export {
 } from './pypi/activities'
 export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'
-export { processSecurityContactsBatch } from './security-contacts/activities'
+export {
+  processSecurityContactsBatch,
+  ingestSecurityContactsForPurlActivity,
+} from './security-contacts/activities'

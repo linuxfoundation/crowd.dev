@@ -1,3 +1,5 @@
+import { createHash } from 'crypto'
+
 import type { Request, Response } from 'express'
 
 import { NotFoundError } from '@crowd/common'
@@ -8,6 +10,7 @@ import {
   getStewardshipSummary,
   securityContactConfidenceBand,
 } from '@crowd/data-access-layer'
+import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
@@ -32,14 +35,36 @@ function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' 
   return 'Low'
 }
 
+// Deterministic per-purl id: concurrent requests for the same purl attach to the
+// same workflow run (WorkflowIdConflictPolicy.USE_EXISTING below) instead of each
+// kicking off its own ingest.
+function ondemandWorkflowId(purl: string): string {
+  return `security-contacts-ondemand/${createHash('sha1').update(purl).digest('hex')}`
+}
+
 export async function getPackage(req: Request, res: Response): Promise<void> {
   const { purl } = validateOrThrow(purlQuerySchema, req.query)
 
   const qx = await getPackagesQx()
-  const pkg = await getPackageDetailByPurl(qx, purl)
+  let pkg = await getPackageDetailByPurl(qx, purl)
 
   if (!pkg) {
     throw new NotFoundError()
+  }
+
+  if (pkg.contactsLastRefreshed == null) {
+    try {
+      await req.temporal.workflow.execute('ingestSecurityContactsForPurlWorkflow', {
+        taskQueue: 'packages-worker',
+        workflowId: ondemandWorkflowId(purl),
+        workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+        workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+        args: [purl],
+      })
+      pkg = (await getPackageDetailByPurl(qx, purl)) ?? pkg
+    } catch (err) {
+      req.log.warn(err, 'On-demand security contacts ingest failed — serving cached detail')
+    }
   }
 
   const [{ rows: advisories }, stewardshipSummary] = await Promise.all([
