@@ -16,27 +16,61 @@ const log = getServiceChildLogger('go')
 const PROXY_SOURCE = 'go-proxy'
 const PKGGODEV_SOURCE = 'pkg-go-dev'
 
-// TODO: filter to critical packages once computed
+export interface GoScanCursor {
+  criticalAfter: string
+  after: string
+}
+
+type GoRow = { purl: string; name: string }
+
+// Two independent purl-keyset cursors — one for critical packages, one for everything else —
+// each ordered/paginated purely by purl so WHERE and ORDER BY always match (no gaps, no
+// duplicates). A single query sorted by is_critical DESC with one shared purl cursor was tried
+// and rejected: the cursor advances to the last row's purl, and when a batch is critical-heavy
+// that purl can be far ahead of unprocessed non-critical rows, permanently excluding them for
+// the rest of the run.
 async function getGoBatch(
   qx: QueryExecutor,
+  isCritical: boolean,
   afterPurl: string,
   batchSize: number,
-): Promise<Array<{ purl: string; name: string }>> {
+): Promise<GoRow[]> {
+  if (batchSize <= 0) return []
   return qx.select(
     `SELECT purl, name FROM packages
-     WHERE ecosystem = 'go' AND purl > $(after)
-     ORDER BY last_synced_at ASC NULLS FIRST, purl ASC
+     WHERE ecosystem = 'go' AND is_critical = $(isCritical) AND purl > $(after)
+     ORDER BY purl ASC
      LIMIT $(limit)`,
-    { after: afterPurl, limit: batchSize },
+    { isCritical, after: afterPurl, limit: batchSize },
   )
 }
 
-export async function enrichGoVersionsBatch(
-  afterPurl: string,
+// Drains not-yet-processed critical packages first, then tops up the rest of the batch with
+// non-critical ones — so a rate-limit run only ever starves the non-critical tail.
+async function getGoPriorityBatch(
+  qx: QueryExecutor,
+  cursor: GoScanCursor,
   batchSize: number,
-): Promise<string | null> {
+): Promise<{ rows: GoRow[]; nextCursor: GoScanCursor }> {
+  const critical = await getGoBatch(qx, true, cursor.criticalAfter, batchSize)
+  const nonCritical = await getGoBatch(qx, false, cursor.after, batchSize - critical.length)
+
+  return {
+    rows: [...critical, ...nonCritical],
+    nextCursor: {
+      criticalAfter:
+        critical.length > 0 ? critical[critical.length - 1].purl : cursor.criticalAfter,
+      after: nonCritical.length > 0 ? nonCritical[nonCritical.length - 1].purl : cursor.after,
+    },
+  }
+}
+
+export async function enrichGoVersionsBatch(
+  cursor: GoScanCursor,
+  batchSize: number,
+): Promise<GoScanCursor | null> {
   const qx = await getPackagesDb()
-  const rows = await getGoBatch(qx, afterPurl, batchSize)
+  const { rows, nextCursor } = await getGoPriorityBatch(qx, cursor, batchSize)
   if (rows.length === 0) return null
 
   const { fetchTimeoutMs, proxyConcurrency } = getGoConfig()
@@ -89,15 +123,15 @@ export async function enrichGoVersionsBatch(
   }
 
   log.info({ count: rows.length, concurrency: proxyConcurrency }, 'Enriched go versions batch')
-  return rows[rows.length - 1].purl
+  return nextCursor
 }
 
 export async function enrichGoStatusBatch(
-  afterPurl: string,
+  cursor: GoScanCursor,
   batchSize: number,
-): Promise<string | null> {
+): Promise<GoScanCursor | null> {
   const qx = await getPackagesDb()
-  const rows = await getGoBatch(qx, afterPurl, batchSize)
+  const { rows, nextCursor } = await getGoPriorityBatch(qx, cursor, batchSize)
   if (rows.length === 0) return null
 
   const { fetchTimeoutMs } = getGoConfig()
@@ -137,5 +171,5 @@ export async function enrichGoStatusBatch(
   }
 
   log.info({ count: rows.length }, 'Enriched go status batch')
-  return rows[rows.length - 1].purl
+  return nextCursor
 }

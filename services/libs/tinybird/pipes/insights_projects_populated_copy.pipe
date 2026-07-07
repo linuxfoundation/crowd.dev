@@ -268,7 +268,7 @@ SQL >
         last_vulnerability_scan_status
         ON last_vulnerability_scan_status.insightsProjectId = insightsProjects.id
     LEFT JOIN segments ON segments.id = insightsProjects.segmentId
-    WHERE isNull (insightsProjects.deletedAt)
+    WHERE isNull (insightsProjects.deletedAt) AND insightsProjects.enabled = 1
     group by 1
 
 TYPE COPY

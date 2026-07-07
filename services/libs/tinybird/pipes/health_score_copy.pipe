@@ -5,7 +5,7 @@ DESCRIPTION >
 SQL >
     SELECT id, segmentId, slug, widgets
     from insightsProjects FINAL
-    WHERE isNull (deletedAt) and segmentId != ''
+    WHERE isNull (deletedAt) AND enabled = 1 AND segmentId != ''
 
 NODE health_score_copy_data
 SQL >
