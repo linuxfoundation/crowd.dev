@@ -13,6 +13,7 @@ import {
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
 import { getPackagesQx } from '@/db/packagesDb'
+import { getPackagesTemporalClient } from '@/db/packagesTemporal'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
@@ -54,7 +55,8 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
 
   if (pkg.contactsLastRefreshed == null) {
     try {
-      await req.temporal.workflow.execute('ingestSecurityContactsForPurlWorkflow', {
+      const packagesTemporal = await getPackagesTemporalClient()
+      await packagesTemporal.workflow.execute('ingestSecurityContactsForPurlWorkflow', {
         taskQueue: 'packages-worker',
         workflowId: ondemandWorkflowId(purl),
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
