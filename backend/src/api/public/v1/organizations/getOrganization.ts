@@ -29,5 +29,6 @@ export async function getOrganization(req: Request, res: Response): Promise<void
     throw new NotFoundError('Organization not found')
   }
 
-  ok(res, organization)
+  const { logo, ...rest } = organization
+  ok(res, { ...rest, ...(logo ? { logo } : {}) })
 }

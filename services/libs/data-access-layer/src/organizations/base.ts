@@ -729,7 +729,8 @@ export async function findNonExistingOrganizationIds(
   return rows.map((r: { id: string }) => r.id)
 }
 
-type OrganizationSummary = Pick<IDbOrganization, 'id' | 'displayName' | 'logo'> & {
+type OrganizationSummary = Pick<IDbOrganization, 'id' | 'logo'> & {
+  name: string
   domain: string
 }
 
@@ -780,7 +781,7 @@ export async function findOrganizationByNameOrDomain(
   const sql = `
     SELECT
       o.id,
-      o."displayName",
+      o."displayName" AS name,
       o.logo,
       ${domainSelect}
     FROM "organizations" o
