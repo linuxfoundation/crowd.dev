@@ -17,6 +17,7 @@ SQL >
     left join
         insightsProjects ip FINAL
         on ip.id = collectionsInsightsProjects.insightsProjectId
+        and isNull (ip.deletedAt)
     where
         isNull (collections.deletedAt) AND isNull (collections.ssoUserId)
         {% if defined(slug) %}
