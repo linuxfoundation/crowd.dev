@@ -85,7 +85,7 @@ export async function ingestSecurityContactsForPurl(
 ): Promise<IngestSingleResult> {
   const row = await findBestRepoForPurl(qx, purl)
   if (!row) {
-    log.info({ purl }, 'On-demand security contacts: no linked github repo found — skipping')
+    log.info({ purl }, 'On-demand security contacts: no linked repo found — skipping')
     return { found: false }
   }
 
