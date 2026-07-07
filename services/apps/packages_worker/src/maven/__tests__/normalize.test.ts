@@ -194,4 +194,44 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('${scm-url}')).toBeNull()
     expect(normalizeScmUrl('http://cvs.sourceforge.net/cgi-bin/viewcvs.cgi/foo')).toBeNull()
   })
+
+  // SCP colon form: "host:owner/repo" where the colon is a path separator, not a port
+  it('recovers bare host:owner/repo SCP colon form', () => {
+    expect(normalizeScmUrl('github.com:japgolly/scalacss.git')).toBe(
+      'https://github.com/japgolly/scalacss',
+    )
+  })
+
+  it('recovers scheme://host:owner/repo SCP colon form', () => {
+    expect(normalizeScmUrl('https://github.com:networknt/light-4j.git')).toBe(
+      'https://github.com/networknt/light-4j',
+    )
+  })
+
+  it('recovers ssh://git@host:owner/repo SCP colon form', () => {
+    expect(normalizeScmUrl('ssh://git@github.com:apache/iotdb.git')).toBe(
+      'https://github.com/apache/iotdb',
+    )
+    expect(normalizeScmUrl('ssh://git@bitbucket.org:eci-elements/web-services.git')).toBe(
+      'https://bitbucket.org/eci-elements/web-services',
+    )
+  })
+
+  it('does not treat a numeric port as an SCP separator', () => {
+    expect(normalizeScmUrl('https://gitlab.com:443/foo/bar')).toBe('https://gitlab.com/foo/bar')
+  })
+
+  it('accepts allowlisted self-hosted GitLab/Gitea hosts', () => {
+    expect(normalizeScmUrl('https://git.neckar.it/neckarit/neckar-hub')).toBe(
+      'https://git.neckar.it/neckarit/neckar-hub',
+    )
+    expect(normalizeScmUrl('scm:git:https://gitlab.inria.fr/owner/repo.git')).toBe(
+      'https://gitlab.inria.fr/owner/repo',
+    )
+  })
+
+  it('still returns null for hosts not in the allowlist', () => {
+    expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBeNull()
+    expect(normalizeScmUrl('https://android.googlesource.com/platform/tools/base')).toBeNull()
+  })
 })

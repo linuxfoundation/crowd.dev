@@ -458,6 +458,18 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
  * placeholders) yields null so it is never stored as a repository link.
  *
  * TODO(CM): host list pending product confirmation before rollout.
+ *
+ * Candidate additions found in Maven declared_repository_url (critical rows) but
+ * intentionally NOT added yet, because they need more than a host allowlist:
+ *   - gitbox.apache.org / git.apache.org / git-wip-us.apache.org (~1.3k rows):
+ *     paths are `/repos/asf/<repo>`, so the generic first-two-segments logic would
+ *     collapse every Apache repo to `repos/asf`. Needs path-aware handling (skip
+ *     the `/repos/asf/` prefix) or mapping to the github.com/apache mirror.
+ *   - git.eclipse.org (~180 rows): Gerrit paths, likewise not owner/repo.
+ *   - android.googlesource.com, ec.europa.eu (Bitbucket-Server /projects/x/repos/y):
+ *     multi-segment paths, not owner/repo.
+ *   - ambiguous `git.*` hosts (git.iem.at, git.i-novus.ru, git.oschina.net) and the
+ *     internal git.corp.adobe.com: pending path/reachability confirmation.
  */
 const SCM_HOSTS = new Set([
   'github.com',
@@ -465,6 +477,13 @@ const SCM_HOSTS = new Set([
   'bitbucket.org',
   'gitee.com',
   'codeberg.org',
+  // Self-hosted GitLab / Gitea instances seen in Maven POMs with clean
+  // /<owner>/<repo> paths (same shape as gitlab.com — handled by the generic logic).
+  'gitlab.smartb.city',
+  'gitlab.ow2.org',
+  'gitlab.nuiton.org',
+  'gitlab.inria.fr',
+  'git.neckar.it',
 ])
 
 /** Hosts whose owner/repo path is case-insensitive and should be lower-cased. */
@@ -483,6 +502,9 @@ const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
  *   github.com/owner/repo (no scheme)        → https://github.com/owner/repo
  *   git://github.com/owner/repo.git          → https://github.com/owner/repo
  *   http://github.com/owner/repo/tree/...    → https://github.com/owner/repo
+ *   github.com:owner/repo.git (SCP colon)    → https://github.com/owner/repo
+ *   https://github.com:owner/repo            → https://github.com/owner/repo
+ *   ssh://git@github.com:owner/repo.git      → https://github.com/owner/repo
  *
  * Rejected (→ null): website-only URLs (https://meson.ai/), non-SCM hosts
  * (svn://…, http://source.android.com), placeholders (Private, ${scm-url}).
@@ -501,14 +523,25 @@ export function normalizeScmUrl(raw: string | null): string | null {
   // SCP form git@host:owner/repo → https://host/owner/repo
   s = s.replace(/^git@([^:/]+):(.+)$/, 'https://$1/$2')
 
+  // ssh://git@host:owner/repo → https://host/owner/repo (SCP colon under ssh)
+  s = s.replace(/^ssh:\/\/git@([^:/]+):(?=\D)/, 'https://$1/')
+
   // ssh://git@host/… → https://host/…
   s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
+
+  // scheme://host:owner/repo → scheme://host/owner/repo — the colon is an SCP path
+  // separator, not a port (guarded by \D so real numeric ports are left intact).
+  s = s.replace(/^(https?):\/\/([^:/]+):(?=\D)/, '$1://$2/')
 
   // git:// → https://, and upgrade http:// → https://
   s = s.replace(/^git:\/\//, 'https://').replace(/^http:\/\//, 'https://')
 
   // No scheme at all (e.g. "github.com/owner/repo") → assume https
-  if (!s.includes('://')) s = `https://${s}`
+  if (!s.includes('://')) {
+    // Bare SCP form "host:owner/repo" → "host/owner/repo" before assuming https.
+    s = s.replace(/^([^/:]+):(?=\D)/, '$1/')
+    s = `https://${s}`
+  }
 
   let parsed: URL
   try {
