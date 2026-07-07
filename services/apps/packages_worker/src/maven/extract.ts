@@ -453,37 +453,89 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
 // ─── SCM URL normalisation ───────────────────────────────────────────────────
 
 /**
- * Converts the raw SCM URL from a POM (declared_repository_url) into a clean
- * HTTPS repository URL suitable for storage as repository_url.
+ * Known source-code-hosting hosts. A normalised repository_url is only produced
+ * when the URL resolves to one of these — anything else (homepages, doc sites,
+ * placeholders) yields null so it is never stored as a repository link.
+ *
+ * TODO(CM): host list pending product confirmation before rollout.
+ */
+const SCM_HOSTS = new Set([
+  'github.com',
+  'gitlab.com',
+  'bitbucket.org',
+  'gitee.com',
+  'codeberg.org',
+])
+
+/** Hosts whose owner/repo path is case-insensitive and should be lower-cased. */
+const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
+
+/**
+ * Converts the raw SCM URL from a POM (declared_repository_url) into a clean,
+ * canonical `https://<host>/<owner>/<repo>` repository URL suitable for storage
+ * as repository_url. Returns null when the input does not resolve to a real
+ * repository on a known SCM host.
  *
  * Handles common Maven SCM URL forms:
- *   scm:git:git@github.com:owner/repo.git  → https://github.com/owner/repo
- *   scm:git:https://github.com/owner/repo  → https://github.com/owner/repo
- *   git://github.com/owner/repo.git        → https://github.com/owner/repo
- *   https://github.com/owner/repo/tree/... → https://github.com/owner/repo
+ *   scm:git:git@github.com:owner/repo.git    → https://github.com/owner/repo
+ *   scm:git:https://github.com/owner/repo    → https://github.com/owner/repo
+ *   scm:git:github.com/owner/repo            → https://github.com/owner/repo
+ *   github.com/owner/repo (no scheme)        → https://github.com/owner/repo
+ *   git://github.com/owner/repo.git          → https://github.com/owner/repo
+ *   http://github.com/owner/repo/tree/...    → https://github.com/owner/repo
+ *
+ * Rejected (→ null): website-only URLs (https://meson.ai/), non-SCM hosts
+ * (svn://…, http://source.android.com), placeholders (Private, ${scm-url}).
  */
 export function normalizeScmUrl(raw: string | null): string | null {
   if (!raw) return null
-  let url = raw.trim()
+  let s = raw.trim()
+  if (!s) return null
 
-  // Strip scm:git: or scm: prefix
-  url = url.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
+  // Strip Maven scm:git: / scm: prefix
+  s = s.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
 
-  // Convert SSH git@host:owner/repo → https://host/owner/repo
-  url = url.replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
+  // git+https://… → https://…
+  s = s.replace(/^git\+/, '')
 
-  // Convert git:// → https://
-  url = url.replace(/^git:\/\//, 'https://')
+  // SCP form git@host:owner/repo → https://host/owner/repo
+  s = s.replace(/^git@([^:/]+):(.+)$/, 'https://$1/$2')
 
-  // Strip trailing .git
-  url = url.replace(/\.git$/, '')
+  // ssh://git@host/… → https://host/…
+  s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
 
-  // Strip /tree/... or /blob/... path suffixes (keep only host + owner + repo)
-  url = url.replace(/\/(tree|blob)(\/.*)?$/, '')
+  // git:// → https://, and upgrade http:// → https://
+  s = s.replace(/^git:\/\//, 'https://').replace(/^http:\/\//, 'https://')
 
-  if (!url.startsWith('https://')) return null
+  // No scheme at all (e.g. "github.com/owner/repo") → assume https
+  if (!s.includes('://')) s = `https://${s}`
 
-  return url.replace(/\/$/, '')
+  let parsed: URL
+  try {
+    parsed = new URL(s)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== 'https:') return null
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  if (!SCM_HOSTS.has(host)) return null
+
+  // Require at least owner + repo path segments
+  const segments = parsed.pathname.split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  let owner = segments[0]
+  let name = segments[1].replace(/\.git$/, '')
+  if (!owner || !name) return null
+
+  if (CASE_INSENSITIVE_HOSTS.has(host)) {
+    owner = owner.toLowerCase()
+    name = name.toLowerCase()
+  }
+
+  return `https://${host}/${owner}/${name}`
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

@@ -163,4 +163,35 @@ describe('normalizeScmUrl', () => {
   it('returns null for non-https result', () => {
     expect(normalizeScmUrl('svn://svn.apache.org/repos/commons-lang')).toBeNull()
   })
+
+  // Gap B — recover repository_url from inputs that were previously dropped
+  it('recovers scm:git: without a scheme', () => {
+    expect(normalizeScmUrl('scm:git:github.com/lum-ai/nxmlreader')).toBe(
+      'https://github.com/lum-ai/nxmlreader',
+    )
+  })
+
+  it('recovers a bare host/owner/repo without a scheme', () => {
+    expect(normalizeScmUrl('github.com/agiledigital/kamon-play-extensions')).toBe(
+      'https://github.com/agiledigital/kamon-play-extensions',
+    )
+  })
+
+  it('upgrades http to https and lower-cases the github path', () => {
+    expect(normalizeScmUrl('http://github.com/kevemueller/kTLSH/tree/master')).toBe(
+      'https://github.com/kevemueller/ktlsh',
+    )
+  })
+
+  // Gap C — reject non-repository URLs so they are never stored
+  it('returns null for website-only URLs', () => {
+    expect(normalizeScmUrl('https://meson.ai/')).toBeNull()
+    expect(normalizeScmUrl('http://source.android.com')).toBeNull()
+  })
+
+  it('returns null for placeholders and free-form text', () => {
+    expect(normalizeScmUrl('Private')).toBeNull()
+    expect(normalizeScmUrl('${scm-url}')).toBeNull()
+    expect(normalizeScmUrl('http://cvs.sourceforge.net/cgi-bin/viewcvs.cgi/foo')).toBeNull()
+  })
 })

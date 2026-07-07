@@ -118,6 +118,83 @@ export async function listMavenPackagesToSync(
   )
 }
 
+// ─── repository_url backfill ──────────────────────────────────────────────────
+
+export type MavenRepoUrlRow = {
+  id: number
+  declaredRepositoryUrl: string | null
+  repositoryUrl: string | null
+}
+
+/**
+ * Keyset-paginated scan of Maven rows that carry a repository link (declared or
+ * canonical). Rows with neither are skipped — there is nothing to recompute.
+ * Used by the repository_url backfill to re-run the normalizer over stored data
+ * without re-fetching POMs from the registry.
+ */
+export async function listMavenPackagesForRepoUrlRecompute(
+  qx: QueryExecutor,
+  options: { afterId: number; limit: number },
+): Promise<MavenRepoUrlRow[]> {
+  return qx.select(
+    `
+    SELECT
+      id,
+      declared_repository_url AS "declaredRepositoryUrl",
+      repository_url          AS "repositoryUrl"
+    FROM packages
+    WHERE ecosystem = 'maven'
+      AND id > $(afterId)
+      AND (declared_repository_url IS NOT NULL OR repository_url IS NOT NULL)
+    ORDER BY id ASC
+    LIMIT $(limit)
+    `,
+    { afterId: options.afterId, limit: options.limit },
+  )
+}
+
+/**
+ * Applies a batch of recomputed repository_url values via direct UPDATE — the
+ * only way to clear a stale value, since the enrichment upsert COALESCEs and
+ * cannot write NULL. Splits clears (→ NULL) from sets to avoid NULLs inside a
+ * text[] array literal.
+ */
+export async function updateMavenRepositoryUrls(
+  qx: QueryExecutor,
+  updates: { id: number; repositoryUrl: string | null }[],
+): Promise<void> {
+  if (updates.length === 0) return
+
+  const toClear = updates.filter((u) => u.repositoryUrl === null).map((u) => u.id)
+  const toSet = updates.filter(
+    (u): u is { id: number; repositoryUrl: string } => u.repositoryUrl !== null,
+  )
+
+  if (toClear.length > 0) {
+    await qx.result(
+      `UPDATE packages SET repository_url = NULL
+       WHERE id = ANY($(ids)::bigint[]) AND repository_url IS NOT NULL`,
+      { ids: toClear },
+    )
+  }
+
+  if (toSet.length > 0) {
+    await qx.result(
+      `
+      UPDATE packages p
+      SET repository_url = v.repository_url
+      FROM (
+        SELECT unnest($(ids)::bigint[]) AS id,
+               unnest($(urls)::text[])  AS repository_url
+      ) v
+      WHERE p.id = v.id
+        AND p.repository_url IS DISTINCT FROM v.repository_url
+      `,
+      { ids: toSet.map((u) => u.id), urls: toSet.map((u) => u.repositoryUrl) },
+    )
+  }
+}
+
 // ─── packages touch ───────────────────────────────────────────────────────────
 
 /**
