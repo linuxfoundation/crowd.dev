@@ -61,6 +61,10 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         workflowId: ondemandWorkflowId(purl),
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
         workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+        // Bounds the request's wait if packages-worker is down or its task queue is
+        // backed up — the activity's startToCloseTimeout only starts counting once a
+        // worker picks the task up, so without this the request could hang indefinitely.
+        workflowExecutionTimeout: '60 seconds',
         args: [purl],
       })
       pkg = (await getPackageDetailByPurl(qx, purl)) ?? pkg

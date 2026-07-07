@@ -32,9 +32,9 @@ interface SingleRepoRow {
 // the shape the batch sweep builds.
 //
 // No host filter: processRepo already degrades gracefully for non-github repos (the
-// github-specific extractors no-op, security.txt/registry-manifest extractors still run)
-// and always stamps contacts_last_refreshed — filtering here would leave non-github repos
-// permanently NULL, re-triggering this on-demand path on every single request.
+// github-specific extractors no-op, security.txt/registry-manifest extractors still run) —
+// filtering here would leave non-github repos permanently NULL, re-triggering this
+// on-demand path on every single request.
 async function findBestRepoForPurl(qx: QueryExecutor, purl: string): Promise<SingleRepoRow | null> {
   return qx.selectOneOrNone(
     `
@@ -76,7 +76,7 @@ function toTarget(row: SingleRepoRow): RepoTarget {
 /**
  * On-demand ingest for a single purl, bypassing the daily critical-only sweep.
  * Used when the akrites API hits a repo that has never been evaluated
- * (repos.contacts_last_refreshed IS NULL) — see security-contacts.md.
+ * (repos.contacts_last_refreshed IS NULL).
  */
 export async function ingestSecurityContactsForPurl(
   qx: QueryExecutor,
