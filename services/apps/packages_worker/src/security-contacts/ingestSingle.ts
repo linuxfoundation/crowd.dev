@@ -5,6 +5,7 @@ import { getSecurityContactsConfig } from '../config'
 
 import { buildBaseDeps, processRepo } from './processBatch'
 import { RepoPackage, RepoTarget } from './types'
+import { markRepoAttempted } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts-ondemand')
 
@@ -90,7 +91,12 @@ export async function ingestSecurityContactsForPurl(
 
   const target = toTarget(row)
   const baseDeps = buildBaseDeps(config)
-  await processRepo(target, baseDeps, qx)
+  try {
+    await processRepo(target, baseDeps, qx)
+  } catch (err) {
+    log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
+    await markRepoAttempted(qx, target.repoId).catch(() => undefined)
+  }
 
   return { found: true, repoId: target.repoId }
 }
