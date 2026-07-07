@@ -131,10 +131,13 @@ export type MavenRepoUrlRow = {
  * canonical). Rows with neither are skipped — there is nothing to recompute.
  * Used by the repository_url backfill to re-run the normalizer over stored data
  * without re-fetching POMs from the registry.
+ *
+ * `criticalOnly` restricts the scan to is_critical rows (index-backed by the
+ * partial index on is_critical) — used for a fast, consumer-facing first pass.
  */
 export async function listMavenPackagesForRepoUrlRecompute(
   qx: QueryExecutor,
-  options: { afterId: number; limit: number },
+  options: { afterId: number; limit: number; criticalOnly?: boolean },
 ): Promise<MavenRepoUrlRow[]> {
   return qx.select(
     `
@@ -144,6 +147,7 @@ export async function listMavenPackagesForRepoUrlRecompute(
       repository_url          AS "repositoryUrl"
     FROM packages
     WHERE ecosystem = 'maven'
+      ${options.criticalOnly ? 'AND is_critical' : ''}
       AND id > $(afterId)
       AND (declared_repository_url IS NOT NULL OR repository_url IS NOT NULL)
     ORDER BY id ASC

@@ -42,9 +42,14 @@ export type RepoUrlBackfillTotals = {
  */
 export async function backfillMavenRepositoryUrls(
   qx: QueryExecutor,
-  options: { batchSize: number; dryRun: boolean; isShuttingDown: () => boolean },
+  options: {
+    batchSize: number
+    dryRun: boolean
+    criticalOnly: boolean
+    isShuttingDown: () => boolean
+  },
 ): Promise<RepoUrlBackfillTotals> {
-  const { batchSize, dryRun, isShuttingDown } = options
+  const { batchSize, dryRun, criticalOnly, isShuttingDown } = options
   const totals: RepoUrlBackfillTotals = {
     scanned: 0,
     filled: 0,
@@ -62,7 +67,11 @@ export async function backfillMavenRepositoryUrls(
       break
     }
 
-    const rows = await listMavenPackagesForRepoUrlRecompute(qx, { afterId, limit: batchSize })
+    const rows = await listMavenPackagesForRepoUrlRecompute(qx, {
+      afterId,
+      limit: batchSize,
+      criticalOnly,
+    })
     if (rows.length === 0) break
 
     const updates: { id: number; repositoryUrl: string | null }[] = []
@@ -105,7 +114,10 @@ export async function backfillMavenRepositoryUrls(
     }
 
     afterId = rows[rows.length - 1].id
-    log.info({ afterId, changes: updates.length, dryRun, ...totals }, 'Backfill progress')
+    log.info(
+      { afterId, changes: updates.length, dryRun, criticalOnly, ...totals },
+      'Backfill progress',
+    )
   }
 
   return totals

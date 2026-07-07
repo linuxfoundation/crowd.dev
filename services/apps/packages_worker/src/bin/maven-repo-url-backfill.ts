@@ -23,6 +23,7 @@ const DEFAULT_BATCH_SIZE = 5000
 
 const main = async () => {
   const dryRun = process.argv.includes('--dry-run')
+  const criticalOnly = process.argv.includes('--critical-only')
   const rawBatchSize = process.env.MAVEN_REPO_URL_BACKFILL_BATCH_SIZE
   const parsedBatchSize = rawBatchSize === undefined ? DEFAULT_BATCH_SIZE : Number(rawBatchSize)
   if (!Number.isInteger(parsedBatchSize) || parsedBatchSize <= 0) {
@@ -35,7 +36,7 @@ const main = async () => {
   const batchSize = parsedBatchSize
 
   log.info(
-    { dryRun, batchSize },
+    { dryRun, criticalOnly, batchSize },
     'maven repo-url backfill starting (recompute normalizeScmUrl from declared_repository_url, no POM fetch)...',
   )
 
@@ -46,6 +47,7 @@ const main = async () => {
   const totals = await backfillMavenRepositoryUrls(qx, {
     batchSize,
     dryRun,
+    criticalOnly,
     isShuttingDown: () => shuttingDown,
   })
 
