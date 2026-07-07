@@ -2,7 +2,7 @@ NODE segments_aggregates_with_ids_projects
 SQL >
     SELECT insightsProjects.id, insightsProjects.segmentId
     FROM insightsProjects FINAL
-    WHERE insightsProjects.segmentId != '' and isNull (insightsProjects.deletedAt)
+    WHERE insightsProjects.segmentId != '' AND isNull (insightsProjects.deletedAt) AND insightsProjects.enabled = 1
 
 NODE segments_aggregates_with_ids_collections_projects
 SQL >

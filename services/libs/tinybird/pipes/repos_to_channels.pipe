@@ -27,7 +27,7 @@ SQL >
         FROM repositories r FINAL
         INNER JOIN insightsProjects i FINAL ON r.insightsProjectId = i.id
         WHERE
-            isNull (r.deletedAt) AND r.enabled = true AND isNull (i.deletedAt)
+            isNull (r.deletedAt) AND r.enabled = true AND isNull (i.deletedAt) AND i.enabled = 1
             {% if defined(excluded) and excluded %} AND r.excluded = true
             {% end %}
     {% end %}
@@ -45,7 +45,7 @@ SQL >
         i.platform = 'gerrit'
         AND isNull (r.deletedAt)
         AND r.enabled = true
-        AND isNull (p.deletedAt)
+        AND isNull (p.deletedAt) AND p.enabled = 1
         AND r.url IN (SELECT url FROM repos_to_expand)
 
 NODE expanded_urls
