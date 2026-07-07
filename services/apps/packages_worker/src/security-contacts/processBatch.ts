@@ -72,8 +72,7 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-    WHERE r.host = 'github'
-      AND (
+    WHERE (
         -- never evaluated → always eligible
         r.contacts_last_refreshed IS NULL
         -- evaluated but no contacts found yet → retry on the daily cadence

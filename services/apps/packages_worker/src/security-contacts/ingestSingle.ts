@@ -29,6 +29,11 @@ interface SingleRepoRow {
 // what this on-demand path exists for. `packages` aggregates every package linked to
 // the repo (not just the requested purl) so extractors see every ecosystem, matching
 // the shape the batch sweep builds.
+//
+// No host filter: processRepo already degrades gracefully for non-github repos (the
+// github-specific extractors no-op, security.txt/registry-manifest extractors still run)
+// and always stamps contacts_last_refreshed — filtering here would leave non-github repos
+// permanently NULL, re-triggering this on-demand path on every single request.
 async function findBestRepoForPurl(qx: QueryExecutor, purl: string): Promise<SingleRepoRow | null> {
   return qx.selectOneOrNone(
     `
@@ -51,7 +56,7 @@ async function findBestRepoForPurl(qx: QueryExecutor, purl: string): Promise<Sin
       LIMIT 1
     ) best ON true
     JOIN repos r ON r.id = best.repo_id
-    WHERE p.purl = $(purl) AND r.host = 'github'
+    WHERE p.purl = $(purl)
     `,
     { purl },
   )
