@@ -61,5 +61,5 @@ export async function createOrganization(req: Request, res: Response): Promise<v
     )
   })
 
-  created(res, { id: organizationId, name, logo })
+  created(res, { id: organizationId, name, logo, domain })
 }

@@ -100,13 +100,19 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     }),
   )
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
 
   const responseMo: IMemberRoleWithOrganization =
     groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
       (mo) => mo.id === workExperienceId,
     ) ??
-    ({ ...memberOrg, ...updatedMemberOrg, verified, verifiedBy } as IMemberRoleWithOrganization)
+    ({
+      ...memberOrg,
+      ...updatedMemberOrg,
+      verified,
+      verifiedBy,
+      organizationDomains: [],
+    } as IMemberRoleWithOrganization)
 
   ok(res, toMemberWorkExperience(responseMo))
 }

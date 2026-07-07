@@ -728,3 +728,81 @@ export async function findNonExistingOrganizationIds(
 
   return rows.map((r: { id: string }) => r.id)
 }
+
+type OrganizationSummary = Pick<IDbOrganization, 'id' | 'displayName' | 'logo'> & {
+  domain: string
+}
+
+export async function findOrganizationByNameOrDomain(
+  qx: QueryExecutor,
+  { name, domain }: { name?: string; domain?: string },
+): Promise<OrganizationSummary | null> {
+  if (!name && !domain) {
+    return null
+  }
+
+  const domainJoin = domain
+    ? `
+      INNER JOIN "organizationIdentities" oi
+        ON oi."organizationId" = o.id
+       AND oi.type = 'primary-domain'
+       AND oi.verified = true
+       AND lower(oi.value) = lower($(domain))`
+    : ''
+
+  const filters = ['o."deletedAt" IS NULL']
+
+  if (name) {
+    filters.push(
+      `trim(lower(o."displayName")) = trim(lower($(name)))`,
+      `EXISTS (
+        SELECT 1
+        FROM "organizationIdentities" oi_check
+        WHERE oi_check."organizationId" = o.id
+          AND oi_check.type = 'primary-domain'
+          AND oi_check.verified = true
+      )`,
+    )
+  }
+
+  const domainSelect = domain
+    ? 'lower($(domain)) AS domain'
+    : `(
+        SELECT lower(oi_domain.value)
+        FROM "organizationIdentities" oi_domain
+        WHERE oi_domain."organizationId" = o.id
+          AND oi_domain.type = 'primary-domain'
+          AND oi_domain.verified = true
+        ORDER BY lower(oi_domain.value)
+        LIMIT 1
+      ) AS domain`
+
+  const sql = `
+    SELECT
+      o.id,
+      o."displayName",
+      o.logo,
+      ${domainSelect}
+    FROM "organizations" o
+    ${domainJoin}
+    LEFT JOIN "organizationsGlobalActivityCount" gac
+      ON gac."organizationId" = o.id
+    WHERE
+      ${filters.join(' AND ')}
+    ORDER BY
+      COALESCE(gac.total_count_estimate, 0) DESC,
+      (
+        SELECT COUNT(DISTINCT mo."memberId")
+        FROM "memberOrganizations" mo
+        WHERE mo."organizationId" = o.id
+          AND mo."deletedAt" IS NULL
+      ) DESC,
+      o.id
+    LIMIT 1;
+  `
+
+  return qx.selectOneOrNone(sql, {
+    name,
+    domain,
+  })
+}

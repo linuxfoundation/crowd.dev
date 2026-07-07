@@ -213,27 +213,60 @@ export async function fetchManyMemberOrgs(
 export async function fetchManyMemberOrgsWithOrgData(
   qx: QueryExecutor,
   memberIds: string[],
+  { withDomains = false }: { withDomains?: boolean } = {},
 ): Promise<Map<string, IMemberRoleWithOrganization[]>> {
-  const memberRoles = (await qx.select(
-    `
-      SELECT mo.*, o."displayName" as "organizationName", o.logo as "organizationLogo"
-      FROM "memberOrganizations" mo
-      join "organizations" o on mo."organizationId" = o.id
-      WHERE mo."memberId" in ($(memberIds:csv))
-      AND mo."deletedAt" IS NULL;
-    `,
-    {
-      memberIds,
-    },
-  )) as IMemberRoleWithOrganization[]
+  const domainSelect = withDomains
+    ? `,
+      COALESCE(oid.domains, '{}') AS "organizationDomains"`
+    : ''
 
-  const resultMap = new Map<string, IMemberRoleWithOrganization[]>()
+  const domainJoin = withDomains
+    ? `
+      LEFT JOIN (
+        SELECT
+          oi."organizationId",
+          array_agg(DISTINCT lower(oi.value) ORDER BY lower(oi.value)) AS domains
+        FROM "organizationIdentities" oi
+        WHERE oi.type = 'primary-domain'
+          AND oi.verified = true
+          AND oi."organizationId" IN (
+            SELECT DISTINCT mo2."organizationId"
+            FROM "memberOrganizations" mo2
+            WHERE mo2."memberId" IN ($(memberIds:csv))
+              AND mo2."deletedAt" IS NULL
+          )
+        GROUP BY oi."organizationId"
+      ) oid ON oid."organizationId" = mo."organizationId"`
+    : ''
+
+  const sql = `
+    SELECT
+      mo.*,
+      o."displayName" AS "organizationName",
+      o.logo AS "organizationLogo"
+      ${domainSelect}
+    FROM "memberOrganizations" mo
+    JOIN organizations o ON o.id = mo."organizationId"
+    ${domainJoin}
+    WHERE mo."memberId" IN ($(memberIds:csv))
+      AND mo."deletedAt" IS NULL;
+  `
+
+  const memberRoles = (await qx.select(sql, {
+    memberIds,
+  })) as IMemberRoleWithOrganization[]
+
+  const result = new Map<string, IMemberRoleWithOrganization[]>()
+
   for (const memberId of memberIds) {
-    const roles = memberRoles.filter((r) => r.memberId === memberId)
-    resultMap.set(memberId, roles)
+    result.set(memberId, [])
   }
 
-  return resultMap
+  for (const role of memberRoles) {
+    result.get(role.memberId)!.push(role)
+  }
+
+  return result
 }
 
 export async function fetchManyOrganizationAffiliationPolicies(

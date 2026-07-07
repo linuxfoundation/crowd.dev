@@ -27,7 +27,7 @@ export async function getMemberWorkExperiences(req: Request, res: Response): Pro
     throw new NotFoundError('Member not found')
   }
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
   const workExperiences = groupMemberOrganizations(orgsMap.get(memberId) ?? []).map(
     toMemberWorkExperience,
   )
