@@ -7,7 +7,11 @@ SQL >
     SELECT
         collections.*,
         SUM(
-            CASE WHEN collectionsInsightsProjects.insightsProjectId != '' AND ip.enabled = 1 THEN 1 ELSE 0 END
+            CASE
+                WHEN collectionsInsightsProjects.insightsProjectId != '' AND ip.enabled = 1
+                THEN 1
+                ELSE 0
+            END
         ) as "projectCount"
     FROM collections FINAL
     left join
