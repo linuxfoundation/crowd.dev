@@ -479,11 +479,21 @@ const SCM_HOSTS = new Set([
   'codeberg.org',
   // Self-hosted GitLab / Gitea instances seen in Maven POMs with clean
   // /<owner>/<repo> paths (same shape as gitlab.com — handled by the generic logic).
+  // Internal-only hosts (git.corp.adobe.com, gitlab.alibaba-inc.com) are excluded:
+  // their links are unreachable for consumers. The ≥2-segment owner/repo requirement
+  // acts as a safety net so a mis-classified host yields NULL, never a junk link.
   'gitlab.smartb.city',
   'gitlab.ow2.org',
   'gitlab.nuiton.org',
   'gitlab.inria.fr',
   'git.neckar.it',
+  'git.iem.at',
+  'git.oschina.net',
+  'git.i-novus.ru',
+  'gitlab.protontech.ch',
+  'git.catchpoint.net',
+  'git.dorkbox.com',
+  'git.adorsys.de',
 ])
 
 /** Hosts whose owner/repo path is case-insensitive and should be lower-cased. */
@@ -529,12 +539,13 @@ export function normalizeScmUrl(raw: string | null): string | null {
   // ssh://git@host/… → https://host/…
   s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
 
+  // git:// → https://, and upgrade http:// → https:// — done before the SCP-colon
+  // rule below so that git://host:owner/repo is normalised too.
+  s = s.replace(/^git:\/\//, 'https://').replace(/^http:\/\//, 'https://')
+
   // scheme://host:owner/repo → scheme://host/owner/repo — the colon is an SCP path
   // separator, not a port (guarded by \D so real numeric ports are left intact).
   s = s.replace(/^(https?):\/\/([^:/]+):(?=\D)/, '$1://$2/')
-
-  // git:// → https://, and upgrade http:// → https://
-  s = s.replace(/^git:\/\//, 'https://').replace(/^http:\/\//, 'https://')
 
   // No scheme at all (e.g. "github.com/owner/repo") → assume https
   if (!s.includes('://')) {

@@ -221,6 +221,12 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://gitlab.com:443/foo/bar')).toBe('https://gitlab.com/foo/bar')
   })
 
+  it('recovers git://host:owner/repo SCP colon form', () => {
+    expect(normalizeScmUrl('git://github.com:appendium/objectlabkit.git')).toBe(
+      'https://github.com/appendium/objectlabkit',
+    )
+  })
+
   it('accepts allowlisted self-hosted GitLab/Gitea hosts', () => {
     expect(normalizeScmUrl('https://git.neckar.it/neckarit/neckar-hub')).toBe(
       'https://git.neckar.it/neckarit/neckar-hub',
@@ -228,10 +234,12 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('scm:git:https://gitlab.inria.fr/owner/repo.git')).toBe(
       'https://gitlab.inria.fr/owner/repo',
     )
+    expect(normalizeScmUrl('https://git.iem.at/owner/repo')).toBe('https://git.iem.at/owner/repo')
   })
 
-  it('still returns null for hosts not in the allowlist', () => {
+  it('still returns null for internal or non-allowlisted hosts', () => {
     expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBeNull()
+    expect(normalizeScmUrl('https://gitlab.alibaba-inc.com/team/project')).toBeNull()
     expect(normalizeScmUrl('https://android.googlesource.com/platform/tools/base')).toBeNull()
   })
 })
