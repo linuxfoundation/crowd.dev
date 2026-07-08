@@ -75,11 +75,6 @@ class AffiliationService(BaseService):
     )
 
     @staticmethod
-    async def read_text_file(file_path: str) -> str:
-        async with aiofiles.open(file_path, "rb") as f:
-            return safe_decode(await f.read())
-
-    @staticmethod
     async def compute_file_hash_from_path(
         file_path: str, *, retain_content: bool = False
     ) -> tuple[bytes | None, str]:
