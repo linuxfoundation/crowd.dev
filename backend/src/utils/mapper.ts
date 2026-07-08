@@ -182,6 +182,7 @@ export function toMemberWorkExperience(mo: IMemberRoleWithOrganization) {
     organizationId: mo.organizationId,
     organizationName: mo.organizationName,
     organizationLogo: mo.organizationLogo,
+    organizationDomains: mo.organizationDomains ?? [],
     jobTitle: mo.title ?? null,
     verified: mo.verified ?? false,
     verifiedBy: mo.verifiedBy ?? null,

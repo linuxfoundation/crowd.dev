@@ -94,6 +94,7 @@ export interface IRenderFriendlyMemberOrganization {
 export interface IMemberRoleWithOrganization extends IMemberOrganization {
   organizationName: string
   organizationLogo: string
+  organizationDomains?: string[]
 }
 
 export interface MemberOrgDate {

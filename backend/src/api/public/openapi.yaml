@@ -779,8 +779,11 @@ paths:
   /organizations:
     get:
       operationId: getOrganization
-      summary: Look up an organization by domain
-      description: Find a verified organization by its primary domain.
+      summary: Look up an organization by domain or name
+      description: >
+        Provide domain, name, or both. When both are provided, the domain and
+        name must belong to the same organization. If multiple organizations
+        match, the most active one is returned.
       tags:
         - Organizations
       security:
@@ -789,12 +792,20 @@ paths:
       parameters:
         - name: domain
           in: query
-          required: true
+          required: false
           description: Primary domain of the organization.
           schema:
             type: string
             minLength: 1
           example: linuxfoundation.org
+        - name: name
+          in: query
+          required: false
+          description: Exact display name of the organization.
+          schema:
+            type: string
+            minLength: 1
+          example: Linux Foundation
       responses:
         '200':
           description: Organization found.
@@ -805,13 +816,14 @@ paths:
               example:
                 id: 550e8400-e29b-41d4-a716-446655440000
                 name: Linux Foundation
+                domain: linuxfoundation.org
                 logo: https://example.com/logo.png
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: No verified organization found for the given domain.
+          description: No organization found for the given domain or name.
           content:
             application/json:
               schema:
@@ -876,15 +888,26 @@ paths:
                 required:
                   - id
                   - name
+                  - domain
                 properties:
                   id:
                     type: string
                     format: uuid
                   name:
                     type: string
+                  domain:
+                    type: string
+                    description: Verified primary domain of the organization.
+                  logo:
+                    type:
+                      - string
+                      - 'null'
+                    description: URL of the organization logo.
               example:
                 id: 550e8400-e29b-41d4-a716-446655440000
                 name: Acme Corp
+                domain: acme.com
+                logo: https://example.com/logo.png
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1218,6 +1241,7 @@ components:
         - id
         - organizationId
         - organizationName
+        - organizationDomains
         - jobTitle
         - verified
         - verifiedBy
@@ -1243,6 +1267,11 @@ components:
             - string
             - 'null'
           description: URL of the organization logo.
+        organizationDomains:
+          type: array
+          items:
+            type: string
+          description: Verified primary domains for the organization, in alphabetical order.
         jobTitle:
           type:
             - string
@@ -1531,6 +1560,7 @@ components:
       required:
         - id
         - name
+        - domain
       properties:
         id:
           type: string
@@ -1538,6 +1568,9 @@ components:
         name:
           type: string
           description: Display name of the organization.
+        domain:
+          type: string
+          description: Verified primary domain.
         logo:
           type: string
           description: URL of the organization logo. Only present if available.
