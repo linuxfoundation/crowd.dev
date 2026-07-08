@@ -720,6 +720,20 @@ async def find_many_organization_ids_by_identities(identities: list[dict]) -> li
     return results
 
 
+async def fetch_organizations(org_ids: list[str]) -> list[dict]:
+    if not org_ids:
+        return []
+
+    return await query(
+        """
+        SELECT id, "isAffiliationBlocked"
+        FROM organizations
+        WHERE id = ANY($1::uuid[])
+        """,
+        (org_ids,),
+    )
+
+
 async def fetch_member_organizations(member_ids: list[str]) -> list[dict]:
     if not member_ids:
         return []
@@ -751,9 +765,9 @@ async def fetch_segment_affiliations(member_ids: list[str], segment_id: str) -> 
     )
 
 
-async def insert_member_organizations(rows: list[dict]) -> None:
+async def insert_member_organizations(rows: list[dict]) -> list[dict]:
     if not rows:
-        return
+        return []
 
     undated_rows: list[tuple] = []
     open_ended_rows: list[tuple] = []
@@ -767,8 +781,10 @@ async def insert_member_organizations(rows: list[dict]) -> None:
             row.get("date_end"),
             row["source"],
         )
+
         date_start = row.get("date_start")
         date_end = row.get("date_end")
+
         if date_start is None and date_end is None:
             undated_rows.append(params)
         elif date_end is None:
@@ -787,41 +803,94 @@ async def insert_member_organizations(rows: list[dict]) -> None:
             "createdAt",
             "updatedAt"
         )
-        VALUES ($1, $2, $3, $4, NULL, $5, NOW(), NOW())
     """
 
-    if undated_rows:
-        sql = (
-            insert_sql
-            + """
+    returning_sql = """
+        RETURNING id, "memberId", "organizationId"
+    """
+
+    buckets = [
+        (
+            undated_rows,
+            """
             ON CONFLICT ("memberId", "organizationId")
                 WHERE ("dateStart" IS NULL AND "dateEnd" IS NULL AND "deletedAt" IS NULL)
             DO NOTHING
-        """
-        )
-        await executemany(sql, undated_rows)
-
-    if open_ended_rows:
-        sql = (
-            insert_sql
-            + """
+            """,
+        ),
+        (
+            open_ended_rows,
+            """
             ON CONFLICT ("memberId", "organizationId", "dateStart")
                 WHERE ("dateEnd" IS NULL AND "deletedAt" IS NULL)
             DO NOTHING
-        """
-        )
-        await executemany(sql, open_ended_rows)
-
-    if dated_rows:
-        sql = (
-            insert_sql
-            + """
+            """,
+        ),
+        (
+            dated_rows,
+            """
             ON CONFLICT ("memberId", "organizationId", "dateStart", "dateEnd")
                 WHERE ("deletedAt" IS NULL)
             DO NOTHING
-        """
+            """,
+        ),
+    ]
+
+    created_rows: list[dict] = []
+
+    for bucket_rows, conflict_sql in buckets:
+        if not bucket_rows:
+            continue
+
+        values_parts: list[str] = []
+        params: list = []
+        param_index = 1
+
+        for member_id, organization_id, date_start, date_end, source in bucket_rows:
+            values_parts.append(
+                f"(${param_index}, ${param_index + 1}, ${param_index + 2}, "
+                f"${param_index + 3}, NULL, ${param_index + 4}, NOW(), NOW())"
+            )
+            params.extend([member_id, organization_id, date_start, date_end, source])
+            param_index += 5
+
+        created_rows.extend(
+            await query(
+                insert_sql
+                + f" VALUES {', '.join(values_parts)}"
+                + conflict_sql
+                + returning_sql,
+                tuple(params),
+            )
         )
-        await executemany(sql, dated_rows)
+
+    return created_rows
+
+
+async def insert_member_organization_affiliation_overrides(rows: list[dict]) -> None:
+    if not rows:
+        return
+
+    await executemany(
+        """
+        INSERT INTO "memberOrganizationAffiliationOverrides"(
+            id,
+            "memberId",
+            "memberOrganizationId",
+            "allowAffiliation"
+        )
+        VALUES (gen_random_uuid(), $1, $2, $3)
+        ON CONFLICT ("memberId", "memberOrganizationId") DO NOTHING
+        """,
+        [
+            (
+                row["member_id"],
+                row["member_organization_id"],
+                row["allow_affiliation"],
+            )
+            for row in rows
+        ],
+    )
 
 
 async def insert_member_segment_affiliations(rows: list[dict]) -> None:

@@ -11,10 +11,12 @@ from pydantic import ValidationError
 
 from crowdgit.database.crud import (
     fetch_member_organizations,
+    fetch_organizations,
     fetch_segment_affiliations,
     find_many_member_ids_by_identities,
     find_many_organization_ids_by_identities,
     get_repo_affiliation_registry,
+    insert_member_organization_affiliation_overrides,
     insert_member_organizations,
     insert_member_segment_affiliations,
     save_service_execution,
@@ -870,6 +872,16 @@ class AffiliationService(BaseService):
             else:
                 segment_affiliations_by_member.setdefault(member_id, []).append(row)
 
+        blocked_org_ids: set[str] = set()
+        if resolved_stints:
+            org_ids = list({organization_id for _, organization_id, _ in resolved_stints})
+            organizations = await fetch_organizations(org_ids)
+            blocked_org_ids = {
+                str(organization["id"])
+                for organization in organizations
+                if organization["isAffiliationBlocked"]
+            }
+
         mo_inserts: list[dict] = []
         msa_inserts: list[dict] = []
 
@@ -896,10 +908,14 @@ class AffiliationService(BaseService):
                     }
                 )
 
-            if not self.has_existing_stint(
-                existing_msas, organization_id, date_start, date_end
-            ) and not self.is_blocked_by_deleted_row(
-                deleted_msas, organization_id, date_start, date_end
+            if (
+                str(organization_id) not in blocked_org_ids
+                and not self.has_existing_stint(
+                    existing_msas, organization_id, date_start, date_end
+                )
+                and not self.is_blocked_by_deleted_row(
+                    deleted_msas, organization_id, date_start, date_end
+                )
             ):
                 msa_inserts.append(
                     {
@@ -911,7 +927,21 @@ class AffiliationService(BaseService):
                     }
                 )
 
-        await insert_member_organizations(mo_inserts)
+        created_member_organizations = await insert_member_organizations(mo_inserts)
+
+        if blocked_org_ids:
+            override_rows = [
+                {
+                    "member_id": mo["memberId"],
+                    "member_organization_id": mo["id"],
+                    "allow_affiliation": False,
+                }
+                for mo in created_member_organizations
+                if str(mo["organizationId"]) in blocked_org_ids
+            ]
+            if override_rows:
+                await insert_member_organization_affiliation_overrides(override_rows)
+
         await insert_member_segment_affiliations(msa_inserts)
 
     async def process_affiliations(
