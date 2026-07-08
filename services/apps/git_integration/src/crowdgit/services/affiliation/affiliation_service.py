@@ -966,7 +966,7 @@ class AffiliationService(BaseService):
                 raise AffiliationFileNotFoundError(ai_cost=ai_cost)
 
             file_path_on_disk = os.path.join(batch_info.repo_path, latest_file_path)
-            file_size_bytes = os.path.getsize(file_path_on_disk)
+            file_size_bytes = await aiofiles.os.path.getsize(file_path_on_disk)
             # Too big for llm — mark unusable and move on.
             if file_size_bytes > self.MAX_FILE_SIZE_BYTES:
                 # Steady state: already gave up on this file; getsize is enough.
