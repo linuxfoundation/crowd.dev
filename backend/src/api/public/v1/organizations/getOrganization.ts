@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError, normalizeHostname } from '@crowd/common'
+import { BadRequestError, NotFoundError, normalizeHostname } from '@crowd/common'
 import { findOrganizationByNameOrDomain, optionsQx } from '@crowd/data-access-layer'
 
 import { ok } from '@/utils/api'
@@ -17,12 +17,19 @@ const querySchema = z
   })
 
 export async function getOrganization(req: Request, res: Response): Promise<void> {
-  const { name, domain } = validateOrThrow(querySchema, req.query)
+  const { name, domain: rawDomain } = validateOrThrow(querySchema, req.query)
+
+  const domain = rawDomain ? normalizeHostname(rawDomain, false) : undefined
+  
+  if (rawDomain && !domain) {
+    throw new BadRequestError(`Invalid domain: ${rawDomain}`)
+  }
+
   const qx = optionsQx(req)
 
   const organization = await findOrganizationByNameOrDomain(qx, {
     name,
-    domain: domain ? normalizeHostname(domain, false) : undefined,
+    domain,
   })
 
   if (!organization) {
