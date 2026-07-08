@@ -52,6 +52,17 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
+  // Stash org fields for response fallback when reject soft-deletes the row.
+  const orgsMapBeforeChange = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
+  const memberOrgsWithOrgDataBeforeChange = orgsMapBeforeChange.get(memberId) ?? []
+
+  const workExperienceWithOrgDataBeforeChange = memberOrgsWithOrgDataBeforeChange.find(
+    (mo) => mo.id === workExperienceId,
+  )
+
   const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
 
   const memberOrgIdsToDelete = [
@@ -103,14 +114,22 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
   const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
   const memberOrgsWithData = orgsMap.get(memberId) ?? []
 
-  const responseMo: IMemberRoleWithOrganization =
-    groupMemberOrganizations(memberOrgsWithData).find((mo) => mo.id === workExperienceId) ??
-    ({
-      ...(memberOrgsWithData.find((mo) => mo.id === workExperienceId) ?? memberOrg),
-      ...updatedMemberOrg,
-      verified,
-      verifiedBy,
-    } as IMemberRoleWithOrganization)
+  const fallbackMo =
+    memberOrgsWithData.find((mo) => mo.id === workExperienceId) ??
+    workExperienceWithOrgDataBeforeChange
+
+  if (!fallbackMo) {
+    throw new NotFoundError('Work experience not found')
+  }
+
+  const responseMo: IMemberRoleWithOrganization = groupMemberOrganizations(memberOrgsWithData).find(
+    (mo) => mo.id === workExperienceId,
+  ) ?? {
+    ...fallbackMo,
+    ...updatedMemberOrg,
+    verified,
+    verifiedBy,
+  }
 
   ok(res, toMemberWorkExperience(responseMo))
 }
