@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => ({
             'services/apps/packages_worker/**',
           ],
           pool: 'forks',
-          hookTimeout: 300_000,
+          hookTimeout: 90_000,
           testTimeout: 30_000,
         },
       },

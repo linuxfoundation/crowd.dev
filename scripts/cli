@@ -856,7 +856,7 @@ function migrate_test() {
         -c "DROP DATABASE IF EXISTS test_template;" \
         -c "CREATE DATABASE test_template;"
     say "Building crowd flyway migration image..."
-    docker build $DOCKER_PLATFORM_FLAGS -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database --load
+    docker build $DOCKER_PLATFORM_FLAGS -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database
     say "Migrating test_template..."
     docker run --rm --network "${PROJECT_NAME}-bridge-test" \
         -e PGHOST=crowd-test-db \

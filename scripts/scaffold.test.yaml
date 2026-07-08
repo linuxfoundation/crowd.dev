@@ -11,6 +11,7 @@ services:
     ports:
       - '5434:5432'
     volumes:
+      # Creates the `sequin` DB and role required before Flyway runs.
       - ./scaffold/sequin/postgres-docker-entrypoint-initdb.d/create-sequin-database.sql:/docker-entrypoint-initdb.d/create-sequin-database.sql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
