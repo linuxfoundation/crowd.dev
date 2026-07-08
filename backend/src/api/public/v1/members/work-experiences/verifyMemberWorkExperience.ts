@@ -33,21 +33,6 @@ const bodySchema = z.object({
   verifiedBy: z.string(),
 })
 
-function resolveWorkExperience(
-  workExperienceId: string,
-  ...collections: IMemberRoleWithOrganization[][]
-): IMemberRoleWithOrganization | undefined {
-  for (const collection of collections) {
-    const match = collection.find((mo) => mo.id === workExperienceId)
-
-    if (match) {
-      return match
-    }
-  }
-
-  return undefined
-}
-
 export async function verifyMemberWorkExperience(req: Request, res: Response): Promise<void> {
   const { memberId, workExperienceId } = validateOrThrow(paramsSchema, req.params)
   const { verified, verifiedBy } = validateOrThrow(bodySchema, req.body)
@@ -127,27 +112,19 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     withDomains: true,
   })
 
-  const memberOrgsWithData = orgsMap.get(memberId) ?? []
-  const groupedMemberOrgs = groupMemberOrganizations(memberOrgsWithData)
+  const groupedMemberOrgs = groupMemberOrganizations(orgsMap.get(memberId) ?? [])
   const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
 
-  const fallbackMo = resolveWorkExperience(
-    workExperienceId,
-    memberOrgsWithData,
-    groupedMemberOrgsBeforeChange,
-    memberOrgsWithOrgDataBeforeChange,
-  )
+  const fallbackMo = groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId)
 
-  if (!fallbackMo) {
+  const responseMo: IMemberRoleWithOrganization =
+    groupedMemberOrgs.find((mo) => mo.id === workExperienceId) ??
+    (fallbackMo
+      ? { ...fallbackMo, ...updatedMemberOrg, ...verifiedUpdate }
+      : undefined)
+
+  if (!responseMo) {
     throw new NotFoundError('Work experience not found')
-  }
-
-  const responseMo: IMemberRoleWithOrganization = groupedMemberOrgs.find(
-    (mo) => mo.id === workExperienceId,
-  ) ?? {
-    ...fallbackMo,
-    ...updatedMemberOrg,
-    ...verifiedUpdate,
   }
 
   ok(res, toMemberWorkExperience(responseMo))
