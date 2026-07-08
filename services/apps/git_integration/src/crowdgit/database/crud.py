@@ -856,10 +856,7 @@ async def insert_member_organizations(rows: list[dict]) -> list[dict]:
 
         created_rows.extend(
             await query(
-                insert_sql
-                + f" VALUES {', '.join(values_parts)}"
-                + conflict_sql
-                + returning_sql,
+                insert_sql + f" VALUES {', '.join(values_parts)}" + conflict_sql + returning_sql,
                 tuple(params),
             )
         )
