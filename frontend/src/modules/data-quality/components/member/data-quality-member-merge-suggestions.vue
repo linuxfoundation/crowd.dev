@@ -18,7 +18,7 @@
           </div>
         </template>
       </lf-data-quality-member-merge-suggestions-item>
-      <div v-if="mergeSuggestions.length < total" class="pt-4">
+      <div v-if="hasMore" class="pt-4">
         <lf-button
           type="primary-ghost"
           loading-text="Loading suggestions..."
@@ -62,8 +62,6 @@ import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import AppMemberMergeSuggestionsDialog from '@/modules/member/components/member-merge-suggestions-dialog.vue';
-import { storeToRefs } from 'pinia';
-import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 import LfMemberMergeSuggestionDropdown
   from '@/modules/member/components/suggestions/member-merge-suggestion-dropdown.vue';
 import LfScrollBodyControll from '@/ui-kit/scrollcontroll/ScrollBodyControll.vue';
@@ -75,29 +73,13 @@ const props = defineProps<{
 const loading = ref(true);
 const limit = ref(20);
 const offset = ref(0);
-const total = ref(0);
+const hasMore = ref(false);
 const mergeSuggestions = ref<any[]>([]);
 
 const isModalOpen = ref<boolean>(false);
 const detailsOffset = ref<number>(0);
 
-const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
-
-const segments = computed(() => (selectedProjectGroup.value?.id === props.projectGroup
-  ? [
-    selectedProjectGroup.value?.id,
-    ...selectedProjectGroup.value.projects.map((p) => [
-      ...p.subprojects.map((sp) => sp.id),
-    ]).flat(),
-  ]
-  : [
-    props.projectGroup,
-    ...selectedProjectGroup.value.projects
-      .filter((p) => p.id === props.projectGroup)
-      .map((p) => [
-        ...p.subprojects.map((sp) => sp.id),
-      ]).flat(),
-  ]));
+const segments = computed(() => [props.projectGroup]);
 
 const loadMergeSuggestions = () => {
   loading.value = true;
@@ -109,7 +91,7 @@ const loadMergeSuggestions = () => {
     segments: segments.value,
   })
     .then((res) => {
-      total.value = +res.count;
+      hasMore.value = Boolean(res.hasMore);
       const rows = res.rows.filter((s: any) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];

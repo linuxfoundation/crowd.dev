@@ -16,6 +16,7 @@ import {
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
 import { applyOrganizationAffiliationPolicyToMembers } from '@crowd/data-access-layer/src/member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   addMergeAction,
   queryMergeActions,
@@ -28,7 +29,11 @@ import {
   findOrgById,
   upsertOrgIdentities,
 } from '@crowd/data-access-layer/src/organizations'
-import { findLfSegmentByName } from '@crowd/data-access-layer/src/segments'
+import {
+  decrementOrganizationMergeSuggestionCounts,
+  findLfSegmentByName,
+  getOrganizationsCommonProjectGroupSegmentIds,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
 import { WorkflowIdReusePolicy } from '@crowd/temporal'
 import {
@@ -737,6 +742,15 @@ export default class OrganizationService extends LoggerBase {
         }),
       )
 
+      const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+        originalId,
+        toMergeId,
+      ])
+
+      // Precomputed per-project-group counts are only refreshed by cron every few hours.
+      // Decrement here so merges from the UI are reflected immediately.
+      await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
+
       await this.options.temporal.workflow.start('finishOrganizationMerging', {
         taskQueue: 'entity-merging',
         workflowId: `finishOrganizationMerging/${originalId}/${toMergeId}`,
@@ -811,24 +825,13 @@ export default class OrganizationService extends LoggerBase {
 
   async addToNoMerge(organizationId: string, noMergeId: string): Promise<void> {
     const transaction = await SequelizeRepository.createTransaction(this.options)
+    const txOptions = { ...this.options, transaction }
 
     try {
-      await OrganizationRepository.addNoMerge(organizationId, noMergeId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.addNoMerge(noMergeId, organizationId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.removeToMerge(organizationId, noMergeId, {
-        ...this.options,
-        transaction,
-      })
-      await OrganizationRepository.removeToMerge(noMergeId, organizationId, {
-        ...this.options,
-        transaction,
-      })
+      await OrganizationRepository.addNoMerge(organizationId, noMergeId, txOptions)
+      await OrganizationRepository.addNoMerge(noMergeId, organizationId, txOptions)
+      await OrganizationRepository.removeToMerge(organizationId, noMergeId, txOptions)
+      await OrganizationRepository.removeToMerge(noMergeId, organizationId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (error) {
@@ -836,6 +839,16 @@ export default class OrganizationService extends LoggerBase {
 
       throw error
     }
+
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const projectGroupSegmentIds = await getOrganizationsCommonProjectGroupSegmentIds(qx, [
+      organizationId,
+      noMergeId,
+    ])
+
+    // Precomputed per-project-group counts are only refreshed by cron every few hours.
+    // Decrement here so no-merge from the UI is reflected immediately.
+    await decrementOrganizationMergeSuggestionCounts(qx, projectGroupSegmentIds)
   }
 
   async createOrUpdate(
@@ -1074,6 +1087,9 @@ export default class OrganizationService extends LoggerBase {
         data.isAffiliationBlocked !== existingOrg.isAffiliationBlocked
       ) {
         await applyOrganizationAffiliationPolicyToMembers(qx, record.id, !data.isAffiliationBlocked)
+        if (data.isAffiliationBlocked) {
+          await deleteMemberSegmentAffiliations(qx, { organizationId: record.id })
+        }
         recalculateAffiliations = true
       }
 

@@ -9,10 +9,16 @@ export type { QueryExecutor } from '@crowd/database'
 
 /** Sequelize-backed QueryExecutor for legacy backend repositories. */
 export class SequelizeQueryExecutor implements QueryExecutor {
-  constructor(private readonly sequelize: Sequelize) {}
+  constructor(
+    private readonly sequelize: Sequelize,
+    private readonly noTransaction = false,
+  ) {}
 
   protected prepareOptions(options: any): any {
-    return options
+    // When noTransaction=true, explicitly opt out of any CLS or implicit
+    // transaction binding — used for background/fire-and-forget work that
+    // must not inherit a parent request's transaction.
+    return this.noTransaction ? { ...options, transaction: null } : options
   }
 
   select(query: string, params?: object): Promise<any> {
@@ -113,4 +119,13 @@ export function optionsQx(options: any): QueryExecutor {
   }
 
   return new SequelizeQueryExecutor(seq)
+}
+
+/**
+ * Creates a QueryExecutor for fire-and-forget background work.
+ * Always runs outside any transaction — safe to use after the caller's
+ * request transaction has been committed.
+ */
+export function optionsBgQx(options: any): QueryExecutor {
+  return new SequelizeQueryExecutor(options.database.sequelize, true)
 }

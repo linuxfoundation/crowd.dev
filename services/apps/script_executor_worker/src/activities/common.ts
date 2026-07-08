@@ -1,7 +1,7 @@
 import axios from 'axios'
 
-import { signalMemberUpdate } from '@crowd/common_services'
-import { findOrganizationSegments } from '@crowd/data-access-layer/src/old/apps/entity_merging_worker'
+import { CommonMemberService, signalMemberUpdate } from '@crowd/common_services'
+import { pgpQx } from '@crowd/data-access-layer'
 import {
   IMemberIdentity,
   IMemberUnmergeBackup,
@@ -16,22 +16,14 @@ export async function mergeMembers(
   primaryMemberId: string,
   secondaryMemberId: string,
 ): Promise<void> {
-  const url = `${process.env['CROWD_API_SERVICE_URL']}/member/${primaryMemberId}/merge`
-  const requestOptions = {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
-      'Content-Type': 'application/json',
-    },
-    data: {
-      memberToMerge: secondaryMemberId,
-    },
-  }
+  const qx = pgpQx(svc.postgres.writer.connection())
+  const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
 
   try {
-    await axios(url, requestOptions)
+    await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
-    console.log(`Failed merging member wit status [${error.response.status}]. Skipping!`)
+    svc.log.error({ err: error }, 'Failed to merge members')
+    throw error
   }
 }
 
@@ -43,7 +35,7 @@ export async function unmergeMembers(
   const requestOptions = {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {
@@ -54,7 +46,8 @@ export async function unmergeMembers(
   try {
     await axios(url, requestOptions)
   } catch (error) {
-    console.log(`Failed unmerging member with status [${error.response.status}]. Skipping!`)
+    svc.log.error({ err: error, status: error.response?.status }, 'Failed to unmerge member')
+    throw error
   }
 }
 
@@ -66,7 +59,7 @@ export async function unmergeMembersPreview(
   const requestOptions = {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {
@@ -80,7 +73,11 @@ export async function unmergeMembersPreview(
     const result = await axios(url, requestOptions)
     return result.data
   } catch (error) {
-    console.log(`Failed unmerging member with status [${error.response.status}]. Skipping!`)
+    svc.log.error(
+      { err: error, status: error.response?.status },
+      'Failed to unmerge member preview',
+    )
+    throw error
   }
 }
 
@@ -89,17 +86,11 @@ export async function mergeOrganizations(
   secondaryOrgId: string,
   segmentId?: string,
 ): Promise<void> {
-  // if segmentId doesn't exist we can get just one segment org belongs to and use that
-  if (!segmentId) {
-    const result = await findOrganizationSegments(svc.postgres.writer, primaryOrgId)
-    segmentId = result?.segmentIds?.[0] ?? undefined
-  }
-
   const url = `${process.env['CROWD_API_SERVICE_URL']}/organization/${primaryOrgId}/merge`
   const requestOptions = {
     method: 'PUT',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {
@@ -111,7 +102,8 @@ export async function mergeOrganizations(
   try {
     await axios(url, requestOptions)
   } catch (error) {
-    console.log(`Failed merging organization with status [${error.response.status}]. Skipping!`)
+    svc.log.error({ err: error, status: error.response?.status }, 'Failed to merge organization')
+    throw error
   }
 }
 

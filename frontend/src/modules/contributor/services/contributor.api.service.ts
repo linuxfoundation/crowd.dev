@@ -1,6 +1,6 @@
+import { storeToRefs } from 'pinia';
 import authAxios from '@/shared/axios/auth-axios';
 import { Contributor } from '@/modules/contributor/types/Contributor';
-import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 
 const getSegments = () => {
@@ -25,10 +25,14 @@ export class ContributorApiService {
   }
 
   static async mergeSuggestions(limit: number, offset: number, query: any, segments: string[]) {
+    const resolvedSegments = segments.length
+      ? segments
+      : (getSegments() ?? []);
+
     const data = {
       limit,
       offset,
-      segments,
+      segments: resolvedSegments,
       detail: true,
       ...query,
     };

@@ -1,0 +1,75 @@
+DESCRIPTION >
+    - `repos` contains GitHub/GitLab/Bitbucket repository metadata for repositories linked to tracked packages.
+    - Replicated from Postgres packages-db — initially seeded from deps.dev BigQuery, enriched by the GitHub API worker.
+    - Used to surface repository health signals: stars, forks, activity, scorecard score, and criticality indicators.
+    - `id` is the internal primary key.
+    - `url` is the canonical repository URL — the unique identifier across all sources.
+    - `host` is the hosting platform: 'github', 'gitlab', 'bitbucket', or 'other' (empty string if not yet resolved).
+    - `owner` is the repository owner or organization name (empty string if not yet enriched).
+    - `name` is the repository name (empty string if not yet enriched).
+    - `description` is the repository description (empty string if not provided).
+    - `primaryLanguage` is the dominant programming language (empty string if unknown).
+    - `topics` is an array of repository topics or tags (empty array if none).
+    - `stars` is the GitHub star count (0 if not yet enriched).
+    - `forks` is the fork count (0 if not yet enriched).
+    - `watchers` is the watcher count (0 if not yet enriched).
+    - `openIssues` is the number of open issues (0 if not yet enriched).
+    - `lastCommitAt` is the timestamp of the most recent commit (NULL if unknown).
+    - `archived` is 1 if the repository is archived, 0 if not, NULL until the GitHub enricher runs (deps.dev seed does not expose this).
+    - `disabled` is 1 if the repository is disabled, 0 if not, NULL until the GitHub enricher runs.
+    - `isFork` is 1 if this repository is a fork of another, 0 if not, NULL until the GitHub enricher runs.
+    - `createdAt` is the row-insert timestamp — set once on first insert via DEFAULT NOW(), never updated.
+    - `homepage` is the project homepage URL (empty string if not provided).
+    - `rawProjectType` is the deps.dev project type string (e.g. 'GITHUB', 'GITLAB') for identity resolution.
+    - `rawProjectName` is the deps.dev project name (e.g. 'github.com/owner/repo') for identity resolution.
+    - `scorecardScore` is the OpenSSF Scorecard aggregate score (0 if not yet scored).
+    - `scorecardLastRunAt` is when the Scorecard was last evaluated (NULL if never run).
+    - `skipEnrichment` is 1 if the GitHub enricher should skip this repo (e.g. invalid/transient URLs), 0 otherwise.
+    - `lastSyncedAt` is the timestamp of the last GitHub enrichment attempt (NULL if never enriched or transient failure).
+    - `securityPolicyEnabled` is 1 if the repo has a SECURITY.md policy file, 0 if not, NULL until the snapshot enricher runs.
+    - `securityFileEnabled` is 1 if the repo has a security-related file, 0 if not, NULL until the snapshot enricher runs.
+    - `snapshotAt` is when the activity snapshot enricher last processed this repo (NULL if never run).
+    - `branchProtectionEnabled` is 1 if branch protection is enabled on the default branch, 0 if not, NULL until enriched.
+    - `branchProtectionAllowsForcePush` is 1 if force pushes are allowed despite branch protection, 0 if not, NULL until enriched.
+    - `branchProtectionRequiredReviews` is the number of required approving reviews before merging (NULL until enriched).
+    - `branchProtectionRequiresStatusChecks` is 1 if status checks are required before merging, 0 if not, NULL until enriched.
+    - `updatedAt` is the row-level audit timestamp used as the Tinybird watermark for sync.
+
+SCHEMA >
+    `id` UInt64 `json:$.record.id`,
+    `url` String `json:$.record.url`,
+    `host` String `json:$.record.host` DEFAULT '',
+    `owner` String `json:$.record.owner` DEFAULT '',
+    `name` String `json:$.record.name` DEFAULT '',
+    `description` String `json:$.record.description` DEFAULT '',
+    `primaryLanguage` String `json:$.record.primary_language` DEFAULT '',
+    `topics` Array(String) `json:$.record.topics[:]` DEFAULT [],
+    `stars` Int32 `json:$.record.stars` DEFAULT 0,
+    `forks` Int32 `json:$.record.forks` DEFAULT 0,
+    `watchers` Int32 `json:$.record.watchers` DEFAULT 0,
+    `openIssues` Int32 `json:$.record.open_issues` DEFAULT 0,
+    `lastCommitAt` Nullable(DateTime64(3)) `json:$.record.last_commit_at`,
+    `archived` Nullable(UInt8) `json:$.record.archived`,
+    `disabled` Nullable(UInt8) `json:$.record.disabled`,
+    `isFork` Nullable(UInt8) `json:$.record.is_fork`,
+    `createdAt` DateTime64(3) `json:$.record.created_at`,
+    `homepage` String `json:$.record.homepage` DEFAULT '',
+    `rawProjectType` String `json:$.record.raw_project_type` DEFAULT '',
+    `rawProjectName` String `json:$.record.raw_project_name` DEFAULT '',
+    `scorecardScore` String `json:$.record.scorecard_score` DEFAULT '0',
+    `scorecardLastRunAt` Nullable(DateTime64(3)) `json:$.record.scorecard_last_run_at`,
+    `skipEnrichment` UInt8 `json:$.record.skip_enrichment` DEFAULT 0,
+    `lastSyncedAt` Nullable(DateTime64(3)) `json:$.record.last_synced_at`,
+    `securityPolicyEnabled` Nullable(UInt8) `json:$.record.security_policy_enabled`,
+    `securityFileEnabled` Nullable(UInt8) `json:$.record.security_file_enabled`,
+    `snapshotAt` Nullable(DateTime64(3)) `json:$.record.snapshot_at`,
+    `branchProtectionEnabled` Nullable(UInt8) `json:$.record.branch_protection_enabled`,
+    `branchProtectionAllowsForcePush` Nullable(UInt8) `json:$.record.branch_protection_allows_force_push`,
+    `branchProtectionRequiredReviews` Nullable(Int32) `json:$.record.branch_protection_required_reviews`,
+    `branchProtectionRequiresStatusChecks` Nullable(UInt8) `json:$.record.branch_protection_requires_status_checks`,
+    `updatedAt` DateTime64(3) `json:$.record.updated_at`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY url
+ENGINE_VER updatedAt

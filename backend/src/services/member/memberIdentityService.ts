@@ -2,13 +2,13 @@
 import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { Error409 } from '@crowd/common'
+import { Error404, Error409 } from '@crowd/common'
 import { createMemberIdentity, findIdentitiesForMembers, optionsQx } from '@crowd/data-access-layer'
 import {
-  checkMemberIdentityExistence,
   deleteMemberIdentity,
   fetchMemberIdentities,
   findMemberIdentityById,
+  findMemberIdentityConflict,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer/src/members'
@@ -58,18 +58,19 @@ export default class MemberIdentityService extends LoggerBase {
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
           // Check if identity already exists
-          const existingIdentities = await checkMemberIdentityExistence(
-            qx,
-            data.value,
-            data.platform,
-          )
-          if (existingIdentities.length > 0) {
+          const conflict = await findMemberIdentityConflict(qx, {
+            value: data.value,
+            platform: data.platform,
+            type: data.type,
+          })
+
+          if (conflict) {
             throw new Error409(
               this.options.language,
               'errors.alreadyExists',
               // @ts-ignore
               JSON.stringify({
-                memberId: existingIdentities[0].memberId,
+                memberId: conflict.memberId,
               }),
             )
           }
@@ -130,19 +131,19 @@ export default class MemberIdentityService extends LoggerBase {
 
           // Check if any of the identities already exist
           for (const identity of data) {
-            const existingIdentities = await checkMemberIdentityExistence(
-              qx,
-              identity.value,
-              identity.platform,
-            )
+            const conflict = await findMemberIdentityConflict(qx, {
+              value: identity.value,
+              platform: identity.platform,
+              type: identity.type,
+            })
 
-            if (existingIdentities.length > 0) {
+            if (conflict) {
               throw new Error409(
                 this.options.language,
                 'errors.alreadyExists',
                 // @ts-ignore
                 JSON.stringify({
-                  memberId: existingIdentities[0].memberId,
+                  memberId: conflict.memberId,
                 }),
               )
             }
@@ -203,20 +204,29 @@ export default class MemberIdentityService extends LoggerBase {
 
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
-          // Check if identity already exists
-          const existingIdentities = await checkMemberIdentityExistence(
-            qx,
-            data.value,
-            data.platform,
-          )
-          const filteredExistingIdentities = existingIdentities.filter((i) => i.id !== id)
-          if (filteredExistingIdentities.length > 0) {
+          const currentIdentity = memberIdentities.find((identity) => identity.id === id)
+          if (!currentIdentity) {
+            throw new Error404(this.options.language, 'errors.notFound.message')
+          }
+
+          const value = data.value ?? currentIdentity.value
+          const platform = data.platform ?? currentIdentity.platform
+          const type = data.type ?? currentIdentity.type
+
+          const conflict = await findMemberIdentityConflict(qx, {
+            value,
+            platform,
+            type,
+            excludeMemberId: memberId,
+          })
+
+          if (conflict) {
             throw new Error409(
               this.options.language,
               'errors.alreadyExists',
               // @ts-ignore
               JSON.stringify({
-                memberId: filteredExistingIdentities[0].memberId,
+                memberId: conflict.memberId,
               }),
             )
           }

@@ -103,6 +103,20 @@ export default class SequelizeRepository {
     return options.currentSegments[0]
   }
 
+  static getStrictlySingleProjectGroupSegment(
+    options: IRepositoryOptions | IServiceOptions,
+  ): SegmentData {
+    const segment = this.getStrictlySingleActiveSegment(options)
+
+    if (segment.parentId != null || segment.grandparentId != null) {
+      throw new Error400(
+        `This operation requires a project group segment. Segment ${segment.id} is not a project group.`,
+      )
+    }
+
+    return segment
+  }
+
   /**
    * Returns the transaction if it exists on the options.
    */

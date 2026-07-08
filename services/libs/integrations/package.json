@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@types/he": "^1.2.0",
-    "@types/node": "^18.16.3",
+    "@types/node": "^20.8.2",
     "@types/sanitize-html": "^2.9.0",
     "typescript": "^5.6.3"
   },

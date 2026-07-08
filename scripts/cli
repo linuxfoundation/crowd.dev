@@ -218,12 +218,18 @@ function multiselect {
 SELECTED_SERVICES=()
 
 function select_services() {
-    # Get all services
+    # Get all deployable services from builder definitions
     SERVICES=()
-    while IFS= read -r file; do
-        filename=$(basename "$file" .yaml)
-        SERVICES+=("$filename")
-    done < <(find "$CLI_HOME/services" -name '*.yaml')
+    for env_file in "$CLI_HOME/builders/"*.env; do
+        services_line=$(grep "^SERVICES=" "$env_file" 2>/dev/null || true)
+        if [[ -n "$services_line" ]]; then
+            services_val="${services_line#SERVICES=}"
+            services_val="${services_val//\"/}"
+            for svc in $services_val; do
+                SERVICES+=("$svc")
+            done
+        fi
+    done
 
     # Use fzf if available, fall back to built-in multiselect
     if command -v fzf &>/dev/null; then
@@ -249,28 +255,85 @@ function select_services() {
     echo "Selected services: $selected_services"
 }
 
+function monitor_workflow() {
+    local REPOSITORY="$1"
+    local WORKFLOW_FILE="$2"
+    local EXISTING_IDS="${3:-}"
+
+    yell "Waiting for workflow run to appear..."
+
+    local RUN_ID=""
+    local ATTEMPTS=0
+
+    while [[ -z "$RUN_ID" && $ATTEMPTS -lt 24 ]]; do
+        sleep 5
+        local CANDIDATE
+        CANDIDATE=$(gh run list \
+            --repo "$REPOSITORY" \
+            --workflow "$WORKFLOW_FILE" \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty' 2>/dev/null || echo "")
+
+        if [[ -n "$CANDIDATE" ]] && ! echo "$EXISTING_IDS" | grep -q "^${CANDIDATE}$"; then
+            RUN_ID="$CANDIDATE"
+        fi
+
+        ATTEMPTS=$((ATTEMPTS + 1))
+    done
+
+    if [[ -z "$RUN_ID" ]]; then
+        error "Could not find new workflow run after $((ATTEMPTS * 5)) seconds."
+        return 1
+    fi
+
+    say "Monitoring run #$RUN_ID — https://github.com/$REPOSITORY/actions/runs/$RUN_ID"
+    nl
+
+    gh run watch "$RUN_ID" --repo "$REPOSITORY" || true
+
+    local CONCLUSION
+    CONCLUSION=$(gh run view "$RUN_ID" --repo "$REPOSITORY" --json conclusion --jq '.conclusion')
+
+    nl
+    if [[ "$CONCLUSION" == "success" ]]; then
+        say "✓ Deployment succeeded!"
+    else
+        error "✗ Deployment failed: $CONCLUSION"
+        return 1
+    fi
+}
+
 function deploy_staging() {
     REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-staging-deploy.yaml"
+    WORKFLOW_FILE="lf-oracle-staging-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "
         echo "${SELECTED_SERVICES[*]}"
     )"
 
+    local EXISTING_IDS
+    EXISTING_IDS=$(gh run list --repo "$REPOSITORY" --workflow "$WORKFLOW_FILE" --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null || echo "")
+
     gh workflow run $WORKFLOW_FILE --repo $REPOSITORY --ref $CURRENT_BRANCH -f services="$SERVICES"
+    monitor_workflow "$REPOSITORY" "$WORKFLOW_FILE" "$EXISTING_IDS"
 }
 
 function deploy_production() {
     REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-production-deploy.yaml"
+    WORKFLOW_FILE="lf-oracle-production-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "
         echo "${SELECTED_SERVICES[*]}"
     )"
 
+    local EXISTING_IDS
+    EXISTING_IDS=$(gh run list --repo "$REPOSITORY" --workflow "$WORKFLOW_FILE" --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null || echo "")
+
     gh workflow run $WORKFLOW_FILE --repo $REPOSITORY --ref $CURRENT_BRANCH -f services="$SERVICES"
+    monitor_workflow "$REPOSITORY" "$WORKFLOW_FILE" "$EXISTING_IDS"
 }
 
 function reset_selected_services() {

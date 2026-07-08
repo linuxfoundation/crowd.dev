@@ -160,7 +160,7 @@
         </p>
       </div>
 
-      <div v-if="total > mergeSuggestions.length" class="mt-6 flex justify-center">
+      <div v-if="hasMore" class="mt-6 flex justify-center">
         <lf-button type="primary-ghost" size="small" :loading="loading" @click="loadMore()">
           <lf-icon name="arrow-down" />Load more
         </lf-button>
@@ -209,7 +209,7 @@ const mergeSuggestions = ref<any[]>([]);
 
 const isModalOpen = ref<boolean>(false);
 
-const total = ref<number>(0);
+const hasMore = ref<boolean>(false);
 const limit = ref<number>(10);
 const page = ref<number>(1);
 const loading = ref<boolean>(false);
@@ -238,7 +238,7 @@ const loadMergeSuggestions = (sort: boolean = false) => {
     detail: false,
   })
     .then((res) => {
-      total.value = +res.count;
+      hasMore.value = Boolean(res.hasMore);
       const rows = res.rows.filter((s: any) => s.similarity > 0);
       if (+res.offset > 0) {
         mergeSuggestions.value = [...mergeSuggestions.value, ...rows];

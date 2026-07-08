@@ -8,14 +8,19 @@ import {
   MemberField,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchMemberOrganizations,
   findMemberById,
   optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
-import { IMemberOrganization } from '@crowd/types'
+import { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
 
 import { ok } from '@/utils/api'
-import { toMemberWorkExperience } from '@/utils/mapper'
+import {
+  getOverlappingGroupedMemberOrganizations,
+  groupMemberOrganizations,
+  toMemberWorkExperience,
+} from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -40,12 +45,33 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Member not found')
   }
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
-  const memberOrg = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === workExperienceId)
+  const memberOrgs = await fetchMemberOrganizations(qx, memberId)
+  const memberOrg = memberOrgs.find((mo) => mo.id === workExperienceId)
 
   if (!memberOrg) {
     throw new NotFoundError('Work experience not found')
   }
+
+  const orgsMapBeforeChange = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
+  const workExperienceWithOrgData = groupMemberOrganizations(
+    orgsMapBeforeChange.get(memberId) ?? [],
+  ).find((mo) => mo.id === workExperienceId)
+
+  if (!workExperienceWithOrgData) {
+    throw new NotFoundError('Work experience not found')
+  }
+
+  const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
+
+  const memberOrgIdsToDelete = [
+    workExperienceId,
+    ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
+  ]
+
+  const verifiedUpdate = { verified, verifiedBy }
 
   let updatedMemberOrg: IMemberOrganization | undefined
 
@@ -56,12 +82,22 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
       await qx.tx(async (tx) => {
         if (verified) {
-          updatedMemberOrg = await updateMemberOrganization(tx, memberId, workExperienceId, {
-            verified,
-            verifiedBy,
-          })
+          // Verification status belongs to the grouped work experience, not just the visible row
+          updatedMemberOrg = await updateMemberOrganization(
+            tx,
+            memberId,
+            workExperienceId,
+            verifiedUpdate,
+          )
+
+          for (const overlappingRow of overlappingGroupedRows.filter(
+            (row): row is typeof row & { id: string } => !!row.id,
+          )) {
+            await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
+          }
         } else {
-          await deleteMemberOrganizations(tx, memberId, [workExperienceId], true)
+          // Unverifying removes the grouped work experience from both visible and hidden rows
+          await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete, true)
         }
       })
 
@@ -76,5 +112,16 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     }),
   )
 
-  ok(res, toMemberWorkExperience({ ...memberOrg, ...updatedMemberOrg }))
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
+
+  const responseMo: IMemberRoleWithOrganization = groupMemberOrganizations(
+    orgsMap.get(memberId) ?? [],
+  ).find((mo) => mo.id === workExperienceId) ?? {
+    ...workExperienceWithOrgData,
+    ...updatedMemberOrg,
+    verified,
+    verifiedBy,
+  }
+
+  ok(res, toMemberWorkExperience(responseMo))
 }
