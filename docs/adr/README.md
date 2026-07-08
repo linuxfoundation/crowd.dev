@@ -9,6 +9,9 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | ADR                                                 | Title                                    | Status | Date       |
 | --------------------------------------------------- | ---------------------------------------- | ------ | ---------- |
 | [ADR-0001](./0001-oss-packages-design-decisions.md) | OSS packages — design decisions (living) | living | 2026-05-27 |
+| [ADR-0003](./0003-deps-bq-table-selection.md) | Use DependencyGraphEdgesLatest for deps ingestion; defer DependenciesLatest until NUGET or GO needed | accepted | 2026-05-29 |
+| [ADR-0004](./0004-go-nuget-transitive-dependent-counts.md) | Compute GO/NUGET transitive dependent counts via exact reverse closure (over HLL approximation) | accepted | 2026-06-23 |
+| [ADR-0005](./0005-pypi-downloads-bigquery-merge-scoping.md) | PyPI downloads via BigQuery bulk export, scoped in the Postgres merge | accepted | 2026-07-01 |
 
 ## Why ADRs?
 

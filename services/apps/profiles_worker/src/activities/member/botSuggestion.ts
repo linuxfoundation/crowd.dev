@@ -58,7 +58,7 @@ export async function updateMemberAttributes(
   const requestOptions = {
     method: 'PATCH',
     headers: {
-      Authorization: `Bearer ${process.env['CROWD_API_SERVICE_USER_TOKEN']}`,
+      Authorization: `Bearer ${process.env['CROWD_LF_AGENT_USER_TOKEN']}`,
       'Content-Type': 'application/json',
     },
     data: {

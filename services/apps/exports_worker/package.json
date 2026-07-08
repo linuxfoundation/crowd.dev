@@ -26,7 +26,7 @@
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
     "@sendgrid/mail": "~8.1.0",
-    "@temporalio/workflow": "~1.11.8",
+    "@temporalio/workflow": "~1.17.2",
     "aws-sdk": "2.814.0",
     "json2csv": "^5.0.7",
     "lodash.pick": "~4.4.0",

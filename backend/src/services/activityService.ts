@@ -1,12 +1,15 @@
 import { queryActivities } from '@crowd/data-access-layer'
+import {
+  getSegmentSubprojectIds,
+  getSegmentSubprojects,
+} from '@crowd/data-access-layer/src/segments'
 import { LoggerBase } from '@crowd/logging'
-import { IMemberIdentity, IntegrationResultType, SegmentData } from '@crowd/types'
+import { IMemberIdentity, IntegrationResultType } from '@crowd/types'
 
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { getDataSinkWorkerEmitter } from '@/serverless/utils/queueService'
 
 import ActivityRepository from '../database/repositories/activityRepository'
-import SegmentRepository from '../database/repositories/segmentRepository'
 import {
   UsernameIdentities,
   mapUsernameToIdentities,
@@ -90,35 +93,26 @@ export default class ActivityService extends LoggerBase {
     }
   }
 
-  async findActivityTypes(segments?: string[]) {
-    const segmentService = new SegmentService(this.options)
+  async findActivityTypes() {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const currentSegments = SequelizeRepository.getSegmentIds(this.options)
 
-    let subprojects: SegmentData[]
-
-    if (!segments || segments.length === 0) {
-      subprojects = await segmentService.getTenantSubprojects()
-    } else {
-      subprojects = await segmentService.getSegmentSubprojects(segments)
-    }
+    const subprojects = await getSegmentSubprojects(qx, currentSegments)
 
     return SegmentService.getTenantActivityTypes(subprojects)
   }
 
-  async findActivityChannels(segments?: string[]) {
-    const segmentService = new SegmentService(this.options)
+  async findActivityChannels() {
+    const qx = SequelizeRepository.getQueryExecutor(this.options)
+    const currentSegments = SequelizeRepository.getSegmentIds(this.options)
 
-    let subprojects: SegmentData[]
+    const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
-    if (!segments || segments.length === 0) {
-      subprojects = await segmentService.getTenantSubprojects()
-    } else {
-      subprojects = await segmentService.getSegmentSubprojects(segments)
+    if (subprojectIds.length === 0) {
+      return {}
     }
 
-    return SegmentService.getTenantActivityChannels(
-      subprojects.map((s) => s.id),
-      this.options,
-    )
+    return SegmentService.getTenantActivityChannels(subprojectIds, this.options)
   }
 
   async query(data) {
@@ -128,13 +122,25 @@ export default class ActivityService extends LoggerBase {
     const offset = data.offset
     const countOnly = data.countOnly ?? false
 
-    const segmentIds = SequelizeRepository.getSegmentIds(this.options)
     const qx = SequelizeRepository.getQueryExecutor(this.options)
-    const activitiyTypes = SegmentRepository.getActivityTypes(this.options)
+    const currentSegments = SequelizeRepository.getSegmentIds(this.options)
+
+    const subprojects = await getSegmentSubprojects(qx, currentSegments)
+
+    if (subprojects.length === 0) {
+      return {
+        count: 0,
+        rows: [],
+        limit,
+        offset,
+      }
+    }
+
+    const activitiyTypes = SegmentService.getTenantActivityTypes(subprojects)
 
     const page = await queryActivities(
       {
-        segmentIds,
+        segmentIds: subprojects.map((s) => s.id),
         filter,
         orderBy,
         limit,

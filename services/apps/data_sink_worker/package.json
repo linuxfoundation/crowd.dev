@@ -35,7 +35,7 @@
     "@crowd/temporal": "workspace:*",
     "@crowd/types": "workspace:*",
     "@types/config": "^3.3.0",
-    "@types/node": "^18.16.3",
+    "@types/node": "^20.8.2",
     "config": "^3.3.9",
     "crowd-sentiment": "^1.1.7",
     "lodash.isequal": "^4.5.0",

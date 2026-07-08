@@ -49,6 +49,13 @@
     "password": "PRODUCT_DB_PASSWORD",
     "database": "PRODUCT_DB_DATABASE"
   },
+  "packagesDb": {
+    "host": "CROWD_PACKAGES_DB_WRITE_HOST",
+    "port": "CROWD_PACKAGES_DB_PORT",
+    "user": "CROWD_PACKAGES_DB_USERNAME",
+    "password": "CROWD_PACKAGES_DB_PASSWORD",
+    "database": "CROWD_PACKAGES_DB_DATABASE"
+  },
   "segment": {
     "writeKey": "CROWD_SEGMENT_WRITE_KEY"
   },
@@ -170,6 +177,12 @@
   "temporal": {
     "serverUrl": "CROWD_TEMPORAL_SERVER_URL",
     "namespace": "CROWD_TEMPORAL_NAMESPACE",
+    "certificate": "CROWD_TEMPORAL_CERTIFICATE",
+    "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
+  },
+  "packagesTemporal": {
+    "serverUrl": "CROWD_PACKAGES_TEMPORAL_SERVER_URL",
+    "namespace": "CROWD_PACKAGES_TEMPORAL_NAMESPACE",
     "certificate": "CROWD_TEMPORAL_CERTIFICATE",
     "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
   },

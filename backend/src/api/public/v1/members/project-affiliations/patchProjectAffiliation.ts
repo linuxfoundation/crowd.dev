@@ -6,7 +6,6 @@ import { NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
-  deleteAllMemberSegmentAffiliationsForProject,
   fetchMemberProjectSegments,
   fetchMemberSegmentAffiliationsForProject,
   findMaintainerRoles,
@@ -15,6 +14,7 @@ import {
   optionsQx,
 } from '@crowd/data-access-layer'
 import type { ISegmentAffiliationWithOrg } from '@crowd/data-access-layer'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
@@ -80,7 +80,7 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
       const orgIdsToRecalculate = [...new Set([...oldOrgIds, ...newOrgIds])]
 
       await qx.tx(async (tx) => {
-        await deleteAllMemberSegmentAffiliationsForProject(tx, memberId, projectId)
+        await deleteMemberSegmentAffiliations(tx, { memberId, segmentId: projectId })
 
         if (affiliations.length > 0) {
           await insertMemberSegmentAffiliations(

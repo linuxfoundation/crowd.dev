@@ -1,5 +1,6 @@
 export const SCOPES = {
   READ_MEMBERS: 'read:members',
+  WRITE_MEMBERS: 'write:members',
   READ_ORGANIZATIONS: 'read:organizations',
   WRITE_ORGANIZATIONS: 'write:organizations',
   READ_MEMBER_IDENTITIES: 'read:member-identities',
@@ -10,6 +11,9 @@ export const SCOPES = {
   READ_PROJECT_AFFILIATIONS: 'read:project-affiliations',
   WRITE_PROJECT_AFFILIATIONS: 'write:project-affiliations',
   READ_AFFILIATIONS: 'read:affiliations',
+  READ_PACKAGES: 'read:packages',
+  READ_STEWARDSHIPS: 'read:stewardships',
+  WRITE_STEWARDSHIPS: 'write:stewardships',
 } as const
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES]

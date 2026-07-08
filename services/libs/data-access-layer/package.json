@@ -3,9 +3,6 @@
   "private": true,
   "main": "src/index.ts",
   "scripts": {
-    "test": "vitest run",
-    "test:affiliations": "vitest run src/affiliations",
-    "test:affiliations:watch": "vitest src/affiliations",
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
@@ -36,9 +33,8 @@
     "validator": "^13.7.0"
   },
   "devDependencies": {
-    "@types/node": "^18.16.3",
+    "@types/node": "^20.8.2",
     "sequelize": "6.37.8",
-    "typescript": "^5.6.3",
-    "vitest": "^3.2.4"
+    "typescript": "^5.6.3"
   }
 }

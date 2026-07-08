@@ -1,21 +1,24 @@
+ARG PVTR_VERSION=v0.23.2
+
 FROM alpine:3.21 AS core
 RUN apk add --no-cache wget tar unzip
 
 WORKDIR /app
-ARG VERSION=0.7.0
+ARG VERSION=0.21.2
 ARG PLATFORM=Linux_x86_64
 
 RUN wget https://github.com/privateerproj/privateer/releases/download/v${VERSION}/privateer_${PLATFORM}.tar.gz
 RUN tar -xzf privateer_${PLATFORM}.tar.gz
 
-FROM golang:1.24.4-alpine3.21 AS plugin
+FROM golang:1.26.3-alpine3.23 AS plugin
 RUN apk add --no-cache make git
 WORKDIR /plugin
-ARG PVTR_COMMIT=88d79df63e6140c593cf15366ed63992e1fbed63
-# To run the latest version of the plugin, we need to use the latest commit of the pvtr-github-repo repository.
-# Currently using the version https://github.com/revanite-io/pvtr-github-repo/commit/88d79df63e6140c593cf15366ed63992e1fbed63
-RUN git clone https://github.com/revanite-io/pvtr-github-repo.git && cd pvtr-github-repo && git checkout ${PVTR_COMMIT}
-RUN cd pvtr-github-repo && make binary && cp github-repo ../github-repo
+ARG PVTR_COMMIT=c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
+ARG PVTR_VERSION
+# To run the latest version of the plugin, we need to use the latest commit of the pvtr-github-repo-scanner repository.
+# Currently using v0.23.2: https://github.com/ossf/pvtr-github-repo-scanner/commit/c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
+RUN git clone https://github.com/ossf/pvtr-github-repo-scanner.git && cd pvtr-github-repo-scanner && git checkout ${PVTR_COMMIT}
+RUN cd pvtr-github-repo-scanner && make binary && cp github-repo ../github-repo
 
 FROM node:20-alpine as builder
 
@@ -34,8 +37,10 @@ FROM node:20-bookworm-slim as runner
 
 RUN mkdir -p /.privateer/bin
 WORKDIR /.privateer/bin
-COPY --from=core /app/privateer .
+COPY --from=core /app/pvtr ./privateer
+ARG PVTR_VERSION
 COPY --from=plugin /plugin/github-repo /root/.privateer/bin/github-repo
+RUN echo "{\"plugins\":[{\"name\":\"github-repo\",\"version\":\"${PVTR_VERSION}\",\"binaryPath\":\"github-repo\"}]}" > /root/.privateer/bin/plugins.json
 COPY ./services/apps/security_best_practices_worker/example-config.yml /.privateer/example-config.yml
 
 WORKDIR /usr/crowd/app

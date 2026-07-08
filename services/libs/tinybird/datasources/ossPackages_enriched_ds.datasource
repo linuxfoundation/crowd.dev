@@ -1,0 +1,58 @@
+DESCRIPTION >
+    - `ossPackages_enriched_ds` contains all `ossPackages` metadata plus derived enrichment fields, materialized by `ossPackages_enriched.pipe` (daily COPY, replace mode).
+    - Carries every column from the `ossPackages` datasource verbatim, so it can serve as a drop-in enriched replacement for package analytics.
+    - `lifecycleLabel` is the categorical maintenance state of the package's primary repository, derived from repo + activity-snapshot signals: 'active', 'stable', 'declining', 'abandoned', or 'archived'.
+    - `healthScore` is the composite 0–100 health score = `maintainerHealthScore` (≤40) + `securitySupplyChainScore` (≤35) + `developmentActivityScore` (≤25).
+    - `healthLabel` buckets `healthScore`: 'excellent' (85+), 'healthy' (70–84), 'fair' (50–69), 'concerning' (30–49), 'critical' (<30).
+    - `maintainerHealthScore`, `securitySupplyChainScore`, `developmentActivityScore` are the three health sub-totals.
+    - `signalCoverageHealth` is a JSON object mapping each health sub-signal to 'available' | 'partial' | 'blocked', so the UI can flag which scores reflect real data vs. gaps.
+    - `impact` (carried verbatim from `ossPackages`) is the criticality impact score and serves as the Impact total score.
+    - All other fields mirror `ossPackages`; see `ossPackages.datasource` for per-field documentation.
+
+TAGS "OSS packages", "Enrichment"
+
+SCHEMA >
+    `id` UInt64,
+    `purl` String,
+    `ecosystem` String,
+    `namespace` Nullable(String),
+    `name` String,
+    `registryUrl` Nullable(String),
+    `status` Nullable(String),
+    `description` Nullable(String),
+    `homepage` Nullable(String),
+    `declaredRepositoryUrl` Nullable(String),
+    `repositoryUrl` Nullable(String),
+    `licenses` Array(String),
+    `licensesRaw` Nullable(String),
+    `keywords` Array(String),
+    `distTagsLatest` Nullable(String),
+    `distTagsNext` Nullable(String),
+    `distTagsBeta` Nullable(String),
+    `versionsCount` Nullable(UInt32),
+    `latestVersion` Nullable(String),
+    `firstReleaseAt` Nullable(DateTime64(3)),
+    `latestReleaseAt` Nullable(DateTime64(3)),
+    `dependentCount` Nullable(UInt32),
+    `transitiveDependentCount` Nullable(UInt64),
+    `dependentReposCount` Nullable(UInt32),
+    `hasCriticalVulnerability` UInt8,
+    `impact` Nullable(String),
+    `isCritical` UInt8,
+    `lastRankPassAt` Nullable(DateTime64(3)),
+    `downloadsLast30d` Nullable(UInt64),
+    `centralityScore` Nullable(String),
+    `rankInEcosystem` Nullable(UInt32),
+    `ingestionSource` Nullable(String),
+    `lastSyncedAt` DateTime64(3),
+    `createdAt` DateTime64(3),
+    `lifecycleLabel` String,
+    `healthScore` UInt8,
+    `healthLabel` String,
+    `maintainerHealthScore` UInt8,
+    `securitySupplyChainScore` UInt8,
+    `developmentActivityScore` UInt8,
+    `signalCoverageHealth` String
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY ecosystem, purl

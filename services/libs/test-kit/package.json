@@ -1,0 +1,23 @@
+{
+  "name": "@crowd/test-kit",
+  "private": true,
+  "exports": {
+    "./fixtures": "./src/fixtures.ts"
+  },
+  "scripts": {
+    "lint": "npx eslint --ext .ts src --max-warnings=0",
+    "format": "npx prettier --write \"src/**/*.ts\"",
+    "format-check": "npx prettier --check .",
+    "tsc-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crowd/common": "workspace:*",
+    "@crowd/database": "workspace:*",
+    "pg-promise": "^11.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "4.1.7"
+  }
+}

@@ -4,19 +4,24 @@ import {
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
   inferMemberOrganizationStintChanges,
+  signalMemberUpdate,
 } from '@crowd/common_services'
 import {
+  MemberField,
   QueryExecutor,
   changeMemberOrganizationAffiliationOverrides,
   createMemberOrganization,
   deleteUndatedMemberOrganizations,
   fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationsBySource,
+  findMemberById,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
+import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { REDIS_CONFIG, RedisCache, getRedisClient } from '@crowd/redis'
+import { REDIS_CONFIG, RedisCache, RedisClient, getRedisClient } from '@crowd/redis'
+import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
 
 import { IJobDefinition } from '../types'
@@ -27,13 +32,16 @@ const job: IJobDefinition = {
   timeout: 10 * 60,
   process: async (ctx) => {
     const redis = await getRedisClient(REDIS_CONFIG())
-    const db = await getDbConnection(WRITE_DB_CONFIG())
-    const qx = pgpQx(db)
 
     ctx.log.info('Starting member organization stint inference job.')
 
     const memberIds = await redis.sRandMemberCount(MEMBER_ORG_STINT_CHANGES_QUEUE, 500)
+
     if (!memberIds?.length) return
+
+    const db = await getDbConnection(WRITE_DB_CONFIG())
+    const qx = pgpQx(db)
+    const temporal = await getTemporalClient(TEMPORAL_CONFIG())
 
     ctx.log.info({ count: memberIds.length }, 'Processing members from queue.')
 
@@ -45,7 +53,18 @@ const job: IJobDefinition = {
         const rawMembers = await redis.sMembers(datesKey)
 
         if (!rawMembers?.length) {
-          await redis.sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+          await purgeMember(redis, memberId)
+          continue
+        }
+
+        // Skip if the member was hard-deleted (e.g., due to merge) after being queued.
+        // This prevents memberOrganizations foreign key (FK) violations from stale Redis entries.
+        const member = await findMemberById(qx, memberId, [MemberField.ID])
+
+        if (!member) {
+          ctx.log.warn({ memberId }, 'Member no longer exists, removing from queue.')
+
+          await purgeMember(redis, memberId)
           continue
         }
 
@@ -56,6 +75,7 @@ const job: IJobDefinition = {
             qx,
             memberId,
             OrganizationSource.EMAIL_DOMAIN,
+            { withDeleted: true },
           )
 
           const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, orgDates)
@@ -63,6 +83,12 @@ const job: IJobDefinition = {
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
             await qx.tx((tx) => applyStintChanges(tx, changes))
+
+            ctx.log.debug(
+              { memberId },
+              'Triggering member update workflow to refresh affiliations.',
+            )
+            await signalMemberUpdate(temporal, memberId)
           }
         }
 
@@ -104,6 +130,15 @@ function parseSetMembers(members: string[]): MemberOrgDate[] {
 }
 
 /**
+ * Purges a member from the queue and their associated Redis entries.
+ */
+async function purgeMember(redis: RedisClient, memberId: string): Promise<void> {
+  const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+
+  await redis.multi().del(datesKey).sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId).exec()
+}
+
+/**
  * Applies the stint changes to the database.
  */
 async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChange[]) {
@@ -128,6 +163,10 @@ async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChang
             allowAffiliation: false,
           },
         ])
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId: change.memberId,
+          organizationId: change.organizationId,
+        })
       }
     } else {
       await updateMemberOrganization(qx, change.memberId, change.id, {

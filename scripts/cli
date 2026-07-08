@@ -218,12 +218,18 @@ function multiselect {
 SELECTED_SERVICES=()
 
 function select_services() {
-    # Get all services
+    # Get all deployable services from builder definitions
     SERVICES=()
-    while IFS= read -r file; do
-        filename=$(basename "$file" .yaml)
-        SERVICES+=("$filename")
-    done < <(find "$CLI_HOME/services" -name '*.yaml')
+    for env_file in "$CLI_HOME/builders/"*.env; do
+        services_line=$(grep "^SERVICES=" "$env_file" 2>/dev/null || true)
+        if [[ -n "$services_line" ]]; then
+            services_val="${services_line#SERVICES=}"
+            services_val="${services_val//\"/}"
+            for svc in $services_val; do
+                SERVICES+=("$svc")
+            done
+        fi
+    done
 
     # Use fzf if available, fall back to built-in multiselect
     if command -v fzf &>/dev/null; then
@@ -249,28 +255,85 @@ function select_services() {
     echo "Selected services: $selected_services"
 }
 
+function monitor_workflow() {
+    local REPOSITORY="$1"
+    local WORKFLOW_FILE="$2"
+    local EXISTING_IDS="${3:-}"
+
+    yell "Waiting for workflow run to appear..."
+
+    local RUN_ID=""
+    local ATTEMPTS=0
+
+    while [[ -z "$RUN_ID" && $ATTEMPTS -lt 24 ]]; do
+        sleep 5
+        local CANDIDATE
+        CANDIDATE=$(gh run list \
+            --repo "$REPOSITORY" \
+            --workflow "$WORKFLOW_FILE" \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty' 2>/dev/null || echo "")
+
+        if [[ -n "$CANDIDATE" ]] && ! echo "$EXISTING_IDS" | grep -q "^${CANDIDATE}$"; then
+            RUN_ID="$CANDIDATE"
+        fi
+
+        ATTEMPTS=$((ATTEMPTS + 1))
+    done
+
+    if [[ -z "$RUN_ID" ]]; then
+        error "Could not find new workflow run after $((ATTEMPTS * 5)) seconds."
+        return 1
+    fi
+
+    say "Monitoring run #$RUN_ID — https://github.com/$REPOSITORY/actions/runs/$RUN_ID"
+    nl
+
+    gh run watch "$RUN_ID" --repo "$REPOSITORY" || true
+
+    local CONCLUSION
+    CONCLUSION=$(gh run view "$RUN_ID" --repo "$REPOSITORY" --json conclusion --jq '.conclusion')
+
+    nl
+    if [[ "$CONCLUSION" == "success" ]]; then
+        say "✓ Deployment succeeded!"
+    else
+        error "✗ Deployment failed: $CONCLUSION"
+        return 1
+    fi
+}
+
 function deploy_staging() {
     REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-staging-deploy.yaml"
+    WORKFLOW_FILE="lf-oracle-staging-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "
         echo "${SELECTED_SERVICES[*]}"
     )"
 
+    local EXISTING_IDS
+    EXISTING_IDS=$(gh run list --repo "$REPOSITORY" --workflow "$WORKFLOW_FILE" --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null || echo "")
+
     gh workflow run $WORKFLOW_FILE --repo $REPOSITORY --ref $CURRENT_BRANCH -f services="$SERVICES"
+    monitor_workflow "$REPOSITORY" "$WORKFLOW_FILE" "$EXISTING_IDS"
 }
 
 function deploy_production() {
     REPOSITORY="CrowdDotDev/crowd.dev"
-    WORKFLOW_FILE="lf-production-deploy.yaml"
+    WORKFLOW_FILE="lf-oracle-production-deploy.yaml"
     CURRENT_BRANCH=$(git branch --show-current)
     SERVICES="$(
         IFS=" "
         echo "${SELECTED_SERVICES[*]}"
     )"
 
+    local EXISTING_IDS
+    EXISTING_IDS=$(gh run list --repo "$REPOSITORY" --workflow "$WORKFLOW_FILE" --limit 10 --json databaseId --jq '.[].databaseId' 2>/dev/null || echo "")
+
     gh workflow run $WORKFLOW_FILE --repo $REPOSITORY --ref $CURRENT_BRANCH -f services="$SERVICES"
+    monitor_workflow "$REPOSITORY" "$WORKFLOW_FILE" "$EXISTING_IDS"
 }
 
 function reset_selected_services() {
@@ -427,6 +490,10 @@ function scaffold() {
             ;;
         up-test)
             up_test_scaffold
+            exit
+            ;;
+        down-test)
+            down_test_scaffold
             exit
             ;;
         *)
@@ -774,22 +841,29 @@ function migrate_local() {
 
 function up_test_scaffold() {
     scaffold_set_up_network "${PROJECT_NAME}-bridge-test" $DOCKET_TEST_NETWORK_SUBNET $DOCKER_TEST_NETWORK_GATEWAY
-    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/../backend/docker-compose.test.yaml down
-    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/../backend/docker-compose.test.yaml up -d
+    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/scaffold.test.yaml up -d
     migrate_test
 }
 
-function migrate_test() {
-    say "Building flyway migration image..."
-    docker build -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database
+function down_test_scaffold() {
+    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/scaffold.test.yaml down
+}
 
-    say "Applying database migrations!"
+function migrate_test() {
+    wait_for_postgres test-db crowd-test-db
+    say "Recreating test_template..."
+    docker exec crowd-test-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE IF EXISTS test_template;" \
+        -c "CREATE DATABASE test_template;"
+    say "Building crowd flyway migration image..."
+    docker build $DOCKER_PLATFORM_FLAGS -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database
+    say "Migrating test_template..."
     docker run --rm --network "${PROJECT_NAME}-bridge-test" \
-        -e PGHOST=db-test \
+        -e PGHOST=crowd-test-db \
         -e PGPORT=5432 \
         -e PGUSER=postgres \
         -e PGPASSWORD=example \
-        -e PGDATABASE=crowd-web \
+        -e PGDATABASE=test_template \
         crowd_flyway
 }
 
@@ -1003,7 +1077,7 @@ function start() {
 SCRIPT_USAGE="${YELLOW}${PROJECT_NAME} CLI ${RESET}\n
 Usage: ./cli <command>\n
 ${YELLOW}Scaffold:${RESET}
-  scaffold [up|down|destroy|reset|create-migration|create-product-migration|create-packages-migration|migrate-up|up-test]\n
+  scaffold [up|down|destroy|reset|create-migration|create-product-migration|create-packages-migration|migrate-up|up-test|down-test]\n
 ${YELLOW}Services:${RESET}
   service <name> [up|down|restart|status|logs|id]
   start | start-dev | start-be | start-e2e

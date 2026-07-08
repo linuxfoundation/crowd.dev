@@ -14,7 +14,7 @@ function parseLoose(v: string): semver.SemVer | null {
   return semver.parse(v, { loose: true })
 }
 
-function compareNpm(a: string, b: string): number | null {
+function compareSemver(a: string, b: string): number | null {
   const pa = parseLoose(a)
   const pb = parseLoose(b)
   if (!pa || !pb) return null
@@ -126,11 +126,13 @@ function compareMaven(a: string, b: string): number | null {
   return 0
 }
 
+const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget'])
+
 // Ecosystem names are stored lowercase in packages-db per ADR-0001 §OSV
-// "Ecosystem normalization" — 'npm' and 'maven'. Callers (deriveCriticalFlag)
+// "Ecosystem normalization" — 'npm', 'maven', 'cargo'. Callers (deriveCriticalFlag)
 // pull the value straight from the DB so the literals here must match.
 export function compareVersion(ecosystem: string, a: string, b: string): number | null {
-  if (ecosystem === 'npm') return compareNpm(a, b)
+  if (SEMVER_ECOSYSTEMS.has(ecosystem)) return compareSemver(a, b)
   if (ecosystem === 'maven') return compareMaven(a, b)
   return null
 }

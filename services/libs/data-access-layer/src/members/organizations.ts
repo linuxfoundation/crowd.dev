@@ -11,6 +11,7 @@ import {
   findMemberAffiliationOverrides,
   findOrganizationAffiliationOverrides,
 } from '../member-organization-affiliation'
+import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
 
@@ -57,18 +58,32 @@ export async function fetchMemberOrganizationById(
   )
 }
 
+/**
+ * Fetches member organizations for a source, optionally including soft-deleted rows.
+ */
 export async function fetchMemberOrganizationsBySource(
   qx: QueryExecutor,
   memberId: string,
   source: OrganizationSource,
+  { withDeleted = false }: { withDeleted?: boolean } = {},
 ): Promise<IMemberOrganization[]> {
+  const deletedClause = withDeleted ? '' : 'AND "deletedAt" IS NULL'
+
   return qx.select(
     `
-      SELECT "id", "organizationId", "dateStart", "dateEnd", "title", "memberId", "source"
+      SELECT
+        "id",
+        "organizationId",
+        "dateStart",
+        "dateEnd",
+        "title",
+        "memberId",
+        "source",
+        "deletedAt"
       FROM "memberOrganizations"
       WHERE "memberId" = $(memberId)
         AND "source" = $(source)
-        AND "deletedAt" IS NULL
+        ${deletedClause}
     `,
     { memberId, source },
   )
@@ -198,27 +213,63 @@ export async function fetchManyMemberOrgs(
 export async function fetchManyMemberOrgsWithOrgData(
   qx: QueryExecutor,
   memberIds: string[],
+  { withDomains = false }: { withDomains?: boolean } = {},
 ): Promise<Map<string, IMemberRoleWithOrganization[]>> {
-  const memberRoles = (await qx.select(
-    `
-      SELECT mo.*, o."displayName" as "organizationName", o.logo as "organizationLogo"
-      FROM "memberOrganizations" mo
-      join "organizations" o on mo."organizationId" = o.id
-      WHERE mo."memberId" in ($(memberIds:csv))
-      AND mo."deletedAt" IS NULL;
-    `,
-    {
-      memberIds,
-    },
-  )) as IMemberRoleWithOrganization[]
+  const domainSelect = withDomains
+    ? `,
+      COALESCE(oid.domains, '{}'::text[]) AS "organizationDomains"`
+    : ''
 
-  const resultMap = new Map<string, IMemberRoleWithOrganization[]>()
+  const domainJoin = withDomains
+    ? `
+      LEFT JOIN (
+        SELECT
+          oi."organizationId",
+          array_agg(DISTINCT lower(oi.value) ORDER BY lower(oi.value)) AS domains
+        FROM "organizationIdentities" oi
+        WHERE oi.type = 'primary-domain'
+          AND oi.verified = true
+          AND oi."organizationId" IN (
+            SELECT DISTINCT mo2."organizationId"
+            FROM "memberOrganizations" mo2
+            WHERE mo2."memberId" IN ($(memberIds:csv))
+              AND mo2."deletedAt" IS NULL
+          )
+        GROUP BY oi."organizationId"
+      ) oid ON oid."organizationId" = mo."organizationId"`
+    : ''
+
+  const sql = `
+    SELECT
+      mo.*,
+      o."displayName" AS "organizationName",
+      o.logo AS "organizationLogo"
+      ${domainSelect}
+    FROM "memberOrganizations" mo
+    JOIN organizations o ON o.id = mo."organizationId"
+    ${domainJoin}
+    WHERE mo."memberId" IN ($(memberIds:csv))
+      AND mo."deletedAt" IS NULL;
+  `
+
+  const memberRoles = (await qx.select(sql, {
+    memberIds,
+  })) as IMemberRoleWithOrganization[]
+
+  const result = new Map<string, IMemberRoleWithOrganization[]>()
+
   for (const memberId of memberIds) {
-    const roles = memberRoles.filter((r) => r.memberId === memberId)
-    resultMap.set(memberId, roles)
+    result.set(memberId, [])
   }
 
-  return resultMap
+  for (const role of memberRoles) {
+    const roles = result.get(role.memberId)
+    if (roles) {
+      roles.push(role)
+    }
+  }
+
+  return result
 }
 
 export async function fetchManyOrganizationAffiliationPolicies(
@@ -868,26 +919,29 @@ async function moveRolesBetweenEntities(
     }
 
     const preserveManualBlock = existingOverride?.allowAffiliation === false && !isSourceBlocked
+    const targetMemberId = mergeStrat.targetMemberId(role)
+    const shouldWriteOverride = isTargetBlocked || preserveManualBlock || isPrimaryWorkExp
+    const finalAllowAffiliation = isTargetBlocked || preserveManualBlock ? false : undefined
 
-    if (isTargetBlocked) {
+    if (shouldWriteOverride) {
       await changeMemberOrganizationAffiliationOverrides(qx, [
         {
-          memberId: mergeStrat.targetMemberId(role),
+          memberId: targetMemberId,
           memberOrganizationId: newRoleId,
-          allowAffiliation: false,
+          allowAffiliation: finalAllowAffiliation,
           isPrimaryWorkExperience: isPrimaryWorkExp || undefined,
         },
       ])
-      shouldRecalculateAffiliations = true
-    } else if (preserveManualBlock || isPrimaryWorkExp) {
-      await changeMemberOrganizationAffiliationOverrides(qx, [
-        {
-          memberId: mergeStrat.targetMemberId(role),
-          memberOrganizationId: newRoleId,
-          allowAffiliation: preserveManualBlock ? false : undefined,
-          isPrimaryWorkExperience: isPrimaryWorkExp || undefined,
-        },
-      ])
+
+      // If the affiliation is blocked, delete any existing MSAs to prevent the member from
+      // remaining affiliated through a manually created affiliation.
+      if (finalAllowAffiliation === false) {
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId: targetMemberId,
+          organizationId: targetOrgId,
+        })
+      }
+
       shouldRecalculateAffiliations = true
     }
 
@@ -1188,6 +1242,12 @@ export async function mergeRoles(
           isPrimaryWorkExperience: finalIsPrimaryWorkExp || undefined,
         },
       ])
+      if (finalAllowAffiliation === false) {
+        await deleteMemberSegmentAffiliations(qx, {
+          memberId: addData.memberId,
+          organizationId: addData.organizationId,
+        })
+      }
       shouldRecalculateAffiliations = true
     }
 

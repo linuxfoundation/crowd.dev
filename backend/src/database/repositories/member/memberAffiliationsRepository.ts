@@ -1,6 +1,6 @@
 import { OrganizationField, queryOrgs } from '@crowd/data-access-layer'
 import {
-  deleteMemberAffiliations,
+  deleteMemberSegmentAffiliations,
   fetchMemberAffiliations,
   insertMemberAffiliations,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
@@ -86,7 +86,7 @@ class MemberAffiliationsRepository {
       const qx = SequelizeRepository.getQueryExecutor(txOptions)
 
       // Delete all member affiliations
-      await deleteMemberAffiliations(qx, memberId)
+      await deleteMemberSegmentAffiliations(qx, { memberId })
 
       if (data?.length > 0) {
         //  Insert multiple member affiliations

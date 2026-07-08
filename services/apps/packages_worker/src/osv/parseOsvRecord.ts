@@ -111,7 +111,8 @@ export function parseOsvRecord(
   for (const affected of record.affected ?? []) {
     const pkg = affected.package
     if (!pkg) continue
-    const ecosystem = pkg.ecosystem.toLowerCase()
+    const rawEcosystem = pkg.ecosystem.toLowerCase()
+    const ecosystem = rawEcosystem === 'crates.io' ? 'cargo' : rawEcosystem
     if (!allowedEcosystems.has(ecosystem)) continue
 
     const ranges = flattenRanges(affected)

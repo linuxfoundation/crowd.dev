@@ -6,15 +6,52 @@ export interface LightRepoResult {
   description: string | null
   primaryLanguage: string | null
   topics: string[]
-  stars: number
-  forks: number
-  watchers: number
-  openIssues: number
+  stars: number | null
+  forks: number | null
+  watchers: number | null
+  openIssues: number | null
   lastCommitAt: string | null
-  archived: boolean
-  disabled: boolean
-  isFork: boolean
+  archived: boolean | null
+  disabled: boolean | null
+  isFork: boolean | null
   createdAt: string | null
+  securityPolicyEnabled: boolean | null
+  securityFileEnabled: boolean | null
+  branchProtectionEnabled: boolean | null
+  branchProtectionRequiredReviews: number | null
+  branchProtectionRequiresStatusChecks: boolean | null
+  branchProtectionAllowsForcePush: boolean | null
+  rateLimit: {
+    limit: number
+    cost: number
+    remaining: number
+    resetAt: string
+  } | null
+}
+
+export interface RepoActivitySnapshot {
+  repoId: string
+  snapshotAt: string
+  windowMonths: number
+  commitsLast12m: number | null
+  commitsLast6m: number | null
+  commitsPrior6m: number | null
+  prsOpenedLast12m: number | null
+  prsMergedLast12m: number | null
+  prsClosedUnmerged12m: number | null
+  prMedianTimeToMergeHours: number | null
+  prMedianTimeToFirstResponseHours: number | null
+  issuesOpenedLast12m: number | null
+  issuesClosedLast12m: number | null
+  issuesOpenedLast6m: number | null
+  issuesOpenedPrior6m: number | null
+  issuesOpenNow: number | null
+  issueMedianTimeToCloseHours: number | null
+  issueMedianTimeToFirstResponseHours: number | null
+  httpRequestCount: number
+  rateLimitCost: number
+  rateLimitRemaining: number
+  rateLimitResetAt: string
 }
 
 export type FetchErrorKind = 'RATE_LIMIT' | 'TRANSIENT' | 'NOT_FOUND' | 'AUTH' | 'MALFORMED'
