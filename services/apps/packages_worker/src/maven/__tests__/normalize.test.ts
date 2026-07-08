@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeScmUrl } from '../extract'
+import { interpolateProperties, normalizeScmUrl } from '../extract'
 import { pickStableRelease } from '../metadata'
 import { isPrerelease, parseRepoUrl } from '../normalize'
 
@@ -195,6 +195,12 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('http://cvs.sourceforge.net/cgi-bin/viewcvs.cgi/foo')).toBeNull()
   })
 
+  it('returns null when an unresolved placeholder is embedded in the repo path', () => {
+    // Would otherwise parse to github.com/owner/%7BartifactId%7D and slip through.
+    expect(normalizeScmUrl('https://github.com/owner/${artifactId}')).toBeNull()
+    expect(normalizeScmUrl('scm:git:https://github.com/${owner}/repo.git')).toBeNull()
+  })
+
   // SCP colon form: "host:owner/repo" where the colon is a path separator, not a port
   it('recovers bare host:owner/repo SCP colon form', () => {
     expect(normalizeScmUrl('github.com:japgolly/scalacss.git')).toBe(
@@ -241,5 +247,58 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBeNull()
     expect(normalizeScmUrl('https://gitlab.alibaba-inc.com/team/project')).toBeNull()
     expect(normalizeScmUrl('https://android.googlesource.com/platform/tools/base')).toBeNull()
+  })
+})
+
+describe('interpolateProperties', () => {
+  it('resolves a single ${...} placeholder from properties', () => {
+    expect(
+      interpolateProperties('${scm.github.url}', {
+        'scm.github.url': 'https://github.com/owner/repo',
+      }),
+    ).toBe('https://github.com/owner/repo')
+  })
+
+  it('resolves multiple placeholders in one string', () => {
+    expect(
+      interpolateProperties('https://gitlab.com/${projectPath}', {
+        projectPath: 'group/project',
+      }),
+    ).toBe('https://gitlab.com/group/project')
+  })
+
+  it('resolves nested placeholders recursively', () => {
+    expect(
+      interpolateProperties('${scm.url}', {
+        'scm.url': '${scm.base}/repo',
+        'scm.base': 'https://github.com/owner',
+      }),
+    ).toBe('https://github.com/owner/repo')
+  })
+
+  it('resolves built-in project.* style placeholders', () => {
+    expect(
+      interpolateProperties('https://github.com/acme/${project.artifactId}', {
+        'project.artifactId': 'my-lib',
+      }),
+    ).toBe('https://github.com/acme/my-lib')
+  })
+
+  it('leaves unresolved placeholders literal (missing property / method call)', () => {
+    expect(interpolateProperties('${scm.github.url}', {})).toBe('${scm.github.url}')
+    expect(
+      interpolateProperties('${pom.artifactId.substring(8)}', { 'pom.artifactId': 'foo' }),
+    ).toBe('${pom.artifactId.substring(8)}')
+  })
+
+  it('does not loop forever on self-referential placeholders', () => {
+    expect(interpolateProperties('${a}', { a: '${b}', b: '${a}' })).toContain('${')
+  })
+
+  it('composes with the normalizer end-to-end', () => {
+    const resolved = interpolateProperties('${scm.github.url}', {
+      'scm.github.url': 'scm:git:https://github.com/Owner/Repo.git',
+    })
+    expect(normalizeScmUrl(resolved)).toBe('https://github.com/owner/repo')
   })
 })

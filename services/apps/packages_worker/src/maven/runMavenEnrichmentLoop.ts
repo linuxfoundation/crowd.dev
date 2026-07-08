@@ -1,6 +1,7 @@
 import {
   MavenPackageToSync,
   QueryExecutor,
+  listMavenCriticalPackagesById,
   listMavenPackagesToSync,
   logAuditFieldChange,
   replacePackageMaintainers,
@@ -496,4 +497,64 @@ async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: bool
 // prettier-ignore
 export async function runMavenCriticalBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
   return runPhase(qx, config, true, isShuttingDown)
+}
+
+/**
+ * Force full-refresh backfill: re-runs POM extraction over EVERY critical Maven
+ * row, ignoring the staleness window. Unlike runMavenCriticalBackfill (which
+ * drains listMavenPackagesToSync by predicate and cannot terminate with
+ * refreshDays=0 — the freshly-synced top rows re-qualify every batch), this pages
+ * strictly by `id > afterId`, so each row is processed exactly once and the scan
+ * always terminates. Every page runs with forceFullExtraction=true.
+ *
+ * Trade-off vs. the normal path: rows are visited in id order, not
+ * dependent_count order, so if interrupted the most-depended-on packages are not
+ * guaranteed to be done first. Restart re-scans from id 0 (idempotent upserts).
+ */
+// prettier-ignore
+export async function runMavenCriticalForceBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
+  const total: BatchResult = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const startedAt = Date.now()
+  // Cursor kept as a string: id is a Postgres bigint, and Number() coercion would
+  // silently lose precision above 2^53, corrupting the cursor and skipping rows.
+  let afterId = '0'
+  let batchNum = 0
+
+  log.info('Force full-refresh started (all critical rows, keyset by id, ignoring refreshDays)')
+
+  while (!isShuttingDown()) {
+    const page = await listMavenCriticalPackagesById(qx, { afterId, limit: config.batchSize })
+    if (page.length === 0) break
+
+    // Capture the cursor before processPackages reorders the page in place (it
+    // clusters by namespace for the parent-POM cache). Rows come back id-ordered,
+    // so the max id is the last element — kept as a string to preserve bigint precision.
+    afterId = page[page.length - 1].id
+
+    const result = await processPackages(qx, config, page, true, true)
+    batchNum++
+    total.processed += result.processed
+    total.skipped += result.skipped
+    total.error += result.error
+    total.unchanged += result.unchanged
+
+    log.info(
+      {
+        batch: batchNum,
+        afterId,
+        totalProcessed: total.processed,
+        totalSkipped: total.skipped,
+        totalUnchanged: total.unchanged,
+        totalErrors: total.error,
+        elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+      },
+      'Force batch done',
+    )
+  }
+
+  log.info(
+    { ...total, durationSec: Math.round((Date.now() - startedAt) / 1000) },
+    'Force full-refresh complete',
+  )
+  return total
 }

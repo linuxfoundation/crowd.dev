@@ -47,6 +47,7 @@ interface PomData {
   developers?: { developer?: unknown }
   contributors?: { contributor?: unknown }
   parent?: { groupId?: unknown; artifactId?: unknown; version?: unknown }
+  properties?: unknown
 }
 
 interface PomPerson {
@@ -262,6 +263,9 @@ interface ResolvedFields {
   developers: PomMaintainer[]
   contributors: PomMaintainer[]
   hops: number
+  // Merged <properties> across the resolved parent chain (child overrides parent),
+  // used to interpolate ${...} placeholders in the SCM URL.
+  properties: Record<string, string>
 }
 
 // prettier-ignore
@@ -273,9 +277,12 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
   const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
   const developers = extractPersons(pom.developers?.developer, 'author')
   const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
+  const properties = extractProperties(pom)
 
   const missingLicense = licenses.length === 0
-  const missingScm = !scmUrl
+  // An unresolved ${...} placeholder counts as missing: the property that defines it
+  // may live in a parent POM, so we still need to walk the chain to collect it.
+  const missingScm = !scmUrl || scmUrl.includes('${')
   const missingDevelopers = developers.length === 0 || contributors.length === 0
   const parent = extractParent(pom)
 
@@ -306,6 +313,8 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
         developers: developers.length > 0 ? developers : parentFields.developers,
         contributors: contributors.length > 0 ? contributors : parentFields.contributors,
         hops: parentFields.hops,
+        // Child properties override the parent's.
+        properties: { ...parentFields.properties, ...properties },
       }
     }
   }
@@ -319,6 +328,7 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
     developers,
     contributors,
     hops: depth,
+    properties,
   }
 }
 
@@ -355,7 +365,12 @@ export async function extractArtifactDirect(groupId: string, artifactId: string,
   }
 
   const licenses = extractLicenses(pom)
-  const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
+  const rawScmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
+  const props = {
+    ...extractProperties(pom),
+    ...builtinProjectProperties(groupId, artifactId, version),
+  }
+  const scmUrl = rawScmUrl ? interpolateProperties(rawScmUrl, props) : null
   const developers = extractPersons(pom.developers?.developer, 'author')
   const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
 
@@ -414,6 +429,14 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
       new Set(),
       baseUrl,
     )
+    // Resolve ${...} placeholders in the SCM URL using the merged chain properties
+    // plus the leaf's built-in project.* values. Best-effort: unresolved placeholders
+    // stay literal and are rejected downstream by normalizeScmUrl.
+    const props = {
+      ...resolved.properties,
+      ...builtinProjectProperties(groupId, artifactId, version),
+    }
+    const scmUrl = resolved.scmUrl ? interpolateProperties(resolved.scmUrl, props) : null
     return {
       groupId,
       artifactId,
@@ -422,7 +445,7 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
       description: resolved.description,
       licenses: resolved.licenses,
       licensesRaw: resolved.licensesRaw,
-      scmUrl: resolved.scmUrl,
+      scmUrl,
       homepageUrl: resolved.homepageUrl,
       developers: resolved.developers,
       contributors: resolved.contributors,
@@ -524,6 +547,12 @@ export function normalizeScmUrl(raw: string | null): string | null {
   let s = raw.trim()
   if (!s) return null
 
+  // A leftover ${...} means best-effort interpolation upstream could not resolve it.
+  // Reject outright: a placeholder embedded in the path (e.g. github.com/owner/${x})
+  // otherwise survives URL parsing (percent-encoded to %7B…%7D) and would yield a junk
+  // repository_url instead of null.
+  if (s.includes('${')) return null
+
   // Strip Maven scm:git: / scm: prefix
   s = s.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
 
@@ -612,6 +641,59 @@ function extractPersons(raw: unknown, role: 'author' | 'maintainer'): PomMaintai
     }))
 }
 
+/** Flattens a POM's <properties> block into a string→string map (non-string values skipped). */
+function extractProperties(pom: PomData): Record<string, string> {
+  const raw = pom.properties
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string') out[key] = value
+    else if (typeof value === 'number') out[key] = String(value)
+  }
+  return out
+}
+
+/** Maven built-in project.* / pom.* properties for the leaf coordinates. */
+function builtinProjectProperties(
+  groupId: string,
+  artifactId: string,
+  version: string,
+): Record<string, string> {
+  return {
+    'project.groupId': groupId,
+    'project.artifactId': artifactId,
+    'project.version': version,
+    'pom.groupId': groupId,
+    'pom.artifactId': artifactId,
+    'pom.version': version,
+    groupId,
+    artifactId,
+    version,
+  }
+}
+
+const MAX_INTERPOLATION_DEPTH = 10
+
+/**
+ * Best-effort Maven property interpolation of ${...} placeholders. Resolves
+ * recursively (a property value may itself reference another) up to a depth cap
+ * to guard against cycles. Placeholders with no matching property (e.g. defined
+ * in a profile/settings, or method calls like ${x.substring(8)}) are left as-is
+ * so the SCM normaliser rejects them.
+ */
+export function interpolateProperties(value: string, props: Record<string, string>): string {
+  let current = value
+  for (let i = 0; i < MAX_INTERPOLATION_DEPTH && current.includes('${'); i++) {
+    const next = current.replace(/\$\{([^{}]+)\}/g, (match, key) => {
+      const resolved = props[(key as string).trim()]
+      return resolved !== undefined ? resolved : match
+    })
+    if (next === current) break
+    current = next
+  }
+  return current
+}
+
 function extractParent(
   pom: PomData,
 ): { groupId: string; artifactId: string; version: string } | null {
@@ -634,5 +716,6 @@ function emptyFields(hops: number): ResolvedFields {
     developers: [],
     contributors: [],
     hops,
+    properties: {},
   }
 }

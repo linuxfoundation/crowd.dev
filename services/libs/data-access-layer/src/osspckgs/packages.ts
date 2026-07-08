@@ -118,6 +118,41 @@ export async function listMavenPackagesToSync(
   )
 }
 
+/**
+ * Keyset-paginated scan of every critical Maven package, independent of the
+ * staleness window. Unlike `listMavenPackagesToSync` — which drains by predicate
+ * (a row leaves the set once it is fresh) and therefore cannot terminate with
+ * refreshDays=0 — this pages strictly by `id > afterId`, so each row is visited
+ * exactly once and the scan always terminates. Used by the `--force` full-refresh
+ * backfill to re-run POM extraction over the entire critical set regardless of
+ * last_synced_at / ingestion_source.
+ */
+export async function listMavenCriticalPackagesById(
+  qx: QueryExecutor,
+  options: { afterId: string; limit: number },
+): Promise<MavenPackageToSync[]> {
+  return qx.select(
+    `
+    SELECT
+      p.id,
+      p.purl,
+      p.namespace,
+      p.name,
+      p.dependent_count          AS "dependentPackagesCount",
+      p.dependent_repos_count    AS "dependentReposCount",
+      p.latest_version           AS "latestVersion"
+    FROM packages p
+    WHERE p.ecosystem = 'maven'
+      AND p.is_critical
+      AND p.namespace IS NOT NULL
+      AND p.id > $(afterId)::bigint
+    ORDER BY p.id ASC
+    LIMIT $(limit)
+    `,
+    { afterId: options.afterId, limit: options.limit },
+  )
+}
+
 // ─── repository_url backfill ──────────────────────────────────────────────────
 
 export type MavenRepoUrlRow = {
