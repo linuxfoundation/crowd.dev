@@ -113,9 +113,11 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
   const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
   const memberOrgsWithData = orgsMap.get(memberId) ?? []
+  const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
 
   const fallbackMo =
     memberOrgsWithData.find((mo) => mo.id === workExperienceId) ??
+    groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId) ??
     workExperienceWithOrgDataBeforeChange
 
   if (!fallbackMo) {
