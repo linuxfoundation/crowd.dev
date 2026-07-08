@@ -33,6 +33,21 @@ const bodySchema = z.object({
   verifiedBy: z.string(),
 })
 
+function resolveWorkExperience(
+  workExperienceId: string,
+  ...collections: IMemberRoleWithOrganization[][]
+): IMemberRoleWithOrganization | undefined {
+  for (const collection of collections) {
+    const match = collection.find((mo) => mo.id === workExperienceId)
+
+    if (match) {
+      return match
+    }
+  }
+
+  return undefined
+}
+
 export async function verifyMemberWorkExperience(req: Request, res: Response): Promise<void> {
   const { memberId, workExperienceId } = validateOrThrow(paramsSchema, req.params)
   const { verified, verifiedBy } = validateOrThrow(bodySchema, req.body)
@@ -53,22 +68,21 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
   }
 
   // Stash org fields for response fallback when reject soft-deletes the row.
-  const orgsMapBeforeChange = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
-    withDomains: true,
-  })
-
-  const memberOrgsWithOrgDataBeforeChange = orgsMapBeforeChange.get(memberId) ?? []
-
-  const workExperienceWithOrgDataBeforeChange = memberOrgsWithOrgDataBeforeChange.find(
-    (mo) => mo.id === workExperienceId,
-  )
+  const memberOrgsWithOrgDataBeforeChange = verified
+    ? []
+    : ((
+        await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+          withDomains: true,
+        })
+      ).get(memberId) ?? [])
 
   const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
 
-  const memberOrgIdsToDelete = [
-    workExperienceId,
-    ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
-  ]
+  const overlappingRowsWithIds = overlappingGroupedRows.filter(
+    (row): row is typeof row & { id: string } => !!row.id,
+  )
+
+  const memberOrgIdsToDelete = [workExperienceId, ...overlappingRowsWithIds.map((row) => row.id)]
 
   const verifiedUpdate = { verified, verifiedBy }
 
@@ -89,9 +103,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             verifiedUpdate,
           )
 
-          for (const overlappingRow of overlappingGroupedRows.filter(
-            (row): row is typeof row & { id: string } => !!row.id,
-          )) {
+          for (const overlappingRow of overlappingRowsWithIds) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
           }
         } else {
@@ -107,30 +119,35 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
         })
       }
 
-      captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
+      captureNewState(updatedMemberOrg ?? { ...memberOrg, ...verifiedUpdate })
     }),
   )
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
   const memberOrgsWithData = orgsMap.get(memberId) ?? []
+  const groupedMemberOrgs = groupMemberOrganizations(memberOrgsWithData)
   const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
 
-  const fallbackMo =
-    memberOrgsWithData.find((mo) => mo.id === workExperienceId) ??
-    groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId) ??
-    workExperienceWithOrgDataBeforeChange
+  const fallbackMo = resolveWorkExperience(
+    workExperienceId,
+    memberOrgsWithData,
+    groupedMemberOrgsBeforeChange,
+    memberOrgsWithOrgDataBeforeChange,
+  )
 
   if (!fallbackMo) {
     throw new NotFoundError('Work experience not found')
   }
 
-  const responseMo: IMemberRoleWithOrganization = groupMemberOrganizations(memberOrgsWithData).find(
+  const responseMo: IMemberRoleWithOrganization = groupedMemberOrgs.find(
     (mo) => mo.id === workExperienceId,
   ) ?? {
     ...fallbackMo,
     ...updatedMemberOrg,
-    verified,
-    verifiedBy,
+    ...verifiedUpdate,
   }
 
   ok(res, toMemberWorkExperience(responseMo))
