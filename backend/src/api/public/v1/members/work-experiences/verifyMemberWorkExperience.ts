@@ -52,18 +52,6 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
-  const orgsMapBeforeChange = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
-    withDomains: true,
-  })
-
-  const memberOrgsWithData = orgsMapBeforeChange.get(memberId) ?? []
-
-  const workExperienceWithOrgData = memberOrgsWithData.find((mo) => mo.id === workExperienceId)
-
-  if (!workExperienceWithOrgData) {
-    throw new NotFoundError('Work experience not found')
-  }
-
   const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
 
   const memberOrgIdsToDelete = [
@@ -113,17 +101,16 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
   )
 
   const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
+  const memberOrgsWithData = orgsMap.get(memberId) ?? []
 
-  const memberOrgsWithDataAfterChange = orgsMap.get(memberId) ?? []
-
-  const responseMo: IMemberRoleWithOrganization = groupMemberOrganizations(
-    memberOrgsWithDataAfterChange,
-  ).find((mo) => mo.id === workExperienceId) ?? {
-    ...workExperienceWithOrgData,
-    ...updatedMemberOrg,
-    verified,
-    verifiedBy,
-  }
+  const responseMo: IMemberRoleWithOrganization =
+    groupMemberOrganizations(memberOrgsWithData).find((mo) => mo.id === workExperienceId) ??
+    ({
+      ...(memberOrgsWithData.find((mo) => mo.id === workExperienceId) ?? memberOrg),
+      ...updatedMemberOrg,
+      verified,
+      verifiedBy,
+    } as IMemberRoleWithOrganization)
 
   ok(res, toMemberWorkExperience(responseMo))
 }

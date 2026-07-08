@@ -122,11 +122,9 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
 
-      const memberOrgsWithData = orgsMap.get(memberId) ?? []
-
-      const updatedMo =
-        groupMemberOrganizations(memberOrgsWithData).find((mo) => mo.id === workExperienceId) ??
-        memberOrgsWithData.find((mo) => mo.id === workExperienceId)
+      const updatedMo = groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
+        (mo) => mo.id === workExperienceId,
+      )
 
       if (!updatedMo) {
         throw new NotFoundError('Work experience not found')
