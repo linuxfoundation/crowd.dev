@@ -94,7 +94,6 @@
     "dotenv": "8.2.0",
     "dotenv-expand": "^8.0.3",
     "emoji-dictionary": "^1.0.11",
-    "erlpack": "^0.1.4",
     "express": "4.17.1",
     "express-oauth2-jwt-bearer": "^1.7.4",
     "express-rate-limit": "6.5.1",
@@ -133,7 +132,6 @@
     "uuid": "^9.0.0",
     "validator": "^13.7.0",
     "verify-github-webhook": "^1.0.1",
-    "zlib-sync": "^0.1.8",
     "zod": "^4.3.6"
   },
   "private": true,
