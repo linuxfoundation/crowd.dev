@@ -80,9 +80,19 @@ class AffiliationService(BaseService):
             return safe_decode(await f.read())
 
     @staticmethod
-    def compute_file_hash(content: str) -> str:
-        """SHA-256 hex digest of UTF-8 file content (not a Git blob SHA)."""
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    async def compute_file_hash_from_path(
+        file_path: str, *, retain_content: bool = False
+    ) -> tuple[bytes | None, str]:
+        """SHA-256 of raw file bytes. Set retain_content to decode and parse under the size limit."""
+        hasher = hashlib.sha256()
+        chunks: list[bytes] = []
+        async with aiofiles.open(file_path, "rb") as affiliation_file:
+            while file_chunk := await affiliation_file.read(1024 * 1024):
+                hasher.update(file_chunk)
+                if retain_content:
+                    chunks.append(file_chunk)
+        file_bytes = b"".join(chunks) if retain_content else None
+        return file_bytes, hasher.hexdigest()
 
     @classmethod
     def is_text_file_path(cls, relative_path: str) -> bool:
@@ -972,11 +982,7 @@ class AffiliationService(BaseService):
                     parse_cost = 0.0
                 else:
                     # First hit: hash it so the registry can mark it as unusable.
-                    hasher = hashlib.sha256()
-                    async with aiofiles.open(file_path_on_disk, "rb") as affiliation_file:
-                        while file_chunk := await affiliation_file.read(1024 * 1024):
-                            hasher.update(file_chunk)
-                    file_hash = hasher.hexdigest()
+                    _, file_hash = await self.compute_file_hash_from_path(file_path_on_disk)
                     latest_file_hash = file_hash
                     raise AffiliationAnalysisError(
                         retain_file_hash=True,
@@ -986,8 +992,10 @@ class AffiliationService(BaseService):
                         ),
                     )
             else:
-                content = await self.read_text_file(file_path_on_disk)
-                file_hash = self.compute_file_hash(content)
+                file_bytes, file_hash = await self.compute_file_hash_from_path(
+                    file_path_on_disk, retain_content=True
+                )
+                content = safe_decode(file_bytes)
                 latest_file_hash = file_hash
                 affiliations, parse_cost = await self.resolve_snapshot(
                     registry,
