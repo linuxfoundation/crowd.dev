@@ -20,7 +20,7 @@ export async function getOrganization(req: Request, res: Response): Promise<void
   const { name, domain: rawDomain } = validateOrThrow(querySchema, req.query)
 
   const domain = rawDomain ? normalizeHostname(rawDomain, false) : undefined
-  
+
   if (rawDomain && !domain) {
     throw new BadRequestError(`Invalid domain: ${rawDomain}`)
   }
