@@ -72,8 +72,7 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-    WHERE r.host = 'github'
-      AND (
+    WHERE (
         -- never evaluated → always eligible
         r.contacts_last_refreshed IS NULL
         -- evaluated but no contacts found yet → retry on the daily cadence
@@ -109,7 +108,15 @@ function toTarget(row: SweepRow): RepoTarget {
   }
 }
 
-async function processRepo(
+export function buildBaseDeps(config: Config): Omit<ExtractorDeps, 'repoTree'> {
+  return {
+    fetchTimeoutMs: FETCH_TIMEOUT_MS,
+    userAgent: config.userAgent,
+    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
+  }
+}
+
+export async function processRepo(
   target: RepoTarget,
   baseDeps: Omit<ExtractorDeps, 'repoTree'>,
   qx: QueryExecutor,
@@ -162,11 +169,7 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
   const batch = await fetchBatch(qx)
   if (batch.length === 0) return { processed: 0 }
 
-  const deps: Omit<ExtractorDeps, 'repoTree'> = {
-    fetchTimeoutMs: FETCH_TIMEOUT_MS,
-    userAgent: config.userAgent,
-    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
-  }
+  const deps = buildBaseDeps(config)
 
   const targets = batch.map(toTarget)
   // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
