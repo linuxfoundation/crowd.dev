@@ -119,7 +119,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
   const responseMo: IMemberRoleWithOrganization =
     groupedMemberOrgs.find((mo) => mo.id === workExperienceId) ??
-    (fallbackMo ? { ...fallbackMo, ...updatedMemberOrg, ...verifiedUpdate } : undefined)
+    (fallbackMo ? { ...fallbackMo, ...verifiedUpdate } : undefined)
 
   if (!responseMo) {
     throw new NotFoundError('Work experience not found')
