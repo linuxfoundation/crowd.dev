@@ -217,7 +217,7 @@ export async function fetchManyMemberOrgsWithOrgData(
 ): Promise<Map<string, IMemberRoleWithOrganization[]>> {
   const domainSelect = withDomains
     ? `,
-      COALESCE(oid.domains, '{}') AS "organizationDomains"`
+      COALESCE(oid.domains, '{}'::text[]) AS "organizationDomains"`
     : ''
 
   const domainJoin = withDomains
