@@ -26,8 +26,12 @@ docker run --rm --network host \
   -c "DROP DATABASE IF EXISTS test_template;" \
   -c "CREATE DATABASE test_template;"
 
-say "Building flyway image..."
-docker build -t crowd_flyway -f "${REPO_ROOT}/backend/src/database/Dockerfile.flyway" "${REPO_ROOT}/backend/src/database"
+if [[ "${SKIP_FLYWAY_BUILD:-0}" == "1" ]]; then
+  say "Using pre-built crowd_flyway image."
+else
+  say "Building flyway image..."
+  docker build -t crowd_flyway -f "${REPO_ROOT}/backend/src/database/Dockerfile.flyway" "${REPO_ROOT}/backend/src/database"
+fi
 
 say "Migrating test_template..."
 docker run --rm --network host \

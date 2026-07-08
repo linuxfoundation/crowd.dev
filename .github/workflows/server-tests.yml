@@ -20,6 +20,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write # GHA cache for Flyway image layers
 
 jobs:
   test:
@@ -65,7 +66,22 @@ jobs:
       - name: Install dependencies
         run: pnpm i --frozen-lockfile
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Flyway image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/src/database
+          file: backend/src/database/Dockerfile.flyway
+          load: true
+          tags: crowd_flyway
+          cache-from: type=gha,scope=flyway
+          cache-to: type=gha,mode=max,scope=flyway
+
       - name: Prepare test database
+        env:
+          SKIP_FLYWAY_BUILD: 1
         run: ./.github/scripts/prepare-test-template-db.sh
 
       - name: Run server tests
