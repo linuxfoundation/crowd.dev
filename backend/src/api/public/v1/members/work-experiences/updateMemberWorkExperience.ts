@@ -120,7 +120,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
         memberOrganizationIds: [data.organizationId],
       })
 
-      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
 
       const updatedMo = groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
         (mo) => mo.id === workExperienceId,

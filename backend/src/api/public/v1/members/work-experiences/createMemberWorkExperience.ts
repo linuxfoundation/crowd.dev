@@ -117,7 +117,7 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
         memberOrganizationIds: [data.organizationId],
       })
 
-      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
       createdMo = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === newMemberOrgId)
 
       captureNewState(createdMo ?? null)

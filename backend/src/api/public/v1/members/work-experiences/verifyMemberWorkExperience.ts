@@ -52,12 +52,22 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
+  // Stash org fields for response fallback when reject soft-deletes the row.
+  const memberOrgsWithOrgDataBeforeChange = verified
+    ? []
+    : ((
+        await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+          withDomains: true,
+        })
+      ).get(memberId) ?? [])
+
   const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
 
-  const memberOrgIdsToDelete = [
-    workExperienceId,
-    ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
-  ]
+  const overlappingRowsWithIds = overlappingGroupedRows.filter(
+    (row): row is typeof row & { id: string } => !!row.id,
+  )
+
+  const memberOrgIdsToDelete = [workExperienceId, ...overlappingRowsWithIds.map((row) => row.id)]
 
   const verifiedUpdate = { verified, verifiedBy }
 
@@ -78,9 +88,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             verifiedUpdate,
           )
 
-          for (const overlappingRow of overlappingGroupedRows.filter(
-            (row): row is typeof row & { id: string } => !!row.id,
-          )) {
+          for (const overlappingRow of overlappingRowsWithIds) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
           }
         } else {
@@ -96,17 +104,26 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
         })
       }
 
-      captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
+      captureNewState(updatedMemberOrg ?? { ...memberOrg, ...verifiedUpdate })
     }),
   )
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
+  const groupedMemberOrgs = groupMemberOrganizations(orgsMap.get(memberId) ?? [])
+  const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
+
+  const fallbackMo = groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId)
 
   const responseMo: IMemberRoleWithOrganization =
-    groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
-      (mo) => mo.id === workExperienceId,
-    ) ??
-    ({ ...memberOrg, ...updatedMemberOrg, verified, verifiedBy } as IMemberRoleWithOrganization)
+    groupedMemberOrgs.find((mo) => mo.id === workExperienceId) ??
+    (fallbackMo ? { ...fallbackMo, ...verifiedUpdate } : undefined)
+
+  if (!responseMo) {
+    throw new NotFoundError('Work experience not found')
+  }
 
   ok(res, toMemberWorkExperience(responseMo))
 }

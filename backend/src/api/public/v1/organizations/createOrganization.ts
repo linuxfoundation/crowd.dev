@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
-import { InternalError } from '@crowd/common'
+import { BadRequestError, InternalError, normalizeHostname } from '@crowd/common'
 import { findOrCreateOrganization, optionsQx } from '@crowd/data-access-layer'
 import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
 
@@ -17,16 +17,20 @@ const bodySchema = z.object({
 })
 
 export async function createOrganization(req: Request, res: Response): Promise<void> {
-  const { name, domain, source, logo } = validateOrThrow(bodySchema, req.body)
+  const { name, domain: rawDomain, source, logo } = validateOrThrow(bodySchema, req.body)
+
+  const domain = normalizeHostname(rawDomain, false)
+
+  if (!domain) {
+    throw new BadRequestError(`Invalid domain: ${rawDomain}`)
+  }
 
   const qx = optionsQx(req)
 
-  let organizationId: string | undefined
-
-  await qx.tx(async (tx) => {
+  const organizationId = await qx.tx(async (tx) => {
     const orgSource = OrganizationAttributeSource.LFX_SERVE
 
-    organizationId = await findOrCreateOrganization(tx, orgSource, {
+    const organizationId = await findOrCreateOrganization(tx, orgSource, {
       displayName: name,
       logo,
       identities: [
@@ -59,7 +63,9 @@ export async function createOrganization(req: Request, res: Response): Promise<v
         })
       }),
     )
+
+    return organizationId
   })
 
-  created(res, { id: organizationId, name, logo })
+  created(res, { id: organizationId, name, logo, domain })
 }
