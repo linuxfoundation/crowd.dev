@@ -56,9 +56,9 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     withDomains: true,
   })
 
-  const workExperienceWithOrgData = groupMemberOrganizations(
-    orgsMapBeforeChange.get(memberId) ?? [],
-  ).find((mo) => mo.id === workExperienceId)
+  const memberOrgsWithData = orgsMapBeforeChange.get(memberId) ?? []
+
+  const workExperienceWithOrgData = memberOrgsWithData.find((mo) => mo.id === workExperienceId)
 
   if (!workExperienceWithOrgData) {
     throw new NotFoundError('Work experience not found')
@@ -114,8 +114,10 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
   const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
 
+  const memberOrgsWithDataAfterChange = orgsMap.get(memberId) ?? []
+
   const responseMo: IMemberRoleWithOrganization = groupMemberOrganizations(
-    orgsMap.get(memberId) ?? [],
+    memberOrgsWithDataAfterChange,
   ).find((mo) => mo.id === workExperienceId) ?? {
     ...workExperienceWithOrgData,
     ...updatedMemberOrg,
