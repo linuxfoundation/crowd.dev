@@ -52,6 +52,7 @@ class AffiliationService(BaseService):
 
     MAX_CHUNK_SIZE = 5000
     MAX_CONCURRENT_CHUNKS = 3
+    MAX_FILE_SIZE_BYTES = 1_000_000
     FILE_PICKER_PREVIEW_MAX_CHARS = 400
     FILE_PICKER_BATCH_SIZE = 20
 
@@ -955,15 +956,44 @@ class AffiliationService(BaseService):
                 raise AffiliationFileNotFoundError(ai_cost=ai_cost)
 
             file_path_on_disk = os.path.join(batch_info.repo_path, latest_file_path)
-            content = await self.read_text_file(file_path_on_disk)
-            file_hash = self.compute_file_hash(content)
-            latest_file_hash = file_hash
-
-            affiliations, parse_cost = await self.resolve_snapshot(
-                registry,
-                content,
-                file_hash,
-            )
+            file_size_bytes = os.path.getsize(file_path_on_disk)
+            # Too big for llm — mark unusable and move on.
+            if file_size_bytes > self.MAX_FILE_SIZE_BYTES:
+                # Steady state: already gave up on this file; getsize is enough.
+                if (
+                    registry
+                    and registry.status == AffiliationRegistryStatus.UNUSABLE.value
+                    and registry.file_path == latest_file_path
+                    and registry.file_hash
+                ):
+                    file_hash = registry.file_hash
+                    latest_file_hash = file_hash
+                    affiliations = []
+                    parse_cost = 0.0
+                else:
+                    # First hit: hash it so the registry can mark it as unusable.
+                    hasher = hashlib.sha256()
+                    async with aiofiles.open(file_path_on_disk, "rb") as affiliation_file:
+                        while file_chunk := await affiliation_file.read(1024 * 1024):
+                            hasher.update(file_chunk)
+                    file_hash = hasher.hexdigest()
+                    latest_file_hash = file_hash
+                    raise AffiliationAnalysisError(
+                        retain_file_hash=True,
+                        error_message=(
+                            f"Affiliation file {latest_file_path!r} is too large for LLM parsing "
+                            f"({file_size_bytes} bytes > {self.MAX_FILE_SIZE_BYTES} bytes)"
+                        ),
+                    )
+            else:
+                content = await self.read_text_file(file_path_on_disk)
+                file_hash = self.compute_file_hash(content)
+                latest_file_hash = file_hash
+                affiliations, parse_cost = await self.resolve_snapshot(
+                    registry,
+                    content,
+                    file_hash,
+                )
             ai_cost += parse_cost
 
             if repository.parent_repo:
