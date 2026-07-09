@@ -484,15 +484,17 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
  *
  * Candidate additions found in Maven declared_repository_url (critical rows) but
  * intentionally NOT added yet, because they need more than a host allowlist:
- *   - gitbox.apache.org / git.apache.org / git-wip-us.apache.org (~1.3k rows):
- *     paths are `/repos/asf/<repo>`, so the generic first-two-segments logic would
- *     collapse every Apache repo to `repos/asf`. Needs path-aware handling (skip
- *     the `/repos/asf/` prefix) or mapping to the github.com/apache mirror.
- *   - git.eclipse.org (~180 rows): Gerrit paths, likewise not owner/repo.
+ *   - git.eclipse.org (~180 rows): Gerrit `/c/<repo>` paths, not owner/repo.
+ *   - eclipse.gerrithub.io (~10 rows): Gerrit admin-UI paths (`/admin/repos/...`),
+ *     not a clone URL shape.
  *   - android.googlesource.com, ec.europa.eu (Bitbucket-Server /projects/x/repos/y):
  *     multi-segment paths, not owner/repo.
  *   - ambiguous `git.*` hosts (git.iem.at, git.i-novus.ru, git.oschina.net) and the
  *     internal git.corp.adobe.com: pending path/reachability confirmation.
+ *
+ * gitbox.apache.org / git.apache.org / git-wip-us.apache.org are handled separately
+ * below (normalizeApacheGitwebUrl) rather than through this allowlist — their paths
+ * are `/repos/asf/<repo>` or `?p=<repo>` (classic gitweb query form), not owner/repo.
  */
 const SCM_HOSTS = new Set([
   'github.com',
@@ -523,6 +525,33 @@ const SCM_HOSTS = new Set([
 const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
 
 /**
+ * Apache's gitweb-based hosts serve every repo under a fixed /repos/asf/ prefix,
+ * in two equivalent forms: /repos/asf/<repo>.git (path) or /repos/asf?p=<repo>.git
+ * (classic gitweb query-string). Neither is an owner/repo shape — the generic path
+ * logic would either reject the query form (no second segment) or collapse every
+ * repo to the literal segments "repos"/"asf" for the path form. Handled on the same
+ * host rather than mapped to a github.com/apache mirror, since that mapping isn't
+ * guaranteed to hold for every repo.
+ */
+const APACHE_GITWEB_HOSTS = new Set([
+  'gitbox.apache.org',
+  'git.apache.org',
+  'git-wip-us.apache.org',
+])
+
+function normalizeApacheGitwebUrl(host: string, pathname: string, search: string): string | null {
+  const queryRepo = new URLSearchParams(search).get('p')
+  const raw =
+    queryRepo ?? (pathname.startsWith('/repos/asf/') ? pathname.slice('/repos/asf/'.length) : null)
+  if (!raw) return null
+
+  const name = raw.replace(/\.git$/, '').replace(/\/+$/, '')
+  if (!name || name.includes('/') || /\$\{|%7B/i.test(name)) return null
+
+  return `https://${host}/repos/asf/${name}`
+}
+
+/**
  * Converts the raw SCM URL from a POM (declared_repository_url) into a clean,
  * canonical `https://<host>/<owner>/<repo>` repository URL suitable for storage
  * as repository_url. Returns null when the input does not resolve to a real
@@ -546,12 +575,6 @@ export function normalizeScmUrl(raw: string | null): string | null {
   if (!raw) return null
   let s = raw.trim()
   if (!s) return null
-
-  // A leftover ${...} means best-effort interpolation upstream could not resolve it.
-  // Reject outright: a placeholder embedded in the path (e.g. github.com/owner/${x})
-  // otherwise survives URL parsing (percent-encoded to %7B…%7D) and would yield a junk
-  // repository_url instead of null.
-  if (s.includes('${')) return null
 
   // Strip Maven scm:git: / scm: prefix
   s = s.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
@@ -593,6 +616,11 @@ export function normalizeScmUrl(raw: string | null): string | null {
   if (parsed.protocol !== 'https:') return null
 
   const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+
+  if (APACHE_GITWEB_HOSTS.has(host)) {
+    return normalizeApacheGitwebUrl(host, parsed.pathname, parsed.search)
+  }
+
   if (!SCM_HOSTS.has(host)) return null
 
   // Require at least owner + repo path segments
@@ -602,6 +630,14 @@ export function normalizeScmUrl(raw: string | null): string | null {
   let owner = segments[0]
   let name = segments[1].replace(/\.git$/, '')
   if (!owner || !name) return null
+
+  // A leftover ${...} in owner/repo means best-effort interpolation upstream could
+  // not resolve it — reject rather than store a junk link. The URL parser
+  // percent-encodes { and } in the path, so check both forms. Placeholders in a
+  // trailing suffix (e.g. /tree/${project.scm.tag}) are irrelevant here since only
+  // segments[0]/[1] are inspected — that suffix is simply never read.
+  const hasPlaceholder = (seg: string) => /\$\{|%7B/i.test(seg)
+  if (hasPlaceholder(owner) || hasPlaceholder(name)) return null
 
   if (CASE_INSENSITIVE_HOSTS.has(host)) {
     owner = owner.toLowerCase()

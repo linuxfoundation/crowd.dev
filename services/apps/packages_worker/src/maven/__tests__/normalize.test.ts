@@ -201,6 +201,41 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('scm:git:https://github.com/${owner}/repo.git')).toBeNull()
   })
 
+  it('ignores an unresolved placeholder in a trailing suffix once owner/repo are valid', () => {
+    // ${project.scm.tag} lands in the /tree/<ref> suffix, which is already ignored —
+    // only segments[0]/[1] (owner/repo) are inspected.
+    expect(
+      normalizeScmUrl('https://github.com/apache/httpcomponents-client/tree/${project.scm.tag}'),
+    ).toBe('https://github.com/apache/httpcomponents-client')
+    expect(normalizeScmUrl('https://github.com/apache/maven/tree/${project.scm.tag}')).toBe(
+      'https://github.com/apache/maven',
+    )
+  })
+
+  it('recovers Apache gitweb hosts (gitbox/git-wip-us/git.apache.org) in path form', () => {
+    expect(normalizeScmUrl('https://gitbox.apache.org/repos/asf/commons-lang.git')).toBe(
+      'https://gitbox.apache.org/repos/asf/commons-lang',
+    )
+    expect(normalizeScmUrl('https://git.apache.org/repos/asf/ant.git')).toBe(
+      'https://git.apache.org/repos/asf/ant',
+    )
+  })
+
+  it('recovers Apache gitweb hosts in classic ?p= query-string form', () => {
+    expect(normalizeScmUrl('https://gitbox.apache.org/repos/asf?p=commons-io.git')).toBe(
+      'https://gitbox.apache.org/repos/asf/commons-io',
+    )
+    expect(normalizeScmUrl('https://git-wip-us.apache.org/repos/asf?p=commons-math.git')).toBe(
+      'https://git-wip-us.apache.org/repos/asf/commons-math',
+    )
+  })
+
+  it('returns null for Apache gitweb hosts with no recoverable repo name', () => {
+    expect(normalizeScmUrl('https://gitbox.apache.org/')).toBeNull()
+    expect(normalizeScmUrl('https://gitbox.apache.org/repos/asf/')).toBeNull()
+    expect(normalizeScmUrl('https://gitbox.apache.org/some/other/path')).toBeNull()
+  })
+
   // SCP colon form: "host:owner/repo" where the colon is a path separator, not a port
   it('recovers bare host:owner/repo SCP colon form', () => {
     expect(normalizeScmUrl('github.com:japgolly/scalacss.git')).toBe(
