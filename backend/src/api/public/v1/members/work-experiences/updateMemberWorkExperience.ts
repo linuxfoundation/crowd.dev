@@ -128,7 +128,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           throw new ConflictError('A work experience with the same dates already exists')
         }
 
-        // Conflict if a collapsible work experience with the same dates already exists. 
+        // Conflict if a collapsible work experience with the same dates already exists.
         // Soft-delete it so the visible update can take that unique key.
         const conflictingHiddenIds = conflictingRows
           .filter((row) => isCollapsibleMemberOrganization(row))
