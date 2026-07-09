@@ -180,6 +180,12 @@
     "certificate": "CROWD_TEMPORAL_CERTIFICATE",
     "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
   },
+  "packagesTemporal": {
+    "serverUrl": "CROWD_PACKAGES_TEMPORAL_SERVER_URL",
+    "namespace": "CROWD_PACKAGES_TEMPORAL_NAMESPACE",
+    "certificate": "CROWD_TEMPORAL_CERTIFICATE",
+    "privateKey": "CROWD_TEMPORAL_PRIVATE_KEY"
+  },
   "searchSyncApi": {
     "baseUrl": "CROWD_SEARCH_SYNC_API_URL"
   },
