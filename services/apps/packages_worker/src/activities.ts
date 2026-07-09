@@ -32,6 +32,7 @@ export {
 } from './pypi/activities'
 export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'
+export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubygems/activities'
 export {
   processSecurityContactsBatch,
   ingestSecurityContactsForPurlActivity,

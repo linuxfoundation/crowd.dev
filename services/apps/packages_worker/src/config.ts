@@ -86,6 +86,14 @@ export function getNuGetConfig() {
   }
 }
 
+export function getRubyGemsConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '1000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_FETCHER_CONCURRENCY ?? '8', 10),
+    groupDelayMs: parseInt(process.env.RUBYGEMS_FETCHER_GROUP_DELAY_MS ?? '1000', 10),
+  }
+}
+
 export function getDockerhubConfig() {
   return {
     hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
