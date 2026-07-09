@@ -1,6 +1,6 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
-import { getRubyGemsConfig } from '../config'
+import { getRubyGemsConfig, getRubyGemsCriticalConfig } from '../config'
 import { getPackagesDb } from '../db'
 
 import { processBatch as processCoreBatch } from './runRubyGemsCoreLoop'
@@ -19,8 +19,9 @@ export async function processRubyGemsCoreBatch(): Promise<BatchResult> {
 }
 
 export async function processRubyGemsCriticalBatch(): Promise<BatchResult> {
+  const config = getRubyGemsCriticalConfig()
   const qx = await getPackagesDb()
-  const result = await processCriticalBatch(qx)
+  const result = await processCriticalBatch(qx, config)
   log.info({ ...result }, 'RubyGems critical batch complete')
   return result
 }

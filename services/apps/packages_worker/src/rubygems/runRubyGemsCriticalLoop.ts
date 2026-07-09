@@ -21,9 +21,11 @@ import { BatchResult, isRubyGemsFetchError } from './types'
 
 const log = getServiceChildLogger('rubygems-critical')
 
-const BATCH_SIZE = 5000
-const CONCURRENCY = 4
-const GROUP_DELAY_MS = 1000
+export type RubyGemsCriticalConfig = {
+  batchSize: number
+  concurrency: number
+  groupDelayMs: number
+}
 
 async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {
@@ -68,7 +70,8 @@ async function processPackage(
 
   const normalizedVersions = normalizeRubyGemsVersions(versionsResult)
   const latest = pickLatestRubyGemsVersion(normalizedVersions)
-  const owners = isRubyGemsFetchError(ownersResult) ? [] : normalizeRubyGemsOwners(ownersResult)
+  const ownersFetchFailed = isRubyGemsFetchError(ownersResult)
+  const owners = ownersFetchFailed ? [] : normalizeRubyGemsOwners(ownersResult)
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {
@@ -119,7 +122,7 @@ async function processPackage(
         maintainerLinks.push({ maintainerId, role: 'maintainer' })
       }
 
-      if (maintainerLinks.length > 0) {
+      if (!ownersFetchFailed) {
         const pmChanged = await replacePackageMaintainers(t, packageDbId, maintainerLinks)
         pmChanged.forEach((f) => changed.add(f))
       }
@@ -140,8 +143,11 @@ async function processPackage(
   return 'processed'
 }
 
-export async function processBatch(qx: QueryExecutor): Promise<BatchResult> {
-  const packages = await listRubyGemsCriticalPackagesToSync(qx, { limit: BATCH_SIZE })
+export async function processBatch(
+  qx: QueryExecutor,
+  config: RubyGemsCriticalConfig,
+): Promise<BatchResult> {
+  const packages = await listRubyGemsCriticalPackagesToSync(qx, { limit: config.batchSize })
 
   if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
@@ -149,11 +155,11 @@ export async function processBatch(qx: QueryExecutor): Promise<BatchResult> {
 
   const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
-  for (let batchStart = 0; batchStart < packages.length; batchStart += CONCURRENCY) {
-    const group = packages.slice(batchStart, batchStart + CONCURRENCY)
+  for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+    const group = packages.slice(batchStart, batchStart + config.concurrency)
 
-    if (GROUP_DELAY_MS > 0 && batchStart > 0) {
-      await new Promise((r) => setTimeout(r, GROUP_DELAY_MS))
+    if (config.groupDelayMs > 0 && batchStart > 0) {
+      await new Promise((r) => setTimeout(r, config.groupDelayMs))
     }
 
     await Promise.all(
