@@ -552,6 +552,28 @@ function normalizeApacheGitwebUrl(host: string, pathname: string, search: string
 }
 
 /**
+ * Eclipse's cgit instance serves repos as /c/<owner>/<repo>[.git][/tree/...], the
+ * same owner/repo shape as the generic hosts but under a fixed /c/ prefix that
+ * cgit requires for a working link (unlike GitHub-style hosts, a bare
+ * https://git.eclipse.org/<owner>/<repo> does not resolve) — so the prefix is
+ * kept in the output rather than stripped like the generic path logic would.
+ */
+const ECLIPSE_CGIT_HOSTS = new Set(['git.eclipse.org'])
+
+function normalizeEclipseCgitUrl(host: string, pathname: string): string | null {
+  if (!pathname.startsWith('/c/')) return null
+
+  const segments = pathname.slice('/c/'.length).split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  const owner = segments[0]
+  const name = segments[1].replace(/\.git$/, '')
+  if (!owner || !name || /\$\{|%7B/i.test(owner) || /\$\{|%7B/i.test(name)) return null
+
+  return `https://${host}/c/${owner}/${name}`
+}
+
+/**
  * Converts the raw SCM URL from a POM (declared_repository_url) into a clean,
  * canonical `https://<host>/<owner>/<repo>` repository URL suitable for storage
  * as repository_url. Returns null when the input does not resolve to a real
@@ -619,6 +641,10 @@ export function normalizeScmUrl(raw: string | null): string | null {
 
   if (APACHE_GITWEB_HOSTS.has(host)) {
     return normalizeApacheGitwebUrl(host, parsed.pathname, parsed.search)
+  }
+
+  if (ECLIPSE_CGIT_HOSTS.has(host)) {
+    return normalizeEclipseCgitUrl(host, parsed.pathname)
   }
 
   if (!SCM_HOSTS.has(host)) return null

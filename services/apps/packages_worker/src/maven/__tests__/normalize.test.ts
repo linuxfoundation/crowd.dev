@@ -236,6 +236,29 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://gitbox.apache.org/some/other/path')).toBeNull()
   })
 
+  it('recovers git.eclipse.org cgit URLs, keeping the /c/ prefix and dropping trailing tree paths', () => {
+    expect(normalizeScmUrl('http://git.eclipse.org/c/eclipselink/javax.persistence.git')).toBe(
+      'https://git.eclipse.org/c/eclipselink/javax.persistence',
+    )
+    expect(
+      normalizeScmUrl('https://git.eclipse.org/c/eclipsescada/org.eclipse.scada.utils.git'),
+    ).toBe('https://git.eclipse.org/c/eclipsescada/org.eclipse.scada.utils')
+    expect(
+      normalizeScmUrl('http://git.eclipse.org/c/jetty/org.eclipse.jetty.project.git/tree'),
+    ).toBe('https://git.eclipse.org/c/jetty/org.eclipse.jetty.project')
+    expect(
+      normalizeScmUrl(
+        'http://git.eclipse.org/c/jetty/org.eclipse.jetty.orbit.git/tree/jetty-orbit',
+      ),
+    ).toBe('https://git.eclipse.org/c/jetty/org.eclipse.jetty.orbit')
+  })
+
+  it('returns null for git.eclipse.org URLs with no recoverable repo path', () => {
+    expect(normalizeScmUrl('https://git.eclipse.org/')).toBeNull()
+    expect(normalizeScmUrl('https://git.eclipse.org/c/')).toBeNull()
+    expect(normalizeScmUrl('https://git.eclipse.org/c/onlyowner')).toBeNull()
+  })
+
   // SCP colon form: "host:owner/repo" where the colon is a path separator, not a port
   it('recovers bare host:owner/repo SCP colon form', () => {
     expect(normalizeScmUrl('github.com:japgolly/scalacss.git')).toBe(
