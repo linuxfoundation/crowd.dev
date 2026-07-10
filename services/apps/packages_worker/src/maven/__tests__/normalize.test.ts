@@ -236,6 +236,185 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://gitbox.apache.org/some/other/path')).toBeNull()
   })
 
+  it('recovers Apache gitweb ?p= urls with trailing `;`-separated gitweb params (a=, f=, h=, hb=)', () => {
+    expect(
+      normalizeScmUrl(
+        'https://gitbox.apache.org/repos/asf?p=lucene-solr.git;f=lucene/analysis/common',
+      ),
+    ).toBe('https://gitbox.apache.org/repos/asf/lucene-solr')
+    expect(
+      normalizeScmUrl(
+        'https://git-wip-us.apache.org/repos/asf?p=flume.git;a=tree;h=refs/heads/trunk;hb=trunk',
+      ),
+    ).toBe('https://git-wip-us.apache.org/repos/asf/flume')
+    expect(
+      normalizeScmUrl(
+        'https://git1-us-west.apache.org/repos/asf?p=lucene-solr.git;a=tree;f=lucene/analysis/uima',
+      ),
+    ).toBe('https://git1-us-west.apache.org/repos/asf/lucene-solr')
+  })
+
+  it('recovers Apache gitweb urls with a trailing subpath appended directly after .git', () => {
+    expect(
+      normalizeScmUrl('https://gitbox.apache.org/repos/asf?p=hbase.git/hbase-build-configuration'),
+    ).toBe('https://gitbox.apache.org/repos/asf/hbase')
+    expect(
+      normalizeScmUrl(
+        'https://gitbox.apache.org/repos/asf/ignite.git/ignite-parent-internal/ignite-core',
+      ),
+    ).toBe('https://gitbox.apache.org/repos/asf/ignite')
+  })
+
+  it('recovers git.apache.org repos declared at the bare root, without the /repos/asf/ prefix', () => {
+    expect(normalizeScmUrl('http://git.apache.org/clerezza.git/')).toBe(
+      'https://git.apache.org/repos/asf/clerezza',
+    )
+    expect(normalizeScmUrl('http://git.apache.org/kafka.git')).toBe(
+      'https://git.apache.org/repos/asf/kafka',
+    )
+  })
+
+  it('recovers git.shibboleth.net gitweb ?p= urls, dropping trailing gitweb params', () => {
+    expect(normalizeScmUrl('https://git.shibboleth.net/view/?p=java-opensaml.git')).toBe(
+      'https://git.shibboleth.net/view/?p=java-opensaml.git',
+    )
+    expect(normalizeScmUrl('https://git.shibboleth.net/view/?p=java-support.git;a=summary')).toBe(
+      'https://git.shibboleth.net/view/?p=java-support.git',
+    )
+  })
+
+  it('returns null for git.shibboleth.net urls with no recoverable repo name', () => {
+    expect(normalizeScmUrl('https://git.shibboleth.net/view/')).toBeNull()
+  })
+
+  it('recovers jogamp.org gitweb ?p= urls, dropping trailing subpath', () => {
+    expect(normalizeScmUrl('http://jogamp.org/git/?p=gluegen.git/')).toBe(
+      'https://jogamp.org/git/?p=gluegen.git',
+    )
+    expect(normalizeScmUrl('http://jogamp.org/git/?p=jogl.git;a=summary')).toBe(
+      'https://jogamp.org/git/?p=jogl.git',
+    )
+  })
+
+  it('returns null for jogamp.org urls with no recoverable repo name', () => {
+    expect(normalizeScmUrl('http://jogamp.org/git/')).toBeNull()
+  })
+
+  it('recovers additional verified self-hosted GitLab/Gitea/cgit/sourcehut hosts', () => {
+    expect(normalizeScmUrl('https://gitverse.ru/ys.kalyakin/commons-chain')).toBe(
+      'https://gitverse.ru/ys.kalyakin/commons-chain',
+    )
+    expect(normalizeScmUrl('https://git.sr.ht/~ajoberstar/grgit')).toBe(
+      'https://git.sr.ht/~ajoberstar/grgit',
+    )
+    expect(normalizeScmUrl('https://git.savannah.gnu.org/cgit/gettext')).toBe(
+      'https://git.savannah.gnu.org/cgit/gettext',
+    )
+    expect(normalizeScmUrl('https://oss.brouillard.fr/projects/jgitver')).toBe(
+      'https://oss.brouillard.fr/projects/jgitver',
+    )
+  })
+
+  it('normalizes Bitbucket Server clone and browse urls to the browse form', () => {
+    expect(
+      normalizeScmUrl('https://ec.europa.eu/digital-building-blocks/code/scm/esig/dss.git'),
+    ).toBe('https://ec.europa.eu/digital-building-blocks/code/projects/esig/repos/dss')
+    expect(normalizeScmUrl('https://source.opendof.org/scm/core/core-java.git')).toBe(
+      'https://source.opendof.org/projects/core/repos/core-java',
+    )
+  })
+
+  it('returns null for unrecognized Bitbucket Server hosts', () => {
+    expect(normalizeScmUrl('https://stash.openntf.org/scm/sbt/socialsdk.git')).toBeNull()
+  })
+
+  it('recovers Azure DevOps _git urls, dropping trailing branch/path suffix', () => {
+    expect(normalizeScmUrl('https://dev.azure.com/pumpitup/_git/pumpo-number-five')).toBe(
+      'https://dev.azure.com/pumpitup/_git/pumpo-number-five',
+    )
+    expect(normalizeScmUrl('https://dev.azure.com/myorg/myproject/_git/myrepo?path=/src')).toBe(
+      'https://dev.azure.com/myorg/myproject/_git/myrepo',
+    )
+  })
+
+  it('returns null for dev.azure.com urls with no _git marker', () => {
+    expect(normalizeScmUrl('https://dev.azure.com/pumpitup')).toBeNull()
+  })
+
+  it('recovers Aliyun Codeup urls, dropping the leading group-id segment', () => {
+    expect(
+      normalizeScmUrl(
+        'scm:git:git@codeup.aliyun.com:624f8224569a5e3edf2d4c1f/jihongbin12329/rock-1.0.git',
+      ),
+    ).toBe('https://codeup.aliyun.com/jihongbin12329/rock-1.0')
+  })
+
+  it('passes through android.googlesource.com urls unchanged', () => {
+    expect(normalizeScmUrl('https://android.googlesource.com/platform/tools/base')).toBe(
+      'https://android.googlesource.com/platform/tools/base',
+    )
+    expect(normalizeScmUrl('https://android.googlesource.com/platform/tools/base.git/')).toBe(
+      'https://android.googlesource.com/platform/tools/base',
+    )
+  })
+
+  it('returns null for android.googlesource.com urls with no path', () => {
+    expect(normalizeScmUrl('https://android.googlesource.com/')).toBeNull()
+  })
+
+  it('recovers GitHub Pages project-page urls (owner.github.io/repo)', () => {
+    expect(normalizeScmUrl('https://silentbalanceyh.github.io/vertx-zero/')).toBe(
+      'https://github.com/silentbalanceyh/vertx-zero',
+    )
+    expect(normalizeScmUrl('http://morn-team.github.io/morn-boot-projects/')).toBe(
+      'https://github.com/morn-team/morn-boot-projects',
+    )
+  })
+
+  it('recovers GitHub Pages user/org-page urls (bare owner.github.io, no path)', () => {
+    expect(normalizeScmUrl('https://qyg2297248353.github.io')).toBe(
+      'https://github.com/qyg2297248353/qyg2297248353.github.io',
+    )
+    expect(normalizeScmUrl('http://openbaton.github.io')).toBe(
+      'https://github.com/openbaton/openbaton.github.io',
+    )
+  })
+
+  it('recovers a bare github.io host with owner/repo in the path (missing subdomain)', () => {
+    expect(normalizeScmUrl('https://github.io/methrat0n/restruct')).toBe(
+      'https://github.com/methrat0n/restruct',
+    )
+  })
+
+  it('recovers the legacy owner.github.com Pages domain', () => {
+    expect(normalizeScmUrl('https://zqq90.github.com/webit-script')).toBe(
+      'https://github.com/zqq90/webit-script',
+    )
+    expect(normalizeScmUrl('http://mhellkamp.github.com/endpoint/')).toBe(
+      'https://github.com/mhellkamp/endpoint',
+    )
+  })
+
+  it('returns null for GitHub Pages urls whose path still has an unresolved placeholder', () => {
+    expect(normalizeScmUrl('http://dakusui.github.io/${project.name}')).toBeNull()
+  })
+
+  it('returns null for a bare github.io host with no owner/repo path', () => {
+    expect(normalizeScmUrl('https://github.io/')).toBeNull()
+    expect(normalizeScmUrl('https://github.io/onlyowner')).toBeNull()
+  })
+
+  it('recovers raw.githubusercontent.com and maven.pkg.github.com by remapping to github.com', () => {
+    expect(
+      normalizeScmUrl(
+        'https://raw.githubusercontent.com/crittercism/crittercism-android-agent/master/',
+      ),
+    ).toBe('https://github.com/crittercism/crittercism-android-agent')
+    expect(normalizeScmUrl('https://maven.pkg.github.com/CloudForgeCI/cfc-core')).toBe(
+      'https://github.com/cloudforgeci/cfc-core',
+    )
+  })
+
   it('recovers git.eclipse.org cgit URLs, keeping the /c/ prefix and dropping trailing tree paths', () => {
     expect(normalizeScmUrl('http://git.eclipse.org/c/eclipselink/javax.persistence.git')).toBe(
       'https://git.eclipse.org/c/eclipselink/javax.persistence',
@@ -304,7 +483,6 @@ describe('normalizeScmUrl', () => {
   it('still returns null for internal or non-allowlisted hosts', () => {
     expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBeNull()
     expect(normalizeScmUrl('https://gitlab.alibaba-inc.com/team/project')).toBeNull()
-    expect(normalizeScmUrl('https://android.googlesource.com/platform/tools/base')).toBeNull()
   })
 })
 
