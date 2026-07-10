@@ -72,7 +72,7 @@ export async function writeRepoLink(qx: QueryExecutor, packageId: number, reposi
 // rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
 // can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
 // prettier-ignore
-async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+export async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn()

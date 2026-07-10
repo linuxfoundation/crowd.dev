@@ -7,7 +7,7 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { normalizeScmUrl } from './extract'
-import { writeRepoLink } from './runMavenEnrichmentLoop'
+import { withDeadlockRetry, writeRepoLink } from './runMavenEnrichmentLoop'
 
 const log = getServiceChildLogger('maven-repo-url-backfill')
 
@@ -102,13 +102,15 @@ export async function backfillMavenRepositoryUrls(
       // re-run the row is skipped (its repository_url already matches `desired`),
       // so the inconsistency would never be repaired. On rollback the row stays
       // unchanged and is reprocessed on the next run.
-      await qx.tx(async (t) => {
-        await updateMavenRepositoryUrls(t, updates)
-        await deleteMavenPackageRepoLinks(t, pruneTargets)
-        for (const target of linkTargets) {
-          await writeRepoLink(t, target.id, target.repositoryUrl)
-        }
-      })
+      await withDeadlockRetry(() =>
+        qx.tx(async (t) => {
+          await updateMavenRepositoryUrls(t, updates)
+          await deleteMavenPackageRepoLinks(t, pruneTargets)
+          for (const target of linkTargets) {
+            await writeRepoLink(t, target.id, target.repositoryUrl)
+          }
+        }),
+      )
       totals.pruned += pruneTargets.length
       totals.linked += linkTargets.length
     }
