@@ -24,7 +24,9 @@ async function rubyGemsGet<T>(url: string): Promise<RubyGemsFetchResult<T>> {
           if (attempt >= MAX_RATE_LIMIT_RETRIES) {
             return { kind: 'RATE_LIMIT', status, message: err.message }
           }
-          await new Promise((r) => setTimeout(r, parseRetryAfterMs(err.response?.headers['retry-after'])))
+          await new Promise((r) =>
+            setTimeout(r, parseRetryAfterMs(err.response?.headers['retry-after'])),
+          )
           continue
         }
       }

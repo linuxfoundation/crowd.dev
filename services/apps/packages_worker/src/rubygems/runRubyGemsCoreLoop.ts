@@ -54,7 +54,7 @@ async function markPackageError(qx: QueryExecutor, pkg: RubyGemsPackageToSync): 
 
 type PackageStatus = 'processed' | 'skipped' | 'error' | 'unchanged'
 
-export type RubyGemsCoreConfig = { batchSize: number; concurrency: number; groupDelayMs: number }
+export type RubyGemsCoreConfig = { batchSize: number; concurrency: number }
 
 async function processPackage(
   qx: QueryExecutor,
@@ -148,10 +148,6 @@ export async function processBatch(
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
     const group = packages.slice(batchStart, batchStart + config.concurrency)
-
-    if (config.groupDelayMs > 0 && batchStart > 0) {
-      await new Promise((r) => setTimeout(r, config.groupDelayMs))
-    }
 
     await Promise.all(
       group.map(async (pkg) => {

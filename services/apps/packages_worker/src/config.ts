@@ -88,9 +88,8 @@ export function getNuGetConfig() {
 
 export function getRubyGemsConfig() {
   return {
-    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '1000', 10),
+    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '10000', 10),
     concurrency: parseInt(process.env.RUBYGEMS_FETCHER_CONCURRENCY ?? '8', 10),
-    groupDelayMs: parseInt(process.env.RUBYGEMS_FETCHER_GROUP_DELAY_MS ?? '1000', 10),
   }
 }
 
@@ -98,13 +97,12 @@ export function getRubyGemsCriticalConfig() {
   return {
     batchSize: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_BATCH_SIZE ?? '5000', 10),
     concurrency: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_CONCURRENCY ?? '4', 10),
-    groupDelayMs: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_GROUP_DELAY_MS ?? '1000', 10),
   }
 }
 
 export function getRubyGemsDependentsConfig() {
   return {
-    batchSize: parseInt(process.env.RUBYGEMS_DEPENDENTS_BATCH_SIZE ?? '50000', 10),
+    batchSize: parseInt(process.env.RUBYGEMS_DEPENDENTS_BATCH_SIZE ?? '10000', 10),
     concurrency: parseInt(process.env.RUBYGEMS_DEPENDENTS_CONCURRENCY ?? '50', 10),
   }
 }

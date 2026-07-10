@@ -24,7 +24,6 @@ const log = getServiceChildLogger('rubygems-critical')
 export type RubyGemsCriticalConfig = {
   batchSize: number
   concurrency: number
-  groupDelayMs: number
 }
 
 async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
@@ -164,10 +163,6 @@ export async function processBatch(
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
     const group = packages.slice(batchStart, batchStart + config.concurrency)
-
-    if (config.groupDelayMs > 0 && batchStart > 0) {
-      await new Promise((r) => setTimeout(r, config.groupDelayMs))
-    }
 
     await Promise.all(
       group.map(async (pkg) => {
