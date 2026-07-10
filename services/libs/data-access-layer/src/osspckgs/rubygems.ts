@@ -1,7 +1,7 @@
 import { QueryExecutor } from '../queryExecutor'
 
 export type RubyGemsPackageToSync = {
-  id: number
+  id: string
   purl: string
   name: string
   latestVersion: string | null
@@ -39,23 +39,23 @@ export async function listRubyGemsPackagesToSync(
 }
 
 export type RubyGemsCriticalPackageToSync = {
-  id: number
+  id: string
   purl: string
   name: string
 }
 
 export async function listRubyGemsCriticalPackagesToSync(
   qx: QueryExecutor,
-  options: { limit: number; afterId?: number },
+  options: { limit: number; afterId?: string },
 ): Promise<RubyGemsCriticalPackageToSync[]> {
-  const { limit, afterId = 0 } = options
+  const { limit, afterId = '0' } = options
   return qx.select(
     `
     SELECT p.id, p.purl, p.name
     FROM packages p
     WHERE p.ecosystem = 'rubygems'
       AND p.is_critical
-      AND p.id > $(afterId)
+      AND p.id > $(afterId)::bigint
     ORDER BY p.id ASC
     LIMIT $(limit)
     `,
@@ -64,21 +64,21 @@ export async function listRubyGemsCriticalPackagesToSync(
 }
 
 export type RubyGemsPackageForDependents = {
-  id: number
+  id: string
   name: string
 }
 
 export async function listRubyGemsPackagesForDependents(
   qx: QueryExecutor,
-  options: { limit: number; afterId?: number },
+  options: { limit: number; afterId?: string },
 ): Promise<RubyGemsPackageForDependents[]> {
-  const { limit, afterId = 0 } = options
+  const { limit, afterId = '0' } = options
   return qx.select(
     `
     SELECT p.id, p.name
     FROM packages p
     WHERE p.ecosystem = 'rubygems'
-      AND p.id > $(afterId)
+      AND p.id > $(afterId)::bigint
     ORDER BY p.id ASC
     LIMIT $(limit)
     `,
@@ -88,14 +88,14 @@ export async function listRubyGemsPackagesForDependents(
 
 export async function updateRubyGemsDependentCount(
   qx: QueryExecutor,
-  packageId: number,
+  packageId: string,
   dependentCount: number,
 ): Promise<void> {
   await qx.result(
     `UPDATE packages
         SET dependent_count = $(dependentCount),
             last_synced_at = NOW()
-      WHERE id = $(packageId)
+      WHERE id = $(packageId)::bigint
         AND dependent_count IS DISTINCT FROM $(dependentCount)`,
     { packageId, dependentCount },
   )

@@ -20,7 +20,7 @@ export type DependentsBatchResult = {
   processed: number
   notFound: number
   error: number
-  lastId: number | null
+  lastId: string | null
 }
 
 type PackageStatus = 'processed' | 'notFound' | 'error'
@@ -47,7 +47,7 @@ async function processPackage(
 export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsDependentsConfig,
-  afterId: number,
+  afterId: string,
 ): Promise<DependentsBatchResult> {
   const packages = await listRubyGemsPackagesForDependents(qx, {
     limit: config.batchSize,

@@ -27,8 +27,8 @@ export async function processRubyGemsCoreBatch(): Promise<BatchResult> {
 }
 
 export async function processRubyGemsCriticalBatch(
-  afterId = 0,
-): Promise<BatchResult & { lastId: number | null }> {
+  afterId = '0',
+): Promise<BatchResult & { lastId: string | null }> {
   const config = getRubyGemsCriticalConfig()
   const qx = await getPackagesDb()
   const result = await processCriticalBatch(qx, config, afterId)
@@ -36,7 +36,9 @@ export async function processRubyGemsCriticalBatch(
   return result
 }
 
-export async function processRubyGemsDependentsBatch(afterId = 0): Promise<DependentsBatchResult> {
+export async function processRubyGemsDependentsBatch(
+  afterId = '0',
+): Promise<DependentsBatchResult> {
   const config = getRubyGemsDependentsConfig()
   const qx = await getPackagesDb()
   const result = await processDependentsBatch(qx, config, afterId)

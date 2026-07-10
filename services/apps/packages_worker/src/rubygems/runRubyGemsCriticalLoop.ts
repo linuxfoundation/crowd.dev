@@ -146,8 +146,8 @@ async function processPackage(
 export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsCriticalConfig,
-  afterId: number,
-): Promise<BatchResult & { lastId: number | null }> {
+  afterId: string,
+): Promise<BatchResult & { lastId: string | null }> {
   const packages = await listRubyGemsCriticalPackagesToSync(qx, {
     limit: config.batchSize,
     afterId,
