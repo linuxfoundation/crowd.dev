@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { Dispatcher } from 'undici'
 
 import {
   RubyGemsFetchError,
@@ -62,16 +63,23 @@ export async function fetchOwners(name: string): Promise<RubyGemsFetchResult<Rub
 
 export async function fetchReverseDependencies(
   name: string,
+  dispatcher?: Dispatcher,
 ): Promise<RubyGemsFetchResult<string[]>> {
+  const url = `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}/reverse_dependencies.json`
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 15000)
+  let res: Response
   try {
-    const resp = await axios.get<string[]>(
-      `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}/reverse_dependencies.json`,
-      { timeout: 15000 },
-    )
-    return resp.data
-  } catch (err) {
-    const classified = classifyError(err)
-    if (classified) return classified
-    throw err
+    const init: RequestInit & { dispatcher?: Dispatcher } = { signal: abort.signal }
+    if (dispatcher) init.dispatcher = dispatcher
+    res = await fetch(url, init as RequestInit)
+  } finally {
+    clearTimeout(timer)
   }
+
+  if (res.status === 404) return { kind: 'NOT_FOUND', status: 404, message: `${name} not found` }
+  if (res.status === 429) return { kind: 'RATE_LIMIT', status: 429, message: 'rate limited' }
+  if (!res.ok) throw new Error(`RubyGems reverse_dependencies HTTP ${res.status} for ${name}`)
+
+  return (await res.json()) as string[]
 }

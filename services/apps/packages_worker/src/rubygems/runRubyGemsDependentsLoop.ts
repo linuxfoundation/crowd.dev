@@ -5,8 +5,10 @@ import {
   updateRubyGemsDependentCount,
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
+import { type Dispatcher, ProxyAgent } from 'undici'
 
 import { fetchReverseDependencies } from './client'
+import { rubyGemsProxyUrls } from './proxies'
 import { isRubyGemsFetchError } from './types'
 
 const log = getServiceChildLogger('rubygems-dependents')
@@ -27,8 +29,9 @@ type PackageStatus = 'processed' | 'notFound' | 'error'
 async function processPackage(
   qx: QueryExecutor,
   pkg: RubyGemsPackageForDependents,
+  dispatcher?: Dispatcher,
 ): Promise<PackageStatus> {
-  const result = await fetchReverseDependencies(pkg.name)
+  const result = await fetchReverseDependencies(pkg.name, dispatcher)
 
   if (isRubyGemsFetchError(result)) {
     if (result.kind === 'NOT_FOUND') {
@@ -51,30 +54,40 @@ export async function processBatch(
 
   if (packages.length === 0) return { processed: 0, notFound: 0, error: 0 }
 
-  log.info({ count: packages.length }, 'Dependents batch started')
+  const proxyUrls = rubyGemsProxyUrls()
+  const dispatchers: Array<Dispatcher | undefined> = proxyUrls.length
+    ? proxyUrls.map((url) => new ProxyAgent(url))
+    : [undefined]
+
+  log.info({ count: packages.length, proxies: proxyUrls.length }, 'Dependents batch started')
 
   const counts: DependentsBatchResult = { processed: 0, notFound: 0, error: 0 }
 
-  for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
-    const group = packages.slice(batchStart, batchStart + config.concurrency)
+  try {
+    for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+      const group = packages.slice(batchStart, batchStart + config.concurrency)
 
-    await Promise.all(
-      group.map(async (pkg) => {
-        try {
-          const status = await processPackage(qx, pkg)
-          counts[status]++
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          log.error({ name: pkg.name, error: message }, 'Unexpected error fetching dependents')
-          counts.error++
-        }
-      }),
-    )
+      await Promise.all(
+        group.map(async (pkg, i) => {
+          const dispatcher = dispatchers[(batchStart + i) % dispatchers.length]
+          try {
+            const status = await processPackage(qx, pkg, dispatcher)
+            counts[status]++
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            log.error({ name: pkg.name, error: message }, 'Unexpected error fetching dependents')
+            counts.error++
+          }
+        }),
+      )
 
-    const done = batchStart + group.length
-    if (done % 1000 === 0 || done === packages.length) {
-      log.info({ done, total: packages.length, ...counts }, 'Dependents progress')
+      const done = batchStart + group.length
+      if (done % 1000 === 0 || done === packages.length) {
+        log.info({ done, total: packages.length, ...counts }, 'Dependents progress')
+      }
     }
+  } finally {
+    await Promise.all(dispatchers.map((d) => d?.close()))
   }
 
   return counts
