@@ -59,3 +59,19 @@ export async function fetchOwners(name: string): Promise<RubyGemsFetchResult<Rub
     throw err
   }
 }
+
+export async function fetchReverseDependencies(
+  name: string,
+): Promise<RubyGemsFetchResult<string[]>> {
+  try {
+    const resp = await axios.get<string[]>(
+      `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}/reverse_dependencies.json`,
+      { timeout: 15000 },
+    )
+    return resp.data
+  } catch (err) {
+    const classified = classifyError(err)
+    if (classified) return classified
+    throw err
+  }
+}

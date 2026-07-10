@@ -24,3 +24,12 @@ export async function ingestRubyGemsCriticalDetails(): Promise<void> {
   }
   await continueAsNew<typeof ingestRubyGemsCriticalDetails>()
 }
+
+export async function ingestRubyGemsDependents(): Promise<void> {
+  const result = await acts.processRubyGemsDependentsBatch()
+  if (result.processed + result.notFound === 0) {
+    log.info('RubyGems dependents ingestion complete — no more progress, exiting.', { ...result })
+    return
+  }
+  await continueAsNew<typeof ingestRubyGemsDependents>()
+}

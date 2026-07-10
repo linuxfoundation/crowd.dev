@@ -25,7 +25,11 @@ export {
   ingestPypiDownloadsDaily,
 } from '../pypi/downloads/ingestPypiDownloads'
 export { ingestNuGetPackages } from '../nuget/workflows'
-export { ingestRubyGemsCriticalDetails, ingestRubyGemsPackages } from '../rubygems/workflows'
+export {
+  ingestRubyGemsCriticalDetails,
+  ingestRubyGemsDependents,
+  ingestRubyGemsPackages,
+} from '../rubygems/workflows'
 export {
   ingestSecurityContacts,
   ingestSecurityContactsForPurlWorkflow,

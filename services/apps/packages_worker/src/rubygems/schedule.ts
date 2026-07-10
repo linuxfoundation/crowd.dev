@@ -1,7 +1,11 @@
 import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/client'
 
 import { svc } from '../service'
-import { ingestRubyGemsCriticalDetails, ingestRubyGemsPackages } from '../workflows'
+import {
+  ingestRubyGemsCriticalDetails,
+  ingestRubyGemsDependents,
+  ingestRubyGemsPackages,
+} from '../workflows'
 
 export async function scheduleRubyGemsIngestion(): Promise<void> {
   const { temporal } = svc
@@ -71,6 +75,43 @@ export async function scheduleRubyGemsCriticalIngestion(): Promise<void> {
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
       svc.log.info('Schedule rubygems-critical-ingest already exists, skipping creation.')
+    } else {
+      throw err
+    }
+  }
+}
+
+export async function scheduleRubyGemsDependentsIngestion(): Promise<void> {
+  const { temporal } = svc
+  if (!temporal) throw new Error('Temporal client not initialized')
+
+  try {
+    await temporal.schedule.create({
+      scheduleId: 'rubygems-dependents-ingest',
+      spec: {
+        cronExpressions: ['0 3 * * 0'],
+      },
+      policies: {
+        overlap: ScheduleOverlapPolicy.SKIP,
+        catchupWindow: '1 hour',
+      },
+      action: {
+        type: 'startWorkflow',
+        workflowType: ingestRubyGemsDependents,
+        workflowId: 'rubygems-weekly-dependents',
+        taskQueue: 'rubygems-worker',
+        workflowRunTimeout: '24 hours',
+        retry: {
+          initialInterval: '30 seconds',
+          backoffCoefficient: 2,
+          maximumAttempts: 5,
+        },
+        args: [],
+      },
+    })
+  } catch (err) {
+    if (err instanceof ScheduleAlreadyRunning) {
+      svc.log.info('Schedule rubygems-dependents-ingest already exists, skipping creation.')
     } else {
       throw err
     }

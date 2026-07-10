@@ -66,3 +66,39 @@ export async function listRubyGemsCriticalPackagesToSync(
     { limit },
   )
 }
+
+export type RubyGemsPackageForDependents = {
+  id: number
+  name: string
+}
+
+export async function listRubyGemsPackagesForDependents(
+  qx: QueryExecutor,
+  options: { limit: number },
+): Promise<RubyGemsPackageForDependents[]> {
+  const { limit } = options
+  return qx.select(
+    `
+    SELECT p.id, p.name
+    FROM packages p
+    WHERE p.ecosystem = 'rubygems'
+      AND p.dependent_count IS NULL
+    ORDER BY p.id ASC
+    LIMIT $(limit)
+    `,
+    { limit },
+  )
+}
+
+export async function updateRubyGemsDependentCount(
+  qx: QueryExecutor,
+  packageId: number,
+  dependentCount: number,
+): Promise<void> {
+  await qx.result(
+    `UPDATE packages
+        SET dependent_count = $(dependentCount)
+      WHERE id = $(packageId)`,
+    { packageId, dependentCount },
+  )
+}

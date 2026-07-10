@@ -102,6 +102,13 @@ export function getRubyGemsCriticalConfig() {
   }
 }
 
+export function getRubyGemsDependentsConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_DEPENDENTS_BATCH_SIZE ?? '50000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_DEPENDENTS_CONCURRENCY ?? '50', 10),
+  }
+}
+
 export function getDockerhubConfig() {
   return {
     hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
