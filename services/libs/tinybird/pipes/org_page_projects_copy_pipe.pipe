@@ -1,6 +1,7 @@
 DESCRIPTION >
     Nightly copy pipe that precomputes per-org per-project metrics for the org page.
     Writes one row per (organizationId, segmentId) into org_page_projects_copy_ds.
+    Activity and contributor counts use code-only activity types over the last 730 days (24 months).
 
 TAGS "Organization page"
 
@@ -9,11 +10,11 @@ DESCRIPTION >
     Collaboration and code contribution activity types (mirrors leaderboards filter)
 
 SQL >
-    SELECT activityType, platform FROM activityTypes FINAL WHERE isCollaboration OR isCodeContribution
+    SELECT activityType, platform FROM activityTypes FINAL WHERE isCodeContribution
 
 NODE org_page_projects_org_segment_activity
 DESCRIPTION >
-    Collaboration/code activity and contributor counts per org per project segment in the last 365 days
+    Code-only activity and contributor counts per org per project segment in the last 730 days (24 months)
 
 SQL >
     SELECT
@@ -25,7 +26,7 @@ SQL >
         AND ar.platform = at.platform
     WHERE
         ar.organizationId != ''
-        AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(365))
+        AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(730))
         AND ar.timestamp < toStartOfDay(now() + toIntervalDay(1))
     GROUP BY ar.organizationId, ar.segmentId
 
@@ -138,7 +139,7 @@ SQL >
         (
             -- Maintainers: 3 pts if org has at least 1 active maintainer (24-month window)
             -- Contributors: 0 if no share; 1.1 if share in (0, 0.1%]; share + 1.0 otherwise
-            CASE WHEN ifNull(mt.scoreMaintainersCount, 0) >= 1 THEN 3.0 ELSE 0.0 END + CASE
+            CASE WHEN ifNull(mt.scoreMaintainersCount, 0) >= 1 THEN 10.0 ELSE 0.0 END + CASE
                 WHEN
                     ifNull(pa.scoreContributorCount, 0) = 0
                     OR ifNull(oa.scoreOrgContributorCount, 0) = 0
