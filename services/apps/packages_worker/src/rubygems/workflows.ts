@@ -16,20 +16,20 @@ export async function ingestRubyGemsPackages(): Promise<void> {
   await continueAsNew<typeof ingestRubyGemsPackages>()
 }
 
-export async function ingestRubyGemsCriticalDetails(): Promise<void> {
-  const result = await acts.processRubyGemsCriticalBatch()
-  if (result.processed + result.skipped + result.error + result.unchanged === 0) {
+export async function ingestRubyGemsCriticalDetails(afterId = 0): Promise<void> {
+  const result = await acts.processRubyGemsCriticalBatch(afterId)
+  if (result.lastId === null) {
     log.info('RubyGems critical ingestion complete — no more work, exiting.', { ...result })
     return
   }
-  await continueAsNew<typeof ingestRubyGemsCriticalDetails>()
+  await continueAsNew<typeof ingestRubyGemsCriticalDetails>(result.lastId)
 }
 
-export async function ingestRubyGemsDependents(): Promise<void> {
-  const result = await acts.processRubyGemsDependentsBatch()
-  if (result.processed + result.notFound === 0) {
-    log.info('RubyGems dependents ingestion complete — no more progress, exiting.', { ...result })
+export async function ingestRubyGemsDependents(afterId = 0): Promise<void> {
+  const result = await acts.processRubyGemsDependentsBatch(afterId)
+  if (result.lastId === null) {
+    log.info('RubyGems dependents ingestion complete — no more work, exiting.', { ...result })
     return
   }
-  await continueAsNew<typeof ingestRubyGemsDependents>()
+  await continueAsNew<typeof ingestRubyGemsDependents>(result.lastId)
 }

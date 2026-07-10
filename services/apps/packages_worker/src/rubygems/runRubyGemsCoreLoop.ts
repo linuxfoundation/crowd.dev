@@ -87,7 +87,6 @@ async function processPackage(
     }
     if (gemResult.kind === 'RATE_LIMIT') {
       log.warn({ purl: pkg.purl }, 'Rate limited by RubyGems registry — will retry next pass')
-      await markPackageError(qx, pkg)
       return 'error'
     }
     throw new Error(`Transient error fetching ${pkg.purl}: ${gemResult.message}`)

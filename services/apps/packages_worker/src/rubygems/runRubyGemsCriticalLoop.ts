@@ -104,6 +104,7 @@ async function processPackage(
           isLatest: v.number === latest?.number,
           isPrerelease: v.isPrerelease,
           license: v.licenses && v.licenses.length > 0 ? v.licenses[0] : null,
+          publishedAt: v.publishedAt,
         }))
         const verChanged = await upsertVersionsBatch(t, versionRows)
         verChanged.forEach((f) => changed.add(f))
@@ -146,12 +147,18 @@ async function processPackage(
 export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsCriticalConfig,
-): Promise<BatchResult> {
-  const packages = await listRubyGemsCriticalPackagesToSync(qx, { limit: config.batchSize })
+  afterId: number,
+): Promise<BatchResult & { lastId: number | null }> {
+  const packages = await listRubyGemsCriticalPackagesToSync(qx, {
+    limit: config.batchSize,
+    afterId,
+  })
 
-  if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  if (packages.length === 0) {
+    return { processed: 0, skipped: 0, error: 0, unchanged: 0, lastId: null }
+  }
 
-  log.info({ count: packages.length }, 'Critical batch started')
+  log.info({ count: packages.length, afterId }, 'Critical batch started')
 
   const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
@@ -184,5 +191,5 @@ export async function processBatch(
     }
   }
 
-  return counts
+  return { ...counts, lastId: packages[packages.length - 1].id }
 }

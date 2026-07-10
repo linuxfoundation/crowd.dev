@@ -26,18 +26,20 @@ export async function processRubyGemsCoreBatch(): Promise<BatchResult> {
   return result
 }
 
-export async function processRubyGemsCriticalBatch(): Promise<BatchResult> {
+export async function processRubyGemsCriticalBatch(
+  afterId = 0,
+): Promise<BatchResult & { lastId: number | null }> {
   const config = getRubyGemsCriticalConfig()
   const qx = await getPackagesDb()
-  const result = await processCriticalBatch(qx, config)
+  const result = await processCriticalBatch(qx, config, afterId)
   log.info({ ...result }, 'RubyGems critical batch complete')
   return result
 }
 
-export async function processRubyGemsDependentsBatch(): Promise<DependentsBatchResult> {
+export async function processRubyGemsDependentsBatch(afterId = 0): Promise<DependentsBatchResult> {
   const config = getRubyGemsDependentsConfig()
   const qx = await getPackagesDb()
-  const result = await processDependentsBatch(qx, config)
+  const result = await processDependentsBatch(qx, config, afterId)
   log.info({ ...result }, 'RubyGems dependents batch complete')
   return result
 }

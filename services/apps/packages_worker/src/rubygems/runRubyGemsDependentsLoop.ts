@@ -20,6 +20,7 @@ export type DependentsBatchResult = {
   processed: number
   notFound: number
   error: number
+  lastId: number | null
 }
 
 type PackageStatus = 'processed' | 'notFound' | 'error'
@@ -46,14 +47,18 @@ async function processPackage(
 export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsDependentsConfig,
+  afterId: number,
 ): Promise<DependentsBatchResult> {
-  const packages = await listRubyGemsPackagesForDependents(qx, { limit: config.batchSize })
+  const packages = await listRubyGemsPackagesForDependents(qx, {
+    limit: config.batchSize,
+    afterId,
+  })
 
-  if (packages.length === 0) return { processed: 0, notFound: 0, error: 0 }
+  if (packages.length === 0) return { processed: 0, notFound: 0, error: 0, lastId: null }
 
-  log.info({ count: packages.length }, 'Dependents batch started')
+  log.info({ count: packages.length, afterId }, 'Dependents batch started')
 
-  const counts: DependentsBatchResult = { processed: 0, notFound: 0, error: 0 }
+  const counts: DependentsBatchResult = { processed: 0, notFound: 0, error: 0, lastId: null }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
     const group = packages.slice(batchStart, batchStart + config.concurrency)
@@ -77,5 +82,6 @@ export async function processBatch(
     }
   }
 
+  counts.lastId = packages[packages.length - 1].id
   return counts
 }

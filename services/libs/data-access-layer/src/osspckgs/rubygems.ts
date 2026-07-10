@@ -27,7 +27,7 @@ export async function listRubyGemsPackagesToSync(
       AND (
         p.ingestion_source IS NULL
         OR p.ingestion_source <> ALL($(workerOutcomes)::text[])
-        OR p.last_synced_at < NOW() - INTERVAL '1 day'
+        OR p.last_synced_at < date_trunc('day', NOW())
       )
     ORDER BY
       p.dependent_count DESC NULLS LAST,
@@ -46,24 +46,20 @@ export type RubyGemsCriticalPackageToSync = {
 
 export async function listRubyGemsCriticalPackagesToSync(
   qx: QueryExecutor,
-  options: { limit: number },
+  options: { limit: number; afterId?: number },
 ): Promise<RubyGemsCriticalPackageToSync[]> {
-  const { limit } = options
+  const { limit, afterId = 0 } = options
   return qx.select(
     `
     SELECT p.id, p.purl, p.name
     FROM packages p
-    LEFT JOIN LATERAL (
-      SELECT MAX(v.last_synced_at) AS last_synced
-      FROM versions v WHERE v.package_id = p.id
-    ) v ON true
     WHERE p.ecosystem = 'rubygems'
       AND p.is_critical
-      AND (v.last_synced IS NULL OR v.last_synced < NOW() - INTERVAL '1 day')
-    ORDER BY p.dependent_count DESC NULLS LAST, p.id ASC
+      AND p.id > $(afterId)
+    ORDER BY p.id ASC
     LIMIT $(limit)
     `,
-    { limit },
+    { limit, afterId },
   )
 }
 
@@ -74,19 +70,19 @@ export type RubyGemsPackageForDependents = {
 
 export async function listRubyGemsPackagesForDependents(
   qx: QueryExecutor,
-  options: { limit: number },
+  options: { limit: number; afterId?: number },
 ): Promise<RubyGemsPackageForDependents[]> {
-  const { limit } = options
+  const { limit, afterId = 0 } = options
   return qx.select(
     `
     SELECT p.id, p.name
     FROM packages p
     WHERE p.ecosystem = 'rubygems'
-      AND p.dependent_count IS NULL
+      AND p.id > $(afterId)
     ORDER BY p.id ASC
     LIMIT $(limit)
     `,
-    { limit },
+    { limit, afterId },
   )
 }
 
@@ -97,8 +93,10 @@ export async function updateRubyGemsDependentCount(
 ): Promise<void> {
   await qx.result(
     `UPDATE packages
-        SET dependent_count = $(dependentCount)
-      WHERE id = $(packageId)`,
+        SET dependent_count = $(dependentCount),
+            last_synced_at = NOW()
+      WHERE id = $(packageId)
+        AND dependent_count IS DISTINCT FROM $(dependentCount)`,
     { packageId, dependentCount },
   )
 }
