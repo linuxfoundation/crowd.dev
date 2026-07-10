@@ -177,5 +177,11 @@ export async function processBatch(
     }
   }
 
+  if (counts.processed === 0 && counts.skipped === 0 && counts.error > 0) {
+    throw new Error(
+      `RubyGems core batch made no progress (${counts.error} errors, likely rate-limited) — failing to trigger backoff`,
+    )
+  }
+
   return counts
 }

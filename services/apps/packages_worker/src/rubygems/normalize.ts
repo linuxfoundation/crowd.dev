@@ -47,13 +47,8 @@ export function pickLatestRubyGemsVersion(
   versions: NormalizedRubyGemsVersion[],
 ): NormalizedRubyGemsVersion | null {
   if (versions.length === 0) return null
-  const sorted = [...versions].sort((a, b) => {
-    const at = a.publishedAt ? a.publishedAt.getTime() : 0
-    const bt = b.publishedAt ? b.publishedAt.getTime() : 0
-    return bt - at
-  })
-  const stable = sorted.find((v) => !v.isPrerelease)
-  return stable ?? sorted[0]
+  const stable = versions.find((v) => !v.isPrerelease)
+  return stable ?? versions[0]
 }
 
 export function normalizeRubyGemsOwners(owners: RubyGemsOwner[]): NormalizedRubyGemsOwner[] {
