@@ -15,7 +15,7 @@ function memberOrganizationsOverlap<T extends IMemberOrganization>(a: T, b: T): 
   )
 }
 
-function isCollapsibleMemberOrganization<T extends IMemberOrganization>(row: T): boolean {
+export function isCollapsibleMemberOrganization<T extends IMemberOrganization>(row: T): boolean {
   if (!row.source) {
     return false
   }
