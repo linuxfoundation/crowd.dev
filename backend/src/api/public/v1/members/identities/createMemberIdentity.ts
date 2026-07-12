@@ -8,12 +8,12 @@ import {
   findMemberById,
   findMemberIdentitiesByValue,
   createMemberIdentity as insertMemberIdentity,
-  optionsQx,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created, ok } from '@/utils/api'
 import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'

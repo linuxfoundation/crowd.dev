@@ -16,7 +16,6 @@ import {
   fetchManyMemberOrgsWithOrgData,
   fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import type {
@@ -25,6 +24,7 @@ import type {
   MemberOrganizationUpdate,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import {
   getOverlappingGroupedMemberOrganizations,

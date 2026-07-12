@@ -18,7 +18,6 @@ import {
   deleteMemberIdentity,
   findMemberById,
   findMemberIdentityById,
-  optionsQx,
   queryActivityRelations,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
@@ -30,6 +29,7 @@ import {
   MemberUnmergeResult,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { noContent, ok } from '@/utils/api'
 import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'

@@ -9,9 +9,9 @@ import {
   deleteMemberOrganizations,
   fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
 } from '@crowd/data-access-layer'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { noContent } from '@/utils/api'
 import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
