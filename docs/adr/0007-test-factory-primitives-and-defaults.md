@@ -8,7 +8,7 @@
 
 Shared test factories are easy to turn into hidden scenario builders: they invent data the test never declared, blur what is under assertion, and drift from the real insert shapes used in production code (see ADR-0006).
 
-We need a simple, durable rule for how test data is created — what the factory does, what defaults may fill, and what the test must own — so the pattern does not divert as more factories are added.
+We need a simple, durable rule for how test data is created — what the factory does, what defaults may fill, and what the test must own — so the pattern does not diverge as more factories are added.
 
 ## Decision
 

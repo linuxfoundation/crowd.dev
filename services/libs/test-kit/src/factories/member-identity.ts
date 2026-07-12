@@ -5,13 +5,9 @@ import type { MemberIdentityDbInsert, MemberIdentityDbRow } from '@crowd/types'
 
 import { withDefaults } from './defaults'
 
-export const withMemberIdentityDefaults = (
-  data: Partial<MemberIdentityDbInsert>[],
-): MemberIdentityDbInsert[] =>
-  withDefaults<MemberIdentityDbInsert>({
-    id: () => generateUUIDv1(),
-    verified: true,
-  })(data)
+export const withMemberIdentityDefaults = withDefaults<MemberIdentityDbInsert>()({
+  id: () => generateUUIDv1(),
+})
 
 export async function createMemberIdentities(
   qx: QueryExecutor,

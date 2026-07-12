@@ -757,7 +757,14 @@ export async function createMember(qx: QueryExecutor, data: MemberDbInsert): Pro
   const id = data.id ?? generateUUIDv1()
   const ts = new Date()
   const dbInstance = getDbInstance()
-  const columnSet = new dbInstance.helpers.ColumnSet(MEMBER_INSERT_COLUMNS, {
+
+  // Omit `score` when unset so Postgres keeps DEFAULT -1 (undefined would insert NULL).
+  let columns = MEMBER_INSERT_COLUMNS
+  if (data.score === undefined) {
+    columns = MEMBER_INSERT_COLUMNS.filter((column) => column !== 'score')
+  }
+
+  const columnSet = new dbInstance.helpers.ColumnSet(columns, {
     table: {
       table: 'members',
     },

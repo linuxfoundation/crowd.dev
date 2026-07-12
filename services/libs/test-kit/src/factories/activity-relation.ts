@@ -27,13 +27,10 @@ interface GenerateActivityRelationsInput {
   memberOrganizations?: MemberOrganizationDbRow[]
 }
 
-export const withActivityRelationDefaults = (
-  data: Partial<ActivityRelationDbInsert>[],
-): ActivityRelationDbInsert[] =>
-  withDefaults<ActivityRelationDbInsert>({
-    activityId: () => generateUUIDv1(),
-    sourceId: () => generateUUIDv1(),
-  })(data)
+export const withActivityRelationDefaults = withDefaults<ActivityRelationDbInsert>()({
+  activityId: () => generateUUIDv1(),
+  sourceId: () => generateUUIDv1(),
+})
 
 /** Build N activityRelation rows from member context. */
 export function generateActivityRelations(

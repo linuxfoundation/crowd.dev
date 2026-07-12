@@ -1,20 +1,28 @@
-type DefaultValue<T> = T | (() => T)
+type DefaultValue<V> = V | (() => V)
 
-type Defaults<T> = {
-  [K in keyof T]?: DefaultValue<T[K]>
+type DefaultsFor<T extends object, K extends keyof T> = {
+  [P in K]: DefaultValue<T[P]>
 }
 
-function resolveDefault<T>(value: DefaultValue<T>): T {
-  return typeof value === 'function' ? (value as () => T)() : value
+/** Required keys of T stay required; keys covered by defaults become optional. */
+type WithDefaultsRow<T extends object, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
+function resolveDefault<V>(value: DefaultValue<V>): V {
+  if (typeof value === 'function') {
+    return (value as () => V)()
+  }
+  return value as V
 }
 
-function applyDefaults<T extends object>(row: Partial<T>, defaults: Defaults<T>): T {
+function applyDefaults<T extends object, K extends keyof T>(
+  row: WithDefaultsRow<T, K>,
+  defaults: DefaultsFor<T, K>,
+): T {
   const result = { ...row } as T
 
-  for (const key of Object.keys(defaults) as (keyof T)[]) {
-    const defaultValue = defaults[key]
-    if (result[key] === undefined && defaultValue !== undefined) {
-      result[key] = resolveDefault(defaultValue as DefaultValue<T[typeof key]>)
+  for (const key of Object.keys(defaults) as K[]) {
+    if (result[key] === undefined) {
+      result[key] = resolveDefault(defaults[key]) as T[K]
     }
   }
 
@@ -23,8 +31,14 @@ function applyDefaults<T extends object>(row: Partial<T>, defaults: Defaults<T>)
 
 /**
  * Fills missing allowlisted fields on each row. Explicit values always win.
- * Vue-style: primitives as values, objects/arrays (and per-row values) as factories.
+ * Keys provided in `defaults` become optional on input; all other required
+ * keys of T remain required at compile time.
+ *
+ * Usage: `withDefaults<MemberDbInsert>()({ id: () => ..., displayName: () => ... })`
  */
-export function withDefaults<T extends object>(defaults: Defaults<T>) {
-  return (rows: Partial<T>[]): T[] => rows.map((row) => applyDefaults(row, defaults))
+export function withDefaults<T extends object>() {
+  return <K extends keyof T>(defaults: DefaultsFor<T, K>) => {
+    return (rows: Array<WithDefaultsRow<T, K>>): T[] =>
+      rows.map((row) => applyDefaults(row, defaults))
+  }
 }

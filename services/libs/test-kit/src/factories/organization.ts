@@ -7,16 +7,13 @@ import type { OrganizationDbInsert, OrganizationDbRow } from '@crowd/types'
 
 import { withDefaults } from './defaults'
 
-export const withOrganizationDefaults = (
-  data: Partial<OrganizationDbInsert>[],
-): OrganizationDbInsert[] =>
-  withDefaults<OrganizationDbInsert>({
-    id: () => generateUUIDv1(),
-    displayName: () => faker.company.name(),
-    manuallyCreated: false,
-    isTeamOrganization: false,
-    isAffiliationBlocked: false,
-  })(data)
+export const withOrganizationDefaults = withDefaults<OrganizationDbInsert>()({
+  id: () => generateUUIDv1(),
+  displayName: () => faker.company.name(),
+  manuallyCreated: false,
+  isTeamOrganization: false,
+  isAffiliationBlocked: false,
+})
 
 export async function createOrganizations(
   qx: QueryExecutor,

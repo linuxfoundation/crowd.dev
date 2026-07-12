@@ -7,13 +7,12 @@ import type { MemberDbInsert, MemberDbRow } from '@crowd/types'
 
 import { withDefaults } from './defaults'
 
-export const withMemberDefaults = (data: Partial<MemberDbInsert>[]): MemberDbInsert[] =>
-  withDefaults<MemberDbInsert>({
-    id: () => generateUUIDv1(),
-    displayName: () => faker.person.fullName(),
-    joinedAt: () => new Date().toISOString(),
-    manuallyCreated: false,
-  })(data)
+export const withMemberDefaults = withDefaults<MemberDbInsert>()({
+  id: () => generateUUIDv1(),
+  displayName: () => faker.person.fullName(),
+  joinedAt: () => new Date().toISOString(),
+  manuallyCreated: false,
+})
 
 export async function createMembers(
   qx: QueryExecutor,

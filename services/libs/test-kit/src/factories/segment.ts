@@ -5,10 +5,15 @@ import { type SegmentDbInsert, type SegmentDbRow, SegmentStatus } from '@crowd/t
 
 import { withDefaults } from './defaults'
 
-/** Fields the caller may set on a node. Hierarchy fields are derived by createSegments. */
-type SegmentNodeInput = Partial<
+/** Hierarchy fields are derived by createSegments; callers must supply name + slug. */
+type SegmentNodeInput = {
+  name: string
+  slug: string
+} & Partial<
   Omit<
     SegmentDbInsert,
+    | 'name'
+    | 'slug'
     | 'parentId'
     | 'grandparentId'
     | 'parentSlug'
@@ -36,7 +41,7 @@ export type CreateSegmentsResult = {
   }>
 }
 
-const applySegmentNodeDefaults = withDefaults<SegmentNodeInput>({
+const applySegmentNodeDefaults = withDefaults<SegmentNodeInput>()({
   id: () => generateUUIDv1(),
   status: SegmentStatus.ACTIVE,
   isLF: true,
@@ -87,10 +92,6 @@ export async function createSegments(
     const projectGroupName = groupFields.name
     const projectGroupSlug = groupFields.slug
 
-    if (!projectGroupName || !projectGroupSlug) {
-      throw new Error('createSegments requires name and slug on each project group')
-    }
-
     rowsToInsert.push({
       ...groupFields,
       id: projectGroupId,
@@ -112,10 +113,6 @@ export async function createSegments(
       const projectName = projectFields.name
       const projectSlug = projectFields.slug
 
-      if (!projectName || !projectSlug) {
-        throw new Error('createSegments requires name and slug on each project')
-      }
-
       rowsToInsert.push({
         ...projectFields,
         id: projectId,
@@ -135,10 +132,6 @@ export async function createSegments(
         const subprojectId = subproject.id ?? generateUUIDv1()
         const subprojectName = subproject.name
         const subprojectSlug = subproject.slug
-
-        if (!subprojectName || !subprojectSlug) {
-          throw new Error('createSegments requires name and slug on each subproject')
-        }
 
         rowsToInsert.push({
           ...subproject,

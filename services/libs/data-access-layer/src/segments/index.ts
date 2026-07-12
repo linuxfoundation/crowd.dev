@@ -186,6 +186,10 @@ export async function insertSegments(
   failOnConflict = false,
   returnRows = false,
 ): Promise<SegmentDbRow[] | number> {
+  if (segments.length === 0) {
+    return returnRows ? [] : 0
+  }
+
   const ts = new Date()
 
   const query = prepareBulkInsert(

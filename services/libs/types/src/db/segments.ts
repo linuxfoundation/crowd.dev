@@ -22,7 +22,7 @@ export interface SegmentDbRow {
   dashboardCacheLastRefreshedAt: string | null
   parentId: string | null
   grandparentId: string | null
-  type: SegmentType | string | null
+  type: SegmentType
   maturity: string | null
 }
 

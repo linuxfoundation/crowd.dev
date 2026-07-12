@@ -16,6 +16,7 @@ export async function createMemberOrganizationAffiliationOverrides(
   return changeMemberOrganizationAffiliationOverrides(
     qx,
     data.map((row) => ({
+      id: row.id,
       memberId: row.memberId,
       memberOrganizationId: row.memberOrganizationId,
       allowAffiliation: row.allowAffiliation,
