@@ -36,9 +36,9 @@ import {
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
 import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
 import {
-  addOrgIdentity,
   findOrCreateOrganization,
   findOrgByVerifiedIdentity,
+  insertOrganizationIdentities,
 } from '@crowd/data-access-layer/src/organizations'
 import { dbStoreQx, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { refreshMaterializedView } from '@crowd/data-access-layer/src/utils'
@@ -518,17 +518,23 @@ export async function updateMemberUsingSquashedPayload(
             const mergeSuggestions = []
             const suggestedOwnerIds = new Set<string>()
 
+            const identitiesToInsert = identityOwners
+              .filter((identityOwner) => identityOwner.organizationId !== orgId)
+              .map((identityOwner) => ({
+                organizationId: orgId,
+                platform: identityOwner.identity.platform,
+                value: identityOwner.identity.value,
+                type: identityOwner.identity.type,
+                verified: false,
+                source: orgSource,
+              }))
+
+            if (identitiesToInsert.length > 0) {
+              await insertOrganizationIdentities(qx, identitiesToInsert, false)
+            }
+
             for (const identityOwner of identityOwners) {
               if (identityOwner.organizationId !== orgId) {
-                await addOrgIdentity(qx, {
-                  organizationId: orgId,
-                  platform: identityOwner.identity.platform,
-                  value: identityOwner.identity.value,
-                  type: identityOwner.identity.type,
-                  verified: false,
-                  source: orgSource,
-                })
-
                 const noMergeIds = await mergeSuggestionsRepo.findNoMergeIds(
                   identityOwner.organizationId,
                 )

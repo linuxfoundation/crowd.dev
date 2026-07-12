@@ -15,6 +15,8 @@ import {
   ALL_PLATFORM_TYPES,
   IMemberContribution,
   MemberAttributeType,
+  MemberDbInsert,
+  MemberDbRow,
   MemberRow,
   PageData,
   SegmentType,
@@ -75,15 +77,8 @@ export enum MemberField {
   UPDATED_BY_ID = 'updatedById',
 }
 
-export interface MemberCreateInput {
-  id?: string
-  displayName: string
-  joinedAt: string
-  attributes: Record<string, unknown>
-  reach: Partial<Record<string, number>>
-  manuallyCreated?: boolean
-  contributions?: IMemberContribution[]
-}
+/** @deprecated Prefer `MemberDbInsert` from `@crowd/types`. */
+export type MemberCreateInput = MemberDbInsert
 
 export interface MemberUpdateInput {
   joinedAt?: string
@@ -132,13 +127,19 @@ export const MEMBER_INSERT_COLUMNS = [
   'attributes',
   'contributions',
   'createdAt',
+  'createdById',
   'displayName',
+  'enrichedBy',
   'id',
+  'importHash',
   'joinedAt',
+  'manuallyChangedFields',
   'manuallyCreated',
   'reach',
+  'score',
   'tenantId',
   'updatedAt',
+  'updatedById',
 ]
 
 const QUERY_FILTER_COLUMN_MAP: Map<string, { name: string; queryable?: boolean }> = new Map([
@@ -752,7 +753,7 @@ export async function updateMember(
   return qx.selectOneOrNone(`${query} ${condition} returning *`)
 }
 
-export async function createMember(qx: QueryExecutor, data: MemberCreateInput): Promise<MemberRow> {
+export async function createMember(qx: QueryExecutor, data: MemberDbInsert): Promise<MemberDbRow> {
   const id = data.id ?? generateUUIDv1()
   const ts = new Date()
   const dbInstance = getDbInstance()

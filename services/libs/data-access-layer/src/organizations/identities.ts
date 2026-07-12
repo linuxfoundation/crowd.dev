@@ -1,12 +1,13 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import {
   IOrganizationIdentity,
-  NewOrganizationIdentity,
+  type OrganizationIdentityDbInsert,
+  type OrganizationIdentityDbRow,
   OrganizationIdentityType,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-import { QueryOptions, QueryResult, queryTable } from '../utils'
+import { QueryOptions, QueryResult, prepareBulkInsert, queryTable } from '../utils'
 
 import { IDbOrgIdentityUpdateInput } from './types'
 
@@ -71,26 +72,61 @@ export async function updateOrgIdentityVerifiedFlag(
   )
 }
 
-export async function addOrgIdentity(qx: QueryExecutor, identity: NewOrganizationIdentity) {
-  return qx.result(
-    `
-      INSERT INTO "organizationIdentities" (
-        "organizationId",
-        "source",
-        platform,
-        value,
-        type,
-        verified,
-        "sourceId",
-        "tenantId",
-        "integrationId",
-        "createdAt"
-      )
-      VALUES ($(organizationId), $(source), $(platform), $(value), $(type), $(verified), $(sourceId), $(tenantId), $(integrationId), NOW())
-      ON CONFLICT DO NOTHING;
-    `,
-    { tenantId: DEFAULT_TENANT_ID, ...identity },
+export async function insertOrganizationIdentities(
+  qx: QueryExecutor,
+  identities: OrganizationIdentityDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<OrganizationIdentityDbRow[]>
+export async function insertOrganizationIdentities(
+  qx: QueryExecutor,
+  identities: OrganizationIdentityDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertOrganizationIdentities(
+  qx: QueryExecutor,
+  identities: OrganizationIdentityDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<OrganizationIdentityDbRow[] | number> {
+  if (identities.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'organizationIdentities',
+    [
+      'organizationId',
+      'platform',
+      'value',
+      'type',
+      'verified',
+      'source',
+      'sourceId',
+      'tenantId',
+      'integrationId',
+    ],
+    identities.map((i) => ({
+      organizationId: i.organizationId,
+      platform: i.platform,
+      value: i.value,
+      type: i.type,
+      verified: i.verified,
+      source: i.source ?? null,
+      sourceId: i.sourceId ?? null,
+      tenantId: DEFAULT_TENANT_ID,
+      integrationId: i.integrationId ?? null,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
   )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
 }
 
 export async function upsertOrgIdentities(
@@ -100,47 +136,41 @@ export async function upsertOrgIdentities(
   integrationId?: string,
 ): Promise<void> {
   const existingIdentities = await fetchOrgIdentities(qe, organizationId)
-  const toCreate = []
-  const toUpdate = []
+  const toCreate: OrganizationIdentityDbInsert[] = []
+  const toUpdate: Partial<IOrganizationIdentity>[] = []
 
   for (const i of identities) {
     const existing = existingIdentities.find(
       (ei) => ei.value === i.value && ei.platform === i.platform && ei.type === i.type,
     )
     if (!existing) {
-      toCreate.push(i)
-    } else if (existing && existing.verified !== i.verified) {
+      toCreate.push({
+        organizationId,
+        platform: i.platform,
+        type: i.type,
+        value: i.value,
+        verified: i.verified,
+        source: i.source ?? null,
+        sourceId: i.sourceId ?? null,
+        integrationId: integrationId ?? null,
+      })
+    } else if (existing.verified !== i.verified) {
       toUpdate.push(i)
     }
   }
 
   if (toCreate.length > 0) {
-    for (const i of toCreate) {
-      // add the identity
-      await addOrgIdentity(qe, {
-        organizationId,
-        platform: i.platform,
-        type: i.type,
-        value: i.value,
-        verified: i.verified,
-        source: i.source,
-        sourceId: i.sourceId,
-        integrationId,
-      })
-    }
+    await insertOrganizationIdentities(qe, toCreate, false)
   }
 
-  if (toUpdate.length > 0) {
-    for (const i of toUpdate) {
-      // update the identity
-      await updateOrgIdentityVerifiedFlag(qe, {
-        organizationId,
-        platform: i.platform,
-        type: i.type,
-        value: i.value,
-        verified: i.verified,
-      })
-    }
+  for (const i of toUpdate) {
+    await updateOrgIdentityVerifiedFlag(qe, {
+      organizationId,
+      platform: i.platform,
+      type: i.type,
+      value: i.value,
+      verified: i.verified,
+    })
   }
 }
 

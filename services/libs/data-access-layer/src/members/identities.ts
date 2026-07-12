@@ -1,8 +1,9 @@
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import {
   IMemberIdentity,
+  MemberIdentityDbInsert,
+  MemberIdentityDbRow,
   MemberIdentityType,
-  NewMemberIdentity,
   PlatformType,
   UpdateMemberIdentity,
 } from '@crowd/types'
@@ -233,27 +234,32 @@ export async function findMemberIdByVerifiedIdentity(
   return result?.memberId ?? null
 }
 
-export async function insertManyMemberIdentities(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict: boolean,
   returnRows: true,
-): Promise<IMemberIdentity[]>
-export async function insertManyMemberIdentities(
+): Promise<MemberIdentityDbRow[]>
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict?: boolean,
   returnRows?: false,
 ): Promise<number>
-export async function insertManyMemberIdentities(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict = false,
   returnRows = false,
-): Promise<IMemberIdentity[] | number> {
+): Promise<MemberIdentityDbRow[] | number> {
+  if (identities.length === 0) {
+    return returnRows ? [] : 0
+  }
+
   const query = prepareBulkInsert(
     'memberIdentities',
     [
+      'id',
       'memberId',
       'tenantId',
       'integrationId',
@@ -265,12 +271,19 @@ export async function insertManyMemberIdentities(
       'verified',
       'verifiedBy',
     ],
-    identities.map((i) => {
-      return {
-        tenantId: DEFAULT_TENANT_ID,
-        ...i,
-      }
-    }),
+    identities.map((i) => ({
+      id: i.id ?? generateUUIDv1(),
+      memberId: i.memberId,
+      tenantId: DEFAULT_TENANT_ID,
+      integrationId: i.integrationId ?? null,
+      platform: i.platform,
+      source: i.source ?? null,
+      sourceId: i.sourceId ?? null,
+      value: i.value,
+      type: i.type,
+      verified: i.verified ?? true,
+      verifiedBy: i.verifiedBy ?? null,
+    })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,
   )
@@ -284,28 +297,28 @@ export async function insertManyMemberIdentities(
 
 export async function createMemberIdentity(
   qx: QueryExecutor,
-  i: NewMemberIdentity,
+  i: MemberIdentityDbInsert,
   failOnConflict: boolean,
   returnRows: true,
-): Promise<IMemberIdentity>
+): Promise<MemberIdentityDbRow>
 export async function createMemberIdentity(
   qx: QueryExecutor,
-  i: NewMemberIdentity,
+  i: MemberIdentityDbInsert,
   failOnConflict?: boolean,
   returnRows?: false,
 ): Promise<void>
 export async function createMemberIdentity(
   qx: QueryExecutor,
-  i: NewMemberIdentity,
+  i: MemberIdentityDbInsert,
   failOnConflict = false,
   returnRows = false,
-): Promise<IMemberIdentity | void> {
+): Promise<MemberIdentityDbRow | void> {
   if (returnRows) {
-    const rows = await insertManyMemberIdentities(qx, [i], failOnConflict, true)
+    const rows = await insertMemberIdentities(qx, [i], failOnConflict, true)
     return rows[0]
   }
 
-  await insertManyMemberIdentities(qx, [i], failOnConflict)
+  await insertMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(

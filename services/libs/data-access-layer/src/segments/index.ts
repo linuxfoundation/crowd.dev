@@ -1,18 +1,22 @@
 import lodash from 'lodash'
 import cloneDeep from 'lodash.clonedeep'
 
-import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations'
+import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
+import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations/src/integrations/activityTypes'
 import {
   ActivityTypeSettings,
   MergeActionState,
   MergeActionType,
   PlatformType,
   SegmentData,
+  SegmentDbInsert,
+  SegmentDbRow,
   SegmentRawData,
+  SegmentStatus,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
+import { prepareBulkInsert } from '../utils'
 
 export async function findProjectGroupByName(
   qx: QueryExecutor,
@@ -162,6 +166,86 @@ export function isSegmentProject(segment: SegmentData | SegmentRawData): boolean
 
 export function isSegmentSubproject(segment: SegmentData | SegmentRawData): boolean {
   return segment.slug != null && segment.parentSlug != null && segment.grandparentSlug != null
+}
+
+export async function insertSegments(
+  qx: QueryExecutor,
+  segments: SegmentDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<SegmentDbRow[]>
+export async function insertSegments(
+  qx: QueryExecutor,
+  segments: SegmentDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertSegments(
+  qx: QueryExecutor,
+  segments: SegmentDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<SegmentDbRow[] | number> {
+  const ts = new Date()
+
+  const query = prepareBulkInsert(
+    'segments',
+    [
+      'id',
+      'slug',
+      'name',
+      'url',
+      'status',
+      'isLF',
+      'parentName',
+      'grandparentName',
+      'parentSlug',
+      'grandparentSlug',
+      'description',
+      'sourceId',
+      'sourceParentId',
+      'customActivityTypes',
+      'activityChannels',
+      'parentId',
+      'grandparentId',
+      // `type` is GENERATED ALWAYS from parentSlug/grandparentSlug — do not insert
+      'maturity',
+      'tenantId',
+      'createdAt',
+      'updatedAt',
+    ],
+    segments.map((s) => ({
+      id: s.id ?? generateUUIDv1(),
+      slug: s.slug,
+      name: s.name ?? null,
+      url: s.url ?? null,
+      status: s.status ?? SegmentStatus.ACTIVE,
+      isLF: s.isLF ?? true,
+      parentName: s.parentName ?? null,
+      grandparentName: s.grandparentName ?? null,
+      parentSlug: s.parentSlug ?? null,
+      grandparentSlug: s.grandparentSlug ?? null,
+      description: s.description ?? null,
+      sourceId: s.sourceId ?? null,
+      sourceParentId: s.sourceParentId ?? null,
+      customActivityTypes: s.customActivityTypes ?? {},
+      activityChannels: s.activityChannels ?? {},
+      parentId: s.parentId ?? null,
+      grandparentId: s.grandparentId ?? null,
+      maturity: s.maturity ?? null,
+      tenantId: DEFAULT_TENANT_ID,
+      createdAt: ts,
+      updatedAt: ts,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
 }
 
 export async function getSegmentSubprojects(
