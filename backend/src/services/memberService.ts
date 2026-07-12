@@ -21,7 +21,7 @@ import {
   insertMemberSegmentAggregates,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
-import { QueryExecutor, optionsBgQx, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   decrementMemberMergeSuggestionCounts,
   fetchManySegments,
@@ -40,6 +40,8 @@ import {
   OrganizationIdentityType,
   SyncMode,
 } from '@crowd/types'
+
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import MemberAttributeSettingsRepository from '../database/repositories/memberAttributeSettingsRepository'
 import MemberRepository from '../database/repositories/memberRepository'
