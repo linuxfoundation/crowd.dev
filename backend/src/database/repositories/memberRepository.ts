@@ -50,7 +50,6 @@ import {
   includeMemberToSegments,
 } from '@crowd/data-access-layer/src/members/segments'
 import { IDbMemberData } from '@crowd/data-access-layer/src/members/types'
-import { optionsBgQx, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   fetchManySegments,
   getSegmentMergeSuggestionCounts,
@@ -76,6 +75,7 @@ import {
 
 import { KUBE_MODE, SERVICE } from '@/conf'
 import { ServiceType } from '@/conf/configTypes'
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
 import { IFetchMemberMergeSuggestionArgs, SimilarityScoreRange } from '@/types/mergeSuggestionTypes'
 
 import { PlatformIdentities } from '../../serverless/integrations/types/messageTypes'

@@ -84,6 +84,7 @@ export type IDbVersionUpsert = {
   isLatest: boolean
   isPrerelease: boolean
   license: string | null
+  publishedAt?: Date | null
 }
 
 // ─── repos ────────────────────────────────────────────────────────────────────

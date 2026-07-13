@@ -1,0 +1,87 @@
+import {
+  QueryExecutor,
+  RubyGemsPackageForDependents,
+  listRubyGemsPackagesForDependents,
+  updateRubyGemsDependentCount,
+} from '@crowd/data-access-layer'
+import { getServiceChildLogger } from '@crowd/logging'
+
+import { fetchReverseDependencies } from './client'
+import { isRubyGemsFetchError } from './types'
+
+const log = getServiceChildLogger('rubygems-dependents')
+
+export type RubyGemsDependentsConfig = {
+  batchSize: number
+  concurrency: number
+}
+
+export type DependentsBatchResult = {
+  processed: number
+  notFound: number
+  error: number
+  lastId: string | null
+}
+
+type PackageStatus = 'processed' | 'notFound' | 'error'
+
+async function processPackage(
+  qx: QueryExecutor,
+  pkg: RubyGemsPackageForDependents,
+): Promise<PackageStatus> {
+  const result = await fetchReverseDependencies(pkg.name)
+
+  if (isRubyGemsFetchError(result)) {
+    if (result.kind === 'NOT_FOUND') {
+      await updateRubyGemsDependentCount(qx, pkg.id, 0)
+      return 'notFound'
+    }
+    log.warn({ name: pkg.name }, 'Rate limited fetching reverse dependencies — will retry')
+    return 'error'
+  }
+
+  await updateRubyGemsDependentCount(qx, pkg.id, result.length)
+  return 'processed'
+}
+
+export async function processBatch(
+  qx: QueryExecutor,
+  config: RubyGemsDependentsConfig,
+  afterId: string,
+): Promise<DependentsBatchResult> {
+  const packages = await listRubyGemsPackagesForDependents(qx, {
+    limit: config.batchSize,
+    afterId,
+  })
+
+  if (packages.length === 0) return { processed: 0, notFound: 0, error: 0, lastId: null }
+
+  log.info({ count: packages.length, afterId }, 'Dependents batch started')
+
+  const counts: DependentsBatchResult = { processed: 0, notFound: 0, error: 0, lastId: null }
+
+  for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+    const group = packages.slice(batchStart, batchStart + config.concurrency)
+
+    await Promise.all(
+      group.map(async (pkg) => {
+        try {
+          const status = await processPackage(qx, pkg)
+          counts[status]++
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          log.error({ name: pkg.name, error: message }, 'Unexpected error fetching dependents')
+          counts.error++
+        }
+      }),
+    )
+
+    const done = batchStart + group.length
+    if (done % 1000 === 0 || done === packages.length) {
+      log.info({ done, total: packages.length, ...counts }, 'Dependents progress')
+    }
+  }
+
+  counts.lastId = packages[packages.length - 1].id
+  return counts
+}

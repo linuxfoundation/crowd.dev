@@ -86,6 +86,27 @@ export function getNuGetConfig() {
   }
 }
 
+export function getRubyGemsConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '10000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_FETCHER_CONCURRENCY ?? '8', 10),
+  }
+}
+
+export function getRubyGemsCriticalConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_BATCH_SIZE ?? '5000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_CONCURRENCY ?? '4', 10),
+  }
+}
+
+export function getRubyGemsDependentsConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_DEPENDENTS_BATCH_SIZE ?? '10000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_DEPENDENTS_CONCURRENCY ?? '50', 10),
+  }
+}
+
 export function getDockerhubConfig() {
   return {
     hubBaseUrl: requireEnv('DOCKERHUB_API_BASE_URL'),
