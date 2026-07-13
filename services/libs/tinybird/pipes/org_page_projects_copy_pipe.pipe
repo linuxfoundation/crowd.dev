@@ -7,7 +7,7 @@ TAGS "Organization page"
 
 NODE org_page_projects_contribution_activity_types
 DESCRIPTION >
-    Collaboration and code contribution activity types (mirrors leaderboards filter)
+    Code contribution activity types
 
 SQL >
     SELECT activityType, platform FROM activityTypes FINAL WHERE isCodeContribution
