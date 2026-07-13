@@ -46,12 +46,13 @@ export function mapRubygemsOwners(
   const contacts: RawContact[] = []
   const seen = new Set<string>()
   for (const owner of owners) {
-    const email = owner && typeof owner === 'object' ? (owner as any).email : undefined
+    const o = (owner ?? {}) as Record<string, unknown>
+    const email = o.email
     if (typeof email !== 'string' || !isEmail(email)) continue
     const key = email.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    const handle = typeof (owner as any).handle === 'string' ? (owner as any).handle : undefined
+    const handle = typeof o.handle === 'string' ? o.handle : undefined
     contacts.push({
       channel: 'email',
       value: email,
@@ -83,14 +84,10 @@ export async function fetchRubygems(
 
   if (!gemResult.json) return { contacts: [], policies: {} }
 
-  const contacts = mapRubygems(gemResult.json, gemUrl, fetchedAt)
-  const seen = new Set(contacts.map((c) => c.value.toLowerCase()))
-  for (const ownerContact of mapRubygemsOwners(ownersResult.json, ownersUrl, fetchedAt)) {
-    const key = ownerContact.value.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    contacts.push(ownerContact)
-  }
+  const contacts = [
+    ...mapRubygems(gemResult.json, gemUrl, fetchedAt),
+    ...mapRubygemsOwners(ownersResult.json, ownersUrl, fetchedAt),
+  ]
 
   return { contacts, policies: {} }
 }
