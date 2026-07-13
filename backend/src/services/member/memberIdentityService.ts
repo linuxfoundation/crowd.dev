@@ -3,7 +3,7 @@ import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error404, Error409 } from '@crowd/common'
-import { createMemberIdentity, findIdentitiesForMembers, optionsQx } from '@crowd/data-access-layer'
+import { createMemberIdentity, findIdentitiesForMembers } from '@crowd/data-access-layer'
 import {
   deleteMemberIdentity,
   fetchMemberIdentities,
@@ -17,6 +17,7 @@ import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import { IServiceOptions } from '../IServiceOptions'
 

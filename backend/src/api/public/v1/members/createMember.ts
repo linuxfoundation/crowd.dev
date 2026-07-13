@@ -3,13 +3,10 @@ import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { getProperDisplayName } from '@crowd/common'
-import {
-  insertManyMemberIdentities,
-  createMember as insertMember,
-  optionsQx,
-} from '@crowd/data-access-layer'
+import { insertManyMemberIdentities, createMember as insertMember } from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
 import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
