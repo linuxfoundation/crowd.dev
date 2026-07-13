@@ -18,11 +18,11 @@ import {
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
-  insertMemberIdentities,
   deleteMemberIdentities,
   deleteMemberIdentitiesByCombinations,
   findAlreadyExistingVerifiedIdentities,
   getLastActivitiesForMembers,
+  insertMemberIdentities,
   queryActivityRelations,
   queryOrgs,
   updateVerifiedFlag,
@@ -1228,6 +1228,7 @@ class MemberRepository {
             dateStart: item.dateStart || null,
             dateEnd: item.dateEnd || null,
           })),
+          true,
         )
       }),
     )

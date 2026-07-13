@@ -19,7 +19,7 @@ export interface MemberIdentityDbRow {
 
 export type MemberIdentityDbInsert = Pick<
   MemberIdentityDbRow,
-  'memberId' | 'platform' | 'value' | 'type'
+  'memberId' | 'platform' | 'value' | 'type' | 'verified'
 > &
   Partial<
     Omit<
@@ -28,6 +28,7 @@ export type MemberIdentityDbInsert = Pick<
       | 'platform'
       | 'value'
       | 'type'
+      | 'verified'
       | 'tenantId'
       | 'createdAt'
       | 'updatedAt'

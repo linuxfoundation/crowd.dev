@@ -98,6 +98,7 @@ class MemberAffiliationsRepository {
             dateStart: item.dateStart || null,
             dateEnd: item.dateEnd || null,
           })),
+          true,
         )
       }
 

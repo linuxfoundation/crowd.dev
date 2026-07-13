@@ -3,7 +3,7 @@ import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error404, Error409 } from '@crowd/common'
-import { insertMemberIdentities, findIdentitiesForMembers } from '@crowd/data-access-layer'
+import { findIdentitiesForMembers, insertMemberIdentities } from '@crowd/data-access-layer'
 import {
   deleteMemberIdentity,
   fetchMemberIdentities,

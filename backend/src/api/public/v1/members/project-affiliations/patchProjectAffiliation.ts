@@ -94,6 +94,7 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
               verified: true,
               verifiedBy: verifiedBy!,
             })),
+            true,
           )
         }
       })
