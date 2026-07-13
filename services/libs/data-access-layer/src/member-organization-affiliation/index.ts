@@ -539,17 +539,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
     return returnRows ? [] : undefined
   }
 
-  type OverrideWriteRow = {
-    id: string
-    memberId: string
-    memberOrganizationId: string
-    allowAffiliation: boolean | null
-    isPrimaryWorkExperience: boolean | null
-    setAllowAffiliation: boolean
-    setIsPrimaryWorkExperience: boolean
-  }
-
-  const rows: OverrideWriteRow[] = []
+  const rows: IMemberOrganizationAffiliationOverride[] = []
 
   for (const d of data) {
     if (
@@ -564,11 +554,8 @@ export async function changeMemberOrganizationAffiliationOverrides(
       id: d.id ?? uuid(),
       memberId: d.memberId,
       memberOrganizationId: d.memberOrganizationId,
-      // undefined → null on insert; explicit null stays null
-      allowAffiliation: d.allowAffiliation ?? null,
-      isPrimaryWorkExperience: d.isPrimaryWorkExperience ?? null,
-      setAllowAffiliation: d.allowAffiliation !== undefined,
-      setIsPrimaryWorkExperience: d.isPrimaryWorkExperience !== undefined,
+      allowAffiliation: d.allowAffiliation,
+      isPrimaryWorkExperience: d.isPrimaryWorkExperience,
     })
   }
 
@@ -580,13 +567,11 @@ export async function changeMemberOrganizationAffiliationOverrides(
     .map(
       (_, i) => `
         (
-          $(id_${i})::uuid,
-          $(memberId_${i})::uuid,
-          $(memberOrganizationId_${i})::uuid,
-          $(allowAffiliation_${i})::boolean,
-          $(isPrimaryWorkExperience_${i})::boolean,
-          $(setAllowAffiliation_${i})::boolean,
-          $(setIsPrimaryWorkExperience_${i})::boolean
+          $(id_${i}),
+          $(memberId_${i}),
+          $(memberOrganizationId_${i}),
+          $(allowAffiliation_${i}),
+          $(isPrimaryWorkExperience_${i})
         )
       `,
     )
@@ -599,27 +584,12 @@ export async function changeMemberOrganizationAffiliationOverrides(
       acc[`memberOrganizationId_${i}`] = row.memberOrganizationId
       acc[`allowAffiliation_${i}`] = row.allowAffiliation
       acc[`isPrimaryWorkExperience_${i}`] = row.isPrimaryWorkExperience
-      acc[`setAllowAffiliation_${i}`] = row.setAllowAffiliation
-      acc[`setIsPrimaryWorkExperience_${i}`] = row.setIsPrimaryWorkExperience
       return acc
     },
     {} as Record<string, unknown>,
   )
 
-  // CTE carries per-row "was this field provided?" flags so ON CONFLICT can
-  // distinguish omit (keep existing) from explicit null (clear).
   const query = `
-      WITH input (
-        id,
-        "memberId",
-        "memberOrganizationId",
-        "allowAffiliation",
-        "isPrimaryWorkExperience",
-        "setAllowAffiliation",
-        "setIsPrimaryWorkExperience"
-      ) AS (
-        VALUES ${valuesSql}
-      )
       INSERT INTO "memberOrganizationAffiliationOverrides" (
         id,
         "memberId",
@@ -627,33 +597,11 @@ export async function changeMemberOrganizationAffiliationOverrides(
         "allowAffiliation",
         "isPrimaryWorkExperience"
       )
-      SELECT
-        id,
-        "memberId",
-        "memberOrganizationId",
-        "allowAffiliation",
-        "isPrimaryWorkExperience"
-      FROM input
+      VALUES ${valuesSql}
       ON CONFLICT ("memberId", "memberOrganizationId")
       DO UPDATE SET
-        "allowAffiliation" = CASE
-          WHEN (
-            SELECT i."setAllowAffiliation"
-            FROM input i
-            WHERE i."memberId" = EXCLUDED."memberId"
-              AND i."memberOrganizationId" = EXCLUDED."memberOrganizationId"
-          ) THEN EXCLUDED."allowAffiliation"
-          ELSE "memberOrganizationAffiliationOverrides"."allowAffiliation"
-        END,
-        "isPrimaryWorkExperience" = CASE
-          WHEN (
-            SELECT i."setIsPrimaryWorkExperience"
-            FROM input i
-            WHERE i."memberId" = EXCLUDED."memberId"
-              AND i."memberOrganizationId" = EXCLUDED."memberOrganizationId"
-          ) THEN EXCLUDED."isPrimaryWorkExperience"
-          ELSE "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience"
-        END
+        "allowAffiliation" = COALESCE(EXCLUDED."allowAffiliation", "memberOrganizationAffiliationOverrides"."allowAffiliation"),
+        "isPrimaryWorkExperience" = COALESCE(EXCLUDED."isPrimaryWorkExperience", "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience")
       ${returnRows ? 'RETURNING *' : ''}
     `
 

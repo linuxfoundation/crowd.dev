@@ -129,10 +129,9 @@ export interface ISegmentAffiliationInsert {
 }
 
 /**
- * Insert multiple segment affiliations for a member + project (segment) combination.
- * All inserted affiliations are marked as verified.
+ * Insert multiple verified segment affiliations for a member + project (segment) combination.
  */
-export async function insertMemberSegmentAffiliations(
+export async function insertVerifiedMemberSegmentAffiliations(
   qx: QueryExecutor,
   memberId: string,
   segmentId: string,

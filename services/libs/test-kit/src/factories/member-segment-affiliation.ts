@@ -1,4 +1,4 @@
-import { insertMemberSegmentAffiliationRows } from '@crowd/data-access-layer'
+import { insertMemberSegmentAffiliations } from '@crowd/data-access-layer'
 import type { QueryExecutor } from '@crowd/database'
 import type { MemberSegmentAffiliationDbInsert, MemberSegmentAffiliationDbRow } from '@crowd/types'
 
@@ -10,5 +10,5 @@ export async function createMemberSegmentAffiliations(
     return []
   }
 
-  return insertMemberSegmentAffiliationRows(qx, data, true, true)
+  return insertMemberSegmentAffiliations(qx, data, true, true)
 }

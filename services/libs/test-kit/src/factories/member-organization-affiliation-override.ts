@@ -5,7 +5,7 @@ import type {
   MemberOrganizationAffiliationOverrideDbRow,
 } from '@crowd/types'
 
-export async function createMemberOrganizationAffiliationOverrides(
+export async function upsertMemberOrganizationAffiliationOverrides(
   qx: QueryExecutor,
   data: MemberOrganizationAffiliationOverrideDbInsert[],
 ): Promise<MemberOrganizationAffiliationOverrideDbRow[]> {
@@ -19,8 +19,8 @@ export async function createMemberOrganizationAffiliationOverrides(
       id: row.id,
       memberId: row.memberId,
       memberOrganizationId: row.memberOrganizationId,
-      allowAffiliation: row.allowAffiliation,
-      isPrimaryWorkExperience: row.isPrimaryWorkExperience,
+      allowAffiliation: row.allowAffiliation ?? undefined,
+      isPrimaryWorkExperience: row.isPrimaryWorkExperience ?? undefined,
     })),
     true,
   )

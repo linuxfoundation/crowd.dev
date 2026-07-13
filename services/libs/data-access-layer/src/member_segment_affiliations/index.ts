@@ -81,19 +81,19 @@ export async function findMemberAffiliations(
   )
 }
 
-export async function insertMemberSegmentAffiliationRows(
+export async function insertMemberSegmentAffiliations(
   qx: QueryExecutor,
   affiliations: MemberSegmentAffiliationDbInsert[],
   failOnConflict: boolean,
   returnRows: true,
 ): Promise<MemberSegmentAffiliationDbRow[]>
-export async function insertMemberSegmentAffiliationRows(
+export async function insertMemberSegmentAffiliations(
   qx: QueryExecutor,
   affiliations: MemberSegmentAffiliationDbInsert[],
   failOnConflict?: boolean,
   returnRows?: false,
 ): Promise<number>
-export async function insertMemberSegmentAffiliationRows(
+export async function insertMemberSegmentAffiliations(
   qx: QueryExecutor,
   affiliations: MemberSegmentAffiliationDbInsert[],
   failOnConflict = false,
@@ -116,14 +116,10 @@ export async function insertMemberSegmentAffiliationRows(
       'verifiedBy',
     ],
     affiliations.map((a) => ({
+      ...a,
       id: a.id ?? generateUUIDv1(),
-      memberId: a.memberId,
-      segmentId: a.segmentId,
-      organizationId: a.organizationId ?? null,
-      dateStart: a.dateStart ?? null,
-      dateEnd: a.dateEnd ?? null,
+      // NOT NULL column — must set explicitly while listed in INSERT, else undefined → NULL
       verified: a.verified ?? false,
-      verifiedBy: a.verifiedBy ?? null,
     })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,
@@ -136,10 +132,10 @@ export async function insertMemberSegmentAffiliationRows(
   return qx.result(query)
 }
 
-/** @deprecated Prefer `insertMemberSegmentAffiliationRows` with full insert payloads. */
+/** @deprecated Prefer `insertMemberSegmentAffiliations` with full insert payloads. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function insertMemberAffiliations(qx: QueryExecutor, memberId: string, data: any[]) {
-  return insertMemberSegmentAffiliationRows(
+  return insertMemberSegmentAffiliations(
     qx,
     data.map((item) => ({
       memberId,

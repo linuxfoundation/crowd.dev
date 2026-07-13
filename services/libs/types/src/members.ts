@@ -228,8 +228,8 @@ export interface IMemberOpensearch {
 
 export interface IChangeAffiliationOverrideData {
   id?: string
-  allowAffiliation?: boolean | null
-  isPrimaryWorkExperience?: boolean | null
+  allowAffiliation?: boolean
+  isPrimaryWorkExperience?: boolean
   memberOrganizationId: string
   memberId: string
 }

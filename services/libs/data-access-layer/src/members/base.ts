@@ -758,18 +758,6 @@ export async function createMember(qx: QueryExecutor, data: MemberDbInsert): Pro
   const ts = new Date()
   const dbInstance = getDbInstance()
 
-  // Omit `score` when unset so Postgres keeps DEFAULT -1 (undefined would insert NULL).
-  let columns = MEMBER_INSERT_COLUMNS
-  if (data.score === undefined) {
-    columns = MEMBER_INSERT_COLUMNS.filter((column) => column !== 'score')
-  }
-
-  const columnSet = new dbInstance.helpers.ColumnSet(columns, {
-    table: {
-      table: 'members',
-    },
-  })
-
   const dbData: Record<string, unknown> = {
     ...data,
     id,
@@ -778,6 +766,16 @@ export async function createMember(qx: QueryExecutor, data: MemberDbInsert): Pro
     createdAt: ts,
     updatedAt: ts,
   }
+
+  // Omit unset columns so Postgres DEFAULT applies (listing a column with
+  // undefined/null bypasses DEFAULT and inserts NULL instead).
+  const columns = MEMBER_INSERT_COLUMNS.filter((column) => dbData[column] !== undefined)
+
+  const columnSet = new dbInstance.helpers.ColumnSet(columns, {
+    table: {
+      table: 'members',
+    },
+  })
 
   if (Array.isArray(dbData.contributions)) {
     dbData.contributions = JSON.stringify(dbData.contributions)
