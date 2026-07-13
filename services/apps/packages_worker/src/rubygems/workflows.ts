@@ -3,7 +3,7 @@ import { continueAsNew, log, proxyActivities } from '@temporalio/workflow'
 import type * as activities from './activities'
 
 const acts = proxyActivities<typeof activities>({
-  startToCloseTimeout: '30 minutes',
+  startToCloseTimeout: '60 minutes',
   retry: { initialInterval: '30 seconds', backoffCoefficient: 2, maximumAttempts: 5 },
 })
 
