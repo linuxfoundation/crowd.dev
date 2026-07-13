@@ -89,7 +89,9 @@ export async function triggerSecurityInsightsCheckForRepos(
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
-          console.error(`Token invalid/expired for repo ${repo.repoUrl}, excluding token for this run`)
+          console.error(
+            `Token invalid/expired for repo ${repo.repoUrl}, excluding token for this run`,
+          )
           tokenInfo.isRateLimited = true
           attempts++
           continue // retry with a different token
