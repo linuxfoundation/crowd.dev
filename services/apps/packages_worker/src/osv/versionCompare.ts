@@ -126,6 +126,42 @@ function compareMaven(a: string, b: string): number | null {
   return 0
 }
 
+// Splits a version into alternating digit/letter runs, per Gem::Version#segments.
+// Separators (dots, dashes, anything else) are simply discarded. Digit runs
+// become numbers, letter runs stay strings.
+function toRubyGemsSegments(version: string): (number | string)[] {
+  const runs = version.match(/[0-9]+|[a-zA-Z]+/g) ?? []
+  return runs.map((run) => (/^\d+$/.test(run) ? parseInt(run, 10) : run))
+}
+
+// Compares one pair of segments the way Gem::Version#<=> does: if either
+// side is a letter run, both sides compare as strings; otherwise as numbers.
+function compareRubyGemsSegment(lhs: number | string, rhs: number | string): number {
+  if (typeof lhs === 'number' && typeof rhs === 'number') {
+    return lhs < rhs ? -1 : lhs > rhs ? 1 : 0
+  }
+  const lhsStr = String(lhs)
+  const rhsStr = String(rhs)
+  return lhsStr < rhsStr ? -1 : lhsStr > rhsStr ? 1 : 0
+}
+
+function compareRubyGems(a: string, b: string): number | null {
+  const aSegments = toRubyGemsSegments(a)
+  const bSegments = toRubyGemsSegments(b)
+  if (aSegments.length === 0 || bSegments.length === 0) return null
+
+  // Missing trailing segments pad as 0, per Gem::Version#<=>.
+  const segmentCount = Math.max(aSegments.length, bSegments.length)
+  for (let i = 0; i < segmentCount; i++) {
+    const lhs = aSegments[i] ?? 0
+    const rhs = bSegments[i] ?? 0
+    if (lhs === rhs) continue
+    const cmp = compareRubyGemsSegment(lhs, rhs)
+    if (cmp !== 0) return cmp
+  }
+  return 0
+}
+
 const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget'])
 
 // Ecosystem names are stored lowercase in packages-db per ADR-0001 §OSV
@@ -134,5 +170,6 @@ const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget'])
 export function compareVersion(ecosystem: string, a: string, b: string): number | null {
   if (SEMVER_ECOSYSTEMS.has(ecosystem)) return compareSemver(a, b)
   if (ecosystem === 'maven') return compareMaven(a, b)
+  if (ecosystem === 'rubygems') return compareRubyGems(a, b)
   return null
 }

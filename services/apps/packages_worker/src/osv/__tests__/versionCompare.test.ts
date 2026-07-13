@@ -111,6 +111,31 @@ describe('compareVersion — nuget (semver)', () => {
   })
 })
 
+describe('compareVersion — rubygems (Gem::Version-style)', () => {
+  it.each([
+    ['1.0.0', '1.0.1', -1],
+    ['1.0.1', '1.0.0', 1],
+    ['1.0.0', '1.0.0', 0],
+    ['1.10.0', '1.9.0', 1], // numeric, not lex
+    ['1.0', '1.0.0', 0], // missing trailing segment pads as 0
+    ['1.0.pre', '1.0', 1], // letter segment compares as string vs "0"
+    ['1.0.0.rc1', '1.0.0.rc2', -1],
+    // rack CVE-2022-30123 boundary
+    ['2.2.3', '2.2.3.1', -1],
+  ])('compareVersion("rubygems", %s, %s) sign = %s', (a, b, expected) => {
+    expect(sign(compareVersion('rubygems', a, b))).toBe(expected)
+  })
+
+  it('returns null for unparseable rubygems versions', () => {
+    expect(compareVersion('rubygems', '', '1.0.0')).toBeNull()
+    expect(compareVersion('rubygems', '---', '1.0.0')).toBeNull()
+  })
+
+  it('rejects titlecase "RubyGems" — production storage is always lowercase', () => {
+    expect(compareVersion('RubyGems', '1.0.0', '2.0.0')).toBeNull()
+  })
+})
+
 describe('compareVersion — unsupported ecosystems', () => {
   it('returns null for ecosystems we have no comparator for', () => {
     expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()
