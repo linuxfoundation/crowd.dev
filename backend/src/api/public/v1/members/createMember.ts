@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { getProperDisplayName } from '@crowd/common'
-import { insertManyMemberIdentities, createMember as insertMember } from '@crowd/data-access-layer'
+import { createMember as insertMember, insertMemberIdentities } from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
 
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
@@ -49,7 +49,7 @@ export async function createMember(req: Request, res: Response): Promise<void> {
         manuallyCreated: true,
       })
 
-      const dbIdentities = await insertManyMemberIdentities(
+      const dbIdentities = await insertMemberIdentities(
         tx,
         identities.map((identity) => ({
           ...identity,
