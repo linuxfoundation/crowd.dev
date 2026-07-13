@@ -162,10 +162,12 @@ export type MavenRepoUrlRow = {
 }
 
 /**
- * Keyset-paginated scan of Maven rows that carry a repository link (declared or
- * canonical). Rows with neither are skipped — there is nothing to recompute.
- * Used by the repository_url backfill to re-run the normalizer over stored data
- * without re-fetching POMs from the registry.
+ * Keyset-paginated scan of Maven rows that carry a declared repository value.
+ * The backfill recomputes repository_url *from* declared_repository_url, so rows
+ * with no declared value are skipped: there is nothing to recompute from, and a
+ * null declaration must never be used to clear an existing repository_url that a
+ * different source may have set.
+ * Used to re-run the normalizer over stored data without re-fetching POMs.
  *
  * `criticalOnly` restricts the scan to is_critical rows (index-backed by the
  * partial index on is_critical) — used for a fast, consumer-facing first pass.
@@ -184,7 +186,7 @@ export async function listMavenPackagesForRepoUrlRecompute(
     WHERE ecosystem = 'maven'
       ${options.criticalOnly ? 'AND is_critical' : ''}
       AND id > $(afterId)
-      AND (declared_repository_url IS NOT NULL OR repository_url IS NOT NULL)
+      AND declared_repository_url IS NOT NULL
     ORDER BY id ASC
     LIMIT $(limit)
     `,
@@ -197,6 +199,14 @@ export async function listMavenPackagesForRepoUrlRecompute(
  * only way to clear a stale value, since the enrichment upsert COALESCEs and
  * cannot write NULL. Splits clears (→ NULL) from sets to avoid NULLs inside a
  * text[] array literal.
+ *
+ * Both branches also bump last_synced_at. repository_url is exported to Tinybird
+ * (ossPackages datasource) via a ReplacingMergeTree whose ENGINE_VER is
+ * last_synced_at; without advancing it, a same-version CDC row may lose to the
+ * older one and the correction would never reach downstream consumers. The
+ * trade-off is that these rows look freshly synced to the enrichment freshness
+ * window (listMavenPackagesToSync/refreshDays) and are re-enriched slightly
+ * later — acceptable, since the recomputed value is already current.
  */
 export async function updateMavenRepositoryUrls(
   qx: QueryExecutor,
@@ -211,7 +221,7 @@ export async function updateMavenRepositoryUrls(
 
   if (toClear.length > 0) {
     await qx.result(
-      `UPDATE packages SET repository_url = NULL
+      `UPDATE packages SET repository_url = NULL, last_synced_at = NOW()
        WHERE id = ANY($(ids)::bigint[]) AND repository_url IS NOT NULL`,
       { ids: toClear },
     )
@@ -221,7 +231,7 @@ export async function updateMavenRepositoryUrls(
     await qx.result(
       `
       UPDATE packages p
-      SET repository_url = v.repository_url
+      SET repository_url = v.repository_url, last_synced_at = NOW()
       FROM (
         SELECT unnest($(ids)::bigint[]) AS id,
                unnest($(urls)::text[])  AS repository_url

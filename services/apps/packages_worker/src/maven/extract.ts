@@ -482,19 +482,20 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
  *
  * TODO(CM): host list pending product confirmation before rollout.
  *
- * Candidate additions found in Maven declared_repository_url (critical rows) but
- * intentionally NOT added yet, because they need more than a host allowlist:
- *   - git.eclipse.org (~180 rows): Gerrit `/c/<repo>` paths, not owner/repo.
- *   - eclipse.gerrithub.io (~10 rows): Gerrit admin-UI paths (`/admin/repos/...`),
- *     not a clone URL shape.
- *   - android.googlesource.com, ec.europa.eu (Bitbucket-Server /projects/x/repos/y):
- *     multi-segment paths, not owner/repo.
- *   - ambiguous `git.*` hosts (git.iem.at, git.i-novus.ru, git.oschina.net) and the
- *     internal git.corp.adobe.com: pending path/reachability confirmation.
+ * The ambiguous `git.*` hosts git.iem.at, git.i-novus.ru and git.oschina.net were
+ * curl-verified live and ARE included in SCM_HOSTS below. Other hosts found in Maven
+ * declared_repository_url that need more than a flat owner/repo allowlist are handled
+ * by their own dedicated normalizers below rather than here:
+ *   - git.eclipse.org: cgit `/c/<owner>/<repo>` paths → normalizeEclipseCgitUrl.
+ *   - android.googlesource.com: Gitiles identity paths → normalizeGooglesourceUrl.
+ *   - ec.europa.eu: Bitbucket-Server `/projects/x/repos/y` → normalizeBitbucketServerUrl.
+ *   - gitbox.apache.org / git.apache.org / git-wip-us.apache.org: gitweb
+ *     `/repos/asf/<repo>` or `?p=<repo>` → normalizeApacheGitwebUrl.
  *
- * gitbox.apache.org / git.apache.org / git-wip-us.apache.org are handled separately
- * below (normalizeApacheGitwebUrl) rather than through this allowlist — their paths
- * are `/repos/asf/<repo>` or `?p=<repo>` (classic gitweb query form), not owner/repo.
+ * Still NOT handled (need more than a host allowlist, or are unreachable):
+ *   - eclipse.gerrithub.io: Gerrit admin-UI paths (`/admin/repos/...`), not a clone shape.
+ *   - internal-only hosts (git.corp.adobe.com, gitlab.alibaba-inc.com): unreachable
+ *     for consumers, so intentionally excluded.
  */
 const SCM_HOSTS = new Set([
   'github.com',
@@ -769,6 +770,33 @@ function normalizeGooglesourceUrl(host: string, pathname: string): string | null
 }
 
 /**
+ * GitLab — gitlab.com and self-hosted instances — supports nested group
+ * namespaces (group/subgroup/.../project), so the repository path is NOT limited
+ * to owner/repo: taking only the first two segments would turn a valid repo like
+ * gitlab.com/group/subgroup/project into the group URL gitlab.com/group/subgroup.
+ * The full namespace/project path is everything up to GitLab's `/-/` route marker
+ * (which prefixes non-repo routes such as /-/tree, /-/blob, /-/merge_requests).
+ * Only applied to already-allowlisted hosts, so this never widens acceptance.
+ */
+function isGitlabHost(host: string): boolean {
+  return host === 'gitlab.com' || host.includes('gitlab')
+}
+
+function normalizeGitlabUrl(host: string, pathname: string): string | null {
+  const projectPath = pathname.split('/-/')[0]
+  const segments = projectPath.split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  segments[segments.length - 1] = segments[segments.length - 1].replace(/\.git$/, '')
+  if (segments.some((s) => !s || /\$\{|%7B/i.test(s))) return null
+
+  const path = segments.join('/')
+  // gitlab.com paths are case-insensitive (see CASE_INSENSITIVE_HOSTS); self-hosted
+  // instances are left as-is since their case sensitivity is not guaranteed.
+  return `https://${host}/${host === 'gitlab.com' ? path.toLowerCase() : path}`
+}
+
+/**
  * Converts the raw SCM URL from a POM (declared_repository_url) into a clean,
  * canonical `https://<host>/<owner>/<repo>` repository URL suitable for storage
  * as repository_url. Returns null when the input does not resolve to a real
@@ -872,6 +900,10 @@ export function normalizeScmUrl(raw: string | null): string | null {
   }
 
   if (!SCM_HOSTS.has(host)) return null
+
+  // GitLab (incl. self-hosted) allows nested group namespaces, so its repo path is
+  // more than owner/repo — handled separately from the generic 2-segment logic.
+  if (isGitlabHost(host)) return normalizeGitlabUrl(host, parsed.pathname)
 
   // Require at least owner + repo path segments
   const segments = parsed.pathname.split('/').filter(Boolean)

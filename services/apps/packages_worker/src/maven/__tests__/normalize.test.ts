@@ -484,6 +484,37 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBeNull()
     expect(normalizeScmUrl('https://gitlab.alibaba-inc.com/team/project')).toBeNull()
   })
+
+  it('preserves nested GitLab group namespaces instead of truncating to the group', () => {
+    expect(normalizeScmUrl('https://gitlab.com/group/subgroup/project')).toBe(
+      'https://gitlab.com/group/subgroup/project',
+    )
+    expect(normalizeScmUrl('scm:git:https://gitlab.inria.fr/group/subgroup/deep/project.git')).toBe(
+      'https://gitlab.inria.fr/group/subgroup/deep/project',
+    )
+  })
+
+  it('stops the GitLab repo path at the /-/ route marker and drops browse suffixes', () => {
+    expect(normalizeScmUrl('https://gitlab.com/group/subgroup/project/-/tree/main')).toBe(
+      'https://gitlab.com/group/subgroup/project',
+    )
+    expect(normalizeScmUrl('https://gitlab.com/owner/repo/-/blob/main/pom.xml')).toBe(
+      'https://gitlab.com/owner/repo',
+    )
+  })
+
+  it('still lower-cases gitlab.com paths but leaves self-hosted GitLab case intact', () => {
+    expect(normalizeScmUrl('https://gitlab.com/Group/SubGroup/Project')).toBe(
+      'https://gitlab.com/group/subgroup/project',
+    )
+    expect(normalizeScmUrl('https://gitlab.inria.fr/Group/Project')).toBe(
+      'https://gitlab.inria.fr/Group/Project',
+    )
+  })
+
+  it('returns null for a GitLab namespace with no project segment', () => {
+    expect(normalizeScmUrl('https://gitlab.com/onlygroup')).toBeNull()
+  })
 })
 
 describe('interpolateProperties', () => {
