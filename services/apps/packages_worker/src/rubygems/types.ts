@@ -43,6 +43,7 @@ export interface NormalizedRubyGemsPackage {
   description: string | null
   homepage: string | null
   declaredRepositoryUrl: string | null
+  repositoryUrl: string | null
   licenses: string[] | null
   licensesRaw: string | null
   latestVersion: string | null

@@ -1,3 +1,5 @@
+import { normalizeScmUrl } from '../maven/extract'
+
 import {
   NormalizedRubyGemsOwner,
   NormalizedRubyGemsPackage,
@@ -15,10 +17,12 @@ function nonEmpty(value: string | null | undefined): string | null {
 
 export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRubyGemsPackage {
   const licenses = doc.licenses && doc.licenses.length > 0 ? doc.licenses : null
+  const declaredRepositoryUrl = nonEmpty(doc.source_code_uri)
   return {
     description: nonEmpty(doc.info),
     homepage: nonEmpty(doc.homepage_uri),
-    declaredRepositoryUrl: nonEmpty(doc.source_code_uri),
+    declaredRepositoryUrl,
+    repositoryUrl: normalizeScmUrl(declaredRepositoryUrl),
     licenses,
     licensesRaw: licenses ? licenses.join(', ') : null,
     latestVersion: nonEmpty(doc.version),
