@@ -7,7 +7,7 @@ import {
   MemberField,
   findMemberById,
   findMemberIdentitiesByValue,
-  createMemberIdentity as insertMemberIdentity,
+  insertMemberIdentities,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
@@ -69,20 +69,23 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             alreadyExisted = true
             result = exactMatch
           } else {
-            result = await insertMemberIdentity(
+            const [created] = await insertMemberIdentities(
               tx,
-              {
-                memberId,
-                platform: data.platform,
-                value: normalizedValue,
-                type: data.type,
-                source: data.source,
-                verified: data.verified,
-                verifiedBy: data.verifiedBy,
-              },
+              [
+                {
+                  memberId,
+                  platform: data.platform,
+                  value: normalizedValue,
+                  type: data.type,
+                  source: data.source,
+                  verified: data.verified,
+                  verifiedBy: data.verifiedBy,
+                },
+              ],
               true,
               true,
             )
+            result = created
           }
 
           // A verified identity confirms the same value for this member, so keep same-value

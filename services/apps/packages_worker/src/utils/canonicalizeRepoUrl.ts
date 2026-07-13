@@ -68,17 +68,18 @@ export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
   const segments = u.pathname.split('/').filter(Boolean)
   if (segments.length < 2) return null
 
-  let owner = segments[0]
-  let name = segments[1].replace(/\.git$/, '')
-  if (!owner || !name) return null
+  const isKnownHost = hostname in HOST_ENUM
+  let ownerPath = isKnownHost ? [segments[0]] : segments.slice(0, -1)
+  let name = (isKnownHost ? segments[1] : segments[segments.length - 1]).replace(/\.git$/, '')
+  if (!name || ownerPath.length === 0 || ownerPath.some((seg) => !seg)) return null
 
   if (CASE_INSENSITIVE_HOSTS.has(hostname)) {
-    owner = owner.toLowerCase()
+    ownerPath = ownerPath.map((seg) => seg.toLowerCase())
     name = name.toLowerCase()
   }
 
   return {
-    url: `https://${hostname}/${owner}/${name}`,
+    url: `https://${hostname}/${[...ownerPath, name].join('/')}`,
     host: HOST_ENUM[hostname] ?? 'other',
   }
 }

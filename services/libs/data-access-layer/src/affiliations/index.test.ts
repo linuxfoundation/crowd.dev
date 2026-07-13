@@ -1,12 +1,25 @@
+/**
+ * Legacy suite — keep for now, migrate when this module is next touched.
+ *
+ * This covers the API read path (`resolveAffiliationsByMemberIds` / pure
+ * `buildTimeline` + `selectPrimaryWorkExperience`), not the activity-write
+ * path in `member-organization-affiliation/`.
+ *
+ * Style is outdated vs current CDP testing:
+ * - mocked `qx` + hand-built rows instead of `@crowd/test-kit` factories
+ * - does not use schema-aligned `*DbInsert` types (ADR-0006)
+ * - does not follow factory primitives / defaults (ADR-0007)
+ * - does not follow named DB-backed scenarios (ADR-0008)
+ *
+ * Reference for the target style:
+ * `../member-organization-affiliation/index.test.ts`
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { QueryExecutor } from '../../queryExecutor'
-import {
-  buildTimeline,
-  resolveAffiliationsByMemberIds,
-  selectPrimaryWorkExperience,
-} from '../index'
-import type { IWorkExperienceResolution } from '../index'
+import type { QueryExecutor } from '../queryExecutor'
+
+import { buildTimeline, resolveAffiliationsByMemberIds, selectPrimaryWorkExperience } from './index'
+import type { IWorkExperienceResolution } from './index'
 
 // Mocks are hoisted before imports — intercept transitive dependencies that
 // require a live database or external services.
