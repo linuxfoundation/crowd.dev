@@ -16,6 +16,7 @@ export { processMavenCriticalBatch } from './maven/activities'
 export { criticalityComputePageRank, rankPackages } from './criticality/activities'
 export {
   cargoDownloadAndLoad,
+  cargoNormalizeRepos,
   cargoEnrichPackages,
   cargoEnrichVersions,
   cargoEnrichRepos,
