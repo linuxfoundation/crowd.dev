@@ -137,7 +137,7 @@ SQL >
         ifNull(m.prsOpened, 0) AS totalPrsOpened,
         ifNull(m.orgPrsOpened, 0) AS orgPrsOpened,
         (
-            -- Maintainers: 3 pts if org has at least 1 active maintainer (24-month window)
+            -- Maintainers: 10 pts if org has at least 1 active maintainer (24-month window)
             -- Contributors: 0 if no share; 1.1 if share in (0, 0.1%]; share + 1.0 otherwise
             CASE WHEN ifNull(mt.scoreMaintainersCount, 0) >= 1 THEN 10.0 ELSE 0.0 END + CASE
                 WHEN
