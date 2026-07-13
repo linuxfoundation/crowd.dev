@@ -20,6 +20,8 @@ const { findObsoleteRepos, initializeTokenInfos, updateTokenInfos } = proxyActiv
   retry: { maximumAttempts: 3, backoffCoefficient: 3 },
 })
 
+const ONE_HOUR_MS = 60 * 60 * 1000
+
 export async function triggerSecurityInsightsCheckForRepos(
   args: ITriggerSecurityInsightsCheckForReposParams,
 ): Promise<void> {
@@ -31,7 +33,10 @@ export async function triggerSecurityInsightsCheckForRepos(
   const info = workflowInfo()
   const failedRepoUrls = args?.failedRepoUrls || []
 
+  // Token state is persisted in Redis via updateTokenInfos so isRateLimited (with rateLimitedAt
+  // for expiry) and isInvalid survive across continueAsNew batches.
   const tokenInfos: ITokenInfo[] = await initializeTokenInfos()
+
   const repos = await findObsoleteRepos(
     REPOS_OBSOLETE_AFTER_SECONDS,
     failedRepoUrls,
@@ -50,8 +55,16 @@ export async function triggerSecurityInsightsCheckForRepos(
     while (attempts < MAX_TOKEN_ATTEMPTS) {
       const tokenInfo = getNextToken(tokenInfos)
       if (!tokenInfo) {
-        console.error(`No usable tokens for repo ${repo.repoUrl}, skipping`)
-        failedRepoUrls.push(repo.repoUrl)
+        // Distinguish: are there tokens that will become free, or are all excluded?
+        const anyRecoverable = tokenInfos.some((t) => !t.isInvalid && !t.isRateLimited)
+        if (anyRecoverable) {
+          // All non-excluded tokens are currently in use by other concurrent tasks.
+          // Put the repo back and let the outer loop retry after a task finishes.
+          queue.unshift(repo)
+        } else {
+          console.error(`All tokens excluded for repo ${repo.repoUrl}, skipping`)
+          failedRepoUrls.push(repo.repoUrl)
+        }
         break
       }
       const token = tokenInfo.token
@@ -86,13 +99,14 @@ export async function triggerSecurityInsightsCheckForRepos(
         const appFailure = unwrapApplicationFailure(error)
         if (appFailure?.type === 'Token403Error') {
           tokenInfo.isRateLimited = true
+          tokenInfo.rateLimitedAt = new Date().toISOString()
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
           console.error(
-            `Token invalid/expired for repo ${repo.repoUrl}, excluding token for this run`,
+            `Token invalid/expired for repo ${repo.repoUrl}, permanently excluding token`,
           )
-          tokenInfo.isRateLimited = true
+          tokenInfo.isInvalid = true
           attempts++
           continue // retry with a different token
         } else {
@@ -107,6 +121,11 @@ export async function triggerSecurityInsightsCheckForRepos(
         await releaseToken(tokenInfos, tokenInfo.token)
       }
     }
+
+    if (attempts >= MAX_TOKEN_ATTEMPTS) {
+      console.error(`Exhausted token attempts for repo ${repo.repoUrl}, skipping`)
+      failedRepoUrls.push(repo.repoUrl)
+    }
   }
 
   /**
@@ -119,6 +138,12 @@ export async function triggerSecurityInsightsCheckForRepos(
    */
   while (queue.length > 0 || activeTasks.length > 0) {
     while (queue.length > 0 && activeTasks.length < MAX_PARALLEL_CHILDREN) {
+      // Only start a task if a token is currently free — avoids false "no token" failures
+      // when all tokens are temporarily held by other concurrent tasks.
+      refreshExpiredRateLimits(tokenInfos)
+      const hasFreeToken = tokenInfos.some((t) => !t.isInvalid && !t.isRateLimited && !t.inUse)
+      if (!hasFreeToken) break
+
       const repo = queue.shift()
       const task = processRepo(repo).finally(() => {
         const index = activeTasks.indexOf(task)
@@ -127,12 +152,19 @@ export async function triggerSecurityInsightsCheckForRepos(
       activeTasks.push(task)
     }
 
-    // Wait for any one to finish before refilling
     if (activeTasks.length > 0) {
       await Promise.race(activeTasks)
+    } else if (queue.length > 0) {
+      // No active tasks and no free tokens — all remaining repos cannot be processed this batch.
+      for (const repo of queue.splice(0)) {
+        failedRepoUrls.push(repo.repoUrl)
+      }
+      break
     }
   }
 
+  // Persist token state to Redis so isRateLimited (with rateLimitedAt for expiry) and isInvalid
+  // survive the continueAsNew handoff.
   await updateTokenInfos(tokenInfos)
 
   await continueAsNew<typeof triggerSecurityInsightsCheckForRepos>({
@@ -140,8 +172,24 @@ export async function triggerSecurityInsightsCheckForRepos(
   })
 }
 
+function refreshExpiredRateLimits(tokenInfos: ITokenInfo[]): void {
+  const now = Date.now()
+  for (const t of tokenInfos) {
+    if (
+      t.isRateLimited &&
+      t.rateLimitedAt &&
+      now - new Date(t.rateLimitedAt).getTime() > ONE_HOUR_MS
+    ) {
+      t.isRateLimited = false
+      t.rateLimitedAt = undefined
+    }
+  }
+}
+
 function getNextToken(tokenInfos: ITokenInfo[]): ITokenInfo | null {
-  const usableTokenInfos = tokenInfos.filter((token) => !token.inUse && !token.isRateLimited)
+  refreshExpiredRateLimits(tokenInfos)
+
+  const usableTokenInfos = tokenInfos.filter((t) => !t.inUse && !t.isRateLimited && !t.isInvalid)
 
   // sort usable tokens by last used date from oldest to newest
   const sortedTokenInfos = usableTokenInfos.sort((a, b) => {

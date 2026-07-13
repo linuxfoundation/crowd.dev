@@ -54,4 +54,6 @@ export interface ITokenInfo {
   inUse: boolean
   lastUsed: Date
   isRateLimited: boolean
+  rateLimitedAt?: string // ISO timestamp; used to auto-reset after 1 hour
+  isInvalid?: boolean // permanent auth failure — never auto-resets
 }

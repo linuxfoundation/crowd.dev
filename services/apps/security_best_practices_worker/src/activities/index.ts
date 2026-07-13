@@ -300,8 +300,9 @@ export async function initializeTokenInfos(): Promise<ITokenInfo[]> {
 
   if (tokenInfosInRedis) {
     const parsed: ITokenInfo[] = JSON.parse(tokenInfosInRedis)
-    // reset rate-limited/in-use state — GitHub limits reset hourly, each run starts fresh
-    return parsed.map((t) => ({ ...t, isRateLimited: false, inUse: false }))
+    // Reset inUse (workflow processes may have crashed leaving stale in-use flags).
+    // Preserve isRateLimited/isInvalid — those are cleared based on rateLimitedAt (>1h) or admin action.
+    return parsed.map((t) => ({ ...t, inUse: false }))
   }
 
   return process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',').map((token) => ({
