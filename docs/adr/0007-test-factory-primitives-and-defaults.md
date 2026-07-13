@@ -12,7 +12,9 @@ We need a simple, durable rule for how test data is created — what the factory
 
 ## Decision
 
-Treat test setup as **composition of sharp primitives**, not smart world-builders. Keep three layers separate.
+Treat test setup as composition of sharp primitives, not smart world-builders. Primitives persist what the caller provides via the DAL; defaults are opt-in and allowlisted; tests own scenario identity and graph shape.
+
+## Conventions
 
 ### 1. Primitives
 
@@ -40,8 +42,6 @@ Defaults do **not** build a realistic entity or graph. They only patch allowlist
 - Prefer inline fixtures and spreads in the test file.
 - File-local seed helpers only after real repetition; promote into the shared test kit only when a second suite needs the same helper.
 - Do not grow suite-specific “build the whole world” APIs in the shared kit.
-
-This stays aligned with ADR-0006: factories may widen partial write payloads and fill defaults; they do not redefine row or DAL contracts.
 
 ## Alternatives Considered
 
