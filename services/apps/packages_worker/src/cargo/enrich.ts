@@ -192,8 +192,12 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        SELECT (SELECT COUNT(*) FROM new_repos)::int AS repos`,
     )
 
-    // Prunes stale 'declared' links before relinking — covers junk declared values
-    // (no canonical → target NULL) and rewrites (declared URL now maps elsewhere).
+    // Prunes stale 'declared' links before relinking — covers junk/unparseable declared
+    // values, rewrites (declared URL now maps elsewhere), and removals (this dump's
+    // declared_repository_url is NULL, meaning the crate no longer declares a repo at
+    // all — loadDump.ts stages every matched crate every run, so NULL here is
+    // authoritative, not "no data this run"). Safe to always prune on that signal because
+    // the DELETE is scoped to source = 'declared' — cargo only ever removes links it owns.
     // Without this, package_repos would accumulate a link to a repo no crate declares
     // anymore, and consumers such as security-contacts (which join through
     // repos ⋈ package_repos, not packages.repository_url) would keep reading it.
@@ -203,7 +207,6 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          FROM ${STAGING_SCHEMA}.enrich_packages e
          LEFT JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          LEFT JOIN repos r ON r.url = rn.repository_url
-         WHERE e.declared_repository_url IS NOT NULL
        ),
        del AS (
          DELETE FROM package_repos pr
@@ -212,6 +215,11 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
            AND pr.source = $(source)
            AND (t.repo_id IS NULL OR pr.repo_id IS DISTINCT FROM t.repo_id)
          RETURNING pr.package_id
+       ),
+       ins_audit AS (
+         INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
+         SELECT package_id, 'package_repos.repo_id' FROM del
+         RETURNING 1
        )
        SELECT (SELECT COUNT(*) FROM del)::int AS pruned`,
       { source: REPO_LINK_SOURCE },
@@ -231,9 +239,11 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          FROM ${STAGING_SCHEMA}.enrich_packages e
          JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          JOIN repos r ON r.url = rn.repository_url
+         -- Leaves source untouched on conflict — a link another enricher already owns for
+         -- this (package_id, repo_id) keeps its provenance instead of being reassigned to
+         -- 'declared', matching upsertMavenPackageRepo's confidence-only merge.
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
-           source      = EXCLUDED.source,
-           confidence  = EXCLUDED.confidence,
+           confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
            verified_at = NOW()
          RETURNING package_id, repo_id, source, confidence
        ),
