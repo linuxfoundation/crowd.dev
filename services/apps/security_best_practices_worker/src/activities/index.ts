@@ -48,7 +48,8 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
       svc.log.warn('Detected 401 error in privateer output - token invalid or expired!')
       throw ApplicationFailure.create({
         message: 'GitHub token invalid or expired',
-        type: 'Token403Error',
+        type: 'TokenAuthError',
+        nonRetryable: true,
       })
     }
     if (combinedOutput.includes('403')) {
@@ -56,6 +57,7 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
       throw ApplicationFailure.create({
         message: 'GitHub token rate-limited',
         type: 'Token403Error',
+        nonRetryable: true,
       })
     }
   } catch (err) {
@@ -67,7 +69,8 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
       svc.log.warn('Detected 401 error in failed privateer output - token invalid or expired!')
       throw ApplicationFailure.create({
         message: 'GitHub token invalid or expired',
-        type: 'Token403Error',
+        type: 'TokenAuthError',
+        nonRetryable: true,
       })
     }
     if (output.includes('403')) {
@@ -75,6 +78,7 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
       throw ApplicationFailure.create({
         message: 'GitHub token rate-limited',
         type: 'Token403Error',
+        nonRetryable: true,
       })
     }
     throw err
@@ -292,7 +296,9 @@ export async function initializeTokenInfos(): Promise<ITokenInfo[]> {
   const tokenInfosInRedis = await redisCache.get('tokenInfos')
 
   if (tokenInfosInRedis) {
-    return JSON.parse(tokenInfosInRedis)
+    const parsed: ITokenInfo[] = JSON.parse(tokenInfosInRedis)
+    // reset rate-limited/in-use state — GitHub limits reset hourly, each run starts fresh
+    return parsed.map((t) => ({ ...t, isRateLimited: false, inUse: false }))
   }
 
   return process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',').map((token) => ({

@@ -48,7 +48,12 @@ export async function triggerSecurityInsightsCheckForRepos(
   async function processRepo(repo: (typeof repos)[0]): Promise<void> {
     let attempts = 0
     while (attempts < MAX_TOKEN_ATTEMPTS) {
-      const tokenInfo = await getNextToken(tokenInfos)
+      const tokenInfo = getNextToken(tokenInfos)
+      if (!tokenInfo) {
+        console.error(`No usable tokens for repo ${repo.repoUrl}, skipping`)
+        failedRepoUrls.push(repo.repoUrl)
+        break
+      }
       const token = tokenInfo.token
 
       await acquireToken(tokenInfos, token)
@@ -63,7 +68,7 @@ export async function triggerSecurityInsightsCheckForRepos(
             initialInterval: 2000,
             backoffCoefficient: 2,
             maximumInterval: 30000,
-            nonRetryableErrorTypes: ['Token403Error'],
+            nonRetryableErrorTypes: ['Token403Error', 'TokenAuthError'],
           },
           args: [
             {
@@ -76,7 +81,15 @@ export async function triggerSecurityInsightsCheckForRepos(
         })
         return // success
       } catch (error) {
-        if (error instanceof ApplicationFailure && error.type === 'Token403Error') {
+        // executeChild rejects with ChildWorkflowFailure wrapping ActivityFailure wrapping
+        // ApplicationFailure — traverse the cause chain to find the root ApplicationFailure
+        const appFailure = unwrapApplicationFailure(error)
+        if (appFailure?.type === 'Token403Error') {
+          tokenInfo.isRateLimited = true
+          attempts++
+          continue // retry with a different token
+        } else if (appFailure?.type === 'TokenAuthError') {
+          console.error(`Token invalid/expired for repo ${repo.repoUrl}, excluding token for this run`)
           tokenInfo.isRateLimited = true
           attempts++
           continue // retry with a different token
@@ -125,7 +138,7 @@ export async function triggerSecurityInsightsCheckForRepos(
   })
 }
 
-async function getNextToken(tokenInfos: ITokenInfo[]): Promise<ITokenInfo> {
+function getNextToken(tokenInfos: ITokenInfo[]): ITokenInfo | null {
   const usableTokenInfos = tokenInfos.filter((token) => !token.inUse && !token.isRateLimited)
 
   // sort usable tokens by last used date from oldest to newest
@@ -135,11 +148,16 @@ async function getNextToken(tokenInfos: ITokenInfo[]): Promise<ITokenInfo> {
     return aTime - bTime
   })
 
-  if (sortedTokenInfos.length === 0) {
-    throw new Error('No usable tokens available')
-  }
+  return sortedTokenInfos[0] ?? null
+}
 
-  return sortedTokenInfos[0]
+function unwrapApplicationFailure(error: unknown): ApplicationFailure | null {
+  let e: unknown = error
+  while (e) {
+    if (e instanceof ApplicationFailure) return e
+    e = (e as { cause?: unknown }).cause
+  }
+  return null
 }
 
 async function releaseToken(tokenInfos: ITokenInfo[], token: string): Promise<void> {
