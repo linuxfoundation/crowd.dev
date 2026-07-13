@@ -303,7 +303,7 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
     ])
   })
 
-  test('allowAffiliation false drops overlapping stints from the timeline', async ({ qx }) => {
+  test('allowAffiliation false drops a primary overlapping stint', async ({ qx }) => {
     const [employer, internship, foundation, undated] = await createOrganizations(
       qx,
       withOrganizationDefaults([
@@ -350,6 +350,8 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
       },
     ])
 
+    // Foundation is primary so it would win the overlap without the override.
+    // allowAffiliation false must remove it before primary selection runs.
     await upsertMemberOrganizationAffiliationOverrides(qx, [
       {
         memberId: member.id,
@@ -360,6 +362,7 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
         memberId: member.id,
         memberOrganizationId: mos[2].id,
         allowAffiliation: false,
+        isPrimaryWorkExperience: true,
       },
     ])
 
