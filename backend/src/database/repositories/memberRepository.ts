@@ -33,7 +33,7 @@ import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
-  insertMemberAffiliations,
+  insertMemberSegmentAffiliations,
 } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import {
   MemberField,
@@ -1219,7 +1219,16 @@ class MemberRepository {
           return
         }
 
-        await insertMemberAffiliations(qx, memberId, data)
+        await insertMemberSegmentAffiliations(
+          qx,
+          data.map((item) => ({
+            memberId,
+            segmentId: item.segmentId,
+            organizationId: item.organizationId,
+            dateStart: item.dateStart || null,
+            dateEnd: item.dateEnd || null,
+          })),
+        )
       }),
     )
   }

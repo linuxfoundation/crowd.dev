@@ -10,7 +10,7 @@ import {
   fetchMemberSegmentAffiliationsForProject,
   findMaintainerRoles,
   findMemberById,
-  insertVerifiedMemberSegmentAffiliations,
+  insertMemberSegmentAffiliations,
 } from '@crowd/data-access-layer'
 import type { ISegmentAffiliationWithOrg } from '@crowd/data-access-layer'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
@@ -83,14 +83,15 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
         await deleteMemberSegmentAffiliations(tx, { memberId, segmentId: projectId })
 
         if (affiliations.length > 0) {
-          await insertVerifiedMemberSegmentAffiliations(
+          await insertMemberSegmentAffiliations(
             tx,
-            memberId,
-            projectId,
             affiliations.map((a) => ({
+              memberId,
+              segmentId: projectId,
               organizationId: a.organizationId,
               dateStart: a.dateStart.toISOString(),
               dateEnd: a.dateEnd?.toISOString() ?? null,
+              verified: true,
               verifiedBy: verifiedBy!,
             })),
           )

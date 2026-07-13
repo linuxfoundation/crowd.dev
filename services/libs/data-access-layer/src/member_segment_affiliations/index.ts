@@ -131,23 +131,6 @@ export async function insertMemberSegmentAffiliations(
   return qx.result(query)
 }
 
-/** @deprecated Prefer `insertMemberSegmentAffiliations` with full insert payloads. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function insertMemberAffiliations(qx: QueryExecutor, memberId: string, data: any[]) {
-  return insertMemberSegmentAffiliations(
-    qx,
-    data.map((item) => ({
-      memberId,
-      segmentId: item.segmentId,
-      organizationId: item.organizationId,
-      dateStart: item.dateStart || null,
-      dateEnd: item.dateEnd || null,
-    })),
-    false,
-    false,
-  )
-}
-
 export async function fetchMemberAffiliations(
   qx: QueryExecutor,
   memberId: string,
