@@ -56,6 +56,8 @@
     "backfill:maven:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven LOG_LEVEL=info tsx src/bin/maven-backfill.ts",
     "backfill:maven-repo-url": "SERVICE=maven tsx src/bin/maven-repo-url-backfill.ts",
     "backfill:maven-repo-url:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven LOG_LEVEL=info tsx src/bin/maven-repo-url-backfill.ts",
+    "backfill:npm-repo-url": "SERVICE=npm tsx src/bin/npm-repo-url-backfill.ts",
+    "backfill:npm-repo-url:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=npm LOG_LEVEL=info tsx src/bin/npm-repo-url-backfill.ts",
     "import:maven-maintainers": "SERVICE=maven tsx src/maven/scripts/importMaintainersFromCsv.ts",
     "import:maven-maintainers:local": "set -a && . ../../../backend/.env.dist.local && . ../../../backend/.env.override.local && set +a && SERVICE=maven tsx src/maven/scripts/importMaintainersFromCsv.ts",
     "import:sonatype-popularity": "SERVICE=maven tsx src/maven/scripts/importSonatypePopularityFromCsv.ts",
