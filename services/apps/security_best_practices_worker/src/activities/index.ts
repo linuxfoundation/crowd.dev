@@ -44,46 +44,12 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
 
     const combinedOutput = `${stdout}\n${stderr}`
 
-    if (
-      combinedOutput.includes('401 Unauthorized') ||
-      combinedOutput.includes('401 Bad credentials')
-    ) {
-      svc.log.warn('Detected 401 error in privateer output - token invalid or expired!')
-      throw ApplicationFailure.create({
-        message: 'GitHub token invalid or expired',
-        type: 'TokenAuthError',
-        nonRetryable: true,
-      })
-    }
-    if (combinedOutput.includes('403')) {
-      svc.log.warn('Detected 403 error in privateer output - token rate-limited!')
-      throw ApplicationFailure.create({
-        message: 'GitHub token rate-limited',
-        type: 'Token403Error',
-        nonRetryable: true,
-      })
-    }
+    classifyTokenError(combinedOutput, 'privateer output')
   } catch (err) {
     svc.log.error(`Privateer run failed: ${err.message}`)
 
-    // check for auth errors in captured output if available
     const output = `${err.stdout || ''}\n${err.stderr || ''}`
-    if (output.includes('401 Unauthorized') || output.includes('401 Bad credentials')) {
-      svc.log.warn('Detected 401 error in failed privateer output - token invalid or expired!')
-      throw ApplicationFailure.create({
-        message: 'GitHub token invalid or expired',
-        type: 'TokenAuthError',
-        nonRetryable: true,
-      })
-    }
-    if (output.includes('403')) {
-      svc.log.warn('Detected 403 error in failed privateer output - token rate-limited!')
-      throw ApplicationFailure.create({
-        message: 'GitHub token rate-limited',
-        type: 'Token403Error',
-        nonRetryable: true,
-      })
-    }
+    classifyTokenError(output, 'failed privateer output')
     throw err
   }
 
@@ -215,6 +181,40 @@ export async function saveOSPSBaselineInsightsToRedis(
 ): Promise<void> {
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   await redisCache.set(key, JSON.stringify(insights), 60 * 60 * 24) // 1 day
+}
+
+// GitHub returns 403 for both rate-limit exhaustion AND persistent permission/SAML failures.
+// Only rate-limit responses should trigger the 1h token-rotation cooldown; permission failures
+// must be marked as invalid so the token isn't retried in a loop.
+function classifyTokenError(output: string, source: string): void {
+  if (output.includes('401 Unauthorized') || output.includes('401 Bad credentials')) {
+    svc.log.warn(`Detected 401 error in ${source} - token invalid or expired!`)
+    throw ApplicationFailure.create({
+      message: 'GitHub token invalid or expired',
+      type: 'TokenAuthError',
+      nonRetryable: true,
+    })
+  }
+  if (!output.includes('403')) return
+
+  // Rate-limit 403s from GitHub carry a distinctive body: "API rate limit exceeded" or
+  // "secondary rate limit". Anything else (SAML enforcement, missing scopes, resource
+  // not accessible) is a permission problem and the token won't recover.
+  const isRateLimit = /rate limit|rate_limit|secondary rate/i.test(output)
+  if (isRateLimit) {
+    svc.log.warn(`Detected 403 rate-limit in ${source} - token rate-limited!`)
+    throw ApplicationFailure.create({
+      message: 'GitHub token rate-limited',
+      type: 'Token403Error',
+      nonRetryable: true,
+    })
+  }
+  svc.log.warn(`Detected 403 permission error in ${source} - token lacks required access!`)
+  throw ApplicationFailure.create({
+    message: 'GitHub token lacks required permissions',
+    type: 'TokenAuthError',
+    nonRetryable: true,
+  })
 }
 
 function computeRunDuration(start: string | undefined, end: string | undefined): string {
