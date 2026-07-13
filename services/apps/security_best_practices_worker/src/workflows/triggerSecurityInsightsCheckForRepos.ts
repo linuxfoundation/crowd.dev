@@ -33,6 +33,12 @@ export async function triggerSecurityInsightsCheckForRepos(
   const info = workflowInfo()
   const failedRepoUrls = args?.failedRepoUrls || []
 
+  // Use workflowInfo().startTime as the replay-safe time reference — Temporal workflows must
+  // be deterministic, so Date.now()/new Date() are banned by services-checklist.md:9-12.
+  // startTime is stable within a run and advances on each continueAsNew batch.
+  const nowMs = info.startTime.getTime()
+  const nowIso = info.startTime.toISOString()
+
   // Token state is persisted in Redis via updateTokenInfos so isRateLimited (with rateLimitedAt
   // for expiry) and isInvalid survive across continueAsNew batches.
   const tokenInfos: ITokenInfo[] = await initializeTokenInfos()
@@ -53,7 +59,7 @@ export async function triggerSecurityInsightsCheckForRepos(
   async function processRepo(repo: (typeof repos)[0]): Promise<void> {
     let attempts = 0
     while (attempts < MAX_TOKEN_ATTEMPTS) {
-      const tokenInfo = getNextToken(tokenInfos)
+      const tokenInfo = getNextToken(tokenInfos, nowMs)
       if (!tokenInfo) {
         // Distinguish: are there tokens that will become free, or are all excluded?
         const anyRecoverable = tokenInfos.some((t) => !t.isInvalid && !t.isRateLimited)
@@ -99,7 +105,7 @@ export async function triggerSecurityInsightsCheckForRepos(
         const appFailure = unwrapApplicationFailure(error)
         if (appFailure?.type === 'Token403Error') {
           tokenInfo.isRateLimited = true
-          tokenInfo.rateLimitedAt = new Date().toISOString()
+          tokenInfo.rateLimitedAt = nowIso
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
@@ -136,11 +142,12 @@ export async function triggerSecurityInsightsCheckForRepos(
    * it will be removed from the activeTasks array and the next task will be started.
    * This way we don't need to wait for all tasks to finish before starting new ones.
    */
+  let deferred = false
   while (queue.length > 0 || activeTasks.length > 0) {
     while (queue.length > 0 && activeTasks.length < MAX_PARALLEL_CHILDREN) {
       // Only start a task if a token is currently free — avoids false "no token" failures
       // when all tokens are temporarily held by other concurrent tasks.
-      refreshExpiredRateLimits(tokenInfos)
+      refreshExpiredRateLimits(tokenInfos, nowMs)
       const hasFreeToken = tokenInfos.some((t) => !t.isInvalid && !t.isRateLimited && !t.inUse)
       if (!hasFreeToken) break
 
@@ -161,6 +168,7 @@ export async function triggerSecurityInsightsCheckForRepos(
       console.warn(
         `No tokens available; deferring ${queue.length} repos to next batch (they will be re-fetched)`,
       )
+      deferred = true
       break
     }
   }
@@ -169,18 +177,26 @@ export async function triggerSecurityInsightsCheckForRepos(
   // survive the continueAsNew handoff.
   await updateTokenInfos(tokenInfos)
 
+  if (deferred) {
+    // All tokens rate-limited or invalid and repos still pending. Calling continueAsNew here
+    // would spin: findObsoleteRepos returns the same repos, they defer again, etc.
+    // Return instead — the daily schedule (scheduleCheckReposWithObsoleteSecurityInsights)
+    // will re-trigger the workflow; rate-limit timestamps persist in Redis so recovery is
+    // resumable once the 1h window elapses.
+    return
+  }
+
   await continueAsNew<typeof triggerSecurityInsightsCheckForRepos>({
     failedRepoUrls,
   })
 }
 
-function refreshExpiredRateLimits(tokenInfos: ITokenInfo[]): void {
-  const now = Date.now()
+function refreshExpiredRateLimits(tokenInfos: ITokenInfo[], nowMs: number): void {
   for (const t of tokenInfos) {
     if (
       t.isRateLimited &&
       t.rateLimitedAt &&
-      now - new Date(t.rateLimitedAt).getTime() > ONE_HOUR_MS
+      nowMs - new Date(t.rateLimitedAt).getTime() > ONE_HOUR_MS
     ) {
       t.isRateLimited = false
       t.rateLimitedAt = undefined
@@ -188,8 +204,8 @@ function refreshExpiredRateLimits(tokenInfos: ITokenInfo[]): void {
   }
 }
 
-function getNextToken(tokenInfos: ITokenInfo[]): ITokenInfo | null {
-  refreshExpiredRateLimits(tokenInfos)
+function getNextToken(tokenInfos: ITokenInfo[], nowMs: number): ITokenInfo | null {
+  refreshExpiredRateLimits(tokenInfos, nowMs)
 
   const usableTokenInfos = tokenInfos.filter((t) => !t.inUse && !t.isRateLimited && !t.isInvalid)
 
