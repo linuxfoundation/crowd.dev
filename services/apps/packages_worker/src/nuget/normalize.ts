@@ -1,3 +1,5 @@
+import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+
 import {
   NormalizedNuGetPackage,
   NormalizedNuGetVersion,
@@ -27,16 +29,6 @@ function parsePublishedDate(published: string | undefined): Date | null {
 }
 
 const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
-
-function normalizeRepoUrl(url: string | undefined): string | null {
-  if (!url) return null
-  return url
-    .trim()
-    .replace(/\.git$/, '')
-    .replace(/^git\+/, '')
-    .replace(/^git:\/\//, 'https://')
-    .replace(/^http:\/\/github\.com\//, 'https://github.com/')
-}
 
 function isScmUrl(url: string | undefined): boolean {
   if (!url) return false
@@ -98,8 +90,9 @@ export function normalizeNuGetPackage(
     : [...allEntries].reverse()
   const nuspecRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
   const declaredRepositoryUrl = nuspecRepoUrl ?? null
-  const repoCandidate = nuspecRepoUrl ?? (isScmUrl(homepage) ? homepage : null)
-  const repositoryUrl = normalizeRepoUrl(repoCandidate ?? undefined)
+  const repo =
+    (nuspecRepoUrl ? canonicalizeRepoUrl(nuspecRepoUrl) : null) ??
+    (isScmUrl(homepage) ? canonicalizeRepoUrl(homepage) : null)
 
   const keywords = searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
 
@@ -154,7 +147,7 @@ export function normalizeNuGetPackage(
     description,
     homepage: homepage || null,
     declaredRepositoryUrl,
-    repositoryUrl,
+    repo,
     licenses,
     licensesRaw,
     keywords,

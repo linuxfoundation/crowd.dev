@@ -2,6 +2,7 @@ import {
   IDbNuGetVersionUpsert,
   NuGetPackageToSync,
   QueryExecutor,
+  getOrCreateRepoByUrl,
   listNuGetPackagesToSync,
   logAuditFieldChange,
   markNuGetPackageError,
@@ -10,6 +11,7 @@ import {
   upsertMaintainer,
   upsertNuGetPackage,
   upsertNuGetVersionsBatch,
+  upsertPackageRepo,
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -108,7 +110,7 @@ async function processPackage(
         description: normalized.description,
         homepage: normalized.homepage,
         declaredRepositoryUrl: normalized.declaredRepositoryUrl,
-        repositoryUrl: normalized.repositoryUrl,
+        repositoryUrl: normalized.repo?.url ?? null,
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         keywords: normalized.keywords,
@@ -121,6 +123,24 @@ async function processPackage(
         ingestionSource: 'nuget-registry',
       })
       pkgChanged.forEach((f) => changed.add(f))
+
+      if (normalized.repo) {
+        const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+          t,
+          normalized.repo.url,
+          normalized.repo.host,
+        )
+        repoChanged.forEach((f) => changed.add(f))
+
+        const linkChanged = await upsertPackageRepo(
+          t,
+          packageDbId.toString(),
+          repoId,
+          'declared',
+          0.8,
+        )
+        linkChanged.forEach((f) => changed.add(f))
+      }
 
       if (normalized.versions.length > 0) {
         const versionRows: IDbNuGetVersionUpsert[] = normalized.versions.map((v) => ({
