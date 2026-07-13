@@ -465,8 +465,9 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
       {
         memberId: member.id,
         organizationId: investorOrg.id,
-        dateStart: '2024-09-01T00:00:00.000Z',
-        dateEnd: null,
+        // Before NOW and outside other stints — must be title-filtered, not clock-skipped.
+        dateStart: '2022-06-01T00:00:00.000Z',
+        dateEnd: '2023-06-01T00:00:00.000Z',
         title: 'Investor',
         source: OrganizationSource.ENRICHMENT_CRUSTDATA,
       },
@@ -474,13 +475,14 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
         memberId: member.id,
         organizationId: mentorOrg.id,
         dateStart: '2016-06-01T00:00:00.000Z',
-        dateEnd: '2022-05-01T00:00:00.000Z',
+        dateEnd: '2017-12-01T00:00:00.000Z',
         title: 'Mentor',
         source: OrganizationSource.ENRICHMENT_CRUSTDATA,
       },
       {
         memberId: member.id,
         organizationId: boardOrg.id,
+        // Non-overlapping with Mentor so blacklist is the only reason this org is absent.
         dateStart: '2018-01-01T00:00:00.000Z',
         dateEnd: '2020-01-01T00:00:00.000Z',
         title: 'Board Member',
@@ -497,12 +499,20 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
     ])
 
     const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, member.id)
-    const orgIds = baseItems(timeline).map((item) => item.organizationId)
 
-    expect(orgIds).not.toContain(investorOrg.id)
-    expect(orgIds).not.toContain(mentorOrg.id)
-    expect(orgIds).not.toContain(boardOrg.id)
-    expect(orgIds).toContain(engOrg.id)
+    // Blacklisted stints are dropped before timeline build, so only the engineer remains.
+    expectTimeline(baseItems(timeline), [
+      {
+        organizationId: null,
+        dateStart: EPOCH,
+        dateEnd: '2023-11-30T00:00:00.000Z',
+      },
+      {
+        organizationId: engOrg.id,
+        dateStart: '2023-12-01T00:00:00.000Z',
+        dateEnd: null,
+      },
+    ])
   })
 
   test('soft-deleted MO is ignored', async ({ qx }) => {
@@ -571,9 +581,22 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
     const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, member.id)
 
     expect(manualItems(timeline)).toHaveLength(0)
-    expect(baseItems(timeline).every((item) => item.skipManualAffiliationSegments === false)).toBe(
-      true,
-    )
+    expectTimeline(baseItems(timeline), [
+      {
+        organizationId: null,
+        dateStart: EPOCH,
+        dateEnd: '2021-07-31T00:00:00.000Z',
+      },
+      {
+        organizationId: employer.id,
+        dateStart: '2021-08-01T00:00:00.000Z',
+        dateEnd: null,
+      },
+    ])
+    expect(baseItems(timeline).map((item) => item.skipManualAffiliationSegments)).toEqual([
+      false,
+      false,
+    ])
   })
 
   test('undated MSA is a 1970 catch-all; base timeline skips that segment', async ({ qx }) => {
@@ -614,10 +637,22 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
         segmentId: kubernetes.id,
       },
     ])
-    expect(baseItems(timeline).length).toBeGreaterThan(0)
-    expect(baseItems(timeline).every((item) => item.skipManualAffiliationSegments === true)).toBe(
+    expectTimeline(baseItems(timeline), [
+      {
+        organizationId: null,
+        dateStart: EPOCH,
+        dateEnd: '2021-07-31T00:00:00.000Z',
+      },
+      {
+        organizationId: employer.id,
+        dateStart: '2021-08-01T00:00:00.000Z',
+        dateEnd: null,
+      },
+    ])
+    expect(baseItems(timeline).map((item) => item.skipManualAffiliationSegments)).toEqual([
       true,
-    )
+      true,
+    ])
   })
 
   test('without MSA, base timeline does not skip manual affiliation segments', async ({ qx }) => {
@@ -637,9 +672,22 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
     const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, member.id)
 
     expect(manualItems(timeline)).toHaveLength(0)
-    expect(baseItems(timeline).every((item) => item.skipManualAffiliationSegments === false)).toBe(
-      true,
-    )
+    expectTimeline(baseItems(timeline), [
+      {
+        organizationId: null,
+        dateStart: EPOCH,
+        dateEnd: '2019-05-31T00:00:00.000Z',
+      },
+      {
+        organizationId: org.id,
+        dateStart: '2019-06-01T00:00:00.000Z',
+        dateEnd: null,
+      },
+    ])
+    expect(baseItems(timeline).map((item) => item.skipManualAffiliationSegments)).toEqual([
+      false,
+      false,
+    ])
   })
 
   test('dated MSA keeps its date range on the segment timeline', async ({ qx }) => {
@@ -698,23 +746,33 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
     ])
 
     const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, member.id)
-    const manual = manualItems(timeline)
+    const manual = manualItems(timeline).map((item) => ({
+      organizationId: item.organizationId,
+      dateStart: item.dateStart,
+      dateEnd: item.dateEnd,
+      segmentId: item.segmentId ?? null,
+      matchEmailDomain: item.matchEmailDomain ?? null,
+    }))
 
+    expect(manual).toHaveLength(2)
     expect(manual).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
+        {
           organizationId: sap.id,
           dateStart: EPOCH,
+          dateEnd: null,
           segmentId: kubernetes.id,
-        }),
-        expect.objectContaining({
+          matchEmailDomain: null,
+        },
+        {
           organizationId: orlix.id,
           dateStart: EPOCH,
+          dateEnd: null,
           segmentId: harbor.id,
-        }),
+          matchEmailDomain: null,
+        },
       ]),
     )
-    expect(manual).toHaveLength(2)
   })
 
   test('UI source beats enrichment when dated stints overlap without primary', async ({ qx }) => {
@@ -1017,9 +1075,22 @@ describe('prepareMemberOrganizationAffiliationTimeline', () => {
         matchEmailDomain: 'redhat.com',
       },
     ])
-    expect(
-      baseItems(timeline).every((item) => item.excludeEmailDomains?.includes('redhat.com')),
-    ).toBe(true)
+    expectTimeline(baseItems(timeline), [
+      {
+        organizationId: null,
+        dateStart: EPOCH,
+        dateEnd: '2023-11-30T00:00:00.000Z',
+      },
+      {
+        organizationId: org.id,
+        dateStart: '2023-12-01T00:00:00.000Z',
+        dateEnd: null,
+      },
+    ])
+    expect(baseItems(timeline).map((item) => item.excludeEmailDomains)).toEqual([
+      ['redhat.com'],
+      ['redhat.com'],
+    ])
   })
 })
 
