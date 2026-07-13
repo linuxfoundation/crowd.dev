@@ -1,3 +1,7 @@
+import { XMLParser } from 'fast-xml-parser'
+
+import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+
 import {
   NormalizedNuGetPackage,
   NormalizedNuGetVersion,
@@ -26,17 +30,19 @@ function parsePublishedDate(published: string | undefined): Date | null {
   return !isNaN(date.getTime()) && date.getUTCFullYear() > 1900 ? date : null
 }
 
-const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
+const nuspecParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
 
-function normalizeRepoUrl(url: string | undefined): string | null {
-  if (!url) return null
-  return url
-    .trim()
-    .replace(/\.git$/, '')
-    .replace(/^git\+/, '')
-    .replace(/^git:\/\//, 'https://')
-    .replace(/^http:\/\/github\.com\//, 'https://github.com/')
+export function parseNuspecRepositoryUrl(nuspecXml: string): string | null {
+  try {
+    const doc = nuspecParser.parse(nuspecXml)
+    const url = doc?.package?.metadata?.repository?.['@_url']
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : null
+  } catch {
+    return null
+  }
 }
+
+const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
 
 function isScmUrl(url: string | undefined): boolean {
   if (!url) return false
@@ -64,6 +70,7 @@ export function normalizeNuGetPackage(
   packageId: string,
   searchResult: NuGetSearchItem | null,
   registration: NuGetRegistrationIndex,
+  nuspecXml?: string | null,
 ): NormalizedNuGetPackage {
   const allLeaves = registration.items.flatMap((page) => page.items ?? [])
   const allEntries: NuGetCatalogEntry[] = allLeaves.map((leaf) => leaf.catalogEntry)
@@ -96,10 +103,13 @@ export function normalizeNuGetPackage(
         ...(latestEntry ? [latestEntry] : []),
       ]
     : [...allEntries].reverse()
-  const nuspecRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const catalogRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
+  const nuspecRepoUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl
   const declaredRepositoryUrl = nuspecRepoUrl ?? null
-  const repoCandidate = nuspecRepoUrl ?? (isScmUrl(homepage) ? homepage : null)
-  const repositoryUrl = normalizeRepoUrl(repoCandidate ?? undefined)
+  const repo =
+    (nuspecRepoUrl ? canonicalizeRepoUrl(nuspecRepoUrl) : null) ??
+    (isScmUrl(homepage) ? canonicalizeRepoUrl(homepage) : null)
 
   const keywords = searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
 
@@ -154,7 +164,7 @@ export function normalizeNuGetPackage(
     description,
     homepage: homepage || null,
     declaredRepositoryUrl,
-    repositoryUrl,
+    repo,
     licenses,
     licensesRaw,
     keywords,

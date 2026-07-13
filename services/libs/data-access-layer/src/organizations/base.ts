@@ -12,16 +12,18 @@ import {
   IOrganizationIdentity,
   IQueryTimeseriesParams,
   ITimeseriesDatapoint,
+  OrganizationDbInsert,
+  OrganizationDbRow,
   OrganizationIdentityType,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 import { findLfSegmentByName } from '../segments'
-import { QueryOptions, QueryResult, queryTable, queryTableById } from '../utils'
+import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
 
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
-import { addOrgIdentity, upsertOrgIdentities } from './identities'
+import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
 import { IDbOrganization, IDbOrganizationInput } from './types'
 import { prepareOrganizationData } from './utils'
 
@@ -363,6 +365,80 @@ export async function insertOrganization(
   return id
 }
 
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<OrganizationDbRow[]>
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<OrganizationDbRow[] | number> {
+  if (organizations.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const ts = new Date()
+
+  const query = prepareBulkInsert(
+    'organizations',
+    [
+      'id',
+      'displayName',
+      'description',
+      'logo',
+      'tags',
+      'employees',
+      'revenueRange',
+      'importHash',
+      'location',
+      'isTeamOrganization',
+      'isAffiliationBlocked',
+      'type',
+      'size',
+      'headline',
+      'industry',
+      'founded',
+      'employeeChurnRate',
+      'employeeGrowthRate',
+      'manuallyCreated',
+      'createdById',
+      'updatedById',
+      'tenantId',
+      'createdAt',
+      'updatedAt',
+    ],
+    organizations.map((o) => ({
+      ...o,
+      id: o.id ?? generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+      createdAt: ts,
+      updatedAt: ts,
+      // NOT NULL DEFAULT false — must set while column is in INSERT list
+      isTeamOrganization: o.isTeamOrganization ?? false,
+      isAffiliationBlocked: o.isAffiliationBlocked ?? false,
+      manuallyCreated: o.manuallyCreated ?? false,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
+}
+
 export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
@@ -628,22 +704,25 @@ export async function findOrCreateOrganization(
       }
 
       // create identities
-      for (const i of data.identities) {
-        // add the identity
+      if (data.identities.length > 0) {
         await logExecutionTimeV2(
-          async () =>
-            addOrgIdentity(qe, {
-              organizationId: id,
-              platform: i.platform,
-              type: i.type,
-              value: i.value,
-              verified: i.verified,
-              sourceId: i.sourceId,
-              integrationId,
-              source: i.source,
-            }),
+          () =>
+            insertOrganizationIdentities(
+              qe,
+              data.identities.map((i) => ({
+                organizationId: id,
+                platform: i.platform,
+                type: i.type,
+                value: i.value,
+                verified: i.verified,
+                sourceId: i.sourceId,
+                integrationId,
+                source: i.source,
+              })),
+              false,
+            ),
           log,
-          'organizationService -> findOrCreateOrganization -> addOrgIdentity',
+          'organizationService -> findOrCreateOrganization -> insertOrganizationIdentities',
         )
       }
     }

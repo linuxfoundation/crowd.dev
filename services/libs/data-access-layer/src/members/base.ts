@@ -15,6 +15,8 @@ import {
   ALL_PLATFORM_TYPES,
   IMemberContribution,
   MemberAttributeType,
+  MemberDbInsert,
+  MemberDbRow,
   MemberRow,
   PageData,
   SegmentType,
@@ -75,15 +77,8 @@ export enum MemberField {
   UPDATED_BY_ID = 'updatedById',
 }
 
-export interface MemberCreateInput {
-  id?: string
-  displayName: string
-  joinedAt: string
-  attributes: Record<string, unknown>
-  reach: Partial<Record<string, number>>
-  manuallyCreated?: boolean
-  contributions?: IMemberContribution[]
-}
+/** @deprecated Prefer `MemberDbInsert` from `@crowd/types`. */
+export type MemberCreateInput = MemberDbInsert
 
 export interface MemberUpdateInput {
   joinedAt?: string
@@ -132,13 +127,19 @@ export const MEMBER_INSERT_COLUMNS = [
   'attributes',
   'contributions',
   'createdAt',
+  'createdById',
   'displayName',
+  'enrichedBy',
   'id',
+  'importHash',
   'joinedAt',
+  'manuallyChangedFields',
   'manuallyCreated',
   'reach',
+  'score',
   'tenantId',
   'updatedAt',
+  'updatedById',
 ]
 
 const QUERY_FILTER_COLUMN_MAP: Map<string, { name: string; queryable?: boolean }> = new Map([
@@ -752,15 +753,10 @@ export async function updateMember(
   return qx.selectOneOrNone(`${query} ${condition} returning *`)
 }
 
-export async function createMember(qx: QueryExecutor, data: MemberCreateInput): Promise<MemberRow> {
+export async function createMember(qx: QueryExecutor, data: MemberDbInsert): Promise<MemberDbRow> {
   const id = data.id ?? generateUUIDv1()
   const ts = new Date()
   const dbInstance = getDbInstance()
-  const columnSet = new dbInstance.helpers.ColumnSet(MEMBER_INSERT_COLUMNS, {
-    table: {
-      table: 'members',
-    },
-  })
 
   const dbData: Record<string, unknown> = {
     ...data,
@@ -770,6 +766,16 @@ export async function createMember(qx: QueryExecutor, data: MemberCreateInput): 
     createdAt: ts,
     updatedAt: ts,
   }
+
+  // Omit unset columns so Postgres DEFAULT applies (listing a column with
+  // undefined/null bypasses DEFAULT and inserts NULL instead).
+  const columns = MEMBER_INSERT_COLUMNS.filter((column) => dbData[column] !== undefined)
+
+  const columnSet = new dbInstance.helpers.ColumnSet(columns, {
+    table: {
+      table: 'members',
+    },
+  })
 
   if (Array.isArray(dbData.contributions)) {
     dbData.contributions = JSON.stringify(dbData.contributions)

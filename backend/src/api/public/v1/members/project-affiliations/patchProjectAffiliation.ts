@@ -85,14 +85,16 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
         if (affiliations.length > 0) {
           await insertMemberSegmentAffiliations(
             tx,
-            memberId,
-            projectId,
             affiliations.map((a) => ({
+              memberId,
+              segmentId: projectId,
               organizationId: a.organizationId,
               dateStart: a.dateStart.toISOString(),
               dateEnd: a.dateEnd?.toISOString() ?? null,
+              verified: true,
               verifiedBy: verifiedBy!,
             })),
+            true,
           )
         }
       })
