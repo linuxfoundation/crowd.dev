@@ -111,6 +111,27 @@ describe('compareVersion — nuget (semver)', () => {
   })
 })
 
+describe('compareVersion — go (semver)', () => {
+  it.each([
+    ['v1.2.3', 'v1.2.4', -1],
+    ['v1.2.4', 'v1.2.3', 1],
+    ['v1.2.3', 'v1.2.3', 0],
+    ['v1.10.0', 'v1.9.0', 1], // numeric, not lex
+    ['v1.0.0-alpha', 'v1.0.0', -1], // prerelease < release
+    ['v0.0.0-20220314234659-1baeb1ce4c0b', 'v0.0.0-20220315000000-2caec2d5d1c1', -1], // pseudo-versions
+  ])('compareVersion("go", %s, %s) sign = %s', (a, b, expected) => {
+    expect(sign(compareVersion('go', a, b))).toBe(expected)
+  })
+
+  it('returns null for unparseable go versions', () => {
+    expect(compareVersion('go', 'not-a-version', 'v1.0.0')).toBeNull()
+  })
+
+  it('rejects titlecase "Go" — production storage is always lowercase', () => {
+    expect(compareVersion('Go', 'v1.0.0', 'v2.0.0')).toBeNull()
+  })
+})
+
 describe('compareVersion — rubygems (Gem::Version-style)', () => {
   it.each([
     ['1.0.0', '1.0.1', -1],

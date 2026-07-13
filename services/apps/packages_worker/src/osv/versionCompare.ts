@@ -162,7 +162,7 @@ function compareRubyGems(a: string, b: string): number | null {
   return 0
 }
 
-const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget'])
+const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget', 'go'])
 
 // Ecosystem names are stored lowercase in packages-db per ADR-0001 §OSV
 // "Ecosystem normalization" — 'npm', 'maven', 'cargo'. Callers (deriveCriticalFlag)
