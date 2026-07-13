@@ -44,8 +44,15 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
 
     const combinedOutput = `${stdout}\n${stderr}`
 
+    if (combinedOutput.includes('401 Unauthorized')) {
+      svc.log.warn('Detected 401 error in privateer output - token invalid or expired!')
+      throw ApplicationFailure.create({
+        message: 'GitHub token invalid or expired',
+        type: 'Token403Error',
+      })
+    }
     if (combinedOutput.includes('403')) {
-      svc.log.warn('Detected 403 error in privateer output!')
+      svc.log.warn('Detected 403 error in privateer output - token rate-limited!')
       throw ApplicationFailure.create({
         message: 'GitHub token rate-limited',
         type: 'Token403Error',
@@ -54,10 +61,17 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
   } catch (err) {
     svc.log.error(`Privateer run failed: ${err.message}`)
 
-    // check for 403 in captured output if available
+    // check for auth errors in captured output if available
     const output = `${err.stdout || ''}\n${err.stderr || ''}`
+    if (output.includes('401 Unauthorized')) {
+      svc.log.warn('Detected 401 error in failed privateer output - token invalid or expired!')
+      throw ApplicationFailure.create({
+        message: 'GitHub token invalid or expired',
+        type: 'Token403Error',
+      })
+    }
     if (output.includes('403')) {
-      svc.log.warn('Detected 403 error in failed privateer output!')
+      svc.log.warn('Detected 403 error in failed privateer output - token rate-limited!')
       throw ApplicationFailure.create({
         message: 'GitHub token rate-limited',
         type: 'Token403Error',
