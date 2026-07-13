@@ -41,8 +41,8 @@ const { setJobStep } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 3 },
 })
 
-// The dependent-counts ingest runs three independent ways, one per source of reverse-dependent data:
-//   - 'edges' : NPM/MAVEN/PYPI/CARGO from the deps.dev `Dependents` reverse index (single SELECT)
+// The dependent-counts ingest runs four independent ways, one per source of reverse-dependent data:
+//   - 'edges'    : NPM/MAVEN/PYPI/CARGO from the deps.dev `Dependents` reverse index (single SELECT)
 //   - 'go'       : GO from the GoRequirementsLatest exact reverse transitive closure (BQ script)
 //   - 'nuget'    : NUGET from the NuGetRequirementsLatest exact reverse transitive closure (BQ script)
 //   - 'rubygems' : RUBYGEMS from the RubyGemsRequirementsLatest exact reverse transitive closure (BQ script)
