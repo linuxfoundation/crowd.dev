@@ -26,7 +26,7 @@ export interface GoScanCursor {
   after: string
 }
 
-type GoRow = { id: string; purl: string; name: string }
+type GoRow = { id: string; purl: string; name: string; declaredRepositoryUrl: string | null }
 
 // Two independent purl-keyset cursors — one for critical packages, one for everything else —
 // each ordered/paginated purely by purl so WHERE and ORDER BY always match (no gaps, no
@@ -42,7 +42,7 @@ async function getGoBatch(
 ): Promise<GoRow[]> {
   if (batchSize <= 0) return []
   return qx.select(
-    `SELECT id::text AS id, purl, name FROM packages
+    `SELECT id::text AS id, purl, name, declared_repository_url AS "declaredRepositoryUrl" FROM packages
      WHERE ecosystem = 'go' AND is_critical = $(isCritical) AND purl > $(after)
      ORDER BY purl ASC
      LIMIT $(limit)`,
@@ -91,6 +91,11 @@ export async function enrichGoVersionsBatch(
       return
     }
     const repo = result.repoUrl ? canonicalizeRepoUrl(result.repoUrl) : null
+    const declaredRepo = repo
+      ? null
+      : row.declaredRepositoryUrl
+        ? canonicalizeRepoUrl(row.declaredRepositoryUrl)
+        : null
 
     await qx.tx(async (t) => {
       const changed = await t.selectOne(
@@ -114,7 +119,7 @@ export async function enrichGoVersionsBatch(
         {
           version: result.version,
           releaseAt: result.releaseAt,
-          repoUrl: repo?.url ?? null,
+          repoUrl: repo?.url ?? declaredRepo?.url ?? null,
           purl: row.purl,
         },
       )
