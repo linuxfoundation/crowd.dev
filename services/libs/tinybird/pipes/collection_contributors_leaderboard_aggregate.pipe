@@ -1,0 +1,54 @@
+DESCRIPTION >
+    - `collection_contributors_leaderboard_aggregate.pipe` serves the contributors leaderboard widget for a collection (an arbitrary list of projects).
+    - Returns the top 20 contributors ranked by total contribution count, aggregated/deduplicated across all projects in the list (a contributor active on multiple projects is summed once, not listed per project).
+    - Parameters:
+    - `ids`: Required array of project ids (as returned by `project_insights.pipe`'s `id`/`ids`) to aggregate over.
+    - Response:
+    - `id`: member id.
+    - `avatar`: member avatar URL.
+    - `displayName`: member display name.
+    - `githubHandleArray`: member's GitHub usernames.
+    - `contributionCount`: total contribution count for the member, summed across all matched projects.
+
+TAGS "Insights, Widget", "Collection"
+
+NODE collection_contributors_leaderboard_aggregate_projects
+DESCRIPTION >
+    Resolves the input project ids to their segment ids, since activity data is keyed by segmentId, not project id
+
+SQL >
+    %
+    SELECT id, segmentId
+    FROM project_insights_copy_ds
+    WHERE
+        type = 'project'
+        AND id IN {{ Array(ids, 'String', description="Filter by project id list", required=True) }}
+
+NODE collection_contributors_leaderboard_aggregate_members
+DESCRIPTION >
+    Sums contribution counts per member across the matched projects' segments
+
+SQL >
+    SELECT ar.memberId AS memberId, count(ar.activityId) AS contributionCount
+    FROM activityRelations_deduplicated_cleaned_bucket_union AS ar
+    WHERE
+        ar.memberId != ''
+        AND ar.segmentId IN (SELECT segmentId FROM collection_contributors_leaderboard_aggregate_projects)
+    GROUP BY ar.memberId
+    ORDER BY contributionCount DESC, memberId DESC
+    LIMIT 20
+
+NODE collection_contributors_leaderboard_aggregate_results
+DESCRIPTION >
+    Joins the top members with their profile data
+
+SQL >
+    SELECT
+        m.id AS id,
+        m.avatar AS avatar,
+        m.displayName AS displayName,
+        m.githubHandleArray AS githubHandleArray,
+        ma.contributionCount AS contributionCount
+    FROM collection_contributors_leaderboard_aggregate_members AS ma
+    INNER JOIN members_sorted AS m ON m.id = ma.memberId
+    ORDER BY contributionCount DESC, id DESC

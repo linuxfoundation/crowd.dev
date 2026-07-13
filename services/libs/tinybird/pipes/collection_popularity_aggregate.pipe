@@ -1,0 +1,42 @@
+DESCRIPTION >
+    - `collection_popularity_aggregate.pipe` serves aggregate popularity metrics for a collection (an arbitrary list of projects).
+    - Returns a single row with stars and forks summed across all projects in the list, for both the current and previous 365-day windows, so the frontend can compute a trend delta.
+    - Stars and forks are not deduplication-sensitive (a star on one repo is independent of a star on another), so a plain SUM across matched projects is correct.
+    - Parameters:
+    - `ids`: Required array of project ids (as returned by `project_insights.pipe`'s `id`/`ids`) to aggregate over.
+    - Response:
+    - `totalStars`: sum of `starsLast365Days` across all matched projects.
+    - `totalForks`: sum of `forksLast365Days` across all matched projects.
+    - `starsPrevious365Days`: sum of `starsPrevious365Days` across all matched projects.
+    - `forksPrevious365Days`: sum of `forksPrevious365Days` across all matched projects.
+
+TAGS "Insights, Widget", "Collection"
+
+NODE collection_popularity_aggregate_projects
+DESCRIPTION >
+    Resolves the input project ids to their per-project popularity fields
+
+SQL >
+    %
+    SELECT
+        id,
+        starsLast365Days,
+        forksLast365Days,
+        starsPrevious365Days,
+        forksPrevious365Days
+    FROM project_insights_copy_ds
+    WHERE
+        type = 'project'
+        AND id IN {{ Array(ids, 'String', description="Filter by project id list", required=True) }}
+
+NODE collection_popularity_aggregate_results
+DESCRIPTION >
+    Sums stars and forks across matched projects for the current and previous 365-day windows
+
+SQL >
+    SELECT
+        sum(starsLast365Days) AS totalStars,
+        sum(forksLast365Days) AS totalForks,
+        sum(starsPrevious365Days) AS starsPrevious365Days,
+        sum(forksPrevious365Days) AS forksPrevious365Days
+    FROM collection_popularity_aggregate_projects

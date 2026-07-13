@@ -1,0 +1,37 @@
+DESCRIPTION >
+    - `collection_insights_aggregate.pipe` serves aggregate insights metrics for a collection (an arbitrary list of projects).
+    - Returns a single row with metrics aggregated across all projects in the list, not one row per project.
+    - Parameters:
+    - `ids`: Required array of project ids (as returned by `project_insights.pipe`'s `id`/`ids`) to aggregate over.
+    - Response:
+    - `projectCount`: count of distinct project ids from the input list that matched an existing project.
+    - `uniqueContributorCount`: total unique contributors across all matched projects, deduplicated (a contributor active on multiple projects in the list is counted once).
+    - `avgHealthScore`: average of each matched project's health score, rounded.
+
+TAGS "Insights, Widget", "Collection"
+
+NODE collection_insights_aggregate_projects
+DESCRIPTION >
+    Resolves the input project ids to their segment ids, since activity data is keyed by segmentId, not project id
+
+SQL >
+    %
+    SELECT id, segmentId, healthScore
+    FROM project_insights_copy_ds
+    WHERE
+        type = 'project'
+        AND id IN {{ Array(ids, 'String', description="Filter by project id list", required=True) }}
+
+NODE collection_insights_aggregate_results
+DESCRIPTION >
+    Aggregates health score across matched projects and counts unique contributors across their segments in one pass
+
+SQL >
+    SELECT
+        (SELECT count(distinct id) FROM collection_insights_aggregate_projects) AS projectCount,
+        uniq(ar.memberId) AS uniqueContributorCount,
+        (SELECT round(avg(healthScore)) FROM collection_insights_aggregate_projects) AS avgHealthScore
+    FROM activityRelations_deduplicated_cleaned_bucket_union AS ar
+    WHERE
+        ar.memberId != ''
+        AND ar.segmentId IN (SELECT segmentId FROM collection_insights_aggregate_projects)
