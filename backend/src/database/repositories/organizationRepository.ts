@@ -33,7 +33,6 @@ import {
   upsertOrgAttributes,
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
-import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   findSegmentById,
   getSegmentMergeSuggestionCounts,
@@ -49,6 +48,7 @@ import {
   SegmentData,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import {
   IFetchOrganizationMergeSuggestionArgs,
   SimilarityScoreRange,

@@ -3,9 +3,10 @@ import { z } from 'zod'
 
 import { captureApiChange, organizationCreateAction } from '@crowd/audit-logs'
 import { BadRequestError, InternalError, normalizeHostname } from '@crowd/common'
-import { findOrCreateOrganization, optionsQx } from '@crowd/data-access-layer'
+import { findOrCreateOrganization } from '@crowd/data-access-layer'
 import { OrganizationAttributeSource, OrganizationIdentityType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
