@@ -11,6 +11,7 @@ export type OsspckgsJobKind =
   | 'dependent_counts'
   | 'dependent_counts_go'
   | 'dependent_counts_nuget'
+  | 'dependent_counts_rubygems'
   | 'scorecard_repos'
   | 'scorecard_checks'
   | 'ranking'

@@ -7,6 +7,7 @@ import {
   buildDependentCountsSql,
   buildGoDependentCountsSql,
   buildNugetDependentCountsSql,
+  buildRubygemsDependentCountsSql,
 } from '../queries/dependentCountsSql'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
@@ -42,16 +43,17 @@ const { setJobStep } = proxyActivities<typeof depsDevActivities>({
 
 // The dependent-counts ingest runs three independent ways, one per source of reverse-dependent data:
 //   - 'edges' : NPM/MAVEN/PYPI/CARGO from the deps.dev `Dependents` reverse index (single SELECT)
-//   - 'go'    : GO from the GoRequirementsLatest exact reverse transitive closure (BQ script)
-//   - 'nuget' : NUGET from the NuGetRequirementsLatest exact reverse transitive closure (BQ script)
-// All three produce the same three columns (dependent_count, transitive_dependent_count,
+//   - 'go'       : GO from the GoRequirementsLatest exact reverse transitive closure (BQ script)
+//   - 'nuget'    : NUGET from the NuGetRequirementsLatest exact reverse transitive closure (BQ script)
+//   - 'rubygems' : RUBYGEMS from the RubyGemsRequirementsLatest exact reverse transitive closure (BQ script)
+// All four produce the same three columns (dependent_count, transitive_dependent_count,
 // dependent_repos_count) — deps.dev gives the edge systems their transitive graph directly, while
-// GO/NUGET compute it via the semi-naive closure script (isScript, see ADR-0004 + dependentCountsSql).
-// Each way is its own job kind, staging table, guard baseline, and purl-disjoint merge — so a corrupt
-// edge snapshot aborts only the edge way and the GO/NUGET counts (manifest-sourced, unaffected) still
-// update. 'edges' keeps the original `dependent_counts` kind so existing job history / monitor / guard
-// baseline stay continuous.
-export type DependentCountsVariant = 'edges' | 'go' | 'nuget'
+// GO/NUGET/RUBYGEMS compute it via the semi-naive closure script (isScript, see ADR-0004 +
+// dependentCountsSql). Each way is its own job kind, staging table, guard baseline, and purl-disjoint
+// merge — so a corrupt edge snapshot aborts only the edge way and the manifest-sourced counts
+// (unaffected) still update. 'edges' keeps the original `dependent_counts` kind so existing job
+// history / monitor / guard baseline stay continuous.
+export type DependentCountsVariant = 'edges' | 'go' | 'nuget' | 'rubygems'
 
 interface VariantConfig {
   jobKind: OsspckgsJobKind
@@ -73,6 +75,7 @@ interface VariantConfig {
 const EDGES_STAGING = 'staging.osspckgs_dependent_counts_raw'
 const GO_STAGING = 'staging.osspckgs_dependent_counts_go_raw'
 const NUGET_STAGING = 'staging.osspckgs_dependent_counts_nuget_raw'
+const RUBYGEMS_STAGING = 'staging.osspckgs_dependent_counts_rubygems_raw'
 
 // All three ways now produce the same shape: purl + the three count columns. Each variant has its own
 // staging table (parallel-safe) but identical DDL/merge; the merges touch disjoint purl spaces (one
@@ -139,6 +142,18 @@ const VARIANTS: Record<DependentCountsVariant, VariantConfig> = {
     pgColumns: PG_COLUMNS,
     maxBytesGb: 200,
     buildSql: (snapshotDate) => buildNugetDependentCountsSql(snapshotDate),
+    isScript: true,
+  },
+  // RubyGems: same shape as NUGET (manifest-sourced closure), similarly small corpus
+  // (~1.7M pkgs / ~4.5M runtime edges — verified via BQ 2026-07-13).
+  rubygems: {
+    jobKind: 'dependent_counts_rubygems',
+    stagingTable: RUBYGEMS_STAGING,
+    stagingDdl: stagingDdl(RUBYGEMS_STAGING),
+    mergeSql: dependentCountsMerge(RUBYGEMS_STAGING),
+    pgColumns: PG_COLUMNS,
+    maxBytesGb: 200,
+    buildSql: (snapshotDate) => buildRubygemsDependentCountsSql(snapshotDate),
     isScript: true,
   },
 }
