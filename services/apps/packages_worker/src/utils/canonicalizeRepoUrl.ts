@@ -56,9 +56,12 @@ export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
 
   // ssh:// with an scp-style `host:path` (colon instead of slash) is not valid URL
   // syntax — the part after `:` looks like a port to the URL parser and throws.
-  // Rewrite it before the generic ssh://git@host/path case below.
+  // Rewrite it before the generic ssh://git@host/path case below. A numeric-only
+  // segment before the next `/` is a real port (e.g. `ssh://git@host:2222/owner/repo`),
+  // not an scp-style owner — leave those for the generic case, which URL parses fine.
   const sshScp = s.match(/^ssh:\/\/git@([^/:]+):(.+)$/)
-  if (sshScp) {
+  const sshScpIsPort = sshScp ? /^\d+$/.test(sshScp[2].split('/')[0]) : false
+  if (sshScp && !sshScpIsPort) {
     s = `https://${sshScp[1]}/${sshScp[2]}`
   } else {
     s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')

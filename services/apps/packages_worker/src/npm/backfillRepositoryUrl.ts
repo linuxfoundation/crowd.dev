@@ -1,4 +1,3 @@
-import { deleteMavenPackageRepoLinks } from '@crowd/data-access-layer'
 import {
   NpmRepoUrlRow,
   getOrCreateRepoByUrl,
@@ -103,7 +102,8 @@ export async function backfillNpmRepositoryUrls(
 
     const updates: { id: string; repositoryUrl: string | null }[] = []
     // Rows that had a link and now change to a different one — their stale 'declared' link is pruned.
-    const pruneTargets: number[] = []
+    // Kept as strings (packages.id is bigint) — Number() coercion would lose precision above 2^53.
+    const pruneTargets: string[] = []
     // Rows that gained/changed a canonical URL — their repo link is (re)written after the update.
     const linkTargets: { id: string; repositoryUrl: string; host: string }[] = []
     for (const row of rows) {
@@ -120,7 +120,7 @@ export async function backfillNpmRepositoryUrls(
       else totals.rewritten++
       updates.push({ id: row.id, repositoryUrl: desired })
       if (row.repositoryUrl !== null && desired !== row.repositoryUrl) {
-        pruneTargets.push(Number(row.id))
+        pruneTargets.push(row.id)
       }
       if (canonical)
         linkTargets.push({ id: row.id, repositoryUrl: canonical.url, host: canonical.host })
@@ -135,7 +135,13 @@ export async function backfillNpmRepositoryUrls(
       await withDeadlockRetry(() =>
         qx.tx(async (t: QueryExecutor) => {
           await updateNpmRepositoryUrls(t, updates)
-          if (pruneTargets.length > 0) await deleteMavenPackageRepoLinks(t, pruneTargets)
+          if (pruneTargets.length > 0) {
+            await t.result(
+              `DELETE FROM package_repos
+               WHERE package_id = ANY($(packageIds)::bigint[]) AND source = 'declared'`,
+              { packageIds: pruneTargets },
+            )
+          }
           for (const target of linkTargets) {
             const { id: repoId } = await getOrCreateRepoByUrl(t, target.repositoryUrl, target.host)
             await upsertPackageRepo(t, target.id, repoId, 'declared', 0.8)

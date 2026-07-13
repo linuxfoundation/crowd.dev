@@ -28,6 +28,7 @@ describe('canonicalizeRepoUrl', () => {
       'https://github.com/1inch/limit-order-protocol-utils',
       'github',
     ],
+    ['ssh://git@github.com:2222/foo/bar.git', 'https://github.com/foo/bar', 'github'],
   ])('canonicalizes %s', (input, expectedUrl, expectedHost) => {
     expect(canonicalizeRepoUrl(input)).toEqual({ url: expectedUrl, host: expectedHost })
   })
