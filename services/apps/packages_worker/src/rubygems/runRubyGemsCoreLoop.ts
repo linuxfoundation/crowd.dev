@@ -1,10 +1,12 @@
 import {
   QueryExecutor,
   RubyGemsPackageToSync,
+  getOrCreateRepoByUrl,
   listRubyGemsPackagesToSync,
   logAuditFieldChange,
   recordDownloadSnapshot,
   upsertPackage,
+  upsertPackageRepo,
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -45,7 +47,6 @@ async function markPackageError(qx: QueryExecutor, pkg: RubyGemsPackageToSync): 
     description: null,
     homepage: null,
     declaredRepositoryUrl: null,
-    repositoryUrl: null,
     licenses: null,
     licensesRaw: null,
     latestVersion: pkg.latestVersion,
@@ -74,7 +75,6 @@ async function processPackage(
         description: null,
         homepage: null,
         declaredRepositoryUrl: null,
-        repositoryUrl: null,
         licenses: null,
         licensesRaw: null,
         latestVersion: pkg.latestVersion,
@@ -108,7 +108,7 @@ async function processPackage(
         description: normalized.description,
         homepage: normalized.homepage,
         declaredRepositoryUrl: normalized.declaredRepositoryUrl,
-        repositoryUrl: normalized.repositoryUrl,
+        repositoryUrl: normalized.repo?.url ?? null,
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         latestVersion: normalized.latestVersion,
@@ -116,6 +116,24 @@ async function processPackage(
         ingestionSource: 'rubygems-registry',
       })
       pkgChanged.forEach((f) => changed.add(f))
+
+      if (normalized.repo) {
+        const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
+          t,
+          normalized.repo.url,
+          normalized.repo.host,
+        )
+        repoChanged.forEach((f) => changed.add(f))
+
+        const linkChanged = await upsertPackageRepo(
+          t,
+          packageDbId.toString(),
+          repoId,
+          'declared',
+          0.8,
+        )
+        linkChanged.forEach((f) => changed.add(f))
+      }
 
       if (normalized.totalDownloads > 0) {
         const dlChanged = await recordDownloadSnapshot(t, {

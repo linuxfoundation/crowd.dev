@@ -1,3 +1,5 @@
+import { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
+
 export interface BatchResult {
   processed: number
   skipped: number
@@ -43,7 +45,7 @@ export interface NormalizedRubyGemsPackage {
   description: string | null
   homepage: string | null
   declaredRepositoryUrl: string | null
-  repositoryUrl: string | null
+  repo: CanonicalRepo | null
   licenses: string[] | null
   licensesRaw: string | null
   latestVersion: string | null

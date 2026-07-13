@@ -1,4 +1,4 @@
-import { normalizeScmUrl } from '../maven/extract'
+import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
 
 import {
   NormalizedRubyGemsOwner,
@@ -22,7 +22,7 @@ export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRu
     description: nonEmpty(doc.info),
     homepage: nonEmpty(doc.homepage_uri),
     declaredRepositoryUrl,
-    repositoryUrl: normalizeScmUrl(declaredRepositoryUrl),
+    repo: declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null,
     licenses,
     licensesRaw: licenses ? licenses.join(', ') : null,
     latestVersion: nonEmpty(doc.version),
