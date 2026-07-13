@@ -142,12 +142,13 @@ export async function upsertOrgIdentities(
         platform: i.platform,
         type: i.type,
         value: i.value,
-        verified: i.verified,
+        // NOT NULL DEFAULT false — undefined would insert NULL
+        verified: i.verified ?? false,
         source: i.source ?? null,
         sourceId: i.sourceId ?? null,
         integrationId: integrationId ?? null,
       })
-    } else if (existing.verified !== i.verified) {
+    } else if (i.verified !== undefined && existing.verified !== i.verified) {
       toUpdate.push(i)
     }
   }
