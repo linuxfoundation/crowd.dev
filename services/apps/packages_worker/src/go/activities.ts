@@ -129,11 +129,12 @@ export async function enrichGoVersionsBatch(
         changed?.r_changed ? 'packages.repository_url' : null,
       ].filter(Boolean) as string[]
 
-      if (repo) {
+      const repoToLink = repo ?? declaredRepo
+      if (repoToLink) {
         const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
           t,
-          repo.url,
-          repo.host,
+          repoToLink.url,
+          repoToLink.host,
         )
         changedFields.push(...repoChanged)
 
