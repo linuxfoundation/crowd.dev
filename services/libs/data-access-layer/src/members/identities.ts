@@ -272,17 +272,9 @@ export async function insertMemberIdentities(
       'verifiedBy',
     ],
     identities.map((i) => ({
+      ...i,
       id: i.id ?? generateUUIDv1(),
-      memberId: i.memberId,
       tenantId: DEFAULT_TENANT_ID,
-      integrationId: i.integrationId ?? null,
-      platform: i.platform,
-      source: i.source ?? null,
-      sourceId: i.sourceId ?? null,
-      value: i.value,
-      type: i.type,
-      verified: i.verified ?? true,
-      verifiedBy: i.verifiedBy ?? null,
     })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,
@@ -293,32 +285,6 @@ export async function insertMemberIdentities(
   }
 
   return qx.result(query)
-}
-
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: MemberIdentityDbInsert,
-  failOnConflict: boolean,
-  returnRows: true,
-): Promise<MemberIdentityDbRow>
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: MemberIdentityDbInsert,
-  failOnConflict?: boolean,
-  returnRows?: false,
-): Promise<void>
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: MemberIdentityDbInsert,
-  failOnConflict = false,
-  returnRows = false,
-): Promise<MemberIdentityDbRow | void> {
-  if (returnRows) {
-    const rows = await insertMemberIdentities(qx, [i], failOnConflict, true)
-    return rows[0]
-  }
-
-  await insertMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(

@@ -13,15 +13,5 @@ export async function upsertMemberOrganizationAffiliationOverrides(
     return []
   }
 
-  return changeMemberOrganizationAffiliationOverrides(
-    qx,
-    data.map((row) => ({
-      id: row.id,
-      memberId: row.memberId,
-      memberOrganizationId: row.memberOrganizationId,
-      allowAffiliation: row.allowAffiliation ?? undefined,
-      isPrimaryWorkExperience: row.isPrimaryWorkExperience ?? undefined,
-    })),
-    true,
-  )
+  return changeMemberOrganizationAffiliationOverrides(qx, data, true)
 }

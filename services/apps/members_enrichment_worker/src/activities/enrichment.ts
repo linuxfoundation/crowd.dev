@@ -13,11 +13,11 @@ import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
+  insertMemberIdentities,
   updateMemberAttributes,
   updateMemberContributions,
   updateMemberReach,
 } from '@crowd/data-access-layer'
-import { createMemberIdentity } from '@crowd/data-access-layer'
 import { findMemberIdentityWithTheMostActivityInPlatform as getMemberMostActiveIdentity } from '@crowd/data-access-layer/src/activityRelations'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/attributeSettings'
@@ -308,21 +308,19 @@ export async function updateMemberUsingSquashedPayload(
     // process identities
     if (squashedPayload.identities.length > 0) {
       svc.log.debug({ memberId }, 'Adding to member identities!')
-      for (const i of squashedPayload.identities) {
-        didUpdate = true
-        await createMemberIdentity(
-          qx,
-          {
-            memberId,
-            platform: i.platform,
-            type: i.type,
-            value: i.value,
-            verified: i.verified,
-            source: 'enrichment',
-          },
-          true,
-        )
-      }
+      didUpdate = true
+      await insertMemberIdentities(
+        qx,
+        squashedPayload.identities.map((i) => ({
+          memberId,
+          platform: i.platform,
+          type: i.type,
+          value: i.value,
+          verified: i.verified,
+          source: 'enrichment',
+        })),
+        true,
+      )
     }
 
     // process contributions

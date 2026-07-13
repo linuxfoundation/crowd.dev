@@ -118,7 +118,6 @@ export async function insertMemberSegmentAffiliations(
     affiliations.map((a) => ({
       ...a,
       id: a.id ?? generateUUIDv1(),
-      // NOT NULL column — must set explicitly while listed in INSERT, else undefined → NULL
       verified: a.verified ?? false,
     })),
     failOnConflict ? undefined : 'DO NOTHING',

@@ -190,8 +190,6 @@ export async function insertSegments(
     return returnRows ? [] : 0
   }
 
-  const ts = new Date()
-
   const query = prepareBulkInsert(
     'segments',
     [
@@ -215,31 +213,14 @@ export async function insertSegments(
       // `type` is GENERATED ALWAYS from parentSlug/grandparentSlug — do not insert
       'maturity',
       'tenantId',
-      'createdAt',
-      'updatedAt',
     ],
     segments.map((s) => ({
+      ...s,
       id: s.id ?? generateUUIDv1(),
-      slug: s.slug,
-      name: s.name ?? null,
-      url: s.url ?? null,
+      tenantId: DEFAULT_TENANT_ID,
+      // NOT NULL with defaults — must set while column is in INSERT list
       status: s.status ?? SegmentStatus.ACTIVE,
       isLF: s.isLF ?? true,
-      parentName: s.parentName ?? null,
-      grandparentName: s.grandparentName ?? null,
-      parentSlug: s.parentSlug ?? null,
-      grandparentSlug: s.grandparentSlug ?? null,
-      description: s.description ?? null,
-      sourceId: s.sourceId ?? null,
-      sourceParentId: s.sourceParentId ?? null,
-      customActivityTypes: s.customActivityTypes ?? {},
-      activityChannels: s.activityChannels ?? {},
-      parentId: s.parentId ?? null,
-      grandparentId: s.grandparentId ?? null,
-      maturity: s.maturity ?? null,
-      tenantId: DEFAULT_TENANT_ID,
-      createdAt: ts,
-      updatedAt: ts,
     })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,

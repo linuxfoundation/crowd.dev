@@ -337,17 +337,13 @@ export async function insertMemberOrganizations(
       'updatedAt',
     ],
     organizations.map((o) => ({
+      ...o,
       id: o.id ?? generateUUIDv1(),
-      memberId: o.memberId,
-      organizationId: o.organizationId,
-      dateStart: o.dateStart ?? null,
-      dateEnd: o.dateEnd ?? null,
-      title: o.title ?? null,
-      source: o.source ?? null,
-      verified: o.verified ?? false,
-      verifiedBy: o.verifiedBy ?? null,
+      // NOT NULL, no DB default
       createdAt: ts,
       updatedAt: ts,
+      // NOT NULL DEFAULT false — must set while column is in INSERT list
+      verified: o.verified ?? false,
     })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,

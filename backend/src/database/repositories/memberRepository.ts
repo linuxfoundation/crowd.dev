@@ -18,7 +18,7 @@ import {
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
 import {
   OrganizationField,
-  createMemberIdentity,
+  insertMemberIdentities,
   deleteMemberIdentities,
   deleteMemberIdentitiesByCombinations,
   findAlreadyExistingVerifiedIdentities,
@@ -159,8 +159,9 @@ class MemberRepository {
     const subprojectIds = await getSegmentSubprojectIds(qx, currentSegments)
 
     if (data.identities) {
-      for (const i of data.identities as IMemberIdentity[]) {
-        await createMemberIdentity(qx, {
+      await insertMemberIdentities(
+        qx,
+        (data.identities as IMemberIdentity[]).map((i) => ({
           memberId: record.id,
           platform: i.platform,
           type: i.type,
@@ -169,15 +170,16 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified,
           source: i.source,
-        })
-      }
+        })),
+      )
     } else if (data.username) {
       const username: PlatformIdentities = mapUsernameToIdentities(data.username)
 
+      const identitiesToInsert = []
       for (const platform of Object.keys(username) as PlatformType[]) {
         const identities: any[] = username[platform]
         for (const identity of identities) {
-          await createMemberIdentity(qx, {
+          identitiesToInsert.push({
             memberId: record.id,
             platform,
             value: identity.value ? identity.value : identity.username,
@@ -188,6 +190,10 @@ class MemberRepository {
             source: identity.source || 'ui',
           })
         }
+      }
+
+      if (identitiesToInsert.length > 0) {
+        await insertMemberIdentities(qx, identitiesToInsert)
       }
     }
 
@@ -1049,8 +1055,9 @@ class MemberRepository {
     }
 
     if (data.identitiesToCreate && data.identitiesToCreate.length > 0) {
-      for (const i of data.identitiesToCreate) {
-        await createMemberIdentity(qx, {
+      await insertMemberIdentities(
+        qx,
+        data.identitiesToCreate.map((i) => ({
           memberId: record.id,
           platform: i.platform,
           value: i.value,
@@ -1059,8 +1066,8 @@ class MemberRepository {
           integrationId: i.integrationId || null,
           verified: i.verified !== undefined ? i.verified : !!manualChange,
           source: i.source,
-        })
-      }
+        })),
+      )
     }
 
     if (data.identitiesToUpdate && data.identitiesToUpdate.length > 0) {
@@ -1094,6 +1101,7 @@ class MemberRepository {
         const platformsToDelete: string[] = []
         const valuesToDelete: string[] = []
         const typesToDelete: MemberIdentityType[] = []
+        const identitiesToInsert = []
 
         for (const platform of platforms) {
           const identities = data.username[platform]
@@ -1112,7 +1120,7 @@ class MemberRepository {
               (identity.username && identity.username !== '') ||
               (identity.value && identity.value !== '')
             ) {
-              await createMemberIdentity(qx, {
+              identitiesToInsert.push({
                 memberId: record.id,
                 platform,
                 value: identity.value ? identity.value : identity.username,
@@ -1124,6 +1132,10 @@ class MemberRepository {
               })
             }
           }
+        }
+
+        if (identitiesToInsert.length > 0) {
+          await insertMemberIdentities(qx, identitiesToInsert)
         }
 
         if (platformsToDelete.length > 0) {

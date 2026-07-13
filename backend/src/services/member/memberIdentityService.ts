@@ -3,7 +3,7 @@ import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { Error404, Error409 } from '@crowd/common'
-import { createMemberIdentity, findIdentitiesForMembers } from '@crowd/data-access-layer'
+import { insertMemberIdentities, findIdentitiesForMembers } from '@crowd/data-access-layer'
 import {
   deleteMemberIdentity,
   fetchMemberIdentities,
@@ -77,7 +77,7 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Create member identity
-          await createMemberIdentity(qx, { ...data, memberId })
+          await insertMemberIdentities(qx, [{ ...data, memberId }])
 
           await touchMemberUpdatedAt(qx, memberId)
 
@@ -151,9 +151,10 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Create member identities
-          for (const identity of data) {
-            await createMemberIdentity(qx, { ...identity, memberId })
-          }
+          await insertMemberIdentities(
+            qx,
+            data.map((identity) => ({ ...identity, memberId })),
+          )
 
           await touchMemberUpdatedAt(qx, memberId)
 
