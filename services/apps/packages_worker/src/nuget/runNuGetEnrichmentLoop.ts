@@ -17,7 +17,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import { getNuGetConfig } from '../config'
 
-import { fetchRegistration, fetchSearch } from './client'
+import { fetchNuspec, fetchRegistration, fetchSearch } from './client'
 import { normalizeNuGetPackage } from './normalize'
 import { BatchResult, isNuGetFetchError } from './types'
 
@@ -98,7 +98,15 @@ async function processPackage(
 
   const searchItem = isNuGetFetchError(searchResult) ? null : searchResult
 
-  const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult)
+  const preliminary = normalizeNuGetPackage(packageId, searchItem, registrationResult)
+
+  let nuspecXml: string | null = null
+  if (preliminary.latestVersion) {
+    const nuspecResult = await fetchNuspec(packageId, preliminary.latestVersion)
+    nuspecXml = isNuGetFetchError(nuspecResult) ? null : nuspecResult
+  }
+
+  const normalized = normalizeNuGetPackage(packageId, searchItem, registrationResult, nuspecXml)
 
   await withDeadlockRetry(() =>
     qx.tx(async (t) => {

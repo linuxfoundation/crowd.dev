@@ -1,3 +1,5 @@
+import { XMLParser } from 'fast-xml-parser'
+
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
 
 import {
@@ -28,6 +30,18 @@ function parsePublishedDate(published: string | undefined): Date | null {
   return !isNaN(date.getTime()) && date.getUTCFullYear() > 1900 ? date : null
 }
 
+const nuspecParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
+
+export function parseNuspecRepositoryUrl(nuspecXml: string): string | null {
+  try {
+    const doc = nuspecParser.parse(nuspecXml)
+    const url = doc?.package?.metadata?.repository?.['@_url']
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : null
+  } catch {
+    return null
+  }
+}
+
 const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
 
 function isScmUrl(url: string | undefined): boolean {
@@ -56,6 +70,7 @@ export function normalizeNuGetPackage(
   packageId: string,
   searchResult: NuGetSearchItem | null,
   registration: NuGetRegistrationIndex,
+  nuspecXml?: string | null,
 ): NormalizedNuGetPackage {
   const allLeaves = registration.items.flatMap((page) => page.items ?? [])
   const allEntries: NuGetCatalogEntry[] = allLeaves.map((leaf) => leaf.catalogEntry)
@@ -88,7 +103,9 @@ export function normalizeNuGetPackage(
         ...(latestEntry ? [latestEntry] : []),
       ]
     : [...allEntries].reverse()
-  const nuspecRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const catalogRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
+  const nuspecRepoUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl
   const declaredRepositoryUrl = nuspecRepoUrl ?? null
   const repo =
     (nuspecRepoUrl ? canonicalizeRepoUrl(nuspecRepoUrl) : null) ??
