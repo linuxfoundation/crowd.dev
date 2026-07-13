@@ -119,11 +119,11 @@ const VARIANTS: Record<DependentCountsVariant, VariantConfig> = {
     maxBytesGb: 2000,
     buildSql: (snapshotDate) => buildDependentCountsSql(snapshotDate),
   },
-  // GO/NUGET run the exact reverse transitive closure script (isScript). maxBytesGb is the
-  // server-side maximumBytesBilled runaway cap, set well above the validated full-pipeline spend
-  // (GO 2.31 TB incl. the all-depth repos aggregation; NUGET ~32 GB) so a normal week never trips
-  // it — the iteration cap inside the script is the deterministic guard. Env-overridable via
-  // BQ_DATASET_INGEST_DEPENDENT_COUNTS_GO_MAX_BQ_GB / _NUGET_.
+  // GO/NUGET/RUBYGEMS run the exact reverse transitive closure script (isScript). maxBytesGb is
+  // the server-side maximumBytesBilled runaway cap, set well above the validated full-pipeline
+  // spend (GO 2.31 TB incl. the all-depth repos aggregation; NUGET ~32 GB) so a normal week never
+  // trips it — the iteration cap inside the script is the deterministic guard. Env-overridable via
+  // BQ_DATASET_INGEST_DEPENDENT_COUNTS_GO_MAX_BQ_GB / _NUGET_ / _RUBYGEMS_.
   go: {
     jobKind: 'dependent_counts_go',
     stagingTable: GO_STAGING,
