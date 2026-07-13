@@ -24,6 +24,16 @@ const GUARD_SOURCE_TABLE: Partial<Record<OsspckgsJobKind, string>> = {
   dependent_counts_rubygems: 'RubyGemsRequirementsLatest',
 }
 
+// `Dependents` is snapshotted per-date, so "for this snapshot date" is actionable there. The
+// GO/NUGET/RubyGems `*RequirementsLatest` views have no snapshot history (see bootstrapOsspckgs.ts,
+// RETENTION_DAYS_BY_KIND) — telling an operator to check "this snapshot date" on those is misleading.
+const GUARD_HAS_SNAPSHOT_HISTORY: Partial<Record<OsspckgsJobKind, boolean>> = {
+  dependent_counts: true,
+  dependent_counts_go: false,
+  dependent_counts_nuget: false,
+  dependent_counts_rubygems: false,
+}
+
 export interface CheckDependentCountsGuardOutput {
   ok: boolean
   prevRowCount: number | null
@@ -61,7 +71,7 @@ export async function checkDependentCountsGuard(
         },
         {
           title: 'Action',
-          text: `Ingest aborted — existing \`dependent_count\` values preserved. Check deps.dev \`${GUARD_SOURCE_TABLE[jobKind] ?? 'Dependents'}\` table for this snapshot date.`,
+          text: `Ingest aborted — existing \`dependent_count\` values preserved. Check deps.dev \`${GUARD_SOURCE_TABLE[jobKind] ?? 'Dependents'}\` table${(GUARD_HAS_SNAPSHOT_HISTORY[jobKind] ?? true) ? ' for this snapshot date' : ''}.`,
         },
       ],
     )

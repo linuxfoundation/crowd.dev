@@ -63,10 +63,11 @@ interface VariantConfig {
   pgColumns: string[]
   maxBytesGb: number
   buildSql: (snapshotDate: string) => string
-  // When true, buildSql returns a multi-statement BQ script (the GO/NUGET exact reverse transitive
-  // closure) that ends by creating TEMP TABLE _export_data, rather than a single SELECT. The export
-  // activity then appends only EXPORT DATA and enforces the byte ceiling via maximumBytesBilled
-  // instead of a dry-run. See ADR-0004. Unset (single-SELECT) for the edges variant; set for GO/NUGET.
+  // When true, buildSql returns a multi-statement BQ script (the GO/NUGET/RUBYGEMS exact reverse
+  // transitive closure) that ends by creating TEMP TABLE _export_data, rather than a single SELECT.
+  // The export activity then appends only EXPORT DATA and enforces the byte ceiling via
+  // maximumBytesBilled instead of a dry-run. See ADR-0004. Unset (single-SELECT) for the edges
+  // variant; set for GO/NUGET/RUBYGEMS.
   isScript?: boolean
 }
 
