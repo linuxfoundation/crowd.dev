@@ -52,11 +52,13 @@ export function mapRubygemsOwners(
     const key = email.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    const handle = typeof o.handle === 'string' ? o.handle : undefined
+    // RubyGems handles are not GitHub logins — stored as `name`, not `handle`, so
+    // identityLinkMerge (reconcile.ts) never cross-links them to a github-handle contact.
+    const name = typeof o.handle === 'string' ? o.handle : undefined
     contacts.push({
       channel: 'email',
       value: email,
-      handle,
+      name,
       role: 'maintainer',
       tier: 'B',
       provenance: prov(),
