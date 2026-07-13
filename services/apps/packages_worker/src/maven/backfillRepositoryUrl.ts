@@ -103,7 +103,7 @@ export async function backfillMavenRepositoryUrls(
       // so the inconsistency would never be repaired. On rollback the row stays
       // unchanged and is reprocessed on the next run.
       await withDeadlockRetry(() =>
-        qx.tx(async (t) => {
+        qx.tx(async (t: QueryExecutor) => {
           await updateMavenRepositoryUrls(t, updates)
           await deleteMavenPackageRepoLinks(t, pruneTargets)
           for (const target of linkTargets) {

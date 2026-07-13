@@ -268,7 +268,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
   const repositoryUrl = normalizeScmUrl(result.scmUrl)
 
   await withDeadlockRetry(() =>
-    qx.tx(async (t) => {
+    qx.tx(async (t: QueryExecutor) => {
       const changed = new Set<string>()
 
       const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
