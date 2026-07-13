@@ -2,8 +2,8 @@ import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
   PgPromiseQueryExecutor,
-  createMemberIdentity,
   findMemberById,
+  insertMemberIdentities,
   pgpQx,
 } from '@crowd/data-access-layer'
 import {
@@ -88,15 +88,18 @@ export async function updateMemberWithEnrichmentData(
   attributes?: IAttributes,
 ): Promise<void> {
   await svc.postgres.writer.connection().tx(async (tx) => {
-    for (const identity of identities) {
-      await createMemberIdentity(new PgPromiseQueryExecutor(tx), {
-        memberId,
-        platform: identity.platform,
-        value: identity.value,
-        type: identity.type,
-        verified: identity.verified || false,
-        source: 'enrichment',
-      })
+    if (identities.length > 0) {
+      await insertMemberIdentities(
+        new PgPromiseQueryExecutor(tx),
+        identities.map((identity) => ({
+          memberId,
+          platform: identity.platform,
+          value: identity.value,
+          type: identity.type,
+          verified: identity.verified || false,
+          source: 'enrichment',
+        })),
+      )
     }
     if (attributes) {
       await updateMemberAttributes(tx, memberId, attributes)

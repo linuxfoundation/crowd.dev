@@ -4,7 +4,12 @@ import { DEFAULT_TENANT_ID, IS_TEST_ENV } from '@crowd/common'
 import { type DbConnection, type DbInstance, type IDatabaseConfig } from '@crowd/database'
 import type { QueryExecutor } from '@crowd/database'
 
-import type { TestPostgres } from './types'
+type TestPostgres = {
+  host: string
+  port: number
+  user: string
+  password: string
+}
 
 /**
  * Creates an isolated, dynamic test database cloned from the template database

@@ -142,17 +142,6 @@ export interface IOrganizationSyncRemoteData {
   lastSyncedAt?: string
 }
 
-export interface NewOrganizationIdentity {
-  organizationId: string
-  platform: string
-  value: string
-  type: OrganizationIdentityType
-  verified: boolean
-  source: string
-  sourceId?: string | null
-  integrationId?: string | null
-}
-
 export interface IOrganizationIdentity {
   organizationId?: string
   platform: string

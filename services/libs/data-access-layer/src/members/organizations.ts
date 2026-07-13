@@ -1,7 +1,10 @@
+import { generateUUIDv1 } from '@crowd/common'
 import {
   IMemberOrganization,
   IMemberOrganizationAffiliationOverride,
   IMemberRoleWithOrganization,
+  MemberOrganizationDbInsert,
+  MemberOrganizationDbRow,
   MemberOrganizationUpdate,
   OrganizationSource,
 } from '@crowd/types'
@@ -14,6 +17,7 @@ import {
 import { deleteMemberSegmentAffiliations } from '../member_segment_affiliations'
 import { EntityType } from '../old/apps/script_executor_worker/types'
 import { QueryExecutor } from '../queryExecutor'
+import { prepareBulkInsert } from '../utils'
 
 import { EmailDomainMemberOrganizationActivityDate } from './types'
 
@@ -293,53 +297,89 @@ export async function fetchManyOrganizationAffiliationPolicies(
   )
 }
 
+export async function insertMemberOrganizations(
+  qx: QueryExecutor,
+  organizations: MemberOrganizationDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<MemberOrganizationDbRow[]>
+export async function insertMemberOrganizations(
+  qx: QueryExecutor,
+  organizations: MemberOrganizationDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertMemberOrganizations(
+  qx: QueryExecutor,
+  organizations: MemberOrganizationDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<MemberOrganizationDbRow[] | number> {
+  const ts = new Date()
+
+  if (organizations.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'memberOrganizations',
+    [
+      'id',
+      'memberId',
+      'organizationId',
+      'dateStart',
+      'dateEnd',
+      'title',
+      'source',
+      'verified',
+      'verifiedBy',
+      'createdAt',
+      'updatedAt',
+    ],
+    organizations.map((o) => ({
+      ...o,
+      id: o.id ?? generateUUIDv1(),
+      // NOT NULL, no DB default
+      createdAt: ts,
+      updatedAt: ts,
+      // NOT NULL DEFAULT false — must set while column is in INSERT list
+      verified: o.verified ?? false,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
+}
+
 export async function createMemberOrganization(
   qx: QueryExecutor,
   memberId: string,
   data: Partial<IMemberOrganization>,
 ): Promise<string | undefined> {
-  const result = await qx.selectOneOrNone(
-    `
-      INSERT INTO "memberOrganizations"(
-        "memberId",
-        "organizationId",
-        "dateStart",
-        "dateEnd",
-        "title",
-        "source",
-        "verified",
-        "verifiedBy",
-        "createdAt",
-        "updatedAt"
-      )
-      VALUES(
-        $(memberId),
-        $(organizationId),
-        $(dateStart),
-        $(dateEnd),
-        $(title),
-        $(source),
-        $(verified),
-        $(verifiedBy),
-        now(),
-        now()
-      )
-      ON CONFLICT DO NOTHING
-      RETURNING id
-    `,
-    {
-      memberId,
-      organizationId: data.organizationId,
-      dateStart: data.dateStart ?? null,
-      dateEnd: data.dateEnd ?? null,
-      title: data.title ?? null,
-      source: data.source ?? null,
-      verified: data.verified ?? false,
-      verifiedBy: data.verifiedBy ?? null,
-    },
+  const rows = await insertMemberOrganizations(
+    qx,
+    [
+      {
+        memberId,
+        organizationId: data.organizationId,
+        dateStart: data.dateStart != null ? toIsoString(data.dateStart) : null,
+        dateEnd: data.dateEnd != null ? toIsoString(data.dateEnd) : null,
+        title: data.title,
+        source: data.source,
+        verified: data.verified,
+        verifiedBy: data.verifiedBy,
+      },
+    ],
+    false,
+    true,
   )
 
-  return result?.id
+  return rows[0]?.id
 }
 
 export async function createOrUpdateMemberOrganizations(
