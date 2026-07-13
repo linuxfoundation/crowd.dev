@@ -47,11 +47,12 @@ GROUP BY pm.purl
 `
 }
 
-// GO/NUGET reverse-dependent counts. deps.dev publishes NO reverse-dependent or transitive graph for
-// these two ecosystems (absent from Dependents/Dependencies/DependencyGraphEdges — see ADR-0004), so
-// we compute the EXACT reverse transitive closure ourselves from the direct manifests it DOES publish
-// (GoRequirementsLatest / NuGetRequirementsLatest). The "Latest" tables hold the highest release per
-// package, matching the DependentIsHighestReleaseWithResolution semantics of the edge query.
+// GO/NUGET/RUBYGEMS reverse-dependent counts. deps.dev publishes NO reverse-dependent or transitive
+// graph for these three ecosystems (absent from Dependents/Dependencies/DependencyGraphEdges — see
+// ADR-0004), so we compute the EXACT reverse transitive closure ourselves from the direct manifests
+// it DOES publish (GoRequirementsLatest / NuGetRequirementsLatest / RubyGemsRequirementsLatest). The
+// "Latest" tables hold the highest release per package, matching the
+// DependentIsHighestReleaseWithResolution semantics of the edge query.
 //
 // Unlike the edge query (a single SELECT), this is a multi-statement BQ SCRIPT: a semi-naive fixpoint
 // over session-scoped TEMP tables, run via bqExportToGcs's isScript mode. It ends by creating

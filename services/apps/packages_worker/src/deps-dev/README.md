@@ -30,8 +30,8 @@ See `src/scripts/triggerBootstrap.ts --help` for full options.
 
 Each job kind has a hardcoded `maxBytesGb` ceiling checked via a BQ dry-run
 before the real export fires. If the dry-run exceeds the ceiling the activity
-fails immediately (no BQ cost incurred). Script-mode kinds (the GO/NUGET reverse
-transitive closure — a multi-statement `WHILE` loop a dry-run cannot price) skip
+fails immediately (no BQ cost incurred). Script-mode kinds (the GO/NUGET/RUBYGEMS
+reverse transitive closure — a multi-statement `WHILE` loop a dry-run cannot price) skip
 the dry-run and instead enforce the ceiling server-side via `maximumBytesBilled`;
 there the ceiling is a runaway cap set above expected spend, not a tight gate.
 
