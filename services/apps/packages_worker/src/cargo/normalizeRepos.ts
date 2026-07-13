@@ -17,10 +17,13 @@ const INSERT_BATCH = 5000
  * `https://<host>/<owner>/<name>` form via the shared `canonicalizeRepoUrl`
  * (same normalizer npm/pypi use — no per-ecosystem fork).
  *
- * Only successfully-canonicalized inputs are stored; non-repository values
- * (placeholders, homepages, free-form text) are omitted, so a LEFT JOIN from
- * `enrich_packages` yields NULL — that both recovers derivable URLs (Gap A) and
- * clears junk that could otherwise land in `packages.repository_url` (Gap C).
+ * Only inputs `canonicalizeRepoUrl` can reduce to an owner/name pair are stored;
+ * unparseable URLs or those with fewer than two path segments are omitted, so a
+ * LEFT JOIN from `enrich_packages` yields NULL — that both recovers derivable
+ * URLs (Gap A) and clears that class of junk from `packages.repository_url`
+ * (Gap C). Note this does not validate that the result is an actual repository
+ * host — a URL-shaped homepage with ≥2 path segments (e.g.
+ * `https://example.com/owner/repo`) still canonicalizes and is stored.
  *
  * Normalization runs in TypeScript because the bulk set-based cargo pipeline
  * cannot call the parser per row; the resulting mapping table lets the SQL

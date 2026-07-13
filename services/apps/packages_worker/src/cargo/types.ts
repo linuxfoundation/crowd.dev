@@ -28,6 +28,7 @@ export interface EnrichVersionsResult {
 export interface EnrichReposResult {
   repos: number
   links: number
+  pruned: number
 }
 
 export interface EnrichMaintainersResult {

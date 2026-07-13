@@ -166,22 +166,17 @@ export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsR
   return { upserted: row.upserted }
 }
 
-// Writes only url + host — other repo fields belong to the GitHub enricher.
+// Writes only url + host — other repo fields belong to the GitHub enricher. Uses
+// repo_norm (built by normalizeRepos) so repos.url/package_repos always agree with
+// the canonical packages.repository_url — never the raw declared_repository_url.
 export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult> {
   return withTunedSession(qx, 'repos', async (tx) => {
     const repoRow = await tx.selectOne(
       `WITH new_repos AS (
          INSERT INTO repos (url, host, updated_at)
-         SELECT DISTINCT e.declared_repository_url,
-           CASE
-             WHEN e.declared_repository_url ~* '://([^/]+\\.)?github\\.com(/|$)'    THEN 'github'
-             WHEN e.declared_repository_url ~* '://[^/]*gitlab'                     THEN 'gitlab'
-             WHEN e.declared_repository_url ~* '://([^/]+\\.)?bitbucket\\.org(/|$)' THEN 'bitbucket'
-             ELSE 'other'
-           END,
-           NOW()
+         SELECT DISTINCT rn.repository_url, rn.host, NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
-         WHERE e.declared_repository_url IS NOT NULL AND e.declared_repository_url LIKE 'http%'
+         JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          ON CONFLICT (url) DO NOTHING
          RETURNING url
        ),
@@ -189,11 +184,37 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
          SELECT e.package_id, f.field
          FROM ${STAGING_SCHEMA}.enrich_packages e
-         JOIN new_repos nr ON nr.url = e.declared_repository_url
+         JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
+         JOIN new_repos nr ON nr.url = rn.repository_url
          CROSS JOIN LATERAL (VALUES ('repos.url'), ('repos.host')) AS f(field)
          RETURNING 1
        )
        SELECT (SELECT COUNT(*) FROM new_repos)::int AS repos`,
+    )
+
+    // Prunes stale 'declared' links before relinking — covers junk declared values
+    // (no canonical → target NULL) and rewrites (declared URL now maps elsewhere).
+    // Without this, package_repos would accumulate a link to a repo no crate declares
+    // anymore, and consumers such as security-contacts (which join through
+    // repos ⋈ package_repos, not packages.repository_url) would keep reading it.
+    const pruneRow = await tx.selectOne(
+      `WITH targets AS (
+         SELECT e.package_id, r.id AS repo_id
+         FROM ${STAGING_SCHEMA}.enrich_packages e
+         LEFT JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
+         LEFT JOIN repos r ON r.url = rn.repository_url
+         WHERE e.declared_repository_url IS NOT NULL
+       ),
+       del AS (
+         DELETE FROM package_repos pr
+         USING targets t
+         WHERE pr.package_id = t.package_id
+           AND pr.source = $(source)
+           AND (t.repo_id IS NULL OR pr.repo_id IS DISTINCT FROM t.repo_id)
+         RETURNING pr.package_id
+       )
+       SELECT (SELECT COUNT(*) FROM del)::int AS pruned`,
+      { source: REPO_LINK_SOURCE },
     )
 
     const linkRow = await tx.selectOne(
@@ -208,8 +229,8 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at, verified_at)
          SELECT e.package_id, r.id, $(source), $(confidence), NOW(), NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
-         JOIN repos r ON r.url = e.declared_repository_url
-         WHERE e.declared_repository_url IS NOT NULL
+         JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
+         JOIN repos r ON r.url = rn.repository_url
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
            source      = EXCLUDED.source,
            confidence  = EXCLUDED.confidence,
@@ -235,7 +256,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
       { source: REPO_LINK_SOURCE, confidence: REPO_LINK_CONFIDENCE },
     )
 
-    return { repos: repoRow.repos, links: linkRow.links }
+    return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }
   })
 }
 
