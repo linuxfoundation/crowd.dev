@@ -44,7 +44,7 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
 
     const combinedOutput = `${stdout}\n${stderr}`
 
-    if (combinedOutput.includes('401 Unauthorized')) {
+    if (combinedOutput.includes('401 Unauthorized') || combinedOutput.includes('401 Bad credentials')) {
       svc.log.warn('Detected 401 error in privateer output - token invalid or expired!')
       throw ApplicationFailure.create({
         message: 'GitHub token invalid or expired',
@@ -63,7 +63,7 @@ export async function getOSPSBaselineInsights(repoUrl: string, token: string): P
 
     // check for auth errors in captured output if available
     const output = `${err.stdout || ''}\n${err.stderr || ''}`
-    if (output.includes('401 Unauthorized')) {
+    if (output.includes('401 Unauthorized') || output.includes('401 Bad credentials')) {
       svc.log.warn('Detected 401 error in failed privateer output - token invalid or expired!')
       throw ApplicationFailure.create({
         message: 'GitHub token invalid or expired',
