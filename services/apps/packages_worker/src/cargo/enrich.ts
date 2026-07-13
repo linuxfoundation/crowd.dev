@@ -48,6 +48,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
     tx.selectOne(
       `WITH snap AS (
          SELECT p.id, p.status, p.description, p.homepage, p.declared_repository_url,
+                p.repository_url,
                 p.licenses, p.licenses_raw, p.keywords, p.versions_count, p.latest_version,
                 p.first_release_at, p.latest_release_at, p.dependent_count,
                 p.dependent_repos_count, p.downloads_last_30d
@@ -60,6 +61,8 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            description             = COALESCE(e.description, p.description),
            homepage                = COALESCE(e.homepage, p.homepage),
            declared_repository_url = COALESCE(e.declared_repository_url, p.declared_repository_url),
+           repository_url          = CASE WHEN e.declared_repository_url IS NOT NULL
+                                          THEN rn.repository_url ELSE p.repository_url END,
            licenses                = COALESCE(e.licenses, p.licenses),
            licenses_raw            = COALESCE(e.licenses_raw, p.licenses_raw),
            keywords                = COALESCE(e.keywords, p.keywords),
@@ -73,6 +76,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            ingestion_source        = $(ingestionSource),
            last_synced_at          = NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
+         LEFT JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          WHERE p.id = e.package_id
          RETURNING p.id
        ),
@@ -80,11 +84,14 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
          SELECT s.id AS package_id, f.field
          FROM snap s
          JOIN ${STAGING_SCHEMA}.enrich_packages e ON e.package_id = s.id
+         LEFT JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          CROSS JOIN LATERAL (VALUES
            ('packages.status',                  s.status                  IS DISTINCT FROM e.status),
            ('packages.description',             s.description             IS DISTINCT FROM COALESCE(e.description, s.description)),
            ('packages.homepage',                s.homepage                IS DISTINCT FROM COALESCE(e.homepage, s.homepage)),
            ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM COALESCE(e.declared_repository_url, s.declared_repository_url)),
+           ('packages.repository_url',          s.repository_url          IS DISTINCT FROM
+               CASE WHEN e.declared_repository_url IS NOT NULL THEN rn.repository_url ELSE s.repository_url END),
            ('packages.licenses',                s.licenses                IS DISTINCT FROM COALESCE(e.licenses, s.licenses)),
            ('packages.licenses_raw',            s.licenses_raw            IS DISTINCT FROM COALESCE(e.licenses_raw, s.licenses_raw)),
            ('packages.keywords',                s.keywords                IS DISTINCT FROM COALESCE(e.keywords, s.keywords)),

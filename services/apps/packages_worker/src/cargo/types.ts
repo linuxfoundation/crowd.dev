@@ -12,6 +12,11 @@ export interface LoadResult {
   durationMs: number
 }
 
+export interface NormalizeReposResult {
+  scanned: number
+  normalized: number
+}
+
 export interface EnrichPackagesResult {
   updated: number
 }
