@@ -77,7 +77,7 @@ const GO_STAGING = 'staging.osspckgs_dependent_counts_go_raw'
 const NUGET_STAGING = 'staging.osspckgs_dependent_counts_nuget_raw'
 const RUBYGEMS_STAGING = 'staging.osspckgs_dependent_counts_rubygems_raw'
 
-// All three ways now produce the same shape: purl + the three count columns. Each variant has its own
+// All four ways now produce the same shape: purl + the three count columns. Each variant has its own
 // staging table (parallel-safe) but identical DDL/merge; the merges touch disjoint purl spaces (one
 // per ecosystem), so they never collide.
 const PG_COLUMNS = [
