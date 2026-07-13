@@ -155,10 +155,12 @@ export async function triggerSecurityInsightsCheckForRepos(
     if (activeTasks.length > 0) {
       await Promise.race(activeTasks)
     } else if (queue.length > 0) {
-      // No active tasks and no free tokens — all remaining repos cannot be processed this batch.
-      for (const repo of queue.splice(0)) {
-        failedRepoUrls.push(repo.repoUrl)
-      }
+      // No active tasks and no free tokens — remaining repos can't be processed this batch.
+      // Don't add them to failedRepoUrls: they're still obsolete and findObsoleteRepos will
+      // pick them up on the next batch after rate limits expire.
+      console.warn(
+        `No tokens available; deferring ${queue.length} repos to next batch (they will be re-fetched)`,
+      )
       break
     }
   }

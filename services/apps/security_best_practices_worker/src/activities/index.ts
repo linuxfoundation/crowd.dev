@@ -300,9 +300,16 @@ export async function initializeTokenInfos(): Promise<ITokenInfo[]> {
 
   if (tokenInfosInRedis) {
     const parsed: ITokenInfo[] = JSON.parse(tokenInfosInRedis)
-    // Reset inUse (workflow processes may have crashed leaving stale in-use flags).
-    // Preserve isRateLimited/isInvalid — those are cleared based on rateLimitedAt (>1h) or admin action.
-    return parsed.map((t) => ({ ...t, inUse: false }))
+    return parsed.map((t) => ({
+      ...t,
+      // Reset inUse — workflow processes may have crashed leaving stale in-use flags.
+      inUse: false,
+      // Backward compat: legacy entries have isRateLimited=true with no rateLimitedAt timestamp.
+      // Without a timestamp the 1-hour expiry can't apply and the token would be stuck forever.
+      // Clear stale rate-limits that lack a timestamp so they can be retried on this run.
+      isRateLimited: t.isRateLimited && !!t.rateLimitedAt,
+      rateLimitedAt: t.isRateLimited && t.rateLimitedAt ? t.rateLimitedAt : undefined,
+    }))
   }
 
   return process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',').map((token) => ({
