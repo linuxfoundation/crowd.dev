@@ -21,6 +21,12 @@ const { findObsoleteRepos, initializeTokenInfos, updateTokenInfos, getCurrentTim
 
 const ONE_HOUR_MS = 60 * 60 * 1000
 
+// Monotonic offset added to nowMs on each releaseToken so lastUsed is strictly increasing
+// per release even when currentTimeMs hasn't refreshed. Without this, sequential releases in
+// the same iteration all share currentTimeMs, the stable sort in getNextToken falls back to
+// env order, and the first PAT gets re-selected repeatedly instead of rotating LRU.
+let releaseCounter = 0
+
 export async function triggerSecurityInsightsCheckForRepos(
   args: ITriggerSecurityInsightsCheckForReposParams,
 ): Promise<void> {
@@ -254,7 +260,7 @@ async function releaseToken(tokenInfos: ITokenInfo[], token: string, nowMs: numb
   const tokenInfo = tokenInfos.find((tokenInfo) => tokenInfo.token === token)
   if (tokenInfo) {
     tokenInfo.inUse = false
-    tokenInfo.lastUsed = new Date(nowMs)
+    tokenInfo.lastUsed = new Date(nowMs + releaseCounter++)
   }
 }
 

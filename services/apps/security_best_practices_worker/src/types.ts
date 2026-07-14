@@ -55,5 +55,5 @@ export interface ITokenInfo {
   lastUsed: Date
   isRateLimited: boolean
   rateLimitedAt?: string // ISO timestamp; used to auto-reset after 1 hour
-  isInvalid?: boolean // permanent auth failure — never auto-resets
+  isInvalid?: boolean // 401 auth failure; persists until the Redis token cache expires (24h TTL) — after a full idle day the token re-enters the pool fresh, giving re-provisioned PATs a natural recovery path
 }
