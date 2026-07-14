@@ -203,8 +203,10 @@ function classifyTokenError(output: string, source: string): void {
     })
   }
 
-  const has403 = output.includes('403')
-  const has429 = output.includes('429')
+  // Word-boundary match so unrelated numbers (e.g. "processed 4291 records") don't get
+  // misclassified as HTTP 429/403.
+  const has403 = /\b403\b/.test(output)
+  const has429 = /\b429\b/.test(output)
   if (!has403 && !has429) return
 
   // Rate-limit responses carry a distinctive body: "API rate limit exceeded" or

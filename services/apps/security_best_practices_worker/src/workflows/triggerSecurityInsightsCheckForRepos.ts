@@ -70,16 +70,25 @@ export async function triggerSecurityInsightsCheckForRepos(
     // via `!tokenInfo`, so requeue decisions have to be made here too — otherwise a rate-limit
     // wave would falsely fail the repo for the rest of the continueAsNew chain.
     let sawRateLimit = false
+    // Per-repo attempted-tokens set. TokenRepoAccessError releases the token in "clean"
+    // global state, so without this filter `getNextToken` could re-pick the same token
+    // while the others are held by concurrent children — burning attempts without ever
+    // reaching a token that might have access.
+    const attemptedTokens = new Set<string>()
     while (attempts < MAX_TOKEN_ATTEMPTS) {
-      const tokenInfo = getNextToken(tokenInfos, currentTimeMs)
+      const tokenInfo = getNextToken(tokenInfos, currentTimeMs, attemptedTokens)
       if (!tokenInfo) {
-        // Only mark the repo failed if every token is permanently invalid. Rate-limited
-        // tokens recover after 1h and in-use tokens free up as concurrent tasks finish, so
-        // in both cases requeue the repo — the outer loop's hasFreeToken gate + defer path
-        // handles the wait.
+        // No untried, usable token remains for this repo. Distinguish two cases:
+        // - all tokens permanently invalid, OR every non-invalid token has been tried for
+        //   this repo → this repo genuinely can't be scanned, fail it
+        // - some non-invalid, non-attempted tokens exist but are currently in-use or
+        //   rate-limited → requeue so a later iteration can retry when they free up
         const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
-        if (allPermanentlyInvalid) {
-          console.error(`All tokens permanently invalid for repo ${repo.repoUrl}, skipping`)
+        const anyUnattemptedNonInvalid = tokenInfos.some(
+          (t) => !t.isInvalid && !attemptedTokens.has(t.token),
+        )
+        if (allPermanentlyInvalid || !anyUnattemptedNonInvalid) {
+          console.error(`No untried tokens remain for repo ${repo.repoUrl}, skipping`)
           failedRepoUrls.push(repo.repoUrl)
         } else {
           queue.unshift(repo)
@@ -87,6 +96,7 @@ export async function triggerSecurityInsightsCheckForRepos(
         break
       }
       const token = tokenInfo.token
+      attemptedTokens.add(token)
       tokenInfo.inUse = true
 
       try {
@@ -256,10 +266,17 @@ function refreshExpiredRateLimits(tokenInfos: ITokenInfo[], nowMs: number): void
   }
 }
 
-function getNextToken(tokenInfos: ITokenInfo[], nowMs: number): ITokenInfo | null {
+function getNextToken(
+  tokenInfos: ITokenInfo[],
+  nowMs: number,
+  excludeTokens?: Set<string>,
+): ITokenInfo | null {
   refreshExpiredRateLimits(tokenInfos, nowMs)
 
-  const usableTokenInfos = tokenInfos.filter((t) => !t.inUse && !t.isRateLimited && !t.isInvalid)
+  const usableTokenInfos = tokenInfos.filter(
+    (t) =>
+      !t.inUse && !t.isRateLimited && !t.isInvalid && !(excludeTokens && excludeTokens.has(t.token)),
+  )
 
   // sort usable tokens by last used date from oldest to newest
   const sortedTokenInfos = usableTokenInfos.sort((a, b) => {
