@@ -13,12 +13,11 @@ import { ITokenInfo, ITriggerSecurityInsightsCheckForReposParams } from '../type
 
 import { upsertOSPSBaselineSecurityInsights } from './upsertOSPSBaselineSecurityInsights'
 
-const { findObsoleteRepos, initializeTokenInfos, updateTokenInfos } = proxyActivities<
-  typeof activities
->({
-  startToCloseTimeout: '5 minutes',
-  retry: { maximumAttempts: 3, backoffCoefficient: 3 },
-})
+const { findObsoleteRepos, initializeTokenInfos, updateTokenInfos, getCurrentTimeMs } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '5 minutes',
+    retry: { maximumAttempts: 3, backoffCoefficient: 3 },
+  })
 
 const ONE_HOUR_MS = 60 * 60 * 1000
 
@@ -32,12 +31,10 @@ export async function triggerSecurityInsightsCheckForRepos(
   const info = workflowInfo()
   const failedRepoUrls = args?.failedRepoUrls || []
 
-  // Use workflowInfo().startTime as the replay-safe time reference for rate-limit expiry
-  // checks — Temporal workflows must be deterministic, so Date.now()/new Date() are banned
-  // (services-checklist.md:9-12). Actual rate-limit failure timestamps come from the
-  // ApplicationFailure.details payload set inside the activity, so long batches don't skew
-  // the persisted rateLimitedAt.
-  const nowMs = info.startTime.getTime()
+  // Wall-clock time comes from the getCurrentTimeMs activity — workflow code can't call
+  // Date.now() (Temporal determinism rule). Refreshed each outer-loop iteration so rate-limit
+  // cooldowns can expire mid-run instead of only at continueAsNew boundaries.
+  let currentTimeMs = await getCurrentTimeMs()
 
   // Token state is persisted in Redis via updateTokenInfos so isRateLimited (with rateLimitedAt
   // for expiry) and isInvalid survive across continueAsNew batches.
@@ -63,17 +60,18 @@ export async function triggerSecurityInsightsCheckForRepos(
   async function processRepo(repo: (typeof repos)[0]): Promise<void> {
     let attempts = 0
     while (attempts < MAX_TOKEN_ATTEMPTS) {
-      const tokenInfo = getNextToken(tokenInfos, nowMs)
+      const tokenInfo = getNextToken(tokenInfos, currentTimeMs)
       if (!tokenInfo) {
-        // Distinguish: are there tokens that will become free, or are all excluded?
-        const anyRecoverable = tokenInfos.some((t) => !t.isInvalid && !t.isRateLimited)
-        if (anyRecoverable) {
-          // All non-excluded tokens are currently in use by other concurrent tasks.
-          // Put the repo back and let the outer loop retry after a task finishes.
-          queue.unshift(repo)
-        } else {
-          console.error(`All tokens excluded for repo ${repo.repoUrl}, skipping`)
+        // Only mark the repo failed if every token is permanently invalid. Rate-limited
+        // tokens recover after 1h and in-use tokens free up as concurrent tasks finish, so
+        // in both cases requeue the repo — the outer loop's hasFreeToken gate + defer path
+        // handles the wait.
+        const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
+        if (allPermanentlyInvalid) {
+          console.error(`All tokens permanently invalid for repo ${repo.repoUrl}, skipping`)
           failedRepoUrls.push(repo.repoUrl)
+        } else {
+          queue.unshift(repo)
         }
         break
       }
@@ -112,7 +110,7 @@ export async function triggerSecurityInsightsCheckForRepos(
           // Activity captures the wall-clock time of the 403 in details[0]; fall back to the
           // batch startTime when details are missing so we still record something.
           tokenInfo.rateLimitedAt =
-            extractFailureTimestamp(appFailure) ?? info.startTime.toISOString()
+            extractFailureTimestamp(appFailure) ?? new Date(currentTimeMs).toISOString()
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
@@ -131,7 +129,7 @@ export async function triggerSecurityInsightsCheckForRepos(
           break
         }
       } finally {
-        await releaseToken(tokenInfos, tokenInfo.token, nowMs)
+        await releaseToken(tokenInfos, tokenInfo.token, currentTimeMs)
       }
     }
 
@@ -151,10 +149,13 @@ export async function triggerSecurityInsightsCheckForRepos(
    */
   let deferred = false
   while (queue.length > 0 || activeTasks.length > 0) {
+    // Refresh wall-clock time each iteration so mid-run rate-limit cooldowns can expire
+    // without waiting for the next continueAsNew batch.
+    currentTimeMs = await getCurrentTimeMs()
     while (queue.length > 0 && activeTasks.length < MAX_PARALLEL_CHILDREN) {
       // Only start a task if a token is currently free — avoids false "no token" failures
       // when all tokens are temporarily held by other concurrent tasks.
-      refreshExpiredRateLimits(tokenInfos, nowMs)
+      refreshExpiredRateLimits(tokenInfos, currentTimeMs)
       const hasFreeToken = tokenInfos.some((t) => !t.isInvalid && !t.isRateLimited && !t.inUse)
       if (!hasFreeToken) break
 

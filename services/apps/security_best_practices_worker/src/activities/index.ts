@@ -340,3 +340,10 @@ export async function updateTokenInfos(tokenInfos: ITokenInfo[]): Promise<void> 
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
   await redisCache.set('tokenInfos', JSON.stringify(tokenInfos), 60 * 60 * 24) // 1 day
 }
+
+// Wall-clock time via activity — workflow code can't call Date.now() (determinism rule),
+// but rate-limit cooldowns need real elapsed time to expire mid-run rather than only at
+// the next continueAsNew batch boundary.
+export async function getCurrentTimeMs(): Promise<number> {
+  return Date.now()
+}
