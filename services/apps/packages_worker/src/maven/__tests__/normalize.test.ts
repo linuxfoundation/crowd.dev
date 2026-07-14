@@ -103,6 +103,14 @@ describe('parseRepoUrl', () => {
     expect(result?.host).toBe('other')
   })
 
+  it('keeps the full path as name (no owner) for known SVN hosts', () => {
+    expect(parseRepoUrl('https://svn.apache.org/repos/asf/geronimo/server')).toEqual({
+      host: 'svn',
+      owner: null,
+      name: 'repos/asf/geronimo/server',
+    })
+  })
+
   it('returns null for invalid URLs', () => {
     expect(parseRepoUrl('not-a-url')).toBeNull()
   })
@@ -160,8 +168,40 @@ describe('normalizeScmUrl', () => {
     )
   })
 
-  it('returns null for non-https result', () => {
-    expect(normalizeScmUrl('svn://svn.apache.org/repos/commons-lang')).toBeNull()
+  it('returns null for non-https, non-SVN schemes', () => {
+    expect(normalizeScmUrl('ftp://ftp.apache.org/repos/commons-lang')).toBeNull()
+  })
+
+  // SVN has no owner/repo shape and is mapped even though the hosts are largely
+  // unreachable today — see normalizeSvnUrl / normalizeSvnScmUrl docstrings.
+  it('maps svn:// URLs on known SVN hosts to a canonical link', () => {
+    expect(normalizeScmUrl('svn://svn.apache.org/repos/asf/commons-lang/trunk')).toBe(
+      'https://svn.apache.org/repos/asf/commons-lang',
+    )
+  })
+
+  it('maps scm:svn: connection strings, unifying viewvc/repos-asf to the same link', () => {
+    expect(
+      normalizeScmUrl(
+        'scm:svn:http://svn.apache.org/repos/asf/geronimo/server/tags/geronimo-3.0.1',
+      ),
+    ).toBe('https://svn.apache.org/repos/asf/geronimo/server')
+    expect(
+      normalizeScmUrl('http://svn.apache.org/viewvc/geronimo/server/tags/geronimo-3.0.1'),
+    ).toBe('https://svn.apache.org/repos/asf/geronimo/server')
+  })
+
+  it('maps svn+ssh: with an embedded user and SourceForge /p/.../code paths', () => {
+    expect(
+      normalizeScmUrl('scm:svn:svn+ssh://albertil@svn.forge.objectweb.org/svnroot/myproj/trunk'),
+    ).toBe('https://svn.forge.objectweb.org/svnroot/myproj')
+    expect(normalizeScmUrl('http://svn.code.sf.net/p/myproj/code/trunk/foo')).toBe(
+      'https://svn.code.sf.net/p/myproj/code',
+    )
+  })
+
+  it('does not map dead services that incidentally match an "svn" text filter', () => {
+    expect(normalizeScmUrl('http://specs.googlecode.com/svn/trunk')).toBeNull()
   })
 
   // Gap B — recover repository_url from inputs that were previously dropped
@@ -480,9 +520,19 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://git.iem.at/owner/repo')).toBe('https://git.iem.at/owner/repo')
   })
 
-  it('still returns null for internal or non-allowlisted hosts', () => {
-    expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBeNull()
-    expect(normalizeScmUrl('https://gitlab.alibaba-inc.com/team/project')).toBeNull()
+  // Internal-only hosts are mapped despite being unreachable for external
+  // consumers — see the SCM_HOSTS docstring.
+  it('maps internal-only hosts (git.corp.adobe.com, gitlab.alibaba-inc.com)', () => {
+    expect(normalizeScmUrl('https://git.corp.adobe.com/team/project')).toBe(
+      'https://git.corp.adobe.com/team/project',
+    )
+    expect(normalizeScmUrl('https://gitlab.alibaba-inc.com/team/project')).toBe(
+      'https://gitlab.alibaba-inc.com/team/project',
+    )
+  })
+
+  it('still returns null for genuinely non-allowlisted hosts', () => {
+    expect(normalizeScmUrl('https://git.some-random-unlisted-host.example/team/project')).toBeNull()
   })
 
   it('preserves nested GitLab group namespaces instead of truncating to the group', () => {
@@ -514,6 +564,26 @@ describe('normalizeScmUrl', () => {
 
   it('returns null for a GitLab namespace with no project segment', () => {
     expect(normalizeScmUrl('https://gitlab.com/onlygroup')).toBeNull()
+  })
+
+  // OpenDaylight's Gerrit: both the gitweb browse query and the SSH clone form
+  // (port, no git@ user) unify to the same gitweb browse link.
+  it('maps OpenDaylight Gerrit gitweb query and SSH clone URLs to the same link', () => {
+    expect(
+      normalizeScmUrl('https://git.opendaylight.org/gerrit/gitweb?p=netconf.git;a=summary'),
+    ).toBe('https://git.opendaylight.org/gerrit/gitweb?p=netconf.git')
+    expect(normalizeScmUrl('scm:git:ssh://git.opendaylight.org:29418/aaa.git')).toBe(
+      'https://git.opendaylight.org/gerrit/gitweb?p=aaa.git',
+    )
+  })
+
+  it('returns null for Gerrit shapes with no derivable repo identity', () => {
+    // Bare Gerrit root — no path at all, nothing to extract.
+    expect(normalizeScmUrl('http://gerrit.onosproject.org/')).toBeNull()
+    // Gerrit admin-UI fragment path — not a clone shape.
+    expect(
+      normalizeScmUrl('https://gerrit.wikimedia.org/r/#/admin/projects/wikidata/query/rdf'),
+    ).toBeNull()
   })
 })
 
