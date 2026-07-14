@@ -99,10 +99,15 @@ export async function triggerSecurityInsightsCheckForRepos(
       repoAttemptedTokens.set(repo.repoUrl, attemptedTokens)
     }
     while (attempts < MAX_TOKEN_ATTEMPTS) {
-      // Refresh wall-clock time before each token selection. A long-running executeChild can
-      // block the outer queue loop's refresh for >1h, leaving rate-limit cooldowns stuck when
-      // this is the only in-flight task (small pool or last repo).
-      currentTimeMs = await getCurrentTimeMs()
+      // Refresh wall-clock time on retries only. A long-running executeChild can block the
+      // outer queue loop's refresh for >1h, leaving rate-limit cooldowns stuck; a per-retry
+      // refresh fixes that. The first attempt intentionally reuses the outer-loop's
+      // currentTimeMs so processRepo runs synchronously up to `tokenInfo.inUse = true` —
+      // otherwise the outer loop can oversubscribe MAX_PARALLEL_CHILDREN tasks against a
+      // smaller token pool before any inUse mark lands, causing immediate null-token requeues.
+      if (attempts > 0) {
+        currentTimeMs = await getCurrentTimeMs()
+      }
       const tokenInfo = getNextToken(tokenInfos, currentTimeMs, attemptedTokens)
       if (!tokenInfo) {
         // No untried, usable token remains for this repo. Fail only when either every token
