@@ -1,26 +1,34 @@
 DESCRIPTION >
-    - `collection_insights_aggregate.pipe` serves aggregate insights metrics for a collection (an arbitrary list of projects).
-    - Returns a single row with metrics aggregated across all projects in the list, not one row per project.
+    - `collection_insights_aggregate.pipe` serves aggregate insights metrics for a collection.
+    - Returns a single row with metrics aggregated across every project in the collection, not one row per project.
     - Parameters:
-    - `ids`: Required array of project ids (as returned by `project_insights.pipe`'s `id`/`ids`) to aggregate over.
+    - `collectionSlug`: Required collection slug. insights_projects_populated_ds.collectionsSlugs already lists
+      every collection each project belongs to (see insightsProjects_filtered.pipe for the same filter pattern),
+      so this pipe resolves collection membership directly rather than requiring the caller to first look up a
+      project id list.
     - Response:
-    - `projectCount`: count of distinct project ids from the input list that matched an existing project.
-    - `uniqueContributorCount`: total unique contributors across all matched projects, deduplicated (a contributor active on multiple projects in the list is counted once).
-    - `avgHealthScore`: average of each matched project's health score, rounded.
+    - `projectCount`: count of distinct projects in the collection.
+    - `uniqueContributorCount`: total unique contributors across all projects in the collection, deduplicated (a contributor active on multiple projects in the collection is counted once).
+    - `avgHealthScore`: average of each project's health score in the collection, rounded.
 
 TAGS "Insights, Widget", "Collection"
 
 NODE collection_insights_aggregate_projects
 DESCRIPTION >
-    Resolves the input project ids to their segment ids, since activity data is keyed by segmentId, not project id
+    Resolves the collection's member projects to their segment ids and health scores directly via
+    collectionsSlugs, matching the same has(collectionsSlugs, ...) filter already used by
+    insightsProjects_filtered.pipe.
 
 SQL >
     %
     SELECT id, segmentId, healthScore
-    FROM project_insights_copy_ds
+    FROM insights_projects_populated_ds
     WHERE
-        type = 'project'
-        AND id IN {{ Array(ids, 'String', description="Filter by project id list", required=True) }}
+        enabled = 1
+        AND has(
+            collectionsSlugs,
+            {{ String(collectionSlug, description="Filter by collection slug", required=True) }}
+        )
 
 NODE collection_insights_aggregate_results
 DESCRIPTION >
