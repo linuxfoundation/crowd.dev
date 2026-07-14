@@ -21,18 +21,17 @@ const { findObsoleteRepos, initializeTokenInfos, updateTokenInfos, getCurrentTim
 
 const ONE_HOUR_MS = 60 * 60 * 1000
 
-// Monotonic offset added to nowMs on each releaseToken so lastUsed is strictly increasing
-// per release even when currentTimeMs hasn't refreshed. Without this, sequential releases in
-// the same iteration all share currentTimeMs, the stable sort in getNextToken falls back to
-// env order, and the first PAT gets re-selected repeatedly instead of rotating LRU.
-let releaseCounter = 0
-
 export async function triggerSecurityInsightsCheckForRepos(
   args: ITriggerSecurityInsightsCheckForReposParams,
 ): Promise<void> {
   const REPOS_OBSOLETE_AFTER_SECONDS = 30 * 24 * 60 * 60 // 30 days
   const LIMIT_REPOS_TO_CHECK_PER_RUN = 100
   const MAX_PARALLEL_CHILDREN = 5
+
+  // Monotonic offset added to nowMs on each release so lastUsed is strictly increasing per
+  // release even when currentTimeMs hasn't refreshed. Kept function-scoped (not module-level)
+  // so Temporal workflow isolate reuse across executions doesn't leak state between runs.
+  let releaseCounter = 0
 
   const info = workflowInfo()
   const failedRepoUrls = args?.failedRepoUrls || []
@@ -82,8 +81,7 @@ export async function triggerSecurityInsightsCheckForRepos(
         break
       }
       const token = tokenInfo.token
-
-      await acquireToken(tokenInfos, token)
+      tokenInfo.inUse = true
 
       try {
         await executeChild(upsertOSPSBaselineSecurityInsights, {
@@ -141,7 +139,8 @@ export async function triggerSecurityInsightsCheckForRepos(
           break
         }
       } finally {
-        await releaseToken(tokenInfos, tokenInfo.token, currentTimeMs)
+        tokenInfo.inUse = false
+        tokenInfo.lastUsed = new Date(currentTimeMs + releaseCounter++)
       }
     }
 
@@ -195,7 +194,10 @@ export async function triggerSecurityInsightsCheckForRepos(
         break
       }
       // Otherwise defer: remaining repos are still obsolete and findObsoleteRepos will pick
-      // them up on the next batch after rate limits expire.
+      // them up on the next scheduled run (daily cron `0 8 * * *`). We don't `sleep()` here
+      // to the earliest cooldown because the 30-day obsolescence window makes a ~23h delay
+      // negligible, and holding a worker slot idle for hours per rate-limit event isn't worth
+      // the cost. `rateLimitedAt` persists in Redis so the 1h expiry still applies on resume.
       console.warn(
         `No tokens available; deferring ${queue.length} repos to next batch (they will be re-fetched)`,
       )
@@ -224,11 +226,11 @@ export async function triggerSecurityInsightsCheckForRepos(
 
 function refreshExpiredRateLimits(tokenInfos: ITokenInfo[], nowMs: number): void {
   for (const t of tokenInfos) {
-    if (
-      t.isRateLimited &&
-      t.rateLimitedAt &&
-      nowMs - new Date(t.rateLimitedAt).getTime() > ONE_HOUR_MS
-    ) {
+    if (!t.isRateLimited) continue
+    // Clear rate-limit when the timestamp is missing, unparseable, or older than 1h.
+    // Guarding against NaN avoids permanently wedging a token due to malformed cache data.
+    const rateMs = t.rateLimitedAt ? new Date(t.rateLimitedAt).getTime() : NaN
+    if (!Number.isFinite(rateMs) || nowMs - rateMs > ONE_HOUR_MS) {
       t.isRateLimited = false
       t.rateLimitedAt = undefined
     }
@@ -265,19 +267,4 @@ function extractFailureTimestamp(appFailure: ApplicationFailure): string | null 
   const ts = details?.[0]
   if (typeof ts !== 'number' || !Number.isFinite(ts)) return null
   return new Date(ts).toISOString()
-}
-
-async function releaseToken(tokenInfos: ITokenInfo[], token: string, nowMs: number): Promise<void> {
-  const tokenInfo = tokenInfos.find((tokenInfo) => tokenInfo.token === token)
-  if (tokenInfo) {
-    tokenInfo.inUse = false
-    tokenInfo.lastUsed = new Date(nowMs + releaseCounter++)
-  }
-}
-
-async function acquireToken(tokenInfos: ITokenInfo[], token: string): Promise<void> {
-  const tokenInfo = tokenInfos.find((tokenInfo) => tokenInfo.token === token)
-  if (tokenInfo) {
-    tokenInfo.inUse = true
-  }
 }

@@ -293,13 +293,13 @@ async function runBinary(
         resolve({ stdout, stderr })
       } else {
         const truncated = (s: string) => (s.length > 500 ? s.slice(0, 500) + '…' : s)
-        const truncStdout = truncated(stdout)
-        const truncStderr = truncated(stderr)
+        // Attach full stdout/stderr so classifyTokenError sees rate-limit markers that may
+        // appear after the truncation cut. Message is still truncated for log readability.
         const err = Object.assign(
           new Error(
-            `Binary exited with code ${code}\nStderr:\n${truncStderr}\nStdout:\n${truncStdout}`,
+            `Binary exited with code ${code}\nStderr:\n${truncated(stderr)}\nStdout:\n${truncated(stdout)}`,
           ),
-          { stdout: truncStdout, stderr: truncStderr },
+          { stdout, stderr },
         )
         reject(err)
       }

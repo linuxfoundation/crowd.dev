@@ -57,5 +57,5 @@ export interface ITokenInfo {
   lastUsed: Date | string
   isRateLimited: boolean
   rateLimitedAt?: string // ISO timestamp; used to auto-reset after 1 hour
-  isInvalid?: boolean // 401 auth failure; persists until the Redis token cache expires (24h TTL) — after a full idle day the token re-enters the pool fresh, giving re-provisioned PATs a natural recovery path
+  isInvalid?: boolean // 401 auth failure. Effectively permanent while the scheduler keeps running (`updateTokenInfos` rewrites the Redis key with a fresh 24h TTL on every batch, so the cache doesn't expire on its own). Recovery paths: rotate the PAT out of `CROWD_GITHUB_PERSONAL_ACCESS_TOKENS` (env is authoritative for pool membership) or let the cache expire during a >24h scheduler outage.
 }
