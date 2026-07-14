@@ -64,6 +64,12 @@ export async function triggerSecurityInsightsCheckForRepos(
 
   async function processRepo(repo: (typeof repos)[0]): Promise<void> {
     let attempts = 0
+    // Distinguishes attempt exhaustion caused by transient rate-limits from exhaustion caused
+    // by per-repo access failures. With MAX_TOKEN_ATTEMPTS == poolSize, a pool where every
+    // token 403s in this run exits the loop via `attempts >= MAX_TOKEN_ATTEMPTS` rather than
+    // via `!tokenInfo`, so requeue decisions have to be made here too — otherwise a rate-limit
+    // wave would falsely fail the repo for the rest of the continueAsNew chain.
+    let sawRateLimit = false
     while (attempts < MAX_TOKEN_ATTEMPTS) {
       const tokenInfo = getNextToken(tokenInfos, currentTimeMs)
       if (!tokenInfo) {
@@ -115,6 +121,7 @@ export async function triggerSecurityInsightsCheckForRepos(
           // batch startTime when details are missing so we still record something.
           tokenInfo.rateLimitedAt =
             extractFailureTimestamp(appFailure) ?? new Date(currentTimeMs).toISOString()
+          sawRateLimit = true
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
@@ -145,8 +152,19 @@ export async function triggerSecurityInsightsCheckForRepos(
     }
 
     if (attempts >= MAX_TOKEN_ATTEMPTS) {
-      console.error(`Exhausted token attempts for repo ${repo.repoUrl}, skipping`)
-      failedRepoUrls.push(repo.repoUrl)
+      // If any attempt hit a rate-limit and not every token is permanently invalid, the
+      // exhaustion is transient — requeue so the repo can be retried once cooldowns expire
+      // (via the outer loop's `refreshExpiredRateLimits`) or on a later scheduled run.
+      const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
+      if (sawRateLimit && !allPermanentlyInvalid) {
+        console.warn(
+          `Exhausted token attempts (rate-limit) for repo ${repo.repoUrl}, requeuing`,
+        )
+        queue.unshift(repo)
+      } else {
+        console.error(`Exhausted token attempts for repo ${repo.repoUrl}, skipping`)
+        failedRepoUrls.push(repo.repoUrl)
+      }
     }
   }
 
