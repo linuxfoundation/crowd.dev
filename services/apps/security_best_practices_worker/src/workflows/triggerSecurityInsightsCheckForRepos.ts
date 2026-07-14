@@ -117,8 +117,9 @@ export async function triggerSecurityInsightsCheckForRepos(
         const appFailure = unwrapApplicationFailure(error)
         if (appFailure?.type === 'Token403Error') {
           tokenInfo.isRateLimited = true
-          // Activity captures the wall-clock time of the 403 in details[0]; fall back to the
-          // batch startTime when details are missing so we still record something.
+          // Activity captures the wall-clock time of the 403 in details[0]; fall back to
+          // the iteration's currentTimeMs (from the getCurrentTimeMs activity) so we still
+          // record something when details are missing.
           tokenInfo.rateLimitedAt =
             extractFailureTimestamp(appFailure) ?? new Date(currentTimeMs).toISOString()
           sawRateLimit = true

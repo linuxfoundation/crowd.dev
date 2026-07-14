@@ -190,7 +190,7 @@ export async function saveOSPSBaselineInsightsToRedis(
 function classifyTokenError(output: string, source: string): void {
   // Wall-clock timestamp of the failure. Passed via ApplicationFailure.details so the
   // workflow can persist an accurate rateLimitedAt — workflow code can't call Date.now()
-  // itself (Temporal determinism rule; workflowInfo().startTime skews on long batches).
+  // directly (Temporal determinism rule).
   const failedAtMs = Date.now()
 
   if (output.includes('401 Unauthorized') || output.includes('401 Bad credentials')) {
