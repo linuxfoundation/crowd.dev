@@ -191,8 +191,9 @@
               <article class="mb-6">
                 <lf-field label-text="Show aggregate tabs">
                   <div class="flex items-center gap-2">
-                    <lf-switch v-model="form.showAggregateTabs" size="small" />
-                    <span class="text-2xs text-gray-400">Show in-depth aggregate metric tabs on the public collection page</span>
+                    <lf-switch v-model="form.showAggregateTabs" size="small">
+                      <span class="text-2xs text-gray-400">Show in-depth aggregate metric tabs on the public collection page</span>
+                    </lf-switch>
                   </div>
                 </lf-field>
               </article>

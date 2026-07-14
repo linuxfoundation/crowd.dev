@@ -3,9 +3,9 @@ DESCRIPTION >
     - Returns a single row with metrics aggregated across every project in the collection, not one row per project.
     - Parameters:
     - `collectionSlug`: Required collection slug. insights_projects_populated_ds.collectionsSlugs already lists
-      every collection each project belongs to (see insightsProjects_filtered.pipe for the same filter pattern),
-      so this pipe resolves collection membership directly rather than requiring the caller to first look up a
-      project id list.
+    every collection each project belongs to (see insightsProjects_filtered.pipe for the same filter pattern),
+    so this pipe resolves collection membership directly rather than requiring the caller to first look up a
+    project id list.
     - Response:
     - `projectCount`: count of distinct projects in the collection.
     - `uniqueContributorCount`: total unique contributors across all projects in the collection, deduplicated (a contributor active on multiple projects in the collection is counted once).
@@ -43,3 +43,8 @@ SQL >
     WHERE
         ar.memberId != ''
         AND ar.segmentId IN (SELECT segmentId FROM collection_insights_aggregate_projects)
+        AND (ar.type, ar.platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )

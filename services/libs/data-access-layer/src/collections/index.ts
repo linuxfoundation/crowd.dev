@@ -146,7 +146,10 @@ export async function createCollection(
     logoUrl: null,
     imageUrl: null,
     color: null,
-    showAggregateTabs: true,
+    // Only LF Foundation (curated) collections get aggregate tabs by default.
+    // ssoUserId is only set for community/user-curated collections, so
+    // ssoUserId being unset identifies curated collections (see V1784026542).
+    showAggregateTabs: !collection.ssoUserId,
     ...collection,
   }
   return qx.selectOne(
