@@ -23,9 +23,7 @@
 <script>
 import { mapActions } from 'vuex';
 import AppResizePage from '@/modules/layout/pages/resize-page.vue';
-import { mapActions as piniaMapActions, storeToRefs } from 'pinia';
-import { useActivityStore } from '@/modules/activity/store/pinia';
-import { useActivityTypeStore } from '@/modules/activity/store/type';
+import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/modules/auth/store/auth.store';
 import useSessionTracking from '@/shared/modules/monitoring/useSessionTracking';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
@@ -58,8 +56,6 @@ export default {
     tenant: {
       handler(tenant, oldTenant) {
         if (tenant?.id && tenant.id !== oldTenant?.id) {
-          this.fetchActivityTypes();
-          this.fetchActivityChannels();
           this.listProjectGroups({
             limit: 20,
             reset: true,
@@ -90,12 +86,6 @@ export default {
   methods: {
     ...mapActions({
       resize: 'layout/resize',
-    }),
-    ...piniaMapActions(useActivityStore, {
-      fetchActivityChannels: 'fetchActivityChannels',
-    }),
-    ...piniaMapActions(useActivityTypeStore, {
-      fetchActivityTypes: 'fetchActivityTypes',
     }),
 
     handleResize() {

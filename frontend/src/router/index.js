@@ -85,9 +85,10 @@ export const createRouter = () => {
           store,
         };
 
-        await middlewareArray.forEach(async (middleware) => {
+        for (const middleware of middlewareArray) {
+          // eslint-disable-next-line no-await-in-loop
           await middleware(context);
-        });
+        }
 
         // Redirect to project group landing pages if routes that require a selected project group
         // And no project group is selected
