@@ -182,9 +182,20 @@ export async function triggerSecurityInsightsCheckForRepos(
     if (activeTasks.length > 0) {
       await Promise.race(activeTasks)
     } else if (queue.length > 0) {
-      // No active tasks and no free tokens — remaining repos can't be processed this batch.
-      // Don't add them to failedRepoUrls: they're still obsolete and findObsoleteRepos will
-      // pick them up on the next batch after rate limits expire.
+      // No active tasks and no free tokens. If every token is permanently invalid, deferring
+      // would loop forever across scheduled runs — fail the remaining repos so ops sees the
+      // problem instead of a silent stall.
+      const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
+      if (allPermanentlyInvalid) {
+        console.error(
+          `All tokens permanently invalid; marking ${queue.length} remaining repos as failed`,
+        )
+        for (const repo of queue) failedRepoUrls.push(repo.repoUrl)
+        queue.length = 0
+        break
+      }
+      // Otherwise defer: remaining repos are still obsolete and findObsoleteRepos will pick
+      // them up on the next batch after rate limits expire.
       console.warn(
         `No tokens available; deferring ${queue.length} repos to next batch (they will be re-fetched)`,
       )

@@ -52,7 +52,9 @@ export interface ITriggerSecurityInsightsCheckForReposParams {
 export interface ITokenInfo {
   token: string
   inUse: boolean
-  lastUsed: Date
+  // Date at initialization time; becomes an ISO string after JSON round-trip through Redis
+  // and Temporal payloads, so callers must wrap in `new Date()` before comparing.
+  lastUsed: Date | string
   isRateLimited: boolean
   rateLimitedAt?: string // ISO timestamp; used to auto-reset after 1 hour
   isInvalid?: boolean // 401 auth failure; persists until the Redis token cache expires (24h TTL) — after a full idle day the token re-enters the pool fresh, giving re-provisioned PATs a natural recovery path
