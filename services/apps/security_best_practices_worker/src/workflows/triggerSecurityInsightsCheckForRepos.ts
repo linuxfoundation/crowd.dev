@@ -62,6 +62,14 @@ export async function triggerSecurityInsightsCheckForRepos(
   const queue = [...repos]
   const activeTasks: Promise<void>[] = []
 
+  // Per-repo attempted-token state kept across in-run requeues. Only TokenRepoAccessError
+  // records into this set — Token403Error and TokenAuthError already mark the token
+  // isRateLimited/isInvalid, so getNextToken filters them out globally. Preserving the set
+  // across requeues prevents the same TokenRepoAccessError token from being immediately
+  // re-picked when other tokens are held by concurrent children. The map is function-scoped
+  // so continueAsNew starts each batch with a clean slate.
+  const repoAttemptedTokens = new Map<string, Set<string>>()
+
   async function processRepo(repo: (typeof repos)[0]): Promise<void> {
     let attempts = 0
     // Distinguishes attempt exhaustion caused by transient rate-limits from exhaustion caused
@@ -70,33 +78,36 @@ export async function triggerSecurityInsightsCheckForRepos(
     // via `!tokenInfo`, so requeue decisions have to be made here too — otherwise a rate-limit
     // wave would falsely fail the repo for the rest of the continueAsNew chain.
     let sawRateLimit = false
-    // Per-repo attempted-tokens set. TokenRepoAccessError releases the token in "clean"
-    // global state, so without this filter `getNextToken` could re-pick the same token
-    // while the others are held by concurrent children — burning attempts without ever
-    // reaching a token that might have access.
-    const attemptedTokens = new Set<string>()
+    // Look up (or create) the persisted attempted-token set for this repo. Persistence
+    // across requeues is the fix for a concurrency race: a requeued repo with a fresh set
+    // could immediately re-pick the same token that just returned TokenRepoAccessError
+    // while other tokens are held by concurrent children.
+    let attemptedTokens = repoAttemptedTokens.get(repo.repoUrl)
+    if (!attemptedTokens) {
+      attemptedTokens = new Set<string>()
+      repoAttemptedTokens.set(repo.repoUrl, attemptedTokens)
+    }
     while (attempts < MAX_TOKEN_ATTEMPTS) {
       const tokenInfo = getNextToken(tokenInfos, currentTimeMs, attemptedTokens)
       if (!tokenInfo) {
-        // No untried, usable token remains for this repo. Distinguish two cases:
-        // - all tokens permanently invalid, OR every non-invalid token has been tried for
-        //   this repo → this repo genuinely can't be scanned, fail it
-        // - some non-invalid, non-attempted tokens exist but are currently in-use or
-        //   rate-limited → requeue so a later iteration can retry when they free up
+        // No untried, usable token remains for this repo. Fail only when either every token
+        // is permanently invalid, or every non-invalid token has been tried AND none of the
+        // attempts hit a rate-limit that could cool down. Otherwise requeue: some tokens are
+        // rate-limited (may recover this run) or in-use by concurrent children (may free up).
         const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
         const anyUnattemptedNonInvalid = tokenInfos.some(
           (t) => !t.isInvalid && !attemptedTokens.has(t.token),
         )
-        if (allPermanentlyInvalid || !anyUnattemptedNonInvalid) {
+        if (allPermanentlyInvalid || (!anyUnattemptedNonInvalid && !sawRateLimit)) {
           console.error(`No untried tokens remain for repo ${repo.repoUrl}, skipping`)
           failedRepoUrls.push(repo.repoUrl)
+          repoAttemptedTokens.delete(repo.repoUrl)
         } else {
           queue.unshift(repo)
         }
         break
       }
       const token = tokenInfo.token
-      attemptedTokens.add(token)
       tokenInfo.inUse = true
 
       try {
@@ -120,6 +131,7 @@ export async function triggerSecurityInsightsCheckForRepos(
             },
           ],
         })
+        repoAttemptedTokens.delete(repo.repoUrl)
         return // success
       } catch (error) {
         // executeChild rejects with ChildWorkflowFailure wrapping ActivityFailure wrapping
@@ -144,8 +156,10 @@ export async function triggerSecurityInsightsCheckForRepos(
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenRepoAccessError') {
           // Token can't access this repo (SAML/perms) but may work elsewhere — don't taint
-          // the token's global state, just try the next one for this repo.
+          // the token's global state. Record it in attemptedTokens (persisted across
+          // requeues) so getNextToken won't hand this token back for this repo again.
           console.warn(`Token lacks access to repo ${repo.repoUrl}, trying different token`)
+          attemptedTokens.add(token)
           attempts++
           continue
         } else {
@@ -154,6 +168,7 @@ export async function triggerSecurityInsightsCheckForRepos(
           // but it failed in all retries.
           // to proceed with processing, we don't wanna try this repo again in this run
           failedRepoUrls.push(repo.repoUrl)
+          repoAttemptedTokens.delete(repo.repoUrl)
           break
         }
       } finally {
@@ -173,6 +188,7 @@ export async function triggerSecurityInsightsCheckForRepos(
       } else {
         console.error(`Exhausted token attempts for repo ${repo.repoUrl}, skipping`)
         failedRepoUrls.push(repo.repoUrl)
+        repoAttemptedTokens.delete(repo.repoUrl)
       }
     }
   }
