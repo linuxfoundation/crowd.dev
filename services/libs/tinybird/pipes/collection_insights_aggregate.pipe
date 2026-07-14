@@ -9,7 +9,11 @@ DESCRIPTION >
     - Response:
     - `projectCount`: count of distinct projects in the collection.
     - `uniqueContributorCount`: total unique contributors across all projects in the collection, deduplicated (a contributor active on multiple projects in the collection is counted once).
-    - `avgHealthScore`: average of each project's health score in the collection, rounded.
+    - `avgHealthScore`: average health score across the collection's onboarded projects, rounded. A project
+      is "onboarded" when it has at least one contributor or organization attributed to it (same definition
+      used by insightsProjects_filtered.pipe's `onboarded` filter and the frontend's project-row `isOnboarded`
+      check) — projects with no attributed contributors/organizations have no meaningful health signal yet
+      and would otherwise pull the average down artificially.
 
 TAGS "Insights, Widget", "Collection"
 
@@ -21,7 +25,7 @@ DESCRIPTION >
 
 SQL >
     %
-    SELECT id, segmentId, healthScore
+    SELECT id, segmentId, healthScore, organizationCount, contributorCount
     FROM insights_projects_populated_ds
     WHERE
         enabled = 1
@@ -38,7 +42,11 @@ SQL >
     SELECT
         (SELECT count(distinct id) FROM collection_insights_aggregate_projects) AS projectCount,
         uniq(ar.memberId) AS uniqueContributorCount,
-        (SELECT round(avg(healthScore)) FROM collection_insights_aggregate_projects) AS avgHealthScore
+        (
+            SELECT round(avg(healthScore))
+            FROM collection_insights_aggregate_projects
+            WHERE NOT (organizationCount = 0 AND contributorCount = 0)
+        ) AS avgHealthScore
     FROM activityRelations_deduplicated_cleaned_bucket_union AS ar
     WHERE
         ar.memberId != ''
