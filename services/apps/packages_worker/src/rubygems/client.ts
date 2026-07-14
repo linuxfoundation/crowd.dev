@@ -52,9 +52,3 @@ export function fetchOwners(name: string): Promise<RubyGemsFetchResult<RubyGemsO
     `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}/owners.json`,
   )
 }
-
-export function fetchReverseDependencies(name: string): Promise<RubyGemsFetchResult<string[]>> {
-  return rubyGemsGet<string[]>(
-    `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}/reverse_dependencies.json`,
-  )
-}
