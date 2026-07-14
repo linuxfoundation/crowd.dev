@@ -186,6 +186,16 @@
                   </lf-field>
                 </article>
               </div>
+
+              <!-- Show aggregate tabs -->
+              <article class="mb-6">
+                <lf-field label-text="Show aggregate tabs">
+                  <div class="flex items-center gap-2">
+                    <lf-switch v-model="form.showAggregateTabs" size="small" />
+                    <span class="text-2xs text-gray-400">Show in-depth aggregate metric tabs on the public collection page</span>
+                  </div>
+                </lf-field>
+              </article>
             </div>
             <lf-collection-add-projects-tab
               v-if="activeTab === 'projects'"
@@ -221,6 +231,7 @@ import LfTabs from '@/ui-kit/tabs/Tabs.vue';
 import LfTab from '@/ui-kit/tabs/Tab.vue';
 import LfInput from '@/ui-kit/input/Input.vue';
 import LfTextarea from '@/ui-kit/textarea/Textarea.vue';
+import LfSwitch from '@/ui-kit/switch/Switch.vue';
 import LfField from '@/ui-kit/field/Field.vue';
 import LfFieldMessages from '@/ui-kit/field-messages/FieldMessages.vue';
 
@@ -260,6 +271,7 @@ const form = reactive<CollectionFormModel>({
   color: '',
   projects: [],
   starred: false,
+  showAggregateTabs: true,
 });
 
 const rules = {
@@ -327,6 +339,7 @@ const onSubmit = () => {
       starred: project?.starred || false,
     })),
     starred: !!form.starred,
+    showAggregateTabs: !!form.showAggregateTabs,
     categoryId: form.categoryId,
     slug: form.name.toLowerCase().replace(/ /g, '-'),
   };

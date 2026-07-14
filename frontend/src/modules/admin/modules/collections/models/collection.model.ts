@@ -14,6 +14,7 @@ export interface CollectionModel {
   projects: InsightsProjectModel[];
   category: Category & {categoryGroupType: string, categoryGroupName: string};
   starred?: boolean;
+  showAggregateTabs?: boolean;
 }
 
 export interface CollectionRequest {
@@ -25,6 +26,7 @@ export interface CollectionRequest {
   color?: string;
   slug: string;
   starred: boolean;
+  showAggregateTabs: boolean;
   projects: {
     id: string;
     starred: boolean;
@@ -40,4 +42,5 @@ export interface CollectionFormModel {
   color: string;
   projects: InsightsProjectModel[];
   starred: boolean;
+  showAggregateTabs: boolean;
 }
