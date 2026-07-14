@@ -1,8 +1,11 @@
 {
   "name": "@crowd/test-kit",
   "private": true,
+  "sideEffects": false,
   "exports": {
-    "./fixtures": "./src/fixtures.ts"
+    "./db": "./src/db/index.ts",
+    "./factories": "./src/factories/index.ts",
+    "./faker": "./src/faker.ts"
   },
   "scripts": {
     "lint": "npx eslint --ext .ts src --max-warnings=0",
@@ -12,7 +15,11 @@
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
     "@crowd/database": "workspace:*",
+    "@crowd/integrations": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "@faker-js/faker": "^9.9.0",
     "pg-promise": "^11.4.3"
   },
   "devDependencies": {

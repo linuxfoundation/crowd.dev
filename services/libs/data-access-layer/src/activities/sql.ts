@@ -9,7 +9,7 @@ import {
   Counter,
   TinybirdClient,
 } from '@crowd/database'
-import { ActivityDisplayService } from '@crowd/integrations'
+import { ActivityDisplayService } from '@crowd/integrations/src/integrations/activityDisplayService'
 import { ActivityTypeSettings, ITimeseriesDatapoint, PageData } from '@crowd/types'
 
 import { getLatestMemberActivityRelations } from '../activityRelations'

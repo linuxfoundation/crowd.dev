@@ -16,7 +16,6 @@ import {
   IDbOrganization,
   OrgIdentityField,
   OrganizationField,
-  addOrgIdentity,
   addOrgsToSegments,
   cleanUpOrgIdentities,
   cleanupForOganization,
@@ -27,6 +26,7 @@ import {
   findManyOrgAttributes,
   findOrgAttributes,
   findOrgById,
+  insertOrganizationIdentities,
   markOrgAttributeDefault,
   queryOrgIdentities,
   updateOrgIdentityVerifiedFlag,
@@ -619,16 +619,22 @@ class OrganizationRepository {
   ): Promise<void> {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
-    await addOrgIdentity(qx, {
-      organizationId,
-      platform: identity.platform,
-      source: identity.source,
-      sourceId: identity.sourceId || null,
-      value: identity.value,
-      type: identity.type,
-      verified: identity.verified,
-      integrationId: identity.integrationId || null,
-    })
+    await insertOrganizationIdentities(
+      qx,
+      [
+        {
+          organizationId,
+          platform: identity.platform,
+          source: identity.source,
+          sourceId: identity.sourceId || null,
+          value: identity.value,
+          type: identity.type,
+          verified: identity.verified,
+          integrationId: identity.integrationId || null,
+        },
+      ],
+      false,
+    )
   }
 
   static async getIdentities(
