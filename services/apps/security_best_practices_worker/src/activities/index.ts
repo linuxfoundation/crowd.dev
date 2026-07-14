@@ -183,9 +183,10 @@ export async function saveOSPSBaselineInsightsToRedis(
   await redisCache.set(key, JSON.stringify(insights), 60 * 60 * 24) // 1 day
 }
 
-// GitHub returns 403 for both rate-limit exhaustion AND persistent permission/SAML failures.
-// Only rate-limit responses should trigger the 1h token-rotation cooldown; permission failures
-// must be marked as invalid so the token isn't retried in a loop.
+// GitHub returns 403 for rate-limit exhaustion AND persistent permission/SAML failures, and
+// 429 for primary rate-limit hits. Only 401 proves the token is globally invalid — SAML/repo
+// permissions vary per org, so a permission 403 on one repo doesn't mean the token is unusable
+// elsewhere.
 function classifyTokenError(output: string, source: string): void {
   // Wall-clock timestamp of the failure. Passed via ApplicationFailure.details so the
   // workflow can persist an accurate rateLimitedAt — workflow code can't call Date.now()
@@ -201,14 +202,17 @@ function classifyTokenError(output: string, source: string): void {
       details: [failedAtMs],
     })
   }
-  if (!output.includes('403')) return
 
-  // Rate-limit 403s from GitHub carry a distinctive body: "API rate limit exceeded" or
-  // "secondary rate limit". Anything else (SAML enforcement, missing scopes, resource
-  // not accessible) is a permission problem and the token won't recover.
-  const isRateLimit = /rate limit|rate_limit|secondary rate/i.test(output)
+  const has403 = output.includes('403')
+  const has429 = output.includes('429')
+  if (!has403 && !has429) return
+
+  // Rate-limit responses carry a distinctive body: "API rate limit exceeded" or
+  // "secondary rate limit". 429 is always a rate-limit signal. 403 without those markers
+  // is a permission problem (SAML enforcement, missing scopes, resource not accessible).
+  const isRateLimit = has429 || /rate limit|rate_limit|secondary rate/i.test(output)
   if (isRateLimit) {
-    svc.log.warn(`Detected 403 rate-limit in ${source} - token rate-limited!`)
+    svc.log.warn(`Detected rate-limit in ${source} - token rate-limited!`)
     throw ApplicationFailure.create({
       message: 'GitHub token rate-limited',
       type: 'Token403Error',
@@ -216,10 +220,12 @@ function classifyTokenError(output: string, source: string): void {
       details: [failedAtMs],
     })
   }
-  svc.log.warn(`Detected 403 permission error in ${source} - token lacks required access!`)
+  // Permission 403: this token can't access THIS repo, but may work for others. Signal the
+  // workflow to try a different token without marking this one globally invalid.
+  svc.log.warn(`Detected 403 permission error in ${source} - token lacks access to this repo!`)
   throw ApplicationFailure.create({
-    message: 'GitHub token lacks required permissions',
-    type: 'TokenAuthError',
+    message: 'GitHub token lacks required permissions for this repo',
+    type: 'TokenRepoAccessError',
     nonRetryable: true,
     details: [failedAtMs],
   })

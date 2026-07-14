@@ -89,7 +89,7 @@ export async function triggerSecurityInsightsCheckForRepos(
             initialInterval: 2000,
             backoffCoefficient: 2,
             maximumInterval: 30000,
-            nonRetryableErrorTypes: ['Token403Error', 'TokenAuthError'],
+            nonRetryableErrorTypes: ['Token403Error', 'TokenAuthError', 'TokenRepoAccessError'],
           },
           args: [
             {
@@ -120,6 +120,12 @@ export async function triggerSecurityInsightsCheckForRepos(
           tokenInfo.isInvalid = true
           attempts++
           continue // retry with a different token
+        } else if (appFailure?.type === 'TokenRepoAccessError') {
+          // Token can't access this repo (SAML/perms) but may work elsewhere — don't taint
+          // the token's global state, just try the next one for this repo.
+          console.warn(`Token lacks access to repo ${repo.repoUrl}, trying different token`)
+          attempts++
+          continue
         } else {
           console.error(`Failed to process repo ${repo.repoUrl}:`, error)
           // we retried this error using the retry policy (because it's not a token non-retryable error)
