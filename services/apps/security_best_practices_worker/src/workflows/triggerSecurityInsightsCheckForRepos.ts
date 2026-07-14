@@ -28,20 +28,24 @@ export async function triggerSecurityInsightsCheckForRepos(
   const REPOS_OBSOLETE_AFTER_SECONDS = 30 * 24 * 60 * 60 // 30 days
   const LIMIT_REPOS_TO_CHECK_PER_RUN = 100
   const MAX_PARALLEL_CHILDREN = 5
-  const MAX_TOKEN_ATTEMPTS = 5
 
   const info = workflowInfo()
   const failedRepoUrls = args?.failedRepoUrls || []
 
-  // Use workflowInfo().startTime as the replay-safe time reference — Temporal workflows must
-  // be deterministic, so Date.now()/new Date() are banned by services-checklist.md:9-12.
-  // startTime is stable within a run and advances on each continueAsNew batch.
+  // Use workflowInfo().startTime as the replay-safe time reference for rate-limit expiry
+  // checks — Temporal workflows must be deterministic, so Date.now()/new Date() are banned
+  // (services-checklist.md:9-12). Actual rate-limit failure timestamps come from the
+  // ApplicationFailure.details payload set inside the activity, so long batches don't skew
+  // the persisted rateLimitedAt.
   const nowMs = info.startTime.getTime()
-  const nowIso = info.startTime.toISOString()
 
   // Token state is persisted in Redis via updateTokenInfos so isRateLimited (with rateLimitedAt
   // for expiry) and isInvalid survive across continueAsNew batches.
   const tokenInfos: ITokenInfo[] = await initializeTokenInfos()
+
+  // Scale attempts to pool size so a repo isn't marked failed while untried tokens remain
+  // (e.g. 6 PATs where the first 5 attempts all 403 on different tokens).
+  const MAX_TOKEN_ATTEMPTS = Math.max(5, tokenInfos.length)
 
   const repos = await findObsoleteRepos(
     REPOS_OBSOLETE_AFTER_SECONDS,
@@ -105,7 +109,10 @@ export async function triggerSecurityInsightsCheckForRepos(
         const appFailure = unwrapApplicationFailure(error)
         if (appFailure?.type === 'Token403Error') {
           tokenInfo.isRateLimited = true
-          tokenInfo.rateLimitedAt = nowIso
+          // Activity captures the wall-clock time of the 403 in details[0]; fall back to the
+          // batch startTime when details are missing so we still record something.
+          tokenInfo.rateLimitedAt =
+            extractFailureTimestamp(appFailure) ?? info.startTime.toISOString()
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
@@ -124,7 +131,7 @@ export async function triggerSecurityInsightsCheckForRepos(
           break
         }
       } finally {
-        await releaseToken(tokenInfos, tokenInfo.token)
+        await releaseToken(tokenInfos, tokenInfo.token, nowMs)
       }
     }
 
@@ -228,11 +235,19 @@ function unwrapApplicationFailure(error: unknown): ApplicationFailure | null {
   return null
 }
 
-async function releaseToken(tokenInfos: ITokenInfo[], token: string): Promise<void> {
+// Activity records the wall-clock failure time via ApplicationFailure.details[0] (ms).
+function extractFailureTimestamp(appFailure: ApplicationFailure): string | null {
+  const details = appFailure.details as unknown[] | undefined
+  const ts = details?.[0]
+  if (typeof ts !== 'number' || !Number.isFinite(ts)) return null
+  return new Date(ts).toISOString()
+}
+
+async function releaseToken(tokenInfos: ITokenInfo[], token: string, nowMs: number): Promise<void> {
   const tokenInfo = tokenInfos.find((tokenInfo) => tokenInfo.token === token)
   if (tokenInfo) {
     tokenInfo.inUse = false
-    tokenInfo.lastUsed = new Date()
+    tokenInfo.lastUsed = new Date(nowMs)
   }
 }
 

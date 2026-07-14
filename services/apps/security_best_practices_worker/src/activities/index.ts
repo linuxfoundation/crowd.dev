@@ -187,12 +187,18 @@ export async function saveOSPSBaselineInsightsToRedis(
 // Only rate-limit responses should trigger the 1h token-rotation cooldown; permission failures
 // must be marked as invalid so the token isn't retried in a loop.
 function classifyTokenError(output: string, source: string): void {
+  // Wall-clock timestamp of the failure. Passed via ApplicationFailure.details so the
+  // workflow can persist an accurate rateLimitedAt — workflow code can't call Date.now()
+  // itself (Temporal determinism rule; workflowInfo().startTime skews on long batches).
+  const failedAtMs = Date.now()
+
   if (output.includes('401 Unauthorized') || output.includes('401 Bad credentials')) {
     svc.log.warn(`Detected 401 error in ${source} - token invalid or expired!`)
     throw ApplicationFailure.create({
       message: 'GitHub token invalid or expired',
       type: 'TokenAuthError',
       nonRetryable: true,
+      details: [failedAtMs],
     })
   }
   if (!output.includes('403')) return
@@ -207,6 +213,7 @@ function classifyTokenError(output: string, source: string): void {
       message: 'GitHub token rate-limited',
       type: 'Token403Error',
       nonRetryable: true,
+      details: [failedAtMs],
     })
   }
   svc.log.warn(`Detected 403 permission error in ${source} - token lacks required access!`)
@@ -214,6 +221,7 @@ function classifyTokenError(output: string, source: string): void {
     message: 'GitHub token lacks required permissions',
     type: 'TokenAuthError',
     nonRetryable: true,
+    details: [failedAtMs],
   })
 }
 
@@ -297,27 +305,35 @@ export async function initializeTokenInfos(): Promise<ITokenInfo[]> {
   const redisCache = new RedisCache(`osps-baseline-insights`, svc.redis, svc.log)
 
   const tokenInfosInRedis = await redisCache.get('tokenInfos')
+  const cached: ITokenInfo[] = tokenInfosInRedis ? JSON.parse(tokenInfosInRedis) : []
+  const cachedByToken = new Map(cached.map((t) => [t.token, t]))
 
-  if (tokenInfosInRedis) {
-    const parsed: ITokenInfo[] = JSON.parse(tokenInfosInRedis)
-    return parsed.map((t) => ({
-      ...t,
-      // Reset inUse — workflow processes may have crashed leaving stale in-use flags.
+  // Env var is authoritative for pool membership so PAT rotation is picked up on next run:
+  // a new token in CROWD_GITHUB_PERSONAL_ACCESS_TOKENS joins the pool fresh, and a removed
+  // token drops out even if its cached entry is still in Redis.
+  const envTokens = process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',')
+
+  return envTokens.map((token) => {
+    const t = cachedByToken.get(token)
+    if (t) {
+      return {
+        ...t,
+        // Reset inUse — workflow processes may have crashed leaving stale in-use flags.
+        inUse: false,
+        // Backward compat: legacy entries have isRateLimited=true with no rateLimitedAt timestamp.
+        // Without a timestamp the 1-hour expiry can't apply and the token would be stuck forever.
+        // Clear stale rate-limits that lack a timestamp so they can be retried on this run.
+        isRateLimited: t.isRateLimited && !!t.rateLimitedAt,
+        rateLimitedAt: t.isRateLimited && t.rateLimitedAt ? t.rateLimitedAt : undefined,
+      }
+    }
+    return {
+      token,
       inUse: false,
-      // Backward compat: legacy entries have isRateLimited=true with no rateLimitedAt timestamp.
-      // Without a timestamp the 1-hour expiry can't apply and the token would be stuck forever.
-      // Clear stale rate-limits that lack a timestamp so they can be retried on this run.
-      isRateLimited: t.isRateLimited && !!t.rateLimitedAt,
-      rateLimitedAt: t.isRateLimited && t.rateLimitedAt ? t.rateLimitedAt : undefined,
-    }))
-  }
-
-  return process.env['CROWD_GITHUB_PERSONAL_ACCESS_TOKENS'].split(',').map((token) => ({
-    token,
-    inUse: false,
-    lastUsed: new Date(),
-    isRateLimited: false,
-  }))
+      lastUsed: new Date(),
+      isRateLimited: false,
+    }
+  })
 }
 
 export async function updateTokenInfos(tokenInfos: ITokenInfo[]): Promise<void> {
