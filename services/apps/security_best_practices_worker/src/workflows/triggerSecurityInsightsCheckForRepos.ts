@@ -28,11 +28,6 @@ export async function triggerSecurityInsightsCheckForRepos(
   const LIMIT_REPOS_TO_CHECK_PER_RUN = 100
   const MAX_PARALLEL_CHILDREN = 5
 
-  // Monotonic offset added to nowMs on each release so lastUsed is strictly increasing per
-  // release even when currentTimeMs hasn't refreshed. Kept function-scoped (not module-level)
-  // so Temporal workflow isolate reuse across executions doesn't leak state between runs.
-  let releaseCounter = 0
-
   const info = workflowInfo()
   const failedRepoUrls = args?.failedRepoUrls || []
 
@@ -73,55 +68,24 @@ export async function triggerSecurityInsightsCheckForRepos(
   const queue = [...repos]
   const activeTasks: Promise<void>[] = []
 
-  // Per-repo attempted-token state kept across in-run requeues. Only TokenRepoAccessError
-  // records into this set — Token403Error and TokenAuthError already mark the token
-  // isRateLimited/isInvalid, so getNextToken filters them out globally. Preserving the set
-  // across requeues prevents the same TokenRepoAccessError token from being immediately
-  // re-picked when other tokens are held by concurrent children. The map is function-scoped
-  // so continueAsNew starts each batch with a clean slate.
-  const repoAttemptedTokens = new Map<string, Set<string>>()
-
   async function processRepo(repo: (typeof repos)[0]): Promise<void> {
     let attempts = 0
-    // Distinguishes attempt exhaustion caused by transient rate-limits from exhaustion caused
-    // by per-repo access failures. With MAX_TOKEN_ATTEMPTS == poolSize, a pool where every
-    // token 403s in this run exits the loop via `attempts >= MAX_TOKEN_ATTEMPTS` rather than
-    // via `!tokenInfo`, so requeue decisions have to be made here too — otherwise a rate-limit
-    // wave would falsely fail the repo for the rest of the continueAsNew chain.
-    let sawRateLimit = false
-    // Look up (or create) the persisted attempted-token set for this repo. Persistence
-    // across requeues is the fix for a concurrency race: a requeued repo with a fresh set
-    // could immediately re-pick the same token that just returned TokenRepoAccessError
-    // while other tokens are held by concurrent children.
-    let attemptedTokens = repoAttemptedTokens.get(repo.repoUrl)
-    if (!attemptedTokens) {
-      attemptedTokens = new Set<string>()
-      repoAttemptedTokens.set(repo.repoUrl, attemptedTokens)
-    }
     while (attempts < MAX_TOKEN_ATTEMPTS) {
-      // Refresh wall-clock time on retries only. A long-running executeChild can block the
-      // outer queue loop's refresh for >1h, leaving rate-limit cooldowns stuck; a per-retry
-      // refresh fixes that. The first attempt intentionally reuses the outer-loop's
-      // currentTimeMs so processRepo runs synchronously up to `tokenInfo.inUse = true` —
-      // otherwise the outer loop can oversubscribe MAX_PARALLEL_CHILDREN tasks against a
-      // smaller token pool before any inUse mark lands, causing immediate null-token requeues.
+      // Refresh wall-clock time on retries only. First attempt intentionally reuses the
+      // outer-loop's currentTimeMs so processRepo runs synchronously up to
+      // `tokenInfo.inUse = true` — otherwise the outer loop can oversubscribe
+      // MAX_PARALLEL_CHILDREN tasks against a smaller token pool before any inUse mark lands.
       if (attempts > 0) {
         currentTimeMs = await getCurrentTimeMs()
       }
-      const tokenInfo = getNextToken(tokenInfos, currentTimeMs, attemptedTokens)
+      const tokenInfo = getNextToken(tokenInfos, currentTimeMs)
       if (!tokenInfo) {
-        // No untried, usable token remains for this repo. Fail only when either every token
-        // is permanently invalid, or every non-invalid token has been tried AND none of the
-        // attempts hit a rate-limit that could cool down. Otherwise requeue: some tokens are
-        // rate-limited (may recover this run) or in-use by concurrent children (may free up).
+        // No usable token — requeue if any may recover (rate-limited tokens expire after 1h
+        // or free up from concurrent children); fail if all are permanently invalid.
         const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
-        const anyUnattemptedNonInvalid = tokenInfos.some(
-          (t) => !t.isInvalid && !attemptedTokens.has(t.token),
-        )
-        if (allPermanentlyInvalid || (!anyUnattemptedNonInvalid && !sawRateLimit)) {
-          console.error(`No untried tokens remain for repo ${repo.repoUrl}, skipping`)
+        if (allPermanentlyInvalid) {
+          console.error(`No usable tokens for repo ${repo.repoUrl}, skipping`)
           failedRepoUrls.push(repo.repoUrl)
-          repoAttemptedTokens.delete(repo.repoUrl)
         } else {
           queue.unshift(repo)
         }
@@ -140,7 +104,7 @@ export async function triggerSecurityInsightsCheckForRepos(
             initialInterval: 2000,
             backoffCoefficient: 2,
             maximumInterval: 30000,
-            nonRetryableErrorTypes: ['Token403Error', 'TokenAuthError', 'TokenRepoAccessError'],
+            nonRetryableErrorTypes: ['Token403Error', 'TokenAuthError'],
           },
           args: [
             {
@@ -151,20 +115,15 @@ export async function triggerSecurityInsightsCheckForRepos(
             },
           ],
         })
-        repoAttemptedTokens.delete(repo.repoUrl)
         return // success
       } catch (error) {
         // executeChild rejects with ChildWorkflowFailure wrapping ActivityFailure wrapping
-        // ApplicationFailure — traverse the cause chain to find the root ApplicationFailure
+        // ApplicationFailure — traverse the cause chain to find the root ApplicationFailure.
         const appFailure = unwrapApplicationFailure(error)
         if (appFailure?.type === 'Token403Error') {
           tokenInfo.isRateLimited = true
-          // Activity captures the wall-clock time of the 403 in details[0]; fall back to
-          // the iteration's currentTimeMs (from the getCurrentTimeMs activity) so we still
-          // record something when details are missing.
           tokenInfo.rateLimitedAt =
             extractFailureTimestamp(appFailure) ?? new Date(currentTimeMs).toISOString()
-          sawRateLimit = true
           attempts++
           continue // retry with a different token
         } else if (appFailure?.type === 'TokenAuthError') {
@@ -174,41 +133,25 @@ export async function triggerSecurityInsightsCheckForRepos(
           tokenInfo.isInvalid = true
           attempts++
           continue // retry with a different token
-        } else if (appFailure?.type === 'TokenRepoAccessError') {
-          // Token can't access this repo (SAML/perms) but may work elsewhere — don't taint
-          // the token's global state. Record it in attemptedTokens (persisted across
-          // requeues) so getNextToken won't hand this token back for this repo again.
-          console.warn(`Token lacks access to repo ${repo.repoUrl}, trying different token`)
-          attemptedTokens.add(token)
-          attempts++
-          continue
         } else {
           console.error(`Failed to process repo ${repo.repoUrl}:`, error)
-          // we retried this error using the retry policy (because it's not a token non-retryable error)
-          // but it failed in all retries.
-          // to proceed with processing, we don't wanna try this repo again in this run
           failedRepoUrls.push(repo.repoUrl)
-          repoAttemptedTokens.delete(repo.repoUrl)
           break
         }
       } finally {
         tokenInfo.inUse = false
-        tokenInfo.lastUsed = new Date(currentTimeMs + releaseCounter++)
+        tokenInfo.lastUsed = new Date(currentTimeMs)
       }
     }
 
     if (attempts >= MAX_TOKEN_ATTEMPTS) {
-      // If any attempt hit a rate-limit and not every token is permanently invalid, the
-      // exhaustion is transient — requeue so the repo can be retried once cooldowns expire
-      // (via the outer loop's `refreshExpiredRateLimits`) or on a later scheduled run.
       const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
-      if (sawRateLimit && !allPermanentlyInvalid) {
-        console.warn(`Exhausted token attempts (rate-limit) for repo ${repo.repoUrl}, requeuing`)
+      if (!allPermanentlyInvalid) {
+        console.warn(`Exhausted token attempts for repo ${repo.repoUrl}, requeuing`)
         queue.unshift(repo)
       } else {
-        console.error(`Exhausted token attempts for repo ${repo.repoUrl}, skipping`)
+        console.error(`All tokens invalid for repo ${repo.repoUrl}, skipping`)
         failedRepoUrls.push(repo.repoUrl)
-        repoAttemptedTokens.delete(repo.repoUrl)
       }
     }
   }
@@ -300,20 +243,10 @@ function refreshExpiredRateLimits(tokenInfos: ITokenInfo[], nowMs: number): void
   }
 }
 
-function getNextToken(
-  tokenInfos: ITokenInfo[],
-  nowMs: number,
-  excludeTokens?: Set<string>,
-): ITokenInfo | null {
+function getNextToken(tokenInfos: ITokenInfo[], nowMs: number): ITokenInfo | null {
   refreshExpiredRateLimits(tokenInfos, nowMs)
 
-  const usableTokenInfos = tokenInfos.filter(
-    (t) =>
-      !t.inUse &&
-      !t.isRateLimited &&
-      !t.isInvalid &&
-      !(excludeTokens && excludeTokens.has(t.token)),
-  )
+  const usableTokenInfos = tokenInfos.filter((t) => !t.inUse && !t.isRateLimited && !t.isInvalid)
 
   // sort usable tokens by last used date from oldest to newest
   const sortedTokenInfos = usableTokenInfos.sort((a, b) => {
