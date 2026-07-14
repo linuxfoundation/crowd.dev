@@ -480,10 +480,14 @@ class SegmentRepository extends RepositoryBase<
                       f.name AS foundation_name,
                       COUNT(DISTINCT p.id)::int AS project_count
                   FROM segments f
-                  LEFT JOIN segments p
+                  JOIN segments p
                       ON p."parentSlug" = f."slug"
                              AND p."grandparentSlug" IS NULL
                              AND p."tenantId" = f."tenantId"
+                  JOIN segments sp
+                      ON sp."parentSlug" = p."slug"
+                             AND sp."grandparentSlug" = f.slug
+                             AND sp."tenantId" = f."tenantId"
                   WHERE f."parentSlug" IS NULL
                     AND f."tenantId" = :tenantId
                     ${segmentsSearchQuery}
