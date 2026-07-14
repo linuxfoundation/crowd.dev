@@ -21,7 +21,6 @@ export interface ICreateCollection {
   name: string
   slug?: string
   starred: boolean
-  showAggregateTabs?: boolean
   isPrivate?: boolean
   ssoUserId?: string | null
   logoUrl?: string | null
@@ -94,7 +93,6 @@ export enum CollectionField {
   SLUG = 'slug',
   SSO_USER_ID = 'ssoUserId',
   STARRED = 'starred',
-  SHOW_AGGREGATE_TABS = 'showAggregateTabs',
   UPDATED_AT = 'updatedAt',
   DELETED_AT = 'deletedAt',
 }
@@ -146,16 +144,12 @@ export async function createCollection(
     logoUrl: null,
     imageUrl: null,
     color: null,
-    // Only LF Foundation (curated) collections get aggregate tabs by default.
-    // ssoUserId is only set for community/user-curated collections, so
-    // ssoUserId being unset identifies curated collections (see V1784026542).
-    showAggregateTabs: !collection.ssoUserId,
     ...collection,
   }
   return qx.selectOne(
     `
-      INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color, "showAggregateTabs")
-      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color), $(showAggregateTabs))
+      INSERT INTO collections (name, description, slug, "categoryId", starred, "logoUrl", "imageUrl", color)
+      VALUES ($(name), $(description), $(slug), $(categoryId), $(starred), $(logoUrl), $(imageUrl), $(color))
       RETURNING *
     `,
     data,
