@@ -62,7 +62,7 @@ export const createRouter = () => {
     router.beforeEach(async (to, from, next) => {
       const lsSegmentsStore = useLfSegmentsStore();
       const { selectedProjectGroup } = storeToRefs(lsSegmentsStore);
-      const { listProjectGroups, updateSelectedProjectGroup } = lsSegmentsStore;
+      const { updateSelectedProjectGroup } = lsSegmentsStore;
 
       // Set title to pages
       document.title = `LFX Community Data Platform${to.meta.title ? ` | ${to.meta.title}` : ''}`;
@@ -111,12 +111,11 @@ export const createRouter = () => {
 
           if (!selectedProjectGroup.value) {
             try {
-              await listProjectGroups({
-                limit: null,
-                reset: true,
-              });
-
-              updateSelectedProjectGroup(to.query.projectGroup, false);
+              await updateSelectedProjectGroup(to.query.projectGroup, false);
+              if (!selectedProjectGroup.value) {
+                next('/project-groups');
+                return;
+              }
             } catch (e) {
               next('/project-groups');
               return;

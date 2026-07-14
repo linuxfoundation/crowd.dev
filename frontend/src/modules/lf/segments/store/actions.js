@@ -14,6 +14,32 @@ const isAdminOnly = () => {
   return roles.value.includes(LfRole.projectAdmin);
 };
 
+const hasNestedProjects = (projectGroup) => Array.isArray(projectGroup?.projects)
+  && projectGroup.projects.some((p) => Array.isArray(p.subprojects) && p.subprojects.length > 0);
+
+const resolveProjectGroupForSelection = async (projectGroupOrId, list) => {
+  if (!projectGroupOrId) {
+    return null;
+  }
+
+  const id = typeof projectGroupOrId === 'string' ? projectGroupOrId : projectGroupOrId.id;
+  if (!id) {
+    return null;
+  }
+
+  const fromArg = typeof projectGroupOrId === 'object' ? projectGroupOrId : null;
+  const fromList = list.find((p) => p.id === id) || null;
+
+  if (hasNestedProjects(fromArg)) {
+    return fromArg;
+  }
+  if (hasNestedProjects(fromList)) {
+    return fromList;
+  }
+
+  return LfService.findSegment(id);
+};
+
 export default {
   // Project Groups
   listProjectGroups({
@@ -270,19 +296,44 @@ export default {
 
     this.listProjects();
   },
-  updateSelectedProjectGroup(projectGroupId, sendToDashboard = true) {
-    if (projectGroupId) {
-      const projectGroup = this.projectGroups.list.find((p) => p.id === projectGroupId);
+  async updateSelectedProjectGroup(projectGroupOrId, sendToDashboard = true) {
+    if (!projectGroupOrId) {
+      this.selectedProjectGroup = null;
+      return;
+    }
+
+    try {
+      const projectGroup = await resolveProjectGroupForSelection(
+        projectGroupOrId,
+        this.projectGroups.list,
+      );
+
+      if (!projectGroup?.id) {
+        this.selectedProjectGroup = null;
+        ToastStore.error('Project group could not be loaded');
+        return;
+      }
 
       this.selectedProjectGroup = projectGroup;
+
+      const idx = this.projectGroups.list.findIndex((p) => p.id === projectGroup.id);
+      if (idx >= 0) {
+        this.projectGroups.list[idx] = {
+          ...this.projectGroups.list[idx],
+          ...projectGroup,
+        };
+      } else {
+        this.projectGroups.list = [...this.projectGroups.list, projectGroup];
+      }
 
       if (sendToDashboard) {
         router.push({
           name: 'member',
         });
       }
-    } else {
+    } catch (e) {
       this.selectedProjectGroup = null;
+      ToastStore.error('Something went wrong while selecting the project group');
     }
   },
   doChangeProjectGroupCurrentPage(currentPage) {

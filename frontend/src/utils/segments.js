@@ -19,8 +19,12 @@ export const getSegmentsFromProjectGroup = (
     return [projectGroup.id];
   }
 
+  if (!projectGroup.projects?.length) {
+    return [projectGroup.id];
+  }
+
   return projectGroup.projects.reduce((acc, project) => {
-    project.subprojects.forEach((subproject) => {
+    (project.subprojects || []).forEach((subproject) => {
       acc.push(subproject.id);
     });
 

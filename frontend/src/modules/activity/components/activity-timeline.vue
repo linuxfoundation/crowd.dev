@@ -275,8 +275,8 @@ const selectedSegment = ref(props.selectedSegment || null);
 const isMemberEntity = computed(() => props.entityType === 'member');
 
 const subprojects = computed(() => projectGroups.value.list.reduce((acc, projectGroup) => {
-  projectGroup.projects.forEach((project) => {
-    project.subprojects.forEach((subproject) => {
+  (projectGroup.projects || []).forEach((project) => {
+    (project.subprojects || []).forEach((subproject) => {
       acc[subproject.id] = {
         id: subproject.id,
         name: subproject.name,

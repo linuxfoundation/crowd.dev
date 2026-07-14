@@ -60,6 +60,10 @@ export default {
         if (tenant?.id && tenant.id !== oldTenant?.id) {
           this.fetchActivityTypes();
           this.fetchActivityChannels();
+          this.listProjectGroups({
+            limit: 20,
+            reset: true,
+          });
         }
       },
     },
@@ -72,10 +76,6 @@ export default {
     if (queryParameters.get('state') === 'noconnect' && window.location.pathname.includes('/integration')) {
       return;
     }
-    this.listProjectGroups({
-      limit: null,
-      reset: true,
-    });
     if (['/auth/callback'].includes(window.location.pathname)) {
       return;
     }
