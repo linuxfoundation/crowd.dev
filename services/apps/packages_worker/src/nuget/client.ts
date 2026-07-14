@@ -8,6 +8,7 @@ import {
 } from './types'
 
 const SERVICE_INDEX_URL = 'https://api.nuget.org/v3/index.json'
+const FLAT_CONTAINER_BASE_URL = 'https://api.nuget.org/v3-flatcontainer'
 
 interface ServiceIndexResource {
   '@id': string
@@ -138,6 +139,32 @@ export async function fetchRegistration(
     }
 
     return index
+  } catch (err) {
+    const classified = classifyError(err)
+    if (classified) return classified
+    throw err
+  }
+}
+
+// The registration API never exposes the nuspec <repository> element — it must be read from the
+// raw nuspec XML, served by the flat-container endpoint.
+export async function fetchNuspec(
+  packageId: string,
+  version: string,
+): Promise<string | NuGetFetchError> {
+  const lowerId = packageId.toLowerCase()
+  const lowerVersion = version.toLowerCase()
+
+  try {
+    const resp = await axios.get<string>(
+      `${FLAT_CONTAINER_BASE_URL}/${lowerId}/${lowerVersion}/${lowerId}.nuspec`,
+      {
+        responseType: 'text',
+        transformResponse: (data) => data,
+        timeout: 15000,
+      },
+    )
+    return resp.data
   } catch (err) {
     const classified = classifyError(err)
     if (classified) return classified

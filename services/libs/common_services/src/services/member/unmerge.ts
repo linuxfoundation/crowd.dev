@@ -10,7 +10,6 @@ import {
   addMemberRole,
   changeMemberOrganizationAffiliationOverrides,
   createMember,
-  createMemberIdentity,
   deleteManyMemberIdentities,
   fetchManyMemberOrgsWithOrgData,
   fetchManyOrganizationAffiliationPolicies,
@@ -18,6 +17,7 @@ import {
   findAlreadyExistingVerifiedIdentities,
   findMemberById,
   findNonExistingOrganizationIds,
+  insertMemberIdentities,
   removeMemberRole,
   updateMember,
 } from '@crowd/data-access-layer'
@@ -502,17 +502,20 @@ export async function unmergeMember(
   )
 
   // Create identities for the secondary member
-  for (const i of secondaryIdentities) {
-    await createMemberIdentity(tx, {
-      memberId: secondaryId,
-      platform: i.platform,
-      type: i.type,
-      value: i.value,
-      sourceId: i.sourceId || null,
-      integrationId: i.integrationId || null,
-      verified: i.verified,
-      source: i.source,
-    })
+  if (secondaryIdentities.length > 0) {
+    await insertMemberIdentities(
+      tx,
+      secondaryIdentities.map((i) => ({
+        memberId: secondaryId,
+        platform: i.platform,
+        type: i.type,
+        value: i.value,
+        sourceId: i.sourceId || null,
+        integrationId: i.integrationId || null,
+        verified: i.verified,
+        source: i.source,
+      })),
+    )
   }
 
   // Move affiliations

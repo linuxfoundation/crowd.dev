@@ -33,6 +33,7 @@
     "validator": "^13.7.0"
   },
   "devDependencies": {
+    "@crowd/test-kit": "workspace:*",
     "@types/node": "^20.8.2",
     "typescript": "^5.6.3"
   }

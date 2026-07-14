@@ -2265,6 +2265,9 @@ importers:
         specifier: ^13.7.0
         version: 13.11.0
     devDependencies:
+      '@crowd/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       '@types/node':
         specifier: ^20.8.2
         version: 20.12.7
@@ -2594,9 +2597,21 @@ importers:
       '@crowd/common':
         specifier: workspace:*
         version: link:../common
+      '@crowd/data-access-layer':
+        specifier: workspace:*
+        version: link:../data-access-layer
       '@crowd/database':
         specifier: workspace:*
         version: link:../database
+      '@crowd/integrations':
+        specifier: workspace:*
+        version: link:../integrations
+      '@crowd/types':
+        specifier: workspace:*
+        version: link:../types
+      '@faker-js/faker':
+        specifier: ^9.9.0
+        version: 9.9.0
       pg-promise:
         specifier: ^11.4.3
         version: 11.6.0
@@ -3634,6 +3649,10 @@ packages:
 
   '@exodus/schemasafe@1.3.0':
     resolution: {integrity: sha512-5Aap/GaRupgNx/feGBwLLTVv8OQFfv3pq2lPRzPg9R+IOBnDgghTGW7l7EuVXOvg5cc/xSAlRW8rBrjIC3Nvqw==}
+
+  '@faker-js/faker@9.9.0':
+    resolution: {integrity: sha512-OEl393iCOoo/z8bMezRlJu+GlRGlsKbUAN7jKB6LhnKoqKve5DXRpalbItIIcwnCjs1k/FOPjFzcA6Qn+H+YbA==}
+    engines: {node: '>=18.0.0', npm: '>=9.0.0'}
 
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
@@ -12424,6 +12443,8 @@ snapshots:
 
   '@exodus/schemasafe@1.3.0': {}
 
+  '@faker-js/faker@9.9.0': {}
+
   '@fastify/busboy@2.1.1': {}
 
   '@gitbeaker/core@43.5.0':
@@ -19201,7 +19222,7 @@ snapshots:
     dependencies:
       '@types/debug': 4.1.12
       '@types/validator': 13.11.9
-      debug: 4.4.0(supports-color@5.5.0)
+      debug: 4.4.3
       dottie: 2.0.6
       inflection: 1.13.4
       lodash: 4.17.21
