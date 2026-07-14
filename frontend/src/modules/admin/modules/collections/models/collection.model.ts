@@ -26,7 +26,7 @@ export interface CollectionRequest {
   color?: string;
   slug: string;
   starred: boolean;
-  showAggregateTabs: boolean;
+  showAggregateTabs?: boolean;
   projects: {
     id: string;
     starred: boolean;
