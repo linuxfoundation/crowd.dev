@@ -255,7 +255,7 @@ export async function listNpmPackagesForRepoUrlRecompute(
   }> = await qx.select(
     `
       SELECT
-        id::text AS id,
+        packages.id::text AS id,
         declared_repository_url,
         repository_url
       FROM packages
@@ -263,7 +263,7 @@ export async function listNpmPackagesForRepoUrlRecompute(
         ${options.criticalOnly ? 'AND is_critical' : ''}
         AND id > $(afterId)::bigint
         AND declared_repository_url IS NOT NULL
-      ORDER BY id ASC
+      ORDER BY packages.id ASC
       LIMIT $(limit)
       `,
     { afterId: options.afterId, limit: options.limit },
