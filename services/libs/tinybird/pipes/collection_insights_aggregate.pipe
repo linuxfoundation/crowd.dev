@@ -1,0 +1,50 @@
+DESCRIPTION >
+    - `collection_insights_aggregate.pipe` serves aggregate insights metrics for a collection.
+    - Returns a single row with metrics aggregated across every project in the collection, not one row per project.
+    - Parameters:
+    - `collectionSlug`: Required collection slug. insights_projects_populated_ds.collectionsSlugs already lists
+    every collection each project belongs to (see insightsProjects_filtered.pipe for the same filter pattern),
+    so this pipe resolves collection membership directly rather than requiring the caller to first look up a
+    project id list.
+    - Response:
+    - `projectCount`: count of distinct projects in the collection.
+    - `uniqueContributorCount`: total unique contributors across all projects in the collection, deduplicated (a contributor active on multiple projects in the collection is counted once).
+    - `avgHealthScore`: average of each project's health score in the collection, rounded.
+
+TAGS "Insights, Widget", "Collection"
+
+NODE collection_insights_aggregate_projects
+DESCRIPTION >
+    Resolves the collection's member projects to their segment ids and health scores directly via
+    collectionsSlugs, matching the same has(collectionsSlugs, ...) filter already used by
+    insightsProjects_filtered.pipe.
+
+SQL >
+    %
+    SELECT id, segmentId, healthScore
+    FROM insights_projects_populated_ds
+    WHERE
+        enabled = 1
+        AND has(
+            collectionsSlugs,
+            {{ String(collectionSlug, description="Filter by collection slug", required=True) }}
+        )
+
+NODE collection_insights_aggregate_results
+DESCRIPTION >
+    Aggregates health score across matched projects and counts unique contributors across their segments in one pass
+
+SQL >
+    SELECT
+        (SELECT count(distinct id) FROM collection_insights_aggregate_projects) AS projectCount,
+        uniq(ar.memberId) AS uniqueContributorCount,
+        (SELECT round(avg(healthScore)) FROM collection_insights_aggregate_projects) AS avgHealthScore
+    FROM activityRelations_deduplicated_cleaned_bucket_union AS ar
+    WHERE
+        ar.memberId != ''
+        AND ar.segmentId IN (SELECT segmentId FROM collection_insights_aggregate_projects)
+        AND (ar.type, ar.platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )
