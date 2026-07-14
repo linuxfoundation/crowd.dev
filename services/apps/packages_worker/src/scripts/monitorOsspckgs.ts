@@ -248,6 +248,7 @@ const KIND_TABLES: Record<string, string[]> = {
   dependent_counts: ['packages'],
   dependent_counts_go: ['packages'],
   dependent_counts_nuget: ['packages'],
+  dependent_counts_rubygems: ['packages'],
   ranking: ['packages'],
   pypi_downloads_30d: ['downloads_last_30d', 'packages'],
   pypi_downloads_daily: ['downloads_daily'],

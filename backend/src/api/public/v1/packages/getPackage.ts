@@ -130,7 +130,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     },
     provenance: {
       repositoryMapping: {
-        declaredRepo: pkg.repoUrl ?? pkg.repositoryUrl ?? pkg.declaredRepositoryUrl ?? null,
+        declaredRepo: pkg.repoUrl ?? pkg.repositoryUrl ?? null,
         mappingConfidence,
         mappingLabel: repoMappingLabel(mappingConfidence),
         lastCommitAt: pkg.repoLastCommitAt ? pkg.repoLastCommitAt.toISOString() : null,

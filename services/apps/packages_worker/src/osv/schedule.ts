@@ -11,7 +11,7 @@ const SCHEDULE_ID = 'osv-advisories-sync'
 // validate the env input against this list and refuse to register the
 // schedule on a mismatch — better a loud startup error than a silent miss.
 // Add new entries here when v1 expands beyond npm + Maven.
-const VALID_ECOSYSTEMS = ['npm', 'Maven', 'cargo', 'NuGet'] as const
+const VALID_ECOSYSTEMS = ['npm', 'Maven', 'cargo', 'NuGet', 'RubyGems', 'Go'] as const
 
 function getEcosystems(): string[] {
   const raw = process.env.OSV_ECOSYSTEMS
@@ -35,8 +35,27 @@ function getEcosystems(): string[] {
   return deduped
 }
 
+function scheduleAction() {
+  return {
+    type: 'startWorkflow' as const,
+    workflowType: osvSync,
+    taskQueue: 'osv-worker',
+    // Headroom for npm (~1 hour today) + Maven (~5 minutes) + derive
+    // (~5 minutes for 600-700k packages); 4 hours leaves space for the
+    // upsertOne N+1 deferred fix being slower than expected.
+    workflowExecutionTimeout: '4 hours',
+    retry: {
+      initialInterval: '30 seconds',
+      backoffCoefficient: 2,
+      maximumAttempts: 3,
+    },
+    args: [{ ecosystems: getEcosystems() }] as [{ ecosystems: string[] }],
+  }
+}
+
 // Registers the daily OSV advisory sync schedule if it doesn't already exist.
-// If the schedule already exists in Temporal, we log and leave it unchanged (no update).
+// If the schedule already exists in Temporal, we reconcile its action so a
+// changed OSV_ECOSYSTEMS env var reaches an already-running schedule on restart.
 // Cron is offset from npm-registry-ingest (`15 3 * * *`) so the two large daily ingest jobs don't fight for the same DB at the same minute.
 export async function scheduleOsvSync(): Promise<void> {
   const { temporal } = svc
@@ -55,25 +74,20 @@ export async function scheduleOsvSync(): Promise<void> {
         overlap: ScheduleOverlapPolicy.SKIP,
         catchupWindow: '1 hour',
       },
-      action: {
-        type: 'startWorkflow',
-        workflowType: osvSync,
-        taskQueue: 'osv-worker',
-        // Headroom for npm (~1 hour today) + Maven (~5 minutes) + derive
-        // (~5 minutes for 600-700k packages); 4 hours leaves space for the
-        // upsertOne N+1 deferred fix being slower than expected.
-        workflowExecutionTimeout: '4 hours',
-        retry: {
-          initialInterval: '30 seconds',
-          backoffCoefficient: 2,
-          maximumAttempts: 3,
-        },
-        args: [{ ecosystems: getEcosystems() }],
-      },
+      action: scheduleAction(),
     })
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info(`Schedule ${SCHEDULE_ID} already registered.`)
+      svc.log.info(`Schedule ${SCHEDULE_ID} already exists, reconciling action.`)
+      const handle = temporal.schedule.getHandle(SCHEDULE_ID)
+      await handle.update((prev) => ({
+        ...prev,
+        policies: {
+          ...prev.policies,
+          overlap: ScheduleOverlapPolicy.SKIP,
+        },
+        action: scheduleAction(),
+      }))
     } else {
       throw err
     }

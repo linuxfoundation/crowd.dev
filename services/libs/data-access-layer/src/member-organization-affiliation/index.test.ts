@@ -1255,6 +1255,14 @@ describe('refreshMemberOrganizationAffiliations', () => {
         memberId: member.id,
         segmentId: kubernetes.id,
         identities,
+        count: 20,
+        // Before MSA dateStart — must stay on the employer timeline.
+        timestamp: { from: '2020-06-01T00:00:00.000Z', to: '2020-09-01T00:00:00.000Z' },
+      }),
+      ...generateActivityRelations({
+        memberId: member.id,
+        segmentId: kubernetes.id,
+        identities,
         count: 40,
         timestamp: { from: '2021-02-01T00:00:00.000Z', to: '2021-05-01T00:00:00.000Z' },
       }),
@@ -1270,7 +1278,8 @@ describe('refreshMemberOrganizationAffiliations', () => {
     await refreshMemberOrganizationAffiliations(qx, member.id)
 
     expect(await countByOrg(qx, member.id, kubernetes.id, sponsor.id)).toBe(40)
-    expect(await countByOrg(qx, member.id, kubernetes.id, employer.id)).toBe(30)
+    // Pre-window (20) + post-window (30) both fall outside the MSA and stay on MO.
+    expect(await countByOrg(qx, member.id, kubernetes.id, employer.id)).toBe(50)
   })
 
   test('email-domain activities route to matching org over the date timeline', async ({ qx }) => {

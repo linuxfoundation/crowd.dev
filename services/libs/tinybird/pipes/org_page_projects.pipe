@@ -1,5 +1,5 @@
 DESCRIPTION >
-    Returns the list of projects an organization contributed to in the last 365 days,
+    Returns the list of projects an organization contributed to in the last 730 days (24 months),
     read from the precomputed org_page_projects_copy_ds.
 
 TAGS "Organization page"

@@ -35,10 +35,12 @@ type JobKind =
   | 'dependent_counts'
   | 'dependent_counts_go'
   | 'dependent_counts_nuget'
+  | 'dependent_counts_rubygems'
 
 // deps.dev retains weekly snapshots for ~3 years; 1095 days (3 years) gives comfortable headroom.
 // advisories/advisory_packages use AdvisoriesLatest (no partition history) → effectively unlimited.
-// dependent_counts_go/_nuget read *RequirementsLatest (no partition history) → effectively unlimited.
+// dependent_counts_go/_nuget/_rubygems read *RequirementsLatest (no partition history) → effectively
+// unlimited.
 const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   packages: 1095,
   repos: 1095,
@@ -50,6 +52,7 @@ const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   dependent_counts: 1095,
   dependent_counts_go: 999_999,
   dependent_counts_nuget: 999_999,
+  dependent_counts_rubygems: 999_999,
 }
 
 // Kinds whose incremental diff is driven by a BQ partition snapshot date.
@@ -204,13 +207,14 @@ export async function bootstrapOsspckgs(opts: {
       }
     }
   }
-  // GO/NUGET reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
-  // NuGetRequirementsLatest), computed via the exact reverse transitive closure script. The manifests
+  // GO/NUGET/RUBYGEMS reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
+  // NuGetRequirementsLatest / RubyGemsRequirementsLatest), computed via the exact reverse transitive
+  // closure script. The manifests
   // are *Latest views (no resolution needed); `today` is the snapshot_at stamp AND the anchor for the
   // dependent_repos partition window (latest PackageVersionToProject snapshot within 60 days). Each
   // guards against its own history and merges a disjoint purl space, so an edge-snapshot corruption
   // that aborts `dependent_counts` never blocks these.
-  for (const variant of ['go', 'nuget'] as const) {
+  for (const variant of ['go', 'nuget', 'rubygems'] as const) {
     const kind = `dependent_counts_${variant}` as const
     if (!runs(kind)) continue
     try {
