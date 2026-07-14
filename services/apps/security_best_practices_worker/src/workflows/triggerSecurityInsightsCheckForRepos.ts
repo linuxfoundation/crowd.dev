@@ -168,9 +168,7 @@ export async function triggerSecurityInsightsCheckForRepos(
       // (via the outer loop's `refreshExpiredRateLimits`) or on a later scheduled run.
       const allPermanentlyInvalid = tokenInfos.every((t) => t.isInvalid)
       if (sawRateLimit && !allPermanentlyInvalid) {
-        console.warn(
-          `Exhausted token attempts (rate-limit) for repo ${repo.repoUrl}, requeuing`,
-        )
+        console.warn(`Exhausted token attempts (rate-limit) for repo ${repo.repoUrl}, requeuing`)
         queue.unshift(repo)
       } else {
         console.error(`Exhausted token attempts for repo ${repo.repoUrl}, skipping`)
@@ -275,7 +273,10 @@ function getNextToken(
 
   const usableTokenInfos = tokenInfos.filter(
     (t) =>
-      !t.inUse && !t.isRateLimited && !t.isInvalid && !(excludeTokens && excludeTokens.has(t.token)),
+      !t.inUse &&
+      !t.isRateLimited &&
+      !t.isInvalid &&
+      !(excludeTokens && excludeTokens.has(t.token)),
   )
 
   // sort usable tokens by last used date from oldest to newest
