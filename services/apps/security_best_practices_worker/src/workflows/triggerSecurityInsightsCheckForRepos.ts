@@ -45,6 +45,17 @@ export async function triggerSecurityInsightsCheckForRepos(
   // for expiry) and isInvalid survive across continueAsNew batches.
   const tokenInfos: ITokenInfo[] = await initializeTokenInfos()
 
+  // Empty pool means CROWD_GITHUB_PERSONAL_ACCESS_TOKENS is misconfigured. Without this guard
+  // an empty array would satisfy `tokenInfos.every(t => t.isInvalid)` and silently mark every
+  // obsolete repo as failed for the continueAsNew chain, hiding the config error.
+  if (tokenInfos.length === 0) {
+    throw ApplicationFailure.create({
+      message: 'No GitHub tokens configured (CROWD_GITHUB_PERSONAL_ACCESS_TOKENS is empty)',
+      type: 'TokenPoolEmpty',
+      nonRetryable: true,
+    })
+  }
+
   // Scale attempts to pool size so a repo isn't marked failed while untried tokens remain
   // (e.g. 6 PATs where the first 5 attempts all 403 on different tokens).
   const MAX_TOKEN_ATTEMPTS = Math.max(5, tokenInfos.length)
@@ -88,6 +99,10 @@ export async function triggerSecurityInsightsCheckForRepos(
       repoAttemptedTokens.set(repo.repoUrl, attemptedTokens)
     }
     while (attempts < MAX_TOKEN_ATTEMPTS) {
+      // Refresh wall-clock time before each token selection. A long-running executeChild can
+      // block the outer queue loop's refresh for >1h, leaving rate-limit cooldowns stuck when
+      // this is the only in-flight task (small pool or last repo).
+      currentTimeMs = await getCurrentTimeMs()
       const tokenInfo = getNextToken(tokenInfos, currentTimeMs, attemptedTokens)
       if (!tokenInfo) {
         // No untried, usable token remains for this repo. Fail only when either every token
