@@ -277,7 +277,7 @@ export default {
       return;
     }
     try {
-      const response = await LfService.querySubprojects({
+      const response = await LfService.querySubprojectsLite({
         limit: null,
         offset: 0,
         filter: { grandparentSlug },

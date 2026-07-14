@@ -89,9 +89,9 @@ export class LfService {
     return response.data;
   }
 
-  static async querySubprojects(body) {
+  static async querySubprojectsLite(body) {
     const response = await authAxios.post(
-      '/segment/subproject/query',
+      '/segment/subproject/query-lite',
       {
         ...body,
         excludeSegments: true,
