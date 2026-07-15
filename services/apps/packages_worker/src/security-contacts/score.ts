@@ -98,10 +98,10 @@ function isCdpSource(p: ProvenanceEntry): boolean {
   return p.source.startsWith('cdp-')
 }
 
-// A CDP-resolved email is unverified only when every source is a cdp-* lookup and none found a
-// verified identity; if a real extractor also found the email, the non-cdp source lifts the penalty.
+// Unverified only when every source is a cdp-unverified lookup. Any cdp-verified resolution or
+// real-extractor source (e.g. a shared email merged from another owner) lifts the penalty.
 function isCdpUnverified(provenance: ProvenanceEntry[]): boolean {
-  return provenance.every(isCdpSource) && provenance.some((p) => p.source === 'cdp-unverified')
+  return provenance.length > 0 && provenance.every((p) => p.source === 'cdp-unverified')
 }
 
 export function scoreContact(
