@@ -7,9 +7,10 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { ProvenanceEntry, RawContact } from './types'
 
 function latestTimestamp(provenance: ProvenanceEntry[]): string {
-  return provenance
-    .map((p) => p.declaredAt ?? p.fetchedAt)
-    .reduce((a, b) => (new Date(b).getTime() > new Date(a).getTime() ? b : a))
+  const times = provenance.map((p) => p.declaredAt ?? p.fetchedAt)
+  return times.length === 0
+    ? new Date().toISOString()
+    : times.reduce((a, b) => (new Date(b).getTime() > new Date(a).getTime() ? b : a))
 }
 
 export async function resolveCdpEmails(

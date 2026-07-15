@@ -716,6 +716,7 @@ export async function findResolvableEmailsForMembers(
   qx: QueryExecutor,
   memberIds: string[],
 ): Promise<{ memberId: string; email: string; verified: boolean }[]> {
+  if (memberIds.length === 0) return []
   return qx.select(
     `
       WITH emails AS (
