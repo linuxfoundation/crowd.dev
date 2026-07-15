@@ -19,13 +19,14 @@ export const getSegmentsFromProjectGroup = (
     return [projectGroup.id];
   }
 
-  return projectGroup.projects.reduce((acc, project) => {
-    project.subprojects.forEach((subproject) => {
-      acc.push(subproject.id);
-    });
+  const lsSegmentsStore = useLfSegmentsStore();
+  const { selectedProjectGroupSubprojects } = storeToRefs(lsSegmentsStore);
 
-    return acc;
-  }, []);
+  if (!selectedProjectGroupSubprojects.value.length) {
+    return [projectGroup.id];
+  }
+
+  return selectedProjectGroupSubprojects.value.map((sp) => sp.id);
 };
 
 export const getProjectGroupsThroughSegments = (segments) => {

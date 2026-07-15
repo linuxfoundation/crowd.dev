@@ -73,6 +73,11 @@ export interface ContributorIdentity {
   duplicatedIdentities?: ContributorIdentity[];
 }
 
+export type CreateContributorIdentity = Omit<
+  ContributorIdentity,
+  'id' | 'platforms' | 'url' | 'duplicatedIdentities'
+>;
+
 export interface UpdateContributorIdentityPayload {
   value?: string;
   type?: string;

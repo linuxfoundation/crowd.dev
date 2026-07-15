@@ -4,13 +4,15 @@ import {
   DEFAULT_TENANT_ID,
   Error400,
   RawQueryParser,
+  TimeoutError,
   generateUUIDv1,
+  generateUUIDv4,
   getProperDisplayName,
   groupBy,
 } from '@crowd/common'
 import { formatSql, getDbInstance, prepareForModification } from '@crowd/database'
 import { getServiceLogger } from '@crowd/logging'
-import { RedisClient } from '@crowd/redis'
+import { RedisClient, acquireLock, releaseLock, withSingleFlight } from '@crowd/redis'
 import {
   ALL_PLATFORM_TYPES,
   IMemberContribution,
@@ -36,6 +38,20 @@ import { IDbMemberAttributeSetting, IDbMemberData } from './types'
 import { fetchManyMemberIdentities, fetchManyMemberOrgs, fetchManyMemberSegments } from '.'
 
 const log = getServiceLogger()
+
+// How long a compute lock covers a legitimately slow query. Also used as the wait
+// timeout for requests single-flighting behind it — the two must not drift apart:
+// a shorter wait timeout lets waiters give up and run the query themselves while the
+// original holder is still legitimately within its TTL, reproducing the stampede this
+// lock exists to prevent. See services/libs/redis/src/singleFlight.ts for the mechanics.
+const COMPUTE_LOCK_TTL_SECONDS = 90
+
+const toCountPage = (count: number, limit: number, offset: number): PageData<IDbMemberData> => ({
+  rows: [],
+  count,
+  limit,
+  offset,
+})
 
 interface IQueryMembersAdvancedParams {
   filter?: Record<string, unknown>
@@ -255,42 +271,60 @@ export async function queryMembersAdvanced(
     // refreshing it on every hit would fire a COUNT(*) query per request, defeating the cache.
     // The count is kept fresh by: (1) full-result refreshes that also write countCacheKey,
     // (2) natural TTL expiry, (3) explicit cache invalidation on member updates.
-    return {
-      rows: [],
-      count: cachedCount,
-      limit,
-      offset,
-    }
+    return toCountPage(cachedCount, limit, offset)
   }
 
-  log.info(
-    {
-      cacheKey,
-      countCacheKey,
-      segmentId,
-      search: normalizedSearch,
-      limit,
-      offset,
-      orderBy,
-      countOnly,
-    },
-    'Members advanced query cache miss — executing query synchronously',
-  )
+  // Single-flight: only the request that wins the lock hits the DB. Everyone else
+  // piling onto the same cold key waits on the lock instead of firing the same
+  // heavy query in parallel (this is what turns one slow query into a stampede).
+  const computeLockKey = countOnly ? countCacheKey : cacheKey
+
+  const readComputeCache = async (): Promise<PageData<IDbMemberData> | null> => {
+    if (countOnly) {
+      const count = await cache.getCount(countCacheKey)
+      return count !== null ? toCountPage(count, limit, offset) : null
+    }
+    return cache.get(cacheKey)
+  }
 
   try {
-    return await executeQuery(qx, redis, cacheKey, {
-      filter,
-      search: normalizedSearch,
-      limit,
-      offset,
-      orderBy,
-      segmentId,
-      countOnly,
-      fields,
-      include,
-      includeAllAttributes,
-      attributeSettings,
-    })
+    return await withSingleFlight(
+      redis,
+      computeLockKey,
+      {
+        lockTtlSeconds: COMPUTE_LOCK_TTL_SECONDS,
+        waitTimeoutSeconds: COMPUTE_LOCK_TTL_SECONDS,
+      },
+      readComputeCache,
+      () => {
+        log.info(
+          {
+            cacheKey,
+            countCacheKey,
+            segmentId,
+            search: normalizedSearch,
+            limit,
+            offset,
+            orderBy,
+            countOnly,
+          },
+          'Members advanced query cache miss — executing query synchronously',
+        )
+        return executeQuery(qx, redis, cacheKey, {
+          filter,
+          search: normalizedSearch,
+          limit,
+          offset,
+          orderBy,
+          segmentId,
+          countOnly,
+          fields,
+          include,
+          includeAllAttributes,
+          attributeSettings,
+        })
+      },
+    )
   } catch (error) {
     log.warn(
       { cacheKey, countCacheKey, segmentId, search: normalizedSearch, countOnly, err: error },
@@ -417,12 +451,7 @@ export async function executeQuery(
 
     await cache.setCount(countCacheKey, count, 21600)
 
-    return {
-      rows: [],
-      count,
-      limit,
-      offset,
-    }
+    return toCountPage(count, limit, offset)
   }
 
   // Prepare fields for main query
@@ -449,7 +478,12 @@ export async function executeQuery(
   const mainQuery = buildQuery({
     fields: preparedFields,
     withAggregates,
-    includeMemberOrgs: include.memberOrganizations,
+    // Org data for the returned page is always fetched separately via fetchManyMemberOrgs
+    // below — the 'organizations' field is queryable: false, so it's never selected here.
+    // The mo join is only needed when the filter itself references mo.*, which filterHasMo
+    // (computed inside buildQuery) already covers — mirrors the same fix already applied
+    // to buildCountQuery above.
+    includeMemberOrgs: false,
     searchConfig,
     filterString,
     orderBy,
@@ -625,15 +659,28 @@ async function refreshCacheInBackground(
   countOnly = false,
 ): Promise<void> {
   const label = countOnly ? 'count cache' : 'query cache'
-  const cache = new MemberQueryCache(redis)
-  const acquired = await cache.tryAcquireRefreshLock(cacheKey)
-  if (!acquired) {
-    log.debug(
-      { cacheKey },
-      `Members advanced ${label} refresh already in progress — skipping duplicate`,
-    )
+
+  // Same lock (same key, same acquireLock/releaseLock primitive) that the synchronous
+  // cache-miss path takes via withSingleFlight — a single non-blocking attempt (0s wait)
+  // since this is best-effort background work: if the miss path (or another background
+  // refresh) already holds it, just skip rather than duplicate the query. Sharing the
+  // lock is what stops a hit-triggered refresh and a miss-triggered compute from ever
+  // running the same heavy query concurrently for the same cache key.
+  const token = generateUUIDv4()
+  try {
+    await acquireLock(redis, cacheKey, token, COMPUTE_LOCK_TTL_SECONDS, 0)
+  } catch (error) {
+    if (error instanceof TimeoutError) {
+      log.debug(
+        { cacheKey },
+        `Members advanced ${label} refresh already in progress — skipping duplicate`,
+      )
+    } else {
+      log.warn({ cacheKey, err: error }, `Members advanced ${label} refresh lock unavailable`)
+    }
     return
   }
+
   try {
     log.info({ cacheKey }, `Members advanced ${label} background refresh started`)
     await executeQuery(qx, redis, cacheKey, countOnly ? { ...params, countOnly: true } : params)
@@ -641,7 +688,7 @@ async function refreshCacheInBackground(
   } catch (error) {
     log.warn({ cacheKey, err: error }, `Members advanced ${label} background refresh failed`)
   } finally {
-    await cache.releaseRefreshLock(cacheKey)
+    await releaseLock(redis, cacheKey, token)
   }
 }
 
