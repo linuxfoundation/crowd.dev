@@ -1,3 +1,4 @@
+import type { EmailReachabilityReason } from '@crowd/common'
 import type { SecurityContactConfidence } from '@crowd/data-access-layer/src/osspckgs/api'
 
 export type ContactChannel = 'email' | 'github-pvr' | 'url' | 'github-handle' | 'web-form'
@@ -30,6 +31,8 @@ export interface RawContact {
 export interface ScoredContact extends RawContact {
   score: number
   confidence: SecurityContactConfidence
+  reachable: boolean
+  reachabilityReason: EmailReachabilityReason | null
 }
 
 export interface RepoPolicies {

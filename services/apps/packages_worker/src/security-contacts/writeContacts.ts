@@ -30,7 +30,18 @@ export async function writeContacts(
       await tx.result(
         prepareBulkInsert(
           'security_contacts',
-          ['repo_id', 'channel', 'value', 'role', 'name', 'score', 'confidence', 'provenance'],
+          [
+            'repo_id',
+            'channel',
+            'value',
+            'role',
+            'name',
+            'score',
+            'confidence',
+            'provenance',
+            'reachable',
+            'reachability_reason',
+          ],
           contacts.map((c) => ({
             repo_id: repoId,
             channel: c.channel,
@@ -40,6 +51,8 @@ export async function writeContacts(
             score: c.score,
             confidence: c.confidence,
             provenance: JSON.stringify(c.provenance),
+            reachable: c.reachable,
+            reachability_reason: c.reachabilityReason,
           })),
           `(repo_id, channel, value) DO UPDATE SET
              role = EXCLUDED.role,
@@ -47,6 +60,8 @@ export async function writeContacts(
              score = EXCLUDED.score,
              confidence = EXCLUDED.confidence,
              provenance = EXCLUDED.provenance,
+             reachable = EXCLUDED.reachable,
+             reachability_reason = EXCLUDED.reachability_reason,
              last_refreshed = NOW(),
              updated_at = NOW(),
              deleted_at = NULL`,
