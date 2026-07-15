@@ -17,11 +17,16 @@ import {
 function truncateTitle(title: string | null | undefined) {
   const maxLength = 255
 
-  if (title == null || title.length <= maxLength) {
+  if (title == null) {
     return title
   }
 
-  return title.slice(0, maxLength)
+  const codePoints = [...title]
+  if (codePoints.length <= maxLength) {
+    return title
+  }
+
+  return codePoints.slice(0, maxLength).join('')
 }
 
 export async function fetchMemberDataForLLMSquashing(

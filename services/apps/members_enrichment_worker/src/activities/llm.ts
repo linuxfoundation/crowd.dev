@@ -273,8 +273,8 @@ export async function squashWorkExperiencesWithLLM(
             Preserve all unique identities and consolidate other fields appropriately.
             If necessary, ONLY merge dateRanges and NEVER merge titles together, but pick the one that best represents the role.
           Job Titles:
-            Return only a concise professional job title (e.g. "Software Engineer", "Engineering Manager"). Do not return job descriptions, responsibilities, or full sentences. If the input is a description, infer the most appropriate professional job title.
-            Never return job descriptions, responsibilities, or full sentences.
+            Return only a concise professional job title (e.g. "Software Engineer", "Engineering Manager"). 
+            Do not return job descriptions, responsibilities, or full sentences. 
             If the input is a description, infer the most appropriate professional job title.
           Handle Missing Dates:
             Use logical assumptions to fill gaps where possible, always using existing date information but nothing else.
