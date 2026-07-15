@@ -16,6 +16,7 @@ import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
 import { githubApiGet } from './githubToken'
 import { reconcile } from './reconcile'
+import { resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
   ExtractorDeps,
@@ -120,6 +121,7 @@ export async function processRepo(
   target: RepoTarget,
   baseDeps: Omit<ExtractorDeps, 'repoTree'>,
   qx: QueryExecutor,
+  cdpQx: QueryExecutor,
 ): Promise<void> {
   // One tree fetch per repo, shared by extractors that probe well-known paths.
   let repoTree: ExtractorDeps['repoTree'] = { paths: null }
@@ -161,11 +163,27 @@ export async function processRepo(
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
 
+  const handleContacts = contacts.filter((c) => c.channel === 'github-handle')
+  if (handleContacts.length > 0) {
+    try {
+      contacts.push(...(await resolveCdpEmails(cdpQx, handleContacts)))
+    } catch (err) {
+      log.warn(
+        { repoId: target.repoId, errMsg: (err as Error).message },
+        'CDP email resolution failed — proceeding without resolved emails',
+      )
+    }
+  }
+
   const scored = reconcile(contacts)
   await writeContacts(qx, target.repoId, scored, policies)
 }
 
-export async function processBatch(qx: QueryExecutor, config: Config): Promise<BatchResult> {
+export async function processBatch(
+  qx: QueryExecutor,
+  cdpQx: QueryExecutor,
+  config: Config,
+): Promise<BatchResult> {
   const batch = await fetchBatch(qx)
   if (batch.length === 0) return { processed: 0 }
 
@@ -191,7 +209,7 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
         )
       }
       try {
-        await processRepo(target, deps, qx)
+        await processRepo(target, deps, qx, cdpQx)
       } catch (err) {
         log.error(
           { repoId: target.repoId, errMsg: (err as Error).message },
