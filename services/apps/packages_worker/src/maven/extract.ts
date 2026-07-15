@@ -487,15 +487,23 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
  * declared_repository_url that need more than a flat owner/repo allowlist are handled
  * by their own dedicated normalizers below rather than here:
  *   - git.eclipse.org: cgit `/c/<owner>/<repo>` paths → normalizeEclipseCgitUrl.
- *   - android.googlesource.com: Gitiles identity paths → normalizeGooglesourceUrl.
+ *   - android.googlesource.com / cs.android.com: Gitiles identity paths (the Android
+ *     Code Search UI mirrors the same repo naming as the Gitiles source itself) →
+ *     normalizeGooglesourceUrl.
  *   - ec.europa.eu: Bitbucket-Server `/projects/x/repos/y` → normalizeBitbucketServerUrl.
  *   - gitbox.apache.org / git.apache.org / git-wip-us.apache.org: gitweb
  *     `/repos/asf/<repo>` or `?p=<repo>` → normalizeApacheGitwebUrl.
  *
  * Still NOT handled (need more than a host allowlist, or are unreachable):
  *   - eclipse.gerrithub.io: Gerrit admin-UI paths (`/admin/repos/...`), not a clone shape.
- *   - internal-only hosts (git.corp.adobe.com, gitlab.alibaba-inc.com): unreachable
- *     for consumers, so intentionally excluded.
+ *   - gerrit.onosproject.org: every occurrence observed is the bare Gerrit root
+ *     (`http://gerrit.onosproject.org/`) with no path at all — nothing to extract,
+ *     unlike git.opendaylight.org which has resolvable gitweb/SSH forms.
+ *
+ * Internal-only hosts (git.corp.adobe.com, fit.corp.adobe.com, gitlab.alibaba-inc.com)
+ * are included below even though they're unreachable for external consumers — per
+ * product decision, an internal SCM URL should still resolve to a canonical link
+ * rather than being dropped to null.
  */
 const SCM_HOSTS = new Set([
   'github.com',
@@ -505,10 +513,12 @@ const SCM_HOSTS = new Set([
   'codeberg.org',
   // Self-hosted GitLab / Gitea instances seen in Maven POMs with clean
   // /<owner>/<repo> paths (same shape as gitlab.com — handled by the generic logic).
-  // Internal-only hosts (git.corp.adobe.com, gitlab.alibaba-inc.com) are excluded:
-  // their links are unreachable for consumers. The ≥2-segment owner/repo requirement
-  // acts as a safety net so a mis-classified host yields NULL, never a junk link.
+  // The ≥2-segment owner/repo requirement acts as a safety net so a mis-classified
+  // host yields NULL, never a junk link.
   'gitlab.smartb.city',
+  'git.corp.adobe.com',
+  'fit.corp.adobe.com',
+  'gitlab.alibaba-inc.com',
   'gitlab.ow2.org',
   'gitlab.nuiton.org',
   'gitlab.inria.fr',
@@ -759,14 +769,45 @@ function normalizeAliyunCodeupUrl(host: string, pathname: string): string | null
  * Android's Gerrit/Gitiles mirror already uses its full path as the canonical,
  * resolvable repo name (e.g. /platform/tools/base) — nested repo naming is normal
  * here, so this is an identity passthrough rather than an owner/repo split.
+ *
+ * cs.android.com (Android Code Search) is included too: it's a browsing UI over
+ * the same Gitiles-backed repos and mirrors the identical path naming (e.g.
+ * /androidx/platform/frameworks/support) — same passthrough applies.
  */
-const GOOGLESOURCE_IDENTITY_HOSTS = new Set(['android.googlesource.com'])
+const GOOGLESOURCE_IDENTITY_HOSTS = new Set(['android.googlesource.com', 'cs.android.com'])
 
 function normalizeGooglesourceUrl(host: string, pathname: string): string | null {
   const path = pathname.replace(/\/+$/, '').replace(/\.git$/, '')
   if (!path || /\$\{|%7B/i.test(path)) return null
 
   return `https://${host}${path}`
+}
+
+/**
+ * OpenDaylight's self-hosted Gerrit serves the same flat (no-owner) repo naming as
+ * ASF's gitweb, in two forms seen in the wild: a gitweb browse query
+ * (`/gerrit/gitweb?p=<repo>.git;a=summary`) and an SSH clone URL with an explicit
+ * Gerrit port and no `git@` user (`ssh://git.opendaylight.org:29418/<repo>.git`).
+ * Both are unified to the gitweb browse form so the stored link is always
+ * resolvable in a browser, not just via `git clone`.
+ */
+export const OPENDALIGHT_GERRIT_HOST = 'git.opendaylight.org'
+export const OPENDALIGHT_GERRIT_GITWEB_PATH = '/gerrit/gitweb'
+
+function normalizeOpendaylightGerritUrl(pathname: string, search: string): string | null {
+  // Query extraction only applies to the actual gitweb browse script — a `p` query
+  // on some unrelated path isn't a repo reference.
+  const queryRepo =
+    pathname === OPENDALIGHT_GERRIT_GITWEB_PATH ? new URLSearchParams(search).get('p') : null
+  const segments = pathname.split('/').filter(Boolean)
+  // The one-segment SSH-clone form must end in .git, otherwise any arbitrary
+  // single-segment path (e.g. /favicon.ico) would be mistaken for a repo.
+  const rawName =
+    queryRepo ?? (segments.length === 1 && segments[0].endsWith('.git') ? segments[0] : null)
+  const name = rawName ? extractGitwebRepoName(rawName) : null
+  if (!name) return null
+
+  return `https://${OPENDALIGHT_GERRIT_HOST}/gerrit/gitweb?p=${name}.git`
 }
 
 /**
@@ -797,6 +838,136 @@ function normalizeGitlabUrl(host: string, pathname: string): string | null {
 }
 
 /**
+ * Subversion hosts unambiguously identifiable by hostname alone (the "svn" in the
+ * name), so a bare `http://svn.apache.org/...` URL is recognised as SVN even without
+ * an `scm:svn:` connection-string prefix or `svn(+ssh)://` scheme.
+ */
+const SVN_HOSTS = new Set([
+  'svn.apache.org',
+  'svn.eu.apache.org',
+  'svn.sonatype.org',
+  'svn.forge.objectweb.org',
+  'svn.code.sf.net',
+  'svn.codehaus.org',
+  'svn.java.net',
+  'websvn.ow2.org',
+])
+
+/**
+ * Hosts that only count as SVN when explicitly marked (`scm:svn:` prefix or
+ * `svn(+ssh)://` scheme) — the bare hostname is shared with non-SVN content
+ * (java.net hosted forums, wikis, JIRA, etc. alongside its SVN forge).
+ */
+const SVN_HOSTS_REQUIRE_EXPLICIT_MARKER = new Set(['java.net'])
+
+function isSvnSourceforgeHost(host: string): boolean {
+  return host.endsWith('.svn.sourceforge.net')
+}
+
+const APACHE_SVN_HOSTS = new Set(['svn.apache.org', 'svn.eu.apache.org'])
+
+/**
+ * Whether `host` (lowercased, no `www.`) is one of the SVN hosts this module
+ * normalizes. Exported so callers persisting the normalized URL elsewhere
+ * (e.g. `parseRepoUrl` in `./normalize`) can special-case SVN's owner/repo-less
+ * path shape instead of applying a generic two-segment split.
+ */
+export function isSvnHost(host: string): boolean {
+  return (
+    SVN_HOSTS.has(host) || isSvnSourceforgeHost(host) || SVN_HOSTS_REQUIRE_EXPLICIT_MARKER.has(host)
+  )
+}
+
+/**
+ * Subversion has no owner/repo shape — its near-universal convention is
+ * <project>[/<module>]/{trunk|tags|branches}/... . The canonical link keeps
+ * everything up to (but not including) that trunk/tags/branches marker, the closest
+ * SVN equivalent of a repo root. Apache's three script fronts (viewvc, viewcvs.cgi,
+ * repos/asf) all serve the same repos, so they're unified to the /repos/asf/ form
+ * regardless of which one the declared URL used — mirrors wrapAsfRepo for git.
+ *
+ * Kept even though these hosts are largely dead/unreachable today (Apache, Sonatype
+ * and ObjectWeb's SVN forges have moved to Git) per explicit product decision: an SVN
+ * declared_repository_url should still resolve to a canonical link, not stay null.
+ */
+function normalizeSvnUrl(host: string, pathname: string): string | null {
+  const rest = pathname.replace(/^\/+/, '')
+  // The trailing group is optional so a marker-only root (e.g. "/repos/asf" with
+  // no trailing slash) still matches, leaving an empty remainder instead of
+  // falling through to be mis-parsed as project segments "repos"/"asf".
+  const markerMatch = rest.match(/^(viewvc|viewcvs\.cgi|repos\/asf|svnroot|svn|p)(?:\/(.*))?$/)
+  const scriptPrefix = markerMatch?.[1] ?? null
+  const afterPrefix = markerMatch ? (markerMatch[2] ?? '') : rest
+
+  const segments = afterPrefix.split('/').filter(Boolean)
+  if (segments.some((s) => /\$\{|%7B/i.test(s))) return null
+
+  if (scriptPrefix === 'p') {
+    // SourceForge /p/<project>/code/... — "code" is a fixed marker, not part of the path.
+    return segments[0] ? `https://${host}/p/${segments[0]}/code` : null
+  }
+
+  const branchMarkerIndex = segments.findIndex((s) => /^(trunk|tags|branches)$/i.test(s))
+  const projectSegments = branchMarkerIndex === -1 ? segments : segments.slice(0, branchMarkerIndex)
+
+  if (projectSegments.length === 0) {
+    // Legacy SourceForge subdomain form (<project>.svn.sourceforge.net) with no
+    // path beyond trunk/tags/branches — the project name is the subdomain itself.
+    if (isSvnSourceforgeHost(host)) {
+      const project = host.replace(/\.svn\.sourceforge\.net$/, '')
+      return project ? `https://${host}/svnroot/${project}` : null
+    }
+    return null
+  }
+
+  if (APACHE_SVN_HOSTS.has(host)) return `https://${host}/repos/asf/${projectSegments.join('/')}`
+
+  const prefix = scriptPrefix && scriptPrefix !== 'repos/asf' ? `${scriptPrefix}/` : ''
+  return `https://${host}${prefix ? `/${prefix}` : '/'}${projectSegments.join('/')}`
+}
+
+/**
+ * Detects and normalizes Maven `scm:svn:` connection strings and bare SVN URLs.
+ * Returns `undefined` when the input isn't SVN at all (falls through to the
+ * git-oriented logic below); `null` when it's SVN but not on a known SVN host or
+ * not resolvable; otherwise the canonical link.
+ */
+function normalizeSvnScmUrl(raw: string): string | null | undefined {
+  const hadSvnScmPrefix = /^scm:svn:/i.test(raw)
+  let s = raw.replace(/^scm:svn:/i, '')
+
+  const hasSvnScheme = /^svn(\+ssh)?:\/\//i.test(s)
+  s = s.replace(/^svn\+ssh:\/\//i, 'https://').replace(/^svn:\/\//i, 'https://')
+
+  if (!/^https?:\/\//i.test(s)) {
+    if (!hadSvnScmPrefix && !hasSvnScheme) return undefined
+    s = `https://${s.replace(/^https?:\/\//i, '')}`
+  }
+
+  // Strip an embedded user@ (svn+ssh://user@host/... form)
+  s = s.replace(/^(https?:\/\/)[^@/]+@/, '$1')
+
+  let parsed: URL
+  try {
+    parsed = new URL(s)
+  } catch {
+    return hadSvnScmPrefix || hasSvnScheme ? null : undefined
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  const isUnambiguousSvnHost = SVN_HOSTS.has(host) || isSvnSourceforgeHost(host)
+
+  if (!hadSvnScmPrefix && !hasSvnScheme && !isUnambiguousSvnHost) return undefined
+
+  const isSvnHost =
+    isUnambiguousSvnHost ||
+    (SVN_HOSTS_REQUIRE_EXPLICIT_MARKER.has(host) && (hadSvnScmPrefix || hasSvnScheme))
+  if (!isSvnHost) return null
+
+  return normalizeSvnUrl(host, parsed.pathname)
+}
+
+/**
  * Converts the raw SCM URL from a POM (declared_repository_url) into a clean,
  * canonical `https://<host>/<owner>/<repo>` repository URL suitable for storage
  * as repository_url. Returns null when the input does not resolve to a real
@@ -813,13 +984,20 @@ function normalizeGitlabUrl(host: string, pathname: string): string | null {
  *   https://github.com:owner/repo            → https://github.com/owner/repo
  *   ssh://git@github.com:owner/repo.git      → https://github.com/owner/repo
  *
+ * SVN connection strings (`scm:svn:...`, `svn(+ssh)://...`) are handled separately
+ * by normalizeSvnScmUrl, which has no owner/repo shape and is dispatched before any
+ * of the git-oriented rewriting below — see its docstring for the SVN conventions.
+ *
  * Rejected (→ null): website-only URLs (https://meson.ai/), non-SCM hosts
- * (svn://…, http://source.android.com), placeholders (Private, ${scm-url}).
+ * (http://source.android.com), placeholders (Private, ${scm-url}).
  */
 export function normalizeScmUrl(raw: string | null): string | null {
   if (!raw) return null
   let s = raw.trim()
   if (!s) return null
+
+  const svnResult = normalizeSvnScmUrl(s)
+  if (svnResult !== undefined) return svnResult
 
   // Strip Maven scm:git: / scm: prefix
   s = s.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
@@ -835,6 +1013,9 @@ export function normalizeScmUrl(raw: string | null): string | null {
 
   // ssh://git@host/… → https://host/…
   s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
+
+  // ssh://host:port/… (no git@ user, real numeric Gerrit-style port) → https://host/…
+  s = s.replace(/^ssh:\/\/([^@/:]+):\d+\//, 'https://$1/')
 
   // git:// → https://, and upgrade http:// → https:// — done before the SCP-colon
   // rule below so that git://host:owner/repo is normalised too.
@@ -877,6 +1058,10 @@ export function normalizeScmUrl(raw: string | null): string | null {
 
   if (GITWEB_QUERY_HOSTS.has(host)) {
     return normalizeGitwebQueryUrl(host, parsed.search)
+  }
+
+  if (host === OPENDALIGHT_GERRIT_HOST) {
+    return normalizeOpendaylightGerritUrl(parsed.pathname, parsed.search)
   }
 
   if (ECLIPSE_CGIT_HOSTS.has(host)) {

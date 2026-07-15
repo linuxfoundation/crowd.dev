@@ -50,7 +50,8 @@ export interface ProjectGroup {
   activityChannels: object;
   createdAt: string;
   updatedAt: string;
-  projects: Project[];
+  projects?: Project[];
+  projectCount?: number;
   isLF: boolean;
 }
 
