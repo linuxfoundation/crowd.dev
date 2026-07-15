@@ -10,10 +10,10 @@ DESCRIPTION >
     - `projectCount`: count of distinct projects in the collection.
     - `uniqueContributorCount`: total unique contributors across all projects in the collection, deduplicated (a contributor active on multiple projects in the collection is counted once).
     - `avgHealthScore`: average health score across the collection's onboarded projects, rounded. A project
-      is "onboarded" when it has at least one contributor or organization attributed to it (same definition
-      used by insightsProjects_filtered.pipe's `onboarded` filter and the frontend's project-row `isOnboarded`
-      check) — projects with no attributed contributors/organizations have no meaningful health signal yet
-      and would otherwise pull the average down artificially.
+    is "onboarded" when it has at least one contributor or organization attributed to it (same definition
+    used by insightsProjects_filtered.pipe's `onboarded` filter and the frontend's project-row `isOnboarded`
+    check) — projects with no attributed contributors/organizations have no meaningful health signal yet
+    and would otherwise pull the average down artificially.
 
 TAGS "Insights, Widget", "Collection"
 

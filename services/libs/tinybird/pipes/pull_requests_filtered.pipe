@@ -19,8 +19,8 @@ SQL >
     SELECT *
     FROM pull_requests_analyzed pra
     WHERE
+        pra.channel IN (SELECT channel FROM repos_to_channels)
         {% if defined(collectionSlug) %}
-            pra.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
-        {% else %} pra.segmentId = (SELECT segmentId FROM segments_filtered)
+            AND pra.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} AND pra.segmentId = (SELECT segmentId FROM segments_filtered)
         {% end %}
-        AND pra.channel IN (SELECT channel FROM repos_to_channels)

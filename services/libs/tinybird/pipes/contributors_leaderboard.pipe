@@ -40,8 +40,7 @@ SQL >
 NODE is_request_from_non_lf_project
 SQL >
     %
-    {% if defined(collectionSlug) %}
-        SELECT false AS result
+    {% if defined(collectionSlug) %} SELECT false AS result
     {% else %}
         SELECT not isLF AS result
         FROM insightsProjects final

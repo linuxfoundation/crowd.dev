@@ -23,8 +23,7 @@ SQL >
     FROM searchVolume FINAL
     WHERE
         {% if defined(collectionSlug) %}
-            insightsProjectId
-            IN (select toUUID(insightsProjectId) from segments_filtered_by_collection)
+            insightsProjectId IN (select toUUID(insightsProjectId) from segments_filtered_by_collection)
         {% else %} insightsProjectId = toUUID((select insightsProjectId from segments_filtered))
         {% end %}
         {% if defined(startDate) %}

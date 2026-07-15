@@ -59,8 +59,7 @@ SQL >
         {% if defined(collectionSlug) %}
             insightsProjectId IN (SELECT insightsProjectId FROM segments_filtered_by_collection)
         {% else %} insightsProjectId = (SELECT insightsProjectId FROM segments_filtered)
-        {% end %}
-        AND role = 'maintainer'
+        {% end %} AND role = 'maintainer'
         {% if defined(repos) %}
             AND repoUrl
             IN {{ Array(repos, 'String', description="Filter maintainer repo list", required=False) }}
