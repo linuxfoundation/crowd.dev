@@ -1,0 +1,403 @@
+openapi: 3.0.3
+info:
+  title: CDP → Akrites External API
+  version: 0.1.0
+  description: >
+    Read-only external API exposing CDP package security data to the Akrites
+    service. Authenticated via Auth0 M2M client-credentials — CDP only
+    verifies the resulting access token; the assertion exchange happens
+    entirely between Akrites and Auth0.
+
+
+    Only the Packages endpoints are implemented so far. Advisories, Blast
+    Radius, and Contacts are specced separately and not yet built.
+
+
+    TODO: scopes below (read:packages, read:stewardships) are the existing
+    internal CDP UI scopes, reused here for now. Swap for a dedicated
+    cdp:packages:read scope once Akrites gets its own Auth0 M2M scopes per
+    the akrites-external draft contract.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+
+security:
+  - M2MBearer:
+      - read:packages
+      - read:stewardships
+
+tags:
+  - name: Packages
+    description: Package detail — requires read:packages and read:stewardships (see TODO above).
+
+components:
+  securitySchemes:
+    # Modeled as oauth2/clientCredentials (not http/bearer): OpenAPI only allows
+    # non-empty scope arrays in security requirements for oauth2 / openIdConnect
+    # schemes, and the operations below require read:packages + read:stewardships.
+    M2MBearer:
+      type: oauth2
+      description: >
+        Auth0 machine-to-machine client-credentials flow. Akrites exchanges its
+        client ID/secret with Auth0 for a JWT and sends it as
+        `Authorization: Bearer <token>`; CDP only verifies the resulting token.
+      flows:
+        clientCredentials:
+          tokenUrl: https://linuxfoundation.auth0.com/oauth/token
+          scopes:
+            read:packages: Read package detail
+            read:stewardships: Read package stewardship data
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: BAD_REQUEST
+            message:
+              type: string
+
+    Ecosystem:
+      type: string
+      example: npm
+
+    HealthBand:
+      type: string
+      enum: [critical, low, medium, high]
+      description: >
+        UNCONFIRMED CROSSWALK — the internal health scale is
+        excellent/healthy/fair/concerning/critical (good→bad); there is no
+        agreed mapping to this critical/low/medium/high scale yet. See
+        HEALTH_BAND_CROSSWALK in akritesExternalPackageDetail.ts. Confirm
+        with Akrites/product before relying on exact band values.
+
+    PackageDetail:
+      type: object
+      required:
+        - purl
+        - name
+        - ecosystem
+        - latestVersion
+        - versionCount
+        - health
+        - impact
+        - riskSignals
+        - security
+        - provenance
+        - supplyChainIntegrity
+      properties:
+        purl:
+          type: string
+        name:
+          type: string
+        ecosystem:
+          $ref: '#/components/schemas/Ecosystem'
+        latestVersion:
+          type: string
+          nullable: true
+        versionCount:
+          type: integer
+          nullable: true
+        health:
+          type: object
+          required: [score, band, subScores, signalCoverageHealth]
+          properties:
+            score:
+              type: integer
+              nullable: true
+              minimum: 0
+              maximum: 100
+            band:
+              $ref: '#/components/schemas/HealthBand'
+            subScores:
+              type: object
+              required: [maintainerHealth, securitySupplyChain, developmentActivity]
+              properties:
+                maintainerHealth:
+                  type: number
+                  nullable: true
+                securitySupplyChain:
+                  type: number
+                  nullable: true
+                developmentActivity:
+                  type: number
+                  nullable: true
+            signalCoverageHealth:
+              type: object
+              nullable: true
+              additionalProperties: true
+        impact:
+          type: object
+          required:
+            [
+              score,
+              downloadsLast30Days,
+              dependentPackagesCount,
+              dependentReposCount,
+              transitiveReach,
+            ]
+          properties:
+            score:
+              type: integer
+              nullable: true
+              minimum: 0
+              maximum: 100
+            downloadsLast30Days:
+              type: string
+              nullable: true
+              description: Raw registry count string, not normalized.
+            dependentPackagesCount:
+              type: integer
+              nullable: true
+            dependentReposCount:
+              type: integer
+              nullable: true
+            transitiveReach:
+              type: integer
+              nullable: true
+              description: Always null for now — reserved for future computation.
+        riskSignals:
+          type: object
+          required:
+            - lifecycle
+            - maintainerBusFactor
+            - lastReleaseAt
+            - hasSecurityFile
+            - hasSecurityPolicy
+            - branchProtectionEnabled
+            - openssfScorecardScore
+          properties:
+            lifecycle:
+              type: string
+              enum: [active, inactive, deprecated, abandoned, null]
+              nullable: true
+              description: >
+                UNCONFIRMED CROSSWALK from the internal
+                active/stable/declining/abandoned/archived scale — see
+                LIFECYCLE_CROSSWALK in akritesExternalPackageDetail.ts.
+            maintainerBusFactor:
+              type: integer
+              nullable: true
+            lastReleaseAt:
+              type: string
+              format: date-time
+              nullable: true
+            hasSecurityFile:
+              type: boolean
+              nullable: true
+            hasSecurityPolicy:
+              type: boolean
+              nullable: true
+            branchProtectionEnabled:
+              type: boolean
+              nullable: true
+            openssfScorecardScore:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 10
+              nullable: true
+        security:
+          type: object
+          required:
+            [
+              securityPolicyUrl,
+              vulnerabilityReportingUrl,
+              bugBountyUrl,
+              pvrEnabled,
+              criticalVulnerabilityFlag,
+            ]
+          properties:
+            securityPolicyUrl:
+              type: string
+              nullable: true
+            vulnerabilityReportingUrl:
+              type: string
+              nullable: true
+            bugBountyUrl:
+              type: string
+              nullable: true
+            pvrEnabled:
+              type: boolean
+              nullable: true
+            criticalVulnerabilityFlag:
+              type: boolean
+              nullable: true
+        provenance:
+          type: object
+          required:
+            [
+              resolvedRepositoryUrl,
+              declaredRepositoryUrl,
+              mappingConfidenceScore,
+              mappingConfidenceLabel,
+              lastCommitAt,
+            ]
+          properties:
+            resolvedRepositoryUrl:
+              type: string
+              nullable: true
+              description: >
+                Best available repository URL. Preferred source is the
+                confidence-ranked package_repos → repos join — the repo CDP has
+                actually resolved and enriched (scorecard, branch protection,
+                etc.). When the package has no package_repos link yet, this
+                falls back to the canonical repository_url on the package row,
+                which is NOT confidence-resolved or enriched. Use
+                mappingConfidenceScore / mappingConfidenceLabel to tell the two
+                apart: both are null when the fallback URL is returned.
+            declaredRepositoryUrl:
+              type: string
+              nullable: true
+              description: Raw repository URL as declared in the package's own metadata.
+            mappingConfidenceScore:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              nullable: true
+            mappingConfidenceLabel:
+              type: string
+              enum: [High, Medium, Low, null]
+              nullable: true
+            lastCommitAt:
+              type: string
+              format: date-time
+              nullable: true
+        supplyChainIntegrity:
+          type: object
+          required: [buildProvenance, signedReleases]
+          properties:
+            buildProvenance:
+              type: string
+              nullable: true
+              description: Always null for now — reserved.
+            signedReleases:
+              type: string
+              nullable: true
+              description: Always null for now — reserved.
+
+    PackageDetailBulkEntry:
+      type: object
+      required: [requestedPurl, found, package]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        package:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PackageDetail'
+
+paths:
+  /akrites-external/packages/detail:
+    get:
+      operationId: getPackageDetail
+      summary: Get package detail by PURL
+      tags: [Packages]
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Package detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/packages/detail:batch:
+    post:
+      operationId: getPackageDetailBatch
+      summary: Bulk package detail lookup
+      tags: [Packages]
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Results in the same order as the request.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageDetailBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

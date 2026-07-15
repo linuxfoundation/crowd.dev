@@ -80,6 +80,7 @@ function toTarget(row: SingleRepoRow): RepoTarget {
  */
 export async function ingestSecurityContactsForPurl(
   qx: QueryExecutor,
+  cdpQx: QueryExecutor,
   config: Config,
   purl: string,
 ): Promise<IngestSingleResult> {
@@ -92,7 +93,7 @@ export async function ingestSecurityContactsForPurl(
   const target = toTarget(row)
   const baseDeps = buildBaseDeps(config)
   try {
-    await processRepo(target, baseDeps, qx)
+    await processRepo(target, baseDeps, qx, cdpQx)
   } catch (err) {
     log.error({ repoId: target.repoId, errMsg: (err as Error).message }, 'Repo processing failed')
     await markRepoAttempted(qx, target.repoId).catch(() => undefined)

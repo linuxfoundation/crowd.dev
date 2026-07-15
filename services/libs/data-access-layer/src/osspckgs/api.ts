@@ -1,6 +1,11 @@
+import type { PackageDbRow } from '@crowd/types'
+
 import { QueryExecutor } from '../queryExecutor'
 
 import {
+  BEST_REPO_LINK_JOIN,
+  DOWNLOADS_LAST_30D_SUBQUERY,
+  MAINTAINER_COUNT_SUBQUERY,
   SEVERITY_RANK_EXPR,
   STEWARD_DISPLAY_NAME_METADATA,
   STEWARD_MENTIONED_JOIN,
@@ -147,7 +152,17 @@ export interface PackageListRow {
   total: string
 }
 
-export type HealthBand = 'excellent' | 'healthy' | 'fair' | 'concerning' | 'critical'
+// Canonical value list — packages/types.ts's HEALTH_BAND_VALUES derives from this
+// instead of re-declaring it, so a validity check (HEALTH_BAND_SET) and a value
+// typed as HealthBand can never silently drift apart.
+export const HEALTH_BAND_VALUES = [
+  'excellent',
+  'healthy',
+  'fair',
+  'concerning',
+  'critical',
+] as const
+export type HealthBand = (typeof HEALTH_BAND_VALUES)[number]
 export type VulnSeverityFilter = 'any' | 'high' | 'critical' | 'none'
 
 export function computeHealthBand(scorecardScore: number | null): HealthBand {
@@ -721,14 +736,8 @@ export async function getPackageDetailByPurl(
         ) sc
       ) AS "securityContacts",
       -- latest 30-day download count
-      (
-        SELECT d.count::text
-        FROM downloads_last_30d d
-        WHERE d.purl = p.purl
-        ORDER BY d.end_date DESC
-        LIMIT 1
-      ) AS "downloadsLast30d",
-      (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
+      ${DOWNLOADS_LAST_30D_SUBQUERY} AS "downloadsLast30d",
+      ${MAINTAINER_COUNT_SUBQUERY} AS "maintainerCount",
       p.health_score AS "healthScore",
       p.health_label AS "healthLabel",
       p.maintainer_health_score AS "maintainerHealthScore",
@@ -749,17 +758,114 @@ export async function getPackageDetailByPurl(
       NULL::float AS "transitiveReach"
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
-    LEFT JOIN LATERAL (
-      SELECT pr2.repo_id, pr2.confidence
-      FROM package_repos pr2
-      WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
-      LIMIT 1
-    ) pr ON true
-    LEFT JOIN repos r ON r.id = pr.repo_id
+    ${BEST_REPO_LINK_JOIN}
     WHERE p.purl = $(purl)
     `,
     { purl },
+  )
+}
+
+// Fields the akrites-external Packages contract needs. Deliberately leaner than
+// PackageDetailRow above: no stewardships join and no security_contacts subquery —
+// those aren't part of that contract (contacts are a separate, differently-scoped
+// endpoint) and would be wasted work on every batch lookup.
+//
+// Per ADR-0006, the packages-table-sourced fields below reference PackageDbRow's
+// field types (renamed to this endpoint's established API naming, e.g. impact ->
+// criticalityScore) instead of hand-declaring string/number/null again — keeps
+// this in sync with the schema-derived source of truth in @crowd/types. Fields
+// joined in from other tables (repos, package_maintainers, downloads_last_30d)
+// aren't part of PackageDbRow and stay hand-declared below.
+export interface AkritesExternalPackageDetailRow {
+  purl: PackageDbRow['purl']
+  name: PackageDbRow['name']
+  ecosystem: PackageDbRow['ecosystem']
+  latestVersion: PackageDbRow['latestVersion']
+  versionsCount: PackageDbRow['versionsCount']
+  criticalityScore: PackageDbRow['impact']
+  dependentPackagesCount: PackageDbRow['dependentCount']
+  dependentReposCount: PackageDbRow['dependentReposCount']
+  healthScore: PackageDbRow['healthScore']
+  healthLabel: PackageDbRow['healthLabel']
+  maintainerHealthScore: PackageDbRow['maintainerHealthScore']
+  securitySupplyChainScore: PackageDbRow['securitySupplyChainScore']
+  developmentActivityScore: PackageDbRow['developmentActivityScore']
+  signalCoverageHealth: PackageDbRow['signalCoverageHealth']
+  lifecycleLabel: PackageDbRow['lifecycleLabel']
+  // Timestamptz (OID 1184) comes back as a raw string, not a Date: @crowd/database
+  // registers `setTypeParser(1184, (s) => s)` on the shared pg-promise instance
+  // (services/libs/database/src/connection.ts). Matches PackageDbRow's string convention.
+  latestReleaseAt: PackageDbRow['latestReleaseAt']
+  hasCriticalVulnerability: PackageDbRow['hasCriticalVulnerability']
+  declaredRepositoryUrl: PackageDbRow['declaredRepositoryUrl']
+  // Canonicalized repo URL on the packages row itself — used as a fallback for
+  // resolvedRepositoryUrl when the package hasn't been linked into package_repos yet.
+  repositoryUrl: PackageDbRow['repositoryUrl']
+  maintainerCount: number
+  // --- joined from repos via package_repos, not part of the packages row ---
+  // Resolved via the same confidence-ranked package_repos → repos join as
+  // getPackageDetailByPurl, distinct from the raw declaredRepositoryUrl above.
+  resolvedRepositoryUrl: string | null
+  repoMappingConfidence: number | null
+  // Timestamptz — returned as a string, same OID 1184 parser as latestReleaseAt above.
+  repoLastCommitAt: string | null
+  scorecardScore: number | null
+  hasSecurityFile: boolean | null
+  hasSecurityPolicy: boolean | null
+  branchProtectionEnabled: boolean | null
+  pvrEnabled: boolean | null
+  securityPolicyUrl: string | null
+  vulnerabilityReportingUrl: string | null
+  bugBountyUrl: string | null
+  downloadsLast30d: string | null
+}
+
+export async function getPackageDetailsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<AkritesExternalPackageDetailRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      p.name,
+      p.ecosystem,
+      p.latest_version AS "latestVersion",
+      p.versions_count AS "versionsCount",
+      p.impact AS "criticalityScore",
+      p.dependent_count AS "dependentPackagesCount",
+      p.dependent_repos_count AS "dependentReposCount",
+      p.health_score AS "healthScore",
+      p.health_label AS "healthLabel",
+      p.maintainer_health_score AS "maintainerHealthScore",
+      p.security_supply_chain_score AS "securitySupplyChainScore",
+      p.development_activity_score AS "developmentActivityScore",
+      p.signal_coverage_health AS "signalCoverageHealth",
+      p.lifecycle_label AS "lifecycleLabel",
+      p.latest_release_at AS "latestReleaseAt",
+      p.has_critical_vulnerability AS "hasCriticalVulnerability",
+      p.declared_repository_url AS "declaredRepositoryUrl",
+      p.repository_url AS "repositoryUrl",
+      ${MAINTAINER_COUNT_SUBQUERY} AS "maintainerCount",
+      ${DOWNLOADS_LAST_30D_SUBQUERY} AS "downloadsLast30d",
+      -- best repo link (highest confidence, prefer declared) — same join shape as getPackageDetailByPurl
+      r.url AS "resolvedRepositoryUrl",
+      pr.confidence AS "repoMappingConfidence",
+      r.last_commit_at AS "repoLastCommitAt",
+      r.scorecard_score AS "scorecardScore",
+      r.security_file_enabled AS "hasSecurityFile",
+      r.security_policy_enabled AS "hasSecurityPolicy",
+      r.branch_protection_enabled AS "branchProtectionEnabled",
+      r.pvr_enabled AS "pvrEnabled",
+      r.security_policy_url AS "securityPolicyUrl",
+      r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
+      r.bug_bounty_url AS "bugBountyUrl"
+    FROM packages p
+    ${BEST_REPO_LINK_JOIN}
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
   )
 }
 

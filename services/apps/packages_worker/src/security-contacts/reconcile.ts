@@ -8,8 +8,6 @@ import {
   SourceTier,
 } from './types'
 
-const MAX_CONTACTS = 5
-
 const ROLE_PRIORITY: Record<ContactRole, number> = {
   'security-team': 5,
   maintainer: 4,
@@ -143,5 +141,5 @@ export function reconcile(contacts: RawContact[], now: Date = new Date()): Score
       a.value.localeCompare(b.value),
   )
 
-  return scored.slice(0, MAX_CONTACTS)
+  return scored
 }
