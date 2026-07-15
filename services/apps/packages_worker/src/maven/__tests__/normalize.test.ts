@@ -200,6 +200,12 @@ describe('normalizeScmUrl', () => {
     )
   })
 
+  it('returns null for a marker-only SVN root with no project segment', () => {
+    // No trailing slash after "repos/asf" — must not fall through to being
+    // mis-parsed as project segments ["repos", "asf"] and duplicated.
+    expect(normalizeScmUrl('https://svn.apache.org/repos/asf')).toBeNull()
+  })
+
   it('does not map dead services that incidentally match an "svn" text filter', () => {
     expect(normalizeScmUrl('http://specs.googlecode.com/svn/trunk')).toBeNull()
   })
@@ -584,6 +590,15 @@ describe('normalizeScmUrl', () => {
     expect(
       normalizeScmUrl('https://gerrit.wikimedia.org/r/#/admin/projects/wikidata/query/rdf'),
     ).toBeNull()
+  })
+
+  it('returns null for non-SCM OpenDaylight URLs instead of mistaking them for a repo', () => {
+    // A `p` query on some unrelated path is not a gitweb browse link.
+    expect(
+      normalizeScmUrl('https://git.opendaylight.org/somewhere?p=netconf.git'),
+    ).toBeNull()
+    // Single path segment with no .git suffix — e.g. a static asset, not a clone URL.
+    expect(normalizeScmUrl('https://git.opendaylight.org/favicon.ico')).toBeNull()
   })
 })
 

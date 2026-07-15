@@ -785,9 +785,14 @@ function normalizeGooglesourceUrl(host: string, pathname: string): string | null
 const OPENDALIGHT_GERRIT_HOST = 'git.opendaylight.org'
 
 function normalizeOpendaylightGerritUrl(pathname: string, search: string): string | null {
-  const queryRepo = new URLSearchParams(search).get('p')
+  // Query extraction only applies to the actual gitweb browse script — a `p` query
+  // on some unrelated path isn't a repo reference.
+  const queryRepo = pathname === '/gerrit/gitweb' ? new URLSearchParams(search).get('p') : null
   const segments = pathname.split('/').filter(Boolean)
-  const rawName = queryRepo ?? (segments.length === 1 ? segments[0] : null)
+  // The one-segment SSH-clone form must end in .git, otherwise any arbitrary
+  // single-segment path (e.g. /favicon.ico) would be mistaken for a repo.
+  const rawName =
+    queryRepo ?? (segments.length === 1 && segments[0].endsWith('.git') ? segments[0] : null)
   const name = rawName ? extractGitwebRepoName(rawName) : null
   if (!name) return null
 
@@ -876,9 +881,12 @@ export function isSvnHost(host: string): boolean {
  */
 function normalizeSvnUrl(host: string, pathname: string): string | null {
   const rest = pathname.replace(/^\/+/, '')
-  const markerMatch = rest.match(/^(viewvc|viewcvs\.cgi|repos\/asf|svnroot|svn|p)\/(.*)$/)
+  // The trailing group is optional so a marker-only root (e.g. "/repos/asf" with
+  // no trailing slash) still matches, leaving an empty remainder instead of
+  // falling through to be mis-parsed as project segments "repos"/"asf".
+  const markerMatch = rest.match(/^(viewvc|viewcvs\.cgi|repos\/asf|svnroot|svn|p)(?:\/(.*))?$/)
   const scriptPrefix = markerMatch?.[1] ?? null
-  const afterPrefix = markerMatch ? markerMatch[2] : rest
+  const afterPrefix = markerMatch ? (markerMatch[2] ?? '') : rest
 
   const segments = afterPrefix.split('/').filter(Boolean)
   if (segments.some((s) => /\$\{|%7B/i.test(s))) return null
