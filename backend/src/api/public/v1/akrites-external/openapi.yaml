@@ -9,8 +9,8 @@ info:
     entirely between Akrites and Auth0.
 
 
-    Only the Packages endpoints are implemented so far. Advisories, Blast
-    Radius, and Contacts are specced separately and not yet built.
+    Packages and Advisories endpoints are implemented. Blast Radius and
+    Contacts are specced separately and not yet built.
 
 
     TODO: scopes below (read:packages, read:stewardships) are the existing
@@ -30,6 +30,13 @@ security:
 tags:
   - name: Packages
     description: Package detail — requires read:packages and read:stewardships (see TODO above).
+  - name: Advisories
+    description: >
+      Security advisories for a package, split out of package detail. The draft
+      contract gates these behind a dedicated read:advisories scope; until Auth0
+      issues it, the implementation reuses read:packages (advisories need no
+      stewardship read). Confirm the final scope name (read:advisories vs
+      cdp:advisories:read) with Akrites/product.
 
 components:
   securitySchemes:
@@ -298,6 +305,57 @@ components:
           allOf:
             - $ref: '#/components/schemas/PackageDetail'
 
+    Advisory:
+      type: object
+      required: [osvId, severity, resolution, isCritical]
+      properties:
+        osvId:
+          type: string
+          example: GHSA-xxxx-xxxx-xxxx
+        severity:
+          type: string
+          enum: [critical, high, moderate, low, null]
+          nullable: true
+          description: >
+            Lowercased advisory severity. Any stored value outside this enum is
+            returned as null rather than echoed verbatim.
+        resolution:
+          type: string
+          enum: [open, patched, null]
+          nullable: true
+          description: >
+            Whether the package's latest version is still affected. Null when it
+            can't be determined (no latest version, or no affected ranges recorded).
+        isCritical:
+          type: boolean
+          nullable: true
+          description: cvss >= 7.0. Null when the advisory has no CVSS score.
+
+    AdvisoryDetail:
+      type: object
+      required: [purl, advisories]
+      properties:
+        purl:
+          type: string
+        advisories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Advisory'
+
+    AdvisoryDetailBulkEntry:
+      type: object
+      required: [requestedPurl, found, advisories]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        advisories:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/AdvisoryDetail'
+
 paths:
   /akrites-external/packages/detail:
     get:
@@ -397,6 +455,107 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Token missing read:packages or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/advisories/detail:
+    get:
+      operationId: getAdvisoryDetail
+      summary: Get advisories for a package by PURL
+      tags: [Advisories]
+      security:
+        - M2MBearer:
+            - read:packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Advisories for the package (empty array when the package has none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdvisoryDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/advisories/detail:batch:
+    post:
+      operationId: getAdvisoryDetailBatch
+      summary: Bulk advisory lookup
+      tags: [Advisories]
+      security:
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Results in the same order as the request.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdvisoryDetailBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
           content:
             application/json:
               schema:

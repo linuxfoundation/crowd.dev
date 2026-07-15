@@ -40,3 +40,24 @@ export const DOWNLOADS_LAST_30D_SUBQUERY = `(
         ORDER BY d.end_date DESC
         LIMIT 1
       )`
+
+// Resolution of an advisory against a package's latest version: 'patched' once every
+// affected range is fixed/passed, 'open' otherwise, NULL when unknowable (no latest
+// version, or no affected ranges recorded). Aggregate expression — must be used under a
+// GROUP BY, and expects `packages p` and `advisory_affected_ranges ar` in scope.
+// TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
+// Replace with a proper semver comparison function when one is available in the DB.
+export const ADVISORY_RESOLUTION_EXPR = `CASE
+          WHEN p.latest_version IS NULL THEN NULL
+          WHEN COUNT(ar.id) = 0 THEN NULL
+          WHEN BOOL_AND(
+            CASE
+              WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
+              WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
+              WHEN ar.fixed_version IS NOT NULL THEN FALSE
+              WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
+              ELSE FALSE
+            END
+          ) THEN 'patched'
+          ELSE 'open'
+        END`
