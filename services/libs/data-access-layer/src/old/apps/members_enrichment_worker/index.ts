@@ -14,6 +14,21 @@ import {
   OrganizationSource,
 } from '@crowd/types'
 
+function truncateTitle(title: string | null | undefined) {
+  const maxLength = 255
+
+  if (title == null) {
+    return title
+  }
+
+  const codePoints = [...title]
+  if (codePoints.length <= maxLength) {
+    return title
+  }
+
+  return codePoints.slice(0, maxLength).join('')
+}
+
 export async function fetchMemberDataForLLMSquashing(
   db: DbConnOrTx,
   memberId: string,
@@ -488,6 +503,11 @@ export async function updateMemberOrg(
     return null
   }
 
+  const normalizedToUpdate = { ...toUpdate }
+  if (typeof normalizedToUpdate.title === 'string') {
+    normalizedToUpdate.title = truncateTitle(normalizedToUpdate.title)
+  }
+
   // First check if another row like this exists so that we don't get unique index violations.
   // We compute the "target" state after applying toUpdate to decide what to look for.
   const params = {
@@ -495,8 +515,12 @@ export async function updateMemberOrg(
     id: original.id,
     organizationId: original.orgId,
     // Use updated value if provided, otherwise keep original
-    dateStart: toUpdate.dateStart !== undefined ? toUpdate.dateStart : original.dateStart,
-    dateEnd: toUpdate.dateEnd !== undefined ? toUpdate.dateEnd : original.dateEnd,
+    dateStart:
+      normalizedToUpdate.dateStart !== undefined
+        ? normalizedToUpdate.dateStart
+        : original.dateStart,
+    dateEnd:
+      normalizedToUpdate.dateEnd !== undefined ? normalizedToUpdate.dateEnd : original.dateEnd,
   }
 
   let dateEndFilter = `and "dateEnd" = $(dateEnd)`
@@ -543,7 +567,7 @@ export async function updateMemberOrg(
     {
       memberId,
       id: original.id,
-      ...toUpdate,
+      ...normalizedToUpdate,
     },
   )
 
@@ -559,6 +583,8 @@ export async function insertWorkExperience(
   dateEnd: string | null,
   source: OrganizationSource,
 ): Promise<string | null> {
+  const truncatedTitle = truncateTitle(title)
+
   let conflictCondition = `("memberId", "organizationId", "dateStart", "dateEnd")`
   if (!dateEnd) {
     conflictCondition = `("memberId", "organizationId", "dateStart") WHERE "dateEnd" IS NULL`
@@ -579,7 +605,7 @@ export async function insertWorkExperience(
               ${onConflict}
               RETURNING id;
             `,
-    [memberId, orgId, title, dateStart, dateEnd, source],
+    [memberId, orgId, truncatedTitle, dateStart, dateEnd, source],
   )
 
   return result?.id ?? null

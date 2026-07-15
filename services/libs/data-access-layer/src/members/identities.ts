@@ -273,7 +273,7 @@ export async function insertMemberIdentities(
     ],
     identities.map((i) => ({
       ...i,
-      id: i.id ?? generateUUIDv1(),
+      id: i.id || generateUUIDv1(),
       tenantId: DEFAULT_TENANT_ID,
     })),
     failOnConflict ? undefined : 'DO NOTHING',
