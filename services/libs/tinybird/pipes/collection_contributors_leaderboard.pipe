@@ -1,0 +1,85 @@
+DESCRIPTION >
+    - `collection_contributors_leaderboard.pipe` serves the contributors leaderboard widget for a
+    collection's Contributors tab, aggregated across every project in the collection.
+    - Separate from `contributors_leaderboard.pipe` (the single-project version) because a naive
+    collection-scoped port of that pipe's `ROUND(COUNT(af.id) * 100.0 / SUM(COUNT(af.id)) OVER (), 2)`
+    contributionPercentage forces ClickHouse to fully materialize the per-member GROUP BY (potentially
+    hundreds of thousands of distinct members at collection scale) before it can apply ORDER BY/LIMIT -
+    confirmed via direct timing: the equivalent single-project pipe took 7-16s (once timing out
+    entirely at Tinybird's 20s limit) on a 242-project collection, vs 2-3s for the count-only path
+    with no window function. This pipe computes the total contribution count as a separate scalar
+    subquery instead of a window function, avoiding that full-materialization cost.
+    - Supports both count mode (`count=true`) and data mode for pagination-friendly leaderboard display.
+    - Always shows `displayName` (not `publicName`) since a collection spans many projects with mixed
+    LF/non-LF status - there's no single project-type answer to substitute on, unlike the single-project
+    pipe's `is_request_from_non_lf_project` check.
+    - Primary use case: powering the collection-scoped contributor ranking widget on Collection detail
+    pages' Contributors tab.
+    - Parameters:
+    - `collectionSlug`: Required collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`.
+    - `repos`: Optional array of repository URLs for filtering (inherited from `segments_filtered_by_collection`)
+    - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
+    - `platform`: Optional string filter for source platform (e.g., 'github', 'discord', 'slack')
+    - `activity_type`: Optional string filter for single activity type (e.g., 'authored-commit')
+    - `activity_types`: Optional array of activity types (e.g., ['authored-commit', 'co-authored-commit'])
+    - `includeCollaborations`: Optional boolean, defaults to false - same toggle as the single-project pipe.
+    - `count`: Optional boolean, when true returns contributor count instead of leaderboard data
+    - `limit`: Optional integer for result pagination, defaults to 10
+    - `offset`: Optional integer for result pagination, defaults to 0
+    - Response:
+    - Count mode (`count=true`): `count` (total number of contributors)
+    - Data mode (default): `id`, `avatar`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`
+
+TAGS "Insights, Widget", "Collection", "Contributors"
+
+NODE collection_contributors_total
+DESCRIPTION >
+    Total contribution count across the collection - a plain aggregate with no GROUP BY, so it's
+    cheap regardless of how many distinct members contributed. Computed once and reused as a scalar
+    for the percentage calculation instead of a SUM(...) OVER () window function.
+
+SQL >
+    %
+    SELECT count(af.id) AS total
+    FROM activities_filtered af
+
+NODE collection_member_aggregates
+DESCRIPTION >
+    Per-member contribution counts, ranked and paginated. No window function here - the percentage
+    is computed in the next node against the scalar total, so ORDER BY/LIMIT can apply directly
+    after this GROUP BY without waiting on a second full-set pass.
+
+SQL >
+    %
+    {% if Boolean(count, false) %} SELECT count(distinct af.memberId) FROM activities_filtered af
+    {% else %}
+        SELECT af.memberId, count(af.id) AS contributionCount
+        FROM activities_filtered af
+        GROUP BY af.memberId
+        ORDER BY contributionCount DESC, af.memberId DESC
+        LIMIT {{ Int32(limit, 10) }}
+        OFFSET {{ Int32(offset, 0) }}
+    {% end %}
+
+NODE collection_contributors_leaderboard_result
+SQL >
+    %
+    {% if Boolean(count, false) %}
+        SELECT count(distinct af.memberId) AS count FROM activities_filtered af
+    {% else %}
+        SELECT
+            m.id,
+            m.avatar,
+            m.displayName,
+            m.githubHandleArray,
+            ma.contributionCount,
+            ROUND(ma.contributionCount * 100.0 / total.total, 2) AS contributionPercentage,
+            mr.roles
+        FROM members_sorted AS m any
+        INNER JOIN collection_member_aggregates ma ON ma.memberId = m.id
+        LEFT JOIN member_roles mr ON mr.memberId = m.id
+        CROSS JOIN collection_contributors_total total
+        WHERE m.id IN (SELECT memberId FROM collection_member_aggregates)
+        ORDER BY contributionCount DESC
+    {% end %}

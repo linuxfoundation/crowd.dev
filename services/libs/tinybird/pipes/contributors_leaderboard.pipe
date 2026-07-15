@@ -4,8 +4,7 @@ DESCRIPTION >
     - Calculates contribution counts and percentages, showing different display names based on project type (LF vs non-LF).
     - Primary use case: powering contributor ranking widgets in development insights.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
-    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given. A collection spans many projects with mixed LF/non-LF status, so the non-LF `publicName` display-name substitution below only applies in single-project mode; collection-scoped requests always use `displayName`.
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
     - `repos`: Optional array of repository URLs for filtering (inherited from `segments_filtered`)
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -40,15 +39,12 @@ SQL >
 NODE is_request_from_non_lf_project
 SQL >
     %
-    {% if defined(collectionSlug) %} SELECT false AS result
-    {% else %}
-        SELECT not isLF AS result
-        FROM insightsProjects final
-        WHERE
-            isNull (deletedAt)
-            AND enabled = 1
-            and slug = {{ String(project, description="Filter by project slug", required=True) }}
-    {% end %}
+    SELECT not isLF AS result
+    FROM insightsProjects final
+    WHERE
+        isNull (deletedAt)
+        AND enabled = 1
+        and slug = {{ String(project, description="Filter by project slug", required=True) }}
 
 NODE contributors_leaderboard_2
 SQL >
