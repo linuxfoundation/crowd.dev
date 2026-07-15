@@ -119,6 +119,22 @@ describe('parseRepoUrl', () => {
     const result = parseRepoUrl('https://github.com/')
     expect(result).toEqual({ host: 'github', owner: null, name: null })
   })
+
+  // The canonical OpenDaylight link keeps repo identity in ?p=, not the (fixed)
+  // pathname — a generic parts[0]/parts[1] split would collapse every OpenDaylight
+  // repo to the same owner='gerrit', name='gitweb'.
+  it('derives owner=null and name from the ?p= query for OpenDaylight Gerrit links', () => {
+    expect(parseRepoUrl('https://git.opendaylight.org/gerrit/gitweb?p=netconf.git')).toEqual({
+      host: 'gerrit',
+      owner: null,
+      name: 'netconf',
+    })
+    expect(parseRepoUrl('https://git.opendaylight.org/gerrit/gitweb?p=aaa.git')).toEqual({
+      host: 'gerrit',
+      owner: null,
+      name: 'aaa',
+    })
+  })
 })
 
 describe('normalizeScmUrl', () => {
@@ -204,6 +220,17 @@ describe('normalizeScmUrl', () => {
     // No trailing slash after "repos/asf" — must not fall through to being
     // mis-parsed as project segments ["repos", "asf"] and duplicated.
     expect(normalizeScmUrl('https://svn.apache.org/repos/asf')).toBeNull()
+  })
+
+  // java.net requires an explicit SVN marker because the bare host is shared with
+  // non-SVN content (forums, wikis, JIRA) — this must not accidentally widen to
+  // treat every java.net URL as SVN.
+  it('treats java.net as SVN only with an explicit scm:svn:/svn:// marker', () => {
+    expect(normalizeScmUrl('https://java.net/projects/foo/sources/svn')).toBeNull()
+    expect(normalizeScmUrl('scm:svn:https://java.net/svn/foo/trunk')).toBe(
+      'https://java.net/svn/foo',
+    )
+    expect(normalizeScmUrl('svn://java.net/svn/foo/trunk')).toBe('https://java.net/svn/foo')
   })
 
   it('does not map dead services that incidentally match an "svn" text filter', () => {
@@ -408,6 +435,21 @@ describe('normalizeScmUrl', () => {
     expect(normalizeScmUrl('https://android.googlesource.com/')).toBeNull()
   })
 
+  // cs.android.com is the Android Code Search UI, backed by the same Gitiles
+  // repos as android.googlesource.com — same identity passthrough applies.
+  it('passes through cs.android.com urls unchanged, mirroring the googlesource identity form', () => {
+    expect(normalizeScmUrl('https://cs.android.com/androidx/platform/frameworks/support')).toBe(
+      'https://cs.android.com/androidx/platform/frameworks/support',
+    )
+  })
+
+  it('returns null for a bare OpenDaylight Gerrit root with no repo path', () => {
+    // /gerrit/ alone (as opposed to /gerrit/gitweb?p=...) has nothing to extract —
+    // same "no derivable identity" case as the bare gerrit.onosproject.org root
+    // tested above, confirmed against real declared_repository_url values.
+    expect(normalizeScmUrl('https://git.opendaylight.org/gerrit/')).toBeNull()
+  })
+
   it('recovers GitHub Pages project-page urls (owner.github.io/repo)', () => {
     expect(normalizeScmUrl('https://silentbalanceyh.github.io/vertx-zero/')).toBe(
       'https://github.com/silentbalanceyh/vertx-zero',
@@ -594,9 +636,7 @@ describe('normalizeScmUrl', () => {
 
   it('returns null for non-SCM OpenDaylight URLs instead of mistaking them for a repo', () => {
     // A `p` query on some unrelated path is not a gitweb browse link.
-    expect(
-      normalizeScmUrl('https://git.opendaylight.org/somewhere?p=netconf.git'),
-    ).toBeNull()
+    expect(normalizeScmUrl('https://git.opendaylight.org/somewhere?p=netconf.git')).toBeNull()
     // Single path segment with no .git suffix — e.g. a static asset, not a clone URL.
     expect(normalizeScmUrl('https://git.opendaylight.org/favicon.ico')).toBeNull()
   })

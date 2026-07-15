@@ -487,13 +487,18 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
  * declared_repository_url that need more than a flat owner/repo allowlist are handled
  * by their own dedicated normalizers below rather than here:
  *   - git.eclipse.org: cgit `/c/<owner>/<repo>` paths → normalizeEclipseCgitUrl.
- *   - android.googlesource.com: Gitiles identity paths → normalizeGooglesourceUrl.
+ *   - android.googlesource.com / cs.android.com: Gitiles identity paths (the Android
+ *     Code Search UI mirrors the same repo naming as the Gitiles source itself) →
+ *     normalizeGooglesourceUrl.
  *   - ec.europa.eu: Bitbucket-Server `/projects/x/repos/y` → normalizeBitbucketServerUrl.
  *   - gitbox.apache.org / git.apache.org / git-wip-us.apache.org: gitweb
  *     `/repos/asf/<repo>` or `?p=<repo>` → normalizeApacheGitwebUrl.
  *
  * Still NOT handled (need more than a host allowlist, or are unreachable):
  *   - eclipse.gerrithub.io: Gerrit admin-UI paths (`/admin/repos/...`), not a clone shape.
+ *   - gerrit.onosproject.org: every occurrence observed is the bare Gerrit root
+ *     (`http://gerrit.onosproject.org/`) with no path at all — nothing to extract,
+ *     unlike git.opendaylight.org which has resolvable gitweb/SSH forms.
  *
  * Internal-only hosts (git.corp.adobe.com, fit.corp.adobe.com, gitlab.alibaba-inc.com)
  * are included below even though they're unreachable for external consumers — per
@@ -764,8 +769,12 @@ function normalizeAliyunCodeupUrl(host: string, pathname: string): string | null
  * Android's Gerrit/Gitiles mirror already uses its full path as the canonical,
  * resolvable repo name (e.g. /platform/tools/base) — nested repo naming is normal
  * here, so this is an identity passthrough rather than an owner/repo split.
+ *
+ * cs.android.com (Android Code Search) is included too: it's a browsing UI over
+ * the same Gitiles-backed repos and mirrors the identical path naming (e.g.
+ * /androidx/platform/frameworks/support) — same passthrough applies.
  */
-const GOOGLESOURCE_IDENTITY_HOSTS = new Set(['android.googlesource.com'])
+const GOOGLESOURCE_IDENTITY_HOSTS = new Set(['android.googlesource.com', 'cs.android.com'])
 
 function normalizeGooglesourceUrl(host: string, pathname: string): string | null {
   const path = pathname.replace(/\/+$/, '').replace(/\.git$/, '')
@@ -782,12 +791,14 @@ function normalizeGooglesourceUrl(host: string, pathname: string): string | null
  * Both are unified to the gitweb browse form so the stored link is always
  * resolvable in a browser, not just via `git clone`.
  */
-const OPENDALIGHT_GERRIT_HOST = 'git.opendaylight.org'
+export const OPENDALIGHT_GERRIT_HOST = 'git.opendaylight.org'
+export const OPENDALIGHT_GERRIT_GITWEB_PATH = '/gerrit/gitweb'
 
 function normalizeOpendaylightGerritUrl(pathname: string, search: string): string | null {
   // Query extraction only applies to the actual gitweb browse script — a `p` query
   // on some unrelated path isn't a repo reference.
-  const queryRepo = pathname === '/gerrit/gitweb' ? new URLSearchParams(search).get('p') : null
+  const queryRepo =
+    pathname === OPENDALIGHT_GERRIT_GITWEB_PATH ? new URLSearchParams(search).get('p') : null
   const segments = pathname.split('/').filter(Boolean)
   // The one-segment SSH-clone form must end in .git, otherwise any arbitrary
   // single-segment path (e.g. /favicon.ico) would be mistaken for a repo.

@@ -1,4 +1,4 @@
-import { isSvnHost } from './extract'
+import { OPENDALIGHT_GERRIT_GITWEB_PATH, OPENDALIGHT_GERRIT_HOST, isSvnHost } from './extract'
 
 export function isPrerelease(version: string): boolean {
   return /-(SNAPSHOT|alpha|beta|rc|cr|m\d+|dev)/i.test(version)
@@ -17,6 +17,16 @@ export function parseRepoUrl(
     // parts[0]/parts[1] like a git host would produce garbage (owner='repos',
     // name='asf'). Keep the whole path as `name` instead.
     if (isSvnHost(h)) return { host: 'svn', owner: null, name: parts.join('/') || null }
+
+    // OpenDaylight's canonical link keeps the actual repo identity only in the
+    // ?p= query — the pathname is always the fixed /gerrit/gitweb script, so a
+    // generic parts[0]/parts[1] split would store owner='gerrit', name='gitweb'
+    // for every single OpenDaylight repo, indistinguishable from one another.
+    if (h === OPENDALIGHT_GERRIT_HOST && parsed.pathname === OPENDALIGHT_GERRIT_GITWEB_PATH) {
+      const p = parsed.searchParams.get('p')
+      const name = p ? p.replace(/\.git$/, '') : null
+      return { host: 'gerrit', owner: null, name }
+    }
 
     let host: string
     if (h === 'github.com' || h.endsWith('.github.com')) host = 'github'
