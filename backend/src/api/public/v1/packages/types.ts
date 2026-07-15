@@ -1,3 +1,8 @@
+import { HEALTH_BAND_VALUES } from '@crowd/data-access-layer'
+
+export { HEALTH_BAND_VALUES }
+export type { HealthBand } from '@crowd/data-access-layer'
+
 export const STEWARDSHIP_STATUS_VALUES = [
   'unassigned',
   'open',
@@ -14,16 +19,6 @@ export type StewardshipStatus = (typeof STEWARDSHIP_STATUS_VALUES)[number]
 export const LIFECYCLE_VALUES = ['active', 'stable', 'declining', 'abandoned', 'archived'] as const
 
 export type Lifecycle = (typeof LIFECYCLE_VALUES)[number]
-
-export const HEALTH_BAND_VALUES = [
-  'excellent',
-  'healthy',
-  'fair',
-  'concerning',
-  'critical',
-] as const
-
-export type HealthBand = (typeof HEALTH_BAND_VALUES)[number]
 
 export const HEALTH_BAND_SET = new Set<string>(HEALTH_BAND_VALUES)
 

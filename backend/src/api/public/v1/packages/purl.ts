@@ -42,3 +42,19 @@ export const purlQuerySchema = z.object({ purl: purlFieldSchema })
 // Loose schema for search filters: normalizes without requiring the pkg: prefix,
 // so partial inputs (e.g. "@babel/core" or "lodash") are accepted.
 export const purlFilterSchema = z.string().trim().transform(normalizePurl).optional()
+
+export const MAX_PURLS_PER_BATCH = 100
+
+// Unlike purlFieldSchema, this does NOT normalize — batch endpoints normalize
+// after parsing so they can echo back the client's original (un-normalized) purl.
+const purlArrayItemSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((v) => v.startsWith('pkg:'), { message: 'each purl must start with pkg:' })
+
+export function purlsBodySchema(max: number = MAX_PURLS_PER_BATCH) {
+  return z.object({
+    purls: z.array(purlArrayItemSchema).min(1).max(max, `Maximum ${max} purls per request`),
+  })
+}
