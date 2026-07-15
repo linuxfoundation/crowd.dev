@@ -124,7 +124,14 @@ components:
               additionalProperties: true
         impact:
           type: object
-          required: [score, downloadsLast30Days, dependentPackagesCount, dependentReposCount, transitiveReach]
+          required:
+            [
+              score,
+              downloadsLast30Days,
+              dependentPackagesCount,
+              dependentReposCount,
+              transitiveReach,
+            ]
           properties:
             score:
               type: integer
@@ -188,7 +195,14 @@ components:
               nullable: true
         security:
           type: object
-          required: [securityPolicyUrl, vulnerabilityReportingUrl, bugBountyUrl, pvrEnabled, criticalVulnerabilityFlag]
+          required:
+            [
+              securityPolicyUrl,
+              vulnerabilityReportingUrl,
+              bugBountyUrl,
+              pvrEnabled,
+              criticalVulnerabilityFlag,
+            ]
           properties:
             securityPolicyUrl:
               type: string
@@ -207,7 +221,14 @@ components:
               nullable: true
         provenance:
           type: object
-          required: [resolvedRepositoryUrl, declaredRepositoryUrl, mappingConfidenceScore, mappingConfidenceLabel, lastCommitAt]
+          required:
+            [
+              resolvedRepositoryUrl,
+              declaredRepositoryUrl,
+              mappingConfidenceScore,
+              mappingConfidenceLabel,
+              lastCommitAt,
+            ]
           properties:
             resolvedRepositoryUrl:
               type: string
