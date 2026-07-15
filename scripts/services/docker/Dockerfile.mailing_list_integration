@@ -1,5 +1,5 @@
 # Base image for both stages
-FROM python:3.13.5-slim-bullseye AS base
+FROM python:3.13.5-slim-bookworm AS base
 
 # Builder stage: install build dependencies, uv, and dependencies
 FROM base AS builder
