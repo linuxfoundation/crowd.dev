@@ -466,6 +466,7 @@ class SegmentRepository extends RepositoryBase<
       segmentsSearchQuery += `AND EXISTS (
         SELECT 1 FROM segments sp
         WHERE sp."grandparentSlug" = f.slug
+          AND sp."tenantId" = f."tenantId"
           AND sp.id IN (:adminSegments)
       )`
       replacements.adminSegments = adminSegments
