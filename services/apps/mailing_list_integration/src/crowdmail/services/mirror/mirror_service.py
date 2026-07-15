@@ -90,6 +90,14 @@ async def ensure_mirror(list_name: str, mirror_dir: str = LORE_MIRROR_DIR) -> st
         await _run_shell_command(
             ["public-inbox-clone", "-q", f"--include=/{list_name}", LORE_BASE_URL, mirror_dir]
         )
+        # public-inbox-clone drops a manifest scoped to the whole clone dir,
+        # not the list; remove it and re-fetch from inside list_dir so the
+        # manifest is regenerated correctly there (needed to detect new
+        # epoch shards, e.g. git/1.git, as the list grows).
+        manifest_path = os.path.join(mirror_dir, "manifest.js.gz")
+        if os.path.exists(manifest_path):
+            os.remove(manifest_path)
+        await _run_shell_command(["public-inbox-fetch", "-q"], cwd=list_dir)
     else:
         logger.info(f"Fetching updates for lore list '{list_name}'")
         await _run_shell_command(["public-inbox-fetch", "-q", "-C", list_dir, "--exit-code"])
