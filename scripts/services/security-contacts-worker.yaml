@@ -6,7 +6,7 @@ x-env-args: &env-args
   SERVICE: security-contacts-worker
   SHELL: /bin/sh
   SUPPRESS_NO_CONFIG_WARNING: 'true'
-  CROWD_TEMPORAL_TASKQUEUE: packages-worker
+  CROWD_TEMPORAL_TASKQUEUE: security-contacts-worker
   CROWD_TEMPORAL_NAMESPACE: ${CROWD_PACKAGES_TEMPORAL_NAMESPACE}
 
 services:

@@ -712,6 +712,45 @@ export async function findMembersByGithubHandles(
   )
 }
 
+export async function findResolvableEmailsForMembers(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string; verified: boolean }[]> {
+  if (memberIds.length === 0) return []
+  return qx.select(
+    `
+      WITH emails AS (
+        SELECT "memberId", lower(value) AS email, bool_or(verified) AS verified
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(emailType)
+          AND value NOT ILIKE '%@users.noreply.github.com'
+          AND "deletedAt" IS NULL
+        GROUP BY "memberId", lower(value)
+      ),
+      "usernameTwins" AS (
+        SELECT "memberId", lower(value) AS email
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(usernameType)
+          AND verified = true
+          AND "deletedAt" IS NULL
+      )
+      SELECT
+        e."memberId",
+        e.email,
+        (e.verified OR t.email IS NOT NULL) AS verified
+      FROM emails e
+      LEFT JOIN "usernameTwins" t ON t."memberId" = e."memberId" AND t.email = e.email
+    `,
+    {
+      memberIds,
+      emailType: MemberIdentityType.EMAIL,
+      usernameType: MemberIdentityType.USERNAME,
+    },
+  )
+}
+
 export async function findVerifiedEmailsByMemberIds(
   qx: QueryExecutor,
   memberIds: string[],
