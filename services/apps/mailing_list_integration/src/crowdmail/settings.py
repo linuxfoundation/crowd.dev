@@ -25,19 +25,10 @@ DEFAULT_TENANT_ID = load_env_var(
 CROWD_KAFKA_BROKERS = load_env_var("CROWD_KAFKA_BROKERS")
 CROWD_KAFKA_TOPIC = load_env_var("CROWD_KAFKA_TOPIC")
 CROWD_KAFKA_EXTRA = load_env_var("CROWD_KAFKA_EXTRA", required=False)
-CROWD_KAFKA_USER = load_env_var("CROWD_KAFKA_USER", required=False)
-CROWD_KAFKA_PASSWORD = load_env_var("CROWD_KAFKA_PASSWORD", required=False)
 
 # Directory where public-inbox git mirrors are kept, one subdir per list
 LORE_MIRROR_DIR = load_env_var("LORE_MIRROR_DIR", default="/var/lore")
 
 MAX_CONCURRENT_ONBOARDINGS = int(load_env_var("MAX_CONCURRENT_ONBOARDINGS", default="3"))
-MAX_INTEGRATION_RESULTS = int(load_env_var("MAX_INTEGRATION_RESULTS", default="5000000"))
-STUCK_ONBOARDING_LIST_TIMEOUT_HOURS = int(
-    load_env_var("STUCK_ONBOARDING_LIST_TIMEOUT_HOURS", default="12")
-)
-STUCK_RECURRENT_LIST_TIMEOUT_HOURS = int(
-    load_env_var("STUCK_RECURRENT_LIST_TIMEOUT_HOURS", default="4")
-)
 LIST_UPDATE_INTERVAL_HOURS = int(load_env_var("LIST_UPDATE_INTERVAL_HOURS", default=24))
 FAILED_RETRY_INTERVAL_HOURS = int(load_env_var("FAILED_RETRY_INTERVAL_HOURS", default="6"))
