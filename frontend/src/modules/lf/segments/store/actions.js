@@ -270,19 +270,70 @@ export default {
 
     this.listProjects();
   },
-  updateSelectedProjectGroup(projectGroupId, sendToDashboard = true) {
-    if (projectGroupId) {
-      const projectGroup = this.projectGroups.list.find((p) => p.id === projectGroupId);
+  async fetchSubprojectsForProjectGroup(grandparentSlug) {
+    if (!grandparentSlug) {
+      this.selectedProjectGroupSubprojects = [];
+      return;
+    }
+
+    this.selectedProjectGroupSubprojects = [];
+
+    try {
+      const response = await LfService.querySubprojectsLite({
+        limit: null,
+        offset: 0,
+        filter: { grandparentSlug },
+      });
+      if (this.selectedProjectGroup?.slug === grandparentSlug) {
+        this.selectedProjectGroupSubprojects = response.rows || [];
+      }
+    } catch (e) {
+      if (this.selectedProjectGroup?.slug === grandparentSlug) {
+        this.selectedProjectGroupSubprojects = [];
+      }
+    }
+  },
+
+  async updateSelectedProjectGroup(projectGroupOrId, sendToDashboard = true) {
+    if (!projectGroupOrId) {
+      this.selectedProjectGroup = null;
+      this.selectedProjectGroupSubprojects = [];
+      return;
+    }
+
+    const id = typeof projectGroupOrId === 'string' ? projectGroupOrId : projectGroupOrId.id;
+    if (!id) {
+      this.selectedProjectGroup = null;
+      this.selectedProjectGroupSubprojects = [];
+      return;
+    }
+
+    try {
+      let projectGroup = this.projectGroups.list.find((p) => p.id === id) || null;
+      if (!projectGroup) {
+        await this.listProjectGroups({ limit: null, reset: true });
+        projectGroup = this.projectGroups.list.find((p) => p.id === id) || null;
+      }
+
+      if (!projectGroup?.id) {
+        this.selectedProjectGroup = null;
+        this.selectedProjectGroupSubprojects = [];
+        ToastStore.error('Project group could not be loaded');
+        return;
+      }
 
       this.selectedProjectGroup = projectGroup;
+      await this.fetchSubprojectsForProjectGroup(projectGroup.slug);
 
       if (sendToDashboard) {
         router.push({
           name: 'member',
         });
       }
-    } else {
+    } catch (e) {
       this.selectedProjectGroup = null;
+      this.selectedProjectGroupSubprojects = [];
+      ToastStore.error('Something went wrong while selecting the project group');
     }
   },
   doChangeProjectGroupCurrentPage(currentPage) {
