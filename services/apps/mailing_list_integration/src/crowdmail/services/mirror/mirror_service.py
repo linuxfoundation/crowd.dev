@@ -33,7 +33,12 @@ retry_on_mirror_error = retry(
 # (stderr substrings, exception to raise) — checked in order, first match wins
 ERROR_CLASSIFICATIONS = [
     (
-        {"Connection refused", "Network is unreachable", "Connection timed out", "Could not resolve host"},
+        {
+            "Connection refused",
+            "Network is unreachable",
+            "Connection timed out",
+            "Could not resolve host",
+        },
         NetworkError,
     ),
     ({"429", "Too Many Requests"}, RateLimitError),

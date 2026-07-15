@@ -19,6 +19,8 @@ import re
 import subprocess
 import sys
 
+from crowdmail.enums import ActivityType
+
 # We want to always be using utf-8
 email.charset.add_charset("utf-8", None)
 
@@ -33,9 +35,7 @@ emlpolicy = email.policy.EmailPolicy(
 
 # run a command and take the output.
 # Shamelessly taken from 'b4' by Konstantin Ryabitsev <konstantin@linuxfoundation.org>
-def _run_command(
-    cmdargs: list, stdin: bytes | None = None
-) -> tuple[int, bytes, bytes]:
+def _run_command(cmdargs: list, stdin: bytes | None = None) -> tuple[int, bytes, bytes]:
     logging.debug(cmdargs)
     sp = subprocess.Popen(
         cmdargs, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE
@@ -68,9 +68,7 @@ def get_email_from_git(git_dir: str, git_id: str) -> tuple[bytes, str]:
         git_blob_id = out.decode().rstrip()  # strip the trailing \n
 
     if git_blob_id == "":
-        logging.error(
-            'git commit id %s was not found in the git repo "%s"', git_id, git_dir
-        )
+        logging.error('git commit id %s was not found in the git repo "%s"', git_id, git_dir)
         sys.exit(1)
 
     logging.debug("git_blob_id =%s", git_blob_id)
@@ -216,9 +214,9 @@ def parse_email(
     # Do NOT use headersonly=True here, as that prevents the parser from
     # building the multipart structure, which we will properly walk later on
     # and pick out the text/plain part of the message.
-    e = email.parser.BytesParser(
-        policy=emlpolicy, _class=email.message.EmailMessage
-    ).parsebytes(message)
+    e = email.parser.BytesParser(policy=emlpolicy, _class=email.message.EmailMessage).parsebytes(
+        message
+    )
 
     logging.debug(e)
 
@@ -354,7 +352,7 @@ def parse_email(
         "body": json_body,
         "url": "https://lore.kernel.org/r/" + msgid,
         "isContribution": True,
-        "type": "email-message",
+        "type": ActivityType.MESSAGE,
         "attributes": attributes,
         "member": member,
     }
@@ -418,7 +416,9 @@ def cmd():
     parser.add_argument(
         "--git-dir", help="Git directory of the lore repo to dig out of", required=True
     )
-    parser.add_argument("--segment-id", help="CDP segment id to attach the activity to", required=True)
+    parser.add_argument(
+        "--segment-id", help="CDP segment id to attach the activity to", required=True
+    )
     parser.add_argument(
         "--integration-id", help="CDP integration id to attach the activity to", required=True
     )

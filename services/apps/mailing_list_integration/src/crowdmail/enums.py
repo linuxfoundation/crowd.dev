@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Standard Error codes"""
 
     UNKNOWN = "unknown"
@@ -18,7 +18,7 @@ class ErrorCode(str, Enum):
     SERVER_ERROR = "server-error-remote"
 
 
-class ListState(str, Enum):
+class ListState(StrEnum):
     """Mailing list processing states"""
 
     PENDING = "pending"
@@ -36,19 +36,19 @@ class ListPriority(int):
     NORMAL = 2
 
 
-class IntegrationResultType(str, Enum):
+class IntegrationResultType(StrEnum):
     ACTIVITY = "activity"
 
 
-class IntegrationResultState(str, Enum):
+class IntegrationResultState(StrEnum):
     PENDING = "pending"
 
 
-class DataSinkWorkerQueueMessageType(str, Enum):
+class DataSinkWorkerQueueMessageType(StrEnum):
     PROCESS_INTEGRATION_RESULT = "process_integration_result"
 
 
-class ActivityType(str, Enum):
+class ActivityType(StrEnum):
     """Groupsio-compatible activity types (platform=groupsio)"""
 
     MESSAGE = "message"
@@ -56,14 +56,14 @@ class ActivityType(str, Enum):
     MEMBER_LEAVE = "member_leave"
 
 
-class ExecutionStatus(str, Enum):
+class ExecutionStatus(StrEnum):
     """Service execution status"""
 
     SUCCESS = "success"
     FAILURE = "failure"
 
 
-class OperationType(str, Enum):
+class OperationType(StrEnum):
     """Service operation types for metrics tracking"""
 
     MIRROR = "Mirror"

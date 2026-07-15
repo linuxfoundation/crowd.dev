@@ -23,9 +23,7 @@ import pytest
 from crowdmail.services.parse import noteren
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-NOTEREN = os.path.join(
-    HERE, "..", "crowdmail", "services", "parse", "noteren.py"
-)
+NOTEREN = os.path.join(HERE, "..", "crowdmail", "services", "parse", "noteren.py")
 SEGMENT_ID = "11111111-1111-1111-1111-111111111111"
 INTEGRATION_ID = "22222222-2222-2222-2222-222222222222"
 
@@ -34,25 +32,19 @@ INTEGRATION_ID = "22222222-2222-2222-2222-222222222222"
 # Fixtures
 # --------------------------------------------------------------------------
 
+
 def _git(gitdir, *args, stdin=None):
     out = subprocess.run(
         ["git", "--git-dir", str(gitdir)] + list(args),
         input=stdin,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=True,
     )
     return out.stdout.decode().strip()
 
 
 def _make_email(msgid, subject, frm, body, date="Mon, 1 Jan 2024 12:00:00 +0000"):
-    hdr = (
-        f"From: {frm}\n"
-        f"Subject: {subject}\n"
-        f"Date: {date}\n"
-        f"Message-ID: <{msgid}>\n"
-        "\n"
-    )
+    hdr = f"From: {frm}\nSubject: {subject}\nDate: {date}\nMessage-ID: <{msgid}>\n\n"
     return (hdr + body).encode()
 
 
@@ -108,8 +100,7 @@ def inbox_repo(tmp_path):
 def _run_noteren(*args):
     return subprocess.run(
         [sys.executable, NOTEREN] + list(args),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
 
@@ -121,6 +112,7 @@ def _std_args():
 # --------------------------------------------------------------------------
 # Unit tests for helper functions
 # --------------------------------------------------------------------------
+
 
 def test_message_id_cleanup_strips_angles():
     assert noteren.message_id_cleanup("<abc@host>") == "abc@host"
@@ -256,9 +248,7 @@ def test_get_email_from_git_success(monkeypatch):
 
 
 def test_get_email_from_git_missing_commit_exits(monkeypatch):
-    monkeypatch.setattr(
-        noteren, "git_run_command", lambda *args, **kwargs: (0, b"", b"")
-    )
+    monkeypatch.setattr(noteren, "git_run_command", lambda *args, **kwargs: (0, b"", b""))
     with pytest.raises(SystemExit):
         noteren.get_email_from_git("/tmp/repo.git", "deadbeef")
 
@@ -275,9 +265,7 @@ def test_get_email_from_git_missing_blob_exits(monkeypatch):
 
 
 def _parse_email(raw, source, channel, git_id, blob_id):
-    return noteren.parse_email(
-        raw, source, channel, git_id, blob_id, SEGMENT_ID, INTEGRATION_ID
-    )
+    return noteren.parse_email(raw, source, channel, git_id, blob_id, SEGMENT_ID, INTEGRATION_ID)
 
 
 def test_parse_email_extracts_attributes_and_reference():
@@ -351,13 +339,7 @@ def test_parse_email_invalid_date_leaves_timestamp_empty():
 
 
 def test_parse_email_falls_back_to_raw_body(monkeypatch):
-    raw = (
-        b"From: A <a@example.com>\n"
-        b"Subject: s\n"
-        b"Message-ID: <msg@example.com>\n"
-        b"\n"
-        b"line one\n"
-    )
+    raw = b"From: A <a@example.com>\nSubject: s\nMessage-ID: <msg@example.com>\n\nline one\n"
     monkeypatch.setattr(noteren, "get_body", lambda msg: None)
     parsed = _parse_email(raw, "src", "chan", "commit1", "blob1")
     assert "line one\n" in parsed["activityData"]["body"]
@@ -400,9 +382,7 @@ def test_parse_id_writes_json(monkeypatch):
 
 
 def test_parse_range_calls_parse_id_for_each_commit(monkeypatch):
-    monkeypatch.setattr(
-        noteren, "git_run_command", lambda *args, **kwargs: (0, b"c1\nc2\n", b"")
-    )
+    monkeypatch.setattr(noteren, "git_run_command", lambda *args, **kwargs: (0, b"c1\nc2\n", b""))
     seen = []
     monkeypatch.setattr(
         noteren,
@@ -542,9 +522,7 @@ def test_cmd_without_output_uses_stdout(monkeypatch):
 
 
 def test_cmd_verbose_enables_debug_logging(monkeypatch):
-    monkeypatch.setattr(
-        noteren, "parse_id", lambda *args, **kwargs: None
-    )
+    monkeypatch.setattr(noteren, "parse_id", lambda *args, **kwargs: None)
     called = {}
     monkeypatch.setattr(
         noteren.logging,
@@ -627,10 +605,9 @@ def test_cmd_rejects_both_id_and_range(monkeypatch):
 # CLI / integration tests
 # --------------------------------------------------------------------------
 
+
 def test_cli_requires_id_or_range(inbox_repo):
-    r = _run_noteren(
-        "--source=s", "--channel=c", "--git-dir", inbox_repo["gitdir"], *_std_args()
-    )
+    r = _run_noteren("--source=s", "--channel=c", "--git-dir", inbox_repo["gitdir"], *_std_args())
     assert r.returncode != 0
     assert "--git-range or --git-id" in r.stderr
 
@@ -729,6 +706,7 @@ def test_cli_unknown_commit_fails(inbox_repo):
 # Additional edge-case unit tests
 # --------------------------------------------------------------------------
 
+
 def test_get_body_returns_none_when_no_text_parts():
     """A message that contains only text/html must cause get_body to return None."""
     msg = noteren.email.message.EmailMessage()
@@ -753,21 +731,13 @@ def test_get_body_raw_blank_body_after_headers():
 
 def test_run_command_returns_nonzero_exit_code():
     """_run_command must surface a non-zero return code from the child process."""
-    rc, out, err = noteren._run_command(
-        [sys.executable, "-c", "import sys; sys.exit(42)"]
-    )
+    rc, out, err = noteren._run_command([sys.executable, "-c", "import sys; sys.exit(42)"])
     assert rc == 42
 
 
 def test_parse_email_no_message_id_gives_empty_source_id():
     """A message without a Message-ID header must yield sourceId == ''."""
-    raw = (
-        b"From: A <a@example.com>\n"
-        b"Subject: s\n"
-        b"Date: Mon, 1 Jan 2024 12:00:00 +0000\n"
-        b"\n"
-        b"body\n"
-    )
+    raw = b"From: A <a@example.com>\nSubject: s\nDate: Mon, 1 Jan 2024 12:00:00 +0000\n\nbody\n"
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
     assert parsed["activityData"]["sourceId"] == ""
 
@@ -851,7 +821,7 @@ def test_parse_email_multipart_alternative_uses_text_plain():
         b"Date: Mon, 1 Jan 2024 12:00:00 +0000\n"
         b"Message-ID: <multi@example.com>\n"
         b"MIME-Version: 1.0\n"
-        b"Content-Type: multipart/alternative; boundary=\"boundary\"\n"
+        b'Content-Type: multipart/alternative; boundary="boundary"\n'
         b"\n"
         b"--boundary\n"
         b"Content-Type: text/plain; charset=utf-8\n"
@@ -886,13 +856,7 @@ def test_parse_email_url_contains_message_id():
 
 def test_parse_email_url_with_no_message_id():
     """When Message-ID is absent the url must end with a trailing slash and empty id."""
-    raw = (
-        b"From: A <a@example.com>\n"
-        b"Subject: s\n"
-        b"Date: Mon, 1 Jan 2024 12:00:00 +0000\n"
-        b"\n"
-        b"body\n"
-    )
+    raw = b"From: A <a@example.com>\nSubject: s\nDate: Mon, 1 Jan 2024 12:00:00 +0000\n\nbody\n"
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
     assert parsed["activityData"]["url"] == "https://lore.kernel.org/r/"
 
@@ -956,10 +920,14 @@ def _c1_argv(inbox_repo):
         "noteren.py",
         "--source=https://example.com/0.git",
         "--channel=test-list",
-        "--git-dir", inbox_repo["gitdir"],
-        "--segment-id", SEGMENT_ID,
-        "--integration-id", INTEGRATION_ID,
-        "--git-id", inbox_repo["c1"],
+        "--git-dir",
+        inbox_repo["gitdir"],
+        "--segment-id",
+        SEGMENT_ID,
+        "--integration-id",
+        INTEGRATION_ID,
+        "--git-id",
+        inbox_repo["c1"],
     ]
 
 
@@ -967,8 +935,7 @@ def test_main_entry_point_via_subprocess(inbox_repo):
     """Running noteren.py as __main__ must work end-to-end."""
     r = subprocess.run(
         [sys.executable, NOTEREN] + _c1_argv(inbox_repo)[1:],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
     assert r.returncode == 0, r.stderr
