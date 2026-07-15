@@ -102,6 +102,48 @@ jobs:
         if: steps.changes.outputs.python_changed == 'true'
         run: |
           uv run ruff check src/ --output-format=github
+
+  lint-python-mailing-list-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./services/apps/mailing_list_integration
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Python file changes
+        id: changes
+        run: |
+          if git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep -q "^services/apps/mailing_list_integration/.*\.py$"; then
+            echo "python_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "python_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install uv
+        if: steps.changes.outputs.python_changed == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "services/apps/mailing_list_integration/uv.lock"
+
+      - name: Set up Python
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv sync --group dev --frozen
+
+      - name: Check Python linting and formatting
+        if: steps.changes.outputs.python_changed == 'true'
+        run: |
+          uv run ruff check src/ --output-format=github
           uv run ruff format --check src/
 
       - name: Skip Python checks

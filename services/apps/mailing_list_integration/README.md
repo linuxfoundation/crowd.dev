@@ -22,4 +22,14 @@ in the PR for build progress.
 
 ## Running locally
 
-TODO — filled in once the worker (Step 6) and Dockerfile (Step 7) land.
+```bash
+make run          # from services/apps/mailing_list_integration
+```
+
+This builds `scripts/services/docker/Dockerfile.mailing_list_integration` (installs
+`public-inbox` for mirroring) and starts `mailing-list-integration-dev` via
+`scripts/services/mailing-list-integration.yaml`, exposing the FastAPI health
+endpoint on host port `8086`.
+
+Other targets: `make lint`, `make format`, `make test`, `make rebuild`. See
+`make help` for the full list.
