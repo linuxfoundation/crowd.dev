@@ -94,6 +94,19 @@ describe('toAkritesExternalPackageDetail', () => {
     ).toBe('deprecated')
   })
 
+  it('normalizes raw timestamptz strings (not Date objects) to ISO 8601', () => {
+    // Timestamptz comes back from pg as a raw string, so a naive `.toISOString()`
+    // on the row value would throw and 500 the request (bug fixed in code review).
+    const result = toAkritesExternalPackageDetail(
+      baseRow({
+        latestReleaseAt: '2024-01-15 12:30:00+00',
+        repoLastCommitAt: '2024-02-20 08:00:00+00',
+      }),
+    )
+    expect(result.riskSignals.lastReleaseAt).toBe('2024-01-15T12:30:00.000Z')
+    expect(result.provenance.lastCommitAt).toBe('2024-02-20T08:00:00.000Z')
+  })
+
   it('falls back to the raw repositoryUrl column when resolvedRepositoryUrl has no package_repos link', () => {
     const result = toAkritesExternalPackageDetail(
       baseRow({ resolvedRepositoryUrl: null, repositoryUrl: 'https://github.com/example/repo' }),

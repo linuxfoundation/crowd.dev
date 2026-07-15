@@ -33,10 +33,21 @@ tags:
 
 components:
   securitySchemes:
+    # Modeled as oauth2/clientCredentials (not http/bearer): OpenAPI only allows
+    # non-empty scope arrays in security requirements for oauth2 / openIdConnect
+    # schemes, and the operations below require read:packages + read:stewardships.
     M2MBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+      type: oauth2
+      description: >
+        Auth0 machine-to-machine client-credentials flow. Akrites exchanges its
+        client ID/secret with Auth0 for a JWT and sends it as
+        `Authorization: Bearer <token>`; CDP only verifies the resulting token.
+      flows:
+        clientCredentials:
+          tokenUrl: https://linuxfoundation.auth0.com/oauth/token
+          scopes:
+            read:packages: Read package detail
+            read:stewardships: Read package stewardship data
 
   schemas:
     Error:
@@ -234,9 +245,14 @@ components:
               type: string
               nullable: true
               description: >
-                From the confidence-ranked package_repos → repos join — the
-                repo CDP has actually resolved and enriched (scorecard,
-                branch protection, etc.).
+                Best available repository URL. Preferred source is the
+                confidence-ranked package_repos → repos join — the repo CDP has
+                actually resolved and enriched (scorecard, branch protection,
+                etc.). When the package has no package_repos link yet, this
+                falls back to the canonical repository_url on the package row,
+                which is NOT confidence-resolved or enriched. Use
+                mappingConfidenceScore / mappingConfidenceLabel to tell the two
+                apart: both are null when the fallback URL is returned.
             declaredRepositoryUrl:
               type: string
               nullable: true

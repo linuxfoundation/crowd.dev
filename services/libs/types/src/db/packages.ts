@@ -31,8 +31,9 @@ export interface PackageDbRow {
   // bigint — pg returns these as strings by default (no OID 20 type-parser override
   // in @crowd/database), same reason `id` above is `string` not `number`.
   transitiveDependentCount: string | null
+  // packages has no updated_at column — migration V1780600000 adds only created_at
+  // and uses last_synced_at as the update watermark (see the migration's comments).
   createdAt: string
-  updatedAt: string
   downloadsLast30d: string | null
   centralityScore: number | null
   rankInEcosystem: number | null
@@ -52,9 +53,4 @@ export interface PackageDbRow {
 }
 
 export type PackageDbInsert = Pick<PackageDbRow, 'purl' | 'ecosystem' | 'name'> &
-  Partial<
-    Omit<
-      PackageDbRow,
-      'id' | 'purl' | 'ecosystem' | 'name' | 'createdAt' | 'updatedAt' | 'lastSyncedAt'
-    >
-  >
+  Partial<Omit<PackageDbRow, 'id' | 'purl' | 'ecosystem' | 'name' | 'createdAt' | 'lastSyncedAt'>>

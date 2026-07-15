@@ -114,6 +114,15 @@ function toAkritesLifecycle(lifecycleLabel: string | null): AkritesExternalLifec
   return LIFECYCLE_CROSSWALK[lifecycleLabel as Lifecycle]
 }
 
+// Timestamptz columns arrive as the raw Postgres string (OID 1184 parser returns
+// it verbatim — see AkritesExternalPackageDetailRow), so normalize to canonical
+// ISO 8601 for the contract's date-time fields. Returns null for null/unparseable.
+function toIsoOrNull(value: string | null): string | null {
+  if (value == null) return null
+  const ms = Date.parse(value)
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString()
+}
+
 export function toAkritesExternalPackageDetail(
   row: AkritesExternalPackageDetailRow,
 ): AkritesExternalPackageDetail {
@@ -147,7 +156,7 @@ export function toAkritesExternalPackageDetail(
     riskSignals: {
       lifecycle: toAkritesLifecycle(row.lifecycleLabel),
       maintainerBusFactor: row.maintainerCount,
-      lastReleaseAt: row.latestReleaseAt ? row.latestReleaseAt.toISOString() : null,
+      lastReleaseAt: toIsoOrNull(row.latestReleaseAt),
       hasSecurityFile: row.hasSecurityFile ?? null,
       hasSecurityPolicy: row.hasSecurityPolicy ?? null,
       branchProtectionEnabled: row.branchProtectionEnabled ?? null,
@@ -165,7 +174,7 @@ export function toAkritesExternalPackageDetail(
       declaredRepositoryUrl: row.declaredRepositoryUrl ?? null,
       mappingConfidenceScore: mappingConfidence,
       mappingConfidenceLabel: repoMappingLabel(mappingConfidence),
-      lastCommitAt: row.repoLastCommitAt ? row.repoLastCommitAt.toISOString() : null,
+      lastCommitAt: toIsoOrNull(row.repoLastCommitAt),
     },
     supplyChainIntegrity: {
       buildProvenance: null,

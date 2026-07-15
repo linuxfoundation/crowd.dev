@@ -792,10 +792,10 @@ export interface AkritesExternalPackageDetailRow {
   developmentActivityScore: PackageDbRow['developmentActivityScore']
   signalCoverageHealth: PackageDbRow['signalCoverageHealth']
   lifecycleLabel: PackageDbRow['lifecycleLabel']
-  // Timestamptz columns come back as `Date` from pg-promise in this query (no
-  // ::text cast) — PackageDbRow's `string` (ISO) convention doesn't apply to
-  // this DAL's runtime shape, so this is intentionally not PackageDbRow['latestReleaseAt'].
-  latestReleaseAt: Date | null
+  // Timestamptz (OID 1184) comes back as a raw string, not a Date: @crowd/database
+  // registers `setTypeParser(1184, (s) => s)` on the shared pg-promise instance
+  // (services/libs/database/src/connection.ts). Matches PackageDbRow's string convention.
+  latestReleaseAt: PackageDbRow['latestReleaseAt']
   hasCriticalVulnerability: PackageDbRow['hasCriticalVulnerability']
   declaredRepositoryUrl: PackageDbRow['declaredRepositoryUrl']
   // Canonicalized repo URL on the packages row itself — used as a fallback for
@@ -807,7 +807,8 @@ export interface AkritesExternalPackageDetailRow {
   // getPackageDetailByPurl, distinct from the raw declaredRepositoryUrl above.
   resolvedRepositoryUrl: string | null
   repoMappingConfidence: number | null
-  repoLastCommitAt: Date | null
+  // Timestamptz — returned as a string, same OID 1184 parser as latestReleaseAt above.
+  repoLastCommitAt: string | null
   scorecardScore: number | null
   hasSecurityFile: boolean | null
   hasSecurityPolicy: boolean | null

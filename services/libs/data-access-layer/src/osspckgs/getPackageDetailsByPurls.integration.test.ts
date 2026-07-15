@@ -20,7 +20,9 @@ const FIXTURE_TAG = 'akrites-external-package-detail-fixture'
 
 describe.skipIf(!HAVE_DB)('getPackageDetailsByPurls — real packages-db', () => {
   let qx: QueryExecutor
-  let linkedPackageId: number
+  // packages.id is bigserial (bigint); @crowd/database only overrides the int4
+  // (OID 23) parser, so bigint comes back as a string at runtime — not a number.
+  let linkedPackageId: string
 
   const linkedPurl = `pkg:test-fixture/${FIXTURE_TAG}/linked`
   const unlinkedPurl = `pkg:test-fixture/${FIXTURE_TAG}/unlinked`
@@ -63,7 +65,7 @@ describe.skipIf(!HAVE_DB)('getPackageDetailsByPurls — real packages-db', () =>
         tag: FIXTURE_TAG,
       },
     )
-    linkedPackageId = linkedRow.id as number
+    linkedPackageId = linkedRow.id as string
 
     await qx.result(
       `INSERT INTO packages (purl, ecosystem, name, declared_repository_url, repository_url, ingestion_source, status)
