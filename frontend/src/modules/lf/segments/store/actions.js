@@ -14,7 +14,6 @@ const isAdminOnly = () => {
   return roles.value.includes(LfRole.projectAdmin);
 };
 
-
 export default {
   // Project Groups
   listProjectGroups({
