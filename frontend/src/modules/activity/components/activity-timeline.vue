@@ -284,7 +284,7 @@ const segments = computed(() => {
     return (
       getSegmentsFromProjectGroup(selectedProjectGroup.value)?.map(
         (s) => subprojects.value[s],
-      ) || []
+      ).filter((s) => !!s) || []
     );
   }
   return (

@@ -275,15 +275,22 @@ export default {
       this.selectedProjectGroupSubprojects = [];
       return;
     }
+
+    this.selectedProjectGroupSubprojects = [];
+
     try {
       const response = await LfService.querySubprojectsLite({
         limit: null,
         offset: 0,
         filter: { grandparentSlug },
       });
-      this.selectedProjectGroupSubprojects = response.rows || [];
+      if (this.selectedProjectGroup?.slug === grandparentSlug) {
+        this.selectedProjectGroupSubprojects = response.rows || [];
+      }
     } catch (e) {
-      this.selectedProjectGroupSubprojects = [];
+      if (this.selectedProjectGroup?.slug === grandparentSlug) {
+        this.selectedProjectGroupSubprojects = [];
+      }
     }
   },
 
@@ -316,7 +323,7 @@ export default {
       }
 
       this.selectedProjectGroup = projectGroup;
-      this.fetchSubprojectsForProjectGroup(projectGroup.slug);
+      await this.fetchSubprojectsForProjectGroup(projectGroup.slug);
 
       if (sendToDashboard) {
         router.push({

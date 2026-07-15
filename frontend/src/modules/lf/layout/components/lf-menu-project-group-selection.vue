@@ -9,7 +9,7 @@
   >
     <template #reference>
       <el-input
-        v-model="model"
+        :model-value="selectedProjectGroup?.name ?? ''"
         class="project-groups-select-input"
         placeholder="Select project group..."
         readonly
@@ -146,15 +146,6 @@ const isSearchVisible = computed(() => projectGroupsList.value.length > 5 || sea
 let scrollContainer: HTMLElement | null = null;
 
 const { trackEvent } = useProductTracking();
-
-const model = computed({
-  get() {
-    return selectedProjectGroup.value?.name;
-  },
-  set(id) {
-    updateSelectedProjectGroup(id);
-  },
-});
 
 const queryKey = computed(() => [
   TanstackKey.ADMIN_PROJECT_GROUPS,
