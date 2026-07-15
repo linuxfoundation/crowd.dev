@@ -1,5 +1,5 @@
 import authAxios from '@/shared/axios/auth-axios';
-import { ContributorIdentity, CreateContributorIdentity, UpdateContributorIdentityPayload } from '@/modules/contributor/types/Contributor';
+import { CreateContributorIdentity, UpdateContributorIdentityPayload } from '@/modules/contributor/types/Contributor';
 import { storeToRefs } from 'pinia';
 import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 
