@@ -16,6 +16,17 @@ export async function removeMemberToMerge(
       toMergeId,
     },
   )
+  await qx.result(
+    `
+      DELETE FROM "memberToMergeRaw"
+      WHERE "memberId" = $(memberId)
+        AND "toMergeId" = $(toMergeId)
+    `,
+    {
+      memberId,
+      toMergeId,
+    },
+  )
 }
 
 export async function addMemberNoMerge(

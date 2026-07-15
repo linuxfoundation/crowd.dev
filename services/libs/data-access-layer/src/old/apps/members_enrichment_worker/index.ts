@@ -353,7 +353,12 @@ export async function findExistingMember(
 export async function addMemberToMerge(tx: DbTransaction, memberId: string, toMergeId: string) {
   await tx.query(
     `INSERT INTO "memberToMerge" ("memberId", "toMergeId", similarity)
-                VALUES ($1, $2, $3);"`,
+                VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+    [memberId, toMergeId, 0.9],
+  )
+  await tx.query(
+    `INSERT INTO "memberToMergeRaw" ("memberId", "toMergeId", similarity)
+                VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
     [memberId, toMergeId, 0.9],
   )
 }
