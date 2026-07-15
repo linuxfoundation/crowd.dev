@@ -2,9 +2,12 @@ DESCRIPTION >
     - `activities_filtered.pipe` is the core filtering infrastructure pipe for activity data across the entire analytics platform.
     - This pipe serves as the foundation for most activity-related widgets, by providing a consistent, filtered view of contribution activities.
     - It filters activities from `activityRelations_deduplicated_cleaned_ds` datasource based on project segment, time ranges, repositories, platforms, and activity types.
-    - The pipe automatically scopes data to the current project using `segments_filtered` pipe for security and data isolation.
+    - The pipe scopes data either to a single project (via `segments_filtered`) or to every project in a collection
+    (via `segments_filtered_by_collection`), for security and data isolation. Exactly one of `project`/`collectionSlug`
+    must be provided by the caller.
     - Parameters:
-    - `project`: Inherited from `segments_filtered`, project slug (e.g., 'k8s', 'tensorflow')
+    - `project`: Project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes']). Inherited from `segments_filtered`.
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -23,7 +26,10 @@ SQL >
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
     FROM activityRelations_bucket_routing a
     where
-        segmentId = (SELECT segmentId FROM segments_filtered)
+        {% if defined(collectionSlug) %}
+            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %}
         {% if defined(startDate) %}
             AND a.timestamp
             > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}

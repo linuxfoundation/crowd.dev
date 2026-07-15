@@ -6,7 +6,8 @@ DESCRIPTION >
     - Uses custom time-series generation logic specifically designed for package download data patterns.
     - Primary use case: powers package downloads and package dependency widgets.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `startDate`: Optional DateTime filter for package data after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for package data before timestamp (e.g., '2024-12-31 23:59:59')
     - `ecosystem`: Optional string to filter by package ecosystem (e.g., 'npm', 'pypi', 'maven')
@@ -23,7 +24,10 @@ SQL >
     SELECT *
     FROM packageDownloads p FINAL
     where
-        insightsProjectId = (select insightsProjectId from segments_filtered)
+        {% if defined(collectionSlug) %}
+            insightsProjectId IN (select insightsProjectId from segments_filtered_by_collection)
+        {% else %} insightsProjectId = (select insightsProjectId from segments_filtered)
+        {% end %}
         {% if defined(startDate) %}
             AND p.date > toDate(
                 {{ DateTime(startDate, description="Filter package downloads after", required=False) }}

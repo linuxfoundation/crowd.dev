@@ -5,7 +5,8 @@ DESCRIPTION >
     - Formats timestamps for consistent date representation in visualizations.
     - Primary use case: displaying search trend analytics and project popularity metrics in dashboard widgets.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `startDate`: Optional DateTime filter for search volume data after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for search volume data before timestamp (e.g., '2024-12-31 23:59:59')
     - Response: `insightsProjectId`, `project`, `dataTimestamp` (formatted as YYYY-MM-DD), `volume`, `updatedAt`
@@ -21,7 +22,11 @@ SQL >
         updatedAt
     FROM searchVolume FINAL
     WHERE
-        insightsProjectId = toUUID((select insightsProjectId from segments_filtered))
+        {% if defined(collectionSlug) %}
+            insightsProjectId
+            IN (select toUUID(insightsProjectId) from segments_filtered_by_collection)
+        {% else %} insightsProjectId = toUUID((select insightsProjectId from segments_filtered))
+        {% end %}
         {% if defined(startDate) %}
             AND searchVolume.dataTimestamp >= parseDateTimeBestEffort(
                 {{

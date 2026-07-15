@@ -4,7 +4,8 @@ DESCRIPTION >
     - **When `granularity` is NOT provided, returns total unique contributor count** for the specified filters.
     - **When `granularity` is provided, returns time-series data** showing unique contributor counts for each time period.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `repos`: Optional array of repository URLs for filtering (inherited from `segments_filtered`)
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -55,7 +56,11 @@ SQL >
     SELECT uniqIf(memberId, memberId != '') AS maintainerCount
     FROM maintainers_roles_copy_ds
     WHERE
-        insightsProjectId = (SELECT insightsProjectId FROM segments_filtered) AND role = 'maintainer'
+        {% if defined(collectionSlug) %}
+            insightsProjectId IN (SELECT insightsProjectId FROM segments_filtered_by_collection)
+        {% else %} insightsProjectId = (SELECT insightsProjectId FROM segments_filtered)
+        {% end %}
+        AND role = 'maintainer'
         {% if defined(repos) %}
             AND repoUrl
             IN {{ Array(repos, 'String', description="Filter maintainer repo list", required=False) }}
