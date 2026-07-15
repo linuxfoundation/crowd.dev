@@ -9,17 +9,14 @@ DESCRIPTION >
     - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `startDate`: Optional DateTime filter for search volume data after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for search volume data before timestamp (e.g., '2024-12-31 23:59:59')
-    - Response: `insightsProjectId`, `project`, `dataTimestamp` (formatted as YYYY-MM-DD), `volume`, `updatedAt`
+    - Response: `insightsProjectId`, `project`, `dataTimestamp` (formatted as YYYY-MM-DD), `volume`, `updatedAt`.
+    When `collectionSlug` is given, rows are aggregated to one row per `dataTimestamp` with `volume` summed
+    across every project in the collection; `insightsProjectId`/`project`/`updatedAt` are empty in that mode.
 
-NODE searchVolume_pipe
+NODE searchVolume_filtered
 SQL >
     %
-    SELECT
-        insightsProjectId,
-        project,
-        formatDateTime(dataTimestamp, '%Y-%m-%d') AS dataTimestamp,
-        volume,
-        updatedAt
+    SELECT insightsProjectId, project, dataTimestamp, volume, updatedAt
     FROM searchVolume FINAL
     WHERE
         {% if defined(collectionSlug) %}
@@ -48,3 +45,25 @@ SQL >
                 }}
             )
         {% end %}
+
+NODE searchVolume_pipe
+SQL >
+    %
+    {% if defined(collectionSlug) %}
+        SELECT
+            toUUID('00000000-0000-0000-0000-000000000000') AS insightsProjectId,
+            '' AS project,
+            formatDateTime(dataTimestamp, '%Y-%m-%d') AS dataTimestamp,
+            sum(volume) AS volume,
+            max(updatedAt) AS updatedAt
+        FROM searchVolume_filtered
+        GROUP BY formatDateTime(dataTimestamp, '%Y-%m-%d')
+    {% else %}
+        SELECT
+            insightsProjectId,
+            project,
+            formatDateTime(dataTimestamp, '%Y-%m-%d') AS dataTimestamp,
+            volume,
+            updatedAt
+        FROM searchVolume_filtered
+    {% end %}

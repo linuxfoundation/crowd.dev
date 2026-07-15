@@ -23,7 +23,10 @@ NODE activities_filtered_retention_bucket_routing
 SQL >
     %
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
-    FROM activityRelations_bucket_routing a
+    FROM
+        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% else %} activityRelations_bucket_routing
+        {% end %} as a
     where
         {% if defined(collectionSlug) %}
             segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
