@@ -10,7 +10,9 @@ info:
 
 
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
-    is specced separately and not yet built.
+    routes exist and are wired up (auth, scopes, request validation), but the
+    reachability pipeline itself is not built yet — both endpoints always
+    respond 501 NOT_IMPLEMENTED.
 
 
     TODO: scopes below (read:packages, read:stewardships) are the existing
@@ -45,6 +47,12 @@ tags:
       it, the implementation requires read:maintainer-roles (NOT read:packages).
       The response shape is still under discussion upstream (reportingMethods /
       reportingGuidelines / integrationHints are reserved and always null today).
+  - name: Blast Radius
+    description: >
+      Advisory reachability analysis jobs (submit + poll). Requires
+      read:packages, reused for now (see the Advisories tag TODO). The
+      reachability pipeline is not built yet, so both endpoints always
+      respond 501 NOT_IMPLEMENTED once past auth/validation.
 
 components:
   securitySchemes:
@@ -574,6 +582,29 @@ components:
           allOf:
             - $ref: '#/components/schemas/ContactDetail'
 
+    BlastRadiusJobRequest:
+      type: object
+      required: [advisoryId]
+      description: >
+        Not yet actionable — see the Blast Radius tag. Shape mirrors the draft
+        contract so the route can validate input ahead of the pipeline landing.
+      properties:
+        advisoryId:
+          type: string
+          description: GHSA or CVE identifier.
+          example: GHSA-jf85-cpcp-j695
+        ecosystem:
+          type: string
+          nullable: true
+          example: npm
+        package:
+          type: string
+          nullable: true
+          description: Full purl (e.g. pkg:npm/lodash) or bare package name. Omit for an advisory-wide analysis.
+        force:
+          type: boolean
+          default: false
+
 paths:
   /akrites-external/packages/detail:
     get:
@@ -878,6 +909,86 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Token missing read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:
+    post:
+      operationId: submitBlastRadiusJob
+      summary: Submit a blast-radius analysis job
+      description: >
+        Not implemented — always responds 501 once the request passes
+        auth/validation. See the Blast Radius tag.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobRequest'
+      responses:
+        '501':
+          description: Not implemented yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs/{analysisId}:
+    get:
+      operationId: getBlastRadiusJob
+      summary: Poll a blast-radius analysis job
+      description: >
+        Not implemented — always responds 501, regardless of analysisId. See
+        the Blast Radius tag.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:packages
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '501':
+          description: Not implemented yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
           content:
             application/json:
               schema:

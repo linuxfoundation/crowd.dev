@@ -7,6 +7,8 @@ import { SCOPES } from '@/security/scopes'
 
 import { getAkritesExternalAdvisoryDetail } from '../packages/getAkritesExternalAdvisoryDetail'
 import { getAkritesExternalAdvisoryDetailBatch } from '../packages/getAkritesExternalAdvisoryDetailBatch'
+import { getAkritesExternalBlastRadiusJob } from '../packages/getAkritesExternalBlastRadiusPoll'
+import { submitAkritesExternalBlastRadiusJob } from '../packages/getAkritesExternalBlastRadiusSubmit'
 import { getAkritesExternalContactDetail } from '../packages/getAkritesExternalContactDetail'
 import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExternalContactDetailBatch'
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
@@ -37,6 +39,16 @@ export function akritesExternalRouter(): Router {
   advisoriesSubRouter.get('/detail', safeWrap(getAkritesExternalAdvisoryDetail))
   advisoriesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalAdvisoryDetailBatch))
   router.use('/advisories', advisoriesSubRouter)
+
+  // Same read:advisories scope as Advisories above (see the contract's Blast Radius
+  // tag). The reachability pipeline isn't built yet, so every request 501s — see
+  // getAkritesExternalBlastRadiusSubmit/Poll — but the route/scope wiring is real.
+  const blastRadiusSubRouter = Router()
+  blastRadiusSubRouter.use(rateLimiter)
+  blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES]))
+  blastRadiusSubRouter.post('/jobs', safeWrap(submitAkritesExternalBlastRadiusJob))
+  blastRadiusSubRouter.get('/jobs/:analysisId', safeWrap(getAkritesExternalBlastRadiusJob))
+  router.use('/blast-radius', blastRadiusSubRouter)
 
   // Security contacts expose contact PII (e.g. reporter emails), so the contract gates
   // them behind a dedicated cdp:maintainers:read scope and explicitly forbids reaching

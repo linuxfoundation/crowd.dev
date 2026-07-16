@@ -78,6 +78,15 @@ export class ConflictError extends HttpError {
   }
 }
 
+export class NotImplementedError extends HttpError {
+  readonly code = 'NOT_IMPLEMENTED'
+  readonly status = 501
+
+  constructor(message = 'Not implemented') {
+    super(message)
+  }
+}
+
 export class RateLimitError extends HttpError {
   readonly code = 'RATE_LIMITED'
   readonly status = 429
