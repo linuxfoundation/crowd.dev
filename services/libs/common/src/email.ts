@@ -148,8 +148,10 @@ export const classifyEmailReachability = (email: string): EmailReachability => {
   if (!isValidEmail(value)) return fail('invalid')
   if (PLACEHOLDER_EMAIL_DOMAINS.has(emailDomain(value))) return fail('placeholder-domain')
 
-  if (NOREPLY_LOCAL_PARTS.has(getEmailLocalPart(value))) return fail('noreply')
-  if (looksLikeBot(getEmailLocalPart(value))) return fail('bot')
+  const localPart = getEmailLocalPart(value)
+  const baseLocalPart = localPart.split('+')[0]
+  if (NOREPLY_LOCAL_PARTS.has(baseLocalPart)) return fail('noreply')
+  if (looksLikeBot(localPart)) return fail('bot')
   if (disposableEmailDomains.has(emailDomain(value))) return fail('disposable')
 
   return { email, reachable: true, reason: null }

@@ -122,7 +122,7 @@ const WRITE_CHUNK_SIZE = 100
 function prepareBulkPolicyUpdate(chunk: OkResult[]): string {
   const rows = chunk.map(
     (_, i) =>
-      `($(rows.id${i}), $(rows.securityPolicyUrl${i}), $(rows.vulnerabilityReportingUrl${i}), $(rows.pvrResolved${i}), $(rows.bugBountyUrl${i}), $(rows.securityTxtUrl${i}), $(rows.pvrEnabled${i}))`,
+      `($(id${i})::bigint, $(securityPolicyUrl${i}), $(vulnerabilityReportingUrl${i}), $(pvrResolved${i})::boolean, $(bugBountyUrl${i}), $(securityTxtUrl${i}), $(pvrEnabled${i})::boolean)`,
   )
 
   const params = chunk.reduce(
@@ -186,6 +186,7 @@ export async function writeContactsBatch(
     .map((o) => o.repoId)
   const ok = outcomes.filter((o): o is OkResult => o.status === 'ok')
 
+  let firstError: Error | undefined
   for (let i = 0; i < ok.length; i += WRITE_CHUNK_SIZE) {
     const chunk = ok.slice(i, i + WRITE_CHUNK_SIZE)
     try {
@@ -194,13 +195,18 @@ export async function writeContactsBatch(
       // Isolates blast radius to this chunk: without this, one bad chunk would throw out of
       // the whole batch, leaving every repo's contacts_last_refreshed untouched and the sweep
       // stuck re-fetching + re-extracting the same batch forever instead of ever advancing.
+      // Every remaining chunk is still attempted; the error is re-thrown only after everything
+      // that can be persisted has been, so the activity attempt still surfaces as failed.
       log.error(
         { errMsg: (err as Error).message, repoIds: chunk.map((r) => r.repoId) },
         'Batched contacts write failed for chunk — marking attempted without contacts update',
       )
       attemptedOnlyIds.push(...chunk.map((r) => r.repoId))
+      firstError = firstError ?? (err as Error)
     }
   }
 
   await markReposAttempted(qx, attemptedOnlyIds)
+
+  if (firstError) throw firstError
 }

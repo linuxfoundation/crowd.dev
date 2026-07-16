@@ -223,32 +223,35 @@ export async function processBatch(
         return { repoId: target.repoId, status: 'extractor-failed' as const }
       }
     })
+
+    const extractionDurationMs = Date.now() - extractionStartedAt
+    const ok = outcomes.filter((o) => o.status === 'ok').length
+    log.info(
+      {
+        ok,
+        failed: outcomes.length - ok,
+        durationMs: extractionDurationMs,
+        reposPerSec: Number((outcomes.length / (extractionDurationMs / 1000)).toFixed(1)),
+      },
+      'Security contacts batch extraction complete — persisting',
+    )
+
+    // Heartbeat is kept alive through persistence too: a slow/lock-blocked write can outlast the
+    // 2-minute heartbeat timeout just like extraction can, and letting the timer stop early would
+    // let Temporal retry this activity while the original attempt is still writing.
+    const writeStartedAt = Date.now()
+    await writeContactsBatch(qx, outcomes)
+    const writeDurationMs = Date.now() - writeStartedAt
+    log.info(
+      {
+        durationMs: writeDurationMs,
+        reposPerSec: Number((outcomes.length / (writeDurationMs / 1000)).toFixed(1)),
+      },
+      'Security contacts batch persistence complete',
+    )
   } finally {
     clearInterval(heartbeatTimer)
   }
-
-  const extractionDurationMs = Date.now() - extractionStartedAt
-  const ok = outcomes.filter((o) => o.status === 'ok').length
-  log.info(
-    {
-      ok,
-      failed: outcomes.length - ok,
-      durationMs: extractionDurationMs,
-      reposPerSec: Number((outcomes.length / (extractionDurationMs / 1000)).toFixed(1)),
-    },
-    'Security contacts batch extraction complete — persisting',
-  )
-
-  const writeStartedAt = Date.now()
-  await writeContactsBatch(qx, outcomes)
-  const writeDurationMs = Date.now() - writeStartedAt
-  log.info(
-    {
-      durationMs: writeDurationMs,
-      reposPerSec: Number((outcomes.length / (writeDurationMs / 1000)).toFixed(1)),
-    },
-    'Security contacts batch persistence complete',
-  )
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }
