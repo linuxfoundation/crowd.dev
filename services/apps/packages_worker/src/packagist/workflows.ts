@@ -1,4 +1,11 @@
-import { ParentClosePolicy, continueAsNew, proxyActivities, startChild } from '@temporalio/workflow'
+import {
+  ParentClosePolicy,
+  WorkflowIdReusePolicy,
+  continueAsNew,
+  log,
+  proxyActivities,
+  startChild,
+} from '@temporalio/workflow'
 
 import type * as activities from './activities'
 import { INGEST_MAX_ATTEMPTS } from './retryPolicy'
@@ -30,10 +37,25 @@ export async function seedPackagistPackages(): Promise<void> {
   // discovered packages are rows before the p2 crawl resolves dependency targets.
   // Started (not awaited) with ABANDON — the drain runs for hours and must outlive
   // this workflow; the state watermarks make the pass self-advancing regardless.
-  await startChild(ingestPackagistMetadata, {
-    args: [{}],
-    parentClosePolicy: ParentClosePolicy.ABANDON,
-  })
+  // Fixed workflowId + ALLOW_DUPLICATE: starting a duplicate against a still-RUNNING
+  // execution with the same id always throws WorkflowExecutionAlreadyStartedError
+  // regardless of reuse policy, so a drain that outlasts the week makes next
+  // Sunday's seed skip its chain-start instead of doubling the crawl; ALLOW_DUPLICATE
+  // just lets the id be reused once that prior execution has actually closed.
+  try {
+    await startChild(ingestPackagistMetadata, {
+      workflowId: 'packagist-metadata-drain',
+      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+      args: [{}],
+      parentClosePolicy: ParentClosePolicy.ABANDON,
+    })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'WorkflowExecutionAlreadyStartedError') {
+      log.warn('packagist metadata drain still running from a prior seed — skipping chain-start')
+      return
+    }
+    throw err
+  }
 }
 
 export async function ingestPackagistMetadata(state: MetadataState = {}): Promise<void> {
