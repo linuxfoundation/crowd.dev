@@ -1,4 +1,4 @@
-import { classifyEmailReachability, type EmailReachabilityReason } from '@crowd/common'
+import { type EmailReachabilityReason, classifyEmailReachability } from '@crowd/common'
 
 import { scoreContact } from './score'
 import {
