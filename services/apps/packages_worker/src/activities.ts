@@ -33,3 +33,18 @@ export {
 export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'
 export { processSecurityContactsBatch } from './security-contacts/activities'
+export {
+  ingestOnePackagistMetadata,
+  ingestOnePackagist30dWindow,
+  ingestOnePackagistDailyDownload,
+  runPackagistPackageSeed,
+  getPackagistMetadataBatch,
+  ingestPackagistMetadataBatch,
+  getPackagist30dBatch,
+  ingestPackagist30dBatch,
+  getPackagistDailyBatch,
+  ingestPackagistDailyBatch,
+  getCriticalPackagistCount,
+  packagistCurrentTimestamp,
+  packagistStopAfterFirstPage,
+} from './packagist/activities'

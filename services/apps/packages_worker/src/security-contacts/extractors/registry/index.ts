@@ -16,14 +16,14 @@ type EcosystemFetcher = (
 ) => Promise<ExtractorResult>
 
 // Keyed by the lowercased packages.ecosystem value. go has no package-manifest contacts.
-const FETCHERS: Record<string, EcosystemFetcher> = {
+export const FETCHERS: Record<string, EcosystemFetcher> = {
   npm: fetchNpm,
   pypi: fetchPypi,
   maven: fetchMaven,
   cargo: fetchCargo,
   nuget: fetchNuget,
   rubygems: fetchRubygems,
-  composer: fetchComposer,
+  packagist: fetchComposer,
 }
 
 export const extractManifest: Extractor = async (target, deps) => {

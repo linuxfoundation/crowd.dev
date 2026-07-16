@@ -26,3 +26,9 @@ export {
 } from '../pypi/downloads/ingestPypiDownloads'
 export { ingestNuGetPackages } from '../nuget/workflows'
 export { ingestSecurityContacts } from '../security-contacts/workflows'
+export {
+  seedPackagistPackages,
+  ingestPackagistMetadata,
+  ingestPackagistDownloads30d,
+  ingestPackagistDownloadsDaily,
+} from '../packagist/workflows'
