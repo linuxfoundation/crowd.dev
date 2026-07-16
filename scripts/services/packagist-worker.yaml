@@ -41,6 +41,9 @@ services:
       - ../../backend/.env.override.composed
     environment:
       <<: *env-args
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     hostname: packagist-worker
     networks:
       - crowd-bridge
