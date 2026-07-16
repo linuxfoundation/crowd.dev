@@ -38,9 +38,14 @@ describe('toAkritesExternalAdvisoryDetail', () => {
     expect(result.advisories).toEqual([])
   })
 
-  it('coerces a severity outside the contract enum (e.g. medium) to null', () => {
-    // DB may store MEDIUM; the contract enum only allows critical/high/moderate/low.
+  it('crosswalks the DB medium severity to the contract moderate value', () => {
+    // The DB normalizes the middle band to MEDIUM; the contract calls it moderate.
     const result = toAkritesExternalAdvisoryDetail(purl, [row({ severity: 'medium' })])
+    expect(result.advisories[0].severity).toBe('moderate')
+  })
+
+  it('coerces a severity outside the known vocabulary to null', () => {
+    const result = toAkritesExternalAdvisoryDetail(purl, [row({ severity: 'info' })])
     expect(result.advisories[0].severity).toBeNull()
   })
 

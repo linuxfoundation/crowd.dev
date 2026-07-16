@@ -21,14 +21,22 @@ export interface AdvisoryDetailBulkEntry {
   advisories: AkritesExternalAdvisoryDetail | null
 }
 
-// Severity values the contract's enum accepts. The DB stores severity uppercase and
-// the query lowercases it; anything outside this set (or null) maps to null rather
-// than being echoed verbatim, so the response never violates the published enum.
-const SEVERITY_SET = new Set<string>(['critical', 'high', 'moderate', 'low'])
+// Maps the DB's (lowercased) severity vocabulary to the contract's enum. The DB
+// normalizes the middle band to MEDIUM (initial_schema.sql; osv/extractSeverity.ts),
+// whereas the Akrites contract calls that same level `moderate` — hence the explicit
+// medium → moderate crosswalk. Anything unrecognized (or null) maps to null so the
+// response never violates the published enum.
+const SEVERITY_CROSSWALK: Record<string, AkritesExternalAdvisorySeverity> = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'moderate',
+  moderate: 'moderate',
+  low: 'low',
+}
 
 function toAkritesSeverity(severity: string | null): AkritesExternalAdvisorySeverity {
-  if (severity === null || !SEVERITY_SET.has(severity)) return null
-  return severity as AkritesExternalAdvisorySeverity
+  if (severity === null) return null
+  return SEVERITY_CROSSWALK[severity] ?? null
 }
 
 // Builds the AdvisoryDetail for a single purl from its DAL rows. Rows carry a null
