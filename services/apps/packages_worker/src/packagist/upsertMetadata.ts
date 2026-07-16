@@ -7,6 +7,8 @@ import {
 import type { VersionDependencyEdge } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
+
 import {
   buildPackagistVersionRows,
   extractVersionDependencies,
@@ -19,6 +21,10 @@ export async function persistPackagistMetadata(
   purl: string,
   expanded: PackagistExpandedVersion[],
 ): Promise<{ found: boolean; changedFields: string[]; unresolvedDependencyTargets: number }> {
+  // Registry data can contain NUL bytes (e.g. mojibake descriptions/licenses) that
+  // Postgres text columns reject; strip them before any field is persisted.
+  stripNullBytesDeep(expanded)
+
   const { versionRows, latestVersion, firstReleaseAt, latestReleaseAt, licenses, homepage } =
     buildPackagistVersionRows(expanded)
 

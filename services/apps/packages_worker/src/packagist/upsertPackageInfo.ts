@@ -7,6 +7,7 @@ import {
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import type { NormalizedPackagistStats } from './types'
 
@@ -18,6 +19,10 @@ export async function persistPackagistPackageInfo(
   purl: string,
   stats: NormalizedPackagistStats,
 ): Promise<{ found: boolean; changedFields: string[] }> {
+  // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
+  // text columns reject; strip them before any field is persisted.
+  stripNullBytesDeep(stats)
+
   // Step 1: Update packages row
   const canonical = stats.repositoryUrl ? canonicalizeRepoUrl(stats.repositoryUrl) : null
   const result = await updatePackagistPackageStats(qx, {

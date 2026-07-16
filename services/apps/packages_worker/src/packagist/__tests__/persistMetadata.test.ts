@@ -162,4 +162,19 @@ describe('persistPackagistMetadata', () => {
     expect(mockDeps).not.toHaveBeenCalled()
     expect(result.found).toBe(true)
   })
+
+  it('strips NUL bytes from the homepage before writing (Postgres rejects them)', async () => {
+    mockAggregates.mockResolvedValue({ id: '9', changedFields: [] })
+    mockVersions.mockResolvedValue({ changedFields: [], versionIds: [] })
+
+    await persistPackagistMetadata(qx, PURL, [
+      { version: '1.0.0', version_normalized: '1.0.0.0', homepage: 'https://ex\0ample.org' },
+    ])
+
+    expect(mockAggregates).toHaveBeenCalledWith(
+      qx,
+      PURL,
+      expect.objectContaining({ homepage: 'https://example.org' }),
+    )
+  })
 })
