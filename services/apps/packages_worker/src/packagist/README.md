@@ -129,6 +129,14 @@ never overwritten — the first observation (closest to the boundary) wins.
 Packagist keeps no history, so unlike npm there is no backfill lane; a missed
 month stays missed. State: `downloads_30d_last_run_at` + `downloads_30d_run_result`.
 
+`monthlyWindowFor()` labels `end_date` from whatever *month* the batch executes
+in — not the exact day — so a drain that runs long but stays inside the same
+month is still labeled consistently. The one gap: if the full-catalog drain
+ever dragged on long enough to spill past the next month's 1st, later batches
+would get mislabeled with the new month's `end_date` instead of the run's.
+Unlike the daily lane (see below), this isn't pinned to a fixed run cutoff —
+low risk given the run should finish in hours, not weeks, but worth knowing.
+
 ---
 
 ## 4. `ingestPackagistDownloadsDaily` — daily capture (critical slice)
