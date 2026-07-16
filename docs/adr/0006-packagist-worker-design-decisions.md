@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-13
 **Status**: living
-**Deciders**: Anil B
+**Deciders**: Anil Bostanci
 
 _Living, consolidated record for the Packagist (PHP/Composer) worker. Record further
 Packagist-worker decisions here as new `### subsections` under Decisions rather than opening a
