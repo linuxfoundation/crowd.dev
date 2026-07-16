@@ -78,3 +78,7 @@ export interface ExtractorDeps {
 }
 
 export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>
+
+export type ProcessRepoResult =
+  | { repoId: string; status: 'ok'; contacts: ScoredContact[]; policies: Partial<RepoPolicies> }
+  | { repoId: string; status: 'extractor-failed' }

@@ -20,12 +20,13 @@ import { resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
   ExtractorDeps,
+  ProcessRepoResult,
   RawContact,
   RepoPackage,
   RepoPolicies,
   RepoTarget,
 } from './types'
-import { markRepoAttempted, writeContacts } from './writeContacts'
+import { writeContactsBatch } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts')
 
@@ -120,9 +121,8 @@ export function buildBaseDeps(config: Config): Omit<ExtractorDeps, 'repoTree'> {
 export async function processRepo(
   target: RepoTarget,
   baseDeps: Omit<ExtractorDeps, 'repoTree'>,
-  qx: QueryExecutor,
   cdpQx: QueryExecutor,
-): Promise<void> {
+): Promise<ProcessRepoResult> {
   // One tree fetch per repo, shared by extractors that probe well-known paths.
   let repoTree: ExtractorDeps['repoTree'] = { paths: null }
   try {
@@ -142,8 +142,7 @@ export async function processRepo(
       { repoId: target.repoId, errMsg: failed.reason?.message },
       'Extractor failed — preserving existing data',
     )
-    await markRepoAttempted(qx, target.repoId)
-    return
+    return { repoId: target.repoId, status: 'extractor-failed' }
   }
 
   let contacts: RawContact[] = []
@@ -176,7 +175,7 @@ export async function processRepo(
   }
 
   const scored = reconcile(contacts)
-  await writeContacts(qx, target.repoId, scored, policies)
+  return { repoId: target.repoId, status: 'ok', contacts: scored, policies }
 }
 
 export async function processBatch(
@@ -199,29 +198,57 @@ export async function processBatch(
       log.warn({ errMsg: (err as Error).message }, 'Heartbeat failed')
     }
   }, 30_000)
+  let outcomes: ProcessRepoResult[]
+  const extractionStartedAt = Date.now()
   try {
     // A cancelled task (superseded by a newer activity attempt) is left to throw so it stops
     // scheduling further repos instead of racing the new attempt.
-    await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
+    //
+    // Extraction is collected here and persisted afterward in one batched call (below) rather
+    // than per-repo, since per-repo writes meant up to CONCURRENCY concurrent transactions
+    // against a packages-db pool sized for far fewer connections — the actual sweep bottleneck.
+    outcomes = await mapWithConcurrency(targets, CONCURRENCY, async (target) => {
       if (cancellationSignal().aborted) {
         throw new Error(
           'Security contacts batch cancelled — superseded by a newer activity attempt',
         )
       }
       try {
-        await processRepo(target, deps, qx, cdpQx)
+        return await processRepo(target, deps, cdpQx)
       } catch (err) {
         log.error(
           { repoId: target.repoId, errMsg: (err as Error).message },
           'Repo processing failed',
         )
-        // Best-effort: keeps a persistently-failing repo from hot-looping the sweep.
-        await markRepoAttempted(qx, target.repoId).catch(() => undefined)
+        return { repoId: target.repoId, status: 'extractor-failed' as const }
       }
     })
   } finally {
     clearInterval(heartbeatTimer)
   }
+
+  const extractionDurationMs = Date.now() - extractionStartedAt
+  const ok = outcomes.filter((o) => o.status === 'ok').length
+  log.info(
+    {
+      ok,
+      failed: outcomes.length - ok,
+      durationMs: extractionDurationMs,
+      reposPerSec: Number((outcomes.length / (extractionDurationMs / 1000)).toFixed(1)),
+    },
+    'Security contacts batch extraction complete — persisting',
+  )
+
+  const writeStartedAt = Date.now()
+  await writeContactsBatch(qx, outcomes)
+  const writeDurationMs = Date.now() - writeStartedAt
+  log.info(
+    {
+      durationMs: writeDurationMs,
+      reposPerSec: Number((outcomes.length / (writeDurationMs / 1000)).toFixed(1)),
+    },
+    'Security contacts batch persistence complete',
+  )
 
   log.info({ processed: targets.length }, 'Security contacts batch complete')
   return { processed: targets.length }
