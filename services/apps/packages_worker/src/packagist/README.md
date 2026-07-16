@@ -141,7 +141,11 @@ low risk given the run should finish in hours, not weeks, but worth knowing.
 
 ## 4. `ingestPackagistDownloadsDaily` — daily capture (critical slice)
 
-**Schedule:** `packagist-downloads-daily`, daily `06:23` UTC.
+**Schedule:** `packagist-downloads-daily`, daily `22:23` UTC — late in the day
+on purpose: Packagist's `daily` figure is `today_so_far + yesterday_total ×
+dayRatio`, with `dayRatio` decaying toward 0 as the day goes on, so asking
+late gets a figure that's mostly today's real data instead of mostly
+borrowed from yesterday.
 **Targets:** `is_critical = TRUE` only; no-ops (guard) while zero packagist
 rows are critical — i.e. until the first `rank_packages()` pass. Same cutoff
 watermark pattern as the 30d lane.
@@ -149,9 +153,14 @@ watermark pattern as the 30d lane.
 **What it does:** fetches the dynamic endpoint per critical package and records
 the registry's rolling daily figure.
 
-**Populates:** one `downloads_daily` row per package per day
-(`package_id`, run date, count). State: `daily_downloads_last_run_at` +
-`daily_downloads_run_result`.
+**Populates:** one `downloads_daily` row per package per day (`package_id`,
+run date, count), with the run date pinned once from the run's `cutoff` so
+every row from one run shares the same label even if the drain runs long.
+That only fixes the *label*, though — Packagist computes `daily` live,
+relative to the moment each package is actually fetched, so a drain that
+runs past real UTC midnight still hands back a value already drifted toward
+the new day for whichever packages are processed last, stored under the
+older date. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 ---
 
