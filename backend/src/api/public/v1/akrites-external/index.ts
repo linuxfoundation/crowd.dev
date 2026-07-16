@@ -7,6 +7,8 @@ import { SCOPES } from '@/security/scopes'
 
 import { getAkritesExternalAdvisoryDetail } from '../packages/getAkritesExternalAdvisoryDetail'
 import { getAkritesExternalAdvisoryDetailBatch } from '../packages/getAkritesExternalAdvisoryDetailBatch'
+import { getAkritesExternalContactDetail } from '../packages/getAkritesExternalContactDetail'
+import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExternalContactDetailBatch'
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
 
@@ -35,6 +37,18 @@ export function akritesExternalRouter(): Router {
   advisoriesSubRouter.get('/detail', safeWrap(getAkritesExternalAdvisoryDetail))
   advisoriesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalAdvisoryDetailBatch))
   router.use('/advisories', advisoriesSubRouter)
+
+  // Security contacts expose contact PII (e.g. reporter emails), so the contract gates
+  // them behind a dedicated cdp:maintainers:read scope and explicitly forbids reaching
+  // them via the packages scope. That scope isn't issued by Auth0 yet, so reuse the
+  // closest issued one — READ_MAINTAINER_ROLES (maintainer data) — NOT READ_PACKAGES.
+  // TODO: swap for cdp:maintainers:read once issued.
+  const contactsSubRouter = Router()
+  contactsSubRouter.use(rateLimiter)
+  contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES]))
+  contactsSubRouter.get('/detail', safeWrap(getAkritesExternalContactDetail))
+  contactsSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalContactDetailBatch))
+  router.use('/contacts', contactsSubRouter)
 
   return router
 }

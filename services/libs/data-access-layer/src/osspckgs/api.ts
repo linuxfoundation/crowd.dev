@@ -1,4 +1,9 @@
-import type { PackageDbRow } from '@crowd/types'
+import type {
+  PackageDbRow,
+  RepoDbRow,
+  SecurityContactConfidence,
+  SecurityContactDbRow,
+} from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 
@@ -8,10 +13,16 @@ import {
   BEST_REPO_LINK_JOIN,
   DOWNLOADS_LAST_30D_SUBQUERY,
   MAINTAINER_COUNT_SUBQUERY,
+  SECURITY_CONTACTS_SUBQUERY,
   SEVERITY_RANK_EXPR,
   STEWARD_DISPLAY_NAME_METADATA,
   STEWARD_MENTIONED_JOIN,
 } from './sqlFragments'
+
+// Re-exported so existing callers (e.g. the akrites-external contacts mapper and
+// packages_worker) keep importing this from @crowd/data-access-layer without a
+// churn-only import change now that the canonical type lives in @crowd/types (ADR-0006).
+export type { SecurityContactConfidence } from '@crowd/types'
 
 export interface PackageMetrics {
   totalPackages: number
@@ -612,15 +623,12 @@ export async function listPackagesForApi(
   return { rows, total }
 }
 
-export type SecurityContactConfidence = 'PRIMARY' | 'SECONDARY' | 'FALLBACK' | 'NONE'
-
-export interface SecurityContactRow {
-  channel: string
-  value: string
-  role: string
-  confidence: SecurityContactConfidence
-  score: number
-}
+// Per ADR-0006, sourced from the security_contacts row type in @crowd/types instead of
+// hand-declaring the shape again next to this query.
+export type SecurityContactRow = Pick<
+  SecurityContactDbRow,
+  'channel' | 'value' | 'role' | 'confidence' | 'score'
+>
 
 export interface PackageDetailRow {
   id: string
@@ -727,16 +735,7 @@ export async function getPackageDetailByPurl(
       r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
       r.bug_bounty_url AS "bugBountyUrl",
       r.contacts_last_refreshed AS "contactsLastRefreshed",
-      (
-        SELECT json_agg(sc ORDER BY sc.score DESC)
-        FROM (
-          SELECT channel, value, role, confidence, score
-          FROM security_contacts
-          WHERE repo_id = pr.repo_id AND deleted_at IS NULL
-          ORDER BY score DESC
-          LIMIT 5
-        ) sc
-      ) AS "securityContacts",
+      ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts",
       -- latest 30-day download count
       ${DOWNLOADS_LAST_30D_SUBQUERY} AS "downloadsLast30d",
       ${MAINTAINER_COUNT_SUBQUERY} AS "maintainerCount",
@@ -863,6 +862,43 @@ export async function getPackageDetailsByPurls(
       r.security_policy_url AS "securityPolicyUrl",
       r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
       r.bug_bounty_url AS "bugBountyUrl"
+    FROM packages p
+    ${BEST_REPO_LINK_JOIN}
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
+  )
+}
+
+// Fields the akrites-external Contacts contract needs, one row per package. Reuses the
+// same best-repo join + security_contacts subquery as getPackageDetailByPurl (contacts
+// live on the repo, not the package). A missing purl yields no row → "not found"; a found
+// package with no contacts yields a row with securityContacts null → resolves to [].
+export interface AkritesExternalContactDetailRow
+  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem'>,
+    Pick<
+      RepoDbRow,
+      'securityPolicyUrl' | 'vulnerabilityReportingUrl' | 'bugBountyUrl' | 'pvrEnabled'
+    > {
+  securityContacts: SecurityContactRow[] | null
+}
+
+export async function getContactDetailsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<AkritesExternalContactDetailRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      p.name,
+      p.ecosystem,
+      r.security_policy_url         AS "securityPolicyUrl",
+      r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
+      r.bug_bounty_url              AS "bugBountyUrl",
+      r.pvr_enabled                 AS "pvrEnabled",
+      ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts"
     FROM packages p
     ${BEST_REPO_LINK_JOIN}
     WHERE p.purl = ANY($(purls))

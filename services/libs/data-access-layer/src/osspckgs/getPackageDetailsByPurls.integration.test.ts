@@ -55,25 +55,25 @@ describe.skipIf(!HAVE_DB)('getPackageDetailsByPurls — real packages-db', () =>
     await cleanupFixtures()
 
     const linkedRow = await qx.selectOne(
-      `INSERT INTO packages (purl, ecosystem, name, declared_repository_url, repository_url, ingestion_source, status)
-       VALUES ($(purl), 'npm', 'linked-fixture', $(declared), $(canonical), $(tag), 'active')
+      `INSERT INTO packages (purl, ecosystem, name, declared_repository_url, repository_url, ingestion_source)
+       VALUES ($(purl), 'npm', 'linked-fixture', $(declaredUrl), $(repoUrl), $(tag))
        RETURNING id`,
       {
         purl: linkedPurl,
-        declared: 'https://github.com/example/linked-fixture',
-        canonical: 'https://github.com/example/linked-fixture',
+        declaredUrl: 'https://github.com/example/linked-fixture',
+        repoUrl: 'https://github.com/example/linked-fixture',
         tag: FIXTURE_TAG,
       },
     )
     linkedPackageId = linkedRow.id as string
 
     await qx.result(
-      `INSERT INTO packages (purl, ecosystem, name, declared_repository_url, repository_url, ingestion_source, status)
-       VALUES ($(purl), 'npm', 'unlinked-fixture', $(declared), $(canonical), $(tag), 'active')`,
+      `INSERT INTO packages (purl, ecosystem, name, declared_repository_url, repository_url, ingestion_source)
+       VALUES ($(purl), 'npm', 'unlinked-fixture', $(declaredUrl), $(repoUrl), $(tag))`,
       {
         purl: unlinkedPurl,
-        declared: 'https://github.com/example/unlinked-fixture-raw',
-        canonical: 'https://github.com/example/unlinked-fixture-canonical',
+        declaredUrl: 'https://github.com/example/unlinked-fixture-raw',
+        repoUrl: 'https://github.com/example/unlinked-fixture-canonical',
         tag: FIXTURE_TAG,
       },
     )
@@ -81,11 +81,12 @@ describe.skipIf(!HAVE_DB)('getPackageDetailsByPurls — real packages-db', () =>
     const repoRow = await qx.selectOne(`INSERT INTO repos (url) VALUES ($(url)) RETURNING id`, {
       url: repoUrl,
     })
+    const repoId = repoRow.id as string
 
     await qx.result(
       `INSERT INTO package_repos (package_id, repo_id, source, confidence)
-       VALUES ($(packageId), $(repoId), 'declared', 0.90)`,
-      { packageId: linkedPackageId, repoId: repoRow.id },
+       VALUES ($(packageId), $(repoId), 'declared', 0.9)`,
+      { packageId: linkedPackageId, repoId },
     )
 
     for (const username of ['maintainer-one', 'maintainer-two']) {

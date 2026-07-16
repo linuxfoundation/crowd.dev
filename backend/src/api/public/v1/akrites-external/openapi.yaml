@@ -9,8 +9,8 @@ info:
     entirely between Akrites and Auth0.
 
 
-    Packages and Advisories endpoints are implemented. Blast Radius and
-    Contacts are specced separately and not yet built.
+    Packages, Advisories and Contacts endpoints are implemented. Blast Radius
+    is specced separately and not yet built.
 
 
     TODO: scopes below (read:packages, read:stewardships) are the existing
@@ -37,6 +37,14 @@ tags:
       issues it, the implementation reuses read:packages (advisories need no
       stewardship read). Confirm the final scope name (read:advisories vs
       cdp:advisories:read) with Akrites/product.
+  - name: Contacts
+    description: >
+      Security contacts for a package — includes contact PII (e.g. reporter
+      emails). The contract gates these behind a dedicated cdp:maintainers:read
+      scope and forbids reaching them via the packages scope; until Auth0 issues
+      it, the implementation requires read:maintainer-roles (NOT read:packages).
+      The response shape is still under discussion upstream (reportingMethods /
+      reportingGuidelines / integrationHints are reserved and always null today).
 
 components:
   securitySchemes:
@@ -55,6 +63,7 @@ components:
           scopes:
             read:packages: Read package detail
             read:stewardships: Read package stewardship data
+            read:maintainer-roles: Read security contacts (interim scope for Contacts; see the Contacts tag)
 
   schemas:
     Error:
@@ -356,6 +365,215 @@ components:
           allOf:
             - $ref: '#/components/schemas/AdvisoryDetail'
 
+    ContactConfidenceBand:
+      type: string
+      enum: [PRIMARY, SECONDARY, FALLBACK, NONE]
+      description: Per-contact confidence — mirrors the internal SecurityContact confidence enum.
+
+    OverallConfidenceBand:
+      type: string
+      enum: [HIGH, MEDIUM, LOW, NONE]
+      description: >
+        Aggregate confidence, derived from the highest-scoring contact.
+        UNCONFIRMED CROSSWALK: the internal aggregate band is
+        PRIMARY/SECONDARY/FALLBACK/NONE; this HIGH/MEDIUM/LOW/NONE scale is a
+        4→4 tier rename (PRIMARY→HIGH, …) pending confirmation with Akrites —
+        see OVERALL_CONFIDENCE_CROSSWALK in akritesExternalContactDetail.ts.
+
+    SecurityContact:
+      type: object
+      required: [channel, value, role, confidenceBand, confidenceScore]
+      properties:
+        channel:
+          type: string
+          enum: [email, github-pvr, github-handle, url, web-form]
+          description: Mirrors the internal SecurityContact.channel enum; passed through verbatim.
+        value:
+          type: string
+          example: security@example.org
+        role:
+          type: string
+          enum: [security-team, maintainer, admin, committer, org-owner]
+          description: Mirrors the internal SecurityContact.role enum; passed through verbatim.
+        confidenceBand:
+          $ref: '#/components/schemas/ContactConfidenceBand'
+        confidenceScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
+    ReportingMethod:
+      type: object
+      nullable: true
+      description: Reserved shape — always null until SECURITY.md parsing ships.
+      required: [methodId, type, status, description, actionRequired]
+      properties:
+        methodId:
+          type: integer
+        type:
+          type: string
+        status:
+          type: string
+          enum: [preferred, fallback]
+        recipient:
+          type: string
+          nullable: true
+        description:
+          type: string
+        actionRequired:
+          type: string
+
+    ReportingGuidelines:
+      type: object
+      nullable: true
+      description: Reserved shape — always null until SECURITY.md parsing ships.
+      required: [generalPrinciples, qualityRequirements]
+      properties:
+        generalPrinciples:
+          type: array
+          items:
+            type: string
+        qualityRequirements:
+          type: object
+          required: [avoid, recommend]
+          properties:
+            avoid:
+              type: array
+              items:
+                type: string
+            recommend:
+              type: array
+              items:
+                type: object
+                required: [scenario, action]
+                properties:
+                  scenario:
+                    type: string
+                  action:
+                    type: string
+
+    IntegrationHints:
+      type: object
+      nullable: true
+      description: Reserved shape — always null until computed.
+      required: [primaryEndpoint, fallbackEndpoint, validationHints]
+      properties:
+        primaryEndpoint:
+          type: object
+          nullable: true
+          required: [type, target]
+          properties:
+            type:
+              type: string
+            target:
+              type: string
+        fallbackEndpoint:
+          type: object
+          nullable: true
+          required: [type, target]
+          properties:
+            type:
+              type: string
+            target:
+              type: string
+        validationHints:
+          type: object
+          nullable: true
+          required: [falsePositiveRules, requirePocForSeverity, debounce]
+          properties:
+            falsePositiveRules:
+              type: array
+              items:
+                type: string
+            requirePocForSeverity:
+              type: array
+              items:
+                type: string
+            debounce:
+              type: string
+              nullable: true
+
+    ContactDetail:
+      type: object
+      description: >
+        NOTE: shape not final — still under discussion upstream, in particular
+        how reportingMethods / reportingGuidelines / integrationHints will be
+        derived from SECURITY.md parsing. Those three, plus targetOrganizationName
+        and bugBountyProgramFlag, are always null today (not stored). Expect this
+        schema to change before the contract is frozen.
+      required:
+        - purl
+        - name
+        - ecosystem
+        - overallConfidenceBand
+        - contacts
+        - securityPolicyUrl
+        - vulnerabilityReportingUrl
+        - bugBountyUrl
+        - pvrEnabled
+        - targetOrganizationName
+        - bugBountyProgramFlag
+        - reportingMethods
+        - reportingGuidelines
+        - integrationHints
+      properties:
+        purl:
+          type: string
+        name:
+          type: string
+        ecosystem:
+          $ref: '#/components/schemas/Ecosystem'
+        overallConfidenceBand:
+          $ref: '#/components/schemas/OverallConfidenceBand'
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecurityContact'
+        securityPolicyUrl:
+          type: string
+          nullable: true
+        vulnerabilityReportingUrl:
+          type: string
+          nullable: true
+        bugBountyUrl:
+          type: string
+          nullable: true
+        pvrEnabled:
+          type: boolean
+          nullable: true
+        targetOrganizationName:
+          type: string
+          nullable: true
+          description: Reserved — not stored today, always null.
+        bugBountyProgramFlag:
+          type: boolean
+          nullable: true
+          description: Reserved — not stored today, always null.
+        reportingMethods:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ReportingMethod'
+        reportingGuidelines:
+          $ref: '#/components/schemas/ReportingGuidelines'
+        integrationHints:
+          $ref: '#/components/schemas/IntegrationHints'
+
+    ContactDetailBulkEntry:
+      type: object
+      required: [requestedPurl, found, contact]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        contact:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ContactDetail'
+
 paths:
   /akrites-external/packages/detail:
     get:
@@ -556,6 +774,110 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/detail:
+    get:
+      operationId: getContactDetail
+      summary: Get security contact detail by PURL
+      description: >
+        Requires read:maintainer-roles (interim for the contract's cdp:maintainers:read).
+        Never reachable with the packages scope.
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:maintainer-roles
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Security contact detail (empty contacts + NONE band when the package has none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/detail:batch:
+    post:
+      operationId: getContactDetailBatch
+      summary: Bulk security contact lookup
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Results in the same order as the request.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContactDetailBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:maintainer-roles scope.
           content:
             application/json:
               schema:

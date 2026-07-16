@@ -32,6 +32,20 @@ export const BEST_REPO_LINK_JOIN = `LEFT JOIN LATERAL (
 // Expects a `packages p` in the outer FROM clause.
 export const MAINTAINER_COUNT_SUBQUERY = `(SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id)`
 
+// Top 5 active security contacts (highest score first) for a package's best repo link.
+// Expects the `pr` alias from BEST_REPO_LINK_JOIN (pr.repo_id) in scope. Returns a JSON
+// array or NULL when the repo has no contacts.
+export const SECURITY_CONTACTS_SUBQUERY = `(
+        SELECT json_agg(sc ORDER BY sc.score DESC)
+        FROM (
+          SELECT channel, value, role, confidence, score
+          FROM security_contacts
+          WHERE repo_id = pr.repo_id AND deleted_at IS NULL
+          ORDER BY score DESC
+          LIMIT 5
+        ) sc
+      )`
+
 // Most recent 30-day download count for a package. Expects a `packages p` in the outer FROM clause.
 export const DOWNLOADS_LAST_30D_SUBQUERY = `(
         SELECT d.count::text
