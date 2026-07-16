@@ -47,6 +47,17 @@ describe('parsePackagistPackageList', () => {
     expect(invalid).toBe(7)
   })
 
+  it('rejects a long invalid segment without catastrophic regex backtracking', () => {
+    // CodeQL js/redos: a long run of one char class followed by a char that breaks
+    // the match is the classic trigger for exponential backtracking.
+    const pathological = 'vendor/' + '0'.repeat(50) + '!'
+    const start = Date.now()
+    const { entries, invalid } = parsePackagistPackageList({ packageNames: [pathological] })
+    expect(Date.now() - start).toBeLessThan(200)
+    expect(entries).toEqual([])
+    expect(invalid).toBe(1)
+  })
+
   it('lowercases and deduplicates names without counting duplicates as invalid', () => {
     const { entries, invalid } = parsePackagistPackageList({
       packageNames: ['Monolog/Monolog', 'monolog/monolog'],

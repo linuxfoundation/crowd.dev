@@ -4,7 +4,10 @@ import { buildPackagistUserAgent, describeFetchFailure, packagistDispatcher } fr
 import type { FetchError } from './types'
 
 const PACKAGIST_LIST = 'https://packagist.org/packages/list.json'
-const COMPOSER_NAME_REGEX = /^[a-z0-9]([_.-]?[a-z0-9]+)*$/
+// Non-backtracking form: a mandatory separator per repetition (vs. an optional one)
+// removes the ambiguity that let the old `([_.-]?[a-z0-9]+)*` pattern backtrack
+// exponentially on a long run of the same character class (CodeQL js/redos).
+const COMPOSER_NAME_REGEX = /^[a-z0-9]+(?:[_.-][a-z0-9]+)*$/
 
 export interface PackagistListEntry {
   vendor: string
