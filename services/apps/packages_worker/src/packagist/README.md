@@ -135,13 +135,10 @@ never overwritten — the first observation (closest to the boundary) wins.
 Packagist keeps no history, so unlike npm there is no backfill lane; a missed
 month stays missed. State: `downloads_30d_last_run_at` + `downloads_30d_run_result`.
 
-`monthlyWindowFor()` labels `end_date` from whatever *month* the batch executes
-in — not the exact day — so a drain that runs long but stays inside the same
-month is still labeled consistently. The one gap: if the full-catalog drain
-ever dragged on long enough to spill past the next month's 1st, later batches
-would get mislabeled with the new month's `end_date` instead of the run's.
-Unlike the daily lane (see below), this isn't pinned to a fixed run cutoff —
-low risk given the run should finish in hours, not weeks, but worth knowing.
+Unlike the daily lane (see below), the write-date here isn't pinned to a fixed
+run cutoff — if the full-catalog drain ran long enough, the labeled window
+could drift forward from what was true when the run started. Low risk given
+the run should finish in hours, not weeks, but worth knowing.
 
 ---
 
@@ -162,11 +159,10 @@ the registry's rolling daily figure.
 **Populates:** one `downloads_daily` row per package per day (`package_id`,
 run date, count), with the run date pinned once from the run's `cutoff` so
 every row from one run shares the same label even if the drain runs long.
-That only fixes the *label*, though — Packagist computes `daily` live,
-relative to the moment each package is actually fetched, so a drain that
-runs past real UTC midnight still hands back a value already drifted toward
-the new day for whichever packages are processed last, stored under the
-older date. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
+That only fixes the *label*, though — Packagist computes `daily` live at
+fetch time, so for a long-running drain the underlying value can drift
+forward from what the label implies for whichever packages are processed
+last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 ---
 
