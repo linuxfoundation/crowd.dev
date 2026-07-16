@@ -44,4 +44,6 @@ export interface RepoDbRow {
   bugBountyUrl: string | null
   securityTxtUrl: string | null
   contactsLastRefreshed: string | null
+  updatedAt: string
+  dockerCheckedAt: string | null
 }
