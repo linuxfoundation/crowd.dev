@@ -182,13 +182,13 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 All optional; defaults in `activities.ts` / `fetchPackage.ts`:
 
-| Env var (`CROWD_PACKAGES_PACKAGIST_…`) | Default | Meaning |
+| Env var | Default | Meaning |
 |---|---|---|
-| `MAILTO` | `oss-packages@linuxfoundation.org` | Contact in the crawl User-Agent |
-| `STATS_CONCURRENCY` | 10 (hard cap 10) | Parallel package ingests across all lanes — every lane starts with a dynamic-endpoint fetch, so the stricter 10-limit bounds everything |
-| `METADATA_REFRESH_DAYS` | 7 | Metadata refresh window |
-| `RUN_ONLY_FOR_CRITICAL` | `false` | `true` narrows metadata to the critical slice |
-| `STOP_AFTER_FIRST_PAGE` | `false` | Debug: one drain page, no continueAsNew |
+| `CROWD_PACKAGES_PACKAGIST_MAILTO` | `oss-packages@linuxfoundation.org` | Contact in the crawl User-Agent |
+| `CROWD_PACKAGES_PACKAGIST_STATS_CONCURRENCY` | 10 (hard cap 10) | Parallel package ingests across all lanes — every lane starts with a dynamic-endpoint fetch, so the stricter 10-limit bounds everything |
+| `CROWD_PACKAGES_PACKAGIST_METADATA_REFRESH_DAYS` | 7 | Metadata refresh window |
+| `CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL` | `false` | `true` narrows metadata to the critical slice |
+| `CROWD_PACKAGES_PACKAGIST_STOP_AFTER_FIRST_PAGE` | `false` | Debug: one drain page, no continueAsNew |
 
 ## Running it
 
