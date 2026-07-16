@@ -75,12 +75,16 @@ export async function ingestPackagistDownloadsDaily(state: DownloadsState = {}):
   if ((await acts.getCriticalPackagistCount()) === 0) return
 
   const cutoff = state.cutoff ?? (await acts.packagistCurrentTimestamp())
+  // Packagist's `daily` figure is tied to a specific calendar day (see schedule.ts) —
+  // derive the write-date from the run's fixed cutoff instead of re-reading the clock
+  // per batch, so a drain that runs past UTC midnight still tags every row consistently.
+  const runDate = cutoff.slice(0, 10)
   const stopAfterFirstPage = await acts.packagistStopAfterFirstPage()
 
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
     const candidates = await acts.getPackagistDailyBatch(cutoff, INGEST_BATCH)
     if (candidates.length === 0) return
-    await acts.ingestPackagistDailyBatch(candidates)
+    await acts.ingestPackagistDailyBatch(candidates, runDate)
     if (stopAfterFirstPage) return
     if (candidates.length < INGEST_BATCH) return
   }

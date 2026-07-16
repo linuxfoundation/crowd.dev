@@ -364,10 +364,10 @@ export async function getPackagistDailyBatch(
 
 export async function ingestPackagistDailyBatch(
   candidates: PackagistDailyCandidate[],
+  runDate: string,
 ): Promise<void> {
   if (candidates.length === 0) return
   const qx = await getPackagesDb()
-  const runDate = new Date().toISOString().slice(0, 10)
   const attempt = Context.current().info.attempt
 
   await ingestPackagistItemsConcurrently(
