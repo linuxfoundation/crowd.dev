@@ -1,7 +1,10 @@
 import { QueryExecutor, formatQuery } from '@crowd/data-access-layer/src/queryExecutor'
 import { prepareBulkInsert } from '@crowd/data-access-layer/src/utils'
+import { getServiceChildLogger } from '@crowd/logging'
 
 import { ProcessRepoResult, RepoPolicies, ScoredContact } from './types'
+
+const log = getServiceChildLogger('security-contacts')
 
 const CONTACT_COLUMNS = [
   'repo_id',
@@ -184,7 +187,19 @@ export async function writeContactsBatch(
   const ok = outcomes.filter((o): o is OkResult => o.status === 'ok')
 
   for (let i = 0; i < ok.length; i += WRITE_CHUNK_SIZE) {
-    await writeContactsChunk(qx, ok.slice(i, i + WRITE_CHUNK_SIZE))
+    const chunk = ok.slice(i, i + WRITE_CHUNK_SIZE)
+    try {
+      await writeContactsChunk(qx, chunk)
+    } catch (err) {
+      // Isolates blast radius to this chunk: without this, one bad chunk would throw out of
+      // the whole batch, leaving every repo's contacts_last_refreshed untouched and the sweep
+      // stuck re-fetching + re-extracting the same batch forever instead of ever advancing.
+      log.error(
+        { errMsg: (err as Error).message, repoIds: chunk.map((r) => r.repoId) },
+        'Batched contacts write failed for chunk — marking attempted without contacts update',
+      )
+      attemptedOnlyIds.push(...chunk.map((r) => r.repoId))
+    }
   }
 
   await markReposAttempted(qx, attemptedOnlyIds)
