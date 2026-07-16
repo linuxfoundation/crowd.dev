@@ -9,8 +9,11 @@ import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type Lifecycle } from './types'
 
 const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
 
-export type AkritesExternalHealthBand = 'critical' | 'low' | 'medium' | 'high'
-export type AkritesExternalLifecycle = 'active' | 'inactive' | 'deprecated' | 'abandoned' | null
+// The API returns the internal bands verbatim — no external crosswalk (confirmed
+// with product): health excellent/healthy/fair/concerning/critical, lifecycle
+// active/stable/declining/abandoned/archived.
+export type AkritesExternalHealthBand = HealthBand
+export type AkritesExternalLifecycle = Lifecycle | null
 
 export interface AkritesExternalPackageDetail {
   purl: string
@@ -70,48 +73,20 @@ export interface PackageDetailBulkEntry {
   package: AkritesExternalPackageDetail | null
 }
 
-// UNCONFIRMED CROSSWALK — see the HealthBand schema note in the akrites-external
-// OpenAPI contract: the internal excellent/healthy/fair/concerning/critical scale
-// (good→bad) has no agreed mapping to Akrites' critical/low/medium/high scale yet.
-// This mirrors the "fair -> medium" guess from the original Akrites draft spec
-// (not encoded in this repo's openapi.yaml). Confirm the real crosswalk with
-// Akrites/product before this ships, then update this table only.
-const HEALTH_BAND_CROSSWALK: Record<HealthBand, AkritesExternalHealthBand> = {
-  excellent: 'high',
-  healthy: 'high',
-  fair: 'medium',
-  concerning: 'low',
-  critical: 'critical',
-}
-
 function toAkritesHealthBand(
   healthLabel: string | null,
   scorecardScore: number | null,
 ): AkritesExternalHealthBand {
   // Same validity guard as getPackage.ts: an unrecognized (not just null) stored
   // label falls back to computeHealthBand() instead of silently miscategorizing.
-  const label: HealthBand =
-    healthLabel != null && HEALTH_BAND_SET.has(healthLabel)
-      ? (healthLabel as HealthBand)
-      : computeHealthBand(scorecardScore)
-  return HEALTH_BAND_CROSSWALK[label]
-}
-
-// UNCONFIRMED CROSSWALK — same caveat as HEALTH_BAND_CROSSWALK above: the internal
-// lifecycle scale (active/stable/declining/abandoned/archived) doesn't line up
-// one-to-one with Akrites' (active/inactive/deprecated/abandoned/null). Confirm
-// with Akrites/product before this ships.
-const LIFECYCLE_CROSSWALK: Record<Lifecycle, AkritesExternalLifecycle> = {
-  active: 'active',
-  stable: 'active',
-  declining: 'inactive',
-  abandoned: 'abandoned',
-  archived: 'deprecated',
+  return healthLabel != null && HEALTH_BAND_SET.has(healthLabel)
+    ? (healthLabel as HealthBand)
+    : computeHealthBand(scorecardScore)
 }
 
 function toAkritesLifecycle(lifecycleLabel: string | null): AkritesExternalLifecycle {
   if (lifecycleLabel === null || !LIFECYCLE_SET.has(lifecycleLabel)) return null
-  return LIFECYCLE_CROSSWALK[lifecycleLabel as Lifecycle]
+  return lifecycleLabel as Lifecycle
 }
 
 // Timestamptz columns arrive as the raw Postgres string (OID 1184 parser returns

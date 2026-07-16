@@ -10,18 +10,17 @@ import {
   type AdvisoryDetailBulkEntry,
   toAkritesExternalAdvisoryDetail,
 } from './akritesExternalAdvisoryDetail'
-import { normalizePurl, purlsBodySchema } from './purl'
+import { paginatePurls, paginatedPurlsBodySchema } from './purl'
 
-const bodySchema = purlsBodySchema()
+const bodySchema = paginatedPurlsBodySchema()
 
 export async function getAkritesExternalAdvisoryDetailBatch(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const { purls: rawPurls } = validateOrThrow(bodySchema, req.body)
-  // Normalize after parsing (not in the schema) so rawPurls keeps the client's
-  // original form — echoed back as requestedPurl so callers can self-correlate.
-  const normalizedPurls = rawPurls.map(normalizePurl)
+  const { page, pageSize, total, pagedPurls, normalizedPurls } = paginatePurls(
+    validateOrThrow(bodySchema, req.body),
+  )
 
   const qx = await getPackagesQx()
   const rows = await getAdvisoriesByPurls(qx, normalizedPurls)
@@ -35,7 +34,7 @@ export async function getAkritesExternalAdvisoryDetailBatch(
     else byPurl.set(row.purl, [row])
   }
 
-  const results: AdvisoryDetailBulkEntry[] = rawPurls.map((requestedPurl, i) => {
+  const results: AdvisoryDetailBulkEntry[] = pagedPurls.map((requestedPurl, i) => {
     const purlRows = byPurl.get(normalizedPurls[i])
     return {
       requestedPurl,
@@ -44,5 +43,5 @@ export async function getAkritesExternalAdvisoryDetailBatch(
     }
   })
 
-  ok(res, { results })
+  ok(res, { page, pageSize, total, results })
 }
