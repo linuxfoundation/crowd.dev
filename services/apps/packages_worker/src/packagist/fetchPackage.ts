@@ -1,3 +1,5 @@
+import { Agent, type Dispatcher } from 'undici'
+
 import type {
   FetchError,
   P2Metadata,
@@ -5,6 +7,14 @@ import type {
   PackagistMinifiedVersion,
   PackagistStatsJson,
 } from './types'
+
+// Shared dispatcher for all packagist fetches. autoSelectFamily races IPv4/IPv6
+// (Happy Eyeballs) — without it, an environment with broken IPv6 (common in
+// containers) hangs on the first resolved AAAA address until UND_ERR_CONNECT_TIMEOUT.
+// Connect timeout stays modest; the per-request 30s abort still bounds the whole call.
+export const packagistDispatcher: Dispatcher = new Agent({
+  connect: { timeout: 15_000, autoSelectFamily: true },
+})
 
 export function buildPackagistUserAgent(): string {
   const mailto = process.env.CROWD_PACKAGES_PACKAGIST_MAILTO || 'oss-packages@linuxfoundation.org'
@@ -27,13 +37,16 @@ export async function fetchPackagistStats(name: string): Promise<PackagistStatsJ
   try {
     let res: Response
     try {
-      res = await fetch(url, {
+      // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
+      const init: RequestInit & { dispatcher?: Dispatcher } = {
         headers: {
           Accept: 'application/json',
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
-      })
+        dispatcher: packagistDispatcher,
+      }
+      res = await fetch(url, init as RequestInit)
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
@@ -81,10 +94,12 @@ export async function fetchPackagistP2(
 
     let res: Response
     try {
-      res = await fetch(url, {
+      const init: RequestInit & { dispatcher?: Dispatcher } = {
         headers,
         signal: abort.signal,
-      })
+        dispatcher: packagistDispatcher,
+      }
+      res = await fetch(url, init as RequestInit)
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }

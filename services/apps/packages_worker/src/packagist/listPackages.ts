@@ -1,4 +1,6 @@
-import { buildPackagistUserAgent, describeFetchFailure } from './fetchPackage'
+import type { Dispatcher } from 'undici'
+
+import { buildPackagistUserAgent, describeFetchFailure, packagistDispatcher } from './fetchPackage'
 import type { FetchError } from './types'
 
 const PACKAGIST_LIST = 'https://packagist.org/packages/list.json'
@@ -72,13 +74,15 @@ export async function fetchPackagistPackageList(): Promise<unknown | FetchError>
   try {
     let res: Response
     try {
-      res = await fetch(PACKAGIST_LIST, {
+      const init: RequestInit & { dispatcher?: Dispatcher } = {
         headers: {
           Accept: 'application/json',
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
-      })
+        dispatcher: packagistDispatcher,
+      }
+      res = await fetch(PACKAGIST_LIST, init as RequestInit)
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
