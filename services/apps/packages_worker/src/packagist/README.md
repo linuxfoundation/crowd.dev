@@ -20,25 +20,31 @@ Shared design notes:
   (`repo.packagist.org/p2/{vendor}/{name}.json`, CDN-served, the same file
   Composer clients resolve) carries the version manifests: every tagged
   release with its `require`/`require-dev`, licenses, homepage.
-- **Politeness.** Bounded concurrency per Packagist's guidelines — max 10
-  in-flight dynamic requests (their published limit; running hotter gets
-  connections reset). Since every lane's ingest starts with a dynamic fetch,
-  all lanes run at that cap (env-tunable downward, hard-capped at 10); the
-  p2 fetches inside the metadata lane inherit it, well under p2's own 20.
-  User-Agent carries a `mailto=` contact
-  (`CROWD_PACKAGES_PACKAGIST_MAILTO`). Cron minutes are deliberately off `:00`.
-  p2 fetches replay the stored `Last-Modified` as `If-Modified-Since`; a `304`
-  records the run without re-downloading or re-parsing.
+- **Politeness.** Bounded concurrency per Packagist's own published etiquette
+  guideline ([packagist.org/apidoc](https://packagist.org/apidoc)): max 10
+  concurrent requests, 20 if static-file-only. Their docs state this as "be a
+  good citizen," not a documented enforcement mechanism — we don't have a
+  citation for what happens above it, so treat 10 as the number to respect,
+  not a proven "or else". Since every lane's ingest starts with a dynamic
+  fetch, all lanes run at that stricter cap anyway (env-tunable downward,
+  hard-capped at 10); the p2 fetches inside the metadata lane inherit it,
+  well under p2's own 20. User-Agent carries a `mailto=` contact
+  (`CROWD_PACKAGES_PACKAGIST_MAILTO`) — their docs say a missing one risks an
+  IP block. Cron minutes are deliberately off `:00` (their docs also flag
+  hourly traffic peaks at `XX:00`). p2 fetches replay the stored
+  `Last-Modified` as `If-Modified-Since`; a `304` records the run without
+  re-downloading or re-parsing.
 - **Watermark-driven drains.** Each lane tracks its own per-purl watermark +
   run result in `packagist_package_state` (`metadata_last_run_at` /
   `downloads_30d_last_run_at` / `daily_downloads_last_run_at`, each with a
   `*_run_result` JSONB). Workflows drain in `continueAsNew` rounds (20 × 50),
   so an interrupted run resumes where it left off on the next launch.
-- **Error handling.** 404 → mark the lane's watermark with an error result,
-  skip, don't retry. Malformed body/shape → 3 fast in-lane retries (1s linear
-  backoff), then mark errored and move on. 429/5xx/network/timeout → throw and
-  ride Temporal's exponential activity retry (5 attempts, lockstep with the
-  per-item give-up so one bad package can never stall a drain).
+- **Error handling.** 404 or malformed body/shape → 3 fast in-lane retries
+  (1s linear backoff), then mark the lane's watermark with an error result and
+  move on — `isClientError()` treats 404 the same as any other non-429 4xx, so
+  there's no zero-retry fast path for it specifically. 429/5xx/network/timeout
+  → throw and ride Temporal's exponential activity retry (5 attempts, lockstep
+  with the per-item give-up so one bad package can never stall a drain).
 - **Tier scoping.** Discovery, package info, repo links, versions, and
   dependencies cover **all** packages (deliberate divergence from pypi — see
   ADR-0006). Only `downloads_daily` and maintainers are
