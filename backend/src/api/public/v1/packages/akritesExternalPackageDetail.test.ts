@@ -48,19 +48,19 @@ describe('toAkritesExternalPackageDetail', () => {
   it('maps a well-formed row to the akrites-external shape', () => {
     const result = toAkritesExternalPackageDetail(baseRow())
     expect(result.purl).toBe('pkg:npm/lodash')
-    expect(result.health.band).toBe('high')
+    expect(result.health.band).toBe('healthy')
     expect(result.riskSignals.lifecycle).toBe('active')
     expect(result.impact.score).toBe(50)
   })
 
   it('falls back to computeHealthBand(scorecardScore) for an unrecognized (non-null) healthLabel', () => {
-    // scorecardScore 7.5 -> computeHealthBand() returns 'healthy' -> crosswalk 'high'.
-    // A naive `?? computeHealthBand(...)` (bug fixed in code review) would have
-    // trusted 'not-a-real-label' as-is and returned 'critical' instead.
+    // scorecardScore 7.5 -> computeHealthBand() returns 'healthy'. A naive
+    // `?? computeHealthBand(...)` (bug fixed in code review) would have trusted
+    // 'not-a-real-label' as-is and returned it verbatim instead.
     const result = toAkritesExternalPackageDetail(
       baseRow({ healthLabel: 'not-a-real-label', scorecardScore: 7.5 }),
     )
-    expect(result.health.band).toBe('high')
+    expect(result.health.band).toBe('healthy')
   })
 
   it('falls back to computeHealthBand(scorecardScore) when healthLabel is null', () => {
@@ -68,12 +68,12 @@ describe('toAkritesExternalPackageDetail', () => {
     expect(result.health.band).toBe('critical')
   })
 
-  it('maps every known internal health label through the crosswalk', () => {
+  it('returns every known internal health label verbatim', () => {
     expect(toAkritesExternalPackageDetail(baseRow({ healthLabel: 'excellent' })).health.band).toBe(
-      'high',
+      'excellent',
     )
     expect(toAkritesExternalPackageDetail(baseRow({ healthLabel: 'concerning' })).health.band).toBe(
-      'low',
+      'concerning',
     )
     expect(toAkritesExternalPackageDetail(baseRow({ healthLabel: 'critical' })).health.band).toBe(
       'critical',
@@ -85,13 +85,13 @@ describe('toAkritesExternalPackageDetail', () => {
     expect(result.riskSignals.lifecycle).toBeNull()
   })
 
-  it('maps lifecycle labels not present verbatim in the external enum (stable, archived)', () => {
+  it('returns internal lifecycle labels verbatim (stable, archived)', () => {
     expect(
       toAkritesExternalPackageDetail(baseRow({ lifecycleLabel: 'stable' })).riskSignals.lifecycle,
-    ).toBe('active')
+    ).toBe('stable')
     expect(
       toAkritesExternalPackageDetail(baseRow({ lifecycleLabel: 'archived' })).riskSignals.lifecycle,
-    ).toBe('deprecated')
+    ).toBe('archived')
   })
 
   it('normalizes raw timestamptz strings (not Date objects) to ISO 8601', () => {

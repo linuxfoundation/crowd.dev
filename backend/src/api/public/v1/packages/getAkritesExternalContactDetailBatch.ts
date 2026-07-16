@@ -13,25 +13,24 @@ import {
   type ContactDetailBulkEntry,
   toAkritesExternalContactDetail,
 } from './akritesExternalContactDetail'
-import { normalizePurl, purlsBodySchema } from './purl'
+import { paginatePurls, paginatedPurlsBodySchema } from './purl'
 
-const bodySchema = purlsBodySchema()
+const bodySchema = paginatedPurlsBodySchema()
 
 export async function getAkritesExternalContactDetailBatch(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const { purls: rawPurls } = validateOrThrow(bodySchema, req.body)
-  // Normalize after parsing (not in the schema) so rawPurls keeps the client's
-  // original form — echoed back as requestedPurl so callers can self-correlate.
-  const normalizedPurls = rawPurls.map(normalizePurl)
+  const { page, pageSize, total, pagedPurls, normalizedPurls } = paginatePurls(
+    validateOrThrow(bodySchema, req.body),
+  )
 
   const qx = await getPackagesQx()
   const rows = await getContactDetailsByPurls(qx, normalizedPurls)
 
   const byPurl = new Map<string, AkritesExternalContactDetailRow>(rows.map((r) => [r.purl, r]))
 
-  const results: ContactDetailBulkEntry[] = rawPurls.map((requestedPurl, i) => {
+  const results: ContactDetailBulkEntry[] = pagedPurls.map((requestedPurl, i) => {
     const row = byPurl.get(normalizedPurls[i])
     return {
       requestedPurl,
@@ -40,5 +39,5 @@ export async function getAkritesExternalContactDetailBatch(
     }
   })
 
-  ok(res, { results })
+  ok(res, { page, pageSize, total, results })
 }

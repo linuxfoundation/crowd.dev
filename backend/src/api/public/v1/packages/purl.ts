@@ -58,3 +58,45 @@ export function purlsBodySchema(max: number = MAX_PURLS_PER_BATCH) {
     purls: z.array(purlArrayItemSchema).min(1).max(max, `Maximum ${max} purls per request`),
   })
 }
+
+export const DEFAULT_BATCH_PAGE_SIZE = 20
+
+// Batch endpoints resolve the exact purls the client sends, then return one page of
+// results (request order). page/pageSize mirror the GET /packages list contract;
+// pageSize caps at the batch max so a single page can still cover a full request.
+export function paginatedPurlsBodySchema(max: number = MAX_PURLS_PER_BATCH) {
+  return purlsBodySchema(max).extend({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(max).default(DEFAULT_BATCH_PAGE_SIZE),
+  })
+}
+
+export interface PaginatedPurls {
+  page: number
+  pageSize: number
+  total: number
+  // The client's original (un-normalized) purls for the requested page — echoed
+  // back as requestedPurl so callers can self-correlate.
+  pagedPurls: string[]
+  // normalizedPurls[i] corresponds to pagedPurls[i]; used for the DB lookup.
+  normalizedPurls: string[]
+}
+
+// Slice the requested page out of a parsed paginatedPurlsBodySchema body and normalize
+// only that page's purls, so a single page never resolves the whole batch.
+export function paginatePurls(body: {
+  purls: string[]
+  page: number
+  pageSize: number
+}): PaginatedPurls {
+  const { purls, page, pageSize } = body
+  const start = (page - 1) * pageSize
+  const pagedPurls = purls.slice(start, start + pageSize)
+  return {
+    page,
+    pageSize,
+    total: purls.length,
+    pagedPurls,
+    normalizedPurls: pagedPurls.map(normalizePurl),
+  }
+}
