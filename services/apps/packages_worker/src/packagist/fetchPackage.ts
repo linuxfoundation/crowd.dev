@@ -12,8 +12,12 @@ import type {
 // (Happy Eyeballs) — without it, an environment with broken IPv6 (common in
 // containers) hangs on the first resolved AAAA address until UND_ERR_CONNECT_TIMEOUT.
 // Connect timeout stays modest; the per-request 30s abort still bounds the whole call.
+// `connections` caps sockets per origin at the crawl concurrency, so bursts queue on
+// warm keep-alive connections instead of opening fresh ones — connection setup is
+// where the intermittent UND_ERR_CONNECT_TIMEOUTs were observed under load.
 export const packagistDispatcher: Dispatcher = new Agent({
   connect: { timeout: 15_000, autoSelectFamily: true },
+  connections: 10,
 })
 
 export function buildPackagistUserAgent(): string {
