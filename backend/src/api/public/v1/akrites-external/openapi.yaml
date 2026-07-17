@@ -86,13 +86,10 @@ components:
 
     HealthBand:
       type: string
-      enum: [critical, low, medium, high]
+      enum: [excellent, healthy, fair, concerning, critical]
       description: >
-        UNCONFIRMED CROSSWALK — the internal health scale is
-        excellent/healthy/fair/concerning/critical (good→bad); there is no
-        agreed mapping to this critical/low/medium/high scale yet. See
-        HEALTH_BAND_CROSSWALK in akritesExternalPackageDetail.ts. Confirm
-        with Akrites/product before relying on exact band values.
+        Health band on the internal scale (best→worst), returned verbatim —
+        no external crosswalk.
 
     PackageDetail:
       type: object
@@ -192,12 +189,11 @@ components:
           properties:
             lifecycle:
               type: string
-              enum: [active, inactive, deprecated, abandoned, null]
+              enum: [active, stable, declining, abandoned, archived, null]
               nullable: true
               description: >
-                UNCONFIRMED CROSSWALK from the internal
-                active/stable/declining/abandoned/archived scale — see
-                LIFECYCLE_CROSSWALK in akritesExternalPackageDetail.ts.
+                Lifecycle stage on the internal scale, returned verbatim — no
+                external crosswalk. Null when unknown or unrecognized.
             maintainerBusFactor:
               type: integer
               nullable: true
@@ -372,13 +368,12 @@ components:
 
     OverallConfidenceBand:
       type: string
-      enum: [HIGH, MEDIUM, LOW, NONE]
+      enum: [PRIMARY, SECONDARY, FALLBACK, NONE]
       description: >
-        Aggregate confidence, derived from the highest-scoring contact.
-        UNCONFIRMED CROSSWALK: the internal aggregate band is
-        PRIMARY/SECONDARY/FALLBACK/NONE; this HIGH/MEDIUM/LOW/NONE scale is a
-        4→4 tier rename (PRIMARY→HIGH, …) pending confirmation with Akrites —
-        see OVERALL_CONFIDENCE_CROSSWALK in akritesExternalContactDetail.ts.
+        Aggregate confidence, derived from the highest-scoring contact. Uses the
+        internal SecurityContact confidence scale, returned verbatim — same scale
+        as ContactConfidenceBand, no external crosswalk. NONE when there are no
+        contacts.
 
     SecurityContact:
       type: object
@@ -646,15 +641,31 @@ paths:
                   maxItems: 100
                   items:
                     type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
       responses:
         '200':
-          description: Results in the same order as the request.
+          description: One page of results, in request order.
           content:
             application/json:
               schema:
                 type: object
-                required: [results]
+                required: [page, pageSize, total, results]
                 properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
                   results:
                     type: array
                     items:
@@ -747,15 +758,31 @@ paths:
                   maxItems: 100
                   items:
                     type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
       responses:
         '200':
-          description: Results in the same order as the request.
+          description: One page of results, in request order.
           content:
             application/json:
               schema:
                 type: object
-                required: [results]
+                required: [page, pageSize, total, results]
                 properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
                   results:
                     type: array
                     items:
@@ -851,15 +878,31 @@ paths:
                   maxItems: 100
                   items:
                     type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
       responses:
         '200':
-          description: Results in the same order as the request.
+          description: One page of results, in request order.
           content:
             application/json:
               schema:
                 type: object
-                required: [results]
+                required: [page, pageSize, total, results]
                 properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
                   results:
                     type: array
                     items:

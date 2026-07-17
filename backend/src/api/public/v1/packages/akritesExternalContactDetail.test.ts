@@ -57,12 +57,12 @@ describe('toAkritesExternalContactDetail', () => {
     ])
   })
 
-  it('derives overallConfidenceBand from the highest-scoring contact and crosswalks it', () => {
-    // max score 0.94 -> PRIMARY -> HIGH (not SECONDARY/MEDIUM from the other contact).
-    expect(toAkritesExternalContactDetail(baseRow()).overallConfidenceBand).toBe('HIGH')
+  it('derives overallConfidenceBand from the highest-scoring contact, returned verbatim', () => {
+    // max score 0.94 -> PRIMARY (not SECONDARY from the other, lower-scoring contact).
+    expect(toAkritesExternalContactDetail(baseRow()).overallConfidenceBand).toBe('PRIMARY')
   })
 
-  it('crosswalks each internal band to the contract scale', () => {
+  it('returns the aggregate band on the internal scale (no crosswalk)', () => {
     const band = (confidence: string, score: number) =>
       toAkritesExternalContactDetail(
         baseRow({
@@ -77,8 +77,8 @@ describe('toAkritesExternalContactDetail', () => {
           ],
         }),
       ).overallConfidenceBand
-    expect(band('SECONDARY', 0.6)).toBe('MEDIUM')
-    expect(band('FALLBACK', 0.4)).toBe('LOW')
+    expect(band('SECONDARY', 0.6)).toBe('SECONDARY')
+    expect(band('FALLBACK', 0.4)).toBe('FALLBACK')
   })
 
   it('returns NONE band and an empty array when there are no contacts', () => {
