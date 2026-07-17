@@ -7,7 +7,12 @@ const PACKAGIST_LIST = 'https://packagist.org/packages/list.json'
 // Non-backtracking form: a mandatory separator per repetition (vs. an optional one)
 // removes the ambiguity that let the old `([_.-]?[a-z0-9]+)*` pattern backtrack
 // exponentially on a long run of the same character class (CodeQL js/redos).
-const COMPOSER_NAME_REGEX = /^[a-z0-9]+(?:[_.-][a-z0-9]+)*$/
+// Vendor and project segments have different rules per Composer's own name spec: the
+// vendor allows only a single separator between alnum runs, but the project segment
+// additionally allows up to two consecutive hyphens (e.g. `vendor/my--package` is a
+// valid, real Composer name) — verified against Composer's ArrayLoader name pattern.
+const COMPOSER_VENDOR_REGEX = /^[a-z0-9]+(?:[_.-][a-z0-9]+)*$/
+const COMPOSER_PROJECT_REGEX = /^[a-z0-9]+(?:(?:[_.]|-{1,2})[a-z0-9]+)*$/
 
 export interface PackagistListEntry {
   vendor: string
@@ -41,13 +46,13 @@ export function parsePackagistPackageList(json: unknown): {
     const lowercased = item.toLowerCase()
     const parts = lowercased.split('/')
 
-    // Validate: exactly one slash, each side non-empty and matches composer name pattern
+    // Validate: exactly one slash, each side non-empty and matches its composer name pattern
     if (
       parts.length !== 2 ||
       !parts[0] ||
       !parts[1] ||
-      !COMPOSER_NAME_REGEX.test(parts[0]) ||
-      !COMPOSER_NAME_REGEX.test(parts[1])
+      !COMPOSER_VENDOR_REGEX.test(parts[0]) ||
+      !COMPOSER_PROJECT_REGEX.test(parts[1])
     ) {
       invalid++
       continue

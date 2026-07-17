@@ -30,6 +30,16 @@ describe('parsePackagistPackageList', () => {
     ])
   })
 
+  it('accepts up to two consecutive hyphens in the project segment only', () => {
+    // Composer's own name spec allows `-{1,2}` as a separator in the project segment
+    // but only a single separator in the vendor segment.
+    const { entries, invalid } = parsePackagistPackageList({
+      packageNames: ['vendor/my--package', 'vendor/my---package', 'my--vendor/package'],
+    })
+    expect(entries.map((e) => e.purl)).toEqual(['pkg:composer/vendor/my--package'])
+    expect(invalid).toBe(2)
+  })
+
   it('skips and counts invalid names', () => {
     const { entries, invalid } = parsePackagistPackageList({
       packageNames: [
@@ -51,6 +61,15 @@ describe('parsePackagistPackageList', () => {
     // CodeQL js/redos: a long run of one char class followed by a char that breaks
     // the match is the classic trigger for exponential backtracking.
     const pathological = 'vendor/' + '0'.repeat(50) + '!'
+    const start = Date.now()
+    const { entries, invalid } = parsePackagistPackageList({ packageNames: [pathological] })
+    expect(Date.now() - start).toBeLessThan(200)
+    expect(entries).toEqual([])
+    expect(invalid).toBe(1)
+  })
+
+  it('rejects a long run of hyphens without catastrophic backtracking (project -{1,2} alternative)', () => {
+    const pathological = 'a' + '-'.repeat(50) + '!/name'
     const start = Date.now()
     const { entries, invalid } = parsePackagistPackageList({ packageNames: [pathological] })
     expect(Date.now() - start).toBeLessThan(200)
