@@ -60,17 +60,19 @@ SQL >
 
 NODE org_page_kpis_critical_projects
 DESCRIPTION >
-    Count of distinct projects (segmentIds) an org contributed to in the last 730 days (2 years).
+    Count of distinct projects (segmentIds) an org made code contributions to in the last 730 days (2 years).
     Serves as the "critical projects" placeholder until a real criticality filter is added.
 
 SQL >
-    SELECT organizationId, uniq(segmentId) AS criticalProjects
-    FROM activityRelations_deduplicated_cleaned_bucket_union
+    SELECT ar.organizationId, uniq(ar.segmentId) AS criticalProjects
+    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+    INNER JOIN
+        org_page_kpis_code_activity_types at ON ar.type = at.activityType AND ar.platform = at.platform
     WHERE
-        organizationId != ''
-        AND timestamp >= toStartOfDay(now() - toIntervalDay(730))
-        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
-    GROUP BY organizationId
+        ar.organizationId != ''
+        AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(730))
+        AND ar.timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY ar.organizationId
 
 NODE org_page_kpis_final
 DESCRIPTION >
