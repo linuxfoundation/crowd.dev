@@ -32,6 +32,21 @@ export async function getOrCreateRepoByUrl(
   return { id: row.id, changedFields: [] }
 }
 
+// Removes a package's previous 'declared' repo link when its manifest no longer resolves
+// to a trusted repo (the field was removed, or no longer canonicalizes). Only touches
+// 'declared' — other sources (deps_dev, heuristic, manual) are owned by different
+// pipelines and left alone.
+export async function removeDeclaredPackageRepo(
+  qx: QueryExecutor,
+  packageId: string,
+): Promise<string[]> {
+  const rowCount = await qx.result(
+    `DELETE FROM package_repos WHERE package_id = $(packageId)::bigint AND source = 'declared'`,
+    { packageId },
+  )
+  return rowCount > 0 ? ['package_repos.repo_id'] : []
+}
+
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
