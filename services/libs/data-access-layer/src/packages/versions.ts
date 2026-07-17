@@ -153,10 +153,11 @@ export async function upsertPackagistVersions(
   // Clear a stale is_latest on every OTHER version of this package. Anchored on the declared
   // latest (latestNumber) — NOT on what's in this batch — so a previously-latest version whose
   // records were updated differently can't keep is_latest = true alongside the new latest. When
-  // no latest is known, leave flags untouched rather than wipe all.
+  // no latest is known, leave flags untouched rather than wipe all. last_synced_at must move too
+  // — it's the Tinybird ENGINE_VER, and this row's is_latest is a real change.
   if (latestNumber != null) {
     await qx.result(
-      `UPDATE versions SET is_latest = false
+      `UPDATE versions SET is_latest = false, last_synced_at = NOW()
          WHERE package_id = $(packageId)::bigint
            AND is_latest = true
            AND number <> $(latestNumber)`,
