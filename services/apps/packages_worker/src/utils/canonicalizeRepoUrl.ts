@@ -32,8 +32,10 @@ const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
  * Shared across the registry sub-workers (npm, Maven, …) and the GitHub
  * enricher so `repos.url` keys never diverge per ADR 0001. Handles npm
  * shorthand (`github:owner/repo`, bare `owner/repo`), SSH scp form, `ssh://`,
- * `git+`, `git://`, `www.`, and monorepo `/tree/<branch>/<path>` deep-links
- * (only the first two path segments are kept). Returns null when the input
+ * `git+`, `git://`, `www.`, and monorepo deep-links: GitHub/Bitbucket's bare
+ * `/tree/<branch>/<path>` (only the first two path segments are kept) and
+ * GitLab's `/-/tree/<branch>/<path>` (kept segments run up to the `/-/`,
+ * preserving arbitrarily nested subgroups). Returns null when the input
  * cannot be reduced to an owner/name pair.
  */
 export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
@@ -80,8 +82,22 @@ export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
   if (segments.length < 2) return null
 
   const isKnownHost = hostname in HOST_ENUM
-  let ownerPath = isKnownHost ? [segments[0]] : segments.slice(0, -1)
-  let name = (isKnownHost ? segments[1] : segments[segments.length - 1]).replace(/\.git$/, '')
+  // GitLab uniquely supports arbitrarily nested subgroups (group/subgroup/.../project),
+  // unlike GitHub/Bitbucket's flat owner/repo. Its deep-link suffixes (tree, blob, issues,
+  // merge_requests, ...) are marked off by a `/-/` path segment rather than appended
+  // directly after the repo path, so split there instead of truncating to 2 segments.
+  let pathSegments: string[]
+  if (hostname === 'gitlab.com') {
+    const dashIdx = segments.indexOf('-')
+    pathSegments = dashIdx === -1 ? segments : segments.slice(0, dashIdx)
+  } else if (isKnownHost) {
+    pathSegments = segments.slice(0, 2)
+  } else {
+    pathSegments = segments
+  }
+
+  let ownerPath = pathSegments.slice(0, -1)
+  let name = (pathSegments[pathSegments.length - 1] ?? '').replace(/\.git$/, '')
   if (!name || ownerPath.length === 0 || ownerPath.some((seg) => !seg)) return null
 
   if (CASE_INSENSITIVE_HOSTS.has(hostname)) {

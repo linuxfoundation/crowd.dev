@@ -29,6 +29,26 @@ describe('canonicalizeRepoUrl', () => {
       'github',
     ],
     ['ssh://git@github.com:2222/foo/bar.git', 'https://github.com/foo/bar', 'github'],
+    [
+      'https://gitlab.com/group/subgroup/project',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/subsubgroup/project.git',
+      'https://gitlab.com/group/subgroup/subsubgroup/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/project/-/tree/master/src',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/project/-/blob/main/README.md',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
   ])('canonicalizes %s', (input, expectedUrl, expectedHost) => {
     expect(canonicalizeRepoUrl(input)).toEqual({ url: expectedUrl, host: expectedHost })
   })
