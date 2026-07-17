@@ -28,6 +28,7 @@ interface MetadataState {
 
 interface DownloadsState {
   cutoff?: string
+  cursor?: string
 }
 
 export async function seedPackagistPackages(): Promise<void> {
@@ -79,17 +80,23 @@ export async function ingestPackagistMetadata(state: MetadataState = {}): Promis
 // due-selection drains the whole universe exactly once per cron fire.
 export async function ingestPackagistDownloads30d(state: DownloadsState = {}): Promise<void> {
   const cutoff = state.cutoff ?? (await acts.packagistCurrentTimestamp())
+  // Packagist's monthly window is labeled by calendar month (see downloads.ts), so the
+  // write-date must come from the run's fixed cutoff — a drain that runs past real UTC
+  // midnight on the 1st must not let later batches slide into the next month's window.
+  const runDate = cutoff.slice(0, 10)
+  let cursor = state.cursor || ''
   const stopAfterFirstPage = await acts.packagistStopAfterFirstPage()
 
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const purls = await acts.getPackagist30dBatch(cutoff, INGEST_BATCH)
+    const { purls, nextCursor } = await acts.getPackagist30dBatch(cutoff, cursor, INGEST_BATCH)
     if (purls.length === 0) return
-    await acts.ingestPackagist30dBatch(purls)
+    await acts.ingestPackagist30dBatch(purls, runDate)
+    cursor = nextCursor
     if (stopAfterFirstPage) return
     if (purls.length < INGEST_BATCH) return
   }
 
-  await continueAsNew<typeof ingestPackagistDownloads30d>({ cutoff })
+  await continueAsNew<typeof ingestPackagistDownloads30d>({ cutoff, cursor })
 }
 
 // Daily downloads capture for the critical slice.
@@ -101,15 +108,21 @@ export async function ingestPackagistDownloadsDaily(state: DownloadsState = {}):
   // derive the write-date from the run's fixed cutoff instead of re-reading the clock
   // per batch, so a drain that runs past UTC midnight still tags every row consistently.
   const runDate = cutoff.slice(0, 10)
+  let cursor = state.cursor || ''
   const stopAfterFirstPage = await acts.packagistStopAfterFirstPage()
 
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const candidates = await acts.getPackagistDailyBatch(cutoff, INGEST_BATCH)
+    const { candidates, nextCursor } = await acts.getPackagistDailyBatch(
+      cutoff,
+      cursor,
+      INGEST_BATCH,
+    )
     if (candidates.length === 0) return
     await acts.ingestPackagistDailyBatch(candidates, runDate)
+    cursor = nextCursor
     if (stopAfterFirstPage) return
     if (candidates.length < INGEST_BATCH) return
   }
 
-  await continueAsNew<typeof ingestPackagistDownloadsDaily>({ cutoff })
+  await continueAsNew<typeof ingestPackagistDownloadsDaily>({ cutoff, cursor })
 }

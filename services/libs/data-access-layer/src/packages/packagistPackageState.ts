@@ -69,6 +69,7 @@ export async function getPackagistMetadataDuePurls(
 export async function getPackagist30dDuePurls(
   qx: QueryExecutor,
   cutoff: string,
+  afterPurl: string,
   batchSize: number,
 ): Promise<string[]> {
   const rows: Array<{ purl: string }> = await qx.select(
@@ -76,13 +77,14 @@ export async function getPackagist30dDuePurls(
        FROM packages p
        LEFT JOIN packagist_package_state s ON s.purl = p.purl
       WHERE p.ecosystem = 'packagist'
+        AND p.purl > $(afterPurl)
         AND (
           s.downloads_30d_last_run_at IS NULL
           OR s.downloads_30d_last_run_at < $(cutoff)::timestamptz
         )
-      ORDER BY s.downloads_30d_last_run_at ASC NULLS FIRST, p.purl
+      ORDER BY p.purl
       LIMIT $(batchSize)`,
-    { cutoff, batchSize },
+    { cutoff, afterPurl, batchSize },
   )
   return rows.map((r) => r.purl)
 }
@@ -105,6 +107,7 @@ export async function markPackagist30dProcessed(
 export async function getPackagistDailyDownloadsDue(
   qx: QueryExecutor,
   cutoff: string,
+  afterPurl: string,
   batchSize: number,
 ): Promise<PackagistDailyCandidate[]> {
   const rows: Array<{ purl: string; package_id: string }> = await qx.select(
@@ -113,13 +116,14 @@ export async function getPackagistDailyDownloadsDue(
        LEFT JOIN packagist_package_state s ON s.purl = p.purl
       WHERE p.ecosystem = 'packagist'
         AND p.is_critical = TRUE
+        AND p.purl > $(afterPurl)
         AND (
           s.daily_downloads_last_run_at IS NULL
           OR s.daily_downloads_last_run_at < $(cutoff)::timestamptz
         )
-      ORDER BY s.daily_downloads_last_run_at ASC NULLS FIRST, p.purl
+      ORDER BY p.purl
       LIMIT $(batchSize)`,
-    { cutoff, batchSize },
+    { cutoff, afterPurl, batchSize },
   )
   return rows.map((r) => ({ purl: r.purl, packageId: r.package_id }))
 }

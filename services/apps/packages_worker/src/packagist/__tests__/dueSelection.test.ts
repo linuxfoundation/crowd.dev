@@ -102,17 +102,19 @@ describe('markPackagistMetadataScanned', () => {
 // Monthly downloads-30d lane: npm-style breadth — every package is due once per run
 // (watermark older than the run's cutoff, or never run).
 describe('getPackagist30dDuePurls / markPackagist30dProcessed', () => {
-  it('selects packagist purls whose 30d watermark is older than the cutoff', async () => {
+  it('selects packagist purls whose 30d watermark is older than the cutoff, keyset-paginated by purl', async () => {
     qx.select.mockResolvedValue([{ purl: 'pkg:composer/a/x' }])
 
-    const purls = await getPackagist30dDuePurls(asQx(qx), '2026-07-01T03:53:00Z', 50)
+    const purls = await getPackagist30dDuePurls(asQx(qx), '2026-07-01T03:53:00Z', '', 50)
 
     expect(purls).toEqual(['pkg:composer/a/x'])
     const [sql, params] = qx.select.mock.calls[0]
     expect(sql).toMatch(/ecosystem = 'packagist'/)
     expect(sql).toMatch(/downloads_30d_last_run_at/)
+    expect(sql).toMatch(/p\.purl > \$\(afterPurl\)/)
+    expect(sql).toMatch(/ORDER BY\s+p\.purl/i)
     expect(sql).toMatch(/LIMIT/i)
-    expect(params).toMatchObject({ cutoff: '2026-07-01T03:53:00Z', batchSize: 50 })
+    expect(params).toMatchObject({ cutoff: '2026-07-01T03:53:00Z', afterPurl: '', batchSize: 50 })
   })
 
   it('bumps the 30d watermark with the run result', async () => {
@@ -136,17 +138,19 @@ describe('getPackagist30dDuePurls / markPackagist30dProcessed', () => {
 // Daily downloads lane: critical slice only, cutoff watermark, returns the package id
 // the downloads_daily insert needs.
 describe('getPackagistDailyDownloadsDue / markPackagistDailyProcessed', () => {
-  it('selects critical packagist packages due for a daily capture, with their ids', async () => {
+  it('selects critical packagist packages due for a daily capture, keyset-paginated by purl', async () => {
     qx.select.mockResolvedValue([{ purl: 'pkg:composer/a/x', package_id: '7' }])
 
-    const due = await getPackagistDailyDownloadsDue(asQx(qx), '2026-07-15T06:23:00Z', 50)
+    const due = await getPackagistDailyDownloadsDue(asQx(qx), '2026-07-15T06:23:00Z', '', 50)
 
     expect(due).toEqual([{ purl: 'pkg:composer/a/x', packageId: '7' }])
     const [sql, params] = qx.select.mock.calls[0]
     expect(sql).toMatch(/ecosystem = 'packagist'/)
     expect(sql).toMatch(/is_critical/)
     expect(sql).toMatch(/daily_downloads_last_run_at/)
-    expect(params).toMatchObject({ cutoff: '2026-07-15T06:23:00Z', batchSize: 50 })
+    expect(sql).toMatch(/p\.purl > \$\(afterPurl\)/)
+    expect(sql).toMatch(/ORDER BY\s+p\.purl/i)
+    expect(params).toMatchObject({ cutoff: '2026-07-15T06:23:00Z', afterPurl: '', batchSize: 50 })
   })
 
   it('bumps the daily watermark with the run result', async () => {

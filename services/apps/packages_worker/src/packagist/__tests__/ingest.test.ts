@@ -343,7 +343,31 @@ describe('ingestPackagistItemsConcurrently', () => {
     const ingest = makeIngest()
     const onGiveUp = vi.fn().mockResolvedValue(undefined)
 
-    await expect(ingestPackagistItemsConcurrently(items, 1, 2, ingest, onGiveUp)).rejects.toThrow()
+    await expect(ingestPackagistItemsConcurrently(items, 1, 2, ingest, onGiveUp)).rejects.toThrow(
+      'transient',
+    )
+    expect(onGiveUp).not.toHaveBeenCalled()
+    // every item — including ones scheduled after 'bad' — must get a genuine attempt
+    // this round; `attempt` tracks the whole batch, not each item, so a rethrow from
+    // inside the concurrency pool must never starve later items of their own try.
+    expect(ingest).toHaveBeenCalledTimes(6)
+  })
+
+  it('still attempts every later item when the FIRST item in the batch fails (sequential, deterministic)', async () => {
+    const ingest = vi.fn((item: string) =>
+      item === 'bad' ? Promise.reject(new Error('transient')) : Promise.resolve(),
+    )
+    const onGiveUp = vi.fn().mockResolvedValue(undefined)
+
+    // concurrency=1 forces full sequencing: mapWithConcurrency awaits each item's
+    // settlement (including the old code's rethrow-triggered `failed=true`) before
+    // ever considering the next index, so this deterministically proves items after
+    // the failing one still get scheduled instead of being starved.
+    await expect(
+      ingestPackagistItemsConcurrently(['bad', 'ok1', 'ok2'], 1, 1, ingest, onGiveUp),
+    ).rejects.toThrow('transient')
+
+    expect(ingest).toHaveBeenCalledTimes(3)
     expect(onGiveUp).not.toHaveBeenCalled()
   })
 

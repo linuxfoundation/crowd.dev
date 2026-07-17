@@ -258,12 +258,22 @@ export async function ingestPackagistItemsConcurrently<T>(
   ingest: (item: T) => Promise<void>,
   onGiveUp: (item: T, err: unknown) => Promise<void>,
 ): Promise<void> {
+  // mapWithConcurrency stops scheduling new items after the first rejection from the
+  // wrapped callback. `attempt` tracks the whole batch activity, not each item, so a
+  // rethrow here on an early item would starve every later item in the array of a
+  // genuine try this round. Never rethrow from inside the callback — collect the first
+  // retryable failure and decide once, after every item has actually been attempted.
+  let firstRetryableError: unknown
+
   await mapWithConcurrency(items, concurrency, async (item) => {
     try {
       await ingest(item)
     } catch (err) {
       // Retry via Temporal while attempts remain; then give up and continue
-      if (attempt < INGEST_MAX_ATTEMPTS) throw err
+      if (attempt < INGEST_MAX_ATTEMPTS) {
+        if (firstRetryableError === undefined) firstRetryableError = err
+        return
+      }
       log.warn(
         { item: String(item), attempt, err: String(err) },
         'packagist item failed after max attempts — giving up',
@@ -271,6 +281,8 @@ export async function ingestPackagistItemsConcurrently<T>(
       await onGiveUp(item, err)
     }
   })
+
+  if (firstRetryableError !== undefined) throw firstRetryableError
 }
 
 export async function runPackagistPackageSeed(): Promise<{ discovered: number; invalid: number }> {
@@ -336,15 +348,19 @@ export async function ingestPackagistMetadataBatch(
   log.info({ count: candidates.length }, 'Ingested Packagist metadata batch')
 }
 
-export async function getPackagist30dBatch(cutoff: string, batchSize: number): Promise<string[]> {
+export async function getPackagist30dBatch(
+  cutoff: string,
+  afterPurl: string,
+  batchSize: number,
+): Promise<{ purls: string[]; nextCursor: string }> {
   const qx = await getPackagesDb()
-  return getPackagist30dDuePurls(qx, cutoff, batchSize)
+  const purls = await getPackagist30dDuePurls(qx, cutoff, afterPurl, batchSize)
+  return { purls, nextCursor: purls.length ? purls[purls.length - 1] : afterPurl }
 }
 
-export async function ingestPackagist30dBatch(purls: string[]): Promise<void> {
+export async function ingestPackagist30dBatch(purls: string[], runDate: string): Promise<void> {
   if (purls.length === 0) return
   const qx = await getPackagesDb()
-  const runDate = new Date().toISOString().slice(0, 10)
   const attempt = Context.current().info.attempt
 
   await ingestPackagistItemsConcurrently(
@@ -365,10 +381,15 @@ export async function ingestPackagist30dBatch(purls: string[]): Promise<void> {
 
 export async function getPackagistDailyBatch(
   cutoff: string,
+  afterPurl: string,
   batchSize: number,
-): Promise<PackagistDailyCandidate[]> {
+): Promise<{ candidates: PackagistDailyCandidate[]; nextCursor: string }> {
   const qx = await getPackagesDb()
-  return getPackagistDailyDownloadsDue(qx, cutoff, batchSize)
+  const candidates = await getPackagistDailyDownloadsDue(qx, cutoff, afterPurl, batchSize)
+  return {
+    candidates,
+    nextCursor: candidates.length ? candidates[candidates.length - 1].purl : afterPurl,
+  }
 }
 
 export async function ingestPackagistDailyBatch(
