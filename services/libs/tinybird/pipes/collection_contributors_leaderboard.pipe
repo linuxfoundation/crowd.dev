@@ -41,8 +41,7 @@ DESCRIPTION >
 
 SQL >
     %
-    SELECT count(af.id) AS total
-    FROM activities_filtered af
+    SELECT count(af.id) AS total FROM activities_filtered af
 
 NODE collection_member_aggregates
 DESCRIPTION >

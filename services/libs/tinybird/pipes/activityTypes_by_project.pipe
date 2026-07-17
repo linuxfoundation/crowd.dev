@@ -6,6 +6,10 @@ DESCRIPTION >
     - Parameters:
     - `project`: String for project slug (e.g., 'k8s', 'tensorflow'). Passed to `segments_filtered`. Required unless `collectionSlug` is given.
     - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
+    Collection requests read from `activityRelations_deduplicated_cleaned_bucket_union` (all 10 buckets) instead
+    of `activityRelations_bucket_routing` (a single bucket, defaulting to bucket 0 when `bucketId` is not
+    injected), since a collection's member projects' segments can be routed to any of the 10 buckets - same
+    pattern as `activities_filtered.pipe`.
     - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes']). Filters activities by repository.
     - `includeCodeContributions`: Optional boolean to include code contribution activities. Defaults to 1. Set to 0 to exclude. Passed to `activityTypes_filtered`.
     - `includeCollaborations`: Optional boolean to include or exclude collaboration activities. Defaults to 0. Passed to `activityTypes_filtered`.
@@ -17,7 +21,10 @@ NODE activityTypes_by_project_0
 SQL >
     %
     SELECT DISTINCT a.type as activityType, a.platform, at.label
-    FROM activityRelations_bucket_routing a
+    FROM
+        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% else %} activityRelations_bucket_routing
+        {% end %} a
     INNER JOIN activityTypes at ON a.type = at.activityType AND a.platform = at.platform
     WHERE
         {% if defined(collectionSlug) %}

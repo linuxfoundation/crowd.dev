@@ -18,7 +18,11 @@ DESCRIPTION >
     - `platform`: Optional string filter for source platform (e.g., 'github', 'discord', 'slack')
     - `activity_type`: Optional string filter for single activity type (e.g., 'authored-commit')
     - `includeCollaborations`: Optional boolean, defaults to false - same toggle as the single-project pipe.
-    - `limit`: Optional integer, defaults to 100 - number of top contributors to rank before finding the 51% cutoff.
+    - `limit`: Optional integer for the number of top contributors to rank before finding the 51%
+    cutoff. Inherited by `collection_contributors_leaderboard` (this pipe has no default of its
+    own), whose own default is 10 if omitted - callers doing bus-factor analysis should pass
+    limit=100 explicitly (same convention as the single-project `contributor_dependency.pipe` /
+    `contributors_leaderboard.pipe` pair) to reliably reach the 51% cutoff.
     - Response: `id`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`, `contributionPercentageRunningTotal`, `totalContributorCount`
 
 TAGS "Insights, Widget", "Collection", "Contributors"
