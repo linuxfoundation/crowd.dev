@@ -163,9 +163,12 @@ export async function upsertLast30dDownload(
   )
   const changed = row.changed_fields
   if (mirrorToPackages) {
+    // last_synced_at is the Tinybird ENGINE_VER for the packages datasource — it must
+    // move whenever a real column changes, or Tinybird can keep serving a stale row.
     const rowCount = await qx.result(
       `UPDATE packages
-          SET downloads_last_30d = $(count)
+          SET downloads_last_30d = $(count),
+              last_synced_at     = NOW()
         WHERE purl = $(purl) AND downloads_last_30d IS DISTINCT FROM $(count)`,
       { count, purl },
     )
