@@ -1,0 +1,48 @@
+DESCRIPTION >
+    - `collection_contributor_dependency.pipe` serves the contributor dependency widget for a
+    collection's Contributors tab - identifies contributors whose combined contributions reach or
+    exceed 51% of total collection activity (bus factor analysis), aggregated across every project
+    in the collection.
+    - Collection-scoped counterpart to `contributor_dependency.pipe` - separate because that pipe
+    references `contributors_leaderboard` (project-only) by name, and the collection-scale
+    replacement for that table is `collection_contributors_leaderboard` (a differently-shaped
+    pipe - see its own DESCRIPTION for why a naive collectionSlug branch on the single-project
+    leaderboard pipe isn't used there either).
+    - Combines data from `collection_contributors_leaderboard` and `active_contributors` (both
+    already collectionSlug-aware) to provide dependency risk assessment at collection scale.
+    - Parameters:
+    - `collectionSlug`: Required collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`.
+    - `repos`: Optional array of repository URLs for filtering (inherited from `segments_filtered_by_collection`)
+    - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
+    - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
+    - `platform`: Optional string filter for source platform (e.g., 'github', 'discord', 'slack')
+    - `activity_type`: Optional string filter for single activity type (e.g., 'authored-commit')
+    - `includeCollaborations`: Optional boolean, defaults to false - same toggle as the single-project pipe.
+    - `limit`: Optional integer, defaults to 100 - number of top contributors to rank before finding the 51% cutoff.
+    - Response: `id`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`, `contributionPercentageRunningTotal`, `totalContributorCount`
+
+TAGS "Insights, Widget", "Collection", "Contributors"
+
+NODE collection_contributions_percentage_running_total
+SQL >
+    %
+    SELECT t.*, active_contributors.contributorCount as "totalContributorCount"
+    FROM
+        (
+            SELECT
+                id,
+                displayName,
+                githubHandleArray,
+                contributionCount,
+                contributionPercentage,
+                roles,
+                sum(contributionPercentage) OVER (
+                    ORDER BY contributionPercentage DESC, id
+                ) AS contributionPercentageRunningTotal
+            FROM collection_contributors_leaderboard
+        ) t
+    cross join active_contributors
+    WHERE
+        contributionPercentageRunningTotal <= 51
+        OR (contributionPercentageRunningTotal - contributionPercentage < 51)
+    ORDER BY contributionPercentageRunningTotal ASC
