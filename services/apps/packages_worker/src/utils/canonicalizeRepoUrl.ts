@@ -24,6 +24,22 @@ const HOST_ENUM: Record<string, RepoHost> = {
 // same repo never produces two distinct repos.url keys.
 const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
 
+// Pre-2018 GitLab URLs (and shorthand copies of them still circulating) mark deep-links
+// the same way GitHub does — appended directly after the project path, with no `/-/`
+// separator. GitLab reserves these route words at the project-slug position precisely so
+// they can never collide with a real project name (docs: user/reserved_names), so treating
+// the first one as a deep-link boundary is safe even for arbitrarily nested subgroups.
+const GITLAB_LEGACY_ROUTE_SEGMENTS = new Set([
+  'tree',
+  'blob',
+  'commits',
+  'commit',
+  'compare',
+  'issues',
+  'merge_requests',
+  'wikis',
+])
+
 /**
  * Canonicalize a source-repository URL to `{ url, host }` where url is
  * `https://<host>/<owner>/<name>` and host is the coarse classification stored
@@ -35,8 +51,10 @@ const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
  * `git+`, `git://`, `www.`, and monorepo deep-links: GitHub/Bitbucket's bare
  * `/tree/<branch>/<path>` (only the first two path segments are kept) and
  * GitLab's `/-/tree/<branch>/<path>` (kept segments run up to the `/-/`,
- * preserving arbitrarily nested subgroups). Returns null when the input
- * cannot be reduced to an owner/name pair.
+ * preserving arbitrarily nested subgroups) — plus a legacy fallback for pre-2018
+ * GitLab links with no `/-/` marker, cut at the first reserved route keyword
+ * (`tree`, `blob`, `issues`, ...) instead. Returns null when the input cannot be
+ * reduced to an owner/name pair.
  */
 export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
   let s = raw.trim().replace(/#.*$/, '')
@@ -89,7 +107,13 @@ export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
   let pathSegments: string[]
   if (hostname === 'gitlab.com') {
     const dashIdx = segments.indexOf('-')
-    pathSegments = dashIdx === -1 ? segments : segments.slice(0, dashIdx)
+    // Legacy fallback: a route keyword with no `/-/` ahead of it (index 2+, so at least
+    // group + project survive) also marks the boundary — whichever comes first wins.
+    const legacyIdx = segments.findIndex(
+      (seg, i) => i >= 2 && GITLAB_LEGACY_ROUTE_SEGMENTS.has(seg),
+    )
+    const cutIdx = [dashIdx, legacyIdx].filter((i) => i !== -1).sort((a, b) => a - b)[0]
+    pathSegments = cutIdx === undefined ? segments : segments.slice(0, cutIdx)
   } else if (isKnownHost) {
     pathSegments = segments.slice(0, 2)
   } else {

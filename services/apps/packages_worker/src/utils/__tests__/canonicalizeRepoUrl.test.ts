@@ -49,6 +49,17 @@ describe('canonicalizeRepoUrl', () => {
       'https://gitlab.com/group/subgroup/project',
       'gitlab',
     ],
+    [
+      // Pre-2018 GitLab / shorthand copies: no `/-/` marker ahead of the deep-link.
+      'https://gitlab.com/group/project/tree/master/src',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/project/blob/main/README.md',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
   ])('canonicalizes %s', (input, expectedUrl, expectedHost) => {
     expect(canonicalizeRepoUrl(input)).toEqual({ url: expectedUrl, host: expectedHost })
   })
