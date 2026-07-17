@@ -1,3 +1,5 @@
+import { type EmailReachabilityReason, classifyEmailReachability } from '@crowd/common'
+
 import { scoreContact } from './score'
 import {
   ContactChannel,
@@ -54,6 +56,15 @@ function isJunkContact(c: RawContact): boolean {
     return GENERIC_URL_HOSTS.has(host) || host === 'localhost' || host.startsWith('127.')
   }
   return false
+}
+
+function classifyReachability(c: RawContact): {
+  reachable: boolean
+  reachabilityReason: EmailReachabilityReason | null
+} {
+  if (c.channel !== 'email') return { reachable: true, reachabilityReason: null }
+  const r = classifyEmailReachability(c.value)
+  return { reachable: r.reachable, reachabilityReason: r.reason }
 }
 
 function normalizeValue(channel: ContactChannel, value: string): string {
@@ -130,7 +141,7 @@ export function reconcile(contacts: RawContact[], now: Date = new Date()): Score
 
   const scored: ScoredContact[] = merged.map((c) => {
     const contact = { ...c, provenance: dedupeProvenance(c.provenance) }
-    return { ...contact, ...scoreContact(contact, now) }
+    return { ...contact, ...scoreContact(contact, now), ...classifyReachability(contact) }
   })
 
   scored.sort(
