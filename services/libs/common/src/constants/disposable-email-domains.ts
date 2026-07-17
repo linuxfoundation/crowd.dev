@@ -168,7 +168,6 @@ export const disposableEmailDomains: ReadonlySet<string> = new Set([
   '20mm.eu',
   '2120001.net',
   '216222.xyz',
-  '21cn.com',
   '21mail.top',
   '2200freefonts.com',
   '22345377.xyz',
