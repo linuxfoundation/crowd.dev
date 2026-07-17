@@ -16,7 +16,7 @@ import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
 import { githubApiGet } from './githubToken'
 import { reconcile } from './reconcile'
-import { resolveCdpEmails } from './resolveCdpEmails'
+import { deriveGithubHandlesFromNoreplyEmails, resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
   ExtractorDeps,
@@ -161,6 +161,8 @@ export async function processRepo(
   if (policies.pvrEnabled === false) {
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
+
+  contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
 
   const handleContacts = contacts.filter((c) => c.channel === 'github-handle')
   if (handleContacts.length > 0) {

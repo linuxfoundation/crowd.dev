@@ -1,7 +1,6 @@
 import validator from 'validator'
 
-import { isKnownBot } from './bot'
-import { disposableEmailDomains, noreplyEmailProviders } from './constants'
+import { disposableEmailDomains, emailSafeKnownBots, noreplyEmailProviders } from './constants'
 
 export const isValidEmail = (value: string): boolean => {
   return validator.isEmail(value)
@@ -118,7 +117,7 @@ const emailDomain = (value: string): string => value.slice(value.indexOf('@') + 
 const looksLikeBot = (localPart: string): boolean => {
   const lp = localPart.toLowerCase()
   if (ROLE_LOCAL_PARTS.has(lp)) return false
-  if (isKnownBot(lp)) return true
+  if (emailSafeKnownBots.has(lp)) return true
   if (lp.endsWith('[bot]')) return true
   if (BOT_EXACT_LOCAL_PARTS.has(lp)) return true
   // 'bot' as a delimited token: bot-*, *-bot, *.bot, bot_* ...
@@ -151,7 +150,7 @@ export const classifyEmailReachability = (email: string): EmailReachability => {
   const localPart = getEmailLocalPart(value)
   const baseLocalPart = localPart.split('+')[0]
   if (NOREPLY_LOCAL_PARTS.has(baseLocalPart)) return fail('noreply')
-  if (looksLikeBot(localPart)) return fail('bot')
+  if (looksLikeBot(baseLocalPart)) return fail('bot')
   if (disposableEmailDomains.has(emailDomain(value))) return fail('disposable')
 
   return { email, reachable: true, reason: null }
