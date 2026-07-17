@@ -3,7 +3,7 @@
 The Packagist worker keeps the PHP/Composer slice of the packages database fresh
 by crawling **packagist.org directly** — deps.dev has no Packagist coverage, so
 unlike npm/maven/pypi there is no BigQuery universe to import from; the registry
-crawl *is* the universe source. It runs **four Temporal workflows** on the
+crawl _is_ the universe source. It runs **four Temporal workflows** on the
 `packagist-worker` task queue: three cron schedules registered at worker boot
 (`src/bin/packagist-worker.ts`), plus the metadata drain, which the seed chains
 as a child workflow on completion.
@@ -13,10 +13,10 @@ Identity: ecosystem `packagist`, purls `pkg:composer/{vendor}/{name}`
 
 Shared design notes:
 
-- **Two registry endpoints.** The *dynamic* endpoint
+- **Two registry endpoints.** The _dynamic_ endpoint
   (`packagist.org/packages/{vendor}/{name}.json`, server-cached ~12h) carries
   package info and live counters: downloads, dependents, description, repo URL,
-  abandoned flag, maintainers. The *static* p2 endpoint
+  abandoned flag, maintainers. The _static_ p2 endpoint
   (`repo.packagist.org/p2/{vendor}/{name}.json`, CDN-served, the same file
   Composer clients resolve) carries the version manifests: every tagged
   release with its `require`/`require-dev`, licenses, homepage.
@@ -158,7 +158,7 @@ the registry's rolling daily figure.
 **Populates:** one `downloads_daily` row per package per day (`package_id`,
 run date, count), with the run date pinned once from the run's `cutoff` so
 every row from one run shares the same label even if the drain runs long.
-That only fixes the *label*, though — Packagist computes `daily` live at
+That only fixes the _label_, though — Packagist computes `daily` live at
 fetch time, so for a long-running drain the underlying value can drift
 forward from what the label implies for whichever packages are processed
 last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
@@ -172,7 +172,7 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
   (future work, see ADR-0009 risks).
 - Advisories — the OSV worker owns security data platform-wide.
 - `is_critical` / `criticality_score` / ranking columns — the shared
-  criticality worker; this worker only *reads* `is_critical` for scoping.
+  criticality worker; this worker only _reads_ `is_critical` for scoping.
 - Repo stars/forks/scorecard — the shared github-repos-enricher, fed by the
   `package_repos` links this worker creates.
 - `keywords`, `versions.is_yanked`, `depends_on_version_id` — see above.
@@ -181,13 +181,13 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 All optional; defaults in `activities.ts` / `fetchPackage.ts`:
 
-| Env var | Default | Meaning |
-|---|---|---|
-| `CROWD_PACKAGES_PACKAGIST_MAILTO` | `oss-packages@linuxfoundation.org` | Contact in the crawl User-Agent |
-| `CROWD_PACKAGES_PACKAGIST_STATS_CONCURRENCY` | 10 (hard cap 10) | Parallel package ingests across all lanes — every lane starts with a dynamic-endpoint fetch, so the stricter 10-limit bounds everything |
-| `CROWD_PACKAGES_PACKAGIST_METADATA_REFRESH_DAYS` | 7 | Metadata refresh window |
-| `CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL` | `false` | `true` narrows metadata to the critical slice |
-| `CROWD_PACKAGES_PACKAGIST_STOP_AFTER_FIRST_PAGE` | `false` | Debug: one drain page, no continueAsNew |
+| Env var                                          | Default                            | Meaning                                                                                                                                 |
+| ------------------------------------------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `CROWD_PACKAGES_PACKAGIST_MAILTO`                | `oss-packages@linuxfoundation.org` | Contact in the crawl User-Agent                                                                                                         |
+| `CROWD_PACKAGES_PACKAGIST_STATS_CONCURRENCY`     | 10 (hard cap 10)                   | Parallel package ingests across all lanes — every lane starts with a dynamic-endpoint fetch, so the stricter 10-limit bounds everything |
+| `CROWD_PACKAGES_PACKAGIST_METADATA_REFRESH_DAYS` | 7                                  | Metadata refresh window                                                                                                                 |
+| `CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL` | `false`                            | `true` narrows metadata to the critical slice                                                                                           |
+| `CROWD_PACKAGES_PACKAGIST_STOP_AFTER_FIRST_PAGE` | `false`                            | Debug: one drain page, no continueAsNew                                                                                                 |
 
 ## Running it
 
