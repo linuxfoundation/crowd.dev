@@ -139,10 +139,12 @@ describe('ingestOnePackagistMetadata', () => {
 
     expect(mockPersistInfo).toHaveBeenCalled()
     expect(mockPersistMetadata).not.toHaveBeenCalled()
+    // no fresh Last-Modified to replay when p2 wasn't refetched
     expect(mockMarkMetadata).toHaveBeenCalledWith(
       qx,
       PURL,
       expect.objectContaining({ status: 'success' }),
+      null,
     )
   })
 

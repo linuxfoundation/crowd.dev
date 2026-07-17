@@ -104,10 +104,10 @@ async function fetchWithFastRetry<T>(
   }
 }
 
-function giveUpResult(error: FetchError): PackagistRunResult {
+function giveUpResult(error: FetchError, attempts: number): PackagistRunResult {
   return {
     status: 'error',
-    attempts: INGEST_4XX_ATTEMPTS,
+    attempts,
     httpStatus: error.statusCode,
     errorKind: error.kind,
     message: error.message,
@@ -132,7 +132,7 @@ export async function ingestOnePackagistMetadata(
       { purl: candidate.purl, statusCode: info.error.statusCode, kind: info.error.kind },
       'packagist package info 4xx/malformed after fast retries — marking scanned and skipping',
     )
-    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(info.error))
+    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(info.error, info.attempts))
     return
   }
 
@@ -151,7 +151,7 @@ export async function ingestOnePackagistMetadata(
       { purl: candidate.purl, statusCode: p2.error.statusCode, kind: p2.error.kind },
       'packagist metadata 4xx/malformed after fast retries — marking scanned and skipping',
     )
-    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(p2.error))
+    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(p2.error, p2.attempts))
     return
   }
 
@@ -171,19 +171,14 @@ export async function ingestOnePackagistMetadata(
   }
 
   await logAuditFieldChanges(qx, WORKER, candidate.purl, phase2ChangedFields)
-  if (lastModified) {
-    await markPackagistMetadataScanned(
-      qx,
-      candidate.purl,
-      { status: 'success', attempts: p2.attempts },
-      lastModified,
-    )
-  } else {
-    await markPackagistMetadataScanned(qx, candidate.purl, {
-      status: 'success',
-      attempts: p2.attempts,
-    })
-  }
+  // markPackagistMetadataScanned treats a null 4th arg the same as omitting it
+  // (COALESCEd against the stored value), so lastModified can always be passed.
+  await markPackagistMetadataScanned(
+    qx,
+    candidate.purl,
+    { status: 'success', attempts: p2.attempts },
+    lastModified,
+  )
 }
 
 // The monthly downloads-30d lane: dynamic fetch, one window row per purl per month.
@@ -203,7 +198,7 @@ export async function ingestOnePackagist30dWindow(
       { purl, statusCode: info.error.statusCode, kind: info.error.kind },
       'packagist 30d downloads 4xx/malformed after fast retries — marking processed and skipping',
     )
-    await markPackagist30dProcessed(qx, purl, giveUpResult(info.error))
+    await markPackagist30dProcessed(qx, purl, giveUpResult(info.error, info.attempts))
     return
   }
 
@@ -234,7 +229,7 @@ export async function ingestOnePackagistDailyDownload(
       { purl: candidate.purl, statusCode: info.error.statusCode, kind: info.error.kind },
       'packagist daily downloads 4xx/malformed after fast retries — marking processed and skipping',
     )
-    await markPackagistDailyProcessed(qx, candidate.purl, giveUpResult(info.error))
+    await markPackagistDailyProcessed(qx, candidate.purl, giveUpResult(info.error, info.attempts))
     return
   }
 
