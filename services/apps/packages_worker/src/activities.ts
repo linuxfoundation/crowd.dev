@@ -16,6 +16,7 @@ export { processMavenCriticalBatch } from './maven/activities'
 export { criticalityComputePageRank, rankPackages } from './criticality/activities'
 export {
   cargoDownloadAndLoad,
+  cargoNormalizeRepos,
   cargoEnrichPackages,
   cargoEnrichVersions,
   cargoEnrichRepos,
@@ -32,7 +33,6 @@ export {
 } from './pypi/activities'
 export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'
-export { processSecurityContactsBatch } from './security-contacts/activities'
 export {
   ingestOnePackagistMetadata,
   ingestOnePackagist30dWindow,
@@ -48,3 +48,8 @@ export {
   packagistCurrentTimestamp,
   packagistStopAfterFirstPage,
 } from './packagist/activities'
+export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubygems/activities'
+export {
+  processSecurityContactsBatch,
+  ingestSecurityContactsForPurlActivity,
+} from './security-contacts/activities'

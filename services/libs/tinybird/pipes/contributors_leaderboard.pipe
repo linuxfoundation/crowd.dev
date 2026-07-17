@@ -43,6 +43,7 @@ SQL >
     FROM insightsProjects final
     WHERE
         isNull (deletedAt)
+        AND enabled = 1
         and slug = {{ String(project, description="Filter by project slug", required=True) }}
 
 NODE contributors_leaderboard_2

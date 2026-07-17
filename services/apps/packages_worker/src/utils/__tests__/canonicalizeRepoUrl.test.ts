@@ -22,6 +22,13 @@ describe('canonicalizeRepoUrl', () => {
     ['gitlab:group/project', 'https://gitlab.com/group/project', 'gitlab'],
     ['bitbucket:team/repo', 'https://bitbucket.org/team/repo', 'bitbucket'],
     ['https://example.com/owner/repo', 'https://example.com/owner/repo', 'other'],
+    ['git+https://github.com/1aGh/md-claude.git', 'https://github.com/1agh/md-claude', 'github'],
+    [
+      'ssh://git@github.com:1inch/limit-order-protocol-utils.git',
+      'https://github.com/1inch/limit-order-protocol-utils',
+      'github',
+    ],
+    ['ssh://git@github.com:2222/foo/bar.git', 'https://github.com/foo/bar', 'github'],
   ])('canonicalizes %s', (input, expectedUrl, expectedHost) => {
     expect(canonicalizeRepoUrl(input)).toEqual({ url: expectedUrl, host: expectedHost })
   })
@@ -44,10 +51,14 @@ describe('canonicalizeRepoUrl', () => {
     })
   })
 
-  it.each([['not a url'], ['https://github.com/onlyowner'], [''], ['   ']])(
-    'returns null for unparseable input %s',
-    (input) => {
-      expect(canonicalizeRepoUrl(input)).toBeNull()
-    },
-  )
+  it.each([
+    ['not a url'],
+    ['https://github.com/onlyowner'],
+    [''],
+    ['   '],
+    ['123'],
+    ['https://github.com/Wscats'],
+  ])('returns null for unparseable input %s', (input) => {
+    expect(canonicalizeRepoUrl(input)).toBeNull()
+  })
 })

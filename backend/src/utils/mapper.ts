@@ -15,58 +15,107 @@ function memberOrganizationsOverlap<T extends IMemberOrganization>(a: T, b: T): 
   )
 }
 
-/**
- * Finds email-domain rows that are represented by the same visible work experience.
- */
-export function getOverlappingEmailDomainMemberOrganizations<T extends IMemberOrganization>(
+export function isCollapsibleMemberOrganization<T extends IMemberOrganization>(row: T): boolean {
+  if (!row.source) {
+    return false
+  }
+
+  return row.source
+    .split(',')
+    .map((value) => value.trim())
+    .some((value) =>
+      [OrganizationSource.EMAIL_DOMAIN, OrganizationSource.PROJECT_REGISTRY].includes(
+        value as OrganizationSource,
+      ),
+    )
+}
+
+function compareMemberOrganizationsBySourceRank(
+  a: IMemberOrganization,
+  b: IMemberOrganization,
+): number {
+  const rankDiff =
+    getMemberOrganizationSourceRank(a.source) - getMemberOrganizationSourceRank(b.source)
+  if (rankDiff !== 0) {
+    return rankDiff
+  }
+
+  return (a.id ?? '').localeCompare(b.id ?? '')
+}
+
+/** Hidden inferential rows that overlap a visible work experience (for delete/update/override). */
+export function getOverlappingGroupedMemberOrganizations<T extends IMemberOrganization>(
   rows: T[],
   memberOrganization: T,
 ): T[] {
   return rows.filter(
     (row) =>
       row.id !== memberOrganization.id &&
-      row.source === OrganizationSource.EMAIL_DOMAIN &&
+      isCollapsibleMemberOrganization(row) &&
       memberOrganizationsOverlap(row, memberOrganization),
   )
 }
 
-/**
- * Groups overlapping email-domain rows into the best non-email-domain display row.
- */
-export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[]): T[] {
-  const emailDomainRows = rows.filter((row) => row.source === OrganizationSource.EMAIL_DOMAIN)
-  const nonEmailRows = rows.filter((row) => row.source !== OrganizationSource.EMAIL_DOMAIN)
-  const hiddenEmailDomainIds = new Set<string>()
-  const displayGroups = new Map<string, { displayRow: T; groupedEmailDomainRows: T[] }>()
+function canDisplayCollapsibleRow<T extends IMemberOrganization>(
+  displayRow: T,
+  collapsibleRow: T,
+): boolean {
+  if (!isCollapsibleMemberOrganization(displayRow)) {
+    return true
+  }
 
-  for (const emailDomainRow of emailDomainRows.filter(
-    (row): row is T & { id: string } => !!row.id,
-  )) {
-    const overlappingNonEmailRows = nonEmailRows.filter((row) =>
-      memberOrganizationsOverlap(emailDomainRow, row),
+  return (
+    getMemberOrganizationSourceRank(displayRow.source) <
+    getMemberOrganizationSourceRank(collapsibleRow.source)
+  )
+}
+
+/** Collapse overlapping email-domain and project-registry rows into one work experience for display. */
+export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[]): T[] {
+  const collapsibleRows = rows.filter(
+    (row): row is T & { id: string } => !!row.id && isCollapsibleMemberOrganization(row),
+  )
+  const hiddenCollapsibleIds = new Set<string>()
+  const collapsibleParentDisplayId = new Map<string, string>()
+  const displayGroups = new Map<string, { displayRow: T & { id: string }; groupedRows: T[] }>()
+
+  for (const collapsibleRow of collapsibleRows) {
+    const overlappingDisplayRows = rows.filter(
+      (row): row is T & { id: string } =>
+        !!row.id &&
+        row.id !== collapsibleRow.id &&
+        memberOrganizationsOverlap(collapsibleRow, row) &&
+        canDisplayCollapsibleRow(row, collapsibleRow),
     )
 
-    if (overlappingNonEmailRows.length > 0) {
-      const displayRow = [...overlappingNonEmailRows].sort((a, b) => {
-        const rankDiff =
-          getMemberOrganizationSourceRank(a.source) - getMemberOrganizationSourceRank(b.source)
-        if (rankDiff !== 0) {
-          return rankDiff
-        }
+    if (overlappingDisplayRows.length > 0) {
+      const displayRow = [...overlappingDisplayRows].sort(compareMemberOrganizationsBySourceRank)[0]
+      hiddenCollapsibleIds.add(collapsibleRow.id)
+      collapsibleParentDisplayId.set(collapsibleRow.id, displayRow.id)
+    }
+  }
 
-        return (a.id ?? '').localeCompare(b.id ?? '')
-      })[0]
+  const resolveDisplayRowId = (collapsibleRowId: string): string => {
+    let displayRowId = collapsibleRowId
+    while (collapsibleParentDisplayId.has(displayRowId)) {
+      displayRowId = collapsibleParentDisplayId.get(displayRowId)!
+    }
+    return displayRowId
+  }
 
-      if (displayRow.id) {
-        hiddenEmailDomainIds.add(emailDomainRow.id)
+  for (const collapsibleRow of collapsibleRows) {
+    if (hiddenCollapsibleIds.has(collapsibleRow.id)) {
+      const displayRowId = resolveDisplayRowId(collapsibleRow.id)
+      const displayRow = rows.find((row): row is T & { id: string } => row.id === displayRowId)
 
-        const existingGroup = displayGroups.get(displayRow.id)
+      if (displayRow) {
+        const existingGroup = displayGroups.get(displayRowId)
         if (existingGroup) {
-          existingGroup.groupedEmailDomainRows.push(emailDomainRow)
+          existingGroup.groupedRows.push(collapsibleRow)
         } else {
-          displayGroups.set(displayRow.id, {
+          displayGroups.set(displayRowId, {
             displayRow,
-            groupedEmailDomainRows: [emailDomainRow],
+            groupedRows: [collapsibleRow],
           })
         }
       }
@@ -74,15 +123,14 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
   }
 
   return rows
-    .filter((row): row is T & { id: string } => !!row.id && !hiddenEmailDomainIds.has(row.id))
+    .filter((row): row is T & { id: string } => !!row.id && !hiddenCollapsibleIds.has(row.id))
     .map((row) => {
       const group = displayGroups.get(row.id)
       if (!group) {
         return row
       }
 
-      // Preserve the visible row while surfacing the combined sources and date range
-      const groupedRows = [group.displayRow, ...group.groupedEmailDomainRows]
+      const groupedRows = [group.displayRow, ...group.groupedRows]
 
       const normalizedStarts = groupedRows
         .map((groupedRow) => normalizeMemberOrganizationDate(groupedRow.dateStart))
@@ -96,7 +144,12 @@ export function groupMemberOrganizations<T extends IMemberOrganization>(rows: T[
 
       for (const groupedRow of groupedRows) {
         if (groupedRow.source) {
-          sources.add(groupedRow.source)
+          for (const source of groupedRow.source.split(',')) {
+            const trimmed = source.trim()
+            if (trimmed) {
+              sources.add(trimmed)
+            }
+          }
         }
       }
 
@@ -129,6 +182,7 @@ export function toMemberWorkExperience(mo: IMemberRoleWithOrganization) {
     organizationId: mo.organizationId,
     organizationName: mo.organizationName,
     organizationLogo: mo.organizationLogo,
+    organizationDomains: mo.organizationDomains ?? [],
     jobTitle: mo.title ?? null,
     verified: mo.verified ?? false,
     verifiedBy: mo.verifiedBy ?? null,

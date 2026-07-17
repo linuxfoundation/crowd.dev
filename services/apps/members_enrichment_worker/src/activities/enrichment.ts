@@ -13,11 +13,11 @@ import { signalMemberUpdate } from '@crowd/common_services'
 import {
   changeMemberOrganizationAffiliationOverrides,
   fetchManyOrganizationAffiliationPolicies,
+  insertMemberIdentities,
   updateMemberAttributes,
   updateMemberContributions,
   updateMemberReach,
 } from '@crowd/data-access-layer'
-import { createMemberIdentity } from '@crowd/data-access-layer'
 import { findMemberIdentityWithTheMostActivityInPlatform as getMemberMostActiveIdentity } from '@crowd/data-access-layer/src/activityRelations'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/attributeSettings'
@@ -36,9 +36,9 @@ import {
 } from '@crowd/data-access-layer/src/old/apps/members_enrichment_worker'
 import OrganizationMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/organizationMergeSuggestions.repo'
 import {
-  addOrgIdentity,
   findOrCreateOrganization,
   findOrgByVerifiedIdentity,
+  insertOrganizationIdentities,
 } from '@crowd/data-access-layer/src/organizations'
 import { dbStoreQx, pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { refreshMaterializedView } from '@crowd/data-access-layer/src/utils'
@@ -308,21 +308,19 @@ export async function updateMemberUsingSquashedPayload(
     // process identities
     if (squashedPayload.identities.length > 0) {
       svc.log.debug({ memberId }, 'Adding to member identities!')
-      for (const i of squashedPayload.identities) {
-        didUpdate = true
-        await createMemberIdentity(
-          qx,
-          {
-            memberId,
-            platform: i.platform,
-            type: i.type,
-            value: i.value,
-            verified: i.verified,
-            source: 'enrichment',
-          },
-          true,
-        )
-      }
+      didUpdate = true
+      await insertMemberIdentities(
+        qx,
+        squashedPayload.identities.map((i) => ({
+          memberId,
+          platform: i.platform,
+          type: i.type,
+          value: i.value,
+          verified: i.verified,
+          source: 'enrichment',
+        })),
+        true,
+      )
     }
 
     // process contributions
@@ -518,17 +516,23 @@ export async function updateMemberUsingSquashedPayload(
             const mergeSuggestions = []
             const suggestedOwnerIds = new Set<string>()
 
+            const identitiesToInsert = identityOwners
+              .filter((identityOwner) => identityOwner.organizationId !== orgId)
+              .map((identityOwner) => ({
+                organizationId: orgId,
+                platform: identityOwner.identity.platform,
+                value: identityOwner.identity.value,
+                type: identityOwner.identity.type,
+                verified: false,
+                source: orgSource,
+              }))
+
+            if (identitiesToInsert.length > 0) {
+              await insertOrganizationIdentities(qx, identitiesToInsert, false)
+            }
+
             for (const identityOwner of identityOwners) {
               if (identityOwner.organizationId !== orgId) {
-                await addOrgIdentity(qx, {
-                  organizationId: orgId,
-                  platform: identityOwner.identity.platform,
-                  value: identityOwner.identity.value,
-                  type: identityOwner.identity.type,
-                  verified: false,
-                  source: orgSource,
-                })
-
                 const noMergeIds = await mergeSuggestionsRepo.findNoMergeIds(
                   identityOwner.organizationId,
                 )
@@ -765,7 +769,7 @@ export async function getObsoleteSourcesOfMember(
 }
 
 export async function refreshMemberEnrichmentMaterializedView(mvName: string): Promise<void> {
-  await refreshMaterializedView(svc.postgres.writer.connection(), mvName)
+  await refreshMaterializedView(svc.postgres.writer.connection(), mvName, true)
 }
 
 interface IWorkExperienceChanges {
@@ -815,8 +819,10 @@ function prepareWorkExperiences(
   newVersion: IMemberEnrichmentDataNormalizedOrganization[],
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
 ): IWorkExperienceChanges {
-  // we delete all the work experiences that were not manually created
-  const toDelete = oldVersion.filter((c) => c.source !== OrganizationSource.UI)
+  // we delete all the work experiences that were not manually created or from the project registry.
+  const toDelete = oldVersion.filter(
+    (c) => c.source !== OrganizationSource.UI && c.source !== OrganizationSource.PROJECT_REGISTRY,
+  )
 
   const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

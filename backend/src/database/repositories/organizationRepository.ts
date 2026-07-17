@@ -16,7 +16,6 @@ import {
   IDbOrganization,
   OrgIdentityField,
   OrganizationField,
-  addOrgIdentity,
   addOrgsToSegments,
   cleanUpOrgIdentities,
   cleanupForOganization,
@@ -27,13 +26,13 @@ import {
   findManyOrgAttributes,
   findOrgAttributes,
   findOrgById,
+  insertOrganizationIdentities,
   markOrgAttributeDefault,
   queryOrgIdentities,
   updateOrgIdentityVerifiedFlag,
   upsertOrgAttributes,
 } from '@crowd/data-access-layer/src/organizations'
 import { findAttribute } from '@crowd/data-access-layer/src/organizations/attributesConfig'
-import { optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   findSegmentById,
   getSegmentMergeSuggestionCounts,
@@ -49,6 +48,7 @@ import {
   SegmentData,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import {
   IFetchOrganizationMergeSuggestionArgs,
   SimilarityScoreRange,
@@ -619,16 +619,22 @@ class OrganizationRepository {
   ): Promise<void> {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
-    await addOrgIdentity(qx, {
-      organizationId,
-      platform: identity.platform,
-      source: identity.source,
-      sourceId: identity.sourceId || null,
-      value: identity.value,
-      type: identity.type,
-      verified: identity.verified,
-      integrationId: identity.integrationId || null,
-    })
+    await insertOrganizationIdentities(
+      qx,
+      [
+        {
+          organizationId,
+          platform: identity.platform,
+          source: identity.source,
+          sourceId: identity.sourceId || null,
+          value: identity.value,
+          type: identity.type,
+          verified: identity.verified,
+          integrationId: identity.integrationId || null,
+        },
+      ],
+      false,
+    )
   }
 
   static async getIdentities(

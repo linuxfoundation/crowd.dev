@@ -492,6 +492,10 @@ function scaffold() {
             up_test_scaffold
             exit
             ;;
+        down-test)
+            down_test_scaffold
+            exit
+            ;;
         *)
             error "Invalid command '$1'" && say "$HELP"
             exit 1
@@ -837,22 +841,29 @@ function migrate_local() {
 
 function up_test_scaffold() {
     scaffold_set_up_network "${PROJECT_NAME}-bridge-test" $DOCKET_TEST_NETWORK_SUBNET $DOCKER_TEST_NETWORK_GATEWAY
-    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/../backend/docker-compose.test.yaml down
-    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/../backend/docker-compose.test.yaml up -d
+    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/scaffold.test.yaml up -d
     migrate_test
 }
 
-function migrate_test() {
-    say "Building flyway migration image..."
-    docker build -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database
+function down_test_scaffold() {
+    $_DC -p "$PROJECT_NAME-test" -f $CLI_HOME/scaffold.test.yaml down
+}
 
-    say "Applying database migrations!"
+function migrate_test() {
+    wait_for_postgres test-db crowd-test-db
+    say "Recreating test_template..."
+    docker exec crowd-test-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE IF EXISTS test_template;" \
+        -c "CREATE DATABASE test_template;"
+    say "Building crowd flyway migration image..."
+    docker build $DOCKER_PLATFORM_FLAGS -t crowd_flyway -f $CLI_HOME/../backend/src/database/Dockerfile.flyway $CLI_HOME/../backend/src/database
+    say "Migrating test_template..."
     docker run --rm --network "${PROJECT_NAME}-bridge-test" \
-        -e PGHOST=db-test \
+        -e PGHOST=crowd-test-db \
         -e PGPORT=5432 \
         -e PGUSER=postgres \
         -e PGPASSWORD=example \
-        -e PGDATABASE=crowd-web \
+        -e PGDATABASE=test_template \
         crowd_flyway
 }
 
@@ -1066,7 +1077,7 @@ function start() {
 SCRIPT_USAGE="${YELLOW}${PROJECT_NAME} CLI ${RESET}\n
 Usage: ./cli <command>\n
 ${YELLOW}Scaffold:${RESET}
-  scaffold [up|down|destroy|reset|create-migration|create-product-migration|create-packages-migration|migrate-up|up-test]\n
+  scaffold [up|down|destroy|reset|create-migration|create-product-migration|create-packages-migration|migrate-up|up-test|down-test]\n
 ${YELLOW}Services:${RESET}
   service <name> [up|down|restart|status|logs|id]
   start | start-dev | start-be | start-e2e
@@ -1171,14 +1182,14 @@ while test $# -gt 0; do
         exit
         ;;
     service-restart-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
         DEV=1
         kill_all_containers
         service_start
         exit
         ;;
     clean-start-fe-dev)
-        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker")
+        IGNORED_SERVICES=("frontend" "python-worker" "job-generator" "webhook-api" "profiles-worker" "organizations-enrichment-worker" "merge-suggestions-worker" "members-enrichment-worker" "exports-worker" "entity-merging-worker" "cache-worker" "categorization-worker" "cron-service" "data-sink-worker" "git-integration" "integration-run-worker" "integration-stream-worker" "nango-webhook-api" "nango-worker" "script-executor-worker" "search-sync-api" "search-sync-worker" "security-best-practices-worker" "snowflake-connectors-worker" "automatic-projects-discovery-worker" "pcc-sync-worker" "projects-evaluation-worker" "bq-dataset-ingest" "cargo-worker" "dockerhub-sync" "github-repos-enricher" "go-worker" "maven-worker" "npm-worker" "nuget-worker" "osv-worker" "pypi-worker" "rubygems-worker" "security-contacts-worker")
         CLEAN_START=1
         DEV=1
         start

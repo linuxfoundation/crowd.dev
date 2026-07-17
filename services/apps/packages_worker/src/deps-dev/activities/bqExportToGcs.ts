@@ -6,6 +6,7 @@ import {
   findExportedJobByGcsPrefix,
   findLatestExportedJobByKind,
   markJobStatus,
+  mergeJobTableRowCounts,
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -32,6 +33,12 @@ export interface BqExportToGcsInput {
   // is replaced by a server-side maximumBytesBilled cap, since a dry-run only validates the first
   // statement and cannot predict the WHILE loop's total scan. See ADR-0004.
   isScript?: boolean
+  // Fill-constraints run (package_dependencies only): the export is a full Option-A scan but the
+  // downstream merge upserts version_constraint (ON CONFLICT DO UPDATE) instead of DO NOTHING. Full
+  // and fill produce identical parquet, so sync_mode alone can't tell them apart — persist it in the
+  // job meta so a --resume-job run reprocesses the export with the correct merge instead of silently
+  // reverting to DO NOTHING (which skips the backfill).
+  isFill?: boolean
 }
 
 export interface BqExportToGcsOutput {
@@ -53,6 +60,7 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     exportName,
     ecosystems,
     isScript,
+    isFill,
   } = input
 
   // Named exports use a stable GCS path independent of runId so they survive across bootstrap runs.
@@ -79,6 +87,12 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           { jobKind, exportName, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
           'exportName match — skipping BQ, loading from named export',
         )
+        // The reusing run drives the chunk merge on this same job row, so meta:fill must reflect
+        // THIS run's intent — write it both ways. Setting it (fill run) stops a later --resume-job
+        // reverting to ON CONFLICT DO NOTHING and skipping the version_constraint backfill; clearing
+        // it (non-fill run reusing a row an earlier fill run set) stops resume forcing an unintended
+        // upsert. Absent and 0 both read back as fill=false (COALESCE in getIngestJobForResume).
+        await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': isFill ? 1 : 0 })
         return {
           gcsPrefix: prior.gcsPrefix,
           rowCount: prior.rowCountBq,
@@ -115,6 +129,7 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           tableRowCounts: {
             'bq:export': 0,
             ...(ecosystems ? { 'meta:ecosystems': ecosystems } : {}),
+            ...(isFill ? { 'meta:fill': 1 } : {}),
           },
         })
         return { gcsPrefix: namedPrefix, rowCount: 0, bqBytesBilled: 0, jobId }
@@ -135,6 +150,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           { jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
           'reuseExports=true — skipping BQ, loading from prior export',
         )
+        // See named-export path above: write THIS run's fill intent both ways so a later
+        // --resume-job matches the most recent run instead of a stale meta value.
+        await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': isFill ? 1 : 0 })
         return {
           gcsPrefix: prior.gcsPrefix,
           rowCount: prior.rowCountBq,
@@ -163,6 +181,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
         { jobKind, jobId: existing.id, gcsPrefix },
         'GCS files already exist — reusing export',
       )
+      // Same-runId reuse (Temporal retry): re-stamp THIS run's fill intent both ways so the flag
+      // always matches the most recent run and can never be lost or left stale on reuse.
+      await mergeJobTableRowCounts(qx, existing.id, { 'meta:fill': isFill ? 1 : 0 })
       return { gcsPrefix, rowCount: existing.rowCountBq, bqBytesBilled: 0, jobId: existing.id }
     }
   }
@@ -212,9 +233,13 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   const provisionalDate = snapshotAt ? new Date(snapshotAt) : null
   const jobId = await createIngestJob(qx, jobKind, syncMode, provisionalDate, exportName)
 
-  // H7: mark exporting before we start the BQ job; store ecosystems filter in table_row_counts JSONB.
+  // H7: mark exporting before we start the BQ job; store ecosystems filter + fill flag in the
+  // table_row_counts JSONB so --resume-job can restore the original export's settings.
+  const exportMeta: Record<string, string | number | string[]> = {}
+  if (ecosystems) exportMeta['meta:ecosystems'] = ecosystems
+  if (isFill) exportMeta['meta:fill'] = 1
   await markJobStatus(qx, jobId, 'exporting', {
-    ...(ecosystems ? { tableRowCounts: { 'meta:ecosystems': ecosystems } } : {}),
+    ...(Object.keys(exportMeta).length > 0 ? { tableRowCounts: exportMeta } : {}),
   })
 
   // From here the row is 'exporting'; any BQ failure (incl. script-mode maximumBytesBilled aborts)

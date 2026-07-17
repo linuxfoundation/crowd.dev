@@ -16,6 +16,7 @@ import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
 import { githubApiGet } from './githubToken'
 import { reconcile } from './reconcile'
+import { resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
   ExtractorDeps,
@@ -72,8 +73,7 @@ async function fetchBatch(qx: QueryExecutor): Promise<SweepRow[]> {
     FROM repos r
     JOIN package_repos pr ON pr.repo_id = r.id
     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-    WHERE r.host = 'github'
-      AND (
+    WHERE (
         -- never evaluated → always eligible
         r.contacts_last_refreshed IS NULL
         -- evaluated but no contacts found yet → retry on the daily cadence
@@ -109,10 +109,19 @@ function toTarget(row: SweepRow): RepoTarget {
   }
 }
 
-async function processRepo(
+export function buildBaseDeps(config: Config): Omit<ExtractorDeps, 'repoTree'> {
+  return {
+    fetchTimeoutMs: FETCH_TIMEOUT_MS,
+    userAgent: config.userAgent,
+    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
+  }
+}
+
+export async function processRepo(
   target: RepoTarget,
   baseDeps: Omit<ExtractorDeps, 'repoTree'>,
   qx: QueryExecutor,
+  cdpQx: QueryExecutor,
 ): Promise<void> {
   // One tree fetch per repo, shared by extractors that probe well-known paths.
   let repoTree: ExtractorDeps['repoTree'] = { paths: null }
@@ -154,19 +163,31 @@ async function processRepo(
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
 
+  const handleContacts = contacts.filter((c) => c.channel === 'github-handle')
+  if (handleContacts.length > 0) {
+    try {
+      contacts.push(...(await resolveCdpEmails(cdpQx, handleContacts)))
+    } catch (err) {
+      log.warn(
+        { repoId: target.repoId, errMsg: (err as Error).message },
+        'CDP email resolution failed — proceeding without resolved emails',
+      )
+    }
+  }
+
   const scored = reconcile(contacts)
   await writeContacts(qx, target.repoId, scored, policies)
 }
 
-export async function processBatch(qx: QueryExecutor, config: Config): Promise<BatchResult> {
+export async function processBatch(
+  qx: QueryExecutor,
+  cdpQx: QueryExecutor,
+  config: Config,
+): Promise<BatchResult> {
   const batch = await fetchBatch(qx)
   if (batch.length === 0) return { processed: 0 }
 
-  const deps: Omit<ExtractorDeps, 'repoTree'> = {
-    fetchTimeoutMs: FETCH_TIMEOUT_MS,
-    userAgent: config.userAgent,
-    githubGet: (path, opts) => githubApiGet(path, FETCH_TIMEOUT_MS, opts),
-  }
+  const deps = buildBaseDeps(config)
 
   const targets = batch.map(toTarget)
   // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
@@ -188,7 +209,7 @@ export async function processBatch(qx: QueryExecutor, config: Config): Promise<B
         )
       }
       try {
-        await processRepo(target, deps, qx)
+        await processRepo(target, deps, qx, cdpQx)
       } catch (err) {
         log.error(
           { repoId: target.repoId, errMsg: (err as Error).message },

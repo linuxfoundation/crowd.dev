@@ -18,6 +18,16 @@ export function getPackagesDbConfig() {
   }
 }
 
+export function getCdpDbConfig() {
+  return {
+    host: requireEnv('CROWD_DB_READ_HOST'),
+    port: requireEnvInt('CROWD_DB_PORT'),
+    database: requireEnv('CROWD_DB_DATABASE'),
+    user: requireEnv('CROWD_DB_USERNAME'),
+    password: requireEnv('CROWD_DB_PASSWORD'),
+  }
+}
+
 export function getGithubAppConfig() {
   const rawPrivateKey = requireEnv('CROWD_GITHUB_PRIVATE_KEY')
   const privateKeyPem = Buffer.from(rawPrivateKey, 'base64').toString('ascii')
@@ -83,6 +93,20 @@ export function getNuGetConfig() {
     concurrency: parseInt(process.env.NUGET_FETCHER_CONCURRENCY ?? '20', 10),
     groupDelayMs: parseInt(process.env.NUGET_FETCHER_GROUP_DELAY_MS ?? '0', 10),
     isCritical: (process.env.NUGET_FETCHER_IS_CRITICAL ?? 'false') === 'true',
+  }
+}
+
+export function getRubyGemsConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '10000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_FETCHER_CONCURRENCY ?? '8', 10),
+  }
+}
+
+export function getRubyGemsCriticalConfig() {
+  return {
+    batchSize: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_BATCH_SIZE ?? '5000', 10),
+    concurrency: parseInt(process.env.RUBYGEMS_CRITICAL_FETCHER_CONCURRENCY ?? '4', 10),
   }
 }
 

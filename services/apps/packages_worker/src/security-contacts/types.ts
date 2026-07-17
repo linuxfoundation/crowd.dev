@@ -1,8 +1,8 @@
+import type { SecurityContactConfidence } from '@crowd/data-access-layer/src/osspckgs/api'
+
 export type ContactChannel = 'email' | 'github-pvr' | 'url' | 'github-handle' | 'web-form'
 
 export type ContactRole = 'security-team' | 'maintainer' | 'admin' | 'committer' | 'org-owner'
-
-export type ConfidenceBand = 'PRIMARY' | 'SECONDARY' | 'FALLBACK' | 'NONE'
 
 export type SourceTier = 'A' | 'B' | 'C' | 'D'
 
@@ -29,7 +29,7 @@ export interface RawContact {
 
 export interface ScoredContact extends RawContact {
   score: number
-  confidence: ConfidenceBand
+  confidence: SecurityContactConfidence
 }
 
 export interface RepoPolicies {

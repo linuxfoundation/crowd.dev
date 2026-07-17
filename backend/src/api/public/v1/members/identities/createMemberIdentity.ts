@@ -7,13 +7,13 @@ import {
   MemberField,
   findMemberById,
   findMemberIdentitiesByValue,
-  createMemberIdentity as insertMemberIdentity,
-  optionsQx,
+  insertMemberIdentities,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created, ok } from '@/utils/api'
 import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
@@ -69,20 +69,23 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             alreadyExisted = true
             result = exactMatch
           } else {
-            result = await insertMemberIdentity(
+            const [created] = await insertMemberIdentities(
               tx,
-              {
-                memberId,
-                platform: data.platform,
-                value: normalizedValue,
-                type: data.type,
-                source: data.source,
-                verified: data.verified,
-                verifiedBy: data.verifiedBy,
-              },
+              [
+                {
+                  memberId,
+                  platform: data.platform,
+                  value: normalizedValue,
+                  type: data.type,
+                  source: data.source,
+                  verified: data.verified,
+                  verifiedBy: data.verifiedBy,
+                },
+              ],
               true,
               true,
             )
+            result = created
           }
 
           // A verified identity confirms the same value for this member, so keep same-value

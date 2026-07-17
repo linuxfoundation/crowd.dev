@@ -54,7 +54,18 @@ export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
     s = `https://${scp[1]}/${scp[2]}`
   }
 
-  s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
+  // ssh:// with an scp-style `host:path` (colon instead of slash) is not valid URL
+  // syntax — the part after `:` looks like a port to the URL parser and throws.
+  // Rewrite it before the generic ssh://git@host/path case below. A numeric-only
+  // segment before the next `/` is a real port (e.g. `ssh://git@host:2222/owner/repo`),
+  // not an scp-style owner — leave those for the generic case, which URL parses fine.
+  const sshScp = s.match(/^ssh:\/\/git@([^/:]+):(.+)$/)
+  const sshScpIsPort = sshScp ? /^\d+$/.test(sshScp[2].split('/')[0]) : false
+  if (sshScp && !sshScpIsPort) {
+    s = `https://${sshScp[1]}/${sshScp[2]}`
+  } else {
+    s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
+  }
   s = s.replace(/^git:\/\//, 'https://')
 
   let u: URL
@@ -68,17 +79,18 @@ export function canonicalizeRepoUrl(raw: string): CanonicalRepo | null {
   const segments = u.pathname.split('/').filter(Boolean)
   if (segments.length < 2) return null
 
-  let owner = segments[0]
-  let name = segments[1].replace(/\.git$/, '')
-  if (!owner || !name) return null
+  const isKnownHost = hostname in HOST_ENUM
+  let ownerPath = isKnownHost ? [segments[0]] : segments.slice(0, -1)
+  let name = (isKnownHost ? segments[1] : segments[segments.length - 1]).replace(/\.git$/, '')
+  if (!name || ownerPath.length === 0 || ownerPath.some((seg) => !seg)) return null
 
   if (CASE_INSENSITIVE_HOSTS.has(hostname)) {
-    owner = owner.toLowerCase()
+    ownerPath = ownerPath.map((seg) => seg.toLowerCase())
     name = name.toLowerCase()
   }
 
   return {
-    url: `https://${hostname}/${owner}/${name}`,
+    url: `https://${hostname}/${[...ownerPath, name].join('/')}`,
     host: HOST_ENUM[hostname] ?? 'other',
   }
 }

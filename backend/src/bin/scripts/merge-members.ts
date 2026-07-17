@@ -5,9 +5,10 @@ import path from 'path'
 
 import { generateUUIDv1 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
-import { optionsQx } from '@crowd/data-access-layer'
 import { MemberField, findMemberById } from '@crowd/data-access-layer/src/members'
 import { getServiceLogger } from '@crowd/logging'
+
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import SequelizeRepository from '../../database/repositories/sequelizeRepository'
 

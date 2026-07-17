@@ -1,8 +1,9 @@
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import {
   IMemberIdentity,
+  MemberIdentityDbInsert,
+  MemberIdentityDbRow,
   MemberIdentityType,
-  NewMemberIdentity,
   PlatformType,
   UpdateMemberIdentity,
 } from '@crowd/types'
@@ -233,27 +234,32 @@ export async function findMemberIdByVerifiedIdentity(
   return result?.memberId ?? null
 }
 
-export async function insertManyMemberIdentities(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict: boolean,
   returnRows: true,
-): Promise<IMemberIdentity[]>
-export async function insertManyMemberIdentities(
+): Promise<MemberIdentityDbRow[]>
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict?: boolean,
   returnRows?: false,
 ): Promise<number>
-export async function insertManyMemberIdentities(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict = false,
   returnRows = false,
-): Promise<IMemberIdentity[] | number> {
+): Promise<MemberIdentityDbRow[] | number> {
+  if (identities.length === 0) {
+    return returnRows ? [] : 0
+  }
+
   const query = prepareBulkInsert(
     'memberIdentities',
     [
+      'id',
       'memberId',
       'tenantId',
       'integrationId',
@@ -265,12 +271,11 @@ export async function insertManyMemberIdentities(
       'verified',
       'verifiedBy',
     ],
-    identities.map((i) => {
-      return {
-        tenantId: DEFAULT_TENANT_ID,
-        ...i,
-      }
-    }),
+    identities.map((i) => ({
+      ...i,
+      id: i.id || generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+    })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,
   )
@@ -280,32 +285,6 @@ export async function insertManyMemberIdentities(
   }
 
   return qx.result(query)
-}
-
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: NewMemberIdentity,
-  failOnConflict: boolean,
-  returnRows: true,
-): Promise<IMemberIdentity>
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: NewMemberIdentity,
-  failOnConflict?: boolean,
-  returnRows?: false,
-): Promise<void>
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: NewMemberIdentity,
-  failOnConflict = false,
-  returnRows = false,
-): Promise<IMemberIdentity | void> {
-  if (returnRows) {
-    const rows = await insertManyMemberIdentities(qx, [i], failOnConflict, true)
-    return rows[0]
-  }
-
-  await insertManyMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(
@@ -729,6 +708,45 @@ export async function findMembersByGithubHandles(
       platform: PlatformType.GITHUB,
       type: MemberIdentityType.USERNAME,
       lowercasedHandles,
+    },
+  )
+}
+
+export async function findResolvableEmailsForMembers(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string; verified: boolean }[]> {
+  if (memberIds.length === 0) return []
+  return qx.select(
+    `
+      WITH emails AS (
+        SELECT "memberId", lower(value) AS email, bool_or(verified) AS verified
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(emailType)
+          AND value NOT ILIKE '%@users.noreply.github.com'
+          AND "deletedAt" IS NULL
+        GROUP BY "memberId", lower(value)
+      ),
+      "usernameTwins" AS (
+        SELECT "memberId", lower(value) AS email
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(usernameType)
+          AND verified = true
+          AND "deletedAt" IS NULL
+      )
+      SELECT
+        e."memberId",
+        e.email,
+        (e.verified OR t.email IS NOT NULL) AS verified
+      FROM emails e
+      LEFT JOIN "usernameTwins" t ON t."memberId" = e."memberId" AND t.email = e.email
+    `,
+    {
+      memberIds,
+      emailType: MemberIdentityType.EMAIL,
+      usernameType: MemberIdentityType.USERNAME,
     },
   )
 }

@@ -17,7 +17,7 @@ SQL >
     JOIN
         repositories r FINAL ON r.insightsProjectId = i.id AND isNull (r.deletedAt) AND r.enabled = true
     where
-        isNull (i.deletedAt)
+        isNull (i.deletedAt) AND i.enabled = 1
         {% if defined(repos) %}
             AND r.url
             IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}

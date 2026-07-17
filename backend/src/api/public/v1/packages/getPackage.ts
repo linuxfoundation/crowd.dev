@@ -6,30 +6,18 @@ import {
   getAdvisoriesByPackageId,
   getPackageDetailByPurl,
   getStewardshipSummary,
+  securityContactConfidenceBand,
 } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
+import { repoMappingLabel, snakeToCamelKeys } from './mappers'
 import { purlQuerySchema } from './purl'
 import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type StewardshipStatus } from './types'
 
 const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
-
-function snakeToCamelKeys(obj: Record<string, unknown> | null): Record<string, unknown> | null {
-  if (obj === null) return null
-  return Object.fromEntries(
-    Object.entries(obj).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]),
-  )
-}
-
-function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' | null {
-  if (confidence === null) return null
-  if (confidence >= 0.8) return 'High'
-  if (confidence >= 0.5) return 'Medium'
-  return 'Low'
-}
 
 export async function getPackage(req: Request, res: Response): Promise<void> {
   const { purl } = validateOrThrow(purlQuerySchema, req.query)
@@ -49,6 +37,21 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   const scorecardScore = pkg.scorecardScore != null ? Number(pkg.scorecardScore) : null
   const mappingConfidence =
     pkg.repoMappingConfidence != null ? Number(pkg.repoMappingConfidence) : null
+
+  const securityContacts =
+    pkg.contactsLastRefreshed == null
+      ? null
+      : (pkg.securityContacts ?? []).map((c) => ({
+          channel: c.channel,
+          value: c.value,
+          role: c.role,
+          confidence: c.confidence,
+          score: Number(c.score),
+        }))
+  const packageConfidence =
+    securityContacts && securityContacts.length > 0
+      ? securityContactConfidenceBand(Math.max(...securityContacts.map((c) => c.score)))
+      : null
 
   ok(res, {
     purl: pkg.purl,
@@ -92,7 +95,14 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
     signalCoverageHealth: snakeToCamelKeys(pkg.signalCoverageHealth),
     assessment: null,
     security: {
-      securityContacts: null,
+      securityContacts,
+      packageConfidence,
+      securityPolicies: {
+        securityPolicyUrl: pkg.securityPolicyUrl ?? null,
+        vulnerabilityReportingUrl: pkg.vulnerabilityReportingUrl ?? null,
+        bugBountyUrl: pkg.bugBountyUrl ?? null,
+        pvrEnabled: pkg.pvrEnabled ?? null,
+      },
       advisories: advisories.map((a) => ({
         osvId: a.osvId,
         severity: a.severity,
@@ -100,14 +110,14 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
         isCritical: a.isCritical,
       })),
       cvd: {
-        isPvrEnabled: null,
+        isPvrEnabled: pkg.pvrEnabled ?? null,
         tier0Steward: null,
         criticalVulnerabilityFlag: pkg.hasCriticalVulnerability,
       },
     },
     provenance: {
       repositoryMapping: {
-        declaredRepo: pkg.repoUrl ?? pkg.repositoryUrl ?? pkg.declaredRepositoryUrl ?? null,
+        declaredRepo: pkg.repoUrl ?? pkg.repositoryUrl ?? null,
         mappingConfidence,
         mappingLabel: repoMappingLabel(mappingConfidence),
         lastCommitAt: pkg.repoLastCommitAt ? pkg.repoLastCommitAt.toISOString() : null,

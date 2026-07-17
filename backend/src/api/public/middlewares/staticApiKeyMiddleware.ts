@@ -2,7 +2,9 @@ import crypto from 'crypto'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { UnauthorizedError } from '@crowd/common'
-import { findApiKeyByHash, optionsQx, touchApiKeyLastUsed } from '@crowd/data-access-layer'
+import { findApiKeyByHash, touchApiKeyLastUsed } from '@crowd/data-access-layer'
+
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 export function staticApiKeyMiddleware(): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {

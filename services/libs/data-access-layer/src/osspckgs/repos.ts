@@ -37,6 +37,26 @@ export async function upsertRepo(qx: QueryExecutor, item: IDbRepoUpsert): Promis
 }
 
 /**
+ * Removes the `declared` repo links for the given packages. Used by the
+ * repository_url backfill to drop stale links when a package's canonical URL
+ * changes or is cleared, keeping package_repos consistent with
+ * packages.repository_url. Only touches source='declared' (the link Maven
+ * owns) — links from other enrichers (deps.dev, heuristic, manual) are left
+ * untouched. The shared `repos` rows are never deleted.
+ */
+export async function deleteMavenPackageRepoLinks(
+  qx: QueryExecutor,
+  packageIds: number[],
+): Promise<void> {
+  if (packageIds.length === 0) return
+  await qx.result(
+    `DELETE FROM package_repos
+     WHERE package_id = ANY($(packageIds)::bigint[]) AND source = 'declared'`,
+    { packageIds },
+  )
+}
+
+/**
  * Links a package to a repo with provenance metadata.
  * On conflict keeps the higher confidence value and refreshes verified_at.
  * Returns the list of fields that actually changed.

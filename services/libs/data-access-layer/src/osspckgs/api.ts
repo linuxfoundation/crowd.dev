@@ -1,10 +1,28 @@
+import type {
+  PackageDbRow,
+  RepoDbRow,
+  SecurityContactConfidence,
+  SecurityContactDbRow,
+} from '@crowd/types'
+
 import { QueryExecutor } from '../queryExecutor'
 
+import { type AdvisoryAffectedRange, resolveAdvisory } from './advisoryResolution'
 import {
+  ADVISORY_RESOLUTION_EXPR,
+  BEST_REPO_LINK_JOIN,
+  DOWNLOADS_LAST_30D_SUBQUERY,
+  MAINTAINER_COUNT_SUBQUERY,
+  SECURITY_CONTACTS_SUBQUERY,
   SEVERITY_RANK_EXPR,
   STEWARD_DISPLAY_NAME_METADATA,
   STEWARD_MENTIONED_JOIN,
 } from './sqlFragments'
+
+// Re-exported so existing callers (e.g. the akrites-external contacts mapper and
+// packages_worker) keep importing this from @crowd/data-access-layer without a
+// churn-only import change now that the canonical type lives in @crowd/types (ADR-0006).
+export type { SecurityContactConfidence } from '@crowd/types'
 
 export interface PackageMetrics {
   totalPackages: number
@@ -147,7 +165,17 @@ export interface PackageListRow {
   total: string
 }
 
-export type HealthBand = 'excellent' | 'healthy' | 'fair' | 'concerning' | 'critical'
+// Canonical value list — packages/types.ts's HEALTH_BAND_VALUES derives from this
+// instead of re-declaring it, so a validity check (HEALTH_BAND_SET) and a value
+// typed as HealthBand can never silently drift apart.
+export const HEALTH_BAND_VALUES = [
+  'excellent',
+  'healthy',
+  'fair',
+  'concerning',
+  'critical',
+] as const
+export type HealthBand = (typeof HEALTH_BAND_VALUES)[number]
 export type VulnSeverityFilter = 'any' | 'high' | 'critical' | 'none'
 
 export function computeHealthBand(scorecardScore: number | null): HealthBand {
@@ -595,6 +623,13 @@ export async function listPackagesForApi(
   return { rows, total }
 }
 
+// Per ADR-0006, sourced from the security_contacts row type in @crowd/types instead of
+// hand-declaring the shape again next to this query.
+export type SecurityContactRow = Pick<
+  SecurityContactDbRow,
+  'channel' | 'value' | 'role' | 'confidence' | 'score'
+>
+
 export interface PackageDetailRow {
   id: string
   purl: string
@@ -625,6 +660,12 @@ export interface PackageDetailRow {
   hasSecurityFile: boolean | null
   hasSecurityPolicy: boolean | null
   branchProtectionEnabled: boolean | null
+  pvrEnabled: boolean | null
+  securityPolicyUrl: string | null
+  vulnerabilityReportingUrl: string | null
+  bugBountyUrl: string | null
+  contactsLastRefreshed: Date | null
+  securityContacts: SecurityContactRow[] | null
   // from downloads_last_30d
   downloadsLast30d: string | null
   maintainerCount: number
@@ -637,6 +678,13 @@ export interface PackageDetailRow {
   developmentActivityScore: number | null
   lifecycleLabel: string | null
   signalCoverageHealth: Record<string, unknown> | null
+}
+
+export function securityContactConfidenceBand(score: number): SecurityContactConfidence {
+  if (score >= 0.8) return 'PRIMARY'
+  if (score >= 0.55) return 'SECONDARY'
+  if (score >= 0.3) return 'FALLBACK'
+  return 'NONE'
 }
 
 export interface AdvisoryRow {
@@ -682,15 +730,15 @@ export async function getPackageDetailByPurl(
       r.security_file_enabled AS "hasSecurityFile",
       r.security_policy_enabled AS "hasSecurityPolicy",
       r.branch_protection_enabled AS "branchProtectionEnabled",
+      r.pvr_enabled AS "pvrEnabled",
+      r.security_policy_url AS "securityPolicyUrl",
+      r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
+      r.bug_bounty_url AS "bugBountyUrl",
+      r.contacts_last_refreshed AS "contactsLastRefreshed",
+      ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts",
       -- latest 30-day download count
-      (
-        SELECT d.count::text
-        FROM downloads_last_30d d
-        WHERE d.purl = p.purl
-        ORDER BY d.end_date DESC
-        LIMIT 1
-      ) AS "downloadsLast30d",
-      (SELECT COUNT(*)::int FROM package_maintainers pm WHERE pm.package_id = p.id) AS "maintainerCount",
+      ${DOWNLOADS_LAST_30D_SUBQUERY} AS "downloadsLast30d",
+      ${MAINTAINER_COUNT_SUBQUERY} AS "maintainerCount",
       p.health_score AS "healthScore",
       p.health_label AS "healthLabel",
       p.maintainer_health_score AS "maintainerHealthScore",
@@ -711,17 +759,151 @@ export async function getPackageDetailByPurl(
       NULL::float AS "transitiveReach"
     FROM packages p
     LEFT JOIN stewardships s ON s.package_id = p.id
-    LEFT JOIN LATERAL (
-      SELECT pr2.repo_id, pr2.confidence
-      FROM package_repos pr2
-      WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
-      LIMIT 1
-    ) pr ON true
-    LEFT JOIN repos r ON r.id = pr.repo_id
+    ${BEST_REPO_LINK_JOIN}
     WHERE p.purl = $(purl)
     `,
     { purl },
+  )
+}
+
+// Fields the akrites-external Packages contract needs. Deliberately leaner than
+// PackageDetailRow above: no stewardships join and no security_contacts subquery —
+// those aren't part of that contract (contacts are a separate, differently-scoped
+// endpoint) and would be wasted work on every batch lookup.
+//
+// Per ADR-0006, the packages-table-sourced fields below reference PackageDbRow's
+// field types (renamed to this endpoint's established API naming, e.g. impact ->
+// criticalityScore) instead of hand-declaring string/number/null again — keeps
+// this in sync with the schema-derived source of truth in @crowd/types. Fields
+// joined in from other tables (repos, package_maintainers, downloads_last_30d)
+// aren't part of PackageDbRow and stay hand-declared below.
+export interface AkritesExternalPackageDetailRow {
+  purl: PackageDbRow['purl']
+  name: PackageDbRow['name']
+  ecosystem: PackageDbRow['ecosystem']
+  latestVersion: PackageDbRow['latestVersion']
+  versionsCount: PackageDbRow['versionsCount']
+  criticalityScore: PackageDbRow['impact']
+  dependentPackagesCount: PackageDbRow['dependentCount']
+  dependentReposCount: PackageDbRow['dependentReposCount']
+  healthScore: PackageDbRow['healthScore']
+  healthLabel: PackageDbRow['healthLabel']
+  maintainerHealthScore: PackageDbRow['maintainerHealthScore']
+  securitySupplyChainScore: PackageDbRow['securitySupplyChainScore']
+  developmentActivityScore: PackageDbRow['developmentActivityScore']
+  signalCoverageHealth: PackageDbRow['signalCoverageHealth']
+  lifecycleLabel: PackageDbRow['lifecycleLabel']
+  // Timestamptz (OID 1184) comes back as a raw string, not a Date: @crowd/database
+  // registers `setTypeParser(1184, (s) => s)` on the shared pg-promise instance
+  // (services/libs/database/src/connection.ts). Matches PackageDbRow's string convention.
+  latestReleaseAt: PackageDbRow['latestReleaseAt']
+  hasCriticalVulnerability: PackageDbRow['hasCriticalVulnerability']
+  declaredRepositoryUrl: PackageDbRow['declaredRepositoryUrl']
+  // Canonicalized repo URL on the packages row itself — used as a fallback for
+  // resolvedRepositoryUrl when the package hasn't been linked into package_repos yet.
+  repositoryUrl: PackageDbRow['repositoryUrl']
+  maintainerCount: number
+  // --- joined from repos via package_repos, not part of the packages row ---
+  // Resolved via the same confidence-ranked package_repos → repos join as
+  // getPackageDetailByPurl, distinct from the raw declaredRepositoryUrl above.
+  resolvedRepositoryUrl: string | null
+  repoMappingConfidence: number | null
+  // Timestamptz — returned as a string, same OID 1184 parser as latestReleaseAt above.
+  repoLastCommitAt: string | null
+  scorecardScore: number | null
+  hasSecurityFile: boolean | null
+  hasSecurityPolicy: boolean | null
+  branchProtectionEnabled: boolean | null
+  pvrEnabled: boolean | null
+  securityPolicyUrl: string | null
+  vulnerabilityReportingUrl: string | null
+  bugBountyUrl: string | null
+  downloadsLast30d: string | null
+}
+
+export async function getPackageDetailsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<AkritesExternalPackageDetailRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      p.name,
+      p.ecosystem,
+      p.latest_version AS "latestVersion",
+      p.versions_count AS "versionsCount",
+      p.impact AS "criticalityScore",
+      p.dependent_count AS "dependentPackagesCount",
+      p.dependent_repos_count AS "dependentReposCount",
+      p.health_score AS "healthScore",
+      p.health_label AS "healthLabel",
+      p.maintainer_health_score AS "maintainerHealthScore",
+      p.security_supply_chain_score AS "securitySupplyChainScore",
+      p.development_activity_score AS "developmentActivityScore",
+      p.signal_coverage_health AS "signalCoverageHealth",
+      p.lifecycle_label AS "lifecycleLabel",
+      p.latest_release_at AS "latestReleaseAt",
+      p.has_critical_vulnerability AS "hasCriticalVulnerability",
+      p.declared_repository_url AS "declaredRepositoryUrl",
+      p.repository_url AS "repositoryUrl",
+      ${MAINTAINER_COUNT_SUBQUERY} AS "maintainerCount",
+      ${DOWNLOADS_LAST_30D_SUBQUERY} AS "downloadsLast30d",
+      -- best repo link (highest confidence, prefer declared) — same join shape as getPackageDetailByPurl
+      r.url AS "resolvedRepositoryUrl",
+      pr.confidence AS "repoMappingConfidence",
+      r.last_commit_at AS "repoLastCommitAt",
+      r.scorecard_score AS "scorecardScore",
+      r.security_file_enabled AS "hasSecurityFile",
+      r.security_policy_enabled AS "hasSecurityPolicy",
+      r.branch_protection_enabled AS "branchProtectionEnabled",
+      r.pvr_enabled AS "pvrEnabled",
+      r.security_policy_url AS "securityPolicyUrl",
+      r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
+      r.bug_bounty_url AS "bugBountyUrl"
+    FROM packages p
+    ${BEST_REPO_LINK_JOIN}
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
+  )
+}
+
+// Fields the akrites-external Contacts contract needs, one row per package. Reuses the
+// same best-repo join + security_contacts subquery as getPackageDetailByPurl (contacts
+// live on the repo, not the package). A missing purl yields no row → "not found"; a found
+// package with no contacts yields a row with securityContacts null → resolves to [].
+export interface AkritesExternalContactDetailRow
+  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem'>,
+    Pick<
+      RepoDbRow,
+      'securityPolicyUrl' | 'vulnerabilityReportingUrl' | 'bugBountyUrl' | 'pvrEnabled'
+    > {
+  securityContacts: SecurityContactRow[] | null
+}
+
+export async function getContactDetailsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<AkritesExternalContactDetailRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      p.name,
+      p.ecosystem,
+      r.security_policy_url         AS "securityPolicyUrl",
+      r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
+      r.bug_bounty_url              AS "bugBountyUrl",
+      r.pvr_enabled                 AS "pvrEnabled",
+      ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts"
+    FROM packages p
+    ${BEST_REPO_LINK_JOIN}
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
   )
 }
 
@@ -824,22 +1006,7 @@ export async function getAdvisoriesByPackageId(
         a.osv_id AS "osvId",
         LOWER(a.severity) AS severity,
         a.is_critical AS "isCritical",
-        CASE
-          WHEN p.latest_version IS NULL THEN NULL
-          WHEN COUNT(ar.id) = 0 THEN NULL
-          -- TODO: text comparison is lexicographic, not semver — '1.9.0' >= '1.10.0' is TRUE here.
-          -- Replace with a proper semver comparison function when one is available in the DB.
-          WHEN BOOL_AND(
-            CASE
-              WHEN ar.fixed_version IS NULL AND ar.last_affected IS NULL THEN FALSE
-              WHEN ar.fixed_version IS NOT NULL AND p.latest_version >= ar.fixed_version THEN TRUE
-              WHEN ar.fixed_version IS NOT NULL THEN FALSE
-              WHEN ar.last_affected IS NOT NULL AND p.latest_version > ar.last_affected THEN TRUE
-              ELSE FALSE
-            END
-          ) THEN 'patched'
-          ELSE 'open'
-        END AS resolution
+        ${ADVISORY_RESOLUTION_EXPR} AS resolution
       FROM advisory_packages ap
       JOIN advisories a ON a.id = ap.advisory_id
       LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
@@ -892,4 +1059,82 @@ export async function getAdvisoriesByPackageId(
   )) as { total: string }
 
   return { rows, total: Number(countResult.total) }
+}
+
+// One row per (package, advisory) for the akrites-external Advisories contract,
+// keyed by purl and batched across many packages in a single query. Packages that
+// exist but have zero advisories still yield exactly one row, with osvId null — this
+// is how the caller distinguishes "package not found" (no row at all) from "found, no
+// advisories". Unlike the internal getAdvisoriesByPackageId, `resolution` is computed
+// in TypeScript (resolveAdvisory) from the affected ranges rather than via the
+// lexicographic SQL expression — see advisoryResolution.ts for why.
+export interface AkritesExternalAdvisoryRow {
+  purl: string
+  // null only on the sentinel row emitted for a found package with no advisories.
+  osvId: string | null
+  // LOWER(a.severity); null when the advisory has no recorded severity.
+  severity: string | null
+  resolution: 'open' | 'patched' | null
+  // a.is_critical is GENERATED AS (cvss >= 7.0); null when cvss is unknown.
+  isCritical: boolean | null
+}
+
+interface AdvisoryRangesRow {
+  purl: string
+  osvId: string | null
+  severity: string | null
+  isCritical: boolean | null
+  latestVersion: string | null
+  // jsonb, parsed by the pg driver into an array of range objects (empty on the sentinel row).
+  ranges: AdvisoryAffectedRange[]
+}
+
+export async function getAdvisoriesByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<AkritesExternalAdvisoryRow[]> {
+  if (purls.length === 0) return []
+  const rows: AdvisoryRangesRow[] = await qx.select(
+    `
+    SELECT
+      p.purl,
+      p.latest_version  AS "latestVersion",
+      a.osv_id          AS "osvId",
+      LOWER(a.severity) AS severity,
+      a.is_critical     AS "isCritical",
+      COALESCE(
+        JSONB_AGG(
+          JSONB_BUILD_OBJECT(
+            'introduced', ar.introduced_version,
+            'fixed', ar.fixed_version,
+            'lastAffected', ar.last_affected,
+            'rangeRaw', ar.range_raw,
+            'unaffectedRaw', ar.unaffected_raw
+          )
+        ) FILTER (WHERE ar.id IS NOT NULL),
+        '[]'::jsonb
+      ) AS ranges
+    FROM packages p
+    LEFT JOIN advisory_packages ap ON ap.package_id = p.id
+    LEFT JOIN advisories a ON a.id = ap.advisory_id
+    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    WHERE p.purl = ANY($(purls))
+    GROUP BY p.purl, p.latest_version, a.osv_id, a.severity, a.is_critical
+    ORDER BY
+      p.purl,
+      CASE LOWER(a.severity)
+        WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'moderate' THEN 3 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5
+      END,
+      a.osv_id
+    `,
+    { purls },
+  )
+
+  return rows.map((r) => ({
+    purl: r.purl,
+    osvId: r.osvId,
+    severity: r.severity,
+    resolution: r.osvId === null ? null : resolveAdvisory(r.latestVersion, r.ranges),
+    isCritical: r.isCritical,
+  }))
 }
