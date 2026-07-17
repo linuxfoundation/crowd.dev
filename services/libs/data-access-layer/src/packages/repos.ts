@@ -32,17 +32,24 @@ export async function getOrCreateRepoByUrl(
   return { id: row.id, changedFields: [] }
 }
 
-// Removes a package's previous 'declared' repo link when its manifest no longer resolves
-// to a trusted repo (the field was removed, or no longer canonicalizes). Only touches
-// 'declared' — other sources (deps_dev, heuristic, manual) are owned by different
-// pipelines and left alone.
+// Removes a package's previous 'declared' repo link(s) when its manifest no longer
+// resolves to a trusted repo (the field was removed, or no longer canonicalizes), or
+// now resolves to a different one (pass exceptRepoId to keep only that fresh link —
+// package_repos' unique key is (package_id, repo_id), not (package_id, source), so a
+// plain upsert of the new link never removes a stale one pointing elsewhere). Only
+// touches 'declared' — other sources (deps_dev, heuristic, manual) are owned by
+// different pipelines and left alone.
 export async function removeDeclaredPackageRepo(
   qx: QueryExecutor,
   packageId: string,
+  exceptRepoId?: string,
 ): Promise<string[]> {
   const rowCount = await qx.result(
-    `DELETE FROM package_repos WHERE package_id = $(packageId)::bigint AND source = 'declared'`,
-    { packageId },
+    `DELETE FROM package_repos
+      WHERE package_id = $(packageId)::bigint
+        AND source = 'declared'
+        AND ($(exceptRepoId)::bigint IS NULL OR repo_id <> $(exceptRepoId)::bigint)`,
+    { packageId, exceptRepoId: exceptRepoId ?? null },
   )
   return rowCount > 0 ? ['package_repos.repo_id'] : []
 }

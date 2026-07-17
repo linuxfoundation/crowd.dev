@@ -14,7 +14,9 @@ import type { NormalizedPackagistStats } from './types'
 
 // Dynamic-endpoint persistence: packages fields + repo link for ALL packages,
 // maintainers only for critical ones. Download rows are NOT written here — they
-// belong to the dedicated downloads-30d/daily lanes.
+// belong to the dedicated downloads-30d/daily lanes. All writes share one
+// transaction so a failure partway through can never leave the packages row,
+// repo link, and maintainer set inconsistent with each other.
 export async function persistPackagistPackageInfo(
   qx: QueryExecutor,
   purl: string,
@@ -24,7 +26,6 @@ export async function persistPackagistPackageInfo(
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(stats)
 
-  // Step 1: Update packages row
   const canonical = stats.repositoryUrl ? canonicalizeRepoUrl(stats.repositoryUrl) : null
   // Packagist's repository field is free-form/author-supplied. canonicalizeRepoUrl's
   // 'other' bucket also matches non-repo URLs (wikis, issue trackers, registry pages)
@@ -32,43 +33,59 @@ export async function persistPackagistPackageInfo(
   // github.com/gitlab.com/bitbucket.org — rather than the shared utility's default,
   // which other callers (npm/maven/cargo) rely on staying permissive.
   const trustedRepo = canonical && canonical.host !== 'other' ? canonical : null
-  const result = await updatePackagistPackageStats(qx, {
-    purl,
-    description: stats.description,
-    declaredRepositoryUrl: stats.repositoryUrl,
-    repositoryUrl: trustedRepo?.url ?? null,
-    status: stats.status,
-    downloadsLast30d: stats.downloadsMonthly,
-    totalDownloads: stats.downloadsTotal,
-    dependentCount: stats.dependents,
+
+  let found = false
+  const changedFields: string[] = []
+
+  await qx.tx(async (t) => {
+    // Step 1: Update packages row
+    const result = await updatePackagistPackageStats(t, {
+      purl,
+      description: stats.description,
+      declaredRepositoryUrl: stats.repositoryUrl,
+      repositoryUrl: trustedRepo?.url ?? null,
+      status: stats.status,
+      downloadsLast30d: stats.downloadsMonthly,
+      totalDownloads: stats.downloadsTotal,
+      dependentCount: stats.dependents,
+    })
+
+    if (!result) return
+
+    found = true
+    const { id, isCritical } = result
+    changedFields.push(...result.changedFields)
+
+    // Step 2: Link the repo for ALL packages — 'declared'/0.8 is the manifest-declared
+    // convention shared by npm/pypi/maven/cargo. When there's no trusted repo (removed
+    // from the manifest, or no longer canonicalizable to a known host), or it now
+    // resolves to a different repo, clear any previously-declared link that no longer
+    // applies — package_repos' unique key is (package_id, repo_id), not (package_id,
+    // source), so upserting the new link alone would leave a stale one dangling.
+    if (trustedRepo) {
+      const repo = await getOrCreateRepoByUrl(t, trustedRepo.url, trustedRepo.host)
+      const linkChanged = await upsertPackageRepo(t, id, repo.id, 'declared', 0.8)
+      const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
+      changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
+    } else {
+      const removedFields = await removeDeclaredPackageRepo(t, id)
+      changedFields.push(...removedFields)
+    }
+
+    // Step 3: Maintainers only for critical packages. upsertPackageMaintainers always
+    // replaces the full stored set (including deleting rows for maintainers no longer
+    // reported), so it must run even when the registry now reports zero maintainers —
+    // skipping it on an empty list would leave stale maintainers attached forever.
+    if (isCritical) {
+      const maintainerChanges = await upsertPackageMaintainers(
+        t,
+        id,
+        stats.maintainers,
+        'packagist',
+      )
+      changedFields.push(...maintainerChanges)
+    }
   })
 
-  if (!result) {
-    return { found: false, changedFields: [] }
-  }
-
-  const { id, isCritical } = result
-  const changedFields = [...result.changedFields]
-
-  // Step 2: Link the repo for ALL packages — 'declared'/0.8 is the manifest-declared
-  // convention shared by npm/pypi/maven/cargo. When there's no trusted repo (removed
-  // from the manifest, or no longer canonicalizable to a known host), clear any
-  // previously-declared link instead of leaving it pointing at a repo the package no
-  // longer declares.
-  if (trustedRepo) {
-    const repo = await getOrCreateRepoByUrl(qx, trustedRepo.url, trustedRepo.host)
-    const linkChanged = await upsertPackageRepo(qx, id, repo.id, 'declared', 0.8)
-    changedFields.push(...repo.changedFields, ...linkChanged)
-  } else {
-    const removedFields = await removeDeclaredPackageRepo(qx, id)
-    changedFields.push(...removedFields)
-  }
-
-  // Step 3: Maintainers only for critical packages
-  if (isCritical && stats.maintainers.length > 0) {
-    const maintainerChanges = await upsertPackageMaintainers(qx, id, stats.maintainers, 'packagist')
-    changedFields.push(...maintainerChanges)
-  }
-
-  return { found: true, changedFields }
+  return { found, changedFields }
 }
