@@ -5,7 +5,8 @@ DESCRIPTION >
     - This time extension ensures retention rate calculations have the necessary baseline data from the preceding period for comparing distinct member activity for the first given period.
     - Primary use case: providing data foundation for member retention analysis and cohort studies.
     - Parameters:
-    - `project`: Inherited from `segments_filtered`, project slug (e.g., 'k8s', 'tensorflow')
+    - `project`: Inherited from `segments_filtered`, project slug (e.g., 'k8s', 'tensorflow'). Required unless `collectionSlug` is given.
+    - `collectionSlug`: Inherited from `segments_filtered_by_collection`, collection slug (e.g., 'cncf'). Required unless `project` is given.
     - `repos`: Inherited from `segments_filtered`, array of repository URLs for filtering
     - `startDate`: Optional DateTime filter, automatically extended backwards by one granularity period
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -22,9 +23,15 @@ NODE activities_filtered_retention_bucket_routing
 SQL >
     %
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
-    FROM activityRelations_bucket_routing a
+    FROM
+        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% else %} activityRelations_bucket_routing
+        {% end %} as a
     where
-        segmentId = (SELECT segmentId FROM segments_filtered)
+        {% if defined(collectionSlug) %}
+            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %}
         {% if defined(startDate) %}
             AND a.timestamp
             > {% if defined(granularity) and granularity == "daily" %}
