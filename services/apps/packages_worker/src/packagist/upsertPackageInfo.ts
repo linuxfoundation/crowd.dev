@@ -1,5 +1,6 @@
 import {
   getOrCreateRepoByUrl,
+  logAuditFieldChanges,
   removeDeclaredPackageRepo,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
@@ -12,11 +13,15 @@ import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import type { NormalizedPackagistStats } from './types'
 
+const WORKER = 'packagist'
+
 // Dynamic-endpoint persistence: packages fields + repo link for ALL packages,
 // maintainers only for critical ones. Download rows are NOT written here — they
-// belong to the dedicated downloads-30d/daily lanes. All writes share one
-// transaction so a failure partway through can never leave the packages row,
-// repo link, and maintainer set inconsistent with each other.
+// belong to the dedicated downloads-30d/daily lanes. All writes AND the audit
+// record share one transaction so a failure partway through — including a
+// failed audit insert — can never leave the writes and their audit trail
+// inconsistent with each other, and a retry can't lose an already-committed
+// change's audit event.
 export async function persistPackagistPackageInfo(
   qx: QueryExecutor,
   purl: string,
@@ -85,6 +90,8 @@ export async function persistPackagistPackageInfo(
       )
       changedFields.push(...maintainerChanges)
     }
+
+    await logAuditFieldChanges(t, WORKER, purl, changedFields)
   })
 
   return { found, changedFields }

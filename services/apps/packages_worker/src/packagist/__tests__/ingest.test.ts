@@ -72,7 +72,9 @@ const mockFetchList = vi.mocked(fetchPackagistPackageList)
 const mockParseList = vi.mocked(parsePackagistPackageList)
 const mockSeedInsert = vi.mocked(insertPackagistPackages)
 
-const qx = {} as QueryExecutor
+const qx = {
+  tx: vi.fn((cb: (t: QueryExecutor) => Promise<void>) => cb(qx)),
+} as unknown as QueryExecutor
 const PURL = 'pkg:composer/monolog/monolog'
 const RUN_DATE = '2026-07-15'
 const SCHEDULED_AT = '2026-07-15T00:00:00.000Z'
@@ -111,7 +113,7 @@ describe('ingestOnePackagistMetadata', () => {
     })
   }
 
-  it('audits phase 1 immediately and phase 2 separately, then marks scanned with the fresh Last-Modified', async () => {
+  it('persists phase 1 immediately and phase 2 separately, then marks scanned with the fresh Last-Modified', async () => {
     happyMocks()
 
     await ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
@@ -120,10 +122,9 @@ describe('ingestOnePackagistMetadata', () => {
     expect(mockFetchP2).toHaveBeenCalledWith('monolog/monolog', 'Tue, 30 Jun 2026 00:00:00 GMT')
     expect(mockExpand).toHaveBeenCalledWith(minified)
     expect(mockPersistMetadata).toHaveBeenCalledWith(qx, PURL, expanded)
-    // Two separate audit rows, not one merged call — phase 1 is logged as soon as it's
-    // committed, before the p2 fetch (which can throw) ever runs.
-    expect(mockAudit).toHaveBeenNthCalledWith(1, qx, 'packagist', PURL, ['packages.description'])
-    expect(mockAudit).toHaveBeenNthCalledWith(2, qx, 'packagist', PURL, ['versions.number'])
+    // Each phase audits its own writes atomically inside its own persist* call (see
+    // persistPackageInfo.test.ts / persistMetadata.test.ts) — phase 1 is committed and
+    // audited before the p2 fetch (which can throw) ever runs.
     expect(mockMarkMetadata).toHaveBeenCalledWith(
       qx,
       PURL,
@@ -209,8 +210,9 @@ describe('ingestOnePackagistMetadata', () => {
     )
   })
 
-  it('audits phase-1 changes even when the p2 fetch gives up', async () => {
-    // the dynamic-endpoint writes are committed by then — their audit rows must not be dropped
+  it('still persists (and self-audits) phase 1 even when the p2 fetch gives up', async () => {
+    // the dynamic-endpoint writes are committed and audited by persistPackagistPackageInfo
+    // itself before the p2 fetch (which can throw) ever runs — see persistPackageInfo.test.ts
     vi.useFakeTimers()
     mockFetchStats.mockResolvedValue(statsJson as never)
     mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
@@ -224,7 +226,7 @@ describe('ingestOnePackagistMetadata', () => {
     await vi.runAllTimersAsync()
     await p
 
-    expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, ['packages.description'])
+    expect(mockPersistInfo).toHaveBeenCalledWith(qx, PURL, expect.anything())
     expect(mockMarkMetadata).toHaveBeenCalledWith(
       qx,
       PURL,
@@ -233,32 +235,30 @@ describe('ingestOnePackagistMetadata', () => {
     )
   })
 
-  it('throws on a transient p2 result without marking scanned, but still audits phase 1', async () => {
+  it('throws on a transient p2 result without marking scanned, but phase 1 already persisted', async () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
     mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
     mockFetchP2.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 502' } as never)
 
     await expect(ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)).rejects.toThrow()
     expect(mockMarkMetadata).not.toHaveBeenCalled()
-    // phase-1 writes are already committed when the throw happens — a retry re-runs
-    // phase 1 idempotently and reports no changes, so this audit event can't be deferred
-    expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, ['packages.description'])
+    // phase-1 writes (and their audit row) are already committed by
+    // persistPackagistPackageInfo when the throw happens — a retry re-runs phase 1
+    // idempotently and reports no changes, so nothing here can lose that audit event
+    expect(mockPersistInfo).toHaveBeenCalledWith(qx, PURL, expect.anything())
   })
 })
 
 // The monthly downloads-30d lane: dynamic fetch, window row only.
 describe('ingestOnePackagist30dWindow', () => {
-  it('persists the observed rolling window, audits the change, and marks the run processed', async () => {
+  it('persists the observed rolling window (self-audited) and marks the run processed', async () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
     mockPersist30d.mockResolvedValue(['downloads_last_30d.count', 'packages.downloads_last_30d'])
 
     await ingestOnePackagist30dWindow(qx, PURL, RUN_DATE, SCHEDULED_AT)
 
     expect(mockPersist30d).toHaveBeenCalledWith(qx, PURL, 300, RUN_DATE)
-    expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, [
-      'downloads_last_30d.count',
-      'packages.downloads_last_30d',
-    ])
+    // persistPackagist30dWindow audits its own write atomically — see downloads.test.ts
     expect(mockMark30d).toHaveBeenCalledWith(
       qx,
       PURL,

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   getPackagistPackageIdsByNames,
+  logAuditFieldChanges,
   reconcileVersionDependencies,
   updatePackagistVersionAggregates,
   upsertPackagistVersions,
@@ -16,12 +17,14 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   upsertPackagistVersions: vi.fn(),
   getPackagistPackageIdsByNames: vi.fn(),
   reconcileVersionDependencies: vi.fn().mockResolvedValue([]),
+  logAuditFieldChanges: vi.fn(),
 }))
 
 const mockAggregates = vi.mocked(updatePackagistVersionAggregates)
 const mockVersions = vi.mocked(upsertPackagistVersions)
 const mockIds = vi.mocked(getPackagistPackageIdsByNames)
 const mockDeps = vi.mocked(reconcileVersionDependencies)
+const mockAudit = vi.mocked(logAuditFieldChanges)
 
 const qx = {
   tx: vi.fn((cb: (t: QueryExecutor) => Promise<void>) => cb(qx)),
@@ -120,6 +123,13 @@ describe('persistPackagistMetadata', () => {
     expect(result.unresolvedDependencyTargets).toBe(0)
     // dependency-edge changes must reach the audit log alongside aggregates/versions
     expect(result.changedFields).toContain('package_dependencies.depends_on_id')
+    // audited atomically inside the same transaction as the writes above
+    expect(mockAudit).toHaveBeenCalledWith(
+      qx,
+      'packagist',
+      PURL,
+      expect.arrayContaining(['packages.latest_version', 'package_dependencies.depends_on_id']),
+    )
   })
 
   it('skips and counts dependency targets that do not resolve to a packages row', async () => {
@@ -170,6 +180,7 @@ describe('persistPackagistMetadata', () => {
     expect(mockVersions).not.toHaveBeenCalled()
     expect(mockIds).not.toHaveBeenCalled()
     expect(mockDeps).not.toHaveBeenCalled()
+    expect(mockAudit).not.toHaveBeenCalled()
   })
 
   it('handles a dev-branches-only package: aggregates written, no version or dependency writes', async () => {

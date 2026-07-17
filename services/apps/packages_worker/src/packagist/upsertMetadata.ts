@@ -1,5 +1,6 @@
 import {
   getPackagistPackageIdsByNames,
+  logAuditFieldChanges,
   reconcileVersionDependencies,
   updatePackagistVersionAggregates,
   upsertPackagistVersions,
@@ -15,6 +16,8 @@ import {
   isPackagistDevVersion,
 } from './normalize'
 import type { PackagistDependency, PackagistExpandedVersion } from './types'
+
+const WORKER = 'packagist'
 
 export async function persistPackagistMetadata(
   qx: QueryExecutor,
@@ -32,10 +35,11 @@ export async function persistPackagistMetadata(
   const changedFields: string[] = []
   let unresolvedDependencyTargets = 0
 
-  // One transaction for the whole p2 write path: the aggregates update, version
-  // upsert + is_latest cleanup, and dependency reconcile (delete stale + upsert
-  // current) are each multi-statement on their own — sharing one tx means a failure
-  // partway through can never leave versions/dependencies half-refreshed.
+  // One transaction for the whole p2 write path AND its audit record: the aggregates
+  // update, version upsert + is_latest cleanup, and dependency reconcile (delete stale
+  // + upsert current) are each multi-statement on their own — sharing one tx means a
+  // failure partway through (including a failed audit insert) can never leave
+  // versions/dependencies half-refreshed or their audit trail out of sync.
   await qx.tx(async (t) => {
     const agg = await updatePackagistVersionAggregates(t, purl, {
       versionsCount: versionRows.length,
@@ -106,6 +110,8 @@ export async function persistPackagistMetadata(
       )
       changedFields.push(...depChanges)
     }
+
+    await logAuditFieldChanges(t, WORKER, purl, changedFields)
   })
 
   return { found, changedFields, unresolvedDependencyTargets }

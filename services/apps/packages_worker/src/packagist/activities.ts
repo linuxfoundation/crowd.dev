@@ -147,9 +147,10 @@ export async function ingestOnePackagistMetadata(
   }
 
   const stats = normalizePackagistStats(info.value.package)
-  const persistedInfo = await persistPackagistPackageInfo(qx, candidate.purl, stats)
-  // Audit phase 1 immediately: those writes are already committed
-  await logAuditFieldChanges(qx, WORKER, candidate.purl, persistedInfo.changedFields)
+  // persistPackagistPackageInfo audits its own writes atomically, inside the same
+  // transaction — phase 1 is committed-and-audited before the p2 fetch (which can
+  // throw) ever runs.
+  await persistPackagistPackageInfo(qx, candidate.purl, stats)
 
   // Phase 2: p2 endpoint
   const p2 = await fetchWithFastRetry(
@@ -172,9 +173,10 @@ export async function ingestOnePackagistMetadata(
   }
 
   let lastModified: string | null = null
-  let phase2ChangedFields: string[] = []
   if (!isP2NotModified(p2.value)) {
     const expanded = expandComposerMetadata(p2.value.minifiedVersions)
+    // persistPackagistMetadata audits its own writes atomically, inside the same
+    // transaction as the aggregate/version/dependency writes.
     const persistResult = await persistPackagistMetadata(qx, candidate.purl, expanded)
     if (persistResult.unresolvedDependencyTargets > 0) {
       log.debug(
@@ -182,11 +184,9 @@ export async function ingestOnePackagistMetadata(
         'packagist dependency targets not found in packages — edges skipped',
       )
     }
-    phase2ChangedFields = persistResult.changedFields
     lastModified = p2.value.lastModified
   }
 
-  await logAuditFieldChanges(qx, WORKER, candidate.purl, phase2ChangedFields)
   await markPackagistMetadataScanned(
     qx,
     candidate.purl,
@@ -219,13 +219,9 @@ export async function ingestOnePackagist30dWindow(
     return
   }
 
-  const changedFields = await persistPackagist30dWindow(
-    qx,
-    purl,
-    info.value.package.downloads?.monthly ?? null,
-    runDate,
-  )
-  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
+  // persistPackagist30dWindow audits its own write atomically, inside the same
+  // transaction as the insert-if-absent.
+  await persistPackagist30dWindow(qx, purl, info.value.package.downloads?.monthly ?? null, runDate)
   await markPackagist30dProcessed(qx, purl, { status: 'success', attempts: info.attempts })
 }
 
@@ -258,10 +254,15 @@ export async function ingestOnePackagistDailyDownload(
 
   const daily = info.value.package.downloads?.daily
   if (typeof daily === 'number') {
-    const changedFields = await insertDailyDownloads(qx, candidate.packageId, [
-      { day: runDate, downloads: daily },
-    ])
-    await logAuditFieldChanges(qx, WORKER, candidate.purl, changedFields)
+    // Insert + audit share one transaction so a failed audit insert can never leave a
+    // committed row unaudited — a retry would hit ON CONFLICT DO NOTHING and report no
+    // changes, permanently losing the audit event otherwise.
+    await qx.tx(async (t) => {
+      const changedFields = await insertDailyDownloads(t, candidate.packageId, [
+        { day: runDate, downloads: daily },
+      ])
+      await logAuditFieldChanges(t, WORKER, candidate.purl, changedFields)
+    })
   }
   await markPackagistDailyProcessed(qx, candidate.purl, {
     status: 'success',

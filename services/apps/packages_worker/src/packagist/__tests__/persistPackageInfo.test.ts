@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   getOrCreateRepoByUrl,
+  logAuditFieldChanges,
   removeDeclaredPackageRepo,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
@@ -18,6 +19,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   getOrCreateRepoByUrl: vi.fn(),
   upsertPackageRepo: vi.fn().mockResolvedValue([]),
   removeDeclaredPackageRepo: vi.fn().mockResolvedValue([]),
+  logAuditFieldChanges: vi.fn(),
 }))
 
 const mockUpdate = vi.mocked(updatePackagistPackageStats)
@@ -25,6 +27,7 @@ const mockMaintainers = vi.mocked(upsertPackageMaintainers)
 const mockRepoGet = vi.mocked(getOrCreateRepoByUrl)
 const mockRepoLink = vi.mocked(upsertPackageRepo)
 const mockRepoRemove = vi.mocked(removeDeclaredPackageRepo)
+const mockAudit = vi.mocked(logAuditFieldChanges)
 
 const qx = {
   tx: vi.fn((cb: (t: QueryExecutor) => Promise<void>) => cb(qx)),
@@ -82,6 +85,13 @@ describe('persistPackagistPackageInfo', () => {
     expect(result.changedFields).toContain('packages.description')
     // maintainer changes must reach the audit log too, matching the npm/pypi paths
     expect(result.changedFields).toContain('maintainers.display_name')
+    // audited atomically inside the same transaction as the writes above
+    expect(mockAudit).toHaveBeenCalledWith(
+      qx,
+      'packagist',
+      PURL,
+      expect.arrayContaining(['packages.description', 'maintainers.display_name']),
+    )
   })
 
   it('skips maintainers for a non-critical package but still links the repo', async () => {
@@ -187,6 +197,7 @@ describe('persistPackagistPackageInfo', () => {
     expect(result).toEqual({ found: false, changedFields: [] })
     expect(mockRepoGet).not.toHaveBeenCalled()
     expect(mockMaintainers).not.toHaveBeenCalled()
+    expect(mockAudit).not.toHaveBeenCalled()
   })
 
   it('strips NUL bytes from the description before writing (Postgres rejects them)', async () => {
