@@ -171,11 +171,47 @@ export async function fetchPackagistP2(
   }
 }
 
+// Validates every field normalizePackagistStats consumes unconditionally
+// (blankToNull's .trim(), the maintainers .filter()) — a wrong runtime type here must
+// surface as MALFORMED, not throw past the fast-retry/give-up path and get treated as
+// a transient failure that Temporal retries forever on the same deterministic input.
 function isPackagistStatsJson(v: unknown): v is PackagistStatsJson {
   if (typeof v !== 'object' || v === null || !('package' in v)) return false
   const pkg = (v as { package: unknown }).package
+  if (typeof pkg !== 'object' || pkg === null) return false
+  const p = pkg as Record<string, unknown>
+  if (typeof p.name !== 'string') return false
+  if (p.description != null && typeof p.description !== 'string') return false
+  if (p.repository != null && typeof p.repository !== 'string') return false
+  if (p.maintainers != null && !Array.isArray(p.maintainers)) return false
+  return true
+}
+
+// '__unset' is the p2 minified-diff sentinel for "field removed since the previous
+// entry" — a legitimate value for any optional field, not just an absent key.
+function isValidVersionField(value: unknown, isValidType: (v: unknown) => boolean): boolean {
+  return value === undefined || value === '__unset' || isValidType(value)
+}
+
+// Validates every field normalize.ts consumes unconditionally on an expanded version:
+// `version`/`version_normalized` via .startsWith()/.split()/.endsWith()
+// (isPackagistDevVersion/isPackagistPrerelease), `homepage` via blankToNull's .trim(),
+// `license` as the text[] written to versions.licenses, `time` as the timestamptz
+// written to versions.published_at. `require`/`require-dev` are already guarded at
+// their own call site (extractVersionDependencies checks typeof before Object.entries)
+// so aren't re-validated here.
+function isValidMinifiedVersion(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) return false
+  const entry = v as Record<string, unknown>
   return (
-    typeof pkg === 'object' && pkg !== null && typeof (pkg as { name?: unknown }).name === 'string'
+    typeof entry.version === 'string' &&
+    isValidVersionField(entry.version_normalized, (x) => typeof x === 'string') &&
+    isValidVersionField(entry.homepage, (x) => typeof x === 'string') &&
+    isValidVersionField(entry.time, (x) => typeof x === 'string') &&
+    isValidVersionField(
+      entry.license,
+      (x) => Array.isArray(x) && x.every((l) => typeof l === 'string'),
+    )
   )
 }
 
@@ -184,5 +220,5 @@ function isP2Response(v: unknown, name: string): v is { packages: Record<string,
   const packages = (v as { packages: unknown }).packages
   if (typeof packages !== 'object' || packages === null) return false
   const entries = (packages as Record<string, unknown>)[name]
-  return Array.isArray(entries)
+  return Array.isArray(entries) && entries.every(isValidMinifiedVersion)
 }

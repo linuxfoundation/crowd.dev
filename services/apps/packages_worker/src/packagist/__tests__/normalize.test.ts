@@ -55,6 +55,18 @@ describe('normalizePackagistStats', () => {
     expect(normalizePackagistStats(full).status).toBe('active')
   })
 
+  it('drops a null/non-object maintainer entry instead of throwing', () => {
+    // isPackagistStatsJson only guarantees maintainers is an array, not that every
+    // element is a well-formed object — a rogue null must not crash `m.name` access.
+    const stats = normalizePackagistStats({
+      name: 'a/b',
+      maintainers: [null, 'not-an-object', { name: 'seldaek' }] as never,
+    })
+    expect(stats.maintainers).toEqual([
+      { username: 'seldaek', displayName: null, email: null, role: 'maintainer' },
+    ])
+  })
+
   it('tolerates missing optional fields with nulls and empty lists', () => {
     const stats = normalizePackagistStats({ name: 'a/b' })
     expect(stats).toEqual({

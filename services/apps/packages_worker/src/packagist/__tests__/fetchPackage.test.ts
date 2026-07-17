@@ -118,6 +118,21 @@ describe('fetchPackagistStats', () => {
     expect(await fetchPackagistStats('monolog/monolog')).toMatchObject({ kind: 'MALFORMED' })
   })
 
+  // Regression: a technically-valid-JSON body with the wrong runtime type for a field
+  // normalizePackagistStats consumes unconditionally must be classified MALFORMED, not
+  // thrown past the guard (where it would be misread as a transient failure and
+  // retried forever on the same deterministic input).
+  it.each([
+    ['description is a number', { package: { name: 'a/b', description: 123 } }],
+    ['repository is an object', { package: { name: 'a/b', repository: {} } }],
+    ['maintainers is not an array', { package: { name: 'a/b', maintainers: {} } }],
+  ])('maps a wrong-typed field (%s) → MALFORMED, not a throw', async (_desc, body) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(200, body)))
+    await expect(fetchPackagistStats('monolog/monolog')).resolves.toMatchObject({
+      kind: 'MALFORMED',
+    })
+  })
+
   it('maps a body read aborted by the 30s timeout → TRANSIENT (not MALFORMED)', async () => {
     vi.useFakeTimers()
     vi.stubGlobal(
@@ -197,5 +212,40 @@ describe('fetchPackagistP2', () => {
       vi.fn().mockResolvedValue(fakeResponse(200, { packages: { 'other/pkg': [] } })),
     )
     expect(await fetchPackagistP2('monolog/monolog', null)).toMatchObject({ kind: 'MALFORMED' })
+  })
+
+  // Regression: a malformed element in the version array must be classified
+  // MALFORMED, not thrown past the guard — expandComposerMetadata's Object.entries()
+  // throws on a null/non-object element, and version/version_normalized/license reach
+  // .startsWith()/.split()/.endsWith() and the SQL text[] write unconditionally.
+  it.each([
+    ['an element is null', [null]],
+    ['version is missing', [{ time: '2024-01-01' }]],
+    ['version is a number', [{ version: 123 }]],
+    ['version_normalized is a number', [{ version: '1.0.0', version_normalized: 42 }]],
+    ['license is a scalar string, not an array', [{ version: '1.0.0', license: 'MIT' }]],
+    ['homepage is an object', [{ version: '1.0.0', homepage: {} }]],
+    ['time is a number', [{ version: '1.0.0', time: 20240101 }]],
+  ])('maps a malformed version entry (%s) → MALFORMED, not a throw', async (_desc, versions) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(fakeResponse(200, { packages: { 'monolog/monolog': versions } })),
+    )
+    await expect(fetchPackagistP2('monolog/monolog', null)).resolves.toMatchObject({
+      kind: 'MALFORMED',
+    })
+  })
+
+  it('accepts a version entry using the __unset diff sentinel on optional fields', async () => {
+    const versions = [
+      { version: '1.0.0', license: ['MIT'] },
+      { version: '2.0.0', license: '__unset' },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(fakeResponse(200, { packages: { 'monolog/monolog': versions } })),
+    )
+    const result = await fetchPackagistP2('monolog/monolog', null)
+    expect(result).not.toMatchObject({ kind: 'MALFORMED' })
   })
 })

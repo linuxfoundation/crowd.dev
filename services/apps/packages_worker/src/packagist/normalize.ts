@@ -34,9 +34,13 @@ export function normalizePackagistStats(pkg: PackagistPackageInfo): NormalizedPa
 
   const dependents = typeof pkg.dependents === 'number' ? pkg.dependents : null
 
-  // Extract maintainers with non-empty names
+  // Extract maintainers with non-empty names. isPackagistStatsJson only guarantees
+  // maintainers is an array — a rogue null/non-object element would throw on `m.name`.
   const maintainers = (pkg.maintainers ?? [])
-    .filter((m): m is { name: string } => typeof m.name === 'string' && !!m.name)
+    .filter(
+      (m): m is { name: string } =>
+        typeof m === 'object' && m !== null && typeof m.name === 'string' && !!m.name,
+    )
     .map((m) => ({
       username: m.name,
       displayName: null,
