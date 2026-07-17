@@ -26,15 +26,25 @@ export async function markPackagistMetadataScanned(
   purl: string,
   result: PackagistRunResult,
   metadataLastModified?: string | null,
+  // p2-only failures (phase 1 already succeeded) should NOT push the refresh watermark
+  // forward — versions/dependencies never actually refreshed, so the package must stay
+  // (or become) due again on the next run instead of sitting out the full refresh window.
+  bumpLastRunAt = true,
 ): Promise<void> {
   await qx.result(
     `INSERT INTO packagist_package_state (purl, metadata_run_result, metadata_last_run_at, metadata_last_modified)
-     VALUES ($(purl), $(result)::jsonb, NOW(), $(metadataLastModified))
+     VALUES ($(purl), $(result)::jsonb, CASE WHEN $(bumpLastRunAt) THEN NOW() ELSE NULL END, $(metadataLastModified))
      ON CONFLICT (purl) DO UPDATE SET
        metadata_run_result    = EXCLUDED.metadata_run_result,
-       metadata_last_run_at   = EXCLUDED.metadata_last_run_at,
+       metadata_last_run_at   = CASE WHEN $(bumpLastRunAt) THEN EXCLUDED.metadata_last_run_at
+                                      ELSE packagist_package_state.metadata_last_run_at END,
        metadata_last_modified = COALESCE(EXCLUDED.metadata_last_modified, packagist_package_state.metadata_last_modified)`,
-    { purl, result: JSON.stringify(result), metadataLastModified: metadataLastModified ?? null },
+    {
+      purl,
+      result: JSON.stringify(result),
+      metadataLastModified: metadataLastModified ?? null,
+      bumpLastRunAt,
+    },
   )
 }
 

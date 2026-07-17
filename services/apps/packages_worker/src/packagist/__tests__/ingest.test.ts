@@ -197,10 +197,14 @@ describe('ingestOnePackagistMetadata', () => {
     await p
 
     expect(mockPersistMetadata).not.toHaveBeenCalled()
+    // p2-only failure must not bump metadata_last_run_at — phase 1 already succeeded,
+    // but versions/deps never refreshed, so the package must stay due
     expect(mockMarkMetadata).toHaveBeenCalledWith(
       qx,
       PURL,
       expect.objectContaining({ status: 'error', errorKind: 'NOT_FOUND' }),
+      undefined,
+      false,
     )
   })
 
@@ -224,6 +228,8 @@ describe('ingestOnePackagistMetadata', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'error', errorKind: 'NOT_FOUND' }),
+      undefined,
+      false,
     )
   })
 

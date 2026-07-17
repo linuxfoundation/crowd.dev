@@ -151,7 +151,16 @@ export async function ingestOnePackagistMetadata(
       { purl: candidate.purl, statusCode: p2.error.statusCode, kind: p2.error.kind },
       'packagist metadata 4xx/malformed after fast retries — marking scanned and skipping',
     )
-    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(p2.error, p2.attempts))
+    // Phase 1 already succeeded — only p2 (versions/deps) failed to refresh. Don't push
+    // metadata_last_run_at forward, or due-selection wrongly treats this package as
+    // "recently scanned" and skips it for the full refresh window despite stale p2 data.
+    await markPackagistMetadataScanned(
+      qx,
+      candidate.purl,
+      giveUpResult(p2.error, p2.attempts),
+      undefined,
+      false,
+    )
     return
   }
 
