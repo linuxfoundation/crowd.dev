@@ -135,10 +135,9 @@ never overwritten — the first observation (closest to the boundary) wins.
 Packagist keeps no history, so unlike npm there is no backfill lane; a missed
 month stays missed. State: `downloads_30d_last_run_at` + `downloads_30d_run_result`.
 
-Unlike the daily lane (see below), the write-date here isn't pinned to a fixed
-run cutoff — if the full-catalog drain ran long enough, the labeled window
-could drift forward from what was true when the run started. Low risk given
-the run should finish in hours, not weeks, but worth knowing.
+Like the daily lane (see below), the write-date is pinned to the run's fixed
+cutoff and threaded through every batch, so the labeled window stays correct
+even if the drain runs long.
 
 ---
 
