@@ -7,13 +7,11 @@ import {
   isPackagistPrerelease,
   normalizePackagistStats,
   packagistNameFromPurl,
-  purlFromPackagistName,
 } from '../normalize'
 import type { PackagistPackageInfo } from '../types'
 
 describe('purl helpers', () => {
-  it('round-trips vendor/name through pkg:composer purls', () => {
-    expect(purlFromPackagistName('monolog/monolog')).toBe('pkg:composer/monolog/monolog')
+  it('strips the pkg:composer prefix to recover vendor/name', () => {
     expect(packagistNameFromPurl('pkg:composer/monolog/monolog')).toBe('monolog/monolog')
     expect(packagistNameFromPurl('pkg:composer/symfony/http-kernel')).toBe('symfony/http-kernel')
   })

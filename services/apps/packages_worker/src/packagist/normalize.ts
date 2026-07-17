@@ -12,10 +12,6 @@ export function packagistNameFromPurl(purl: string): string {
   return purl.slice(PURL_COMPOSER_PREFIX.length)
 }
 
-export function purlFromPackagistName(name: string): string {
-  return PURL_COMPOSER_PREFIX + name
-}
-
 function blankToNull(s: string | null | undefined): string | null {
   if (s == null) return null
   const t = s.trim()
