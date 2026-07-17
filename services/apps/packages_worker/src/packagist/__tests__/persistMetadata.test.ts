@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   getPackagistPackageIdsByNames,
+  reconcileVersionDependencies,
   updatePackagistVersionAggregates,
   upsertPackagistVersions,
-  upsertVersionDependencies,
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
@@ -15,13 +15,13 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   updatePackagistVersionAggregates: vi.fn(),
   upsertPackagistVersions: vi.fn(),
   getPackagistPackageIdsByNames: vi.fn(),
-  upsertVersionDependencies: vi.fn().mockResolvedValue([]),
+  reconcileVersionDependencies: vi.fn().mockResolvedValue([]),
 }))
 
 const mockAggregates = vi.mocked(updatePackagistVersionAggregates)
 const mockVersions = vi.mocked(upsertPackagistVersions)
 const mockIds = vi.mocked(getPackagistPackageIdsByNames)
-const mockDeps = vi.mocked(upsertVersionDependencies)
+const mockDeps = vi.mocked(reconcileVersionDependencies)
 
 const qx = {} as QueryExecutor
 const PURL = 'pkg:composer/monolog/monolog'
@@ -102,7 +102,9 @@ describe('persistPackagistMetadata', () => {
     expect([...requestedNames].sort()).toEqual(['phpunit/phpunit', 'psr/log'])
 
     expect(mockDeps).toHaveBeenCalledTimes(1)
-    const edges = mockDeps.mock.calls[0][1]
+    // reconciliation is scoped to exactly the versions refreshed this pass
+    expect(mockDeps.mock.calls[0][1]).toEqual(expect.arrayContaining(['21', '20']))
+    const edges = mockDeps.mock.calls[0][2]
     expect(edges).toEqual(
       expect.arrayContaining([
         { packageId: '9', versionId: '21', dependsOnId: '44', constraint: '^3.0', kind: 'direct' },
@@ -132,10 +134,29 @@ describe('persistPackagistMetadata', () => {
 
     const result = await persistPackagistMetadata(qx, PURL, expanded)
 
-    const edges = mockDeps.mock.calls[0][1]
+    const edges = mockDeps.mock.calls[0][2]
     expect(edges).toHaveLength(2)
     expect(edges.every((e) => e.dependsOnId === '44')).toBe(true)
     expect(result.unresolvedDependencyTargets).toBe(1)
+  })
+
+  it('reconciles (deletes stale edges) even when a version now declares zero dependencies', async () => {
+    mockAggregates.mockResolvedValue({ id: '9', changedFields: [] })
+    mockVersions.mockResolvedValue({
+      changedFields: [],
+      versionIds: [{ number: '1.0.0', id: '20' }],
+    })
+    mockDeps.mockResolvedValue(['package_dependencies.depends_on_id'])
+
+    // no require/require-dev at all — a prior run's edges for this version must still
+    // be reconciled away, not left stale just because nothing new was declared
+    const result = await persistPackagistMetadata(qx, PURL, [
+      { version: '1.0.0', version_normalized: '1.0.0.0' },
+    ])
+
+    expect(mockIds).not.toHaveBeenCalled()
+    expect(mockDeps).toHaveBeenCalledWith(qx, ['20'], [])
+    expect(result.changedFields).toContain('package_dependencies.depends_on_id')
   })
 
   it('returns found=false and writes nothing when the packages row is missing', async () => {

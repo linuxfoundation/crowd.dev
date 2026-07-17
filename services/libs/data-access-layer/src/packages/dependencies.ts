@@ -56,3 +56,38 @@ export async function upsertVersionDependencies(
   )
   return row.changed_fields
 }
+
+// Reconciles ALL dependency edges for a set of versions being refreshed: deletes any
+// existing package_dependencies row for those versions that isn't in `edges` (a
+// requirement removed from the manifest, or a version that now declares none at all),
+// then upserts the current edges. Scoped to `versionIds` — version_id has a supporting
+// btree index, so this stays a bounded, per-package operation despite the
+// depends_on_id HASH-partitioning.
+export async function reconcileVersionDependencies(
+  qx: QueryExecutor,
+  versionIds: string[],
+  edges: VersionDependencyEdge[],
+): Promise<string[]> {
+  if (versionIds.length === 0) return []
+
+  const deletedCount = await qx.result(
+    `DELETE FROM package_dependencies
+      WHERE version_id = ANY($(versionIds)::bigint[])
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest($(keepVersionIds)::bigint[], $(keepDependsOnIds)::bigint[], $(keepKinds)::text[])
+            AS keep(version_id, depends_on_id, dependency_kind)
+           WHERE keep.version_id = package_dependencies.version_id
+             AND keep.depends_on_id = package_dependencies.depends_on_id
+             AND keep.dependency_kind = package_dependencies.dependency_kind
+        )`,
+    {
+      versionIds,
+      keepVersionIds: edges.map((e) => e.versionId),
+      keepDependsOnIds: edges.map((e) => e.dependsOnId),
+      keepKinds: edges.map((e) => e.kind),
+    },
+  )
+
+  const upsertChanges = await upsertVersionDependencies(qx, edges)
+  return deletedCount > 0 ? [...upsertChanges, 'package_dependencies.depends_on_id'] : upsertChanges
+}

@@ -1,8 +1,8 @@
 import {
   getPackagistPackageIdsByNames,
+  reconcileVersionDependencies,
   updatePackagistVersionAggregates,
   upsertPackagistVersions,
-  upsertVersionDependencies,
 } from '@crowd/data-access-layer/src/packages'
 import type { VersionDependencyEdge } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -67,30 +67,37 @@ export async function persistPackagistMetadata(
     }
   }
 
+  // Reconciled for every version being refreshed (not just ones with a resolved
+  // dependency this pass) — a version whose manifest drops a requirement, or all of
+  // them, must have its stale package_dependencies rows removed, not just the newly
+  // declared ones upserted.
   let unresolvedDependencyTargets = 0
-  if (pending.length > 0) {
-    const idMap = await getPackagistPackageIdsByNames(qx, Array.from(targetNames))
-
+  if (versionIds.length > 0) {
     const edges: VersionDependencyEdge[] = []
-    for (const { versionId, dep } of pending) {
-      const dependsOnId = idMap.get(dep.name)
-      if (!dependsOnId) {
-        unresolvedDependencyTargets++
-        continue
+    if (pending.length > 0) {
+      const idMap = await getPackagistPackageIdsByNames(qx, Array.from(targetNames))
+      for (const { versionId, dep } of pending) {
+        const dependsOnId = idMap.get(dep.name)
+        if (!dependsOnId) {
+          unresolvedDependencyTargets++
+          continue
+        }
+        edges.push({
+          packageId: agg.id,
+          versionId,
+          dependsOnId,
+          constraint: dep.constraint,
+          kind: dep.kind,
+        })
       }
-      edges.push({
-        packageId: agg.id,
-        versionId,
-        dependsOnId,
-        constraint: dep.constraint,
-        kind: dep.kind,
-      })
     }
 
-    if (edges.length > 0) {
-      const depChanges = await upsertVersionDependencies(qx, edges)
-      changedFields.push(...depChanges)
-    }
+    const depChanges = await reconcileVersionDependencies(
+      qx,
+      versionIds.map((v) => v.id),
+      edges,
+    )
+    changedFields.push(...depChanges)
   }
 
   return { found: true, changedFields, unresolvedDependencyTargets }
