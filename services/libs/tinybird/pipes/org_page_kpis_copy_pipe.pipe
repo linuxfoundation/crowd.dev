@@ -1,36 +1,52 @@
 DESCRIPTION >
     Nightly copy pipe that precomputes org-level KPIs for the org page.
     Writes one row per organizationId into org_page_kpis_copy_ds.
+    Active contributors counts only code contribution activity types (commits, PRs, code reviews).
     Active contributors and critical projects use a 730-day (2-year) window.
     Trend compares current 730-day period against the prior 730-day period (days 731–1460).
 
 TAGS "Organization page"
 
-NODE org_page_kpis_current_contributors
+NODE org_page_kpis_code_activity_types
 DESCRIPTION >
-    Active contributors per org in the last 730 days (2 years)
+    Code contribution activity types only
 
 SQL >
-    SELECT organizationId, uniq(memberId) AS activeContributors
-    FROM activityRelations_deduplicated_cleaned_bucket_union
+    SELECT activityType, platform FROM activityTypes FINAL WHERE isCodeContribution
+
+NODE org_page_kpis_current_contributors
+DESCRIPTION >
+    Active code contributors per org in the last 730 days (2 years)
+
+SQL >
+    SELECT ar.organizationId, uniq(ar.memberId) AS activeContributors
+    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+    INNER JOIN
+        org_page_kpis_code_activity_types at
+        ON ar.type = at.activityType
+        AND ar.platform = at.platform
     WHERE
-        organizationId != ''
-        AND timestamp >= toStartOfDay(now() - toIntervalDay(730))
-        AND timestamp < toStartOfDay(now() + toIntervalDay(1))
-    GROUP BY organizationId
+        ar.organizationId != ''
+        AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(730))
+        AND ar.timestamp < toStartOfDay(now() + toIntervalDay(1))
+    GROUP BY ar.organizationId
 
 NODE org_page_kpis_previous_contributors
 DESCRIPTION >
-    Active contributors per org in the prior 730-day window (days 731–1460, for trend calc)
+    Active code contributors per org in the prior 730-day window (days 731–1460, for trend calc)
 
 SQL >
-    SELECT organizationId, uniq(memberId) AS activeContributorsPrevious
-    FROM activityRelations_deduplicated_cleaned_bucket_union
+    SELECT ar.organizationId, uniq(ar.memberId) AS activeContributorsPrevious
+    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+    INNER JOIN
+        org_page_kpis_code_activity_types at
+        ON ar.type = at.activityType
+        AND ar.platform = at.platform
     WHERE
-        organizationId != ''
-        AND timestamp >= toStartOfDay(now() - toIntervalDay(1460))
-        AND timestamp < toStartOfDay(now() - toIntervalDay(730))
-    GROUP BY organizationId
+        ar.organizationId != ''
+        AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(1460))
+        AND ar.timestamp < toStartOfDay(now() - toIntervalDay(730))
+    GROUP BY ar.organizationId
 
 NODE org_page_kpis_maintainer_roles
 DESCRIPTION >
