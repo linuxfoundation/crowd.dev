@@ -207,5 +207,5 @@ Note: triggering `seed` also chain-starts the full `metadata` drain (set
 `CROWD_PACKAGES_PACKAGIST_STOP_AFTER_FIRST_PAGE=true` locally to bound it).
 Local smoke order: seed → metadata → (rank) → downloads lanes for
 critical-scoped writes. State lives in `packagist_package_state`
-(migration `V1783382400__packagist_worker.sql`); design decisions in
+(migration `V1784314023__packagist_worker.sql`); design decisions in
 `docs/adr/0009-packagist-worker-design-decisions.md`.
