@@ -85,7 +85,8 @@ SQL >
     JOIN c.segmentIds as sid
     LEFT JOIN leaderboards_organizations_projects proj ON proj.segmentId = sid
     WHERE c.organizationActivityCount > 0
-    GROUP BY p.id, p.displayName, p.logo, p.slug, c.organizationActivityCount, pp.organizationActivityCount
+    GROUP BY
+        p.id, p.displayName, p.logo, p.slug, c.organizationActivityCount, pp.organizationActivityCount
     ORDER BY value DESC
     LIMIT 100
 
