@@ -60,6 +60,11 @@ export async function schedulePackagistIngest(): Promise<void> {
           workflowType: schedule.workflowType,
           taskQueue: 'packagist-worker',
           workflowRunTimeout: '24 hours',
+          retry: {
+            initialInterval: '30 seconds',
+            backoffCoefficient: 2,
+            maximumAttempts: 3,
+          },
           args: schedule.args,
         },
       })
