@@ -23,7 +23,9 @@ const mockVersions = vi.mocked(upsertPackagistVersions)
 const mockIds = vi.mocked(getPackagistPackageIdsByNames)
 const mockDeps = vi.mocked(reconcileVersionDependencies)
 
-const qx = {} as QueryExecutor
+const qx = {
+  tx: vi.fn((cb: (t: QueryExecutor) => Promise<void>) => cb(qx)),
+} as unknown as QueryExecutor
 const PURL = 'pkg:composer/monolog/monolog'
 
 const expanded: PackagistExpandedVersion[] = [
