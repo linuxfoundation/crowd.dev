@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { buildPackagistUserAgent, fetchPackagistP2, fetchPackagistStats } from '../fetchPackage'
 
-// Minimal Response stand-in for the global fetch mock.
+// Minimal Response stand-in for the global fetch mock. `body.cancel` is a spy so
+// error-path tests can assert the response body is drained before returning.
 function fakeResponse(
   status: number,
   body?: unknown,
   opts: { jsonThrows?: boolean; lastModified?: string } = {},
-): Response {
+): Response & { body: { cancel: ReturnType<typeof vi.fn> } } {
   return {
     status,
     ok: status >= 200 && status < 300,
@@ -19,7 +20,8 @@ function fakeResponse(
       if (opts.jsonThrows) throw new Error('bad json')
       return body
     },
-  } as unknown as Response
+    body: { cancel: vi.fn() },
+  } as unknown as Response & { body: { cancel: ReturnType<typeof vi.fn> } }
 }
 
 const validStats = { package: { name: 'monolog/monolog', downloads: { monthly: 5 } } }
@@ -65,28 +67,35 @@ describe('fetchPackagistStats', () => {
     expect(headers['User-Agent']).toMatch(/mailto=/)
   })
 
-  it('maps 404 → NOT_FOUND', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(404)))
+  it('maps 404 → NOT_FOUND and drains the response body', async () => {
+    const res = fakeResponse(404)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res))
     expect(await fetchPackagistStats('gone/gone')).toMatchObject({
       kind: 'NOT_FOUND',
       statusCode: 404,
     })
+    // an undrained body can pin the socket instead of returning it to the shared pool
+    expect(res.body.cancel).toHaveBeenCalled()
   })
 
-  it('maps 429 → RATE_LIMIT', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(429)))
+  it('maps 429 → RATE_LIMIT and drains the response body', async () => {
+    const res = fakeResponse(429)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res))
     expect(await fetchPackagistStats('busy/busy')).toMatchObject({
       kind: 'RATE_LIMIT',
       statusCode: 429,
     })
+    expect(res.body.cancel).toHaveBeenCalled()
   })
 
-  it('maps other non-ok statuses (5xx) → TRANSIENT with the status code', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(503)))
+  it('maps other non-ok statuses (5xx) → TRANSIENT with the status code and drains the body', async () => {
+    const res = fakeResponse(503)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res))
     expect(await fetchPackagistStats('flaky/flaky')).toMatchObject({
       kind: 'TRANSIENT',
       statusCode: 503,
     })
+    expect(res.body.cancel).toHaveBeenCalled()
   })
 
   it('maps a network rejection → TRANSIENT without a status code', async () => {
@@ -170,12 +179,16 @@ describe('fetchPackagistP2', () => {
     })
   })
 
-  it('maps 404 → NOT_FOUND and 429 → RATE_LIMIT', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(404)))
+  it('maps 404 → NOT_FOUND and 429 → RATE_LIMIT, draining the body each time', async () => {
+    const notFound = fakeResponse(404)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(notFound))
     expect(await fetchPackagistP2('gone/gone', null)).toMatchObject({ kind: 'NOT_FOUND' })
+    expect(notFound.body.cancel).toHaveBeenCalled()
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(429)))
+    const rateLimited = fakeResponse(429)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(rateLimited))
     expect(await fetchPackagistP2('busy/busy', null)).toMatchObject({ kind: 'RATE_LIMIT' })
+    expect(rateLimited.body.cancel).toHaveBeenCalled()
   })
 
   it('maps a payload missing the package key → MALFORMED', async () => {

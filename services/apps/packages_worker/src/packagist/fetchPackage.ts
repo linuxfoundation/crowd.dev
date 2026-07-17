@@ -33,6 +33,18 @@ export function describeFetchFailure(err: unknown): string {
   return detail ? `${String(err)} (cause: ${detail})` : String(err)
 }
 
+// An error-path response whose body is never read can pin its socket instead of
+// returning it to packagistDispatcher's pool (capped at 10 connections per origin) —
+// canceling it releases the connection for reuse. Best-effort: a failure here must
+// never mask the real error already being returned.
+async function discardBody(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel()
+  } catch {
+    // ignore
+  }
+}
+
 export async function fetchPackagistStats(name: string): Promise<PackagistStatsJson | FetchError> {
   const url = `https://packagist.org/packages/${name}.json`
   const abort = new AbortController()
@@ -55,10 +67,18 @@ export async function fetchPackagistStats(name: string): Promise<PackagistStatsJ
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
 
-    if (res.status === 404)
+    if (res.status === 404) {
+      await discardBody(res)
       return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
-    if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
-    if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    }
+    if (res.status === 429) {
+      await discardBody(res)
+      return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
+    }
+    if (!res.ok) {
+      await discardBody(res)
+      return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    }
 
     let json: unknown
     try {
@@ -113,10 +133,18 @@ export async function fetchPackagistP2(
       return { kind: 'NOT_MODIFIED' }
     }
 
-    if (res.status === 404)
+    if (res.status === 404) {
+      await discardBody(res)
       return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
-    if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
-    if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    }
+    if (res.status === 429) {
+      await discardBody(res)
+      return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
+    }
+    if (!res.ok) {
+      await discardBody(res)
+      return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    }
 
     let json: unknown
     try {
