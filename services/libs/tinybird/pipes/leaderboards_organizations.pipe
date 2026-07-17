@@ -5,10 +5,12 @@ DESCRIPTION >
 
 NODE leaderboards_organizations_data
 DESCRIPTION >
-    Retrieves all organizations from the populated datasource
+    Retrieves all organizations from the populated datasource, including slug for page links
 
 SQL >
-    SELECT id, displayName, logo FROM organizations FINAL
+    SELECT o.id, o.displayName, o.logo, ops.slug
+    FROM organizations o FINAL
+    LEFT JOIN organizations_populated_slug ops ON o.id = ops.id
 
 NODE leaderboards_organizations_activity_types
 DESCRIPTION >
@@ -67,7 +69,7 @@ SQL >
         p.id as id,
         '' as segmentId,
         p.displayName as name,
-        '' as slug,
+        p.slug as slug,
         p.logo as logoUrl,
         'organizations' as leaderboardType,
         cast(coalesce(c.organizationActivityCount, 0) as Float64) as value,
@@ -83,7 +85,7 @@ SQL >
     JOIN c.segmentIds as sid
     LEFT JOIN leaderboards_organizations_projects proj ON proj.segmentId = sid
     WHERE c.organizationActivityCount > 0
-    GROUP BY p.id, p.displayName, p.logo, c.organizationActivityCount, pp.organizationActivityCount
+    GROUP BY p.id, p.displayName, p.logo, p.slug, c.organizationActivityCount, pp.organizationActivityCount
     ORDER BY value DESC
     LIMIT 100
 
