@@ -56,6 +56,8 @@ class MaintainerService(BaseService):
         "maintainers",
         "maintainers.md",
         "maintainer.md",
+        "maintainers.yml",
+        "maintainers.yaml",
         "codeowners",
         "codeowners.md",
         "contributors",

@@ -1,0 +1,927 @@
+openapi: 3.0.3
+info:
+  title: CDP → Akrites External API
+  version: 0.1.0
+  description: >
+    Read-only external API exposing CDP package security data to the Akrites
+    service. Authenticated via Auth0 M2M client-credentials — CDP only
+    verifies the resulting access token; the assertion exchange happens
+    entirely between Akrites and Auth0.
+
+
+    Packages, Advisories and Contacts endpoints are implemented. Blast Radius
+    is specced separately and not yet built.
+
+
+    TODO: scopes below (read:packages, read:stewardships) are the existing
+    internal CDP UI scopes, reused here for now. Swap for a dedicated
+    cdp:packages:read scope once Akrites gets its own Auth0 M2M scopes per
+    the akrites-external draft contract.
+
+servers:
+  - url: https://cm.lfx.dev/api/v1
+    description: Production
+
+security:
+  - M2MBearer:
+      - read:packages
+      - read:stewardships
+
+tags:
+  - name: Packages
+    description: Package detail — requires read:packages and read:stewardships (see TODO above).
+  - name: Advisories
+    description: >
+      Security advisories for a package, split out of package detail. The draft
+      contract gates these behind a dedicated read:advisories scope; until Auth0
+      issues it, the implementation reuses read:packages (advisories need no
+      stewardship read). Confirm the final scope name (read:advisories vs
+      cdp:advisories:read) with Akrites/product.
+  - name: Contacts
+    description: >
+      Security contacts for a package — includes contact PII (e.g. reporter
+      emails). The contract gates these behind a dedicated cdp:maintainers:read
+      scope and forbids reaching them via the packages scope; until Auth0 issues
+      it, the implementation requires read:maintainer-roles (NOT read:packages).
+      The response shape is still under discussion upstream (reportingMethods /
+      reportingGuidelines / integrationHints are reserved and always null today).
+
+components:
+  securitySchemes:
+    # Modeled as oauth2/clientCredentials (not http/bearer): OpenAPI only allows
+    # non-empty scope arrays in security requirements for oauth2 / openIdConnect
+    # schemes, and the operations below require read:packages + read:stewardships.
+    M2MBearer:
+      type: oauth2
+      description: >
+        Auth0 machine-to-machine client-credentials flow. Akrites exchanges its
+        client ID/secret with Auth0 for a JWT and sends it as
+        `Authorization: Bearer <token>`; CDP only verifies the resulting token.
+      flows:
+        clientCredentials:
+          tokenUrl: https://linuxfoundation.auth0.com/oauth/token
+          scopes:
+            read:packages: Read package detail
+            read:stewardships: Read package stewardship data
+            read:maintainer-roles: Read security contacts (interim scope for Contacts; see the Contacts tag)
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: BAD_REQUEST
+            message:
+              type: string
+
+    Ecosystem:
+      type: string
+      example: npm
+
+    HealthBand:
+      type: string
+      enum: [excellent, healthy, fair, concerning, critical]
+      description: >
+        Health band on the internal scale (best→worst), returned verbatim —
+        no external crosswalk.
+
+    PackageDetail:
+      type: object
+      required:
+        - purl
+        - name
+        - ecosystem
+        - latestVersion
+        - versionCount
+        - health
+        - impact
+        - riskSignals
+        - security
+        - provenance
+        - supplyChainIntegrity
+      properties:
+        purl:
+          type: string
+        name:
+          type: string
+        ecosystem:
+          $ref: '#/components/schemas/Ecosystem'
+        latestVersion:
+          type: string
+          nullable: true
+        versionCount:
+          type: integer
+          nullable: true
+        health:
+          type: object
+          required: [score, band, subScores, signalCoverageHealth]
+          properties:
+            score:
+              type: integer
+              nullable: true
+              minimum: 0
+              maximum: 100
+            band:
+              $ref: '#/components/schemas/HealthBand'
+            subScores:
+              type: object
+              required: [maintainerHealth, securitySupplyChain, developmentActivity]
+              properties:
+                maintainerHealth:
+                  type: number
+                  nullable: true
+                securitySupplyChain:
+                  type: number
+                  nullable: true
+                developmentActivity:
+                  type: number
+                  nullable: true
+            signalCoverageHealth:
+              type: object
+              nullable: true
+              additionalProperties: true
+        impact:
+          type: object
+          required:
+            [
+              score,
+              downloadsLast30Days,
+              dependentPackagesCount,
+              dependentReposCount,
+              transitiveReach,
+            ]
+          properties:
+            score:
+              type: integer
+              nullable: true
+              minimum: 0
+              maximum: 100
+            downloadsLast30Days:
+              type: string
+              nullable: true
+              description: Raw registry count string, not normalized.
+            dependentPackagesCount:
+              type: integer
+              nullable: true
+            dependentReposCount:
+              type: integer
+              nullable: true
+            transitiveReach:
+              type: integer
+              nullable: true
+              description: Always null for now — reserved for future computation.
+        riskSignals:
+          type: object
+          required:
+            - lifecycle
+            - maintainerBusFactor
+            - lastReleaseAt
+            - hasSecurityFile
+            - hasSecurityPolicy
+            - branchProtectionEnabled
+            - openssfScorecardScore
+          properties:
+            lifecycle:
+              type: string
+              enum: [active, stable, declining, abandoned, archived, null]
+              nullable: true
+              description: >
+                Lifecycle stage on the internal scale, returned verbatim — no
+                external crosswalk. Null when unknown or unrecognized.
+            maintainerBusFactor:
+              type: integer
+              nullable: true
+            lastReleaseAt:
+              type: string
+              format: date-time
+              nullable: true
+            hasSecurityFile:
+              type: boolean
+              nullable: true
+            hasSecurityPolicy:
+              type: boolean
+              nullable: true
+            branchProtectionEnabled:
+              type: boolean
+              nullable: true
+            openssfScorecardScore:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 10
+              nullable: true
+        security:
+          type: object
+          required:
+            [
+              securityPolicyUrl,
+              vulnerabilityReportingUrl,
+              bugBountyUrl,
+              pvrEnabled,
+              criticalVulnerabilityFlag,
+            ]
+          properties:
+            securityPolicyUrl:
+              type: string
+              nullable: true
+            vulnerabilityReportingUrl:
+              type: string
+              nullable: true
+            bugBountyUrl:
+              type: string
+              nullable: true
+            pvrEnabled:
+              type: boolean
+              nullable: true
+            criticalVulnerabilityFlag:
+              type: boolean
+              nullable: true
+        provenance:
+          type: object
+          required:
+            [
+              resolvedRepositoryUrl,
+              declaredRepositoryUrl,
+              mappingConfidenceScore,
+              mappingConfidenceLabel,
+              lastCommitAt,
+            ]
+          properties:
+            resolvedRepositoryUrl:
+              type: string
+              nullable: true
+              description: >
+                Best available repository URL. Preferred source is the
+                confidence-ranked package_repos → repos join — the repo CDP has
+                actually resolved and enriched (scorecard, branch protection,
+                etc.). When the package has no package_repos link yet, this
+                falls back to the canonical repository_url on the package row,
+                which is NOT confidence-resolved or enriched. Use
+                mappingConfidenceScore / mappingConfidenceLabel to tell the two
+                apart: both are null when the fallback URL is returned.
+            declaredRepositoryUrl:
+              type: string
+              nullable: true
+              description: Raw repository URL as declared in the package's own metadata.
+            mappingConfidenceScore:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              nullable: true
+            mappingConfidenceLabel:
+              type: string
+              enum: [High, Medium, Low, null]
+              nullable: true
+            lastCommitAt:
+              type: string
+              format: date-time
+              nullable: true
+        supplyChainIntegrity:
+          type: object
+          required: [buildProvenance, signedReleases]
+          properties:
+            buildProvenance:
+              type: string
+              nullable: true
+              description: Always null for now — reserved.
+            signedReleases:
+              type: string
+              nullable: true
+              description: Always null for now — reserved.
+
+    PackageDetailBulkEntry:
+      type: object
+      required: [requestedPurl, found, package]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        package:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PackageDetail'
+
+    Advisory:
+      type: object
+      required: [osvId, severity, resolution, isCritical]
+      properties:
+        osvId:
+          type: string
+          example: GHSA-xxxx-xxxx-xxxx
+        severity:
+          type: string
+          enum: [critical, high, moderate, low, null]
+          nullable: true
+          description: >
+            Lowercased advisory severity. Any stored value outside this enum is
+            returned as null rather than echoed verbatim.
+        resolution:
+          type: string
+          enum: [open, patched, null]
+          nullable: true
+          description: >
+            Whether the package's latest version is still affected. Null when it
+            can't be determined (no latest version, or no affected ranges recorded).
+        isCritical:
+          type: boolean
+          nullable: true
+          description: cvss >= 7.0. Null when the advisory has no CVSS score.
+
+    AdvisoryDetail:
+      type: object
+      required: [purl, advisories]
+      properties:
+        purl:
+          type: string
+        advisories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Advisory'
+
+    AdvisoryDetailBulkEntry:
+      type: object
+      required: [requestedPurl, found, advisories]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        advisories:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/AdvisoryDetail'
+
+    ContactConfidenceBand:
+      type: string
+      enum: [PRIMARY, SECONDARY, FALLBACK, NONE]
+      description: Per-contact confidence — mirrors the internal SecurityContact confidence enum.
+
+    OverallConfidenceBand:
+      type: string
+      enum: [PRIMARY, SECONDARY, FALLBACK, NONE]
+      description: >
+        Aggregate confidence, derived from the highest-scoring contact. Uses the
+        internal SecurityContact confidence scale, returned verbatim — same scale
+        as ContactConfidenceBand, no external crosswalk. NONE when there are no
+        contacts.
+
+    SecurityContact:
+      type: object
+      required: [channel, value, role, confidenceBand, confidenceScore]
+      properties:
+        channel:
+          type: string
+          enum: [email, github-pvr, github-handle, url, web-form]
+          description: Mirrors the internal SecurityContact.channel enum; passed through verbatim.
+        value:
+          type: string
+          example: security@example.org
+        role:
+          type: string
+          enum: [security-team, maintainer, admin, committer, org-owner]
+          description: Mirrors the internal SecurityContact.role enum; passed through verbatim.
+        confidenceBand:
+          $ref: '#/components/schemas/ContactConfidenceBand'
+        confidenceScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
+    ReportingMethod:
+      type: object
+      nullable: true
+      description: Reserved shape — always null until SECURITY.md parsing ships.
+      required: [methodId, type, status, description, actionRequired]
+      properties:
+        methodId:
+          type: integer
+        type:
+          type: string
+        status:
+          type: string
+          enum: [preferred, fallback]
+        recipient:
+          type: string
+          nullable: true
+        description:
+          type: string
+        actionRequired:
+          type: string
+
+    ReportingGuidelines:
+      type: object
+      nullable: true
+      description: Reserved shape — always null until SECURITY.md parsing ships.
+      required: [generalPrinciples, qualityRequirements]
+      properties:
+        generalPrinciples:
+          type: array
+          items:
+            type: string
+        qualityRequirements:
+          type: object
+          required: [avoid, recommend]
+          properties:
+            avoid:
+              type: array
+              items:
+                type: string
+            recommend:
+              type: array
+              items:
+                type: object
+                required: [scenario, action]
+                properties:
+                  scenario:
+                    type: string
+                  action:
+                    type: string
+
+    IntegrationHints:
+      type: object
+      nullable: true
+      description: Reserved shape — always null until computed.
+      required: [primaryEndpoint, fallbackEndpoint, validationHints]
+      properties:
+        primaryEndpoint:
+          type: object
+          nullable: true
+          required: [type, target]
+          properties:
+            type:
+              type: string
+            target:
+              type: string
+        fallbackEndpoint:
+          type: object
+          nullable: true
+          required: [type, target]
+          properties:
+            type:
+              type: string
+            target:
+              type: string
+        validationHints:
+          type: object
+          nullable: true
+          required: [falsePositiveRules, requirePocForSeverity, debounce]
+          properties:
+            falsePositiveRules:
+              type: array
+              items:
+                type: string
+            requirePocForSeverity:
+              type: array
+              items:
+                type: string
+            debounce:
+              type: string
+              nullable: true
+
+    ContactDetail:
+      type: object
+      description: >
+        NOTE: shape not final — still under discussion upstream, in particular
+        how reportingMethods / reportingGuidelines / integrationHints will be
+        derived from SECURITY.md parsing. Those three, plus targetOrganizationName
+        and bugBountyProgramFlag, are always null today (not stored). Expect this
+        schema to change before the contract is frozen.
+      required:
+        - purl
+        - name
+        - ecosystem
+        - overallConfidenceBand
+        - contacts
+        - securityPolicyUrl
+        - vulnerabilityReportingUrl
+        - bugBountyUrl
+        - pvrEnabled
+        - targetOrganizationName
+        - bugBountyProgramFlag
+        - reportingMethods
+        - reportingGuidelines
+        - integrationHints
+      properties:
+        purl:
+          type: string
+        name:
+          type: string
+        ecosystem:
+          $ref: '#/components/schemas/Ecosystem'
+        overallConfidenceBand:
+          $ref: '#/components/schemas/OverallConfidenceBand'
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecurityContact'
+        securityPolicyUrl:
+          type: string
+          nullable: true
+        vulnerabilityReportingUrl:
+          type: string
+          nullable: true
+        bugBountyUrl:
+          type: string
+          nullable: true
+        pvrEnabled:
+          type: boolean
+          nullable: true
+        targetOrganizationName:
+          type: string
+          nullable: true
+          description: Reserved — not stored today, always null.
+        bugBountyProgramFlag:
+          type: boolean
+          nullable: true
+          description: Reserved — not stored today, always null.
+        reportingMethods:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ReportingMethod'
+        reportingGuidelines:
+          $ref: '#/components/schemas/ReportingGuidelines'
+        integrationHints:
+          $ref: '#/components/schemas/IntegrationHints'
+
+    ContactDetailBulkEntry:
+      type: object
+      required: [requestedPurl, found, contact]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        contact:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ContactDetail'
+
+paths:
+  /akrites-external/packages/detail:
+    get:
+      operationId: getPackageDetail
+      summary: Get package detail by PURL
+      tags: [Packages]
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Package detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/packages/detail:batch:
+    post:
+      operationId: getPackageDetailBatch
+      summary: Bulk package detail lookup
+      tags: [Packages]
+      security:
+        - M2MBearer:
+            - read:packages
+            - read:stewardships
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PackageDetailBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/advisories/detail:
+    get:
+      operationId: getAdvisoryDetail
+      summary: Get advisories for a package by PURL
+      tags: [Advisories]
+      security:
+        - M2MBearer:
+            - read:packages
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Advisories for the package (empty array when the package has none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdvisoryDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/advisories/detail:batch:
+    post:
+      operationId: getAdvisoryDetailBatch
+      summary: Bulk advisory lookup
+      tags: [Advisories]
+      security:
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdvisoryDetailBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/detail:
+    get:
+      operationId: getContactDetail
+      summary: Get security contact detail by PURL
+      description: >
+        Requires read:maintainer-roles (interim for the contract's cdp:maintainers:read).
+        Never reachable with the packages scope.
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:maintainer-roles
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Security contact detail (empty contacts + NONE band when the package has none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/detail:batch:
+    post:
+      operationId: getContactDetailBatch
+      summary: Bulk security contact lookup
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContactDetailBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
