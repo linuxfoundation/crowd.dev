@@ -21,18 +21,20 @@ export function monthlyWindowFor(runDate: string): { startDate: string; endDate:
 
 // One window row per purl per month, mirrored to packages.downloads_last_30d
 // (npm parity). A window already recorded for the month is never overwritten —
-// the value is the observation closest to the boundary.
+// the value is the observation closest to the boundary. Returns the changed
+// fields (like the sibling persist*/upsert* functions) — the caller audits them.
 export async function persistPackagist30dWindow(
   qx: QueryExecutor,
   purl: string,
   monthly: number | null,
   runDate: string,
-): Promise<void> {
-  if (monthly == null) return
+): Promise<string[]> {
+  if (monthly == null) return []
 
   const { startDate, endDate } = monthlyWindowFor(runDate)
   const existing = await getExistingLast30dEndDates(qx, purl, endDate, endDate)
   if (existing.length === 0) {
-    await upsertLast30dDownload(qx, purl, startDate, endDate, monthly, true)
+    return upsertLast30dDownload(qx, purl, startDate, endDate, monthly, true)
   }
+  return []
 }

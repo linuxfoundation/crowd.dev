@@ -53,7 +53,8 @@ export async function persistPackagistPackageInfo(
 
   // Step 3: Maintainers only for critical packages
   if (isCritical && stats.maintainers.length > 0) {
-    await upsertPackageMaintainers(qx, id, stats.maintainers, 'packagist')
+    const maintainerChanges = await upsertPackageMaintainers(qx, id, stats.maintainers, 'packagist')
+    changedFields.push(...maintainerChanges)
   }
 
   return { found: true, changedFields }

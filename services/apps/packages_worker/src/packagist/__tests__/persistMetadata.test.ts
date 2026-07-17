@@ -15,7 +15,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   updatePackagistVersionAggregates: vi.fn(),
   upsertPackagistVersions: vi.fn(),
   getPackagistPackageIdsByNames: vi.fn(),
-  upsertVersionDependencies: vi.fn().mockResolvedValue(0),
+  upsertVersionDependencies: vi.fn().mockResolvedValue([]),
 }))
 
 const mockAggregates = vi.mocked(updatePackagistVersionAggregates)
@@ -48,7 +48,7 @@ const expanded: PackagistExpandedVersion[] = [
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockDeps.mockResolvedValue(0)
+  mockDeps.mockResolvedValue([])
 })
 
 // C2 + C3 — persistence wiring: aggregates on packages, version rows, dependency edges
@@ -69,6 +69,7 @@ describe('persistPackagistMetadata', () => {
         ['phpunit/phpunit', '45'],
       ]),
     )
+    mockDeps.mockResolvedValue(['package_dependencies.depends_on_id'])
 
     const result = await persistPackagistMetadata(qx, PURL, expanded)
 
@@ -113,6 +114,8 @@ describe('persistPackagistMetadata', () => {
 
     expect(result.found).toBe(true)
     expect(result.unresolvedDependencyTargets).toBe(0)
+    // dependency-edge changes must reach the audit log alongside aggregates/versions
+    expect(result.changedFields).toContain('package_dependencies.depends_on_id')
   })
 
   it('skips and counts dependency targets that do not resolve to a packages row', async () => {

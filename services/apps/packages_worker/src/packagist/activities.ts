@@ -138,7 +138,8 @@ export async function ingestOnePackagistMetadata(
 
   const stats = normalizePackagistStats(info.value.package)
   const persistedInfo = await persistPackagistPackageInfo(qx, candidate.purl, stats)
-  const changedFields = [...persistedInfo.changedFields]
+  // Audit phase 1 immediately: those writes are already committed
+  await logAuditFieldChanges(qx, WORKER, candidate.purl, persistedInfo.changedFields)
 
   // Phase 2: p2 endpoint
   const p2 = await fetchWithFastRetry(
@@ -150,13 +151,12 @@ export async function ingestOnePackagistMetadata(
       { purl: candidate.purl, statusCode: p2.error.statusCode, kind: p2.error.kind },
       'packagist metadata 4xx/malformed after fast retries — marking scanned and skipping',
     )
-    // Phase-1 writes are already committed — their audit rows must not be dropped.
-    await logAuditFieldChanges(qx, WORKER, candidate.purl, changedFields)
     await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(p2.error))
     return
   }
 
   let lastModified: string | null = null
+  let phase2ChangedFields: string[] = []
   if (!isP2NotModified(p2.value)) {
     const expanded = expandComposerMetadata(p2.value.minifiedVersions)
     const persistResult = await persistPackagistMetadata(qx, candidate.purl, expanded)
@@ -166,11 +166,11 @@ export async function ingestOnePackagistMetadata(
         'packagist dependency targets not found in packages — edges skipped',
       )
     }
-    changedFields.push(...persistResult.changedFields)
+    phase2ChangedFields = persistResult.changedFields
     lastModified = p2.value.lastModified
   }
 
-  await logAuditFieldChanges(qx, WORKER, candidate.purl, changedFields)
+  await logAuditFieldChanges(qx, WORKER, candidate.purl, phase2ChangedFields)
   if (lastModified) {
     await markPackagistMetadataScanned(
       qx,
@@ -207,7 +207,13 @@ export async function ingestOnePackagist30dWindow(
     return
   }
 
-  await persistPackagist30dWindow(qx, purl, info.value.package.downloads?.monthly ?? null, runDate)
+  const changedFields = await persistPackagist30dWindow(
+    qx,
+    purl,
+    info.value.package.downloads?.monthly ?? null,
+    runDate,
+  )
+  await logAuditFieldChanges(qx, WORKER, purl, changedFields)
   await markPackagist30dProcessed(qx, purl, { status: 'success', attempts: info.attempts })
 }
 
@@ -234,7 +240,10 @@ export async function ingestOnePackagistDailyDownload(
 
   const daily = info.value.package.downloads?.daily
   if (typeof daily === 'number') {
-    await insertDailyDownloads(qx, candidate.packageId, [{ day: runDate, downloads: daily }])
+    const changedFields = await insertDailyDownloads(qx, candidate.packageId, [
+      { day: runDate, downloads: daily },
+    ])
+    await logAuditFieldChanges(qx, WORKER, candidate.purl, changedFields)
   }
   await markPackagistDailyProcessed(qx, candidate.purl, {
     status: 'success',

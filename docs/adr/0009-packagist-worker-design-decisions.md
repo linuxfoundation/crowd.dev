@@ -1,7 +1,7 @@
-# ADR-0006: Packagist worker — design decisions (living)
+# ADR-0009: Packagist worker — design decisions (living)
 
 **Date**: 2026-07-13
-**Status**: living
+**Status**: accepted
 **Deciders**: Anil Bostanci
 
 _Living, consolidated record for the Packagist (PHP/Composer) worker. Record further
@@ -38,8 +38,8 @@ We store, in `package_dependencies`, **only the direct dependency edges a versio
 row per `(version_id, depends_on_id, dependency_kind)` — and we **resolve concrete versions and
 transitive closure at query time**, never at ingest.
 
-Per stored edge (for the critical slice only — dependency edges ride the same p2 metadata fetch as
-versions, which we only run for critical packages):
+Per stored edge (for **all** packages — dependency edges ride the same p2 metadata fetch as
+versions; see the Metadata enrichment scope decision):
 
 - `require` → `dependency_kind = 'direct'`, `require-dev` → `dependency_kind = 'dev'`.
 - `version_constraint` = the **declared** constraint string verbatim (e.g. `^3.0 || ^2.0`).
@@ -75,8 +75,7 @@ continuously re-running a Composer resolver for no durable benefit.
 **Why store `dev` edges when deps.dev doesn't:** deps.dev's resolved graph is runtime-only — every
 edge lands as `'direct'`, it has no dev/peer notion. Because we read the raw manifest we can split
 `require-dev` into `'dev'`, so Packagist edges are *richer per-edge* (dev deps + declared
-constraints) even though they are *shallower* (no resolved target version) and *narrower* (critical
-slice only) than deps.dev's.
+constraints) even though they are *shallower* (no resolved target version) than deps.dev's.
 
 **Consequences.**
 
@@ -98,8 +97,6 @@ _Negative / trade-offs:_
   way there is for npm/maven/pypi/cargo seeded from deps.dev.
 - Transitive questions ("everything X depends on") pay a recursive walk over direct edges at read
   time rather than a single indexed lookup.
-- Dependency edges exist for the **critical slice only** — non-critical Packagist packages have
-  none, because the p2 metadata crawl that produces them is critical-scoped.
 
 _Risks:_
 
@@ -198,3 +195,6 @@ that week's enrichment (recoverable via the manual trigger).
   covers repo linking for all packages and the deliberate critical-only carve-outs).
 - **2026-07-16** — Added _Lane architecture: seed → chained enrichment, downloads as dedicated
   lanes_ (removes the stats lane; renames `p2_last_modified` → `metadata_last_modified`).
+- **2026-07-17** — Corrected stale "critical slice only" wording left over in the _Dependency
+  model_ entry from before the _Metadata enrichment scope_ decision widened it to all packages;
+  set `Status` to `accepted` (matching ADR-0005's precedent for a living/consolidated doc).

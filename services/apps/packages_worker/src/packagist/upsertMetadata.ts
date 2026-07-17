@@ -88,7 +88,8 @@ export async function persistPackagistMetadata(
     }
 
     if (edges.length > 0) {
-      await upsertVersionDependencies(qx, edges)
+      const depChanges = await upsertVersionDependencies(qx, edges)
+      changedFields.push(...depChanges)
     }
   }
 

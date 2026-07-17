@@ -110,7 +110,7 @@ describe('ingestOnePackagistMetadata', () => {
     })
   }
 
-  it('persists both endpoints, audits the merged fields, and marks scanned with the fresh Last-Modified', async () => {
+  it('audits phase 1 immediately and phase 2 separately, then marks scanned with the fresh Last-Modified', async () => {
     happyMocks()
 
     await ingestOnePackagistMetadata(qx, candidate)
@@ -119,12 +119,10 @@ describe('ingestOnePackagistMetadata', () => {
     expect(mockFetchP2).toHaveBeenCalledWith('monolog/monolog', 'Tue, 30 Jun 2026 00:00:00 GMT')
     expect(mockExpand).toHaveBeenCalledWith(minified)
     expect(mockPersistMetadata).toHaveBeenCalledWith(qx, PURL, expanded)
-    expect(mockAudit).toHaveBeenCalledWith(
-      qx,
-      'packagist',
-      PURL,
-      expect.arrayContaining(['packages.description', 'versions.number']),
-    )
+    // Two separate audit rows, not one merged call — phase 1 is logged as soon as it's
+    // committed, before the p2 fetch (which can throw) ever runs.
+    expect(mockAudit).toHaveBeenNthCalledWith(1, qx, 'packagist', PURL, ['packages.description'])
+    expect(mockAudit).toHaveBeenNthCalledWith(2, qx, 'packagist', PURL, ['versions.number'])
     expect(mockMarkMetadata).toHaveBeenCalledWith(
       qx,
       PURL,
@@ -227,24 +225,32 @@ describe('ingestOnePackagistMetadata', () => {
     )
   })
 
-  it('throws on a transient p2 result without marking scanned', async () => {
+  it('throws on a transient p2 result without marking scanned, but still audits phase 1', async () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
-    mockPersistInfo.mockResolvedValue({ found: true, changedFields: [] })
+    mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
     mockFetchP2.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 502' } as never)
 
     await expect(ingestOnePackagistMetadata(qx, candidate)).rejects.toThrow()
     expect(mockMarkMetadata).not.toHaveBeenCalled()
+    // phase-1 writes are already committed when the throw happens — a retry re-runs
+    // phase 1 idempotently and reports no changes, so this audit event can't be deferred
+    expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, ['packages.description'])
   })
 })
 
 // The monthly downloads-30d lane: dynamic fetch, window row only.
 describe('ingestOnePackagist30dWindow', () => {
-  it('persists the observed rolling window and marks the run processed', async () => {
+  it('persists the observed rolling window, audits the change, and marks the run processed', async () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
+    mockPersist30d.mockResolvedValue(['downloads_last_30d.count', 'packages.downloads_last_30d'])
 
     await ingestOnePackagist30dWindow(qx, PURL, RUN_DATE)
 
     expect(mockPersist30d).toHaveBeenCalledWith(qx, PURL, 300, RUN_DATE)
+    expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, [
+      'downloads_last_30d.count',
+      'packages.downloads_last_30d',
+    ])
     expect(mockMark30d).toHaveBeenCalledWith(
       qx,
       PURL,
@@ -284,12 +290,17 @@ describe('ingestOnePackagist30dWindow', () => {
 describe('ingestOnePackagistDailyDownload', () => {
   const candidate = { purl: PURL, packageId: '7' }
 
-  it('inserts the daily row and marks the run processed', async () => {
+  it('inserts the daily row, audits the change, and marks the run processed', async () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
+    mockDaily.mockResolvedValue(['downloads_daily.date', 'downloads_daily.count'])
 
     await ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE)
 
     expect(mockDaily).toHaveBeenCalledWith(qx, '7', [{ day: RUN_DATE, downloads: 10 }])
+    expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, [
+      'downloads_daily.date',
+      'downloads_daily.count',
+    ])
     expect(mockMarkDaily).toHaveBeenCalledWith(
       qx,
       PURL,
@@ -297,12 +308,13 @@ describe('ingestOnePackagistDailyDownload', () => {
     )
   })
 
-  it('marks success without inserting when the registry reports no daily count', async () => {
+  it('marks success without inserting or auditing when the registry reports no daily count', async () => {
     mockFetchStats.mockResolvedValue({ package: { name: 'monolog/monolog' } } as never)
 
     await ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE)
 
     expect(mockDaily).not.toHaveBeenCalled()
+    expect(mockAudit).not.toHaveBeenCalled()
     expect(mockMarkDaily).toHaveBeenCalledWith(
       qx,
       PURL,

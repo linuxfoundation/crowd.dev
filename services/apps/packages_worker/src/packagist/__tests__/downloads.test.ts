@@ -50,25 +50,30 @@ describe('monthlyWindowFor', () => {
 // packages.downloads_last_30d (npm parity). A window already recorded for the month
 // is never overwritten — the value is the observation closest to the boundary.
 describe('persistPackagist30dWindow', () => {
-  it('writes the window with the mirror when the month has no row yet', async () => {
-    await persistPackagist30dWindow(qx, PURL, 300, '2026-07-01')
+  it('writes the window with the mirror and returns the changed fields when the month has no row yet', async () => {
+    mockWindow.mockResolvedValue(['downloads_last_30d.count', 'packages.downloads_last_30d'])
+
+    const changedFields = await persistPackagist30dWindow(qx, PURL, 300, '2026-07-01')
 
     expect(mockExistingWindows).toHaveBeenCalledWith(qx, PURL, '2026-07-01', '2026-07-01')
     expect(mockWindow).toHaveBeenCalledWith(qx, PURL, '2026-06-01', '2026-07-01', 300, true)
+    expect(changedFields).toEqual(['downloads_last_30d.count', 'packages.downloads_last_30d'])
   })
 
-  it('does not overwrite an existing window for the month', async () => {
+  it('does not overwrite an existing window for the month, and returns no changed fields', async () => {
     mockExistingWindows.mockResolvedValue(['2026-07-01'])
 
-    await persistPackagist30dWindow(qx, PURL, 300, '2026-07-15')
+    const changedFields = await persistPackagist30dWindow(qx, PURL, 300, '2026-07-15')
 
     expect(mockWindow).not.toHaveBeenCalled()
+    expect(changedFields).toEqual([])
   })
 
-  it('writes nothing when the registry reported no monthly count', async () => {
-    await persistPackagist30dWindow(qx, PURL, null, '2026-07-01')
+  it('writes nothing and returns no changed fields when the registry reported no monthly count', async () => {
+    const changedFields = await persistPackagist30dWindow(qx, PURL, null, '2026-07-01')
 
     expect(mockExistingWindows).not.toHaveBeenCalled()
     expect(mockWindow).not.toHaveBeenCalled()
+    expect(changedFields).toEqual([])
   })
 })
