@@ -1,3 +1,4 @@
+import { parseGitHubNoreplyEmail } from '@crowd/common'
 import {
   findMembersByGithubHandles,
   findResolvableEmailsForMembers,
@@ -11,6 +12,28 @@ function latestTimestamp(provenance: ProvenanceEntry[]): string {
   return times.length === 0
     ? new Date().toISOString()
     : times.reduce((a, b) => (new Date(b).getTime() > new Date(a).getTime() ? b : a))
+}
+
+// A GitHub noreply email already encodes its owner's handle — derive it so the handle can be
+// resolved to a real address the same way any other github-handle contact is. The noreply email
+// itself is kept as the provenance source, so the resolved contact's origin stays traceable.
+export function deriveGithubHandlesFromNoreplyEmails(contacts: RawContact[]): RawContact[] {
+  const derived: RawContact[] = []
+  for (const c of contacts) {
+    if (c.channel !== 'email') continue
+    const handle = parseGitHubNoreplyEmail(c.value)
+    if (!handle) continue
+    derived.push({
+      channel: 'github-handle',
+      value: handle,
+      role: c.role,
+      tier: c.tier,
+      provenance: [
+        { source: c.value, sourceTier: c.tier, fetchedAt: latestTimestamp(c.provenance) },
+      ],
+    })
+  }
+  return derived
 }
 
 export async function resolveCdpEmails(
@@ -51,8 +74,9 @@ export async function resolveCdpEmails(
         channel: 'email' as const,
         value: email,
         role: contact.role,
+        handle: contact.value,
         tier: contact.tier,
-        provenance: [{ source, sourceTier: contact.tier, fetchedAt }],
+        provenance: [...contact.provenance, { source, sourceTier: contact.tier, fetchedAt }],
       }))
     })
   })
