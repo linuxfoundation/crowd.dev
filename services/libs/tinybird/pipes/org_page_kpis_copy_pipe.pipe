@@ -1,7 +1,7 @@
 DESCRIPTION >
     Nightly copy pipe that precomputes org-level KPIs for the org page.
     Writes one row per organizationId into org_page_kpis_copy_ds.
-    Active contributors counts only code contribution activity types (commits, PRs, code reviews).
+    Active contributors count only code contribution activity types (commits, PRs, code reviews).
     Active contributors and critical projects use a 730-day (2-year) window.
     Trend compares current 730-day period against the prior 730-day period (days 731–1460).
 
