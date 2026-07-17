@@ -1,27 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  getExistingLast30dEndDates,
-  upsertLast30dDownload,
-} from '@crowd/data-access-layer/src/packages'
+import { insertLast30dDownloadIfAbsent } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { monthlyWindowFor, persistPackagist30dWindow } from '../downloads'
 
 vi.mock('@crowd/data-access-layer/src/packages', () => ({
-  getExistingLast30dEndDates: vi.fn().mockResolvedValue([]),
-  upsertLast30dDownload: vi.fn().mockResolvedValue([]),
+  insertLast30dDownloadIfAbsent: vi.fn().mockResolvedValue([]),
 }))
 
-const mockExistingWindows = vi.mocked(getExistingLast30dEndDates)
-const mockWindow = vi.mocked(upsertLast30dDownload)
+const mockWindow = vi.mocked(insertLast30dDownloadIfAbsent)
 
 const qx = {} as QueryExecutor
 const PURL = 'pkg:composer/monolog/monolog'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockExistingWindows.mockResolvedValue([])
 })
 
 // Observed rolling window anchored on the 1st of the run month,
@@ -49,30 +43,31 @@ describe('monthlyWindowFor', () => {
 // The monthly downloads-30d lane: one window row per purl per month, mirrored to
 // packages.downloads_last_30d (npm parity). A window already recorded for the month
 // is never overwritten — the value is the observation closest to the boundary.
+// insertLast30dDownloadIfAbsent does the presence check and the write atomically, so
+// there is no separate "does it exist" call to assert on here — a race is exercised
+// directly against Postgres in downloadsLast30d's own DAL-level coverage.
 describe('persistPackagist30dWindow', () => {
   it('writes the window with the mirror and returns the changed fields when the month has no row yet', async () => {
     mockWindow.mockResolvedValue(['downloads_last_30d.count', 'packages.downloads_last_30d'])
 
     const changedFields = await persistPackagist30dWindow(qx, PURL, 300, '2026-07-01')
 
-    expect(mockExistingWindows).toHaveBeenCalledWith(qx, PURL, '2026-07-01', '2026-07-01')
     expect(mockWindow).toHaveBeenCalledWith(qx, PURL, '2026-06-01', '2026-07-01', 300, true)
     expect(changedFields).toEqual(['downloads_last_30d.count', 'packages.downloads_last_30d'])
   })
 
-  it('does not overwrite an existing window for the month, and returns no changed fields', async () => {
-    mockExistingWindows.mockResolvedValue(['2026-07-01'])
+  it('returns no changed fields when a window for the month already exists', async () => {
+    mockWindow.mockResolvedValue([])
 
     const changedFields = await persistPackagist30dWindow(qx, PURL, 300, '2026-07-15')
 
-    expect(mockWindow).not.toHaveBeenCalled()
+    expect(mockWindow).toHaveBeenCalledWith(qx, PURL, '2026-06-01', '2026-07-01', 300, true)
     expect(changedFields).toEqual([])
   })
 
   it('writes nothing and returns no changed fields when the registry reported no monthly count', async () => {
     const changedFields = await persistPackagist30dWindow(qx, PURL, null, '2026-07-01')
 
-    expect(mockExistingWindows).not.toHaveBeenCalled()
     expect(mockWindow).not.toHaveBeenCalled()
     expect(changedFields).toEqual([])
   })

@@ -1,7 +1,4 @@
-import {
-  getExistingLast30dEndDates,
-  upsertLast30dDownload,
-} from '@crowd/data-access-layer/src/packages'
+import { insertLast30dDownloadIfAbsent } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 // Compute the monthly window for observed rolling 30d downloads.
@@ -21,8 +18,11 @@ export function monthlyWindowFor(runDate: string): { startDate: string; endDate:
 
 // One window row per purl per month, mirrored to packages.downloads_last_30d
 // (npm parity). A window already recorded for the month is never overwritten —
-// the value is the observation closest to the boundary. Returns the changed
-// fields (like the sibling persist*/upsert* functions) — the caller audits them.
+// the value is the observation closest to the boundary. insertLast30dDownloadIfAbsent
+// does the presence check and the insert (+ mirror) atomically in one statement, so
+// concurrent runs for the same purl+month can't both pass a check-then-insert gap and
+// have the later one clobber the earlier one's count. Returns the changed fields (like
+// the sibling persist*/upsert* functions) — the caller audits them.
 export async function persistPackagist30dWindow(
   qx: QueryExecutor,
   purl: string,
@@ -32,9 +32,5 @@ export async function persistPackagist30dWindow(
   if (monthly == null) return []
 
   const { startDate, endDate } = monthlyWindowFor(runDate)
-  const existing = await getExistingLast30dEndDates(qx, purl, endDate, endDate)
-  if (existing.length === 0) {
-    return upsertLast30dDownload(qx, purl, startDate, endDate, monthly, true)
-  }
-  return []
+  return insertLast30dDownloadIfAbsent(qx, purl, startDate, endDate, monthly, true)
 }
