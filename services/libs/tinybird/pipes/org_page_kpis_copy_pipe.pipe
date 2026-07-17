@@ -22,9 +22,7 @@ SQL >
     SELECT ar.organizationId, uniq(ar.memberId) AS activeContributors
     FROM activityRelations_deduplicated_cleaned_bucket_union ar
     INNER JOIN
-        org_page_kpis_code_activity_types at
-        ON ar.type = at.activityType
-        AND ar.platform = at.platform
+        org_page_kpis_code_activity_types at ON ar.type = at.activityType AND ar.platform = at.platform
     WHERE
         ar.organizationId != ''
         AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(730))
@@ -39,9 +37,7 @@ SQL >
     SELECT ar.organizationId, uniq(ar.memberId) AS activeContributorsPrevious
     FROM activityRelations_deduplicated_cleaned_bucket_union ar
     INNER JOIN
-        org_page_kpis_code_activity_types at
-        ON ar.type = at.activityType
-        AND ar.platform = at.platform
+        org_page_kpis_code_activity_types at ON ar.type = at.activityType AND ar.platform = at.platform
     WHERE
         ar.organizationId != ''
         AND ar.timestamp >= toStartOfDay(now() - toIntervalDay(1460))
