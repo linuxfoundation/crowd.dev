@@ -74,7 +74,9 @@ export interface PackagistVersionInput {
   publishedAt: string | null
   isLatest: boolean
   isPrerelease: boolean
-  license: string | null
+  // Composer allows dual/multi-licensed releases (e.g. ["MIT", "Apache-2.0"]) — the
+  // full array is preserved, unlike the single-SPDX-string npm/pypi license inputs.
+  licenses: string[] | null
 }
 
 export async function upsertPackagistVersions(
@@ -102,7 +104,11 @@ export async function upsertPackagistVersions(
        )
        SELECT $(packageId)::bigint, 'packagist', p.namespace, p.name, v.num,
               v.pub::timestamptz, v.latest, v.pre,
-              CASE WHEN v.lic IS NULL THEN NULL::text[] ELSE ARRAY[v.lic] END,
+              -- licenses travels as one JSON-encoded array per row (unnest can't carry a
+              -- ragged array-of-arrays alongside scalar columns), decoded back here.
+              CASE WHEN v.lic IS NULL THEN NULL::text[]
+                   ELSE (SELECT array_agg(elem) FROM jsonb_array_elements_text(v.lic::jsonb) AS elem)
+              END,
               NOW(), NOW()
        FROM unnest(
          $(numbers)::text[],
@@ -135,7 +141,9 @@ export async function upsertPackagistVersions(
       publishedAts: versions.map((v) => v.publishedAt),
       isLatests: versions.map((v) => v.isLatest),
       isPrereleases: versions.map((v) => v.isPrerelease),
-      licenses: versions.map((v) => v.license),
+      licenses: versions.map((v) =>
+        v.licenses && v.licenses.length > 0 ? JSON.stringify(v.licenses) : null,
+      ),
     },
   )
 

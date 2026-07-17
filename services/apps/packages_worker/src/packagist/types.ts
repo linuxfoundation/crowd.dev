@@ -105,7 +105,7 @@ export interface PackagistVersionRow {
   publishedAt: string | null
   isLatest: boolean
   isPrerelease: boolean
-  license: string | null
+  licenses: string[] | null
 }
 
 export interface PackagistDependency {

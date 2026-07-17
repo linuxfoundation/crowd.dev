@@ -139,10 +139,10 @@ describe('buildPackagistVersionRows', () => {
       publishedAt: '2024-03-01T00:00:00+00:00',
       isLatest: true,
       isPrerelease: false,
-      license: 'MIT',
+      licenses: ['MIT'],
     })
     expect(byNumber['2.9.1'].isLatest).toBe(false)
-    expect(byNumber['1.0.0'].license).toBe('BSD-3-Clause')
+    expect(byNumber['1.0.0'].licenses).toEqual(['BSD-3-Clause'])
     expect(latestVersion).toBe('2.10.0')
     expect(firstReleaseAt).toBe('2020-06-01T00:00:00+00:00')
     expect(latestReleaseAt).toBe('2024-03-01T00:00:00+00:00')

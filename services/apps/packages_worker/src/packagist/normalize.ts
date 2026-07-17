@@ -146,7 +146,7 @@ export function buildPackagistVersionRows(versions: PackagistExpandedVersion[]):
     publishedAt: v.time ?? null,
     isLatest: false, // Will be set below
     isPrerelease: isPackagistPrerelease(v.version_normalized ?? v.version),
-    license: (v.license && v.license.length > 0 ? v.license[0] : null) ?? null,
+    licenses: v.license && v.license.length > 0 ? v.license : null,
   }))
 
   // Find latest: prefer stable over prerelease; within each group use Composer ordering
