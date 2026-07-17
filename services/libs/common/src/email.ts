@@ -1,6 +1,6 @@
 import validator from 'validator'
 
-import { noreplyEmailProviders } from './constants'
+import { disposableEmailDomains, emailSafeKnownBots, noreplyEmailProviders } from './constants'
 
 export const isValidEmail = (value: string): boolean => {
   return validator.isEmail(value)
@@ -67,3 +67,93 @@ export const getEmailLocalPart = (value: string): string => {
   const atIndex = value.indexOf('@')
   return (atIndex >= 0 ? value.slice(0, atIndex) : value).toLowerCase()
 }
+
+export type EmailReachabilityReason =
+  | 'invalid'
+  | 'noreply'
+  | 'bot'
+  | 'local-machine'
+  | 'disposable'
+  | 'placeholder-domain'
+
+export interface EmailReachability {
+  email: string
+  reachable: boolean
+  reason: EmailReachabilityReason | null
+}
+
+const PLACEHOLDER_EMAIL_DOMAINS = new Set([
+  'example.com',
+  'example.org',
+  'example.net',
+  'example.edu',
+])
+
+const NOREPLY_LOCAL_PARTS = new Set(['noreply', 'no-reply', 'donotreply', 'do-not-reply'])
+
+// Role mailboxes are prime security contacts — never classify them as bots.
+const ROLE_LOCAL_PARTS = new Set([
+  'security',
+  'psirt',
+  'abuse',
+  'support',
+  'admin',
+  'info',
+  'contact',
+])
+
+const BOT_EXACT_LOCAL_PARTS = new Set([
+  'dependabot',
+  'renovate',
+  'ci',
+  'jenkins',
+  'github-actions',
+  'actions',
+])
+
+const emailDomain = (value: string): string => value.slice(value.indexOf('@') + 1)
+
+const looksLikeBot = (localPart: string): boolean => {
+  const lp = localPart.toLowerCase()
+  if (ROLE_LOCAL_PARTS.has(lp)) return false
+  if (emailSafeKnownBots.has(lp)) return true
+  if (lp.endsWith('[bot]')) return true
+  if (BOT_EXACT_LOCAL_PARTS.has(lp)) return true
+  // 'bot' as a delimited token: bot-*, *-bot, *.bot, bot_* ...
+  return /(^|[.\-_+])bot([.\-_+]|$)/.test(lp)
+}
+
+/**
+ * Heuristic reachability classification for a single email. Pure and synchronous.
+ * MX/SMTP validation is intentionally out of scope.
+ */
+export const classifyEmailReachability = (email: string): EmailReachability => {
+  const value = email.trim().toLowerCase()
+  const fail = (reason: EmailReachabilityReason): EmailReachability => ({
+    email,
+    reachable: false,
+    reason,
+  })
+
+  // Checked before isValidEmail: github/gitlab noreply addresses (a bracketed `[bot]`
+  // local-part) and local-machine hosts (no TLD) both fail RFC validation, but their
+  // specific reason is more useful than a blanket 'invalid'.
+  if (parseGitHubNoreplyEmail(value) != null || parseGitLabNoreplyEmail(value) != null) {
+    return fail('noreply')
+  }
+  if (isLocalMachineEmail(value)) return fail('local-machine')
+
+  if (!isValidEmail(value)) return fail('invalid')
+  if (PLACEHOLDER_EMAIL_DOMAINS.has(emailDomain(value))) return fail('placeholder-domain')
+
+  const localPart = getEmailLocalPart(value)
+  const baseLocalPart = localPart.split('+')[0]
+  if (NOREPLY_LOCAL_PARTS.has(baseLocalPart)) return fail('noreply')
+  if (looksLikeBot(baseLocalPart)) return fail('bot')
+  if (disposableEmailDomains.has(emailDomain(value))) return fail('disposable')
+
+  return { email, reachable: true, reason: null }
+}
+
+export const getReachableEmails = (emails: string[]): string[] =>
+  emails.filter((e) => classifyEmailReachability(e).reachable)
