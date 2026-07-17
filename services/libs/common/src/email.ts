@@ -107,7 +107,6 @@ const BOT_EXACT_LOCAL_PARTS = new Set([
   'renovate',
   'ci',
   'jenkins',
-  'travis',
   'github-actions',
   'actions',
 ])
