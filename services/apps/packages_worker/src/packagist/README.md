@@ -47,7 +47,7 @@ Shared design notes:
   with the per-item give-up so one bad package can never stall a drain).
 - **Tier scoping.** Discovery, package info, repo links, versions, and
   dependencies cover **all** packages (deliberate divergence from pypi — see
-  ADR-0006). Only `downloads_daily` and maintainers are
+  ADR-0009). Only `downloads_daily` and maintainers are
   **critical-slice-only**, matching npm/pypi.
 
 ---
@@ -105,7 +105,7 @@ touching p2.
     `is_prerelease`, `is_latest`, `licenses`); dev branches skipped.
   - `package_dependencies` — direct edges only (`require` → `'direct'`,
     `require-dev` → `'dev'`), declared constraints verbatim, platform packages
-    excluded, `depends_on_version_id` NULL (resolved at query time — ADR-0006).
+    excluded, `depends_on_version_id` NULL (resolved at query time — ADR-0009).
   - `packages` aggregates — `versions_count`, `latest_version`,
     `first_release_at`, `latest_release_at`, `licenses`, `homepage` — all
     written non-destructively (COALESCE / keep-on-zero).
@@ -169,7 +169,7 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 - `transitive_dependent_count`, `dependent_repos_count` — not computable from
   the registry; needs a reverse-closure over our stored direct edges
-  (future work, see ADR-0006 risks).
+  (future work, see ADR-0009 risks).
 - Advisories — the OSV worker owns security data platform-wide.
 - `is_critical` / `criticality_score` / ranking columns — the shared
   criticality worker; this worker only *reads* `is_critical` for scoping.
