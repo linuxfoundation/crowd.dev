@@ -7,11 +7,8 @@ import { ScheduleAlreadyRunning, ScheduleOverlapPolicy } from '@temporalio/clien
 export const PACKAGIST_CRONS = {
   seed: '17 2 * * 0',
   downloads30d: '53 3 1 * *',
-  // Late in the UTC day on purpose: Packagist's `daily` figure is `today_so_far +
-  // yesterday_total * dayRatio` (DownloadManager.php), where dayRatio shrinks toward 0
-  // as the day progresses — querying at 22:23 UTC (dayRatio ~0.08) captures a figure
-  // that's ~92% today's real data instead of ~74% borrowed from yesterday at the old
-  // 06:23 slot, while keeping a ~1h37m buffer before UTC midnight for the drain to finish.
+  // Late in the UTC day on purpose: Packagist's `daily` figure is mostly real data by
+  // 22:23 (vs. mostly borrowed from yesterday earlier on), with buffer before midnight.
   downloadsDaily: '23 22 * * *',
 }
 

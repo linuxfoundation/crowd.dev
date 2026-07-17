@@ -34,15 +34,10 @@ interface DownloadsState {
 export async function seedPackagistPackages(): Promise<void> {
   await acts.runPackagistPackageSeed()
 
-  // Chain the metadata drain off a completed seed instead of a second cron: newly
-  // discovered packages are rows before the p2 crawl resolves dependency targets.
-  // Started (not awaited) with ABANDON — the drain runs for hours and must outlive
-  // this workflow; the state watermarks make the pass self-advancing regardless.
-  // Fixed workflowId + ALLOW_DUPLICATE: starting a duplicate against a still-RUNNING
-  // execution with the same id always throws WorkflowExecutionAlreadyStartedError
-  // regardless of reuse policy, so a drain that outlasts the week makes next
-  // Sunday's seed skip its chain-start instead of doubling the crawl; ALLOW_DUPLICATE
-  // just lets the id be reused once that prior execution has actually closed.
+  // Chain the drain off seed completion (not a cron) so newly discovered packages exist
+  // as rows first. ABANDON so it outlives this workflow; fixed id + ALLOW_DUPLICATE means
+  // a drain that outlasts the week makes next Sunday's seed skip its start instead of
+  // doubling the crawl (a still-RUNNING id always throws regardless of reuse policy).
   try {
     await startChild(ingestPackagistMetadata, {
       workflowId: 'packagist-metadata-drain',
