@@ -119,6 +119,9 @@ function giveUpResult(error: FetchError, attempts: number): PackagistRunResult {
 export async function ingestOnePackagistMetadata(
   qx: QueryExecutor,
   candidate: PackagistMetadataCandidate,
+  // This batch activity's own scheduledTimestampMs (stable across Temporal retries),
+  // passed through to every give-up write below — see MarkMetadataScannedOptions.notBefore.
+  scheduledAt: string,
 ): Promise<void> {
   const name = packagistNameFromPurl(candidate.purl)
 
@@ -132,7 +135,14 @@ export async function ingestOnePackagistMetadata(
       { purl: candidate.purl, statusCode: info.error.statusCode, kind: info.error.kind },
       'packagist package info 4xx/malformed after fast retries — marking scanned and skipping',
     )
-    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(info.error, info.attempts))
+    await markPackagistMetadataScanned(
+      qx,
+      candidate.purl,
+      giveUpResult(info.error, info.attempts),
+      {
+        notBefore: scheduledAt,
+      },
+    )
     return
   }
 
@@ -154,13 +164,10 @@ export async function ingestOnePackagistMetadata(
     // Phase 1 already succeeded — only p2 (versions/deps) failed to refresh. Don't push
     // metadata_last_run_at forward, or due-selection wrongly treats this package as
     // "recently scanned" and skips it for the full refresh window despite stale p2 data.
-    await markPackagistMetadataScanned(
-      qx,
-      candidate.purl,
-      giveUpResult(p2.error, p2.attempts),
-      undefined,
-      false,
-    )
+    await markPackagistMetadataScanned(qx, candidate.purl, giveUpResult(p2.error, p2.attempts), {
+      bumpLastRunAt: false,
+      notBefore: scheduledAt,
+    })
     return
   }
 
@@ -180,13 +187,13 @@ export async function ingestOnePackagistMetadata(
   }
 
   await logAuditFieldChanges(qx, WORKER, candidate.purl, phase2ChangedFields)
-  // markPackagistMetadataScanned treats a null 4th arg the same as omitting it
-  // (COALESCEd against the stored value), so lastModified can always be passed.
   await markPackagistMetadataScanned(
     qx,
     candidate.purl,
     { status: 'success', attempts: p2.attempts },
-    lastModified,
+    {
+      metadataLastModified: lastModified,
+    },
   )
 }
 
@@ -195,6 +202,7 @@ export async function ingestOnePackagist30dWindow(
   qx: QueryExecutor,
   purl: string,
   runDate: string,
+  scheduledAt: string,
 ): Promise<void> {
   const name = packagistNameFromPurl(purl)
 
@@ -207,7 +215,7 @@ export async function ingestOnePackagist30dWindow(
       { purl, statusCode: info.error.statusCode, kind: info.error.kind },
       'packagist 30d downloads 4xx/malformed after fast retries — marking processed and skipping',
     )
-    await markPackagist30dProcessed(qx, purl, giveUpResult(info.error, info.attempts))
+    await markPackagist30dProcessed(qx, purl, giveUpResult(info.error, info.attempts), scheduledAt)
     return
   }
 
@@ -226,6 +234,7 @@ export async function ingestOnePackagistDailyDownload(
   qx: QueryExecutor,
   candidate: PackagistDailyCandidate,
   runDate: string,
+  scheduledAt: string,
 ): Promise<void> {
   const name = packagistNameFromPurl(candidate.purl)
 
@@ -238,7 +247,12 @@ export async function ingestOnePackagistDailyDownload(
       { purl: candidate.purl, statusCode: info.error.statusCode, kind: info.error.kind },
       'packagist daily downloads 4xx/malformed after fast retries — marking processed and skipping',
     )
-    await markPackagistDailyProcessed(qx, candidate.purl, giveUpResult(info.error, info.attempts))
+    await markPackagistDailyProcessed(
+      qx,
+      candidate.purl,
+      giveUpResult(info.error, info.attempts),
+      scheduledAt,
+    )
     return
   }
 
@@ -332,6 +346,8 @@ export async function ingestPackagistMetadataBatch(
   if (candidates.length === 0) return
   const qx = await getPackagesDb()
   const attempt = Context.current().info.attempt
+  // Stable across every Temporal retry of this same batch — see notBefore below.
+  const scheduledAt = new Date(Context.current().info.scheduledTimestampMs).toISOString()
 
   // The merged lane starts every ingest with a DYNAMIC-endpoint fetch, so it is
   // bounded by that endpoint's 10-concurrent limit — not p2's 20. Running hotter
@@ -340,13 +356,16 @@ export async function ingestPackagistMetadataBatch(
     candidates,
     attempt,
     statsConcurrency(),
-    (candidate) => ingestOnePackagistMetadata(qx, candidate),
+    (candidate) => ingestOnePackagistMetadata(qx, candidate, scheduledAt),
     (candidate, err) =>
-      markPackagistMetadataScanned(qx, candidate.purl, {
-        status: 'error',
-        attempts: attempt,
-        message: String(err),
-      }),
+      markPackagistMetadataScanned(
+        qx,
+        candidate.purl,
+        { status: 'error', attempts: attempt, message: String(err) },
+        // An item that already succeeded earlier in this same batch's retry sequence
+        // must not have that success overwritten by an unrelated re-processing failure.
+        { notBefore: scheduledAt },
+      ),
   )
 
   log.info({ count: candidates.length }, 'Ingested Packagist metadata batch')
@@ -366,18 +385,20 @@ export async function ingestPackagist30dBatch(purls: string[], runDate: string):
   if (purls.length === 0) return
   const qx = await getPackagesDb()
   const attempt = Context.current().info.attempt
+  const scheduledAt = new Date(Context.current().info.scheduledTimestampMs).toISOString()
 
   await ingestPackagistItemsConcurrently(
     purls,
     attempt,
     statsConcurrency(),
-    (purl) => ingestOnePackagist30dWindow(qx, purl, runDate),
+    (purl) => ingestOnePackagist30dWindow(qx, purl, runDate, scheduledAt),
     (purl, err) =>
-      markPackagist30dProcessed(qx, purl, {
-        status: 'error',
-        attempts: attempt,
-        message: String(err),
-      }),
+      markPackagist30dProcessed(
+        qx,
+        purl,
+        { status: 'error', attempts: attempt, message: String(err) },
+        scheduledAt,
+      ),
   )
 
   log.info({ count: purls.length }, 'Ingested Packagist 30d downloads batch')
@@ -403,18 +424,20 @@ export async function ingestPackagistDailyBatch(
   if (candidates.length === 0) return
   const qx = await getPackagesDb()
   const attempt = Context.current().info.attempt
+  const scheduledAt = new Date(Context.current().info.scheduledTimestampMs).toISOString()
 
   await ingestPackagistItemsConcurrently(
     candidates,
     attempt,
     statsConcurrency(),
-    (candidate) => ingestOnePackagistDailyDownload(qx, candidate, runDate),
+    (candidate) => ingestOnePackagistDailyDownload(qx, candidate, runDate, scheduledAt),
     (candidate, err) =>
-      markPackagistDailyProcessed(qx, candidate.purl, {
-        status: 'error',
-        attempts: attempt,
-        message: String(err),
-      }),
+      markPackagistDailyProcessed(
+        qx,
+        candidate.purl,
+        { status: 'error', attempts: attempt, message: String(err) },
+        scheduledAt,
+      ),
   )
 
   log.info({ count: candidates.length }, 'Ingested Packagist daily downloads batch')

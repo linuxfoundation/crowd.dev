@@ -21,16 +21,28 @@ export interface PackagistDailyCandidate {
   packageId: string
 }
 
+export interface MarkMetadataScannedOptions {
+  metadataLastModified?: string | null
+  // p2-only failures (phase 1 already succeeded) should NOT push the refresh watermark
+  // forward — versions/dependencies never actually refreshed, so the package must stay
+  // (or become) due again on the next run instead of sitting out the full refresh window.
+  bumpLastRunAt?: boolean
+  // Give-up (error) writes only: this activity's own scheduledTimestampMs (stable across
+  // Temporal retries of the same batch). Guards against a spurious re-processing of an
+  // item that already succeeded earlier in this same batch's retry sequence overwriting
+  // that success with an error — only blocks the write if the stored success happened at
+  // or after this activity was first scheduled, so a genuinely new failure on a later,
+  // unrelated run still always records normally.
+  notBefore?: string | null
+}
+
 export async function markPackagistMetadataScanned(
   qx: QueryExecutor,
   purl: string,
   result: PackagistRunResult,
-  metadataLastModified?: string | null,
-  // p2-only failures (phase 1 already succeeded) should NOT push the refresh watermark
-  // forward — versions/dependencies never actually refreshed, so the package must stay
-  // (or become) due again on the next run instead of sitting out the full refresh window.
-  bumpLastRunAt = true,
+  options: MarkMetadataScannedOptions = {},
 ): Promise<void> {
+  const { metadataLastModified = null, bumpLastRunAt = true, notBefore = null } = options
   await qx.result(
     `INSERT INTO packagist_package_state (purl, metadata_run_result, metadata_last_run_at, metadata_last_modified)
      VALUES ($(purl), $(result)::jsonb, CASE WHEN $(bumpLastRunAt) THEN NOW() ELSE NULL END, $(metadataLastModified))
@@ -38,12 +50,18 @@ export async function markPackagistMetadataScanned(
        metadata_run_result    = EXCLUDED.metadata_run_result,
        metadata_last_run_at   = CASE WHEN $(bumpLastRunAt) THEN EXCLUDED.metadata_last_run_at
                                       ELSE packagist_package_state.metadata_last_run_at END,
-       metadata_last_modified = COALESCE(EXCLUDED.metadata_last_modified, packagist_package_state.metadata_last_modified)`,
+       metadata_last_modified = COALESCE(EXCLUDED.metadata_last_modified, packagist_package_state.metadata_last_modified)
+     WHERE $(notBefore)::timestamptz IS NULL
+        OR NOT (
+             packagist_package_state.metadata_run_result->>'status' = 'success'
+             AND packagist_package_state.metadata_last_run_at >= $(notBefore)::timestamptz
+           )`,
     {
       purl,
       result: JSON.stringify(result),
-      metadataLastModified: metadataLastModified ?? null,
+      metadataLastModified,
       bumpLastRunAt,
+      notBefore,
     },
   )
 }
@@ -103,14 +121,21 @@ export async function markPackagist30dProcessed(
   qx: QueryExecutor,
   purl: string,
   result: PackagistRunResult,
+  // Give-up (error) writes only — see markPackagistMetadataScanned's notBefore for why.
+  notBefore: string | null = null,
 ): Promise<void> {
   await qx.result(
     `INSERT INTO packagist_package_state (purl, downloads_30d_run_result, downloads_30d_last_run_at)
      VALUES ($(purl), $(result)::jsonb, NOW())
      ON CONFLICT (purl) DO UPDATE SET
        downloads_30d_run_result  = EXCLUDED.downloads_30d_run_result,
-       downloads_30d_last_run_at = EXCLUDED.downloads_30d_last_run_at`,
-    { purl, result: JSON.stringify(result) },
+       downloads_30d_last_run_at = EXCLUDED.downloads_30d_last_run_at
+     WHERE $(notBefore)::timestamptz IS NULL
+        OR NOT (
+             packagist_package_state.downloads_30d_run_result->>'status' = 'success'
+             AND packagist_package_state.downloads_30d_last_run_at >= $(notBefore)::timestamptz
+           )`,
+    { purl, result: JSON.stringify(result), notBefore },
   )
 }
 
@@ -142,13 +167,20 @@ export async function markPackagistDailyProcessed(
   qx: QueryExecutor,
   purl: string,
   result: PackagistRunResult,
+  // Give-up (error) writes only — see markPackagistMetadataScanned's notBefore for why.
+  notBefore: string | null = null,
 ): Promise<void> {
   await qx.result(
     `INSERT INTO packagist_package_state (purl, daily_downloads_run_result, daily_downloads_last_run_at)
      VALUES ($(purl), $(result)::jsonb, NOW())
      ON CONFLICT (purl) DO UPDATE SET
        daily_downloads_run_result  = EXCLUDED.daily_downloads_run_result,
-       daily_downloads_last_run_at = EXCLUDED.daily_downloads_last_run_at`,
-    { purl, result: JSON.stringify(result) },
+       daily_downloads_last_run_at = EXCLUDED.daily_downloads_last_run_at
+     WHERE $(notBefore)::timestamptz IS NULL
+        OR NOT (
+             packagist_package_state.daily_downloads_run_result->>'status' = 'success'
+             AND packagist_package_state.daily_downloads_last_run_at >= $(notBefore)::timestamptz
+           )`,
+    { purl, result: JSON.stringify(result), notBefore },
   )
 }

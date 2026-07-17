@@ -72,7 +72,7 @@ describe('markPackagistMetadataScanned', () => {
       asQx(qx),
       'pkg:composer/a/x',
       { status: 'success', attempts: 1 },
-      'Wed, 01 Jul 2026 00:00:00 GMT',
+      { metadataLastModified: 'Wed, 01 Jul 2026 00:00:00 GMT' },
     )
 
     const [sql, params] = qx.result.mock.calls[0]

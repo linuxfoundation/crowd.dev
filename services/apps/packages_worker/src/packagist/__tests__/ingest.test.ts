@@ -75,6 +75,7 @@ const mockSeedInsert = vi.mocked(insertPackagistPackages)
 const qx = {} as QueryExecutor
 const PURL = 'pkg:composer/monolog/monolog'
 const RUN_DATE = '2026-07-15'
+const SCHEDULED_AT = '2026-07-15T00:00:00.000Z'
 
 const statsJson = {
   package: { name: 'monolog/monolog', downloads: { total: 1000, monthly: 300, daily: 10 } },
@@ -113,7 +114,7 @@ describe('ingestOnePackagistMetadata', () => {
   it('audits phase 1 immediately and phase 2 separately, then marks scanned with the fresh Last-Modified', async () => {
     happyMocks()
 
-    await ingestOnePackagistMetadata(qx, candidate)
+    await ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
 
     expect(mockPersistInfo).toHaveBeenCalledWith(qx, PURL, expect.anything())
     expect(mockFetchP2).toHaveBeenCalledWith('monolog/monolog', 'Tue, 30 Jun 2026 00:00:00 GMT')
@@ -127,7 +128,7 @@ describe('ingestOnePackagistMetadata', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'success', attempts: 1 }),
-      'Wed, 01 Jul 2026 00:00:00 GMT',
+      { metadataLastModified: 'Wed, 01 Jul 2026 00:00:00 GMT' },
     )
   })
 
@@ -135,7 +136,7 @@ describe('ingestOnePackagistMetadata', () => {
     happyMocks()
     mockFetchP2.mockResolvedValue({ kind: 'NOT_MODIFIED' } as never)
 
-    await ingestOnePackagistMetadata(qx, candidate)
+    await ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
 
     expect(mockPersistInfo).toHaveBeenCalled()
     expect(mockPersistMetadata).not.toHaveBeenCalled()
@@ -144,7 +145,7 @@ describe('ingestOnePackagistMetadata', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'success' }),
-      null,
+      { metadataLastModified: null },
     )
   })
 
@@ -156,7 +157,7 @@ describe('ingestOnePackagistMetadata', () => {
       message: 'not found',
     } as never)
 
-    const p = ingestOnePackagistMetadata(qx, candidate)
+    const p = ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
     await vi.runAllTimersAsync()
     await p
 
@@ -167,6 +168,7 @@ describe('ingestOnePackagistMetadata', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'error', errorKind: 'NOT_FOUND', httpStatus: 404 }),
+      { notBefore: SCHEDULED_AT },
     )
   })
 
@@ -177,7 +179,7 @@ describe('ingestOnePackagistMetadata', () => {
       message: 'HTTP 500',
     } as never)
 
-    await expect(ingestOnePackagistMetadata(qx, candidate)).rejects.toThrow()
+    await expect(ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)).rejects.toThrow()
     expect(mockMarkMetadata).not.toHaveBeenCalled()
     expect(mockFetchStats).toHaveBeenCalledTimes(1)
   })
@@ -192,7 +194,7 @@ describe('ingestOnePackagistMetadata', () => {
       message: 'not found',
     } as never)
 
-    const p = ingestOnePackagistMetadata(qx, candidate)
+    const p = ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
     await vi.runAllTimersAsync()
     await p
 
@@ -203,8 +205,7 @@ describe('ingestOnePackagistMetadata', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'error', errorKind: 'NOT_FOUND' }),
-      undefined,
-      false,
+      { bumpLastRunAt: false, notBefore: SCHEDULED_AT },
     )
   })
 
@@ -219,7 +220,7 @@ describe('ingestOnePackagistMetadata', () => {
       message: 'not found',
     } as never)
 
-    const p = ingestOnePackagistMetadata(qx, candidate)
+    const p = ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)
     await vi.runAllTimersAsync()
     await p
 
@@ -228,8 +229,7 @@ describe('ingestOnePackagistMetadata', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'error', errorKind: 'NOT_FOUND' }),
-      undefined,
-      false,
+      { bumpLastRunAt: false, notBefore: SCHEDULED_AT },
     )
   })
 
@@ -238,7 +238,7 @@ describe('ingestOnePackagistMetadata', () => {
     mockPersistInfo.mockResolvedValue({ found: true, changedFields: ['packages.description'] })
     mockFetchP2.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 502' } as never)
 
-    await expect(ingestOnePackagistMetadata(qx, candidate)).rejects.toThrow()
+    await expect(ingestOnePackagistMetadata(qx, candidate, SCHEDULED_AT)).rejects.toThrow()
     expect(mockMarkMetadata).not.toHaveBeenCalled()
     // phase-1 writes are already committed when the throw happens — a retry re-runs
     // phase 1 idempotently and reports no changes, so this audit event can't be deferred
@@ -252,7 +252,7 @@ describe('ingestOnePackagist30dWindow', () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
     mockPersist30d.mockResolvedValue(['downloads_last_30d.count', 'packages.downloads_last_30d'])
 
-    await ingestOnePackagist30dWindow(qx, PURL, RUN_DATE)
+    await ingestOnePackagist30dWindow(qx, PURL, RUN_DATE, SCHEDULED_AT)
 
     expect(mockPersist30d).toHaveBeenCalledWith(qx, PURL, 300, RUN_DATE)
     expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, [
@@ -274,7 +274,7 @@ describe('ingestOnePackagist30dWindow', () => {
       message: 'not found',
     } as never)
 
-    const p = ingestOnePackagist30dWindow(qx, PURL, RUN_DATE)
+    const p = ingestOnePackagist30dWindow(qx, PURL, RUN_DATE, SCHEDULED_AT)
     await vi.runAllTimersAsync()
     await p
 
@@ -283,13 +283,14 @@ describe('ingestOnePackagist30dWindow', () => {
       qx,
       PURL,
       expect.objectContaining({ status: 'error', errorKind: 'NOT_FOUND' }),
+      SCHEDULED_AT,
     )
   })
 
   it('throws on a transient result without marking processed', async () => {
     mockFetchStats.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 503' } as never)
 
-    await expect(ingestOnePackagist30dWindow(qx, PURL, RUN_DATE)).rejects.toThrow()
+    await expect(ingestOnePackagist30dWindow(qx, PURL, RUN_DATE, SCHEDULED_AT)).rejects.toThrow()
     expect(mockMark30d).not.toHaveBeenCalled()
   })
 })
@@ -302,7 +303,7 @@ describe('ingestOnePackagistDailyDownload', () => {
     mockFetchStats.mockResolvedValue(statsJson as never)
     mockDaily.mockResolvedValue(['downloads_daily.date', 'downloads_daily.count'])
 
-    await ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE)
+    await ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE, SCHEDULED_AT)
 
     expect(mockDaily).toHaveBeenCalledWith(qx, '7', [{ day: RUN_DATE, downloads: 10 }])
     expect(mockAudit).toHaveBeenCalledWith(qx, 'packagist', PURL, [
@@ -319,7 +320,7 @@ describe('ingestOnePackagistDailyDownload', () => {
   it('marks success without inserting or auditing when the registry reports no daily count', async () => {
     mockFetchStats.mockResolvedValue({ package: { name: 'monolog/monolog' } } as never)
 
-    await ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE)
+    await ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE, SCHEDULED_AT)
 
     expect(mockDaily).not.toHaveBeenCalled()
     expect(mockAudit).not.toHaveBeenCalled()
@@ -333,7 +334,9 @@ describe('ingestOnePackagistDailyDownload', () => {
   it('throws on a transient result without marking processed', async () => {
     mockFetchStats.mockResolvedValue({ kind: 'TRANSIENT', message: 'HTTP 503' } as never)
 
-    await expect(ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE)).rejects.toThrow()
+    await expect(
+      ingestOnePackagistDailyDownload(qx, candidate, RUN_DATE, SCHEDULED_AT),
+    ).rejects.toThrow()
     expect(mockMarkDaily).not.toHaveBeenCalled()
   })
 })
