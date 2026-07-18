@@ -68,9 +68,9 @@ export async function markPackagistMetadataScanned(
 
 export async function getPackagistMetadataDuePurls(
   qx: QueryExecutor,
+  cutoff: string,
   afterPurl: string,
   batchSize: number,
-  refreshDays: number,
   onlyCritical: boolean,
 ): Promise<PackagistMetadataCandidate[]> {
   const rows: Array<{ purl: string; metadata_last_modified: string | null }> = await qx.select(
@@ -82,11 +82,11 @@ export async function getPackagistMetadataDuePurls(
         AND p.purl > $(afterPurl)
         AND (
           s.metadata_last_run_at IS NULL
-          OR s.metadata_last_run_at < NOW() - ($(refreshDays) || ' days')::interval
+          OR s.metadata_last_run_at < $(cutoff)::timestamptz
         )
       ORDER BY p.purl
       LIMIT $(batchSize)`,
-    { afterPurl, batchSize, refreshDays, onlyCritical },
+    { cutoff, afterPurl, batchSize, onlyCritical },
   )
   return rows.map((r) => ({
     purl: r.purl,

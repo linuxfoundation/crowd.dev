@@ -23,6 +23,7 @@ const INGEST_BATCH = 50
 const ROUNDS_PER_RUN = 20
 
 interface MetadataState {
+  cutoff?: string
   cursor?: string
 }
 
@@ -54,12 +55,21 @@ export async function seedPackagistPackages(): Promise<void> {
   }
 }
 
+// The cutoff is fixed once per run (deterministic activity), same pattern as the
+// downloads-30d/daily lanes — a keyset scan only ever visits each purl once per drain,
+// so due-selection must be anchored to a stable point in time rather than a live NOW()
+// that would let a purl processed early in the run dodge this cycle's refresh window.
 export async function ingestPackagistMetadata(state: MetadataState = {}): Promise<void> {
+  const cutoff = state.cutoff ?? (await acts.packagistCurrentTimestamp())
   let cursor = state.cursor || ''
   const stopAfterFirstPage = await acts.packagistStopAfterFirstPage()
 
   for (let r = 0; r < ROUNDS_PER_RUN; r++) {
-    const { candidates, nextCursor } = await acts.getPackagistMetadataBatch(cursor, INGEST_BATCH)
+    const { candidates, nextCursor } = await acts.getPackagistMetadataBatch(
+      cutoff,
+      cursor,
+      INGEST_BATCH,
+    )
     if (candidates.length === 0) return
     await acts.ingestPackagistMetadataBatch(candidates)
     cursor = nextCursor
@@ -67,7 +77,7 @@ export async function ingestPackagistMetadata(state: MetadataState = {}): Promis
     if (candidates.length < INGEST_BATCH) return
   }
 
-  await continueAsNew<typeof ingestPackagistMetadata>({ cursor })
+  await continueAsNew<typeof ingestPackagistMetadata>({ cutoff, cursor })
 }
 
 // Monthly capture of the observed rolling 30d window for every packagist package.

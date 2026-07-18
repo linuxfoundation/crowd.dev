@@ -414,29 +414,51 @@ describe('ingestPackagistItemsConcurrently', () => {
 
 // All-packages metadata scope: the env default drives due-selection's onlyCritical arg.
 // Default is ALL packages (deps.dev has no Packagist data to fall back on); the env var
-// narrows back to the critical slice.
+// narrows back to the critical slice. The due-cutoff is derived once from the run's
+// fixed cutoff minus the refresh window, not a live NOW() re-evaluated per batch.
 describe('getPackagistMetadataBatch scope', () => {
   const mockMetadataDue = vi.mocked(getPackagistMetadataDuePurls)
+  const RUN_CUTOFF = '2026-07-15T00:00:00.000Z'
+  const DUE_CUTOFF = '2026-07-08T00:00:00.000Z' // RUN_CUTOFF minus the 7-day default
 
   afterEach(() => {
     delete process.env.CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL
+    delete process.env.CROWD_PACKAGES_PACKAGIST_METADATA_REFRESH_DAYS
+  })
+
+  it('derives the due-cutoff from the fixed run cutoff, not a live clock', async () => {
+    process.env.CROWD_PACKAGES_PACKAGIST_METADATA_REFRESH_DAYS = '3'
+    mockMetadataDue.mockResolvedValue([])
+
+    await getPackagistMetadataBatch(RUN_CUTOFF, '', 50)
+
+    // 3 days before the run's own fixed cutoff — never "3 days before whenever this
+    // particular batch happens to execute" — is what makes the keyset scan give every
+    // purl exactly one refresh-eligibility check per drain.
+    expect(mockMetadataDue).toHaveBeenCalledWith(
+      expect.anything(),
+      '2026-07-12T00:00:00.000Z',
+      '',
+      50,
+      false,
+    )
   })
 
   it('selects across ALL packagist packages by default', async () => {
     mockMetadataDue.mockResolvedValue([])
 
-    await getPackagistMetadataBatch('', 50)
+    await getPackagistMetadataBatch(RUN_CUTOFF, '', 50)
 
-    expect(mockMetadataDue).toHaveBeenCalledWith(expect.anything(), '', 50, 7, false)
+    expect(mockMetadataDue).toHaveBeenCalledWith(expect.anything(), DUE_CUTOFF, '', 50, false)
   })
 
   it('narrows to the critical slice when CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL=true', async () => {
     process.env.CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL = 'true'
     mockMetadataDue.mockResolvedValue([])
 
-    await getPackagistMetadataBatch('', 50)
+    await getPackagistMetadataBatch(RUN_CUTOFF, '', 50)
 
-    expect(mockMetadataDue).toHaveBeenCalledWith(expect.anything(), '', 50, 7, true)
+    expect(mockMetadataDue).toHaveBeenCalledWith(expect.anything(), DUE_CUTOFF, '', 50, true)
   })
 
   it('keeps the all-packages default when the env value is unrecognized', async () => {
@@ -444,9 +466,9 @@ describe('getPackagistMetadataBatch scope', () => {
     process.env.CROWD_PACKAGES_PACKAGIST_RUN_ONLY_FOR_CRITICAL = 'ture'
     mockMetadataDue.mockResolvedValue([])
 
-    await getPackagistMetadataBatch('', 50)
+    await getPackagistMetadataBatch(RUN_CUTOFF, '', 50)
 
-    expect(mockMetadataDue).toHaveBeenCalledWith(expect.anything(), '', 50, 7, false)
+    expect(mockMetadataDue).toHaveBeenCalledWith(expect.anything(), DUE_CUTOFF, '', 50, false)
   })
 })
 

@@ -323,16 +323,25 @@ export async function runPackagistPackageSeed(): Promise<{ discovered: number; i
   return { discovered: entries.length, invalid }
 }
 
+// `cutoff` is the drain's own fixed start time (stable across every round via
+// continueAsNew), not a live NOW() — a keyset scan only visits each purl once per
+// drain, so re-deriving "7 days ago" fresh on every batch would silently skip a purl
+// that hasn't quite hit the refresh window yet when the cursor passes it, pushing its
+// effective cadence out toward two refresh cycles instead of one.
 export async function getPackagistMetadataBatch(
+  cutoff: string,
   afterPurl: string,
   batchSize: number,
 ): Promise<{ candidates: PackagistMetadataCandidate[]; nextCursor: string }> {
   const qx = await getPackagesDb()
+  const dueCutoff = new Date(
+    new Date(cutoff).getTime() - metadataRefreshDays() * 24 * 60 * 60 * 1000,
+  ).toISOString()
   const candidates = await getPackagistMetadataDuePurls(
     qx,
+    dueCutoff,
     afterPurl,
     batchSize,
-    metadataRefreshDays(),
     runOnlyForCritical(),
   )
   return {
