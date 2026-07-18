@@ -363,9 +363,18 @@ export async function ingestPackagistMetadataBatch(
         qx,
         candidate.purl,
         { status: 'error', attempts: attempt, message: String(err) },
-        // An item that already succeeded earlier in this same batch's retry sequence
-        // must not have that success overwritten by an unrelated re-processing failure.
-        { notBefore: scheduledAt },
+        {
+          // An item that already succeeded earlier in this same batch's retry
+          // sequence must not have that success overwritten by an unrelated
+          // re-processing failure.
+          notBefore: scheduledAt,
+          // This generic catch-all fires whenever ingestOnePackagistMetadata threw
+          // (its own classified give-up paths return normally instead) — meaning we
+          // can't tell whether phase 1 alone succeeded before a transient p2 failure
+          // exhausted Temporal's retries. Never bump the refresh watermark here, or a
+          // genuine p2/versions failure gets hidden for the full refresh window.
+          bumpLastRunAt: false,
+        },
       ),
   )
 
