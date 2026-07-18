@@ -91,9 +91,10 @@ touching p2.
 - From the **dynamic endpoint**:
   - `packages` — `description`, `declared_repository_url`, `repository_url`
     (canonicalized), `status` (`abandoned` → `deprecated`, else `active`),
-    `downloads_last_30d` (rolling monthly), `total_downloads`,
-    `dependent_count` (registry-reported direct dependents — a ranking input),
-    `last_synced_at`. Counters COALESCE: a missing value never wipes a known one.
+    `total_downloads`, `dependent_count` (registry-reported direct
+    dependents — a ranking input), `last_synced_at`. Counters COALESCE: a
+    missing value never wipes a known one. `downloads_last_30d` is
+    deliberately NOT written here — see the dedicated monthly lane below.
   - `repos` + `package_repos` — **all packages**: canonicalized repo URL linked
     with `source='declared'`, `confidence=0.8` (the manifest-declared convention
     shared with npm/pypi/maven/cargo); feeds the shared github-repos-enricher.
