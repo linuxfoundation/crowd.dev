@@ -27,17 +27,29 @@ const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
 // Pre-2018 GitLab URLs (and shorthand copies of them still circulating) mark deep-links
 // the same way GitHub does — appended directly after the project path, with no `/-/`
 // separator. GitLab reserves these route words at the project-slug position precisely so
-// they can never collide with a real project name (docs: user/reserved_names), so treating
-// the first one as a deep-link boundary is safe even for arbitrarily nested subgroups.
+// they can never collide with a real project name (docs: user/reserved_names, the
+// PROJECT_WILDCARD_ROUTES list), so treating the first one as a deep-link boundary is
+// safe even for arbitrarily nested subgroups.
 const GITLAB_LEGACY_ROUTE_SEGMENTS = new Set([
   'tree',
   'blob',
+  'blame',
+  'raw',
   'commits',
   'commit',
   'compare',
   'issues',
   'merge_requests',
   'wikis',
+  'builds',
+  'create',
+  'create_dir',
+  'edit',
+  'find_file',
+  'new',
+  'preview',
+  'refs',
+  'update',
 ])
 
 /**

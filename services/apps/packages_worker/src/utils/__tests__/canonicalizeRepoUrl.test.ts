@@ -60,6 +60,24 @@ describe('canonicalizeRepoUrl', () => {
       'https://gitlab.com/group/subgroup/project',
       'gitlab',
     ],
+    [
+      // The reviewer's exact regression example: `raw` was missing from the legacy
+      // route list, so this previously resolved as the bogus nested repo
+      // `group/project/raw`.
+      'https://gitlab.com/group/project/raw/main/file.php',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/project/blame/main/file.php',
+      'https://gitlab.com/group/project',
+      'gitlab',
+    ],
+    [
+      'https://gitlab.com/group/subgroup/project/issues/42',
+      'https://gitlab.com/group/subgroup/project',
+      'gitlab',
+    ],
   ])('canonicalizes %s', (input, expectedUrl, expectedHost) => {
     expect(canonicalizeRepoUrl(input)).toEqual({ url: expectedUrl, host: expectedHost })
   })
