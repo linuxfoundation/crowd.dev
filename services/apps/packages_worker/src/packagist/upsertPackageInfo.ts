@@ -4,7 +4,7 @@ import {
   removeDeclaredPackageRepo,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
-  upsertPackageRepo,
+  upsertPackageRepoPreserveProvenance,
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
@@ -61,14 +61,18 @@ export async function persistPackagistPackageInfo(
     changedFields.push(...result.changedFields)
 
     // Step 2: Link the repo for ALL packages — 'declared'/0.8 is the manifest-declared
-    // convention shared by npm/pypi/maven/cargo. When there's no trusted repo (removed
-    // from the manifest, or no longer canonicalizable to a known host), or it now
-    // resolves to a different repo, clear any previously-declared link that no longer
-    // applies — package_repos' unique key is (package_id, repo_id), not (package_id,
-    // source), so upserting the new link alone would leave a stale one dangling.
+    // convention shared by npm/pypi/maven/cargo. Preserve-provenance: a higher-confidence
+    // link another pipeline (manual/deps_dev) already owns for this repo must not be
+    // downgraded to 'declared'/0.8 by a routine weekly refresh — matches
+    // upsertMavenPackageRepo/cargo's established GREATEST-confidence, source-preserving
+    // pattern. When there's no trusted repo (removed from the manifest, or no longer
+    // canonicalizable to a known host), or it now resolves to a different repo, clear any
+    // previously-declared link that no longer applies — package_repos' unique key is
+    // (package_id, repo_id), not (package_id, source), so upserting the new link alone
+    // would leave a stale one dangling.
     if (trustedRepo) {
       const repo = await getOrCreateRepoByUrl(t, trustedRepo.url, trustedRepo.host)
-      const linkChanged = await upsertPackageRepo(t, id, repo.id, 'declared', 0.8)
+      const linkChanged = await upsertPackageRepoPreserveProvenance(t, id, repo.id, 'declared', 0.8)
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
     } else {

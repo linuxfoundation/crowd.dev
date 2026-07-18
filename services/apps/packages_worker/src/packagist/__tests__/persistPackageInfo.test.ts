@@ -6,7 +6,7 @@ import {
   removeDeclaredPackageRepo,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
-  upsertPackageRepo,
+  upsertPackageRepoPreserveProvenance,
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
@@ -17,7 +17,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   updatePackagistPackageStats: vi.fn(),
   upsertPackageMaintainers: vi.fn().mockResolvedValue([]),
   getOrCreateRepoByUrl: vi.fn(),
-  upsertPackageRepo: vi.fn().mockResolvedValue([]),
+  upsertPackageRepoPreserveProvenance: vi.fn().mockResolvedValue([]),
   removeDeclaredPackageRepo: vi.fn().mockResolvedValue([]),
   logAuditFieldChanges: vi.fn(),
 }))
@@ -25,7 +25,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
 const mockUpdate = vi.mocked(updatePackagistPackageStats)
 const mockMaintainers = vi.mocked(upsertPackageMaintainers)
 const mockRepoGet = vi.mocked(getOrCreateRepoByUrl)
-const mockRepoLink = vi.mocked(upsertPackageRepo)
+const mockRepoLink = vi.mocked(upsertPackageRepoPreserveProvenance)
 const mockRepoRemove = vi.mocked(removeDeclaredPackageRepo)
 const mockAudit = vi.mocked(logAuditFieldChanges)
 

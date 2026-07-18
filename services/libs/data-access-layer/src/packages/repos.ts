@@ -87,3 +87,42 @@ export async function upsertPackageRepo(
   )
   return row.changed_fields
 }
+
+// Same shape as upsertPackageRepo, but never lets this write downgrade an existing
+// link: `source` is left untouched on conflict (a manual/deps_dev link keeps its
+// provenance instead of being reassigned to this caller's source) and `confidence`
+// only ever moves up via GREATEST. Matches the established pattern in
+// upsertMavenPackageRepo (osspckgs/repos.ts) and cargo/enrich.ts's inline equivalent —
+// added here as a separate function rather than changing upsertPackageRepo itself,
+// which pypi/npm/go/nuget/rubygems also call and rely on staying an unconditional set.
+export async function upsertPackageRepoPreserveProvenance(
+  qx: QueryExecutor,
+  packageId: string,
+  repoId: string,
+  source: string,
+  confidence: number,
+): Promise<string[]> {
+  const row: { changed_fields: string[] } = await qx.selectOne(
+    `WITH old AS (
+       SELECT source, confidence FROM package_repos
+        WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
+     ),
+     ins AS (
+       INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at)
+       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence), NOW())
+       ON CONFLICT (package_id, repo_id) DO UPDATE SET
+         confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
+         verified_at = NOW()
+       RETURNING source, confidence
+     )
+     SELECT array_remove(ARRAY[
+       CASE WHEN o.source IS NULL                             THEN 'package_repos.repo_id' END,
+       CASE WHEN o.source IS NULL                             THEN 'package_repos.source' END,
+       CASE WHEN o.source IS NULL
+              OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
+     ], NULL) AS changed_fields
+     FROM ins LEFT JOIN old o ON true`,
+    { packageId, repoId, source, confidence },
+  )
+  return row.changed_fields
+}
