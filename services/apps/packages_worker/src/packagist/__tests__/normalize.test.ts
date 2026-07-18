@@ -33,7 +33,7 @@ describe('normalizePackagistStats', () => {
     downloads: { total: 500_000_000, monthly: 10_000_000, daily: 350_000 },
   }
 
-  it('extracts description, repository, dependents and the three download counters', () => {
+  it('extracts description, repository, dependents and total downloads', () => {
     const stats = normalizePackagistStats(full)
     expect(stats).toEqual({
       name: 'monolog/monolog',
@@ -42,7 +42,8 @@ describe('normalizePackagistStats', () => {
       status: 'active',
       dependents: 5423,
       downloadsTotal: 500_000_000,
-      downloadsMonthly: 10_000_000,
+      // downloads.monthly is deliberately not extracted — packages.downloads_last_30d
+      // belongs exclusively to the dedicated downloads-30d lane
       // nameless maintainer entries are dropped
       maintainers: [{ username: 'seldaek', displayName: null, email: null, role: 'maintainer' }],
     })
@@ -76,7 +77,6 @@ describe('normalizePackagistStats', () => {
       status: 'active',
       dependents: null,
       downloadsTotal: null,
-      downloadsMonthly: null,
       maintainers: [],
     })
   })

@@ -66,7 +66,6 @@ export interface NormalizedPackagistStats {
   status: 'active' | 'deprecated'
   dependents: number | null
   downloadsTotal: number | null
-  downloadsMonthly: number | null
   maintainers: PackageMaintainerInput[]
 }
 

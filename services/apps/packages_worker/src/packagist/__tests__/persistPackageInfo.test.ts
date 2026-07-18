@@ -41,7 +41,6 @@ const stats: NormalizedPackagistStats = {
   status: 'active',
   dependents: 42,
   downloadsTotal: 1000,
-  downloadsMonthly: 300,
   maintainers: [{ username: 'seldaek', displayName: null, email: null, role: 'maintainer' }],
 }
 
@@ -70,11 +69,13 @@ describe('persistPackagistPackageInfo', () => {
         purl: PURL,
         description: 'logs',
         status: 'active',
-        downloadsLast30d: 300,
         totalDownloads: 1000,
         dependentCount: 42,
       }),
     )
+    // packages.downloads_last_30d belongs exclusively to the dedicated downloads-30d
+    // lane's boundary-anchored snapshot — the metadata lane must never touch it
+    expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('downloadsLast30d')
     // canonicalized (lowercased) url + coarse host, linked with the manifest-declared convention
     expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
     expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', 'declared', 0.8)

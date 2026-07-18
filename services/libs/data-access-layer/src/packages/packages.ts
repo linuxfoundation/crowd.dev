@@ -259,11 +259,14 @@ export interface PackagistStatsUpdateInput {
   declaredRepositoryUrl: string | null
   repositoryUrl: string | null
   status: string
-  downloadsLast30d: number | null
   totalDownloads: number | null
   dependentCount: number | null
 }
 
+// downloads_last_30d is NOT written here — it belongs exclusively to the dedicated
+// downloads-30d lane's boundary-anchored, insert-if-absent snapshot. The metadata
+// lane's live rolling `downloads.monthly` value is a different, unanchored reading;
+// writing it here would silently overwrite that snapshot every weekly refresh.
 export async function updatePackagistPackageStats(
   qx: QueryExecutor,
   input: PackagistStatsUpdateInput,
@@ -272,7 +275,7 @@ export async function updatePackagistPackageStats(
     await qx.selectOneOrNone(
       `WITH old AS (
          SELECT description, declared_repository_url, repository_url, status,
-                downloads_last_30d, total_downloads, dependent_count, ingestion_source
+                total_downloads, dependent_count, ingestion_source
            FROM packages WHERE purl = $(purl) AND ecosystem = 'packagist'
        ),
        ins AS (
@@ -281,13 +284,12 @@ export async function updatePackagistPackageStats(
            declared_repository_url   = $(declaredRepositoryUrl),
            repository_url            = $(repositoryUrl),
            status                    = $(status),
-           downloads_last_30d        = COALESCE($(downloadsLast30d), downloads_last_30d),
            total_downloads           = COALESCE($(totalDownloads), total_downloads),
            dependent_count           = COALESCE($(dependentCount), dependent_count),
            last_synced_at            = NOW()
          WHERE purl = $(purl) AND ecosystem = 'packagist'
          RETURNING id, is_critical, description, declared_repository_url, repository_url, status,
-                   downloads_last_30d, total_downloads, dependent_count, ingestion_source
+                   total_downloads, dependent_count, ingestion_source
        )
        SELECT ins.id::text AS id, ins.is_critical,
               array_remove(ARRAY[
@@ -295,7 +297,6 @@ export async function updatePackagistPackageStats(
                 CASE WHEN o.declared_repository_url   IS DISTINCT FROM ins.declared_repository_url   THEN 'packages.declared_repository_url' END,
                 CASE WHEN o.repository_url            IS DISTINCT FROM ins.repository_url            THEN 'packages.repository_url' END,
                 CASE WHEN o.status                    IS DISTINCT FROM ins.status                    THEN 'packages.status' END,
-                CASE WHEN o.downloads_last_30d        IS DISTINCT FROM ins.downloads_last_30d        THEN 'packages.downloads_last_30d' END,
                 CASE WHEN o.total_downloads           IS DISTINCT FROM ins.total_downloads           THEN 'packages.total_downloads' END,
                 CASE WHEN o.dependent_count           IS DISTINCT FROM ins.dependent_count           THEN 'packages.dependent_count' END,
                 CASE WHEN o.ingestion_source          IS DISTINCT FROM ins.ingestion_source          THEN 'packages.ingestion_source' END

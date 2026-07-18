@@ -50,7 +50,6 @@ export async function persistPackagistPackageInfo(
       declaredRepositoryUrl: stats.repositoryUrl,
       repositoryUrl: trustedRepo?.url ?? null,
       status: stats.status,
-      downloadsLast30d: stats.downloadsMonthly,
       totalDownloads: stats.downloadsTotal,
       dependentCount: stats.dependents,
     })

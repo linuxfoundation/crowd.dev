@@ -207,7 +207,6 @@ describe('updatePackagistPackageStats', () => {
         declaredRepositoryUrl: null,
         repositoryUrl: null,
         status: 'active',
-        downloadsLast30d: 1,
         totalDownloads: 2,
         dependentCount: 3,
       }),
@@ -229,7 +228,6 @@ describe('updatePackagistPackageStats', () => {
       declaredRepositoryUrl: 'https://github.com/a/x',
       repositoryUrl: 'https://github.com/a/x',
       status: 'active',
-      downloadsLast30d: 1,
       totalDownloads: 2,
       dependentCount: 3,
     })

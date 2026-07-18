@@ -28,9 +28,10 @@ export function normalizePackagistStats(pkg: PackagistPackageInfo): NormalizedPa
     status = 'deprecated'
   }
 
-  // Extract downloads, defaulting to null if not a number
+  // Extract downloads, defaulting to null if not a number. downloads.monthly is
+  // deliberately not extracted here — packages.downloads_last_30d belongs exclusively
+  // to the dedicated downloads-30d lane's boundary-anchored snapshot.
   const downloadsTotal = typeof pkg.downloads?.total === 'number' ? pkg.downloads.total : null
-  const downloadsMonthly = typeof pkg.downloads?.monthly === 'number' ? pkg.downloads.monthly : null
 
   const dependents = typeof pkg.dependents === 'number' ? pkg.dependents : null
 
@@ -55,7 +56,6 @@ export function normalizePackagistStats(pkg: PackagistPackageInfo): NormalizedPa
     status,
     dependents,
     downloadsTotal,
-    downloadsMonthly,
     maintainers,
   }
 }
