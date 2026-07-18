@@ -161,6 +161,21 @@ describe('buildPackagistVersionRows', () => {
     expect(homepage).toBe('https://example.org')
   })
 
+  it('sorts a multi-license array deterministically, regardless of registry order', () => {
+    // versions.licenses is documented as deterministically sorted (schema comment) —
+    // Composer's dual-licensing means the registry can report the same license set in
+    // different orders across fetches, which must not register as a real change.
+    const { versionRows, licenses } = buildPackagistVersionRows([
+      {
+        version: '1.0.0',
+        version_normalized: '1.0.0.0',
+        license: ['MIT', 'Apache-2.0', 'BSD-3-Clause'],
+      },
+    ])
+    expect(versionRows[0].licenses).toEqual(['Apache-2.0', 'BSD-3-Clause', 'MIT'])
+    expect(licenses).toEqual(['Apache-2.0', 'BSD-3-Clause', 'MIT'])
+  })
+
   it('returns a null homepage when the latest version omits or blanks it', () => {
     const absent = buildPackagistVersionRows([{ version: '1.0.0', version_normalized: '1.0.0.0' }])
     expect(absent.homepage).toBeNull()

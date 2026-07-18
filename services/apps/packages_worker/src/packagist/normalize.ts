@@ -18,6 +18,15 @@ function blankToNull(s: string | null | undefined): string | null {
   return t || null
 }
 
+// versions.licenses is documented as a deterministically-sorted SPDX array (schema
+// comment, V1779710880__initial_schema.sql) — Composer allows dual/multi-licensed
+// releases, so unlike npm/pypi's near-always-single-element input, the same license
+// set can arrive from the registry in a different order between fetches. Sorting once
+// here keeps semantically identical arrays byte-identical, avoiding false audit noise.
+function sortLicenses(licenses: string[] | null | undefined): string[] | null {
+  return licenses && licenses.length > 0 ? [...licenses].sort() : null
+}
+
 export function normalizePackagistStats(pkg: PackagistPackageInfo): NormalizedPackagistStats {
   const description = blankToNull(pkg.description)
   const repositoryUrl = blankToNull(pkg.repository)
@@ -146,7 +155,7 @@ export function buildPackagistVersionRows(versions: PackagistExpandedVersion[]):
     publishedAt: v.time ?? null,
     isLatest: false, // Will be set below
     isPrerelease: isPackagistPrerelease(v.version_normalized ?? v.version),
-    licenses: v.license && v.license.length > 0 ? v.license : null,
+    licenses: sortLicenses(v.license),
   }))
 
   // Find latest: prefer stable over prerelease; within each group use Composer ordering
@@ -176,7 +185,7 @@ export function buildPackagistVersionRows(versions: PackagistExpandedVersion[]):
   const latestReleaseAt = times[times.length - 1] ?? null
 
   // Licenses and homepage come from the latest row
-  const licenses = kept[latestIdx].license?.length ? (kept[latestIdx].license ?? null) : null
+  const licenses = sortLicenses(kept[latestIdx].license)
   const homepage = blankToNull(kept[latestIdx].homepage)
 
   return {
