@@ -226,6 +226,7 @@ describe('fetchPackagistP2', () => {
     ['license is a scalar string, not an array', [{ version: '1.0.0', license: 'MIT' }]],
     ['homepage is an object', [{ version: '1.0.0', homepage: {} }]],
     ['time is a number', [{ version: '1.0.0', time: 20240101 }]],
+    ['time is a string but not a parseable date', [{ version: '1.0.0', time: 'not-a-date' }]],
   ])('maps a malformed version entry (%s) → MALFORMED, not a throw', async (_desc, versions) => {
     vi.stubGlobal(
       'fetch',

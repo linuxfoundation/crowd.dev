@@ -198,9 +198,11 @@ function isValidVersionField(value: unknown, isValidType: (v: unknown) => boolea
 // `version`/`version_normalized` via .startsWith()/.split()/.endsWith()
 // (isPackagistDevVersion/isPackagistPrerelease), `homepage` via blankToNull's .trim(),
 // `license` as the text[] written to versions.licenses, `time` as the timestamptz
-// written to versions.published_at. `require`/`require-dev` are already guarded at
-// their own call site (extractVersionDependencies checks typeof before Object.entries)
-// so aren't re-validated here.
+// written to versions.published_at — checking it's merely a string isn't enough, since
+// a non-date string like "not-a-date" would still be typeof 'string' but throw at the
+// v.pub::timestamptz SQL cast, deep past this guard. `require`/`require-dev` are already
+// guarded at their own call site (extractVersionDependencies checks typeof before
+// Object.entries) so aren't re-validated here.
 function isValidMinifiedVersion(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false
   const entry = v as Record<string, unknown>
@@ -208,7 +210,7 @@ function isValidMinifiedVersion(v: unknown): boolean {
     typeof entry.version === 'string' &&
     isValidVersionField(entry.version_normalized, (x) => typeof x === 'string') &&
     isValidVersionField(entry.homepage, (x) => typeof x === 'string') &&
-    isValidVersionField(entry.time, (x) => typeof x === 'string') &&
+    isValidVersionField(entry.time, (x) => typeof x === 'string' && !isNaN(Date.parse(x))) &&
     isValidVersionField(
       entry.license,
       (x) => Array.isArray(x) && x.every((l) => typeof l === 'string'),
