@@ -36,8 +36,9 @@ export function describeFetchFailure(err: unknown): string {
 // An error-path response whose body is never read can pin its socket instead of
 // returning it to packagistDispatcher's pool (capped at 10 connections per origin) —
 // canceling it releases the connection for reuse. Best-effort: a failure here must
-// never mask the real error already being returned.
-async function discardBody(res: Response): Promise<void> {
+// never mask the real error already being returned. Exported for listPackages.ts,
+// which shares the same dispatcher and error-path risk.
+export async function discardBody(res: Response): Promise<void> {
   try {
     await res.body?.cancel()
   } catch {

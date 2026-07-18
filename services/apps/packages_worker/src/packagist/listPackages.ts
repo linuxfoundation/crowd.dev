@@ -1,6 +1,11 @@
 import type { Dispatcher } from 'undici'
 
-import { buildPackagistUserAgent, describeFetchFailure, packagistDispatcher } from './fetchPackage'
+import {
+  buildPackagistUserAgent,
+  describeFetchFailure,
+  discardBody,
+  packagistDispatcher,
+} from './fetchPackage'
 import type { FetchError } from './types'
 
 const PACKAGIST_LIST = 'https://packagist.org/packages/list.json'
@@ -96,9 +101,18 @@ export async function fetchPackagistPackageList(): Promise<unknown | FetchError>
     }
 
     // Status classification: 404 NOT_FOUND, 429 RATE_LIMIT, other non-ok TRANSIENT
-    if (res.status === 404) return { kind: 'NOT_FOUND', message: 'list not found', statusCode: 404 }
-    if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
-    if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    if (res.status === 404) {
+      await discardBody(res)
+      return { kind: 'NOT_FOUND', message: 'list not found', statusCode: 404 }
+    }
+    if (res.status === 429) {
+      await discardBody(res)
+      return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
+    }
+    if (!res.ok) {
+      await discardBody(res)
+      return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    }
 
     let json: unknown
     try {

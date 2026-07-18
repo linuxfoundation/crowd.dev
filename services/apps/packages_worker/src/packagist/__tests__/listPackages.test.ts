@@ -115,4 +115,25 @@ describe('fetchPackagistPackageList', () => {
     )
     expect(await fetchPackagistPackageList()).toMatchObject({ kind: 'TRANSIENT', statusCode: 503 })
   })
+
+  // Regression: the seed's own error paths share the same 10-connection dispatcher as
+  // the stats/p2 fetches, so an undrained body here risks the same socket exhaustion.
+  it.each([
+    ['404', 404, 'NOT_FOUND'],
+    ['429', 429, 'RATE_LIMIT'],
+    ['503', 503, 'TRANSIENT'],
+  ])('drains the response body on a %s error', async (_status, statusCode, kind) => {
+    const cancel = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        status: statusCode,
+        ok: false,
+        json: async () => ({}),
+        body: { cancel },
+      }),
+    )
+    expect(await fetchPackagistPackageList()).toMatchObject({ kind })
+    expect(cancel).toHaveBeenCalled()
+  })
 })
