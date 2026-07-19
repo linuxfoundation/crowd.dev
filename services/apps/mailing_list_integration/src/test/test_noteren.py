@@ -897,7 +897,7 @@ def test_parse_email_identities_structure():
     assert len(unverified) == 1
     assert verified[0]["type"] == "username"
     assert unverified[0]["type"] == "email"
-    assert all(i["platform"] == "groupsio" for i in identities)
+    assert all(i["platform"] == "mailinglist" for i in identities)
 
 
 def test_parse_email_via_b4_relay_false_by_default():

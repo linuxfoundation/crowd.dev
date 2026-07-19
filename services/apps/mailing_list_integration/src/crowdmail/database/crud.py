@@ -1,4 +1,3 @@
-import orjson
 from loguru import logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
@@ -153,10 +152,18 @@ async def update_processed_heads(list_id: str, heads: dict) -> None:
         "updatedAt" = NOW()
     WHERE "listId" = $2
     """
-    await execute(sql_query, (orjson.dumps(heads).decode(), list_id))
+    await execute(sql_query, (heads, list_id))
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(1),
+    reraise=True,
+)
 async def mark_list_processed(list_id: str, list_state: ListState) -> None:
+    # Retried on any failure: if this write never lands, the list stays stuck
+    # in its acquired state (e.g. PROCESSING) forever, since acquire_onboarding_list
+    # only picks PENDING and acquire_recurrent_list excludes PROCESSING.
     sql_query = """
     UPDATE mailinglist."listProcessing"
         SET "state" = $2,

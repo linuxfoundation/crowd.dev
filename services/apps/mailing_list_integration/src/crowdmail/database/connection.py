@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -34,6 +35,16 @@ def get_db_config() -> dict[str, Any]:
     }
 
 
+async def _init_connection(connection: Connection) -> None:
+    """Register json/jsonb codecs so asyncpg decodes them into dicts instead of raw strings."""
+    await connection.set_type_codec(
+        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
+    await connection.set_type_codec(
+        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
+
+
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_fixed(1),
@@ -45,7 +56,7 @@ async def get_pool() -> Pool:
         global _pool
         if _pool is None:
             config = get_db_config()
-            _pool = await asyncpg.create_pool(**config)
+            _pool = await asyncpg.create_pool(**config, init=_init_connection)
             logger.info("Created database connection pool")
         return _pool
     except Exception as e:

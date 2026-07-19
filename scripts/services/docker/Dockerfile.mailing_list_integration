@@ -41,8 +41,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM base AS runner
 
 # Install runtime dependencies, including public-inbox for mirroring lists
+# curl is required by public-inbox-clone itself (not pulled in via --no-install-recommends)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     git \
     public-inbox \
     --no-install-recommends \

@@ -1,8 +1,6 @@
 import asyncio
 import uuid
 
-import orjson
-
 from crowdmail.database.crud import (
     acquire_list_for_processing,
     batch_insert_activities,
@@ -103,6 +101,12 @@ class ListWorker:
                         mailing_list.integration_id,
                     )
                     activity_data = parsed["activityData"]
+                    if not activity_data["timestamp"]:
+                        logger.warning(
+                            "Skipping message {} with no parseable Date header",
+                            activity_data["sourceId"],
+                        )
+                        continue
                     activity_data["segmentId"] = mailing_list.segment_id
 
                     result_id = str(uuid.uuid1())
@@ -111,7 +115,7 @@ class ListWorker:
                         (
                             result_id,
                             IntegrationResultState.PENDING,
-                            orjson.dumps(data_dict).decode(),
+                            data_dict,
                             DEFAULT_TENANT_ID,
                             mailing_list.integration_id,
                         )

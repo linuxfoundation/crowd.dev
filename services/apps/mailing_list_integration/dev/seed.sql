@@ -9,16 +9,18 @@ WITH target_segment AS (
 ),
 new_integration AS (
     INSERT INTO public.integrations (
-        id, platform, status, settings, "tenantId", "createdAt", "updatedAt"
+        id, platform, status, settings, "tenantId", "segmentId", "createdAt", "updatedAt"
     )
     SELECT
         uuid_generate_v4(),
-        'groupsio',
+        'mailinglist',
         'done',
         '{}'::jsonb,
         '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f', -- DEFAULT_TENANT_ID
+        target_segment."segmentId",
         NOW(),
         NOW()
+    FROM target_segment
     RETURNING id AS "integrationId"
 ),
 new_list AS (
@@ -27,8 +29,8 @@ new_list AS (
     )
     SELECT
         uuid_generate_v4(),
-        'kernel/git',
-        'https://lore.kernel.org/git',
+        'linux-serial',
+        'https://lore.kernel.org/linux-serial',
         target_segment."segmentId",
         new_integration."integrationId",
         NOW(),

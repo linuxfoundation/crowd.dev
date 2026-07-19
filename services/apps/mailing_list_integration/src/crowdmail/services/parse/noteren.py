@@ -172,7 +172,7 @@ def parse_author(author: str) -> tuple[str, str]:
     match = author_pattern.match(author)
     if match:
         author_name, author_email = match.groups()
-        author_name = author_name.rstrip()
+        author_name = author_name.rstrip().replace('"', "")
 
     # Sometimes there is no "<...>" in a From line (these are mailing lists...)
     # So just set the email to be whatever we originally started out with and
@@ -254,6 +254,12 @@ def parse_email(
                 date_dt = datetime.datetime.fromtimestamp(
                     email.utils.mktime_tz(date_tz), tz=datetime.UTC
                 )
+                # strftime("%Y") doesn't zero-pad years < 1000 on some platforms
+                # (e.g. "102" instead of "0102"), which downstream JS Date parsing
+                # rejects as invalid. Reject implausible years outright instead
+                # of emitting a malformed timestamp.
+                if not 1970 <= date_dt.year <= 9999:
+                    raise ValueError(f"implausible year {date_dt.year}")
                 # add a fake set of microseconds just to make date parsers on the injest side happier
                 date = date_dt.strftime("%Y-%m-%dT%H:%M:%S") + ".000000Z"
             except (ValueError, OverflowError):
@@ -315,13 +321,13 @@ def parse_email(
 
     # We need 2 identities, one "verified" and one "not verified" for the db to work with
     id1 = {
-        "platform": "groupsio",
+        "platform": "mailinglist",
         "value": author_email,
         "type": "username",
         "verified": True,
     }
     id2 = {
-        "platform": "groupsio",
+        "platform": "mailinglist",
         "value": author_email,
         "type": "email",
         "verified": False,
@@ -346,7 +352,7 @@ def parse_email(
     activityData = {
         "timestamp": date,
         "sourceId": msgid,
-        "platform": "groupsio",
+        "platform": "mailinglist",
         "channel": channel,
         "title": subject,
         "body": json_body,

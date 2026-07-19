@@ -109,7 +109,7 @@ export const DEFAULT_WIDGET_VALUES: Record<
   },
   [Widgets.MAILING_LIST_MESSAGES]: {
     enabled: true,
-    platform: [PlatformType.GROUPSIO],
+    platform: [PlatformType.GROUPSIO, PlatformType.MAILINGLIST],
   },
   // Development
   [Widgets.ISSUES_RESOLUTION]: {

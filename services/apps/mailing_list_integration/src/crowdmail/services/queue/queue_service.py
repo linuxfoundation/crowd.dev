@@ -25,7 +25,7 @@ from crowdmail.settings import (
 )
 
 _CLIENT_ID = "mailing-list-integration"
-_PLATFORM = "groupsio"
+_PLATFORM = "mailinglist"
 _OPERATION = "upsert_activities_with_members"
 
 # Global producer state
@@ -142,6 +142,9 @@ async def shutdown():
         # Don't raise - allow application to continue shutdown
 
 
+_SEND_CHUNK_SIZE = 500
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -149,18 +152,20 @@ async def shutdown():
     reraise=True,
 )
 async def _emit_batch(activities_kafka: list[dict[str, str]]):
-    """Emit a single batch, rebuilding the producer and retrying on Kafka errors."""
+    """Emit a batch in bounded-size chunks, rebuilding the producer and retrying on Kafka errors."""
     await ensure_connected()
     try:
-        futures = [
-            _producer.send(
-                topic=CROWD_KAFKA_TOPIC,
-                key=activity["message_id"].encode("utf-8", errors="replace"),
-                value=activity["payload"].encode("utf-8", errors="replace"),
-            )
-            for activity in activities_kafka
-        ]
-        await asyncio.gather(*futures, return_exceptions=False)
+        for i in range(0, len(activities_kafka), _SEND_CHUNK_SIZE):
+            chunk = activities_kafka[i : i + _SEND_CHUNK_SIZE]
+            futures = [
+                _producer.send(
+                    topic=CROWD_KAFKA_TOPIC,
+                    key=activity["message_id"].encode("utf-8", errors="replace"),
+                    value=activity["payload"].encode("utf-8", errors="replace"),
+                )
+                for activity in chunk
+            ]
+            await asyncio.gather(*futures, return_exceptions=False)
     except KafkaError:
         logger.warning("Kafka send failed, reconnecting before retry...")
         await disconnect()

@@ -49,11 +49,7 @@ class DataSinkWorkerQueueMessageType(StrEnum):
 
 
 class ActivityType(StrEnum):
-    """Groupsio-compatible activity types (platform=groupsio)"""
-
     MESSAGE = "message"
-    MEMBER_JOIN = "member_join"
-    MEMBER_LEAVE = "member_leave"
 
 
 class ExecutionStatus(StrEnum):
