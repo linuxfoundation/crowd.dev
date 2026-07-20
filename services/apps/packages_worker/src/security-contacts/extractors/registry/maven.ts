@@ -153,11 +153,12 @@ function groupRelated(leafGroup: string, parentGroup: string): boolean {
 }
 
 // Owner segment of a forge URL; Apache's svn/gitbox/git-wip hosts all map to the "apache" owner
-// so github.com/apache scm entries match repos hosted on Apache infrastructure.
+// so github.com/apache scm entries match repos hosted on Apache infrastructure. The host must
+// start at a boundary so lookalikes (notgithub.com, fake-apache.org) cannot pass the gate.
 function repoOwnerOf(url: string): string | null {
-  const m = /(?:github\.com|gitlab\.com|bitbucket\.org)[:/]+([^/:]+)[/:]/i.exec(url)
+  const m = /(?:^|[/@.])(?:github\.com|gitlab\.com|bitbucket\.org)[:/]+([^/:]+)[/:]/i.exec(url)
   if (m) return m[1].toLowerCase()
-  if (/\bapache\.org\b/i.test(url)) return 'apache'
+  if (/(?:^|[/@.])apache\.org(?:[:/]|$)/i.test(url)) return 'apache'
   return null
 }
 
@@ -227,7 +228,10 @@ function getParentPom(
     parentPomCache.delete(key)
     return null
   })
-  if (parentPomCache.size >= PARENT_CACHE_MAX) parentPomCache.clear()
+  if (parentPomCache.size >= PARENT_CACHE_MAX) {
+    const oldest = parentPomCache.keys().next().value
+    if (oldest !== undefined) parentPomCache.delete(oldest)
+  }
   parentPomCache.set(key, pending)
   return pending
 }
