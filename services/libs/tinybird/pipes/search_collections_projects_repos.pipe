@@ -1,14 +1,14 @@
 DESCRIPTION >
-    - `search_collections_projects_repos.pipe` serves the unified search widget for collections, projects, and repositories.
-    - Performs search across three entity types using shared `search` parameter and returns up to configurable results per type.
-    - Combines results from `collections_filtered`, `insightsProjects_filtered`, and `activityRepositories_filtered` pipes.
+    - `search_collections_projects_repos.pipe` serves the unified search widget for collections, projects, repositories, and organizations.
+    - Performs search across four entity types using shared `search` parameter and returns up to configurable results per type.
+    - Combines results from `collections_filtered`, `insightsProjects_filtered`, `activityRepositories_filtered`, and `organizations_filtered` pipes.
     - Filters out inactive projects (with 0 organizations and 0 contributors) to ensure relevant search results.
-    - Orders results by relevance: collections by project count, projects by contributor count, repositories alphabetically.
+    - Orders results by relevance: collections by project count, projects by contributor count, repositories alphabetically, organizations by contribution count.
     - Primary use case: powering global search functionality and autocomplete dropdowns across the platform.
     - Parameters:
     - `search`: Required string for searching across all entity types (inherited by filtered pipes)
     - `limit`: Optional integer for result limit per entity type, defaults to 10
-    - Response: `type` ('collection'|'project'|'repository'), `id` (projectId only), `slug`, `logo`, `projectSlug`, `name`
+    - Response: `type` ('collection'|'project'|'repository'|'organization'), `id` (projectId only), `slug`, `logo`, `projectSlug`, `name`
 
 NODE merge_results_from_collections_projects_repos_filtered
 SQL >
@@ -52,4 +52,16 @@ SQL >
         '' as status
     from activityRepositories_filtered
     order by activityRepositories_filtered.repo asc
+    limit {{ Integer(limit, 10, description="Limit number of records for each type", required=False) }}
+    union all
+    select
+        'organization' as type,
+        organizations_filtered.id,
+        organizations_filtered.slug,
+        organizations_filtered.logo,
+        null as "projectSlug",
+        organizations_filtered.displayName as name,
+        '' as status
+    from organizations_filtered
+    order by organizations_filtered.contributionCount desc
     limit {{ Integer(limit, 10, description="Limit number of records for each type", required=False) }}

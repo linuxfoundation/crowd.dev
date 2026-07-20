@@ -1,0 +1,31 @@
+DESCRIPTION >
+    Provides filters for organizations
+
+NODE organizations_filtered_0
+SQL >
+    %
+    SELECT
+        organizations_populated_slug.id AS id,
+        organizations_populated_slug.displayName AS displayName,
+        organizations_populated_slug.logo AS logo,
+        organizations_populated_slug.slug AS slug,
+        organizations_populated_slug.contributionCount AS contributionCount
+    FROM organizations_populated_slug
+    where
+        1 = 1
+        {% if defined(slug) %}
+            AND organizations_populated_slug.slug
+            = {{ String(slug, description="Filter organization by slug", required=False) }}
+        {% end %}
+        {% if defined(search) %}
+            AND organizations_populated_slug.displayName
+            ilike '%'
+            || {{
+                String(
+                    search,
+                    description="Search organization open ended wildcard using displayName",
+                    required=False,
+                )
+            }}
+            || '%'
+        {% end %}
