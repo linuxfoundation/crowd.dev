@@ -1,20 +1,33 @@
 DESCRIPTION >
-    Nightly copy pipe that precomputes yearly activity counts per organization for the org page.
+    Nightly copy pipe that precomputes yearly code contribution counts per organization for the org page.
+    Counts only code contribution activity types (commits, PRs, code reviews).
+    Covers the last 10 years, bucketed by year.
     Writes one row per (organizationId, startDate) into org_page_activities_timeseries_copy_ds.
 
 TAGS "Organization page"
 
+NODE org_page_activities_timeseries_code_activity_types
+DESCRIPTION >
+    Code contribution activity types only
+
+SQL >
+    SELECT activityType, platform FROM activityTypes FINAL WHERE isCodeContribution
+
 NODE org_page_activities_timeseries_copy_pipe_data
 SQL >
     SELECT
-        organizationId,
-        toStartOfYear(timestamp) AS startDate,
-        toDate(toStartOfYear(timestamp) + INTERVAL 1 YEAR - INTERVAL 1 DAY) AS endDate,
+        ar.organizationId,
+        toStartOfYear(ar.timestamp) AS startDate,
+        toDate(toStartOfYear(ar.timestamp) + INTERVAL 1 YEAR - INTERVAL 1 DAY) AS endDate,
         count() AS activityCount,
         now() AS computedAt
-    FROM activityRelations_deduplicated_cleaned_bucket_union
-    WHERE organizationId != '' AND timestamp >= '2016-01-01'
-    GROUP BY organizationId, startDate, endDate
+    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+    INNER JOIN
+        org_page_activities_timeseries_code_activity_types at
+        ON ar.type = at.activityType
+        AND ar.platform = at.platform
+    WHERE ar.organizationId != '' AND ar.timestamp >= toStartOfYear(now() - toIntervalYear(10))
+    GROUP BY ar.organizationId, startDate, endDate
 
 TYPE COPY
 TARGET_DATASOURCE org_page_activities_timeseries_copy_ds
