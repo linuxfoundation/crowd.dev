@@ -37,6 +37,18 @@ function parseProject(xml: string): any | null {
   return doc?.project ?? null
 }
 
+// Apache POMs conventionally obfuscate developer emails ("ggregory at apache.org",
+// "mikl at apache dot org", "x (a) gmail.com"). A rewrite is only accepted when the result is a
+// valid address, so free-form prose in the email field cannot produce a contact.
+export function deobfuscateEmail(value: string): string | null {
+  const trimmed = value.trim()
+  if (isEmail(trimmed)) return trimmed
+  let v = trimmed
+  v = v.replace(/\s*[([](?:a|at)[)\]]\s*|\s+at\s+/gi, '@')
+  v = v.replace(/\s*[([](?:d|dot)[)\]]\s*|\s+dot\s+/gi, '.')
+  return isEmail(v) ? v : null
+}
+
 function mapProjectDevelopers(project: any, sourceUrl: string, fetchedAt: string): RawContact[] {
   const prov = (): ProvenanceEntry[] => [
     { source: SOURCE, sourceTier: 'B', path: sourceUrl, fetchedAt },
@@ -44,8 +56,9 @@ function mapProjectDevelopers(project: any, sourceUrl: string, fetchedAt: string
   const contacts: RawContact[] = []
   const seen = new Set<string>()
   for (const dev of asArray(project.developers?.developer)) {
-    const email = (dev as any)?.email
-    if (typeof email !== 'string' || !isEmail(email)) continue
+    const raw = (dev as any)?.email
+    const email = typeof raw === 'string' ? deobfuscateEmail(raw) : null
+    if (!email) continue
     const key = email.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
