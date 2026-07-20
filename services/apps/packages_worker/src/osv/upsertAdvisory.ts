@@ -1,7 +1,7 @@
 import {
-  deleteOsvOnlyRanges,
   findPackageId,
-  insertAdvisoryRange,
+  reconcileOsvRanges,
+  supersedeDepsDevRanges,
   upsertAdvisory,
   upsertAdvisoryPackage,
 } from '@crowd/data-access-layer/src/packages/osv'
@@ -46,16 +46,17 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
       packageName: entry.pkg.packageName,
     })
 
-    await deleteOsvOnlyRanges(qx, advisoryPackageId)
-
-    for (const range of dedupeRanges(entry.ranges)) {
-      await insertAdvisoryRange(qx, {
+    await reconcileOsvRanges(
+      qx,
+      advisoryPackageId,
+      dedupeRanges(entry.ranges).map((range) => ({
         advisoryPackageId,
         introducedVersion: range.introducedVersion,
         fixedVersion: range.fixedVersion,
         lastAffected: range.lastAffected,
-      })
-    }
+      })),
+    )
+    await supersedeDepsDevRanges(qx, advisoryPackageId)
   }
 }
 
