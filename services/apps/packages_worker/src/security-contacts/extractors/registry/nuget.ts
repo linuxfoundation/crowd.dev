@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 
+import { resolveEndpoints } from '../../../nuget/client'
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { extractEmails, fetchJson, fetchText, registryHeaders } from '../http'
 
@@ -9,8 +10,6 @@ import { ParsedPurl } from './purl'
 const SOURCE = 'nuget-nuspec'
 const SEARCH_SOURCE = 'nuget-search'
 const BASE = 'https://api.nuget.org/v3-flatcontainer'
-// Owner usernames are only exposed by the search service, not the flatcontainer API.
-const SEARCH_BASE = 'https://azuresearch-usnc.nuget.org/query'
 const parser = new XMLParser({ ignoreAttributes: true })
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -69,6 +68,24 @@ export function mapNugetOwnerHandles(
   return toHandleCandidates(entry.owners, SEARCH_SOURCE, sourceUrl, fetchedAt)
 }
 
+// Owner usernames are only exposed by the search service, not the flatcontainer API; the
+// search host is resolved from the V3 service index (it is regional and can rotate).
+async function fetchOwnerCandidates(
+  id: string,
+  timeoutMs: number,
+  userAgent: string,
+  fetchedAt: string,
+): Promise<RawContact[]> {
+  try {
+    const { searchBaseUrl } = await resolveEndpoints()
+    const searchUrl = `${searchBaseUrl}?q=packageid:${encodeURIComponent(id)}&prerelease=true&semVerLevel=2.0.0`
+    const { json } = await fetchJson(searchUrl, timeoutMs, registryHeaders(userAgent))
+    return mapNugetOwnerHandles(json, id, searchUrl, fetchedAt)
+  } catch {
+    return []
+  }
+}
+
 async function latestStableVersion(
   id: string,
   timeoutMs: number,
@@ -91,18 +108,12 @@ export async function fetchNuget(
   userAgent: string,
 ): Promise<ExtractorResult> {
   const id = parsed.name.toLowerCase()
-  const searchUrl = `${SEARCH_BASE}?q=packageid:${encodeURIComponent(id)}&prerelease=true&semVerLevel=2.0.0`
   const fetchedAt = new Date().toISOString()
 
-  const [version, searchResult] = await Promise.all([
+  const [version, handleCandidates] = await Promise.all([
     latestStableVersion(id, timeoutMs, userAgent),
-    fetchJson(searchUrl, timeoutMs, registryHeaders(userAgent)).catch(() => ({
-      status: 0,
-      json: null,
-    })),
+    fetchOwnerCandidates(id, timeoutMs, userAgent, fetchedAt),
   ])
-
-  const handleCandidates = mapNugetOwnerHandles(searchResult.json, id, searchUrl, fetchedAt)
 
   if (!version) return { contacts: [], policies: {}, handleCandidates }
 
