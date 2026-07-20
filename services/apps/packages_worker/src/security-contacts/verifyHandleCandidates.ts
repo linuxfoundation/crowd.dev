@@ -32,14 +32,14 @@ export async function verifyHandleCandidates(
   }
 
   const path = `/repos/${owner}/${name}/contributors?per_page=100`
-  const corroborated = new Set<string>([owner.toLowerCase()])
+  const contributors = new Set<string>()
   try {
     const { text } = await deps.githubGet(path)
     if (text) {
       const entries = JSON.parse(text) as ContributorEntry[]
       if (Array.isArray(entries)) {
         for (const e of entries) {
-          if (typeof e.login === 'string') corroborated.add(e.login.toLowerCase())
+          if (typeof e.login === 'string') contributors.add(e.login.toLowerCase())
         }
       }
     }
@@ -52,18 +52,25 @@ export async function verifyHandleCandidates(
   }
 
   const fetchedAt = new Date().toISOString()
-  return candidates
-    .filter((c) => corroborated.has(c.value.toLowerCase()))
-    .map((c) => ({
+  const confirmed: RawContact[] = []
+  for (const c of candidates) {
+    const handle = c.value.toLowerCase()
+    const viaContributors = contributors.has(handle)
+    if (!viaContributors && handle !== owner.toLowerCase()) continue
+    confirmed.push({
       ...c,
       provenance: [
         ...c.provenance,
-        {
-          source: 'github-contributors',
-          sourceTier: c.tier,
-          path: `https://api.github.com${path}`,
-          fetchedAt,
-        },
+        viaContributors
+          ? {
+              source: 'github-contributors',
+              sourceTier: c.tier,
+              path: `https://api.github.com${path}`,
+              fetchedAt,
+            }
+          : { source: 'github-repo-owner', sourceTier: c.tier, path: target.url, fetchedAt },
       ],
-    }))
+    })
+  }
+  return confirmed
 }
