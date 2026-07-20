@@ -93,6 +93,7 @@ SQL >
     INNER JOIN advisoryPackages AS ap FINAL ON ap.packageId = p.id
     INNER JOIN advisories AS a FINAL ON a.id = ap.advisoryId
     INNER JOIN advisoryAffectedRanges AS aar FINAL ON aar.advisoryPackageId = ap.id
+        AND aar.deletedAt IS NULL
     LEFT JOIN
         (SELECT packageId, number, publishedAt AS introducedAt FROM versions FINAL) AS vi
         ON vi.packageId = p.id
