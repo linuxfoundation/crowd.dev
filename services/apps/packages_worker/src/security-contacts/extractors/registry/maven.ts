@@ -7,7 +7,9 @@ import { ParsedPurl } from './purl'
 
 const SOURCE = 'maven-pom'
 const BASE = 'https://repo1.maven.org/maven2'
-const parser = new XMLParser({ ignoreAttributes: true })
+// parseTagValue: false — the default coerces version strings to numbers ("3.0" -> 3,
+// "1.10" -> 1.1), which builds wrong POM URLs for any artifact with a trailing-zero version.
+const parser = new XMLParser({ ignoreAttributes: true, parseTagValue: false })
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -49,6 +51,20 @@ export function mapMavenPom(xml: string, sourceUrl: string, fetchedAt: string): 
   return contacts
 }
 
+export function pickVersion(metadataXml: string): string | null {
+  let doc: any
+  try {
+    doc = parser.parse(metadataXml)
+  } catch {
+    return null
+  }
+  const versioning = doc?.metadata?.versioning
+  const release = versioning?.release ?? versioning?.latest
+  if (typeof release === 'string' && release.length > 0) return release
+  const versions = asArray(versioning?.versions?.version)
+  return versions.length ? String(versions[versions.length - 1]) : null
+}
+
 async function resolveVersion(
   groupPath: string,
   artifact: string,
@@ -58,17 +74,7 @@ async function resolveVersion(
   const url = `${BASE}/${groupPath}/${artifact}/maven-metadata.xml`
   const { text } = await fetchText(url, timeoutMs, registryHeaders(userAgent))
   if (!text) return null
-  let doc: any
-  try {
-    doc = parser.parse(text)
-  } catch {
-    return null
-  }
-  const versioning = doc?.metadata?.versioning
-  const release = versioning?.release ?? versioning?.latest
-  if (typeof release === 'string') return release
-  const versions = asArray(versioning?.versions?.version)
-  return versions.length ? String(versions[versions.length - 1]) : null
+  return pickVersion(text)
 }
 
 export async function fetchMaven(
