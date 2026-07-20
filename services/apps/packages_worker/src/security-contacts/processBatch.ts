@@ -135,13 +135,16 @@ export async function processRepo(
 
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-  // Write only when every extractor succeeded, so a failed one can't wipe contacts it didn't see.
-  const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
-  if (failed) {
+  let failedCount = 0
+  results.forEach((r, i) => {
+    if (r.status !== 'rejected') return
+    failedCount++
     log.warn(
-      { repoId: target.repoId, errMsg: failed.reason?.message },
-      'Extractor failed — preserving existing data',
+      { repoId: target.repoId, extractor: EXTRACTORS[i].name, errMsg: r.reason?.message },
+      'Extractor failed — keeping contacts from remaining sources',
     )
+  })
+  if (failedCount === results.length) {
     return { repoId: target.repoId, status: 'extractor-failed' }
   }
 
@@ -177,7 +180,12 @@ export async function processRepo(
   }
 
   const scored = reconcile(contacts)
-  return { repoId: target.repoId, status: 'ok', contacts: scored, policies }
+  return {
+    repoId: target.repoId,
+    status: failedCount > 0 ? 'partial' : 'ok',
+    contacts: scored,
+    policies,
+  }
 }
 
 export async function processBatch(
@@ -228,10 +236,12 @@ export async function processBatch(
 
     const extractionDurationMs = Date.now() - extractionStartedAt
     const ok = outcomes.filter((o) => o.status === 'ok').length
+    const partial = outcomes.filter((o) => o.status === 'partial').length
     log.info(
       {
         ok,
-        failed: outcomes.length - ok,
+        partial,
+        failed: outcomes.length - ok - partial,
         durationMs: extractionDurationMs,
         reposPerSec: Number((outcomes.length / (extractionDurationMs / 1000)).toFixed(1)),
       },

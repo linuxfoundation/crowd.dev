@@ -57,17 +57,23 @@ export async function markRepoAttempted(qx: QueryExecutor, repoId: string): Prom
 //
 // Soft-delete: mark every active row stale, then upsert this pass's contacts, reviving whatever
 // was rediscovered. Readers of this table must filter on deleted_at IS NULL.
+//
+// merge: skip the soft-delete when this pass ran with a failed extractor — a failed source
+// can't wipe contacts it didn't see; stale rows are cleaned on the next fully-successful pass.
 export async function writeContacts(
   qx: QueryExecutor,
   repoId: string,
   contacts: ScoredContact[],
   policies: Partial<RepoPolicies>,
+  opts: { merge?: boolean } = {},
 ): Promise<void> {
   await qx.tx(async (tx) => {
-    await tx.result(
-      'UPDATE security_contacts SET deleted_at = NOW(), updated_at = NOW() WHERE repo_id = $(repoId) AND deleted_at IS NULL',
-      { repoId },
-    )
+    if (!opts.merge) {
+      await tx.result(
+        'UPDATE security_contacts SET deleted_at = NOW(), updated_at = NOW() WHERE repo_id = $(repoId) AND deleted_at IS NULL',
+        { repoId },
+      )
+    }
 
     if (contacts.length > 0) {
       await tx.result(
@@ -114,12 +120,12 @@ export async function markReposAttempted(qx: QueryExecutor, repoIds: string[]): 
   )
 }
 
-type OkResult = Extract<ProcessRepoResult, { status: 'ok' }>
+type PersistableResult = Extract<ProcessRepoResult, { status: 'ok' | 'partial' }>
 
 // Bounds blast radius: a bad row only forces a re-extract of its chunk next sweep, not the whole batch.
 const WRITE_CHUNK_SIZE = 100
 
-function prepareBulkPolicyUpdate(chunk: OkResult[]): string {
+function prepareBulkPolicyUpdate(chunk: PersistableResult[]): string {
   const rows = chunk.map(
     (_, i) =>
       `($(id${i})::bigint, $(securityPolicyUrl${i}), $(vulnerabilityReportingUrl${i}), $(pvrResolved${i})::boolean, $(bugBountyUrl${i}), $(securityTxtUrl${i}), $(pvrEnabled${i})::boolean)`,
@@ -156,15 +162,20 @@ function prepareBulkPolicyUpdate(chunk: OkResult[]): string {
   )
 }
 
-async function writeContactsChunk(qx: QueryExecutor, chunk: OkResult[]): Promise<void> {
+async function writeContactsChunk(qx: QueryExecutor, chunk: PersistableResult[]): Promise<void> {
   if (chunk.length === 0) return
-  const repoIds = chunk.map((r) => r.repoId)
+
+  // Partial repos get a merge-only write: their failed extractor couldn't re-see existing
+  // contacts, so soft-deleting would wipe data the pass never evaluated.
+  const fullRefreshIds = chunk.filter((r) => r.status === 'ok').map((r) => r.repoId)
 
   await qx.tx(async (tx) => {
-    await tx.result(
-      'UPDATE security_contacts SET deleted_at = NOW(), updated_at = NOW() WHERE repo_id = ANY($(repoIds)::bigint[]) AND deleted_at IS NULL',
-      { repoIds },
-    )
+    if (fullRefreshIds.length > 0) {
+      await tx.result(
+        'UPDATE security_contacts SET deleted_at = NOW(), updated_at = NOW() WHERE repo_id = ANY($(repoIds)::bigint[]) AND deleted_at IS NULL',
+        { repoIds: fullRefreshIds },
+      )
+    }
 
     const rows = chunk.flatMap((r) => r.contacts.map((c) => toContactRow(r.repoId, c)))
     if (rows.length > 0) {
@@ -184,7 +195,9 @@ export async function writeContactsBatch(
   const attemptedOnlyIds = outcomes
     .filter((o) => o.status === 'extractor-failed')
     .map((o) => o.repoId)
-  const ok = outcomes.filter((o): o is OkResult => o.status === 'ok')
+  const ok = outcomes.filter(
+    (o): o is PersistableResult => o.status === 'ok' || o.status === 'partial',
+  )
 
   let firstError: Error | undefined
   for (let i = 0; i < ok.length; i += WRITE_CHUNK_SIZE) {

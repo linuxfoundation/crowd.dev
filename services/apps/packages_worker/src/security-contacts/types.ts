@@ -81,4 +81,10 @@ export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<Ext
 
 export type ProcessRepoResult =
   | { repoId: string; status: 'ok'; contacts: ScoredContact[]; policies: Partial<RepoPolicies> }
+  | {
+      repoId: string
+      status: 'partial'
+      contacts: ScoredContact[]
+      policies: Partial<RepoPolicies>
+    }
   | { repoId: string; status: 'extractor-failed' }
