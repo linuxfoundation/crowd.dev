@@ -1,6 +1,7 @@
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { extractEmails, fetchJson, isEmail, registryHeaders } from '../http'
 
+import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'rubygems'
@@ -76,24 +77,11 @@ export function mapRubygemsOwnerHandles(
 ): RawContact[] {
   if (!Array.isArray(owners)) return []
 
-  const candidates: RawContact[] = []
-  const seen = new Set<string>()
-  for (const owner of owners) {
-    const o = (owner ?? {}) as Record<string, unknown>
-    if (typeof o.email === 'string' && isEmail(o.email)) continue
-    if (typeof o.handle !== 'string' || o.handle.length === 0) continue
-    const key = o.handle.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    candidates.push({
-      channel: 'github-handle',
-      value: o.handle,
-      role: 'maintainer',
-      tier: 'B',
-      provenance: [{ source: SOURCE, sourceTier: 'B', path: sourceUrl, fetchedAt }],
-    })
-  }
-  return candidates
+  const handles = owners
+    .map((owner) => (owner ?? {}) as Record<string, unknown>)
+    .filter((o) => !(typeof o.email === 'string' && isEmail(o.email)))
+    .map((o) => o.handle)
+  return toHandleCandidates(handles, SOURCE, sourceUrl, fetchedAt)
 }
 
 export async function fetchRubygems(
