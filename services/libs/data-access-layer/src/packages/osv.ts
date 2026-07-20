@@ -150,9 +150,12 @@ export async function upsertAdvisoryPackage(
 // produces zero writes: matching tuples are left untouched (not even an
 // `updated_at` bump), so no Sequin/Tinybird event fires for them either.
 //
-// Tuple in both old and new -> untouched. Tuple only in new -> upserted
-// (INSERT ON CONFLICT, clearing deleted_at in case it was previously
-// soft-deleted and OSV brought it back). Tuple only in old -> soft-deleted.
+// Tuple in both old and new, already a clean live OSV row -> untouched.
+// Tuple only in new, or matching a live deps.dev raw row on the same key ->
+// upserted (INSERT ON CONFLICT; clears deleted_at in case it was previously
+// soft-deleted, and clears range_raw/unaffected_raw to reclaim the row from
+// deps.dev — OSV wins on key overlap per ADR-0001 §Write semantics). Tuple
+// only in old -> soft-deleted.
 // Soft-delete (not hard-delete) is required because the unique key is the
 // value tuple itself: when OSV corrects a range, the corrected tuple has no
 // successor row to collapse into, so without deleted_at the stale tuple
@@ -181,8 +184,12 @@ export async function reconcileOsvRanges(
     ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))
     DO UPDATE SET
       updated_at = NOW(),
-      deleted_at = NULL
+      deleted_at = NULL,
+      range_raw = NULL,
+      unaffected_raw = NULL
     WHERE advisory_affected_ranges.deleted_at IS NOT NULL
+       OR advisory_affected_ranges.range_raw IS NOT NULL
+       OR advisory_affected_ranges.unaffected_raw IS NOT NULL
     `,
     { advisoryPackageId, values: JSON.stringify(values) },
   )
@@ -191,7 +198,8 @@ export async function reconcileOsvRanges(
   await qx.result(
     `
     UPDATE advisory_affected_ranges ar
-    SET deleted_at = NOW()
+    SET deleted_at = NOW(),
+        updated_at = NOW()
     WHERE ar.advisory_package_id = $(advisoryPackageId)
       AND ar.deleted_at IS NULL
       AND ar.range_raw IS NULL
@@ -225,7 +233,8 @@ export async function supersedeDepsDevRanges(
   await qx.result(
     `
     UPDATE advisory_affected_ranges
-    SET deleted_at = NOW()
+    SET deleted_at = NOW(),
+        updated_at = NOW()
     WHERE advisory_package_id = $(advisoryPackageId)
       AND deleted_at IS NULL
       AND (range_raw IS NOT NULL OR unaffected_raw IS NOT NULL)
@@ -288,7 +297,7 @@ export async function getRangesForPackages(qx: QueryExecutor, ids: number[]): Pr
       a.osv_id
     FROM advisory_packages ap
     JOIN advisories a ON a.id = ap.advisory_id
-    JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
     WHERE ap.package_id IN ($(ids:csv))
       AND (a.is_critical = TRUE OR a.osv_id LIKE 'MAL-%')
     `,
