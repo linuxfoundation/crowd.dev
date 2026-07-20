@@ -29,7 +29,9 @@ const FETCHERS: Record<string, EcosystemFetcher> = {
 export const extractManifest: Extractor = async (target, deps) => {
   const contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
+  const handleCandidates: RawContact[] = []
   const seenPurls = new Set<string>()
+  const seenCandidates = new Set<string>()
 
   for (const pkg of target.packages) {
     if (seenPurls.has(pkg.purl)) continue
@@ -44,6 +46,12 @@ export const extractManifest: Extractor = async (target, deps) => {
     try {
       const result = await fetcher(parsed, deps.fetchTimeoutMs, deps.userAgent)
       contacts.push(...result.contacts)
+      for (const candidate of result.handleCandidates ?? []) {
+        const key = candidate.value.toLowerCase()
+        if (seenCandidates.has(key)) continue
+        seenCandidates.add(key)
+        handleCandidates.push(candidate)
+      }
       for (const [key, value] of Object.entries(result.policies)) {
         if (!(policies as Record<string, unknown>)[key] && value != null) {
           ;(policies as Record<string, unknown>)[key] = value
@@ -55,5 +63,5 @@ export const extractManifest: Extractor = async (target, deps) => {
     }
   }
 
-  return { contacts, policies }
+  return { contacts, policies, handleCandidates }
 }

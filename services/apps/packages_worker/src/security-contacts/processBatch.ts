@@ -26,6 +26,7 @@ import {
   RepoPolicies,
   RepoTarget,
 } from './types'
+import { verifyHandleCandidates } from './verifyHandleCandidates'
 import { writeContactsBatch } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts')
@@ -150,9 +151,11 @@ export async function processRepo(
 
   let contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
+  const handleCandidates: RawContact[] = []
   for (const r of results) {
     if (r.status !== 'fulfilled') continue
     contacts.push(...r.value.contacts)
+    handleCandidates.push(...(r.value.handleCandidates ?? []))
     for (const [key, value] of Object.entries(r.value.policies)) {
       if (!(policies as Record<string, unknown>)[key] && value != null) {
         ;(policies as Record<string, unknown>)[key] = value
@@ -164,6 +167,8 @@ export async function processRepo(
   if (policies.pvrEnabled === false) {
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
+
+  contacts.push(...(await verifyHandleCandidates(target, deps, handleCandidates)))
 
   contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
 

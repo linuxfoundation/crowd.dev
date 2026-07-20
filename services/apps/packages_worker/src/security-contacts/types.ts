@@ -46,6 +46,9 @@ export interface RepoPolicies {
 export interface ExtractorResult {
   contacts: RawContact[]
   policies: Partial<RepoPolicies>
+  /** Registry usernames that only *might* be GitHub logins — never written without
+   *  corroboration (see verifyHandleCandidates.ts). */
+  handleCandidates?: RawContact[]
 }
 
 export interface RepoPackage {
