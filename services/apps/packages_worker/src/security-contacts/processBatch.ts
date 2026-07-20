@@ -204,17 +204,32 @@ export async function processBatch(
   const deps = buildBaseDeps(config)
 
   const targets = batch.map(toTarget)
+  log.info({ repos: targets.length }, 'Security contacts batch started')
+  const progress = { completed: 0, ok: 0, partial: 0, failed: 0 }
+  const extractionStartedAt = Date.now()
   // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
-  // every concurrency slot is still busy, so this can't rely on task completions alone.
+  // every concurrency slot is still busy, so this can't rely on task completions alone. The
+  // progress line rides the same cadence, bounding visibility logging to 2 lines/minute.
   const heartbeatTimer = setInterval(() => {
     try {
       heartbeat()
     } catch (err) {
       log.warn({ errMsg: (err as Error).message }, 'Heartbeat failed')
     }
+    if (progress.completed < targets.length) {
+      const elapsedMs = Date.now() - extractionStartedAt
+      log.info(
+        {
+          ...progress,
+          total: targets.length,
+          elapsedMs,
+          reposPerSec: Number((progress.completed / (elapsedMs / 1000)).toFixed(1)),
+        },
+        'Security contacts batch progress',
+      )
+    }
   }, 30_000)
   let outcomes: ProcessRepoResult[]
-  const extractionStartedAt = Date.now()
   try {
     // A cancelled task (superseded by a newer activity attempt) is left to throw so it stops
     // scheduling further repos instead of racing the new attempt.
@@ -228,15 +243,21 @@ export async function processBatch(
           'Security contacts batch cancelled — superseded by a newer activity attempt',
         )
       }
+      let outcome: ProcessRepoResult
       try {
-        return await processRepo(target, deps, cdpQx)
+        outcome = await processRepo(target, deps, cdpQx)
       } catch (err) {
         log.error(
           { repoId: target.repoId, errMsg: (err as Error).message },
           'Repo processing failed',
         )
-        return { repoId: target.repoId, status: 'extractor-failed' as const }
+        outcome = { repoId: target.repoId, status: 'extractor-failed' as const }
       }
+      progress.completed++
+      if (outcome.status === 'ok') progress.ok++
+      else if (outcome.status === 'partial') progress.partial++
+      else progress.failed++
+      return outcome
     })
 
     const extractionDurationMs = Date.now() - extractionStartedAt
