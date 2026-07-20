@@ -46,6 +46,9 @@ export interface RepoPolicies {
 export interface ExtractorResult {
   contacts: RawContact[]
   policies: Partial<RepoPolicies>
+  /** Registry usernames that only *might* be GitHub logins — never written without
+   *  corroboration (see verifyHandleCandidates.ts). */
+  handleCandidates?: RawContact[]
 }
 
 export interface RepoPackage {
@@ -81,4 +84,10 @@ export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<Ext
 
 export type ProcessRepoResult =
   | { repoId: string; status: 'ok'; contacts: ScoredContact[]; policies: Partial<RepoPolicies> }
+  | {
+      repoId: string
+      status: 'partial'
+      contacts: ScoredContact[]
+      policies: Partial<RepoPolicies>
+    }
   | { repoId: string; status: 'extractor-failed' }

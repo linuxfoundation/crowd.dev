@@ -67,6 +67,35 @@ export function mapRubygemsOwners(
   return contacts
 }
 
+// RubyGems accounts are independent of GitHub, so a handle matching a GitHub login is only a
+// guess — emitted as candidates that must pass repo-contributor corroboration before use.
+export function mapRubygemsOwnerHandles(
+  owners: unknown,
+  sourceUrl: string,
+  fetchedAt: string,
+): RawContact[] {
+  if (!Array.isArray(owners)) return []
+
+  const candidates: RawContact[] = []
+  const seen = new Set<string>()
+  for (const owner of owners) {
+    const o = (owner ?? {}) as Record<string, unknown>
+    if (typeof o.email === 'string' && isEmail(o.email)) continue
+    if (typeof o.handle !== 'string' || o.handle.length === 0) continue
+    const key = o.handle.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    candidates.push({
+      channel: 'github-handle',
+      value: o.handle,
+      role: 'maintainer',
+      tier: 'B',
+      provenance: [{ source: SOURCE, sourceTier: 'B', path: sourceUrl, fetchedAt }],
+    })
+  }
+  return candidates
+}
+
 export async function fetchRubygems(
   parsed: ParsedPurl,
   timeoutMs: number,
@@ -91,5 +120,9 @@ export async function fetchRubygems(
     ...mapRubygemsOwners(ownersResult.json, ownersUrl, fetchedAt),
   ]
 
-  return { contacts, policies: {} }
+  return {
+    contacts,
+    policies: {},
+    handleCandidates: mapRubygemsOwnerHandles(ownersResult.json, ownersUrl, fetchedAt),
+  }
 }
