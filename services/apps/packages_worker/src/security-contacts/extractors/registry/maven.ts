@@ -3,6 +3,7 @@ import { XMLParser } from 'fast-xml-parser'
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { fetchText, isEmail, registryHeaders } from '../http'
 
+import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'maven-pom'
@@ -72,6 +73,23 @@ function mapProjectDevelopers(project: any, sourceUrl: string, fetchedAt: string
     })
   }
   return contacts
+}
+
+// Developer <id>s are frequently GitHub logins but Central does not guarantee it (Apache ids
+// are LDAP usernames) — emitted as candidates for repo-contributor corroboration, and only for
+// developers that did not already yield an email contact.
+function mapProjectDeveloperHandles(
+  project: any,
+  sourceUrl: string,
+  fetchedAt: string,
+): RawContact[] {
+  const handles: unknown[] = []
+  for (const dev of asArray(project.developers?.developer)) {
+    const raw = (dev as any)?.email
+    if (typeof raw === 'string' && deobfuscateEmail(raw)) continue
+    handles.push((dev as any)?.id)
+  }
+  return toHandleCandidates(handles, SOURCE, sourceUrl, fetchedAt)
 }
 
 export function mapMavenPom(xml: string, sourceUrl: string, fetchedAt: string): RawContact[] {
@@ -162,6 +180,7 @@ function scmOwners(project: any): string[] {
 interface ParentPom {
   group: string
   contacts: RawContact[]
+  handles: RawContact[]
   owners: string[]
   parent: ParentRef | null
 }
@@ -181,9 +200,11 @@ async function fetchParentPom(
   if (!text) return null
   const project = parseProject(text)
   if (!project) return null
+  const fetchedAt = new Date().toISOString()
   return {
     group: typeof project.groupId === 'string' ? project.groupId : ref.group,
-    contacts: mapProjectDevelopers(project, url, new Date().toISOString()),
+    contacts: mapProjectDevelopers(project, url, fetchedAt),
+    handles: mapProjectDeveloperHandles(project, url, fetchedAt),
     owners: scmOwners(project),
     parent: parentRef(project),
   }
@@ -212,8 +233,9 @@ async function traverseParents(
   repoUrl: string | undefined,
   timeoutMs: number,
   userAgent: string,
-): Promise<RawContact[]> {
+): Promise<{ contacts: RawContact[]; handleCandidates: RawContact[] }> {
   const repoOwner = repoUrl ? repoOwnerOf(repoUrl) : null
+  const handleCandidates: RawContact[] = []
   const seen = new Set<string>()
   let ref = parentRef(leafProject)
   for (let depth = 0; ref !== null && depth < MAX_PARENT_DEPTH; depth++) {
@@ -225,10 +247,11 @@ async function traverseParents(
     const related =
       groupRelated(leafGroup, pom.group) || (repoOwner !== null && pom.owners.includes(repoOwner))
     if (!related) break
-    if (pom.contacts.length > 0) return pom.contacts
+    handleCandidates.push(...pom.handles)
+    if (pom.contacts.length > 0) return { contacts: pom.contacts, handleCandidates }
     ref = pom.parent
   }
-  return []
+  return { contacts: [], handleCandidates }
 }
 
 export async function fetchMaven(
@@ -250,9 +273,19 @@ export async function fetchMaven(
   const project = parseProject(text)
   if (!project) return { contacts: [], policies: {} }
 
-  let contacts = mapProjectDevelopers(project, url, new Date().toISOString())
+  const fetchedAt = new Date().toISOString()
+  let contacts = mapProjectDevelopers(project, url, fetchedAt)
+  const handleCandidates = mapProjectDeveloperHandles(project, url, fetchedAt)
   if (contacts.length === 0) {
-    contacts = await traverseParents(project, parsed.namespace, repoUrl, timeoutMs, userAgent)
+    const inherited = await traverseParents(
+      project,
+      parsed.namespace,
+      repoUrl,
+      timeoutMs,
+      userAgent,
+    )
+    contacts = inherited.contacts
+    handleCandidates.push(...inherited.handleCandidates)
   }
-  return { contacts, policies: {} }
+  return { contacts, policies: {}, handleCandidates }
 }
