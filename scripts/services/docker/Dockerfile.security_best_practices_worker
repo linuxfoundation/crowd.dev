@@ -1,4 +1,4 @@
-ARG PVTR_VERSION=v0.23.2
+ARG PVTR_VERSION=v0.24.0
 
 FROM alpine:3.21 AS core
 RUN apk add --no-cache wget tar unzip
@@ -10,13 +10,13 @@ ARG PLATFORM=Linux_x86_64
 RUN wget https://github.com/privateerproj/privateer/releases/download/v${VERSION}/privateer_${PLATFORM}.tar.gz
 RUN tar -xzf privateer_${PLATFORM}.tar.gz
 
-FROM golang:1.26.3-alpine3.23 AS plugin
+FROM golang:1.26.4-alpine3.22 AS plugin
 RUN apk add --no-cache make git
 WORKDIR /plugin
-ARG PVTR_COMMIT=c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
+ARG PVTR_COMMIT=c1095c95a1b399ec63e4f4e2b7880b0ef55e604f
 ARG PVTR_VERSION
 # To run the latest version of the plugin, we need to use the latest commit of the pvtr-github-repo-scanner repository.
-# Currently using v0.23.2: https://github.com/ossf/pvtr-github-repo-scanner/commit/c7bd9538d64f7eaab94a05c9b5fd05458a387b1c
+# Currently using v0.24.0+2fixes: https://github.com/ossf/pvtr-github-repo-scanner/commit/c1095c95a1b399ec63e4f4e2b7880b0ef55e604f
 RUN git clone https://github.com/ossf/pvtr-github-repo-scanner.git && cd pvtr-github-repo-scanner && git checkout ${PVTR_COMMIT}
 RUN cd pvtr-github-repo-scanner && make binary && cp github-repo ../github-repo
 

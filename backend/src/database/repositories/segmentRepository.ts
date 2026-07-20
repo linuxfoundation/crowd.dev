@@ -463,7 +463,12 @@ class SegmentRepository extends RepositoryBase<
       if (adminSegments.length === 0) {
         return { count: 0, rows: [], limit: criteria.limit, offset: criteria.offset }
       }
-      segmentsSearchQuery += `AND sp.id IN (:adminSegments)`
+      segmentsSearchQuery += `AND EXISTS (
+        SELECT 1 FROM segments sp
+        WHERE sp."grandparentSlug" = f.slug
+          AND sp."tenantId" = f."tenantId"
+          AND sp.id IN (:adminSegments)
+      )`
       replacements.adminSegments = adminSegments
     }
 
@@ -474,23 +479,7 @@ class SegmentRepository extends RepositoryBase<
                   SELECT
                       f.id AS foundation_id,
                       f.name AS foundation_name,
-                      f.status,
-                      f."createdAt",
-                      f."updatedAt",
-                      f."sourceId",
-                      f."sourceParentId",
-                      f.slug,
-                      p.name AS project_name,
-                      p.id AS project_id,
-                      p.status AS project_status,
-                      p.slug AS project_slug,
-                      COUNT(DISTINCT sp.id) AS subproject_count,
-                      JSONB_AGG(JSONB_BUILD_OBJECT(
-                          'id', sp.id,
-                          'name', sp.name,
-                          'status', sp.status,
-                          'slug', sp.slug
-                          )) AS subprojects
+                      COUNT(DISTINCT p.id)::int AS project_count
                   FROM segments f
                   JOIN segments p
                       ON p."parentSlug" = f."slug"
@@ -503,22 +492,15 @@ class SegmentRepository extends RepositoryBase<
                   WHERE f."parentSlug" IS NULL
                     AND f."tenantId" = :tenantId
                     ${segmentsSearchQuery}
-                  GROUP BY f."id", p.id
+                  GROUP BY f.id
               )
           SELECT
               s.*,
               COUNT(*) OVER () AS "totalCount",
-              JSONB_AGG(JSONB_BUILD_OBJECT(
-                      'id', f.project_id,
-                      'name', f.project_name,
-                      'status', f.project_status,
-                      'slug', f.project_slug,
-                      'subprojects', f.subprojects
-                  )) AS projects
+              f.project_count AS "projectCount"
           FROM segments s
           JOIN foundations f ON s.id = f.foundation_id
           ${searchQuery}
-          GROUP BY s.id, f.foundation_name
           ORDER BY f.foundation_name
           ${this.getPaginationString(criteria)};
       `,

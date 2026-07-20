@@ -1,10 +1,15 @@
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { DbConnection, getDbConnection } from '@crowd/database'
 
-import { getPackagesDbConfig } from './config'
+import { getCdpDbConfig, getPackagesDbConfig } from './config'
 
 export async function getPackagesDb() {
   const conn = await getDbConnection(getPackagesDbConfig())
+  return pgpQx(conn)
+}
+
+export async function getCdpDb() {
+  const conn = await getDbConnection(getCdpDbConfig())
   return pgpQx(conn)
 }
 

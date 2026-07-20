@@ -1,9 +1,15 @@
 DESCRIPTION >
-    - `activityTypes_by_project.pipe` returns activity types that actually exist for a given project.
+    - `activityTypes_by_project.pipe` returns activity types that actually exist for a given project, or
+    across every project in a collection.
     - Unlike `activityTypes_filtered` which returns all possible activity types, this pipe only returns types with actual activities in the project.
     - Useful for populating dropdowns, filters, or analytics that should only show activity types with data.
     - Parameters:
-    - `project`: **Required** string for project slug (e.g., 'k8s', 'tensorflow'). Passed to `segments_filtered`.
+    - `project`: String for project slug (e.g., 'k8s', 'tensorflow'). Passed to `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
+    Collection requests read from `activityRelations_deduplicated_cleaned_bucket_union` (all 10 buckets) instead
+    of `activityRelations_bucket_routing` (a single bucket, defaulting to bucket 0 when `bucketId` is not
+    injected), since a collection's member projects' segments can be routed to any of the 10 buckets - same
+    pattern as `activities_filtered.pipe`.
     - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes']). Filters activities by repository.
     - `includeCodeContributions`: Optional boolean to include code contribution activities. Defaults to 1. Set to 0 to exclude. Passed to `activityTypes_filtered`.
     - `includeCollaborations`: Optional boolean to include or exclude collaboration activities. Defaults to 0. Passed to `activityTypes_filtered`.
@@ -15,10 +21,16 @@ NODE activityTypes_by_project_0
 SQL >
     %
     SELECT DISTINCT a.type as activityType, a.platform, at.label
-    FROM activityRelations_bucket_routing a
+    FROM
+        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% else %} activityRelations_bucket_routing
+        {% end %} a
     INNER JOIN activityTypes at ON a.type = at.activityType AND a.platform = at.platform
     WHERE
-        a.segmentId = (SELECT segmentId FROM segments_filtered)
+        {% if defined(collectionSlug) %}
+            a.segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} a.segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %}
         {% if defined(repos) %} AND a.channel IN (SELECT channel FROM repos_to_channels) {% end %}
         AND (a.type, a.platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
     ORDER BY activityType, platform

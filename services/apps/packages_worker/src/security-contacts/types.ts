@@ -1,3 +1,4 @@
+import type { EmailReachabilityReason } from '@crowd/common'
 import type { SecurityContactConfidence } from '@crowd/data-access-layer/src/osspckgs/api'
 
 export type ContactChannel = 'email' | 'github-pvr' | 'url' | 'github-handle' | 'web-form'
@@ -30,6 +31,8 @@ export interface RawContact {
 export interface ScoredContact extends RawContact {
   score: number
   confidence: SecurityContactConfidence
+  reachable: boolean
+  reachabilityReason: EmailReachabilityReason | null
 }
 
 export interface RepoPolicies {
@@ -43,6 +46,9 @@ export interface RepoPolicies {
 export interface ExtractorResult {
   contacts: RawContact[]
   policies: Partial<RepoPolicies>
+  /** Registry usernames that only *might* be GitHub logins — never written without
+   *  corroboration (see verifyHandleCandidates.ts). */
+  handleCandidates?: RawContact[]
 }
 
 export interface RepoPackage {
@@ -75,3 +81,13 @@ export interface ExtractorDeps {
 }
 
 export type Extractor = (target: RepoTarget, deps: ExtractorDeps) => Promise<ExtractorResult>
+
+export type ProcessRepoResult =
+  | { repoId: string; status: 'ok'; contacts: ScoredContact[]; policies: Partial<RepoPolicies> }
+  | {
+      repoId: string
+      status: 'partial'
+      contacts: ScoredContact[]
+      policies: Partial<RepoPolicies>
+    }
+  | { repoId: string; status: 'extractor-failed' }

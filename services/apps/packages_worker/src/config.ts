@@ -18,6 +18,16 @@ export function getPackagesDbConfig() {
   }
 }
 
+export function getCdpDbConfig() {
+  return {
+    host: requireEnv('CROWD_DB_READ_HOST'),
+    port: requireEnvInt('CROWD_DB_PORT'),
+    database: requireEnv('CROWD_DB_DATABASE'),
+    user: requireEnv('CROWD_DB_USERNAME'),
+    password: requireEnv('CROWD_DB_PASSWORD'),
+  }
+}
+
 export function getGithubAppConfig() {
   const rawPrivateKey = requireEnv('CROWD_GITHUB_PRIVATE_KEY')
   const privateKeyPem = Buffer.from(rawPrivateKey, 'base64').toString('ascii')
