@@ -13,6 +13,7 @@ type EcosystemFetcher = (
   parsed: ParsedPurl,
   timeoutMs: number,
   userAgent: string,
+  repoUrl?: string,
 ) => Promise<ExtractorResult>
 
 // Keyed by the lowercased packages.ecosystem value. go has no package-manifest contacts.
@@ -43,7 +44,7 @@ export const extractManifest: Extractor = async (target, deps) => {
     if (!parsed) continue
 
     try {
-      const result = await fetcher(parsed, deps.fetchTimeoutMs, deps.userAgent)
+      const result = await fetcher(parsed, deps.fetchTimeoutMs, deps.userAgent, target.url)
       contacts.push(...result.contacts)
       for (const candidate of result.handleCandidates ?? []) {
         const key = candidate.value.toLowerCase()
