@@ -223,7 +223,7 @@ Five sub-workers run concurrently (npm, Maven, OSV, GitHub, Docker Hub), all wri
 | `versions`                            | Append-only via `INSERT … ON CONFLICT DO NOTHING`. Yanked/deprecated status is a separate targeted `UPDATE (is_yanked = true) WHERE …`.                                                                                                                     |
 | `repos`                               | Registry workers (npm, Maven) do **not** write `repos` enrichment metadata. They INSERT a minimal `repos(url, host)` row — `url` (canonical) and `host` (coarse classification) are both derived from the declared repository URL — solely to create the FK target their `package_repos` link needs. `owner`/`name`/`stars`/`description` and all other metadata stay NULL and remain enricher-owned; existing rows are never updated by registry workers. The GitHub enricher — triggered when `repos.last_synced_at IS NULL` — upserts `repos` with metadata. Docker Hub worker adds `docker_*` columns on top. |
 | `package_repos`                       | Composite PK `(package_id, repo_url)`. Each `source` value ('declared', 'deps_dev', 'heuristic', 'manual') is a separate row — sources do not overwrite each other.                                                                                         |
-| `advisories`                          | Upsert on `osv_id`. OSV is the single source of truth; no other worker writes to this table.                                                                                                                                                                |
+| `advisories`                          | Upsert on `osv_id`. OSV is the source of truth for ongoing updates; deps.dev also writes this table at backfill / new-package time (see §Source of truth: deps.dev backfill vs registries / OSV) — OSV's writes are expected to overwrite deps.dev's over time, not the other way around.                                                                                                                                                                |
 | `maintainers` / `package_maintainers` | `maintainers`: upsert on `(ecosystem, username)`, never deleted — the identity history is preserved. `package_maintainers`: reflects the **current** link set — the npm worker replaces a package's links each ingest (delete + reinsert), so prior link rows are not retained.                                                                                                                                                                                     |
 | `downloads_daily`                     | Append-only time-series. Each `(package_id, date)` row is written once. npm and Maven workers own disjoint rows by ecosystem. Historical timelines are preserved — workers do not overwrite past dates.                                                     |
 | `downloads_last_30d`                  | Upsert on `(purl, end_date)`. Written by the weekly ranking worker only. The cached `packages.downloads_last_30d` column must be updated in the same pass.                                                                                                  |
@@ -361,6 +361,26 @@ The application-side `dedupeRanges` in `upsertAdvisory.ts` keys on the same full
 Local verification against the live OSV dataset (2026-05-28) showed the multi-range advisory_packages count was unchanged from the narrow-index baseline — current OSV data doesn't exercise the cross-distro multi-range path in practice. The fix is correctness-only on today's dataset; the bug it prevents is real but unreached.
 
 **Decided**: 2026-05-28
+
+---
+
+### `advisory_affected_ranges` delete/dedup strategy
+
+Two duplication problems surfaced in Tinybird for `advisory_affected_ranges` (CM-1258):
+
+**Problem A — zombie rows from hard-delete + reinsert.** The OSV worker's per-sync flow (`upsertAdvisory.ts` → `deleteOsvOnlyRanges` in `services/libs/data-access-layer/src/packages/osv.ts`) hard-deletes all OSV-owned ranges for an advisory_package and reinserts the deduped set via plain `INSERT` (no `ON CONFLICT`), so an unchanged range gets a brand-new PK every sync. `advisory_affected_ranges` is Sequin-replicated with `REPLICA IDENTITY FULL` into a Tinybird `ReplacingMergeTree(updatedAt)` datasource that has no sign/`is_deleted` column and no delete-shaped ingest path — the DELETE never propagates downstream, only the new-PK reinsert does. Net effect: every sync produces one zombie row per range, even when nothing changed.
+
+**Problem B — deps.dev raw rows and OSV structured rows never collide.** deps.dev writes `range_raw`/`unaffected_raw`; OSV writes `introduced_version`/`fixed_version`/`last_affected`. Per §`advisory_affected_ranges` uniqueness scope above, the unique index is on the structured columns only, so a deps.dev row (structured columns NULL) never conflicts with the equivalent OSV row — both survive as separate rows for the same real-world range, even though §Source of truth already says OSV should overwrite deps.dev's data over time.
+
+**Decided fix — diff-based upsert with soft-delete, not sweep-and-reinsert:**
+
+- Add a `deleted_at` column to `advisory_affected_ranges` (soft-delete, same pattern as `V1783036800__security_contacts_soft_delete.sql`).
+- Per advisory_package, per sync: read existing live OSV-owned tuples, diff against the new deduped tuple set. Tuple in both → skip (no write, no event). Tuple only in new → `INSERT ... ON CONFLICT (advisory_package_id, COALESCE(introduced_version,''), COALESCE(fixed_version,''), COALESCE(last_affected,'')) DO UPDATE SET updated_at = NOW(), deleted_at = NULL`. Tuple only in old → soft-delete (`SET deleted_at = NOW()`), not hard-delete. An unchanged advisory_package now produces zero writes and zero Sequin/Tinybird events per sync.
+- Soft-delete (not hard-delete) is required because the unique key is the value tuple itself: when OSV corrects a range (e.g. narrows `fixed_version`), the corrected tuple is a different key, so the old tuple's row has no successor row to collapse into — without a `deleted_at` flag it would sit forever as a false-positive vulnerable-range match.
+- After OSV writes its structured ranges for an advisory_package, soft-delete any live deps.dev-owned row (`range_raw IS NOT NULL OR unaffected_raw IS NOT NULL`) for that same advisory_package — this is the §Source of truth overwrite rule, made to actually take effect now that raw and structured rows are reconciled instead of coexisting.
+- Tinybird: add `deletedAt` to `advisoryAffectedRanges.datasource` and filter `deletedAt IS NULL` in `ossPackages_enriched.pipe`'s join, alongside the existing `FINAL` modifier (`FINAL` only collapses rows sharing a sorting key — it does not merge two distinct PKs claiming the same real-world range, which is why this needs an explicit filter rather than relying on `FINAL` alone).
+
+**Decided**: 2026-07-20
 
 ---
 
@@ -576,6 +596,7 @@ The writer of a `downloads_last_30d` row must also update the cached `packages.d
 - 2026-05-29 — clarified `packages_universe` import semantics (one-time backfill + weekly snapshot-diff incrementals; the ranking job updates score/flag columns in place). Added §Source of truth: deps.dev backfill vs registries / OSV with lifecycle ownership rules and the agreed `package_source_log` provenance table (`(package_id, source)` PK; `columns` array tracks `table.column` paths each source writes).
 - 2026-05-29 — added §Criticality scoring methodology (graph signals — transitive dependent count and PageRank centrality; per-ecosystem percentile-rank formula in `[0, 1]`; floor + ceiling tier budget policy; `package_criticality_spotlight` table).
 - 2026-06-08 — retired `packages_universe` table. Signals (`downloads_last_30d`, `centrality_score`, `rank_in_ecosystem`) migrated onto `packages`. Both `rank_packages_universe()` overloads dropped; replaced by `rank_packages()` operating directly on `packages`, scoped to ecosystems present in `critical_top_n_by_ecosystem` JSONB. §Downloads timeline by tier simplified (Tier 2/3 split removed). §Write semantics `packages_universe` row removed.
+- 2026-07-20 (CM-1258) — corrected stale §Write semantics `advisories` row (deps.dev also writes this table; OSV overwrites over time per §Source of truth, it isn't the sole writer). Added §`advisory_affected_ranges` delete/dedup strategy: diff-based upsert + soft-delete (`deleted_at`) replaces hard-delete + reinsert to stop zombie rows in Tinybird, and OSV now supersedes deps.dev's raw rows on overlap so the two sources stop coexisting as duplicates.
 ---
 
 ## Note on promotion to production
