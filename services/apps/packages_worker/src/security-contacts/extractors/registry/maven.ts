@@ -196,10 +196,15 @@ async function fetchParentPom(
 ): Promise<ParentPom | null> {
   const groupPath = ref.group.replace(/\./g, '/')
   const url = `${BASE}/${groupPath}/${ref.artifact}/${ref.version}/${ref.artifact}-${ref.version}.pom`
-  const { text } = await fetchText(url, timeoutMs, registryHeaders(userAgent))
-  if (!text) return null
+  const { status, text } = await fetchText(url, timeoutMs, registryHeaders(userAgent))
+  // null only for genuinely-absent statuses (immutable gav → safe to negative-cache); a 200
+  // with an empty or unparseable body is treated as an error so the cache evicts it.
+  if (!text) {
+    if (status === 200) throw new Error(`empty parent POM body: ${url}`)
+    return null
+  }
   const project = parseProject(text)
-  if (!project) return null
+  if (!project) throw new Error(`unparseable parent POM: ${url}`)
   const fetchedAt = new Date().toISOString()
   return {
     group: typeof project.groupId === 'string' ? project.groupId : ref.group,
