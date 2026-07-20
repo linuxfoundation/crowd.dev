@@ -58,10 +58,14 @@ export function mapNugetOwnerHandles(
   fetchedAt: string,
 ): RawContact[] {
   const data = (doc as any)?.data
-  if (!Array.isArray(data) || data.length === 0) return []
-  const entry = data[0] as Record<string, unknown>
-  if (typeof entry.id !== 'string' || entry.id.toLowerCase() !== packageId.toLowerCase()) return []
-  if (!Array.isArray(entry.owners)) return []
+  if (!Array.isArray(data)) return []
+  // The exact package is not guaranteed to be the first result — scan for the id match,
+  // same as fetchSearch in src/nuget/client.ts.
+  const lowerId = packageId.toLowerCase()
+  const entry = data.find((e) => typeof e?.id === 'string' && e.id.toLowerCase() === lowerId) as
+    | Record<string, unknown>
+    | undefined
+  if (!entry || !Array.isArray(entry.owners)) return []
   return toHandleCandidates(entry.owners, SEARCH_SOURCE, sourceUrl, fetchedAt)
 }
 
