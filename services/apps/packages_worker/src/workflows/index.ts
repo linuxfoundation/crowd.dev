@@ -30,3 +30,4 @@ export {
   ingestSecurityContacts,
   ingestSecurityContactsForPurlWorkflow,
 } from '../security-contacts/workflows'
+export { analyzeBlastRadius } from '../blast-radius/workflows'
