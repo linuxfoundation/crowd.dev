@@ -24,8 +24,8 @@ interface RangeRow {
   last_affected: string | null
   range_raw: string | null
   unaffected_raw: string | null
-  deleted_at: Date | null
-  updated_at: Date
+  deleted_at: string | null
+  updated_at: string
 }
 
 async function cleanupFixture(qx: QueryExecutor): Promise<void> {
@@ -140,7 +140,7 @@ describe.skipIf(!HAVE_DB)('reconcileOsvRanges / supersedeDepsDevRanges — real 
 
     const after = await liveRanges(qx, advisoryPackageId)
     const afterUpdatedAt = after.find((r) => r.introduced_version === '1.0.0')?.updated_at
-    expect(afterUpdatedAt?.getTime()).toBe(beforeUpdatedAt?.getTime())
+    expect(afterUpdatedAt).toBe(beforeUpdatedAt)
   })
 
   it('soft-deletes a stale tuple dropped from the new range set', async () => {
