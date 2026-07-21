@@ -73,20 +73,66 @@ Supporting decisions:
 
 ### Scoring
 
-`score = 0.55·tier + 0.20·channel + 0.15·freshness + 0.10·corroboration − penalties`, computed by
-the pure function `score.ts` and banded by `securityContactConfidenceBand` (PRIMARY ≥ 0.80,
-SECONDARY ≥ 0.55, FALLBACK ≥ 0.30, else NONE).
+Computed by the pure function `score.ts`, after reconciliation — so a merged contact is scored
+with its highest surviving tier and role and the union of its provenance:
 
-- Tier: A = 1.0, B = 0.7, C = 0.4, D = 0.2.
-- Channel: `security@`-style local-parts = 1.0, PVR = 0.95, generic local-parts = 0.7, individual
-  email = 0.6, URL/web-form = 0.5, bare GitHub handle = 0.4.
-- Freshness: linear 1.0 (≤ 90 d) → 0.0 (≥ 730 d) on `declaredAt ?? fetchedAt`.
-- Corroboration: 2 independent extractors = 0.5, 3+ = 1.0. CDP identity lookups never count —
-  they re-attest the same value, they are not independent sources.
-- Penalties: handle-only −0.05; CDP-unverified-email-only −0.25 plus a 0.35 channel quality.
+```
+raw   = 0.55·tier + 0.20·channel + 0.15·freshness + 0.10·corroboration
+        − 0.25 (if CDP-unverified)  − 0.05 (if channel is github-handle)
+score = round(clamp(raw, 0, 1) · 1000) / 1000        -- stored as NUMERIC(4,3)
+```
 
-Weights are the spec's starting point; calibration against a hand-labeled set is a post-rollout
-follow-up.
+**Tier** — A = 1.0, B = 0.7, C = 0.4, D = 0.2.
+
+**Channel quality** — evaluated in this order:
+
+1. A CDP-unverified contact (see penalty rules below) gets a flat **0.35** regardless of channel.
+2. `email`: local-part in the security set (`security`, `secure`, `psirt`, `sirt`, `cert`, `cve`,
+   `abuse`, `vuln`, `vulnerability`, `vulnerabilities`, `disclosure`) *or any local-part starting
+   with `security`* = **1.0**; local-part in the generic set (`info`, `team`, `contact`, `hello`,
+   `hi`, `support`, `admin`, `help`, `maintainers`, `dev`, `devs`, `opensource`, `open-source`,
+   `office`, `mail`) = **0.7**; anything else (an individual's address) = **0.6**. Matching is on
+   the lowercased, trimmed local-part.
+3. `github-pvr` = **0.95**; `url` / `web-form` = **0.5**; `github-handle` = **0.4**.
+
+**Freshness** — takes the **most recent** `declaredAt ?? fetchedAt` across all provenance
+entries: 1.0 at ≤ 90 days, 0.0 at ≥ 730 days, linear in between. No parseable timestamp at all
+scores **0** — unknown age is treated as stale, not fresh.
+
+**Corroboration** — counts **distinct provenance `source` identifiers**, so it measures
+independent extractors, not the same file fetched twice: 3+ sources = 1.0, exactly 2 = 0.5,
+1 = 0. `cdp-*` sources are excluded from the count: a CDP identity lookup re-attests a value we
+already had, it is not an independent attestation.
+
+**Penalties**:
+
+- **Handle-only −0.05** (`channel === 'github-handle'`): a bare handle is not directly
+  contactable; the penalty keeps it just below an equivalent resolved email for the same person.
+- **CDP-unverified −0.25** (plus the 0.35 channel quality above): applies only when **every**
+  provenance entry is `cdp-unverified`. A single `cdp-verified` resolution — or any real
+  extractor source, e.g. the same email independently found in a manifest — lifts the penalty
+  entirely.
+
+**Confidence band** (`securityContactConfidenceBand` in the data-access-layer, applied to the
+rounded score): PRIMARY ≥ 0.80 > SECONDARY ≥ 0.55 > FALLBACK ≥ 0.30 > NONE. Both `score` and the
+band are stored per contact; `packageConfidence` on the API is the band of the max score.
+
+Worked examples:
+
+- `security@project.org` from a fresh `SECURITY-INSIGHTS.yml`, corroborated by `security.txt`:
+  0.55·1.0 + 0.20·1.0 + 0.15·1.0 + 0.10·0.5 = **0.95 → PRIMARY**.
+- An individual maintainer email from a 1-year-old npm manifest, single source:
+  0.55·0.7 + 0.20·0.6 + 0.15·0.57 + 0 ≈ **0.59 → SECONDARY**.
+- A tier-D committer's email resolved only via an unverified CDP identity, fresh, no
+  corroboration: 0.55·0.2 + 0.20·0.35 + 0.15·1.0 + 0 − 0.25 = **0.08 → NONE**.
+
+**Reachability is orthogonal to the score**: `reachable` / `reachability_reason` (from
+`classifyEmailReachability` in `@crowd/common`) are stored alongside but never feed the formula —
+they gate the tier-D fallback (an unreachable email doesn't count as a "usable" higher-tier
+contact) and let consumers filter, without hiding that a source declared the address.
+
+Weights, penalties, and band cut-offs are the spec's starting point; calibration against a
+hand-labeled set is a post-rollout follow-up.
 
 ### Reconciliation and noise filtering
 
