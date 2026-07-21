@@ -18,7 +18,7 @@ import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
 import { fetchTopCommitters } from './extractors/topCommitters'
 import { githubApiGet } from './githubToken'
-import { reconcile } from './reconcile'
+import { isJunkContact, reconcile } from './reconcile'
 import { deriveGithubHandlesFromNoreplyEmails, resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
@@ -172,10 +172,13 @@ export async function processRepo(
   }
 
   contacts.push(...(await verifyHandleCandidates(target, deps, handleCandidates)))
+  contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
 
-  const isReachableRaw = (c: RawContact): boolean =>
-    c.channel !== 'email' || classifyEmailReachability(c.value).reachable
-  const hasUsableHigherTierContact = contacts.some((c) => c.tier !== 'D' && isReachableRaw(c))
+  const isUsableRaw = (c: RawContact): boolean => {
+    if (isJunkContact(c)) return false
+    return c.channel !== 'email' || classifyEmailReachability(c.value).reachable
+  }
+  const hasUsableHigherTierContact = contacts.some((c) => c.tier !== 'D' && isUsableRaw(c))
   if (!hasUsableHigherTierContact) {
     const [committers, ownerContacts] = await Promise.all([
       fetchTopCommitters(target, deps),
@@ -183,8 +186,6 @@ export async function processRepo(
     ])
     contacts.push(...committers, ...ownerContacts)
   }
-
-  contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
 
   const handleContacts = contacts.filter((c) => c.channel === 'github-handle')
   if (handleContacts.length > 0) {

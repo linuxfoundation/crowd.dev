@@ -10,113 +10,94 @@ const log = getServiceChildLogger('security-contacts:top-committers')
 const SOURCE = 'github-commits'
 const SINCE_DAYS = 90
 const TOP_N = 3
-const PER_PAGE = 100
-const MAX_PAGES = 3
 
-interface CommitAuthor {
-  email?: unknown
-  name?: unknown
-  date?: unknown
+interface WeekStat {
+  w?: unknown
+  c?: unknown
 }
 
-interface CommitEntry {
-  commit?: { author?: CommitAuthor }
+interface ContributorStat {
   author?: { login?: unknown; type?: unknown } | null
+  weeks?: WeekStat[]
 }
 
 interface AggregatedAuthor {
-  email: string
-  name?: string
-  login?: string
+  login: string
   count: number
-  latestDate: string
 }
 
 const BOT_TOKENS = ['dependabot', 'renovate', 'github-actions']
 
-export function isBotCommit(c: CommitEntry): boolean {
-  if (c.author?.type === 'Bot') return true
-  const email = typeof c.commit?.author?.email === 'string' ? c.commit.author.email : ''
-  const name = typeof c.commit?.author?.name === 'string' ? c.commit.author.name : ''
-  const login = typeof c.author?.login === 'string' ? c.author.login : ''
-  if (/\[bot\]@/i.test(email)) return true
-  const haystack = `${email} ${name} ${login}`.toLowerCase()
-  return BOT_TOKENS.some((token) => haystack.includes(token))
+function isBotLogin(login: string): boolean {
+  const lower = login.toLowerCase()
+  if (lower.endsWith('[bot]')) return true
+  return BOT_TOKENS.some((token) => lower.includes(token))
 }
 
 export function aggregateTopCommitters(
-  commits: CommitEntry[],
+  stats: ContributorStat[],
+  sinceUnixSeconds: number,
   topN: number = TOP_N,
 ): AggregatedAuthor[] {
-  const byEmail = new Map<string, AggregatedAuthor>()
+  const authors: AggregatedAuthor[] = []
 
-  for (const c of commits) {
-    if (isBotCommit(c)) continue
+  for (const stat of stats) {
+    if (stat.author?.type === 'Bot') continue
+    const login = typeof stat.author?.login === 'string' ? stat.author.login : undefined
+    if (!login || isBotLogin(login)) continue
 
-    const rawEmail = c.commit?.author?.email
-    if (typeof rawEmail !== 'string' || !isEmail(rawEmail)) continue
-    const email = rawEmail.toLowerCase()
-
-    const rawName = c.commit?.author?.name
-    const name = typeof rawName === 'string' ? rawName : undefined
-    const rawDate = c.commit?.author?.date
-    const date = typeof rawDate === 'string' ? rawDate : undefined
-    const rawLogin = c.author?.login
-    const login = typeof rawLogin === 'string' ? rawLogin : undefined
-
-    const existing = byEmail.get(email)
-    if (existing) {
-      existing.count += 1
-      if (!existing.login && login) existing.login = login
-      if (date && date > existing.latestDate) existing.latestDate = date
-    } else {
-      byEmail.set(email, {
-        email,
-        name,
-        login,
-        count: 1,
-        latestDate: date ?? new Date(0).toISOString(),
-      })
-    }
+    const count = (stat.weeks ?? []).reduce((sum, week) => {
+      const w = typeof week.w === 'number' ? week.w : 0
+      const c = typeof week.c === 'number' ? week.c : 0
+      return w >= sinceUnixSeconds ? sum + c : sum
+    }, 0)
+    if (count > 0) authors.push({ login, count })
   }
 
-  return [...byEmail.values()]
-    .sort((a, b) => b.count - a.count || a.email.localeCompare(b.email))
-    .slice(0, topN)
+  return authors.sort((a, b) => b.count - a.count || a.login.localeCompare(b.login)).slice(0, topN)
 }
 
-export function mapCommittersToContacts(
+async function resolvePublicEmail(
+  login: string,
+  githubGet: ExtractorDeps['githubGet'],
+): Promise<string | null> {
+  try {
+    const { text } = await githubGet(`/users/${login}`)
+    const email = (text ? (JSON.parse(text) as { email?: unknown }) : null)?.email
+    return typeof email === 'string' && isEmail(email) ? email : null
+  } catch (err) {
+    log.warn({ login, errMsg: (err as Error).message }, 'Committer email resolution failed')
+    return null
+  }
+}
+
+export async function mapCommittersToContacts(
   authors: AggregatedAuthor[],
   fetchedAt: string,
   apiPath: string,
-): RawContact[] {
+  githubGet: ExtractorDeps['githubGet'],
+): Promise<RawContact[]> {
   const contacts: RawContact[] = []
 
   for (const author of authors) {
     const provenance: ProvenanceEntry[] = [
-      {
-        source: SOURCE,
-        sourceTier: 'D',
-        path: apiPath,
-        fetchedAt,
-        declaredAt: author.latestDate,
-      },
+      { source: SOURCE, sourceTier: 'D', path: apiPath, fetchedAt },
     ]
 
     contacts.push({
-      channel: 'email',
-      value: author.email,
-      name: author.name,
+      channel: 'github-handle',
+      value: author.login,
       handle: author.login,
       role: 'committer',
       tier: 'D',
       provenance,
     })
 
-    if (author.login) {
+    const email = await resolvePublicEmail(author.login, githubGet)
+    if (email) {
       contacts.push({
-        channel: 'github-handle',
-        value: author.login,
+        channel: 'email',
+        value: email,
         handle: author.login,
         role: 'committer',
         tier: 'D',
@@ -126,29 +107,6 @@ export function mapCommittersToContacts(
   }
 
   return contacts
-}
-
-async function fetchCommitPages(
-  owner: string,
-  name: string,
-  since: string,
-  deps: Pick<ExtractorDeps, 'githubGet'>,
-): Promise<CommitEntry[]> {
-  const commits: CommitEntry[] = []
-
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const path = `/repos/${owner}/${name}/commits?since=${since}&per_page=${PER_PAGE}&page=${page}`
-    const { text } = await deps.githubGet(path)
-    if (!text) break
-
-    const entries = JSON.parse(text) as CommitEntry[]
-    if (!Array.isArray(entries) || entries.length === 0) break
-
-    commits.push(...entries)
-    if (entries.length < PER_PAGE) break
-  }
-
-  return commits
 }
 
 export async function fetchTopCommitters(
@@ -164,21 +122,29 @@ export async function fetchTopCommitters(
     return []
   }
 
-  const since = new Date(now().getTime() - SINCE_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const apiPath = `https://api.github.com/repos/${owner}/${name}/commits?since=${since}`
-
-  let commits: CommitEntry[]
+  const path = `/repos/${owner}/${name}/stats/contributors`
+  let stats: ContributorStat[]
   try {
-    commits = await fetchCommitPages(owner, name, since, deps)
+    const { text } = await deps.githubGet(path)
+    if (!text) return []
+    const parsed = JSON.parse(text)
+    if (!Array.isArray(parsed)) return []
+    stats = parsed as ContributorStat[]
   } catch (err) {
     log.warn(
       { repoId: target.repoId, owner, name, errMsg: (err as Error).message },
-      'Commit lookup failed',
+      'Contributor stats lookup failed',
     )
     return []
   }
 
-  const authors = aggregateTopCommitters(commits)
+  const sinceUnixSeconds = Math.floor(now().getTime() / 1000) - SINCE_DAYS * 24 * 60 * 60
+  const authors = aggregateTopCommitters(stats, sinceUnixSeconds)
   const fetchedAt = new Date().toISOString()
-  return mapCommittersToContacts(authors, fetchedAt, apiPath)
+  return mapCommittersToContacts(
+    authors,
+    fetchedAt,
+    `https://api.github.com${path}`,
+    deps.githubGet,
+  )
 }
