@@ -30,12 +30,26 @@ interface AggregatedAuthor {
   count: number
 }
 
-const BOT_TOKENS = ['dependabot', 'renovate', 'github-actions']
+const BOT_TOKENS = [
+  'dependabot',
+  'renovate',
+  'github-actions',
+  'claude',
+  'anthropic',
+  'copilot',
+  'chatgpt',
+  'openai',
+]
+
+function matchesBotToken(value: string): boolean {
+  const lower = value.toLowerCase()
+  return BOT_TOKENS.some((token) => lower.includes(token))
+}
 
 function isBotLogin(login: string): boolean {
   const lower = login.toLowerCase()
   if (lower.endsWith('[bot]')) return true
-  return BOT_TOKENS.some((token) => lower.includes(token))
+  return matchesBotToken(lower)
 }
 
 export function aggregateTopCommitters(
@@ -68,7 +82,8 @@ async function resolvePublicEmail(
   try {
     const { text } = await githubGet(`/users/${login}`)
     const email = (text ? (JSON.parse(text) as { email?: unknown }) : null)?.email
-    return typeof email === 'string' && isEmail(email) ? email : null
+    if (typeof email !== 'string' || !isEmail(email) || matchesBotToken(email)) return null
+    return email
   } catch (err) {
     log.warn({ login, errMsg: (err as Error).message }, 'Committer email resolution failed')
     return null
