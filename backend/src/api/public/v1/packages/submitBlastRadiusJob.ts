@@ -13,7 +13,7 @@ import { blastRadiusJobRequestSchema, toBlastRadiusJobEntry } from './blastRadiu
 // which currently reports every ecosystem as unsupported). Every submission gets a
 // fresh analysisId and status pending — the 7-day cache and GET poll endpoint land
 // in a follow-up PR once the analysis is actually persisted.
-export async function submitBlastRadiusJob(req: Request, res: Response): Promise {
+export async function submitBlastRadiusJob(req: Request, res: Response): Promise<void> {
   const body = validateOrThrow(blastRadiusJobRequestSchema, req.body)
 
   const jobPackage = body.package ?? null
