@@ -77,7 +77,15 @@ LEFT JOIN packages p ON p.purl = s.purl
 ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 `
 
-// Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist
+// Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist.
+// Skips any advisory_package that already has a live OSV-owned range: OSV is the
+// source of truth over deps.dev for overlapping advisory_packages (ADR-0001
+// §advisory_affected_ranges delete/dedup strategy), and this merge runs on its own
+// BQ-driven schedule, independent of and potentially after an OSV sync — the
+// per-tuple ON CONFLICT DO NOTHING below can't see that, since a NULL-bounds raw
+// tuple has a different key than OSV's structured tuple and would insert as a new
+// live duplicate. The NOT EXISTS guard makes the ownership rule package-level
+// instead of tuple-level, so deps.dev never adds a live row once OSV owns the package.
 const ADVISORY_AFFECTED_RANGES_MERGE_SQL = `
 INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version, created_at, updated_at)
 SELECT
@@ -91,6 +99,13 @@ JOIN advisories adv ON adv.osv_id = s.osv_id
 JOIN advisory_packages ap ON ap.advisory_id = adv.id
                           AND ap.ecosystem = s.ecosystem
                           AND ap.package_name = s.package_name
+WHERE NOT EXISTS (
+  SELECT 1 FROM advisory_affected_ranges live
+  WHERE live.advisory_package_id = ap.id
+    AND live.deleted_at IS NULL
+    AND live.range_raw IS NULL
+    AND live.unaffected_raw IS NULL
+)
 ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, '')) DO NOTHING
 `
 
