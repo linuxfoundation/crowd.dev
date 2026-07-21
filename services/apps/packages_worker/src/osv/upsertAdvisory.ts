@@ -46,6 +46,16 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
       packageName: entry.pkg.packageName,
     })
 
+    // Row-locks this advisory_packages row (held until the enclosing transaction
+    // commits) before touching advisory_affected_ranges, matching the lock
+    // deps.dev's bulk merge takes on the same row (ADVISORY_PACKAGES_LOCK_SQL in
+    // ingestAdvisories.ts) — whichever writer locks first forces the other to
+    // wait and see its committed writes, closing the ownership race between the
+    // two independently-scheduled write paths (ADR-0001 §Write semantics).
+    await qx.result(`SELECT id FROM advisory_packages WHERE id = $(advisoryPackageId) FOR UPDATE`, {
+      advisoryPackageId,
+    })
+
     await reconcileOsvRanges(
       qx,
       advisoryPackageId,

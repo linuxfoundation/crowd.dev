@@ -109,6 +109,24 @@ WHERE NOT EXISTS (
 ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, '')) DO NOTHING
 `
 
+// Runs as prepareSql (uncounted) ahead of ADVISORY_AFFECTED_RANGES_MERGE_SQL, in the
+// same transaction. Row-locks every advisory_packages this chunk will touch, in id
+// order, before the NOT EXISTS ownership check runs. OSV's upsertOne (services/apps/
+// packages_worker/src/osv/upsertAdvisory.ts) takes the matching per-row lock before it
+// writes advisory_affected_ranges for that advisory_package, so whichever transaction
+// (deps.dev chunk or OSV record) locks the row first now forces the other to wait and
+// see its committed writes — closing the race the two independently-scheduled write
+// paths would otherwise have on the ownership check (ADR-0001 §Write semantics).
+const ADVISORY_PACKAGES_LOCK_SQL = `
+SELECT ap.id
+FROM advisory_packages ap
+JOIN staging.osspckgs_advisory_packages_raw s
+  ON s.ecosystem = ap.ecosystem AND s.package_name = ap.package_name
+JOIN advisories adv ON adv.osv_id = s.osv_id AND adv.id = ap.advisory_id
+ORDER BY ap.id
+FOR UPDATE OF ap
+`
+
 const ADVISORIES_PG_COLUMNS = [
   'osv_id',
   'source',
@@ -274,6 +292,7 @@ export async function ingestAdvisories(opts: {
 
     const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgsExport.jobId,
+      prepareSql: ADVISORY_PACKAGES_LOCK_SQL,
       mergeSql: [ADVISORY_PACKAGES_MERGE_SQL, ADVISORY_AFFECTED_RANGES_MERGE_SQL],
       tableNames: ['advisory_packages', 'advisory_affected_ranges'],
       isFinal,
