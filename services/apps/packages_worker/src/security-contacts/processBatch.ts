@@ -1,5 +1,6 @@
 import { cancellationSignal, heartbeat } from '@temporalio/activity'
 
+import { classifyEmailReachability } from '@crowd/common'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -10,10 +11,12 @@ import { mapWithConcurrency } from '../utils/concurrency'
 import { fetchRepoTree } from './extractors/gitTree'
 import { extractPvr } from './extractors/pvr'
 import { extractManifest } from './extractors/registry'
+import { fetchRepoOwner } from './extractors/repoOwner'
 import { extractSecurityContactsFile } from './extractors/securityContactsFile'
 import { extractSecurityInsights } from './extractors/securityInsights'
 import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
+import { fetchTopCommitters } from './extractors/topCommitters'
 import { githubApiGet } from './githubToken'
 import { reconcile } from './reconcile'
 import { deriveGithubHandlesFromNoreplyEmails, resolveCdpEmails } from './resolveCdpEmails'
@@ -169,6 +172,17 @@ export async function processRepo(
   }
 
   contacts.push(...(await verifyHandleCandidates(target, deps, handleCandidates)))
+
+  const isReachableRaw = (c: RawContact): boolean =>
+    c.channel !== 'email' || classifyEmailReachability(c.value).reachable
+  const hasUsableHigherTierContact = contacts.some((c) => c.tier !== 'D' && isReachableRaw(c))
+  if (!hasUsableHigherTierContact) {
+    const [committers, ownerContacts] = await Promise.all([
+      fetchTopCommitters(target, deps),
+      fetchRepoOwner(target, deps),
+    ])
+    contacts.push(...committers, ...ownerContacts)
+  }
 
   contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
 
