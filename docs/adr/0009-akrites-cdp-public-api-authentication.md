@@ -234,9 +234,9 @@ READ_MAINTAINERS: 'read:maintainers',
 Reads `req.auth.payload.azp`. Throws `UnauthorizedError` if the value is
 missing or not in the allowlist passed at wire-up. Fails closed.
 
-**`backend/src/api/public/v1/index.ts`** — insert a **new** route
-registration after the existing `/akrites` mount (line 44) and before the
-404 catch-all at line 46:
+**`backend/src/api/public/v1/index.ts`** — update the existing
+`/akrites-external` mount at line 46 to add the `azp` allowlist and the
+mount-level scope check on top of the existing `oauth2Middleware`:
 ```ts
 router.use(
   '/akrites-external',
@@ -250,10 +250,16 @@ router.use(
 )
 ```
 
-`akritesExternalRouter()` is a **new module** at
-`backend/src/api/public/v1/akrites-external/index.ts` — separate from the
-existing `akritesRouter` and free of its inner scope guards, so the
-mount-level `requireScopes` above is authoritative for this route.
+`akritesExternalRouter()` at
+`backend/src/api/public/v1/akrites-external/index.ts` already exists (a
+recent main merge brought it in) and currently carries per-subrouter
+`requireScopes` guards inherited from the pre-decision scaffold —
+`[READ_PACKAGES, READ_STEWARDSHIPS]` on packages, `[READ_PACKAGES]` on
+advisories/blast-radius, `[READ_MAINTAINER_ROLES]` on contacts. Refactor
+the module to strip all inner read-scope guards, so the mount-level
+`requireScopes` above is the authoritative check for this route. Leave
+any write-scope guards on write routes (there are none today, but the
+convention holds).
 
 `/akrites` (Self Serve) is untouched.
 
@@ -268,27 +274,25 @@ Implement the token exchange described in the Auth Flow diagram:
    allow `secretsmanager:GetSecretValue` on the full LF secret ARN. If
    LF confirms the secret is encrypted with a customer-managed KMS key
    (see the Context KMS note), also allow `kms:Decrypt` on that KMS key
-   ARN. Choose one of the delivery patterns Eric outlined; each has a
-   different rotation behavior:
-   - **ECS `ValueFrom`** on the task definition, referencing the LF
-     secret ARN. The secret is injected as an environment variable at
-     task start only — ECS does not refresh `ValueFrom` values while the
-     task is running. Rotation therefore requires task replacement; the
-     step-5 retry-once flow means restarting the task, not an in-process
-     re-read.
-   - **EKS External Secrets Operator + IRSA**, with the operator
-     configured to re-sync the secret on a short refresh interval so
-     pods pick up the rotated value shortly after LF rotates. In-process
-     retry is still possible if the operator has already refreshed.
-   - **Direct SDK read** using the workload role — process reads the
-     secret via `GetSecretValue` at boot and again on demand for the
-     step-5 retry. Simplest match for the retry-once flow without
-     touching the task/pod lifecycle.
+   ARN. Common delivery patterns — Akrites picks one, and the specific
+   role ARN(s) LF grants in the item policy follow that choice
+   (task execution role for ECS `ValueFrom`, operator SA role for EKS
+   External Secrets Operator, workload role for a direct SDK read):
+   - **ECS `ValueFrom`** — secret injected at task start only, so
+     rotation means task replacement, not an in-process re-read.
+   - **EKS External Secrets Operator + IRSA** — pods pick up rotated
+     values on the operator's refresh interval.
+   - **Direct SDK read** — process reads the secret at boot and again
+     on demand for the step-5 retry; simplest match for the
+     retry-once flow.
 
    Dev: 1Password via the LF-provided vault item.
 2. Build and sign a `client_assertion` JWT with `alg: RS256` and header
    `kid` set to the current key's ID. Claims: `iss` = `sub` =
-   Akrites client ID, `aud` = LFX Auth0 tenant token endpoint URL, short
+   Akrites client ID, `aud` = **LFX Auth0 tenant base URL, with the
+   trailing slash** (e.g. `https://linuxfoundation.auth0.com/`, or the
+   custom-domain equivalent) — Auth0's `private_key_jwt` verifier
+   expects the issuer URL, not the `/oauth/token` endpoint. Short
    `exp` (≤ 5 min), unique `jti`.
 3. POST to Auth0 `/oauth/token` as `application/x-www-form-urlencoded`
    with:
