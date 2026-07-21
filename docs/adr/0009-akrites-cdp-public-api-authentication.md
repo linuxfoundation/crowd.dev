@@ -19,12 +19,22 @@ exchanges it at LFX Auth0 for a short-lived Bearer token, then calls CDP.
 week of 2026-07-27. Working assumption pending that confirmation: Akrites
 has an AWS account and a workload IAM role (ECS task role or EKS pod role
 via IRSA). The RSA private key sits in an **LF-owned** AWS Secrets Manager
-entry; a resource policy on that secret grants
-`secretsmanager:GetSecretValue` (+ `kms:Decrypt` if CMK-encrypted) to
-Akrites' workload role ARN. Akrites' app makes a direct cross-account read
-(same pattern as cross-account S3), validated by the item policy on LF's
-secret. LF rotates the keypair inside LF's AWS boundary; Akrites re-reads
-on `invalid_client` without redeploy.
+entry. A resource policy on the secret grants `secretsmanager:GetSecretValue`
+to Akrites' workload role ARN. Akrites' app makes a direct cross-account
+call (same pattern as cross-account S3), validated by the item policy on
+LF's secret. LF rotates the keypair inside LF's AWS boundary; how Akrites
+picks up a rotated value depends on which delivery pattern is chosen (see
+the Akrites section below).
+
+> **KMS note (to validate with LF DevOps):** cross-account Secrets Manager
+> reads are commonly documented as requiring a customer-managed KMS key —
+> the AWS-managed `aws/secretsmanager` key policy can't be modified to
+> grant `kms:Decrypt` to an external principal. If that is accurate for
+> LF's current SM setup, the LF secret must be created against a CMK and
+> the KMS key policy must also grant `kms:Decrypt` to Akrites' workload
+> role. LF DevOps should confirm the encryption mode used by existing
+> cross-account CDP secrets and whether a CMK+key-policy step is needed
+> here.
 
 Role trust on the Akrites side (who can assume the workload role, whether
 Akrites users can also assume it to fetch the secret manually) is Akrites'
@@ -36,16 +46,16 @@ for LF to grant access to), we can fall back to the shared `client_secret`
 variant (see Alternatives Considered) — everything else in this ADR is
 unaffected.
 
-Two consumer-shape distinctions matter:
-
-- `/akrites` (existing, unchanged) is called by LFX Self Serve. Self Serve
-  users already hold tokens in the LFX platform realm, so that route accepts
-  the LFX platform audience (`lfx_v2_api`). This avoids a second token
-  exchange for user-context calls.
-- `/akrites-external` (new) is pure M2M with no pre-existing realm on the
-  Akrites side. It accepts the existing `cdp_public_api` audience
-  (`https://cm.lfx.dev/api/` in prod, `https://lf-staging.crowd.dev/api/` in
-  dev + staging) — the natural audience for calls into CDP's own API.
+Both `/akrites` (existing, called by LFX Self Serve) and the new
+`/akrites-external` share the CDP public API's single audience
+(`https://cm.lfx.dev/api/` in prod, `https://lf-staging.crowd.dev/api/` in
+dev + staging) via the shared `AUTH0_CONFIG` used by every public route —
+`oauth2Middleware` verifies exactly one audience. What differentiates the
+two routes is the route-level middleware chain applied on top:
+`/akrites-external` adds an `azp` allowlist and a stricter scope set
+(`read:packages`, `read:advisories`, `read:maintainers`). Consumers of
+`/akrites` continue to hit it with whatever LFX-issued token satisfies the
+same CDP audience — no change to that route.
 
 Consumer isolation on `/akrites-external` is enforced by an explicit `azp`
 allowlist middleware — that is the sole gate distinguishing Akrites from
@@ -55,9 +65,6 @@ also constrain which handlers the token may reach. Auth0 client IDs are
 referenced as `{{AKRITES_AUTH0_CLIENT_ID}}` /
 `{{AKRITES_AUTH0_CLIENT_ID_STAGING}}` pending client provisioning.
 
-High-level overview: `docs/akrites-cdp-auth-highlevel.md`
-(mirror of the internal DSP page).
-
 ## Decision
 
 Authenticate Akrites against the **existing `cdp_public_api` resource
@@ -65,10 +72,12 @@ server**, gated by an **`azp` allowlist middleware** in CDP (sole consumer
 identity gate) and domain scopes **`read:packages`**, **`read:advisories`**,
 **`read:maintainers`** on the granted token. Distribute the RSA private
 key via an **LF-owned AWS Secrets Manager entry** with a **resource policy
-granting Akrites' workload IAM role** `GetSecretValue` (+ `kms:Decrypt` if
-CMK); Akrites reads cross-account, same pattern as cross-account S3.
-Assumes Akrites has an AWS account and a workload role — pending
-confirmation (see Context).
+on the secret** granting `GetSecretValue` to Akrites' workload IAM role.
+If the secret is encrypted with a customer-managed KMS key (likely
+required for cross-account decrypt — LF DevOps to confirm), the KMS key
+policy must also grant `kms:Decrypt` to that role. Akrites reads
+cross-account, same pattern as cross-account S3. Assumes Akrites has an
+AWS account and a workload role — pending confirmation (see Context).
 
 ## Auth Flow
 
@@ -89,7 +98,7 @@ sequenceDiagram
     Auth0-->>Akrites: Bearer access_token aud=cdp_public_api scope=read:packages+read:advisories+read:maintainers
 
     Note over Akrites,CDP: API call
-    Akrites->>CDP: GET /public/v1/akrites-external/* + Bearer token
+    Akrites->>CDP: GET /api/v1/akrites-external/* + Bearer token
     CDP->>Auth0: fetch JWKS, cached
     CDP->>CDP: oauth2Middleware verifies sig + iss + aud
     CDP->>CDP: azpAllowlistMiddleware asserts azp == AKRITES_EXTERNAL_CLIENT_ID
@@ -170,10 +179,17 @@ client. Pattern mirrors every other rotating `auth0_jwt` M2M client:
 
 **Resource policy on the LF secret** — grants Akrites' workload IAM role
 `secretsmanager:GetSecretValue` + `secretsmanager:DescribeSecret`. Deny
-wildcards. If the secret is CMK-encrypted, the KMS key policy must also
-allow `kms:Decrypt` for that role. Akrites' AWS account ID + workload role
-ARN required from the Akrites team before the resource policy can be
-written.
+wildcards. Akrites' AWS account ID + workload role ARN required from the
+Akrites team before the resource policy can be written.
+
+**Encryption (to validate with LF DevOps)** — AWS documentation indicates
+that cross-account Secrets Manager reads require the secret to be
+encrypted with a customer-managed KMS key; the default
+`aws/secretsmanager` key policy is AWS-owned and cannot grant `kms:Decrypt`
+to external principals. Before writing the resource policy, LF DevOps
+should confirm which encryption mode existing cross-account CDP secrets
+use. If a CMK is needed, the KMS key policy must also grant `kms:Decrypt`
+to Akrites' workload role.
 
 Role trust on Akrites' side (who can assume the workload role) is Akrites'
 concern; LF configures only the item policy on the LF secret.
@@ -218,13 +234,9 @@ READ_MAINTAINERS: 'read:maintainers',
 Reads `req.auth.payload.azp`. Throws `UnauthorizedError` if the value is
 missing or not in the allowlist passed at wire-up. Fails closed.
 
-**`backend/src/api/public/v1/index.ts`** (line 46)
-
-Replace:
-```ts
-router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
-```
-With:
+**`backend/src/api/public/v1/index.ts`** — insert a **new** route
+registration after the existing `/akrites` mount (line 44) and before the
+404 catch-all at line 46:
 ```ts
 router.use(
   '/akrites-external',
@@ -238,6 +250,11 @@ router.use(
 )
 ```
 
+`akritesExternalRouter()` is a **new module** at
+`backend/src/api/public/v1/akrites-external/index.ts` — separate from the
+existing `akritesRouter` and free of its inner scope guards, so the
+mount-level `requireScopes` above is authoritative for this route.
+
 `/akrites` (Self Serve) is untouched.
 
 ---
@@ -246,20 +263,50 @@ router.use(
 
 Implement the token exchange described in the Auth Flow diagram:
 
-1. Fetch RSA private key from LF's AWS Secrets Manager entry
+1. Fetch the RSA private key from LF's AWS Secrets Manager entry
    (cross-account read). Akrites' workload IAM role's identity policy must
-   allow `secretsmanager:GetSecretValue` (+ `kms:Decrypt` if CMK) on the
-   full LF secret ARN. Prod options: ECS `ValueFrom` on the task definition
-   with the LF ARN, or EKS External Secrets Operator + IRSA. Dev:
-   1Password via the LF-provided vault item.
-2. Build and sign `client_assertion` JWT (RS256).
-3. POST to Auth0 `/oauth/token` with `grant_type=client_credentials` +
-   `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`.
-   Cache the returned Bearer token until close to expiry.
-4. Attach Bearer token to every `/public/v1/akrites-external/*` request as
+   allow `secretsmanager:GetSecretValue` on the full LF secret ARN. If
+   LF confirms the secret is encrypted with a customer-managed KMS key
+   (see the Context KMS note), also allow `kms:Decrypt` on that KMS key
+   ARN. Choose one of the delivery patterns Eric outlined; each has a
+   different rotation behavior:
+   - **ECS `ValueFrom`** on the task definition, referencing the LF
+     secret ARN. The secret is injected as an environment variable at
+     task start only — ECS does not refresh `ValueFrom` values while the
+     task is running. Rotation therefore requires task replacement; the
+     step-5 retry-once flow means restarting the task, not an in-process
+     re-read.
+   - **EKS External Secrets Operator + IRSA**, with the operator
+     configured to re-sync the secret on a short refresh interval so
+     pods pick up the rotated value shortly after LF rotates. In-process
+     retry is still possible if the operator has already refreshed.
+   - **Direct SDK read** using the workload role — process reads the
+     secret via `GetSecretValue` at boot and again on demand for the
+     step-5 retry. Simplest match for the retry-once flow without
+     touching the task/pod lifecycle.
+
+   Dev: 1Password via the LF-provided vault item.
+2. Build and sign a `client_assertion` JWT with `alg: RS256` and header
+   `kid` set to the current key's ID. Claims: `iss` = `sub` =
+   Akrites client ID, `aud` = LFX Auth0 tenant token endpoint URL, short
+   `exp` (≤ 5 min), unique `jti`.
+3. POST to Auth0 `/oauth/token` as `application/x-www-form-urlencoded`
+   with:
+   - `grant_type=client_credentials`
+   - `client_id=<AKRITES_EXTERNAL_CLIENT_ID>`
+   - `audience=<cdp_public_api identifier>` — `https://cm.lfx.dev/api/`
+     in prod, `https://lf-staging.crowd.dev/api/` in dev + staging
+   - `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
+   - `client_assertion=<signed JWT from step 2>`
+
+   Cache the returned Bearer token until close to expiry (leave a
+   clock-skew margin, e.g. refresh at `exp - 60s`).
+4. Attach Bearer token to every `/api/v1/akrites-external/*` request as
    `Authorization: Bearer <token>`.
-5. On `invalid_client`: discard cached key → `GetSecretValue` for the latest
-   version → retry token exchange once. LF rotates the keypair without notice.
+5. On `invalid_client`: discard the cached key → re-fetch from the secret
+   store (SDK read, or task/pod refresh depending on the pattern chosen
+   in step 1) → retry the token exchange once. LF rotates the keypair
+   without notice.
 
 ## Alternatives Considered
 
