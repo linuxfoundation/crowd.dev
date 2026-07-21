@@ -3,12 +3,16 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { submitBlastRadiusJob } from './submitBlastRadiusJob'
 
+const { start } = vi.hoisted(() => ({ start: vi.fn().mockResolvedValue(undefined) }))
+
+vi.mock('@/db/packagesTemporal', () => ({
+  getPackagesTemporalClient: vi.fn().mockResolvedValue({ workflow: { start } }),
+}))
+
 function mockReqRes(body: unknown) {
-  const start = vi.fn().mockResolvedValue(undefined)
-  const req = {
-    body,
-    temporal: { workflow: { start } },
-  } as unknown as Request
+  start.mockClear()
+
+  const req = { body } as unknown as Request
 
   const json = vi.fn()
   const status = vi.fn().mockReturnValue({ json })
@@ -72,7 +76,7 @@ describe('submitBlastRadiusJob', () => {
   })
 
   it('rejects a request missing advisoryId without starting a workflow', async () => {
-    const { req, res, start } = mockReqRes({})
+    const { req, res, start } = mockReqRes({ ecosystem: 'npm' })
 
     await expect(submitBlastRadiusJob(req, res)).rejects.toThrow()
     expect(start).not.toHaveBeenCalled()

@@ -376,7 +376,7 @@ components:
 
     BlastRadiusJobRequest:
       type: object
-      required: [advisoryId]
+      required: [advisoryId, ecosystem]
       properties:
         advisoryId:
           type: string
@@ -384,8 +384,10 @@ components:
           example: GHSA-jf85-cpcp-j695
         ecosystem:
           type: string
-          nullable: true
-          description: Optional, only meaningful alongside package.
+          enum: [npm]
+          description: >
+            Required. The reachability pipeline is npm-only today — any other
+            value, or a missing ecosystem, is rejected with a 400.
           example: npm
         package:
           type: string

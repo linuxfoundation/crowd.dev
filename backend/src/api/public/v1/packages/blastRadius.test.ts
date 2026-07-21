@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  blastRadiusJobRequestSchema,
-  isSupportedBlastRadiusEcosystem,
-  toBlastRadiusJobEntry,
-} from './blastRadius'
+import { blastRadiusJobRequestSchema, toBlastRadiusJobEntry } from './blastRadius'
 
 describe('blastRadiusJobRequestSchema', () => {
   it('accepts a minimal advisory-wide request and defaults force to false', () => {
-    const result = blastRadiusJobRequestSchema.parse({ advisoryId: 'GHSA-jf85-cpcp-j695' })
+    const result = blastRadiusJobRequestSchema.parse({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'npm',
+    })
     expect(result).toEqual({
       advisoryId: 'GHSA-jf85-cpcp-j695',
-      ecosystem: undefined,
+      ecosystem: 'npm',
       package: undefined,
       force: false,
     })
@@ -32,39 +31,47 @@ describe('blastRadiusJobRequestSchema', () => {
     })
   })
 
-  it('accepts explicit null for package/ecosystem (advisory-wide, explicit)', () => {
+  it('accepts explicit null for package (advisory-wide, explicit)', () => {
     const result = blastRadiusJobRequestSchema.parse({
       advisoryId: 'GHSA-jf85-cpcp-j695',
-      ecosystem: null,
+      ecosystem: 'npm',
       package: null,
     })
-    expect(result.ecosystem).toBeNull()
     expect(result.package).toBeNull()
   })
 
   it('rejects a missing advisoryId', () => {
-    const result = blastRadiusJobRequestSchema.safeParse({})
+    const result = blastRadiusJobRequestSchema.safeParse({ ecosystem: 'npm' })
     expect(result.success).toBe(false)
   })
 
   it('rejects an empty advisoryId', () => {
-    const result = blastRadiusJobRequestSchema.safeParse({ advisoryId: '   ' })
+    const result = blastRadiusJobRequestSchema.safeParse({
+      advisoryId: '   ',
+      ecosystem: 'npm',
+    })
     expect(result.success).toBe(false)
   })
-})
 
-describe('isSupportedBlastRadiusEcosystem', () => {
-  it('accepts npm', () => {
-    expect(isSupportedBlastRadiusEcosystem('npm')).toBe(true)
+  it('rejects a missing ecosystem', () => {
+    const result = blastRadiusJobRequestSchema.safeParse({ advisoryId: 'GHSA-jf85-cpcp-j695' })
+    expect(result.success).toBe(false)
   })
 
-  it('rejects any other ecosystem', () => {
-    expect(isSupportedBlastRadiusEcosystem('pypi')).toBe(false)
+  it('rejects null ecosystem', () => {
+    const result = blastRadiusJobRequestSchema.safeParse({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: null,
+    })
+    expect(result.success).toBe(false)
   })
 
-  it('rejects null and undefined', () => {
-    expect(isSupportedBlastRadiusEcosystem(null)).toBe(false)
-    expect(isSupportedBlastRadiusEcosystem(undefined)).toBe(false)
+  it('rejects an unsupported ecosystem', () => {
+    const result = blastRadiusJobRequestSchema.safeParse({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'pypi',
+    })
+    expect(result.success).toBe(false)
   })
 })
 

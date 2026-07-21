@@ -1,15 +1,12 @@
 import type { Request, Response } from 'express'
 
-import { BadRequestError, generateUUIDv4 } from '@crowd/common'
+import { generateUUIDv4 } from '@crowd/common'
 import { ITriggerBlastRadiusAnalysis, TemporalWorkflowId } from '@crowd/types'
 
+import { getPackagesTemporalClient } from '@/db/packagesTemporal'
 import { validateOrThrow } from '@/utils/validation'
 
-import {
-  blastRadiusJobRequestSchema,
-  isSupportedBlastRadiusEcosystem,
-  toBlastRadiusJobEntry,
-} from './blastRadius'
+import { blastRadiusJobRequestSchema, toBlastRadiusJobEntry } from './blastRadius'
 
 // 2a — submit a blast-radius analysis job. Always exactly one job per request; no
 // persistence/caching/pipeline yet (see analyzeBlastRadius in packages_worker,
@@ -20,19 +17,15 @@ export async function submitBlastRadiusJob(req: Request, res: Response): Promise
   const body = validateOrThrow(blastRadiusJobRequestSchema, req.body)
 
   const jobPackage = body.package ?? null
-  const jobEcosystem = body.ecosystem ?? null
-
-  // Reachability pipeline is npm-only for now — reject before touching Temporal so
-  // unsupported/missing ecosystems never spawn a workflow run.
-  if (!isSupportedBlastRadiusEcosystem(jobEcosystem)) {
-    throw new BadRequestError(
-      `Ecosystem "${jobEcosystem ?? 'unknown'}" is not supported for blast-radius analysis`,
-    )
-  }
+  const jobEcosystem = body.ecosystem
 
   const analysisId = generateUUIDv4()
 
-  await req.temporal.workflow.start('analyzeBlastRadius', {
+  // blast-radius-worker polls the packages Temporal namespace, not the API's default
+  // one (req.temporal) — starting it there would leave the workflow queued forever.
+  const packagesTemporal = await getPackagesTemporalClient()
+
+  await packagesTemporal.workflow.start('analyzeBlastRadius', {
     taskQueue: 'blast-radius-worker',
     workflowId: `${TemporalWorkflowId.BLAST_RADIUS_ANALYSIS}/${analysisId}`,
     retry: { maximumAttempts: 1 },

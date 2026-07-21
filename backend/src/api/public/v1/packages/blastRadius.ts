@@ -1,23 +1,18 @@
 import { z } from 'zod'
 
 // The reachability pipeline is npm-only for now — every other ecosystem (including
-// missing/null) is rejected at the API layer before the Temporal workflow is triggered.
+// a missing one) is rejected by the schema below before the Temporal workflow is
+// triggered.
 export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm'] as const
-
-export type SupportedBlastRadiusEcosystem = (typeof SUPPORTED_BLAST_RADIUS_ECOSYSTEMS)[number]
-
-export function isSupportedBlastRadiusEcosystem(
-  ecosystem: string | null | undefined,
-): ecosystem is SupportedBlastRadiusEcosystem {
-  return (SUPPORTED_BLAST_RADIUS_ECOSYSTEMS as readonly string[]).includes(ecosystem ?? '')
-}
 
 // Always exactly one job per request — advisory-wide (package omitted) or narrowed
 // to a single package. package accepts either a full purl or a bare package name,
 // so it is NOT run through purlFieldSchema/normalizePurl like the other endpoints.
 export const blastRadiusJobRequestSchema = z.object({
   advisoryId: z.string().trim().min(1, 'advisoryId is required'),
-  ecosystem: z.string().trim().min(1).nullish(),
+  ecosystem: z.enum(SUPPORTED_BLAST_RADIUS_ECOSYSTEMS, {
+    message: `Ecosystem is not supported for blast-radius analysis — only ${SUPPORTED_BLAST_RADIUS_ECOSYSTEMS.join(', ')} supported today`,
+  }),
   package: z.string().trim().min(1).nullish(),
   force: z.boolean().default(false),
 })
