@@ -152,6 +152,7 @@ SQL >
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
+        akr.healthScoreV2 AS healthScoreV2,
         multiIf(
             akr.healthScoreV2 IS NULL,
             NULL,
@@ -288,6 +289,7 @@ SQL >
         COALESCE(rm.forksPrevious365Days, 0) AS forksPrevious365Days,
         COALESCE(rm.activeContributorsPrevious365Days, 0) AS activeContributorsPrevious365Days,
         COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days,
+        akr.healthScoreV2 AS healthScoreV2,
         multiIf(
             akr.healthScoreV2 IS NULL,
             NULL,
