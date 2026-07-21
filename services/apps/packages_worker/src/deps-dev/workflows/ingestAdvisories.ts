@@ -82,10 +82,14 @@ ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 // source of truth over deps.dev for overlapping advisory_packages (ADR-0001
 // §advisory_affected_ranges delete/dedup strategy), and this merge runs on its own
 // BQ-driven schedule, independent of and potentially after an OSV sync — the
-// per-tuple ON CONFLICT DO NOTHING below can't see that, since a NULL-bounds raw
-// tuple has a different key than OSV's structured tuple and would insert as a new
-// live duplicate. The NOT EXISTS guard makes the ownership rule package-level
-// instead of tuple-level, so deps.dev never adds a live row once OSV owns the package.
+// per-tuple ON CONFLICT below can't see that, since a NULL-bounds raw tuple has a
+// different key than OSV's structured tuple and would insert as a new live
+// duplicate. The NOT EXISTS guard makes the ownership rule package-level instead
+// of tuple-level, so deps.dev never adds a live row once OSV owns the package.
+// ON CONFLICT revives (not skips) a soft-deleted row occupying the same tuple —
+// typical after supersedeDepsDevRanges soft-deletes deps.dev rows on OSV takeover
+// and OSV later drops the package again — otherwise DO NOTHING would leave
+// staging's live data with no corresponding live row.
 const ADVISORY_AFFECTED_RANGES_MERGE_SQL = `
 INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version, created_at, updated_at)
 SELECT
@@ -106,7 +110,13 @@ WHERE NOT EXISTS (
     AND live.range_raw IS NULL
     AND live.unaffected_raw IS NULL
 )
-ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, '')) DO NOTHING
+ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))
+DO UPDATE SET
+  updated_at = NOW(),
+  deleted_at = NULL,
+  range_raw = EXCLUDED.range_raw,
+  unaffected_raw = EXCLUDED.unaffected_raw
+WHERE advisory_affected_ranges.deleted_at IS NOT NULL
 `
 
 // Runs as prepareSql (uncounted) ahead of ADVISORY_AFFECTED_RANGES_MERGE_SQL, in the

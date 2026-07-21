@@ -1,4 +1,5 @@
 import {
+  AdvisoryRangeInsertInput,
   findPackageId,
   reconcileOsvRanges,
   supersedeDepsDevRanges,
@@ -36,6 +37,7 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
 
   const advisoryId = await upsertAdvisory(qx, advisory)
 
+  const entries: { advisoryPackageId: number; ranges: AdvisoryRangeInsertInput[] }[] = []
   for (const entry of packages) {
     const packageId = await findPackageId(qx, entry.pkg)
 
@@ -46,26 +48,37 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
       packageName: entry.pkg.packageName,
     })
 
-    // Row-locks this advisory_packages row (held until the enclosing transaction
-    // commits) before touching advisory_affected_ranges, matching the lock
-    // deps.dev's bulk merge takes on the same row (ADVISORY_PACKAGES_LOCK_SQL in
-    // ingestAdvisories.ts) — whichever writer locks first forces the other to
-    // wait and see its committed writes, closing the ownership race between the
-    // two independently-scheduled write paths (ADR-0001 §Write semantics).
-    await qx.result(`SELECT id FROM advisory_packages WHERE id = $(advisoryPackageId) FOR UPDATE`, {
+    entries.push({
       advisoryPackageId,
-    })
-
-    await reconcileOsvRanges(
-      qx,
-      advisoryPackageId,
-      dedupeRanges(entry.ranges).map((range) => ({
+      ranges: dedupeRanges(entry.ranges).map((range) => ({
         advisoryPackageId,
         introducedVersion: range.introducedVersion,
         fixedVersion: range.fixedVersion,
         lastAffected: range.lastAffected,
       })),
-    )
+    })
+  }
+
+  // Lock advisory_packages rows in ascending id order — the same order deps.dev's
+  // bulk merge locks them in (ADVISORY_PACKAGES_LOCK_SQL's ORDER BY ap.id in
+  // ingestAdvisories.ts). OSV's payload order is otherwise arbitrary; locking out
+  // of order here would let this per-record transaction and a concurrent deps.dev
+  // chunk each hold one row and wait on the other's, deadlocking — and deps.dev's
+  // maximumAttempts: 1 turns a deadlock abort into a hard merge failure, not a retry.
+  entries.sort((a, b) => a.advisoryPackageId - b.advisoryPackageId)
+
+  for (const { advisoryPackageId, ranges } of entries) {
+    // Row-locks this advisory_packages row (held until the enclosing transaction
+    // commits) before touching advisory_affected_ranges, matching the lock
+    // deps.dev's bulk merge takes on the same row — whichever writer locks first
+    // forces the other to wait and see its committed writes, closing the
+    // ownership race between the two independently-scheduled write paths
+    // (ADR-0001 §Write semantics).
+    await qx.result(`SELECT id FROM advisory_packages WHERE id = $(advisoryPackageId) FOR UPDATE`, {
+      advisoryPackageId,
+    })
+
+    await reconcileOsvRanges(qx, advisoryPackageId, ranges)
     await supersedeDepsDevRanges(qx, advisoryPackageId)
   }
 }
