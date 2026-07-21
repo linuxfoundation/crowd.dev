@@ -8,10 +8,15 @@ export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm'] as const
 // Always exactly one job per request — advisory-wide (package omitted) or narrowed
 // to a single package. package accepts either a full purl or a bare package name,
 // so it is NOT run through purlFieldSchema/normalizePurl like the other endpoints.
+const ADVISORY_ID_PATTERN = /^(GHSA-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}|CVE-\d{4}-\d{4,})$/
+
 export const blastRadiusJobRequestSchema = z.object({
-  advisoryId: z.string().trim().min(1, 'advisoryId is required'),
+  advisoryId: z
+    .string()
+    .trim()
+    .regex(ADVISORY_ID_PATTERN, 'advisoryId must be a GHSA or CVE identifier'),
   ecosystem: z.enum(SUPPORTED_BLAST_RADIUS_ECOSYSTEMS, {
-    message: `Ecosystem is not supported for blast-radius analysis — only ${SUPPORTED_BLAST_RADIUS_ECOSYSTEMS.join(', ')} supported today`,
+    error: `Ecosystem is not supported for blast-radius analysis — only ${SUPPORTED_BLAST_RADIUS_ECOSYSTEMS.join(', ')} supported today`,
   }),
   package: z.string().trim().min(1).nullish(),
   force: z.boolean().default(false),
@@ -21,11 +26,13 @@ export type BlastRadiusJobRequest = z.infer<typeof blastRadiusJobRequestSchema>
 
 export type BlastRadiusJobStatus = 'pending' | 'running' | 'done' | 'failed'
 
+export type BlastRadiusJobEcosystem = (typeof SUPPORTED_BLAST_RADIUS_ECOSYSTEMS)[number]
+
 export interface BlastRadiusJobEntry {
   analysisId: string
   advisoryId: string
   package: string | null
-  ecosystem: string | null
+  ecosystem: BlastRadiusJobEcosystem
   status: BlastRadiusJobStatus
 }
 
@@ -35,7 +42,7 @@ export function toBlastRadiusJobEntry(params: {
   analysisId: string
   advisoryId: string
   package: string | null
-  ecosystem: string | null
+  ecosystem: BlastRadiusJobEcosystem
 }): BlastRadiusJobEntry {
   return {
     analysisId: params.analysisId,

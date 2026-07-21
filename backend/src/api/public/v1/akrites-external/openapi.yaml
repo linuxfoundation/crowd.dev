@@ -380,7 +380,10 @@ components:
       properties:
         advisoryId:
           type: string
-          description: GHSA or CVE identifier.
+          pattern: '^(GHSA-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}|CVE-\d{4}-\d{4,})$'
+          description: >
+            GHSA or CVE identifier. Any other format, including free-text
+            strings, is rejected with a 400.
           example: GHSA-jf85-cpcp-j695
         ecosystem:
           type: string
@@ -418,8 +421,8 @@ components:
           description: Echoes the request's package. Null when the request omitted it.
         ecosystem:
           type: string
-          nullable: true
-          description: Echoes the request's ecosystem. Null when the request omitted it.
+          enum: [npm]
+          description: Echoes the request's ecosystem. Always present — the request requires it.
         status:
           type: string
           enum: [pending, running, done, failed]

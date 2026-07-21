@@ -22,10 +22,14 @@ const blastRadiusRateLimitMax = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIM
 const blastRadiusRateLimitWindowMs = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_WINDOW_MS)
 
 const blastRadiusRateLimiter = createRateLimiter({
-  max: Number.isFinite(blastRadiusRateLimitMax) ? blastRadiusRateLimitMax : 5,
-  windowMs: Number.isFinite(blastRadiusRateLimitWindowMs)
-    ? blastRadiusRateLimitWindowMs
-    : 60 * 60 * 1000,
+  max:
+    Number.isSafeInteger(blastRadiusRateLimitMax) && blastRadiusRateLimitMax > 0
+      ? blastRadiusRateLimitMax
+      : 5,
+  windowMs:
+    Number.isSafeInteger(blastRadiusRateLimitWindowMs) && blastRadiusRateLimitWindowMs > 0
+      ? blastRadiusRateLimitWindowMs
+      : 60 * 60 * 1000,
 })
 
 export function akritesExternalRouter(): Router {

@@ -53,6 +53,22 @@ describe('blastRadiusJobRequestSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('rejects an advisoryId that is not a GHSA or CVE identifier', () => {
+    const result = blastRadiusJobRequestSchema.safeParse({
+      advisoryId: 'foo',
+      ecosystem: 'npm',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts a CVE-formatted advisoryId', () => {
+    const result = blastRadiusJobRequestSchema.safeParse({
+      advisoryId: 'CVE-2024-12345',
+      ecosystem: 'npm',
+    })
+    expect(result.success).toBe(true)
+  })
+
   it('rejects a missing ecosystem', () => {
     const result = blastRadiusJobRequestSchema.safeParse({ advisoryId: 'GHSA-jf85-cpcp-j695' })
     expect(result.success).toBe(false)
@@ -92,15 +108,15 @@ describe('toBlastRadiusJobEntry', () => {
     })
   })
 
-  it('echoes null package/ecosystem for an advisory-wide job', () => {
+  it('echoes a null package for an advisory-wide job', () => {
     const entry = toBlastRadiusJobEntry({
       analysisId: 'br_01h',
       advisoryId: 'GHSA-jf85-cpcp-j695',
       package: null,
-      ecosystem: null,
+      ecosystem: 'npm',
     })
     expect(entry.package).toBeNull()
-    expect(entry.ecosystem).toBeNull()
+    expect(entry.ecosystem).toBe('npm')
     expect(entry.status).toBe('pending')
   })
 })

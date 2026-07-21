@@ -98,4 +98,11 @@ describe('submitBlastRadiusJob', () => {
     await expect(submitBlastRadiusJob(req, res)).rejects.toThrow(/not supported/)
     expect(start).not.toHaveBeenCalled()
   })
+
+  it('rejects an advisoryId that is not a GHSA or CVE identifier without starting a workflow', async () => {
+    const { req, res, start } = mockReqRes({ advisoryId: 'foo', ecosystem: 'npm' })
+
+    await expect(submitBlastRadiusJob(req, res)).rejects.toThrow()
+    expect(start).not.toHaveBeenCalled()
+  })
 })
