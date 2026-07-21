@@ -3,6 +3,7 @@ DESCRIPTION >
     - Performs search across four entity types using shared `search` parameter and returns up to configurable results per type.
     - Combines results from `collections_filtered`, `insightsProjects_filtered`, `activityRepositories_filtered`, and `organizations_filtered` pipes.
     - Filters out inactive projects (with 0 organizations and 0 contributors) to ensure relevant search results.
+    - Filters out organizations with no code contributions (via `organizations_filtered`) so search never links to an empty org dashboard.
     - Orders results by relevance: collections by project count, projects by contributor count, repositories alphabetically, organizations by contribution count.
     - Primary use case: powering global search functionality and autocomplete dropdowns across the platform.
     - Parameters:
