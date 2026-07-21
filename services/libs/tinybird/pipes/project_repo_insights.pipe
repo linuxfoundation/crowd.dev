@@ -11,6 +11,7 @@ DESCRIPTION >
     - `pageSize`: Optional integer for result limit, defaults to 10
     - `page`: Optional integer for pagination offset calculation, defaults to 0
     - Response: Project and repository records with insights metrics
+    - `healthLabel`, `lifecycleLabel`, `impactScore`, `impactLabel` are the Akrites-methodology fields (see `project_insights_copy_ds` for band definitions); may be null when the record has no linked package data.
 
 TAGS "Insights, Widget", "Project", "Repository"
 
@@ -47,7 +48,11 @@ SQL >
         starsPrevious365Days,
         forksPrevious365Days,
         activeContributorsPrevious365Days,
-        activeOrganizationsPrevious365Days
+        activeOrganizationsPrevious365Days,
+        healthLabel,
+        lifecycleLabel,
+        impactScore,
+        impactLabel
     FROM project_insights_copy_ds
     WHERE
         1 = 1

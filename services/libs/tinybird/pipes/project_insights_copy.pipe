@@ -85,6 +85,37 @@ SQL >
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY segmentId
 
+NODE project_insights_copy_project_purls
+DESCRIPTION >
+    Distinct package purls linked to each project, via packageDownloads (the established project<->package bridge)
+
+SQL >
+    SELECT DISTINCT insightsProjectId, purl
+    FROM packageDownloads
+    WHERE insightsProjectId != '' AND purl != ''
+
+NODE project_insights_copy_project_akrites
+DESCRIPTION >
+    Akrites methodology rollup (lifecycle, health v2, impact) aggregated from ossPackages_enriched_ds up to project level.
+    Lifecycle uses best-state-wins precedence: active > stable > declining > abandoned > archived.
+    Health v2 and impact are averaged across the project's linked packages.
+
+SQL >
+    SELECT
+        pp.insightsProjectId AS insightsProjectId,
+        arrayElement(
+            arraySort(
+                x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived'], x),
+                groupArray(pkg.lifecycleLabel)
+            ),
+            1
+        ) AS lifecycleLabel,
+        toUInt8(round(avg(pkg.healthScore))) AS healthScoreV2,
+        avgOrNull(toFloat64OrNull(pkg.impact)) * 100 AS impactScoreRaw
+    FROM project_insights_copy_project_purls AS pp
+    INNER JOIN ossPackages_enriched_ds AS pkg ON pkg.purl = pp.purl
+    GROUP BY pp.insightsProjectId
+
 NODE project_insights_copy_project_results
 DESCRIPTION >
     Join all project insights together
@@ -120,11 +151,38 @@ SQL >
         pm.starsPrevious365Days AS starsPrevious365Days,
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
-        pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days
+        pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
+        multiIf(
+            akr.healthScoreV2 IS NULL,
+            NULL,
+            akr.healthScoreV2 >= 85,
+            'excellent',
+            akr.healthScoreV2 >= 70,
+            'healthy',
+            akr.healthScoreV2 >= 50,
+            'fair',
+            akr.healthScoreV2 >= 30,
+            'concerning',
+            'critical'
+        ) AS healthLabel,
+        akr.lifecycleLabel AS lifecycleLabel,
+        toUInt8(round(akr.impactScoreRaw)) AS impactScore,
+        multiIf(
+            akr.impactScoreRaw IS NULL,
+            NULL,
+            akr.impactScoreRaw >= 85,
+            'foundational',
+            akr.impactScoreRaw >= 60,
+            'major',
+            akr.impactScoreRaw >= 30,
+            'moderate',
+            'minor'
+        ) AS impactLabel
     FROM project_insights_copy_base_projects AS base
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
     LEFT JOIN project_insights_copy_period_metrics AS pm USING (segmentId)
+    LEFT JOIN project_insights_copy_project_akrites AS akr ON base.id = akr.insightsProjectId
 
 NODE project_insights_copy_repo_base
 DESCRIPTION >
@@ -174,6 +232,26 @@ SQL >
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY channel
 
+NODE project_insights_copy_repo_akrites
+DESCRIPTION >
+    Akrites methodology rollup (lifecycle, health v2, impact) aggregated from ossPackages_enriched_ds up to repo level, matched by repositoryUrl (a repo may host multiple packages, e.g. a monorepo)
+
+SQL >
+    SELECT
+        repositoryUrl,
+        arrayElement(
+            arraySort(
+                x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived'], x),
+                groupArray(lifecycleLabel)
+            ),
+            1
+        ) AS lifecycleLabel,
+        toUInt8(round(avg(healthScore))) AS healthScoreV2,
+        avgOrNull(toFloat64OrNull(impact)) * 100 AS impactScoreRaw
+    FROM ossPackages_enriched_ds
+    WHERE repositoryUrl IS NOT NULL AND repositoryUrl != ''
+    GROUP BY repositoryUrl
+
 NODE project_insights_copy_repo_results
 DESCRIPTION >
     Join all repository insights together
@@ -209,10 +287,37 @@ SQL >
         COALESCE(rm.starsPrevious365Days, 0) AS starsPrevious365Days,
         COALESCE(rm.forksPrevious365Days, 0) AS forksPrevious365Days,
         COALESCE(rm.activeContributorsPrevious365Days, 0) AS activeContributorsPrevious365Days,
-        COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days
+        COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days,
+        multiIf(
+            akr.healthScoreV2 IS NULL,
+            NULL,
+            akr.healthScoreV2 >= 85,
+            'excellent',
+            akr.healthScoreV2 >= 70,
+            'healthy',
+            akr.healthScoreV2 >= 50,
+            'fair',
+            akr.healthScoreV2 >= 30,
+            'concerning',
+            'critical'
+        ) AS healthLabel,
+        akr.lifecycleLabel AS lifecycleLabel,
+        toUInt8(round(akr.impactScoreRaw)) AS impactScore,
+        multiIf(
+            akr.impactScoreRaw IS NULL,
+            NULL,
+            akr.impactScoreRaw >= 85,
+            'foundational',
+            akr.impactScoreRaw >= 60,
+            'major',
+            akr.impactScoreRaw >= 30,
+            'moderate',
+            'minor'
+        ) AS impactLabel
     FROM project_insights_copy_repo_base AS base
     LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
     LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
+    LEFT JOIN project_insights_copy_repo_akrites AS akr ON base.repoUrl = akr.repositoryUrl
 
 NODE project_insights_copy_results
 DESCRIPTION >
