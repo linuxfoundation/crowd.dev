@@ -10,4 +10,6 @@ export enum TemporalWorkflowId {
 
   MEMBER_BOT_ANALYSIS_WITH_LLM = 'member-bot-analysis-with-llm',
   DELETE_ORPHAN_MEMBER = 'delete-orphan-member',
+
+  BLAST_RADIUS_ANALYSIS = 'blast-radius-analysis',
 }
