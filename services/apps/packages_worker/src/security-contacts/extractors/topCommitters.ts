@@ -10,6 +10,10 @@ const log = getServiceChildLogger('security-contacts:top-committers')
 const SOURCE = 'github-commits'
 const SINCE_DAYS = 90
 const TOP_N = 3
+// GitHub computes /stats/contributors asynchronously and returns 202 while it's not ready yet —
+// poll a few times with a short backoff before giving up for this pass.
+const STATS_POLL_ATTEMPTS = 3
+const STATS_POLL_DELAY_MS = 2000
 
 interface WeekStat {
   w?: unknown
@@ -109,10 +113,57 @@ export async function mapCommittersToContacts(
   return contacts
 }
 
+async function fetchContributorStats(
+  path: string,
+  target: RepoTarget,
+  owner: string,
+  name: string,
+  githubGet: ExtractorDeps['githubGet'],
+  sleep: (ms: number) => Promise<void>,
+): Promise<ContributorStat[] | null> {
+  for (let attempt = 1; attempt <= STATS_POLL_ATTEMPTS; attempt++) {
+    let status: number
+    let text: string | null
+    try {
+      ;({ status, text } = await githubGet(path, { extraOkStatuses: [202] }))
+    } catch (err) {
+      log.warn(
+        { repoId: target.repoId, owner, name, errMsg: (err as Error).message },
+        'Contributor stats lookup failed',
+      )
+      return null
+    }
+
+    if (status === 202) {
+      if (attempt < STATS_POLL_ATTEMPTS) await sleep(STATS_POLL_DELAY_MS)
+      continue
+    }
+
+    if (!text) return null
+    try {
+      const parsed = JSON.parse(text)
+      return Array.isArray(parsed) ? (parsed as ContributorStat[]) : null
+    } catch (err) {
+      log.warn(
+        { repoId: target.repoId, owner, name, errMsg: (err as Error).message },
+        'Contributor stats lookup failed',
+      )
+      return null
+    }
+  }
+
+  log.info(
+    { repoId: target.repoId, owner, name },
+    'Contributor stats still computing after polling — skipping this pass',
+  )
+  return null
+}
+
 export async function fetchTopCommitters(
   target: RepoTarget,
   deps: Pick<ExtractorDeps, 'githubGet'>,
   now: () => Date = () => new Date(),
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<RawContact[]> {
   let owner: string
   let name: string
@@ -123,20 +174,8 @@ export async function fetchTopCommitters(
   }
 
   const path = `/repos/${owner}/${name}/stats/contributors`
-  let stats: ContributorStat[]
-  try {
-    const { text } = await deps.githubGet(path)
-    if (!text) return []
-    const parsed = JSON.parse(text)
-    if (!Array.isArray(parsed)) return []
-    stats = parsed as ContributorStat[]
-  } catch (err) {
-    log.warn(
-      { repoId: target.repoId, owner, name, errMsg: (err as Error).message },
-      'Contributor stats lookup failed',
-    )
-    return []
-  }
+  const stats = await fetchContributorStats(path, target, owner, name, deps.githubGet, sleep)
+  if (!stats) return []
 
   const sinceUnixSeconds = Math.floor(now().getTime() / 1000) - SINCE_DAYS * 24 * 60 * 60
   const authors = aggregateTopCommitters(stats, sinceUnixSeconds)
