@@ -1,6 +1,7 @@
 import {
   AdvisoryRangeInsertInput,
   findPackageId,
+  findRemovedAdvisoryPackageIds,
   reconcileOsvRanges,
   supersedeDepsDevRanges,
   upsertAdvisory,
@@ -33,11 +34,14 @@ export function dedupeRanges(ranges: NormalizedRange[]): NormalizedRange[] {
 
 async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<void> {
   const { advisory, packages } = record
-  if (packages.length === 0) return
 
   const advisoryId = await upsertAdvisory(qx, advisory)
 
-  const entries: { advisoryPackageId: number; ranges: AdvisoryRangeInsertInput[] }[] = []
+  const entries: {
+    advisoryPackageId: number
+    ranges: AdvisoryRangeInsertInput[]
+    supersedeDepsDev: boolean
+  }[] = []
   for (const entry of packages) {
     const packageId = await findPackageId(qx, entry.pkg)
 
@@ -56,7 +60,26 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
         fixedVersion: range.fixedVersion,
         lastAffected: range.lastAffected,
       })),
+      supersedeDepsDev: true,
     })
+  }
+
+  // Packages OSV reported in a prior sync but that are missing from this payload
+  // (parseOsvRecord drops a package once it has no usable ranges left, and a
+  // corrected upstream record can drop one outright) never reach the loop above,
+  // so their previously live OSV ranges would otherwise sit forever as false
+  // positives and permanently block deps.dev's NOT EXISTS ownership guard.
+  // Reconcile them too, with an empty range set — reconcileOsvRanges soft-deletes
+  // every live OSV row when nothing in the new set matches. Not superseding
+  // deps.dev here: OSV no longer covers the package, so a live deps.dev row (if
+  // any) should stay live rather than be torn down alongside it.
+  const removedIds = await findRemovedAdvisoryPackageIds(
+    qx,
+    advisoryId,
+    entries.map((e) => e.advisoryPackageId),
+  )
+  for (const advisoryPackageId of removedIds) {
+    entries.push({ advisoryPackageId, ranges: [], supersedeDepsDev: false })
   }
 
   // Lock advisory_packages rows in ascending id order — the same order deps.dev's
@@ -67,7 +90,7 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
   // maximumAttempts: 1 turns a deadlock abort into a hard merge failure, not a retry.
   entries.sort((a, b) => a.advisoryPackageId - b.advisoryPackageId)
 
-  for (const { advisoryPackageId, ranges } of entries) {
+  for (const { advisoryPackageId, ranges, supersedeDepsDev } of entries) {
     // Row-locks this advisory_packages row (held until the enclosing transaction
     // commits) before touching advisory_affected_ranges, matching the lock
     // deps.dev's bulk merge takes on the same row — whichever writer locks first
@@ -79,7 +102,7 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
     })
 
     await reconcileOsvRanges(qx, advisoryPackageId, ranges)
-    await supersedeDepsDevRanges(qx, advisoryPackageId)
+    if (supersedeDepsDev) await supersedeDepsDevRanges(qx, advisoryPackageId)
   }
 }
 

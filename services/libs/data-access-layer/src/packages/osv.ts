@@ -139,6 +139,30 @@ export async function upsertAdvisoryPackage(
   return row.id as number
 }
 
+// advisory_packages rows OSV previously wrote for this advisory that are absent
+// from the current payload. parseOsvRecord drops a package once it has no
+// usable ranges left, and a corrected upstream record can drop a package
+// outright — either way the package never reaches upsertOne's per-entry loop,
+// so its previously live OSV ranges would sit as permanent false positives and
+// block deps.dev's NOT EXISTS ownership guard forever unless reconciled as a
+// removal (see upsertOne in services/apps/packages_worker/src/osv/upsertAdvisory.ts).
+export async function findRemovedAdvisoryPackageIds(
+  qx: QueryExecutor,
+  advisoryId: number,
+  presentAdvisoryPackageIds: number[],
+): Promise<number[]> {
+  const rows = await qx.select(
+    `
+    SELECT id
+    FROM advisory_packages
+    WHERE advisory_id = $(advisoryId)
+      AND NOT (id = ANY($(presentAdvisoryPackageIds)::bigint[]))
+    `,
+    { advisoryId, presentAdvisoryPackageIds },
+  )
+  return rows.map((r: { id: number }) => r.id)
+}
+
 // Diff-based upsert + soft-delete for OSV-owned advisory_affected_ranges rows.
 // Replaces the old hard-delete + reinsert sweep (which minted a new PK for
 // every unchanged range every sync, producing zombie rows once Sequin
