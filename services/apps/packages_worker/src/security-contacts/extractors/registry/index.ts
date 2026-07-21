@@ -13,6 +13,7 @@ type EcosystemFetcher = (
   parsed: ParsedPurl,
   timeoutMs: number,
   userAgent: string,
+  repoUrl?: string,
 ) => Promise<ExtractorResult>
 
 // Keyed by the lowercased packages.ecosystem value. go has no package-manifest contacts.
@@ -29,6 +30,7 @@ const FETCHERS: Record<string, EcosystemFetcher> = {
 export const extractManifest: Extractor = async (target, deps) => {
   const contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
+  const candidatesByHandle = new Map<string, RawContact>()
   const seenPurls = new Set<string>()
 
   for (const pkg of target.packages) {
@@ -42,8 +44,17 @@ export const extractManifest: Extractor = async (target, deps) => {
     if (!parsed) continue
 
     try {
-      const result = await fetcher(parsed, deps.fetchTimeoutMs, deps.userAgent)
+      const result = await fetcher(parsed, deps.fetchTimeoutMs, deps.userAgent, target.url)
       contacts.push(...result.contacts)
+      for (const candidate of result.handleCandidates ?? []) {
+        const key = candidate.value.toLowerCase()
+        const existing = candidatesByHandle.get(key)
+        if (existing) {
+          existing.provenance.push(...candidate.provenance)
+        } else {
+          candidatesByHandle.set(key, { ...candidate, provenance: [...candidate.provenance] })
+        }
+      }
       for (const [key, value] of Object.entries(result.policies)) {
         if (!(policies as Record<string, unknown>)[key] && value != null) {
           ;(policies as Record<string, unknown>)[key] = value
@@ -55,5 +66,5 @@ export const extractManifest: Extractor = async (target, deps) => {
     }
   }
 
-  return { contacts, policies }
+  return { contacts, policies, handleCandidates: [...candidatesByHandle.values()] }
 }

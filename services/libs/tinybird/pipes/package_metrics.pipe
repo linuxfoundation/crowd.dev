@@ -6,7 +6,8 @@ DESCRIPTION >
     - Uses custom time-series generation logic specifically designed for package download data patterns.
     - Primary use case: powers package downloads and package dependency widgets.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `startDate`: Optional DateTime filter for package data after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for package data before timestamp (e.g., '2024-12-31 23:59:59')
     - `ecosystem`: Optional string to filter by package ecosystem (e.g., 'npm', 'pypi', 'maven')
@@ -23,7 +24,10 @@ SQL >
     SELECT *
     FROM packageDownloads p FINAL
     where
-        insightsProjectId = (select insightsProjectId from segments_filtered)
+        {% if defined(collectionSlug) %}
+            insightsProjectId IN (select insightsProjectId from segments_filtered_by_collection)
+        {% else %} insightsProjectId = (select insightsProjectId from segments_filtered)
+        {% end %}
         {% if defined(startDate) %}
             AND p.date > toDate(
                 {{ DateTime(startDate, description="Filter package downloads after", required=False) }}
@@ -140,11 +144,12 @@ SQL >
         ) package_downloads_timeseries_bounds
     WHERE "startDate" >= actual_start_date AND "startDate" < actual_end_date
 
-NODE package_downloads_initial_aggregation
+NODE package_downloads_per_project_aggregation
 SQL >
     %
     {% if defined(granularity) %}
         SELECT
+            p.insightsProjectId,
             p.date,
             sum(p.downloadsCount) as downloadsCount,
             sum(p.dockerDownloadsCount) as "dockerDownloadsCount",
@@ -155,6 +160,7 @@ SQL >
         group by p.insightsProjectId, p.date
     {% else %}
         SELECT
+            p.insightsProjectId,
             max(p.downloadsCount) as downloadsCount,
             max(p.dockerDownloadsCount) as "dockerDownloadsCount",
             max(p.dockerDependentsCount) as "dockerDependentsCount",
@@ -162,6 +168,29 @@ SQL >
             max(p.dependentReposCount) as "dependentReposCount"
         FROM package_downloads_filtered p
         group by p.insightsProjectId
+    {% end %}
+
+NODE package_downloads_initial_aggregation
+SQL >
+    %
+    {% if defined(granularity) %}
+        SELECT
+            date,
+            sum(downloadsCount) as downloadsCount,
+            sum(dockerDownloadsCount) as "dockerDownloadsCount",
+            sum(dockerDependentsCount) as "dockerDependentsCount",
+            sum(dependentPackagesCount) as "dependentPackagesCount",
+            sum(dependentReposCount) as "dependentReposCount"
+        FROM package_downloads_per_project_aggregation
+        group by date
+    {% else %}
+        SELECT
+            sum(downloadsCount) as downloadsCount,
+            sum(dockerDownloadsCount) as "dockerDownloadsCount",
+            sum(dockerDependentsCount) as "dockerDependentsCount",
+            sum(dependentPackagesCount) as "dependentPackagesCount",
+            sum(dependentReposCount) as "dependentReposCount"
+        FROM package_downloads_per_project_aggregation
     {% end %}
 
 NODE package_downloads_timeseries_merge

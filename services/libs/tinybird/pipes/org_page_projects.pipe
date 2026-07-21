@@ -30,6 +30,6 @@ SQL >
         technicalScore
     FROM org_page_projects_copy_ds FINAL
     WHERE organizationId = (SELECT id FROM org_slug_lookup)
-    ORDER BY technicalScore DESC, contributorCount DESC, activityCount DESC
+    ORDER BY contributorCount DESC, technicalScore DESC, activityCount DESC
     LIMIT {{ Int32(limit, 21, description="Page size + 1 for hasMore detection") }}
     OFFSET {{ Int32(offset, 0, description="Pagination offset") }}

@@ -845,11 +845,11 @@ class MemberRepository {
           transaction,
         })
 
-        captureOldState(record.get({ plain: true }))
-
         if (!record) {
           throw new Error404()
         }
+
+        captureOldState(record.get({ plain: true }))
 
         // exclude syncRemote attributes, since these are populated from memberSyncRemote table
         if (data.attributes?.syncRemote) {

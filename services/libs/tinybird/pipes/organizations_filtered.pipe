@@ -1,0 +1,47 @@
+DESCRIPTION >
+    Provides filters for organizations.
+    Only returns organizations that have at least one code contribution (commits, PRs, code
+    reviews), matching what the organization page dashboard actually renders. Organizations
+    with only non-code activity — or that were deleted in CDP but are still stale in Tinybird —
+    are excluded so search never links to an empty org dashboard.
+
+NODE organizations_code_contributors
+DESCRIPTION >
+    Distinct organizations that have at least one code contribution activity, sourced from the
+    precomputed org-page timeseries (already filtered to isCodeContribution activity types).
+
+SQL >
+    SELECT DISTINCT organizationId
+    FROM org_page_activities_timeseries_copy_ds
+    WHERE organizationId != ''
+
+NODE organizations_filtered_0
+SQL >
+    %
+    SELECT
+        organizations_populated_slug.id AS id,
+        organizations_populated_slug.displayName AS displayName,
+        organizations_populated_slug.logo AS logo,
+        organizations_populated_slug.slug AS slug,
+        organizations_populated_slug.contributionCount AS contributionCount
+    FROM organizations_populated_slug
+    INNER JOIN organizations_code_contributors
+        ON organizations_populated_slug.id = organizations_code_contributors.organizationId
+    where
+        1 = 1
+        {% if defined(slug) %}
+            AND organizations_populated_slug.slug
+            = {{ String(slug, description="Filter organization by slug", required=False) }}
+        {% end %}
+        {% if defined(search) %}
+            AND organizations_populated_slug.displayName
+            ilike '%'
+            || {{
+                String(
+                    search,
+                    description="Search organization open ended wildcard using displayName",
+                    required=False,
+                )
+            }}
+            || '%'
+        {% end %}
