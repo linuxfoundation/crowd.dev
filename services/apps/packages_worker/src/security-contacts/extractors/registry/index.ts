@@ -2,6 +2,7 @@ import { Extractor, ExtractorResult, RawContact, RepoPolicies } from '../../type
 
 import { fetchCargo } from './cargo'
 import { fetchComposer } from './composer'
+import { fetchGo } from './go'
 import { fetchMaven } from './maven'
 import { fetchNpm } from './npm'
 import { fetchNuget } from './nuget'
@@ -16,7 +17,7 @@ type EcosystemFetcher = (
   repoUrl?: string,
 ) => Promise<ExtractorResult>
 
-// Keyed by the lowercased packages.ecosystem value. go has no package-manifest contacts.
+// Keyed by the lowercased packages.ecosystem value.
 const FETCHERS: Record<string, EcosystemFetcher> = {
   npm: fetchNpm,
   pypi: fetchPypi,
@@ -25,6 +26,7 @@ const FETCHERS: Record<string, EcosystemFetcher> = {
   nuget: fetchNuget,
   rubygems: fetchRubygems,
   composer: fetchComposer,
+  go: fetchGo,
 }
 
 export const extractManifest: Extractor = async (target, deps) => {

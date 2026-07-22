@@ -129,16 +129,19 @@ async function fetchOnce(
 export async function githubApiGet(
   path: string,
   timeoutMs: number,
-  opts: { raw?: boolean } = {},
+  opts: { raw?: boolean; extraOkStatuses?: number[] } = {},
 ): Promise<GithubGetResult> {
   const accept = opts.raw ? 'application/vnd.github.raw' : 'application/vnd.github+json'
+  const okStatuses = opts.extraOkStatuses
+    ? new Set([...ABSENT_STATUSES, ...opts.extraOkStatuses])
+    : ABSENT_STATUSES
   const url = `${GITHUB_API}${path}`
   const resolved = await ensurePool()
 
   if (!resolved) {
     const res = await fetchOnce(url, timeoutMs, { Accept: accept })
     if (res.status === 200) return { status: 200, text: await res.text() }
-    if (ABSENT_STATUSES.has(res.status)) return { status: res.status, text: null }
+    if (okStatuses.has(res.status)) return { status: res.status, text: null }
     throw new Error(`githubApiGet ${path} failed: HTTP ${res.status}`)
   }
 
@@ -166,7 +169,7 @@ export async function githubApiGet(
       Accept: accept,
     })
 
-    if (res.status === 200 || ABSENT_STATUSES.has(res.status)) {
+    if (res.status === 200 || okStatuses.has(res.status)) {
       pool.parkIfBudgetLow(
         installationId,
         numOrNull(res.headers.get('x-ratelimit-remaining')),
