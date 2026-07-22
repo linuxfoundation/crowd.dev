@@ -20,6 +20,7 @@ import {
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
+  ActorType,
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
@@ -316,7 +317,10 @@ export class CommonMemberService extends LoggerBase {
       }
     }
 
-    const actorId = buildAuditLogOptions(options)?.actorId
+    const audit = buildAuditLogOptions(options)
+
+    const actorId = audit?.actorId
+    const notifyUserId = audit?.actorType === ActorType.USER ? actorId : undefined
 
     const mergeActions = await queryMergeActions(this.qx, {
       fields: ['id', 'state'],
@@ -472,7 +476,7 @@ export class CommonMemberService extends LoggerBase {
         retry: {
           maximumAttempts: 10,
         },
-        args: [originalId, toMergeId, original.displayName, toMerge.displayName, actorId],
+        args: [originalId, toMergeId, original.displayName, toMerge.displayName, notifyUserId],
         searchAttributes: {
           TenantId: [DEFAULT_TENANT_ID],
         },
