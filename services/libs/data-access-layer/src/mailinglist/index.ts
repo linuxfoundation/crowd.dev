@@ -73,6 +73,7 @@ export async function upsertMailingLists(
         name = EXCLUDED.name,
         "segmentId" = EXCLUDED."segmentId",
         "integrationId" = EXCLUDED."integrationId",
+        "deletedAt" = NULL,
         "updatedAt" = NOW()
       RETURNING id
     ),
