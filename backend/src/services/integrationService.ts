@@ -16,7 +16,10 @@ import {
 } from '@crowd/common'
 import { CommonIntegrationService, getGithubInstallationToken } from '@crowd/common_services'
 import { ICreateInsightsProject } from '@crowd/data-access-layer/src/collections'
-import { upsertMailingLists } from '@crowd/data-access-layer/src/mailinglist'
+import {
+  findMailingListsOwnedByOtherIntegration,
+  upsertMailingLists,
+} from '@crowd/data-access-layer/src/mailinglist'
 import {
   ICreateRepository,
   IRepository,
@@ -1452,6 +1455,8 @@ export default class IntegrationService {
     let integration
 
     try {
+      const qx = SequelizeRepository.getQueryExecutor({ ...(options || this.options), transaction })
+
       integration = await this.createOrUpdate(
         {
           platform: PlatformType.MAILINGLIST,
@@ -1462,8 +1467,16 @@ export default class IntegrationService {
         options,
       )
 
+      const conflicts = await findMailingListsOwnedByOtherIntegration(qx, integration.id, lists)
+      if (conflicts.length > 0) {
+        throw new Error400(
+          this.options.language,
+          'errors.mailingList.alreadyConnected',
+          conflicts.join(', '),
+        )
+      }
+
       const currentSegmentId = (options || this.options).currentSegments[0].id
-      const qx = SequelizeRepository.getQueryExecutor({ ...(options || this.options), transaction })
       await upsertMailingLists(qx, currentSegmentId, integration.id, lists)
 
       if (!existingTransaction) {

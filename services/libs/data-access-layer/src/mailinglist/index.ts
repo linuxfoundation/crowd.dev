@@ -6,6 +6,42 @@ export interface IMailingListToOnboard {
 }
 
 /**
+ * Find sourceUrls already onboarded under a different, non-deleted
+ * integration. Used to reject a connect/update call before it silently
+ * re-points an already-owned list to the calling integration.
+ * @param qx - Query executor
+ * @param integrationId - Integration attempting to onboard `lists`
+ * @param lists - Mailing lists the caller wants to onboard
+ */
+export async function findMailingListsOwnedByOtherIntegration(
+  qx: QueryExecutor,
+  integrationId: string,
+  lists: IMailingListToOnboard[],
+): Promise<string[]> {
+  if (lists.length === 0) {
+    return []
+  }
+
+  const rows = await qx.select(
+    `
+    SELECT "sourceUrl"
+    FROM mailinglist.lists
+    WHERE "integrationId" != $(integrationId)::uuid
+      AND "deletedAt" IS NULL
+      AND "sourceUrl" IN (
+        SELECT v."sourceUrl" FROM json_to_recordset($(lists)::json) AS v(name text, "sourceUrl" text)
+      )
+    `,
+    {
+      integrationId,
+      lists: JSON.stringify(lists),
+    },
+  )
+
+  return rows.map((row: { sourceUrl: string }) => row.sourceUrl)
+}
+
+/**
  * Upsert mailing lists (public-inbox/lore) for a segment/integration and
  * seed their processing state so the mailing_list_integration worker picks
  * them up. Re-running with the same sourceUrl re-points the list at the
