@@ -13,7 +13,7 @@ tracker referenced in the PR for build progress.
   process, mirrors the list via `public-inbox-clone`/`public-inbox-fetch`,
   parses new messages, writes activities to `integration.results`, and emits
   Kafka messages to the `data-sink-worker` topic — same plumbing as
-  git_integration, with `platform=groupsio`.
+  git_integration, with `platform=mailinglist`.
 - `services/mirror/` wraps the external `public-inbox` CLI (Perl tool,
   installed system-wide, not vendored).
 - `services/parse/` is the ported email parser (originally `noteren.py`),
@@ -43,7 +43,7 @@ There is no UI yet — a list is onboarded by inserting its rows directly.
 psql "$CROWD_DB_WRITE_URI" -f dev/seed.sql
 ```
 
-It creates a `public.integrations` row (`platform='groupsio'`), a
+It creates a `public.integrations` row (`platform='mailinglist'`), a
 `mailinglist.lists` row pointing at an existing segment, and a
 `mailinglist."listProcessing"` row in state `pending` — which the worker's
 `acquire_onboarding_list()` will pick up on its next poll. Edit the `name`
@@ -59,17 +59,18 @@ and `"sourceUrl"` values in the file to onboard a different lore list.
    - inserts rows into `integration.results` with `state='pending'` and
      `data.type='activity'`,
    - emits one Kafka message per result (`process_integration_result`,
-     `platform=groupsio`),
+     `platform=mailinglist`),
    - advances `mailinglist."listProcessing"."lastProcessedHeads"` and sets
      `state='completed'`.
 4. Confirm `data_sink_worker` consumes the message, resolves the integration's
-   `platform='groupsio'`, and creates the member (email-based verified
+   `platform='mailinglist'`, and creates the member (email-based verified
    `username`+`email` identities) and activity.
 5. `GET http://localhost:8086/` returns the FastAPI health check.
 
 ## Out of scope (CM-1318)
 
-- Onboarding UI/backend to create `integrations` + `mailinglist.lists` rows
-  (this is what `dev/seed.sql` stands in for).
+- Onboarding UI to create `integrations` + `mailinglist.lists` rows (the
+  `mailing-list-connect` backend endpoint exists; `dev/seed.sql` remains
+  useful for onboarding lists without going through the UI).
 - Whether `member_join`/`member_leave` activities are derivable from lore, or
   only `message` initially.

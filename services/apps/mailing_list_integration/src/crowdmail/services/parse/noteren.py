@@ -20,6 +20,7 @@ import subprocess
 import sys
 
 from crowdmail.enums import ActivityType
+from crowdmail.errors import CommandExecutionError
 
 # We want to always be using utf-8
 email.charset.add_charset("utf-8", None)
@@ -68,8 +69,9 @@ def get_email_from_git(git_dir: str, git_id: str) -> tuple[bytes, str]:
         git_blob_id = out.decode().rstrip()  # strip the trailing \n
 
     if git_blob_id == "":
-        logging.error('git commit id %s was not found in the git repo "%s"', git_id, git_dir)
-        sys.exit(1)
+        msg = f'git commit id {git_id} was not found in the git repo "{git_dir}"'
+        logging.error(msg)
+        raise CommandExecutionError(msg)
 
     logging.debug("git_blob_id =%s", git_blob_id)
 
@@ -79,12 +81,9 @@ def get_email_from_git(git_dir: str, git_id: str) -> tuple[bytes, str]:
         # decoding itself, and decoding here would corrupt non-utf-8 parts.
         blob = out
     else:
-        logging.error(
-            'Unable to retrieve git blob %s from the git repo "%s"',
-            git_blob_id,
-            git_dir,
-        )
-        sys.exit(1)
+        msg = f'Unable to retrieve git blob {git_blob_id} from the git repo "{git_dir}"'
+        logging.error(msg)
+        raise CommandExecutionError(msg)
 
     return blob, git_blob_id
 
@@ -260,7 +259,7 @@ def parse_email(
                 # of emitting a malformed timestamp.
                 if not 1970 <= date_dt.year <= 9999:
                     raise ValueError(f"implausible year {date_dt.year}")
-                # add a fake set of microseconds just to make date parsers on the injest side happier
+                # add a fake set of microseconds just to make date parsers on the ingest side happier
                 date = date_dt.strftime("%Y-%m-%dT%H:%M:%S") + ".000000Z"
             except (ValueError, OverflowError):
                 logging.warning(

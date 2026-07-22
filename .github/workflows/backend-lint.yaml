@@ -102,6 +102,7 @@ jobs:
         if: steps.changes.outputs.python_changed == 'true'
         run: |
           uv run ruff check src/ --output-format=github
+          uv run ruff format --check src/
 
   lint-python-mailing-list-integration:
     runs-on: ubuntu-latest
@@ -145,6 +146,10 @@ jobs:
         run: |
           uv run ruff check src/ --output-format=github
           uv run ruff format --check src/
+
+      - name: Run tests
+        if: steps.changes.outputs.python_changed == 'true'
+        run: uv run pytest src/test/ -v
 
       - name: Skip Python checks
         if: steps.changes.outputs.python_changed == 'false'

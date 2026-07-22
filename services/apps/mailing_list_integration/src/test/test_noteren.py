@@ -20,6 +20,7 @@ from io import StringIO
 
 import pytest
 
+from crowdmail.errors import CommandExecutionError
 from crowdmail.services.parse import noteren
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -247,20 +248,20 @@ def test_get_email_from_git_success(monkeypatch):
     assert calls[1][1][0] == "cat-file"
 
 
-def test_get_email_from_git_missing_commit_exits(monkeypatch):
+def test_get_email_from_git_missing_commit_raises(monkeypatch):
     monkeypatch.setattr(noteren, "git_run_command", lambda *args, **kwargs: (0, b"", b""))
-    with pytest.raises(SystemExit):
+    with pytest.raises(CommandExecutionError):
         noteren.get_email_from_git("/tmp/repo.git", "deadbeef")
 
 
-def test_get_email_from_git_missing_blob_exits(monkeypatch):
+def test_get_email_from_git_missing_blob_raises(monkeypatch):
     def fake_git_run(git_dir, args, stdin=None):
         if args[0] == "ls-tree":
             return 0, b"blob123\n", b""
         return 1, b"", b"missing"
 
     monkeypatch.setattr(noteren, "git_run_command", fake_git_run)
-    with pytest.raises(SystemExit):
+    with pytest.raises(CommandExecutionError):
         noteren.get_email_from_git("/tmp/repo.git", "deadbeef")
 
 

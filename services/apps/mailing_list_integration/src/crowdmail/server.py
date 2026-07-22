@@ -24,12 +24,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await worker.shutdown()  # stopping worker to process new lists
-        try:
-            await asyncio.wait_for(worker_task, timeout=WORKER_SHUTDOWN_TIMEOUT_SEC)
-            logger.info("Worker shutdown complete")
-        except TimeoutError:
-            logger.warning("Worker shutdown timeout, forcing cancellation")
-            worker_task.cancel()
+        if worker_task is not None:
+            try:
+                await asyncio.wait_for(worker_task, timeout=WORKER_SHUTDOWN_TIMEOUT_SEC)
+                logger.info("Worker shutdown complete")
+            except TimeoutError:
+                logger.warning("Worker shutdown timeout, forcing cancellation")
+                worker_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
