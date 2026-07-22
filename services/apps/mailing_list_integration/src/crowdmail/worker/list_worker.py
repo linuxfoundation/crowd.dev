@@ -90,16 +90,25 @@ class ListWorker:
                 shard = shard_index(shard_path)
                 commit_ids = await new_commits(shard_path, heads.get(shard))
                 for git_id in commit_ids:
-                    message, blob_id = read_email(shard_path, git_id)
-                    parsed = parse_email(
-                        message,
-                        mailing_list.source_url,
-                        mailing_list.name,
-                        git_id,
-                        blob_id,
-                        mailing_list.segment_id,
-                        mailing_list.integration_id,
-                    )
+                    try:
+                        message, blob_id = read_email(shard_path, git_id)
+                        parsed = parse_email(
+                            message,
+                            mailing_list.source_url,
+                            mailing_list.name,
+                            git_id,
+                            blob_id,
+                            mailing_list.segment_id,
+                            mailing_list.integration_id,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "Skipping unparseable commit {} in shard {}: {}",
+                            git_id,
+                            shard_path,
+                            repr(e),
+                        )
+                        continue
                     activity_data = parsed["activityData"]
                     if not activity_data["timestamp"]:
                         logger.warning(
