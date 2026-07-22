@@ -14,15 +14,23 @@ export async function removeMemberToMerge(
       ("memberId" = $(toMergeId) AND "toMergeId" = $(memberId))
   `
 
-  for (const table of ['memberToMerge', 'memberToMergeRaw']) {
-    await qx.result(
+  await qx.tx(async (tx) => {
+    await tx.result(
       `
-        DELETE FROM "${table}"
+        DELETE FROM "memberToMerge"
         ${whereClause}
       `,
       replacements,
     )
-  }
+
+    await tx.result(
+      `
+        DELETE FROM "memberToMergeRaw"
+        ${whereClause}
+      `,
+      replacements,
+    )
+  })
 }
 
 export async function insertMemberNoMerge(
