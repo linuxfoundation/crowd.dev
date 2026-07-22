@@ -29,7 +29,7 @@ const isSafeSourceUrl = (sourceUrl: string): boolean => {
   }
 }
 
-const bodySchema = z.object({
+export const bodySchema = z.object({
   lists: z
     .array(
       z.object({

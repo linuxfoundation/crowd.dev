@@ -7,9 +7,11 @@ import * as fs from 'fs'
 
 import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 
+import { bodySchema } from '@/api/integration/helpers/mailingListAuthenticate'
 import SegmentRepository from '@/database/repositories/segmentRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import IntegrationService from '@/services/integrationService'
+import { validateOrThrow } from '@/utils/validation'
 
 const options = [
   {
@@ -67,13 +69,19 @@ if (parameters.help || !parameters.file) {
       process.exit(1)
     }
 
-    let lists
+    let parsed: unknown
     try {
-      lists = JSON.parse(fileContents)
+      parsed = JSON.parse(fileContents)
     } catch (err) {
       console.error(`File at ${parameters.file} is not valid JSON: ${(err as Error).message}`)
       process.exit(1)
     }
+
+    // Same validation as the connect API endpoint (mailingListAuthenticate.ts),
+    // so a malformed file (non-array, missing fields, duplicate/non-https
+    // sourceUrl) fails fast here instead of reaching IntegrationService with
+    // whatever shape the file happened to contain.
+    const { lists } = validateOrThrow(bodySchema, { lists: parsed })
 
     const repoOptions = await SequelizeRepository.getDefaultIRepositoryOptions()
     repoOptions.currentTenant = { id: DEFAULT_TENANT_ID }
