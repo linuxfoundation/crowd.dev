@@ -39,9 +39,17 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
   } = input
 
   const apiKey = process.env.BLAST_RADIUS_ANTHROPIC_API_KEY
+  const baseUrl = process.env.BLAST_RADIUS_ANTHROPIC_BASE_URL
 
-  // Build environment: if API key is set, pass it; otherwise omit to fall back to CLI auth.
-  const env = apiKey ? { ...process.env, ANTHROPIC_API_KEY: apiKey } : undefined
+  // Build environment: if API key is set, pass it (and an optional base URL override,
+  // e.g. for routing through a LiteLLM proxy); otherwise omit to fall back to CLI auth.
+  const env = apiKey
+    ? {
+        ...process.env,
+        ANTHROPIC_API_KEY: apiKey,
+        ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
+      }
+    : undefined
 
   // Setup timeout via AbortController
   const controller = new AbortController()
