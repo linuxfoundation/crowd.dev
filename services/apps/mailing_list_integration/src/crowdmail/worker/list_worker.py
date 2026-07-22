@@ -21,6 +21,7 @@ from crowdmail.services.mirror.mirror_service import (
 from crowdmail.services.parse.noteren import parse_email
 from crowdmail.services.queue import queue_service
 from crowdmail.settings import (
+    ACTIVITY_FLUSH_BATCH_SIZE,
     DEFAULT_TENANT_ID,
     WORKER_ERROR_BACKOFF_SEC,
     WORKER_POLLING_INTERVAL_SEC,
@@ -90,6 +91,7 @@ class ListWorker:
                 shard = shard_index(shard_path)
                 commit_ids = await new_commits(shard_path, heads.get(shard))
                 for git_id in commit_ids:
+                    heads[shard] = git_id
                     try:
                         message, blob_id = read_email(shard_path, git_id)
                         parsed = parse_email(
@@ -134,8 +136,13 @@ class ListWorker:
                             mailing_list.segment_id, mailing_list.integration_id, result_id
                         )
                     )
-                if commit_ids:
-                    heads[shard] = commit_ids[-1]
+
+                    if len(activities_db) >= ACTIVITY_FLUSH_BATCH_SIZE:
+                        await batch_insert_activities(activities_db)
+                        await queue_service.send_batch_activities(activities_kafka)
+                        await update_processed_heads(mailing_list.id, heads)
+                        activities_db = []
+                        activities_kafka = []
 
             if activities_db:
                 await batch_insert_activities(activities_db)
