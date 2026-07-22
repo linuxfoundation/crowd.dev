@@ -3,9 +3,11 @@ import * as os from 'os'
 import * as path from 'path'
 
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
+import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { fetchPackument } from '../../npm/fetchPackument'
+import { parseNpmName } from '../../npm/normalize'
 import { isFetchError } from '../../npm/types'
 import { INTEL_SCHEMA, INTEL_SYSTEM_PROMPT, buildIntelPrompt } from '../agent/prompts'
 import { runAnalysisAgent } from '../agent/runner'
@@ -25,6 +27,7 @@ export async function runIntelStage(
   qx: QueryExecutor,
   analysisId: string,
   advisoryOsvId: string,
+  onProgress?: () => void,
 ): Promise<void> {
   const startTime = Date.now()
 
@@ -132,6 +135,7 @@ export async function runIntelStage(
         schema: INTEL_SCHEMA,
         maxTurns: 15,
         timeoutMs: 600_000,
+        onProgress,
       })
 
       if (agentResult.isError || !agentResult.structuredOutput) {
@@ -159,8 +163,11 @@ export async function runIntelStage(
         summary: String(output.summary || ''),
       })
 
-      // Resolve advisory_id
-      await blastRadiusDal.resolveAdvisoryAndPackageIds(qx, analysisId, advisoryOsvId, null)
+      // Resolve advisory_id and package_id (null if the package isn't in our DB yet —
+      // resolveAdvisoryAndPackageIds COALESCEs, so this never clobbers an existing value)
+      const { namespace, name } = parseNpmName(package_)
+      const packageId = await findPackageId(qx, { ecosystem, namespace, name })
+      await blastRadiusDal.resolveAdvisoryAndPackageIds(qx, analysisId, advisoryOsvId, packageId)
 
       const duration = Date.now() - startTime
       await blastRadiusDal.completeStageRun(qx, analysisId, 'intel', duration, agentResult.costUsd)

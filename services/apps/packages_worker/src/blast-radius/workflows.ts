@@ -1,4 +1,4 @@
-import { ApplicationFailure, log, proxyActivities } from '@temporalio/workflow'
+import { ApplicationFailure, log, proxyActivities, rootCause } from '@temporalio/workflow'
 
 import type { ITriggerBlastRadiusAnalysis } from '@crowd/types'
 
@@ -52,15 +52,15 @@ export async function analyzeBlastRadius(input: ITriggerBlastRadiusAnalysis): Pr
     throw buildEcosystemNotSupportedFailure(input.ecosystem)
   }
 
-  await blastRadiusStart({
-    analysisId: input.analysisId,
-    advisoryOsvId: input.advisoryId,
-    packageName: input.package,
-    ecosystem: input.ecosystem,
-    force: input.force,
-  })
-
   try {
+    await blastRadiusStart({
+      analysisId: input.analysisId,
+      advisoryOsvId: input.advisoryId,
+      packageName: input.package,
+      ecosystem: input.ecosystem,
+      force: input.force,
+    })
+
     await blastRadiusIntel({ analysisId: input.analysisId, advisoryOsvId: input.advisoryId })
     await blastRadiusDependents({ analysisId: input.analysisId, advisoryOsvId: input.advisoryId })
     await blastRadiusReachability({
@@ -69,8 +69,18 @@ export async function analyzeBlastRadius(input: ITriggerBlastRadiusAnalysis): Pr
     })
     await blastRadiusReport({ analysisId: input.analysisId, advisoryOsvId: input.advisoryId })
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err)
-    await blastRadiusFail({ analysisId: input.analysisId, error: errorMessage })
+    // rootCause unwraps Temporal's ActivityFailure wrapper (whose own .message is a
+    // generic "Activity task failed") down to the underlying stage error, so poll's
+    // errorMessage reflects what actually broke rather than Temporal's wrapper text.
+    const errorMessage = rootCause(err) ?? (err instanceof Error ? err.message : String(err))
+    await blastRadiusFail({
+      analysisId: input.analysisId,
+      advisoryOsvId: input.advisoryId,
+      packageName: input.package,
+      ecosystem: input.ecosystem,
+      force: input.force,
+      error: errorMessage,
+    })
     throw ApplicationFailure.nonRetryable(errorMessage, 'BLAST_RADIUS_STAGE_FAILED')
   }
 

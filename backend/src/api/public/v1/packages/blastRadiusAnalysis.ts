@@ -48,11 +48,11 @@ function toResultConfidence(confidence: number): BlastRadiusResultConfidence {
   return 'low'
 }
 
-// npm purls use a literal (unencoded) `@` for the scope, matching the contract's
-// example response bodies — these are JSON fields, not URL query params, so the
-// %40-encoding normalizePurl applies elsewhere in this file group does not apply here.
+// Scoped npm names (@scope/name) need their leading @ percent-encoded to %40 —
+// matching both purl.ts's normalizePurl and the contract's own example response
+// bodies (e.g. pkg:npm/%40angular/core in openapi.yaml).
 function toPurl(name: string): string {
-  return `pkg:npm/${name}`
+  return `pkg:npm/${name.replace(/^@/, '%40')}`
 }
 
 function flattenEvidence(evidence: Record<string, unknown>[] | null): string | null {

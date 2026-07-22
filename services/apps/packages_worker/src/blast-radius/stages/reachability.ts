@@ -94,8 +94,10 @@ export async function runReachabilityStage(
         return
       }
 
-      // Create temp dir for this dependent
-      const depDir = await mkdtemp(path.join(os.tmpdir(), `dep-${dep.name}-`))
+      // Create temp dir for this dependent. Fixed prefix, not dep.name — scoped
+      // package names contain a `/` (e.g. @babel/core), which would otherwise
+      // produce a mkdtemp prefix pointing at a nonexistent intermediate directory.
+      const depDir = await mkdtemp(path.join(os.tmpdir(), 'blast-radius-dep-'))
 
       try {
         // Download and extract. Isolated from the batch below — a single dependent's
@@ -125,6 +127,7 @@ export async function runReachabilityStage(
               schema: VERDICT_SCHEMA,
               maxTurns: 15,
               timeoutMs: 600_000,
+              onProgress,
             })
 
             if (!agentResult.isError && agentResult.structuredOutput) {
@@ -148,10 +151,9 @@ export async function runReachabilityStage(
               return
             }
 
-            // Agent error; retry if not last attempt
-            if (attempt === MAX_ATTEMPTS) {
-              throw new Error(agentResult.errorMessage || 'Agent failed')
-            }
+            // Agent error (not a thrown exception) — throw so the catch below applies
+            // the same backoff-or-persist handling as a genuine exception.
+            throw new Error(agentResult.errorMessage || 'Agent failed')
           } catch (err) {
             if (attempt === MAX_ATTEMPTS) {
               // Last attempt; save error verdict

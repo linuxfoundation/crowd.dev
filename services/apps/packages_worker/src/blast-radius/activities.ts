@@ -42,19 +42,34 @@ export async function blastRadiusStart(input: BlastRadiusStartInput): Promise<vo
   log.info({ analysisId: input.analysisId }, 'blast-radius: analysis marked running')
 }
 
-// Activity: mark the analysis row failed with the given error message.
-export async function blastRadiusFail(input: { analysisId: string; error: string }): Promise<void> {
+// Activity: mark the analysis row failed with the given error message. Takes the
+// same fields as blastRadiusStart so failAnalysis can create the row itself if
+// blastRadiusStart never got far enough to (see failAnalysis for why).
+export async function blastRadiusFail(
+  input: BlastRadiusStartInput & { error: string },
+): Promise<void> {
   log.warn({ analysisId: input.analysisId, error: input.error }, 'blast-radius: analysis failed')
   const qx = await getPackagesDb()
-  await blastRadiusDal.failAnalysis(qx, input.analysisId, input.error)
+  await blastRadiusDal.failAnalysis(
+    qx,
+    {
+      id: input.analysisId,
+      advisoryOsvId: input.advisoryOsvId,
+      packageName: input.packageName,
+      ecosystem: input.ecosystem,
+      force: input.force,
+    },
+    input.error,
+  )
 }
 
 // Activity: Stage 1 — vulnerability intelligence
 export async function blastRadiusIntel(input: BlastRadiusActivityInput): Promise<void> {
   log.info({ analysisId: input.analysisId }, 'blast-radius: intel stage starting')
   const qx = await getPackagesDb()
-  await runIntelStage(qx, input.analysisId, input.advisoryOsvId)
-  Context.current().heartbeat()
+  await runIntelStage(qx, input.analysisId, input.advisoryOsvId, () =>
+    Context.current().heartbeat(),
+  )
   log.info({ analysisId: input.analysisId }, 'blast-radius: intel stage done')
 }
 

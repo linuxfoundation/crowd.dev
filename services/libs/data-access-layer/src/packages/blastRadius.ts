@@ -233,22 +233,28 @@ export async function finalizeAnalysis(
   )
 }
 
+// Upserts rather than plain-UPDATEs so the analysis always ends up visibly
+// 'failed' even if blastRadiusStart itself never got far enough to INSERT the
+// row (e.g. its own retries were exhausted by a DB outage) — otherwise poll
+// would 404 instead of reporting the failure.
 export async function failAnalysis(
   qx: QueryExecutor,
-  analysisId: string,
+  input: BlastRadiusAnalysisInput,
   errorMessage: string,
 ): Promise<void> {
   await qx.result(
     `
-    UPDATE blast_radius_analyses
-    SET
+    INSERT INTO blast_radius_analyses
+      (id, advisory_osv_id, package_name, ecosystem, force, status, error, started_at, completed_at, updated_at)
+    VALUES
+      ($(id), $(advisoryOsvId), $(packageName), $(ecosystem), $(force), 'failed', $(errorMessage), NOW(), NOW(), NOW())
+    ON CONFLICT (id) DO UPDATE SET
       status = 'failed',
       error = $(errorMessage),
       completed_at = NOW(),
       updated_at = NOW()
-    WHERE id = $(analysisId)
     `,
-    { analysisId, errorMessage },
+    { ...input, errorMessage },
   )
 }
 
@@ -365,6 +371,24 @@ export async function getDependentsExcludedByRangeCount(
     { analysisId },
   )
   return Number(row.count) || 0
+}
+
+// Clears prior dependents for this analysis before a fresh scan re-inserts. Needed
+// because a retry (stage failed after insertDependents but before completeStageRun)
+// would otherwise leave stale rows from the earlier attempt's scan around — upserting
+// by (analysis_id, name) never removes a name that the new scan didn't produce again,
+// so it would stay excluded_by_range=false with no verdict and get picked up by
+// reachability, inflating cost/results past the intended top-N. Safe to call
+// unconditionally: this always runs before reachability has produced any verdicts
+// for the analysis, so there's nothing in blast_radius_verdicts yet to orphan.
+export async function deleteDependents(qx: QueryExecutor, analysisId: string): Promise<void> {
+  await qx.result(
+    `
+    DELETE FROM blast_radius_dependents
+    WHERE analysis_id = $(analysisId)
+    `,
+    { analysisId },
+  )
 }
 
 export async function getDependentsNeedingVerdict(

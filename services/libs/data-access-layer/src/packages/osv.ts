@@ -119,6 +119,28 @@ export async function findPackageId(
   return (row?.id as number | undefined) ?? null
 }
 
+// Batched form of findPackageId for a flat list of full package names (e.g.
+// "lodash", "@babel/core") — one round-trip instead of one query per name.
+// Mirrors getNpmPurlsForChangedNames's namespace/name reconstruction join.
+export async function findPackageIdsByName(
+  qx: QueryExecutor,
+  ecosystem: string,
+  names: string[],
+): Promise<Map<string, number>> {
+  if (names.length === 0) return new Map()
+  const rows: Array<{ id: number; name: string }> = await qx.select(
+    `
+    SELECT p.id, u.name
+    FROM packages p
+    JOIN unnest($(names)::text[]) AS u(name)
+      ON (CASE WHEN p.namespace IS NOT NULL THEN p.namespace || '/' || p.name ELSE p.name END) = u.name
+    WHERE p.ecosystem = $(ecosystem)
+    `,
+    { ecosystem, names },
+  )
+  return new Map(rows.map((r) => [r.name, Number(r.id)]))
+}
+
 export async function upsertAdvisoryPackage(
   qx: QueryExecutor,
   input: AdvisoryPackageUpsertInput,

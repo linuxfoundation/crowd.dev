@@ -107,9 +107,8 @@ async function fetchHighImpactNames(): Promise<string[]> {
       const filePath = path.join(tempDir, file)
       if (fs.existsSync(filePath)) {
         const content = fs.readFileSync(filePath, 'utf-8')
-        const matches = content.match(/((?:@[\w.-]+\/)?[\w.-]+)/g)
-        if (matches) {
-          matches.forEach((m) => names.add(m))
+        for (const match of content.matchAll(/'((?:@[\w.-]+\/)?[\w.-]+)'/g)) {
+          names.add(match[1])
         }
       }
     }
@@ -120,7 +119,34 @@ async function fetchHighImpactNames(): Promise<string[]> {
   }
 }
 
-// Check if a package version declares a dependency on a target package.
+// npm aliases ("myLodash": "npm:lodash@^4.17.21") install and execute the aliased
+// package under a local name that has nothing to do with the target — a plain
+// key lookup misses these entirely. Parses the "npm:<name>[@<range>]" spec value;
+// the version-strip mirrors toBareNpmName's since npm scopes' own @ is always
+// followed by /, so a trailing @range (no / or @) is never a scope separator.
+function parseNpmAlias(spec: string): { name: string; range: string } | null {
+  if (!spec.startsWith('npm:')) return null
+  const rest = spec.slice('npm:'.length)
+  const versionMatch = rest.match(/@([^/@]+)$/)
+  return {
+    name: versionMatch ? rest.slice(0, -versionMatch[0].length) : rest,
+    range: versionMatch ? versionMatch[1] : '*',
+  }
+}
+
+// Resolves a dependency's real target name and version range, unwrapping an
+// npm: alias if present. Shared by declaredDependency and candidateNamesFromScan
+// so alias-matching semantics can't drift between the two call sites.
+function resolvedDependencyTarget(
+  depName: string,
+  depSpec: string,
+): { name: string; range: string } {
+  const alias = parseNpmAlias(depSpec)
+  return alias ?? { name: depName, range: depSpec }
+}
+
+// Check if a package version declares a dependency on a target package,
+// directly or via an npm: alias.
 function declaredDependency(
   versionData: NpmVersionManifest,
   targetPackage: string,
@@ -130,12 +156,10 @@ function declaredDependency(
 
   for (const depKind of DEP_KINDS) {
     const deps = versionData[depKind] ?? {}
-    for (const target of allTargets) {
-      if (target in deps) {
-        return {
-          kind: depKind,
-          range: deps[target],
-        }
+    for (const [depName, depSpec] of Object.entries(deps)) {
+      const resolved = resolvedDependencyTarget(depName, depSpec)
+      if (allTargets.includes(resolved.name)) {
+        return { kind: depKind, range: resolved.range }
       }
     }
   }
@@ -171,7 +195,10 @@ async function candidateNamesFromScan(
 
     for (const depKind of DEP_KINDS) {
       const deps = versionData[depKind] ?? {}
-      if (Object.keys(deps).some((dep) => targets.has(dep))) {
+      const hasTarget = Object.entries(deps).some(([depName, depSpec]) =>
+        targets.has(resolvedDependencyTarget(depName, depSpec).name),
+      )
+      if (hasTarget) {
         hits.push(name)
         return
       }

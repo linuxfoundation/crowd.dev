@@ -20,10 +20,23 @@ export interface RunAnalysisAgentInput {
   schema: Record<string, unknown>
   maxTurns?: number
   timeoutMs?: number
+  // Called on every streamed message (i.e. at least once per agent turn), so a
+  // caller can heartbeat a Temporal activity during a single up-to-timeoutMs
+  // agent call rather than only once the whole call returns.
+  onProgress?: () => void
 }
 
 export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<AgentRunResult> {
-  const { prompt, systemPrompt, cwd, model, schema, maxTurns = 15, timeoutMs = 600_000 } = input
+  const {
+    prompt,
+    systemPrompt,
+    cwd,
+    model,
+    schema,
+    maxTurns = 15,
+    timeoutMs = 600_000,
+    onProgress,
+  } = input
 
   const apiKey = process.env.BLAST_RADIUS_ANTHROPIC_API_KEY
 
@@ -60,6 +73,8 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
     let turns = 0
 
     for await (const message of q) {
+      onProgress?.()
+
       if (message.type === 'result') {
         turns = message.num_turns ?? 0
 
