@@ -17,8 +17,10 @@ type EcosystemFetcher = (
   repoUrl?: string,
 ) => Promise<ExtractorResult>
 
-// Keyed by the lowercased packages.ecosystem value.
-const FETCHERS: Record<string, EcosystemFetcher> = {
+// Keyed by the lowercased packages.ecosystem value. Composer packages live under
+// 'packagist' — the value the packagist worker seeds — not 'composer', which no
+// writer ever produces (the original entry predated the worker and guessed wrong).
+export const FETCHERS: Record<string, EcosystemFetcher> = {
   npm: fetchNpm,
   pypi: fetchPypi,
   maven: fetchMaven,
@@ -26,7 +28,6 @@ const FETCHERS: Record<string, EcosystemFetcher> = {
   nuget: fetchNuget,
   rubygems: fetchRubygems,
   packagist: fetchComposer,
-  composer: fetchComposer,
   go: fetchGo,
 }
 
