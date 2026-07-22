@@ -51,9 +51,20 @@ WHERE id IN (
     WHERE rn > 1
 );
 
-UPDATE package_repos pr
-SET repo_id = m.keeper_id
-FROM repo_merge_members m
+-- Re-point surviving loser links via insert + delete, never an UPDATE:
+-- repo_id is part of the Tinybird packageRepos sorting key (CDC models key
+-- changes as delete + insert; a key-mutating UPDATE would leave both links
+-- live under FINAL with no way to reconcile). The fresh row streams cleanly
+-- with a new id and a NOW() version; the stale loser keys (these deletes
+-- included) are removed by the post-migration Tinybird datasource rebuild.
+INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
+SELECT pr.package_id, m.keeper_id, pr.source, pr.confidence, NOW(), NOW()
+FROM package_repos pr
+JOIN repo_merge_members m ON m.repo_id = pr.repo_id
+WHERE NOT m.is_keeper;
+
+DELETE FROM package_repos pr
+USING repo_merge_members m
 WHERE pr.repo_id = m.repo_id
   AND NOT m.is_keeper;
 
