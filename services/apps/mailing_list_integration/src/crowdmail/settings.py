@@ -46,3 +46,7 @@ STUCK_RECURRENT_LIST_TIMEOUT_HOURS = int(
 # messages instead of buffering an entire list's history in memory before one
 # flush at the end — large lore archives can have 100k+ messages.
 ACTIVITY_FLUSH_BATCH_SIZE = int(load_env_var("ACTIVITY_FLUSH_BATCH_SIZE", default="500"))
+
+# Initial public-inbox-clone of a large archive (e.g. linux-kernel) can legitimately
+# take much longer than the default command timeout; incremental fetches stay short.
+CLONE_TIMEOUT_SEC = int(load_env_var("CLONE_TIMEOUT_SEC", default="3600"))

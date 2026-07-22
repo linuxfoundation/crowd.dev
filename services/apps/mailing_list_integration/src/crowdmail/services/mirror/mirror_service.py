@@ -18,7 +18,7 @@ from crowdmail.errors import (
 )
 from crowdmail.logger import logger
 from crowdmail.services.parse.noteren import get_email_from_git, git_run_command
-from crowdmail.settings import LORE_MIRROR_DIR
+from crowdmail.settings import CLONE_TIMEOUT_SEC, LORE_MIRROR_DIR
 
 RETRYABLE_MIRROR_ERRORS = (NetworkError, RateLimitError, RemoteServerError)
 
@@ -108,7 +108,9 @@ async def ensure_mirror(list_name: str, source_url: str, mirror_dir: str = LORE_
         clone_url = source_url.rstrip("/") + "/"
         logger.info(f"Cloning lore list '{list_name}' from {clone_url} into {list_dir}")
         os.makedirs(os.path.dirname(list_dir), exist_ok=True)
-        await _run_shell_command(["public-inbox-clone", "-q", clone_url, list_dir])
+        await _run_shell_command(
+            ["public-inbox-clone", "-q", clone_url, list_dir], timeout=CLONE_TIMEOUT_SEC
+        )
         # public-inbox-clone drops a manifest scoped to clone time; remove it
         # and re-fetch from inside list_dir so the manifest is regenerated
         # correctly there (needed to detect new epoch shards, e.g. git/1.git,
