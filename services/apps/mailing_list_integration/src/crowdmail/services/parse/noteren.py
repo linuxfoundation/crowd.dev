@@ -303,16 +303,19 @@ def parse_email(
     seen_content = False
     # Skip quoted lines ">" and empty ones when counting lines of new content
     for line in iter(body.splitlines()):
-        if not seen_content and len(line) != 0:
-            # Only the very first non-empty line of the body may override
-            # authorship (this is where git-format-patch / b4 put it).  A
-            # "From: " appearing later in the body is just content (e.g. a
-            # forwarded or pasted message) and must not hijack attribution.
+        # Only the very first non-empty line of the body may override
+        # authorship (this is where git-format-patch / b4 put it).  A
+        # "From: " appearing later in the body is just content (e.g. a
+        # forwarded or pasted message) and must not hijack attribution nor
+        # be excluded from the stored body/line count.
+        is_first_content_line = not seen_content and len(line) != 0
+        is_from_override = is_first_content_line and line.find("From: ") == 0
+        if is_first_content_line:
             seen_content = True
-            if line.find("From: ") == 0:
+            if is_from_override:
                 author_name, author_email = parse_author(line)
 
-        if line.find(">") != 0 and line.find("On ") != 0 and line.find("From: ") != 0:
+        if line.find(">") != 0 and line.find("On ") != 0 and not is_from_override:
             if len(line) != 0:
                 num_lines += 1
                 json_body += line
