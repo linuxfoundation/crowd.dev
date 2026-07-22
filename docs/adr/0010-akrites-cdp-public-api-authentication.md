@@ -271,50 +271,29 @@ complete.
 
 ### Akrites (external repo)
 
-Implement the token exchange described in the Auth Flow diagram:
+High-level responsibilities only. Concrete implementation (delivery
+pattern, IAM wiring, exact JWT header/claim shape, HTTP form fields) is
+deferred until Akrites' AWS setup is confirmed (week of 2026-07-27) and
+`lfx-secrets-management` finalizes the secret payload;
 
-1. Fetch the RSA private key from LF's AWS Secrets Manager entry
-   (cross-account read). Akrites' workload IAM role's identity policy must
-   allow `secretsmanager:GetSecretValue` on the full LF secret ARN. If
-   LF confirms the secret is encrypted with a customer-managed KMS key
-   (see the Context KMS note), also allow `kms:Decrypt` on that KMS key
-   ARN. Common delivery patterns — Akrites picks one, and the specific
-   role ARN(s) LF grants in the item policy follow that choice
-   (task execution role for ECS `ValueFrom`, operator SA role for EKS
-   External Secrets Operator, workload role for a direct SDK read):
-   - **ECS `ValueFrom`** — secret injected at task start only, so
-     rotation means task replacement, not an in-process re-read.
-   - **EKS External Secrets Operator + IRSA** — pods pick up rotated
-     values on the operator's refresh interval.
-   - **Direct SDK read** — process reads the secret at boot and again
-     on demand for the step-5 retry; simplest match for the
-     retry-once flow.
-
-   Dev: 1Password via the LF-provided vault item.
-2. Build and sign a `client_assertion` JWT with `alg: RS256` and header
-   `kid` set to the current key's ID. Claims: `iss` = `sub` =
-   Akrites client ID, `aud` = **LFX Auth0 tenant base URL, with the
-   trailing slash** (e.g. `https://linuxfoundation.auth0.com/`, or the
-   custom-domain equivalent) — Auth0's `private_key_jwt` verifier
-   expects the issuer URL, not the `/oauth/token` endpoint. Short
-   `exp` (≤ 5 min), unique `jti`.
-3. POST to Auth0 `/oauth/token` as `application/x-www-form-urlencoded`
-   with:
-   - `grant_type=client_credentials`
-   - `client_id=<AKRITES_ENCLAVE_CLIENT_ID>`
-   - `audience=<cdp_public_api identifier>` — `https://cm.lfx.dev/api/`
-     in prod, `https://lf-staging.crowd.dev/api/` in dev + staging
-   - `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
-   - `client_assertion=<signed JWT from step 2>`
-
-   Cache the returned Bearer token until close to expiry (leave a
-   clock-skew margin, e.g. refresh at `exp - 60s`).
-4. Attach Bearer token to every `/api/v1/akrites-external/*` request as
-   `Authorization: Bearer <token>`.
-5. On `invalid_client`: discard the cached key → re-fetch from the secret
-   store (SDK read, or task/pod refresh depending on the pattern chosen
-   in step 1) → retry the token exchange once. LF rotates the keypair
-   without notice.
+1. **Fetch** the credential material from LF's AWS Secrets Manager
+   entry cross-account. The delivery pattern (ECS `ValueFrom`, EKS
+   External Secrets Operator, direct SDK read) is chosen based on where
+   Akrites runs; LF grants the item policy to whichever IAM role
+   performs the fetch. Dev environment: 1Password via the LF-provided
+   vault item.
+2. **Sign a `client_assertion` JWT** with the fetched private key and
+   exchange it at LFX Auth0 for a short-lived Bearer token against the
+   `cdp_public_api` audience. The SM payload is atomic — it carries the
+   private key together with any Auth0-side identifiers (e.g. the
+   credential `kid`) LF ships alongside the key. Akrites reads the whole
+   payload as one unit and uses everything in it to build the assertion.
+3. **Call** `/api/v1/akrites-external/*` with `Authorization: Bearer
+   <token>`. Cache the token until close to expiry, refreshing with a
+   clock-skew margin.
+4. **On `invalid_client`** (LF rotated the keypair without notice):
+   discard the cached credential material, re-read from the secret
+   store, retry the token exchange once.
 
 ## Alternatives Considered
 
