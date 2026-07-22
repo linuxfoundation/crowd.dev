@@ -358,6 +358,8 @@ def parse_email(
         "url": source.rstrip("/") + "/r/" + msgid,
         "isContribution": True,
         "type": ActivityType.MESSAGE,
+        # Matches groupsio's Groupsio_GRID MESSAGE score (services/libs/integrations/src/integrations/groupsio/grid.ts)
+        "score": 6,
         "attributes": attributes,
         "member": member,
     }
