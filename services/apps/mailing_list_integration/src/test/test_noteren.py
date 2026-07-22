@@ -736,11 +736,11 @@ def test_run_command_returns_nonzero_exit_code():
     assert rc == 42
 
 
-def test_parse_email_no_message_id_gives_empty_source_id():
-    """A message without a Message-ID header must yield sourceId == ''."""
+def test_parse_email_no_message_id_gives_synthetic_source_id():
+    """A message without a Message-ID header must fall back to a channel:git_id sourceId."""
     raw = b"From: A <a@example.com>\nSubject: s\nDate: Mon, 1 Jan 2024 12:00:00 +0000\n\nbody\n"
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
-    assert parsed["activityData"]["sourceId"] == ""
+    assert parsed["activityData"]["sourceId"] == "chan:c1"
 
 
 def test_parse_email_no_subject_gives_none_title():
@@ -856,10 +856,10 @@ def test_parse_email_url_contains_message_id():
 
 
 def test_parse_email_url_with_no_message_id():
-    """When Message-ID is absent the url must end with a slash under the source's /r/ path."""
+    """When Message-ID is absent the url must embed the synthetic channel:git_id id."""
     raw = b"From: A <a@example.com>\nSubject: s\nDate: Mon, 1 Jan 2024 12:00:00 +0000\n\nbody\n"
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
-    assert parsed["activityData"]["url"] == "src/r/"
+    assert parsed["activityData"]["url"] == "src/r/chan:c1"
 
 
 def test_parse_email_result_structure():

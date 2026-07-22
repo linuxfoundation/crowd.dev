@@ -268,8 +268,10 @@ def parse_email(
                     git_id[:12],
                 )
 
-    # Grab the message id for this message
-    msgid = message_id_cleanup(e.get("Message-ID", None))
+    # Grab the message id for this message. Fall back to a synthetic id built
+    # from the (unique) git commit sha when Message-ID is absent, so the
+    # sourceId-based dedup key can't collide across such messages.
+    msgid = message_id_cleanup(e.get("Message-ID", None)) or f"{channel}:{git_id}"
 
     # Grab only the "last" reference in the list of references for this email.
     # "References:" is a long list, trying to show everything else in the
