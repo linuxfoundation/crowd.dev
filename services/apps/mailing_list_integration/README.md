@@ -37,7 +37,7 @@ Other targets: `make lint`, `make format`, `make test`, `make rebuild`. See
 ## Onboarding a list (dev, hardcoded)
 
 There is no UI yet — a list is onboarded by inserting its rows directly.
-`dev/seed.sql` does this for one example list (`lore.kernel.org/git`):
+`dev/seed.sql` does this for one example list (`lore.kernel.org/linux-serial`):
 
 ```bash
 psql "$CROWD_DB_WRITE_URI" -f dev/seed.sql
