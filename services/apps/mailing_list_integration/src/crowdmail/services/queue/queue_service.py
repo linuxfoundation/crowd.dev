@@ -157,15 +157,19 @@ async def _emit_batch(activities_kafka: list[dict[str, str]]):
     try:
         for i in range(0, len(activities_kafka), _SEND_CHUNK_SIZE):
             chunk = activities_kafka[i : i + _SEND_CHUNK_SIZE]
-            futures = [
-                _producer.send(
-                    topic=CROWD_KAFKA_TOPIC,
-                    key=activity["message_id"].encode("utf-8", errors="replace"),
-                    value=activity["payload"].encode("utf-8", errors="replace"),
+            # producer.send() only enqueues and returns a delivery Future; that Future
+            # must be awaited too, else acks="all" is never actually waited on.
+            send_futures = await asyncio.gather(
+                *(
+                    _producer.send(
+                        topic=CROWD_KAFKA_TOPIC,
+                        key=activity["message_id"].encode("utf-8", errors="replace"),
+                        value=activity["payload"].encode("utf-8", errors="replace"),
+                    )
+                    for activity in chunk
                 )
-                for activity in chunk
-            ]
-            await asyncio.gather(*futures, return_exceptions=False)
+            )
+            await asyncio.gather(*send_futures, return_exceptions=False)
     except KafkaError:
         logger.warning("Kafka send failed, reconnecting before retry...")
         await disconnect()
