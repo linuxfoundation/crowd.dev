@@ -8,12 +8,13 @@ from crowdmail.settings import (
     FAILED_RETRY_INTERVAL_HOURS,
     LIST_UPDATE_INTERVAL_HOURS,
     MAX_CONCURRENT_ONBOARDINGS,
+    MAX_INTEGRATION_RESULTS,
     STUCK_ONBOARDING_LIST_TIMEOUT_HOURS,
     STUCK_RECURRENT_LIST_TIMEOUT_HOURS,
 )
 
 from .connection import get_db_connection
-from .registry import execute, executemany, fetchrow
+from .registry import execute, executemany, fetchrow, fetchval
 
 # Common SELECT columns joining mailinglist.lists + mailinglist.listProcessing
 LIST_SELECT_COLUMNS = """
@@ -159,9 +160,31 @@ async def acquire_recurrent_list() -> MailingList | None:
     )
 
 
+async def can_onboard_more() -> bool:
+    """Check if system can handle more list onboarding based on activity load.
+
+    Returns False if integration.results count exceeds MAX_INTEGRATION_RESULTS
+    or if the query fails (indicating high database load).
+    """
+    try:
+        integration_results_count = await fetchval("SELECT COUNT(*) FROM integration.results")
+        return integration_results_count < MAX_INTEGRATION_RESULTS
+    except Exception as e:
+        logger.warning(f"Failed to get integration.results count with error: {e}")
+        return False  # if query failed mostly due to timeout then db is already under high load
+
+
 async def acquire_list_for_processing() -> MailingList | None:
-    """Acquire the next list to process: onboarding lists first, then due recurrent lists."""
-    mailing_list = await acquire_onboarding_list()
+    """Acquire the next list to process: onboarding lists first (unless
+    integration.results backlog is too high, e.g. an initial 100k+ message
+    archive still draining), then due recurrent lists.
+    """
+    mailing_list = None
+    if await can_onboard_more():
+        mailing_list = await acquire_onboarding_list()
+    else:
+        logger.info("Skipping onboarding due to high load on integration.results")
+
     if not mailing_list:
         mailing_list = await acquire_recurrent_list()
     return mailing_list

@@ -30,6 +30,9 @@ CROWD_KAFKA_EXTRA = load_env_var("CROWD_KAFKA_EXTRA", required=False)
 LORE_MIRROR_DIR = load_env_var("LORE_MIRROR_DIR", default="/var/lore")
 
 MAX_CONCURRENT_ONBOARDINGS = int(load_env_var("MAX_CONCURRENT_ONBOARDINGS", default="3"))
+# Delay starting new onboardings while integration.results backlog is this high,
+# same guard as git_integration's can_onboard_more().
+MAX_INTEGRATION_RESULTS = int(load_env_var("MAX_INTEGRATION_RESULTS", default="5000000"))
 LIST_UPDATE_INTERVAL_HOURS = int(load_env_var("LIST_UPDATE_INTERVAL_HOURS", default=24))
 FAILED_RETRY_INTERVAL_HOURS = int(load_env_var("FAILED_RETRY_INTERVAL_HOURS", default="6"))
 
