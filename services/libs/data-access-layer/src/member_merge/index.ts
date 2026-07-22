@@ -5,37 +5,38 @@ export async function removeMemberToMerge(
   memberId: string,
   toMergeId: string,
 ): Promise<void> {
-  await qx.result(
-    `
-      DELETE FROM "memberToMerge"
-      WHERE "memberId" = $(memberId)
-        AND "toMergeId" = $(toMergeId)
-    `,
-    {
-      memberId,
-      toMergeId,
-    },
-  )
+  const replacements = { memberId, toMergeId }
+
+  const whereClause = `
+    WHERE
+      ("memberId" = $(memberId) AND "toMergeId" = $(toMergeId))
+      OR
+      ("memberId" = $(toMergeId) AND "toMergeId" = $(memberId))
+  `
+
+  for (const table of ['memberToMerge', 'memberToMergeRaw']) {
+    await qx.result(
+      `
+        DELETE FROM "${table}"
+        ${whereClause}
+      `,
+      replacements,
+    )
+  }
 }
 
-export async function addMemberNoMerge(
+export async function insertMemberNoMerge(
   qx: QueryExecutor,
   memberId: string,
   noMergeId: string,
 ): Promise<void> {
-  const currentTime = new Date()
   await qx.result(
     `
       INSERT INTO "memberNoMerge" ("memberId", "noMergeId", "createdAt", "updatedAt")
-      VALUES ($(memberId), $(noMergeId), $(createdAt), $(updatedAt))
-      on conflict ("memberId", "noMergeId") do nothing
+      VALUES ($(memberId), $(noMergeId), NOW(), NOW())
+      ON CONFLICT ("memberId", "noMergeId") DO NOTHING
     `,
-    {
-      memberId,
-      noMergeId,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    },
+    { memberId, noMergeId },
   )
 }
 
