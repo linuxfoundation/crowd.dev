@@ -178,9 +178,14 @@ async def get_list_integration_info(list_id: str) -> dict | None:
 
 
 async def update_processed_heads(list_id: str, heads: dict) -> None:
+    # Merge (||) instead of replace: if stuck-reclaim ever lets two workers
+    # process the same list concurrently, a slower worker's flush only
+    # touches the shard keys it actually recomputed, instead of overwriting
+    # every shard (including ones a faster/second worker already advanced)
+    # with its own stale copy.
     sql_query = """
     UPDATE mailinglist."listProcessing"
-        SET "lastProcessedHeads" = $1::jsonb,
+        SET "lastProcessedHeads" = "lastProcessedHeads" || $1::jsonb,
         "updatedAt" = NOW()
     WHERE "listId" = $2
     """

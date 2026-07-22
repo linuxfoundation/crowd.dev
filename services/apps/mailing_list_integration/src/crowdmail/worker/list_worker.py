@@ -55,19 +55,32 @@ async def shutdown_worker():
 
 async def _process_lists():
     mailing_list = None
+    marked = False
     try:
         mailing_list = await acquire_list_for_processing()
         if not mailing_list:
             logger.debug("No mailing lists to process")
             return
         await _process_single_list(mailing_list)
+        marked = True
     except Exception as e:
         logger.error(f"Failed to process mailing list {mailing_list} with error {e}")
     finally:
-        if mailing_list:
+        if mailing_list and marked:
             logger.info(f"releasing list: {mailing_list.source_url}")
             await release_list(mailing_list.id)
             logger.info(f"List {mailing_list.source_url} released!")
+        elif mailing_list:
+            # mark_list_processed itself failed (retries exhausted): leave
+            # lockedAt set rather than releasing into an unmarked state.
+            # Stuck-reclaim already handles non-null stale lockedAt, so this
+            # list recovers on its own once the stale timeout passes instead
+            # of getting stranded with lockedAt=NULL, which no acquire query
+            # selects.
+            logger.error(
+                f"Leaving list {mailing_list.source_url} locked after failing to "
+                "persist its processed state; stuck-reclaim will recover it"
+            )
 
 
 async def _process_single_list(mailing_list: MailingList):
@@ -77,6 +90,7 @@ async def _process_single_list(mailing_list: MailingList):
     try:
         list_dir = await ensure_mirror(mailing_list.id, mailing_list.name, mailing_list.source_url)
         heads = dict(mailing_list.last_processed_heads)
+        dirty_heads = {}
         activities_db = []
         activities_kafka = []
 
@@ -85,6 +99,7 @@ async def _process_single_list(mailing_list: MailingList):
             commit_ids = await new_commits(shard_path, heads.get(shard))
             for git_id in commit_ids:
                 heads[shard] = git_id
+                dirty_heads[shard] = git_id
                 try:
                     message, blob_id = await asyncio.to_thread(read_email, shard_path, git_id)
                     parsed = parse_email(
@@ -141,7 +156,8 @@ async def _process_single_list(mailing_list: MailingList):
                 if len(activities_db) >= ACTIVITY_FLUSH_BATCH_SIZE:
                     await batch_insert_activities(activities_db)
                     await queue_service.send_batch_activities(activities_kafka)
-                    await update_processed_heads(mailing_list.id, heads)
+                    await update_processed_heads(mailing_list.id, dirty_heads)
+                    dirty_heads = {}
                     activities_db = []
                     activities_kafka = []
 
@@ -149,7 +165,8 @@ async def _process_single_list(mailing_list: MailingList):
             await batch_insert_activities(activities_db)
             await queue_service.send_batch_activities(activities_kafka)
 
-        await update_processed_heads(mailing_list.id, heads)
+        if dirty_heads:
+            await update_processed_heads(mailing_list.id, dirty_heads)
         state = ListState.COMPLETED
     except Exception as e:
         logger.error(f"Processing failed for list {mailing_list.source_url}: {repr(e)}")
