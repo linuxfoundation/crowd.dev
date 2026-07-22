@@ -14,6 +14,7 @@ from crowdmail.errors import (
     NetworkError,
     RateLimitError,
     RemoteServerError,
+    ValidationError,
 )
 from crowdmail.logger import logger
 from crowdmail.services.parse.noteren import get_email_from_git, git_run_command
@@ -75,8 +76,29 @@ async def _run_shell_command(cmd: list[str], cwd: str | None = None, timeout: fl
     return ""
 
 
+MAX_LIST_NAME_LENGTH = 255
+
+
+def _validate_list_name(list_name: str) -> None:
+    """Reject anything that could escape the mirror root as a path component.
+
+    `list_name` becomes a single os.path.join component (no separators
+    allowed), so the only way it can resolve outside `mirror_dir` is by being
+    exactly "." or "..". Everything else is a literal directory name.
+    """
+    if (
+        not list_name
+        or len(list_name) > MAX_LIST_NAME_LENGTH
+        or "/" in list_name
+        or "\0" in list_name
+        or list_name in (".", "..")
+    ):
+        raise ValidationError(f"Invalid mailing list name: {list_name!r}")
+
+
 def list_mirror_dir(list_name: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
     """Local directory where a lore list mirror lives."""
+    _validate_list_name(list_name)
     return os.path.join(mirror_dir, list_name)
 
 
