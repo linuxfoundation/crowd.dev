@@ -32,3 +32,12 @@ LORE_MIRROR_DIR = load_env_var("LORE_MIRROR_DIR", default="/var/lore")
 MAX_CONCURRENT_ONBOARDINGS = int(load_env_var("MAX_CONCURRENT_ONBOARDINGS", default="3"))
 LIST_UPDATE_INTERVAL_HOURS = int(load_env_var("LIST_UPDATE_INTERVAL_HOURS", default=24))
 FAILED_RETRY_INTERVAL_HOURS = int(load_env_var("FAILED_RETRY_INTERVAL_HOURS", default="6"))
+
+# A list stuck "locked" (e.g. worker pod died mid-processing) past this many hours is
+# treated as reclaimable, so it doesn't stay blocked forever.
+STUCK_ONBOARDING_LIST_TIMEOUT_HOURS = int(
+    load_env_var("STUCK_ONBOARDING_LIST_TIMEOUT_HOURS", default="12")
+)
+STUCK_RECURRENT_LIST_TIMEOUT_HOURS = int(
+    load_env_var("STUCK_RECURRENT_LIST_TIMEOUT_HOURS", default="4")
+)

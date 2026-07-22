@@ -8,6 +8,8 @@ from crowdmail.settings import (
     FAILED_RETRY_INTERVAL_HOURS,
     LIST_UPDATE_INTERVAL_HOURS,
     MAX_CONCURRENT_ONBOARDINGS,
+    STUCK_ONBOARDING_LIST_TIMEOUT_HOURS,
+    STUCK_RECURRENT_LIST_TIMEOUT_HOURS,
 )
 
 from .connection import get_db_connection
@@ -50,21 +52,33 @@ async def acquire_list(sql_query: str, params: tuple = None) -> MailingList | No
 
 
 async def acquire_onboarding_list() -> MailingList | None:
-    """Acquire a list that has never been processed (onboarding), bounded by MAX_CONCURRENT_ONBOARDINGS."""
+    """Acquire a list that has never been processed (onboarding), bounded by
+    MAX_CONCURRENT_ONBOARDINGS. Also reclaims onboarding lists stuck in PROCESSING
+    past STUCK_ONBOARDING_LIST_TIMEOUT_HOURS (e.g. worker died mid-clone) — such
+    rows don't count against the concurrency cap either, so a fully-stuck queue
+    can't deadlock the cap forever.
+    """
     sql_query = f"""
     WITH current_onboarding_count AS (
         SELECT COUNT(*) as count
         FROM mailinglist."listProcessing" lp
         WHERE lp.state = $1
             AND lp."lastProcessedAt" IS NULL
+            AND lp."lockedAt" >= NOW() - INTERVAL '1 hour' * $4::numeric
     ),
     selected_list AS (
         SELECT l.id
         FROM mailinglist.lists l
         JOIN mailinglist."listProcessing" lp ON lp."listId" = l.id
         CROSS JOIN current_onboarding_count c
-        WHERE lp.state = $2
-            AND lp."lockedAt" IS NULL
+        WHERE (
+            (lp.state = $2 AND lp."lockedAt" IS NULL)
+            OR (
+                lp.state = $1
+                AND lp."lastProcessedAt" IS NULL
+                AND lp."lockedAt" < NOW() - INTERVAL '1 hour' * $4::numeric
+            )
+        )
             AND l."deletedAt" IS NULL
             AND c.count < $3
         ORDER BY lp.priority ASC, lp."createdAt" ASC
@@ -83,23 +97,40 @@ async def acquire_onboarding_list() -> MailingList | None:
     """
     return await acquire_list(
         sql_query,
-        (ListState.PROCESSING, ListState.PENDING, MAX_CONCURRENT_ONBOARDINGS),
+        (
+            ListState.PROCESSING,
+            ListState.PENDING,
+            MAX_CONCURRENT_ONBOARDINGS,
+            STUCK_ONBOARDING_LIST_TIMEOUT_HOURS,
+        ),
     )
 
 
 async def acquire_recurrent_list() -> MailingList | None:
-    """Acquire a previously-processed list that is due for reprocessing."""
+    """Acquire a previously-processed list that is due for reprocessing. Also
+    reclaims recurrent lists stuck in PROCESSING past
+    STUCK_RECURRENT_LIST_TIMEOUT_HOURS (e.g. worker died mid-fetch) regardless of
+    their normal reprocessing schedule, since a stuck row is by definition overdue.
+    """
     sql_query = f"""
     WITH selected_list AS (
         SELECT l.id
         FROM mailinglist.lists l
         JOIN mailinglist."listProcessing" lp ON lp."listId" = l.id
-        WHERE NOT (lp.state = ANY($2))
-            AND lp."lockedAt" IS NULL
-            AND l."deletedAt" IS NULL
-            AND lp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
-                CASE WHEN lp.state = $4 THEN $5::numeric ELSE $3::numeric END
+        WHERE (
+            (
+                NOT (lp.state = ANY($2))
+                AND lp."lastProcessedAt" < NOW() - INTERVAL '1 hour' * (
+                    CASE WHEN lp.state = $4 THEN $5::numeric ELSE $3::numeric END
+                )
             )
+            OR (
+                lp.state = $1
+                AND lp."lastProcessedAt" IS NOT NULL
+                AND lp."lockedAt" < NOW() - INTERVAL '1 hour' * $6::numeric
+            )
+        )
+            AND l."deletedAt" IS NULL
         ORDER BY lp.priority ASC, lp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF lp SKIP LOCKED
@@ -123,6 +154,7 @@ async def acquire_recurrent_list() -> MailingList | None:
             LIST_UPDATE_INTERVAL_HOURS,
             ListState.FAILED,
             FAILED_RETRY_INTERVAL_HOURS,
+            STUCK_RECURRENT_LIST_TIMEOUT_HOURS,
         ),
     )
 
