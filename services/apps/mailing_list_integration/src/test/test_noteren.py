@@ -852,14 +852,14 @@ def test_parse_email_url_contains_message_id():
         b"body\n"
     )
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
-    assert parsed["activityData"]["url"] == "https://lore.kernel.org/r/unique-id@example.com"
+    assert parsed["activityData"]["url"] == "src/r/unique-id@example.com"
 
 
 def test_parse_email_url_with_no_message_id():
-    """When Message-ID is absent the url must end with a trailing slash and empty id."""
+    """When Message-ID is absent the url must end with a slash under the source's /r/ path."""
     raw = b"From: A <a@example.com>\nSubject: s\nDate: Mon, 1 Jan 2024 12:00:00 +0000\n\nbody\n"
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
-    assert parsed["activityData"]["url"] == "https://lore.kernel.org/r/"
+    assert parsed["activityData"]["url"] == "src/r/"
 
 
 def test_parse_email_result_structure():

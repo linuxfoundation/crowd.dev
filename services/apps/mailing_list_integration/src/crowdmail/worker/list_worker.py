@@ -81,7 +81,7 @@ class ListWorker:
         state = ListState.FAILED
 
         try:
-            list_dir = await ensure_mirror(mailing_list.name)
+            list_dir = await ensure_mirror(mailing_list.name, mailing_list.source_url)
             heads = dict(mailing_list.last_processed_heads)
             activities_db = []
             activities_kafka = []

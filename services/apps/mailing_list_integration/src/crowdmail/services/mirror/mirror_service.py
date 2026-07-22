@@ -20,8 +20,6 @@ from crowdmail.logger import logger
 from crowdmail.services.parse.noteren import get_email_from_git, git_run_command
 from crowdmail.settings import LORE_MIRROR_DIR
 
-LORE_BASE_URL = "https://lore.kernel.org/"
-
 RETRYABLE_MIRROR_ERRORS = (NetworkError, RateLimitError, RemoteServerError)
 
 retry_on_mirror_error = retry(
@@ -103,15 +101,14 @@ def list_mirror_dir(list_name: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
 
 
 @retry_on_mirror_error
-async def ensure_mirror(list_name: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
+async def ensure_mirror(list_name: str, source_url: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
     """Clone the list mirror if it's absent, otherwise fetch new commits. Returns the list dir."""
     list_dir = list_mirror_dir(list_name, mirror_dir)
     if not os.path.isdir(list_dir):
-        logger.info(f"Cloning lore list '{list_name}' into {list_dir}")
+        clone_url = source_url.rstrip("/") + "/"
+        logger.info(f"Cloning lore list '{list_name}' from {clone_url} into {list_dir}")
         os.makedirs(os.path.dirname(list_dir), exist_ok=True)
-        await _run_shell_command(
-            ["public-inbox-clone", "-q", f"{LORE_BASE_URL}{list_name}/", list_dir]
-        )
+        await _run_shell_command(["public-inbox-clone", "-q", clone_url, list_dir])
         # public-inbox-clone drops a manifest scoped to clone time; remove it
         # and re-fetch from inside list_dir so the manifest is regenerated
         # correctly there (needed to detect new epoch shards, e.g. git/1.git,

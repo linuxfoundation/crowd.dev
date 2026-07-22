@@ -355,7 +355,7 @@ def parse_email(
         "channel": channel,
         "title": subject,
         "body": json_body,
-        "url": "https://lore.kernel.org/r/" + msgid,
+        "url": source.rstrip("/") + "/r/" + msgid,
         "isContribution": True,
         "type": ActivityType.MESSAGE,
         "attributes": attributes,
