@@ -116,9 +116,7 @@ function toSummary(
     dependentsAnalyzed,
     dependentsAffected: affected.length,
     affectedPercentage:
-      conclusive.length > 0
-        ? Math.round((affected.length / conclusive.length) * 1000) / 10
-        : null,
+      conclusive.length > 0 ? Math.round((affected.length / conclusive.length) * 1000) / 10 : null,
     affectedDependents: affected.map((r) => r.dependent),
   }
 }
