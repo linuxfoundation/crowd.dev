@@ -395,7 +395,10 @@ def parse_id(
     msg, blob_id = get_email_from_git(git_dir, git_id)
     output = parse_email(msg, source, channel, git_id, blob_id, segment_id, integration_id)
 
-    print(json.dumps(output, indent=2), file=outfh)
+    # Compact, one line per commit (JSONL) — parse_range() calls this once
+    # per commit in a range, and pretty-printed multi-line JSON per call
+    # concatenates into an unparseable blob for multi-commit ranges.
+    print(json.dumps(output), file=outfh)
 
 
 def parse_range(
