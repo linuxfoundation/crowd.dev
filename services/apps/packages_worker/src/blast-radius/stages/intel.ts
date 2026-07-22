@@ -28,9 +28,11 @@ export async function runIntelStage(
   const startTime = Date.now()
 
   try {
-    // Check if already done
-    const existing = await blastRadiusDal.getSymbolSpec(qx, analysisId)
-    if (existing) {
+    // Check if already done. Guard on the stage_run's own status rather than symbol-spec
+    // presence — a crash between upsertSymbolSpec and completeStageRun would otherwise
+    // leave the stage_run stuck failed/running forever while retries skip past it.
+    const existingStatus = await blastRadiusDal.getStageRunStatus(qx, analysisId, 'intel')
+    if (existingStatus === 'succeeded') {
       return
     }
 
@@ -50,23 +52,29 @@ export async function runIntelStage(
       throw new Error(`No npm entries found in advisory ${advisoryOsvId}`)
     }
 
-    // For now, analyze the first npm entry (PoC behavior)
-    const entry = npmEntries[0]
+    // Multi-package advisories list one npm entry per affected package — pick the one
+    // the analysis was actually requested for, falling back to the first entry when no
+    // specific package was requested (analysis-wide advisory scan).
+    const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
+    const requestedPackage = analysisDetail?.package_name
+    const entry =
+      (requestedPackage && npmEntries.find((e) => e.package.name === requestedPackage)) ||
+      npmEntries[0]
     const package_ = entry.package.name
     const ecosystem = entry.package.ecosystem
 
+    // Fetch the registry packument so vulnerable-version resolution runs against versions
+    // npm actually published, not just the OSV range's introduced/fixed boundary strings —
+    // most advisories only list range boundaries, so that set is typically incomplete and
+    // silently drops real published versions from vulnerableVersions/analyzed.
+    const packument = await fetchPackument(package_)
+    if (isFetchError(packument)) {
+      throw new Error(`Failed to fetch npm packument for ${package_}: ${packument.message}`)
+    }
+    const allVersions = Object.keys(packument.versions || {})
+
     // Resolve vulnerable versions from ranges
     const ranges = semverRangeEvents(entry)
-    const allVersions = Array.from(
-      new Set(
-        (osv.affected?.flatMap(
-          (a) =>
-            a.ranges?.flatMap(
-              (r) => r.events?.map((e) => e.introduced || e.fixed).filter(Boolean) || [],
-            ) || [],
-        ) || []) as string[],
-      ),
-    )
     const vulnerableVersions = versionsInRanges(allVersions, ranges)
 
     const analyzed = highestVersion(vulnerableVersions)
@@ -80,14 +88,12 @@ export async function runIntelStage(
 
     try {
       // Download package source (using npm registry)
-      const packument = await fetchPackument(package_)
-      if (!isFetchError(packument)) {
-        const versionData = packument.versions?.[analyzed]
-        const tarballUrl = versionData ? asNpmVersionManifest(versionData).dist?.tarball : undefined
-        if (tarballUrl) {
-          await downloadAndExtractTarball(tarballUrl, pkgsrcDir)
-        }
+      const versionData = packument.versions?.[analyzed]
+      const tarballUrl = versionData ? asNpmVersionManifest(versionData).dist?.tarball : undefined
+      if (!tarballUrl) {
+        throw new Error(`No tarball URL found for ${package_}@${analyzed}`)
       }
+      await downloadAndExtractTarball(tarballUrl, pkgsrcDir)
 
       // Fetch up to 3 patches from fix references
       const patchUrls = fixReferenceUrls(osv)
@@ -140,7 +146,7 @@ export async function runIntelStage(
         importSignatures: (output.import_signatures || {}) as Record<string, unknown>,
         exploitPreconditions: String(output.exploit_preconditions || ''),
         reachabilityNotes: String(output.reachability_notes || ''),
-        confidence: Number(output.confidence || 0.5),
+        confidence: Number(output.confidence ?? 0.5),
         sources: [advisoryOsvId],
         summary: String(output.summary || ''),
       })

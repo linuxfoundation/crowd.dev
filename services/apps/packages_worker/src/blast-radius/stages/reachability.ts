@@ -73,7 +73,7 @@ export async function runReachabilityStage(
     const queue = [...dependents]
     const results: { cost: number; count: number } = { cost: 0, count: 0 }
 
-    const upsertErrorVerdict = (dependentId: number, reasoning: string, model: string | null) =>
+    const upsertErrorVerdict = (dependentId: string, reasoning: string, model: string | null) =>
       blastRadiusDal.upsertVerdict(qx, {
         analysisId,
         dependentId,

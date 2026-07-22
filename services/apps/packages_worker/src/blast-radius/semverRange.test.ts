@@ -76,6 +76,13 @@ describe('semverRange', () => {
       const result = rangeIncludesAny('>=1.0.0 <2.0.0 || >=3.0.0', ['1.5.0', '3.5.0'])
       expect(result).toEqual({ includes: true, check: 'matched' })
     })
+
+    it('conservatively includes garbage ranges not caught by the known-prefix checks', () => {
+      // semver.validRange returns null (not a throw) for this — regression test for a bug
+      // where isValidSemverRange ignored that null and always reported specs as parseable.
+      const result = rangeIncludesAny('not-a-real-range!!!', ['1.0.0'])
+      expect(result).toEqual({ includes: true, check: 'unparseable-included' })
+    })
   })
 
   describe('highestVersion', () => {

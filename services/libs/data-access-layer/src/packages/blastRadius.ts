@@ -49,7 +49,7 @@ export interface DependentInput {
 
 export interface VerdictInput {
   analysisId: string
-  dependentId: number
+  dependentId: string
   usesPackage: boolean
   importsVulnerableSymbol: boolean
   importStyle: string | null
@@ -81,7 +81,7 @@ export interface AnalysisRow {
 }
 
 export interface DependentRow {
-  id: number
+  id: string
   analysis_id: string
   name: string
   excluded_by_range: boolean
@@ -448,7 +448,12 @@ export async function startStageRun(qx: QueryExecutor, input: StageRunInput): Pr
       ($(analysisId), $(stage), $(status), $(model), COALESCE($(startedAt), NOW()))
     ON CONFLICT (analysis_id, stage) DO UPDATE SET
       status = EXCLUDED.status,
-      started_at = EXCLUDED.started_at
+      model = EXCLUDED.model,
+      started_at = EXCLUDED.started_at,
+      completed_at = NULL,
+      duration_ms = NULL,
+      cost_usd = 0,
+      error = NULL
     RETURNING id
     `,
     params,

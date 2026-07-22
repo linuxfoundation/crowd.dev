@@ -26,7 +26,12 @@ export async function downloadAndExtractTarball(
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tarball-extract-'))
   try {
-    const extractStream = tar.extract({ cwd: tempDir }) as unknown as NodeJS.WritableStream
+    // tar rejects (preservePaths defaults to false) any entry whose path would resolve
+    // outside cwd; strict:true makes that a thrown error instead of a silent warn+skip.
+    const extractStream = tar.extract({
+      cwd: tempDir,
+      strict: true,
+    }) as unknown as NodeJS.WritableStream
     await new Promise<void>((resolve, reject) => {
       Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>)
         .on('error', reject)

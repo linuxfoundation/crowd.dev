@@ -21,6 +21,8 @@ export function versionsInRanges(versions: string[], ranges: SemverRange[]): str
       let rangeSpec = ''
       if (range.introduced && range.fixed) {
         rangeSpec = `>=${range.introduced} <${range.fixed}`
+      } else if (range.introduced && range.lastAffected) {
+        rangeSpec = `>=${range.introduced} <=${range.lastAffected}`
       } else if (range.introduced) {
         rangeSpec = `>=${range.introduced}`
       }
@@ -76,11 +78,11 @@ export function highestVersion(versions: string[]): string | null {
   return semver.maxSatisfying(valid, '*', { loose: true }) || null
 }
 
-// Helper: check if a range spec is parseable as semver.
+// Helper: check if a range spec is parseable as semver. semver.validRange returns null
+// for unparseable specs rather than throwing, so the null check is required.
 function isValidSemverRange(spec: string): boolean {
   try {
-    semver.validRange(spec, { loose: true })
-    return true
+    return semver.validRange(spec, { loose: true }) !== null
   } catch {
     return false
   }

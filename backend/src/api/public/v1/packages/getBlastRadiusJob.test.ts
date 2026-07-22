@@ -17,7 +17,7 @@ vi.mock('@/db/packagesDb', () => ({
   getPackagesQx: vi.fn().mockResolvedValue({}),
 }))
 
-const ANALYSIS_ID = '11111111-1111-1111-1111-111111111111'
+const ANALYSIS_ID = '11111111-1111-4111-8111-111111111111'
 
 function mockReqRes(params: unknown) {
   getAnalysisDetail.mockClear()
