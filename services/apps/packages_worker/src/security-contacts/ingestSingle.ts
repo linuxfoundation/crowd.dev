@@ -94,8 +94,10 @@ export async function ingestSecurityContactsForPurl(
   const baseDeps = buildBaseDeps(config)
   try {
     const result = await processRepo(target, baseDeps, cdpQx)
-    if (result.status === 'ok') {
-      await writeContacts(qx, result.repoId, result.contacts, result.policies)
+    if (result.status === 'ok' || result.status === 'partial') {
+      await writeContacts(qx, result.repoId, result.contacts, result.policies, {
+        merge: result.status === 'partial',
+      })
     } else {
       await markRepoAttempted(qx, result.repoId)
     }

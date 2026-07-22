@@ -1,5 +1,6 @@
 import { cancellationSignal, heartbeat } from '@temporalio/activity'
 
+import { classifyEmailReachability } from '@crowd/common'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -10,12 +11,14 @@ import { mapWithConcurrency } from '../utils/concurrency'
 import { fetchRepoTree } from './extractors/gitTree'
 import { extractPvr } from './extractors/pvr'
 import { extractManifest } from './extractors/registry'
+import { fetchRepoOwner } from './extractors/repoOwner'
 import { extractSecurityContactsFile } from './extractors/securityContactsFile'
 import { extractSecurityInsights } from './extractors/securityInsights'
 import { extractSecurityMd } from './extractors/securityMd'
 import { extractSecurityTxt } from './extractors/securityTxt'
+import { fetchTopCommitters } from './extractors/topCommitters'
 import { githubApiGet } from './githubToken'
-import { reconcile } from './reconcile'
+import { isJunkContact, reconcile } from './reconcile'
 import { deriveGithubHandlesFromNoreplyEmails, resolveCdpEmails } from './resolveCdpEmails'
 import {
   Extractor,
@@ -26,6 +29,7 @@ import {
   RepoPolicies,
   RepoTarget,
 } from './types'
+import { verifyHandleCandidates } from './verifyHandleCandidates'
 import { writeContactsBatch } from './writeContacts'
 
 const log = getServiceChildLogger('security-contacts')
@@ -135,21 +139,26 @@ export async function processRepo(
 
   const results = await Promise.allSettled(EXTRACTORS.map((extract) => extract(target, deps)))
 
-  // Write only when every extractor succeeded, so a failed one can't wipe contacts it didn't see.
-  const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
-  if (failed) {
+  let failedCount = 0
+  results.forEach((r, i) => {
+    if (r.status !== 'rejected') return
+    failedCount++
     log.warn(
-      { repoId: target.repoId, errMsg: failed.reason?.message },
-      'Extractor failed — preserving existing data',
+      { repoId: target.repoId, extractor: EXTRACTORS[i].name, errMsg: r.reason?.message },
+      'Extractor failed — keeping contacts from remaining sources',
     )
+  })
+  if (failedCount === results.length) {
     return { repoId: target.repoId, status: 'extractor-failed' }
   }
 
   let contacts: RawContact[] = []
   const policies: Partial<RepoPolicies> = {}
+  const handleCandidates: RawContact[] = []
   for (const r of results) {
     if (r.status !== 'fulfilled') continue
     contacts.push(...r.value.contacts)
+    handleCandidates.push(...(r.value.handleCandidates ?? []))
     for (const [key, value] of Object.entries(r.value.policies)) {
       if (!(policies as Record<string, unknown>)[key] && value != null) {
         ;(policies as Record<string, unknown>)[key] = value
@@ -162,7 +171,21 @@ export async function processRepo(
     contacts = contacts.filter((c) => c.channel !== 'github-pvr')
   }
 
+  contacts.push(...(await verifyHandleCandidates(target, deps, handleCandidates)))
   contacts.push(...deriveGithubHandlesFromNoreplyEmails(contacts))
+
+  const isUsableRaw = (c: RawContact): boolean => {
+    if (isJunkContact(c)) return false
+    return c.channel !== 'email' || classifyEmailReachability(c.value).reachable
+  }
+  const hasUsableHigherTierContact = contacts.some((c) => c.tier !== 'D' && isUsableRaw(c))
+  if (!hasUsableHigherTierContact) {
+    const [committers, ownerContacts] = await Promise.all([
+      fetchTopCommitters(target, deps),
+      fetchRepoOwner(target, deps),
+    ])
+    contacts.push(...committers, ...ownerContacts)
+  }
 
   const handleContacts = contacts.filter((c) => c.channel === 'github-handle')
   if (handleContacts.length > 0) {
@@ -177,7 +200,12 @@ export async function processRepo(
   }
 
   const scored = reconcile(contacts)
-  return { repoId: target.repoId, status: 'ok', contacts: scored, policies }
+  return {
+    repoId: target.repoId,
+    status: failedCount > 0 ? 'partial' : 'ok',
+    contacts: scored,
+    policies,
+  }
 }
 
 export async function processBatch(
@@ -191,17 +219,32 @@ export async function processBatch(
   const deps = buildBaseDeps(config)
 
   const targets = batch.map(toTarget)
+  log.info({ repos: targets.length }, 'Security contacts batch started')
+  const progress = { completed: 0, ok: 0, partial: 0, failed: 0 }
+  const extractionStartedAt = Date.now()
   // Fixed-cadence heartbeat: a slow repo can outlast the 2-minute heartbeatTimeout even while
-  // every concurrency slot is still busy, so this can't rely on task completions alone.
+  // every concurrency slot is still busy, so this can't rely on task completions alone. The
+  // progress line rides the same cadence, bounding visibility logging to 2 lines/minute.
   const heartbeatTimer = setInterval(() => {
     try {
       heartbeat()
     } catch (err) {
       log.warn({ errMsg: (err as Error).message }, 'Heartbeat failed')
     }
+    if (progress.completed < targets.length) {
+      const elapsedMs = Date.now() - extractionStartedAt
+      log.info(
+        {
+          ...progress,
+          total: targets.length,
+          elapsedMs,
+          reposPerSec: Number((progress.completed / (elapsedMs / 1000)).toFixed(1)),
+        },
+        'Security contacts batch progress',
+      )
+    }
   }, 30_000)
   let outcomes: ProcessRepoResult[]
-  const extractionStartedAt = Date.now()
   try {
     // A cancelled task (superseded by a newer activity attempt) is left to throw so it stops
     // scheduling further repos instead of racing the new attempt.
@@ -215,23 +258,31 @@ export async function processBatch(
           'Security contacts batch cancelled — superseded by a newer activity attempt',
         )
       }
+      let outcome: ProcessRepoResult
       try {
-        return await processRepo(target, deps, cdpQx)
+        outcome = await processRepo(target, deps, cdpQx)
       } catch (err) {
         log.error(
           { repoId: target.repoId, errMsg: (err as Error).message },
           'Repo processing failed',
         )
-        return { repoId: target.repoId, status: 'extractor-failed' as const }
+        outcome = { repoId: target.repoId, status: 'extractor-failed' as const }
       }
+      progress.completed++
+      if (outcome.status === 'ok') progress.ok++
+      else if (outcome.status === 'partial') progress.partial++
+      else progress.failed++
+      return outcome
     })
 
     const extractionDurationMs = Date.now() - extractionStartedAt
     const ok = outcomes.filter((o) => o.status === 'ok').length
+    const partial = outcomes.filter((o) => o.status === 'partial').length
     log.info(
       {
         ok,
-        failed: outcomes.length - ok,
+        partial,
+        failed: outcomes.length - ok - partial,
         durationMs: extractionDurationMs,
         reposPerSec: Number((outcomes.length / (extractionDurationMs / 1000)).toFixed(1)),
       },

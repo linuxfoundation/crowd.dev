@@ -26,7 +26,7 @@ interface ResolvedEndpoints {
 
 let cachedEndpoints: ResolvedEndpoints | null = null
 
-async function resolveEndpoints(): Promise<ResolvedEndpoints> {
+export async function resolveEndpoints(): Promise<ResolvedEndpoints> {
   if (cachedEndpoints) return cachedEndpoints
 
   const resp = await axios.get<ServiceIndex>(SERVICE_INDEX_URL, {

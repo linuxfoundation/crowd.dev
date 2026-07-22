@@ -1,6 +1,7 @@
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { extractEmails, fetchJson, isEmail, registryHeaders } from '../http'
 
+import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'rubygems'
@@ -67,6 +68,22 @@ export function mapRubygemsOwners(
   return contacts
 }
 
+// RubyGems accounts are independent of GitHub, so a handle matching a GitHub login is only a
+// guess — emitted as candidates that must pass repo-contributor corroboration before use.
+export function mapRubygemsOwnerHandles(
+  owners: unknown,
+  sourceUrl: string,
+  fetchedAt: string,
+): RawContact[] {
+  if (!Array.isArray(owners)) return []
+
+  const handles = owners
+    .map((owner) => (owner ?? {}) as Record<string, unknown>)
+    .filter((o) => !(typeof o.email === 'string' && isEmail(o.email)))
+    .map((o) => o.handle)
+  return toHandleCandidates(handles, SOURCE, sourceUrl, fetchedAt)
+}
+
 export async function fetchRubygems(
   parsed: ParsedPurl,
   timeoutMs: number,
@@ -91,5 +108,9 @@ export async function fetchRubygems(
     ...mapRubygemsOwners(ownersResult.json, ownersUrl, fetchedAt),
   ]
 
-  return { contacts, policies: {} }
+  return {
+    contacts,
+    policies: {},
+    handleCandidates: mapRubygemsOwnerHandles(ownersResult.json, ownersUrl, fetchedAt),
+  }
 }

@@ -1,5 +1,5 @@
 DESCRIPTION >
-    Contributor count timeseries for a given organization, bucketed by year (all-time).
+    Contributor count timeseries for a given organization, bucketed by year (last 10 years).
 
 TAGS "Organization page"
 
