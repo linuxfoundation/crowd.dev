@@ -18,6 +18,17 @@ const isSafeListName = (name: string): boolean =>
   name !== '.' &&
   name !== '..'
 
+// public-inbox-clone in the worker fetches this URL as-is; restrict to
+// https so a caller can't point the worker at file://, javascript:, or a
+// bare non-URL string.
+const isSafeSourceUrl = (sourceUrl: string): boolean => {
+  try {
+    return new URL(sourceUrl).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 const bodySchema = z.object({
   lists: z
     .array(
@@ -25,10 +36,15 @@ const bodySchema = z.object({
         name: z.string().trim().min(1).refine(isSafeListName, {
           message: 'Invalid mailing list name',
         }),
-        sourceUrl: z.string().trim().min(1),
+        sourceUrl: z.string().trim().min(1).refine(isSafeSourceUrl, {
+          message: 'sourceUrl must be a valid https:// URL',
+        }),
       }),
     )
-    .default([]),
+    .min(1, 'lists must contain at least one mailing list')
+    .refine((lists) => new Set(lists.map((l) => l.sourceUrl)).size === lists.length, {
+      message: 'lists contains duplicate sourceUrl entries',
+    }),
 })
 
 export default async (req, res) => {
