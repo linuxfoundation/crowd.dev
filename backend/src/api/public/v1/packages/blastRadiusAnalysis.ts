@@ -7,9 +7,12 @@ import type { BlastRadiusJobEcosystem, BlastRadiusJobStatus } from './blastRadiu
 
 export type BlastRadiusResultConfidence = 'high' | 'medium' | 'low'
 
+export type BlastRadiusVerdict = 'affected' | 'not_affected' | 'unclear'
+
 export interface BlastRadiusResultItem {
   dependent: string
   affected: boolean
+  verdict: BlastRadiusVerdict
   confidence: BlastRadiusResultConfidence
   evidence: string | null
   downloadsLast30Days: string | null
@@ -66,33 +69,47 @@ function flattenEvidence(evidence: Record<string, unknown>[] | null): string | n
     .join('\n')
 }
 
+// reachable_verdict is 'affected' | 'not_affected' | 'unclear' (see VERDICT_SCHEMA in
+// agent/prompts.ts) — 'unclear' covers both a genuine ambiguous read and a persistent
+// agent failure (upsertErrorVerdict in reachability.ts). affected=false alone can't
+// distinguish "confirmed not affected" from "we don't know" — expose the raw verdict
+// too so consumers who care can tell the difference.
+function toVerdict(reachableVerdict: string): BlastRadiusVerdict {
+  if (reachableVerdict === 'affected' || reachableVerdict === 'not_affected') {
+    return reachableVerdict
+  }
+  return 'unclear'
+}
+
 function toResultItem(row: VerdictResultRow): BlastRadiusResultItem {
+  const verdict = toVerdict(row.reachable_verdict)
   return {
     dependent: toPurl(row.name),
-    affected: row.reachable_verdict === 'affected',
+    affected: verdict === 'affected',
+    verdict,
     confidence: toResultConfidence(row.confidence),
     evidence: flattenEvidence(row.evidence),
     downloadsLast30Days: row.downloads !== null ? String(row.downloads) : null,
   }
 }
 
-// Population-level summary, following the PoC's report.py ground truth:
-// totalDependentsInRange = candidates_considered (post phase-1-filter population),
-// dependentsAnalyzed = number of verdicts produced, dependentsExcludedUpfront =
-// the difference (range-excluded before reachability ran), dependentsAffected =
-// count with an 'affected' verdict, affectedPercentage rounded to 1 decimal
-// (null when nothing was analyzed, to avoid a misleading 0%).
+// Population-level summary. dependentsExcludedUpfront comes from the
+// blast_radius_dependents rows actually marked excluded_by_range=true — NOT from
+// candidates_considered, which is stage 2's phase-1 population and also counts
+// candidates the topN walk never reached (so candidatesConsidered - analyzed
+// overstates range exclusions). dependentsAnalyzed = number of verdicts produced,
+// dependentsAffected = count with an 'affected' verdict, affectedPercentage rounded
+// to 1 decimal (null when nothing was analyzed, to avoid a misleading 0%).
 function toSummary(
-  candidatesConsidered: number | null,
+  dependentsExcludedUpfront: number,
   results: BlastRadiusResultItem[],
 ): BlastRadiusAnalysisSummary {
-  const totalDependentsInRange = candidatesConsidered ?? results.length
   const dependentsAnalyzed = results.length
   const affected = results.filter((r) => r.affected)
 
   return {
-    totalDependentsInRange,
-    dependentsExcludedUpfront: Math.max(totalDependentsInRange - dependentsAnalyzed, 0),
+    totalDependentsInRange: dependentsAnalyzed + dependentsExcludedUpfront,
+    dependentsExcludedUpfront,
     dependentsAnalyzed,
     dependentsAffected: affected.length,
     affectedPercentage:
@@ -106,6 +123,7 @@ function toSummary(
 export function toBlastRadiusAnalysis(
   analysis: AnalysisDetailRow,
   verdictRows: VerdictResultRow[],
+  dependentsExcludedByRangeCount: number,
 ): BlastRadiusAnalysis {
   const status = analysis.status as BlastRadiusJobStatus
   const done = status === 'done'
@@ -121,7 +139,7 @@ export function toBlastRadiusAnalysis(
     submittedAt: analysis.started_at,
     completedAt: analysis.completed_at,
     errorMessage: analysis.error,
-    summary: done && results ? toSummary(analysis.candidates_considered, results) : null,
+    summary: done && results ? toSummary(dependentsExcludedByRangeCount, results) : null,
     results,
   }
 }

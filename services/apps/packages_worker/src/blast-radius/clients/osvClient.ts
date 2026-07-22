@@ -112,10 +112,12 @@ export function fixReferenceUrls(vuln: OsvVuln): string[] {
     }
   }
 
-  // Then other web refs
+  // Then other GitHub refs. Restricted to github.com like the FIX-type pass above —
+  // references are attacker-influenced OSV advisory data and feed into fetchPatch,
+  // which fetches whatever URL it's given.
   if (vuln.references) {
     for (const ref of vuln.references) {
-      if (ref.type !== 'FIX' && ref.url.startsWith('http')) {
+      if (ref.type !== 'FIX' && isGithubUrl(ref.url)) {
         results.push(ref.url)
       }
     }

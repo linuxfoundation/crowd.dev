@@ -10,10 +10,10 @@ info:
 
 
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
-    submit (2a) is implemented but the reachability pipeline is not built yet —
-    every submitted job currently fails with an ECOSYSTEM_NOT_SUPPORTED error
-    once the underlying workflow runs. Poll (2b), the 7-day result cache, and
-    the actual analysis are specced separately and not yet built.
+    submit (2a) and poll (2b) are both implemented, backed by a 4-stage
+    Temporal pipeline (intel, dependents, reachability, report) for npm
+    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
+    7-day result cache is specced separately and not yet built.
 
 
     TODO: scopes below (read:packages, read:stewardships) are the existing
@@ -50,11 +50,12 @@ tags:
       reportingGuidelines / integrationHints are reserved and always null today).
   - name: Blast Radius
     description: >
-      Advisory reachability analysis — submit (2a) is implemented; poll (2b) is
-      not built yet. Submitting kicks off a Temporal workflow which currently
-      fails every job with ECOSYSTEM_NOT_SUPPORTED, since the reachability
-      pipeline itself hasn't shipped. Rate-limited independently of the other
-      akrites-external endpoints (default 5 requests/hour, configurable via
+      Advisory reachability analysis — submit (2a) and poll (2b) are both
+      implemented. Submitting kicks off a Temporal workflow that runs the
+      npm reachability pipeline (other ecosystems fail fast with
+      ECOSYSTEM_NOT_SUPPORTED); poll returns job status and, once done,
+      results. Rate-limited independently of the other akrites-external
+      endpoints (default 5 requests/hour, configurable via
       AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX / _WINDOW_MS). Same interim scope
       note as Advisories applies (read:packages, pending a dedicated
       read:advisories scope).
@@ -412,7 +413,7 @@ components:
       properties:
         analysisId:
           type: string
-          description: Opaque identifier for polling via 2b (not yet implemented).
+          description: Opaque identifier for polling via 2b (GET .../jobs/{analysisId}).
         advisoryId:
           type: string
         package:
@@ -426,10 +427,118 @@ components:
         status:
           type: string
           enum: [pending, running, done, failed]
-          description: >
-            Always pending today — every job starts a Temporal workflow that
-            currently fails with ECOSYSTEM_NOT_SUPPORTED once it runs, since
-            the reachability pipeline isn't built yet.
+          description: Always pending — the response is returned before the Temporal workflow runs.
+
+    BlastRadiusResultConfidence:
+      type: string
+      enum: [high, medium, low]
+      description: Crosswalk of the 0-1 reachability confidence score into bands (>=0.8 high, >=0.4 medium, else low).
+
+    BlastRadiusResultItem:
+      type: object
+      required: [dependent, affected, verdict, confidence, evidence, downloadsLast30Days]
+      properties:
+        dependent:
+          type: string
+          description: Purl of the analyzed dependent package.
+        affected:
+          type: boolean
+          description: True only when verdict is 'affected'. Kept for backwards compatibility — prefer verdict, since this field can't distinguish 'not_affected' from 'unclear'.
+        verdict:
+          type: string
+          enum: [affected, not_affected, unclear]
+          description: Raw reachability verdict. 'unclear' covers both a genuine ambiguous read and a persistent agent failure.
+        confidence:
+          $ref: '#/components/schemas/BlastRadiusResultConfidence'
+        evidence:
+          type: string
+          nullable: true
+          description: Flattened file:line — snippet evidence lines from the reachability agent, one per line.
+        downloadsLast30Days:
+          type: string
+          nullable: true
+
+    BlastRadiusAnalysisSummary:
+      type: object
+      required:
+        - totalDependentsInRange
+        - dependentsExcludedUpfront
+        - dependentsAnalyzed
+        - dependentsAffected
+        - affectedPercentage
+        - affectedDependents
+      properties:
+        totalDependentsInRange:
+          type: integer
+          description: Dependents considered after the phase-1 range filter (Stage 2's population before its top-N cutoff).
+        dependentsExcludedUpfront:
+          type: integer
+          description: totalDependentsInRange minus dependentsAnalyzed.
+        dependentsAnalyzed:
+          type: integer
+          description: Number of dependents that received a reachability verdict.
+        dependentsAffected:
+          type: integer
+        affectedPercentage:
+          type: number
+          nullable: true
+          description: Rounded to 1 decimal. Null when dependentsAnalyzed is 0, to avoid a misleading 0%.
+        affectedDependents:
+          type: array
+          items:
+            type: string
+
+    BlastRadiusAnalysis:
+      type: object
+      required:
+        - analysisId
+        - status
+        - advisoryId
+        - package
+        - ecosystem
+        - submittedAt
+        - completedAt
+        - errorMessage
+        - summary
+        - results
+      description: Response body of 2b — poll for job status and, once done, results.
+      properties:
+        analysisId:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, done, failed]
+        advisoryId:
+          type: string
+        package:
+          type: string
+          nullable: true
+        ecosystem:
+          type: string
+          enum: [npm]
+        submittedAt:
+          type: string
+          nullable: true
+          format: date-time
+        completedAt:
+          type: string
+          nullable: true
+          format: date-time
+        errorMessage:
+          type: string
+          nullable: true
+        summary:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BlastRadiusAnalysisSummary'
+          description: Null until status is 'done'.
+        results:
+          type: array
+          nullable: true
+          description: Null until status is 'done'.
+          items:
+            $ref: '#/components/schemas/BlastRadiusResultItem'
 
     ContactConfidenceBand:
       type: string
@@ -883,12 +992,13 @@ paths:
       description: >
         Always exactly one job per request — no bulk submit. Omit package for
         an advisory-wide analysis; provide it to narrow to a single package.
+        Starts a Temporal workflow running the 4-stage reachability pipeline
+        (intel, dependents, reachability, report) for npm; other ecosystems
+        fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results via
+        GET /jobs/{analysisId}.
 
 
-        Not yet implemented: the 7-day result cache, force-bypass semantics,
-        and the actual reachability pipeline. Today every submission starts a
-        fresh Temporal workflow that fails with ECOSYSTEM_NOT_SUPPORTED — the
-        job is accepted and echoed back as pending, but never completes.
+        Not yet implemented: the 7-day result cache and force-bypass semantics.
       tags: [Blast Radius]
       security:
         - M2MBearer:
@@ -924,6 +1034,63 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs/{analysisId}:
+    get:
+      operationId: getBlastRadiusJob
+      summary: 2b — Poll a blast-radius analysis job
+      description: >
+        Returns job status and, once status is 'done', the summary and
+        per-dependent results. summary and results are null for any other
+        status.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:packages
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job status (and results, once done).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlastRadiusAnalysis'
+        '400':
+          description: Malformed analysisId (not a UUID).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No job with this analysisId.
           content:
             application/json:
               schema:

@@ -11,13 +11,14 @@ import { getAkritesExternalContactDetail } from '../packages/getAkritesExternalC
 import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExternalContactDetailBatch'
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
+import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
 import { submitBlastRadiusJob } from '../packages/submitBlastRadiusJob'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
 // Blast-radius jobs kick off a Temporal workflow per request, so they get their own,
-// much stricter limiter — configurable via env so it can be tuned without a redeploy
-// while the pipeline is still a no-op stub. Defaults to 5 requests/hour.
+// much stricter limiter — configurable via env so it can be tuned without a redeploy.
+// Defaults to 5 requests/hour.
 const blastRadiusRateLimitMax = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX)
 const blastRadiusRateLimitWindowMs = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_WINDOW_MS)
 
@@ -75,6 +76,7 @@ export function akritesExternalRouter(): Router {
   blastRadiusSubRouter.use(blastRadiusRateLimiter)
   blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES]))
   blastRadiusSubRouter.post('/jobs', safeWrap(submitBlastRadiusJob))
+  blastRadiusSubRouter.get('/jobs/:analysisId', safeWrap(getBlastRadiusJob))
   router.use('/blast-radius', blastRadiusSubRouter)
 
   return router

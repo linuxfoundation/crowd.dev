@@ -349,6 +349,24 @@ export async function insertDependents(
   }
 }
 
+// Actual range-excluded count (capped at the 200 rows insertDependents persists per
+// analysis) — distinct from candidates_considered, which is the phase-1 population
+// before stage 2's topN walk and includes candidates the walk never reached.
+export async function getDependentsExcludedByRangeCount(
+  qx: QueryExecutor,
+  analysisId: string,
+): Promise<number> {
+  const row = await qx.selectOne(
+    `
+    SELECT COUNT(*) as count
+    FROM blast_radius_dependents
+    WHERE analysis_id = $(analysisId) AND excluded_by_range = TRUE
+    `,
+    { analysisId },
+  )
+  return Number(row.count) || 0
+}
+
 export async function getDependentsNeedingVerdict(
   qx: QueryExecutor,
   analysisId: string,
@@ -416,6 +434,18 @@ export async function getVerdicts(
     `,
     { analysisId },
   )
+}
+
+export async function getVerdictsCost(qx: QueryExecutor, analysisId: string): Promise<number> {
+  const row = await qx.selectOne(
+    `
+    SELECT COALESCE(SUM(cost_usd), 0) as total_cost
+    FROM blast_radius_verdicts
+    WHERE analysis_id = $(analysisId)
+    `,
+    { analysisId },
+  )
+  return (row.total_cost as number) || 0
 }
 
 export async function getVerdictResults(

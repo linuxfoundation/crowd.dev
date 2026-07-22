@@ -71,7 +71,6 @@ export async function runReachabilityStage(
     // Process with concurrency limit (4)
     const concurrency = 4
     const queue = [...dependents]
-    const results: { cost: number; count: number } = { cost: 0, count: 0 }
 
     const upsertErrorVerdict = (dependentId: string, reasoning: string, model: string | null) =>
       blastRadiusDal.upsertVerdict(qx, {
@@ -99,8 +98,19 @@ export async function runReachabilityStage(
       const depDir = await mkdtemp(path.join(os.tmpdir(), `dep-${dep.name}-`))
 
       try {
-        // Download and extract
-        await downloadAndExtractTarball(dep.tarball_url, depDir)
+        // Download and extract. Isolated from the batch below — a single dependent's
+        // tarball failure (bad URL, registry 5xx, corrupt archive) must not reject the
+        // whole Promise.all and fail every other dependent in the batch.
+        try {
+          await downloadAndExtractTarball(dep.tarball_url, depDir)
+        } catch (err) {
+          await upsertErrorVerdict(
+            dep.id,
+            `Tarball download failed: ${err instanceof Error ? err.message : String(err)}`,
+            null,
+          )
+          return
+        }
 
         // Try agent up to MAX_ATTEMPTS times with exponential backoff
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -135,8 +145,6 @@ export async function runReachabilityStage(
                 costUsd: agentResult.costUsd || 0,
               })
 
-              results.cost += agentResult.costUsd || 0
-              results.count++
               return
             }
 
@@ -173,8 +181,12 @@ export async function runReachabilityStage(
       await Promise.all(batch.map(processOne))
     }
 
+    // Sum cost from persisted verdicts rather than tracking it locally — a resumed
+    // run only processes dependents still missing a verdict, so a local counter would
+    // drop the cost already spent (and recorded) on verdicts from prior attempts.
     const duration = Date.now() - startTime
-    await blastRadiusDal.completeStageRun(qx, analysisId, 'reachability', duration, results.cost)
+    const totalCost = await blastRadiusDal.getVerdictsCost(qx, analysisId)
+    await blastRadiusDal.completeStageRun(qx, analysisId, 'reachability', duration, totalCost)
   } catch (err) {
     const duration = Date.now() - startTime
     const errorMsg = err instanceof Error ? err.message : String(err)

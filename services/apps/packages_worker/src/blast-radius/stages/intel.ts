@@ -18,6 +18,7 @@ import {
   semverRangeEvents,
 } from '../clients/osvClient'
 import { asNpmVersionManifest } from '../npmManifest'
+import { toBareNpmName } from '../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../semverRange'
 
 export async function runIntelStage(
@@ -54,14 +55,21 @@ export async function runIntelStage(
 
     // Multi-package advisories list one npm entry per affected package — pick the one
     // the analysis was actually requested for, falling back to the first entry when no
-    // specific package was requested (analysis-wide advisory scan).
+    // specific package was requested (analysis-wide advisory scan). The request accepts
+    // either a bare name or a full purl (see blastRadiusJobRequestSchema), but OSV entries
+    // are always bare names, so the requested package must be normalized before comparing.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requestedPackage = analysisDetail?.package_name
+      ? toBareNpmName(analysisDetail.package_name)
+      : null
     const entry =
       (requestedPackage && npmEntries.find((e) => e.package.name === requestedPackage)) ||
       npmEntries[0]
     const package_ = entry.package.name
     const ecosystem = entry.package.ecosystem
+    const relatedAffectedPackages = npmEntries
+      .map((e) => e.package.name)
+      .filter((name) => name !== package_)
 
     // Fetch the registry packument so vulnerable-version resolution runs against versions
     // npm actually published, not just the OSV range's introduced/fixed boundary strings —
@@ -141,7 +149,7 @@ export async function runIntelStage(
         affectedRanges: ranges,
         vulnerableVersions,
         analyzedVersion: analyzed,
-        relatedAffectedPackages: [],
+        relatedAffectedPackages,
         vulnerableSymbols: (output.vulnerable_symbols || []) as Record<string, unknown>[],
         importSignatures: (output.import_signatures || {}) as Record<string, unknown>,
         exploitPreconditions: String(output.exploit_preconditions || ''),

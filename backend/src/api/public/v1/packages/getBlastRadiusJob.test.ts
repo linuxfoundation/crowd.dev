@@ -3,14 +3,18 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { getBlastRadiusJob } from './getBlastRadiusJob'
 
-const { getAnalysisDetail, getVerdictResults } = vi.hoisted(() => ({
-  getAnalysisDetail: vi.fn(),
-  getVerdictResults: vi.fn(),
-}))
+const { getAnalysisDetail, getVerdictResults, getDependentsExcludedByRangeCount } = vi.hoisted(
+  () => ({
+    getAnalysisDetail: vi.fn(),
+    getVerdictResults: vi.fn(),
+    getDependentsExcludedByRangeCount: vi.fn(),
+  }),
+)
 
 vi.mock('@crowd/data-access-layer/src/packages/blastRadius', () => ({
   getAnalysisDetail,
   getVerdictResults,
+  getDependentsExcludedByRangeCount,
 }))
 
 vi.mock('@/db/packagesDb', () => ({
@@ -22,6 +26,7 @@ const ANALYSIS_ID = '11111111-1111-4111-8111-111111111111'
 function mockReqRes(params: unknown) {
   getAnalysisDetail.mockClear()
   getVerdictResults.mockClear()
+  getDependentsExcludedByRangeCount.mockClear()
 
   const req = { params } as unknown as Request
 
@@ -51,6 +56,7 @@ describe('getBlastRadiusJob', () => {
     await getBlastRadiusJob(req, res)
 
     expect(getVerdictResults).not.toHaveBeenCalled()
+    expect(getDependentsExcludedByRangeCount).not.toHaveBeenCalled()
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
         analysisId: ANALYSIS_ID,
@@ -93,6 +99,7 @@ describe('getBlastRadiusJob', () => {
         reasoning: 'unused',
       },
     ])
+    getDependentsExcludedByRangeCount.mockResolvedValue(8)
 
     const { req, res, json } = mockReqRes({ analysisId: ANALYSIS_ID })
 
@@ -113,11 +120,13 @@ describe('getBlastRadiusJob', () => {
           expect.objectContaining({
             dependent: 'pkg:npm/benchmark.js',
             affected: true,
+            verdict: 'affected',
             confidence: 'high',
           }),
           expect.objectContaining({
             dependent: 'pkg:npm/other-pkg',
             affected: false,
+            verdict: 'not_affected',
             confidence: 'medium',
           }),
         ],

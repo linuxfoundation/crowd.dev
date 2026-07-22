@@ -25,8 +25,11 @@ export async function getBlastRadiusJob(req: Request, res: Response): Promise<vo
     throw new NotFoundError()
   }
 
-  const verdictRows =
-    analysis.status === 'done' ? await blastRadiusDal.getVerdictResults(qx, analysisId) : []
+  const done = analysis.status === 'done'
+  const verdictRows = done ? await blastRadiusDal.getVerdictResults(qx, analysisId) : []
+  const excludedByRangeCount = done
+    ? await blastRadiusDal.getDependentsExcludedByRangeCount(qx, analysisId)
+    : 0
 
-  ok(res, toBlastRadiusAnalysis(analysis, verdictRows))
+  ok(res, toBlastRadiusAnalysis(analysis, verdictRows, excludedByRangeCount))
 }
