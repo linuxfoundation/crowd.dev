@@ -23,4 +23,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE members_sorted
 COPY_MODE replace
-COPY_SCHEDULE 8 * * * *
+COPY_SCHEDULE 36 * * * *
