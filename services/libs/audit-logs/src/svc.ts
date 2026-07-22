@@ -9,10 +9,7 @@ import { IS_PROD_ENV, SERVICE, generateUUIDv1 } from '../../common/src'
 
 import { BuildActionFn } from './baseActions'
 
-/**
- * Builds audit options from a request
- */
-export function getAuditLogOptions(
+export function buildAuditLogOptions(
   options?: {
     actor?: { id?: string | null; type?: ActorType }
     currentUser?: { id?: string | null }
@@ -81,7 +78,7 @@ export async function captureApiChange<T>(
 ): Promise<T> {
   let skip = skipAuditLog
 
-  const auditOptions = getAuditLogOptions(options)
+  const auditOptions = buildAuditLogOptions(options)
 
   if (!auditOptions && !IS_PROD_ENV) {
     skip = true

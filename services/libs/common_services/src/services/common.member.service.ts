@@ -3,8 +3,8 @@ import pick from 'lodash.pick'
 import moment from 'moment'
 
 import {
+  buildAuditLogOptions,
   captureApiChange,
-  getAuditLogOptions,
   memberEditOrganizationsAction,
   memberMergeAction,
 } from '@crowd/audit-logs'
@@ -316,7 +316,7 @@ export class CommonMemberService extends LoggerBase {
       }
     }
 
-    const actorId = getAuditLogOptions(options)?.actorId
+    const actorId = buildAuditLogOptions(options)?.actorId
 
     const mergeActions = await queryMergeActions(this.qx, {
       fields: ['id', 'state'],
