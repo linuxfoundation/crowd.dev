@@ -111,7 +111,7 @@ export async function runIntelStage(
       for (const url of patchUrls.slice(0, 3)) {
         try {
           const patchText = await fetchPatch(url)
-          const slug = url.split('/').slice(-2).join('-')
+          const slug = new URL(url).pathname.split('/').filter(Boolean).join('-')
           patches[slug] = patchText
         } catch {
           // Ignore patch fetch errors

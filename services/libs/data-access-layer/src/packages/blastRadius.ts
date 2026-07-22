@@ -140,7 +140,7 @@ export async function markAnalysisRunning(qx: QueryExecutor, analysisId: string)
   await qx.result(
     `
     UPDATE blast_radius_analyses
-    SET status = 'running', started_at = NOW(), updated_at = NOW()
+    SET status = 'running', updated_at = NOW()
     WHERE id = $(analysisId) AND status = 'pending'
     `,
     { analysisId },
@@ -203,12 +203,13 @@ export async function resolveAdvisoryAndPackageIds(
     `
     UPDATE blast_radius_analyses bra
     SET
-      advisory_id = COALESCE(a.id, bra.advisory_id),
+      advisory_id = COALESCE(
+        (SELECT id FROM advisories WHERE osv_id = $(advisoryOsvId)),
+        bra.advisory_id
+      ),
       package_id = COALESCE($(packageId), bra.package_id),
       updated_at = NOW()
-    FROM advisories a
     WHERE bra.id = $(analysisId)
-      AND a.osv_id = $(advisoryOsvId)
     `,
     { analysisId, advisoryOsvId, packageId },
   )

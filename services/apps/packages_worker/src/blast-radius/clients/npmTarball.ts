@@ -91,9 +91,8 @@ export async function downloadAndExtractTarball(
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true })
     }
-  } catch (err) {
+  } finally {
     clearTimeout(timeoutHandle)
-    throw err
   }
 }
 

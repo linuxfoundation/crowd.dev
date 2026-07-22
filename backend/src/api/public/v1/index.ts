@@ -43,8 +43,7 @@ export function v1Router(): Router {
   router.use('/ossprey', oauth2Middleware(AUTH0_CONFIG), osspreyRouter())
 
   router.use('/akrites', oauth2Middleware(AUTH0_CONFIG), akritesRouter())
-  router.use('/akrites-external', akritesExternalRouter())
-  // router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
+  router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
 
   router.use(() => {
     throw new NotFoundError()

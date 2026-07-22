@@ -72,7 +72,12 @@ export async function runReachabilityStage(
     const concurrency = 4
     const queue = [...dependents]
 
-    const upsertErrorVerdict = (dependentId: string, reasoning: string, model: string | null) =>
+    const upsertErrorVerdict = (
+      dependentId: string,
+      reasoning: string,
+      model: string | null,
+      costUsd = 0,
+    ) =>
       blastRadiusDal.upsertVerdict(qx, {
         analysisId,
         dependentId,
@@ -85,7 +90,7 @@ export async function runReachabilityStage(
         reasoning,
         model,
         turnsUsed: null,
-        costUsd: 0,
+        costUsd,
       })
 
     const processOne = async (dep: blastRadiusDal.DependentRow): Promise<void> => {
@@ -114,7 +119,11 @@ export async function runReachabilityStage(
           return
         }
 
-        // Try agent up to MAX_ATTEMPTS times with exponential backoff
+        // Try agent up to MAX_ATTEMPTS times with exponential backoff. costUsd is
+        // accumulated across attempts — a persistent failure still spends real money
+        // on every retry, and that spend must show up in the verdict/stage/analysis
+        // totals even though only the last attempt's outcome is persisted.
+        let accumulatedCost = 0
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
           try {
             const systemPrompt = buildReachabilitySystemPrompt(spec)
@@ -129,6 +138,7 @@ export async function runReachabilityStage(
               timeoutMs: 600_000,
               onProgress,
             })
+            accumulatedCost += agentResult.costUsd || 0
 
             if (!agentResult.isError && agentResult.structuredOutput) {
               const output = agentResult.structuredOutput
@@ -145,7 +155,7 @@ export async function runReachabilityStage(
                 reasoning: String(output.reasoning || ''),
                 model: 'claude-sonnet-5',
                 turnsUsed: agentResult.numTurns,
-                costUsd: agentResult.costUsd || 0,
+                costUsd: accumulatedCost,
               })
 
               return
@@ -161,6 +171,7 @@ export async function runReachabilityStage(
                 dep.id,
                 `Agent failed: ${err instanceof Error ? err.message : String(err)}`,
                 'claude-sonnet-5',
+                accumulatedCost,
               )
               return
             }

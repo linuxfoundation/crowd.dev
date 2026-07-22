@@ -99,13 +99,16 @@ function toResultItem(row: VerdictResultRow): BlastRadiusResultItem {
 // candidates the topN walk never reached (so candidatesConsidered - analyzed
 // overstates range exclusions). dependentsAnalyzed = number of verdicts produced,
 // dependentsAffected = count with an 'affected' verdict, affectedPercentage rounded
-// to 1 decimal (null when nothing was analyzed, to avoid a misleading 0%).
+// to 1 decimal — computed over conclusive verdicts only (affected/not_affected), so
+// persistent agent/tarball failures ('unclear') don't drag it toward a misleading 0%.
+// null when nothing conclusive was analyzed.
 function toSummary(
   dependentsExcludedUpfront: number,
   results: BlastRadiusResultItem[],
 ): BlastRadiusAnalysisSummary {
   const dependentsAnalyzed = results.length
   const affected = results.filter((r) => r.affected)
+  const conclusive = results.filter((r) => r.verdict !== 'unclear')
 
   return {
     totalDependentsInRange: dependentsAnalyzed + dependentsExcludedUpfront,
@@ -113,8 +116,8 @@ function toSummary(
     dependentsAnalyzed,
     dependentsAffected: affected.length,
     affectedPercentage:
-      dependentsAnalyzed > 0
-        ? Math.round((affected.length / dependentsAnalyzed) * 1000) / 10
+      conclusive.length > 0
+        ? Math.round((affected.length / conclusive.length) * 1000) / 10
         : null,
     affectedDependents: affected.map((r) => r.dependent),
   }
