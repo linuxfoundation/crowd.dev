@@ -29,10 +29,12 @@ WHERE group_size > 1;
 CREATE INDEX ON repo_merge_members (repo_id);
 ANALYZE repo_merge_members;
 
--- Keep one link per (package, group): the keeper's if it exists, else the most
--- recently verified. ROW_NUMBER instead of an EXISTS check against the keeper
--- because 3-variant groups exist: two losers linking the same package would
--- collide on UNIQUE (package_id, repo_id) after the re-point below.
+-- Keep one link per (package, group), ranked the way consumers pick links
+-- (sqlFragments bestRepoLink: confidence DESC, declared-on-ties) so the merge
+-- preserves the strongest provenance; keeper status only breaks full ties.
+-- ROW_NUMBER instead of an EXISTS check against the keeper because 3-variant
+-- groups exist: two losers linking the same package would collide on
+-- UNIQUE (package_id, repo_id) after the re-point below.
 DELETE FROM package_repos
 WHERE id IN (
     SELECT id
@@ -40,7 +42,8 @@ WHERE id IN (
         SELECT pr.id,
                ROW_NUMBER() OVER (
                    PARTITION BY m.keeper_id, pr.package_id
-                   ORDER BY m.is_keeper DESC, pr.verified_at DESC, pr.id
+                   ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC,
+                            m.is_keeper DESC, pr.verified_at DESC, pr.id
                ) AS rn
         FROM package_repos pr
         JOIN repo_merge_members m ON m.repo_id = pr.repo_id
@@ -65,6 +68,18 @@ USING repo_merge_members m
 WHERE c.repo_id = m.repo_id
   AND NOT m.is_keeper;
 
+-- packages.repository_url is denormalized and must keep matching the
+-- canonical repos.url (the maven backfill updates the two atomically for the
+-- same reason). Match against member urls while the loser rows still exist;
+-- last_synced_at is the packages watermark, bumping it ships the correction
+-- to Tinybird.
+UPDATE packages p
+SET repository_url = LOWER(p.repository_url), last_synced_at = NOW()
+FROM repo_merge_members m
+JOIN repos r ON r.id = m.repo_id
+WHERE p.repository_url = r.url
+  AND p.repository_url <> LOWER(p.repository_url);
+
 -- Cascades security_contacts and repo_activity_snapshot on losers.
 DELETE FROM repos r
 USING repo_merge_members m
@@ -81,12 +96,6 @@ WHERE r.id = m.repo_id
   AND m.is_keeper
   AND r.url <> LOWER(r.url);
 
--- Recurrence guard; also fails the migration if any duplicate survived the
--- merge. GitHub-only: it is the only host with both confirmed duplicates and
--- guaranteed lowercase-on-write today (CASE_INSENSITIVE_HOSTS in
--- canonicalizeRepoUrl also covers gitlab.com, whose merge is a follow-up).
--- On other hosts case can be significant and writers do not normalize, so a
--- wider index could reject legitimately distinct repos.
-CREATE UNIQUE INDEX IF NOT EXISTS repos_github_lower_url_uq
-    ON repos (LOWER(url))
-    WHERE host = 'github';
+-- The recurrence-guard unique index lives in the next migration: it must be
+-- built CONCURRENTLY (repos takes continuous worker writes), which cannot run
+-- inside this transaction.
