@@ -1,3 +1,7 @@
+import { getServiceChildLogger } from '@crowd/logging'
+
+const log = getServiceChildLogger('security-contacts:http')
+
 // crates.io rejects requests without a descriptive User-Agent (HTTP 403); harmless elsewhere.
 // https://crates.io/policies#crawlers
 export function registryHeaders(userAgent: string): Record<string, string> {
@@ -11,6 +15,24 @@ const ABSENT_STATUSES = new Set([404, 410, 422, 451])
 // Retried in-process (honoring Retry-After) so a brief throttle doesn't cost a whole cadence.
 const RATE_LIMIT_STATUSES = new Set([429, 503])
 const MAX_RATE_LIMIT_RETRIES = 3
+
+// A registry throttling event hits every in-flight request at once (batch concurrency is ~100),
+// so waits are logged at most once per host per interval to keep visibility without the burst.
+const RATE_LIMIT_LOG_INTERVAL_MS = 10_000
+const lastRateLimitLogAt = new Map<string, number>()
+
+function logRateLimitWait(url: string, status: number, attempt: number, waitMs: number): void {
+  let host: string
+  try {
+    host = new URL(url).hostname
+  } catch {
+    host = url
+  }
+  const now = Date.now()
+  if ((lastRateLimitLogAt.get(host) ?? 0) > now - RATE_LIMIT_LOG_INTERVAL_MS) return
+  lastRateLimitLogAt.set(host, now)
+  log.warn({ host, status, attempt: attempt + 1, waitMs }, 'Registry rate limited — backing off')
+}
 
 async function fetchWithRetry(
   url: string,
@@ -29,6 +51,7 @@ async function fetchWithRetry(
     if (!RATE_LIMIT_STATUSES.has(res.status) || attempt >= MAX_RATE_LIMIT_RETRIES) return res
     const retryAfterSec = parseInt(res.headers.get('retry-after') ?? '0', 10)
     const waitMs = retryAfterSec ? retryAfterSec * 1000 : Math.min(30_000, 1_000 * 2 ** attempt)
+    logRateLimitWait(url, res.status, attempt, waitMs)
     await new Promise((r) => setTimeout(r, waitMs))
   }
 }

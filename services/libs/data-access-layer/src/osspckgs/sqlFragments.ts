@@ -40,7 +40,7 @@ export const SECURITY_CONTACTS_SUBQUERY = `(
         FROM (
           SELECT channel, value, role, confidence, score
           FROM security_contacts
-          WHERE repo_id = pr.repo_id AND deleted_at IS NULL
+          WHERE repo_id = pr.repo_id AND deleted_at IS NULL AND reachable
           ORDER BY score DESC
           LIMIT 5
         ) sc

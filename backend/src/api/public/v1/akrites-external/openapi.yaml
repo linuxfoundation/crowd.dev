@@ -10,7 +10,10 @@ info:
 
 
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
-    is specced separately and not yet built.
+    submit (2a) is implemented but the reachability pipeline is not built yet —
+    every submitted job currently fails with an ECOSYSTEM_NOT_SUPPORTED error
+    once the underlying workflow runs. Poll (2b), the 7-day result cache, and
+    the actual analysis are specced separately and not yet built.
 
 
     TODO: scopes below (read:packages, read:stewardships) are the existing
@@ -45,6 +48,16 @@ tags:
       it, the implementation requires read:maintainer-roles (NOT read:packages).
       The response shape is still under discussion upstream (reportingMethods /
       reportingGuidelines / integrationHints are reserved and always null today).
+  - name: Blast Radius
+    description: >
+      Advisory reachability analysis — submit (2a) is implemented; poll (2b) is
+      not built yet. Submitting kicks off a Temporal workflow which currently
+      fails every job with ECOSYSTEM_NOT_SUPPORTED, since the reachability
+      pipeline itself hasn't shipped. Rate-limited independently of the other
+      akrites-external endpoints (default 5 requests/hour, configurable via
+      AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX / _WINDOW_MS). Same interim scope
+      note as Advisories applies (read:packages, pending a dedicated
+      read:advisories scope).
 
 components:
   securitySchemes:
@@ -360,6 +373,63 @@ components:
           nullable: true
           allOf:
             - $ref: '#/components/schemas/AdvisoryDetail'
+
+    BlastRadiusJobRequest:
+      type: object
+      required: [advisoryId, ecosystem]
+      properties:
+        advisoryId:
+          type: string
+          pattern: '^(GHSA-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}|CVE-\d{4}-\d{4,})$'
+          description: >
+            GHSA or CVE identifier. Any other format, including free-text
+            strings, is rejected with a 400.
+          example: GHSA-jf85-cpcp-j695
+        ecosystem:
+          type: string
+          enum: [npm]
+          description: >
+            Required. The reachability pipeline is npm-only today — any other
+            value, or a missing ecosystem, is rejected with a 400.
+          example: npm
+        package:
+          type: string
+          nullable: true
+          description: >
+            Optional. Full purl or bare package name. If omitted, the analysis
+            is advisory-wide: reachability is evaluated across every package
+            the advisory affects, returned as one aggregate result — not one
+            job per affected package.
+        force:
+          type: boolean
+          default: false
+          description: Bypasses the 7-day cache and always triggers a new run. Use sparingly.
+
+    BlastRadiusJobEntry:
+      type: object
+      required: [analysisId, advisoryId, package, ecosystem, status]
+      description: Response body of 2a — one job per request, never wrapped in an array.
+      properties:
+        analysisId:
+          type: string
+          description: Opaque identifier for polling via 2b (not yet implemented).
+        advisoryId:
+          type: string
+        package:
+          type: string
+          nullable: true
+          description: Echoes the request's package. Null when the request omitted it.
+        ecosystem:
+          type: string
+          enum: [npm]
+          description: Echoes the request's ecosystem. Always present — the request requires it.
+        status:
+          type: string
+          enum: [pending, running, done, failed]
+          description: >
+            Always pending today — every job starts a Temporal workflow that
+            currently fails with ECOSYSTEM_NOT_SUPPORTED once it runs, since
+            the reachability pipeline isn't built yet.
 
     ContactConfidenceBand:
       type: string
@@ -801,6 +871,65 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:
+    post:
+      operationId: submitBlastRadiusJob
+      summary: 2a — Submit a blast-radius analysis job
+      description: >
+        Always exactly one job per request — no bulk submit. Omit package for
+        an advisory-wide analysis; provide it to narrow to a single package.
+
+
+        Not yet implemented: the 7-day result cache, force-bypass semantics,
+        and the actual reachability pipeline. Today every submission starts a
+        fresh Temporal workflow that fails with ECOSYSTEM_NOT_SUPPORTED — the
+        job is accepted and echoed back as pending, but never completes.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobRequest'
+      responses:
+        '202':
+          description: Job accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlastRadiusJobEntry'
+        '400':
+          description: >
+            Validation error (missing/empty advisoryId), or an unsupported
+            ecosystem — only npm is supported today, so any other value
+            (including a missing ecosystem) is rejected before a workflow
+            is started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
           content:
             application/json:
               schema:
