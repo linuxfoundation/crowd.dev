@@ -1,6 +1,6 @@
-# ADR-0009: Akrites → CDP public API authentication
+# ADR-0010: Akrites → CDP public API authentication
 
-**Date**: 2026-07-21
+**Date**: 2026-07-22
 **Status**: proposed
 **Deciders**: CDP team, LF Auth, Akrites team
 
