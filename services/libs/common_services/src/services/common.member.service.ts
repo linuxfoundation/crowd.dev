@@ -3,6 +3,7 @@ import pick from 'lodash.pick'
 import moment from 'moment'
 
 import {
+  buildAuditLogOptions,
   captureApiChange,
   memberEditOrganizationsAction,
   memberMergeAction,
@@ -19,6 +20,7 @@ import {
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
+  ActorType,
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
@@ -315,6 +317,11 @@ export class CommonMemberService extends LoggerBase {
       }
     }
 
+    const audit = buildAuditLogOptions(options)
+
+    const actorId = audit?.actorId
+    const notifyUserId = audit?.actorType === ActorType.USER ? actorId : undefined
+
     const mergeActions = await queryMergeActions(this.qx, {
       fields: ['id', 'state'],
       filter: {
@@ -386,7 +393,7 @@ export class CommonMemberService extends LoggerBase {
             MergeActionStep.MERGE_STARTED,
             MergeActionState.IN_PROGRESS,
             backup,
-            options?.currentUser?.id,
+            actorId,
           )
 
           await this.qx.tx(async (txQx) => {
@@ -469,13 +476,7 @@ export class CommonMemberService extends LoggerBase {
         retry: {
           maximumAttempts: 10,
         },
-        args: [
-          originalId,
-          toMergeId,
-          original.displayName,
-          toMerge.displayName,
-          options?.currentUser?.id,
-        ],
+        args: [originalId, toMergeId, original.displayName, toMerge.displayName, notifyUserId],
         searchAttributes: {
           TenantId: [DEFAULT_TENANT_ID],
         },

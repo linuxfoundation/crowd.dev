@@ -1,4 +1,4 @@
-import lodash, { chunk, uniq } from 'lodash'
+import lodash, { uniq } from 'lodash'
 import Sequelize, { QueryTypes } from 'sequelize'
 
 import {
@@ -29,7 +29,7 @@ import {
 } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import { findMaintainerRoles } from '@crowd/data-access-layer/src/maintainers'
-import { addMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import { insertMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
@@ -86,7 +86,7 @@ import MemberAttributeSettingsRepository from './memberAttributeSettingsReposito
 import SegmentRepository from './segmentRepository'
 import SequelizeRepository from './sequelizeRepository'
 import TenantRepository from './tenantRepository'
-import { IMemberMergeSuggestion, mapUsernameToIdentities } from './types/memberTypes'
+import { mapUsernameToIdentities } from './types/memberTypes'
 
 const { Op } = Sequelize
 
@@ -581,72 +581,6 @@ class MemberRepository {
     }
   }
 
-  static async addToMerge(
-    suggestions: IMemberMergeSuggestion[],
-    options: IRepositoryOptions,
-  ): Promise<void> {
-    const transaction = SequelizeRepository.getTransaction(options)
-    const seq = SequelizeRepository.getSequelize(options)
-
-    // Remove possible duplicates
-    suggestions = lodash.uniqWith(suggestions, (a, b) =>
-      lodash.isEqual(lodash.sortBy(a.members), lodash.sortBy(b.members)),
-    )
-
-    // Process suggestions in chunks of 100 or less
-    const suggestionChunks = chunk(suggestions, 100)
-
-    const insertValues = (
-      memberId: string,
-      toMergeId: string,
-      similarity: number | null,
-      index: number,
-    ) => {
-      const idPlaceholder = (key: string) => `${key}${index}`
-      return {
-        query: `(:${idPlaceholder('memberId')}, :${idPlaceholder('toMergeId')}, :${idPlaceholder(
-          'similarity',
-        )}, NOW(), NOW())`,
-        replacements: {
-          [idPlaceholder('memberId')]: memberId,
-          [idPlaceholder('toMergeId')]: toMergeId,
-          [idPlaceholder('similarity')]: similarity === null ? null : similarity,
-        },
-      }
-    }
-
-    for (const suggestionChunk of suggestionChunks) {
-      const placeholders: string[] = []
-      let replacements: Record<string, unknown> = {}
-
-      suggestionChunk.forEach((suggestion, index) => {
-        const { query, replacements: chunkReplacements } = insertValues(
-          suggestion.members[0],
-          suggestion.members[1],
-          suggestion.similarity,
-          index,
-        )
-        placeholders.push(query)
-        replacements = { ...replacements, ...chunkReplacements }
-      })
-
-      const query = `
-        INSERT INTO "memberToMerge" ("memberId", "toMergeId", "similarity", "createdAt", "updatedAt")
-        VALUES ${placeholders.join(', ')} on conflict do nothing;
-      `
-      try {
-        await seq.query(query, {
-          replacements,
-          type: QueryTypes.INSERT,
-          transaction,
-        })
-      } catch (error) {
-        options.log.error('error adding members to merge', error)
-        throw error
-      }
-    }
-  }
-
   static async removeToMerge(id, toMergeId, options: IRepositoryOptions) {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
@@ -656,7 +590,7 @@ class MemberRepository {
   static async addNoMerge(id, toMergeId, options: IRepositoryOptions) {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
-    await addMemberNoMerge(qx, id, toMergeId)
+    await insertMemberNoMerge(qx, id, toMergeId)
   }
 
   static async memberExists(
