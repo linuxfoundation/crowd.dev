@@ -71,6 +71,7 @@ async def acquire_onboarding_list() -> MailingList | None:
         SELECT l.id
         FROM mailinglist.lists l
         JOIN mailinglist."listProcessing" lp ON lp."listId" = l.id
+        JOIN public.integrations i ON i.id = l."integrationId"
         CROSS JOIN current_onboarding_count c
         WHERE (
             (lp.state = $2 AND lp."lockedAt" IS NULL)
@@ -81,6 +82,7 @@ async def acquire_onboarding_list() -> MailingList | None:
             )
         )
             AND l."deletedAt" IS NULL
+            AND i."deletedAt" IS NULL
             AND c.count < $3
         ORDER BY lp.priority ASC, lp."createdAt" ASC
         LIMIT 1
@@ -118,6 +120,7 @@ async def acquire_recurrent_list() -> MailingList | None:
         SELECT l.id
         FROM mailinglist.lists l
         JOIN mailinglist."listProcessing" lp ON lp."listId" = l.id
+        JOIN public.integrations i ON i.id = l."integrationId"
         WHERE (
             (
                 NOT (lp.state = ANY($2))
@@ -132,6 +135,7 @@ async def acquire_recurrent_list() -> MailingList | None:
             )
         )
             AND l."deletedAt" IS NULL
+            AND i."deletedAt" IS NULL
         ORDER BY lp.priority ASC, lp."lastProcessedAt" ASC
         LIMIT 1
         FOR UPDATE OF lp SKIP LOCKED
