@@ -67,7 +67,7 @@ export interface RepoTarget {
 
 export interface GithubGetResult {
   status: number
-  /** Null for absent resources (404/410/422/451). */
+  /** Null for absent resources (404/410/422/451) or a status listed in extraOkStatuses. */
   text: string | null
 }
 
@@ -75,7 +75,12 @@ export interface ExtractorDeps {
   fetchTimeoutMs: number
   /** Required — crates.io rejects requests without an identifying UA. */
   userAgent: string
-  githubGet: (path: string, opts?: { raw?: boolean }) => Promise<GithubGetResult>
+  /** extraOkStatuses: additional statuses to return as {status, text: null} instead of throwing —
+   *  e.g. 202 for endpoints (like /stats/contributors) that mean "still computing", not absent. */
+  githubGet: (
+    path: string,
+    opts?: { raw?: boolean; extraOkStatuses?: number[] },
+  ) => Promise<GithubGetResult>
   /** Default-branch file paths from one git-tree call; null means unresolved — probe as before. */
   repoTree: { paths: Set<string> | null }
 }
