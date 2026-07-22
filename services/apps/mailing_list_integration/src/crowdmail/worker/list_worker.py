@@ -75,7 +75,7 @@ async def _process_single_list(mailing_list: MailingList):
     state = ListState.FAILED
 
     try:
-        list_dir = await ensure_mirror(mailing_list.name, mailing_list.source_url)
+        list_dir = await ensure_mirror(mailing_list.id, mailing_list.name, mailing_list.source_url)
         heads = dict(mailing_list.last_processed_heads)
         activities_db = []
         activities_kafka = []

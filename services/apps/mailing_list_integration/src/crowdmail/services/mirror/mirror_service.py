@@ -77,33 +77,40 @@ async def _run_shell_command(cmd: list[str], cwd: str | None = None, timeout: fl
 MAX_LIST_NAME_LENGTH = 255
 
 
-def _validate_list_name(list_name: str) -> None:
+def _validate_list_id(list_id: str) -> None:
     """Reject anything that could escape the mirror root as a path component.
 
-    `list_name` becomes a single os.path.join component (no separators
+    `list_id` becomes a single os.path.join component (no separators
     allowed), so the only way it can resolve outside `mirror_dir` is by being
     exactly "." or "..". Everything else is a literal directory name.
     """
     if (
-        not list_name
-        or len(list_name) > MAX_LIST_NAME_LENGTH
-        or "/" in list_name
-        or "\0" in list_name
-        or list_name in (".", "..")
+        not list_id
+        or len(list_id) > MAX_LIST_NAME_LENGTH
+        or "/" in list_id
+        or "\0" in list_id
+        or list_id in (".", "..")
     ):
-        raise ValidationError(f"Invalid mailing list name: {list_name!r}")
+        raise ValidationError(f"Invalid mailing list id: {list_id!r}")
 
 
-def list_mirror_dir(list_name: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
-    """Local directory where a lore list mirror lives."""
-    _validate_list_name(list_name)
-    return os.path.join(mirror_dir, list_name)
+def list_mirror_dir(list_id: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
+    """Local directory where a lore list mirror lives, keyed by the list's DB id.
+
+    Keyed by id (unique PK), not the user-supplied `name` — two lists can
+    share a name across different integrations/sourceUrls, which would
+    otherwise let them silently clobber each other's on-disk mirror.
+    """
+    _validate_list_id(list_id)
+    return os.path.join(mirror_dir, list_id)
 
 
 @retry_on_mirror_error
-async def ensure_mirror(list_name: str, source_url: str, mirror_dir: str = LORE_MIRROR_DIR) -> str:
+async def ensure_mirror(
+    list_id: str, list_name: str, source_url: str, mirror_dir: str = LORE_MIRROR_DIR
+) -> str:
     """Clone the list mirror if it's absent, otherwise fetch new commits. Returns the list dir."""
-    list_dir = list_mirror_dir(list_name, mirror_dir)
+    list_dir = list_mirror_dir(list_id, mirror_dir)
     if not os.path.isdir(list_dir):
         clone_url = source_url.rstrip("/") + "/"
         logger.info(f"Cloning lore list '{list_name}' from {clone_url} into {list_dir}")
