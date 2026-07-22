@@ -219,9 +219,13 @@ async def release_list(list_id: str) -> None:
 
 
 async def batch_insert_activities(records: list[tuple], batch_size=100) -> None:
+    # id is deterministic per (integrationId, shard, git commit) — ON CONFLICT DO
+    # NOTHING makes a retried batch (after a crash or a Kafka-send failure) idempotent
+    # instead of inserting duplicate rows for the same messages.
     sql_query = """
     INSERT INTO integration.results(id, state, data, "tenantId", "integrationId")
     values($1, $2, $3, $4, $5)
+    ON CONFLICT (id) DO NOTHING
     """
     logger.info(f"Saving {len(records)} activities into integration.results")
     for i in range(0, len(records), batch_size):

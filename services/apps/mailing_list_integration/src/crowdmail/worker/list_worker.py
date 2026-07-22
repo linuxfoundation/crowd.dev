@@ -120,7 +120,15 @@ class ListWorker:
                         continue
                     activity_data["segmentId"] = mailing_list.segment_id
 
-                    result_id = str(uuid.uuid1())
+                    # Deterministic (not random) so a retried batch after a crash or a
+                    # Kafka-send failure re-inserts the exact same row instead of a
+                    # duplicate, per commit id which is stable across retries.
+                    result_id = str(
+                        uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"{mailing_list.integration_id}:{shard}:{git_id}",
+                        )
+                    )
                     data_dict = {"type": IntegrationResultType.ACTIVITY, "data": activity_data}
                     activities_db.append(
                         (
