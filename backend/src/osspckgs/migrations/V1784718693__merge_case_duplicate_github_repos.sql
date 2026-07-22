@@ -70,14 +70,15 @@ WHERE c.repo_id = m.repo_id
 
 -- packages.repository_url is denormalized and must keep matching the
 -- canonical repos.url (the maven backfill updates the two atomically for the
--- same reason). Match against member urls while the loser rows still exist;
--- last_synced_at is the packages watermark, bumping it ships the correction
--- to Tinybird.
+-- same reason). Joined on repos directly, not the merge map, so it also
+-- covers packages pointing at mixed-case singletons normalized below; runs
+-- while loser urls still exist to match against. last_synced_at is the
+-- packages watermark, bumping it ships the correction to Tinybird.
 UPDATE packages p
 SET repository_url = LOWER(p.repository_url), last_synced_at = NOW()
-FROM repo_merge_members m
-JOIN repos r ON r.id = m.repo_id
-WHERE p.repository_url = r.url
+FROM repos r
+WHERE r.host = 'github'
+  AND p.repository_url = r.url
   AND p.repository_url <> LOWER(p.repository_url);
 
 -- Cascades security_contacts and repo_activity_snapshot on losers.
@@ -86,14 +87,17 @@ USING repo_merge_members m
 WHERE r.id = m.repo_id
   AND NOT m.is_keeper;
 
--- Groups that had no lowercase variant: lowercase the surviving row. Safe
--- against UNIQUE (url) — every row sharing LOWER(url) was in the same group,
--- and its losers are gone by now.
+-- Lowercase every surviving mixed-case github url: keepers whose group had
+-- no lowercase variant, plus mixed-case singletons that never had a
+-- duplicate. Singletons must be normalized before the guard index exists —
+-- writers upsert with ON CONFLICT (url), which does not arbitrate on the
+-- LOWER(url) index, so a later insert of the same repo's canonical lowercase
+-- url (all writers lowercase now) would raise unique_violation instead of
+-- upserting. Safe against UNIQUE (url): any two rows sharing LOWER(url) were
+-- a group above, and their losers are gone by now.
 UPDATE repos r
 SET url = LOWER(r.url), updated_at = NOW()
-FROM repo_merge_members m
-WHERE r.id = m.repo_id
-  AND m.is_keeper
+WHERE r.host = 'github'
   AND r.url <> LOWER(r.url);
 
 -- The recurrence-guard unique index lives in the next migration: it must be

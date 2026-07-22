@@ -13,7 +13,9 @@
 --
 -- A failed concurrent build leaves an INVALID index behind; the DROP lets a
 -- re-run replace it, where IF NOT EXISTS would silently keep the broken one.
-DROP INDEX IF EXISTS repos_github_lower_url_uq;
+-- Also CONCURRENTLY: a plain drop takes an ACCESS EXCLUSIVE lock on repos,
+-- stalling the workers on the retry path this exists for.
+DROP INDEX CONCURRENTLY IF EXISTS repos_github_lower_url_uq;
 
 CREATE UNIQUE INDEX CONCURRENTLY repos_github_lower_url_uq
     ON repos (LOWER(url))
