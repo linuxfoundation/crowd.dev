@@ -470,7 +470,7 @@ components:
       properties:
         totalDependentsInRange:
           type: integer
-          description: Dependents considered after the phase-1 range filter (Stage 2's population before its top-N cutoff).
+          description: Sum of dependentsAnalyzed and dependentsExcludedUpfront; the count of dependents that fell within the vulnerable version range (before top-N cutoff was applied).
         dependentsExcludedUpfront:
           type: integer
           description: totalDependentsInRange minus dependentsAnalyzed.

@@ -38,20 +38,39 @@ export async function submitBlastRadiusJob(req: Request, res: Response): Promise
   // one (req.temporal) — starting it there would leave the workflow queued forever.
   const packagesTemporal = await getPackagesTemporalClient()
 
-  await packagesTemporal.workflow.start('analyzeBlastRadius', {
-    taskQueue: 'blast-radius-worker',
-    workflowId: `${TemporalWorkflowId.BLAST_RADIUS_ANALYSIS}/${analysisId}`,
-    retry: { maximumAttempts: 1 },
-    args: [
+  try {
+    await packagesTemporal.workflow.start('analyzeBlastRadius', {
+      taskQueue: 'blast-radius-worker',
+      workflowId: `${TemporalWorkflowId.BLAST_RADIUS_ANALYSIS}/${analysisId}`,
+      retry: { maximumAttempts: 1 },
+      args: [
+        {
+          analysisId,
+          advisoryId: body.advisoryId,
+          package: jobPackage,
+          ecosystem: jobEcosystem,
+          force: body.force,
+        } satisfies ITriggerBlastRadiusAnalysis,
+      ],
+    })
+  } catch (err) {
+    // Without this, a workflow.start failure (Temporal unreachable, task queue
+    // misconfigured, etc.) leaves the row created above stuck 'pending' forever —
+    // no workflow ever runs to mark it failed, so poll never reaches a terminal state.
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    await blastRadiusDal.failAnalysis(
+      qx,
       {
-        analysisId,
-        advisoryId: body.advisoryId,
-        package: jobPackage,
+        id: analysisId,
+        advisoryOsvId: body.advisoryId,
+        packageName: jobPackage,
         ecosystem: jobEcosystem,
         force: body.force,
-      } satisfies ITriggerBlastRadiusAnalysis,
-    ],
-  })
+      },
+      errorMessage,
+    )
+    throw err
+  }
 
   // 202, not the shared ok() helper (200) — the contract accepts the job, it does
   // not return a completed result.

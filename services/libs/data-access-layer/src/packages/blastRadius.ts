@@ -34,7 +34,7 @@ export interface SymbolSpecInput {
 
 export interface DependentInput {
   analysisId: string
-  packageId: number | null
+  packageId: string | null
   name: string
   version: string | null
   downloads: number | null

@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { submitBlastRadiusJob } from './submitBlastRadiusJob'
 
-const { start, createAnalysis } = vi.hoisted(() => ({
+const { start, createAnalysis, failAnalysis } = vi.hoisted(() => ({
   start: vi.fn().mockResolvedValue(undefined),
   createAnalysis: vi.fn().mockResolvedValue(undefined),
+  failAnalysis: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/db/packagesTemporal', () => ({
@@ -18,11 +19,13 @@ vi.mock('@/db/packagesDb', () => ({
 
 vi.mock('@crowd/data-access-layer/src/packages/blastRadius', () => ({
   createAnalysis,
+  failAnalysis,
 }))
 
 function mockReqRes(body: unknown) {
   start.mockClear()
   createAnalysis.mockClear()
+  failAnalysis.mockClear()
 
   const req = { body } as unknown as Request
 
@@ -128,5 +131,25 @@ describe('submitBlastRadiusJob', () => {
     await expect(submitBlastRadiusJob(req, res)).rejects.toThrow()
     expect(start).not.toHaveBeenCalled()
     expect(createAnalysis).not.toHaveBeenCalled()
+  })
+
+  it('marks the analysis failed and rethrows when workflow.start fails', async () => {
+    const { req, res } = mockReqRes({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'npm',
+    })
+    start.mockRejectedValueOnce(new Error('temporal unreachable'))
+
+    await expect(submitBlastRadiusJob(req, res)).rejects.toThrow('temporal unreachable')
+
+    expect(failAnalysis).toHaveBeenCalledTimes(1)
+    const [, input, errorMessage] = failAnalysis.mock.calls[0]
+    expect(input).toMatchObject({
+      advisoryOsvId: 'GHSA-jf85-cpcp-j695',
+      packageName: null,
+      ecosystem: 'npm',
+      force: false,
+    })
+    expect(errorMessage).toBe('temporal unreachable')
   })
 })

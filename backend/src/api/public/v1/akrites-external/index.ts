@@ -73,10 +73,9 @@ export function akritesExternalRouter(): Router {
   // (same as advisories above — see the scope-naming note in the akrites-external
   // OpenAPI). Not issued by Auth0 yet, so reuse READ_PACKAGES for now.
   const blastRadiusSubRouter = Router()
-  blastRadiusSubRouter.use(blastRadiusRateLimiter)
   blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES]))
-  blastRadiusSubRouter.post('/jobs', safeWrap(submitBlastRadiusJob))
-  blastRadiusSubRouter.get('/jobs/:analysisId', safeWrap(getBlastRadiusJob))
+  blastRadiusSubRouter.post('/jobs', blastRadiusRateLimiter, safeWrap(submitBlastRadiusJob))
+  blastRadiusSubRouter.get('/jobs/:analysisId', rateLimiter, safeWrap(getBlastRadiusJob))
   router.use('/blast-radius', blastRadiusSubRouter)
 
   return router

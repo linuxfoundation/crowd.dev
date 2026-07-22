@@ -58,8 +58,11 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
         maxTurns,
         tools: ['Read', 'Grep', 'Glob'],
         disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task'],
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
+        // Read/Grep/Glob are read-only — auto-allow them instead of bypassing permissions
+        // entirely. bypassPermissions requires --dangerously-skip-permissions, which the
+        // Claude Code CLI refuses to run as root — the exact setup packages_worker's
+        // container runs under.
+        allowedTools: ['Read', 'Grep', 'Glob'],
         outputFormat: {
           type: 'json_schema',
           schema,

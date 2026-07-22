@@ -27,7 +27,7 @@ export function versionsInRanges(versions: string[], ranges: SemverRange[]): str
         rangeSpec = `>=${range.introduced}`
       }
 
-      if (rangeSpec && semver.satisfies(v, rangeSpec, { loose: true })) {
+      if (rangeSpec && semver.satisfies(v, rangeSpec, { loose: true, includePrerelease: true })) {
         result.push(v)
         break
       }
@@ -63,7 +63,7 @@ export function rangeIncludesAny(
   }
 
   for (const vuln of vulnerableVersions) {
-    if (semver.satisfies(vuln, declaredRange, { loose: true })) {
+    if (semver.satisfies(vuln, declaredRange, { loose: true, includePrerelease: true })) {
       return { includes: true, check: 'matched' }
     }
   }
@@ -75,7 +75,7 @@ export function rangeIncludesAny(
 export function highestVersion(versions: string[]): string | null {
   const valid = versions.filter((v) => semver.valid(v, { loose: true }))
   if (valid.length === 0) return null
-  return semver.maxSatisfying(valid, '*', { loose: true }) || null
+  return semver.maxSatisfying(valid, '*', { loose: true, includePrerelease: true }) || null
 }
 
 // Helper: check if a range spec is parseable as semver. semver.validRange returns null

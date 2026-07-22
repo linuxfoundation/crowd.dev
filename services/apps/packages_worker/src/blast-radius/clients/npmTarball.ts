@@ -27,73 +27,73 @@ export async function downloadAndExtractTarball(
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
-  let res: Response
   try {
-    res = await fetch(tarballUrl, { signal: controller.signal })
-  } finally {
+    const res = await fetch(tarballUrl, { signal: controller.signal })
+    if (!res.ok) {
+      throw new Error(`Failed to fetch tarball: ${res.status} ${res.statusText}`)
+    }
+    if (!res.body) {
+      throw new Error('No response body from tarball fetch')
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tarball-extract-'))
+    try {
+      // tar rejects (preservePaths defaults to false) any entry whose path would resolve
+      // outside cwd; strict:true makes that a thrown error instead of a silent warn+skip.
+      let extractedBytes = 0
+      let extractedFiles = 0
+      const extractStream = tar.extract({
+        cwd: tempDir,
+        strict: true,
+        filter: (_entryPath, entry) => {
+          extractedFiles++
+          extractedBytes += entry.size ?? 0
+          if (extractedFiles > MAX_EXTRACTED_FILES || extractedBytes > MAX_EXTRACTED_BYTES) {
+            ;(extractStream as unknown as Writable).destroy(
+              new Error('Tarball extraction exceeded size/file limits'),
+            )
+            return false
+          }
+          return true
+        },
+      })
+
+      let downloadedBytes = 0
+      const downloadLimiter = new Transform({
+        transform(chunk, _encoding, callback) {
+          downloadedBytes += chunk.length
+          if (downloadedBytes > MAX_DOWNLOAD_BYTES) {
+            callback(new Error('Tarball download exceeded size limit'))
+            return
+          }
+          callback(null, chunk)
+        },
+      })
+
+      await new Promise<void>((resolve, reject) => {
+        Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>)
+          .on('error', reject)
+          .pipe(downloadLimiter)
+          .on('error', reject)
+          .pipe(extractStream as unknown as NodeJS.WritableStream)
+          .on('finish', resolve)
+          .on('error', reject)
+      })
+
+      const items = fs.readdirSync(tempDir)
+      const commonPrefix =
+        items.length === 1 && fs.statSync(path.join(tempDir, items[0])).isDirectory()
+          ? items[0]
+          : null
+      const srcBase = commonPrefix ? path.join(tempDir, commonPrefix) : tempDir
+
+      copyTreeGuarded(srcBase, destDir)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  } catch (err) {
     clearTimeout(timeoutHandle)
-  }
-  if (!res.ok) {
-    throw new Error(`Failed to fetch tarball: ${res.status} ${res.statusText}`)
-  }
-  if (!res.body) {
-    throw new Error('No response body from tarball fetch')
-  }
-
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tarball-extract-'))
-  try {
-    // tar rejects (preservePaths defaults to false) any entry whose path would resolve
-    // outside cwd; strict:true makes that a thrown error instead of a silent warn+skip.
-    let extractedBytes = 0
-    let extractedFiles = 0
-    const extractStream = tar.extract({
-      cwd: tempDir,
-      strict: true,
-      filter: (_entryPath, entry) => {
-        extractedFiles++
-        extractedBytes += entry.size ?? 0
-        if (extractedFiles > MAX_EXTRACTED_FILES || extractedBytes > MAX_EXTRACTED_BYTES) {
-          ;(extractStream as unknown as Writable).destroy(
-            new Error('Tarball extraction exceeded size/file limits'),
-          )
-          return false
-        }
-        return true
-      },
-    })
-
-    let downloadedBytes = 0
-    const downloadLimiter = new Transform({
-      transform(chunk, _encoding, callback) {
-        downloadedBytes += chunk.length
-        if (downloadedBytes > MAX_DOWNLOAD_BYTES) {
-          callback(new Error('Tarball download exceeded size limit'))
-          return
-        }
-        callback(null, chunk)
-      },
-    })
-
-    await new Promise<void>((resolve, reject) => {
-      Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>)
-        .on('error', reject)
-        .pipe(downloadLimiter)
-        .on('error', reject)
-        .pipe(extractStream as unknown as NodeJS.WritableStream)
-        .on('finish', resolve)
-        .on('error', reject)
-    })
-
-    const items = fs.readdirSync(tempDir)
-    const commonPrefix =
-      items.length === 1 && fs.statSync(path.join(tempDir, items[0])).isDirectory()
-        ? items[0]
-        : null
-    const srcBase = commonPrefix ? path.join(tempDir, commonPrefix) : tempDir
-
-    copyTreeGuarded(srcBase, destDir)
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true })
+    throw err
   }
 }
 

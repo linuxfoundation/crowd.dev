@@ -237,11 +237,11 @@ export async function scanDependents(input: {
   // any of the more expensive per-candidate work below.
   const candidateNames = await candidateNamesFromScan(toScan, targets, onProgress)
 
-  // Fetch download counts (bulk, max 128 per request) for the last calendar month —
+  // Fetch download counts (bulk, max 128 per request) for the last 30 days —
   // only for the filtered candidates, not the full high-impact list.
   const rangeEnd = new Date()
   const rangeStart = new Date(rangeEnd)
-  rangeStart.setUTCMonth(rangeStart.getUTCMonth() - 1)
+  rangeStart.setUTCDate(rangeStart.getUTCDate() - 30)
   const isoDate = (d: Date) => d.toISOString().slice(0, 10)
 
   const downloads = new Map<string, number>()

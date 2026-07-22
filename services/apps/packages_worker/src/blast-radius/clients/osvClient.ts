@@ -13,6 +13,7 @@ export interface OsvAffectedPackage {
       last_affected?: string
     }>
   }>
+  versions?: string[]
 }
 
 export interface OsvVuln {
@@ -51,36 +52,46 @@ export function affectedNpmEntries(vuln: OsvVuln): OsvAffectedPackage[] {
 // Flatten SEMVER-type ranges in an affected package into {introduced, fixed, lastAffected}
 // triples. last_affected is OSV's inclusive upper bound (distinct from fixed, which is
 // exclusive) — it closes the range at that version rather than leaving it open-ended.
+// If OSV provides only a versions[] list (no ranges[]), convert each exact version into
+// a degenerate range (introduced=v, last_affected=v) to match isInRange semantics.
 export function semverRangeEvents(
   entry: OsvAffectedPackage,
 ): Array<{ introduced: string | null; fixed: string | null; lastAffected: string | null }> {
-  if (!entry.ranges) return []
-
   const events: Array<{
     introduced: string | null
     fixed: string | null
     lastAffected: string | null
   }> = []
-  for (const range of entry.ranges) {
-    if (range.type !== 'SEMVER' || !range.events) continue
 
-    let introduced: string | null = null
+  if (entry.ranges) {
+    for (const range of entry.ranges) {
+      if (range.type !== 'SEMVER' || !range.events) continue
 
-    for (const event of range.events) {
-      if (event.introduced) introduced = event.introduced
+      let introduced: string | null = null
 
-      if (event.fixed) {
-        events.push({ introduced, fixed: event.fixed, lastAffected: null })
-        introduced = null
-      } else if (event.last_affected) {
-        events.push({ introduced, fixed: null, lastAffected: event.last_affected })
-        introduced = null
+      for (const event of range.events) {
+        if (event.introduced) introduced = event.introduced
+
+        if (event.fixed) {
+          events.push({ introduced, fixed: event.fixed, lastAffected: null })
+          introduced = null
+        } else if (event.last_affected) {
+          events.push({ introduced, fixed: null, lastAffected: event.last_affected })
+          introduced = null
+        }
+      }
+
+      // Trailing open range: introduced but never closed by fixed/last_affected.
+      if (introduced !== null) {
+        events.push({ introduced, fixed: null, lastAffected: null })
       }
     }
+  }
 
-    // Trailing open range: introduced but never closed by fixed/last_affected.
-    if (introduced !== null) {
-      events.push({ introduced, fixed: null, lastAffected: null })
+  // Fallback: if no SEMVER ranges, use explicit version list as exact vulnerable versions.
+  if (events.length === 0 && (entry.versions ?? []).length > 0) {
+    for (const v of entry.versions ?? []) {
+      events.push({ introduced: v, fixed: null, lastAffected: v })
     }
   }
 
