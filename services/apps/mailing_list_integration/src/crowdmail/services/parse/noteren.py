@@ -228,7 +228,11 @@ def parse_email(
     except ValueError:
         author = None
     if author is None:
-        author = "Unknown <unknown@kernel.org>"
+        # Synthesize a per-message identity keyed on git_id instead of a fixed
+        # placeholder — a shared "unknown@kernel.org" would otherwise collapse
+        # every unattributable message from distinct real authors into one
+        # member.
+        author = f"Unknown <unknown+{git_id}@kernel.org>"
     author_name, author_email = parse_author(author)
 
     # The b4 tool provides a relay for sending patches to the list, if it is

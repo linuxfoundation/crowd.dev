@@ -367,7 +367,7 @@ def test_parse_email_handles_invalid_from_header(monkeypatch):
     monkeypatch.setattr(noteren, "get_body", lambda msg: "line\n")
     parsed = _parse_email(b"irrelevant", "src", "chan", "commit1", "blob1")
     assert parsed["activityData"]["member"]["displayName"] == "Unknown"
-    assert parsed["activityData"]["member"]["identities"][0]["value"] == "unknown@kernel.org"
+    assert parsed["activityData"]["member"]["identities"][0]["value"] == "unknown+commit1@kernel.org"
 
 
 def test_parse_id_writes_json(monkeypatch):
