@@ -93,7 +93,7 @@ class ListWorker:
                 for git_id in commit_ids:
                     heads[shard] = git_id
                     try:
-                        message, blob_id = read_email(shard_path, git_id)
+                        message, blob_id = await asyncio.to_thread(read_email, shard_path, git_id)
                         parsed = parse_email(
                             message,
                             mailing_list.source_url,
