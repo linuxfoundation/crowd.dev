@@ -1,4 +1,4 @@
-# ADR-0009: Security contacts — tiered extraction, confidence scoring, and Temporal batch ingestion
+# ADR-0010: Security contacts — tiered extraction, confidence scoring, and Temporal batch ingestion
 
 **Date**: 2026-07-21
 **Status**: accepted
