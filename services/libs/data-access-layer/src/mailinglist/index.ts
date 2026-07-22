@@ -9,7 +9,9 @@ export interface IMailingListToOnboard {
  * Upsert mailing lists (public-inbox/lore) for a segment/integration and
  * seed their processing state so the mailing_list_integration worker picks
  * them up. Re-running with the same sourceUrl re-points the list at the
- * given segment/integration without resetting its processing progress.
+ * given segment/integration without resetting its processing progress. Any
+ * of this integration's lists no longer present in `lists` are soft-deleted,
+ * so the worker (which filters on "deletedAt" IS NULL) stops polling them.
  * @param qx - Query executor (should be transactional)
  * @param segmentId - Segment the lists belong to
  * @param integrationId - Integration these lists are onboarded under
@@ -43,6 +45,15 @@ export async function upsertMailingLists(
       SELECT id, 'pending', 2, '{}'::jsonb, NOW(), NOW()
       FROM upserted_list
       ON CONFLICT ("listId") DO NOTHING
+    ),
+    removed_lists AS (
+      UPDATE mailinglist.lists
+      SET "deletedAt" = NOW(), "updatedAt" = NOW()
+      WHERE "integrationId" = $(integrationId)::uuid
+        AND "deletedAt" IS NULL
+        AND "sourceUrl" NOT IN (
+          SELECT v."sourceUrl" FROM json_to_recordset($(lists)::json) AS v(name text, "sourceUrl" text)
+        )
     )
     SELECT id FROM upserted_list
     `,
