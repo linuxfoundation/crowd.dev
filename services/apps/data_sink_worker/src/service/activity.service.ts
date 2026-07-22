@@ -1240,7 +1240,7 @@ export default class ActivityService extends LoggerBase {
               (p) =>
                 !p.dbMember &&
                 p.platform === value.platform &&
-                p.activity.username === value.username,
+                p.activity.username?.toLowerCase() === value.username?.toLowerCase(),
             )) {
               payload.memberId = memberId
             }
@@ -1251,7 +1251,7 @@ export default class ActivityService extends LoggerBase {
                 p.activity.objectMember &&
                 !p.dbObjectMember &&
                 p.platform === value.platform &&
-                p.activity.objectMemberUsername === value.username,
+                p.activity.objectMemberUsername?.toLowerCase() === value.username?.toLowerCase(),
             )) {
               payload.objectMemberId = memberId
             }
@@ -1264,7 +1264,7 @@ export default class ActivityService extends LoggerBase {
 
               if (
                 payload.platform === value.platform &&
-                payload.activity.username === value.username
+                payload.activity.username?.toLowerCase() === value.username?.toLowerCase()
               ) {
                 const key = `${payload.platform}:${payload.activity.username}`
                 if (memberMap.has(key)) {
@@ -1292,7 +1292,7 @@ export default class ActivityService extends LoggerBase {
                 }
               } else if (
                 payload.platform === value.platform &&
-                payload.activity.objectMemberUsername == value.username
+                payload.activity.objectMemberUsername?.toLowerCase() === value.username?.toLowerCase()
               ) {
                 const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
                 if (memberMap.has(key)) {
