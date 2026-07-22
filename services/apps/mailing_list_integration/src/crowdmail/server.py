@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from loguru import logger
 
 from crowdmail.settings import WORKER_SHUTDOWN_TIMEOUT_SEC
-from crowdmail.worker.list_worker import ListWorker
+from crowdmail.worker.list_worker import run_worker, shutdown_worker
 
 
 @asynccontextmanager
@@ -15,15 +15,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting application lifespan")
 
     worker_task = None
-    worker = ListWorker()
-    logger.info("List worker initialized")
     try:
-        worker_task = asyncio.create_task(worker.run())
-        logger.info("ListWorker started successfully")
+        worker_task = asyncio.create_task(run_worker())
+        logger.info("List worker started successfully")
         # Yield control to FastAPI - it will handle signals and trigger shutdown
         yield
     finally:
-        await worker.shutdown()  # stopping worker to process new lists
+        await shutdown_worker()  # stopping worker to process new lists
         if worker_task is not None:
             try:
                 await asyncio.wait_for(worker_task, timeout=WORKER_SHUTDOWN_TIMEOUT_SEC)
