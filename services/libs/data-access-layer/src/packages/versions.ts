@@ -155,17 +155,24 @@ export async function upsertPackagistVersions(
   // records were updated differently can't keep is_latest = true alongside the new latest. When
   // no latest is known, leave flags untouched rather than wipe all. last_synced_at must move too
   // — it's the Tinybird ENGINE_VER, and this row's is_latest is a real change.
+  const changedFields = [...row.changed_fields]
   if (latestNumber != null) {
-    await qx.result(
+    const cleared = await qx.result(
       `UPDATE versions SET is_latest = false, last_synced_at = NOW()
          WHERE package_id = $(packageId)::bigint
            AND is_latest = true
            AND number <> $(latestNumber)`,
       { packageId, latestNumber },
     )
+    // The cleanup only ever flips rows OUTSIDE this batch (batch rows already got their
+    // is_latest set by the upsert above, so `is_latest = true` skips them) — the CTE diff
+    // can't see these changes, so surface them for the audit log here.
+    if (cleared > 0 && !changedFields.includes('versions.is_latest')) {
+      changedFields.push('versions.is_latest')
+    }
   }
 
-  return { changedFields: row.changed_fields, versionIds }
+  return { changedFields, versionIds }
 }
 
 export interface PypiVersionInput {

@@ -13,6 +13,7 @@ import {
   markPackagistDailyProcessed,
   markPackagistMetadataScanned,
 } from '@crowd/data-access-layer/src/packages/packagistPackageState'
+import { upsertPackagistVersions } from '@crowd/data-access-layer/src/packages/versions'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 // Executes the real DAL functions against a capturing stand-in executor — no database.
@@ -254,5 +255,37 @@ describe('getCriticalPackagistPackageCount', () => {
     const [sql] = qx.selectOne.mock.calls[0]
     expect(sql).toMatch(/ecosystem = 'packagist'/)
     expect(sql).toMatch(/is_critical/)
+  })
+})
+
+// The stale-is_latest cleanup only ever flips rows OUTSIDE the upsert batch (batch rows
+// already had is_latest set by the upsert CTE), so its row count must feed changedFields
+// separately or those real changes never reach the audit log.
+describe('upsertPackagistVersions is_latest cleanup audit', () => {
+  const versions = [
+    { number: '2.0.0', publishedAt: null, isLatest: true, isPrerelease: false, licenses: null },
+  ]
+
+  it("appends versions.is_latest when the cleanup cleared a stale row the CTE diff can't see", async () => {
+    qx.selectOne.mockResolvedValue({ changed_fields: [], version_ids: [] })
+    qx.result.mockResolvedValue(1)
+
+    const { changedFields } = await upsertPackagistVersions(asQx(qx), '7', versions, '2.0.0')
+
+    const [cleanupSql] = qx.result.mock.calls[0]
+    expect(cleanupSql).toMatch(/is_latest = false/)
+    expect(changedFields).toContain('versions.is_latest')
+  })
+
+  it('reports nothing extra when the cleanup cleared no rows, and never duplicates the CTE diff', async () => {
+    qx.selectOne.mockResolvedValue({ changed_fields: ['versions.is_latest'], version_ids: [] })
+    qx.result.mockResolvedValue(0)
+
+    const noClear = await upsertPackagistVersions(asQx(qx), '7', versions, '2.0.0')
+    expect(noClear.changedFields).toEqual(['versions.is_latest'])
+
+    qx.result.mockResolvedValue(2)
+    const cleared = await upsertPackagistVersions(asQx(qx), '7', versions, '2.0.0')
+    expect(cleared.changedFields.filter((f) => f === 'versions.is_latest')).toHaveLength(1)
   })
 })
