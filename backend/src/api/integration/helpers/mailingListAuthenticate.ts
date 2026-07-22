@@ -29,6 +29,15 @@ const isSafeSourceUrl = (sourceUrl: string): boolean => {
   }
 }
 
+// "https://host/list" and "https://host/list/" must resolve to the same DB
+// row — the worker's ensure_mirror() already normalizes to this form before
+// cloning (mirror_service.py), so storage must match or the same archive
+// ends up mirrored twice under two rows. Kept as a plain function (not a
+// zod .transform()/.preprocess()) since either makes the field optional in
+// z.infer with the installed zod v4 — reproduced in isolation, unrelated to
+// this schema's nesting.
+export const canonicalizeSourceUrl = (sourceUrl: string): string => sourceUrl.replace(/\/+$/, '')
+
 export const bodySchema = z.object({
   lists: z
     .array(
@@ -42,14 +51,20 @@ export const bodySchema = z.object({
       }),
     )
     .min(1, 'lists must contain at least one mailing list')
-    .refine((lists) => new Set(lists.map((l) => l.sourceUrl)).size === lists.length, {
-      message: 'lists contains duplicate sourceUrl entries',
-    }),
+    .refine(
+      (lists) =>
+        new Set(lists.map((l) => canonicalizeSourceUrl(l.sourceUrl))).size === lists.length,
+      { message: 'lists contains duplicate sourceUrl entries' },
+    ),
 })
 
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.tenantEdit)
   const integrationData = validateOrThrow(bodySchema, req.body)
+  integrationData.lists = integrationData.lists.map((l) => ({
+    ...l,
+    sourceUrl: canonicalizeSourceUrl(l.sourceUrl),
+  }))
 
   const payload = await new IntegrationService(req).mailingListConnectOrUpdate(integrationData)
   await req.responseHandler.success(req, res, payload)

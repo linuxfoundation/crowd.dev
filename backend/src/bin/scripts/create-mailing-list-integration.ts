@@ -7,7 +7,10 @@ import * as fs from 'fs'
 
 import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 
-import { bodySchema } from '@/api/integration/helpers/mailingListAuthenticate'
+import {
+  bodySchema,
+  canonicalizeSourceUrl,
+} from '@/api/integration/helpers/mailingListAuthenticate'
 import SegmentRepository from '@/database/repositories/segmentRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import IntegrationService from '@/services/integrationService'
@@ -81,7 +84,8 @@ if (parameters.help || !parameters.file) {
     // so a malformed file (non-array, missing fields, duplicate/non-https
     // sourceUrl) fails fast here instead of reaching IntegrationService with
     // whatever shape the file happened to contain.
-    const { lists } = validateOrThrow(bodySchema, { lists: parsed })
+    const { lists: parsedLists } = validateOrThrow(bodySchema, { lists: parsed })
+    const lists = parsedLists.map((l) => ({ ...l, sourceUrl: canonicalizeSourceUrl(l.sourceUrl) }))
 
     const repoOptions = await SequelizeRepository.getDefaultIRepositoryOptions()
     repoOptions.currentTenant = { id: DEFAULT_TENANT_ID }
@@ -104,7 +108,9 @@ if (parameters.help || !parameters.file) {
       process.exit(1)
     }
 
-    console.log(`Segment: ${repoOptions.currentSegments[0].id} (${repoOptions.currentSegments[0].name})`)
+    console.log(
+      `Segment: ${repoOptions.currentSegments[0].id} (${repoOptions.currentSegments[0].name})`,
+    )
     console.log('Lists:', JSON.stringify(lists, null, 2))
 
     const integration = await new IntegrationService(repoOptions).mailingListConnectOrUpdate(
