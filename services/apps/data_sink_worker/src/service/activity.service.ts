@@ -1866,10 +1866,31 @@ export default class ActivityService extends LoggerBase {
               verified: identity.verified,
               source: identity.source,
               sourceId: identity.sourceId,
-              integrationId: identity.integrationId,
+              // Mailing-list-parsed identities don't set this field themselves — the
+              // processing context's integration id is the source of truth, matching
+              // memberRepo.insertIdentities elsewhere in this flow.
+              integrationId: payload.integrationId,
               verifiedBy: identity.verifiedBy,
             })),
           )
+        }
+        // An identity present on both sides isn't necessarily settled: the owner may
+        // hold it as verified=false while this activity carries it as verified=true.
+        // Mirror syncIdentitiesAfterRedirect and promote those instead of dropping
+        // the stronger assertion.
+        const toPromote = incomingIdentities.filter(
+          (incoming) =>
+            incoming.verified &&
+            ownerIdentities.some(
+              (existing) =>
+                existing.platform === incoming.platform &&
+                existing.type === incoming.type &&
+                existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
+                !existing.verified,
+            ),
+        )
+        if (toPromote.length > 0) {
+          await this.memberRepo.updateIdentities(ownerId, toPromote)
         }
         await this.memberRepo.addToSegments(ownerId, [payload.segmentId])
 
