@@ -91,7 +91,14 @@ export async function upsertMailingLists(
 
   const rows = await qx.select(
     `
-    WITH upserted_list AS (
+    WITH existing AS (
+      SELECT id, "deletedAt"
+      FROM mailinglist.lists
+      WHERE "sourceUrl" IN (
+        SELECT v."sourceUrl" FROM json_to_recordset($(lists)::json) AS v(name text, "sourceUrl" text)
+      )
+    ),
+    upserted_list AS (
       INSERT INTO mailinglist.lists (id, name, "sourceUrl", "segmentId", "integrationId", "createdAt", "updatedAt")
       SELECT uuid_generate_v4(), v.name, v."sourceUrl", $(segmentId)::uuid, $(integrationId)::uuid, NOW(), NOW()
       FROM json_to_recordset($(lists)::json) AS v(name text, "sourceUrl" text)
@@ -102,6 +109,20 @@ export async function upsertMailingLists(
         "deletedAt" = NULL,
         "updatedAt" = NOW()
       RETURNING id
+    ),
+    -- A previously soft-deleted list being re-onboarded must not resume from
+    -- its old owner's checkpoint, so reset processing state on reactivation.
+    reset_processing AS (
+      UPDATE mailinglist."listProcessing" lp
+      SET state = 'pending',
+          "lastProcessedHeads" = '{}'::jsonb,
+          "lockedAt" = NULL,
+          "lastProcessedAt" = NULL,
+          "updatedAt" = NOW()
+      FROM upserted_list ul
+      JOIN existing e ON e.id = ul.id
+      WHERE lp."listId" = ul.id
+        AND e."deletedAt" IS NOT NULL
     ),
     seed_processing AS (
       INSERT INTO mailinglist."listProcessing" ("listId", state, priority, "lastProcessedHeads", "createdAt", "updatedAt")
