@@ -20,10 +20,16 @@ const isSafeListName = (name: string): boolean =>
 
 // public-inbox-clone in the worker fetches this URL as-is; restrict to
 // https so a caller can't point the worker at file://, javascript:, or a
-// bare non-URL string.
+// bare non-URL string. Requiring https already blocks the classic SSRF
+// target (cloud-metadata IMDS is http-only, per securityTxt.ts precedent);
+// also reject obvious loopback/localhost literals.
+const isBlockedHost = (h: string): boolean =>
+  h === 'localhost' || h === '::1' || h === '0.0.0.0' || h.startsWith('127.')
+
 const isSafeSourceUrl = (sourceUrl: string): boolean => {
   try {
-    return new URL(sourceUrl).protocol === 'https:'
+    const url = new URL(sourceUrl)
+    return url.protocol === 'https:' && !isBlockedHost(url.hostname.toLowerCase())
   } catch {
     return false
   }
