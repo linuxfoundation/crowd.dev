@@ -176,9 +176,13 @@ export async function runReachabilityStage(
               return
             }
 
-            // Backoff before retry
+            // Backoff before retry. Heartbeat partway through — the longest backoff
+            // (attempt 2, 30s) is still well under the stage's 5-minute heartbeatTimeout
+            // on its own, but 4 dependents processing concurrently can each be mid-backoff
+            // at once with nothing else heartbeating in between.
             const delayMs = RETRY_BACKOFF_BASE * attempt
             await new Promise((resolve) => setTimeout(resolve, delayMs))
+            onProgress?.()
           }
         }
       } finally {

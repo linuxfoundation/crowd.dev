@@ -38,6 +38,7 @@ const { blastRadiusReachability } = proxyActivities<typeof activities>({
 
 const { blastRadiusReport } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
+  heartbeatTimeout: '1 minute',
   retry: { maximumAttempts: 3 },
 })
 
