@@ -51,14 +51,16 @@ tags:
   - name: Blast Radius
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
-      implemented. Submitting kicks off a Temporal workflow that runs the
-      npm reachability pipeline (other ecosystems fail fast with
-      ECOSYSTEM_NOT_SUPPORTED); poll returns job status and, once done,
-      results. Rate-limited independently of the other akrites-external
-      endpoints (default 5 requests/hour, configurable via
-      AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX / _WINDOW_MS). Same interim scope
-      note as Advisories applies (read:packages, pending a dedicated
-      read:advisories scope).
+      implemented, each with a bulk counterpart. Submitting kicks off a
+      Temporal workflow that runs the npm reachability pipeline (other
+      ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED); poll returns job
+      status and, once done, results. Bulk submit (jobs:batch) is capped at
+      20 jobs per request (10 recommended as the default batch size) — each
+      entry starts its own workflow — and stays behind the same strict rate
+      limiter as the single-job route; bulk poll
+      (jobs:batch/poll) is read-only and capped at 100 like the other batch
+      endpoints. Same interim scope note as Advisories applies (read:packages,
+      pending a dedicated read:advisories scope).
 
 components:
   securitySchemes:
@@ -428,6 +430,69 @@ components:
           type: string
           enum: [pending, running, done, failed]
           description: Always pending — the response is returned before the Temporal workflow runs.
+
+    BlastRadiusJobBatchRequest:
+      type: object
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: >
+            Capped much lower than the 100-item read batches — each entry
+            starts its own Temporal workflow, so the batch multiplies
+            workflow starts (and reachability-analysis cost) per request.
+            10 is the recommended default batch size; 20 is the hard limit.
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobRequest'
+
+    BlastRadiusJobBatchResponse:
+      type: object
+      required: [results]
+      description: >
+        Plain array in request order, one entry per submitted job — unlike the
+        read batches there is no found/not-found case, every job is submitted.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobEntry'
+
+    BlastRadiusJobPollBatchRequest:
+      type: object
+      required: [analysisIds]
+      properties:
+        analysisIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+
+    BlastRadiusAnalysisBulkEntry:
+      type: object
+      required: [requestedAnalysisId, found, analysis]
+      properties:
+        requestedAnalysisId:
+          type: string
+        found:
+          type: boolean
+        analysis:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BlastRadiusAnalysis'
 
     BlastRadiusResultConfidence:
       type: string
@@ -1040,6 +1105,122 @@ paths:
                 $ref: '#/components/schemas/Error'
         '429':
           description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:batch:
+    post:
+      operationId: submitBlastRadiusJobBatch
+      summary: 2a bulk — Submit multiple blast-radius analysis jobs
+      description: >
+        One job per array entry, same semantics as the single-job submit —
+        omit package for an advisory-wide analysis, provide it to narrow to a
+        single package. Each entry starts its own Temporal workflow, so the
+        batch is capped at 20 jobs (10 recommended as the default batch
+        size), much lower than the 100-item read batches, and stays behind
+        the same strict rate limiter as the single-job route.
+
+
+        A per-job failure does not fail the whole batch — that entry comes
+        back with status: 'failed' and the rest still submit.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobBatchRequest'
+      responses:
+        '202':
+          description: Jobs accepted, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlastRadiusJobBatchResponse'
+        '400':
+          description: Validation error (empty array, >20 items, or an invalid job entry).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:batch/poll:
+    post:
+      operationId: getBlastRadiusJobBatch
+      summary: 2b bulk — Poll multiple blast-radius analysis jobs
+      description: >
+        Same found/not-found echo shape as the other batch endpoints: an
+        unknown analysisId comes back { found: false, analysis: null }
+        instead of 404ing the whole request. Read-only, so it is rate-limited
+        the same as the other non-blast-radius endpoints, not the strict
+        submit limiter.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobPollBatchRequest'
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested analysisIds, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlastRadiusAnalysisBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, or a non-uuid analysisId).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:packages scope.
           content:
             application/json:
               schema:
