@@ -248,6 +248,10 @@ export async function scanDependents(input: {
   const unscopedNames = candidateNames.filter((n) => !n.startsWith('@'))
   const scopedNames = candidateNames.filter((n) => n.startsWith('@'))
 
+  // Neither loop below heartbeated before — for a large candidate pool (many
+  // unscoped batches, or many scoped names run one HTTP call at a time through
+  // mapWithConcurrency) this whole download-count phase could run past the
+  // dependents stage's heartbeatTimeout with nothing heartbeating in between.
   for (let i = 0; i < unscopedNames.length; i += 128) {
     const batch = unscopedNames.slice(i, i + 128)
     const result = await fetchBulkPointRange(batch, isoDate(rangeStart), isoDate(rangeEnd))
@@ -256,14 +260,20 @@ export async function scanDependents(input: {
         downloads.set(name, count)
       })
     }
+    onProgress?.()
   }
 
   // fetchBulkPointRange doesn't support scoped package names; fetch those individually
   // so scoped candidates aren't silently ranked at 0 downloads and excluded from topN.
+  let scopedProcessed = 0
   await mapWithConcurrency(scopedNames, SCAN_CONCURRENCY, async (name) => {
     const result = await fetchPointRange(name, isoDate(rangeStart), isoDate(rangeEnd))
     if (!isFetchError(result)) {
       downloads.set(name, result.count)
+    }
+    scopedProcessed++
+    if (onProgress && scopedProcessed % 200 === 0) {
+      onProgress()
     }
   })
 
