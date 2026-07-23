@@ -1,4 +1,4 @@
-# ADR-0009: Skip Mailing List Activities With Unparseable/Implausible Dates
+# ADR-0011: Skip Mailing List Activities With Unparseable/Implausible Dates
 
 **Date**: 2026-07-19
 **Status**: accepted
