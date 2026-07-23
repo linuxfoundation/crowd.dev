@@ -9,6 +9,7 @@ from crowdmail.database.crud import (
     update_processed_heads,
 )
 from crowdmail.enums import IntegrationResultState, IntegrationResultType, ListState
+from crowdmail.errors import CommandExecutionError
 from crowdmail.logger import logger
 from crowdmail.models.list import MailingList
 from crowdmail.services.mirror.mirror_service import (
@@ -98,10 +99,25 @@ async def _process_single_list(mailing_list: MailingList):
             shard = shard_index(shard_path)
             commit_ids = await new_commits(shard_path, heads.get(shard))
             for git_id in commit_ids:
+                # A git-read failure is operational/transient (disk hiccup, corrupt
+                # mirror) — stop this shard without advancing past git_id so it's
+                # retried next run, instead of checkpointing a message we never
+                # actually read. A parse failure is content-level and permanent
+                # (malformed message), so that case still advances the head below.
+                try:
+                    message, blob_id = await asyncio.to_thread(read_email, shard_path, git_id)
+                except CommandExecutionError as e:
+                    logger.error(
+                        "Stopping shard {} for retry after git-read failure on commit {}: {}",
+                        shard_path,
+                        git_id,
+                        repr(e),
+                    )
+                    break
+
                 heads[shard] = git_id
                 dirty_heads[shard] = git_id
                 try:
-                    message, blob_id = await asyncio.to_thread(read_email, shard_path, git_id)
                     parsed = parse_email(
                         message,
                         mailing_list.source_url,
