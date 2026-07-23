@@ -72,6 +72,8 @@ class MaintainerService(BaseService):
         ".github/contributors.md",
         ".github/codeowners",
         "security-insights.md",
+        "security-insights.yml",
+        "security-insights.yaml",
         "readme.md",
     }
 

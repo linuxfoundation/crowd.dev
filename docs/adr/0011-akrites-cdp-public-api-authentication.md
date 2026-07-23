@@ -1,4 +1,4 @@
-# ADR-0010: Akrites → CDP public API authentication
+# ADR-0011: Akrites → CDP public API authentication
 
 **Date**: 2026-07-22
 **Status**: proposed
