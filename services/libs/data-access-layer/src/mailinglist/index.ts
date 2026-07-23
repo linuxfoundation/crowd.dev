@@ -48,11 +48,13 @@ export async function findMailingListsOwnedByOtherIntegration(
 
   const rows = await qx.select(
     `
-    SELECT "sourceUrl"
-    FROM mailinglist.lists
-    WHERE "integrationId" != $(integrationId)::uuid
-      AND "deletedAt" IS NULL
-      AND "sourceUrl" IN (
+    SELECT l."sourceUrl"
+    FROM mailinglist.lists l
+    JOIN public.integrations i ON i.id = l."integrationId"
+    WHERE l."integrationId" != $(integrationId)::uuid
+      AND l."deletedAt" IS NULL
+      AND i."deletedAt" IS NULL
+      AND l."sourceUrl" IN (
         SELECT v."sourceUrl" FROM json_to_recordset($(lists)::json) AS v(name text, "sourceUrl" text)
       )
     `,
