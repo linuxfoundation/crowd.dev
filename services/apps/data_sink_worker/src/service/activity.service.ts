@@ -1799,8 +1799,13 @@ export default class ActivityService extends LoggerBase {
       let conflictIdentity: IMemberIdentity | undefined
       let ownerId: string | undefined
 
-      // Pass 1: find an identity owned by a different member (real conflict).
-      outer: for (const id of verifiedIncoming) {
+      // Pass 1: find identities owned by a different member (real conflict). A member can
+      // have several verified identities (e.g. Groups.io emits both a verified username and
+      // a verified email) — collect every distinct external owner found, not just the first,
+      // so a genuine multi-owner conflict isn't silently resolved to whichever owner was
+      // encountered first.
+      const conflictOwnerIds = new Set<string>()
+      for (const id of verifiedIncoming) {
         for (const [key, oid] of owners) {
           const sep1 = key.indexOf(':')
           const sep2 = key.indexOf(':', sep1 + 1)
@@ -1814,18 +1819,23 @@ export default class ActivityService extends LoggerBase {
               .toLowerCase() === id.value.trim().toLowerCase() &&
             oid !== dbMember?.id
           ) {
-            conflictIdentity = id
-            ownerId = oid
-            break outer
+            conflictOwnerIds.add(oid)
+            if (!conflictIdentity) {
+              conflictIdentity = id
+              ownerId = oid
+            }
           }
         }
       }
+      const isMultiOwnerConflict = conflictOwnerIds.size > 1
 
       // Create path: no dbMember to compare against yet (member row doesn't exist locally).
-      // The verified-identity index is globally unique, so a found owner IS the canonical
-      // member — attach to it instead of failing (covers whole-batch-retry re-attempting a
-      // create whose identity insert already succeeded in an earlier attempt).
-      if (ownerId && !dbMember) {
+      // The verified-identity index is globally unique, so a single found owner IS the
+      // canonical member — attach to it instead of failing (covers whole-batch-retry
+      // re-attempting a create whose identity insert already succeeded in an earlier
+      // attempt). If identities resolve to more than one distinct owner, this isn't a
+      // resolvable retry — fall through to the error path below instead of guessing.
+      if (ownerId && !dbMember && !isMultiOwnerConflict) {
         this.log.warn(
           { memberId: ownerId, identity: conflictIdentity },
           'Verified identity already belongs to an existing member — attaching to it instead of creating a new one',
