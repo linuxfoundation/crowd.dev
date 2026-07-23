@@ -148,6 +148,35 @@ export default class MemberService extends LoggerBase {
     try {
       await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
     } catch (err) {
+      if (err?.constraint === 'uix_memberIdentities_memberId_platform_value_type') {
+        // The insert is atomic, so one identity this member already owns (just with a
+        // different verified flag) rolls back every other, genuinely new, identity in the
+        // same batch. Reconcile against the member's current identities and retry only
+        // what's actually missing instead of dropping them silently.
+        const currentMap = await findIdentitiesForMembers(this.pgQx, [memberId])
+        const current = currentMap.get(memberId) ?? []
+        const missing = deduped.filter(
+          (incoming) =>
+            !current.some(
+              (existing) =>
+                existing.platform === incoming.platform &&
+                existing.type === incoming.type &&
+                existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase(),
+            ),
+        )
+
+        if (missing.length === 0) return
+        // missing always excludes at least the identity that triggered this conflict, so
+        // this can't recurse forever.
+        if (missing.length === deduped.length) throw err
+        return this.insertIdentitiesWithConflictResolution(
+          memberId,
+          integrationId,
+          missing,
+          attemptMerge,
+        )
+      }
+
       if (
         !err?.constraint ||
         err.constraint !== 'uix_memberIdentities_platform_value_type_verified'
