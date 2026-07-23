@@ -165,7 +165,26 @@ export default class MemberService extends LoggerBase {
             ),
         )
 
-        if (missing.length === 0) return
+        if (missing.length === 0) {
+          // Every incoming identity already exists, but the conflict was on
+          // (platform, value, type) alone — a matching row that's currently
+          // verified=false must still be promoted when the incoming one is
+          // verified=true, or the stronger assertion is silently dropped.
+          const toPromote = deduped.filter((incoming) =>
+            current.some(
+              (existing) =>
+                existing.platform === incoming.platform &&
+                existing.type === incoming.type &&
+                existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
+                !existing.verified &&
+                incoming.verified,
+            ),
+          )
+          if (toPromote.length > 0) {
+            await this.memberRepo.updateIdentities(memberId, toPromote)
+          }
+          return
+        }
         // missing always excludes at least the identity that triggered this conflict, so
         // this can't recurse forever.
         if (missing.length === deduped.length) throw err
