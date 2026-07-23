@@ -99,7 +99,7 @@ def message_id_cleanup(messageid: str | None) -> str:
 
 # Strongly based on get_payload() from 'b4' (i.e. almost copied directly...)
 # email parsing is rough, charsets are crazy, so let's try to do our best here
-def get_body(msg: email.message.EmailMessage) -> str:
+def get_body(msg: email.message.EmailMessage) -> str | None:
     # walk until we find the first text/plain part
     mcharset = msg.get_content_charset()
     if not mcharset:
