@@ -94,6 +94,7 @@ async def _process_single_list(mailing_list: MailingList):
         dirty_heads = {}
         activities_db = []
         activities_kafka = []
+        had_shard_read_failure = False
 
         for shard_path in discover_shards(list_dir):
             shard = shard_index(shard_path)
@@ -113,6 +114,11 @@ async def _process_single_list(mailing_list: MailingList):
                         git_id,
                         repr(e),
                     )
+                    # No exception propagates from a per-shard break, so without this
+                    # flag the outer loop finishes normally and the list gets marked
+                    # COMPLETED — making the next poll wait the long completed
+                    # interval instead of the short failed-retry interval.
+                    had_shard_read_failure = True
                     break
 
                 heads[shard] = git_id
@@ -192,7 +198,7 @@ async def _process_single_list(mailing_list: MailingList):
 
         if dirty_heads:
             await update_processed_heads(mailing_list.id, dirty_heads)
-        state = ListState.COMPLETED
+        state = ListState.FAILED if had_shard_read_failure else ListState.COMPLETED
     except Exception as e:
         logger.error(f"Processing failed for list {mailing_list.source_url}: {repr(e)}")
         state = ListState.FAILED
