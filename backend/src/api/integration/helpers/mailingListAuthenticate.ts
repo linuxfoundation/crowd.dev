@@ -29,20 +29,38 @@ const isBlockedHost = (h: string): boolean =>
 const isSafeSourceUrl = (sourceUrl: string): boolean => {
   try {
     const url = new URL(sourceUrl)
-    return url.protocol === 'https:' && !isBlockedHost(url.hostname.toLowerCase())
+    return (
+      url.protocol === 'https:' &&
+      !isBlockedHost(url.hostname.toLowerCase()) &&
+      // Credentials/query/fragment have no meaning for a public-inbox archive
+      // URL; rejecting them keeps canonicalizeSourceUrl a lossless
+      // normalization instead of one that silently drops caller-supplied data.
+      url.username === '' &&
+      url.password === '' &&
+      url.search === '' &&
+      url.hash === ''
+    )
   } catch {
     return false
   }
 }
 
-// "https://host/list" and "https://host/list/" must resolve to the same DB
-// row — the worker's ensure_mirror() already normalizes to this form before
-// cloning (mirror_service.py), so storage must match or the same archive
-// ends up mirrored twice under two rows. Kept as a plain function (not a
-// zod .transform()/.preprocess()) since either makes the field optional in
-// z.infer with the installed zod v4 — reproduced in isolation, unrelated to
-// this schema's nesting.
-export const canonicalizeSourceUrl = (sourceUrl: string): string => sourceUrl.replace(/\/+$/, '')
+// "https://host/list" and "https://HOST/list/" and "https://host:443/list"
+// must all resolve to the same DB row — scheme case, host case, the default
+// https port, and a trailing slash are not meaningful differences for the
+// same archive, but a plain trailing-slash strip left them as distinct
+// strings, bypassing the cross-project ownership check and causing
+// duplicate ingestion. The worker's ensure_mirror() already normalizes to
+// this same form before cloning (mirror_service.py), so storage must match.
+// Kept as a plain function (not a zod .transform()/.preprocess()) since
+// either makes the field optional in z.infer with the installed zod v4 —
+// reproduced in isolation, unrelated to this schema's nesting.
+export const canonicalizeSourceUrl = (sourceUrl: string): string => {
+  const url = new URL(sourceUrl)
+  const port = url.port && url.port !== '443' ? `:${url.port}` : ''
+  const path = url.pathname.replace(/\/+$/, '') || '/'
+  return `https://${url.hostname.toLowerCase()}${port}${path}`
+}
 
 export const bodySchema = z.object({
   lists: z
