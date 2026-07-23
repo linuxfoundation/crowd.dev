@@ -183,8 +183,7 @@ const en = {
       invalid2FA: 'Invalid Two-factor authentication code',
     },
     mailingList: {
-      alreadyConnected:
-        'The following mailing lists are already connected to another project: {0}',
+      alreadyConnected: 'The following mailing lists are already connected to another project: {0}',
     },
     alreadyExists: '{0}',
     organization: {
