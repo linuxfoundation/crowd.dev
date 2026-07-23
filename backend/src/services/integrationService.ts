@@ -18,6 +18,7 @@ import { CommonIntegrationService, getGithubInstallationToken } from '@crowd/com
 import { ICreateInsightsProject } from '@crowd/data-access-layer/src/collections'
 import {
   findMailingListsOwnedByOtherIntegration,
+  lockMailingListSourceUrls,
   upsertMailingLists,
 } from '@crowd/data-access-layer/src/mailinglist'
 import {
@@ -1465,6 +1466,14 @@ export default class IntegrationService {
         },
         transaction,
         options,
+      )
+
+      // Serialize concurrent connects touching the same sourceUrl(s) so the
+      // ownership check below and the upsert that follows it can't be
+      // straddled by another transaction re-pointing ownership in between.
+      await lockMailingListSourceUrls(
+        qx,
+        lists.map((l) => l.sourceUrl),
       )
 
       const conflicts = await findMailingListsOwnedByOtherIntegration(qx, integration.id, lists)

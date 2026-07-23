@@ -6,6 +6,30 @@ export interface IMailingListToOnboard {
 }
 
 /**
+ * Take a transaction-scoped advisory lock per sourceUrl, so two concurrent
+ * connect/update calls touching the same sourceUrl serialize instead of both
+ * passing `findMailingListsOwnedByOtherIntegration`'s check and then racing
+ * in `upsertMailingLists`'s `ON CONFLICT DO UPDATE` (which silently
+ * reassigns ownership to whichever transaction commits last). Locks release
+ * automatically at commit/rollback. Call before the ownership check, on a
+ * `qx` bound to the same transaction as the rest of the connect flow.
+ * @param qx - Query executor (must be transactional)
+ * @param sourceUrls - sourceUrls about to be checked/upserted
+ */
+export async function lockMailingListSourceUrls(
+  qx: QueryExecutor,
+  sourceUrls: string[],
+): Promise<void> {
+  // Sorted so overlapping concurrent requests always acquire locks in the
+  // same order, avoiding a deadlock between two multi-list connects.
+  for (const sourceUrl of [...sourceUrls].sort()) {
+    await qx.selectNone(`SELECT pg_advisory_xact_lock(hashtext($(sourceUrl))::bigint)`, {
+      sourceUrl,
+    })
+  }
+}
+
+/**
  * Find sourceUrls already onboarded under a different, non-deleted
  * integration. Used to reject a connect/update call before it silently
  * re-points an already-owned list to the calling integration.
