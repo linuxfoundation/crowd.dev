@@ -29,7 +29,6 @@ import {
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
-import { insertMemberIdentities } from '@crowd/data-access-layer/src/members/identities'
 import {
   IActivityRelationCreateOrUpdateData,
   IDbActivity,
@@ -1163,7 +1162,7 @@ export default class ActivityService extends LoggerBase {
 
     // find members to create
     for (const payload of payloadsWithoutDbMembers) {
-      const key = `${payload.platform}:${payload.activity.username?.toLowerCase()}`
+      const key = `${payload.platform}:${payload.activity.username}`
       if (!membersToCreateMap.has(key)) {
         const segmentIds = new Set<string>()
         segmentIds.add(payload.segmentId)
@@ -1189,7 +1188,7 @@ export default class ActivityService extends LoggerBase {
 
     // find object members to create
     for (const payload of payloadsWithoutDbObjectMembers) {
-      const key = `${payload.platform}:${payload.activity.objectMemberUsername?.toLowerCase()}`
+      const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
       if (!membersToCreateMap.has(key)) {
         const segmentIds = new Set<string>()
         segmentIds.add(payload.segmentId)
@@ -1241,7 +1240,7 @@ export default class ActivityService extends LoggerBase {
               (p) =>
                 !p.dbMember &&
                 p.platform === value.platform &&
-                p.activity.username?.toLowerCase() === value.username?.toLowerCase(),
+                p.activity.username === value.username,
             )) {
               payload.memberId = memberId
             }
@@ -1252,7 +1251,7 @@ export default class ActivityService extends LoggerBase {
                 p.activity.objectMember &&
                 !p.dbObjectMember &&
                 p.platform === value.platform &&
-                p.activity.objectMemberUsername?.toLowerCase() === value.username?.toLowerCase(),
+                p.activity.objectMemberUsername === value.username,
             )) {
               payload.objectMemberId = memberId
             }
@@ -1265,7 +1264,7 @@ export default class ActivityService extends LoggerBase {
 
               if (
                 payload.platform === value.platform &&
-                payload.activity.username?.toLowerCase() === value.username?.toLowerCase()
+                payload.activity.username === value.username
               ) {
                 const key = `${payload.platform}:${payload.activity.username}`
                 if (memberMap.has(key)) {
@@ -1293,8 +1292,7 @@ export default class ActivityService extends LoggerBase {
                 }
               } else if (
                 payload.platform === value.platform &&
-                payload.activity.objectMemberUsername?.toLowerCase() ===
-                  value.username?.toLowerCase()
+                payload.activity.objectMemberUsername == value.username
               ) {
                 const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
                 if (memberMap.has(key)) {
@@ -1758,17 +1756,12 @@ export default class ActivityService extends LoggerBase {
     memberType: 'member' | 'objectMember',
     dbMember?: IDbMember,
   ): Promise<string | Record<string, unknown> | undefined> {
-    const IDENTITY_CONSTRAINTS = new Set([
-      'uix_memberIdentities_platform_value_type_verified',
-      'uix_memberIdentities_memberId_platform_value_type',
-    ])
-
     const checkForIdentityConstraint = (error: any): boolean => {
       if (
         error.constructor &&
         error.constructor.name === 'DatabaseError' &&
         error.constraint &&
-        IDENTITY_CONSTRAINTS.has(error.constraint)
+        error.constraint === 'uix_memberIdentities_platform_value_type_verified'
       ) {
         return true
       }
@@ -1799,13 +1792,8 @@ export default class ActivityService extends LoggerBase {
       let conflictIdentity: IMemberIdentity | undefined
       let ownerId: string | undefined
 
-      // Pass 1: find identities owned by a different member (real conflict). A member can
-      // have several verified identities (e.g. Groups.io emits both a verified username and
-      // a verified email) — collect every distinct external owner found, not just the first,
-      // so a genuine multi-owner conflict isn't silently resolved to whichever owner was
-      // encountered first.
-      const conflictOwnerIds = new Set<string>()
-      for (const id of verifiedIncoming) {
+      // Pass 1: find an identity owned by a different member (real conflict).
+      outer: for (const id of verifiedIncoming) {
         for (const [key, oid] of owners) {
           const sep1 = key.indexOf(':')
           const sep2 = key.indexOf(':', sep1 + 1)
@@ -1819,82 +1807,11 @@ export default class ActivityService extends LoggerBase {
               .toLowerCase() === id.value.trim().toLowerCase() &&
             oid !== dbMember?.id
           ) {
-            conflictOwnerIds.add(oid)
-            if (!conflictIdentity) {
-              conflictIdentity = id
-              ownerId = oid
-            }
+            conflictIdentity = id
+            ownerId = oid
+            break outer
           }
         }
-      }
-      const isMultiOwnerConflict = conflictOwnerIds.size > 1
-
-      // Create path: no dbMember to compare against yet (member row doesn't exist locally).
-      // The verified-identity index is globally unique, so a single found owner IS the
-      // canonical member — attach to it instead of failing (covers whole-batch-retry
-      // re-attempting a create whose identity insert already succeeded in an earlier
-      // attempt). If identities resolve to more than one distinct owner, this isn't a
-      // resolvable retry — fall through to the error path below instead of guessing.
-      if (ownerId && !dbMember && !isMultiOwnerConflict) {
-        this.log.warn(
-          { memberId: ownerId, identity: conflictIdentity },
-          'Verified identity already belongs to an existing member — attaching to it instead of creating a new one',
-        )
-
-        // Mirror MemberService.create's conflict-redirect finalization: attaching to an
-        // existing owner must still sync the incoming identities onto it and add it to the
-        // current segment, or the owner ends up missing from this activity's project.
-        const ownerIdentities =
-          (await findIdentitiesForMembers(this.pgQx, [ownerId])).get(ownerId) ?? []
-        const missingIdentities = incomingIdentities.filter(
-          (incoming) =>
-            !ownerIdentities.some(
-              (existing) =>
-                existing.platform === incoming.platform &&
-                existing.type === incoming.type &&
-                existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase(),
-            ),
-        )
-        if (missingIdentities.length > 0) {
-          await insertMemberIdentities(
-            this.pgQx,
-            missingIdentities.map((identity) => ({
-              memberId: ownerId,
-              platform: identity.platform,
-              value: identity.value,
-              type: identity.type,
-              verified: identity.verified,
-              source: identity.source,
-              sourceId: identity.sourceId,
-              // Mailing-list-parsed identities don't set this field themselves — the
-              // processing context's integration id is the source of truth, matching
-              // memberRepo.insertIdentities elsewhere in this flow.
-              integrationId: payload.integrationId,
-              verifiedBy: identity.verifiedBy,
-            })),
-          )
-        }
-        // An identity present on both sides isn't necessarily settled: the owner may
-        // hold it as verified=false while this activity carries it as verified=true.
-        // Mirror syncIdentitiesAfterRedirect and promote those instead of dropping
-        // the stronger assertion.
-        const toPromote = incomingIdentities.filter(
-          (incoming) =>
-            incoming.verified &&
-            ownerIdentities.some(
-              (existing) =>
-                existing.platform === incoming.platform &&
-                existing.type === incoming.type &&
-                existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
-                !existing.verified,
-            ),
-        )
-        if (toPromote.length > 0) {
-          await this.memberRepo.updateIdentities(ownerId, toPromote)
-        }
-        await this.memberRepo.addToSegments(ownerId, [payload.segmentId])
-
-        return ownerId
       }
 
       // Pass 2: if no external conflict, check whether this member already owns the
@@ -1960,17 +1877,6 @@ export default class ActivityService extends LoggerBase {
       }
 
       if (
-        metadata.memberWithIdentity &&
-        metadata.memberIdToUpdate &&
-        metadata.memberWithIdentity !== metadata.memberIdToUpdate &&
-        isMultiOwnerConflict
-      ) {
-        // The update-path fast merge below assumes a single external owner. When verified
-        // identities resolve to more than one distinct owner, `ownerId` only reflects
-        // whichever one Pass 1 encountered first — merging against it would pick an
-        // arbitrary owner instead of surfacing the genuine ambiguity.
-        metadata.errorMessage = 'verified identity conflict — identities resolve to multiple owners'
-      } else if (
         metadata.memberWithIdentity &&
         metadata.memberIdToUpdate &&
         metadata.memberWithIdentity !== metadata.memberIdToUpdate
