@@ -70,10 +70,13 @@ export async function findMailingListsOwnedByOtherIntegration(
 /**
  * Upsert mailing lists (public-inbox/lore) for a segment/integration and
  * seed their processing state so the mailing_list_integration worker picks
- * them up. Re-running with the same sourceUrl re-points the list at the
- * given segment/integration without resetting its processing progress. Any
- * of this integration's lists no longer present in `lists` are soft-deleted,
- * so the worker (which filters on "deletedAt" IS NULL) stops polling them.
+ * them up. Re-running with the same sourceUrl for a still-active list
+ * re-points it at the given segment/integration without resetting its
+ * processing progress; reactivating a previously soft-deleted sourceUrl
+ * resets its processing state instead, so the new owner starts fresh rather
+ * than resuming the old owner's checkpoint. Any of this integration's lists
+ * no longer present in `lists` are soft-deleted, so the worker (which
+ * filters on "deletedAt" IS NULL) stops polling them.
  * @param qx - Query executor (should be transactional)
  * @param segmentId - Segment the lists belong to
  * @param integrationId - Integration these lists are onboarded under
