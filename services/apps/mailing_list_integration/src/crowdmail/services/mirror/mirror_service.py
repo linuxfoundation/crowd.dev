@@ -5,6 +5,8 @@ find new messages.
 
 import asyncio
 import os
+import shutil
+import tempfile
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -113,19 +115,29 @@ async def ensure_mirror(
     list_dir = list_mirror_dir(list_id, mirror_dir)
     if not os.path.isdir(list_dir):
         clone_url = source_url.rstrip("/") + "/"
-        logger.info(f"Cloning lore list '{list_name}' from {clone_url} into {list_dir}")
-        os.makedirs(os.path.dirname(list_dir), exist_ok=True)
-        await _run_shell_command(
-            ["public-inbox-clone", "-q", clone_url, list_dir], timeout=CLONE_TIMEOUT_SEC
-        )
-        # public-inbox-clone drops a manifest scoped to clone time; remove it
-        # and re-fetch from inside list_dir so the manifest is regenerated
-        # correctly there (needed to detect new epoch shards, e.g. git/1.git,
-        # as the list grows).
-        manifest_path = os.path.join(list_dir, "manifest.js.gz")
-        if os.path.exists(manifest_path):
-            os.remove(manifest_path)
-        await _run_shell_command(["public-inbox-fetch", "-q"], cwd=list_dir)
+        os.makedirs(mirror_dir, exist_ok=True)
+        # Clone into a temp sibling dir and rename into place only on success,
+        # so a failed/killed clone never leaves a partial list_dir behind —
+        # otherwise the next attempt sees the dir exists and switches to
+        # `-fetch` on an incomplete mirror instead of retrying the clone.
+        tmp_dir = tempfile.mkdtemp(prefix=f".{list_id}-", dir=mirror_dir)
+        try:
+            logger.info(f"Cloning lore list '{list_name}' from {clone_url} into {list_dir}")
+            await _run_shell_command(
+                ["public-inbox-clone", "-q", clone_url, tmp_dir], timeout=CLONE_TIMEOUT_SEC
+            )
+            # public-inbox-clone drops a manifest scoped to clone time; remove
+            # it and re-fetch from inside tmp_dir so the manifest is
+            # regenerated correctly there (needed to detect new epoch shards,
+            # e.g. git/1.git, as the list grows).
+            manifest_path = os.path.join(tmp_dir, "manifest.js.gz")
+            if os.path.exists(manifest_path):
+                os.remove(manifest_path)
+            await _run_shell_command(["public-inbox-fetch", "-q"], cwd=tmp_dir)
+            os.rename(tmp_dir, list_dir)
+        except BaseException:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
     else:
         logger.info(f"Fetching updates for lore list '{list_name}'")
         await _run_shell_command(["public-inbox-fetch", "-q", "-C", list_dir])
