@@ -210,7 +210,18 @@ async def get_list_integration_info(list_id: str) -> dict | None:
     return await fetchrow(sql_query, (list_id,))
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(1),
+    reraise=True,
+)
 async def update_processed_heads(list_id: str, heads: dict) -> None:
+    # Retried on any failure: activities from this flush are already queued
+    # (DB rows written, Kafka published) by the time this runs, so a transient
+    # failure here must not fail the whole run — that would leave the head
+    # un-advanced and the next attempt re-reading + re-queueing the same
+    # commits as duplicate Kafka work for the same resultIds.
+    #
     # Merge (||) instead of replace: if stuck-reclaim ever lets two workers
     # process the same list concurrently, a slower worker's flush only
     # touches the shard keys it actually recomputed, instead of overwriting
