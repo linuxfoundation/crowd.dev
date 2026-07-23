@@ -23,7 +23,9 @@ export async function lockMailingListSourceUrls(
   // Sorted so overlapping concurrent requests always acquire locks in the
   // same order, avoiding a deadlock between two multi-list connects.
   for (const sourceUrl of [...sourceUrls].sort()) {
-    await qx.selectNone(`SELECT pg_advisory_xact_lock(hashtext($(sourceUrl))::bigint)`, {
+    // Not selectNone: `SELECT pg_advisory_xact_lock(...)` always returns exactly one row
+    // (of a void column), which selectNone's underlying db.none() rejects as an error.
+    await qx.result(`SELECT pg_advisory_xact_lock(hashtext($(sourceUrl))::bigint)`, {
       sourceUrl,
     })
   }
