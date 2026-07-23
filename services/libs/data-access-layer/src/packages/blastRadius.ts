@@ -177,6 +177,34 @@ export async function getAnalysisDetail(
   )
 }
 
+// Advisory-cache lookup for submit: finds the most recent 'done' analysis for the
+// same (advisoryOsvId, packageName, ecosystem) triple completed within maxAgeDays,
+// so a submit can reuse it instead of starting a new Temporal workflow. packageName
+// uses IS NOT DISTINCT FROM since it's nullable (advisory-wide analyses have no
+// package) and NULL = NULL is never true in plain SQL equality.
+export async function getRecentDoneAnalysis(
+  qx: QueryExecutor,
+  input: { advisoryOsvId: string; packageName: string | null; ecosystem: string },
+  maxAgeDays: number,
+): Promise<AnalysisDetailRow | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT
+      id, advisory_osv_id, package_name, ecosystem, status, error,
+      candidates_considered, started_at, completed_at
+    FROM blast_radius_analyses
+    WHERE advisory_osv_id = $(advisoryOsvId)
+      AND package_name IS NOT DISTINCT FROM $(packageName)
+      AND ecosystem = $(ecosystem)
+      AND status = 'done'
+      AND completed_at >= NOW() - make_interval(days => $(maxAgeDays))
+    ORDER BY completed_at DESC
+    LIMIT 1
+    `,
+    { ...input, maxAgeDays },
+  )
+}
+
 // Bulk counterpart of getAnalysisDetail for batch polling — one query for the whole
 // page instead of one per id. Order is not guaranteed to match analysisIds; callers
 // key the result by row.id.

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 
+import { groupBy } from '@crowd/common'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 
 import { getPackagesQx } from '@/db/packagesDb'
@@ -34,15 +35,7 @@ export async function getBlastRadiusJobBatch(req: Request, res: Response): Promi
     blastRadiusDal.getDependentsExcludedByRangeCountBatch(qx, doneIds),
   ])
 
-  const verdictsByAnalysisId = new Map<string, typeof verdictRows>()
-  for (const row of verdictRows) {
-    const bucket = verdictsByAnalysisId.get(row.analysisId)
-    if (bucket) {
-      bucket.push(row)
-    } else {
-      verdictsByAnalysisId.set(row.analysisId, [row])
-    }
-  }
+  const verdictsByAnalysisId = groupBy(verdictRows, (row) => row.analysisId)
   const excludedByRangeCountByAnalysisId = new Map(
     excludedByRangeCounts.map(({ analysisId, count }) => [analysisId, count]),
   )
