@@ -189,6 +189,7 @@ export async function fetchMembersForEnrichment(
          ) AS identities,
          c."activityCount"
     FROM candidates c
+         INNER JOIN members ON members.id = c.id
          INNER JOIN "memberIdentities" mi
            ON mi."memberId" = c.id
           AND mi."deletedAt" IS NULL
