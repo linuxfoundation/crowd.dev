@@ -80,6 +80,8 @@ describe('getBlastRadiusJobBatch', () => {
   })
 
   it('only fetches verdicts/excluded counts for done analyses', async () => {
+    const { req, res, json } = mockReqRes({ analysisIds: [PENDING_ID, DONE_ID] })
+
     getAnalysisDetailsByIds.mockResolvedValue([
       {
         id: PENDING_ID,
@@ -117,8 +119,6 @@ describe('getBlastRadiusJobBatch', () => {
       },
     ])
     getDependentsExcludedByRangeCountBatch.mockResolvedValue([{ analysisId: DONE_ID, count: 8 }])
-
-    const { req, res, json } = mockReqRes({ analysisIds: [PENDING_ID, DONE_ID] })
 
     await getBlastRadiusJobBatch(req, res)
 
