@@ -29,6 +29,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             except TimeoutError:
                 logger.warning("Worker shutdown timeout, forcing cancellation")
                 worker_task.cancel()
+                # cancel() only schedules cancellation - awaiting the task lets
+                # run_worker()'s finally block finish (Kafka producer shutdown)
+                # before the event loop tears down, instead of racing it.
+                try:
+                    await worker_task
+                except asyncio.CancelledError:
+                    pass
 
 
 app = FastAPI(lifespan=lifespan)
