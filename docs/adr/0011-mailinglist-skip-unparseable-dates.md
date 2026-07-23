@@ -32,6 +32,7 @@ retried on subsequent polls).
 ## Alternatives Considered
 
 ### Alternative 1: Heuristically repair malformed years
+
 - **Pros**: Could recover activities that would otherwise be dropped.
 - **Cons**: No reliable signal for what year was intended once the header
   is already malformed at the source (e.g. `102` — off by 1900? 2000?
@@ -41,6 +42,7 @@ retried on subsequent polls).
   timelines and trend analytics without any visible error.
 
 ### Alternative 2: Ingest with the corrupted timestamp as-is
+
 - **Pros**: No data loss.
 - **Cons**: Breaks downstream JS `Date` parsing in the ingestion pipeline,
   causing hard failures rather than a clean skip.
@@ -50,17 +52,20 @@ retried on subsequent polls).
 ## Consequences
 
 ### Positive
+
 - Malformed dates never reach the ingestion pipeline as corrupt
   timestamps; no pipeline-level failures from a single bad message.
 - Matches the existing skip pattern already used for other
   unparseable/missing fields in this parser.
 
 ### Negative
+
 - Messages with malformed `Date` headers are silently and permanently
   dropped — never retried, since the shard head advances past them
   regardless. The only visible trace is a `logging.warning()` line.
 
 ### Risks
+
 - If a source archive has a systemic date-formatting issue (not just rare
   garbage), this could silently drop a meaningful fraction of activities.
   Mitigation: the warning log includes the raw header and commit id, so a
