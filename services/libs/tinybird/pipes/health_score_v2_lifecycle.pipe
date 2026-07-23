@@ -1,0 +1,83 @@
+DESCRIPTION >
+    Per-repo Lifecycle state, computed via the spec's 5-branch decision tree (first match wins):
+    archived (repos.archived) > abandoned (no commits in 18mo AND no issue/PR activity in 18mo) >
+    declining (commits down >50% vs prior 6mo AND issues opened up vs prior 6mo) > stable (release
+    within 12mo, <50 open issues, no open critical vulns, commits down >50% vs prior 6mo) > active
+    (fallback). Project-level rollup (best-state-wins) happens in project_insights_copy.pipe.
+    - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
+      health_score_v2_maintainer.pipe description for why.
+
+NODE health_score_v2_lifecycle_calc
+SQL >
+    SELECT
+        r.url AS repoUrl,
+        multiIf(
+            r.archived = 1,
+            'archived',
+            (r.lastCommitAt < now() - INTERVAL 18 MONTH)
+                AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
+            'abandoned',
+            coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
+                AND coalesce(w.issuesOpenedLast6m, 0) > coalesce(w.issuesOpenedPrior6m, 0),
+            'declining',
+            (rl.latestReleaseDay > today() - 365)
+                AND coalesce(n.issuesOpenNow, 0) < 50
+                AND coalesce(v.openCriticals, 0) = 0
+                AND coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5,
+            'stable',
+            'active'
+        ) AS lifecycleLabelV2
+    FROM (
+        SELECT base.url AS url, base.archived AS archived, rc.lastCommitAt AS lastCommitAt
+        FROM (SELECT DISTINCT url, archived FROM repositories WHERE deletedAt IS NULL) AS base
+        LEFT JOIN (
+            SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+            FROM repos GROUP BY url
+        ) AS rc ON rc.url = base.url
+    ) AS r
+    LEFT JOIN (
+        SELECT channel AS repoUrl,
+            countIf(timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
+            countIf(timestamp <= now() - INTERVAL 6 MONTH AND timestamp > now() - INTERVAL 12 MONTH) AS commitsPrior6m
+        FROM activityRelations_deduplicated_cleaned_bucket_union
+        WHERE type = 'authored-commit'
+        GROUP BY channel
+    ) AS c ON c.repoUrl = r.url
+    LEFT JOIN (
+        SELECT channel AS repoUrl, countIf(closedAt IS NULL) AS issuesOpenNow
+        FROM issues_analyzed
+        GROUP BY channel
+    ) AS n ON n.repoUrl = r.url
+    LEFT JOIN (
+        SELECT channel AS repoUrl,
+            countIf(openedAt > now() - INTERVAL 6 MONTH) AS issuesOpenedLast6m,
+            countIf(openedAt <= now() - INTERVAL 6 MONTH AND openedAt > now() - INTERVAL 12 MONTH) AS issuesOpenedPrior6m,
+            countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m
+        FROM issues_analyzed
+        GROUP BY channel
+    ) AS w ON w.repoUrl = r.url
+    LEFT JOIN (
+        SELECT channel AS repoUrl, countIf(openedAt > now() - INTERVAL 18 MONTH) AS prsInWindow18m
+        FROM pull_requests_analyzed
+        GROUP BY channel
+    ) AS p ON p.repoUrl = r.url
+    LEFT JOIN (
+        SELECT repoUrl, countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals
+        FROM vulnerabilities
+        GROUP BY repoUrl
+    ) AS v ON v.repoUrl = r.url
+    LEFT JOIN (
+        SELECT r2.url AS repoUrl, max(rd.releaseDay) AS latestReleaseDay
+        FROM repos r2
+        INNER JOIN packageRepos pr ON pr.repoId = r2.id
+        INNER JOIN (
+            SELECT DISTINCT packageId, toDate(publishedAt) AS releaseDay
+            FROM versions WHERE publishedAt IS NOT NULL
+        ) rd ON rd.packageId = pr.packageId
+        GROUP BY r2.url
+    ) AS rl ON rl.repoUrl = r.url
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_lifecycle_ds
+COPY_MODE replace
+COPY_SCHEDULE 15 2 * * *

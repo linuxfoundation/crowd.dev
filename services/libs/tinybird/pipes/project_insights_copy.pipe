@@ -85,36 +85,33 @@ SQL >
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY segmentId
 
-NODE project_insights_copy_project_purls
+NODE project_insights_copy_health_v2_project
 DESCRIPTION >
-    Distinct package purls linked to each project, via packageDownloads (the established project<->package bridge)
-
-SQL >
-    SELECT DISTINCT insightsProjectId, purl
-    FROM packageDownloads
-    WHERE insightsProjectId != '' AND purl != ''
-
-NODE project_insights_copy_project_akrites
-DESCRIPTION >
-    Akrites methodology rollup (lifecycle, health v2, impact) aggregated from ossPackages_enriched_ds up to project level.
-    Lifecycle uses best-state-wins precedence: active > stable > declining > abandoned > archived.
-    Health v2 and impact are averaged across the project's linked packages.
+    Lifecycle, Health Score v2, and Impact Score all rolled up to project level from the pre-computed
+    per-repo values in health_score_v2_repo_copy_ds (materialized by health_score_v2.pipe — the
+    expensive per-signal joins run there as their own copy job, not inline here). Per spec section 5/6:
+    - healthScoreV2: straight mean across the project's enabled, non-excluded repos.
+    - lifecycleLabelV2: best-state-wins (active > stable > declining > abandoned > archived).
+    - impactScoreRaw: MAX across the project's repos (each repo's own value is already a MAX over its
+      published packages) — matches the spec's "MAX(packages.impact) over packages published by any
+      repo in the project," since max-of-maxes = max-over-all.
 
 SQL >
     SELECT
-        pp.insightsProjectId AS insightsProjectId,
+        rep.insightsProjectId AS insightsProjectId,
+        avg(hv2.healthScoreV2) AS healthScoreV2,
         arrayElement(
             arraySort(
                 x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived'], x),
-                groupArray(pkg.lifecycleLabel)
+                groupArray(hv2.lifecycleLabelV2)
             ),
             1
-        ) AS lifecycleLabel,
-        toUInt8(round(avg(pkg.healthScore))) AS healthScoreV2,
-        avgOrNull(toFloat64OrNull(pkg.impact)) * 100 AS impactScoreRaw
-    FROM project_insights_copy_project_purls AS pp
-    INNER JOIN ossPackages_enriched_ds AS pkg ON pkg.purl = pp.purl
-    GROUP BY pp.insightsProjectId
+        ) AS lifecycleLabelV2,
+        maxOrNull(hv2.impactScore) AS impactScoreRaw
+    FROM repositories rep FINAL
+    INNER JOIN health_score_v2_repo_copy_ds hv2 ON hv2.repoUrl = rep.url
+    WHERE rep.insightsProjectId != '' AND rep.enabled = true AND rep.excluded = false
+    GROUP BY rep.insightsProjectId
 
 NODE project_insights_copy_project_results
 DESCRIPTION >
@@ -152,30 +149,30 @@ SQL >
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
-        akr.healthScoreV2 AS healthScoreV2,
+        toUInt8(round(hv2.healthScoreV2)) AS healthScoreV2,
         multiIf(
-            akr.healthScoreV2 IS NULL,
+            hv2.healthScoreV2 IS NULL,
             NULL,
-            akr.healthScoreV2 >= 85,
+            hv2.healthScoreV2 >= 85,
             'excellent',
-            akr.healthScoreV2 >= 70,
+            hv2.healthScoreV2 >= 70,
             'healthy',
-            akr.healthScoreV2 >= 50,
+            hv2.healthScoreV2 >= 50,
             'fair',
-            akr.healthScoreV2 >= 30,
+            hv2.healthScoreV2 >= 30,
             'concerning',
             'critical'
         ) AS healthLabel,
-        akr.lifecycleLabel AS lifecycleLabel,
-        toUInt8(round(akr.impactScoreRaw)) AS impactScore,
+        hv2.lifecycleLabelV2 AS lifecycleLabel,
+        hv2.impactScoreRaw AS impactScore,
         multiIf(
-            akr.impactScoreRaw IS NULL,
+            hv2.impactScoreRaw IS NULL,
             NULL,
-            akr.impactScoreRaw >= 85,
+            hv2.impactScoreRaw >= 85,
             'foundational',
-            akr.impactScoreRaw >= 60,
+            hv2.impactScoreRaw >= 60,
             'major',
-            akr.impactScoreRaw >= 30,
+            hv2.impactScoreRaw >= 30,
             'moderate',
             'minor'
         ) AS impactLabel
@@ -183,7 +180,7 @@ SQL >
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
     LEFT JOIN project_insights_copy_period_metrics AS pm USING (segmentId)
-    LEFT JOIN project_insights_copy_project_akrites AS akr ON base.id = akr.insightsProjectId
+    LEFT JOIN project_insights_copy_health_v2_project AS hv2 ON base.id = hv2.insightsProjectId
 
 NODE project_insights_copy_repo_base
 DESCRIPTION >
@@ -233,26 +230,6 @@ SQL >
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY channel
 
-NODE project_insights_copy_repo_akrites
-DESCRIPTION >
-    Akrites methodology rollup (lifecycle, health v2, impact) aggregated from ossPackages_enriched_ds up to repo level, matched by repositoryUrl (a repo may host multiple packages, e.g. a monorepo)
-
-SQL >
-    SELECT
-        repositoryUrl,
-        arrayElement(
-            arraySort(
-                x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived'], x),
-                groupArray(lifecycleLabel)
-            ),
-            1
-        ) AS lifecycleLabel,
-        toUInt8(round(avg(healthScore))) AS healthScoreV2,
-        avgOrNull(toFloat64OrNull(impact)) * 100 AS impactScoreRaw
-    FROM ossPackages_enriched_ds
-    WHERE repositoryUrl IS NOT NULL AND repositoryUrl != ''
-    GROUP BY repositoryUrl
-
 NODE project_insights_copy_repo_results
 DESCRIPTION >
     Join all repository insights together
@@ -289,37 +266,37 @@ SQL >
         COALESCE(rm.forksPrevious365Days, 0) AS forksPrevious365Days,
         COALESCE(rm.activeContributorsPrevious365Days, 0) AS activeContributorsPrevious365Days,
         COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days,
-        akr.healthScoreV2 AS healthScoreV2,
+        toUInt8(round(hv2.healthScoreV2)) AS healthScoreV2,
         multiIf(
-            akr.healthScoreV2 IS NULL,
+            hv2.healthScoreV2 IS NULL,
             NULL,
-            akr.healthScoreV2 >= 85,
+            hv2.healthScoreV2 >= 85,
             'excellent',
-            akr.healthScoreV2 >= 70,
+            hv2.healthScoreV2 >= 70,
             'healthy',
-            akr.healthScoreV2 >= 50,
+            hv2.healthScoreV2 >= 50,
             'fair',
-            akr.healthScoreV2 >= 30,
+            hv2.healthScoreV2 >= 30,
             'concerning',
             'critical'
         ) AS healthLabel,
-        akr.lifecycleLabel AS lifecycleLabel,
-        toUInt8(round(akr.impactScoreRaw)) AS impactScore,
+        hv2.lifecycleLabelV2 AS lifecycleLabel,
+        hv2.impactScore AS impactScore,
         multiIf(
-            akr.impactScoreRaw IS NULL,
+            hv2.impactScore IS NULL,
             NULL,
-            akr.impactScoreRaw >= 85,
+            hv2.impactScore >= 85,
             'foundational',
-            akr.impactScoreRaw >= 60,
+            hv2.impactScore >= 60,
             'major',
-            akr.impactScoreRaw >= 30,
+            hv2.impactScore >= 30,
             'moderate',
             'minor'
         ) AS impactLabel
     FROM project_insights_copy_repo_base AS base
     LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
     LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
-    LEFT JOIN project_insights_copy_repo_akrites AS akr ON base.repoUrl = akr.repositoryUrl
+    LEFT JOIN health_score_v2_repo_copy_ds AS hv2 ON base.repoUrl = hv2.repoUrl
 
 NODE project_insights_copy_results
 DESCRIPTION >

@@ -1,0 +1,13 @@
+DESCRIPTION >
+    - `health_score_v2_impact_ds` holds the per-repo raw Impact Score (0-100 float, pre-rounding)
+      for Health Score v2. Populated by `health_score_v2_impact.pipe`.
+    - `repoUrl` is the repository URL — the join key back to `repositories`.
+    - `impactScoreRaw` — MAX(packages.impact) * 100 over packages published by this repo. NULL when
+      the repo has no linked packages with a known impact value.
+
+SCHEMA >
+    `repoUrl` String,
+    `impactScoreRaw` Nullable(Float64)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY repoUrl

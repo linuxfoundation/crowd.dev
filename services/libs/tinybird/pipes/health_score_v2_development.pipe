@@ -1,0 +1,108 @@
+DESCRIPTION >
+    Development Activity category (max 25 pts): release cadence (8), commit activity (5), issue
+    resolution (7), PR merge health (5). Release cadence uses distinct release DAYS (not raw
+    publishedAt timestamps) because monorepo projects publish many packages within seconds of each
+    other, which would otherwise read as near-zero days between releases. Commit activity counts
+    `authored-commit` across all platforms (not just platform='git') since GitHub-sourced commits are
+    tagged platform='github', not 'git', in activityRelations. Falls back to repos.lastCommitAt
+    (4 pts if <3mo, 2 if <12mo, else 0) when a repo has zero rows in activityRelations at all —
+    per spec, and because only ~30K of 3.3M repos have any git activity ingested, vs. ~6M rows
+    (most repos) having lastCommitAt from GitHub enrichment — the fallback covers the vast majority.
+    - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
+      health_score_v2_maintainer.pipe description for why.
+
+NODE health_score_v2_development_calc
+SQL >
+    SELECT
+        repoUrl,
+        if(coveredWeight / 25.0 < 0.4, NULL, toNullable(toUInt8(round(least(25.0, rawScore * (25.0 / coveredWeight)))))) AS developmentActivityScoreV2
+    FROM (
+        SELECT
+            repoUrl,
+            (releaseCadenceAvailable * releaseCadenceScore + commitActivityScore
+             + issueResolutionAvailable * issueResolutionScore + prMergeAvailable * prMergeScore) AS rawScore,
+            (releaseCadenceAvailable * 8 + 5 + issueResolutionAvailable * 7 + prMergeAvailable * 5) AS coveredWeight
+        FROM (
+            SELECT
+                rp.repoUrl AS repoUrl,
+                (rs.repoUrl != '') AS releaseCadenceAvailable,
+                multiIf(
+                    rs.daysSinceLatest < 90 AND rs.daysBetweenRecent < 90, 8,
+                    rs.daysSinceLatest < 180, 6,
+                    rs.daysSinceLatest < 365, 4,
+                    rs.daysSinceLatest < 730, 2,
+                    0
+                ) AS releaseCadenceScore,
+                -- commit activity is never `blocked`: it has its own spec-mandated fallback to
+                -- repos.lastCommitAt, so it always contributes its full 5pt weight to coverage
+                multiIf(
+                    c.repoUrl != '',
+                    multiIf(c.commitsLast6m >= 50, 5, c.commitsLast6m >= 20, 4, c.commitsLast6m >= 5, 3, c.commitsLast6m >= 1, 1, 0),
+                    rp.lastCommitAt > now() - INTERVAL 3 MONTH, 4,
+                    rp.lastCommitAt > now() - INTERVAL 12 MONTH, 2,
+                    0
+                ) AS commitActivityScore,
+                (ist.repoUrl != '') AS issueResolutionAvailable,
+                (multiIf(ist.opened12m = 0, 0, (ist.closed12m / ist.opened12m) >= 0.8, 4, (ist.closed12m / ist.opened12m) >= 0.5, 2, 0)
+                 + multiIf(ist.medianCloseS < 604800, 3, ist.medianCloseS < 2592000, 2, 0)) AS issueResolutionScore,
+                (prs.repoUrl != '') AS prMergeAvailable,
+                (multiIf((prs.merged12m + prs.closedUnmerged12m) = 0, 0, (prs.merged12m / (prs.merged12m + prs.closedUnmerged12m)) >= 0.7, 3, (prs.merged12m / (prs.merged12m + prs.closedUnmerged12m)) >= 0.4, 1, 0)
+                 + multiIf(prs.medianMergeS < 604800, 2, prs.medianMergeS < 2592000, 1, 0)) AS prMergeScore
+            FROM (
+                SELECT base.url AS repoUrl, rc.lastCommitAt AS lastCommitAt
+                FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS base
+                LEFT JOIN (
+                    SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+                    FROM repos GROUP BY url
+                ) AS rc ON rc.url = base.url
+            ) AS rp
+            LEFT JOIN (
+                SELECT
+                    repoUrl,
+                    dateDiff('day', top2[1], today()) AS daysSinceLatest,
+                    if(length(top2) >= 2, dateDiff('day', top2[2], top2[1]), 9999) AS daysBetweenRecent
+                FROM (
+                    SELECT
+                        r.url AS repoUrl,
+                        arraySlice(arraySort(x -> -toInt64(x), arrayDistinct(groupArray(rd.releaseDay))), 1, 2) AS top2
+                    FROM repos r
+                    INNER JOIN packageRepos pr ON pr.repoId = r.id
+                    INNER JOIN (
+                        SELECT DISTINCT packageId, toDate(publishedAt) AS releaseDay
+                        FROM versions WHERE publishedAt IS NOT NULL
+                    ) rd ON rd.packageId = pr.packageId
+                    GROUP BY r.url
+                )
+            ) AS rs ON rs.repoUrl = rp.repoUrl
+            LEFT JOIN (
+                SELECT channel AS repoUrl,
+                    countIf(timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m
+                FROM activityRelations_deduplicated_cleaned_bucket_union
+                WHERE type = 'authored-commit'
+                GROUP BY channel
+            ) AS c ON c.repoUrl = rp.repoUrl
+            LEFT JOIN (
+                SELECT channel AS repoUrl,
+                    countIf(closedAt IS NOT NULL) AS closed12m,
+                    count() AS opened12m,
+                    quantileIf(0.5)(closedInSeconds, closedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
+                FROM issues_analyzed
+                WHERE openedAt > now() - INTERVAL 12 MONTH
+                GROUP BY channel
+            ) AS ist ON ist.repoUrl = rp.repoUrl
+            LEFT JOIN (
+                SELECT channel AS repoUrl,
+                    countIf(mergedAt IS NOT NULL) AS merged12m,
+                    countIf(closedAt IS NOT NULL AND mergedAt IS NULL) AS closedUnmerged12m,
+                    quantileIf(0.5)(mergedInSeconds, mergedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
+                FROM pull_requests_analyzed
+                WHERE openedAt > now() - INTERVAL 12 MONTH
+                GROUP BY channel
+            ) AS prs ON prs.repoUrl = rp.repoUrl
+        )
+    )
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_development_ds
+COPY_MODE replace
+COPY_SCHEDULE 10 2 * * *
