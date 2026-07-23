@@ -171,7 +171,13 @@ async def can_onboard_more() -> bool:
     or if the query fails (indicating high database load).
     """
     try:
-        integration_results_count = await fetchval("SELECT COUNT(*) FROM integration.results")
+        # Bound the scan: integration.results holds millions of rows, and a plain
+        # COUNT(*) walks the whole table every 5s poll tick. LIMIT lets Postgres
+        # stop as soon as it has enough rows to answer the threshold check.
+        integration_results_count = await fetchval(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM integration.results LIMIT $1) t",
+            (MAX_INTEGRATION_RESULTS,),
+        )
         return integration_results_count < MAX_INTEGRATION_RESULTS
     except Exception as e:
         logger.warning(f"Failed to get integration.results count with error: {e}")
