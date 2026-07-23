@@ -1162,7 +1162,7 @@ export default class ActivityService extends LoggerBase {
 
     // find members to create
     for (const payload of payloadsWithoutDbMembers) {
-      const key = `${payload.platform}:${payload.activity.username}`
+      const key = `${payload.platform}:${payload.activity.username?.toLowerCase()}`
       if (!membersToCreateMap.has(key)) {
         const segmentIds = new Set<string>()
         segmentIds.add(payload.segmentId)
@@ -1188,7 +1188,7 @@ export default class ActivityService extends LoggerBase {
 
     // find object members to create
     for (const payload of payloadsWithoutDbObjectMembers) {
-      const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
+      const key = `${payload.platform}:${payload.activity.objectMemberUsername?.toLowerCase()}`
       if (!membersToCreateMap.has(key)) {
         const segmentIds = new Set<string>()
         segmentIds.add(payload.segmentId)
@@ -1756,12 +1756,17 @@ export default class ActivityService extends LoggerBase {
     memberType: 'member' | 'objectMember',
     dbMember?: IDbMember,
   ): Promise<string | Record<string, unknown> | undefined> {
+    const IDENTITY_CONSTRAINTS = new Set([
+      'uix_memberIdentities_platform_value_type_verified',
+      'uix_memberIdentities_memberId_platform_value_type',
+    ])
+
     const checkForIdentityConstraint = (error: any): boolean => {
       if (
         error.constructor &&
         error.constructor.name === 'DatabaseError' &&
         error.constraint &&
-        error.constraint === 'uix_memberIdentities_platform_value_type_verified'
+        IDENTITY_CONSTRAINTS.has(error.constraint)
       ) {
         return true
       }
@@ -1812,6 +1817,18 @@ export default class ActivityService extends LoggerBase {
             break outer
           }
         }
+      }
+
+      // Create path: no dbMember to compare against yet (member row doesn't exist locally).
+      // The verified-identity index is globally unique, so a found owner IS the canonical
+      // member — attach to it instead of failing (covers whole-batch-retry re-attempting a
+      // create whose identity insert already succeeded in an earlier attempt).
+      if (ownerId && !dbMember) {
+        this.log.warn(
+          { memberId: ownerId, identity: conflictIdentity },
+          'Verified identity already belongs to an existing member — attaching to it instead of creating a new one',
+        )
+        return ownerId
       }
 
       // Pass 2: if no external conflict, check whether this member already owns the
