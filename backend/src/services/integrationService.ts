@@ -19,6 +19,7 @@ import { ICreateInsightsProject } from '@crowd/data-access-layer/src/collections
 import {
   findMailingListsOwnedByOtherIntegration,
   lockMailingListSourceUrls,
+  softDeleteMailingListsByIntegrationId,
   upsertMailingLists,
 } from '@crowd/data-access-layer/src/mailinglist'
 import {
@@ -468,6 +469,14 @@ export default class IntegrationService {
             ...this.options,
             transaction,
           })
+        }
+
+        if (integration.platform === PlatformType.MAILINGLIST) {
+          const qx = SequelizeRepository.getQueryExecutor({
+            ...this.options,
+            transaction,
+          })
+          await softDeleteMailingListsByIntegrationId(qx, integration.id)
         }
 
         // Soft delete from public.repositories for code integrations

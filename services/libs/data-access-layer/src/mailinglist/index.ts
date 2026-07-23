@@ -153,3 +153,27 @@ export async function upsertMailingLists(
 
   return rows.map((row: { id: string }) => row.id)
 }
+
+/**
+ * Soft delete all of an integration's mailing lists. Used when the integration itself
+ * is destroyed — `upsertMailingLists`'s `removed_lists` cleanup only runs on a
+ * connect/update call and never fires on integration deletion, so without this the
+ * worker (which filters "deletedAt" IS NULL) keeps polling a disconnected integration's
+ * lists and their sourceUrls stay unavailable for a replacement integration to claim.
+ * @param qx - Query executor (should be transactional)
+ * @param integrationId - Integration being destroyed
+ */
+export async function softDeleteMailingListsByIntegrationId(
+  qx: QueryExecutor,
+  integrationId: string,
+): Promise<void> {
+  await qx.selectNone(
+    `
+    UPDATE mailinglist.lists
+    SET "deletedAt" = NOW(), "updatedAt" = NOW()
+    WHERE "integrationId" = $(integrationId)::uuid
+      AND "deletedAt" IS NULL
+    `,
+    { integrationId },
+  )
+}
