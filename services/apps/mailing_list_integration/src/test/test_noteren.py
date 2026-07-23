@@ -854,14 +854,14 @@ def test_parse_email_url_contains_message_id():
         b"body\n"
     )
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
-    assert parsed["activityData"]["url"] == "src/r/unique-id@example.com"
+    assert parsed["activityData"]["url"] == "src/r/unique-id%40example.com"
 
 
 def test_parse_email_url_with_no_message_id():
     """When Message-ID is absent the url must embed the synthetic channel:git_id id."""
     raw = b"From: A <a@example.com>\nSubject: s\nDate: Mon, 1 Jan 2024 12:00:00 +0000\n\nbody\n"
     parsed = _parse_email(raw, "src", "chan", "c1", "b1")
-    assert parsed["activityData"]["url"] == "src/r/chan:c1"
+    assert parsed["activityData"]["url"] == "src/r/chan%3Ac1"
 
 
 def test_parse_email_result_structure():

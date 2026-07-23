@@ -18,6 +18,7 @@ import logging
 import re
 import subprocess
 import sys
+import urllib.parse
 
 from crowdmail.enums import ActivityType
 from crowdmail.errors import CommandExecutionError
@@ -364,7 +365,7 @@ def parse_email(
         "channel": channel,
         "title": subject,
         "body": json_body,
-        "url": source.rstrip("/") + "/r/" + msgid,
+        "url": source.rstrip("/") + "/r/" + urllib.parse.quote(msgid, safe=""),
         "isContribution": True,
         "type": ActivityType.MESSAGE,
         # Matches groupsio's Groupsio_GRID MESSAGE score (services/libs/integrations/src/integrations/groupsio/grid.ts)
