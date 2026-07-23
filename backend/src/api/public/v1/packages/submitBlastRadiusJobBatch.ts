@@ -13,6 +13,7 @@ import { validateOrThrow } from '@/utils/validation'
 import {
   type BlastRadiusJobEntry,
   type BlastRadiusJobRequest,
+  getCachedJobEntry,
   toBlastRadiusJobEntry,
 } from './blastRadius'
 import { blastRadiusJobBatchRequestSchema } from './blastRadiusBatch'
@@ -20,7 +21,10 @@ import { blastRadiusJobBatchRequestSchema } from './blastRadiusBatch'
 // 2a bulk — submit multiple blast-radius analysis jobs in one request, one per
 // array entry. Same lifecycle as the single-job submit, just looped: each entry
 // gets its own analysisId, its own pending row, and its own Temporal workflow
-// start. Unlike the read-only batch endpoints (packages/advisories/contacts),
+// start — unless a 'done' analysis for the same (advisoryId, package, ecosystem)
+// is still within the advisory cache window (see BLAST_RADIUS_CACHE_MAX_AGE_DAYS),
+// in which case that entry reuses the cached analysis instead. Unlike the
+// read-only batch endpoints (packages/advisories/contacts),
 // this multiplies workflow starts per request, so the batch size is capped much
 // lower (see MAX_BLAST_RADIUS_JOBS_PER_BATCH) and the route stays behind the same
 // strict blastRadiusRateLimiter as the single-job route.
@@ -58,10 +62,21 @@ async function submitOneJob(
   }
 
   try {
+    // Cache lookup is inside the try too — like createAnalysis/workflow.start below,
+    // a DB error here must resolve this job's entry as 'failed', not reject the whole
+    // batch's Promise.all and 500 every other job in it.
+    const cached = await getCachedJobEntry(qx, {
+      advisoryId: body.advisoryId,
+      package: jobPackage,
+      ecosystem: jobEcosystem,
+      force: body.force,
+    })
+    if (cached) {
+      return cached
+    }
+
     // Create the pending row synchronously, before starting the workflow — see the
-    // same comment on submitBlastRadiusJob for why (avoids a poll-race 404). This is
-    // inside the try too — unlike the single-job submit, a createAnalysis failure
-    // must not reject the whole batch's Promise.all, only this job's entry.
+    // same comment on submitBlastRadiusJob for why (avoids a poll-race 404).
     await blastRadiusDal.createAnalysis(qx, analysisInput)
 
     await packagesTemporal.workflow.start('analyzeBlastRadius', {
@@ -87,16 +102,23 @@ async function submitOneJob(
     })
   } catch (err) {
     // Unlike the single-job submit, this does not rethrow — one job's workflow
-    // failing to start must not take the rest of the batch down with it.
+    // failing to start must not take the rest of the batch down with it. The
+    // failAnalysis call below is deliberately its own try/catch too — if marking
+    // the row failed also fails (e.g. DB unreachable), that must still resolve
+    // this job's entry rather than reject the whole Promise.all and 500 the batch.
     const errorMessage = err instanceof Error ? err.message : String(err)
-    await blastRadiusDal.failAnalysis(qx, analysisInput, errorMessage)
+    try {
+      await blastRadiusDal.failAnalysis(qx, analysisInput, errorMessage)
+    } catch {
+      // best-effort — the job is already being reported as failed below
+    }
 
-    return {
+    return toBlastRadiusJobEntry({
       analysisId,
       advisoryId: body.advisoryId,
       package: jobPackage,
       ecosystem: jobEcosystem,
       status: 'failed',
-    }
+    })
   }
 }

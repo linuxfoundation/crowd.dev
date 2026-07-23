@@ -12,8 +12,10 @@ info:
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
     submit (2a) and poll (2b) are both implemented, backed by a 4-stage
     Temporal pipeline (intel, dependents, reachability, report) for npm
-    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
-    7-day result cache is specced separately and not yet built.
+    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. Submit
+    reuses a 'done' analysis for the same advisory/package/ecosystem if it
+    completed within the last day (configurable, see the `force` field below)
+    instead of starting a new Temporal workflow.
 
 
     TODO: scopes below (read:packages, read:stewardships) are the existing
@@ -57,10 +59,11 @@ tags:
       status and, once done, results. Bulk submit (jobs:batch) is capped at
       20 jobs per request (10 recommended as the default batch size) — each
       entry starts its own workflow — and stays behind the same strict rate
-      limiter as the single-job route; bulk poll
-      (jobs:batch/poll) is read-only and capped at 100 like the other batch
-      endpoints. Same interim scope note as Advisories applies (read:packages,
-      pending a dedicated read:advisories scope).
+      limiter as the single-job route, defaulting to 50 requests/hour
+      (configurable via AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX / _WINDOW_MS);
+      bulk poll (jobs:batch/poll) is read-only and capped at 100 like the
+      other batch endpoints. Same interim scope note as Advisories applies
+      (read:packages, pending a dedicated read:advisories scope).
 
 components:
   securitySchemes:
@@ -406,7 +409,10 @@ components:
         force:
           type: boolean
           default: false
-          description: Bypasses the 7-day cache and always triggers a new run. Use sparingly.
+          description: >
+            Bypasses the advisory cache (a 'done' analysis for the same
+            advisory/package/ecosystem completed within the last day, by
+            default) and always triggers a new run. Use sparingly.
 
     BlastRadiusJobEntry:
       type: object
@@ -433,8 +439,10 @@ components:
           type: string
           enum: [pending, running, done, failed]
           description: >
-            Pending in the single-job submit response, always returned before the
-            Temporal workflow runs. In the batch submit response, a job whose
+            Pending when a job is freshly submitted, returned before the Temporal
+            workflow runs. Done when the advisory cache is reused instead — see
+            force above — in which case analysisId is the cached analysis's own
+            id, already completed. In the batch submit response, a job whose
             workflow failed to start comes back as failed instead — the rest of
             the batch is unaffected.
 
@@ -1067,10 +1075,9 @@ paths:
         Starts a Temporal workflow running the 4-stage reachability pipeline
         (intel, dependents, reachability, report) for npm; other ecosystems
         fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results via
-        GET /jobs/{analysisId}.
-
-
-        Not yet implemented: the 7-day result cache and force-bypass semantics.
+        GET /jobs/{analysisId}. Reuses a 'done' analysis for the same
+        advisory/package/ecosystem completed within the last day (by
+        default) instead of starting a new workflow, unless force is true.
       tags: [Blast Radius]
       security:
         - M2MBearer:
