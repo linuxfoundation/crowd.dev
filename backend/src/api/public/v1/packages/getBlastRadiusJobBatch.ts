@@ -25,33 +25,44 @@ export async function getBlastRadiusJobBatch(req: Request, res: Response): Promi
 
   const qx = await getPackagesQx()
 
-  const results: BlastRadiusAnalysisBulkEntry[] = await Promise.all(
-    pagedAnalysisIds.map((requestedAnalysisId) => pollOneAnalysis(qx, requestedAnalysisId)),
+  const analysisRows = await blastRadiusDal.getAnalysisDetailsByIds(qx, pagedAnalysisIds)
+  const analysisById = new Map(analysisRows.map((row) => [row.id, row]))
+
+  const doneIds = analysisRows.filter((row) => row.status === 'done').map((row) => row.id)
+  const [verdictRows, excludedByRangeCounts] = await Promise.all([
+    blastRadiusDal.getVerdictResultsBatch(qx, doneIds),
+    blastRadiusDal.getDependentsExcludedByRangeCountBatch(qx, doneIds),
+  ])
+
+  const verdictsByAnalysisId = new Map<string, typeof verdictRows>()
+  for (const row of verdictRows) {
+    const bucket = verdictsByAnalysisId.get(row.analysisId)
+    if (bucket) {
+      bucket.push(row)
+    } else {
+      verdictsByAnalysisId.set(row.analysisId, [row])
+    }
+  }
+  const excludedByRangeCountByAnalysisId = new Map(
+    excludedByRangeCounts.map(({ analysisId, count }) => [analysisId, count]),
   )
 
+  const results: BlastRadiusAnalysisBulkEntry[] = pagedAnalysisIds.map((requestedAnalysisId) => {
+    const analysis = analysisById.get(requestedAnalysisId)
+    if (!analysis) {
+      return { requestedAnalysisId, found: false, analysis: null }
+    }
+
+    return {
+      requestedAnalysisId,
+      found: true,
+      analysis: toBlastRadiusAnalysis(
+        analysis,
+        verdictsByAnalysisId.get(requestedAnalysisId) ?? [],
+        excludedByRangeCountByAnalysisId.get(requestedAnalysisId) ?? 0,
+      ),
+    }
+  })
+
   ok(res, { page, pageSize, total, results })
-}
-
-async function pollOneAnalysis(
-  qx: Awaited<ReturnType<typeof getPackagesQx>>,
-  requestedAnalysisId: string,
-): Promise<BlastRadiusAnalysisBulkEntry> {
-  const analysis = await blastRadiusDal.getAnalysisDetail(qx, requestedAnalysisId)
-  if (!analysis) {
-    return { requestedAnalysisId, found: false, analysis: null }
-  }
-
-  const done = analysis.status === 'done'
-  const [verdictRows, excludedByRangeCount] = done
-    ? await Promise.all([
-        blastRadiusDal.getVerdictResults(qx, requestedAnalysisId),
-        blastRadiusDal.getDependentsExcludedByRangeCount(qx, requestedAnalysisId),
-      ])
-    : [[], 0]
-
-  return {
-    requestedAnalysisId,
-    found: true,
-    analysis: toBlastRadiusAnalysis(analysis, verdictRows, excludedByRangeCount),
-  }
 }

@@ -411,7 +411,10 @@ components:
     BlastRadiusJobEntry:
       type: object
       required: [analysisId, advisoryId, package, ecosystem, status]
-      description: Response body of 2a — one job per request, never wrapped in an array.
+      description: >
+        Response body of 2a for a single submitted job. Returned directly (not
+        wrapped in an array) by the single-job submit; the batch submit (2a bulk)
+        returns an array of these under `results` — see BlastRadiusJobBatchResponse.
       properties:
         analysisId:
           type: string
@@ -429,7 +432,11 @@ components:
         status:
           type: string
           enum: [pending, running, done, failed]
-          description: Always pending — the response is returned before the Temporal workflow runs.
+          description: >
+            Pending in the single-job submit response, always returned before the
+            Temporal workflow runs. In the batch submit response, a job whose
+            workflow failed to start comes back as failed instead — the rest of
+            the batch is unaffected.
 
     BlastRadiusJobBatchRequest:
       type: object
