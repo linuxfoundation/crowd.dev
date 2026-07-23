@@ -20,7 +20,7 @@ const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
 // Blast-radius jobs kick off a Temporal workflow per request, so they get their own,
 // much stricter limiter — configurable via env so it can be tuned without a redeploy.
-// Defaults to 5 requests/hour.
+// Defaults to 50 requests/hour.
 const blastRadiusRateLimitMax = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX)
 const blastRadiusRateLimitWindowMs = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_WINDOW_MS)
 
@@ -28,7 +28,7 @@ const blastRadiusRateLimiter = createRateLimiter({
   max:
     Number.isSafeInteger(blastRadiusRateLimitMax) && blastRadiusRateLimitMax > 0
       ? blastRadiusRateLimitMax
-      : 5,
+      : 50,
   windowMs:
     Number.isSafeInteger(blastRadiusRateLimitWindowMs) && blastRadiusRateLimitWindowMs > 0
       ? blastRadiusRateLimitWindowMs
