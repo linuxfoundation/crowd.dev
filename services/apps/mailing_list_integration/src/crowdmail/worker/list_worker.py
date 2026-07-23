@@ -153,7 +153,16 @@ async def _process_single_list(mailing_list: MailingList):
                         f"{mailing_list.integration_id}:{shard}:{git_id}",
                     )
                 )
-                data_dict = {"type": IntegrationResultType.ACTIVITY, "data": activity_data}
+                # data_sink_worker's PROCESS_INTEGRATION_RESULT path resolves the segment
+                # from this top-level field (falling back to the integration's own segment
+                # otherwise) — not from activity_data.segmentId nested one level deeper.
+                # One integration can own lists onboarded into different segments, so this
+                # must be set explicitly per result.
+                data_dict = {
+                    "type": IntegrationResultType.ACTIVITY,
+                    "segmentId": mailing_list.segment_id,
+                    "data": activity_data,
+                }
                 activities_db.append(
                     (
                         result_id,
