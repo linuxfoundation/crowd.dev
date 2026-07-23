@@ -1962,6 +1962,17 @@ export default class ActivityService extends LoggerBase {
       if (
         metadata.memberWithIdentity &&
         metadata.memberIdToUpdate &&
+        metadata.memberWithIdentity !== metadata.memberIdToUpdate &&
+        isMultiOwnerConflict
+      ) {
+        // The update-path fast merge below assumes a single external owner. When verified
+        // identities resolve to more than one distinct owner, `ownerId` only reflects
+        // whichever one Pass 1 encountered first — merging against it would pick an
+        // arbitrary owner instead of surfacing the genuine ambiguity.
+        metadata.errorMessage = 'verified identity conflict — identities resolve to multiple owners'
+      } else if (
+        metadata.memberWithIdentity &&
+        metadata.memberIdToUpdate &&
         metadata.memberWithIdentity !== metadata.memberIdToUpdate
       ) {
         // lets just merge the members
