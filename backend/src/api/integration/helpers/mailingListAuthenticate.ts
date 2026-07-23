@@ -7,16 +7,14 @@ import { validateOrThrow } from '../../../utils/validation'
 
 const MAX_LIST_NAME_LENGTH = 255
 
-// `name` becomes a single filesystem path component for the mailing list
-// mirror (see mirror_service.py's list_mirror_dir), so it must not contain a
-// path separator or resolve to "." / ".." when used alone.
+// `name` is a display label only — the worker keys the mirror path by the
+// DB-generated list id, not `name` (see mirror_service.py's
+// list_mirror_dir/_validate_list_id), so it's free to contain path-like
+// characters (lore lists are nested, e.g. "some-project/git"). Only reject
+// the null byte, which breaks C-string-based tooling downstream regardless
+// of context.
 const isSafeListName = (name: string): boolean =>
-  name.length > 0 &&
-  name.length <= MAX_LIST_NAME_LENGTH &&
-  !name.includes('/') &&
-  !name.includes('\0') &&
-  name !== '.' &&
-  name !== '..'
+  name.length > 0 && name.length <= MAX_LIST_NAME_LENGTH && !name.includes('\0')
 
 // public-inbox-clone in the worker fetches this URL as-is; restrict to
 // https so a caller can't point the worker at file://, javascript:, or a
