@@ -1443,9 +1443,11 @@ export default class IntegrationService {
   ) {
     const lists = integrationData.lists || []
 
+    // Both current callers (mailingListAuthenticate.ts, create-mailing-list-integration.ts)
+    // validate against bodySchema's `.min(1)` before reaching here, so this is an invariant
+    // check, not user-facing validation — fail loudly rather than silently no-op.
     if (lists.length === 0) {
-      this.options.log.warn('No lists provided - skipping mailing list integration update')
-      return null
+      throw new Error400(this.options.language, 'errors.validation.message')
     }
 
     const currentOptions = options || this.options
