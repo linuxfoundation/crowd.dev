@@ -2,7 +2,7 @@
 import uniqBy from 'lodash.uniqby'
 
 import { parseGitHubNoreplyEmail, parseGitLabNoreplyEmail } from '@crowd/common'
-import { addMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
+import { insertMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import { MemberField, queryMembers } from '@crowd/data-access-layer/src/members'
 import MemberMergeSuggestionsRepository from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/memberMergeSuggestions.repo'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -498,15 +498,14 @@ export async function getRawMemberMergeSuggestions(
   return memberMergeSuggestionsRepo.getRawMemberSuggestions(similarityFilter, limit)
 }
 
-export async function removeMemberMergeSuggestion(
-  suggestion: string[],
-  table: MemberMergeSuggestionTable,
-): Promise<void> {
-  const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
-    svc.postgres.writer.connection(),
-    svc.log,
-  )
-  await memberMergeSuggestionsRepo.removeMemberMergeSuggestion(suggestion, table)
+export async function removeMemberMergeSuggestion(suggestion: string[]): Promise<void> {
+  if (suggestion.length !== 2) {
+    svc.log.debug(`Suggestions array must have two ids!`)
+    return
+  }
+
+  const qx = pgpQx(svc.postgres.writer.connection())
+  await removeMemberToMerge(qx, suggestion[0], suggestion[1])
 }
 
 export async function addMemberSuggestionToNoMerge(suggestion: string[]): Promise<void> {
@@ -516,5 +515,6 @@ export async function addMemberSuggestionToNoMerge(suggestion: string[]): Promis
   }
   const qx = pgpQx(svc.postgres.writer.connection())
 
-  await addMemberNoMerge(qx, suggestion[0], suggestion[1])
+  await insertMemberNoMerge(qx, suggestion[0], suggestion[1])
+  await insertMemberNoMerge(qx, suggestion[1], suggestion[0])
 }

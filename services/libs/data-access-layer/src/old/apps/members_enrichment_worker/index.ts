@@ -365,14 +365,6 @@ export async function findExistingMember(
   return results.map((r) => r.memberId)
 }
 
-export async function addMemberToMerge(tx: DbTransaction, memberId: string, toMergeId: string) {
-  await tx.query(
-    `INSERT INTO "memberToMerge" ("memberId", "toMergeId", similarity)
-                VALUES ($1, $2, $3);"`,
-    [memberId, toMergeId, 0.9],
-  )
-}
-
 export async function findOrganizationIdentities(
   tx: DbTransaction,
   organizationId: string,
