@@ -29,6 +29,7 @@ import {
 } from '@crowd/data-access-layer'
 import { IDbActivityRelation } from '@crowd/data-access-layer/src/activityRelations/types'
 import { DbStore, arePrimitivesDbEqual } from '@crowd/data-access-layer/src/database'
+import { insertMemberIdentities } from '@crowd/data-access-layer/src/members/identities'
 import {
   IActivityRelationCreateOrUpdateData,
   IDbActivity,
@@ -1292,7 +1293,8 @@ export default class ActivityService extends LoggerBase {
                 }
               } else if (
                 payload.platform === value.platform &&
-                payload.activity.objectMemberUsername?.toLowerCase() === value.username?.toLowerCase()
+                payload.activity.objectMemberUsername?.toLowerCase() ===
+                  value.username?.toLowerCase()
               ) {
                 const key = `${payload.platform}:${payload.activity.objectMemberUsername}`
                 if (memberMap.has(key)) {
@@ -1828,6 +1830,39 @@ export default class ActivityService extends LoggerBase {
           { memberId: ownerId, identity: conflictIdentity },
           'Verified identity already belongs to an existing member — attaching to it instead of creating a new one',
         )
+
+        // Mirror MemberService.create's conflict-redirect finalization: attaching to an
+        // existing owner must still sync the incoming identities onto it and add it to the
+        // current segment, or the owner ends up missing from this activity's project.
+        const ownerIdentities =
+          (await findIdentitiesForMembers(this.pgQx, [ownerId])).get(ownerId) ?? []
+        const missingIdentities = incomingIdentities.filter(
+          (incoming) =>
+            !ownerIdentities.some(
+              (existing) =>
+                existing.platform === incoming.platform &&
+                existing.type === incoming.type &&
+                existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase(),
+            ),
+        )
+        if (missingIdentities.length > 0) {
+          await insertMemberIdentities(
+            this.pgQx,
+            missingIdentities.map((identity) => ({
+              memberId: ownerId,
+              platform: identity.platform,
+              value: identity.value,
+              type: identity.type,
+              verified: identity.verified,
+              source: identity.source,
+              sourceId: identity.sourceId,
+              integrationId: identity.integrationId,
+              verifiedBy: identity.verifiedBy,
+            })),
+          )
+        }
+        await this.memberRepo.addToSegments(ownerId, [payload.segmentId])
+
         return ownerId
       }
 
