@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toBareNpmName } from './packageIdentifier'
+import { toBareNpmName } from '../packageIdentifier'
 
 describe('toBareNpmName', () => {
   it('returns a bare name unchanged', () => {

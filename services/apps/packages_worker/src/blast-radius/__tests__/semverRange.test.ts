@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { highestVersion, rangeIncludesAny, versionsInRanges } from './semverRange'
+import { highestVersion, rangeIncludesAny, versionsInRanges } from '../semverRange'
 
 describe('semverRange', () => {
   describe('versionsInRanges', () => {

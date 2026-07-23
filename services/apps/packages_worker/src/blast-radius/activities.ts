@@ -1,4 +1,4 @@
-import { Context } from '@temporalio/activity'
+import { heartbeat } from '@temporalio/activity'
 
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getServiceChildLogger } from '@crowd/logging'
@@ -67,9 +67,7 @@ export async function blastRadiusFail(
 export async function blastRadiusIntel(input: BlastRadiusActivityInput): Promise<void> {
   log.info({ analysisId: input.analysisId }, 'blast-radius: intel stage starting')
   const qx = await getPackagesDb()
-  await runIntelStage(qx, input.analysisId, input.advisoryOsvId, () =>
-    Context.current().heartbeat(),
-  )
+  await runIntelStage(qx, input.analysisId, input.advisoryOsvId, heartbeat)
   log.info({ analysisId: input.analysisId }, 'blast-radius: intel stage done')
 }
 
@@ -77,7 +75,7 @@ export async function blastRadiusIntel(input: BlastRadiusActivityInput): Promise
 export async function blastRadiusDependents(input: BlastRadiusActivityInput): Promise<void> {
   log.info({ analysisId: input.analysisId }, 'blast-radius: dependents stage starting')
   const qx = await getPackagesDb()
-  await runDependentsStage(qx, input.analysisId, () => Context.current().heartbeat())
+  await runDependentsStage(qx, input.analysisId, heartbeat)
   log.info({ analysisId: input.analysisId }, 'blast-radius: dependents stage done')
 }
 
@@ -85,7 +83,7 @@ export async function blastRadiusDependents(input: BlastRadiusActivityInput): Pr
 export async function blastRadiusReachability(input: BlastRadiusActivityInput): Promise<void> {
   log.info({ analysisId: input.analysisId }, 'blast-radius: reachability stage starting')
   const qx = await getPackagesDb()
-  await runReachabilityStage(qx, input.analysisId, () => Context.current().heartbeat())
+  await runReachabilityStage(qx, input.analysisId, heartbeat)
   log.info({ analysisId: input.analysisId }, 'blast-radius: reachability stage done')
 }
 
@@ -94,6 +92,6 @@ export async function blastRadiusReport(input: BlastRadiusActivityInput): Promis
   log.info({ analysisId: input.analysisId }, 'blast-radius: report stage starting')
   const qx = await getPackagesDb()
   await runReportStage(qx, input.analysisId)
-  Context.current().heartbeat()
+  heartbeat()
   log.info({ analysisId: input.analysisId }, 'blast-radius: report stage done')
 }
