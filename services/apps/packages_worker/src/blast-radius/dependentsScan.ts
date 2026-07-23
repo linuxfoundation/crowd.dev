@@ -279,6 +279,10 @@ export async function scanDependents(input: {
   for (const name of ranked) {
     if (analyzed.length >= topN) break
 
+    // Phase 1 heartbeats every 200 candidates via mapWithConcurrency; this walk is
+    // sequential (one packument fetch at a time), so it needs its own heartbeat too.
+    onProgress?.()
+
     const packument = await fetchPackument(name)
     if (isFetchError(packument)) continue
 
