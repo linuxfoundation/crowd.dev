@@ -23,6 +23,8 @@ services:
       - crowd-bridge
     ports:
       - '8086:8085'
+    volumes:
+      - lore-mirror-dev:/var/lore
 
   mailing-list-integration-dev:
     build:
@@ -44,7 +46,15 @@ services:
       - crowd-bridge
     volumes:
       - ../../services/apps/mailing_list_integration/src:/usr/crowd/app/src
+      - lore-mirror-dev:/var/lore
 
 networks:
   crowd-bridge:
     external: true
+
+# Mirrors are large public-inbox git archives that are expensive to reclone;
+# without a named volume, `make run`'s `docker compose run --rm` and any
+# container recreation wipe /var/lore and force a full reclone before
+# incremental processing can resume.
+volumes:
+  lore-mirror-dev:
