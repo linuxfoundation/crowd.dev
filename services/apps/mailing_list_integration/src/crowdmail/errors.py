@@ -8,6 +8,12 @@ class CrowdMailError(Exception):
     error_message: str = "An unknown error occurred"
     error_code: ErrorCode | None = ErrorCode.UNKNOWN
 
+    def __post_init__(self):
+        # @dataclass's generated __init__ never calls Exception.__init__, so
+        # BaseException.args stays empty and str(e) is "" for every subclass —
+        # initialize it from error_message so logging str(e) actually surfaces it.
+        super().__init__(self.error_message)
+
 
 @dataclass
 class InternalError(CrowdMailError):
