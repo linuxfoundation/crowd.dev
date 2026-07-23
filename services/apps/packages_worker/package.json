@@ -100,7 +100,7 @@
     "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.0",
     "semver": "^7.6.0",
-    "axios": "^1.16.1",
+    "axios": "^0.33.0",
     "fast-xml-parser": "^5.8.0",
     "pg-copy-streams": "^7.0.0",
     "tar": "^7.5.20",
