@@ -1,6 +1,17 @@
 CREATE INDEX IF NOT EXISTS versions_last_synced_at_id_package_id_idx
   ON ONLY versions (last_synced_at, id, package_id);
 
+DO $$
+DECLARE idx text;
+BEGIN
+  FOR idx IN
+    SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+    WHERE NOT i.indisvalid AND c.relname ~ '^versions_p[0-9]+_last_synced_at_id_package_id_idx$'
+  LOOP
+    EXECUTE format('DROP INDEX IF EXISTS %I', idx);
+  END LOOP;
+END$$;
+
 CREATE INDEX CONCURRENTLY IF NOT EXISTS versions_p0_last_synced_at_id_package_id_idx
   ON versions_p0 (last_synced_at, id, package_id);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS versions_p1_last_synced_at_id_package_id_idx
@@ -84,6 +95,17 @@ END$$;
 
 CREATE INDEX IF NOT EXISTS package_dependencies_updated_at_id_depends_on_id_idx
   ON ONLY package_dependencies (updated_at, id, depends_on_id);
+
+DO $$
+DECLARE idx text;
+BEGIN
+  FOR idx IN
+    SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+    WHERE NOT i.indisvalid AND c.relname ~ '^package_dependencies_p[0-9]+_updated_at_id_depends_on_id_idx$'
+  LOOP
+    EXECUTE format('DROP INDEX IF EXISTS %I', idx);
+  END LOOP;
+END$$;
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS package_dependencies_p0_updated_at_id_depends_on_id_idx
   ON package_dependencies_p0 (updated_at, id, depends_on_id);
