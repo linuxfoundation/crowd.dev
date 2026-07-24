@@ -50,6 +50,10 @@ export async function ingestAkritesExternalContactDetail(
     return
   }
 
+  if (!existing?.resolvedRepositoryUrl) {
+    throw new NotFoundError('Purl has no linked repository to ingest security contacts from')
+  }
+
   const packagesTemporal = await getPackagesTemporalClient()
   const result = await packagesTemporal.workflow.execute<
     (purl: string) => Promise<IngestSecurityContactsForPurlResult>

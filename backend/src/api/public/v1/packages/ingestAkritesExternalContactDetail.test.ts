@@ -74,7 +74,12 @@ describe('ingestAkritesExternalContactDetail', () => {
   it('executes ingestSecurityContactsForPurlWorkflow and returns the re-read contact detail when never ingested', async () => {
     execute.mockResolvedValue({ found: true, repoId: 'repo-1' })
     getContactDetailsByPurls
-      .mockResolvedValueOnce([baseRow({ contactsLastRefreshed: null })])
+      .mockResolvedValueOnce([
+        baseRow({
+          resolvedRepositoryUrl: 'https://github.com/lodash/lodash',
+          contactsLastRefreshed: null,
+        }),
+      ])
       .mockResolvedValueOnce([baseRow({ contactsLastRefreshed: '2024-01-01T00:00:00.000Z' })])
 
     const { req, res, json } = mockReqRes({ purl: 'pkg:npm/lodash' })
@@ -97,7 +102,12 @@ describe('ingestAkritesExternalContactDetail', () => {
 
   it('derives the same deterministic workflowId for the same purl', async () => {
     execute.mockResolvedValue({ found: true })
-    getContactDetailsByPurls.mockResolvedValue([baseRow({ contactsLastRefreshed: null })])
+    getContactDetailsByPurls.mockResolvedValue([
+      baseRow({
+        resolvedRepositoryUrl: 'https://github.com/lodash/lodash',
+        contactsLastRefreshed: null,
+      }),
+    ])
 
     const { req: req1, res: res1 } = mockReqRes({ purl: 'pkg:npm/lodash' })
     await ingestAkritesExternalContactDetail(req1, res1)
@@ -110,9 +120,36 @@ describe('ingestAkritesExternalContactDetail', () => {
     expect(id1).toBe(id2)
   })
 
+  it('throws NotFoundError without executing the workflow when the purl is unknown', async () => {
+    getContactDetailsByPurls.mockResolvedValue([])
+
+    const { req, res } = mockReqRes({ purl: 'pkg:npm/left-pad' })
+
+    await expect(ingestAkritesExternalContactDetail(req, res)).rejects.toThrow()
+    expect(execute).not.toHaveBeenCalled()
+    expect(getContactDetailsByPurls).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws NotFoundError without executing the workflow when the package has no linked repo', async () => {
+    getContactDetailsByPurls.mockResolvedValue([
+      baseRow({ resolvedRepositoryUrl: null, contactsLastRefreshed: null }),
+    ])
+
+    const { req, res } = mockReqRes({ purl: 'pkg:npm/left-pad' })
+
+    await expect(ingestAkritesExternalContactDetail(req, res)).rejects.toThrow()
+    expect(execute).not.toHaveBeenCalled()
+    expect(getContactDetailsByPurls).toHaveBeenCalledTimes(1)
+  })
+
   it('throws NotFoundError when the workflow reports no linked repo', async () => {
     execute.mockResolvedValue({ found: false })
-    getContactDetailsByPurls.mockResolvedValue([])
+    getContactDetailsByPurls.mockResolvedValue([
+      baseRow({
+        resolvedRepositoryUrl: 'https://github.com/example/left-pad',
+        contactsLastRefreshed: null,
+      }),
+    ])
 
     const { req, res } = mockReqRes({ purl: 'pkg:npm/left-pad' })
 
@@ -122,7 +159,14 @@ describe('ingestAkritesExternalContactDetail', () => {
 
   it('throws NotFoundError when the re-read finds no row', async () => {
     execute.mockResolvedValue({ found: true })
-    getContactDetailsByPurls.mockResolvedValue([])
+    getContactDetailsByPurls
+      .mockResolvedValueOnce([
+        baseRow({
+          resolvedRepositoryUrl: 'https://github.com/lodash/lodash',
+          contactsLastRefreshed: null,
+        }),
+      ])
+      .mockResolvedValueOnce([])
 
     const { req, res } = mockReqRes({ purl: 'pkg:npm/lodash' })
 

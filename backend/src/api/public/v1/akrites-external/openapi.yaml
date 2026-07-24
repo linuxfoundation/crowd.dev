@@ -1257,12 +1257,14 @@ paths:
 
         If the linked repo's security contacts have already been ingested at least
         once, returns the existing ContactDetail immediately without triggering the
-        workflow. Otherwise blocks while a single-repo Temporal workflow
-        (ingestSecurityContactsForPurlWorkflow) ingests the linked repo's security
-        contacts — worst case ~95s per attempt cycle, plus unbounded time waiting for
-        a free worker slot — then returns the same ContactDetail payload as
-        GET /contacts/detail. Concurrent requests for the same purl attach to the
-        same running workflow instead of starting duplicates.
+        workflow. If the purl is unknown, or the package has no linked repo at all,
+        returns 404 immediately without triggering the workflow either. Otherwise
+        blocks while a single-repo Temporal workflow (ingestSecurityContactsForPurlWorkflow)
+        ingests the linked repo's security contacts — worst case ~95s per attempt
+        cycle, plus unbounded time waiting for a free worker slot — then returns the
+        same ContactDetail payload as GET /contacts/detail. Concurrent requests for
+        the same purl attach to the same running workflow instead of starting
+        duplicates.
 
 
         Note: the underlying workflow itself has no "already ingested" gate — it
@@ -1322,7 +1324,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Purl has no linked repo to ingest contacts from.
+          description: >-
+            Purl is unknown, or the package has no linked repo to ingest
+            contacts from — returned without triggering the workflow.
           content:
             application/json:
               schema:
