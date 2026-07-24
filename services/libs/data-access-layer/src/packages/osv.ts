@@ -163,42 +163,131 @@ export async function upsertAdvisoryPackage(
   return row.id as number
 }
 
-// Delete every advisory_affected_ranges row for this advisory_package that
-// lacks deps.dev raw columns — i.e. every OSV-owned row. The deps.dev BQ
-// worker (future) is expected to populate range_raw / unaffected_raw on rows
-// of its own and never set the structured introduced/fixed/last_affected
-// columns; this predicate scopes the wipe to the OSV pipeline's rows so a
-// deps.dev row is never clobbered on resync. OSV rows where all three
-// structured columns are NULL (e.g. some MAL- "always vulnerable" ranges)
-// are still deleted here and re-inserted from the new payload below — that's
-// fine, the row is OSV-owned and idempotent.
-export async function deleteOsvOnlyRanges(
+// advisory_packages rows OSV previously wrote for this advisory that are absent
+// from the current payload. parseOsvRecord drops a package once it has no
+// usable ranges left, and a corrected upstream record can drop a package
+// outright — either way the package never reaches upsertOne's per-entry loop,
+// so its previously live OSV ranges would sit as permanent false positives and
+// block deps.dev's NOT EXISTS ownership guard forever unless reconciled as a
+// removal (see upsertOne in services/apps/packages_worker/src/osv/upsertAdvisory.ts).
+export async function findRemovedAdvisoryPackageIds(
+  qx: QueryExecutor,
+  advisoryId: number,
+  presentAdvisoryPackageIds: number[],
+): Promise<number[]> {
+  const rows = await qx.select(
+    `
+    SELECT id
+    FROM advisory_packages
+    WHERE advisory_id = $(advisoryId)
+      AND NOT (id = ANY($(presentAdvisoryPackageIds)::bigint[]))
+    `,
+    { advisoryId, presentAdvisoryPackageIds },
+  )
+  return rows.map((r: { id: number }) => r.id)
+}
+
+// Diff-based upsert + soft-delete for OSV-owned advisory_affected_ranges rows.
+// Replaces the old hard-delete + reinsert sweep (which minted a new PK for
+// every unchanged range every sync, producing zombie rows once Sequin
+// replicates DELETEs into a Tinybird ReplacingMergeTree that has no
+// sign/is_deleted column — see ADR-0001 §`advisory_affected_ranges`
+// delete/dedup strategy, CM-1258).
+//
+// An advisory_package whose range set hasn't changed since the last sync now
+// produces zero writes: matching tuples are left untouched (not even an
+// `updated_at` bump), so no Sequin/Tinybird event fires for them either.
+//
+// Tuple in both old and new, already a clean live OSV row -> untouched.
+// Tuple only in new, or matching a live deps.dev raw row on the same key ->
+// upserted (INSERT ON CONFLICT; clears deleted_at in case it was previously
+// soft-deleted, and clears range_raw/unaffected_raw to reclaim the row from
+// deps.dev — OSV wins on key overlap per ADR-0001 §Write semantics). Tuple
+// only in old -> soft-deleted.
+// Soft-delete (not hard-delete) is required because the unique key is the
+// value tuple itself: when OSV corrects a range, the corrected tuple has no
+// successor row to collapse into, so without deleted_at the stale tuple
+// would sit forever as a false-positive vulnerable-range match.
+export async function reconcileOsvRanges(
+  qx: QueryExecutor,
+  advisoryPackageId: number,
+  ranges: AdvisoryRangeInsertInput[],
+): Promise<void> {
+  const values = ranges.map((r) => ({
+    introduced_version: r.introducedVersion,
+    fixed_version: r.fixedVersion,
+    last_affected: r.lastAffected,
+  }))
+
+  await qx.result(
+    `
+    INSERT INTO advisory_affected_ranges
+      (advisory_package_id, introduced_version, fixed_version, last_affected, created_at, updated_at)
+    SELECT $(advisoryPackageId), v.introduced_version, v.fixed_version, v.last_affected, NOW(), NOW()
+    FROM jsonb_to_recordset($(values)::jsonb) AS v(
+      introduced_version text,
+      fixed_version text,
+      last_affected text
+    )
+    ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))
+    DO UPDATE SET
+      updated_at = NOW(),
+      deleted_at = NULL,
+      range_raw = NULL,
+      unaffected_raw = NULL
+    WHERE advisory_affected_ranges.deleted_at IS NOT NULL
+       OR advisory_affected_ranges.range_raw IS NOT NULL
+       OR advisory_affected_ranges.unaffected_raw IS NOT NULL
+    `,
+    { advisoryPackageId, values: JSON.stringify(values) },
+  )
+
+  // Soft-delete OSV-owned live rows whose tuple isn't in the new set anymore.
+  await qx.result(
+    `
+    UPDATE advisory_affected_ranges ar
+    SET deleted_at = NOW(),
+        updated_at = NOW()
+    WHERE ar.advisory_package_id = $(advisoryPackageId)
+      AND ar.deleted_at IS NULL
+      AND ar.range_raw IS NULL
+      AND ar.unaffected_raw IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_to_recordset($(values)::jsonb) AS v(
+          introduced_version text,
+          fixed_version text,
+          last_affected text
+        )
+        WHERE COALESCE(v.introduced_version, '') = COALESCE(ar.introduced_version, '')
+          AND COALESCE(v.fixed_version, '') = COALESCE(ar.fixed_version, '')
+          AND COALESCE(v.last_affected, '') = COALESCE(ar.last_affected, '')
+      )
+    `,
+    { advisoryPackageId, values: JSON.stringify(values) },
+  )
+}
+
+// OSV is the source of truth for ranges over time (see ADR-0001 §Write
+// semantics `advisories` row): once OSV has written its structured ranges
+// for an advisory_package, any live deps.dev raw row for that same
+// advisory_package is superseded and should stop being treated as current.
+// Soft-deleted (not hard-deleted) for the same reason as reconcileOsvRanges —
+// no successor row exists to collapse a deps.dev tuple into.
+export async function supersedeDepsDevRanges(
   qx: QueryExecutor,
   advisoryPackageId: number,
 ): Promise<void> {
   await qx.result(
     `
-    DELETE FROM advisory_affected_ranges
+    UPDATE advisory_affected_ranges
+    SET deleted_at = NOW(),
+        updated_at = NOW()
     WHERE advisory_package_id = $(advisoryPackageId)
-      AND range_raw IS NULL
-      AND unaffected_raw IS NULL
+      AND deleted_at IS NULL
+      AND (range_raw IS NOT NULL OR unaffected_raw IS NOT NULL)
     `,
     { advisoryPackageId },
-  )
-}
-
-export async function insertAdvisoryRange(
-  qx: QueryExecutor,
-  range: AdvisoryRangeInsertInput,
-): Promise<void> {
-  await qx.result(
-    `
-    INSERT INTO advisory_affected_ranges
-      (advisory_package_id, introduced_version, fixed_version, last_affected, created_at, updated_at)
-    VALUES
-      ($(advisoryPackageId), $(introducedVersion), $(fixedVersion), $(lastAffected), NOW(), NOW())
-    `,
-    range,
   )
 }
 
@@ -256,7 +345,7 @@ export async function getRangesForPackages(qx: QueryExecutor, ids: number[]): Pr
       a.osv_id
     FROM advisory_packages ap
     JOIN advisories a ON a.id = ap.advisory_id
-    JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
     WHERE ap.package_id IN ($(ids:csv))
       AND (a.is_critical = TRUE OR a.osv_id LIKE 'MAL-%')
     `,

@@ -77,7 +77,19 @@ LEFT JOIN packages p ON p.purl = s.purl
 ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 `
 
-// Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist
+// Separate statement — must execute after ADVISORY_PACKAGES_MERGE_SQL so advisory_packages rows exist.
+// Skips any advisory_package that already has a live OSV-owned range: OSV is the
+// source of truth over deps.dev for overlapping advisory_packages (ADR-0001
+// §advisory_affected_ranges delete/dedup strategy), and this merge runs on its own
+// BQ-driven schedule, independent of and potentially after an OSV sync — the
+// per-tuple ON CONFLICT below can't see that, since a NULL-bounds raw tuple has a
+// different key than OSV's structured tuple and would insert as a new live
+// duplicate. The NOT EXISTS guard makes the ownership rule package-level instead
+// of tuple-level, so deps.dev never adds a live row once OSV owns the package.
+// ON CONFLICT revives (not skips) a soft-deleted row occupying the same tuple —
+// typical after supersedeDepsDevRanges soft-deletes deps.dev rows on OSV takeover
+// and OSV later drops the package again — otherwise DO NOTHING would leave
+// staging's live data with no corresponding live row.
 const ADVISORY_AFFECTED_RANGES_MERGE_SQL = `
 INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version, created_at, updated_at)
 SELECT
@@ -91,7 +103,38 @@ JOIN advisories adv ON adv.osv_id = s.osv_id
 JOIN advisory_packages ap ON ap.advisory_id = adv.id
                           AND ap.ecosystem = s.ecosystem
                           AND ap.package_name = s.package_name
-ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, '')) DO NOTHING
+WHERE NOT EXISTS (
+  SELECT 1 FROM advisory_affected_ranges live
+  WHERE live.advisory_package_id = ap.id
+    AND live.deleted_at IS NULL
+    AND live.range_raw IS NULL
+    AND live.unaffected_raw IS NULL
+)
+ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))
+DO UPDATE SET
+  updated_at = NOW(),
+  deleted_at = NULL,
+  range_raw = EXCLUDED.range_raw,
+  unaffected_raw = EXCLUDED.unaffected_raw
+WHERE advisory_affected_ranges.deleted_at IS NOT NULL
+`
+
+// Runs as prepareSql (uncounted) ahead of ADVISORY_AFFECTED_RANGES_MERGE_SQL, in the
+// same transaction. Row-locks every advisory_packages this chunk will touch, in id
+// order, before the NOT EXISTS ownership check runs. OSV's upsertOne (services/apps/
+// packages_worker/src/osv/upsertAdvisory.ts) takes the matching per-row lock before it
+// writes advisory_affected_ranges for that advisory_package, so whichever transaction
+// (deps.dev chunk or OSV record) locks the row first now forces the other to wait and
+// see its committed writes — closing the race the two independently-scheduled write
+// paths would otherwise have on the ownership check (ADR-0001 §Write semantics).
+const ADVISORY_PACKAGES_LOCK_SQL = `
+SELECT ap.id
+FROM advisory_packages ap
+JOIN staging.osspckgs_advisory_packages_raw s
+  ON s.ecosystem = ap.ecosystem AND s.package_name = ap.package_name
+JOIN advisories adv ON adv.osv_id = s.osv_id AND adv.id = ap.advisory_id
+ORDER BY ap.id
+FOR UPDATE OF ap
 `
 
 const ADVISORIES_PG_COLUMNS = [
@@ -259,6 +302,7 @@ export async function ingestAdvisories(opts: {
 
     const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgsExport.jobId,
+      prepareSql: ADVISORY_PACKAGES_LOCK_SQL,
       mergeSql: [ADVISORY_PACKAGES_MERGE_SQL, ADVISORY_AFFECTED_RANGES_MERGE_SQL],
       tableNames: ['advisory_packages', 'advisory_affected_ranges'],
       isFinal,
