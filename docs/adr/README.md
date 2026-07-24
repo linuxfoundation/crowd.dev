@@ -15,6 +15,8 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0006](./0006-database-schema-types-as-source-of-truth.md) | Database schema types as the source of truth | accepted | 2026-07-09 |
 | [ADR-0007](./0007-test-factory-primitives-and-defaults.md) | Test factory primitives and defaults | accepted | 2026-07-10 |
 | [ADR-0008](./0008-how-we-write-unit-tests.md) | How we write unit tests | accepted | 2026-07-13 |
+| [ADR-0009](./0009-packagist-worker-design-decisions.md) | Packagist worker — design decisions | accepted | 2026-07-13 |
+| [ADR-0010](./0010-security-contacts-worker.md) | Security contacts — tiered extraction, confidence scoring, and Temporal batch ingestion | accepted | 2026-07-21 |
 
 ## Why ADRs?
 

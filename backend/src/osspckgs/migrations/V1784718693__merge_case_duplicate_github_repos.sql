@@ -1,0 +1,116 @@
+-- GitHub paths are case-insensitive, but repos.url is UNIQUE case-sensitively.
+-- Writers that predate URL lowercasing (cargo initial sync on 2026-06-19, maven
+-- enrichment before CM-1305) inserted mixed-case variants of rows that already
+-- existed lowercase: ~40k duplicate groups, ~10k of them serving duplicate
+-- security contacts from both variants. The CM-1305 backfills re-pointed
+-- package links to the lowercase rows but left the stale variants behind.
+--
+-- Keeper per group: the all-lowercase row when present (links were already
+-- re-pointed to it), else the lowest id. Only package_repos is primary data
+-- and gets re-pointed (repo_docker comes along since it is a free UPDATE);
+-- contacts, snapshots, and scorecard rows on losers are derived and re-fill
+-- via the regular sweeps, so they are dropped with the loser rows.
+
+CREATE TEMP TABLE repo_merge_members AS
+SELECT id AS repo_id, keeper_id, id = keeper_id AS is_keeper
+FROM (
+    SELECT
+        id,
+        FIRST_VALUE(id) OVER (
+            PARTITION BY LOWER(url)
+            ORDER BY (url = LOWER(url)) DESC, id
+        ) AS keeper_id,
+        COUNT(*) OVER (PARTITION BY LOWER(url)) AS group_size
+    FROM repos
+    WHERE host = 'github'
+) grouped
+WHERE group_size > 1;
+
+CREATE INDEX ON repo_merge_members (repo_id);
+ANALYZE repo_merge_members;
+
+-- Keep one link per (package, group), ranked the way consumers pick links
+-- (sqlFragments bestRepoLink: confidence DESC, declared-on-ties) so the merge
+-- preserves the strongest provenance; keeper status only breaks full ties.
+-- ROW_NUMBER instead of an EXISTS check against the keeper because 3-variant
+-- groups exist: two losers linking the same package would collide on
+-- UNIQUE (package_id, repo_id) after the re-point below.
+DELETE FROM package_repos
+WHERE id IN (
+    SELECT id
+    FROM (
+        SELECT pr.id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY m.keeper_id, pr.package_id
+                   ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC,
+                            m.is_keeper DESC, pr.verified_at DESC, pr.id
+               ) AS rn
+        FROM package_repos pr
+        JOIN repo_merge_members m ON m.repo_id = pr.repo_id
+    ) ranked
+    WHERE rn > 1
+);
+
+-- Re-point surviving loser links via insert + delete, never an UPDATE:
+-- repo_id is part of the Tinybird packageRepos sorting key (CDC models key
+-- changes as delete + insert; a key-mutating UPDATE would leave both links
+-- live under FINAL with no way to reconcile). The fresh row streams cleanly
+-- with a new id and a NOW() version; the stale loser keys (these deletes
+-- included) are removed by the post-migration Tinybird datasource rebuild.
+INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
+SELECT pr.package_id, m.keeper_id, pr.source, pr.confidence, NOW(), NOW()
+FROM package_repos pr
+JOIN repo_merge_members m ON m.repo_id = pr.repo_id
+WHERE NOT m.is_keeper;
+
+DELETE FROM package_repos pr
+USING repo_merge_members m
+WHERE pr.repo_id = m.repo_id
+  AND NOT m.is_keeper;
+
+UPDATE repo_docker d
+SET repo_id = m.keeper_id
+FROM repo_merge_members m
+WHERE d.repo_id = m.repo_id
+  AND NOT m.is_keeper;
+
+DELETE FROM repo_scorecard_checks c
+USING repo_merge_members m
+WHERE c.repo_id = m.repo_id
+  AND NOT m.is_keeper;
+
+-- packages.repository_url is denormalized and must keep matching the
+-- canonical repos.url (the maven backfill updates the two atomically for the
+-- same reason). Joined on repos directly, not the merge map, so it also
+-- covers packages pointing at mixed-case singletons normalized below; runs
+-- while loser urls still exist to match against. last_synced_at is the
+-- packages watermark, bumping it ships the correction to Tinybird.
+UPDATE packages p
+SET repository_url = LOWER(p.repository_url), last_synced_at = NOW()
+FROM repos r
+WHERE r.host = 'github'
+  AND p.repository_url = r.url
+  AND p.repository_url <> LOWER(p.repository_url);
+
+-- Cascades security_contacts and repo_activity_snapshot on losers.
+DELETE FROM repos r
+USING repo_merge_members m
+WHERE r.id = m.repo_id
+  AND NOT m.is_keeper;
+
+-- Lowercase every surviving mixed-case github url: keepers whose group had
+-- no lowercase variant, plus mixed-case singletons that never had a
+-- duplicate. Singletons must be normalized before the guard index exists —
+-- writers upsert with ON CONFLICT (url), which does not arbitrate on the
+-- LOWER(url) index, so a later insert of the same repo's canonical lowercase
+-- url (all writers lowercase now) would raise unique_violation instead of
+-- upserting. Safe against UNIQUE (url): any two rows sharing LOWER(url) were
+-- a group above, and their losers are gone by now.
+UPDATE repos r
+SET url = LOWER(r.url), updated_at = NOW()
+WHERE r.host = 'github'
+  AND r.url <> LOWER(r.url);
+
+-- The recurrence-guard unique index lives in the next migration: it must be
+-- built CONCURRENTLY (repos takes continuous worker writes), which cannot run
+-- inside this transaction.

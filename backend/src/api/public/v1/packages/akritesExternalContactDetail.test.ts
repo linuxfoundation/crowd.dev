@@ -15,6 +15,10 @@ function baseRow(
     vulnerabilityReportingUrl: null,
     bugBountyUrl: null,
     pvrEnabled: true,
+    declaredRepositoryUrl: 'https://github.com/lodash/lodash.git',
+    resolvedRepositoryUrl: 'https://github.com/lodash/lodash',
+    repoMappingConfidence: 0.9,
+    contactsLastRefreshed: '2024-01-01T00:00:00.000Z',
     securityContacts: [
       {
         channel: 'email',
@@ -106,5 +110,32 @@ describe('toAkritesExternalContactDetail', () => {
     expect(result.securityPolicyUrl).toBe('https://example.org/SECURITY.md')
     expect(result.vulnerabilityReportingUrl).toBe('https://example.org/report')
     expect(result.pvrEnabled).toBe(false)
+  })
+
+  it('passes through the repo provenance fields when present', () => {
+    const result = toAkritesExternalContactDetail(baseRow())
+    expect(result.declaredRepositoryUrl).toBe('https://github.com/lodash/lodash.git')
+    expect(result.resolvedRepositoryUrl).toBe('https://github.com/lodash/lodash')
+    expect(result.repoMappingConfidence).toBe(0.9)
+  })
+
+  it('casts repoMappingConfidence from a numeric string (pg-promise numeric type)', () => {
+    const result = toAkritesExternalContactDetail(
+      baseRow({ repoMappingConfidence: '0.9' as unknown as number }),
+    )
+    expect(result.repoMappingConfidence).toBe(0.9)
+  })
+
+  it('returns resolvedRepositoryUrl and repoMappingConfidence as null when there is no repo link', () => {
+    const result = toAkritesExternalContactDetail(
+      baseRow({ resolvedRepositoryUrl: null, repoMappingConfidence: null }),
+    )
+    expect(result.resolvedRepositoryUrl).toBeNull()
+    expect(result.repoMappingConfidence).toBeNull()
+  })
+
+  it('returns declaredRepositoryUrl as null when the package has no declared repository', () => {
+    const result = toAkritesExternalContactDetail(baseRow({ declaredRepositoryUrl: null }))
+    expect(result.declaredRepositoryUrl).toBeNull()
   })
 })

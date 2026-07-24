@@ -875,12 +875,20 @@ export async function getPackageDetailsByPurls(
 // live on the repo, not the package). A missing purl yields no row → "not found"; a found
 // package with no contacts yields a row with securityContacts null → resolves to [].
 export interface AkritesExternalContactDetailRow
-  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem'>,
+  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem' | 'declaredRepositoryUrl'>,
     Pick<
       RepoDbRow,
-      'securityPolicyUrl' | 'vulnerabilityReportingUrl' | 'bugBountyUrl' | 'pvrEnabled'
+      | 'securityPolicyUrl'
+      | 'vulnerabilityReportingUrl'
+      | 'bugBountyUrl'
+      | 'pvrEnabled'
+      | 'contactsLastRefreshed'
     > {
   securityContacts: SecurityContactRow[] | null
+  // --- joined from repos via package_repos, same BEST_REPO_LINK_JOIN as
+  // AkritesExternalPackageDetailRow — not part of the packages or repos row.
+  resolvedRepositoryUrl: string | null
+  repoMappingConfidence: number | null
 }
 
 export async function getContactDetailsByPurls(
@@ -894,10 +902,14 @@ export async function getContactDetailsByPurls(
       p.purl,
       p.name,
       p.ecosystem,
+      p.declared_repository_url     AS "declaredRepositoryUrl",
+      r.url                         AS "resolvedRepositoryUrl",
+      pr.confidence                 AS "repoMappingConfidence",
       r.security_policy_url         AS "securityPolicyUrl",
       r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
       r.bug_bounty_url              AS "bugBountyUrl",
       r.pvr_enabled                 AS "pvrEnabled",
+      r.contacts_last_refreshed     AS "contactsLastRefreshed",
       ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts"
     FROM packages p
     ${BEST_REPO_LINK_JOIN}
