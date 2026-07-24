@@ -1247,9 +1247,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /akrites-external/contacts/refresh:
+  /akrites-external/contacts/ingest:
     post:
-      operationId: refreshContactDetail
+      operationId: ingestContactDetail
       summary: On-demand security-contacts ingest for a single PURL
       description: >
         Synchronous, single-purl only — no batch variant, since fanning this out over
@@ -1260,9 +1260,13 @@ paths:
         same purl attach to the same running workflow instead of starting duplicates.
 
 
+        Note: the underlying workflow only ingests contacts it has never seen before —
+        it does not refresh contacts already ingested for a purl.
+
+
         Rate limited independently of the other /contacts endpoints — default
-        20 requests/hour, tunable via AKRITES_CONTACT_REFRESH_RATE_LIMIT_MAX /
-        AKRITES_CONTACT_REFRESH_RATE_LIMIT_WINDOW_MS.
+        20 requests/hour, tunable via AKRITES_CONTACT_INGEST_RATE_LIMIT_MAX /
+        AKRITES_CONTACT_INGEST_RATE_LIMIT_WINDOW_MS.
 
 
         Not yet implemented: this is a synchronous, blocking call. Future work should

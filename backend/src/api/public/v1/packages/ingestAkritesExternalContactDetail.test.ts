@@ -2,8 +2,9 @@ import type { Request, Response } from 'express'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AkritesExternalContactDetailRow } from '@crowd/data-access-layer'
+import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
-import { refreshAkritesExternalContactDetail } from './refreshAkritesExternalContactDetail'
+import { ingestAkritesExternalContactDetail } from './ingestAkritesExternalContactDetail'
 
 const { execute, getContactDetailsByPurls } = vi.hoisted(() => ({
   execute: vi.fn(),
@@ -54,20 +55,22 @@ function mockReqRes(body: unknown) {
   return { req, res, status, json }
 }
 
-describe('refreshAkritesExternalContactDetail', () => {
+describe('ingestAkritesExternalContactDetail', () => {
   it('executes ingestSecurityContactsForPurlWorkflow and returns the re-read contact detail', async () => {
     execute.mockResolvedValue({ found: true, repoId: 'repo-1' })
     getContactDetailsByPurls.mockResolvedValue([baseRow()])
 
     const { req, res, json } = mockReqRes({ purl: 'pkg:npm/lodash' })
 
-    await refreshAkritesExternalContactDetail(req, res)
+    await ingestAkritesExternalContactDetail(req, res)
 
     expect(execute).toHaveBeenCalledTimes(1)
     const [workflowType, options] = execute.mock.calls[0]
     expect(workflowType).toBe('ingestSecurityContactsForPurlWorkflow')
     expect(options.taskQueue).toBe('security-contacts-worker')
     expect(options.workflowId).toMatch(/^security-contacts-ondemand:[0-9a-f]{64}$/)
+    expect(options.workflowIdConflictPolicy).toBe(WorkflowIdConflictPolicy.USE_EXISTING)
+    expect(options.workflowIdReusePolicy).toBe(WorkflowIdReusePolicy.ALLOW_DUPLICATE)
     expect(options.args).toEqual(['pkg:npm/lodash'])
 
     expect(getContactDetailsByPurls).toHaveBeenCalledWith(expect.anything(), ['pkg:npm/lodash'])
@@ -79,11 +82,11 @@ describe('refreshAkritesExternalContactDetail', () => {
     getContactDetailsByPurls.mockResolvedValue([baseRow()])
 
     const { req: req1, res: res1 } = mockReqRes({ purl: 'pkg:npm/lodash' })
-    await refreshAkritesExternalContactDetail(req1, res1)
+    await ingestAkritesExternalContactDetail(req1, res1)
     const id1 = execute.mock.calls[0][1].workflowId
 
     const { req: req2, res: res2 } = mockReqRes({ purl: 'pkg:npm/lodash' })
-    await refreshAkritesExternalContactDetail(req2, res2)
+    await ingestAkritesExternalContactDetail(req2, res2)
     const id2 = execute.mock.calls[0][1].workflowId
 
     expect(id1).toBe(id2)
@@ -94,7 +97,7 @@ describe('refreshAkritesExternalContactDetail', () => {
 
     const { req, res } = mockReqRes({ purl: 'pkg:npm/left-pad' })
 
-    await expect(refreshAkritesExternalContactDetail(req, res)).rejects.toThrow()
+    await expect(ingestAkritesExternalContactDetail(req, res)).rejects.toThrow()
     expect(getContactDetailsByPurls).not.toHaveBeenCalled()
   })
 
@@ -104,13 +107,13 @@ describe('refreshAkritesExternalContactDetail', () => {
 
     const { req, res } = mockReqRes({ purl: 'pkg:npm/lodash' })
 
-    await expect(refreshAkritesExternalContactDetail(req, res)).rejects.toThrow()
+    await expect(ingestAkritesExternalContactDetail(req, res)).rejects.toThrow()
   })
 
   it('rejects a request missing purl without executing a workflow', async () => {
     const { req, res } = mockReqRes({})
 
-    await expect(refreshAkritesExternalContactDetail(req, res)).rejects.toThrow()
+    await expect(ingestAkritesExternalContactDetail(req, res)).rejects.toThrow()
     expect(execute).not.toHaveBeenCalled()
   })
 })

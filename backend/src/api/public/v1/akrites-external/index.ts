@@ -12,7 +12,7 @@ import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExte
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
-import { refreshAkritesExternalContactDetail } from '../packages/refreshAkritesExternalContactDetail'
+import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
 import { submitBlastRadiusJob } from '../packages/submitBlastRadiusJob'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
@@ -36,10 +36,10 @@ const blastRadiusRateLimiter = envTunableRateLimiter(
   60 * 60 * 1000,
 )
 
-// /contacts/refresh blocks ~10-20s per request (vs. the read-only /contacts/detail
+// /contacts/ingest blocks ~10-20s per request (vs. the read-only /contacts/detail
 // endpoints), so it gets its own limiter. Defaults to 20 requests/hour.
-const contactRefreshRateLimiter = envTunableRateLimiter(
-  'AKRITES_CONTACT_REFRESH_RATE_LIMIT',
+const contactIngestRateLimiter = envTunableRateLimiter(
+  'AKRITES_CONTACT_INGEST_RATE_LIMIT',
   20,
   60 * 60 * 1000,
 )
@@ -74,19 +74,18 @@ export function akritesExternalRouter(): Router {
   // closest issued one — READ_MAINTAINER_ROLES (maintainer data) — NOT READ_PACKAGES.
   // TODO: swap for cdp:maintainers:read once issued.
   const contactsSubRouter = Router()
+  // rateLimiter first so requests failing the scope check still count against the quota
+  // (throttles repeated invalid-auth attempts, not just successful ones).
+  contactsSubRouter.use(rateLimiter)
   contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES]))
-  contactsSubRouter.get('/detail', rateLimiter, safeWrap(getAkritesExternalContactDetail))
-  contactsSubRouter.post(
-    /^\/detail:batch\/?$/,
-    rateLimiter,
-    safeWrap(getAkritesExternalContactDetailBatch),
-  )
+  contactsSubRouter.get('/detail', safeWrap(getAkritesExternalContactDetail))
+  contactsSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalContactDetailBatch))
   // Sync, single-purl on-demand ingest — starts a Temporal workflow and blocks ~10-20s,
-  // so it gets the dedicated contactRefreshRateLimiter, not the shared rateLimiter above.
+  // so it stacks the dedicated contactIngestRateLimiter on top of the shared rateLimiter above.
   contactsSubRouter.post(
-    '/refresh',
-    contactRefreshRateLimiter,
-    safeWrap(refreshAkritesExternalContactDetail),
+    '/ingest',
+    contactIngestRateLimiter,
+    safeWrap(ingestAkritesExternalContactDetail),
   )
   router.use('/contacts', contactsSubRouter)
 

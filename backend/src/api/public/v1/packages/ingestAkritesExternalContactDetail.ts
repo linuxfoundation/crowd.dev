@@ -22,14 +22,18 @@ interface IngestSecurityContactsForPurlResult {
 // Deterministic, purl-derived workflowId: concurrent callers hitting the same purl attach
 // to the same running workflow (USE_EXISTING) instead of each starting their own ingest —
 // same pattern as integrationService.ts's github-nango-sync workflow start.
-function refreshWorkflowId(purl: string): string {
+function ingestWorkflowId(purl: string): string {
   return `${TemporalWorkflowId.SECURITY_CONTACTS_ONDEMAND}:${createHash('sha256').update(purl).digest('hex')}`
 }
 
 // Sync, single-purl on-demand ingest. Blocks ~10-20s (the worker's single-repo bound —
 // see security-contacts/workflows.ts's singleActs timeout) — no batch variant, since
 // fanning this out over many purls would multiply concurrent Temporal workflow starts.
-export async function refreshAkritesExternalContactDetail(
+//
+// Note: the workflow only ingests contacts it has never seen before — it does not
+// refresh/update contacts already ingested for a purl. That's why this endpoint is
+// named "ingest", not "refresh".
+export async function ingestAkritesExternalContactDetail(
   req: Request,
   res: Response,
 ): Promise<void> {
@@ -40,21 +44,21 @@ export async function refreshAkritesExternalContactDetail(
     (purl: string) => Promise<IngestSecurityContactsForPurlResult>
   >('ingestSecurityContactsForPurlWorkflow', {
     taskQueue: 'security-contacts-worker',
-    workflowId: refreshWorkflowId(purl),
+    workflowId: ingestWorkflowId(purl),
     workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
     args: [purl],
   })
 
   if (!result.found) {
-    throw new NotFoundError()
+    throw new NotFoundError('Purl has no linked repository to ingest security contacts from')
   }
 
   const qx = await getPackagesQx()
   const [row] = await getContactDetailsByPurls(qx, [purl])
 
   if (!row) {
-    throw new NotFoundError()
+    throw new NotFoundError('Contact detail not found after ingest')
   }
 
   ok(res, toAkritesExternalContactDetail(row))
