@@ -686,6 +686,9 @@ components:
         - vulnerabilityReportingUrl
         - bugBountyUrl
         - pvrEnabled
+        - declaredRepositoryUrl
+        - resolvedRepositoryUrl
+        - repoMappingConfidence
         - targetOrganizationName
         - bugBountyProgramFlag
         - reportingMethods
@@ -716,6 +719,28 @@ components:
         pvrEnabled:
           type: boolean
           nullable: true
+        declaredRepositoryUrl:
+          type: string
+          nullable: true
+          description: Raw repository URL as declared in the package's own metadata.
+        resolvedRepositoryUrl:
+          type: string
+          nullable: true
+          description: >
+            Best available repository URL, resolved via the confidence-ranked
+            package_repos → repos join — the repo CDP has actually resolved and
+            enriched (scorecard, branch protection, etc.). Null when the
+            package has no package_repos link yet.
+        repoMappingConfidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: >
+            Confidence score of the package_repos mapping used to resolve
+            resolvedRepositoryUrl. Null when the package has no package_repos
+            link yet.
         targetOrganizationName:
           type: string
           nullable: true

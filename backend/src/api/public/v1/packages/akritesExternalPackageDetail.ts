@@ -4,7 +4,7 @@ import {
   computeHealthBand,
 } from '@crowd/data-access-layer'
 
-import { repoMappingLabel, snakeToCamelKeys } from './mappers'
+import { repoMappingLabel, snakeToCamelKeys, toNullableNumber } from './mappers'
 import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type Lifecycle } from './types'
 
 const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
@@ -102,8 +102,7 @@ export function toAkritesExternalPackageDetail(
   row: AkritesExternalPackageDetailRow,
 ): AkritesExternalPackageDetail {
   const scorecardScore = row.scorecardScore != null ? Number(row.scorecardScore) : null
-  const mappingConfidence =
-    row.repoMappingConfidence != null ? Number(row.repoMappingConfidence) : null
+  const mappingConfidence = toNullableNumber(row.repoMappingConfidence)
 
   return {
     purl: row.purl,
