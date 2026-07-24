@@ -14,8 +14,10 @@ DESCRIPTION >
     - `developmentActivityScoreV2` (0-25) — release cadence, commit activity, issue resolution, PR merge health.
     - `healthScoreV2` (0-100) is the sum of the three categories above, clamped to 100.
     - `lifecycleLabelV2` — per-repo lifecycle state (active/stable/declining/abandoned/archived), computed
-      via the spec's 5-branch decision tree (archived flag > abandoned > declining > stable > active,
-      first match wins). Project-level rollup uses best-state-wins precedence in project_insights_copy.pipe.
+      via the spec's decision tree (archived flag > abandoned > declining > stable > active, first match
+      wins), or NULL when the repo has zero commits and zero issues/PRs in every window checked (2026-07-24,
+      IN-1196 — no usable activity signal at all). Project-level rollup uses best-state-wins precedence in
+      project_insights_copy.pipe.
     - `impactScore` (0-100) — MAX(packages.impact) * 100 over packages published by this repo. NULL when
       the repo has no linked packages.
     - No graceful-degradation/signal-coverage redistribution yet — a repo with zero signal in a category

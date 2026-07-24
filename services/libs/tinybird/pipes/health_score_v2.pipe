@@ -15,6 +15,13 @@ DESCRIPTION >
       already carries NULL when its own coverage fell below 40% (Layer 1, done per-category pipe).
       If all three categories are unavailable, healthScoreV2 itself becomes NULL, per spec, rather
       than a fabricated 0. Impact stays NULL (not defaulted to 0) when the repo has no packages.
+    - lifecycleLabelV2 passes through health_score_v2_lifecycle_ds unmodified (2026-07-24,
+      IN-1196) — previously wrapped in `coalesce(l.lifecycleLabelV2, 'active')`, which silently
+      converted the upstream pipe's genuine "no usable signal" NULL back into a fabricated 'active'
+      before it ever reached health_score_v2_repo_copy_ds. Confirmed live that this LEFT JOIN has
+      zero actual join-misses (every repo has a matching lifecycle row), so the coalesce was never
+      serving its ostensible "missing row" fallback purpose in practice — it was only erasing real
+      NULLs.
 
 NODE health_score_v2_results
 SQL >
@@ -40,7 +47,7 @@ SQL >
             (if(m.maintainerHealthScoreV2 IS NOT NULL, 40, 0)
              + if(s.securitySupplyChainScoreV2 IS NOT NULL, 35, 0)
              + if(d.developmentActivityScoreV2 IS NOT NULL, 25, 0)) AS coveredCategoryWeight,
-            coalesce(l.lifecycleLabelV2, 'active') AS lifecycleLabelV2,
+            l.lifecycleLabelV2 AS lifecycleLabelV2,
             i.impactScoreRaw AS impactScoreRaw
         FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS base
         LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
