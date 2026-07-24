@@ -36,8 +36,10 @@ const blastRadiusRateLimiter = envTunableRateLimiter(
   60 * 60 * 1000,
 )
 
-// /contacts/ingest blocks ~10-20s per request (vs. the read-only /contacts/detail
-// endpoints), so it gets its own limiter. Defaults to 20 requests/hour.
+// /contacts/ingest starts a Temporal workflow and blocks for it (worst case ~95s per
+// attempt cycle, plus unbounded time waiting for a free worker slot — see
+// security-contacts/workflows.ts's singleActs config), vs. the read-only /contacts/detail
+// endpoints, so it gets its own limiter. Defaults to 20 requests/hour.
 const contactIngestRateLimiter = envTunableRateLimiter(
   'AKRITES_CONTACT_INGEST_RATE_LIMIT',
   20,
@@ -73,18 +75,31 @@ export function akritesExternalRouter(): Router {
   // them via the packages scope. That scope isn't issued by Auth0 yet, so reuse the
   // closest issued one — READ_MAINTAINER_ROLES (maintainer data) — NOT READ_PACKAGES.
   // TODO: swap for cdp:maintainers:read once issued.
+  // requireScopes is applied per-route (not router-level) so each route can put its own
+  // rate limiter *before* the scope check — failed-auth requests still count against that
+  // route's quota — without forcing every route in this subrouter onto the same limiter
+  // instance. /ingest gets its own dedicated contactIngestRateLimiter instead of sharing
+  // the read endpoints' quota, matching the blast-radius jobs endpoint below.
+  const contactsScopes = [SCOPES.READ_MAINTAINER_ROLES]
   const contactsSubRouter = Router()
-  // rateLimiter first so requests failing the scope check still count against the quota
-  // (throttles repeated invalid-auth attempts, not just successful ones).
-  contactsSubRouter.use(rateLimiter)
-  contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES]))
-  contactsSubRouter.get('/detail', safeWrap(getAkritesExternalContactDetail))
-  contactsSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalContactDetailBatch))
-  // Sync, single-purl on-demand ingest — starts a Temporal workflow and blocks ~10-20s,
-  // so it stacks the dedicated contactIngestRateLimiter on top of the shared rateLimiter above.
+  contactsSubRouter.get(
+    '/detail',
+    rateLimiter,
+    requireScopes(contactsScopes),
+    safeWrap(getAkritesExternalContactDetail),
+  )
+  contactsSubRouter.post(
+    /^\/detail:batch\/?$/,
+    rateLimiter,
+    requireScopes(contactsScopes),
+    safeWrap(getAkritesExternalContactDetailBatch),
+  )
+  // Sync, single-purl on-demand ingest — starts a Temporal workflow and blocks a while,
+  // so it gets the dedicated contactIngestRateLimiter, not the shared rateLimiter above.
   contactsSubRouter.post(
     '/ingest',
     contactIngestRateLimiter,
+    requireScopes(contactsScopes),
     safeWrap(ingestAkritesExternalContactDetail),
   )
   router.use('/contacts', contactsSubRouter)

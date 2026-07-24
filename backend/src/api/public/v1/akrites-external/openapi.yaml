@@ -1253,15 +1253,22 @@ paths:
       summary: On-demand security-contacts ingest for a single PURL
       description: >
         Synchronous, single-purl only — no batch variant, since fanning this out over
-        many purls would multiply concurrent Temporal workflow starts. Blocks ~10-20s
-        while a single-repo Temporal workflow (ingestSecurityContactsForPurlWorkflow)
-        ingests the linked repo's security contacts, then returns the same
-        ContactDetail payload as GET /contacts/detail. Concurrent requests for the
-        same purl attach to the same running workflow instead of starting duplicates.
+        many purls would multiply concurrent Temporal workflow starts.
+
+        If the linked repo's security contacts have already been ingested at least
+        once, returns the existing ContactDetail immediately without triggering the
+        workflow. Otherwise blocks while a single-repo Temporal workflow
+        (ingestSecurityContactsForPurlWorkflow) ingests the linked repo's security
+        contacts — worst case ~95s per attempt cycle, plus unbounded time waiting for
+        a free worker slot — then returns the same ContactDetail payload as
+        GET /contacts/detail. Concurrent requests for the same purl attach to the
+        same running workflow instead of starting duplicates.
 
 
-        Note: the underlying workflow only ingests contacts it has never seen before —
-        it does not refresh contacts already ingested for a purl.
+        Note: the underlying workflow itself has no "already ingested" gate — it
+        reprocesses and can replace a repo's contacts on every invocation. This
+        endpoint is what prevents repeat calls from re-triggering it for a purl
+        that's already been ingested.
 
 
         Rate limited independently of the other /contacts endpoints — default
@@ -1271,7 +1278,7 @@ paths:
 
         Not yet implemented: this is a synchronous, blocking call. Future work should
         make this async — an accept-and-poll job, similar to POST /blast-radius/jobs —
-        so callers aren't held open for 10-20s per request.
+        so callers aren't held open for the duration of the ingest.
       tags: [Contacts]
       security:
         - M2MBearer:
@@ -1289,7 +1296,9 @@ paths:
                   example: pkg:npm/%40angular/core
       responses:
         '200':
-          description: Security contact detail, freshly ingested.
+          description: >-
+            Security contact detail — either just ingested by this call, or
+            returned from a prior ingest without re-triggering the workflow.
           content:
             application/json:
               schema:
