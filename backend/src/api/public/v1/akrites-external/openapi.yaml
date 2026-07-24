@@ -1246,3 +1246,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/refresh:
+    post:
+      operationId: refreshContactDetail
+      summary: On-demand security-contacts ingest for a single PURL
+      description: >
+        Synchronous, single-purl only — no batch variant, since fanning this out over
+        many purls would multiply concurrent Temporal workflow starts. Blocks ~10-20s
+        while a single-repo Temporal workflow (ingestSecurityContactsForPurlWorkflow)
+        ingests the linked repo's security contacts, then returns the same
+        ContactDetail payload as GET /contacts/detail. Concurrent requests for the
+        same purl attach to the same running workflow instead of starting duplicates.
+
+
+        Rate limited independently of the other /contacts endpoints — default
+        20 requests/hour, tunable via AKRITES_CONTACT_REFRESH_RATE_LIMIT_MAX /
+        AKRITES_CONTACT_REFRESH_RATE_LIMIT_WINDOW_MS.
+
+
+        Not yet implemented: this is a synchronous, blocking call. Future work should
+        make this async — an accept-and-poll job, similar to POST /blast-radius/jobs —
+        so callers aren't held open for 10-20s per request.
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purl]
+              properties:
+                purl:
+                  type: string
+                  example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: Security contact detail, freshly ingested.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Purl has no linked repo to ingest contacts from.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

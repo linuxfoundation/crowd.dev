@@ -12,26 +12,37 @@ import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExte
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
+import { refreshAkritesExternalContactDetail } from '../packages/refreshAkritesExternalContactDetail'
 import { submitBlastRadiusJob } from '../packages/submitBlastRadiusJob'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
-// Blast-radius jobs kick off a Temporal workflow per request, so they get their own,
-// much stricter limiter — configurable via env so it can be tuned without a redeploy.
-// Defaults to 5 requests/hour.
-const blastRadiusRateLimitMax = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX)
-const blastRadiusRateLimitWindowMs = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_WINDOW_MS)
+// Shared by every endpoint below that kicks off a Temporal workflow per request — those
+// get their own, much stricter limiter than plain reads, configurable via env so it can
+// be tuned without a redeploy.
+function envTunableRateLimiter(envPrefix: string, defaultMax: number, defaultWindowMs: number) {
+  const max = Number(process.env[`${envPrefix}_MAX`])
+  const windowMs = Number(process.env[`${envPrefix}_WINDOW_MS`])
+  return createRateLimiter({
+    max: Number.isSafeInteger(max) && max > 0 ? max : defaultMax,
+    windowMs: Number.isSafeInteger(windowMs) && windowMs > 0 ? windowMs : defaultWindowMs,
+  })
+}
 
-const blastRadiusRateLimiter = createRateLimiter({
-  max:
-    Number.isSafeInteger(blastRadiusRateLimitMax) && blastRadiusRateLimitMax > 0
-      ? blastRadiusRateLimitMax
-      : 5,
-  windowMs:
-    Number.isSafeInteger(blastRadiusRateLimitWindowMs) && blastRadiusRateLimitWindowMs > 0
-      ? blastRadiusRateLimitWindowMs
-      : 60 * 60 * 1000,
-})
+// Blast-radius jobs default to 5 requests/hour.
+const blastRadiusRateLimiter = envTunableRateLimiter(
+  'AKRITES_BLAST_RADIUS_RATE_LIMIT',
+  5,
+  60 * 60 * 1000,
+)
+
+// /contacts/refresh blocks ~10-20s per request (vs. the read-only /contacts/detail
+// endpoints), so it gets its own limiter. Defaults to 20 requests/hour.
+const contactRefreshRateLimiter = envTunableRateLimiter(
+  'AKRITES_CONTACT_REFRESH_RATE_LIMIT',
+  20,
+  60 * 60 * 1000,
+)
 
 export function akritesExternalRouter(): Router {
   const router = Router()
@@ -63,10 +74,20 @@ export function akritesExternalRouter(): Router {
   // closest issued one — READ_MAINTAINER_ROLES (maintainer data) — NOT READ_PACKAGES.
   // TODO: swap for cdp:maintainers:read once issued.
   const contactsSubRouter = Router()
-  contactsSubRouter.use(rateLimiter)
   contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES]))
-  contactsSubRouter.get('/detail', safeWrap(getAkritesExternalContactDetail))
-  contactsSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalContactDetailBatch))
+  contactsSubRouter.get('/detail', rateLimiter, safeWrap(getAkritesExternalContactDetail))
+  contactsSubRouter.post(
+    /^\/detail:batch\/?$/,
+    rateLimiter,
+    safeWrap(getAkritesExternalContactDetailBatch),
+  )
+  // Sync, single-purl on-demand ingest — starts a Temporal workflow and blocks ~10-20s,
+  // so it gets the dedicated contactRefreshRateLimiter, not the shared rateLimiter above.
+  contactsSubRouter.post(
+    '/refresh',
+    contactRefreshRateLimiter,
+    safeWrap(refreshAkritesExternalContactDetail),
+  )
   router.use('/contacts', contactsSubRouter)
 
   // TODO: the contract gates blast-radius behind a dedicated read:advisories scope
