@@ -19,6 +19,7 @@ export interface LightRepoResult {
   createdAt: string | null
   securityPolicyEnabled: boolean | null
   securityFileEnabled: boolean | null
+  wellKnownFiles: WellKnownFileEntry[]
   branchProtectionEnabled: boolean | null
   branchProtectionRequiredReviews: number | null
   branchProtectionRequiresStatusChecks: boolean | null
