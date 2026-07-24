@@ -2,52 +2,58 @@ DESCRIPTION >
     Per-repo Lifecycle state, computed via the spec's decision tree (first match wins):
     archived (repos.archived) > abandoned (no commits in 18mo AND no issue/PR activity in 18mo) >
     declining (commits down >50% vs prior 6mo AND issues opened up vs prior 6mo) > stable (release
-    within 12mo, <50 open issues, no open critical vulns, commits down >50% vs prior 6mo) >
-    unavailable (no usable signal at all — see below) > active (fallback). Project-level rollup
-    (best-state-wins) happens in project_insights_copy.pipe.
+    within 12mo, <50 open issues, no open critical vulns, commits down >50% vs prior 6mo) > active
+    (fallback) — but NULL overrides all of the above when there is no usable signal at all (see
+    below). Project-level rollup (best-state-wins) happens in project_insights_copy.pipe.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
       health_score_v2_maintainer.pipe description for why.
-    - `unavailable` branch added 2026-07-24 (IN-1196, per Joana's review): the original spec's
-      `active` fallback fired whenever a repo failed every other branch, including repos with NO
-      real signal at all. Confirmed on blocknetdx/blocknet: lastCommitAt IS NULL and commits/issues/
-      PRs are all exactly 0 in every window — nothing here indicates the repo is active, it was
-      defaulting to 'active' purely because no other branch happened to match.
-      `unavailable` catches only repos with zero commit activity (both 6-month windows) AND zero
+    - `NULL` branch added 2026-07-24 (IN-1196, per Joana's review): the original spec's `active`
+      fallback fired whenever a repo failed every other branch, including repos with NO real signal
+      at all. Confirmed on blocknetdx/blocknet: lastCommitAt IS NULL and commits/issues/PRs are all
+      exactly 0 in every window — nothing here indicates the repo is active, it was defaulting to
+      'active' purely because no other branch happened to match.
+      This branch now returns NULL (not a fabricated 'active', and not a literal 'unavailable'
+      string either — kept consistent with how `healthScoreV2` itself already represents
+      insufficient signal) for repos with zero commit activity (both 6-month windows) AND zero
       issues/PRs opened in the 18-month window — i.e. every activity signal this pipe looks at is
-      exactly zero, not just missing one field. `lastCommitAt IS NULL` alone does NOT trigger
-      `unavailable`: GravityView and Hitomi-Downloader both have `repos.lastCommitAt` unset (a
-      separate, upstream data gap in the `repos` table) but have substantial real issue/PR activity
-      (108-762 issues, 12-162 PRs in the 18mo window) — they correctly still resolve via their actual
-      signal (falling through to 'active', same as before this fix) rather than being misclassified
-      as `unavailable` just because one timestamp field is missing. bminor/binutils-gdb similarly
-      keeps falling through to 'active' despite commitsLast6m=0 (down from 1895 prior), because it
-      still has 3 real PRs in the 18mo window — real activity, just not enough to clear any of the
-      other branches' thresholds. That's a legitimate 'active' classification under the existing
-      spec, not the bug being fixed here.
+      exactly zero, not just missing one field. The UI layer (insights repo) is responsible for
+      rendering NULL as an "Unavailable" chip, same as it already does for a missing healthScoreV2.
+      `lastCommitAt IS NULL` alone does NOT trigger this branch: GravityView and Hitomi-Downloader
+      both have `repos.lastCommitAt` unset (a separate, upstream data gap in the `repos` table) but
+      have substantial real issue/PR activity (108-762 issues, 12-162 PRs in the 18mo window) — they
+      correctly still resolve via their actual signal (falling through to 'active', same as before
+      this fix) rather than being misclassified as unavailable just because one timestamp field is
+      missing. bminor/binutils-gdb similarly keeps falling through to 'active' despite
+      commitsLast6m=0 (down from 1895 prior), because it still has 3 real PRs in the 18mo window —
+      real activity, just not enough to clear any of the other branches' thresholds. That's a
+      legitimate 'active' classification under the existing spec, not the bug being fixed here.
 
 NODE health_score_v2_lifecycle_calc
 SQL >
     SELECT
         r.url AS repoUrl,
-        multiIf(
-            r.archived = 1,
-            'archived',
-            (r.lastCommitAt < now() - INTERVAL 18 MONTH)
-                AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
-            'abandoned',
-            coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
-                AND coalesce(w.issuesOpenedLast6m, 0) > coalesce(w.issuesOpenedPrior6m, 0),
-            'declining',
-            (rl.latestReleaseDay > today() - 365)
-                AND coalesce(n.issuesOpenNow, 0) < 50
-                AND coalesce(v.openCriticals, 0) = 0
-                AND coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5,
-            'stable',
-            coalesce(c.commitsLast6m, 0) = 0
+        if(
+            r.archived != 1
+                AND coalesce(c.commitsLast6m, 0) = 0
                 AND coalesce(c.commitsPrior6m, 0) = 0
                 AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
-            'unavailable',
-            'active'
+            NULL,
+            toNullable(multiIf(
+                r.archived = 1,
+                'archived',
+                (r.lastCommitAt < now() - INTERVAL 18 MONTH)
+                    AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
+                'abandoned',
+                coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
+                    AND coalesce(w.issuesOpenedLast6m, 0) > coalesce(w.issuesOpenedPrior6m, 0),
+                'declining',
+                (rl.latestReleaseDay > today() - 365)
+                    AND coalesce(n.issuesOpenNow, 0) < 50
+                    AND coalesce(v.openCriticals, 0) = 0
+                    AND coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5,
+                'stable',
+                'active'
+            ))
         ) AS lifecycleLabelV2
     FROM (
         SELECT base.url AS url, base.archived AS archived, rc.lastCommitAt AS lastCommitAt
