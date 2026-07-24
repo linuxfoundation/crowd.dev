@@ -91,7 +91,14 @@ DESCRIPTION >
     per-repo values in health_score_v2_repo_copy_ds (materialized by health_score_v2.pipe — the
     expensive per-signal joins run there as their own copy job, not inline here). Per spec section 5/6:
     - healthScoreV2: straight mean across the project's enabled, non-excluded repos.
-    - lifecycleLabelV2: best-state-wins (active > stable > declining > abandoned > archived).
+    - lifecycleLabelV2: best-state-wins (active > stable > declining > abandoned > archived >
+      unavailable). `unavailable` (added 2026-07-24, IN-1196) sorts last, not just "not found": with
+      the previous 5-value array, indexOf() returned 0 for any label absent from the list, which
+      arraySort's ascending order treats as SMALLER than 'active' (index 1) — so a single-repo
+      project whose only repo has no activity signal at all would have incorrectly outranked a
+      multi-repo project where every other repo is legitimately 'active'. Explicitly listing
+      'unavailable' last (index 6) makes it correctly the worst/most-cautious outcome, only surfacing
+      when literally every repo in the project has no usable signal.
     - impactScoreRaw: MAX across the project's repos (each repo's own value is already a MAX over its
       published packages) — matches the spec's "MAX(packages.impact) over packages published by any
       repo in the project," since max-of-maxes = max-over-all.
@@ -102,7 +109,7 @@ SQL >
         avg(hv2.healthScoreV2) AS healthScoreV2,
         arrayElement(
             arraySort(
-                x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived'], x),
+                x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived', 'unavailable'], x),
                 groupArray(hv2.lifecycleLabelV2)
             ),
             1
