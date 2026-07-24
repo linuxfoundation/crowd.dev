@@ -20,6 +20,14 @@ DESCRIPTION >
       Tinybird inlines all upstream NODEs into one query per copy job, causing `repositories` and other
       base tables to be re-scanned once per category. health_score_v2_results.pipe now reads this via
       a cheap LEFT JOIN over the small materialized result instead.
+    - Bus factor fix (2026-07-24, IN-1196): `maintainers_roles_copy_ds.endDate` is a manually-curated
+      role record — it stays at the "still active" sentinel (1970-01-01) indefinitely unless someone
+      explicitly closes the role, so archived/dead repos (Xamarin.Forms, HPCToolkit, Ursa, SpaceVim
+      confirmed) retained a maxed-out busFactorScore=18 from maintainers with no commits/activity in
+      years. Bus factor now requires the maintainer to also have activityRelations activity on that
+      repo within the same trailing 12-month window used elsewhere in this pipe, not just an unexpired
+      role record. This was the direct cause of dead repos hitting healthScoreV2=100 after Layer 2
+      rescaling (see LFX/cdp/health-score-v2-renormalization-bug.md).
 
 NODE health_score_v2_maintainer_calc
 SQL >
@@ -73,10 +81,16 @@ SQL >
                 FROM repositories WHERE deletedAt IS NULL
             ) AS allRepos
             LEFT JOIN (
-                SELECT repoUrl, count(DISTINCT memberId) AS busFactorCount
-                FROM maintainers_roles_copy_ds
-                WHERE endDate = '1970-01-01 00:00:00' OR endDate > now() - INTERVAL 12 MONTH
-                GROUP BY repoUrl
+                SELECT mr.repoUrl AS repoUrl, count(DISTINCT mr.memberId) AS busFactorCount
+                FROM maintainers_roles_copy_ds mr
+                INNER JOIN (
+                    SELECT DISTINCT memberId, channel AS repoUrl
+                    FROM activityRelations
+                    WHERE timestamp > now() - INTERVAL 12 MONTH
+                ) AS recentActivity
+                    ON recentActivity.memberId = mr.memberId AND recentActivity.repoUrl = mr.repoUrl
+                WHERE mr.endDate = '1970-01-01 00:00:00' OR mr.endDate > now() - INTERVAL 12 MONTH
+                GROUP BY mr.repoUrl
             ) AS bf ON bf.repoUrl = allRepos.repoUrl
             LEFT JOIN (
                 SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
