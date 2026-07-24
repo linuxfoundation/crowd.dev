@@ -1,0 +1,13 @@
+DESCRIPTION >
+    - `health_score_v2_maintainer_ds` holds the per-repo Maintainer Health category score (0-40)
+      for Health Score v2. Populated by `health_score_v2_maintainer.pipe`.
+    - `repoUrl` is the repository URL — the join key back to `repositories`.
+    - `maintainerHealthScoreV2` — NULL when covered sub-signal weight is <40% of the 40pt max
+      (spec Layer 1 graceful degradation), otherwise the rescaled 0-40 score.
+
+SCHEMA >
+    `repoUrl` String,
+    `maintainerHealthScoreV2` Nullable(UInt8)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY repoUrl

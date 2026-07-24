@@ -1,0 +1,14 @@
+DESCRIPTION >
+    - `health_score_v2_lifecycle_ds` holds the per-repo Lifecycle state for Health Score v2.
+      Populated by `health_score_v2_lifecycle.pipe`.
+    - `repoUrl` is the repository URL — the join key back to `repositories`.
+    - `lifecycleLabelV2` — one of active/stable/declining/abandoned/archived, or NULL when the
+      repo has no usable activity signal at all (2026-07-24, IN-1196 — see
+      health_score_v2_lifecycle.pipe for the exact condition).
+
+SCHEMA >
+    `repoUrl` String,
+    `lifecycleLabelV2` Nullable(String)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY repoUrl

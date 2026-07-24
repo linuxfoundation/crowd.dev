@@ -1,0 +1,119 @@
+DESCRIPTION >
+    Maintainer Health category (max 40 pts): bus factor (18), org diversity (7), maintainer
+    responsiveness (15). Graceful degradation (spec Layer 1 + 2): bus factor and org diversity are
+    `available` (real data found) or `blocked` (no matching rows at all, weight excluded from both
+    the numerator and rescale denominator) — a real score of 0 is distinct from blocked.
+    Responsiveness follows Joana's 2026-07-23 review (per-platform, not a blanket rule):
+      - GitHub/GitLab (and any other non-Gerrit host): scores 0/15 when there are no PRs or issues
+        in the window — that's real signal (unresponsive), not a data gap, so it's never `blocked`.
+      - Gerrit (review.opendev.org, gerrit.*): Gerrit has no issue tracker, so only PR/changeset
+        response time counts. Scores 0/15 when there's no changeset data; issue-response is excluded
+        from the calculation entirely rather than penalizing repos for a concept that doesn't exist there.
+      - Repos marked `excluded` in the repositories table (e.g. .github meta repos where no PRs or
+        issues are ever expected) are `blocked` for responsiveness regardless of platform — never
+        scored 0 for an absence that was never expected to be filled.
+    If available sub-signals cover <40% of the 40pt max, the category is `unavailable` (NULL), not
+    a fabricated 0.
+    - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) so this join runs
+      independently instead of being re-inlined into every other category's query plan — the combined
+      6-node single-pipe version was taking 20-28+ minutes per run (vs ~13min pre-split) because
+      Tinybird inlines all upstream NODEs into one query per copy job, causing `repositories` and other
+      base tables to be re-scanned once per category. health_score_v2_results.pipe now reads this via
+      a cheap LEFT JOIN over the small materialized result instead.
+    - Bus factor fix (2026-07-24, IN-1196): `maintainers_roles_copy_ds.endDate` is a manually-curated
+      role record — it stays at the "still active" sentinel (1970-01-01) indefinitely unless someone
+      explicitly closes the role, so archived/dead repos (Xamarin.Forms, HPCToolkit, Ursa, SpaceVim
+      confirmed) retained a maxed-out busFactorScore=18 from maintainers with no commits/activity in
+      years. Bus factor now requires the maintainer to also have activityRelations activity on that
+      repo within the same trailing 12-month window used elsewhere in this pipe, not just an unexpired
+      role record. This was the direct cause of dead repos hitting healthScoreV2=100 after Layer 2
+      rescaling (see LFX/cdp/health-score-v2-renormalization-bug.md).
+
+NODE health_score_v2_maintainer_calc
+SQL >
+    SELECT
+        base.repoUrl AS repoUrl,
+        if(coveredWeight / 40.0 < 0.4, NULL, toNullable(toUInt8(round(least(40.0, rawScore * (40.0 / coveredWeight)))))) AS maintainerHealthScoreV2
+    FROM (
+        SELECT
+            repoUrl,
+            (busFactorScore + orgDiversityScore + responsivenessScore) AS rawScore,
+            (busFactorAvailable * 18 + orgDiversityAvailable * 7 + responsivenessAvailable * 15) AS coveredWeight
+        FROM (
+            SELECT
+                allRepos.repoUrl AS repoUrl,
+                bf.repoUrl != '' AS busFactorAvailable,
+                multiIf(bf.busFactorCount >= 5, 18, bf.busFactorCount >= 3, 15, bf.busFactorCount = 2, 6, bf.busFactorCount = 1, 3, 0) AS busFactorScore,
+                od.repoUrl != '' AS orgDiversityAvailable,
+                multiIf(coalesce(od.orgCount, 0) >= 3, 7, coalesce(od.orgCount, 0) = 2, 5, coalesce(od.orgCount, 0) = 1, 2, 0) AS orgDiversityScore,
+                multiIf(
+                    allRepos.isExcluded, false,
+                    allRepos.isGerrit, r.repoUrl != '',
+                    true
+                ) AS responsivenessAvailable,
+                multiIf(
+                    allRepos.isGerrit,
+                    -- Gerrit: PR/changeset response time only; issues don't exist here, never penalize their absence
+                    multiIf(
+                        r.repoUrl = '', 0,
+                        r.medianPrResponseS < 86400, 15,
+                        r.medianPrResponseS < 259200, 12,
+                        r.medianPrResponseS < 604800, 9,
+                        r.medianPrResponseS < 2592000, 5,
+                        r.medianPrResponseS < 7776000, 2,
+                        0
+                    ),
+                    -- GitHub/GitLab/other: no PR+issue data at all is a real 0 (unresponsive), not a data gap
+                    multiIf(
+                        r.repoUrl = '' AND ir.repoUrl = '', 0,
+                        coalesce((r.medianPrResponseS + ir.medianIssueResponseS) / 2, r.medianPrResponseS, ir.medianIssueResponseS) < 86400, 15,
+                        coalesce((r.medianPrResponseS + ir.medianIssueResponseS) / 2, r.medianPrResponseS, ir.medianIssueResponseS) < 259200, 12,
+                        coalesce((r.medianPrResponseS + ir.medianIssueResponseS) / 2, r.medianPrResponseS, ir.medianIssueResponseS) < 604800, 9,
+                        coalesce((r.medianPrResponseS + ir.medianIssueResponseS) / 2, r.medianPrResponseS, ir.medianIssueResponseS) < 2592000, 5,
+                        coalesce((r.medianPrResponseS + ir.medianIssueResponseS) / 2, r.medianPrResponseS, ir.medianIssueResponseS) < 7776000, 2,
+                        0
+                    )
+                ) AS responsivenessScore
+            FROM (
+                SELECT DISTINCT url AS repoUrl,
+                    (domain(url) = 'review.opendev.org' OR domain(url) LIKE 'gerrit.%') AS isGerrit,
+                    excluded AS isExcluded
+                FROM repositories WHERE deletedAt IS NULL
+            ) AS allRepos
+            LEFT JOIN (
+                SELECT mr.repoUrl AS repoUrl, count(DISTINCT mr.memberId) AS busFactorCount
+                FROM maintainers_roles_copy_ds mr
+                INNER JOIN (
+                    SELECT DISTINCT memberId, channel AS repoUrl
+                    FROM activityRelations
+                    WHERE timestamp > now() - INTERVAL 12 MONTH
+                ) AS recentActivity
+                    ON recentActivity.memberId = mr.memberId AND recentActivity.repoUrl = mr.repoUrl
+                WHERE mr.endDate = '1970-01-01 00:00:00' OR mr.endDate > now() - INTERVAL 12 MONTH
+                GROUP BY mr.repoUrl
+            ) AS bf ON bf.repoUrl = allRepos.repoUrl
+            LEFT JOIN (
+                SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
+                FROM activityRelations
+                WHERE timestamp > now() - INTERVAL 12 MONTH AND organizationId != ''
+                GROUP BY channel
+            ) AS od ON od.repoUrl = allRepos.repoUrl
+            LEFT JOIN (
+                SELECT channel AS repoUrl, quantile(0.5)(reviewedInSeconds) AS medianPrResponseS
+                FROM pull_requests_analyzed
+                WHERE openedAt > now() - INTERVAL 12 MONTH AND reviewedInSeconds IS NOT NULL
+                GROUP BY channel
+            ) AS r ON r.repoUrl = allRepos.repoUrl
+            LEFT JOIN (
+                SELECT channel AS repoUrl, quantile(0.5)(respondedInSeconds) AS medianIssueResponseS
+                FROM issues_analyzed
+                WHERE openedAt > now() - INTERVAL 12 MONTH AND respondedInSeconds IS NOT NULL
+                GROUP BY channel
+            ) AS ir ON ir.repoUrl = allRepos.repoUrl
+        )
+    ) AS base
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_maintainer_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 2 * * *

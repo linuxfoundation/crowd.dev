@@ -1,0 +1,85 @@
+DESCRIPTION >
+    Security & Supply Chain category (max 35 pts): open vulnerabilities (10), OpenSSF Scorecard (7,
+    blocked for repos with no repos-table row — effectively non-GitHub hosts), security practices
+    (spec max 8, but capped here at 7 achievable — the spec's 6th bullet, security_contact_email,
+    has no corresponding column anywhere in our GitHub enrichment data, so it's permanently omitted
+    like Supply Chain Integrity below; blocked entirely when repos-table row missing), dependency
+    health (5, blocked when the repo has no published packages so vulnerability exposure is unknown),
+    supply chain integrity (5, permanently blocked — hardcoded per spec, provenance/2FA data not yet
+    in the pipeline). Graceful degradation (spec Layer 1+2): category_subtotal =
+    SUM(available_sub_scores) * (35 / SUM(available_sub_max_weights)); category is `unavailable`
+    (NULL) when covered weight is <40% of 35.
+    - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
+      health_score_v2_maintainer.pipe description for why.
+
+NODE health_score_v2_security_calc
+SQL >
+    SELECT
+        repoUrl,
+        if(coveredWeight / 35.0 < 0.4, NULL, toNullable(toUInt8(round(least(35.0, rawScore * (35.0 / coveredWeight)))))) AS securitySupplyChainScoreV2
+    FROM (
+        SELECT
+            repoUrl,
+            (openVulnScore + scorecardAvailable * scorecardScorePts + securityPracticesAvailable * securityPracticesScore
+             + dependencyHealthAvailable * dependencyHealthScore) AS rawScore,
+            (10 + scorecardAvailable * 7 + securityPracticesAvailable * 7 + dependencyHealthAvailable * 5) AS coveredWeight
+        FROM (
+            SELECT
+                allRepos.url AS repoUrl,
+                greatest(0, 10 - 6*coalesce(vc.openCriticals,0) - 3*coalesce(vc.openHighs,0) - 1*coalesce(vc.openModerates,0)) AS openVulnScore,
+                toUInt8(round(least(toFloat64OrZero(rd.scorecardScore), 10) * 0.7)) AS scorecardScorePts,
+                (rd.url != '') AS scorecardAvailable,
+                (2*coalesce(rd.securityPolicyEnabled,0) + 2*coalesce(rd.branchProtectionEnabled,0)
+                   + if(coalesce(rd.branchProtectionRequiredReviews,0) >= 1, 1, 0)
+                   + coalesce(rd.branchProtectionRequiresStatusChecks,0)
+                   + if(coalesce(rd.branchProtectionAllowsForcePush,1) = 0, 1, 0)) AS securityPracticesScore,
+                (rd.url != '') AS securityPracticesAvailable,
+                multiIf(coalesce(dh.vulnerableDeps,0) = 0, 5, dh.vulnerableDeps <= 2, 3, dh.vulnerableDeps <= 5, 1, 0) AS dependencyHealthScore,
+                (pkgs.repoUrl != '') AS dependencyHealthAvailable
+            FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS allRepos
+            LEFT JOIN (
+                SELECT url,
+                    argMax(scorecardScore, updatedAt) AS scorecardScore,
+                    argMax(securityPolicyEnabled, updatedAt) AS securityPolicyEnabled,
+                    argMax(branchProtectionEnabled, updatedAt) AS branchProtectionEnabled,
+                    argMax(branchProtectionRequiredReviews, updatedAt) AS branchProtectionRequiredReviews,
+                    argMax(branchProtectionRequiresStatusChecks, updatedAt) AS branchProtectionRequiresStatusChecks,
+                    argMax(branchProtectionAllowsForcePush, updatedAt) AS branchProtectionAllowsForcePush
+                FROM repos
+                GROUP BY url
+            ) AS rd ON rd.url = allRepos.url
+            LEFT JOIN (
+                SELECT repoUrl,
+                    countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
+                    countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
+                    countIf(status = 'OPEN' AND severity = 'MODERATE') AS openModerates
+                FROM vulnerabilities
+                GROUP BY repoUrl
+            ) AS vc ON vc.repoUrl = allRepos.url
+            LEFT JOIN (
+                SELECT r.url AS repoUrl, count(DISTINCT pd.dependsOnId) AS vulnerableDeps
+                FROM repos r
+                INNER JOIN packageRepos pr ON pr.repoId = r.id
+                INNER JOIN packageDependencies pd ON pd.packageId = pr.packageId
+                WHERE pd.dependsOnId IN (
+                    SELECT ap.packageId FROM advisoryPackages ap
+                    INNER JOIN advisories a ON a.id = ap.advisoryId
+                    WHERE a.severity IN ('HIGH', 'CRITICAL')
+                )
+                GROUP BY r.url
+            ) AS dh ON dh.repoUrl = allRepos.url
+            LEFT JOIN (
+                -- whether the repo has ANY published packages at all — determines dependency-health
+                -- availability (0 vulnerable deps out of 0 tracked deps is unknown, not "healthy")
+                SELECT r.url AS repoUrl, count() AS pkgCount
+                FROM repos r
+                INNER JOIN packageRepos pr ON pr.repoId = r.id
+                GROUP BY r.url
+            ) AS pkgs ON pkgs.repoUrl = allRepos.url
+        )
+    )
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_security_ds
+COPY_MODE replace
+COPY_SCHEDULE 5 2 * * *

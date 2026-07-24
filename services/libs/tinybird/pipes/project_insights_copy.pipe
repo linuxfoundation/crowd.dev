@@ -85,6 +85,54 @@ SQL >
     WHERE timestamp >= now() - INTERVAL 730 DAY AND timestamp <= now()
     GROUP BY segmentId
 
+NODE project_insights_copy_health_v2_project
+DESCRIPTION >
+    Lifecycle, Health Score v2, and Impact Score all rolled up to project level from the pre-computed
+    per-repo values in health_score_v2_repo_copy_ds (materialized by health_score_v2.pipe — the
+    expensive per-signal joins run there as their own copy job, not inline here). Per spec section 5/6:
+    - healthScoreV2: straight mean across the project's enabled, non-excluded repos.
+    - lifecycleLabelV2: best-state-wins (active > stable > declining > abandoned > archived), with
+      NULL (no usable signal, see health_score_v2_lifecycle.pipe) as the most-cautious outcome.
+      `groupArray` silently drops NULL entries, so a project with at least one repo in a real state
+      already rolls up correctly for free — NULL only surfaces at the project level when EVERY repo
+      contributes NULL, or none contribute at all.
+      Guarded explicitly (2026-07-24, IN-1196) because `groupArray` over an empty or all-NULL input
+      returns an EMPTY array, and `arrayElement([], 1)` on that empty array returns an empty string
+      `''`, not NULL — this exact mechanism was confirmed live as the root cause of 5 blank-
+      lifecycleLabel projects found during IN-1196 verification (Charliecloud, GNU Binutils and GDB,
+      GravityView, GridGain Community Edition, Hitomi-Downloader): each has its sole repo marked
+      `repositories.excluded = true` (confirmed on GravityView specifically), so the `WHERE
+      rep.excluded = false` filter below drops every repo for that project, `groupArray` sees zero
+      rows, and the old unguarded `arrayElement` returned `''`. `if(empty(...), NULL, ...)` makes
+      that case (and the all-NULL-lifecycle case) resolve to a real NULL instead. The 5 named
+      projects will still show a blank/NULL lifecycle after this fix — this only stops it from being
+      a silent empty string; the underlying "this project's only repo is excluded" data situation is
+      unrelated to IN-1196 and not addressed here.
+    - impactScoreRaw: MAX across the project's repos (each repo's own value is already a MAX over its
+      published packages) — matches the spec's "MAX(packages.impact) over packages published by any
+      repo in the project," since max-of-maxes = max-over-all.
+
+SQL >
+    SELECT
+        rep.insightsProjectId AS insightsProjectId,
+        avg(hv2.healthScoreV2) AS healthScoreV2,
+        if(
+            empty(groupArray(hv2.lifecycleLabelV2)),
+            NULL,
+            toNullable(arrayElement(
+                arraySort(
+                    x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'archived'], x),
+                    groupArray(hv2.lifecycleLabelV2)
+                ),
+                1
+            ))
+        ) AS lifecycleLabelV2,
+        maxOrNull(hv2.impactScore) AS impactScoreRaw
+    FROM repositories rep FINAL
+    INNER JOIN health_score_v2_repo_copy_ds hv2 ON hv2.repoUrl = rep.url
+    WHERE rep.insightsProjectId != '' AND rep.enabled = true AND rep.excluded = false
+    GROUP BY rep.insightsProjectId
+
 NODE project_insights_copy_project_results
 DESCRIPTION >
     Join all project insights together
@@ -120,11 +168,39 @@ SQL >
         pm.starsPrevious365Days AS starsPrevious365Days,
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
-        pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days
+        pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
+        toUInt8(round(hv2.healthScoreV2)) AS healthScoreV2,
+        multiIf(
+            hv2.healthScoreV2 IS NULL,
+            NULL,
+            hv2.healthScoreV2 >= 85,
+            'excellent',
+            hv2.healthScoreV2 >= 70,
+            'healthy',
+            hv2.healthScoreV2 >= 50,
+            'fair',
+            hv2.healthScoreV2 >= 30,
+            'concerning',
+            'critical'
+        ) AS healthLabel,
+        hv2.lifecycleLabelV2 AS lifecycleLabel,
+        hv2.impactScoreRaw AS impactScore,
+        multiIf(
+            hv2.impactScoreRaw IS NULL,
+            NULL,
+            hv2.impactScoreRaw >= 85,
+            'foundational',
+            hv2.impactScoreRaw >= 60,
+            'major',
+            hv2.impactScoreRaw >= 30,
+            'moderate',
+            'minor'
+        ) AS impactLabel
     FROM project_insights_copy_base_projects AS base
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
     LEFT JOIN project_insights_copy_period_metrics AS pm USING (segmentId)
+    LEFT JOIN project_insights_copy_health_v2_project AS hv2 ON base.id = hv2.insightsProjectId
 
 NODE project_insights_copy_repo_base
 DESCRIPTION >
@@ -209,10 +285,38 @@ SQL >
         COALESCE(rm.starsPrevious365Days, 0) AS starsPrevious365Days,
         COALESCE(rm.forksPrevious365Days, 0) AS forksPrevious365Days,
         COALESCE(rm.activeContributorsPrevious365Days, 0) AS activeContributorsPrevious365Days,
-        COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days
+        COALESCE(rm.activeOrganizationsPrevious365Days, 0) AS activeOrganizationsPrevious365Days,
+        toUInt8(round(hv2.healthScoreV2)) AS healthScoreV2,
+        multiIf(
+            hv2.healthScoreV2 IS NULL,
+            NULL,
+            hv2.healthScoreV2 >= 85,
+            'excellent',
+            hv2.healthScoreV2 >= 70,
+            'healthy',
+            hv2.healthScoreV2 >= 50,
+            'fair',
+            hv2.healthScoreV2 >= 30,
+            'concerning',
+            'critical'
+        ) AS healthLabel,
+        hv2.lifecycleLabelV2 AS lifecycleLabel,
+        hv2.impactScore AS impactScore,
+        multiIf(
+            hv2.impactScore IS NULL,
+            NULL,
+            hv2.impactScore >= 85,
+            'foundational',
+            hv2.impactScore >= 60,
+            'major',
+            hv2.impactScore >= 30,
+            'moderate',
+            'minor'
+        ) AS impactLabel
     FROM project_insights_copy_repo_base AS base
     LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
     LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel
+    LEFT JOIN health_score_v2_repo_copy_ds AS hv2 ON base.repoUrl = hv2.repoUrl
 
 NODE project_insights_copy_results
 DESCRIPTION >

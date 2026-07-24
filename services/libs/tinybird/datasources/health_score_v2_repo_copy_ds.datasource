@@ -1,0 +1,36 @@
+DESCRIPTION >
+    - `health_score_v2_repo_copy_ds` contains the per-repo Akrites Health Score v2 breakdown.
+    - Populated by `health_score_v2.pipe` copy pipe.
+    - Health Score v2 is computed entirely from repo-level/CDP data (maintainer activity, security posture,
+      development activity) — no package data, per the Health Score v2 methodology
+      (https://linuxfoundation-dxwx.dsp.so/4ezMyw7n-insights-projects-new-scores). Impact Score is the
+      one exception — package-mediated by design, computed here as MAX(packages.impact) over the repo's
+      own published packages (via packageRepos), not an average over unrelated packages.
+    - `repoUrl` is the repository URL — the join key back to `repositories`/`repos`.
+    - `maintainerHealthScoreV2` (0-40) — bus factor, org diversity, maintainer responsiveness.
+    - `securitySupplyChainScoreV2` (0-35) — open vulnerabilities, OpenSSF Scorecard, security practices,
+      dependency health (checked against the repo's own published packages' dependencies, not an average
+      across unrelated packages), supply chain integrity (hardcoded 0 — provenance/2FA data not yet piped).
+    - `developmentActivityScoreV2` (0-25) — release cadence, commit activity, issue resolution, PR merge health.
+    - `healthScoreV2` (0-100) is the sum of the three categories above, clamped to 100.
+    - `lifecycleLabelV2` — per-repo lifecycle state (active/stable/declining/abandoned/archived), computed
+      via the spec's decision tree (archived flag > abandoned > declining > stable > active, first match
+      wins), or NULL when the repo has zero commits and zero issues/PRs in every window checked (2026-07-24,
+      IN-1196 — no usable activity signal at all). Project-level rollup uses best-state-wins precedence in
+      project_insights_copy.pipe.
+    - `impactScore` (0-100) — MAX(packages.impact) * 100 over packages published by this repo. NULL when
+      the repo has no linked packages.
+    - No graceful-degradation/signal-coverage redistribution yet — a repo with zero signal in a category
+      scores 0 there rather than having points redistributed from available categories.
+
+SCHEMA >
+    `repoUrl` String,
+    `maintainerHealthScoreV2` Nullable(UInt8),
+    `securitySupplyChainScoreV2` Nullable(UInt8),
+    `developmentActivityScoreV2` Nullable(UInt8),
+    `healthScoreV2` Nullable(UInt8),
+    `lifecycleLabelV2` Nullable(String),
+    `impactScore` Nullable(UInt8)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY repoUrl

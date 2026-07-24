@@ -32,6 +32,11 @@ DESCRIPTION >
     - `activeContributorsPrevious365Days` column is the unique count of active contributors in the previous 365 days (365-730 days ago).
     - `activeOrganizationsPrevious365Days` column is the unique count of active organizations in the previous 365 days (365-730 days ago).
     - `status` column is the current status of the project (e.g., 'active', 'archived').
+    - `healthScoreV2` column is the Akrites-methodology composite health score (0-100), averaged from `ossPackages_enriched_ds.healthScore` across the project's linked packages. Distinct from the legacy `healthScore` column (community/contributor-based); null when the project has no linked package data.
+    - `healthLabel` column buckets `healthScoreV2`: 'excellent' (85+), 'healthy' (70-84), 'fair' (50-69), 'concerning' (30-49), 'critical' (<30). Lowercase, matches `ossPackages_enriched_ds.healthLabel` convention.
+    - `lifecycleLabel` column is the project's aggregated maintenance state across its packages, using best-state-wins precedence (active > stable > declining > abandoned > archived) over `ossPackages_enriched_ds.lifecycleLabel`.
+    - `impactScore` column is the average Osprey criticality `impact` (0-100) across the project's packages. Null when the project has no linked package data.
+    - `impactLabel` column buckets `impactScore`: 'foundational' (85-100), 'major' (60-84), 'moderate' (30-59), 'minor' (0-29). Null when `impactScore` is null.
 
 TAGS "Project insights", "Metrics"
 
@@ -65,7 +70,12 @@ SCHEMA >
     `starsPrevious365Days` UInt64,
     `forksPrevious365Days` UInt64,
     `activeContributorsPrevious365Days` UInt64,
-    `activeOrganizationsPrevious365Days` UInt64
+    `activeOrganizationsPrevious365Days` UInt64,
+    `healthScoreV2` Nullable(UInt8),
+    `healthLabel` Nullable(String),
+    `lifecycleLabel` Nullable(String),
+    `impactScore` Nullable(UInt8),
+    `impactLabel` Nullable(String)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY type, id

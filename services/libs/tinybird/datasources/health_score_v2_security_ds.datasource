@@ -1,0 +1,13 @@
+DESCRIPTION >
+    - `health_score_v2_security_ds` holds the per-repo Security & Supply Chain category score (0-35)
+      for Health Score v2. Populated by `health_score_v2_security.pipe`.
+    - `repoUrl` is the repository URL — the join key back to `repositories`.
+    - `securitySupplyChainScoreV2` — NULL when covered sub-signal weight is <40% of the 35pt max
+      (spec Layer 1 graceful degradation), otherwise the rescaled 0-35 score.
+
+SCHEMA >
+    `repoUrl` String,
+    `securitySupplyChainScoreV2` Nullable(UInt8)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY repoUrl
