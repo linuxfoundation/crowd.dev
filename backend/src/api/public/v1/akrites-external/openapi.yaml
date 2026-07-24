@@ -1246,3 +1246,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/ingest:
+    post:
+      operationId: ingestContactDetail
+      summary: On-demand security-contacts ingest for a single PURL
+      description: >
+        Synchronous, single-purl only — no batch variant, since fanning this out over
+        many purls would multiply concurrent Temporal workflow starts.
+
+        If the linked repo's security contacts have already been ingested at least
+        once, returns the existing ContactDetail immediately without triggering the
+        workflow. If the purl is unknown, or the package has no linked repo at all,
+        returns 404 immediately without triggering the workflow either. Otherwise
+        blocks while a single-repo Temporal workflow (ingestSecurityContactsForPurlWorkflow)
+        ingests the linked repo's security contacts — worst case ~95s per attempt
+        cycle, plus unbounded time waiting for a free worker slot — then returns the
+        same ContactDetail payload as GET /contacts/detail. Concurrent requests for
+        the same purl attach to the same running workflow instead of starting
+        duplicates.
+
+
+        Note: the underlying workflow itself has no "already ingested" gate — it
+        reprocesses and can replace a repo's contacts on every invocation. This
+        endpoint is what prevents repeat calls from re-triggering it for a purl
+        that's already been ingested.
+
+
+        Rate limited independently of the other /contacts endpoints — default
+        20 requests/hour, tunable via AKRITES_CONTACT_INGEST_RATE_LIMIT_MAX /
+        AKRITES_CONTACT_INGEST_RATE_LIMIT_WINDOW_MS.
+
+
+        Not yet implemented: this is a synchronous, blocking call. Future work should
+        make this async — an accept-and-poll job, similar to POST /blast-radius/jobs —
+        so callers aren't held open for the duration of the ingest.
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purl]
+              properties:
+                purl:
+                  type: string
+                  example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: >-
+            Security contact detail — either just ingested by this call, or
+            returned from a prior ingest without re-triggering the workflow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: >-
+            Purl is unknown, or the package has no linked repo to ingest
+            contacts from — returned without triggering the workflow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

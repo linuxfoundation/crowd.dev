@@ -12,4 +12,5 @@ export enum TemporalWorkflowId {
   DELETE_ORPHAN_MEMBER = 'delete-orphan-member',
 
   BLAST_RADIUS_ANALYSIS = 'blast-radius-analysis',
+  SECURITY_CONTACTS_ONDEMAND = 'security-contacts-ondemand',
 }

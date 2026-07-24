@@ -878,7 +878,11 @@ export interface AkritesExternalContactDetailRow
   extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem' | 'declaredRepositoryUrl'>,
     Pick<
       RepoDbRow,
-      'securityPolicyUrl' | 'vulnerabilityReportingUrl' | 'bugBountyUrl' | 'pvrEnabled'
+      | 'securityPolicyUrl'
+      | 'vulnerabilityReportingUrl'
+      | 'bugBountyUrl'
+      | 'pvrEnabled'
+      | 'contactsLastRefreshed'
     > {
   securityContacts: SecurityContactRow[] | null
   // --- joined from repos via package_repos, same BEST_REPO_LINK_JOIN as
@@ -905,6 +909,7 @@ export async function getContactDetailsByPurls(
       r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
       r.bug_bounty_url              AS "bugBountyUrl",
       r.pvr_enabled                 AS "pvrEnabled",
+      r.contacts_last_refreshed     AS "contactsLastRefreshed",
       ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts"
     FROM packages p
     ${BEST_REPO_LINK_JOIN}

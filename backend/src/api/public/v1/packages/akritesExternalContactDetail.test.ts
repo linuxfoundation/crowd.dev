@@ -18,6 +18,7 @@ function baseRow(
     declaredRepositoryUrl: 'https://github.com/lodash/lodash.git',
     resolvedRepositoryUrl: 'https://github.com/lodash/lodash',
     repoMappingConfidence: 0.9,
+    contactsLastRefreshed: '2024-01-01T00:00:00.000Z',
     securityContacts: [
       {
         channel: 'email',
