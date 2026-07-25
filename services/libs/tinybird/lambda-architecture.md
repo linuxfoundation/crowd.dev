@@ -124,7 +124,9 @@ This document explains the **Lambda Architecture** implementation used in our Ti
                      ↓
 
     What each bucket pipe does (bucketing key: cityHash64(segmentId) % 3):
-    ├─ Fetches: NEW deltas for its bucket from MV_ds (snapshotId > bucket's last snapshot)
+    ├─ Fetches: NEW deltas for its bucket from MV_ds (snapshotId >= bucket's last
+    │   snapshot — inclusive, so rows arriving late for an already-merged day are
+    │   replayed on the next run; the dedup below makes the replay idempotent)
     ├─ Collapses multi-day deltas: ORDER BY updatedAt DESC LIMIT 1 BY dedup key (no FINAL)
     ├─ Fetches: OLD data from its own bucket datasource (carry-forward, NOT IN delta keys)
     ├─ Merges: UNION ALL → one fresh snapshot for the bucket
@@ -588,14 +590,14 @@ tb pipe copy run segmentId_aggregates_initial_snapshot --wait
 
 ### Comparison: Initial vs Merger Copy Pipes
 
-| Aspect | Initial Snapshot | Merger Copy Pipe |
-|--------|------------------|------------------|
-| **Schedule** | @on-demand (manual) | Hourly (10 * * * * or 0 * * * *) |
-| **Mode** | replace (overwrites all) | append (adds new snapshot) |
-| **Purpose** | Bootstrap/reset | Incremental updates |
-| **Source** | Base tables or latest snapshot | MV output + existing serving data |
-| **Frequency** | Once (or rarely) | Continuous (hourly) |
-| **Snapshot Strategy** | Create first snapshot | Create new snapshots, merge with old |
+| Aspect | Initial Snapshot | Bucket Merger (activityRelations) | PR Merger |
+|--------|------------------|-----------------------------------|-----------|
+| **Schedule** | @on-demand (manual) | Daily (01:30/01:34/01:38 UTC) | Hourly (0 * * * *) |
+| **Mode** | replace (overwrites all) | replace (atomic per-bucket swap) | replace |
+| **Purpose** | Bootstrap/reset | Incremental merge of MV deltas | Incremental merge of PR events |
+| **Source** | Base tables | MV output + own bucket (carry-forward) | MV output + own target |
+| **Frequency** | Once (or rarely) | Continuous (daily) | Continuous (hourly) |
+| **Snapshot Strategy** | Create first snapshot | One snapshot per bucket, re-stamped each run | Single snapshot, replaced each run |
 
 
 ## Troubleshooting

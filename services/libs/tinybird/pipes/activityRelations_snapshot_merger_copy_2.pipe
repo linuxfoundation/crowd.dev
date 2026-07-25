@@ -16,7 +16,7 @@ SQL >
     FROM activityRelations_enrich_snapshot_MV_ds
     WHERE
         cityHash64(segmentId) % 3 = 2
-        AND snapshotId > lastSnapshotId
+        AND snapshotId >= lastSnapshotId
         AND snapshotId <= toStartOfInterval(now(), INTERVAL 1 day)
     ORDER BY updatedAt DESC
     LIMIT 1 BY segmentId, timestamp, type, platform, channel, sourceId
