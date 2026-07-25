@@ -69,12 +69,20 @@ api() {
   BODY="$(printf '%s' "$response" | sed '$d')"
 }
 
+# Print a short, non-secret snippet of the last res on failure (never tokens).
+log_fail_body() {
+  local snippet
+  snippet="$(jq -c 'if type == "object" then del(.access_token, .refresh_token, .id_token, .client_secret) else . end' <<<"$BODY" 2>/dev/null || printf '%s' "$BODY")"
+  snippet="${snippet:0:500}"
+  printf '  body: %s\n' "$snippet"
+}
+
 check() {
   local name=$1 expected=$2
   shift 2
   if [[ $HTTP_CODE != "$expected" ]]; then
     printf '  FAIL  %s — expected HTTP %s, got %s\n' "$name" "$expected" "$HTTP_CODE"
-    jq . <<<"$BODY" 2>/dev/null || printf '%s\n' "$BODY"
+    log_fail_body
     FAIL=$((FAIL + 1))
     return
   fi
@@ -82,7 +90,7 @@ check() {
   for expr in "$@"; do
     if ! jq -e "$expr" >/dev/null 2>&1 <<<"$BODY"; then
       printf '  FAIL  %s (%s)\n' "$name" "$expr"
-      jq . <<<"$BODY" 2>/dev/null || printf '%s\n' "$BODY"
+      log_fail_body
       FAIL=$((FAIL + 1))
       return
     fi
