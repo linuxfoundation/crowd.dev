@@ -9,20 +9,10 @@ concurrency:
   group: api-e2e-tests
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
-  CLOUD_ENV: lf-oracle-staging
-  ORACLE_DOCKER_USERNAME: ${{ secrets.ORACLE_DOCKER_USERNAME }}
-  ORACLE_DOCKER_PASSWORD: ${{ secrets.ORACLE_DOCKER_PASSWORD }}
-  ORACLE_USER: ${{ secrets.ORACLE_USER }}
-  ORACLE_TENANT: ${{ secrets.ORACLE_TENANT }}
-  ORACLE_REGION: ${{ secrets.ORACLE_REGION }}
-  ORACLE_FINGERPRINT: ${{ secrets.ORACLE_FINGERPRINT }}
-  ORACLE_KEY: ${{ secrets.ORACLE_KEY }}
-  ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
-  AUTH0_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_API_E2E_CLIENT_ID }}
-  AUTH0_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_API_E2E_CLIENT_SECRET }}
-  AUTH0_STAGING_AUDIENCE: ${{ vars.AUTH0_STAGING_AUDIENCE }}
-  AUTH0_STAGING_ISSUER: ${{ vars.AUTH0_STAGING_ISSUER }}
   CDP_API_E2E_BASE_URL: ${{ vars.CDP_API_E2E_BASE_URL }}
 
 jobs:
@@ -35,22 +25,39 @@ jobs:
           ref: main
 
       - name: Install OCI
+        env:
+          OCI_CLI_INSTALL_REF: v3.89.3
+          OCI_CLI_VERSION: 3.89.3
         run: |
-          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh > install.sh
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/oracle/oci-cli/${OCI_CLI_INSTALL_REF}/scripts/install/install.sh" -o install.sh
           chmod +x install.sh
-          ./install.sh --accept-all-defaults
-          echo "OCI_CLI_DIR=/home/runner/bin" >> $GITHUB_ENV
+          ./install.sh --accept-all-defaults --oci-cli-version "${OCI_CLI_VERSION}"
+          echo "OCI_CLI_DIR=/home/runner/bin" >> "$GITHUB_ENV"
 
       - name: Update PATH
-        run: echo "${{ env.OCI_CLI_DIR }}" >> $GITHUB_PATH
+        run: echo "${{ env.OCI_CLI_DIR }}" >> "$GITHUB_PATH"
 
-      - uses: ./.github/actions/node/builder
+      - name: Deploy api-e2e
+        uses: ./.github/actions/node/builder
+        env:
+          CLOUD_ENV: lf-oracle-staging
+          ORACLE_DOCKER_USERNAME: ${{ secrets.ORACLE_DOCKER_USERNAME }}
+          ORACLE_DOCKER_PASSWORD: ${{ secrets.ORACLE_DOCKER_PASSWORD }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_TENANT: ${{ secrets.ORACLE_TENANT }}
+          ORACLE_REGION: ${{ secrets.ORACLE_REGION }}
+          ORACLE_FINGERPRINT: ${{ secrets.ORACLE_FINGERPRINT }}
+          ORACLE_KEY: ${{ secrets.ORACLE_KEY }}
+          ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
         with:
           services: api-e2e
 
       - name: Wait for api-e2e
         run: |
           set -euo pipefail
+          # Builder only runs kubectl set image; wait for the new revision before health.
+          kubectl rollout status deployment/api-e2e-dpl --timeout=600s
           health_url="${CDP_API_E2E_BASE_URL%/v1}/health"
           for i in $(seq 1 36); do
             curl -fsS --max-time 10 "$health_url" >/dev/null && exit 0
@@ -60,4 +67,9 @@ jobs:
           exit 1
 
       - name: Run Public API e2e tests
+        env:
+          AUTH0_STAGING_AUDIENCE: ${{ vars.AUTH0_STAGING_AUDIENCE }}
+          AUTH0_STAGING_ISSUER: ${{ vars.AUTH0_STAGING_ISSUER }}
+          AUTH0_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_API_E2E_CLIENT_ID }}
+          AUTH0_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_API_E2E_CLIENT_SECRET }}
         run: bash .github/scripts/public-api-e2e-tests.sh

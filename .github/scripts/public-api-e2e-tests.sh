@@ -5,10 +5,10 @@
 # Database setup/reset is handled externally.
 #
 # Required environment variables (same names as GitHub Actions secrets/vars):
-#   AUTH0_API_E2E_CLIENT_ID
-#   AUTH0_API_E2E_CLIENT_SECRET
 #   AUTH0_STAGING_AUDIENCE
 #   AUTH0_STAGING_ISSUER
+#   AUTH0_API_E2E_CLIENT_ID
+#   AUTH0_API_E2E_CLIENT_SECRET
 #   CDP_API_E2E_BASE_URL
 #
 # Do not enable `set -x`; requests include sensitive credentials.

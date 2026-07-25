@@ -6,17 +6,17 @@
 
 ## Context
 
-API e2e tests need a maintainable HTTP suite that can grow as endpoints are added. For now the suite covers the **Public API** (see [ADR-0012](./0012-api-e2e-test-architecture.md)); the same writing pattern should hold if we later add internal API e2e tests when there is a real need.
+API e2e tests need a maintainable HTTP suite pattern that can grow as endpoints are added. Without shared structure, suites tend to split by HTTP method, accumulate one-off asserts, and become hard to extend or review.
 
-Without a shared structure, suites tend to split by HTTP method, accumulate one-off asserts, and become hard to extend or review. We want a thin, boring pattern: shared helpers, clear grouping, and an obvious place to add the next resource. This is how we write durable e2e cases until a fuller PR-time API e2e harness exists (backlog).
+We want a thin, boring pattern: shared helpers, clear grouping, and an obvious place to add the next resource. This is how we write durable e2e cases until a fuller PR-time API e2e harness exists (backlog).
 
-This ADR is the **suite design** (how tests are written). Runtime, isolation, scheduled CI, and ops live in [ADR-0012](./0012-api-e2e-test-architecture.md).
+This ADR is the **suite design** (how tests are written). Runtime, isolation, scheduled CI, which surfaces we cover, and ops live in [ADR-0012](./0012-api-e2e-test-architecture.md).
 
 ## Decision
 
-Implement API e2e tests as HTTP bash script(s) with this structure. Current entrypoint: [`.github/scripts/public-api-e2e-tests.sh`](../../.github/scripts/public-api-e2e-tests.sh) (Public API). New surfaces should reuse this pattern (same script or additional scripts), not invent a parallel style.
+Implement API e2e tests as HTTP bash script(s) with this structure. Current entrypoint: [`.github/scripts/public-api-e2e-tests.sh`](../../.github/scripts/public-api-e2e-tests.sh). New suites should reuse this pattern (same script or additional scripts), not invent a parallel style.
 
-The suite is **regression-oriented and intentionally thin**: contract and critical flows over HTTP, not a full matrix of edge cases.
+The suite is **thin**: assert the HTTP contract and critical flows so regressions show up early. Leave exhaustive edge-case matrices to unit or focused contract tests.
 
 | Layer | Role |
 | --- | --- |
@@ -61,7 +61,6 @@ The suite is **regression-oriented and intentionally thin**: contract and critic
 - Adding an endpoint is: open (or create) the resource suite, add `api` + `check`, register in `main` if new.
 - Reviews focus on cases, not harness inventiveness.
 - Soft `check` keeps the run going so one failure does not hide the rest.
-- Public API suites land first; internal API can follow the same rules later without a new design debate.
 
 ### Negative
 

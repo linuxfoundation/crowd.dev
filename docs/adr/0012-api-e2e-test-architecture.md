@@ -6,13 +6,13 @@
 
 ## Context
 
-We need to catch regressions on the API on `main` sooner (auth, routing, validation, and the sync HTTP response contract) without waiting for a consumer to hit a break. Relying on manually running the script every time is hard and not reliable. It pollutes staging data, depends on ambient fixtures, and does not work as a team habit.
+We want to catch API regressions on main sooner (auth, routing, validation, and the synchronous HTTP response contract) instead of waiting for a consumer to hit a problem. Manually running the test script is easy to forget, pollutes staging data, depends on existing fixtures, and is not something we can rely on as a team.
 
-A fuller API e2e harness in the server test setup (PR CI, isolated fixtures, typed asserts) is planned and sits in the backlog. Until that is ready, we need a short-term automated check that is isolated from staging data and cheap to operate.
+A more complete API e2e harness in the server test setup (PR CI, isolated fixtures, typed assertions) is planned for future work. Until then, we need a simple automated check that runs against an isolated environment and gives us confidence that the deployed API is still working as expected.
 
-**Focus for now is the Public API.** Those endpoints are consumed outside the product, so we need a minimum unbroken contract there first. Internal API routes are not the priority for these tests; we can add coverage for them later when there is a real need, using the same stack and suite pattern.
+The first test suite covers the Public API. These endpoints are the external contract our consumers rely on, so they are the best place to start. We can add more API e2e suites over time using the same runtime and suite pattern as needed.
 
-This ADR is the **runtime and isolation** decision. How e2e test cases are written lives in [ADR-0013](./0013-api-e2e-test-suite-design.md). Current suite: [`.github/scripts/public-api-e2e-tests.sh`](../../.github/scripts/public-api-e2e-tests.sh).
+This ADR covers the runtime and isolation architecture for API e2e tests. The design of the test suites themselves is covered in [ADR-0013](./0013-api-e2e-test-suite-design.md). The current suite lives in [`.github/scripts/public-api-e2e-tests.sh`](../../.github/scripts/public-api-e2e-tests.sh).
 
 ## Decision
 
@@ -78,7 +78,7 @@ A single shared `api-e2e` cannot safely gate concurrent PRs, because deploys and
 
 ### Database reset (ops)
 
-[`reset_api_e2e_test_db.sh`](../../reset_api_e2e_test_db.sh) runs on the EC2 host used to reach staging Postgres over SSH. It creates `crowd_api_e2e` if needed, applies normal Flyway migrations, truncates tables, and seeds the default tenant.
+`reset_api_e2e_test_db.sh` runs on the EC2 host used to reach staging Postgres over SSH. It creates `crowd_api_e2e` if needed, applies normal Flyway migrations, truncates tables, and seeds the default tenant.
 
 Run it after migrations land on `main`, or when leftover e2e test rows should be cleared. Keep that host’s crowd.dev checkout on latest `main` so Flyway matches the deployed `api-e2e`.
 
