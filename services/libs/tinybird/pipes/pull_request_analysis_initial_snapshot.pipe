@@ -19,9 +19,7 @@ SQL >
         updatedAt
     FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        (
-            type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created'
-        )
+        (type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created')
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
@@ -240,8 +238,7 @@ SQL >
     SELECT sourceParentId, toInt64(COUNT(*)) AS numberOfPatchsets
     FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        type = 'patchset-created'
-        AND sourceParentId != ''
+        type = 'patchset-created' AND sourceParentId != ''
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}

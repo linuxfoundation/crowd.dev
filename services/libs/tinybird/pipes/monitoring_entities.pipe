@@ -12,11 +12,14 @@ SQL >
         sum(c) AS value
     FROM
         (
-            SELECT count() AS c FROM activityRelations_enriched_deduplicated_bucket_0_ds
+            SELECT count() AS c
+            FROM activityRelations_enriched_deduplicated_bucket_0_ds
             UNION ALL
-            SELECT count() FROM activityRelations_enriched_deduplicated_bucket_1_ds
+            SELECT count()
+            FROM activityRelations_enriched_deduplicated_bucket_1_ds
             UNION ALL
-            SELECT count() FROM activityRelations_enriched_deduplicated_bucket_2_ds
+            SELECT count()
+            FROM activityRelations_enriched_deduplicated_bucket_2_ds
         )
 
 NODE members_total

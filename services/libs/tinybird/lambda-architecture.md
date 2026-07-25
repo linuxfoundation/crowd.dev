@@ -285,10 +285,11 @@ Instead of using FINAL in copy pipes or query time, our approach uses **snapshot
 │ 2       │ some_value  │ 2024-01-01 15:00 │
 └─────────┴─────────────┴──────────────────┘
 
--- Query with snapshot filter:
+-- Query with snapshot filter (generic pattern — substitute your append-mode,
+-- snapshot-stamped datasource):
 SELECT *
-FROM activityRelations_enriched_deduplicated_ds
-WHERE snapshotId = (SELECT max(snapshotId) FROM activityRelations_enriched_deduplicated_ds)
+FROM your_snapshot_ds
+WHERE snapshotId = (SELECT max(snapshotId) FROM your_snapshot_ds)
 
 -- Result (deduplicated logical view):
 ┌─────────┬─────────────┬──────────────────┐
