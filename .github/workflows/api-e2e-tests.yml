@@ -1,0 +1,63 @@
+name: API e2e tests
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: api-e2e-tests
+  cancel-in-progress: false
+
+env:
+  CLOUD_ENV: lf-oracle-staging
+  ORACLE_DOCKER_USERNAME: ${{ secrets.ORACLE_DOCKER_USERNAME }}
+  ORACLE_DOCKER_PASSWORD: ${{ secrets.ORACLE_DOCKER_PASSWORD }}
+  ORACLE_USER: ${{ secrets.ORACLE_USER }}
+  ORACLE_TENANT: ${{ secrets.ORACLE_TENANT }}
+  ORACLE_REGION: ${{ secrets.ORACLE_REGION }}
+  ORACLE_FINGERPRINT: ${{ secrets.ORACLE_FINGERPRINT }}
+  ORACLE_KEY: ${{ secrets.ORACLE_KEY }}
+  ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
+  AUTH0_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_API_E2E_CLIENT_ID }}
+  AUTH0_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_API_E2E_CLIENT_SECRET }}
+  AUTH0_STAGING_AUDIENCE: ${{ vars.AUTH0_STAGING_AUDIENCE }}
+  AUTH0_STAGING_ISSUER: ${{ vars.AUTH0_STAGING_ISSUER }}
+  CDP_API_E2E_BASE_URL: ${{ vars.CDP_API_E2E_BASE_URL }}
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install OCI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh > install.sh
+          chmod +x install.sh
+          ./install.sh --accept-all-defaults
+          echo "OCI_CLI_DIR=/home/runner/bin" >> $GITHUB_ENV
+
+      - name: Update PATH
+        run: echo "${{ env.OCI_CLI_DIR }}" >> $GITHUB_PATH
+
+      - uses: ./.github/actions/node/builder
+        with:
+          services: api-e2e
+
+      - name: Wait for api-e2e
+        run: |
+          set -euo pipefail
+          health_url="${CDP_API_E2E_BASE_URL%/v1}/health"
+          for i in $(seq 1 36); do
+            curl -fsS --max-time 10 "$health_url" >/dev/null && exit 0
+            sleep 10
+          done
+          echo "api-e2e not healthy: $health_url" >&2
+          exit 1
+
+      - name: Run Public API e2e tests
+        run: bash .github/scripts/public-api-e2e-tests.sh
