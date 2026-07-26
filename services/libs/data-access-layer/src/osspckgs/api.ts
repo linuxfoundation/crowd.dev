@@ -1021,7 +1021,7 @@ export async function getAdvisoriesByPackageId(
         ${ADVISORY_RESOLUTION_EXPR} AS resolution
       FROM advisory_packages ap
       JOIN advisories a ON a.id = ap.advisory_id
-      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
       JOIN packages p ON p.id = ap.package_id
       WHERE ap.package_id = $(packageId)::bigint
       GROUP BY a.osv_id, a.severity, a.is_critical, p.latest_version
@@ -1129,7 +1129,7 @@ export async function getAdvisoriesByPurls(
     FROM packages p
     LEFT JOIN advisory_packages ap ON ap.package_id = p.id
     LEFT JOIN advisories a ON a.id = ap.advisory_id
-    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
     WHERE p.purl = ANY($(purls))
     GROUP BY p.purl, p.latest_version, a.osv_id, a.severity, a.is_critical
     ORDER BY
