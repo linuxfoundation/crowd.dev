@@ -22,7 +22,7 @@ SCHEMA >
     `unaffectedRaw` String `json:$.record.unaffected_raw` DEFAULT '',
     `createdAt` DateTime64(3) `json:$.record.created_at`,
     `updatedAt` DateTime64(3) `json:$.record.updated_at`,
-    `deletedAt` Nullable(DateTime64(3)) `json:$.record.deleted_at`
+    `deletedAt` Nullable(DateTime64(3)) `json:$.record.deleted_at` DEFAULT NULL
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)
