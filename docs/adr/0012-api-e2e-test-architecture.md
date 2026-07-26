@@ -6,7 +6,7 @@
 
 ## Context
 
-We want to catch API regressions on main sooner (auth, routing, validation, and the synchronous HTTP response contract) instead of waiting for a consumer to hit a problem. Manually running the test script is easy to forget, pollutes staging data, depends on existing fixtures, and is not something we can rely on as a team.
+We want to catch API regressions on main sooner (routing, validation, and the synchronous HTTP response contract with a valid token) instead of waiting for a consumer to hit a problem. Manually running the test script is easy to forget, pollutes staging data, depends on existing fixtures, and is not something we can rely on as a team.
 
 A more complete API e2e harness in the server test setup (PR CI, isolated fixtures, typed assertions) is planned for future work. Until then, we need a simple automated check that runs against an isolated environment and gives us confidence that the deployed API is still working as expected.
 
@@ -69,7 +69,7 @@ flowchart LR
 
 ### What we assert (and what we do not)
 
-- **Assert**: auth/scopes, routing, validation, sync response shape and critical flows.
+- **Assert**: routing, validation, sync response shape and critical flows using a valid fully scoped token.
 - **Do not assert**: Temporal / OpenSearch eventual outcomes. Some writes await Temporal accepting a signal before the HTTP response returns; async worker work stays out of scope for this suite.
 
 ### Not a PR gate
