@@ -90,9 +90,15 @@ ON CONFLICT (advisory_id, ecosystem, package_name) DO NOTHING
 // typical after supersedeDepsDevRanges soft-deletes deps.dev rows on OSV takeover
 // and OSV later drops the package again — otherwise DO NOTHING would leave
 // staging's live data with no corresponding live row.
+// DISTINCT ON (ap.id) is required because DO UPDATE (unlike DO NOTHING) errors
+// with "ON CONFLICT DO UPDATE command cannot affect row a second time" if two
+// staging rows for the same package (e.g. multiple disjoint deps.dev ranges
+// under one advisory) hit the same conflict target within one statement — every
+// deps.dev row shares one key per advisory_package_id since introduced_version
+// etc. are always NULL here.
 const ADVISORY_AFFECTED_RANGES_MERGE_SQL = `
 INSERT INTO advisory_affected_ranges (advisory_package_id, range_raw, unaffected_raw, introduced_version, created_at, updated_at)
-SELECT
+SELECT DISTINCT ON (ap.id)
   ap.id,
   s.range_raw,
   s.unaffected_raw,
@@ -110,6 +116,7 @@ WHERE NOT EXISTS (
     AND live.range_raw IS NULL
     AND live.unaffected_raw IS NULL
 )
+ORDER BY ap.id
 ON CONFLICT (advisory_package_id, COALESCE(introduced_version, ''), COALESCE(fixed_version, ''), COALESCE(last_affected, ''))
 DO UPDATE SET
   updated_at = NOW(),
