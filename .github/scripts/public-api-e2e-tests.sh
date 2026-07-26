@@ -56,9 +56,13 @@ die() {
   exit 1
 }
 
+CURL_CONNECT_TIMEOUT=10
+CURL_MAX_TIME=30
+
 api() {
   local method=$1 path=$2 body=${3-}
-  local -a args=(-sS -w '\n%{http_code}' -X "$method" "${CDP_API_E2E_BASE_URL}${path}"
+  local -a args=(-sS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME"
+    -w '\n%{http_code}' -X "$method" "${CDP_API_E2E_BASE_URL}${path}"
     -H 'Content-Type: application/json'
     -H "Authorization: Bearer ${TOKEN}")
   [[ -n $body ]] && args+=(-d "$body")
@@ -110,7 +114,8 @@ json() {
 
 fetch_token() {
   local response
-  response="$(curl -sS -X POST "${AUTH0_STAGING_ISSUER}/oauth/token" \
+  response="$(curl -sS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
+    -X POST "${AUTH0_STAGING_ISSUER}/oauth/token" \
     -H 'Content-Type: application/json' \
     -d "$(json \
       --arg client_id "$AUTH0_API_E2E_CLIENT_ID" \

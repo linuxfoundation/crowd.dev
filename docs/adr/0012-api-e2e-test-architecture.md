@@ -65,7 +65,7 @@ flowchart LR
 4. Call endpoints and assert status + body
 5. Alert `#cdp-alerts` on failure
 
-`RUN_ID` is `GITHUB_RUN_ID` in Actions, otherwise timestamp + random. Fixtures include it so runs do not collide and leftovers stay easy to spot. The suite seeds over HTTP and does not require a wiped database between runs, only a reachable `api-e2e`.
+`RUN_ID` is `GITHUB_RUN_ID` (or a local timestamp) plus a `${RANDOM}` suffix. The suffix matters because workflow reruns reuse the same `GITHUB_RUN_ID`. Fixtures include it so runs do not collide and leftovers stay easy to spot. The suite seeds over HTTP and does not require a wiped database between runs, only a reachable `api-e2e`.
 
 ### What we assert (and what we do not)
 
