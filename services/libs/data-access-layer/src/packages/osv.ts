@@ -184,7 +184,13 @@ export async function findRemovedAdvisoryPackageIds(
     `,
     { advisoryId, presentAdvisoryPackageIds },
   )
-  return rows.map((r: { id: number }) => r.id)
+  // advisory_packages.id is bigint (oid 20) — the pg connection only installs a
+  // numeric type parser for int4 (services/libs/database/src/connection.ts:84-85),
+  // so node-pg returns this column as a string. Convert explicitly so the
+  // declared number[] return type is actually true — a bare cast would leave the
+  // subtraction-based sort in upsertAdvisory.ts relying on implicit string-to-
+  // number coercion, which loses precision once ids exceed Number.MAX_SAFE_INTEGER.
+  return rows.map((r: { id: string }) => Number(r.id))
 }
 
 // Diff-based upsert + soft-delete for OSV-owned advisory_affected_ranges rows.
