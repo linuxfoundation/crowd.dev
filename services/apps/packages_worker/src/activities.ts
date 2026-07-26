@@ -53,3 +53,11 @@ export {
   processSecurityContactsBatch,
   ingestSecurityContactsForPurlActivity,
 } from './security-contacts/activities'
+export {
+  blastRadiusStart,
+  blastRadiusFail,
+  blastRadiusIntel,
+  blastRadiusDependents,
+  blastRadiusReachability,
+  blastRadiusReport,
+} from './blast-radius/activities'

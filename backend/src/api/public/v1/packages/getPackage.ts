@@ -13,7 +13,7 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 
-import { repoMappingLabel, snakeToCamelKeys } from './mappers'
+import { repoMappingLabel, snakeToCamelKeys, toNullableNumber } from './mappers'
 import { purlQuerySchema } from './purl'
 import { HEALTH_BAND_SET, LIFECYCLE_VALUES, type StewardshipStatus } from './types'
 
@@ -35,8 +35,7 @@ export async function getPackage(req: Request, res: Response): Promise<void> {
   ])
 
   const scorecardScore = pkg.scorecardScore != null ? Number(pkg.scorecardScore) : null
-  const mappingConfidence =
-    pkg.repoMappingConfidence != null ? Number(pkg.repoMappingConfidence) : null
+  const mappingConfidence = toNullableNumber(pkg.repoMappingConfidence)
 
   const securityContacts =
     pkg.contactsLastRefreshed == null
