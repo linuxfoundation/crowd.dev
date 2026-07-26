@@ -53,7 +53,7 @@ jobs:
         with:
           services: api-e2e
 
-      - name: Wait for api-e2e
+      - name: Wait for api-e2e service to be ready
         run: |
           set -euo pipefail
           # Builder only runs kubectl set image; wait for the new revision before health.
@@ -73,3 +73,37 @@ jobs:
           AUTH0_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_API_E2E_CLIENT_ID }}
           AUTH0_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_API_E2E_CLIENT_SECRET }}
         run: bash .github/scripts/public-api-e2e-tests.sh
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          CDP_ALERTS_SLACK_WEBHOOK_URL: ${{ secrets.CDP_ALERTS_SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -n \
+            --arg run_url "$RUN_URL" \
+            --arg event "$EVENT_NAME" \
+            '{
+              blocks: [
+                {
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: ":rotating_light: Public API e2e tests failed",
+                    emoji: true
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: ("*Workflow:* `API e2e tests`\n*Event:* `" + $event + "`\n*Run:* <" + $run_url + "|View run>")
+                  }
+                }
+              ]
+            }')"
+          curl -fsS -X POST "$CDP_ALERTS_SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "$payload"
