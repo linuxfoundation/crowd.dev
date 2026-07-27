@@ -39,6 +39,10 @@ export const purlFieldSchema = z
 
 export const purlQuerySchema = z.object({ purl: purlFieldSchema })
 
+// Single-purl body (as opposed to purlsBodySchema's array) — normalizes like
+// purlFieldSchema/purlQuerySchema, for endpoints that take exactly one purl in the body.
+export const purlBodySchema = z.object({ purl: purlFieldSchema })
+
 // Loose schema for search filters: normalizes without requiring the pkg: prefix,
 // so partial inputs (e.g. "@babel/core" or "lodash") are accepted.
 export const purlFilterSchema = z.string().trim().transform(normalizePurl).optional()

@@ -77,6 +77,8 @@ export default (app) => {
 
   // Git
   app.put(`/git-connect`, safeWrap(require('./helpers/gitAuthenticate').default))
+
+  app.put(`/mailing-list-connect`, safeWrap(require('./helpers/mailingListAuthenticate').default))
   app.put(`/confluence-connect`, safeWrap(require('./helpers/confluenceAuthenticate').default))
   app.put(`/gerrit-connect`, safeWrap(require('./helpers/gerritAuthenticate').default))
   app.get('/devto-validate', safeWrap(require('./helpers/devtoValidators').default))

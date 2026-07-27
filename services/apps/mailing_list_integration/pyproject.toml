@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "crowdmail"
+version = "0.0.1"
+description = "Crowd.dev mailing list integration for the Linux Foundation"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]",
+    "uvicorn",
+    "asyncpg",
+    "aiokafka>=0.12.0",
+    "loguru>=0.7.3",
+    "tenacity>=9.1.2",
+    "orjson>=3.11.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crowdmail"]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[tool.ruff]
+line-length = 99
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=1.2.0",
+    "ruff>=0.3.0",
+]
