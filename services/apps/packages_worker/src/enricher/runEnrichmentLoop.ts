@@ -13,6 +13,7 @@ import {
   RepoActivitySnapshot,
   RepoWellKnownFilesUpdate,
 } from './types'
+import { updateCollaborationSignal } from './updateCollaborationSignal'
 import { bulkUpdateEnrichedRepos, markReposSkipped } from './updateEnrichedRepos'
 import { bulkUpsertRepoActivitySnapshot } from './updateRepoActivitySnapshot'
 import { bulkUpsertRepoWellKnownFiles } from './updateWellKnownFiles'
@@ -534,6 +535,17 @@ export async function runEnrichmentLoop(
       },
       `All repos processed — sleeping ${config.idleSleepSec}s`,
     )
+
+    try {
+      const updated = await updateCollaborationSignal(qx)
+      log.info({ updated }, 'Collaboration signal recomputed')
+    } catch (err) {
+      log.error(
+        { errMsg: (err as Error).message },
+        'Collaboration signal pass failed — will retry next sweep',
+      )
+    }
+
     await new Promise((r) => setTimeout(r, config.idleSleepSec * 1000))
   }
 
