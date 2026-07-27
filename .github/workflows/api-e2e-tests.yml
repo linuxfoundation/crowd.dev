@@ -24,6 +24,10 @@ jobs:
         with:
           ref: main
 
+      - name: Resolve deploy image tag
+        id: deploy
+        run: echo "tag=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Install OCI
         env:
           OCI_CLI_INSTALL_REF: v3.89.3
@@ -52,6 +56,7 @@ jobs:
           ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
         with:
           services: api-e2e
+          tag: ${{ steps.deploy.outputs.tag }}
 
       - name: Wait for api-e2e service to be ready
         run: |

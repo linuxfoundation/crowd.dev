@@ -112,6 +112,11 @@ json() {
   jq -n "$@"
 }
 
+# Soft-read a field from response BODY
+body_field() {
+  jq -r --arg k "$1" 'if type == "object" then .[$k] // empty else empty end' <<<"$BODY" 2>/dev/null || true
+}
+
 fetch_token() {
   local response
   local issuer="${AUTH0_STAGING_ISSUER%/}"
@@ -243,7 +248,7 @@ suite_members() {
       }]
     }')"
   check "POST create Sam" 201 'has("memberId")'
-  sam_id="$(jq -r '.memberId' <<<"$BODY")"
+  sam_id="$(body_field memberId)"
 
   api v1 POST /members "$(json '{displayName:"No Identities", identities:[]}')"
   check "POST reject empty identities" 400
@@ -287,7 +292,7 @@ suite_member_identities() {
   check "POST add email identity" 201 \
     ".value == \"$email\"" \
     '.verified == false'
-  identity_id="$(jq -r '.id' <<<"$BODY")"
+  identity_id="$(body_field id)"
 
   api v1 POST "/members/${PERSON_ID}/identities" "$(json \
     --arg email "$email" '{
@@ -338,7 +343,7 @@ suite_member_work_experiences() {
     'has("id") and (has("workExperiences") | not)' \
     ".organizationName == \"$ACME_NAME\"" \
     ".organizationDomains | index(\"$ACME_DOMAIN\") != null"
-  acme_we="$(jq -r '.id' <<<"$BODY")"
+  acme_we="$(body_field id)"
 
   api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
     --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
@@ -351,7 +356,7 @@ suite_member_work_experiences() {
       endDate: "2022-06-01T00:00:00.000Z"
     }')"
   check "POST create Globex stint" 201
-  globex_we="$(jq -r '.id' <<<"$BODY")"
+  globex_we="$(body_field id)"
 
   api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
     --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
@@ -428,7 +433,7 @@ suite_member_work_experiences() {
       endDate: "2025-06-01T00:00:00.000Z"
     }')"
   check "POST create stint for delete" 201
-  doomed_we="$(jq -r '.id' <<<"$BODY")"
+  doomed_we="$(body_field id)"
 
   api v1 DELETE "/members/${PERSON_ID}/work-experiences/${doomed_we}"
   check "DELETE work experience" 204
