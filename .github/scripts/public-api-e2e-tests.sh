@@ -60,9 +60,9 @@ CURL_CONNECT_TIMEOUT=10
 CURL_MAX_TIME=30
 
 api() {
-  local method=$1 path=$2 body=${3-}
+  local version=$1 method=$2 path=$3 body=${4-}
   local -a args=(-sS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME"
-    -w '\n%{http_code}' -X "$method" "${CDP_API_E2E_BASE_URL}${path}"
+    -w '\n%{http_code}' -X "$method" "${CDP_API_E2E_BASE_URL}/${version}${path}"
     -H 'Content-Type: application/json'
     -H "Authorization: Bearer ${TOKEN}")
   [[ -n $body ]] && args+=(-d "$body")
@@ -144,19 +144,19 @@ PERSON_ID=""
 seed() {
   echo "=== seed (${RUN_ID}) ==="
 
-  api POST /organizations "$(json \
+  api v1 POST /organizations "$(json \
     --arg name "$ACME_NAME" --arg domain "$ACME_DOMAIN" --arg source "$SOURCE" \
     '{name:$name, domain:$domain, source:$source}')"
   require 201 "create Acme"
   ACME_ID="$(jq -r '.id' <<<"$BODY")"
 
-  api POST /organizations "$(json \
+  api v1 POST /organizations "$(json \
     --arg name "$GLOBEX_NAME" --arg domain "$GLOBEX_DOMAIN" --arg source "$SOURCE" \
     '{name:$name, domain:$domain, source:$source}')"
   require 201 "create Globex"
   GLOBEX_ID="$(jq -r '.id' <<<"$BODY")"
 
-  api POST /members "$(json \
+  api v1 POST /members "$(json \
     --arg lfid "$PERSON_LFID" --arg by "$VERIFIED_BY" --arg name "$PERSON_NAME" '{
       displayName: $name,
       identities: [{
@@ -186,35 +186,35 @@ suite_organizations() {
   local name_q
   name_q="$(jq -nr --arg n "$ACME_NAME" '$n|@uri')"
 
-  api GET "/organizations?domain=${ACME_DOMAIN}"
+  api v1 GET "/organizations?domain=${ACME_DOMAIN}"
   check "GET find Acme by domain" 200 \
     ".id == \"$ACME_ID\"" \
     ".name == \"$ACME_NAME\""
 
-  api GET "/organizations?name=${name_q}"
+  api v1 GET "/organizations?name=${name_q}"
   check "GET find Acme by name" 200 ".id == \"$ACME_ID\""
 
-  api GET "/organizations?name=${name_q}&domain=${ACME_DOMAIN}"
+  api v1 GET "/organizations?name=${name_q}&domain=${ACME_DOMAIN}"
   check "GET find Acme by name+domain" 200 ".id == \"$ACME_ID\""
 
-  api GET "/organizations?name=${name_q}&domain=example.com"
+  api v1 GET "/organizations?name=${name_q}&domain=example.com"
   check "GET name/domain mismatch" 404
 
-  api GET "/organizations"
+  api v1 GET "/organizations"
   check "GET missing params" 400
 
-  api GET "/organizations?domain=missing-${RUN_ID}.example.com"
+  api v1 GET "/organizations?domain=missing-${RUN_ID}.example.com"
   check "GET unknown domain" 404
 
-  api GET "/organizations?domain=not-a-valid-domain"
+  api v1 GET "/organizations?domain=not-a-valid-domain"
   check "GET invalid domain" 400
 
-  api POST /organizations "$(json \
+  api v1 POST /organizations "$(json \
     --arg name "$ACME_NAME" --arg domain "$ACME_DOMAIN" --arg source "$SOURCE" \
     '{name:$name, domain:$domain, source:$source}')"
   check "POST recreate Acme is idempotent" 201 ".id == \"$ACME_ID\""
 
-  api POST /organizations "$(json \
+  api v1 POST /organizations "$(json \
     --arg name "Bad-${RUN_ID}" --arg source "$SOURCE" \
     '{name:$name, domain:"not-a-valid-domain", source:$source}')"
   check "POST reject invalid domain" 400
@@ -229,7 +229,7 @@ suite_members() {
   local sam_lfid="sam.rivera-${RUN_ID}"
   local sam_id
 
-  api POST /members "$(json \
+  api v1 POST /members "$(json \
     --arg lfid "$sam_lfid" --arg by "$VERIFIED_BY" '{
       displayName: "Sam Rivera",
       identities: [{
@@ -244,19 +244,19 @@ suite_members() {
   check "POST create Sam" 201 'has("memberId")'
   sam_id="$(jq -r '.memberId' <<<"$BODY")"
 
-  api POST /members "$(json '{displayName:"No Identities", identities:[]}')"
+  api v1 POST /members "$(json '{displayName:"No Identities", identities:[]}')"
   check "POST reject empty identities" 400
 
-  api POST /members/resolve "$(json --arg lfid "$PERSON_LFID" '{lfids:[$lfid]}')"
+  api v1 POST /members/resolve "$(json --arg lfid "$PERSON_LFID" '{lfids:[$lfid]}')"
   check "POST resolve Jordan by lfid" 200 ".memberId == \"$PERSON_ID\""
 
-  api POST /members/resolve "$(json --arg lfid "$sam_lfid" '{lfids:[$lfid]}')"
+  api v1 POST /members/resolve "$(json --arg lfid "$sam_lfid" '{lfids:[$lfid]}')"
   check "POST resolve Sam by lfid" 200 ".memberId == \"$sam_id\""
 
-  api POST /members/resolve "$(json --arg lfid "nobody-${RUN_ID}" '{lfids:[$lfid]}')"
+  api v1 POST /members/resolve "$(json --arg lfid "nobody-${RUN_ID}" '{lfids:[$lfid]}')"
   check "POST resolve unknown lfid" 404
 
-  api POST /members/resolve "$(json '{lfids:[]}')"
+  api v1 POST /members/resolve "$(json '{lfids:[]}')"
   check "POST resolve reject empty lfids" 400
 }
 
@@ -269,12 +269,12 @@ suite_member_identities() {
   local email="jordan.lee+${RUN_ID}@example.com"
   local identity_id
 
-  api GET "/members/${PERSON_ID}/identities"
+  api v1 GET "/members/${PERSON_ID}/identities"
   check "GET lists seeded lfid" 200 \
     '.identities | type == "array"' \
     ".identities | map(select(.platform == \"lfid\" and .value == \"$PERSON_LFID\")) | length == 1"
 
-  api POST "/members/${PERSON_ID}/identities" "$(json \
+  api v1 POST "/members/${PERSON_ID}/identities" "$(json \
     --arg email "$email" --arg by "$VERIFIED_BY" '{
       value: $email,
       platform: "email",
@@ -288,7 +288,7 @@ suite_member_identities() {
     '.verified == false'
   identity_id="$(jq -r '.id' <<<"$BODY")"
 
-  api POST "/members/${PERSON_ID}/identities" "$(json \
+  api v1 POST "/members/${PERSON_ID}/identities" "$(json \
     --arg email "$email" '{
       value: $email,
       platform: "email",
@@ -298,19 +298,19 @@ suite_member_identities() {
     }')"
   check "POST same identity is idempotent" 200 ".id == \"$identity_id\""
 
-  api GET "/members/${PERSON_ID}/identities"
+  api v1 GET "/members/${PERSON_ID}/identities"
   check "GET includes email" 200 \
     ".identities | map(select(.id == \"$identity_id\")) | length == 1"
 
-  api PATCH "/members/${PERSON_ID}/identities/${identity_id}" \
+  api v1 PATCH "/members/${PERSON_ID}/identities/${identity_id}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:true, verifiedBy:$by}')"
   check "PATCH verify email" 200 '.verified == true'
 
-  api PATCH "/members/${PERSON_ID}/identities/${identity_id}" \
+  api v1 PATCH "/members/${PERSON_ID}/identities/${identity_id}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:false, verifiedBy:$by}')"
   check "PATCH reject email deletes unused identity" 204
 
-  api GET "/members/${PERSON_ID}/identities"
+  api v1 GET "/members/${PERSON_ID}/identities"
   check "GET email gone after reject" 200 \
     ".identities | map(select(.id == \"$identity_id\")) | length == 0"
 }
@@ -323,7 +323,7 @@ suite_member_work_experiences() {
 
   local acme_we globex_we doomed_we
 
-  api POST "/members/${PERSON_ID}/work-experiences" "$(json \
+  api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
     --arg org "$ACME_ID" --arg by "$VERIFIED_BY" '{
       organizationId: $org,
       jobTitle: "Platform Engineer",
@@ -339,7 +339,7 @@ suite_member_work_experiences() {
     ".organizationDomains | index(\"$ACME_DOMAIN\") != null"
   acme_we="$(jq -r '.id' <<<"$BODY")"
 
-  api POST "/members/${PERSON_ID}/work-experiences" "$(json \
+  api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
     --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
       organizationId: $org,
       jobTitle: "Software Engineer",
@@ -352,7 +352,7 @@ suite_member_work_experiences() {
   check "POST create Globex stint" 201
   globex_we="$(jq -r '.id' <<<"$BODY")"
 
-  api POST "/members/${PERSON_ID}/work-experiences" "$(json \
+  api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
     --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
       organizationId: $org,
       jobTitle: "ignored title",
@@ -364,7 +364,7 @@ suite_member_work_experiences() {
     }')"
   check "POST overlapping Globex email-domain row" 201
 
-  api GET "/members/${PERSON_ID}/work-experiences"
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET groups to two visible rows" 200 \
     '.workExperiences | length == 2' \
     ".workExperiences[] | select(.id == \"$globex_we\") | .jobTitle == \"Software Engineer\"" \
@@ -374,7 +374,7 @@ suite_member_work_experiences() {
     ".workExperiences[] | select(.id == \"$globex_we\") | .endDate | startswith(\"2023-01-01\")" \
     ".workExperiences[] | select(.organizationId == \"$GLOBEX_ID\") | .id == \"$globex_we\""
 
-  api PUT "/members/${PERSON_ID}/work-experiences/${globex_we}" "$(json \
+  api v1 PUT "/members/${PERSON_ID}/work-experiences/${globex_we}" "$(json \
     --arg org "$GLOBEX_ID" --arg by "$VERIFIED_BY" '{
       organizationId: $org,
       jobTitle: "Senior Software Engineer",
@@ -386,37 +386,37 @@ suite_member_work_experiences() {
     }')"
   check "PUT update Globex title" 200 '.jobTitle == "Senior Software Engineer"'
 
-  api GET "/members/${PERSON_ID}/work-experiences"
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET shows updated title" 200 \
     ".workExperiences[] | select(.id == \"$globex_we\") | .jobTitle == \"Senior Software Engineer\""
 
-  api PATCH "/members/${PERSON_ID}/work-experiences/${globex_we}" \
+  api v1 PATCH "/members/${PERSON_ID}/work-experiences/${globex_we}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:true, verifiedBy:$by}')"
   check "PATCH verify Globex" 200 \
     '.verified == true' \
     ".id == \"$globex_we\""
 
-  api GET "/members/${PERSON_ID}/work-experiences"
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET shows Globex verified" 200 \
     ".workExperiences[] | select(.id == \"$globex_we\") | .verified == true"
 
-  api PATCH "/members/${PERSON_ID}/work-experiences/${acme_we}" \
+  api v1 PATCH "/members/${PERSON_ID}/work-experiences/${acme_we}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:false, verifiedBy:$by}')"
   check "PATCH reject Acme" 200 '.verified == false'
 
-  api GET "/members/${PERSON_ID}/work-experiences"
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET reject hides Acme" 200 \
     '.workExperiences | length == 1' \
     ".workExperiences[0].id == \"$globex_we\""
 
-  api PATCH "/members/${PERSON_ID}/work-experiences/${globex_we}" \
+  api v1 PATCH "/members/${PERSON_ID}/work-experiences/${globex_we}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:false, verifiedBy:$by}')"
   check "PATCH reject Globex" 200
 
-  api GET "/members/${PERSON_ID}/work-experiences"
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET all rejects leave empty list" 200 '.workExperiences | length == 0'
 
-  api POST "/members/${PERSON_ID}/work-experiences" "$(json \
+  api v1 POST "/members/${PERSON_ID}/work-experiences" "$(json \
     --arg org "$ACME_ID" --arg by "$VERIFIED_BY" '{
       organizationId: $org,
       jobTitle: "Contractor",
@@ -429,10 +429,10 @@ suite_member_work_experiences() {
   check "POST create stint for delete" 201
   doomed_we="$(jq -r '.id' <<<"$BODY")"
 
-  api DELETE "/members/${PERSON_ID}/work-experiences/${doomed_we}"
+  api v1 DELETE "/members/${PERSON_ID}/work-experiences/${doomed_we}"
   check "DELETE work experience" 204
 
-  api GET "/members/${PERSON_ID}/work-experiences"
+  api v1 GET "/members/${PERSON_ID}/work-experiences"
   check "GET empty after delete" 200 '.workExperiences | length == 0'
 }
 
@@ -442,7 +442,7 @@ suite_member_maintainer_roles() {
   echo
   echo "=== /members/:id/maintainer-roles ==="
 
-  api GET "/members/${PERSON_ID}/maintainer-roles"
+  api v1 GET "/members/${PERSON_ID}/maintainer-roles"
   check "GET empty roles for fresh member" 200 \
     '.maintainerRoles | type == "array"' \
     '.maintainerRoles | length == 0'
@@ -458,12 +458,12 @@ suite_member_project_affiliations() {
 
   local missing_project="00000000-0000-4000-8000-000000000099"
 
-  api GET "/members/${PERSON_ID}/project-affiliations"
+  api v1 GET "/members/${PERSON_ID}/project-affiliations"
   check "GET empty affiliations for fresh member" 200 \
     '.projectAffiliations | type == "array"' \
     '.projectAffiliations | length == 0'
 
-  api PATCH "/members/${PERSON_ID}/project-affiliations/${missing_project}" \
+  api v1 PATCH "/members/${PERSON_ID}/project-affiliations/${missing_project}" \
     "$(json --arg by "$VERIFIED_BY" --arg org "$ACME_ID" '{
       verifiedBy: $by,
       affiliations: [{

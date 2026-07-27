@@ -58,7 +58,7 @@ jobs:
           set -euo pipefail
           # Builder only runs kubectl set image; wait for the new revision before health.
           kubectl rollout status deployment/api-e2e-dpl --timeout=600s
-          health_url="${CDP_API_E2E_BASE_URL%/v1}/health"
+          health_url="${CDP_API_E2E_BASE_URL%/}/health"
           for i in $(seq 1 36); do
             curl -fsS --max-time 10 "$health_url" >/dev/null && exit 0
             sleep 10

@@ -20,7 +20,7 @@ The suite is **thin**: assert the HTTP contract and critical flows so regression
 
 | Layer | Role |
 | --- | --- |
-| Helpers | `api` (call), `check` (soft status + body preds), `require` (hard fail for seed) |
+| Helpers | `api <version> <method> <path> [body]` (call), `check` (soft status + body preds), `require` (hard fail for seed) |
 | Seed | Create shared fixtures once per run over HTTP |
 | Suites | One `suite_*` per **resource path**, not per HTTP method |
 | Cases | One exchange: `api` then `check`. Stateful resources stay ordered as a short story |

@@ -25,6 +25,8 @@ reuse is real.
 - Setup should make that story obvious (concrete labels, dates, relationships).
 - Do not combine unrelated behaviors in a single test.
 - Prefer fewer tests that fail clearly over many that pass for the wrong reason.
+- When a file covers more than one function, group cases with
+  `describe('<functionName>', …)` and put named scenarios inside.
 
 ### Assertions
 
@@ -32,6 +34,18 @@ reuse is real.
 - Prefer exact expectations when the outcome is deterministic.
 - Avoid loose probes (`some`, `greaterThan`, optional finds) unless the claim
   truly is approximate.
+
+### Mocking
+
+- Do not mock the data-access layer or the unit under test. Postgres-backed
+  tests use a real test database and factories; query behavior is part of what
+  we ship.
+- Reach for mocks only at external network boundaries where the real dependency
+  would hurt reliability or speed (outbound HTTP, LLM clients, Slack/email
+  senders, Auth0 JWKS in end-to-end tests).
+- Control non-determinism in-process when needed (e.g. fake timers for “now”).
+- If a test seems to need a mock outside that list, the unit is often too large:
+  extract the pure part, unit-test it, and let the outer path stay real.
 
 ### What to share
 
