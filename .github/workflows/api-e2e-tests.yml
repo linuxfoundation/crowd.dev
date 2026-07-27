@@ -70,8 +70,8 @@ jobs:
         env:
           AUTH0_STAGING_AUDIENCE: ${{ vars.AUTH0_STAGING_AUDIENCE }}
           AUTH0_STAGING_ISSUER: ${{ vars.AUTH0_STAGING_ISSUER }}
-          AUTH0_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_API_E2E_CLIENT_ID }}
-          AUTH0_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_API_E2E_CLIENT_SECRET }}
+          AUTH0_STAGING_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_STAGING_API_E2E_CLIENT_ID }}
+          AUTH0_STAGING_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_STAGING_API_E2E_CLIENT_SECRET }}
         run: bash .github/scripts/public-api-e2e-tests.sh
 
       - name: Notify Slack on failure

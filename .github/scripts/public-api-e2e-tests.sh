@@ -7,8 +7,8 @@
 # Required environment variables (same names as GitHub Actions secrets/vars):
 #   AUTH0_STAGING_AUDIENCE
 #   AUTH0_STAGING_ISSUER
-#   AUTH0_API_E2E_CLIENT_ID
-#   AUTH0_API_E2E_CLIENT_SECRET
+#   AUTH0_STAGING_API_E2E_CLIENT_ID
+#   AUTH0_STAGING_API_E2E_CLIENT_SECRET
 #   CDP_API_E2E_BASE_URL
 #
 # Do not enable `set -x`; requests include sensitive credentials.
@@ -35,8 +35,8 @@ for cmd in curl jq; do
   }
 done
 
-: "${AUTH0_API_E2E_CLIENT_ID:?set AUTH0_API_E2E_CLIENT_ID}"
-: "${AUTH0_API_E2E_CLIENT_SECRET:?set AUTH0_API_E2E_CLIENT_SECRET}"
+: "${AUTH0_STAGING_API_E2E_CLIENT_ID:?set AUTH0_STAGING_API_E2E_CLIENT_ID}"
+: "${AUTH0_STAGING_API_E2E_CLIENT_SECRET:?set AUTH0_STAGING_API_E2E_CLIENT_SECRET}"
 : "${AUTH0_STAGING_AUDIENCE:?set AUTH0_STAGING_AUDIENCE}"
 : "${AUTH0_STAGING_ISSUER:?set AUTH0_STAGING_ISSUER}"
 : "${CDP_API_E2E_BASE_URL:?set CDP_API_E2E_BASE_URL}"
@@ -118,8 +118,8 @@ fetch_token() {
     -X POST "${AUTH0_STAGING_ISSUER}/oauth/token" \
     -H 'Content-Type: application/json' \
     -d "$(json \
-      --arg client_id "$AUTH0_API_E2E_CLIENT_ID" \
-      --arg client_secret "$AUTH0_API_E2E_CLIENT_SECRET" \
+      --arg client_id "$AUTH0_STAGING_API_E2E_CLIENT_ID" \
+      --arg client_secret "$AUTH0_STAGING_API_E2E_CLIENT_SECRET" \
       --arg audience "$AUTH0_STAGING_AUDIENCE" \
       '{grant_type:"client_credentials",client_id:$client_id,client_secret:$client_secret,audience:$audience}')")"
 
