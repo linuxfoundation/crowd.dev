@@ -114,8 +114,9 @@ json() {
 
 fetch_token() {
   local response
+  local issuer="${AUTH0_STAGING_ISSUER%/}"
   response="$(curl -sS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
-    -X POST "${AUTH0_STAGING_ISSUER}/oauth/token" \
+    -X POST "${issuer}/oauth/token" \
     -H 'Content-Type: application/json' \
     -d "$(json \
       --arg client_id "$AUTH0_STAGING_API_E2E_CLIENT_ID" \
