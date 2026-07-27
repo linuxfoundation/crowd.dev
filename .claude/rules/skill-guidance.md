@@ -64,6 +64,7 @@ This project has guided skills for common workflows. **Proactively suggest the r
 - "Write unit tests", "add a unit test", "cover this with Vitest"
 - "Test this function", "add DAL tests", "unit test for affiliations/merges/inference"
 - Any request for focused server/unit test coverage (not HTTP/API contract tests)
+- Not for `packages_worker` (excluded from `pnpm test:server` for now)
 
 **`/write-api-e2e-tests`** — match any of these intents:
 - "Write API e2e tests", "add smoke tests", "Public API contract tests"

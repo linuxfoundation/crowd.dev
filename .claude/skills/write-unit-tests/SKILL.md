@@ -19,6 +19,7 @@ Write focused unit tests that follow the project's testing conventions.
 ## When not to use
 
 - Public or HTTP contract coverage → use `write-api-e2e-tests`.
+- `packages_worker` (excluded from `pnpm test:server` for now; own vitest/packages-db).
 - Temporal, Redis, or OpenSearch fixtures (not available yet).
 - Broad "increase coverage %" requests without a clear unit under test.
 
