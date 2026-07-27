@@ -1,6 +1,12 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
-import { IssueNode, PrNode, computeIssueMedians, computePrMedians } from './computeMedians'
+import {
+  IssueNode,
+  PrNode,
+  computeExternalPrCounts,
+  computeIssueMedians,
+  computePrMedians,
+} from './computeMedians'
 import { FetchError, RepoActivitySnapshot } from './types'
 
 const log = getServiceChildLogger('fetch-activity-snapshot')
@@ -170,6 +176,7 @@ const PR_PAGE_QUERY = `
           mergedAt
           closedAt
           author { login }
+          authorAssociation
           comments(first: ${RESPONSES_PER_NODE}) { nodes { createdAt author { login } } }
           reviews(first: ${RESPONSES_PER_NODE})  { nodes { createdAt author { login } } }
         }
@@ -336,6 +343,7 @@ export async function fetchActivitySnapshot(
   )
 
   const prMedians = computePrMedians(prResult.nodes)
+  const externalPrCounts = computeExternalPrCounts(prResult.nodes)
   const issueMedians = computeIssueMedians(issueResult.nodes)
   const issuesOpenedLast6m = issueResult.nodes.filter(
     (n) => new Date(n.createdAt) >= since6m,
@@ -358,6 +366,8 @@ export async function fetchActivitySnapshot(
     prsClosedUnmerged12m: prResult.nodes.filter((n) => n.closedAt && !n.mergedAt).length,
     prMedianTimeToMergeHours: prMedians.medianTimeToMergeHours,
     prMedianTimeToFirstResponseHours: prMedians.medianTimeToFirstResponseHours,
+    externalPrsOpened12m: externalPrCounts.externalPrsOpened,
+    externalPrsMerged12m: externalPrCounts.externalPrsMerged,
     issuesOpenedLast12m: issueResult.nodes.length,
     issuesClosedLast12m: issueResult.nodes.filter((n) => n.closedAt).length,
     issuesOpenedLast6m,
