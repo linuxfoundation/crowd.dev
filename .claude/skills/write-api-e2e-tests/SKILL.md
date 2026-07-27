@@ -27,8 +27,8 @@ Write or extend API end-to-end tests.
 Read before writing. Follow these ADRs and existing suite structure; do not
 invent a parallel testing style.
 
-- [ADR-0012](docs/adr/0012-api-e2e-test-architecture.md) — runtime, isolation, supported surfaces, scope, and assertions.
-- [ADR-0013](docs/adr/0013-api-e2e-test-suite-design.md) — suite organisation, helpers, and conventions.
+- [ADR-0012](../../../docs/adr/0012-api-e2e-test-architecture.md) — runtime, isolation, supported surfaces, scope, and assertions.
+- [ADR-0013](../../../docs/adr/0013-api-e2e-test-suite-design.md) — suite organisation, helpers, and conventions.
 
 Current default entrypoint:
 

@@ -26,8 +26,8 @@ Write focused unit tests that follow the project's testing conventions.
 
 Read before writing. Follow these ADRs; do not invent a parallel testing style.
 
-- [ADR-0008](docs/adr/0008-how-we-write-unit-tests.md) — scenarios, `describe` grouping, assertions, mocking, and shared setup.
-- [ADR-0007](docs/adr/0007-test-factory-primitives-and-defaults.md) — factories and defaults.
+- [ADR-0008](../../../docs/adr/0008-how-we-write-unit-tests.md) — scenarios, `describe` grouping, assertions, mocking, and shared setup.
+- [ADR-0007](../../../docs/adr/0007-test-factory-primitives-and-defaults.md) — factories and defaults.
 
 ## Workflow
 
