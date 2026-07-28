@@ -11,12 +11,6 @@ import { BatchResult } from './types'
 
 const log = getServiceChildLogger('rubygems-activity')
 
-function assertNotCancelled(): void {
-  if (cancellationSignal().aborted) {
-    throw new Error('RubyGems batch cancelled — superseded by a newer activity attempt')
-  }
-}
-
 // Fixed-cadence heartbeat: a concurrency group can outlast the 2-minute heartbeatTimeout
 // (Retry-After sleeps, slow persistence), so heartbeating can't rely on group boundaries.
 function startHeartbeat(): () => void {
@@ -36,7 +30,7 @@ export async function processRubyGemsCoreBatch(): Promise<BatchResult> {
   const today = new Date().toISOString().split('T')[0]
   const stopHeartbeat = startHeartbeat()
   try {
-    const result = await processCoreBatch(qx, config, today, assertNotCancelled)
+    const result = await processCoreBatch(qx, config, today, cancellationSignal())
     log.info({ ...result }, 'RubyGems core batch complete')
     return result
   } finally {
@@ -51,7 +45,7 @@ export async function processRubyGemsCriticalBatch(
   const qx = await getPackagesDb()
   const stopHeartbeat = startHeartbeat()
   try {
-    const result = await processCriticalBatch(qx, config, afterId, assertNotCancelled)
+    const result = await processCriticalBatch(qx, config, afterId, cancellationSignal())
     log.info({ ...result }, 'RubyGems critical batch complete')
     return result
   } finally {
