@@ -50,9 +50,8 @@ SQL >
     FROM activityRelations_deduplicated_cleaned_bucket_union a
     WHERE
         a.segmentId IN (SELECT segmentId FROM collection_contributor_dependency_copy_segments)
-        AND (a.type, a.platform) IN (
-            SELECT activityType, platform FROM activityTypes WHERE isCodeContribution = 1
-        )
+        AND (a.type, a.platform)
+        IN (SELECT activityType, platform FROM activityTypes WHERE isCodeContribution = 1)
 
 NODE collection_contributor_dependency_copy_activities_by_collection
 DESCRIPTION >
@@ -62,9 +61,7 @@ DESCRIPTION >
 SQL >
     SELECT s.collectionSlug AS collectionSlug, a.memberId AS memberId, a.id AS id
     FROM collection_contributor_dependency_copy_activities a
-    INNER JOIN
-        collection_contributor_dependency_copy_segments s
-        ON s.segmentId = a.segmentId
+    INNER JOIN collection_contributor_dependency_copy_segments s ON s.segmentId = a.segmentId
 
 NODE collection_contributor_dependency_copy_totals
 DESCRIPTION >
@@ -105,9 +102,11 @@ SQL >
         ma.memberId AS id,
         ma.contributionCount AS contributionCount,
         ROUND(ma.contributionCount * 100.0 / t.totalContributions, 2) AS contributionPercentage,
-        toUInt32(row_number() OVER (
-            PARTITION BY ma.collectionSlug ORDER BY ma.contributionCount DESC, ma.memberId DESC
-        )) AS rank,
+        toUInt32(
+            row_number() OVER (
+                PARTITION BY ma.collectionSlug ORDER BY ma.contributionCount DESC, ma.memberId DESC
+            )
+        ) AS rank,
         sum(ROUND(ma.contributionCount * 100.0 / t.totalContributions, 2)) OVER (
             PARTITION BY ma.collectionSlug
             ORDER BY ROUND(ma.contributionCount * 100.0 / t.totalContributions, 2) DESC, ma.memberId
@@ -143,7 +142,11 @@ SQL >
     FROM collection_contributor_dependency_copy_ranked r
     INNER JOIN members_sorted m ON m.id = r.id
     LEFT JOIN
-        (SELECT memberId, groupUniqArray(role) AS roles FROM maintainers_roles_copy_ds GROUP BY memberId) mr
+        (
+            SELECT memberId, groupUniqArray(role) AS roles
+            FROM maintainers_roles_copy_ds
+            GROUP BY memberId
+        ) mr
         ON mr.memberId = r.id
 
 TYPE COPY

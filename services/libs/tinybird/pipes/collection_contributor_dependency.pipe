@@ -100,7 +100,10 @@ DESCRIPTION >
 
 SQL >
     %
-    {% if not defined(repos) and not defined(startDate) and not defined(endDate) and not defined(platform) and not defined(activity_type) and not Boolean(includeCollaborations, false) and Int32(limit, 100) == 100 %}
-        SELECT * FROM collection_contributor_dependency_precomputed
+    {% if not defined(repos) and not defined(startDate) and not defined(endDate) and not defined(
+        platform
+    ) and not defined(activity_type) and not Boolean(includeCollaborations, false) and Int32(
+        limit, 100
+    ) == 100 %} SELECT * FROM collection_contributor_dependency_precomputed
     {% else %} SELECT * FROM collection_contributions_percentage_running_total
     {% end %}

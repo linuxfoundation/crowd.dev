@@ -6,13 +6,11 @@ DESCRIPTION >
     undocumented linkage that caused the same averaging bug in Health Score v2 before it was fixed
     to be repo-derived). NULL when the repo has no linked packages with a known impact value.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
-      health_score_v2_maintainer.pipe description for why.
+    health_score_v2_maintainer.pipe description for why.
 
 NODE health_score_v2_impact_calc
 SQL >
-    SELECT
-        base.url AS repoUrl,
-        max(toFloat64OrNull(pk.impact)) * 100 AS impactScoreRaw
+    SELECT base.url AS repoUrl, max(toFloat64OrNull(pk.impact)) * 100 AS impactScoreRaw
     FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS base
     INNER JOIN repos r ON r.url = base.url
     INNER JOIN packageRepos pr ON pr.repoId = r.id
