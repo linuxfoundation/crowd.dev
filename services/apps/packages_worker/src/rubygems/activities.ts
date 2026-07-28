@@ -11,20 +11,37 @@ import { BatchResult } from './types'
 
 const log = getServiceChildLogger('rubygems-activity')
 
-function checkpoint(): void {
+function assertNotCancelled(): void {
   if (cancellationSignal().aborted) {
     throw new Error('RubyGems batch cancelled — superseded by a newer activity attempt')
   }
-  heartbeat()
+}
+
+// Fixed-cadence heartbeat: a concurrency group can outlast the 2-minute heartbeatTimeout
+// (Retry-After sleeps, slow persistence), so heartbeating can't rely on group boundaries.
+function startHeartbeat(): () => void {
+  const timer = setInterval(() => {
+    try {
+      heartbeat()
+    } catch (err) {
+      log.warn({ errMsg: (err as Error).message }, 'Heartbeat failed')
+    }
+  }, 30_000)
+  return () => clearInterval(timer)
 }
 
 export async function processRubyGemsCoreBatch(): Promise<BatchResult> {
   const config = getRubyGemsConfig()
   const qx = await getPackagesDb()
   const today = new Date().toISOString().split('T')[0]
-  const result = await processCoreBatch(qx, config, today, checkpoint)
-  log.info({ ...result }, 'RubyGems core batch complete')
-  return result
+  const stopHeartbeat = startHeartbeat()
+  try {
+    const result = await processCoreBatch(qx, config, today, assertNotCancelled)
+    log.info({ ...result }, 'RubyGems core batch complete')
+    return result
+  } finally {
+    stopHeartbeat()
+  }
 }
 
 export async function processRubyGemsCriticalBatch(
@@ -32,7 +49,12 @@ export async function processRubyGemsCriticalBatch(
 ): Promise<BatchResult & { lastId: string | null }> {
   const config = getRubyGemsCriticalConfig()
   const qx = await getPackagesDb()
-  const result = await processCriticalBatch(qx, config, afterId, checkpoint)
-  log.info({ ...result }, 'RubyGems critical batch complete')
-  return result
+  const stopHeartbeat = startHeartbeat()
+  try {
+    const result = await processCriticalBatch(qx, config, afterId, assertNotCancelled)
+    log.info({ ...result }, 'RubyGems critical batch complete')
+    return result
+  } finally {
+    stopHeartbeat()
+  }
 }
