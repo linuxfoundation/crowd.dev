@@ -18,6 +18,8 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0009](./0009-packagist-worker-design-decisions.md)        | Packagist worker — design decisions                                                                  | accepted | 2026-07-13 |
 | [ADR-0010](./0010-security-contacts-worker.md)                 | Security contacts — tiered extraction, confidence scoring, and Temporal batch ingestion              | accepted | 2026-07-21 |
 | [ADR-0011](./0011-mailinglist-skip-unparseable-dates.md)       | Skip mailing list activities with unparseable/implausible dates                                      | accepted | 2026-07-19 |
+| [ADR-0012](./0012-api-e2e-test-architecture.md)                | API e2e test architecture                                                                            | accepted | 2026-07-25 |
+| [ADR-0013](./0013-api-e2e-test-suite-design.md)                | API e2e test suite design                                                                            | accepted | 2026-07-24 |
 
 ## Why ADRs?
 

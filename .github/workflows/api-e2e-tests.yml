@@ -1,0 +1,114 @@
+name: API e2e tests
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: api-e2e-tests
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CDP_API_E2E_BASE_URL: ${{ vars.CDP_API_E2E_BASE_URL }}
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve deploy image tag
+        id: deploy
+        run: echo "tag=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install OCI
+        env:
+          OCI_CLI_INSTALL_REF: v3.89.3
+          OCI_CLI_VERSION: 3.89.3
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/oracle/oci-cli/${OCI_CLI_INSTALL_REF}/scripts/install/install.sh" -o install.sh
+          chmod +x install.sh
+          ./install.sh --accept-all-defaults --oci-cli-version "${OCI_CLI_VERSION}"
+          echo "OCI_CLI_DIR=/home/runner/bin" >> "$GITHUB_ENV"
+
+      - name: Update PATH
+        run: echo "${{ env.OCI_CLI_DIR }}" >> "$GITHUB_PATH"
+
+      - name: Deploy api-e2e
+        uses: ./.github/actions/node/builder
+        env:
+          CLOUD_ENV: lf-oracle-staging
+          ORACLE_DOCKER_USERNAME: ${{ secrets.ORACLE_DOCKER_USERNAME }}
+          ORACLE_DOCKER_PASSWORD: ${{ secrets.ORACLE_DOCKER_PASSWORD }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_TENANT: ${{ secrets.ORACLE_TENANT }}
+          ORACLE_REGION: ${{ secrets.ORACLE_REGION }}
+          ORACLE_FINGERPRINT: ${{ secrets.ORACLE_FINGERPRINT }}
+          ORACLE_KEY: ${{ secrets.ORACLE_KEY }}
+          ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
+        with:
+          services: api-e2e
+          tag: ${{ steps.deploy.outputs.tag }}
+
+      - name: Wait for api-e2e service to be ready
+        run: |
+          set -euo pipefail
+          # Builder only runs kubectl set image; wait for the new revision before health.
+          kubectl rollout status deployment/api-e2e-dpl --timeout=600s
+          health_url="${CDP_API_E2E_BASE_URL%/}/health"
+          for i in $(seq 1 36); do
+            curl -fsS --max-time 10 "$health_url" >/dev/null && exit 0
+            sleep 10
+          done
+          echo "api-e2e not healthy: $health_url" >&2
+          exit 1
+
+      - name: Run Public API e2e tests
+        env:
+          AUTH0_STAGING_AUDIENCE: ${{ vars.AUTH0_STAGING_AUDIENCE }}
+          AUTH0_STAGING_ISSUER: ${{ vars.AUTH0_STAGING_ISSUER }}
+          AUTH0_STAGING_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_STAGING_API_E2E_CLIENT_ID }}
+          AUTH0_STAGING_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_STAGING_API_E2E_CLIENT_SECRET }}
+        run: bash .github/scripts/public-api-e2e-tests.sh
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          CDP_ALERTS_SLACK_WEBHOOK_URL: ${{ secrets.CDP_ALERTS_SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -n \
+            --arg run_url "$RUN_URL" \
+            --arg event "$EVENT_NAME" \
+            '{
+              blocks: [
+                {
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: ":rotating_light: Public API e2e tests failed",
+                    emoji: true
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: ("*Workflow:* `API e2e tests`\n*Event:* `" + $event + "`\n*Run:* <" + $run_url + "|View run>")
+                  }
+                }
+              ]
+            }')"
+          curl -fsS -X POST "$CDP_ALERTS_SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "$payload"

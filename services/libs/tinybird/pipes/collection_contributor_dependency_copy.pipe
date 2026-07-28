@@ -1,0 +1,155 @@
+DESCRIPTION >
+    - `collection_contributor_dependency_copy.pipe` precomputes the DEFAULT (unfiltered) bus-factor
+    result for every collection on a daily schedule, writing into `collection_contributor_dependency_copy_ds`.
+    - Exists because `collection_contributor_dependency.pipe`'s live computation - via
+    `collection_contributors_leaderboard`'s `collection_member_aggregates` node - must fully
+    materialize a `GROUP BY af.memberId` over the entire filtered activity set before it can
+    ORDER BY/LIMIT (LIMIT only reduces output size, not scan/aggregation cost). At collection scale
+    (e.g. `cncf` has 149,677 distinct contributors across 16.7M activities; some collections run far
+    larger - `my-collection` alone is ~211M activities) this triggered a Tinybird production
+    rate-limit/concurrency alert on `lfx_insights` from timeouts under load.
+    - Only covers the case the real frontend actually hits by default: `collectionSlug` with no
+    `repos`/`startDate`/`endDate`/`platform`/`activity_type` override and `includeCollaborations=false`
+    (the page's initial-load state before a user touches a filter control) - see
+    `collection_contributor_dependency.pipe`'s DESCRIPTION for how the serving pipe branches between
+    this precomputed path and the still-live filtered path.
+    - `limit=100` is hardcoded here to match the only value the frontend ever passes for this widget
+    - same convention as the live pipe's own DESCRIPTION notes for its `limit` parameter.
+    - Uses `LIMIT 100 BY collectionSlug` (ClickHouse's per-group top-N idiom) instead of a window
+    function over the full unbounded per-member result, and pre-filters `activities_filtered`'s
+    equivalent scan (`segmentId IN (...)`) to only segments that belong to at least one collection,
+    before fanning out to per-collection membership - keeps the join cheap relative to a naive
+    cross-collection materialization. Validated against live prod data for `cncf` (127 projects,
+    149,677 contributors) and `agentgateway` (1 project, 468 contributors) - see deploy notes.
+    - Known, separate, and intentionally NOT fixed here: for very large collections the top-100
+    ranked contributors structurally cannot reach the 51% cutoff (e.g. `cncf`'s top 100 only cover
+    ~20% of total activity) - this is a product-definition question about the `limit`/cutoff
+    interaction, out of scope for this performance fix. `isBusFactorCutoff` will legitimately be 0
+    for every row of such a collection; the serving pipe must not assume at least one row per
+    collection has `isBusFactorCutoff = 1`.
+
+NODE collection_contributor_dependency_copy_segments
+DESCRIPTION >
+    Every (collectionSlug, segmentId) pair for enabled projects that belong to at least one
+    collection - the fan-out point. A project with N collection memberships produces N rows here,
+    same semantics as `insights_projects_populated_ds.collectionsSlugs`.
+
+SQL >
+    SELECT arrayJoin(collectionsSlugs) AS collectionSlug, segmentId
+    FROM insights_projects_populated_ds
+    WHERE enabled = 1 AND notEmpty(collectionsSlugs)
+
+NODE collection_contributor_dependency_copy_activities
+DESCRIPTION >
+    Code-contribution activities scoped to segments that belong to at least one collection - filtered
+    by segmentId first (mirrors `activities_filtered`'s default, unfiltered-date/repo/platform path)
+    so the collection fan-out join below only ever joins against an already-narrowed set.
+
+SQL >
+    SELECT a.activityId AS id, a.memberId AS memberId, a.segmentId AS segmentId
+    FROM activityRelations_deduplicated_cleaned_bucket_union a
+    WHERE
+        a.segmentId IN (SELECT segmentId FROM collection_contributor_dependency_copy_segments)
+        AND (a.type, a.platform)
+        IN (SELECT activityType, platform FROM activityTypes WHERE isCodeContribution = 1)
+
+NODE collection_contributor_dependency_copy_activities_by_collection
+DESCRIPTION >
+    Fans activities out per collection membership via the segment join, then per-collection totals
+    and per-member top-100 ranked counts are computed from this in the following two nodes.
+
+SQL >
+    SELECT s.collectionSlug AS collectionSlug, a.memberId AS memberId, a.id AS id
+    FROM collection_contributor_dependency_copy_activities a
+    INNER JOIN collection_contributor_dependency_copy_segments s ON s.segmentId = a.segmentId
+
+NODE collection_contributor_dependency_copy_totals
+DESCRIPTION >
+    Per-collection scalar totals: total contribution count (for percentage denominators) and total
+    unique contributor count (for `totalContributorCount`, matching `active_contributors`'s scalar
+    in the live pipe).
+
+SQL >
+    SELECT
+        collectionSlug,
+        count(id) AS totalContributions,
+        uniqIf(memberId, memberId != '') AS totalContributorCount
+    FROM collection_contributor_dependency_copy_activities_by_collection
+    GROUP BY collectionSlug
+
+NODE collection_contributor_dependency_copy_member_aggregates
+DESCRIPTION >
+    Per-(collection, member) contribution counts, ranked and capped to the top 100 per collection via
+    `LIMIT 100 BY collectionSlug` - the ClickHouse per-group top-N idiom, avoiding a full
+    cross-collection window-function materialization.
+
+SQL >
+    SELECT collectionSlug, memberId, count(id) AS contributionCount
+    FROM collection_contributor_dependency_copy_activities_by_collection
+    GROUP BY collectionSlug, memberId
+    ORDER BY collectionSlug, contributionCount DESC, memberId DESC
+    LIMIT 100 BY collectionSlug
+
+NODE collection_contributor_dependency_copy_ranked
+DESCRIPTION >
+    Adds contributionPercentage, a 1-indexed rank within each collection, and the running-total
+    percentage (ordered contributionPercentage DESC, id - same tie-break as the live pipe's window
+    function) needed for the 51% cutoff.
+
+SQL >
+    SELECT
+        ma.collectionSlug AS collectionSlug,
+        ma.memberId AS id,
+        ma.contributionCount AS contributionCount,
+        ROUND(ma.contributionCount * 100.0 / t.totalContributions, 2) AS contributionPercentage,
+        toUInt32(
+            row_number() OVER (
+                PARTITION BY ma.collectionSlug ORDER BY ma.contributionCount DESC, ma.memberId DESC
+            )
+        ) AS rank,
+        sum(ROUND(ma.contributionCount * 100.0 / t.totalContributions, 2)) OVER (
+            PARTITION BY ma.collectionSlug
+            ORDER BY ROUND(ma.contributionCount * 100.0 / t.totalContributions, 2) DESC, ma.memberId
+        ) AS contributionPercentageRunningTotal,
+        t.totalContributorCount AS totalContributorCount
+    FROM collection_contributor_dependency_copy_member_aggregates ma
+    INNER JOIN collection_contributor_dependency_copy_totals t ON t.collectionSlug = ma.collectionSlug
+
+NODE collection_contributor_dependency_copy_result
+DESCRIPTION >
+    Joins member profile/role data and flags the 51% bus-factor cutoff membership, matching the live
+    pipe's WHERE clause exactly: `runningTotal <= 51 OR (runningTotal - ownPercentage < 51)`.
+
+SQL >
+    SELECT
+        r.collectionSlug AS collectionSlug,
+        r.id AS id,
+        m.displayName AS displayName,
+        m.githubHandleArray AS githubHandleArray,
+        r.contributionCount AS contributionCount,
+        r.contributionPercentage AS contributionPercentage,
+        coalesce(mr.roles, []) AS roles,
+        r.contributionPercentageRunningTotal AS contributionPercentageRunningTotal,
+        r.rank AS rank,
+        r.totalContributorCount AS totalContributorCount,
+        if(
+            r.contributionPercentageRunningTotal <= 51
+            OR (r.contributionPercentageRunningTotal - r.contributionPercentage < 51),
+            1,
+            0
+        ) AS isBusFactorCutoff,
+        now64(3) AS updatedAt
+    FROM collection_contributor_dependency_copy_ranked r
+    INNER JOIN members_sorted m ON m.id = r.id
+    LEFT JOIN
+        (
+            SELECT memberId, groupUniqArray(role) AS roles
+            FROM maintainers_roles_copy_ds
+            GROUP BY memberId
+        ) mr
+        ON mr.memberId = r.id
+
+TYPE COPY
+TARGET_DATASOURCE collection_contributor_dependency_copy_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 1 * * *
