@@ -29,9 +29,9 @@ export async function updateCollaborationSignal(qx: QueryExecutor): Promise<numb
         cr.repo_id,
         (r.archived IS TRUE OR r.disabled IS TRUE)                AS inactive,
         CASE
-          WHEN s.issues_opened_last_12m >= 5
-           AND s.issue_median_time_to_first_response_hours IS NOT NULL THEN
+          WHEN s.issues_opened_last_12m >= 5 THEN
             CASE
+              WHEN s.issue_median_time_to_first_response_hours IS NULL THEN 0.0
               WHEN s.issue_median_time_to_first_response_hours <= 72  THEN 1.0
               WHEN s.issue_median_time_to_first_response_hours <= 336 THEN 0.5
               ELSE 0.0
