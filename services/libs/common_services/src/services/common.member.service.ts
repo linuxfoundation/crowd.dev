@@ -406,7 +406,7 @@ export class CommonMemberService extends LoggerBase {
               if (existing) {
                 // if it's not verified but it should be
                 if (!existing.verified && identity.verified) {
-                  identitiesToUpdate.push({ ...identity, value: existing.value })
+                  identitiesToUpdate.push(identity)
                 }
               } else {
                 identitiesToMove.push(identity)

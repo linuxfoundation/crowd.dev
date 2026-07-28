@@ -372,7 +372,7 @@ export async function updateVerifiedFlag(
       where
         "memberId" = $(memberId) and
         platform = $(platform) and
-        value = $(value) and
+        lower(value) = lower($(value)) and
         type = $(type) and
         "deletedAt" is null
     `,
@@ -387,10 +387,10 @@ export async function deleteMemberIdentities(
   return qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
-      where "memberId" = $(memberId) 
-        and platform = $(platform) 
-        and value = $(value) 
-        and type = $(type) 
+      where "memberId" = $(memberId)
+        and platform = $(platform)
+        and lower(value) = lower($(value))
+        and type = $(type)
         and "deletedAt" is null;
     `,
     p,
