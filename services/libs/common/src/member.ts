@@ -9,6 +9,17 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export function isSameMemberIdentity(
+  a: { platform: string; type: string; value: string },
+  b: { platform: string; type: string; value: string },
+): boolean {
+  return (
+    a.platform === b.platform &&
+    a.type === b.type &&
+    a.value.trim().toLowerCase() === b.value.trim().toLowerCase()
+  )
+}
+
 export async function setAttributesDefaultValues(
   attributes: Record<string, unknown>,
   priorities: string[],

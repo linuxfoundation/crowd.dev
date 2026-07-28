@@ -114,7 +114,8 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
             if (
               (toBeSquashed[source].identities || []).some(
                 (i) =>
-                  i.value === discardedLinkedinIdentity.value &&
+                  i.value.trim().toLowerCase() ===
+                    discardedLinkedinIdentity.value.trim().toLowerCase() &&
                   i.platform === PlatformType.LINKEDIN,
               )
             ) {
@@ -155,7 +156,8 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
             if (
               (toBeSquashed[source].identities || []).some(
                 (i) =>
-                  i.value === discardedLinkedinIdentity.value &&
+                  i.value.trim().toLowerCase() ===
+                    discardedLinkedinIdentity.value.trim().toLowerCase() &&
                   i.platform === PlatformType.LINKEDIN,
               )
             ) {
@@ -178,21 +180,14 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
     for (const source of Object.keys(toBeSquashed)) {
       if (toBeSquashed[source].identities) {
         for (const identity of toBeSquashed[source].identities) {
-          // check if identity already exists, if not add it to squashedPayload
+          const sameIdentity = (i: { platform: string; type: string; value: string }) =>
+            i.platform === identity.platform &&
+            i.type === identity.type &&
+            i.value.trim().toLowerCase() === identity.value.trim().toLowerCase()
+
           if (
-            !squashedPayload.identities.find(
-              (i) =>
-                i.platform === identity.platform &&
-                i.type === identity.type &&
-                i.value === identity.value,
-            ) &&
-            // check in member data as well
-            !existingMemberData.identities.find(
-              (i) =>
-                i.platform === identity.platform &&
-                i.type === identity.type &&
-                i.value === identity.value,
-            )
+            !squashedPayload.identities.find(sameIdentity) &&
+            !existingMemberData.identities.find(sameIdentity)
           ) {
             squashedPayload.identities.push(identity)
           }

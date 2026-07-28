@@ -21,6 +21,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0012](./0012-api-e2e-test-architecture.md)                | API e2e test architecture                                                                            | accepted | 2026-07-25 |
 | [ADR-0013](./0013-api-e2e-test-suite-design.md)                | API e2e test suite design                                                                            | accepted | 2026-07-24 |
 | [ADR-0014](./0014-collaboration-track-record-signal.md)        | Collaboration track record signal                                                                    | accepted | 2026-07-28 |
+| [ADR-0015](./0015-how-cdp-stores-member-identities.md)         | How CDP stores member identities                                                                     | accepted | 2026-07-28 |
 
 ## Why ADRs?
 

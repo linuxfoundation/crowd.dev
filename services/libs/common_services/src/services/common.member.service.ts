@@ -15,6 +15,7 @@ import {
   getEarliestValidDate,
   getLongestDateRange,
   getMemberOrganizationSourceRank,
+  isSameMemberIdentity,
   mergeObjects,
   safeObjectMerge,
   sanitizeMemberOrganizationDateRange,
@@ -400,17 +401,12 @@ export class CommonMemberService extends LoggerBase {
             const identitiesToUpdate = []
             const identitiesToMove = []
             for (const identity of toMergeIdentities) {
-              const existing = originalIdentities.find(
-                (i) =>
-                  i.platform === identity.platform &&
-                  i.type === identity.type &&
-                  i.value === identity.value,
-              )
+              const existing = originalIdentities.find((i) => isSameMemberIdentity(i, identity))
 
               if (existing) {
                 // if it's not verified but it should be
                 if (!existing.verified && identity.verified) {
-                  identitiesToUpdate.push(identity)
+                  identitiesToUpdate.push({ ...identity, value: existing.value })
                 }
               } else {
                 identitiesToMove.push(identity)

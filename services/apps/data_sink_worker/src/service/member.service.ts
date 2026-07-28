@@ -10,6 +10,7 @@ import {
   isDomainExcluded,
   isEmail,
   isObjectEmpty,
+  isSameMemberIdentity,
   singleOrDefault,
 } from '@crowd/common'
 import {
@@ -132,8 +133,8 @@ export default class MemberService extends LoggerBase {
     identities: IMemberIdentity[],
     attemptMerge = true,
   ): Promise<string | void> {
-    // Deduplicate by (platform, value, type) — prefer verified=true when the same
-    // identity appears with both flags. Prevents uix_memberIdentities_memberId_platform_value_type
+    // Deduplicate by (platform, type, lower(value)) — prefer verified=true when the same
+    // identity appears with both flags. Prevents per-member unique identity index
     // from firing when a payload contains the same identity twice with different verified values.
     const seen = new Map<string, IMemberIdentity>()
     for (const id of identities) {
@@ -150,7 +151,8 @@ export default class MemberService extends LoggerBase {
     } catch (err) {
       if (
         !err?.constraint ||
-        err.constraint !== 'uix_memberIdentities_platform_value_type_verified'
+        (err.constraint !== 'uix_memberIdentities_platform_value_type_verified' &&
+          err.constraint !== 'uix_memberIdentities_platform_type_lower_value_verified')
       ) {
         throw err
       }
@@ -233,32 +235,23 @@ export default class MemberService extends LoggerBase {
       const freshMap = await findIdentitiesForMembers(this.pgQx, [survivingId])
       const freshIdentities = freshMap.get(survivingId) ?? []
 
-      // Match on (platform, value, type) only — per-member unique index excludes verified.
+      // Match on (platform, type, lower(value)) only — per-member unique index excludes verified.
       // Inserting an identity that already exists with a different verified flag would hit
-      // uix_memberIdentities_memberId_platform_value_type.
+      // the per-member unique identity index.
       const toInsert = incomingIdentities.filter(
-        (incoming) =>
-          !freshIdentities.some(
-            (existing) =>
-              existing.platform === incoming.platform &&
-              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
-              existing.type === incoming.type,
-          ),
+        (incoming) => !freshIdentities.some((existing) => isSameMemberIdentity(existing, incoming)),
       )
 
       // Promote verified=false → true for identities already on the surviving member
       // where the incoming payload asserts verified=true.
-      const toVerify = incomingIdentities.filter(
-        (incoming) =>
-          incoming.verified &&
-          freshIdentities.some(
-            (existing) =>
-              existing.platform === incoming.platform &&
-              existing.value.trim().toLowerCase() === incoming.value.trim().toLowerCase() &&
-              existing.type === incoming.type &&
-              !existing.verified,
-          ),
-      )
+      const toVerify = incomingIdentities
+        .filter((incoming) => incoming.verified)
+        .flatMap((incoming) => {
+          const existing = freshIdentities.find(
+            (e) => isSameMemberIdentity(e, incoming) && !e.verified,
+          )
+          return existing ? [{ ...incoming, value: existing.value }] : []
+        })
 
       if (toVerify.length > 0) {
         await this.memberRepo.updateIdentities(survivingId, toVerify)
@@ -324,11 +317,7 @@ export default class MemberService extends LoggerBase {
             (identity, idx) =>
               !!identity.value &&
               data.identities.findIndex(
-                (j) =>
-                  j.platform === identity.platform &&
-                  j.value === identity.value &&
-                  j.type === identity.type &&
-                  j.verified === identity.verified,
+                (j) => isSameMemberIdentity(j, identity) && j.verified === identity.verified,
               ) === idx,
           )
 
@@ -968,17 +957,17 @@ export default class MemberService extends LoggerBase {
 
     for (const identity of identities) {
       if (identity.type === MemberIdentityType.EMAIL) {
-        // check if email is valid and that the same email doesn't already exists in the array for the same platform
+        const lowerValue = identity.value.toLowerCase()
         if (
           isEmail(identity.value) &&
           toReturn.find(
             (i) =>
               i.type === MemberIdentityType.EMAIL &&
-              i.value === identity.value &&
+              i.value === lowerValue &&
               i.platform === identity.platform,
           ) === undefined
         ) {
-          toReturn.push({ ...identity, value: identity.value.toLowerCase() })
+          toReturn.push({ ...identity, value: lowerValue })
         }
       } else {
         toReturn.push(identity)
@@ -1011,16 +1000,12 @@ export default class MemberService extends LoggerBase {
       const newIdentities: IMemberIdentity[] = []
       const toUpdate: IMemberIdentity[] = []
       for (const identity of member.identities) {
-        const dbIdentity = dbIdentities.find(
-          (t) =>
-            t.platform === identity.platform &&
-            t.value === identity.value &&
-            t.type === identity.type,
-        )
+        const dbIdentity = dbIdentities.find((t) => isSameMemberIdentity(t, identity))
         if (!dbIdentity) {
           newIdentities.push(identity)
         } else if (dbIdentity.verified !== identity.verified) {
-          toUpdate.push(identity)
+          // Keep stored preferred casing; updateIdentities matches on exact value.
+          toUpdate.push({ ...identity, value: dbIdentity.value })
         }
       }
 
