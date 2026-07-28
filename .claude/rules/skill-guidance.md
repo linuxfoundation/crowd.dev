@@ -18,6 +18,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/scaffold-snowflake-connector` | Add a new Snowflake-connector data source or integration                          |
 | `/packages-worker-setup` | First-time setup of packages-db and github-repos-enricher for a new engineer    |
 | `/packages-worker-add-entrypoint` | Scaffold a new sibling worker inside packages_worker (npm, OSV, scorecard, etc.) |
+| `/write-unit-tests` | Add or improve Vitest unit tests for business logic, DAL, or server modules |
+| `/write-api-e2e-tests` | Add or change Public API e2e / smoke / contract tests |
 
 ## Trigger Phrases
 
@@ -57,3 +59,14 @@ This project has guided skills for common workflows. **Proactively suggest the r
 - "Add a new packages worker", "scaffold a sibling worker", "new entry point in packages_worker"
 - "Add npm ingestion", "add OSV worker", "add scorecard runner"
 - Any request to create a new `src/bin/*.ts` worker inside `packages_worker`
+
+**`/write-unit-tests`** — match any of these intents:
+- "Write unit tests", "add a unit test", "cover this with Vitest"
+- "Test this function", "add DAL tests", "unit test for affiliations/merges/inference"
+- Any request for focused server/unit test coverage (not HTTP/API contract tests)
+- Not for `packages_worker` (excluded from `pnpm test:server` for now)
+
+**`/write-api-e2e-tests`** — match any of these intents:
+- "Write API e2e tests", "add smoke tests", "Public API contract tests"
+- "Cover this endpoint end-to-end", "API regression test"
+- Any request for HTTP/API e2e coverage of Public API behaviour

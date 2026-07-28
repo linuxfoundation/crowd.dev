@@ -41,7 +41,9 @@ export async function insertMemberNoMerge(
   await qx.result(
     `
       INSERT INTO "memberNoMerge" ("memberId", "noMergeId", "createdAt", "updatedAt")
-      VALUES ($(memberId), $(noMergeId), NOW(), NOW())
+      SELECT $(memberId), $(noMergeId), NOW(), NOW()
+      WHERE EXISTS (SELECT 1 FROM members WHERE id = $(memberId))
+        AND EXISTS (SELECT 1 FROM members WHERE id = $(noMergeId))
       ON CONFLICT ("memberId", "noMergeId") DO NOTHING
     `,
     { memberId, noMergeId },

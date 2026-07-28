@@ -17,6 +17,12 @@ import {
 import { CommonIntegrationService, getGithubInstallationToken } from '@crowd/common_services'
 import { ICreateInsightsProject } from '@crowd/data-access-layer/src/collections'
 import {
+  findMailingListsOwnedByOtherIntegration,
+  lockMailingListSourceUrls,
+  softDeleteMailingListsByIntegrationId,
+  upsertMailingLists,
+} from '@crowd/data-access-layer/src/mailinglist'
+import {
   ICreateRepository,
   IRepository,
   IRepositoryMapping,
@@ -463,6 +469,14 @@ export default class IntegrationService {
             ...this.options,
             transaction,
           })
+        }
+
+        if (integration.platform === PlatformType.MAILINGLIST) {
+          const qx = SequelizeRepository.getQueryExecutor({
+            ...this.options,
+            transaction,
+          })
+          await softDeleteMailingListsByIntegrationId(qx, integration.id)
         }
 
         // Soft delete from public.repositories for code integrations
@@ -1418,6 +1432,81 @@ export default class IntegrationService {
         await SequelizeRepository.rollbackTransaction(transaction)
       }
       this.options.log.error(`gitConnectOrUpdate failed with error: ${err}`)
+      throw err
+    }
+    return integration
+  }
+
+  /**
+   * Adds/updates a mailing list (public-inbox/lore) integration and onboards
+   * its lists for processing by the mailing_list_integration worker.
+   *
+   * @param integrationData.lists - Mailing lists to onboard (name + sourceUrl)
+   * @param options - Optional repository options
+   */
+  async mailingListConnectOrUpdate(
+    integrationData: {
+      lists: Array<{ name: string; sourceUrl: string }>
+    },
+    options?: IRepositoryOptions,
+  ) {
+    const lists = integrationData.lists || []
+
+    // Both current callers (mailingListAuthenticate.ts, create-mailing-list-integration.ts)
+    // validate against bodySchema's `.min(1)` before reaching here, so this is an invariant
+    // check, not user-facing validation — fail loudly rather than silently no-op.
+    if (lists.length === 0) {
+      throw new Error400(this.options.language, 'errors.validation.message')
+    }
+
+    const currentOptions = options || this.options
+    const existingTransaction =
+      currentOptions.transaction || SequelizeRepository.getTransaction(currentOptions)
+    const transaction =
+      existingTransaction || (await SequelizeRepository.createTransaction(options || this.options))
+    let integration
+
+    try {
+      const qx = SequelizeRepository.getQueryExecutor({ ...(options || this.options), transaction })
+
+      integration = await this.createOrUpdate(
+        {
+          platform: PlatformType.MAILINGLIST,
+          settings: { lists },
+          status: 'done',
+        },
+        transaction,
+        options,
+      )
+
+      // Serialize concurrent connects touching the same sourceUrl(s) so the
+      // ownership check below and the upsert that follows it can't be
+      // straddled by another transaction re-pointing ownership in between.
+      await lockMailingListSourceUrls(
+        qx,
+        lists.map((l) => l.sourceUrl),
+      )
+
+      const conflicts = await findMailingListsOwnedByOtherIntegration(qx, integration.id, lists)
+      if (conflicts.length > 0) {
+        throw new Error400(
+          this.options.language,
+          'errors.mailingList.alreadyConnected',
+          conflicts.join(', '),
+        )
+      }
+
+      const currentSegmentId = (options || this.options).currentSegments[0].id
+      await upsertMailingLists(qx, currentSegmentId, integration.id, lists)
+
+      if (!existingTransaction) {
+        await SequelizeRepository.commitTransaction(transaction)
+      }
+    } catch (err) {
+      if (!existingTransaction) {
+        await SequelizeRepository.rollbackTransaction(transaction)
+      }
+      this.options.log.error(`mailingListConnectOrUpdate failed with error: ${err}`)
       throw err
     }
     return integration

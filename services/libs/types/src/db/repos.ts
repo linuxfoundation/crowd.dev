@@ -46,4 +46,8 @@ export interface RepoDbRow {
   contactsLastRefreshed: string | null
   updatedAt: string
   dockerCheckedAt: string | null
+  // -- added by V1785167431__collaboration_signal.sql --
+  collaborationScore: number | null
+  // 'responsive' | 'mixed' | 'unresponsive' | 'unknown' | 'inactive'
+  collaborationTier: string | null
 }

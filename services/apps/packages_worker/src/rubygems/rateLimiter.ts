@@ -3,12 +3,32 @@ const INTERVAL_MS = 1000 / MAX_RPS
 
 let nextSlot = 0
 
-export async function acquireRubyGemsSlot(): Promise<void> {
+export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((r) => setTimeout(r, ms))
+  const sig = signal
+  return new Promise((resolve, reject) => {
+    if (sig.aborted) {
+      reject(sig.reason)
+      return
+    }
+    function onAbort() {
+      clearTimeout(timer)
+      reject(sig.reason)
+    }
+    const timer = setTimeout(() => {
+      sig.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    sig.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+export async function acquireRubyGemsSlot(signal?: AbortSignal): Promise<void> {
   const now = Date.now()
   const slot = Math.max(now, nextSlot)
   nextSlot = slot + INTERVAL_MS
   const wait = slot - now
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+  if (wait > 0) await abortableSleep(wait, signal)
 }
 
 export function parseRetryAfterMs(header: unknown): number {
