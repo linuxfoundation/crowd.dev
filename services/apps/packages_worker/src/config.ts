@@ -98,7 +98,7 @@ export function getNuGetConfig() {
 
 export function getRubyGemsConfig() {
   return {
-    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '10000', 10),
+    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '15000', 10),
     concurrency: parseInt(process.env.RUBYGEMS_FETCHER_CONCURRENCY ?? '8', 10),
   }
 }

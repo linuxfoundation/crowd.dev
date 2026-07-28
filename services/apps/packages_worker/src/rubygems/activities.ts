@@ -1,3 +1,5 @@
+import { cancellationSignal, heartbeat } from '@temporalio/activity'
+
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getRubyGemsConfig, getRubyGemsCriticalConfig } from '../config'
@@ -9,11 +11,18 @@ import { BatchResult } from './types'
 
 const log = getServiceChildLogger('rubygems-activity')
 
+function checkpoint(): void {
+  if (cancellationSignal().aborted) {
+    throw new Error('RubyGems batch cancelled — superseded by a newer activity attempt')
+  }
+  heartbeat()
+}
+
 export async function processRubyGemsCoreBatch(): Promise<BatchResult> {
   const config = getRubyGemsConfig()
   const qx = await getPackagesDb()
   const today = new Date().toISOString().split('T')[0]
-  const result = await processCoreBatch(qx, config, today)
+  const result = await processCoreBatch(qx, config, today, checkpoint)
   log.info({ ...result }, 'RubyGems core batch complete')
   return result
 }
@@ -23,7 +32,7 @@ export async function processRubyGemsCriticalBatch(
 ): Promise<BatchResult & { lastId: string | null }> {
   const config = getRubyGemsCriticalConfig()
   const qx = await getPackagesDb()
-  const result = await processCriticalBatch(qx, config, afterId)
+  const result = await processCriticalBatch(qx, config, afterId, checkpoint)
   log.info({ ...result }, 'RubyGems critical batch complete')
   return result
 }

@@ -158,6 +158,7 @@ export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsCoreConfig,
   today: string,
+  checkpoint?: () => void,
 ): Promise<BatchResult> {
   const packages = await listRubyGemsPackagesToSync(qx, { limit: config.batchSize })
 
@@ -168,6 +169,7 @@ export async function processBatch(
   const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+    checkpoint?.()
     const group = packages.slice(batchStart, batchStart + config.concurrency)
 
     await Promise.all(
