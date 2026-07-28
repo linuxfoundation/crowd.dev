@@ -62,8 +62,9 @@ async function processPackage(
   qx: QueryExecutor,
   pkg: RubyGemsPackageToSync,
   today: string,
+  signal?: AbortSignal,
 ): Promise<PackageStatus> {
-  const gemResult = await fetchGem(pkg.name)
+  const gemResult = await fetchGem(pkg.name, signal)
 
   if (isRubyGemsFetchError(gemResult)) {
     if (gemResult.kind === 'NOT_FOUND') {
@@ -158,6 +159,7 @@ export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsCoreConfig,
   today: string,
+  signal?: AbortSignal,
 ): Promise<BatchResult> {
   const packages = await listRubyGemsPackagesToSync(qx, { limit: config.batchSize })
 
@@ -168,14 +170,16 @@ export async function processBatch(
   const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+    signal?.throwIfAborted()
     const group = packages.slice(batchStart, batchStart + config.concurrency)
 
     await Promise.all(
       group.map(async (pkg) => {
         try {
-          const status = await processPackage(qx, pkg, today)
+          const status = await processPackage(qx, pkg, today, signal)
           counts[status]++
         } catch (err) {
+          signal?.throwIfAborted()
           const message = err instanceof Error ? err.message : String(err)
           log.error({ purl: pkg.purl, error: message }, 'Unexpected error processing package')
           try {
@@ -187,6 +191,7 @@ export async function processBatch(
         }
       }),
     )
+    signal?.throwIfAborted()
 
     const done = batchStart + group.length
     if (done % 1000 === 0 || done === packages.length) {
