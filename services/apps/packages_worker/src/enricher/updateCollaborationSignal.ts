@@ -13,7 +13,9 @@ export async function updateCollaborationSignal(qx: QueryExecutor): Promise<numb
         pr.repo_id,
         BOOL_OR(EXISTS (
           SELECT 1 FROM advisory_affected_ranges rg
-          WHERE rg.advisory_package_id = ap.id AND rg.fixed_version IS NOT NULL
+          WHERE rg.advisory_package_id = ap.id
+            AND rg.fixed_version IS NOT NULL
+            AND rg.deleted_at IS NULL
         ))                                                        AS any_fixed,
         BOOL_OR(a.published_at < NOW() - INTERVAL '90 days')      AS any_old
       FROM advisory_packages ap
@@ -80,7 +82,8 @@ export async function updateCollaborationSignal(qx: QueryExecutor): Promise<numb
     )
     UPDATE repos r
     SET collaboration_score = f.new_score,
-        collaboration_tier  = f.new_tier
+        collaboration_tier  = f.new_tier,
+        updated_at          = NOW()
     FROM final f
     WHERE r.id = f.repo_id
       AND (r.collaboration_score, r.collaboration_tier)
