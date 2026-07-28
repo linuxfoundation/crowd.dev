@@ -1,8 +1,14 @@
+DESCRIPTION >
+    Bootstraps bucket 0/3 (cityHash64(segmentId) % 3 = 0) of the unfiltered enriched
+    activityRelations serving layer from the raw activityRelations datasource. Run on demand:
+    on first deploy, or to rebuild a bucket after an outage longer than the MV delta
+    retention (3 days). Replace mode — safe to re-run.
+
 NODE country_mapping_array
 SQL >
     SELECT groupArray((country, country_code, timezone_offset)) AS country_data FROM country_mapping_ds
 
-NODE activityRelations_deduplicated_cleaned_denormalized
+NODE activityRelations_deduplicated_enriched_bucket_0
 SQL >
     WITH
         upperUTF8(o.location) AS search_u,
@@ -31,8 +37,9 @@ SQL >
         toStartOfInterval(now(), INTERVAL 1 day) as snapshotId
     from activityRelations final
     left join organizations o final on o.id = activityRelations.organizationId
+    where cityHash64(activityRelations.segmentId) % 3 = 0
 
 TYPE COPY
-TARGET_DATASOURCE activityRelations_enriched_deduplicated_ds
+TARGET_DATASOURCE activityRelations_enriched_deduplicated_bucket_0_ds
 COPY_MODE replace
 COPY_SCHEDULE @on-demand

@@ -1,0 +1,45 @@
+DESCRIPTION >
+    Bootstraps bucket 2/3 (cityHash64(segmentId) % 3 = 2) of the unfiltered enriched
+    activityRelations serving layer from the raw activityRelations datasource. Run on demand:
+    on first deploy, or to rebuild a bucket after an outage longer than the MV delta
+    retention (3 days). Replace mode — safe to re-run.
+
+NODE country_mapping_array
+SQL >
+    SELECT groupArray((country, country_code, timezone_offset)) AS country_data FROM country_mapping_ds
+
+NODE activityRelations_deduplicated_enriched_bucket_2
+SQL >
+    WITH
+        upperUTF8(o.location) AS search_u,
+        (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
+        (SELECT country_data FROM country_mapping_array) AS mapping,
+        multiSearchFirstIndexUTF8(search_u, names_u) AS idx,
+        if(idx = 0, ('Unknown', 'XX', 0), mapping[idx]) AS country_data
+    SELECT
+        activityRelations.*,
+        (gitInsertions + gitDeletions) as gitChangedLines,
+        case
+            when gitChangedLines > 0 and gitChangedLines < 10
+            then '1-9'
+            when gitChangedLines > 9 and gitChangedLines < 60
+            then '10-59'
+            when gitChangedLines > 59 and gitChangedLines < 100
+            then '60-99'
+            when gitChangedLines > 99 and gitChangedLines < 500
+            then '100-499'
+            when gitChangedLines > 499
+            then '500+'
+            else ''
+        end as "gitChangedLinesBucket",
+        CAST(country_data .2 AS LowCardinality(String)) AS organizationCountryCode,
+        o.displayName as "organizationName",
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId
+    from activityRelations final
+    left join organizations o final on o.id = activityRelations.organizationId
+    where cityHash64(activityRelations.segmentId) % 3 = 2
+
+TYPE COPY
+TARGET_DATASOURCE activityRelations_enriched_deduplicated_bucket_2_ds
+COPY_MODE replace
+COPY_SCHEDULE @on-demand
