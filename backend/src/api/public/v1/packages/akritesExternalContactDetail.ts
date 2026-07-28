@@ -4,6 +4,8 @@ import {
   securityContactConfidenceBand,
 } from '@crowd/data-access-layer'
 
+import { toNullableNumber } from './mappers'
+
 // Both the per-contact band and the aggregate band mirror the internal
 // SecurityContactConfidence enum verbatim (PRIMARY/SECONDARY/FALLBACK/NONE) —
 // no external crosswalk (confirmed with product).
@@ -28,6 +30,9 @@ export interface AkritesExternalContactDetail {
   vulnerabilityReportingUrl: string | null
   bugBountyUrl: string | null
   pvrEnabled: boolean | null
+  declaredRepositoryUrl: string | null
+  resolvedRepositoryUrl: string | null
+  repoMappingConfidence: number | null
   // Reserved by the contract but not stored today — always null (see the akrites-external
   // OpenAPI notes). Typed as null so a future non-null shape is an explicit, reviewed change.
   targetOrganizationName: null
@@ -71,6 +76,9 @@ export function toAkritesExternalContactDetail(
     vulnerabilityReportingUrl: row.vulnerabilityReportingUrl ?? null,
     bugBountyUrl: row.bugBountyUrl ?? null,
     pvrEnabled: row.pvrEnabled ?? null,
+    declaredRepositoryUrl: row.declaredRepositoryUrl ?? null,
+    resolvedRepositoryUrl: row.resolvedRepositoryUrl ?? null,
+    repoMappingConfidence: toNullableNumber(row.repoMappingConfidence),
     targetOrganizationName: null,
     bugBountyProgramFlag: null,
     reportingMethods: null,

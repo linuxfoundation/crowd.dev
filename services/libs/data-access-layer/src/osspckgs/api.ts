@@ -875,12 +875,20 @@ export async function getPackageDetailsByPurls(
 // live on the repo, not the package). A missing purl yields no row → "not found"; a found
 // package with no contacts yields a row with securityContacts null → resolves to [].
 export interface AkritesExternalContactDetailRow
-  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem'>,
+  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem' | 'declaredRepositoryUrl'>,
     Pick<
       RepoDbRow,
-      'securityPolicyUrl' | 'vulnerabilityReportingUrl' | 'bugBountyUrl' | 'pvrEnabled'
+      | 'securityPolicyUrl'
+      | 'vulnerabilityReportingUrl'
+      | 'bugBountyUrl'
+      | 'pvrEnabled'
+      | 'contactsLastRefreshed'
     > {
   securityContacts: SecurityContactRow[] | null
+  // --- joined from repos via package_repos, same BEST_REPO_LINK_JOIN as
+  // AkritesExternalPackageDetailRow — not part of the packages or repos row.
+  resolvedRepositoryUrl: string | null
+  repoMappingConfidence: number | null
 }
 
 export async function getContactDetailsByPurls(
@@ -894,10 +902,14 @@ export async function getContactDetailsByPurls(
       p.purl,
       p.name,
       p.ecosystem,
+      p.declared_repository_url     AS "declaredRepositoryUrl",
+      r.url                         AS "resolvedRepositoryUrl",
+      pr.confidence                 AS "repoMappingConfidence",
       r.security_policy_url         AS "securityPolicyUrl",
       r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
       r.bug_bounty_url              AS "bugBountyUrl",
       r.pvr_enabled                 AS "pvrEnabled",
+      r.contacts_last_refreshed     AS "contactsLastRefreshed",
       ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts"
     FROM packages p
     ${BEST_REPO_LINK_JOIN}
@@ -1009,7 +1021,7 @@ export async function getAdvisoriesByPackageId(
         ${ADVISORY_RESOLUTION_EXPR} AS resolution
       FROM advisory_packages ap
       JOIN advisories a ON a.id = ap.advisory_id
-      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
       JOIN packages p ON p.id = ap.package_id
       WHERE ap.package_id = $(packageId)::bigint
       GROUP BY a.osv_id, a.severity, a.is_critical, p.latest_version
@@ -1117,7 +1129,7 @@ export async function getAdvisoriesByPurls(
     FROM packages p
     LEFT JOIN advisory_packages ap ON ap.package_id = p.id
     LEFT JOIN advisories a ON a.id = ap.advisory_id
-    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
     WHERE p.purl = ANY($(purls))
     GROUP BY p.purl, p.latest_version, a.osv_id, a.severity, a.is_critical
     ORDER BY

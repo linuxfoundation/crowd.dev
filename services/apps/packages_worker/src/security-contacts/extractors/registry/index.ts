@@ -2,6 +2,7 @@ import { Extractor, ExtractorResult, RawContact, RepoPolicies } from '../../type
 
 import { fetchCargo } from './cargo'
 import { fetchComposer } from './composer'
+import { fetchGo } from './go'
 import { fetchMaven } from './maven'
 import { fetchNpm } from './npm'
 import { fetchNuget } from './nuget'
@@ -16,15 +17,18 @@ type EcosystemFetcher = (
   repoUrl?: string,
 ) => Promise<ExtractorResult>
 
-// Keyed by the lowercased packages.ecosystem value. go has no package-manifest contacts.
-const FETCHERS: Record<string, EcosystemFetcher> = {
+// Keyed by the lowercased packages.ecosystem value. Composer packages live under
+// 'packagist' — the value the packagist worker seeds — not 'composer', which no
+// writer ever produces (the original entry predated the worker and guessed wrong).
+export const FETCHERS: Record<string, EcosystemFetcher> = {
   npm: fetchNpm,
   pypi: fetchPypi,
   maven: fetchMaven,
   cargo: fetchCargo,
   nuget: fetchNuget,
   rubygems: fetchRubygems,
-  composer: fetchComposer,
+  packagist: fetchComposer,
+  go: fetchGo,
 }
 
 export const extractManifest: Extractor = async (target, deps) => {

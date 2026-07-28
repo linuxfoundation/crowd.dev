@@ -7,6 +7,11 @@ export function snakeToCamelKeys(
   )
 }
 
+// pg-promise returns numeric columns as strings; this coerces without turning null into 0.
+export function toNullableNumber(value: number | string | null): number | null {
+  return value != null ? Number(value) : null
+}
+
 export function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' | null {
   if (confidence === null) return null
   if (confidence >= 0.8) return 'High'

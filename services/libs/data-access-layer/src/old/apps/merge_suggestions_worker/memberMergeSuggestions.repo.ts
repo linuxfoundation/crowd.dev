@@ -325,31 +325,6 @@ class MemberMergeSuggestionsRepository {
 
     return results.map((r) => [r.memberId, r.toMergeId])
   }
-
-  async removeMemberMergeSuggestion(
-    suggestion: string[],
-    table: MemberMergeSuggestionTable,
-  ): Promise<void> {
-    const query = `
-      delete from "${table}"
-      where
-        ("memberId" = $(memberId) and "toMergeId" = $(toMergeId))
-        or
-        ("memberId" = $(toMergeId) and "toMergeId" = $(memberId))
-    `
-
-    const replacements = {
-      memberId: suggestion[0],
-      toMergeId: suggestion[1],
-    }
-
-    try {
-      await this.connection.none(query, replacements)
-    } catch (error) {
-      this.log.error(`Error removing member suggestions from ${table}`, error)
-      throw error
-    }
-  }
 }
 
 export default MemberMergeSuggestionsRepository

@@ -45,7 +45,7 @@ function urlHost(value: string): string | null {
   }
 }
 
-function isJunkContact(c: RawContact): boolean {
+export function isJunkContact(c: RawContact): boolean {
   if (c.channel === 'email') {
     const domain = c.value.split('@')[1]?.toLowerCase().trim()
     return domain != null && PLACEHOLDER_EMAIL_DOMAINS.has(domain)

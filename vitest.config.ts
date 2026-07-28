@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
@@ -20,6 +22,13 @@ function resolveTestEnv(mode: string): Record<string, string> {
 }
 
 export default defineConfig(({ mode }) => ({
+  resolve: {
+    // Mirrors backend/tsconfig.json's "@/*" -> "./src/*" path alias, which tsc resolves at
+    // build/runtime via tsconfig-paths but vite/vitest don't pick up on their own.
+    alias: {
+      '@': path.resolve(root, 'backend/src'),
+    },
+  },
   test: {
     env: resolveTestEnv(mode),
     server: {

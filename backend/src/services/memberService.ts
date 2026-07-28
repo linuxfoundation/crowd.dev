@@ -49,7 +49,6 @@ import { MergeActionsRepository } from '../database/repositories/mergeActionsRep
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import {
   BasicMemberIdentity,
-  IMemberMergeSuggestion,
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
 import telemetryTrack from '../segment/telemetryTrack'
@@ -730,32 +729,6 @@ export default class MemberService extends LoggerBase {
   }
 
   /**
-   * Given two members, add them to the toMerge fields of each other.
-   * It will also update the tenant's toMerge list, removing any entry that contains
-   * the pair.
-   * @returns Success/Error message
-   */
-  async addToMerge(suggestions: IMemberMergeSuggestion[]) {
-    const transaction = await SequelizeRepository.createTransaction(this.options)
-    try {
-      const searchSyncService = new SearchSyncService(this.options)
-
-      await MemberRepository.addToMerge(suggestions, { ...this.options, transaction })
-      await SequelizeRepository.commitTransaction(transaction)
-
-      for (const suggestion of suggestions) {
-        await searchSyncService.triggerMemberSync(suggestion.members[0])
-        await searchSyncService.triggerMemberSync(suggestion.members[1])
-      }
-      return { status: 200 }
-    } catch (error) {
-      await SequelizeRepository.rollbackTransaction(transaction)
-      this.log.error(error, 'Error while adding members to merge')
-      throw error
-    }
-  }
-
-  /**
    * Given two members, add them to the noMerge fields of each other.
    * @param memberOneId ID of the first member
    * @param memberTwoId ID of the second member
@@ -768,8 +741,9 @@ export default class MemberService extends LoggerBase {
     try {
       await MemberRepository.addNoMerge(memberOneId, memberTwoId, txOptions)
       await MemberRepository.addNoMerge(memberTwoId, memberOneId, txOptions)
+
+      // Removes from either order of the pair
       await MemberRepository.removeToMerge(memberOneId, memberTwoId, txOptions)
-      await MemberRepository.removeToMerge(memberTwoId, memberOneId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (error) {

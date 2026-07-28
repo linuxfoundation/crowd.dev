@@ -21,7 +21,7 @@ import {
   removeMemberRole,
   updateMember,
 } from '@crowd/data-access-layer'
-import { addMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
+import { insertMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
@@ -625,7 +625,7 @@ export async function unmergeMember(
   }
 
   // Add primary and secondary to no merge so they don't get suggested again
-  await addMemberNoMerge(tx, memberId, secondaryId)
+  await insertMemberNoMerge(tx, memberId, secondaryId)
 
   await setMergeAction(tx, MergeActionType.MEMBER, memberId, secondaryId, {
     step: MergeActionStep.UNMERGE_SYNC_DONE,
