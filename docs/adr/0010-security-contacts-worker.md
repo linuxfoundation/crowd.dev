@@ -307,7 +307,8 @@ prose fields, and a deterministic validator gates every LLM write.
 ### Data model
 
 - **`security_policy_parses`** — content-keyed parse cache. PK `blob_oid` (git blob oid for
-  files; sha256 of extracted text for linked pages), `source_kind`
+  files; sha256 of the URL for linked pages, so two URLs with identical content stay
+  independently joinable from `linked_urls`), `source_kind`
   (`security-file`/`linked-page`), `url` (linked-page rows), `parser`
   (`deterministic`/`llm`), `parser_version`, `status` (`ok`/`template`/`degraded`), `parsed`
   JSONB (methods + guidelines), `linked_urls`. Identical content across repos is parsed once,
@@ -332,8 +333,12 @@ requires every emitted endpoint to appear in the source (URLs verbatim; emails a
 deobfuscation normalization — "security at python dot org"), valid enums, and at most one
 `preferred` — failures are stored `status='degraded'` (classifier partials, no guidelines).
 The LLM can never invent a channel. Pointer-only parses record up to 3 linked URLs; each
-linked page is fetched once (one hop, 500 KB cap, text-extracted) and parsed under the same
-content-keyed cache as `linked-page` rows.
+linked page is fetched once per URL (SSRF-guarded: http(s) only, private/loopback/link-local
+and metadata hosts blocked, redirects revalidated per hop, body capped at 500 KB while
+streaming) and parsed as a `linked-page` row. For a pointer-only blob the file row is written
+only after every linked page has a parse row, so a transient page failure leaves the blob
+unmarked and the next daily sweep retries the whole unit. Batches are drawn in random order so
+permanently failing blobs cannot starve the queue.
 
 ### Assembly
 

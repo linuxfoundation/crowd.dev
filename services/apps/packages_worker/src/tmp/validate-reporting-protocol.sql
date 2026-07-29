@@ -27,16 +27,18 @@ FROM repo_reporting_protocols rp
 JOIN critical c ON c.id = rp.repo_id;
 
 -- 3. Method sanity
--- Healthy: zero rows.
+-- Always returns four rows; healthy: every count is zero.
 SELECT 'bad_type' AS problem, COUNT(*)
 FROM repo_reporting_protocols rp,
      jsonb_array_elements(rp.methods) m
-WHERE m->>'type' NOT IN ('github-pvr','email','web-form','bounty-platform','security-txt','mailing-list')
+WHERE m->>'type' IS NULL
+   OR m->>'type' NOT IN ('github-pvr','email','web-form','bounty-platform','security-txt','mailing-list')
 UNION ALL
 SELECT 'bad_status', COUNT(*)
 FROM repo_reporting_protocols rp,
      jsonb_array_elements(rp.methods) m
-WHERE m->>'status' NOT IN ('preferred','accepted','fallback','prohibited')
+WHERE m->>'status' IS NULL
+   OR m->>'status' NOT IN ('preferred','accepted','fallback','prohibited')
 UNION ALL
 SELECT 'multiple_preferred', COUNT(*)
 FROM (

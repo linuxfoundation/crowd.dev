@@ -5,7 +5,7 @@ import { getReportingProtocolConfig } from '../../config'
 import type { githubApiGet } from '../githubToken'
 
 import { PARSER_VERSION, classifySecurityPolicy } from './classify'
-import { fetchBlob, fetchLinkedPage } from './fetchContent'
+import { fetchBlob, fetchLinkedPage, sha256Hex } from './fetchContent'
 import { llmExtractProtocol } from './llmExtract'
 import { ParseRowStatus, ParseStageResult, ParsedProtocol } from './types'
 import { validateParsedProtocol } from './validate'
@@ -25,17 +25,22 @@ interface BlobJob {
   url: string
 }
 
+// Random batch order: failed blobs get no parse row, so a deterministic
+// ORDER BY window full of permanent failures would starve everything behind it.
 async function selectUnparsedBlobs(qx: QueryExecutor, limit: number): Promise<BlobJob[]> {
   return qx.select(
-    `SELECT DISTINCT ON (w.blob_oid) w.blob_oid, r.url
-     FROM repo_well_known_files w
-     JOIN repos r ON r.id = w.repo_id AND r.host = 'github'
-     JOIN package_repos pr ON pr.repo_id = w.repo_id
-     JOIN packages p ON p.id = pr.package_id AND p.is_critical
-     LEFT JOIN security_policy_parses sp
-            ON sp.blob_oid = w.blob_oid AND sp.parser_version = $(parserVersion)
-     WHERE w.file_type = 'security' AND w.deleted_at IS NULL AND sp.blob_oid IS NULL
-     ORDER BY w.blob_oid, w.repo_id
+    `SELECT * FROM (
+       SELECT DISTINCT ON (w.blob_oid) w.blob_oid, r.url
+       FROM repo_well_known_files w
+       JOIN repos r ON r.id = w.repo_id AND r.host = 'github'
+       JOIN package_repos pr ON pr.repo_id = w.repo_id
+       JOIN packages p ON p.id = pr.package_id AND p.is_critical
+       LEFT JOIN security_policy_parses sp
+              ON sp.blob_oid = w.blob_oid AND sp.parser_version = $(parserVersion)
+       WHERE w.file_type = 'security' AND w.deleted_at IS NULL AND sp.blob_oid IS NULL
+       ORDER BY w.blob_oid, w.repo_id
+     ) unparsed
+     ORDER BY random()
      LIMIT $(limit)`,
     { limit, parserVersion: PARSER_VERSION },
   )
@@ -68,6 +73,24 @@ async function insertParse(
        parsed_at = NOW()`,
     { ...row, parsed: JSON.stringify(row.parsed), parserVersion: PARSER_VERSION },
   )
+}
+
+function createLimiter(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  let active = 0
+  const waiters: Array<() => void> = []
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active >= max) {
+      await new Promise<void>((resolve) => waiters.push(resolve))
+    }
+    active++
+    try {
+      return await fn()
+    } finally {
+      active--
+      const next = waiters.shift()
+      if (next) next()
+    }
+  }
 }
 
 async function parseText(
@@ -114,6 +137,39 @@ async function alreadyParsed(qx: QueryExecutor, oid: string): Promise<boolean> {
   return row !== null
 }
 
+// Linked-page rows are keyed by sha256(url), not content hash: two URLs with
+// identical content must both stay joinable from linked_urls at assembly.
+async function processLinkedPages(
+  qx: QueryExecutor,
+  deps: ParseStageDeps,
+  cfg: Cfg,
+  linkedUrls: string[],
+  result: ParseStageResult,
+): Promise<{ anyFailure: boolean }> {
+  let anyFailure = false
+  for (const url of linkedUrls) {
+    const pageKey = sha256Hex(url)
+    if (await alreadyParsed(qx, pageKey)) continue
+    const page = await deps.fetchPage(url, cfg.fetchTimeoutMs)
+    if (!page) {
+      anyFailure = true
+      continue
+    }
+    const pageParse = await parseText(page.text, deps, cfg)
+    await insertParse(qx, {
+      blobOid: pageKey,
+      sourceKind: 'linked-page',
+      url,
+      parser: pageParse.parser,
+      status: pageParse.status,
+      parsed: pageParse.parsed,
+      linkedUrls: [],
+    })
+    result.linkedPages++
+  }
+  return { anyFailure }
+}
+
 export async function runParseStage(
   qx: QueryExecutor,
   deps: ParseStageDeps,
@@ -128,6 +184,12 @@ export async function runParseStage(
     template: 0,
     linkedPages: 0,
     failed: 0,
+  }
+
+  const limitLlm = createLimiter(Math.max(1, cfg.llmConcurrency))
+  const limitedDeps: ParseStageDeps = {
+    ...deps,
+    llmExtract: (text, llmCfg) => limitLlm(() => deps.llmExtract(text, llmCfg)),
   }
 
   let cursor = 0
@@ -145,7 +207,26 @@ export async function runParseStage(
           result.failed++
           continue
         }
-        const fileParse = await parseText(text, deps, cfg)
+        const fileParse = await parseText(text, limitedDeps, cfg)
+        const pointerOnly = fileParse.parsed.methods.length === 0 && fileParse.linkedUrls.length > 0
+
+        if (pointerOnly) {
+          // The file row marks the blob done, so it is written only once every
+          // linked page has a parse row — a transient page failure leaves the
+          // blob unmarked and the next sweep retries the whole unit.
+          const { anyFailure } = await processLinkedPages(
+            qx,
+            limitedDeps,
+            cfg,
+            fileParse.linkedUrls,
+            result,
+          )
+          if (anyFailure) {
+            result.failed++
+            continue
+          }
+        }
+
         await insertParse(qx, {
           blobOid: job.blob_oid,
           sourceKind: 'security-file',
@@ -156,25 +237,6 @@ export async function runParseStage(
         result[fileParse.parser === 'deterministic' ? 'deterministic' : 'llm']++
         if (fileParse.status === 'degraded') result.degraded++
         if (fileParse.status === 'template') result.template++
-
-        if (fileParse.parsed.methods.length === 0 && fileParse.linkedUrls.length > 0) {
-          for (const url of fileParse.linkedUrls) {
-            const page = await deps.fetchPage(url, cfg.fetchTimeoutMs)
-            if (!page) continue
-            if (await alreadyParsed(qx, page.hash)) continue
-            const pageParse = await parseText(page.text, deps, cfg)
-            await insertParse(qx, {
-              blobOid: page.hash,
-              sourceKind: 'linked-page',
-              url,
-              parser: pageParse.parser,
-              status: pageParse.status,
-              parsed: pageParse.parsed,
-              linkedUrls: [],
-            })
-            result.linkedPages++
-          }
-        }
       } catch (err) {
         result.failed++
         log.warn({ blobOid: job.blob_oid, errMsg: (err as Error).message }, 'Blob parse failed')
