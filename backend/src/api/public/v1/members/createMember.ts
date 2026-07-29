@@ -54,10 +54,6 @@ export async function createMember(req: Request, res: Response): Promise<void> {
         identities.map((identity) => ({
           ...identity,
           memberId: dbMember.id,
-          value:
-            identity.type === MemberIdentityType.EMAIL
-              ? identity.value.trim().toLowerCase()
-              : identity.value.trim(),
         })),
         true,
         true,

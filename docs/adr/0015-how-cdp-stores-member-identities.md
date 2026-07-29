@@ -3,7 +3,6 @@
 **Date**: 2026-07-28
 **Status**: accepted
 **Deciders**: Yeganathan S
-**Related**: CM-1349
 
 ## Context
 
@@ -20,18 +19,18 @@ Historically, `memberIdentities` uniqueness was defined on raw `value` (case-sen
 
 Lookups used `lower(value)`, but inserts often did not. Data-sink `mergeData` matched with exact `value ===`, so a self-serve lowercase `willsonhg` plus a later GitHub ingest of `WillsonHG` produced two rows for the same identity — often both verified on the same member. Prod had tens of thousands of GitHub case-variant groups.
 
-Ticket CM-1349 proposed soft-deleting / auto-verifying case variants at verification time. That treats a write-path bug as a product special case.
+Soft-deleting or auto-verifying case variants only at verification time would treat a write-path bug as a product special case.
 
 ## Decision
 
 **Mental model**
 
-| Kind | Store | Compare / unique on |
-| --- | --- | --- |
-| username | preferred casing from the source/integration | `lower(value)` |
-| email | always lowercase | `lower(value)` (same as stored) |
+| Kind     | Store                            | Compare / unique on             |
+| -------- | -------------------------------- | ------------------------------- |
+| username | preferred casing from the source | `lower(value)`                  |
+| email    | always lowercase                 | `lower(value)` (same as stored) |
 
-Identity equality in CDP is `(platform, type, lower(value))`. The `value` column keeps what the source sent for usernames; we do not rewrite GitHub `login` casing on ingest.
+Identity equality in CDP is `(platform, type, lower(value))`. Email vs username for storage casing is inferred from the value with `isValidEmail`, not from `type` (git often stores emails as `type=username`). Non-email usernames keep preferred casing from the source.
 
 **Enforcement**
 
@@ -42,7 +41,7 @@ Identity equality in CDP is `(platform, type, lower(value))`. The `value` column
 
 ## Alternatives Considered
 
-### Alternative 1: Soft-delete / auto-verify case variants at identity verification time (CM-1349 as written)
+### Alternative 1: Soft-delete / auto-verify case variants at identity verification time
 
 - **Pros**: Fixes the user-visible self-serve pain quickly; no schema change.
 - **Cons**: Case variants keep being inserted by ingest/enrichment; verify path becomes a mop; duplicates still break uniqueness and analytics.

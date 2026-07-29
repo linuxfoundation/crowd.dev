@@ -46,10 +46,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     throw new NotFoundError('Member not found')
   }
 
-  // Normalize emails to lowercase; keep username preferred casing from the caller.
-  const normalizedValue =
-    data.type === MemberIdentityType.EMAIL ? data.value.trim().toLowerCase() : data.value.trim()
-
   let result!: IMemberIdentity
   let alreadyExisted = false
 
@@ -59,7 +55,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await findMemberIdentitiesByValue(tx, memberId, normalizedValue, {
+        const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
           type: data.type,
         })
         const exactMatch = existing.find((i) => i.platform === data.platform)
@@ -75,7 +71,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
                 {
                   memberId,
                   platform: data.platform,
-                  value: normalizedValue,
+                  value: data.value,
                   type: data.type,
                   source: data.source,
                   verified: data.verified,
@@ -105,7 +101,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
         } catch (error) {
-          const ctx = { platform: data.platform, value: normalizedValue, type: data.type }
+          const ctx = { platform: data.platform, value: data.value, type: data.type }
           rethrowDbConflict(error, ctx)
         }
 
