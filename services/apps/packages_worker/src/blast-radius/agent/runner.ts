@@ -1,9 +1,7 @@
 // @anthropic-ai/claude-agent-sdk ships ESM-only; packages_worker compiles to
 // CommonJS, so it must be loaded via dynamic import rather than a static one.
-
 // Agent runner wrapping Claude Agent SDK with read-only tool restrictions,
 // API key fallback, structured output, and timeout support.
-
 import { getServiceChildLogger } from '@crowd/logging'
 
 const log = getServiceChildLogger('blast-radius-agent-runner')
@@ -57,7 +55,11 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
 
   log.info(
     {
-      authMode: apiKey ? (baseUrl ? 'api-key via base-url override (e.g. LiteLLM)' : 'api-key') : 'fallback on local claude code token',
+      authMode: apiKey
+        ? baseUrl
+          ? 'api-key via base-url override (e.g. LiteLLM)'
+          : 'api-key'
+        : 'fallback on local claude code token',
     },
     'blast-radius agent: auth mode for this run',
   )

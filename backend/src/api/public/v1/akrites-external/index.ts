@@ -12,8 +12,8 @@ import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExte
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
-import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
 import { getBlastRadiusJobBatch } from '../packages/getBlastRadiusJobBatch'
+import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
 import { submitBlastRadiusJob } from '../packages/submitBlastRadiusJob'
 import { submitBlastRadiusJobBatch } from '../packages/submitBlastRadiusJobBatch'
 

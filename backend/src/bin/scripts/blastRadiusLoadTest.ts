@@ -25,7 +25,6 @@
 //   --advisories=FILE    path to a JSON array of {advisoryId, package, ecosystem} —
 //                        jobs round-robin across these instead of all hitting the
 //                        same package (default: a single lodash advisory, repeated)
-
 import { execSync } from 'child_process'
 import * as fs from 'fs'
 
@@ -84,9 +83,7 @@ function applyRunConfig() {
     // cgroup cap above, which docker update can patch live) — they're baked in at
     // container start. Verify the worker already has the value this run wants
     // instead of silently testing against whatever it happened to start with.
-    const actual = sh(
-      `docker exec ${CONTAINER} sh -c 'echo $BLAST_RADIUS_SCAN_CONCURRENCY'`,
-    )
+    const actual = sh(`docker exec ${CONTAINER} sh -c 'echo $BLAST_RADIUS_SCAN_CONCURRENCY'`)
     if (actual !== SCAN_CONCURRENCY) {
       throw new Error(
         `--scanConcurrency=${SCAN_CONCURRENCY} requested but ${CONTAINER} was started with ` +
@@ -114,9 +111,7 @@ function resetRunConfig() {
 
 function sampleContainerStats(): { memUsage: string; cpuPerc: string } | null {
   try {
-    const raw = sh(
-      `docker stats ${CONTAINER} --no-stream --format "{{.MemUsage}}|{{.CPUPerc}}"`,
-    )
+    const raw = sh(`docker stats ${CONTAINER} --no-stream --format "{{.MemUsage}}|{{.CPUPerc}}"`)
     const [memUsage, cpuPerc] = raw.split('|')
     return { memUsage, cpuPerc }
   } catch {
@@ -190,7 +185,9 @@ async function main() {
       }),
     )
 
-    console.log(`[loadtest] submitted ${analysisIds.length} analyses in ${Date.now() - submittedAt}ms`)
+    console.log(
+      `[loadtest] submitted ${analysisIds.length} analyses in ${Date.now() - submittedAt}ms`,
+    )
     console.log(`[loadtest] analysisIds: ${analysisIds.join(', ')}`)
 
     const deadline = Date.now() + TIMEOUT_MS
@@ -229,7 +226,9 @@ async function main() {
         allDone = true
         break
       }
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+      await new Promise((resolve) => {
+        setTimeout(resolve, POLL_INTERVAL_MS)
+      })
     }
 
     if (!allDone) {
@@ -246,7 +245,10 @@ async function main() {
     for (const id of analysisIds) {
       const runs = stageRuns.filter((r: { analysis_id: string }) => r.analysis_id === id)
       const summary = runs
-        .map((r: { stage: string; status: string; error: string | null }) => `${r.stage}=${r.status}${r.error ? ` (${r.error})` : ''}`)
+        .map(
+          (r: { stage: string; status: string; error: string | null }) =>
+            `${r.stage}=${r.status}${r.error ? ` (${r.error})` : ''}`,
+        )
         .join(', ')
       console.log(`${id}: ${summary || 'no stage runs recorded'}`)
     }
@@ -254,7 +256,9 @@ async function main() {
     console.log('\n=== Stage duration stats (ms) ===')
     for (const stage of ['intel', 'dependents', 'reachability', 'report']) {
       const durations = stageRuns
-        .filter((r: { stage: string; status: string }) => r.stage === stage && r.status === 'succeeded')
+        .filter(
+          (r: { stage: string; status: string }) => r.stage === stage && r.status === 'succeeded',
+        )
         .map((r: { duration_ms: number | string }) => Number(r.duration_ms))
       console.log(`${stage}:`, stats(durations))
     }
