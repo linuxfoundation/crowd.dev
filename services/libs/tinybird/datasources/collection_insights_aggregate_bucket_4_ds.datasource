@@ -1,0 +1,16 @@
+DESCRIPTION >
+    - Per-bucket contributor aggregate — bucket 4 only.
+    - Built daily by `collection_insights_aggregate_copy_pipe_4.pipe`.
+    - One row per collection that has activity rows in bucket 4.
+    - Columns:
+      - `collectionSlug`: Collection identifier (String).
+      - `uniqueContributorCount`: Unique contributors in this bucket (UInt64).
+      - `updatedAt`: Update timestamp (DateTime).
+
+SCHEMA >
+    `collectionSlug` String,
+    `uniqueContributorCount` UInt64,
+    `updatedAt` DateTime
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY collectionSlug
