@@ -65,6 +65,7 @@ export interface ParseStageResult {
   template: number
   linkedPages: number
   failed: number
+  llmCostUsd: number
 }
 
 export interface AssembleStageResult {

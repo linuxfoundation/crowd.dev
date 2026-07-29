@@ -56,12 +56,13 @@ async function insertParse(
     status: ParseRowStatus
     parsed: ParsedProtocol
     linkedUrls: string[]
+    costUsd: number | null
   },
 ): Promise<void> {
   await qx.result(
     `INSERT INTO security_policy_parses
-       (blob_oid, source_kind, url, parser, parser_version, status, parsed, linked_urls)
-     VALUES ($(blobOid), $(sourceKind), $(url), $(parser), $(parserVersion), $(status), $(parsed), $(linkedUrls))
+       (blob_oid, source_kind, url, parser, parser_version, status, parsed, linked_urls, llm_cost_usd)
+     VALUES ($(blobOid), $(sourceKind), $(url), $(parser), $(parserVersion), $(status), $(parsed), $(linkedUrls), $(costUsd))
      ON CONFLICT (blob_oid) DO UPDATE SET
        source_kind = EXCLUDED.source_kind,
        url = EXCLUDED.url,
@@ -70,6 +71,7 @@ async function insertParse(
        status = EXCLUDED.status,
        parsed = EXCLUDED.parsed,
        linked_urls = EXCLUDED.linked_urls,
+       llm_cost_usd = EXCLUDED.llm_cost_usd,
        parsed_at = NOW()`,
     { ...row, parsed: JSON.stringify(row.parsed), parserVersion: PARSER_VERSION },
   )
@@ -102,6 +104,7 @@ async function parseText(
   status: ParseRowStatus
   parsed: ParsedProtocol
   linkedUrls: string[]
+  costUsd: number | null
 }> {
   const verdict = classifySecurityPolicy(text)
   if (verdict.clean) {
@@ -110,6 +113,7 @@ async function parseText(
       status: verdict.isTemplate ? 'template' : 'ok',
       parsed: { methods: verdict.methods, guidelines: null },
       linkedUrls: verdict.linkedUrls,
+      costUsd: null,
     }
   }
   if (verdict.pointerOnly) {
@@ -118,22 +122,30 @@ async function parseText(
       status: 'ok',
       parsed: { methods: verdict.methods, guidelines: null },
       linkedUrls: verdict.linkedUrls,
+      costUsd: null,
     }
   }
-  const llmParsed = await deps.llmExtract(text, {
+  const { parsed: llmParsed, costUsd } = await deps.llmExtract(text, {
     modelId: cfg.llmModelId,
     timeoutMs: cfg.llmTimeoutMs,
     accessKeyId: cfg.llmAccessKeyId,
     secretAccessKey: cfg.llmSecretAccessKey,
   })
   if (llmParsed && validateParsedProtocol(llmParsed, text).ok) {
-    return { parser: 'llm', status: 'ok', parsed: llmParsed, linkedUrls: verdict.linkedUrls }
+    return {
+      parser: 'llm',
+      status: 'ok',
+      parsed: llmParsed,
+      linkedUrls: verdict.linkedUrls,
+      costUsd,
+    }
   }
   return {
     parser: 'llm',
     status: 'degraded',
     parsed: { methods: verdict.methods, guidelines: null },
     linkedUrls: verdict.linkedUrls,
+    costUsd,
   }
 }
 
@@ -172,8 +184,10 @@ async function processLinkedPages(
       status: pageParse.status,
       parsed: pageParse.parsed,
       linkedUrls: [],
+      costUsd: pageParse.costUsd,
     })
     result.linkedPages++
+    if (pageParse.costUsd !== null) result.llmCostUsd += pageParse.costUsd
   }
   return { anyFailure }
 }
@@ -192,6 +206,7 @@ export async function runParseStage(
     template: 0,
     linkedPages: 0,
     failed: 0,
+    llmCostUsd: 0,
   }
 
   const limitLlm = createLimiter(Math.max(1, cfg.llmConcurrency))
@@ -245,6 +260,7 @@ export async function runParseStage(
         result[fileParse.parser === 'deterministic' ? 'deterministic' : 'llm']++
         if (fileParse.status === 'degraded') result.degraded++
         if (fileParse.status === 'template') result.template++
+        if (fileParse.costUsd !== null) result.llmCostUsd += fileParse.costUsd
       } catch (err) {
         result.failed++
         log.warn({ blobOid: job.blob_oid, errMsg: (err as Error).message }, 'Blob parse failed')
