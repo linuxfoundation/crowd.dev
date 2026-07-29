@@ -130,22 +130,34 @@ export function assembleProtocol(input: AssembleInput): AssembledProtocol {
 
   const declared = declaredMethods.length > 0
 
-  let finalMethods = declaredMethods
-  if (!declared) {
-    finalMethods = input.fallbackContacts
-      .filter((c) => FALLBACK_CHANNEL_MAP[c.channel])
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((c) => ({
-        type: FALLBACK_CHANNEL_MAP[c.channel],
-        status: 'fallback' as const,
-        endpoint: c.value,
-        condition: null,
-        confidence: 'inferred' as const,
-        provenance: { channel: c.channel },
-      }))
-    if (finalMethods.length > 0) sources.push({ table: 'security_contacts' })
+  // security_contacts are always merged in as inferred fallback methods, not
+  // just when nothing is declared — the record is the full list of ways to
+  // reach out. Dedupe against declared endpoints so a contact that already
+  // appears as a declared method is not repeated at lower confidence.
+  const declaredKeys = new Set(
+    declaredMethods.map((m) => `${m.type}:${m.endpoint.toLowerCase()}`),
+  )
+  const inferredMethods: ProtocolMethod[] = []
+  for (const c of input.fallbackContacts
+    .filter((c) => FALLBACK_CHANNEL_MAP[c.channel])
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)) {
+    const type = FALLBACK_CHANNEL_MAP[c.channel]
+    const key = `${type}:${c.value.toLowerCase()}`
+    if (declaredKeys.has(key)) continue
+    declaredKeys.add(key)
+    inferredMethods.push({
+      type,
+      status: 'fallback',
+      endpoint: c.value,
+      condition: null,
+      confidence: 'inferred',
+      provenance: { channel: c.channel },
+    })
   }
+  if (inferredMethods.length > 0) sources.push({ table: 'security_contacts' })
+
+  let finalMethods = [...declaredMethods, ...inferredMethods]
 
   let preferredSeen = false
   for (const m of finalMethods) {
