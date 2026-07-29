@@ -1,0 +1,41 @@
+DESCRIPTION >
+    On-demand backfill/bootstrap for curated-collection bucket 9 - populates
+    activityRelations_collection_bucket_MV_ds_9 from the full historical activityRelations
+    table via the same fan-out/curated-filter logic as the steady-state MV. Mirrors
+    activityRelations_bucket_MV_snapshot_9.pipe's role in the project-bucketing "Adding New
+    Buckets" playbook. Run once manually after deploy to backfill history; the steady-state MV
+    (activityRelations_collection_bucket_MV_9.pipe) then keeps it current on new inserts.
+    Run with bucket_id (0..num_buckets-1) and num_buckets (default 5) to process a subset of
+    segments at a time, avoiding long-running/overloaded jobs on the full historical scan -
+    mirrors pull_request_analysis_initial_snapshot.pipe's chunking pattern.
+
+NODE curated_collection_slugs_snapshot_9
+SQL >
+    SELECT slug FROM collections FINAL WHERE isNull (deletedAt) AND isNull (ssoUserId)
+
+NODE collection_fanout_snapshot_9
+SQL >
+    %
+    SELECT a.*, arrayJoin(p.collectionsSlugs) AS collectionSlug
+    FROM activityRelations a
+    LEFT JOIN insights_projects_populated_ds p ON p.segmentId = a.segmentId
+    WHERE
+        collectionSlug IN (SELECT slug FROM curated_collection_slugs_snapshot_9)
+        AND cityHash64(collectionSlug) % 10 = 9
+        {% if defined(bucket_id) %}
+            AND cityHash64(a.segmentId)
+            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+            = {{
+                UInt8(
+                    bucket_id,
+                    0,
+                    description="Bucket index to process (0 to num_buckets-1)",
+                    required=False,
+                )
+            }}
+        {% end %}
+
+TYPE COPY
+TARGET_DATASOURCE activityRelations_collection_bucket_MV_ds_9
+COPY_MODE append
+COPY_SCHEDULE @on-demand

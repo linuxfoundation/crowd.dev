@@ -6,7 +6,7 @@ DESCRIPTION >
     - Parameters:
     - `project`: String for project slug (e.g., 'k8s', 'tensorflow'). Passed to `segments_filtered`. Required unless `collectionSlug` is given.
     - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
-    Collection requests read from `activityRelations_deduplicated_cleaned_bucket_union` (all 10 buckets) instead
+    Collection requests read from `activityRelations_collection_bucket_union` (all 10 collection-scoped buckets) instead
     of `activityRelations_bucket_routing` (a single bucket, defaulting to bucket 0 when `bucketId` is not
     injected), since a collection's member projects' segments can be routed to any of the 10 buckets - same
     pattern as `activities_filtered.pipe`.
@@ -22,7 +22,7 @@ SQL >
     %
     SELECT DISTINCT a.type as activityType, a.platform, at.label
     FROM
-        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% if defined(collectionSlug) %} activityRelations_collection_bucket_union
         {% else %} activityRelations_bucket_routing
         {% end %} a
     INNER JOIN activityTypes at ON a.type = at.activityType AND a.platform = at.platform

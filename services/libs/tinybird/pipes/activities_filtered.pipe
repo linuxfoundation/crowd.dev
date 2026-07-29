@@ -20,12 +20,14 @@ DESCRIPTION >
     - This pipe is consumed by many of downstream pipes and widgets across the platform for consistent activity filtering.
     - Performance is optimized through proper sorting keys on `segmentId`, `timestamp`, `type`, `platform`, and `memberId` in the source datasource.
 
+TOKEN "insights-app-token" READ
+
 NODE activities_filtered_bucket_routing
 SQL >
     %
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
     FROM
-        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% if defined(collectionSlug) %} activityRelations_collection_bucket_union
         {% else %} activityRelations_bucket_routing
         {% end %} as a
     where

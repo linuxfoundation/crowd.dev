@@ -24,7 +24,7 @@ SQL >
     %
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
     FROM
-        {% if defined(collectionSlug) %} activityRelations_deduplicated_cleaned_bucket_union
+        {% if defined(collectionSlug) %} activityRelations_collection_bucket_union
         {% else %} activityRelations_bucket_routing
         {% end %} as a
     where
