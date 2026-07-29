@@ -112,6 +112,14 @@ async function parseText(
       linkedUrls: verdict.linkedUrls,
     }
   }
+  if (verdict.pointerOnly) {
+    return {
+      parser: 'deterministic',
+      status: 'ok',
+      parsed: { methods: verdict.methods, guidelines: null },
+      linkedUrls: verdict.linkedUrls,
+    }
+  }
   const llmParsed = await deps.llmExtract(text, {
     modelId: cfg.llmModelId,
     timeoutMs: cfg.llmTimeoutMs,

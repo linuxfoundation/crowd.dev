@@ -25,6 +25,8 @@ const DEFAULT_TEMPLATE_RE =
 const GITHUB_PROFILE_RE = /^https?:\/\/(?:www\.)?github\.com\/[^/]+\/?$/i
 const ISSUE_TRACKER_RE = /github\.com\/[^/]+\/[^/]+\/issues/i
 
+const POINTER_TEXT_MAX_CHARS = 200
+
 interface Hit {
   method: ParsedMethod
   line: string
@@ -108,9 +110,14 @@ export function classifySecurityPolicy(text: string): ClassifierVerdict {
     clean = true
   }
 
+  const residual = text.replace(URL_RE, ' ').replace(/\s+/g, ' ').trim()
+  const pointerOnly =
+    hits.length === 0 && linkedUrls.length > 0 && residual.length <= POINTER_TEXT_MAX_CHARS
+
   return {
     clean,
     isTemplate,
+    pointerOnly,
     methods: hits.map((h) => h.method),
     linkedUrls,
   }

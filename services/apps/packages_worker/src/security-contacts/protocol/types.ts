@@ -33,6 +33,7 @@ export type ParseRowStatus = 'ok' | 'template' | 'degraded'
 export interface ClassifierVerdict {
   clean: boolean
   isTemplate: boolean
+  pointerOnly: boolean
   methods: ParsedMethod[]
   linkedUrls: string[]
 }
