@@ -22,21 +22,7 @@ SQL >
     %
     SELECT DISTINCT a.type as activityType, a.platform, at.label
     FROM
-        {% if defined(collectionSlug) %}
-            (
-                SELECT *
-                FROM activityRelations_collection_bucket_union
-                UNION ALL
-                SELECT a.*
-                FROM activityRelations_deduplicated_cleaned_ds a
-                WHERE
-                    a.collectionSlug = {{ String(collectionSlug, required=True) }}
-                    AND a.collectionSlug NOT IN (
-                        SELECT slug
-                        FROM collections FINAL
-                        WHERE isNull (deletedAt) AND isNull (ssoUserId)
-                    )
-            )
+        {% if defined(collectionSlug) %} activityRelations_collection_bucket_union
         {% else %} activityRelations_bucket_routing
         {% end %} a
     INNER JOIN activityTypes at ON a.type = at.activityType AND a.platform = at.platform

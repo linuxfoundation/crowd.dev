@@ -24,21 +24,7 @@ SQL >
     %
     SELECT activityId as id, timestamp, type, platform, memberId, organizationId, segmentId
     FROM
-        {% if defined(collectionSlug) %}
-            (
-                SELECT *
-                FROM activityRelations_collection_bucket_union
-                UNION ALL
-                SELECT a.*
-                FROM activityRelations_deduplicated_cleaned_ds a
-                WHERE
-                    a.collectionSlug = {{ String(collectionSlug, required=True) }}
-                    AND a.collectionSlug NOT IN (
-                        SELECT slug
-                        FROM collections FINAL
-                        WHERE isNull (deletedAt) AND isNull (ssoUserId)
-                    )
-            )
+        {% if defined(collectionSlug) %} activityRelations_collection_bucket_union
         {% else %} activityRelations_bucket_routing
         {% end %} as a
     where
