@@ -63,3 +63,4 @@ export {
   blastRadiusReachability,
   blastRadiusReport,
 } from './blast-radius/activities'
+export { slackNotify } from './activities/index'

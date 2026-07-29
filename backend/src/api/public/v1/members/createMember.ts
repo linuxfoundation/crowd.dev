@@ -54,7 +54,6 @@ export async function createMember(req: Request, res: Response): Promise<void> {
         identities.map((identity) => ({
           ...identity,
           memberId: dbMember.id,
-          value: identity.value.trim().toLowerCase(),
         })),
         true,
         true,

@@ -28,7 +28,6 @@ SCHEMA >
     `organizationName` String,
     `snapshotId` DateTime
 
-ENGINE ReplacingMergeTree
-ENGINE_PARTITION_KEY toYYYYMM(snapshotId)
-ENGINE_SORTING_KEY snapshotId, segmentId, timestamp, type, platform, channel, sourceId
-ENGINE_TTL toDateTime(snapshotId) + toIntervalDay(3)
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYear(timestamp)
+ENGINE_SORTING_KEY segmentId, timestamp, type, platform, memberId, organizationId

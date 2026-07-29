@@ -2,12 +2,67 @@ import merge from 'lodash.merge'
 import ldSum from 'lodash.sum'
 
 import {
+  MemberIdentityType,
   MemberOrganizationDateInput,
   MemberOrganizationDateRange,
   OrganizationSource,
 } from '@crowd/types'
 
+import { isValidEmail } from './email'
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+export function isSameMemberIdentity(
+  a: { platform: string; type: string; value: string },
+  b: { platform: string; type: string; value: string },
+): boolean {
+  return (
+    a.platform === b.platform &&
+    a.type === b.type &&
+    a.value.trim().toLowerCase() === b.value.trim().toLowerCase()
+  )
+}
+
+/** Email-shaped → lowercase; otherwise trim and keep preferred casing. */
+export function normalizeMemberIdentityValue(value: string): string {
+  const trimmed = value.trim()
+  const lower = trimmed.toLowerCase()
+  return isValidEmail(lower) ? lower : trimmed
+}
+
+/** Normalize values, drop empties, dedupe by (platform, type, lower(value)) preferring verified. */
+export function normalizeMemberIdentities<
+  T extends { platform: string; type: string; value: string; verified?: boolean },
+>(identities: T[], options: { dropInvalidEmails?: boolean } = {}): T[] {
+  const seen = new Map<string, T>()
+
+  for (const identity of identities) {
+    if (!identity.value?.trim()) {
+      continue
+    }
+
+    const normalized = {
+      ...identity,
+      value: normalizeMemberIdentityValue(identity.value),
+    }
+
+    if (
+      options.dropInvalidEmails &&
+      normalized.type === MemberIdentityType.EMAIL &&
+      !isValidEmail(normalized.value)
+    ) {
+      continue
+    }
+
+    const key = `${normalized.platform}:${normalized.type}:${normalized.value.toLowerCase()}`
+    const existing = seen.get(key)
+    if (!existing || (!existing.verified && normalized.verified)) {
+      seen.set(key, normalized)
+    }
+  }
+
+  return Array.from(seen.values())
+}
 
 export async function setAttributesDefaultValues(
   attributes: Record<string, unknown>,
