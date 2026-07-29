@@ -43,18 +43,7 @@ export function v1Router(): Router {
   router.use('/ossprey', oauth2Middleware(AUTH0_CONFIG), osspreyRouter())
 
   router.use('/akrites', oauth2Middleware(AUTH0_CONFIG), akritesRouter())
-  // LOCAL-BYPASS-TODO-REVERT: real Auth0 check commented out for a local blast-radius
-  // e2e load test (no easy way to mint a token locally). Restore the line below and
-  // delete the stub before this ever reaches a shared/prod branch.
-  // router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
-  router.use(
-    '/akrites-external',
-    (req, _res, next) => {
-      req.actor = { id: 'local-load-test', type: 'service', scopes: Object.values(SCOPES) }
-      next()
-    },
-    akritesExternalRouter(),
-  )
+  router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
 
   router.use(() => {
     throw new NotFoundError()
