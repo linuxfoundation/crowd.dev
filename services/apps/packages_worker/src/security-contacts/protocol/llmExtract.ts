@@ -108,7 +108,10 @@ function clientFor(cfg: LlmExtractConfig, region: string): BedrockRuntimeClient 
 function usageCostUsd(body: unknown): number | null {
   const usage = (body as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage
   if (!usage) return null
-  return (usage.input_tokens ?? 0) * USD_PER_INPUT_TOKEN + (usage.output_tokens ?? 0) * USD_PER_OUTPUT_TOKEN
+  return (
+    (usage.input_tokens ?? 0) * USD_PER_INPUT_TOKEN +
+    (usage.output_tokens ?? 0) * USD_PER_OUTPUT_TOKEN
+  )
 }
 
 export async function llmExtractProtocol(

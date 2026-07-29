@@ -134,9 +134,7 @@ export function assembleProtocol(input: AssembleInput): AssembledProtocol {
   // just when nothing is declared — the record is the full list of ways to
   // reach out. Dedupe against declared endpoints so a contact that already
   // appears as a declared method is not repeated at lower confidence.
-  const declaredKeys = new Set(
-    declaredMethods.map((m) => `${m.type}:${m.endpoint.toLowerCase()}`),
-  )
+  const declaredKeys = new Set(declaredMethods.map((m) => `${m.type}:${m.endpoint.toLowerCase()}`))
   const inferredMethods: ProtocolMethod[] = []
   for (const c of input.fallbackContacts
     .filter((c) => FALLBACK_CHANNEL_MAP[c.channel])
