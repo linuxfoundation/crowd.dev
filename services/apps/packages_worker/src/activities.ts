@@ -52,6 +52,8 @@ export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubyge
 export {
   processSecurityContactsBatch,
   ingestSecurityContactsForPurlActivity,
+  runProtocolParseBatch,
+  runProtocolAssembleBatch,
 } from './security-contacts/activities'
 export {
   blastRadiusStart,
