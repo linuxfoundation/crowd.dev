@@ -16,7 +16,7 @@ const config: Config = {
 
 const options: Options = {
   postgres: { enabled: false }, // packages-db is managed via getPackagesDb()
-  maxConcurrentActivityTaskExecutions: 8,
+  maxConcurrentActivityTaskExecutions: 16,
 }
 
 const svc = new ServiceWorker(config, options)

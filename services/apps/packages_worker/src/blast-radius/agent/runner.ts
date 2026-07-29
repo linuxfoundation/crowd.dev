@@ -4,6 +4,10 @@
 // Agent runner wrapping Claude Agent SDK with read-only tool restrictions,
 // API key fallback, structured output, and timeout support.
 
+import { getServiceChildLogger } from '@crowd/logging'
+
+const log = getServiceChildLogger('blast-radius-agent-runner')
+
 export interface AgentRunResult {
   structuredOutput: Record<string, unknown> | null
   isError: boolean
@@ -50,6 +54,13 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
         ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
       }
     : undefined
+
+  log.info(
+    {
+      authMode: apiKey ? (baseUrl ? 'api-key via base-url override (e.g. LiteLLM)' : 'api-key') : 'fallback on local claude code token',
+    },
+    'blast-radius agent: auth mode for this run',
+  )
 
   // Setup timeout via AbortController
   const controller = new AbortController()

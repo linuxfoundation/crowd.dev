@@ -14,11 +14,15 @@ import {
 } from '../agent/prompts'
 import { runAnalysisAgent } from '../agent/runner'
 import { downloadAndExtractTarball } from '../clients/npmTarball'
+import { forEachWithConcurrency } from '../dependentsScan'
 
 const mkdtemp = promisify(fs.mkdtemp)
 
 const MAX_ATTEMPTS = 3
 const RETRY_BACKOFF_BASE = 15_000 // 15 seconds
+// Tunable for load testing, same pattern as BLAST_RADIUS_SCAN_CONCURRENCY for phase 1/2 —
+// default matches the previous hardcoded value.
+const REACHABILITY_CONCURRENCY = Number(process.env.BLAST_RADIUS_REACHABILITY_CONCURRENCY) || 4
 
 // blastRadiusDal.getSymbolSpec returns the raw DB row (JSONB columns as
 // unknown); prompts.ts's SymbolSpec is the shape the reachability prompt
@@ -67,10 +71,6 @@ export async function runReachabilityStage(
     const spec = toPromptSymbolSpec(specRow)
 
     const dependents = await blastRadiusDal.getDependentsNeedingVerdict(qx, analysisId)
-
-    // Process with concurrency limit (4)
-    const concurrency = 4
-    const queue = [...dependents]
 
     const upsertErrorVerdict = (
       dependentId: string,
@@ -192,11 +192,11 @@ export async function runReachabilityStage(
       }
     }
 
-    // Process queue with concurrency limit
-    while (queue.length > 0) {
-      const batch = queue.splice(0, concurrency)
-      await Promise.all(batch.map(processOne))
-    }
+    // Bounded-concurrency pool instead of fixed batches — a worker picks up the next
+    // dependent as soon as it's free, instead of idling until the slowest item in its
+    // batch finishes (batching wastes slots when dependents' processing times vary,
+    // e.g. one slow agent retry loop stalling 3 otherwise-free slots).
+    await forEachWithConcurrency(dependents, REACHABILITY_CONCURRENCY, processOne)
 
     // Sum cost from persisted verdicts rather than tracking it locally — a resumed
     // run only processes dependents still missing a verdict, so a local counter would

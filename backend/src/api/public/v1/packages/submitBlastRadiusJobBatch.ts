@@ -87,9 +87,16 @@ async function submitOneJob(
     })
   } catch (err) {
     // Unlike the single-job submit, this does not rethrow — one job's workflow
-    // failing to start must not take the rest of the batch down with it.
+    // failing to start must not take the rest of the batch down with it. Same
+    // reasoning applies to failAnalysis itself: if marking the row failed also
+    // fails (e.g. transient DB error), that must not reject this job's promise
+    // and take Promise.all (and the whole batch response) down with it.
     const errorMessage = err instanceof Error ? err.message : String(err)
-    await blastRadiusDal.failAnalysis(qx, analysisInput, errorMessage)
+    try {
+      await blastRadiusDal.failAnalysis(qx, analysisInput, errorMessage)
+    } catch {
+      // best-effort — the job's entry below still reports status: 'failed'
+    }
 
     return {
       analysisId,

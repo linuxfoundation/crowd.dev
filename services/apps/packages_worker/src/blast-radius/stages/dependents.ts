@@ -8,6 +8,7 @@ export async function runDependentsStage(
   qx: QueryExecutor,
   analysisId: string,
   onProgress?: () => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const startTime = Date.now()
 
@@ -51,6 +52,7 @@ export async function runDependentsStage(
       vulnerableVersions,
       topN: 25,
       onProgress,
+      signal,
     })
 
     // Resolve package_id for the analyzed set only (max topN=25) — these are the ones

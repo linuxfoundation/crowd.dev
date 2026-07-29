@@ -1,5 +1,6 @@
 import type { Dispatcher } from 'undici'
 
+import { combineSignals } from './signals'
 import type { FetchError } from './types'
 
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
@@ -40,6 +41,7 @@ export async function fetchBulkPointRange(
   start: string,
   end: string,
   dispatcher?: Dispatcher,
+  signal?: AbortSignal,
 ): Promise<BulkPointRangeResult | FetchError> {
   if (names.length > 128)
     throw new Error(`fetchBulkPointRange: too many names (${names.length} > 128)`)
@@ -48,7 +50,7 @@ export async function fetchBulkPointRange(
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, downloadInit(dispatcher, abort.signal))
+    res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
   } finally {
@@ -100,13 +102,14 @@ export async function fetchPointRange(
   start: string,
   end: string,
   dispatcher?: Dispatcher,
+  signal?: AbortSignal,
 ): Promise<PointRangeResult | FetchError> {
   const url = `https://api.npmjs.org/downloads/point/${start}:${end}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, downloadInit(dispatcher, abort.signal))
+    res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }
   } finally {
