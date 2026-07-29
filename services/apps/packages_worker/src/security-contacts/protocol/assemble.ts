@@ -7,6 +7,7 @@ import {
   ProtocolMethod,
   ProtocolMethodType,
 } from './types'
+import { SENTINEL_ENDPOINT_BY_TYPE } from './validate'
 
 export interface AssembleInput {
   repoUrl: string
@@ -58,13 +59,27 @@ export function assembleProtocol(input: AssembleInput): AssembledProtocol {
     methods.push(m)
   }
 
+  // Rewrite sentinel endpoints to actionable URLs. github-pvr always resolves
+  // from the repo URL; security-txt resolves from repos.security_txt_url when
+  // known — a bare "security.txt" mention with no discoverable URL is dropped
+  // rather than emitted as a non-actionable endpoint.
+  const resolveEndpoint = (m: { type: ProtocolMethodType; endpoint: string }): string | null => {
+    if (m.type === 'github-pvr') return pvrAdvisoryUrl(input.repoUrl)
+    if (m.type === 'security-txt' && m.endpoint === SENTINEL_ENDPOINT_BY_TYPE['security-txt']) {
+      return input.securityTxtUrl
+    }
+    return m.endpoint
+  }
+
   for (const fp of input.fileParses) {
     if (fp.status === 'degraded') continue
     sources.push({ path: fp.path, blobOid: fp.blobOid, parser: fp.parser })
     for (const m of fp.parsed.methods) {
+      const endpoint = resolveEndpoint(m)
+      if (endpoint === null) continue
       push({
         ...m,
-        endpoint: m.type === 'github-pvr' ? pvrAdvisoryUrl(input.repoUrl) : m.endpoint,
+        endpoint,
         confidence: 'declared',
         provenance: { path: fp.path, blobOid: fp.blobOid, parser: fp.parser },
       })
@@ -74,9 +89,11 @@ export function assembleProtocol(input: AssembleInput): AssembledProtocol {
     if (pp.status === 'degraded') continue
     sources.push({ url: pp.url, blobOid: pp.hash, parser: pp.parser })
     for (const m of pp.parsed.methods) {
+      const endpoint = resolveEndpoint(m)
+      if (endpoint === null) continue
       push({
         ...m,
-        endpoint: m.type === 'github-pvr' ? pvrAdvisoryUrl(input.repoUrl) : m.endpoint,
+        endpoint,
         confidence: 'declared',
         provenance: { url: pp.url, blobOid: pp.hash, parser: pp.parser },
       })

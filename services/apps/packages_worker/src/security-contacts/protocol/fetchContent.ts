@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { lookup } from 'node:dns/promises'
 
 import { parseGithubUrl } from '../../enricher/fetchLightRepo'
 import type { githubApiGet } from '../githubToken'
@@ -35,8 +36,8 @@ export async function fetchBlob(
 
 export function htmlToText(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script\s*>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style\s*>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style\b[^>]*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -62,6 +63,16 @@ function isPrivateIpv4(host: string): boolean {
   )
 }
 
+function isBlockedIpv6(addr: string): boolean {
+  const a = addr.toLowerCase()
+  if (a === '::1' || a === '::') return true
+  const mapped = a.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
+  if (mapped) return isPrivateIpv4(mapped[1])
+  if (/^f[cd][0-9a-f]{2}:/.test(a)) return true // fc00::/7 unique-local
+  if (/^fe[89ab][0-9a-f]:/.test(a)) return true // fe80::/10 link-local
+  return false
+}
+
 export function isBlockedUrl(raw: string): boolean {
   let url: URL
   try {
@@ -77,10 +88,36 @@ export function isBlockedUrl(raw: string): boolean {
   return false
 }
 
+// The static isBlockedUrl check only rejects literal private IPs; a public
+// hostname whose DNS record points at 127.0.0.1, RFC1918, or a metadata
+// address slips through. Resolve every hop and validate the answers before
+// connecting. This narrows but does not fully close the DNS-rebinding window
+// (fetch resolves again internally); acceptable for a daily internal batch
+// worker fetching public policy pages.
+async function resolvesToBlockedAddress(host: string): Promise<boolean> {
+  let addrs: Array<{ address: string; family: number }>
+  try {
+    addrs = await lookup(host, { all: true })
+  } catch {
+    return true
+  }
+  if (addrs.length === 0) return true
+  return addrs.some(({ address, family }) =>
+    family === 6 ? isBlockedIpv6(address) : isPrivateIpv4(address),
+  )
+}
+
+async function isRequestBlocked(raw: string): Promise<boolean> {
+  if (isBlockedUrl(raw)) return true
+  const host = new URL(raw).hostname
+  if (IPV4_RE.test(host)) return false // public IPv4 literal already validated
+  return resolvesToBlockedAddress(host)
+}
+
 async function fetchGuarded(url: string, signal: AbortSignal): Promise<Response | null> {
   let current = url
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (isBlockedUrl(current)) return null
+    if (await isRequestBlocked(current)) return null
     const res = await fetch(current, {
       signal,
       headers: { 'User-Agent': 'crowd.dev-reporting-protocol' },

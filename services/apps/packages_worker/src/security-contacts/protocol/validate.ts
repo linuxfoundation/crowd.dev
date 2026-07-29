@@ -9,7 +9,7 @@ const METHOD_TYPES = new Set([
   'mailing-list',
 ])
 const METHOD_STATUSES = new Set(['preferred', 'accepted', 'fallback', 'prohibited'])
-const SENTINEL_ENDPOINT_BY_TYPE: Record<string, string> = {
+export const SENTINEL_ENDPOINT_BY_TYPE: Record<string, string> = {
   'github-pvr': 'github-pvr',
   'security-txt': 'security.txt',
 }
