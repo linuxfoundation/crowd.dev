@@ -485,7 +485,7 @@ export async function createOrUpdateRelations(
                 `
           SELECT "memberId"
           FROM "memberIdentities"
-          WHERE value = $(value)
+          WHERE lower(value) = lower($(value))
             and platform = $(platform)
             and verified = true
             and "deletedAt" is null
@@ -594,7 +594,7 @@ export async function createOrUpdateRelations(
             `
         SELECT "memberId"
         FROM "memberIdentities"
-        WHERE value = $(value)
+        WHERE lower(value) = lower($(value))
           and platform = $(platform)
           and verified = true
           and "deletedAt" is null

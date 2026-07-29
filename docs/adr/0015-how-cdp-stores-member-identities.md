@@ -3,86 +3,73 @@
 **Date**: 2026-07-28
 **Status**: accepted
 **Deciders**: Yeganathan S
-**Related**: CM-1349
 
 ## Context
 
-CDP treats member identities as case-insensitive when resolving people (`lower(value)` in lookups and many DAL queries), which matches how major platforms behave:
+Member identities in CDP come from many sources (integrations, enrichment, UI, public APIs). The same logical identity often arrives with different casing — for example GitHub’s `login` is case-preserving in the API but case-insensitive for account uniqueness.
 
-- **GitHub / GitLab**: usernames are case-insensitive for uniqueness, but case-preserving for display (`WillsonHG` and `willsonhg` are the same account; APIs return preferred casing).
-- **Discord** (new usernames): forced lowercase.
-- **Email**: stored and compared lowercase in practice.
+CDP already resolves people with case-insensitive lookups (`lower(value)`). Uniqueness and some write paths historically used raw `value`, so the same identity could be stored more than once under different casings. Lookups, merges, and verification then disagree about whether two rows are “the same.”
 
-Historically, `memberIdentities` uniqueness was defined on raw `value` (case-sensitive):
-
-- `uix_memberIdentities_memberId_platform_value_type`
-- `uix_memberIdentities_platform_value_type_verified`
-
-Lookups used `lower(value)`, but inserts often did not. Data-sink `mergeData` matched with exact `value ===`, so a self-serve lowercase `willsonhg` plus a later GitHub ingest of `WillsonHG` produced two rows for the same identity — often both verified on the same member. Prod had tens of thousands of GitHub case-variant groups.
-
-Ticket CM-1349 proposed soft-deleting / auto-verifying case variants at verification time. That treats a write-path bug as a product special case.
+We need a single, durable rule for what we store and what counts as the same identity — aligned with how the platforms we integrate with actually work.
 
 ## Decision
 
-**Mental model**
+Identity equality in CDP is `(platform, type, lower(value))`.
 
-| Kind     | Store                                        | Compare / unique on             |
-| -------- | -------------------------------------------- | ------------------------------- |
-| username | preferred casing from the source/integration | `lower(value)`                  |
-| email    | always lowercase                             | `lower(value)` (same as stored) |
+| Kind     | Store in `value`                             | Compare / unique on |
+| -------- | -------------------------------------------- | ------------------- |
+| username | preferred casing from the source/integration | `lower(value)`      |
+| email    | always lowercase                             | `lower(value)`      |
 
-Identity equality in CDP is `(platform, type, lower(value))`. Email vs username for storage casing is inferred from the value with `isValidEmail`, not from `type` (git often stores emails as `type=username`). Non-email usernames keep preferred casing from the source.
+Whether a value is stored as an email (lowercased) vs a username (preferred casing) is inferred from the string with `isValidEmail`, not only from `type` — some sources (notably git) store email addresses with `type = username`.
 
-**Enforcement**
+### Conventions
 
-1. **Write paths** match and upsert with case-insensitive equality (`isSameMemberIdentity` / `lower(value)`). Do not insert a second row that only differs by casing.
-2. **DB uniqueness** uses expression unique indexes on `lower(value)` (partial on `deletedAt is null`, and verified-only for the global verified owner index). See migration `V1785255019__member_identities_case_insensitive_unique_indexes.sql`.
-3. **Existing duplicates** are cleaned with a one-time script before the unique indexes can be applied: same-member case variants → keep one (prefer verified + `verifiedBy`, else most recent integration casing) and soft-delete the rest; cross-member unverified variants of a verified identity → soft-delete the unverified; both verified across members → merge / existing capitalization-merge workflows, not blind soft-delete.
-4. **Verification** does not need special “soft-delete case siblings” logic once the invariant holds — verifying finds the one row.
+1. **Do not invent casing** — for non-email usernames, persist what the source sent (after trim). Do not force lowercase on GitHub/GitLab-style handles.
+2. **Do not insert case variants** — if a row already exists for the same `(platform, type, lower(value))`, update or no-op; never insert a second row that only differs by casing.
+3. **App equality matches DB equality** — use `isSameMemberIdentity` (or equivalent `lower(value)` comparisons) on write and merge paths. `type` stays in the equality key even when a git `username` holds an email-shaped string.
+4. **DB enforces the invariant** — unique indexes on `lower(value)` (per member for all active identities; globally for verified identities). Schema detail: migration `V1785255019__member_identities_case_insensitive_unique_indexes.sql`.
 
 ## Alternatives Considered
 
-### Alternative 1: Soft-delete / auto-verify case variants at identity verification time (CM-1349 as written)
+### Alternative 1: Always store usernames lowercase
 
-- **Pros**: Fixes the user-visible self-serve pain quickly; no schema change.
-- **Cons**: Case variants keep being inserted by ingest/enrichment; verify path becomes a mop; duplicates still break uniqueness and analytics.
-- **Why not**: Papers over the root cause. If case variants should not exist, stop creating them and clean existing data.
+- **Pros**: Simplest storage; uniqueness can stay on raw `value`.
+- **Cons**: Discards preferred casing from GitHub/GitLab; CDP display and support diverge from the source platform.
+- **Why not**: We want GitHub-style case-preserving storage. Sameness belongs on `lower(value)`, not on rewriting the handle.
 
-### Alternative 2: Always store usernames lowercase (like emails / Discord)
+### Alternative 2: Case-sensitive storage and uniqueness (raw `value` only)
 
-- **Pros**: Simplest storage; uniqueness on `value` works without expression indexes.
-- **Cons**: Throws away GitHub/GitLab preferred casing; diverges from source payloads; confuses display and support (“CDP shows lowercase but GitHub shows mixed”).
-- **Why not**: We want GitHub-style case-preserving storage. Uniqueness belongs on `lower(value)`, not on mutating the stored handle.
+- **Pros**: Matches naive string equality; no expression indexes.
+- **Cons**: Conflicts with how platforms define accounts and with how CDP already looks identities up; duplicate rows for the same person identity are inevitable.
+- **Why not**: That mismatch is the problem this decision closes.
 
-### Alternative 3: Keep case-sensitive unique indexes; only fix app-layer matching
+### Alternative 3: Case-insensitive matching in application code only
 
-- **Pros**: No migration; no cleanup required to change indexes.
-- **Cons**: App bugs or races can still insert case variants; DB does not enforce the domain invariant.
-- **Why not**: At this scale, durable invariants need to live in the database, not only in callers.
+- **Pros**: No schema change.
+- **Cons**: Any missed caller or race can still insert case variants; the database does not protect the invariant.
+- **Why not**: At CDP scale, identity uniqueness must be enforced in the database as well as in callers.
 
-### Alternative 4: Update stored casing on every ingest when preferred casing differs
+### Alternative 4: Refresh stored casing on every ingest when the source casing differs
 
-- **Pros**: `value` always mirrors latest source casing.
-- **Cons**: Unsafe while same-member case-variant pairs still exist (updating both rows to the same `value` hits the old unique index). Extra write noise.
-- **Why not**: Deferred until after cleanup. Preventing duplicate inserts is enough for the durable fix; optional casing refresh can come later.
+- **Pros**: `value` always mirrors the latest source spelling.
+- **Cons**: Extra writes; needs a single surviving row per identity before it is safe.
+- **Why not**: Optional later enhancement. Preventing duplicate rows is the required invariant; updating preferred casing can be layered on afterward.
 
 ## Consequences
 
 ### Positive
 
-- One clear rule: same platform + type + lower(value) ⇒ same identity.
-- Lookups, writes, and uniqueness agree.
-- Self-serve / GitHub / enrichment stop creating `WillsonHG` + `willsonhg` pairs.
+- One rule for “same identity” across lookup, ingest, merge, and uniqueness.
 - Preferred username casing from integrations is preserved.
+- Emails are normalized consistently.
 
 ### Negative
 
-- Cleanup must run before the unique-index migration, or `create unique index` fails (and can leave an `INVALID` index).
-- Expression unique indexes are slightly less obvious than column-only uniques; callers must keep using `lower(value)` (or `isSameMemberIdentity`) consistently.
-- Conflict handlers need to recognize both old and new constraint names during rollout.
+- Callers must compare with `lower(value)` / `isSameMemberIdentity`, not exact string equality.
+- Unique indexes are expression-based (`lower(value)`), which is slightly less obvious than column-only uniques.
 
 ### Risks
 
-- **Migration applied before cleanup** — mitigated by documenting order: write-path fix → cleanup script → unique-index migration.
-- **Cross-member verified case variants** — rare; require merge, not soft-delete. Existing `findAndMergeMembersWithSamePlatformIdentitiesDifferentCapitalization` covers part of this.
-- **Incomplete write-path coverage** — mitigated by DB unique indexes as the backstop once cleanup is done; shared `isSameMemberIdentity` for app equality.
+- **Missed write path still using exact `value ===`** — mitigated by DB unique indexes on `lower(value)` and shared helpers.
+- **Two verified members sharing the same identity under `lower(value)`** — a data conflict requiring merge, not a second identity row.

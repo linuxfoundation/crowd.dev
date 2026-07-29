@@ -2,7 +2,7 @@
 import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { Error404, Error409, normalizeMemberIdentityValue } from '@crowd/common'
+import { Error404, Error409 } from '@crowd/common'
 import { findIdentitiesForMembers, insertMemberIdentities } from '@crowd/data-access-layer'
 import {
   deleteMemberIdentity,
@@ -58,16 +58,11 @@ export default class MemberIdentityService extends LoggerBase {
 
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
-          const identityData = {
-            ...data,
-            value: normalizeMemberIdentityValue(data.value),
-          }
-
           // Check if identity already exists
           const conflict = await findMemberIdentityConflict(qx, {
-            value: identityData.value,
-            platform: identityData.platform,
-            type: identityData.type,
+            value: data.value,
+            platform: data.platform,
+            type: data.type,
           })
 
           if (conflict) {
@@ -82,7 +77,7 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Create member identity
-          await insertMemberIdentities(qx, [{ ...identityData, memberId }])
+          await insertMemberIdentities(qx, [{ ...data, memberId }])
 
           await touchMemberUpdatedAt(qx, memberId)
 
@@ -136,12 +131,7 @@ export default class MemberIdentityService extends LoggerBase {
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
           // Check if any of the identities already exist
-          const normalizedData = data.map((identity) => ({
-            ...identity,
-            value: normalizeMemberIdentityValue(identity.value),
-          }))
-
-          for (const identity of normalizedData) {
+          for (const identity of data) {
             const conflict = await findMemberIdentityConflict(qx, {
               value: identity.value,
               platform: identity.platform,
@@ -163,7 +153,7 @@ export default class MemberIdentityService extends LoggerBase {
           // Create member identities
           await insertMemberIdentities(
             qx,
-            normalizedData.map((identity) => ({ ...identity, memberId })),
+            data.map((identity) => ({ ...identity, memberId })),
           )
 
           await touchMemberUpdatedAt(qx, memberId)
@@ -221,7 +211,7 @@ export default class MemberIdentityService extends LoggerBase {
             throw new Error404(this.options.language, 'errors.notFound.message')
           }
 
-          const value = normalizeMemberIdentityValue(data.value ?? currentIdentity.value)
+          const value = data.value ?? currentIdentity.value
           const platform = data.platform ?? currentIdentity.platform
           const type = data.type ?? currentIdentity.type
 

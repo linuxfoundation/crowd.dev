@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { getProperDisplayName, normalizeMemberIdentityValue } from '@crowd/common'
+import { getProperDisplayName } from '@crowd/common'
 import { createMember as insertMember, insertMemberIdentities } from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
 
@@ -54,7 +54,6 @@ export async function createMember(req: Request, res: Response): Promise<void> {
         identities.map((identity) => ({
           ...identity,
           memberId: dbMember.id,
-          value: normalizeMemberIdentityValue(identity.value),
         })),
         true,
         true,

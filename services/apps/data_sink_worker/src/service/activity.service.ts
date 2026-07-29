@@ -11,6 +11,7 @@ import {
   generateUUIDv1,
   isDomainExcluded,
   isValidEmail,
+  normalizeMemberIdentities,
   normalizeMemberIdentityValue,
   parseGitHubNoreplyEmail,
   single,
@@ -288,6 +289,10 @@ export default class ActivityService extends LoggerBase {
       }
 
       let member = activity.member
+      if (member?.identities) {
+        member.identities = normalizeMemberIdentities(member.identities)
+      }
+
       const username = activity.username
         ? normalizeMemberIdentityValue(activity.username)
         : undefined
@@ -321,41 +326,39 @@ export default class ActivityService extends LoggerBase {
             i.value &&
             i.verified,
         )
-        if (platformIdentity) {
-          const correctedUsername = normalizeMemberIdentityValue(platformIdentity.value)
-          if (correctedUsername !== username) {
-            this.log.debug(
-              { platform, originalUsername: username, correctedUsername },
-              'Overriding activity.username with member platform identity value',
-            )
-            activity.username = correctedUsername
-          }
+        if (platformIdentity && platformIdentity.value !== username) {
+          this.log.debug(
+            {
+              platform,
+              originalUsername: username,
+              correctedUsername: platformIdentity.value,
+            },
+            'Overriding activity.username with member platform identity value',
+          )
+          activity.username = platformIdentity.value
         }
       }
 
-      member.identities = member.identities.filter((i) => i.value)
-
-      if (!username) {
-        const identities = activity.member.identities.filter(
+      if (!activity.username) {
+        const identities = (member?.identities ?? []).filter(
           (i) => i.platform === platform && i.type === MemberIdentityType.USERNAME,
         )
 
         if (identities.length === 1) {
-          activity.username = normalizeMemberIdentityValue(identities[0].value)
+          activity.username = identities[0].value
         } else if (identities.length === 0) {
           // Fall back to same-platform email identity — handles old gerrit records where
           // only a type:email identity was stored (before the gerrit integration
           // gained the email-as-username fallback).
-          const emailFallback = activity.member.identities.find(
+          const emailFallback = (member?.identities ?? []).find(
             (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
           if (emailFallback && emailFallback.verified) {
-            const emailUsername = normalizeMemberIdentityValue(emailFallback.value)
-            activity.username = emailUsername
-            activity.member.identities.push({
+            activity.username = emailFallback.value
+            member.identities.push({
               platform,
               type: MemberIdentityType.USERNAME,
-              value: emailUsername,
+              value: emailFallback.value,
               verified: true,
               source: emailFallback.source,
             })
@@ -398,12 +401,15 @@ export default class ActivityService extends LoggerBase {
       }
 
       const objectMemberUsername = activity.objectMemberUsername
-        ? activity.objectMemberUsername.trim()
+        ? normalizeMemberIdentityValue(activity.objectMemberUsername)
         : undefined
+      if (objectMemberUsername) {
+        activity.objectMemberUsername = objectMemberUsername
+      }
       let objectMember = activity.objectMember
 
-      if (objectMember) {
-        objectMember.identities = objectMember.identities.filter((i) => i.value)
+      if (objectMember?.identities) {
+        objectMember.identities = normalizeMemberIdentities(objectMember.identities)
       }
 
       if (objectMember && !objectMemberUsername) {
@@ -451,6 +457,11 @@ export default class ActivityService extends LoggerBase {
             } as IMemberIdentity,
           ],
         }
+      }
+
+      activity.member = member
+      if (objectMember) {
+        activity.objectMember = objectMember
       }
 
       results.set(resultId, { success: true })
