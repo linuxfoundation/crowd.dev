@@ -31,7 +31,7 @@ Ticket CM-1349 proposed soft-deleting / auto-verifying case variants at verifica
 | username | preferred casing from the source/integration | `lower(value)`                  |
 | email    | always lowercase                             | `lower(value)` (same as stored) |
 
-Identity equality in CDP is `(platform, type, lower(value))`. Email vs username for storage casing is inferred from the value with `isEmail`, not from `type` (git often stores emails as `type=username`). Non-email usernames keep preferred casing from the source.
+Identity equality in CDP is `(platform, type, lower(value))`. Email vs username for storage casing is inferred from the value with `isValidEmail`, not from `type` (git often stores emails as `type=username`). Non-email usernames keep preferred casing from the source.
 
 **Enforcement**
 
