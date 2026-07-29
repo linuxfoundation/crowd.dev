@@ -34,10 +34,14 @@ SQL >
     FROM collection_insights_aggregate_projects_ds p
     LEFT JOIN
         (
-            SELECT collectionSlug, uniqueContributorCount
+            SELECT collectionSlug, uniqueContributorCount, snapshotId
             FROM collection_insights_aggregate_consolidated_ds
             WHERE
-                snapshotId = (SELECT max(snapshotId) FROM collection_insights_aggregate_consolidated_ds)
+                (collectionSlug, snapshotId) IN (
+                    SELECT collectionSlug, max(snapshotId)
+                    FROM collection_insights_aggregate_consolidated_ds
+                    GROUP BY collectionSlug
+                )
         ) c
         ON p.collectionSlug = c.collectionSlug
     WHERE

@@ -5,7 +5,7 @@ DESCRIPTION >
     activityRelations, member bot-status, and repository enable/disable state, none of which are
     append-only-safe, so this recomputes the full bucket via COPY_MODE replace rather than
     appending. Scheduled daily, staggered 5 minutes apart across all 10 collection buckets (this
-    bucket at :) so all 10 full-replace jobs don't fire simultaneously.
+    bucket at 01:00) so all 10 full-replace jobs don't fire simultaneously.
 
 NODE country_mapping_array
 SQL >
