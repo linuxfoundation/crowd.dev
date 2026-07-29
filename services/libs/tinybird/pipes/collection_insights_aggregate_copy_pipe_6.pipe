@@ -4,7 +4,7 @@ DESCRIPTION >
     - Computes uniqueContributorCount per collection slug for all collections that route to bucket 6.
     - Runs after bucket 6's enrich job completes (1:05 UTC + ~20min runtime typically finishes by 1:25 UTC).
     - Scheduled at 2:35 UTC to comfortably clear after enrich job (5min margin, allows for timing variance).
-    - COPY_MODE append: appends rows tagged with snapshotId to shared collection_insights_aggregate_contributors_ds.
+    - COPY_MODE append: appends rows tagged with snapshotId to shared collection_insights_aggregate_consolidated_ds.
 
 TAGS "Insights, Widget", "Collection"
 
