@@ -46,9 +46,9 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     throw new NotFoundError('Member not found')
   }
 
-  // The data-sink writes identity values as trimmed lowercase, so normalize here
-  // to keep idempotency checks reliable against existing rows.
-  const normalizedValue = data.value.trim().toLowerCase()
+  // Normalize emails to lowercase; keep username preferred casing from the caller.
+  const normalizedValue =
+    data.type === MemberIdentityType.EMAIL ? data.value.trim().toLowerCase() : data.value.trim()
 
   let result!: IMemberIdentity
   let alreadyExisted = false

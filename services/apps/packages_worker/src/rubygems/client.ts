@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { acquireRubyGemsSlot, parseRetryAfterMs } from './rateLimiter'
+import { abortableSleep, acquireRubyGemsSlot, parseRetryAfterMs } from './rateLimiter'
 import {
   RubyGemsFetchResult,
   RubyGemsGemResponse,
@@ -10,13 +10,14 @@ import {
 
 const MAX_RATE_LIMIT_RETRIES = 5
 
-async function rubyGemsGet<T>(url: string): Promise<RubyGemsFetchResult<T>> {
+async function rubyGemsGet<T>(url: string, signal?: AbortSignal): Promise<RubyGemsFetchResult<T>> {
   for (let attempt = 0; ; attempt++) {
-    await acquireRubyGemsSlot()
+    await acquireRubyGemsSlot(signal)
     try {
-      const resp = await axios.get<T>(url, { timeout: 15000 })
+      const resp = await axios.get<T>(url, { timeout: 15000, signal })
       return resp.data
     } catch (err) {
+      signal?.throwIfAborted()
       if (axios.isAxiosError(err)) {
         const status = err.response?.status
         if (status === 404) return { kind: 'NOT_FOUND', status, message: err.message }
@@ -24,9 +25,7 @@ async function rubyGemsGet<T>(url: string): Promise<RubyGemsFetchResult<T>> {
           if (attempt >= MAX_RATE_LIMIT_RETRIES) {
             return { kind: 'RATE_LIMIT', status, message: err.message }
           }
-          await new Promise((r) =>
-            setTimeout(r, parseRetryAfterMs(err.response?.headers['retry-after'])),
-          )
+          await abortableSleep(parseRetryAfterMs(err.response?.headers['retry-after']), signal)
           continue
         }
       }
@@ -35,20 +34,32 @@ async function rubyGemsGet<T>(url: string): Promise<RubyGemsFetchResult<T>> {
   }
 }
 
-export function fetchGem(name: string): Promise<RubyGemsFetchResult<RubyGemsGemResponse>> {
+export function fetchGem(
+  name: string,
+  signal?: AbortSignal,
+): Promise<RubyGemsFetchResult<RubyGemsGemResponse>> {
   return rubyGemsGet<RubyGemsGemResponse>(
     `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}.json`,
+    signal,
   )
 }
 
-export function fetchVersions(name: string): Promise<RubyGemsFetchResult<RubyGemsVersionItem[]>> {
+export function fetchVersions(
+  name: string,
+  signal?: AbortSignal,
+): Promise<RubyGemsFetchResult<RubyGemsVersionItem[]>> {
   return rubyGemsGet<RubyGemsVersionItem[]>(
     `https://rubygems.org/api/v1/versions/${encodeURIComponent(name)}.json`,
+    signal,
   )
 }
 
-export function fetchOwners(name: string): Promise<RubyGemsFetchResult<RubyGemsOwner[]>> {
+export function fetchOwners(
+  name: string,
+  signal?: AbortSignal,
+): Promise<RubyGemsFetchResult<RubyGemsOwner[]>> {
   return rubyGemsGet<RubyGemsOwner[]>(
     `https://rubygems.org/api/v1/gems/${encodeURIComponent(name)}/owners.json`,
+    signal,
   )
 }

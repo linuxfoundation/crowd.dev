@@ -521,10 +521,16 @@ export default class ActivityService extends LoggerBase {
       const toEraseMemberIdentities = toErase.filter((e) =>
         member.identities.some((i) => {
           if (i.type === MemberIdentityType.EMAIL) {
-            return e.type === i.type && e.value === i.value
+            return (
+              e.type === i.type && e.value.trim().toLowerCase() === i.value.trim().toLowerCase()
+            )
           }
 
-          return e.type === i.type && e.value === i.value && e.platform === i.platform
+          return (
+            e.type === i.type &&
+            e.value.trim().toLowerCase() === i.value.trim().toLowerCase() &&
+            e.platform === i.platform
+          )
         }),
       )
 
@@ -550,7 +556,7 @@ export default class ActivityService extends LoggerBase {
             const maybeToErase = toEraseMemberIdentities.find(
               (e) =>
                 e.type === i.type &&
-                e.value === i.value &&
+                e.value.trim().toLowerCase() === i.value.trim().toLowerCase() &&
                 (e.type === MemberIdentityType.EMAIL || e.platform === i.platform),
             )
 
@@ -1761,7 +1767,8 @@ export default class ActivityService extends LoggerBase {
         error.constructor &&
         error.constructor.name === 'DatabaseError' &&
         error.constraint &&
-        error.constraint === 'uix_memberIdentities_platform_value_type_verified'
+        (error.constraint === 'uix_memberIdentities_platform_value_type_verified' ||
+          error.constraint === 'uix_memberIdentities_platform_type_lower_value_verified')
       ) {
         return true
       }
@@ -2004,7 +2011,10 @@ export default class ActivityService extends LoggerBase {
 
     for (const i1 of m1Identities) {
       for (const i2 of m2Identities) {
-        if (i1.type === i2.type && i1.value === i2.value) {
+        if (
+          i1.type === i2.type &&
+          i1.value.trim().toLowerCase() === i2.value.trim().toLowerCase()
+        ) {
           return true
         }
       }

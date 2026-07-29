@@ -50,6 +50,8 @@ export interface RepoActivitySnapshot {
   prsClosedUnmerged12m: number | null
   prMedianTimeToMergeHours: number | null
   prMedianTimeToFirstResponseHours: number | null
+  externalPrsOpened12m: number | null
+  externalPrsMerged12m: number | null
   issuesOpenedLast12m: number | null
   issuesClosedLast12m: number | null
   issuesOpenedLast6m: number | null

@@ -63,14 +63,14 @@ export async function findMemberIdentityConflict(
 ): Promise<{ id: string; memberId: string } | null> {
   return qx.selectOneOrNone(
     `
-      SELECT id, "memberId"
-      FROM "memberIdentities"
-      WHERE platform = $(platform)
-        AND type = $(type)
-        AND lower(value) = lower($(value))
-        AND "deletedAt" IS NULL
-        ${params.excludeMemberId ? 'AND "memberId" <> $(excludeMemberId)' : ''}
-      LIMIT 1;
+      select id, "memberId"
+      from "memberIdentities"
+      where platform = $(platform)
+        and type = $(type)
+        and lower(value) = lower($(value))
+        and "deletedAt" is null
+        ${params.excludeMemberId ? 'and "memberId" <> $(excludeMemberId)' : ''}
+      limit 1;
     `,
     params,
   )
@@ -106,12 +106,12 @@ export async function findMemberIdentitiesByValue(
 ): Promise<IMemberIdentity[]> {
   return qx.select(
     `
-        SELECT *
-        FROM "memberIdentities"
-        WHERE value = $(value) 
-          AND "memberId" = $(memberId)
-          AND "deletedAt" is null
-        ${filter.type ? 'AND type = $(type)' : ''}
+        select *
+        from "memberIdentities"
+        where lower(value) = lower($(value))
+          and "memberId" = $(memberId)
+          and "deletedAt" is null
+        ${filter.type ? 'and type = $(type)' : ''}
     `,
     { value, memberId, type: filter.type },
   )
@@ -222,13 +222,13 @@ export async function findMemberIdByVerifiedIdentity(
   type: MemberIdentityType,
 ): Promise<string | null> {
   const result = await qx.selectOneOrNone(
-    `SELECT "memberId" FROM "memberIdentities"
-     WHERE platform = $(platform)
-       AND value = $(value)
-       AND type = $(type)
-       AND verified = true
-       AND "deletedAt" IS NULL
-     LIMIT 1`,
+    `select "memberId" from "memberIdentities"
+     where platform = $(platform)
+       and lower(value) = lower($(value))
+       and type = $(type)
+       and verified = true
+       and "deletedAt" is null
+     limit 1`,
     { platform, value, type },
   )
   return result?.memberId ?? null
@@ -372,7 +372,7 @@ export async function updateVerifiedFlag(
       where
         "memberId" = $(memberId) and
         platform = $(platform) and
-        value = $(value) and
+        lower(value) = lower($(value)) and
         type = $(type) and
         "deletedAt" is null
     `,
@@ -387,10 +387,10 @@ export async function deleteMemberIdentities(
   return qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
-      where "memberId" = $(memberId) 
-        and platform = $(platform) 
-        and value = $(value) 
-        and type = $(type) 
+      where "memberId" = $(memberId)
+        and platform = $(platform)
+        and lower(value) = lower($(value))
+        and type = $(type)
         and "deletedAt" is null;
     `,
     p,

@@ -1,0 +1,43 @@
+DESCRIPTION >
+    Bucket 2/3 of the activityRelations lambda merge layer (bucketing key: cityHash64(segmentId) % 3).
+    Merges realtime enriched deltas from activityRelations_enrich_snapshot_MV_ds with the bucket's
+    current data and atomically replaces the bucket datasource. Replace mode means a failed run
+    leaves the previous bucket data intact — there is no TTL cliff. A bucket that missed up to 2
+    daily runs self-heals on the next run (MV delta retention is 3 days); for longer gaps run
+    activityRelations_enrich_initial_snapshot_2 on demand.
+
+NODE realtime_delta
+SQL >
+    WITH
+        (
+            SELECT max(snapshotId) FROM activityRelations_enriched_deduplicated_bucket_2_ds
+        ) AS lastSnapshotId
+    SELECT * REPLACE (toStartOfInterval(now(), INTERVAL 1 day) AS snapshotId)
+    FROM activityRelations_enrich_snapshot_MV_ds
+    WHERE
+        cityHash64(segmentId) % 3 = 2
+        AND snapshotId >= lastSnapshotId
+        AND snapshotId <= toStartOfInterval(now(), INTERVAL 1 day)
+    ORDER BY updatedAt DESC
+    LIMIT 1 BY segmentId, timestamp, type, platform, channel, sourceId
+
+NODE historical_carryforward
+SQL >
+    SELECT * REPLACE (toStartOfInterval(now(), INTERVAL 1 day) AS snapshotId)
+    FROM activityRelations_enriched_deduplicated_bucket_2_ds
+    WHERE
+        (segmentId, timestamp, type, platform, channel, sourceId)
+        NOT IN (SELECT segmentId, timestamp, type, platform, channel, sourceId FROM realtime_delta)
+
+NODE merged_snapshot
+SQL >
+    select *
+    from realtime_delta
+    union all
+    select *
+    from historical_carryforward
+
+TYPE COPY
+TARGET_DATASOURCE activityRelations_enriched_deduplicated_bucket_2_ds
+COPY_MODE replace
+COPY_SCHEDULE 38 1 * * *
