@@ -8,9 +8,9 @@ import {
   getEarliestValidDate,
   getProperDisplayName,
   isDomainExcluded,
-  isEmail,
   isObjectEmpty,
   isSameMemberIdentity,
+  isValidEmail,
   normalizeMemberIdentityValue,
   singleOrDefault,
 } from '@crowd/common'
@@ -954,24 +954,14 @@ export default class MemberService extends LoggerBase {
   }
 
   private validateEmails(identities: IMemberIdentity[]): IMemberIdentity[] {
-    const toReturn: IMemberIdentity[] = []
-
-    for (const identity of identities) {
-      const value = normalizeMemberIdentityValue(identity.value)
-      const normalized = { ...identity, value }
-
-      if (identity.type === MemberIdentityType.EMAIL && !isEmail(value)) {
-        continue
-      }
-
-      if (toReturn.some((i) => isSameMemberIdentity(i, normalized))) {
-        continue
-      }
-
-      toReturn.push(normalized)
-    }
-
-    return toReturn
+    return identities
+      .map((identity) => ({
+        ...identity,
+        value: normalizeMemberIdentityValue(identity.value),
+      }))
+      .filter(
+        (identity) => identity.type !== MemberIdentityType.EMAIL || isValidEmail(identity.value),
+      )
   }
 
   private mergeData(

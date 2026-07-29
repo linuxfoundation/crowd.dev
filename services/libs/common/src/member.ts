@@ -7,7 +7,7 @@ import {
   OrganizationSource,
 } from '@crowd/types'
 
-import { isEmail } from './validations'
+import { isValidEmail } from './email'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -25,7 +25,7 @@ export function isSameMemberIdentity(
 export function normalizeMemberIdentityValue(value: string): string {
   const trimmed = value.trim()
   const lower = trimmed.toLowerCase()
-  return isEmail(lower) ? lower : trimmed
+  return isValidEmail(lower) ? lower : trimmed
 }
 
 export async function setAttributesDefaultValues(
