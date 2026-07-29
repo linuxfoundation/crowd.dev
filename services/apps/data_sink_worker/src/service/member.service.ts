@@ -11,6 +11,7 @@ import {
   isEmail,
   isObjectEmpty,
   isSameMemberIdentity,
+  normalizeMemberIdentityValue,
   singleOrDefault,
 } from '@crowd/common'
 import {
@@ -956,22 +957,18 @@ export default class MemberService extends LoggerBase {
     const toReturn: IMemberIdentity[] = []
 
     for (const identity of identities) {
-      if (identity.type === MemberIdentityType.EMAIL) {
-        const lowerValue = identity.value.toLowerCase()
-        if (
-          isEmail(identity.value) &&
-          toReturn.find(
-            (i) =>
-              i.type === MemberIdentityType.EMAIL &&
-              i.value === lowerValue &&
-              i.platform === identity.platform,
-          ) === undefined
-        ) {
-          toReturn.push({ ...identity, value: lowerValue })
-        }
-      } else {
-        toReturn.push(identity)
+      const value = normalizeMemberIdentityValue(identity.value)
+      const normalized = { ...identity, value }
+
+      if (identity.type === MemberIdentityType.EMAIL && !isEmail(value)) {
+        continue
       }
+
+      if (toReturn.some((i) => isSameMemberIdentity(i, normalized))) {
+        continue
+      }
+
+      toReturn.push(normalized)
     }
 
     return toReturn

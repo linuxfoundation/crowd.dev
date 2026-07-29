@@ -11,6 +11,7 @@ import {
   generateUUIDv1,
   isDomainExcluded,
   isValidEmail,
+  normalizeMemberIdentityValue,
   parseGitHubNoreplyEmail,
   single,
   singleOrDefault,
@@ -287,7 +288,12 @@ export default class ActivityService extends LoggerBase {
       }
 
       let member = activity.member
-      const username = activity.username ? activity.username.trim() : undefined
+      const username = activity.username
+        ? normalizeMemberIdentityValue(activity.username)
+        : undefined
+      if (username) {
+        activity.username = username
+      }
       if (!member && username) {
         member = {
           identities: [
@@ -315,12 +321,15 @@ export default class ActivityService extends LoggerBase {
             i.value &&
             i.verified,
         )
-        if (platformIdentity && platformIdentity.value !== username) {
-          this.log.debug(
-            { platform, originalUsername: username, correctedUsername: platformIdentity.value },
-            'Overriding activity.username with member platform identity value',
-          )
-          activity.username = platformIdentity.value
+        if (platformIdentity) {
+          const correctedUsername = normalizeMemberIdentityValue(platformIdentity.value)
+          if (correctedUsername !== username) {
+            this.log.debug(
+              { platform, originalUsername: username, correctedUsername },
+              'Overriding activity.username with member platform identity value',
+            )
+            activity.username = correctedUsername
+          }
         }
       }
 
@@ -332,7 +341,7 @@ export default class ActivityService extends LoggerBase {
         )
 
         if (identities.length === 1) {
-          activity.username = identities[0].value
+          activity.username = normalizeMemberIdentityValue(identities[0].value)
         } else if (identities.length === 0) {
           // Fall back to same-platform email identity — handles old gerrit records where
           // only a type:email identity was stored (before the gerrit integration
@@ -341,11 +350,12 @@ export default class ActivityService extends LoggerBase {
             (i) => i.platform === platform && i.type === MemberIdentityType.EMAIL && i.value,
           )
           if (emailFallback && emailFallback.verified) {
-            activity.username = emailFallback.value
+            const emailUsername = normalizeMemberIdentityValue(emailFallback.value)
+            activity.username = emailUsername
             activity.member.identities.push({
               platform,
               type: MemberIdentityType.USERNAME,
-              value: emailFallback.value,
+              value: emailUsername,
               verified: true,
               source: emailFallback.source,
             })

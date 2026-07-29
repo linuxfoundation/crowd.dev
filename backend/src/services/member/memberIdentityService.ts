@@ -2,7 +2,7 @@
 import lodash from 'lodash'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { Error404, Error409 } from '@crowd/common'
+import { Error404, Error409, normalizeMemberIdentityValue } from '@crowd/common'
 import { findIdentitiesForMembers, insertMemberIdentities } from '@crowd/data-access-layer'
 import {
   deleteMemberIdentity,
@@ -13,18 +13,13 @@ import {
   updateMemberIdentity,
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
-import { IMemberIdentity, MemberIdentityType, NewMemberIdentity } from '@crowd/types'
+import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import { IServiceOptions } from '../IServiceOptions'
-
-function normalizeIdentityValue(type: string, value: string): string {
-  const trimmed = value.trim()
-  return type === MemberIdentityType.EMAIL ? trimmed.toLowerCase() : trimmed
-}
 
 export default class MemberIdentityService extends LoggerBase {
   options: IServiceOptions
@@ -65,7 +60,7 @@ export default class MemberIdentityService extends LoggerBase {
 
           const identityData = {
             ...data,
-            value: normalizeIdentityValue(data.type, data.value),
+            value: normalizeMemberIdentityValue(data.value),
           }
 
           // Check if identity already exists
@@ -143,7 +138,7 @@ export default class MemberIdentityService extends LoggerBase {
           // Check if any of the identities already exist
           const normalizedData = data.map((identity) => ({
             ...identity,
-            value: normalizeIdentityValue(identity.type, identity.value),
+            value: normalizeMemberIdentityValue(identity.value),
           }))
 
           for (const identity of normalizedData) {
@@ -226,10 +221,7 @@ export default class MemberIdentityService extends LoggerBase {
             throw new Error404(this.options.language, 'errors.notFound.message')
           }
 
-          const value = normalizeIdentityValue(
-            data.type ?? currentIdentity.type,
-            data.value ?? currentIdentity.value,
-          )
+          const value = normalizeMemberIdentityValue(data.value ?? currentIdentity.value)
           const platform = data.platform ?? currentIdentity.platform
           const type = data.type ?? currentIdentity.type
 

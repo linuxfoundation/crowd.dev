@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { NotFoundError } from '@crowd/common'
+import { NotFoundError, normalizeMemberIdentityValue } from '@crowd/common'
 import {
   MemberField,
   findMemberById,
@@ -46,9 +46,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     throw new NotFoundError('Member not found')
   }
 
-  // Normalize emails to lowercase; keep username preferred casing from the caller.
-  const normalizedValue =
-    data.type === MemberIdentityType.EMAIL ? data.value.trim().toLowerCase() : data.value.trim()
+  const normalizedValue = normalizeMemberIdentityValue(data.value)
 
   let result!: IMemberIdentity
   let alreadyExisted = false
