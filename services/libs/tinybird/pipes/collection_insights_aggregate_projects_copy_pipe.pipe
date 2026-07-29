@@ -17,14 +17,17 @@ SQL >
     SELECT
         slug as collectionSlug,
         count(distinct id) as projectCount,
-        round(avg(if(NOT ((organizationCount = 0) AND (contributorCount = 0)), healthScore, NULL))) as avgHealthScore,
+        round(
+            avg(if(NOT ((organizationCount = 0) AND (contributorCount = 0)), healthScore, NULL))
+        ) as avgHealthScore,
         now() as updatedAt
-    FROM (
-        SELECT id, slug, healthScore, organizationCount, contributorCount
-        FROM insights_projects_populated_ds
-        ARRAY JOIN collectionsSlugs as slug
-        WHERE enabled = 1
-    )
+    FROM
+        (
+            SELECT id, slug, healthScore, organizationCount, contributorCount
+            FROM insights_projects_populated_ds ARRAY
+            JOIN collectionsSlugs as slug
+            WHERE enabled = 1
+        )
     GROUP BY slug
 
 TYPE COPY

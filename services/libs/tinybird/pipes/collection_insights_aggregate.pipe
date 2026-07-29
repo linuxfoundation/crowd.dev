@@ -2,8 +2,8 @@ DESCRIPTION >
     - `collection_insights_aggregate.pipe` serves aggregate insights metrics for a collection.
     - Returns a single row with metrics aggregated across every project in the collection, not one row per project.
     - Now a lightweight join of two precomputed tables:
-      - `collection_insights_aggregate_consolidated_ds`: consolidated unique contributor counts (1 row per collection per snapshot)
-      - `collection_insights_aggregate_projects_ds`: project count and average health score (1 row per collection)
+    - `collection_insights_aggregate_consolidated_ds`: consolidated unique contributor counts (1 row per collection per snapshot)
+    - `collection_insights_aggregate_projects_ds`: project count and average health score (1 row per collection)
     - Updated daily: contributor aggregates run 2:05-2:50 UTC (staggered per-bucket, all append to shared table), projects aggregate runs 3:00 UTC (after all contributors finish).
     - Filters to latest snapshotId for current data (argMax-per-collection-slug pattern).
     - Parameters:
@@ -17,7 +17,6 @@ DESCRIPTION >
     check) — projects with no attributed contributors/organizations have no meaningful health signal yet
     and would otherwise pull the average down artificially.
 
-
 TOKEN "insights-app-token" READ
 
 TAGS "Insights, Widget", "Collection"
@@ -30,23 +29,17 @@ DESCRIPTION >
     all buckets' output is consolidated into a single target datasource.
 
 SQL >
-
-%
-    SELECT
-        p.projectCount,
-        c.uniqueContributorCount,
-        p.avgHealthScore
+    %
+    SELECT p.projectCount, c.uniqueContributorCount, p.avgHealthScore
     FROM collection_insights_aggregate_projects_ds p
-    LEFT JOIN (
-        SELECT
-            collectionSlug,
-            uniqueContributorCount
-        FROM collection_insights_aggregate_consolidated_ds
-        WHERE snapshotId = (SELECT max(snapshotId) FROM collection_insights_aggregate_consolidated_ds)
-    ) c
+    LEFT JOIN
+        (
+            SELECT collectionSlug, uniqueContributorCount
+            FROM collection_insights_aggregate_consolidated_ds
+            WHERE
+                snapshotId = (SELECT max(snapshotId) FROM collection_insights_aggregate_consolidated_ds)
+        ) c
         ON p.collectionSlug = c.collectionSlug
-    WHERE p.collectionSlug = {{ String(collectionSlug, description="Filter by collection slug", required=True) }}
-
-TYPE endpoint
-
-
+    WHERE
+        p.collectionSlug
+        = {{ String(collectionSlug, description="Filter by collection slug", required=True) }}

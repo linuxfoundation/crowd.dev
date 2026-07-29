@@ -13,4 +13,10 @@ SQL >
     %
     SELECT cityHash64(slug) % 10 as bucketId
     FROM collections_filtered
-    WHERE slug = {{ String(collectionSlug, description="Collection slug to resolve bucketId for", required=True) }}
+    WHERE
+        slug
+        = {{
+            String(
+                collectionSlug, description="Collection slug to resolve bucketId for", required=True
+            )
+        }}
