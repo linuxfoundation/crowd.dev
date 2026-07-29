@@ -1,13 +1,10 @@
 DESCRIPTION >
-    - `collection_buckets.pipe` resolves a collection's slug to its bucketId, mirroring
+    - `collection_buckets.pipe` resolves a curated collection's slug to its bucketId, mirroring
     `project_buckets.pipe`'s role for segments.
-    - Bucket assignment is `cityHash64(collectionSlug) % 10`.
-    - NOTE: this pipe reads from `collections_filtered`, which restricts to curated collections
-    (`ssoUserId IS NULL`) for public listing/search purposes. Community collections still resolve
-    a deterministic bucketId via the same hash (see the bucket MV pipes, which fan out both
-    curated and community collections), they just aren't resolvable through this specific lookup
-    since it's scoped to `collections_filtered`.
-    - Unlike project bucketing, a project can belong to multiple collections, so a
+    - Bucket assignment is `cityHash64(collectionSlug) % 10` - collections_filtered already
+    restricts to curated collections (`ssoUserId IS NULL`), so non-curated collections never
+    resolve a bucket here.
+    - Unlike project bucketing, a project can belong to multiple curated collections, so a
     project's activities may be duplicated into multiple collection buckets - this pipe only
     resolves the bucket for a single collection slug, it does not describe the fan-out.
 

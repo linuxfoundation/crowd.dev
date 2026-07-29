@@ -1,8 +1,7 @@
 DESCRIPTION >
-    On-demand backfill/bootstrap for collection bucket 4 - populates
+    On-demand backfill/bootstrap for curated-collection bucket 4 - populates
     activityRelations_collection_bucket_MV_ds_4 from the full historical activityRelations
-    table via the same fan-out logic as the steady-state MV (curated and community collections
-    alike - the curated_collection_slugs_snapshot node name is legacy). Mirrors
+    table via the same fan-out/curated-filter logic as the steady-state MV. Mirrors
     activityRelations_bucket_MV_snapshot_4.pipe's role in the project-bucketing "Adding New
     Buckets" playbook. Run once manually after deploy to backfill history; the steady-state MV
     (activityRelations_collection_bucket_MV_4.pipe) then keeps it current on new inserts.
@@ -12,7 +11,7 @@ DESCRIPTION >
 
 NODE curated_collection_slugs_snapshot_4
 SQL >
-    SELECT slug FROM collections FINAL WHERE isNull (deletedAt)
+    SELECT slug FROM collections FINAL WHERE isNull (deletedAt) AND isNull (ssoUserId)
 
 NODE collection_fanout_snapshot_4
 SQL >
