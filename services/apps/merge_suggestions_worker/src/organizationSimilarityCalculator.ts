@@ -21,10 +21,12 @@ class OrganizationSimilarityCalculator {
     let similarPrimaryIdentity: IOrganizationIdentity = null
 
     const sameDisplayName =
-      primaryOrganization.displayName?.toLowerCase() ===
-      similarOrganization.displayName?.toLowerCase()
+      Boolean(primaryOrganization.displayName) &&
+      Boolean(similarOrganization.displayName) &&
+      primaryOrganization.displayName.toLowerCase() ===
+        similarOrganization.displayName.toLowerCase()
 
-    // Orgs can have multiple usernames on one platform; don't let that clash
+    // Organizations can have multiple usernames on one platform; don't let that clash
     // veto a shared verified primary-domain and same displayName.
     if (
       sameDisplayName &&
