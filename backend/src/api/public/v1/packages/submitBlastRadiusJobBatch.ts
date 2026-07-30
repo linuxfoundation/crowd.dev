@@ -3,7 +3,6 @@ import type { Request, Response } from 'express'
 import { generateUUIDv4 } from '@crowd/common'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
-import { Client } from '@crowd/temporal'
 import { ITriggerBlastRadiusAnalysis, TemporalWorkflowId } from '@crowd/types'
 
 import { getPackagesQx } from '@/db/packagesDb'
@@ -32,10 +31,9 @@ export async function submitBlastRadiusJobBatch(req: Request, res: Response): Pr
   const { jobs } = validateOrThrow(blastRadiusJobBatchRequestSchema, req.body)
 
   const qx = await getPackagesQx()
-  const packagesTemporal = await getPackagesTemporalClient()
 
   const results: BlastRadiusJobEntry[] = await Promise.all(
-    jobs.map((body) => submitOneJob(qx, packagesTemporal, body)),
+    jobs.map((body) => submitOneJob(qx, body)),
   )
 
   res.status(202).json({ results })
@@ -43,7 +41,6 @@ export async function submitBlastRadiusJobBatch(req: Request, res: Response): Pr
 
 async function submitOneJob(
   qx: QueryExecutor,
-  packagesTemporal: Client,
   body: BlastRadiusJobRequest,
 ): Promise<BlastRadiusJobEntry> {
   const jobPackage = body.package ?? null
@@ -63,6 +60,12 @@ async function submitOneJob(
     // inside the try too — unlike the single-job submit, a createAnalysis failure
     // must not reject the whole batch's Promise.all, only this job's entry.
     await blastRadiusDal.createAnalysis(qx, analysisInput)
+
+    // Acquired per job (inside the try), not once up front — getPackagesTemporalClient
+    // caches its connection in a module-level singleton, so this is cheap once
+    // connected, but a first-ever connection failure must fail this job's entry only,
+    // not reject the whole batch before any per-job try/catch is in play.
+    const packagesTemporal = await getPackagesTemporalClient()
 
     await packagesTemporal.workflow.start('analyzeBlastRadius', {
       taskQueue: 'blast-radius-worker',

@@ -21,8 +21,11 @@ const mkdtemp = promisify(fs.mkdtemp)
 const MAX_ATTEMPTS = 3
 const RETRY_BACKOFF_BASE = 15_000 // 15 seconds
 // Tunable for load testing, same pattern as BLAST_RADIUS_SCAN_CONCURRENCY for phase 1/2 —
-// default matches the previous hardcoded value.
-const REACHABILITY_CONCURRENCY = Number(process.env.BLAST_RADIUS_REACHABILITY_CONCURRENCY) || 4
+// default matches the previous hardcoded value. Clamped to a positive integer for the
+// same reason (see dependentsScan.ts's SCAN_CONCURRENCY): a negative/fractional override
+// would make forEachWithConcurrency spin up zero workers and silently skip all work.
+const REACHABILITY_CONCURRENCY =
+  Math.max(1, Math.floor(Number(process.env.BLAST_RADIUS_REACHABILITY_CONCURRENCY))) || 4
 
 // blastRadiusDal.getSymbolSpec returns the raw DB row (JSONB columns as
 // unknown); prompts.ts's SymbolSpec is the shape the reachability prompt

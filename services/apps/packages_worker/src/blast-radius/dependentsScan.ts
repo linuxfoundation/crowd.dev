@@ -13,7 +13,11 @@ import { rangeIncludesAny } from './semverRange'
 
 // Configurable via env var so local load tests can vary it per run without
 // editing source; unset in every real deployment, so this is always 32 in prod.
-const SCAN_CONCURRENCY = Number(process.env.BLAST_RADIUS_SCAN_CONCURRENCY) || 32
+// Clamped to a positive integer — a negative or fractional override would make
+// forEachWithConcurrency's Array.from({length: concurrency}) spin up zero workers,
+// so the scan would silently complete with nothing processed.
+const SCAN_CONCURRENCY =
+  Math.max(1, Math.floor(Number(process.env.BLAST_RADIUS_SCAN_CONCURRENCY))) || 32
 const HIGH_IMPACT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 // The per-candidate fetches below (abbreviated packument, full packument, download count)
 // don't depend on which target package the analysis is checking against — the same

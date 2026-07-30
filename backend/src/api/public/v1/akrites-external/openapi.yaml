@@ -458,8 +458,9 @@ components:
       type: object
       required: [results]
       description: >
-        Plain array in request order, one entry per submitted job — unlike the
-        read batches there is no found/not-found case, every job is submitted.
+        Plain array in request order, one entry per requested job — unlike the
+        read batches there is no found/not-found case, but a job can still come
+        back with status: failed if row creation or the workflow start failed.
       properties:
         results:
           type: array
