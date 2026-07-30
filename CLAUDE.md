@@ -69,3 +69,4 @@ Millions of rows. Every query matters.
 - Define types properly — extend and reuse existing types. Don't sprinkle `any`.
 - Don't touch working code outside the scope of the current task.
 - Prefer doing less over introducing risk. Weigh trade-offs before acting.
+- Default to no comments. When one is warranted (non-obvious WHY), keep it to 2 lines max.
