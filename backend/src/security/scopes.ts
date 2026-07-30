@@ -14,6 +14,9 @@ export const SCOPES = {
   READ_PACKAGES: 'read:packages',
   READ_STEWARDSHIPS: 'read:stewardships',
   WRITE_STEWARDSHIPS: 'write:stewardships',
+  READ_AKRITES_PACKAGES: 'read:akrites-packages',
+  READ_AKRITES_ADVISORIES: 'read:akrites-advisories',
+  READ_AKRITES_MAINTAINERS: 'read:akrites-maintainers',
 } as const
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES]
