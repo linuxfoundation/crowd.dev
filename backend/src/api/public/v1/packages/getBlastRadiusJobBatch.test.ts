@@ -137,6 +137,47 @@ describe('getBlastRadiusJobBatch', () => {
     })
   })
 
+  it('matches an uppercase requestedAnalysisId against its (lowercase) row and echoes the original case', async () => {
+    const uppercaseId = DONE_ID.toUpperCase()
+    const { req, res, json } = mockReqRes({ analysisIds: [uppercaseId] })
+
+    getAnalysisDetailsByIds.mockResolvedValue([
+      {
+        id: DONE_ID,
+        advisory_osv_id: 'GHSA-652q-gvq3-74qv',
+        package_name: 'lodash',
+        ecosystem: 'npm',
+        status: 'done',
+        error: null,
+        candidates_considered: 10,
+        started_at: '2026-07-01T00:00:00.000Z',
+        completed_at: '2026-07-01T01:00:00.000Z',
+      },
+    ])
+    getVerdictResultsBatch.mockResolvedValue([
+      {
+        analysisId: DONE_ID,
+        name: 'benchmark.js',
+        version: '2.1.4',
+        downloads: 500000,
+        reachable_verdict: 'affected',
+        confidence: 0.9,
+        evidence: null,
+        reasoning: 'uses merge',
+      },
+    ])
+    getDependentsExcludedByRangeCountBatch.mockResolvedValue([{ analysisId: DONE_ID, count: 8 }])
+
+    await getBlastRadiusJobBatch(req, res)
+
+    const [{ results }] = json.mock.calls[0]
+    expect(results[0]).toMatchObject({ requestedAnalysisId: uppercaseId, found: true })
+    expect(results[0].analysis).toMatchObject({
+      status: 'done',
+      summary: expect.objectContaining({ dependentsExcludedUpfront: 8 }),
+    })
+  })
+
   it('rejects a batch with a malformed uuid without querying the database', async () => {
     const { req, res } = mockReqRes({ analysisIds: [PENDING_ID, 'not-a-uuid'] })
 

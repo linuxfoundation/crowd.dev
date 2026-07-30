@@ -29,8 +29,8 @@ export const blastRadiusJobBatchRequestSchema = z.object({
 export type BlastRadiusJobBatchRequest = z.infer<typeof blastRadiusJobBatchRequestSchema>
 
 // Unlike the read batches (purls that may or may not resolve to a package), every
-// job in a submit batch is genuinely submitted — there is no "not found" case, so
-// the response is a plain array in request order, not a found/not-found wrapper.
+// requested job produces a response entry — there is no "not found" case, so the
+// response is a plain array in request order, not a found/not-found wrapper.
 const analysisIdSchema = z.uuid()
 
 export const blastRadiusJobPollBatchRequestSchema = z.object({

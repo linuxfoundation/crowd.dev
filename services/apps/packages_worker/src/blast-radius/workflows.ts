@@ -41,9 +41,11 @@ const { blastRadiusReachability } = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 2 },
 })
 
+// No heartbeatTimeout — runReportStage doesn't heartbeat until after it completes
+// (see activities.ts), so any run taking over a minute would otherwise always
+// heartbeat-timeout and retry before its first heartbeat.
 const { blastRadiusReport } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
-  heartbeatTimeout: '1 minute',
   retry: { maximumAttempts: 3 },
 })
 

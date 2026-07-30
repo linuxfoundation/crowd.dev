@@ -26,7 +26,10 @@ export async function getBlastRadiusJobBatch(req: Request, res: Response): Promi
   const qx = await getPackagesQx()
 
   const analysisRows = await blastRadiusDal.getAnalysisDetailsByIds(qx, pagedAnalysisIds)
-  const analysisById = new Map(analysisRows.map((row) => [row.id, row]))
+  // Postgres normalizes uuid columns to lowercase on read, but a requested id can be
+  // any case (schema only validates uuid shape) — normalize the lookup key so an
+  // uppercase requestedAnalysisId still matches its (lowercase) row.
+  const analysisById = new Map(analysisRows.map((row) => [row.id.toLowerCase(), row]))
 
   const doneIds = analysisRows.filter((row) => row.status === 'done').map((row) => row.id)
   const [verdictRows, excludedByRangeCounts] = await Promise.all([
@@ -48,7 +51,7 @@ export async function getBlastRadiusJobBatch(req: Request, res: Response): Promi
   )
 
   const results: BlastRadiusAnalysisBulkEntry[] = pagedAnalysisIds.map((requestedAnalysisId) => {
-    const analysis = analysisById.get(requestedAnalysisId)
+    const analysis = analysisById.get(requestedAnalysisId.toLowerCase())
     if (!analysis) {
       return { requestedAnalysisId, found: false, analysis: null }
     }
@@ -58,8 +61,8 @@ export async function getBlastRadiusJobBatch(req: Request, res: Response): Promi
       found: true,
       analysis: toBlastRadiusAnalysis(
         analysis,
-        verdictsByAnalysisId.get(requestedAnalysisId) ?? [],
-        excludedByRangeCountByAnalysisId.get(requestedAnalysisId) ?? 0,
+        verdictsByAnalysisId.get(analysis.id) ?? [],
+        excludedByRangeCountByAnalysisId.get(analysis.id) ?? 0,
       ),
     }
   })

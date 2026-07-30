@@ -1,5 +1,6 @@
 import { Config } from '@crowd/archetype-standard'
 import { Options, ServiceWorker } from '@crowd/archetype-worker'
+import { SlackChannel } from '@crowd/slack'
 
 // Own ServiceWorker instance rather than the shared one in ../service (used by every
 // other packages_worker entry point) — its activities are CPU/IO-heavy (tarball
@@ -17,6 +18,7 @@ const config: Config = {
 const options: Options = {
   postgres: { enabled: false }, // packages-db is managed via getPackagesDb()
   maxConcurrentActivityTaskExecutions: 16,
+  alertChannel: SlackChannel.CDP_AKRITES_ALERTS,
 }
 
 const svc = new ServiceWorker(config, options)
