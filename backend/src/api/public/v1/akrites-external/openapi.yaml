@@ -16,10 +16,13 @@ info:
     7-day result cache is specced separately and not yet built.
 
 
-    TODO: scopes below (read:packages, read:stewardships) are the existing
-    internal CDP UI scopes, reused here for now. Swap for a dedicated
-    cdp:packages:read scope once Akrites gets its own Auth0 M2M scopes per
-    the akrites-external draft contract.
+    Auth0 now issues a dedicated Akrites Enclave M2M client with its own
+    read:akrites-packages / read:akrites-advisories / read:akrites-maintainers
+    scopes. Until Akrites cuts over to that client's credentials, the Self Serve
+    client's existing scopes (read:packages, read:stewardships,
+    read:maintainer-roles) still work on every operation below — each operation
+    lists both the new dedicated scope(s) and the old fallback scope(s) as
+    alternatives. Drop the old alternative once the cutover is confirmed.
 
 servers:
   - url: https://cm.lfx.dev/api/v1
@@ -27,27 +30,33 @@ servers:
 
 security:
   - M2MBearer:
+      - read:akrites-packages
+  - M2MBearer:
       - read:packages
+  - M2MBearer:
       - read:stewardships
 
 tags:
   - name: Packages
-    description: Package detail — requires read:packages and read:stewardships (see TODO above).
+    description: >
+      Package detail — requires read:akrites-packages (dedicated Akrites Enclave
+      scope), or either read:packages or read:stewardships from the old Self Serve
+      client as a fallback until the cutover completes.
   - name: Advisories
     description: >
-      Security advisories for a package, split out of package detail. The draft
-      contract gates these behind a dedicated read:advisories scope; until Auth0
-      issues it, the implementation reuses read:packages (advisories need no
-      stewardship read). Confirm the final scope name (read:advisories vs
-      cdp:advisories:read) with Akrites/product.
+      Security advisories for a package, split out of package detail. Requires
+      read:akrites-advisories (dedicated Akrites Enclave scope), or read:packages
+      from the old Self Serve client as a fallback until the cutover completes
+      (advisories need no stewardship read).
   - name: Contacts
     description: >
       Security contacts for a package — includes contact PII (e.g. reporter
-      emails). The contract gates these behind a dedicated cdp:maintainers:read
-      scope and forbids reaching them via the packages scope; until Auth0 issues
-      it, the implementation requires read:maintainer-roles (NOT read:packages).
-      The response shape is still under discussion upstream (reportingMethods /
-      reportingGuidelines / integrationHints are reserved and always null today).
+      emails). Requires read:akrites-maintainers (dedicated Akrites Enclave
+      scope), or read:maintainer-roles from the old Self Serve client as a
+      fallback until the cutover completes — never reachable via the packages
+      scopes. The response shape is still under discussion upstream
+      (reportingMethods / reportingGuidelines / integrationHints are reserved
+      and always null today).
   - name: Blast Radius
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
@@ -59,14 +68,14 @@ tags:
       entry starts its own workflow — and stays behind the same strict rate
       limiter as the single-job route; bulk poll
       (jobs:batch/poll) is read-only and capped at 100 like the other batch
-      endpoints. Same interim scope note as Advisories applies (read:packages,
-      pending a dedicated read:advisories scope).
+      endpoints. Same scope note as Advisories applies (read:akrites-advisories,
+      or read:packages as a fallback until the cutover completes).
 
 components:
   securitySchemes:
     # Modeled as oauth2/clientCredentials (not http/bearer): OpenAPI only allows
     # non-empty scope arrays in security requirements for oauth2 / openIdConnect
-    # schemes, and the operations below require read:packages + read:stewardships.
+    # schemes.
     M2MBearer:
       type: oauth2
       description: >
@@ -77,9 +86,12 @@ components:
         clientCredentials:
           tokenUrl: https://linuxfoundation.auth0.com/oauth/token
           scopes:
-            read:packages: Read package detail
-            read:stewardships: Read package stewardship data
-            read:maintainer-roles: Read security contacts (interim scope for Contacts; see the Contacts tag)
+            read:akrites-packages: Read package detail (dedicated Akrites Enclave scope)
+            read:akrites-advisories: Read security advisories and submit/poll blast-radius jobs (dedicated Akrites Enclave scope)
+            read:akrites-maintainers: Read security contacts (dedicated Akrites Enclave scope)
+            read:packages: Read package detail (fallback — old Self Serve client scope, being phased out)
+            read:stewardships: Read package stewardship data (fallback — old Self Serve client scope, being phased out)
+            read:maintainer-roles: Read security contacts (fallback — old Self Serve client scope, being phased out)
 
   schemas:
     Error:
@@ -854,7 +866,10 @@ paths:
       tags: [Packages]
       security:
         - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
             - read:packages
+        - M2MBearer:
             - read:stewardships
       parameters:
         - name: purl
@@ -883,7 +898,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages or read:stewardships scope.
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
@@ -902,7 +917,10 @@ paths:
       tags: [Packages]
       security:
         - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
             - read:packages
+        - M2MBearer:
             - read:stewardships
       requestBody:
         required: true
@@ -960,7 +978,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages or read:stewardships scope.
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
@@ -972,6 +990,8 @@ paths:
       summary: Get advisories for a package by PURL
       tags: [Advisories]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       parameters:
@@ -1001,7 +1021,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1019,6 +1039,8 @@ paths:
       summary: Bulk advisory lookup
       tags: [Advisories]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -1077,7 +1099,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1099,6 +1121,8 @@ paths:
         Not yet implemented: the 7-day result cache and force-bypass semantics.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -1131,7 +1155,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1161,6 +1185,8 @@ paths:
       tags: [Blast Radius]
       security:
         - M2MBearer:
+            - read:akrites-advisories
+        - M2MBearer:
             - read:packages
       requestBody:
         required: true
@@ -1188,7 +1214,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1212,6 +1238,8 @@ paths:
         submit limiter.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -1253,7 +1281,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1269,6 +1297,8 @@ paths:
         status.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       parameters:
@@ -1298,7 +1328,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1321,10 +1351,12 @@ paths:
       operationId: getContactDetail
       summary: Get security contact detail by PURL
       description: >
-        Requires read:maintainer-roles (interim for the contract's cdp:maintainers:read).
-        Never reachable with the packages scope.
+        Requires read:akrites-maintainers, or read:maintainer-roles from the old Self
+        Serve client as a fallback. Never reachable with the packages scope.
       tags: [Contacts]
       security:
+        - M2MBearer:
+            - read:akrites-maintainers
         - M2MBearer:
             - read:maintainer-roles
       parameters:
@@ -1354,7 +1386,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
@@ -1372,6 +1404,8 @@ paths:
       summary: Bulk security contact lookup
       tags: [Contacts]
       security:
+        - M2MBearer:
+            - read:akrites-maintainers
         - M2MBearer:
             - read:maintainer-roles
       requestBody:
@@ -1430,7 +1464,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
@@ -1473,6 +1507,8 @@ paths:
       tags: [Contacts]
       security:
         - M2MBearer:
+            - read:akrites-maintainers
+        - M2MBearer:
             - read:maintainer-roles
       requestBody:
         required: true
@@ -1507,7 +1543,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
