@@ -7,15 +7,15 @@ import { notifyOnce } from '@/api/public/alerts/notifyOnce'
 function notifyMemberResolveConflict(req: Request, memberIds: string[], message: string): void {
   const dedupeKey = `member-resolve:${[...memberIds].sort().join(':')}`
 
-  void notifyOnce(req, dedupeKey, 'Member resolve conflict', [
+  void notifyOnce(req, dedupeKey, 'Public API Member Resolve Conflict 409', [
     {
-      title: 'Members',
-      text: memberIds.map((id) => `• \`${id}\``).join('\n'),
+      title: 'Request',
+      text: `*Method:* \`${req.method}\`\n*URL:* \`${req.originalUrl}\``,
     },
     { title: 'Conflict', text: `*Message:* ${message}` },
     {
-      title: 'Request',
-      text: `*Method:* \`${req.method}\`\n*URL:* \`${req.url}\``,
+      title: 'Context',
+      text: `\`\`\`${JSON.stringify({ memberIds }, null, 2)}\`\`\``,
     },
   ])
 }
