@@ -34,7 +34,7 @@ function envTunableRateLimiter(envPrefix: string, defaultMax: number, defaultWin
 // Blast-radius jobs default to 50 requests/hour.
 const blastRadiusRateLimiter = envTunableRateLimiter(
   'AKRITES_BLAST_RADIUS_RATE_LIMIT',
-  50,
+  5,
   60 * 60 * 1000,
 )
 
