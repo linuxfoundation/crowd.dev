@@ -20,10 +20,17 @@ class OrganizationSimilarityCalculator {
 
     let similarPrimaryIdentity: IOrganizationIdentity = null
 
-    // Orgs often have multiple accounts on the same platform (e.g. github.com/openai vs
-    // github.com/OpenAI-Discord). A shared verified primary-domain outweighs that clash.
-    if (this.hasSharedVerifiedPrimaryDomain(primaryOrganization, similarOrganization)) {
-      return this.HIGH_CONFIDENCE_SCORE
+    const sameDisplayName =
+      primaryOrganization.displayName?.toLowerCase() ===
+      similarOrganization.displayName?.toLowerCase()
+
+    // Orgs can have multiple usernames on one platform; don't let that clash
+    // veto a shared verified primary-domain and same displayName.
+    if (
+      sameDisplayName &&
+      this.hasSharedVerifiedPrimaryDomain(primaryOrganization, similarOrganization)
+    ) {
+      return 0.85
     }
 
     if (this.hasClashingOrganizationIdentities(primaryOrganization, similarOrganization)) {
@@ -48,7 +55,7 @@ class OrganizationSimilarityCalculator {
       }
 
       // check displayName match
-      if (similarOrganization.displayName === primaryOrganization.displayName) {
+      if (sameDisplayName) {
         return this.decideSimilarityUsingAdditionalChecks(primaryOrganization, similarOrganization)
       }
 
