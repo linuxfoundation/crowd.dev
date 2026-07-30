@@ -23,19 +23,20 @@ function notifyIdentityConflict(
     .filter(Boolean)
     .join(':')
 
-  void notifyOnce(req, dedupeKey, 'Identity conflict', [
-    {
-      title: 'Identity',
-      text: `*Platform:* \`${identity.platform}\`\n*Type:* \`${identity.type}\`\n*Value:* \`${identity.value}\``,
-    },
-    ...(identity.memberId
-      ? [{ title: 'Member', text: `*Member ID:* \`${identity.memberId}\`` }]
-      : []),
-    { title: 'Conflict', text: `*Message:* ${message}` },
+  const context = {
+    platform: identity.platform,
+    value: identity.value,
+    type: identity.type,
+    ...(identity.memberId ? { memberId: identity.memberId } : {}),
+  }
+
+  void notifyOnce(req, dedupeKey, 'Public API Identity Conflict 409', [
     {
       title: 'Request',
-      text: `*Method:* \`${req.method}\`\n*URL:* \`${req.url}\``,
+      text: `*Method:* \`${req.method}\`\n*URL:* \`${req.originalUrl}\``,
     },
+    { title: 'Conflict', text: `*Message:* ${message}` },
+    { title: 'Context', text: `\`\`\`${JSON.stringify(context, null, 2)}\`\`\`` },
   ])
 }
 
