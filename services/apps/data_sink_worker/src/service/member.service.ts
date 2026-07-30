@@ -8,9 +8,9 @@ import {
   getEarliestValidDate,
   getProperDisplayName,
   isDomainExcluded,
-  isEmail,
   isObjectEmpty,
   isSameMemberIdentity,
+  normalizeMemberIdentities,
   singleOrDefault,
 } from '@crowd/common'
 import {
@@ -136,15 +136,7 @@ export default class MemberService extends LoggerBase {
     // Deduplicate by (platform, type, lower(value)) — prefer verified=true when the same
     // identity appears with both flags. Prevents per-member unique identity index
     // from firing when a payload contains the same identity twice with different verified values.
-    const seen = new Map<string, IMemberIdentity>()
-    for (const id of identities) {
-      const key = `${id.platform}:${id.type}:${id.value.trim().toLowerCase()}`
-      const existing = seen.get(key)
-      if (!existing || (!existing.verified && id.verified)) {
-        seen.set(key, id)
-      }
-    }
-    const deduped = Array.from(seen.values())
+    const deduped = normalizeMemberIdentities(identities)
 
     try {
       await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
@@ -346,8 +338,9 @@ export default class MemberService extends LoggerBase {
             )
           }
 
-          // validate emails
-          data.identities = this.validateEmails(data.identities)
+          data.identities = normalizeMemberIdentities(data.identities, {
+            dropInvalidEmails: true,
+          })
 
           data.displayName = getProperDisplayName(data.displayName)
 
@@ -586,11 +579,9 @@ export default class MemberService extends LoggerBase {
             )
           }
 
-          // prevent empty identity handles
-          data.identities = data.identities.filter((i) => i.value)
-
-          // validate emails
-          data.identities = this.validateEmails(data.identities)
+          data.identities = normalizeMemberIdentities(data.identities, {
+            dropInvalidEmails: true,
+          })
 
           // make sure displayName is proper
           if (data.displayName) {
@@ -950,31 +941,6 @@ export default class MemberService extends LoggerBase {
       this.log.error(err, 'Error while processing a member update!')
       throw err
     }
-  }
-
-  private validateEmails(identities: IMemberIdentity[]): IMemberIdentity[] {
-    const toReturn: IMemberIdentity[] = []
-
-    for (const identity of identities) {
-      if (identity.type === MemberIdentityType.EMAIL) {
-        const lowerValue = identity.value.toLowerCase()
-        if (
-          isEmail(identity.value) &&
-          toReturn.find(
-            (i) =>
-              i.type === MemberIdentityType.EMAIL &&
-              i.value === lowerValue &&
-              i.platform === identity.platform,
-          ) === undefined
-        ) {
-          toReturn.push({ ...identity, value: lowerValue })
-        }
-      } else {
-        toReturn.push(identity)
-      }
-    }
-
-    return toReturn
   }
 
   private mergeData(

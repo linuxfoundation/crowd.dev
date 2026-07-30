@@ -1,4 +1,4 @@
-import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
+import { DEFAULT_TENANT_ID, generateUUIDv1, normalizeMemberIdentityValue } from '@crowd/common'
 import {
   IMemberIdentity,
   MemberIdentityDbInsert,
@@ -142,6 +142,10 @@ export async function updateMemberIdentity(
 
   if (Object.keys(filtered).length === 0) return null
 
+  if (typeof filtered.value === 'string') {
+    filtered.value = normalizeMemberIdentityValue(filtered.value)
+  }
+
   const setClause = Object.keys(filtered).map((key) => `"${key}" = $(${key})`)
   setClause.push('"updatedAt" = now()')
 
@@ -275,6 +279,7 @@ export async function insertMemberIdentities(
       ...i,
       id: i.id || generateUUIDv1(),
       tenantId: DEFAULT_TENANT_ID,
+      value: normalizeMemberIdentityValue(i.value),
     })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,

@@ -40,3 +40,15 @@ export async function ingestSecurityContactsForPurlWorkflow(
 ): Promise<IngestSingleResult> {
   return singleActs.ingestSecurityContactsForPurlActivity(purl)
 }
+
+export async function ingestReportingProtocols(): Promise<void> {
+  const parsed = await acts.runProtocolParseBatch()
+  if (parsed.blobsParsed > 0) {
+    await continueAsNew<typeof ingestReportingProtocols>()
+  }
+  const assembled = await acts.runProtocolAssembleBatch()
+  if (assembled.reposAssembled > 0) {
+    await continueAsNew<typeof ingestReportingProtocols>()
+  }
+  log.info('Reporting protocol ingestion complete — no more work, exiting.')
+}

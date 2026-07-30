@@ -12,8 +12,10 @@ import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExte
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
+import { getBlastRadiusJobBatch } from '../packages/getBlastRadiusJobBatch'
 import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
 import { submitBlastRadiusJob } from '../packages/submitBlastRadiusJob'
+import { submitBlastRadiusJobBatch } from '../packages/submitBlastRadiusJobBatch'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
@@ -29,7 +31,7 @@ function envTunableRateLimiter(envPrefix: string, defaultMax: number, defaultWin
   })
 }
 
-// Blast-radius jobs default to 5 requests/hour.
+// Blast-radius jobs default to 50 requests/hour.
 const blastRadiusRateLimiter = envTunableRateLimiter(
   'AKRITES_BLAST_RADIUS_RATE_LIMIT',
   5,
@@ -110,7 +112,22 @@ export function akritesExternalRouter(): Router {
   const blastRadiusSubRouter = Router()
   blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES]))
   blastRadiusSubRouter.post('/jobs', blastRadiusRateLimiter, safeWrap(submitBlastRadiusJob))
+  // Bulk submit multiplies Temporal workflow starts per request (up to
+  // MAX_BLAST_RADIUS_JOBS_PER_BATCH), so it sits behind the same strict
+  // blastRadiusRateLimiter as the single-job route, not the regular one.
+  blastRadiusSubRouter.post(
+    /^\/jobs:batch\/?$/,
+    blastRadiusRateLimiter,
+    safeWrap(submitBlastRadiusJobBatch),
+  )
   blastRadiusSubRouter.get('/jobs/:analysisId', rateLimiter, safeWrap(getBlastRadiusJob))
+  // Bulk poll is read-only, same cost profile as the other batch endpoints, so
+  // it uses the regular rateLimiter.
+  blastRadiusSubRouter.post(
+    /^\/jobs:batch\/poll\/?$/,
+    rateLimiter,
+    safeWrap(getBlastRadiusJobBatch),
+  )
   router.use('/blast-radius', blastRadiusSubRouter)
 
   return router

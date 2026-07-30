@@ -1,0 +1,59 @@
+DESCRIPTION >
+    - Query entrypoint for collection-scoped activity queries. Unlike the project-side
+    activityRelations_bucket_routing.pipe, this does NOT resolve to a single physical table via
+    Jinja branching - the bucket for a given collectionSlug is only known at SQL-execution time
+    (cityHash64(collectionSlug) % 10), and Tinybird's Jinja templating renders before any SQL
+    runs, so it cannot branch on a value only ClickHouse can compute.
+    - Instead this is a 10-way UNION ALL filtered by `collectionSlug =` on every branch. Each
+    activityRelations_collection_deduplicated_cleaned_bucket_N_ds is sorted with collectionSlug as
+    the first key (see its ENGINE_SORTING_KEY), so ClickHouse's sort-key pruning skips the other 9
+    tables' data at read time - in practice this behaves like a single-bucket lookup without
+    needing a bucketId resolution step, while staying correct for any collectionSlug without
+    requiring the caller to pre-resolve a bucket.
+    - Callers must always filter on collectionSlug (via the WHERE clause below or their own),
+    otherwise this degrades into a genuine 10-way full scan - the same failure mode the old
+    single-datasource union pipe had for every query, which this design avoids only when
+    collectionSlug is present.
+
+NODE activityRelations_collection_bucket_union_0
+SQL >
+    %
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_0_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_1_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_2_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_3_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_4_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_5_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_6_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_7_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_8_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}
+    UNION ALL
+    SELECT *
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_9_ds
+    WHERE collectionSlug = {{ String(collectionSlug, required=True) }}

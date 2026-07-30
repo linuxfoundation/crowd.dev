@@ -8,6 +8,7 @@ export async function runDependentsStage(
   qx: QueryExecutor,
   analysisId: string,
   onProgress?: () => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const startTime = Date.now()
 
@@ -51,7 +52,16 @@ export async function runDependentsStage(
       vulnerableVersions,
       topN: 25,
       onProgress,
+      signal,
     })
+
+    // scanDependents stops its loops early on abort but still returns whatever it
+    // gathered so far — without this check, a cancelled/timed-out attempt would
+    // persist that partial set and complete the stage successfully, and a Temporal
+    // retry would then see it as already succeeded and skip re-scanning.
+    if (signal?.aborted) {
+      throw new Error('Dependents scan cancelled')
+    }
 
     // Resolve package_id for the analyzed set only (max topN=25) — these are the ones
     // actually surfaced in results/verdicts. excludedByRange (up to 200) never

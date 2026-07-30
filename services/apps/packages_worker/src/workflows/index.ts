@@ -35,5 +35,6 @@ export { ingestRubyGemsCriticalDetails, ingestRubyGemsPackages } from '../rubyge
 export {
   ingestSecurityContacts,
   ingestSecurityContactsForPurlWorkflow,
+  ingestReportingProtocols,
 } from '../security-contacts/workflows'
 export { analyzeBlastRadius } from '../blast-radius/workflows'

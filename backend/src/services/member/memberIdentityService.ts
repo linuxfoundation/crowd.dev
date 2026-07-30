@@ -13,18 +13,13 @@ import {
   updateMemberIdentity,
 } from '@crowd/data-access-layer/src/members'
 import { LoggerBase } from '@crowd/logging'
-import { IMemberIdentity, MemberIdentityType, NewMemberIdentity } from '@crowd/types'
+import { IMemberIdentity, NewMemberIdentity } from '@crowd/types'
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 
 import { IServiceOptions } from '../IServiceOptions'
-
-function normalizeIdentityValue(type: string, value: string): string {
-  const trimmed = value.trim()
-  return type === MemberIdentityType.EMAIL ? trimmed.toLowerCase() : trimmed
-}
 
 export default class MemberIdentityService extends LoggerBase {
   options: IServiceOptions
@@ -63,16 +58,11 @@ export default class MemberIdentityService extends LoggerBase {
 
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
-          const identityData = {
-            ...data,
-            value: normalizeIdentityValue(data.type, data.value),
-          }
-
           // Check if identity already exists
           const conflict = await findMemberIdentityConflict(qx, {
-            value: identityData.value,
-            platform: identityData.platform,
-            type: identityData.type,
+            value: data.value,
+            platform: data.platform,
+            type: data.type,
           })
 
           if (conflict) {
@@ -87,7 +77,7 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Create member identity
-          await insertMemberIdentities(qx, [{ ...identityData, memberId }])
+          await insertMemberIdentities(qx, [{ ...data, memberId }])
 
           await touchMemberUpdatedAt(qx, memberId)
 
@@ -141,12 +131,7 @@ export default class MemberIdentityService extends LoggerBase {
           const qx = SequelizeRepository.getQueryExecutor(repoOptions)
 
           // Check if any of the identities already exist
-          const normalizedData = data.map((identity) => ({
-            ...identity,
-            value: normalizeIdentityValue(identity.type, identity.value),
-          }))
-
-          for (const identity of normalizedData) {
+          for (const identity of data) {
             const conflict = await findMemberIdentityConflict(qx, {
               value: identity.value,
               platform: identity.platform,
@@ -168,7 +153,7 @@ export default class MemberIdentityService extends LoggerBase {
           // Create member identities
           await insertMemberIdentities(
             qx,
-            normalizedData.map((identity) => ({ ...identity, memberId })),
+            data.map((identity) => ({ ...identity, memberId })),
           )
 
           await touchMemberUpdatedAt(qx, memberId)
@@ -226,10 +211,7 @@ export default class MemberIdentityService extends LoggerBase {
             throw new Error404(this.options.language, 'errors.notFound.message')
           }
 
-          const value = normalizeIdentityValue(
-            data.type ?? currentIdentity.type,
-            data.value ?? currentIdentity.value,
-          )
+          const value = data.value ?? currentIdentity.value
           const platform = data.platform ?? currentIdentity.platform
           const type = data.type ?? currentIdentity.type
 

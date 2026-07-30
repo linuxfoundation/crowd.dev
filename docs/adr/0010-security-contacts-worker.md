@@ -281,3 +281,108 @@ derived at read time as the band of the highest contact score, not stored.
 - **Source-format drift** — SECURITY-INSIGHTS schema versions, registry API shapes, and GitHub's
   `stats/contributors` 202-polling behavior all change over time. Extractor isolation limits blast
   radius to one source; fixture-based tests catch parser regressions.
+
+
+## Addendum (2026-07-29): Vulnerability reporting protocol
+
+Adds a sister data model answering "**how** does this project expect external vulnerability
+reporting?" per repo — distinct from security contacts, which answer *who*. The source of truth
+is what the project itself declared: security files from the enricher's `repo_well_known_files`
+inventory, the pages they link to, and the authoritative `pvr_enabled` flag. Inferred contacts
+from `security_contacts` never blend in as if declared; they appear only as clearly-labeled
+fallback when nothing was declared.
+
+### Volume and parser split (prod analysis, 2026-07-28)
+
+Of 114,045 critical GitHub repos, 10,349 (9.1%) have a security file: 10,495 files collapsing
+to 6,125 distinct blobs (top-20 shared blobs cover ~1,900 repos of boilerplate). A probe over
+all 6,120 reachable blobs showed **69.2% deterministically resolvable** (a single declared
+method, or several with exactly one preference-cued), **14% pointer-only** (the file is just a
+link to an external policy page), **21.6% with conditional routing** ("only email if a GHSA is
+not possible"), **53% with negation language** ("do NOT open a public issue"), 2.3% GitHub
+default template. Volume is not the constraint; precision is — hence **hybrid,
+deterministic-first**: the classifier fully settles clean blobs, an LLM handles the residue and
+prose fields, and a deterministic validator gates every LLM write.
+
+### Data model
+
+- **`security_policy_parses`** — content-keyed parse cache. PK `blob_oid` (git blob oid for
+  files; sha256 of the URL for linked pages, so two URLs with identical content stay
+  independently joinable from `linked_urls`), `source_kind`
+  (`security-file`/`linked-page`), `url` (linked-page rows), `parser`
+  (`deterministic`/`llm`), `parser_version`, `status` (`ok`/`template`/`degraded`), `parsed`
+  JSONB (methods + guidelines), `linked_urls`. Identical content across repos is parsed once,
+  ever; a `parser_version` bump is a targeted re-parse, not a migration.
+- **`repo_reporting_protocols`** — assembled per-repo answer. PK `repo_id`, `declared`,
+  `methods` JSONB (ordered array of `{type, status, endpoint, condition, confidence,
+  provenance}`), `guidelines` JSONB, `sources` JSONB, `assembled_at`. Method `type` ∈
+  github-pvr | email | web-form | bounty-platform | security-txt | mailing-list; `status` ∈
+  preferred | accepted | fallback | prohibited (`prohibited` captures negation language);
+  `confidence` ∈ declared | inferred. Plain upsert — fully derived and recomputable, no
+  soft delete.
+
+### Parse stage (blob-driven)
+
+`repo_well_known_files` is the work queue (live `security` rows for critical GitHub repos whose
+`blob_oid` lacks a parse at the current version); this pipeline never probes repos for files.
+Blobs are fetched once by oid through the shared GitHub gateway. The classifier (same
+windowing family as the B1 extractor) emits a `clean` verdict — single usable method, or
+exactly one preference-cued among several, no conditional language, negation on a method's own
+line marks it `prohibited` — which is stored as-is. Residue goes to the LLM; the validator
+requires every emitted endpoint to appear in the source (URLs verbatim; emails also via
+deobfuscation normalization — "security at python dot org"), valid enums, and at most one
+`preferred` — failures are stored `status='degraded'` (classifier partials, no guidelines).
+The LLM can never invent a channel. Pointer-only parses record up to 3 linked URLs; each
+linked page is fetched once per URL (SSRF-guarded: http(s) only, private/loopback/link-local
+and metadata hosts blocked, redirects revalidated per hop, body capped at 500 KB while
+streaming) and parsed as a `linked-page` row. For a pointer-only blob the file row is written
+only after every linked page has a parse row, so a transient page failure leaves the blob
+unmarked and the next daily sweep retries the whole unit. Batches are drawn in random order so
+permanently failing blobs cannot starve the queue.
+
+### Assembly
+
+Repos are re-assembled when inputs change (no protocol row, `contacts_last_refreshed` newer
+than `assembled_at`, or a newer parse for one of their blobs). Merge rules: `ok`/`template`
+parses contribute methods and guidelines with provenance — **`degraded` parses contribute
+nothing**; `pvr_enabled = true` adds a `github-pvr` method when the files are silent, and
+`pvr_enabled = false` **vetoes** a declared github-pvr method (the A2-vetoes-B1 rule applied
+to the protocol); github-pvr sentinel endpoints are rewritten per repo to
+`…/security/advisories/new`; dedup on type+endpoint; at most one `preferred`; sort preferred >
+accepted > fallback > prohibited. Only when nothing is declared: up to 3 `inferred`/`fallback`
+methods derived from live `security_contacts` (email, github-pvr, web-form channels, by score).
+Every repo in the population gets a row — `declared=false` with an empty `methods` array for
+the ~89 no-signal repos.
+
+### LLM contract
+
+Direct AWS Bedrock calls (`@aws-sdk/client-bedrock-runtime`, module-local in `llmExtract.ts`)
+— deliberately **not** the legacy class-based `LlmService` in `common_services` (class pattern
++ prompt-history DB coupling) and **not** a shared provider-agnostic lib speaking to a LiteLLM
+proxy (built during implementation, then dropped: no LiteLLM infra today; revisit if CDP
+standardizes multi-provider LLM infrastructure — schema and prompt carry over unchanged).
+Existing `CROWD_AWS_BEDROCK_ACCESS_KEY_ID`/`CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY` credentials;
+default `LlmModelType.CLAUDE_HAIKU_4_5` with region from `LLM_MODEL_REGION_MAP`. The JSON
+schema is embedded in the system prompt (Bedrock InvokeModel has no structured-output mode);
+`parseLlmJson` parses the answer. Missing credentials or any failure → `degraded` parse, never
+a thrown error. No prompt-history persistence.
+
+### Scheduling
+
+Own Temporal schedule `reporting-protocol-ingestion` (daily 07:00, `SKIP` overlap, 24 h
+execution timeout) inside the security-contacts worker, independent of the contacts schedule so
+a slow LLM pass never stalls contact ingestion. The workflow drains parsing first
+(`continueAsNew` while a batch parsed anything; an all-failed batch falls through to assembly
+instead of recursing — failed blobs get no row and retry on the next daily tick), then drains
+assembly. Batch sizes: 200 blobs (parse), 2,000 repos (assemble). Both activities ride the
+shared 30-minute proxy and heartbeat on a fixed 30 s cadence under its 2-minute
+`heartbeatTimeout`.
+
+### Deferred
+
+Other interaction-profile domains (contribution intake, governance, maintainer roster,
+communication channels, code of conduct — the content-keyed cache and section pattern extend
+to them); org-level `.github` default files (GitHub serves them for repos without their own
+SECURITY.md; the inventory doesn't capture them — measure the gap first); non-GitHub declared
+parsing (no file inventory; such repos assemble as `declared=false` + inferred fallback); API
+exposure on the akrites endpoints.
