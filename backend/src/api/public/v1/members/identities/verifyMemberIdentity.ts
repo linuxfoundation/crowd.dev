@@ -29,9 +29,9 @@ import {
   MemberUnmergeResult,
 } from '@crowd/types'
 
+import { rethrowIdentityConflict } from '@/api/public/alerts/identityConflict'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { noContent, ok } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -94,8 +94,12 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
           })
         } catch (error) {
           if (verified) {
-            const ctx = { platform: identity.platform, value: identity.value, type: identity.type }
-            rethrowDbConflict(error, ctx)
+            rethrowIdentityConflict(req, error, {
+              memberId,
+              platform: identity.platform,
+              value: identity.value,
+              type: identity.type,
+            })
           }
 
           throw error
