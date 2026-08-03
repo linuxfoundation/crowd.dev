@@ -1,9 +1,6 @@
 import type { Request, Response } from 'express'
 
-import {
-  type ReportingProtocolRow,
-  getReportingProtocolsByPurls,
-} from '@crowd/data-access-layer'
+import { type ReportingProtocolRow, getReportingProtocolsByPurls } from '@crowd/data-access-layer'
 
 import { getPackagesQx } from '@/db/packagesDb'
 import { ok } from '@/utils/api'
