@@ -100,7 +100,11 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
     Array.isArray(toBeSquashed[source]),
   )
 
-  if (arraySources.length > 0) {
+  // Only resolve arrays when an apply path can run afterward.
+  if (
+    arraySources.length > 0 &&
+    (Object.keys(toBeSquashed).length === 1 || args.activityCount > 100)
+  ) {
     existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
 
     const orderedArraySources = [
