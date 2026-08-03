@@ -117,6 +117,7 @@ export type IMemberEnrichmentAttributeSettings = {
 
 export interface IProcessMemberSourcesArgs {
   memberId: string
+  activityCount: number
   sources: MemberEnrichmentSource[]
 }
 

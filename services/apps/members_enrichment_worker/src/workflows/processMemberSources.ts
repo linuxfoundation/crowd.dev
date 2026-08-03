@@ -4,6 +4,7 @@ import { MemberEnrichmentSource, PlatformType } from '@crowd/types'
 
 import * as activities from '../activities'
 import { IMemberEnrichmentDataNormalized, IProcessMemberSourcesArgs } from '../types'
+import { SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES } from '../utils/config'
 
 const {
   findMemberEnrichmentCache,
@@ -78,7 +79,45 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
     }
   }
 
-  if (Object.keys(toBeSquashed).length > 1) {
+  const sourceKeys = Object.keys(toBeSquashed)
+
+  // A single source isn't reliable enough for a full profile update, but some attributes
+  // are still useful for aggregate consumers, where coverage matters more than certainty.
+  if (sourceKeys.length === 1) {
+    const source = sourceKeys[0]
+    const normalized = toBeSquashed[source]
+
+    if (!Array.isArray(normalized) && normalized.attributes) {
+      const attributes = {}
+
+      for (const attributeName of SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES) {
+        const value = normalized.attributes[attributeName]?.[`enrichment-${source}`]
+        if (value) {
+          attributes[attributeName] = {
+            enrichment: await cleanAttributeValue(value),
+          }
+        }
+      }
+
+      if (Object.keys(attributes).length > 0) {
+        const existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
+        return updateMemberUsingSquashedPayload(
+          args.memberId,
+          existingMemberData,
+          {
+            identities: [],
+            attributes,
+            memberOrganizations: [],
+            reach: {},
+          },
+          false,
+          false,
+        )
+      }
+    }
+  }
+
+  if (sourceKeys.length > 1 && args.activityCount > 100) {
     const existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
 
     let progaiLinkedinScraperProfileSelected: IMemberEnrichmentDataNormalized = null
