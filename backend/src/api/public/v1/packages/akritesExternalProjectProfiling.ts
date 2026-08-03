@@ -14,6 +14,12 @@ export interface AkritesExternalProjectProfiling {
   assembledAt: string | null
 }
 
+export interface ProjectProfilingBulkEntry {
+  requestedPurl: string
+  found: boolean
+  profiling: AkritesExternalProjectProfiling | null
+}
+
 // Timestamptz columns arrive as the raw Postgres string (OID 1184 parser returns it
 // verbatim), so normalize to canonical ISO 8601. Returns null for null/unparseable.
 function toIsoOrNull(value: string | null): string | null {

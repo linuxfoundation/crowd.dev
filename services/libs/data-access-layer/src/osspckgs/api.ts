@@ -1210,3 +1210,33 @@ export async function getReportingProtocolByPurl(
     { purl },
   )
 }
+
+// Batch variant of getReportingProtocolByPurl; unmatched purls are absent from the result.
+export async function getReportingProtocolsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<ReportingProtocolRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      rp.declared,
+      rp.methods,
+      rp.guidelines,
+      rp.sources,
+      rp.assembled_at AS "assembledAt"
+    FROM packages p
+    JOIN LATERAL (
+      SELECT pr2.repo_id
+      FROM package_repos pr2
+      WHERE pr2.package_id = p.id
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
+      LIMIT 1
+    ) pr ON true
+    JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
+  )
+}

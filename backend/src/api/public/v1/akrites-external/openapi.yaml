@@ -75,9 +75,10 @@ tags:
       Assembled vulnerability-reporting protocol for a package's best-matched
       repo — the full ordered list of ways to report a vulnerability (declared
       methods first, security-contact fallbacks after) plus any disclosure
-      guidelines. Same scope set as Packages (read:akrites-packages, or
-      read:packages / read:stewardships as a fallback until the cutover
-      completes).
+      guidelines. Fallback methods can carry contact PII (maintainer/committer
+      emails), so it takes the same scopes as Contacts: read:akrites-maintainers,
+      or read:maintainer-roles as a fallback until the cutover completes — never
+      reachable via the packages scopes.
 
 components:
   securitySchemes:
@@ -753,6 +754,20 @@ components:
           format: date-time
           nullable: true
 
+    ProjectProfilingBulkEntry:
+      type: object
+      required: [requestedPurl, found, profiling]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        profiling:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ProjectProfiling'
+
     ContactDetail:
       type: object
       description: >
@@ -1010,6 +1025,83 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Package not found, or its best-matched repo has no assembled protocol.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/project-profiling:batch:
+    post:
+      operationId: getProjectProfilingBatch
+      summary: Bulk assembled reporting-protocol lookup by PURL
+      description: >
+        Assembled methods can include inferred security_contacts fallbacks whose
+        endpoint is a maintainer/committer email (contact PII), so this endpoint
+        requires read:akrites-maintainers, or read:maintainer-roles from the old
+        Self Serve client as a fallback. Never reachable with the packages scopes.
+      tags: [Project Profiling]
+      security:
+        - M2MBearer:
+            - read:akrites-maintainers
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectProfilingBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-maintainers or read:maintainer-roles scope.
           content:
             application/json:
               schema:
