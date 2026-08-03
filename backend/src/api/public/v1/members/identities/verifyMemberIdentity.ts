@@ -94,6 +94,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
         } catch (error) {
           if (verified) {
             rethrowDbConflict(error, {
+              memberId,
               platform: identity.platform,
               value: identity.value,
               type: identity.type,
@@ -139,20 +140,16 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
   if (unmerge) {
     const { preview, result } = unmerge
 
-    try {
-      await captureApiChange(
-        req,
-        memberUnmergeAction(memberId, async (captureOldState, captureNewState) => {
-          captureOldState({ primary: preview.primary })
-          captureNewState({
-            primary: result.primary,
-            secondary: result.secondary,
-          })
-        }),
-      )
-    } catch (error) {
-      req.log.warn({ error }, 'Audit log capture failed after identity unmerge')
-    }
+    await captureApiChange(
+      req,
+      memberUnmergeAction(memberId, async (captureOldState, captureNewState) => {
+        captureOldState({ primary: preview.primary })
+        captureNewState({
+          primary: result.primary,
+          secondary: result.secondary,
+        })
+      }),
+    )
 
     try {
       await invalidateMemberQueryCache(req.redis, [result.primary.id, result.secondary.id], true)
@@ -170,7 +167,8 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
         actorId: req.actor.id,
       })
     } catch (error) {
-      req.log.warn({ error }, 'Failed to start unmerge workflow after identity unmerge')
+      req.log.error({ error }, 'Failed to start unmerge workflow')
+      throw error
     }
   }
 

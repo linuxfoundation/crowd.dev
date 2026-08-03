@@ -96,26 +96,16 @@ export async function alertOnce(
 }
 
 function resolveRoute(req: Request): string {
-  if (req.route?.path != null) {
-    return `${req.baseUrl}${req.route.path}`
-  }
-  return (req.path || '').replace(PATH_UUID, ':id')
+  return (req.originalUrl || req.url || '').split('?')[0].replace(PATH_UUID, ':id')
 }
 
 function serializeContext(context?: Record<string, unknown>): string {
   if (!context) return ''
 
-  return Object.keys(context)
-    .sort()
-    .map((key) => {
-      const value = context[key]
-      if (Array.isArray(value)) {
-        return `${key}=${[...value].map(String).sort().join(',')}`
-      }
-      if (value !== null && typeof value === 'object') {
-        return `${key}=${JSON.stringify(value)}`
-      }
-      return `${key}=${String(value)}`
-    })
-    .join('|')
+  const normalized: Record<string, unknown> = {}
+  for (const key of Object.keys(context).sort()) {
+    const value = context[key]
+    normalized[key] = Array.isArray(value) ? [...value].map(String).sort() : value
+  }
+  return JSON.stringify(normalized)
 }

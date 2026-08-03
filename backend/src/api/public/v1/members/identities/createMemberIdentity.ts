@@ -102,6 +102,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
           }
         } catch (error) {
           rethrowDbConflict(error, {
+            memberId,
             platform: data.platform,
             value: data.value,
             type: data.type,

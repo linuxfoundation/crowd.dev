@@ -31,6 +31,7 @@ export const errorHandler: ErrorRequestHandler = (
       message: error.message,
       name: error.name,
       context: error instanceof ConflictError ? error.context : undefined,
+      stack: error.status >= 500 ? error.stack : undefined,
     })
     res.status(error.status).json(error.toJSON())
     return
