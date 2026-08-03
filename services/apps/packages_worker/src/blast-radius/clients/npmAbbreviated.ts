@@ -1,3 +1,4 @@
+import { combineSignals } from '../../npm/signals'
 import type { FetchError } from '../../npm/types'
 
 const REGISTRY = 'https://registry.npmjs.org'
@@ -22,12 +23,16 @@ export interface AbbreviatedPackument {
 // npm's abbreviated metadata format (dependencies/dist-tags only, no readme/maintainers/etc.) —
 // used for the high-volume candidate pre-scan in dependentsScan.ts, where only the declared
 // dependency ranges matter and the full packument payload would be wasted bandwidth.
+// `signal` (e.g. a Temporal activity's cancellationSignal) is combined with the request's
+// own 30s timeout so a caller can abort in-flight requests early.
 export async function fetchAbbreviatedPackument(
   name: string,
+  signal?: AbortSignal,
 ): Promise<AbbreviatedPackument | FetchError> {
   const url = `${REGISTRY}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
+  const combinedSignal = combineSignals(abort.signal, signal)
   let res: Response
   try {
     res = await fetch(url, {
@@ -35,7 +40,7 @@ export async function fetchAbbreviatedPackument(
         Accept: 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8',
         'User-Agent': USER_AGENT,
       },
-      signal: abort.signal,
+      signal: combinedSignal,
     })
   } catch (err) {
     return { kind: 'TRANSIENT', message: String(err) }

@@ -1,0 +1,6 @@
+[
+  { "advisoryId": "GHSA-jf85-cpcp-j695", "package": "lodash", "ecosystem": "npm" },
+  { "advisoryId": "GHSA-cxjh-pqwp-8mfp", "package": "follow-redirects", "ecosystem": "npm" },
+  { "advisoryId": "GHSA-pch5-whg9-qr2r", "package": "netmask", "ecosystem": "npm" },
+  { "advisoryId": "GHSA-c429-5p7v-vgjp", "package": "@hapi/hoek", "ecosystem": "npm" }
+]

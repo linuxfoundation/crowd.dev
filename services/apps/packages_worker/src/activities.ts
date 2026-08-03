@@ -56,6 +56,8 @@ export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubyge
 export {
   processSecurityContactsBatch,
   ingestSecurityContactsForPurlActivity,
+  runProtocolParseBatch,
+  runProtocolAssembleBatch,
 } from './security-contacts/activities'
 export {
   blastRadiusStart,
@@ -65,3 +67,4 @@ export {
   blastRadiusReachability,
   blastRadiusReport,
 } from './blast-radius/activities'
+export { slackNotify } from './activities/index'

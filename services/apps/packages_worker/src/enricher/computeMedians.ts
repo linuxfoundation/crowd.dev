@@ -28,6 +28,7 @@ export interface PrNode {
   mergedAt: string | null
   closedAt: string | null
   author: { login: string } | null
+  authorAssociation: string | null
   comments: { nodes: ResponseNode[] }
   reviews: { nodes: ResponseNode[] }
 }
@@ -103,4 +104,20 @@ export function computeIssueMedians(issues: IssueNode[]): {
     medianTimeToCloseHours: toIntHours(median(closeHours)),
     medianTimeToFirstResponseHours: toIntHours(median(firstResponseHours)),
   }
+}
+
+const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
+
+export function computeExternalPrCounts(prs: PrNode[]): {
+  externalPrsOpened: number
+  externalPrsMerged: number
+} {
+  let externalPrsOpened = 0
+  let externalPrsMerged = 0
+  for (const pr of prs) {
+    if (pr.authorAssociation && MAINTAINER_ASSOCIATIONS.has(pr.authorAssociation)) continue
+    externalPrsOpened++
+    if (pr.mergedAt != null) externalPrsMerged++
+  }
+  return { externalPrsOpened, externalPrsMerged }
 }

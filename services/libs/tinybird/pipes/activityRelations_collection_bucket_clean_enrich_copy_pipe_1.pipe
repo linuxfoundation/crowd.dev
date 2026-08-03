@@ -1,0 +1,57 @@
+DESCRIPTION >
+    Daily enrichment/cleaning copy pipe for curated-collection bucket 1. Same
+    country/org-denormalization and bot/repo-enablement filtering logic as the project-bucket
+    copy pipes (activityRelations_bucket_clean_enrich_copy_pipe_1.pipe) - the result depends on
+    activityRelations, member bot-status, and repository enable/disable state, none of which are
+    append-only-safe, so this recomputes the full bucket via COPY_MODE replace rather than
+    appending. Scheduled daily, staggered 5 minutes apart across all 10 collection buckets (this
+    bucket at 1:05) so all 10 full-replace jobs don't fire simultaneously.
+
+NODE country_mapping_array
+SQL >
+    SELECT groupArray((country, country_code, timezone_offset)) AS country_data FROM country_mapping_ds
+
+NODE activityRelations_collection_deduplicated_cleaned_denormalized_1
+SQL >
+    WITH
+        upperUTF8(o.location) AS search_u,
+        (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
+        (SELECT country_data FROM country_mapping_array) AS mapping,
+        multiSearchFirstIndexUTF8(search_u, names_u) AS idx,
+        if(idx = 0, ('Unknown', 'XX', 0), mapping[idx]) AS country_data
+    SELECT
+        activityRelations_collection_bucket_MV_ds_1.*,
+        (gitInsertions + gitDeletions) as gitChangedLines,
+        case
+            when gitChangedLines > 0 and gitChangedLines < 10
+            then '1-9'
+            when gitChangedLines > 9 and gitChangedLines < 60
+            then '10-59'
+            when gitChangedLines > 59 and gitChangedLines < 100
+            then '60-99'
+            when gitChangedLines > 99 and gitChangedLines < 500
+            then '100-499'
+            when gitChangedLines > 499
+            then '500+'
+            else ''
+        end as "gitChangedLinesBucket",
+        CAST(country_data .2 AS LowCardinality(String)) AS organizationCountryCode,
+        o.displayName as "organizationName",
+        toStartOfInterval(now(), INTERVAL 1 hour) as snapshotId
+    from activityRelations_collection_bucket_MV_ds_1 final
+    left join organizations o final on o.id = activityRelations_collection_bucket_MV_ds_1.organizationId
+    where
+        memberId IN (SELECT id FROM members_sorted)
+        and (
+            (
+                platform IN ('git', 'gerrit', 'github', 'gitlab')
+                AND (lower(channel), activityRelations_collection_bucket_MV_ds_1.segmentId)
+                IN (SELECT lower(channel), segmentId FROM repos_to_channels)
+            )
+            OR platform NOT IN ('git', 'gerrit', 'github', 'gitlab')
+        )
+
+TYPE COPY
+TARGET_DATASOURCE activityRelations_collection_deduplicated_cleaned_bucket_1_ds
+COPY_MODE replace
+COPY_SCHEDULE 5 4 * * *

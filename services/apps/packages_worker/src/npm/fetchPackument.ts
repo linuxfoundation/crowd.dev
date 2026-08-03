@@ -1,5 +1,6 @@
 import type { Dispatcher } from 'undici'
 
+import { combineSignals } from './signals'
 import type { FetchError, Packument } from './types'
 
 const REGISTRY = 'https://registry.npmjs.org'
@@ -11,13 +12,17 @@ function encodeNpmName(name: string): string {
 
 // `dispatcher` (an undici ProxyAgent) routes the request through a specific proxy IP
 // so concurrent ingest lanes each use their own egress address / rate limit.
+// `signal` (e.g. a Temporal activity's cancellationSignal) is combined with the
+// request's own 30s timeout so a caller can abort in-flight requests early.
 export async function fetchPackument(
   name: string,
   dispatcher?: Dispatcher,
+  signal?: AbortSignal,
 ): Promise<Packument | FetchError> {
   const url = `${REGISTRY}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
+  const combinedSignal = combineSignals(abort.signal, signal)
   let res: Response
   try {
     // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
@@ -26,7 +31,7 @@ export async function fetchPackument(
         Accept: 'application/json',
         'User-Agent': USER_AGENT,
       },
-      signal: abort.signal,
+      signal: combinedSignal,
     }
     if (dispatcher) init.dispatcher = dispatcher
     res = await fetch(url, init as RequestInit)

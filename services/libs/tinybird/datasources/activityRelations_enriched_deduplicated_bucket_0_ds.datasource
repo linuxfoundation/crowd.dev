@@ -1,5 +1,3 @@
-TOKEN "delete_fork_repos_activities_script" READ
-
 SCHEMA >
     `activityId` String,
     `conversationId` String,
@@ -31,6 +29,5 @@ SCHEMA >
     `snapshotId` DateTime
 
 ENGINE MergeTree
-ENGINE_PARTITION_KEY snapshotId
+ENGINE_PARTITION_KEY toYear(timestamp)
 ENGINE_SORTING_KEY segmentId, timestamp, type, platform, memberId, organizationId
-ENGINE_TTL toDateTime(snapshotId) + toIntervalDay(2)

@@ -177,6 +177,28 @@ export async function getAnalysisDetail(
   )
 }
 
+// Bulk counterpart of getAnalysisDetail for batch polling — one query for the whole
+// page instead of one per id. Order is not guaranteed to match analysisIds; callers
+// key the result by row.id.
+export async function getAnalysisDetailsByIds(
+  qx: QueryExecutor,
+  analysisIds: string[],
+): Promise<AnalysisDetailRow[]> {
+  if (analysisIds.length === 0) {
+    return []
+  }
+  return qx.select(
+    `
+    SELECT
+      id, advisory_osv_id, package_name, ecosystem, status, error,
+      candidates_considered, started_at, completed_at
+    FROM blast_radius_analyses
+    WHERE id = ANY($(analysisIds)::uuid[])
+    `,
+    { analysisIds },
+  )
+}
+
 export async function setDependentsMeta(
   qx: QueryExecutor,
   analysisId: string,
@@ -374,6 +396,31 @@ export async function getDependentsExcludedByRangeCount(
   return Number(row.count) || 0
 }
 
+// Bulk counterpart of getDependentsExcludedByRangeCount — one grouped query for the
+// whole page instead of one per id. Ids with no excluded rows are simply absent from
+// the result; callers should default to 0 for those.
+export async function getDependentsExcludedByRangeCountBatch(
+  qx: QueryExecutor,
+  analysisIds: string[],
+): Promise<{ analysisId: string; count: number }[]> {
+  if (analysisIds.length === 0) {
+    return []
+  }
+  const rows = await qx.select(
+    `
+    SELECT analysis_id, COUNT(*) as count
+    FROM blast_radius_dependents
+    WHERE analysis_id = ANY($(analysisIds)::uuid[]) AND excluded_by_range = TRUE
+    GROUP BY analysis_id
+    `,
+    { analysisIds },
+  )
+  return rows.map((row: Record<string, unknown>) => ({
+    analysisId: row.analysis_id as string,
+    count: Number(row.count) || 0,
+  }))
+}
+
 // Clears prior dependents for this analysis before a fresh scan re-inserts. Needed
 // because a retry (stage failed after insertDependents but before completeStageRun)
 // would otherwise leave stale rows from the earlier attempt's scan around — upserting
@@ -489,6 +536,34 @@ export async function getVerdictResults(
     `,
     { analysisId },
   )
+}
+
+// Bulk counterpart of getVerdictResults — one query for the whole page instead of one
+// per id. Each row carries its analysisId so callers can group results back per id;
+// order within a group still follows d.downloads DESC NULLS LAST.
+export async function getVerdictResultsBatch(
+  qx: QueryExecutor,
+  analysisIds: string[],
+): Promise<(VerdictResultRow & { analysisId: string })[]> {
+  if (analysisIds.length === 0) {
+    return []
+  }
+  const rows = await qx.select(
+    `
+    SELECT
+      v.analysis_id, d.name, d.version, d.downloads,
+      v.reachable_verdict, v.confidence, v.evidence, v.reasoning
+    FROM blast_radius_verdicts v
+    JOIN blast_radius_dependents d ON d.id = v.dependent_id
+    WHERE v.analysis_id = ANY($(analysisIds)::uuid[])
+    ORDER BY d.downloads DESC NULLS LAST
+    `,
+    { analysisIds },
+  )
+  return rows.map((row: Record<string, unknown>) => ({
+    ...(row as unknown as VerdictResultRow),
+    analysisId: row.analysis_id as string,
+  }))
 }
 
 // ---- stage runs (monitoring) ----

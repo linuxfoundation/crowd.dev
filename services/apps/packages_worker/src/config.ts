@@ -1,3 +1,5 @@
+import { LlmModelType } from '@crowd/types'
+
 function requireEnv(name: string): string {
   const val = process.env[name]
   if (!val) throw new Error(`Missing required environment variable: ${name}`)
@@ -98,7 +100,7 @@ export function getNuGetConfig() {
 
 export function getRubyGemsConfig() {
   return {
-    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '10000', 10),
+    batchSize: parseInt(process.env.RUBYGEMS_FETCHER_BATCH_SIZE ?? '15000', 10),
     concurrency: parseInt(process.env.RUBYGEMS_FETCHER_CONCURRENCY ?? '8', 10),
   }
 }
@@ -117,5 +119,19 @@ export function getDockerhubConfig() {
     refreshIntervalHours: requireEnvInt('DOCKERHUB_REFRESH_INTERVAL_HOURS'),
     discoveryIntervalDays: requireEnvInt('DOCKERHUB_DISCOVERY_INTERVAL_DAYS'),
     idleSleepSec: requireEnvInt('DOCKERHUB_IDLE_SLEEP_SEC'),
+  }
+}
+
+export function getReportingProtocolConfig() {
+  return {
+    parseBatchSize: parseInt(process.env.REPORTING_PROTOCOL_PARSE_BATCH_SIZE ?? '200', 10),
+    assembleBatchSize: parseInt(process.env.REPORTING_PROTOCOL_ASSEMBLE_BATCH_SIZE ?? '2000', 10),
+    concurrency: parseInt(process.env.REPORTING_PROTOCOL_CONCURRENCY ?? '10', 10),
+    fetchTimeoutMs: parseInt(process.env.REPORTING_PROTOCOL_FETCH_TIMEOUT_MS ?? '15000', 10),
+    llmModelId: process.env.REPORTING_PROTOCOL_LLM_MODEL_ID ?? LlmModelType.CLAUDE_HAIKU_4_5,
+    llmTimeoutMs: parseInt(process.env.REPORTING_PROTOCOL_LLM_TIMEOUT_MS ?? '60000', 10),
+    llmConcurrency: parseInt(process.env.REPORTING_PROTOCOL_LLM_CONCURRENCY ?? '4', 10),
+    llmAccessKeyId: process.env.CROWD_AWS_BEDROCK_ACCESS_KEY_ID,
+    llmSecretAccessKey: process.env.CROWD_AWS_BEDROCK_SECRET_ACCESS_KEY,
   }
 }

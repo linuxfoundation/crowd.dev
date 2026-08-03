@@ -16,10 +16,13 @@ info:
     7-day result cache is specced separately and not yet built.
 
 
-    TODO: scopes below (read:packages, read:stewardships) are the existing
-    internal CDP UI scopes, reused here for now. Swap for a dedicated
-    cdp:packages:read scope once Akrites gets its own Auth0 M2M scopes per
-    the akrites-external draft contract.
+    Auth0 now issues a dedicated Akrites Enclave M2M client with its own
+    read:akrites-packages / read:akrites-advisories / read:akrites-maintainers
+    scopes. Until Akrites cuts over to that client's credentials, the Self Serve
+    client's existing scopes (read:packages, read:stewardships,
+    read:maintainer-roles) still work on every operation below — each operation
+    lists both the new dedicated scope(s) and the old fallback scope(s) as
+    alternatives. Drop the old alternative once the cutover is confirmed.
 
 servers:
   - url: https://cm.lfx.dev/api/v1
@@ -27,44 +30,52 @@ servers:
 
 security:
   - M2MBearer:
+      - read:akrites-packages
+  - M2MBearer:
       - read:packages
+  - M2MBearer:
       - read:stewardships
 
 tags:
   - name: Packages
-    description: Package detail — requires read:packages and read:stewardships (see TODO above).
+    description: >
+      Package detail — requires read:akrites-packages (dedicated Akrites Enclave
+      scope), or either read:packages or read:stewardships from the old Self Serve
+      client as a fallback until the cutover completes.
   - name: Advisories
     description: >
-      Security advisories for a package, split out of package detail. The draft
-      contract gates these behind a dedicated read:advisories scope; until Auth0
-      issues it, the implementation reuses read:packages (advisories need no
-      stewardship read). Confirm the final scope name (read:advisories vs
-      cdp:advisories:read) with Akrites/product.
+      Security advisories for a package, split out of package detail. Requires
+      read:akrites-advisories (dedicated Akrites Enclave scope), or read:packages
+      from the old Self Serve client as a fallback until the cutover completes
+      (advisories need no stewardship read).
   - name: Contacts
     description: >
       Security contacts for a package — includes contact PII (e.g. reporter
-      emails). The contract gates these behind a dedicated cdp:maintainers:read
-      scope and forbids reaching them via the packages scope; until Auth0 issues
-      it, the implementation requires read:maintainer-roles (NOT read:packages).
-      The response shape is still under discussion upstream (reportingMethods /
-      reportingGuidelines / integrationHints are reserved and always null today).
+      emails). Requires read:akrites-maintainers (dedicated Akrites Enclave
+      scope), or read:maintainer-roles from the old Self Serve client as a
+      fallback until the cutover completes — never reachable via the packages
+      scopes. The response shape is still under discussion upstream
+      (reportingMethods / reportingGuidelines / integrationHints are reserved
+      and always null today).
   - name: Blast Radius
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
-      implemented. Submitting kicks off a Temporal workflow that runs the
-      npm reachability pipeline (other ecosystems fail fast with
-      ECOSYSTEM_NOT_SUPPORTED); poll returns job status and, once done,
-      results. Rate-limited independently of the other akrites-external
-      endpoints (default 5 requests/hour, configurable via
-      AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX / _WINDOW_MS). Same interim scope
-      note as Advisories applies (read:packages, pending a dedicated
-      read:advisories scope).
+      implemented, each with a bulk counterpart. Submitting kicks off a
+      Temporal workflow that runs the npm reachability pipeline (other
+      ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED); poll returns job
+      status and, once done, results. Bulk submit (jobs:batch) is capped at
+      20 jobs per request (10 recommended as the default batch size) — each
+      entry starts its own workflow — and stays behind the same strict rate
+      limiter as the single-job route; bulk poll
+      (jobs:batch/poll) is read-only and capped at 100 like the other batch
+      endpoints. Same scope note as Advisories applies (read:akrites-advisories,
+      or read:packages as a fallback until the cutover completes).
 
 components:
   securitySchemes:
     # Modeled as oauth2/clientCredentials (not http/bearer): OpenAPI only allows
     # non-empty scope arrays in security requirements for oauth2 / openIdConnect
-    # schemes, and the operations below require read:packages + read:stewardships.
+    # schemes.
     M2MBearer:
       type: oauth2
       description: >
@@ -75,9 +86,12 @@ components:
         clientCredentials:
           tokenUrl: https://linuxfoundation.auth0.com/oauth/token
           scopes:
-            read:packages: Read package detail
-            read:stewardships: Read package stewardship data
-            read:maintainer-roles: Read security contacts (interim scope for Contacts; see the Contacts tag)
+            read:akrites-packages: Read package detail (dedicated Akrites Enclave scope)
+            read:akrites-advisories: Read security advisories and submit/poll blast-radius jobs (dedicated Akrites Enclave scope)
+            read:akrites-maintainers: Read security contacts (dedicated Akrites Enclave scope)
+            read:packages: Read package detail (fallback — old Self Serve client scope, being phased out)
+            read:stewardships: Read package stewardship data (fallback — old Self Serve client scope, being phased out)
+            read:maintainer-roles: Read security contacts (fallback — old Self Serve client scope, being phased out)
 
   schemas:
     Error:
@@ -409,7 +423,10 @@ components:
     BlastRadiusJobEntry:
       type: object
       required: [analysisId, advisoryId, package, ecosystem, status]
-      description: Response body of 2a — one job per request, never wrapped in an array.
+      description: >
+        Response body of 2a for a single submitted job. Returned directly (not
+        wrapped in an array) by the single-job submit; the batch submit (2a bulk)
+        returns an array of these under `results` — see BlastRadiusJobBatchResponse.
       properties:
         analysisId:
           type: string
@@ -427,7 +444,75 @@ components:
         status:
           type: string
           enum: [pending, running, done, failed]
-          description: Always pending — the response is returned before the Temporal workflow runs.
+          description: >
+            Pending in the single-job submit response, always returned before the
+            Temporal workflow runs. In the batch submit response, a job whose
+            workflow failed to start comes back as failed instead — the rest of
+            the batch is unaffected.
+
+    BlastRadiusJobBatchRequest:
+      type: object
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: >
+            Capped much lower than the 100-item read batches — each entry
+            starts its own Temporal workflow, so the batch multiplies
+            workflow starts (and reachability-analysis cost) per request.
+            10 is the recommended default batch size; 20 is the hard limit.
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobRequest'
+
+    BlastRadiusJobBatchResponse:
+      type: object
+      required: [results]
+      description: >
+        Plain array in request order, one entry per requested job — unlike the
+        read batches there is no found/not-found case, but a job can still come
+        back with status: failed if row creation or the workflow start failed.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobEntry'
+
+    BlastRadiusJobPollBatchRequest:
+      type: object
+      required: [analysisIds]
+      properties:
+        analysisIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+
+    BlastRadiusAnalysisBulkEntry:
+      type: object
+      required: [requestedAnalysisId, found, analysis]
+      properties:
+        requestedAnalysisId:
+          type: string
+        found:
+          type: boolean
+        analysis:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BlastRadiusAnalysis'
 
     BlastRadiusResultConfidence:
       type: string
@@ -781,7 +866,10 @@ paths:
       tags: [Packages]
       security:
         - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
             - read:packages
+        - M2MBearer:
             - read:stewardships
       parameters:
         - name: purl
@@ -810,7 +898,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages or read:stewardships scope.
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
@@ -829,7 +917,10 @@ paths:
       tags: [Packages]
       security:
         - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
             - read:packages
+        - M2MBearer:
             - read:stewardships
       requestBody:
         required: true
@@ -887,7 +978,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages or read:stewardships scope.
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
@@ -899,6 +990,8 @@ paths:
       summary: Get advisories for a package by PURL
       tags: [Advisories]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       parameters:
@@ -928,7 +1021,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -946,6 +1039,8 @@ paths:
       summary: Bulk advisory lookup
       tags: [Advisories]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -1004,7 +1099,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1026,6 +1121,8 @@ paths:
         Not yet implemented: the 7-day result cache and force-bypass semantics.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -1058,13 +1155,133 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '429':
           description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:batch:
+    post:
+      operationId: submitBlastRadiusJobBatch
+      summary: 2a bulk — Submit multiple blast-radius analysis jobs
+      description: >
+        One job per array entry, same semantics as the single-job submit —
+        omit package for an advisory-wide analysis, provide it to narrow to a
+        single package. Each entry starts its own Temporal workflow, so the
+        batch is capped at 20 jobs (10 recommended as the default batch
+        size), much lower than the 100-item read batches, and stays behind
+        the same strict rate limiter as the single-job route.
+
+
+        A per-job failure does not fail the whole batch — that entry comes
+        back with status: 'failed' and the rest still submit.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:akrites-advisories
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobBatchRequest'
+      responses:
+        '202':
+          description: Jobs accepted, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlastRadiusJobBatchResponse'
+        '400':
+          description: Validation error (empty array, >20 items, or an invalid job entry).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-advisories, or read:packages, scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:batch/poll:
+    post:
+      operationId: getBlastRadiusJobBatch
+      summary: 2b bulk — Poll multiple blast-radius analysis jobs
+      description: >
+        Same found/not-found echo shape as the other batch endpoints: an
+        unknown analysisId comes back { found: false, analysis: null }
+        instead of 404ing the whole request. Read-only, so it is rate-limited
+        the same as the other non-blast-radius endpoints, not the strict
+        submit limiter.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:akrites-advisories
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobPollBatchRequest'
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested analysisIds, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlastRadiusAnalysisBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, or a non-uuid analysisId).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1080,6 +1297,8 @@ paths:
         status.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       parameters:
@@ -1109,7 +1328,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1132,10 +1351,12 @@ paths:
       operationId: getContactDetail
       summary: Get security contact detail by PURL
       description: >
-        Requires read:maintainer-roles (interim for the contract's cdp:maintainers:read).
-        Never reachable with the packages scope.
+        Requires read:akrites-maintainers, or read:maintainer-roles from the old Self
+        Serve client as a fallback. Never reachable with the packages scope.
       tags: [Contacts]
       security:
+        - M2MBearer:
+            - read:akrites-maintainers
         - M2MBearer:
             - read:maintainer-roles
       parameters:
@@ -1165,7 +1386,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
@@ -1183,6 +1404,8 @@ paths:
       summary: Bulk security contact lookup
       tags: [Contacts]
       security:
+        - M2MBearer:
+            - read:akrites-maintainers
         - M2MBearer:
             - read:maintainer-roles
       requestBody:
@@ -1241,7 +1464,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
@@ -1284,6 +1507,8 @@ paths:
       tags: [Contacts]
       security:
         - M2MBearer:
+            - read:akrites-maintainers
+        - M2MBearer:
             - read:maintainer-roles
       requestBody:
         required: true
@@ -1318,7 +1543,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:

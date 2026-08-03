@@ -13,9 +13,9 @@ import {
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
+import { rethrowIdentityConflict } from '@/api/public/alerts/identityConflict'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created, ok } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -46,10 +46,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     throw new NotFoundError('Member not found')
   }
 
-  // The data-sink writes identity values as trimmed lowercase, so normalize here
-  // to keep idempotency checks reliable against existing rows.
-  const normalizedValue = data.value.trim().toLowerCase()
-
   let result!: IMemberIdentity
   let alreadyExisted = false
 
@@ -59,7 +55,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await findMemberIdentitiesByValue(tx, memberId, normalizedValue, {
+        const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
           type: data.type,
         })
         const exactMatch = existing.find((i) => i.platform === data.platform)
@@ -75,7 +71,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
                 {
                   memberId,
                   platform: data.platform,
-                  value: normalizedValue,
+                  value: data.value,
                   type: data.type,
                   source: data.source,
                   verified: data.verified,
@@ -105,8 +101,12 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
         } catch (error) {
-          const ctx = { platform: data.platform, value: normalizedValue, type: data.type }
-          rethrowDbConflict(error, ctx)
+          rethrowIdentityConflict(req, error, {
+            memberId,
+            platform: data.platform,
+            value: data.value,
+            type: data.type,
+          })
         }
 
         await touchMemberUpdatedAt(tx, memberId)

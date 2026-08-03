@@ -234,7 +234,10 @@ export default class MemberIdentityService extends LoggerBase {
           }
 
           // Update member identity with new data
-          await updateMemberIdentity(qx, memberId, id, data)
+          await updateMemberIdentity(qx, memberId, id, {
+            ...data,
+            ...(data.value !== undefined ? { value } : {}),
+          })
 
           await touchMemberUpdatedAt(qx, memberId)
 
