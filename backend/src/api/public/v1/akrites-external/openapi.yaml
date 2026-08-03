@@ -54,9 +54,9 @@ tags:
       emails). Requires read:akrites-maintainers (dedicated Akrites Enclave
       scope), or read:maintainer-roles from the old Self Serve client as a
       fallback until the cutover completes — never reachable via the packages
-      scopes. The response shape is still under discussion upstream
-      (reportingMethods / reportingGuidelines / integrationHints are reserved
-      and always null today).
+      scopes. Reserved for security contacts only — the assembled
+      vulnerability-reporting protocol (methods, guidelines, integration hints)
+      is served by GET /akrites-external/project-profiling.
   - name: Blast Radius
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
@@ -70,6 +70,14 @@ tags:
       (jobs:batch/poll) is read-only and capped at 100 like the other batch
       endpoints. Same scope note as Advisories applies (read:akrites-advisories,
       or read:packages as a fallback until the cutover completes).
+  - name: Project Profiling
+    description: >
+      Assembled vulnerability-reporting protocol for a package's best-matched
+      repo — the full ordered list of ways to report a vulnerability (declared
+      methods first, security-contact fallbacks after) plus any disclosure
+      guidelines. Same scope set as Packages (read:akrites-packages, or
+      read:packages / read:stewardships as a fallback until the cutover
+      completes).
 
 components:
   securitySchemes:
@@ -662,105 +670,96 @@ components:
           minimum: 0
           maximum: 1
 
-    ReportingMethod:
+    ProjectProfilingMethod:
       type: object
-      nullable: true
-      description: Reserved shape — always null until SECURITY.md parsing ships.
-      required: [methodId, type, status, description, actionRequired]
+      description: >
+        One assembled way to report a vulnerability. Declared methods (confidence
+        'declared') come from the repo's SECURITY.md / linked policy pages / PVR
+        flag / security.txt; inferred methods (confidence 'inferred') are
+        security-contact fallbacks. Ordered preferred → accepted → fallback →
+        prohibited in the parent methods array.
+      required: [type, status, endpoint, condition, confidence, provenance]
       properties:
-        methodId:
-          type: integer
         type:
           type: string
+          description: Channel type, e.g. github-pvr, email, web-form, security-txt, bounty-platform, mailing-list.
         status:
           type: string
-          enum: [preferred, fallback]
-        recipient:
+          enum: [preferred, accepted, fallback, prohibited]
+        endpoint:
+          type: string
+          description: Actionable target — a URL or email address.
+          example: https://github.com/o/r/security/advisories/new
+        condition:
           type: string
           nullable: true
-        description:
+          description: Optional precondition on using this method, verbatim from the source.
+        confidence:
           type: string
-        actionRequired:
-          type: string
+          enum: [declared, inferred]
+        provenance:
+          type: object
+          additionalProperties: true
+          description: Where this method was derived from (e.g. file path + blobOid + parser, an api flag, or a contact channel/table).
 
-    ReportingGuidelines:
+    ProjectProfilingGuidelines:
       type: object
       nullable: true
-      description: Reserved shape — always null until SECURITY.md parsing ships.
-      required: [generalPrinciples, qualityRequirements]
+      description: Disclosure guidelines parsed from the security policy, or null when none were found.
+      required: [generalPrinciples, avoid, recommend]
       properties:
         generalPrinciples:
           type: array
           items:
             type: string
-        qualityRequirements:
-          type: object
-          required: [avoid, recommend]
-          properties:
-            avoid:
-              type: array
-              items:
+        avoid:
+          type: array
+          items:
+            type: string
+        recommend:
+          type: array
+          items:
+            type: object
+            required: [scenario, action]
+            properties:
+              scenario:
                 type: string
-            recommend:
-              type: array
-              items:
-                type: object
-                required: [scenario, action]
-                properties:
-                  scenario:
-                    type: string
-                  action:
-                    type: string
+              action:
+                type: string
 
-    IntegrationHints:
+    ProjectProfiling:
       type: object
-      nullable: true
-      description: Reserved shape — always null until computed.
-      required: [primaryEndpoint, fallbackEndpoint, validationHints]
+      required: [purl, declared, methods, guidelines, sources, assembledAt]
       properties:
-        primaryEndpoint:
-          type: object
+        purl:
+          type: string
+        declared:
+          type: boolean
+          description: True when a reporting protocol was explicitly declared (vs. purely inferred from contacts).
+        methods:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectProfilingMethod'
+        guidelines:
+          $ref: '#/components/schemas/ProjectProfilingGuidelines'
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Provenance records for the signals that fed this assembly.
+        assembledAt:
+          type: string
+          format: date-time
           nullable: true
-          required: [type, target]
-          properties:
-            type:
-              type: string
-            target:
-              type: string
-        fallbackEndpoint:
-          type: object
-          nullable: true
-          required: [type, target]
-          properties:
-            type:
-              type: string
-            target:
-              type: string
-        validationHints:
-          type: object
-          nullable: true
-          required: [falsePositiveRules, requirePocForSeverity, debounce]
-          properties:
-            falsePositiveRules:
-              type: array
-              items:
-                type: string
-            requirePocForSeverity:
-              type: array
-              items:
-                type: string
-            debounce:
-              type: string
-              nullable: true
 
     ContactDetail:
       type: object
       description: >
-        NOTE: shape not final — still under discussion upstream, in particular
-        how reportingMethods / reportingGuidelines / integrationHints will be
-        derived from SECURITY.md parsing. Those three, plus targetOrganizationName
-        and bugBountyProgramFlag, are always null today (not stored). Expect this
-        schema to change before the contract is frozen.
+        Security contacts for a package, plus its security-policy URLs and repo
+        mapping. Reserved for security contacts only — the assembled
+        vulnerability-reporting protocol (methods, guidelines, integration hints)
+        is served by GET /akrites-external/project-profiling.
       required:
         - purl
         - name
@@ -774,11 +773,6 @@ components:
         - declaredRepositoryUrl
         - resolvedRepositoryUrl
         - repoMappingConfidence
-        - targetOrganizationName
-        - bugBountyProgramFlag
-        - reportingMethods
-        - reportingGuidelines
-        - integrationHints
       properties:
         purl:
           type: string
@@ -826,23 +820,6 @@ components:
             Confidence score of the package_repos mapping used to resolve
             resolvedRepositoryUrl. Null when the package has no package_repos
             link yet.
-        targetOrganizationName:
-          type: string
-          nullable: true
-          description: Reserved — not stored today, always null.
-        bugBountyProgramFlag:
-          type: boolean
-          nullable: true
-          description: Reserved — not stored today, always null.
-        reportingMethods:
-          type: array
-          nullable: true
-          items:
-            $ref: '#/components/schemas/ReportingMethod'
-        reportingGuidelines:
-          $ref: '#/components/schemas/ReportingGuidelines'
-        integrationHints:
-          $ref: '#/components/schemas/IntegrationHints'
 
     ContactDetailBulkEntry:
       type: object
@@ -979,6 +956,57 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/project-profiling:
+    get:
+      operationId: getProjectProfiling
+      summary: Get the assembled vulnerability-reporting protocol by PURL
+      tags: [Project Profiling]
+      security:
+        - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
+            - read:packages
+        - M2MBearer:
+            - read:stewardships
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: The assembled reporting protocol for the package's best-matched repo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectProfiling'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found, or its best-matched repo has no assembled protocol.
           content:
             application/json:
               schema:

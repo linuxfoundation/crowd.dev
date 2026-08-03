@@ -11,6 +11,7 @@ import { getAkritesExternalContactDetail } from '../packages/getAkritesExternalC
 import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExternalContactDetailBatch'
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
+import { getAkritesExternalProjectProfiling } from '../packages/getAkritesExternalProjectProfiling'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
 import { getBlastRadiusJobBatch } from '../packages/getBlastRadiusJobBatch'
 import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
@@ -64,6 +65,18 @@ export function akritesExternalRouter(): Router {
   packagesSubRouter.get('/detail', safeWrap(getAkritesExternalPackageDetail))
   packagesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalPackageDetailBatch))
   router.use('/packages', packagesSubRouter)
+
+  // Reporting protocol is package/repo security metadata (no contact PII), so it rides
+  // the same scope set as /packages, not the maintainer scope.
+  router.get(
+    '/project-profiling',
+    rateLimiter,
+    requireScopes(
+      [SCOPES.READ_AKRITES_PACKAGES, SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS],
+      'any',
+    ),
+    safeWrap(getAkritesExternalProjectProfiling),
+  )
 
   // Dedicated read:akrites-advisories, or Self Serve's read:packages as a
   // fallback until Akrites cuts over — drop it then.
