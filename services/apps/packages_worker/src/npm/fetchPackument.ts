@@ -43,7 +43,15 @@ export async function fetchPackument(
 
   if (res.status === 404)
     return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
-  if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
+  if (res.status === 429) {
+    const retryAfter = parseInt(res.headers.get('retry-after') ?? '', 10)
+    return {
+      kind: 'RATE_LIMIT',
+      message: 'rate limited',
+      statusCode: 429,
+      retryAfterSec: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    }
+  }
   if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
 
   let json: unknown

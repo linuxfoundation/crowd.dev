@@ -30,6 +30,9 @@ export interface FetchError {
   kind: FetchErrorKind
   message: string
   statusCode?: number
+  // Server-stated wait (Retry-After) on RATE_LIMIT, so retries can honor the real
+  // penalty window instead of guessing with exponential backoff.
+  retryAfterSec?: number
 }
 
 export function isFetchError(v: unknown): v is FetchError {
