@@ -32,4 +32,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE collection_insights_aggregate_consolidated_ds
 COPY_MODE append
-COPY_SCHEDULE 15 2 * * *
+COPY_SCHEDULE 15 5 * * *

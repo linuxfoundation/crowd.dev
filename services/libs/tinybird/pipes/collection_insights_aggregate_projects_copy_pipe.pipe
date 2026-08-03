@@ -37,4 +37,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE collection_insights_aggregate_projects_ds
 COPY_MODE replace
-COPY_SCHEDULE 0 3 * * *
+COPY_SCHEDULE 0 6 * * *

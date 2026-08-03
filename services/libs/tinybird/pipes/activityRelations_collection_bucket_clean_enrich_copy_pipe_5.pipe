@@ -54,4 +54,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE activityRelations_collection_deduplicated_cleaned_bucket_5_ds
 COPY_MODE replace
-COPY_SCHEDULE 25 1 * * *
+COPY_SCHEDULE 25 4 * * *
