@@ -13,9 +13,9 @@ import {
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
-import { rethrowIdentityConflict } from '@/api/public/alerts/identityConflict'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created, ok } from '@/utils/api'
+import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -101,7 +101,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
         } catch (error) {
-          rethrowIdentityConflict(req, error, {
+          rethrowDbConflict(error, {
             memberId,
             platform: data.platform,
             value: data.value,
