@@ -10,8 +10,7 @@ import {
   sendSlackNotification,
 } from '@crowd/slack'
 
-const PATH_UUID =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi
+const PATH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi
 
 export async function alertOnce(
   req: Request,
@@ -36,10 +35,7 @@ export async function alertOnce(
   const path = (req.originalUrl || req.url || '').split('?')[0]
 
   // akrites alerts are handled separately, so skip them here.
-  if (
-    path.startsWith('/v1/akrites') ||
-    path.startsWith('/v1/akrites-external')
-  ) {
+  if (path.startsWith('/v1/akrites') || path.startsWith('/v1/akrites-external')) {
     return
   }
 
@@ -94,9 +90,7 @@ export async function alertOnce(
   sendSlackNotification(
     SlackChannel.CDP_PUBLIC_API_ALERTS,
     status >= 500 ? SlackPersona.ERROR_REPORTER : SlackPersona.WARNING_PROPAGATOR,
-    status >= 500
-      ? `500 Error: ${name || message}`
-      : `${status} Conflict: ${message}`,
+    status >= 500 ? `500 Error: ${name || message}` : `${status} Conflict: ${message}`,
     sections,
   )
 }
