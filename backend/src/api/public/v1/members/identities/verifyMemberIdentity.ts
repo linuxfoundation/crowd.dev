@@ -21,7 +21,6 @@ import {
   queryActivityRelations,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
-import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 import {
   IMemberIdentity,
   IMemberUnmergePreviewResult,
@@ -29,9 +28,9 @@ import {
   MemberUnmergeResult,
 } from '@crowd/types'
 
-import { rethrowIdentityConflict } from '@/api/public/alerts/identityConflict'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { noContent, ok } from '@/utils/api'
+import { rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -94,8 +93,7 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
           })
         } catch (error) {
           if (verified) {
-            rethrowIdentityConflict(req, error, {
-              memberId,
+            rethrowDbConflict(error, {
               platform: identity.platform,
               value: identity.value,
               type: identity.type,
@@ -154,12 +152,6 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       )
     } catch (error) {
       req.log.warn({ error }, 'Audit log capture failed after identity unmerge')
-      sendSlackNotification(
-        SlackChannel.CDP_ALERTS,
-        SlackPersona.ERROR_REPORTER,
-        `Audit log capture failed after identity unmerge: member ${memberId}`,
-        [{ title: 'Error', text: `\`${error?.message || error}\`` }],
-      )
     }
 
     try {
@@ -179,18 +171,6 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
       })
     } catch (error) {
       req.log.warn({ error }, 'Failed to start unmerge workflow after identity unmerge')
-      sendSlackNotification(
-        SlackChannel.CDP_ALERTS,
-        SlackPersona.ERROR_REPORTER,
-        `Failed to start unmerge workflow after identity unmerge: member ${memberId}`,
-        [
-          {
-            title: 'Context',
-            text: `*Primary:* \`${result.primary.id}\`\n*Secondary:* \`${result.secondary.id}\``,
-          },
-          { title: 'Error', text: `\`${error?.message || error}\`` },
-        ],
-      )
     }
   }
 
