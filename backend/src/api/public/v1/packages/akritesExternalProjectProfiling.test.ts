@@ -61,4 +61,9 @@ describe('toAkritesExternalProjectProfiling', () => {
     expect(result.guidelines).toBeNull()
     expect(result.assembledAt).toBeNull()
   })
+
+  it('returns null for a non-null but unparseable assembledAt', () => {
+    const result = toAkritesExternalProjectProfiling(baseRow({ assembledAt: 'not-a-timestamp' }))
+    expect(result.assembledAt).toBeNull()
+  })
 })

@@ -66,15 +66,13 @@ export function akritesExternalRouter(): Router {
   packagesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalPackageDetailBatch))
   router.use('/packages', packagesSubRouter)
 
-  // Reporting protocol is package/repo security metadata (no contact PII), so it rides
-  // the same scope set as /packages, not the maintainer scope.
+  // Assembled protocol methods include inferred security_contacts fallbacks whose
+  // endpoint can be a maintainer/committer email (contact PII), so this route rides
+  // the same maintainer scopes as /contacts, never the packages scopes.
   router.get(
     '/project-profiling',
     rateLimiter,
-    requireScopes(
-      [SCOPES.READ_AKRITES_PACKAGES, SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS],
-      'any',
-    ),
+    requireScopes([SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS], 'any'),
     safeWrap(getAkritesExternalProjectProfiling),
   )
 

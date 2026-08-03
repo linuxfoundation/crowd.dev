@@ -55,7 +55,7 @@ tags:
       scope), or read:maintainer-roles from the old Self Serve client as a
       fallback until the cutover completes — never reachable via the packages
       scopes. Reserved for security contacts only — the assembled
-      vulnerability-reporting protocol (methods, guidelines, integration hints)
+      vulnerability-reporting protocol (methods and guidelines)
       is served by GET /akrites-external/project-profiling.
   - name: Blast Radius
     description: >
@@ -758,7 +758,7 @@ components:
       description: >
         Security contacts for a package, plus its security-policy URLs and repo
         mapping. Reserved for security contacts only — the assembled
-        vulnerability-reporting protocol (methods, guidelines, integration hints)
+        vulnerability-reporting protocol (methods and guidelines)
         is served by GET /akrites-external/project-profiling.
       required:
         - purl
@@ -965,14 +965,17 @@ paths:
     get:
       operationId: getProjectProfiling
       summary: Get the assembled vulnerability-reporting protocol by PURL
+      description: >
+        Assembled methods can include inferred security_contacts fallbacks whose
+        endpoint is a maintainer/committer email (contact PII), so this endpoint
+        requires read:akrites-maintainers, or read:maintainer-roles from the old
+        Self Serve client as a fallback. Never reachable with the packages scopes.
       tags: [Project Profiling]
       security:
         - M2MBearer:
-            - read:akrites-packages
+            - read:akrites-maintainers
         - M2MBearer:
-            - read:packages
-        - M2MBearer:
-            - read:stewardships
+            - read:maintainer-roles
       parameters:
         - name: purl
           in: query
@@ -1000,7 +1003,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
+          description: Token missing read:akrites-maintainers or read:maintainer-roles scope.
           content:
             application/json:
               schema:
