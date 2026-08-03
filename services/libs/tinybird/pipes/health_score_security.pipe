@@ -23,7 +23,7 @@ NODE health_score_security_check_pass_rate
 SQL >
     SELECT
         id,
-        repo,
+        security_deduplicated_merged_ds.repo AS repo,
         category,
         controlId,
         insightsProjectSlug,
@@ -34,7 +34,9 @@ SQL >
         length(arrayFilter(x -> x['result'] = 'Failed', filteredAssessments)) AS failedAssessments,
         length(arrayFilter(x -> x['result'] = 'Passed', filteredAssessments)) AS passedAssessments
     FROM security_deduplicated_merged_ds
-    JOIN health_score_security_project_repos USING (repo)
+    JOIN
+        health_score_security_project_repos
+        ON security_deduplicated_merged_ds.repo = health_score_security_project_repos.repo
     WHERE category not in ('Documentation', 'Vulnerability Management') AND insightsProjectSlug = slug
 
 NODE health_score_security_category_pass_rate
