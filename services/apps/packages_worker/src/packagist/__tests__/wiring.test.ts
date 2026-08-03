@@ -42,21 +42,12 @@ describe('schedule cadence', () => {
 })
 
 describe('transitive dependents wiring', () => {
-  // The transitive drain has NO cron of its own — the metadata drain chains it on
-  // completion. The cron test above pins exactly three crons, which enforces that.
-  // The trigger CLI needs no assertion either: its target→workflow map is a Record
-  // over the Target union, so a missing mapping is a compile error.
   it('exports the transitive workflow from the shared workflows index', async () => {
-    // Real import (`.js` per node16 resolution, same as schedule.ts) — asserts the
-    // symbol actually resolves through the index the worker registers from.
     const workflows = await import('../../workflows/index.js')
     expect(workflows.computePackagistTransitiveDependents).toBeTypeOf('function')
   })
 
   it('re-exports the transitive activities from the shared activities index', () => {
-    // The activities index can't be imported here: deps-dev's config fail-fasts on GCP
-    // env at module scope. The index is a bare re-export file, so a text check on it is
-    // unambiguous — and tsc already errors if a listed name vanishes from its module.
     const index = readFileSync('src/activities.ts', 'utf8')
     for (const name of [
       'preparePackagistTransitiveCounts',

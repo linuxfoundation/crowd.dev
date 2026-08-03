@@ -496,15 +496,9 @@ export async function getCriticalPackagistCount(): Promise<number> {
 export async function preparePackagistTransitiveCounts(): Promise<{ runId: number }> {
   const qx = await getPackagesDb()
 
-  // On retry, an unfinished row from the prior attempt may already exist — even one
-  // already marked 'merging', if the activity completion was lost after the commit.
-  // Adopt it; re-marking 'merging' below is idempotent.
   const runId =
     (await findUnfinishedPackagistTransitiveRun(qx)) ?? (await createPackagistTransitiveRun(qx))
 
-  // Both steps are single long DB statements (the snapshot scans all of
-  // package_dependencies), so liveness comes from a timer heartbeat rather than
-  // per-item progress; the guard keeps the activity runnable standalone.
   const beat = setInterval(() => {
     try {
       Context.current().heartbeat()
@@ -526,9 +520,6 @@ export async function preparePackagistTransitiveCounts(): Promise<{ runId: numbe
     log.info({ runId, edgeCount, packagesWithDependents }, 'packagist transitive closure prepared')
     return { runId }
   } catch (err) {
-    // Fail-mark only terminal outcomes: on a retryable error Temporal re-runs this
-    // activity, which adopts the same unfinished row — marking it 'failed' early would
-    // make it unadoptable and each retry would mint a duplicate.
     const nonRetryable = err instanceof ApplicationFailure && err.nonRetryable
     if (nonRetryable || activityAttempt() >= TRANSITIVE_PREPARE_MAX_ATTEMPTS) {
       await failRunInLedger(qx, runId, (err as Error).message)
