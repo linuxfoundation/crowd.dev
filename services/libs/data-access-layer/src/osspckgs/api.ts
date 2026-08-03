@@ -1175,6 +1175,7 @@ export interface ReportingProtocolRow {
   methods: ReportingProtocolMethod[]
   guidelines: ReportingProtocolGuidelines | null
   sources: Array<Record<string, unknown>>
+  bugBountyUrl: string | null
   // Raw Postgres timestamptz string (OID 1184 returned verbatim) — normalize at the mapper.
   assembledAt: string | null
 }
@@ -1195,6 +1196,7 @@ export async function getReportingProtocolByPurl(
       rp.methods,
       rp.guidelines,
       rp.sources,
+      r.bug_bounty_url AS "bugBountyUrl",
       rp.assembled_at AS "assembledAt"
     FROM packages p
     JOIN LATERAL (
@@ -1205,6 +1207,7 @@ export async function getReportingProtocolByPurl(
       LIMIT 1
     ) pr ON true
     JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    JOIN repos r ON r.id = pr.repo_id
     WHERE p.purl = $(purl)
     `,
     { purl },
@@ -1225,6 +1228,7 @@ export async function getReportingProtocolsByPurls(
       rp.methods,
       rp.guidelines,
       rp.sources,
+      r.bug_bounty_url AS "bugBountyUrl",
       rp.assembled_at AS "assembledAt"
     FROM packages p
     JOIN LATERAL (
@@ -1235,6 +1239,7 @@ export async function getReportingProtocolsByPurls(
       LIMIT 1
     ) pr ON true
     JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    JOIN repos r ON r.id = pr.repo_id
     WHERE p.purl = ANY($(purls))
     `,
     { purls },

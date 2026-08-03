@@ -20,6 +20,7 @@ function baseRow(overrides: Partial<ReportingProtocolRow> = {}): ReportingProtoc
     ],
     guidelines: null,
     sources: [{ api: 'pvr-flag' }],
+    bugBountyUrl: 'https://example.org/bug-bounty',
     assembledAt: '2026-07-29 16:17:37.374211+00',
     ...overrides,
   }
@@ -37,6 +38,7 @@ describe('toAkritesExternalProjectProfiling', () => {
       confidence: 'declared',
     })
     expect(result.sources).toEqual([{ api: 'pvr-flag' }])
+    expect(result.bugBountyUrl).toBe('https://example.org/bug-bounty')
     expect(result.assembledAt).toBe('2026-07-29T16:17:37.374Z')
   })
 
@@ -52,6 +54,7 @@ describe('toAkritesExternalProjectProfiling', () => {
         declared: false,
         methods: null as unknown as ReportingProtocolRow['methods'],
         sources: null as unknown as ReportingProtocolRow['sources'],
+        bugBountyUrl: null,
         assembledAt: null,
       }),
     )
@@ -59,6 +62,7 @@ describe('toAkritesExternalProjectProfiling', () => {
     expect(result.methods).toEqual([])
     expect(result.sources).toEqual([])
     expect(result.guidelines).toBeNull()
+    expect(result.bugBountyUrl).toBeNull()
     expect(result.assembledAt).toBeNull()
   })
 

@@ -730,7 +730,7 @@ components:
 
     ProjectProfiling:
       type: object
-      required: [purl, declared, methods, guidelines, sources, assembledAt]
+      required: [purl, declared, methods, guidelines, sources, bugBountyUrl, assembledAt]
       properties:
         purl:
           type: string
@@ -749,6 +749,10 @@ components:
             type: object
             additionalProperties: true
           description: Provenance records for the signals that fed this assembly.
+        bugBountyUrl:
+          type: string
+          nullable: true
+          description: Bug-bounty program URL for the best-matched repo, or null when none is known.
         assembledAt:
           type: string
           format: date-time

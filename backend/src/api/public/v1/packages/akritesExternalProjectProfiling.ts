@@ -11,6 +11,7 @@ export interface AkritesExternalProjectProfiling {
   methods: ReportingProtocolMethod[]
   guidelines: ReportingProtocolGuidelines | null
   sources: Array<Record<string, unknown>>
+  bugBountyUrl: string | null
   assembledAt: string | null
 }
 
@@ -37,6 +38,7 @@ export function toAkritesExternalProjectProfiling(
     methods: row.methods ?? [],
     guidelines: row.guidelines ?? null,
     sources: row.sources ?? [],
+    bugBountyUrl: row.bugBountyUrl ?? null,
     assembledAt: toIsoOrNull(row.assembledAt),
   }
 }
