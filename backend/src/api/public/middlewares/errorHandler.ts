@@ -4,13 +4,7 @@ import {
   UnauthorizedError as Auth0UnauthorizedError,
 } from 'express-oauth2-jwt-bearer'
 
-import {
-  ConflictError,
-  HttpError,
-  InsufficientScopeError,
-  InternalError,
-  UnauthorizedError,
-} from '@crowd/common'
+import { HttpError, InsufficientScopeError, InternalError, UnauthorizedError } from '@crowd/common'
 
 import { alertOnce } from '@/api/public/alerts/alertOnce'
 
@@ -30,7 +24,7 @@ export const errorHandler: ErrorRequestHandler = (
       code: error.code,
       message: error.message,
       name: error.name,
-      context: error instanceof ConflictError ? error.context : undefined,
+      context: error.context,
       stack: error.status >= 500 ? error.stack : undefined,
     })
     res.status(error.status).json(error.toJSON())
