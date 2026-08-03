@@ -47,6 +47,10 @@ export {
   getCriticalPackagistCount,
   packagistCurrentTimestamp,
   packagistStopAfterFirstPage,
+  preparePackagistTransitiveCounts,
+  mergePackagistTransitiveBatch,
+  finishPackagistTransitiveRun,
+  failPackagistTransitiveRun,
 } from './packagist/activities'
 export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubygems/activities'
 export {

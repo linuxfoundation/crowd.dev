@@ -20,11 +20,71 @@ const acts = proxyActivities<typeof activities>({
 })
 
 const INGEST_BATCH = 50
-const ROUNDS_PER_RUN = 20
+export const ROUNDS_PER_RUN = 20
 
 interface MetadataState {
   cutoff?: string
   cursor?: string
+}
+
+export const TRANSITIVE_MERGE_BATCH = 10_000
+
+// Prepare runs one long DB statement (a full package_dependencies scan) — long timeout
+// plus a timer heartbeat so a lost worker surfaces in minutes. The short merge/finish
+// steps ride the default ingest proxy above.
+const transitivePrepareActs = proxyActivities<typeof activities>({
+  startToCloseTimeout: '45 minutes',
+  heartbeatTimeout: '2 minutes',
+  retry: {
+    initialInterval: '1 minute',
+    backoffCoefficient: 2,
+    maximumAttempts: 3,
+  },
+})
+
+interface TransitiveState {
+  runId?: number
+  cursor?: string
+  processed?: number
+  changed?: number
+}
+
+// Prepare (run row + edge snapshot + closure) once, then drain the keyset merge in
+// continueAsNew rounds; resumed generations carry the run id and skip prepare.
+export async function computePackagistTransitiveDependents(
+  state: TransitiveState = {},
+): Promise<void> {
+  const runId =
+    state.runId ?? (await transitivePrepareActs.preparePackagistTransitiveCounts()).runId
+  let cursor = state.cursor ?? ''
+  let processed = state.processed ?? 0
+  let changed = state.changed ?? 0
+
+  // Prepare marks its own failures; this catch is the merge phase's terminal marking,
+  // so a permanently failed drain never sits in 'merging' forever. continueAsNew stays
+  // outside the try — it must never be treated as a failure.
+  try {
+    for (let r = 0; r < ROUNDS_PER_RUN; r++) {
+      const batch = await acts.mergePackagistTransitiveBatch(cursor, TRANSITIVE_MERGE_BATCH)
+      processed += batch.processed
+      changed += batch.changed
+      if (batch.processed < TRANSITIVE_MERGE_BATCH) {
+        await acts.finishPackagistTransitiveRun(runId, { processed, changed })
+        return
+      }
+      cursor = batch.nextCursor
+    }
+  } catch (err) {
+    await acts.failPackagistTransitiveRun(runId, String(err))
+    throw err
+  }
+
+  await continueAsNew<typeof computePackagistTransitiveDependents>({
+    runId,
+    cursor,
+    processed,
+    changed,
+  })
 }
 
 interface DownloadsState {
@@ -32,28 +92,51 @@ interface DownloadsState {
   cursor?: string
 }
 
-export async function seedPackagistPackages(): Promise<void> {
-  await acts.runPackagistPackageSeed()
-
-  // Chain the drain off seed completion (not a cron) so newly discovered packages exist
-  // as rows first. ABANDON so it outlives this workflow; fixed id + ALLOW_DUPLICATE means
-  // a drain that outlasts the week makes next Sunday's seed skip its start instead of
-  // doubling the crawl (a still-RUNNING id always throws regardless of reuse policy).
+// Chain-start a drain as an abandoned child with a fixed workflow id: ABANDON lets it
+// outlive the parent; ALLOW_DUPLICATE + the catch mean a drain still running from a
+// prior cycle skips this start instead of doubling the work (a still-RUNNING id always
+// throws regardless of reuse policy).
+async function chainDrain(
+  workflow: typeof ingestPackagistMetadata | typeof computePackagistTransitiveDependents,
+  workflowId: string,
+  stillRunningMessage: string,
+): Promise<void> {
   try {
-    await startChild(ingestPackagistMetadata, {
-      workflowId: 'packagist-metadata-drain',
+    await startChild(workflow, {
+      workflowId,
       workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       args: [{}],
       parentClosePolicy: ParentClosePolicy.ABANDON,
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'WorkflowExecutionAlreadyStartedError') {
-      log.warn('packagist metadata drain still running from a prior seed — skipping chain-start')
+      log.warn(stillRunningMessage)
       return
     }
     throw err
   }
 }
+
+export async function seedPackagistPackages(): Promise<void> {
+  await acts.runPackagistPackageSeed()
+
+  // Chain the drain off seed completion (not a cron) so newly discovered packages exist
+  // as rows first.
+  await chainDrain(
+    ingestPackagistMetadata,
+    'packagist-metadata-drain',
+    'packagist metadata drain still running from a prior seed — skipping chain-start',
+  )
+}
+
+// Edges refresh with the weekly metadata drain, so the transitive closure chains off its
+// completion — an event, not a clock offset.
+const chainTransitiveDrain = (): Promise<void> =>
+  chainDrain(
+    computePackagistTransitiveDependents,
+    'packagist-transitive-drain',
+    'packagist transitive drain still running — skipping chain-start',
+  )
 
 // The cutoff is fixed once per run (deterministic activity), same pattern as the
 // downloads-30d/daily lanes — a keyset scan only ever visits each purl once per drain,
@@ -70,11 +153,19 @@ export async function ingestPackagistMetadata(state: MetadataState = {}): Promis
       cursor,
       INGEST_BATCH,
     )
-    if (candidates.length === 0) return
+    if (candidates.length === 0) {
+      // A debug-bounded run must stay bounded — never kick off the closure's full
+      // package_dependencies scan from it, even when the queue happens to be empty.
+      if (!stopAfterFirstPage) await chainTransitiveDrain()
+      return
+    }
     await acts.ingestPackagistMetadataBatch(candidates)
     cursor = nextCursor
     if (stopAfterFirstPage) return
-    if (candidates.length < INGEST_BATCH) return
+    if (candidates.length < INGEST_BATCH) {
+      await chainTransitiveDrain()
+      return
+    }
   }
 
   await continueAsNew<typeof ingestPackagistMetadata>({ cutoff, cursor })

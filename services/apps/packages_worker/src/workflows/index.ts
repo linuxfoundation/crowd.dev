@@ -30,6 +30,7 @@ export {
   ingestPackagistMetadata,
   ingestPackagistDownloads30d,
   ingestPackagistDownloadsDaily,
+  computePackagistTransitiveDependents,
 } from '../packagist/workflows'
 export { ingestRubyGemsCriticalDetails, ingestRubyGemsPackages } from '../rubygems/workflows'
 export {

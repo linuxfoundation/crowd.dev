@@ -1,4 +1,4 @@
-import { Context } from '@temporalio/activity'
+import { ApplicationFailure, Context } from '@temporalio/activity'
 
 import { partition, timeout } from '@crowd/common'
 import {
@@ -18,6 +18,19 @@ import type {
   PackagistMetadataCandidate,
   PackagistRunResult,
 } from '@crowd/data-access-layer/src/packages/packagistPackageState'
+import {
+  createPackagistTransitiveRun,
+  failPackagistTransitiveRun as failRunInLedger,
+  findPendingPackagistTransitiveRun,
+  finishPackagistTransitiveRun as finishRunInLedger,
+  markPackagistTransitiveRunMerging,
+} from '@crowd/data-access-layer/src/packages/packagistTransitiveRuns'
+import {
+  computePackagistTransitiveCounts,
+  mergePackagistTransitiveCounts,
+  snapshotPackagistDirectEdges,
+} from '@crowd/data-access-layer/src/packages/transitiveDependents'
+import type { PackagistTransitiveMergeResult } from '@crowd/data-access-layer/src/packages/transitiveDependents'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -465,4 +478,71 @@ export async function ingestPackagistDailyBatch(
 export async function getCriticalPackagistCount(): Promise<number> {
   const qx = await getPackagesDb()
   return getCriticalPackagistPackageCount(qx)
+}
+
+// The heavy phase of the transitive lane: snapshot the direct edges, run the closure,
+// leave the run in 'merging' for the keyset drain that follows. The graph sizes land
+// on the run row; the workflow only needs the id.
+export async function preparePackagistTransitiveCounts(): Promise<{ runId: number }> {
+  const qx = await getPackagesDb()
+
+  // On retry, a pending row from the prior attempt may already exist — reuse it.
+  const runId =
+    (await findPendingPackagistTransitiveRun(qx)) ?? (await createPackagistTransitiveRun(qx))
+
+  // Both steps are single long DB statements (the snapshot scans all of
+  // package_dependencies), so liveness comes from a timer heartbeat rather than
+  // per-item progress; the guard keeps the activity runnable standalone.
+  const beat = setInterval(() => {
+    try {
+      Context.current().heartbeat()
+    } catch {
+      /* standalone */
+    }
+  }, 30_000)
+
+  try {
+    const edgeCount = await snapshotPackagistDirectEdges(qx)
+    if (edgeCount === 0) {
+      // A genuinely empty graph means upstream ingestion is broken — retrying won't help.
+      throw ApplicationFailure.nonRetryable(
+        'no packagist direct edges found — snapshot produced an empty graph',
+      )
+    }
+    const packagesWithDependents = await computePackagistTransitiveCounts(qx)
+    await markPackagistTransitiveRunMerging(qx, runId, { edgeCount, packagesWithDependents })
+    log.info({ runId, edgeCount, packagesWithDependents }, 'packagist transitive closure prepared')
+    return { runId }
+  } catch (err) {
+    await failRunInLedger(qx, runId, (err as Error).message)
+    throw err
+  } finally {
+    clearInterval(beat)
+  }
+}
+
+export async function mergePackagistTransitiveBatch(
+  afterId: string,
+  limit: number,
+): Promise<PackagistTransitiveMergeResult> {
+  const qx = await getPackagesDb()
+  return mergePackagistTransitiveCounts(qx, afterId, limit)
+}
+
+export async function finishPackagistTransitiveRun(
+  runId: number,
+  totals: { processed: number; changed: number },
+): Promise<void> {
+  const qx = await getPackagesDb()
+  await finishRunInLedger(qx, runId, totals)
+}
+
+// Terminal failure marking for the merge phase — called from the workflow's catch so a
+// permanently failed drain reads 'failed' instead of sitting in 'merging' forever.
+export async function failPackagistTransitiveRun(
+  runId: number,
+  errorMessage: string,
+): Promise<void> {
+  const qx = await getPackagesDb()
+  await failRunInLedger(qx, runId, errorMessage)
 }
