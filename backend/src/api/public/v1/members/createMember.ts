@@ -61,6 +61,7 @@ export async function createMember(req: Request, res: Response): Promise<void> {
 
       return { dbMember, dbIdentities }
     } catch (error) {
+      // Only notify for a single identity because we can't tell which one conflicted in a batch.
       if (identities.length === 1) {
         const identity = identities[0]
         return rethrowDbConflict(error, {
