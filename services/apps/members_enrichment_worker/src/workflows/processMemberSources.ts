@@ -39,7 +39,7 @@ const { squashMultipleValueAttributesWithLLM, squashWorkExperiencesWithLLM } = p
 function getEnrichmentAttributeValue(
   attributes: IMemberEnrichmentDataNormalized['attributes'],
   attributeName: string,
-): unknown {
+) {
   const values = attributes?.[attributeName]
   if (!values) {
     return undefined
