@@ -25,7 +25,7 @@ jobs:
           ref: main
 
       - name: Resolve deploy image tag
-        id: deploy
+        id: resolve_tag
         run: echo "tag=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Install OCI
@@ -43,6 +43,7 @@ jobs:
         run: echo "${{ env.OCI_CLI_DIR }}" >> "$GITHUB_PATH"
 
       - name: Deploy api-e2e
+        id: deploy
         uses: ./.github/actions/node/builder
         env:
           CLOUD_ENV: lf-oracle-staging
@@ -56,9 +57,10 @@ jobs:
           ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
         with:
           services: api-e2e
-          tag: ${{ steps.deploy.outputs.tag }}
+          tag: ${{ steps.resolve_tag.outputs.tag }}
 
       - name: Wait for api-e2e service to be ready
+        id: health
         run: |
           set -euo pipefail
           # Builder only runs kubectl set image; wait for the new revision before health.
@@ -72,43 +74,26 @@ jobs:
           exit 1
 
       - name: Run Public API e2e tests
+        id: e2e
         env:
           AUTH0_STAGING_AUDIENCE: ${{ vars.AUTH0_STAGING_AUDIENCE }}
           AUTH0_STAGING_ISSUER: ${{ vars.AUTH0_STAGING_ISSUER }}
           AUTH0_STAGING_API_E2E_CLIENT_ID: ${{ secrets.AUTH0_STAGING_API_E2E_CLIENT_ID }}
           AUTH0_STAGING_API_E2E_CLIENT_SECRET: ${{ secrets.AUTH0_STAGING_API_E2E_CLIENT_SECRET }}
+          E2E_SUMMARY_PATH: e2e.summary
         run: bash .github/scripts/public-api-e2e-tests.sh
 
       - name: Notify Slack on failure
-        if: failure()
+        if: failure() && !cancelled()
         env:
-          CDP_ALERTS_SLACK_WEBHOOK_URL: ${{ secrets.CDP_ALERTS_SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.CDP_PUBLIC_API_ALERTS_SLACK_WEBHOOK_URL }}
+          ALERT_TITLE: Public API e2e tests failed
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          payload="$(jq -n \
-            --arg run_url "$RUN_URL" \
-            --arg event "$EVENT_NAME" \
-            '{
-              blocks: [
-                {
-                  type: "header",
-                  text: {
-                    type: "plain_text",
-                    text: ":rotating_light: Public API e2e tests failed",
-                    emoji: true
-                  }
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: ("*Workflow:* `API e2e tests`\n*Event:* `" + $event + "`\n*Run:* <" + $run_url + "|View run>")
-                  }
-                }
-              ]
-            }')"
-          curl -fsS -X POST "$CDP_ALERTS_SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "$payload"
+          DEPLOY_TAG: ${{ steps.resolve_tag.outputs.tag }}
+          E2E_SUMMARY_PATH: e2e.summary
+          OUTCOME_RESOLVE_TAG: ${{ steps.resolve_tag.outcome }}
+          OUTCOME_DEPLOY: ${{ steps.deploy.outcome }}
+          OUTCOME_HEALTH: ${{ steps.health.outcome }}
+          OUTCOME_E2E: ${{ steps.e2e.outcome }}
+        run: bash .github/scripts/notify-api-e2e-failure.sh
