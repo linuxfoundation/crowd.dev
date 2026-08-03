@@ -5,8 +5,8 @@ import type { ITriggerBlastRadiusAnalysis } from '@crowd/types'
 import type * as activities from './activities'
 import { buildEcosystemNotSupportedFailure } from './ecosystemSupport'
 
-// Reachability analysis only exists for npm today — every other ecosystem still
-// fails fast with a non-retryable failure (see ecosystemSupport.ts).
+// Staged rollout gate — go support is implemented but not yet enabled here; other
+// ecosystems fail fast with a non-retryable failure (see ecosystemSupport.ts).
 const SUPPORTED_ECOSYSTEMS = ['npm']
 
 const { blastRadiusStart, blastRadiusFail } = proxyActivities<typeof activities>({
