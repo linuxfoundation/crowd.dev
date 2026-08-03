@@ -86,7 +86,7 @@ jobs:
       - name: Notify Slack on failure
         if: failure() && !cancelled()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.CDP_PUBLIC_API_ALERTS_SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.CDP_ALERTS_SLACK_WEBHOOK_URL }}
           ALERT_TITLE: Public API e2e tests failed
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVENT_NAME: ${{ github.event_name }}
