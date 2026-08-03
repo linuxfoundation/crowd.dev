@@ -72,7 +72,7 @@ vi.mock(
   async (importOriginal) => ({
     ...(await importOriginal<object>()),
     createPackagistTransitiveRun: h.createRun,
-    findPendingPackagistTransitiveRun: h.findPendingRun,
+    findUnfinishedPackagistTransitiveRun: h.findPendingRun,
     markPackagistTransitiveRunMerging: h.markMerging,
     finishPackagistTransitiveRun: h.finishRun,
     failPackagistTransitiveRun: h.failRun,
@@ -299,7 +299,7 @@ describe('preparePackagistTransitiveCounts — activity', () => {
     })
   })
 
-  it('reuses a pending run row from a prior attempt', async () => {
+  it('adopts an unfinished run row from a prior attempt (even one already merging)', async () => {
     h.findPendingRun.mockResolvedValue(41)
     h.snapshot.mockResolvedValue(10)
     h.closure.mockResolvedValue(4)

@@ -12,11 +12,18 @@ export async function createPackagistTransitiveRun(qx: QueryExecutor): Promise<n
   return row.id
 }
 
-// Newest pending run, so a Temporal retry of the prepare activity reuses the row
-// instead of minting one per attempt.
-export async function findPendingPackagistTransitiveRun(qx: QueryExecutor): Promise<number | null> {
+// Newest unfinished run ('pending' OR 'merging'): a Temporal retry of the prepare
+// activity must adopt the row it may have already marked merging — the activity's
+// completion can be lost after the DB commit — instead of minting a duplicate and
+// stranding the original. Safe because the fixed workflow id keeps the lane
+// single-instance, so an unfinished row always belongs to this logical run.
+export async function findUnfinishedPackagistTransitiveRun(
+  qx: QueryExecutor,
+): Promise<number | null> {
   const row = await qx.selectOneOrNone(
-    `SELECT id FROM packagist_transitive_runs WHERE status = 'pending' ORDER BY id DESC LIMIT 1`,
+    `SELECT id FROM packagist_transitive_runs
+      WHERE status IN ('pending', 'merging')
+      ORDER BY id DESC LIMIT 1`,
   )
   return row?.id ?? null
 }

@@ -76,8 +76,8 @@ export async function findPendingJobByKind(
     `,
     { jobKind },
   )
-  // Raw id, matching createIngestJob — pg returns bigint as string at runtime.
-  return row ? row.id : null
+  // id is bigserial (pg returns int8 as a string) — convert so the declared type is true.
+  return row ? Number(row.id) : null
 }
 
 // Returns the most recent job for the given kind that has already been exported to GCS,

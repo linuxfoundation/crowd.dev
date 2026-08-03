@@ -21,7 +21,7 @@ import type {
 import {
   createPackagistTransitiveRun,
   failPackagistTransitiveRun as failRunInLedger,
-  findPendingPackagistTransitiveRun,
+  findUnfinishedPackagistTransitiveRun,
   finishPackagistTransitiveRun as finishRunInLedger,
   markPackagistTransitiveRunMerging,
 } from '@crowd/data-access-layer/src/packages/packagistTransitiveRuns'
@@ -486,9 +486,11 @@ export async function getCriticalPackagistCount(): Promise<number> {
 export async function preparePackagistTransitiveCounts(): Promise<{ runId: number }> {
   const qx = await getPackagesDb()
 
-  // On retry, a pending row from the prior attempt may already exist — reuse it.
+  // On retry, an unfinished row from the prior attempt may already exist — even one
+  // already marked 'merging', if the activity completion was lost after the commit.
+  // Adopt it; re-marking 'merging' below is idempotent.
   const runId =
-    (await findPendingPackagistTransitiveRun(qx)) ?? (await createPackagistTransitiveRun(qx))
+    (await findUnfinishedPackagistTransitiveRun(qx)) ?? (await createPackagistTransitiveRun(qx))
 
   // Both steps are single long DB statements (the snapshot scans all of
   // package_dependencies), so liveness comes from a timer heartbeat rather than

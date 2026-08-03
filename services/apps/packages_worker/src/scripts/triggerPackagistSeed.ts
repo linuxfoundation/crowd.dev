@@ -72,12 +72,28 @@ async function main(): Promise<void> {
     return
   }
 
-  const handle = await client.workflow.start(WORKFLOWS[target], {
-    taskQueue: 'packagist-worker',
-    workflowId: `packagist-${target}-manual-${now}`,
-    args: [{}],
-  })
-  console.log(`Started workflow ${handle.workflowId}`)
+  // The transitive drain must be single-instance: it drops and rebuilds global staging
+  // tables, so a manual run racing the chained weekly drain would corrupt the merge.
+  // Reusing the chained drain's fixed workflow id makes Temporal reject the overlap.
+  const workflowId =
+    target === 'transitive' ? 'packagist-transitive-drain' : `packagist-${target}-manual-${now}`
+
+  try {
+    const handle = await client.workflow.start(WORKFLOWS[target], {
+      taskQueue: 'packagist-worker',
+      workflowId,
+      args: [{}],
+    })
+    console.log(`Started workflow ${handle.workflowId}`)
+  } catch (err) {
+    if (err instanceof Error && err.name === 'WorkflowExecutionAlreadyStartedError') {
+      console.error(
+        `A ${target} drain is already running (workflow id ${workflowId}) — not starting a second.`,
+      )
+      process.exit(1)
+    }
+    throw err
+  }
 }
 
 main()
