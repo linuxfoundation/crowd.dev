@@ -6,6 +6,17 @@ export interface PackagistTransitiveMergeResult {
   nextCursor: string
 }
 
+// Typed so the activity layer can classify it non-retryable: an empty counts table
+// cannot heal by retrying the merge.
+export class EmptyPackagistTransitiveCountsError extends Error {
+  constructor() {
+    super(
+      'staging.packagist_transitive_counts is empty — refusing to zero-fill packages.transitive_dependent_count (truncated by a crash mid-drain?)',
+    )
+    this.name = 'EmptyPackagistTransitiveCountsError'
+  }
+}
+
 // Shared scaffold for the two staging builders. The CTAS command tag already carries the
 // row count, so no separate COUNT(*) rescan is needed. ANALYZE matters: a just-created
 // table has no pg_statistic rows, and both consumers (the recursive closure, the 45-odd
@@ -89,9 +100,7 @@ export async function mergePackagistTransitiveCounts(
     `SELECT EXISTS (SELECT 1 FROM staging.packagist_transitive_counts) AS populated`,
   )
   if (!guard.populated) {
-    throw new Error(
-      'staging.packagist_transitive_counts is empty — refusing to zero-fill packages.transitive_dependent_count (truncated by a crash mid-drain?)',
-    )
+    throw new EmptyPackagistTransitiveCountsError()
   }
 
   const row = await qx.selectOne(

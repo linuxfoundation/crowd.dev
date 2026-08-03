@@ -26,6 +26,7 @@ import {
   markPackagistTransitiveRunMerging,
 } from '@crowd/data-access-layer/src/packages/packagistTransitiveRuns'
 import {
+  EmptyPackagistTransitiveCountsError,
   computePackagistTransitiveCounts,
   mergePackagistTransitiveCounts,
   snapshotPackagistDirectEdges,
@@ -43,7 +44,7 @@ import { expandComposerMetadata } from './expandMetadata'
 import { fetchPackagistP2, fetchPackagistStats } from './fetchPackage'
 import { fetchPackagistPackageList, parsePackagistPackageList } from './listPackages'
 import { normalizePackagistStats, packagistNameFromPurl } from './normalize'
-import { INGEST_MAX_ATTEMPTS } from './retryPolicy'
+import { INGEST_MAX_ATTEMPTS, TRANSITIVE_PREPARE_MAX_ATTEMPTS } from './retryPolicy'
 import { FetchError, isFetchError, isP2NotModified } from './types'
 import { persistPackagistMetadata } from './upsertMetadata'
 import { persistPackagistPackageInfo } from './upsertPackageInfo'
@@ -89,6 +90,15 @@ export async function packagistStopAfterFirstPage(): Promise<boolean> {
 // Deterministic cutoff source for the watermark-draining download workflows.
 export async function packagistCurrentTimestamp(): Promise<string> {
   return new Date().toISOString()
+}
+
+// Current Temporal attempt, defaulting to 1 when run standalone (tests, scripts).
+function activityAttempt(): number {
+  try {
+    return Context.current().info.attempt
+  } catch {
+    return 1
+  }
 }
 
 // Fetch with the shared fast-retry contract: transient/429 results throw so Temporal
@@ -516,7 +526,13 @@ export async function preparePackagistTransitiveCounts(): Promise<{ runId: numbe
     log.info({ runId, edgeCount, packagesWithDependents }, 'packagist transitive closure prepared')
     return { runId }
   } catch (err) {
-    await failRunInLedger(qx, runId, (err as Error).message)
+    // Fail-mark only terminal outcomes: on a retryable error Temporal re-runs this
+    // activity, which adopts the same unfinished row — marking it 'failed' early would
+    // make it unadoptable and each retry would mint a duplicate.
+    const nonRetryable = err instanceof ApplicationFailure && err.nonRetryable
+    if (nonRetryable || activityAttempt() >= TRANSITIVE_PREPARE_MAX_ATTEMPTS) {
+      await failRunInLedger(qx, runId, (err as Error).message)
+    }
     throw err
   } finally {
     clearInterval(beat)
@@ -528,7 +544,16 @@ export async function mergePackagistTransitiveBatch(
   limit: number,
 ): Promise<PackagistTransitiveMergeResult> {
   const qx = await getPackagesDb()
-  return mergePackagistTransitiveCounts(qx, afterId, limit)
+  try {
+    return await mergePackagistTransitiveCounts(qx, afterId, limit)
+  } catch (err) {
+    // An empty counts table cannot heal by retrying — fail fast so the workflow
+    // fail-marks the run instead of burning the retry schedule against it.
+    if (err instanceof EmptyPackagistTransitiveCountsError) {
+      throw ApplicationFailure.nonRetryable(err.message)
+    }
+    throw err
+  }
 }
 
 export async function finishPackagistTransitiveRun(

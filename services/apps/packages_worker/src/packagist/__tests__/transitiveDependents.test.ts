@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { EmptyPackagistTransitiveCountsError } from '@crowd/data-access-layer/src/packages/transitiveDependents'
+
 import {
   failPackagistTransitiveRun,
   finishPackagistTransitiveRun,
+  mergePackagistTransitiveBatch,
   preparePackagistTransitiveCounts,
 } from '../activities'
 import {
@@ -29,6 +32,7 @@ const h = vi.hoisted(() => ({
   startChild: vi.fn(),
   continueAsNew: vi.fn(),
   logWarn: vi.fn(),
+  attempt: vi.fn(),
   snapshot: vi.fn(),
   closure: vi.fn(),
   mergeDal: vi.fn(),
@@ -53,6 +57,13 @@ vi.mock('@temporalio/workflow', () => ({
   log: { info: vi.fn(), warn: h.logWarn, error: vi.fn(), debug: vi.fn() },
   ParentClosePolicy: { ABANDON: 'ABANDON' },
   WorkflowIdReusePolicy: { ALLOW_DUPLICATE: 'ALLOW_DUPLICATE' },
+}))
+
+vi.mock('@temporalio/activity', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Context: {
+    current: () => ({ info: { attempt: h.attempt() }, heartbeat: vi.fn() }),
+  },
 }))
 
 vi.mock('../../db', async (importOriginal) => ({
@@ -95,6 +106,7 @@ beforeEach(() => {
   h.acts.failPackagistTransitiveRun.mockResolvedValue(undefined)
   h.startChild.mockResolvedValue(undefined)
   h.continueAsNew.mockResolvedValue(undefined)
+  h.attempt.mockReturnValue(1)
 })
 
 describe('ingestPackagistMetadata — chaining the transitive drain', () => {
@@ -266,16 +278,19 @@ describe('computePackagistTransitiveDependents — workflow', () => {
     })
   })
 
-  it('marks the run failed and rethrows when a merge batch fails permanently', async () => {
+  it('marks the run failed with the ROOT cause and rethrows when a merge batch fails permanently', async () => {
     h.acts.preparePackagistTransitiveCounts.mockResolvedValue({ runId: 7 })
-    h.acts.mergePackagistTransitiveBatch.mockRejectedValue(new Error('counts table is empty'))
-
-    await expect(computePackagistTransitiveDependents({})).rejects.toThrow(/counts table/)
-
-    expect(h.acts.failPackagistTransitiveRun).toHaveBeenCalledWith(
-      7,
-      expect.stringMatching(/counts table/),
+    // Shaped like Temporal's ActivityFailure: a generic wrapper whose cause chain
+    // carries the real reason — error_message must record the root, not the wrapper.
+    h.acts.mergePackagistTransitiveBatch.mockRejectedValue(
+      Object.assign(new Error('Activity task failed'), {
+        cause: new Error('counts table is empty'),
+      }),
     )
+
+    await expect(computePackagistTransitiveDependents({})).rejects.toThrow(/Activity task failed/)
+
+    expect(h.acts.failPackagistTransitiveRun).toHaveBeenCalledWith(7, 'counts table is empty')
     expect(h.acts.finishPackagistTransitiveRun).not.toHaveBeenCalled()
     expect(h.continueAsNew).not.toHaveBeenCalled()
   })
@@ -310,6 +325,28 @@ describe('preparePackagistTransitiveCounts — activity', () => {
     expect(result.runId).toBe(41)
   })
 
+  it('does not fail-mark the run on a retryable error before the final attempt', async () => {
+    h.findPendingRun.mockResolvedValue(null)
+    h.createRun.mockResolvedValue(44)
+    h.snapshot.mockRejectedValue(new Error('connection reset'))
+    h.attempt.mockReturnValue(1)
+
+    await expect(preparePackagistTransitiveCounts()).rejects.toThrow(/connection reset/)
+
+    // the retry adopts the same unfinished row — fail-marking it early would strand it
+    expect(h.failRun).not.toHaveBeenCalled()
+  })
+
+  it('fail-marks the run when a retryable error exhausts the final attempt', async () => {
+    h.findPendingRun.mockResolvedValue(44)
+    h.snapshot.mockRejectedValue(new Error('connection reset'))
+    h.attempt.mockReturnValue(3)
+
+    await expect(preparePackagistTransitiveCounts()).rejects.toThrow(/connection reset/)
+
+    expect(h.failRun).toHaveBeenCalledWith(h.fakeQx, 44, 'connection reset')
+  })
+
   it('aborts and marks the run failed when the edge snapshot is empty', async () => {
     h.findPendingRun.mockResolvedValue(null)
     h.createRun.mockResolvedValue(43)
@@ -337,5 +374,23 @@ describe('finish/fail run — activities', () => {
     await failPackagistTransitiveRun(7, 'merge exploded')
 
     expect(h.failRun).toHaveBeenCalledWith(h.fakeQx, 7, 'merge exploded')
+  })
+})
+
+describe('mergePackagistTransitiveBatch — activity', () => {
+  it('classifies an empty counts table as non-retryable', async () => {
+    h.mergeDal.mockRejectedValue(new EmptyPackagistTransitiveCountsError())
+
+    await expect(mergePackagistTransitiveBatch('', 10)).rejects.toMatchObject({
+      nonRetryable: true,
+    })
+  })
+
+  it('lets other merge errors stay retryable', async () => {
+    h.mergeDal.mockRejectedValue(new Error('deadlock detected'))
+
+    await expect(mergePackagistTransitiveBatch('', 10)).rejects.toSatisfy(
+      (err: unknown) => err instanceof Error && !('nonRetryable' in err && err.nonRetryable),
+    )
   })
 })

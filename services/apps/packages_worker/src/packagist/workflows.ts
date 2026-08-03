@@ -8,7 +8,7 @@ import {
 } from '@temporalio/workflow'
 
 import type * as activities from './activities'
-import { INGEST_MAX_ATTEMPTS } from './retryPolicy'
+import { INGEST_MAX_ATTEMPTS, TRANSITIVE_PREPARE_MAX_ATTEMPTS } from './retryPolicy'
 
 const acts = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
@@ -38,7 +38,8 @@ const transitivePrepareActs = proxyActivities<typeof activities>({
   retry: {
     initialInterval: '1 minute',
     backoffCoefficient: 2,
-    maximumAttempts: 3,
+    // Lockstep with the activity's terminal fail-marking — see retryPolicy.ts.
+    maximumAttempts: TRANSITIVE_PREPARE_MAX_ATTEMPTS,
   },
 })
 
@@ -47,6 +48,20 @@ interface TransitiveState {
   cursor?: string
   processed?: number
   changed?: number
+}
+
+// ActivityFailure's own message is the generic "Activity task failed" — the reason a
+// human wants in error_message sits at the bottom of the cause chain.
+function rootErrorMessage(err: unknown): string {
+  let cur = err
+  for (;;) {
+    // `cause` is untyped under the es2017 lib this workspace compiles with, but it is
+    // present at runtime on Node 20 / Temporal failures.
+    const cause = cur instanceof Error ? (cur as { cause?: unknown }).cause : undefined
+    if (!(cause instanceof Error)) break
+    cur = cause
+  }
+  return cur instanceof Error ? cur.message : String(cur)
 }
 
 // Prepare (run row + edge snapshot + closure) once, then drain the keyset merge in
@@ -75,7 +90,7 @@ export async function computePackagistTransitiveDependents(
       cursor = batch.nextCursor
     }
   } catch (err) {
-    await acts.failPackagistTransitiveRun(runId, String(err))
+    await acts.failPackagistTransitiveRun(runId, rootErrorMessage(err))
     throw err
   }
 
