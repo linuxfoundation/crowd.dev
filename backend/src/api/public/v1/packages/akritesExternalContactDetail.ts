@@ -33,13 +33,6 @@ export interface AkritesExternalContactDetail {
   declaredRepositoryUrl: string | null
   resolvedRepositoryUrl: string | null
   repoMappingConfidence: number | null
-  // Reserved by the contract but not stored today — always null (see the akrites-external
-  // OpenAPI notes). Typed as null so a future non-null shape is an explicit, reviewed change.
-  targetOrganizationName: null
-  bugBountyProgramFlag: null
-  reportingMethods: null
-  reportingGuidelines: null
-  integrationHints: null
 }
 
 export interface ContactDetailBulkEntry {
@@ -79,10 +72,5 @@ export function toAkritesExternalContactDetail(
     declaredRepositoryUrl: row.declaredRepositoryUrl ?? null,
     resolvedRepositoryUrl: row.resolvedRepositoryUrl ?? null,
     repoMappingConfidence: toNullableNumber(row.repoMappingConfidence),
-    targetOrganizationName: null,
-    bugBountyProgramFlag: null,
-    reportingMethods: null,
-    reportingGuidelines: null,
-    integrationHints: null,
   }
 }

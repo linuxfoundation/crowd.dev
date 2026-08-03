@@ -4,8 +4,15 @@ import {
   UnauthorizedError as Auth0UnauthorizedError,
 } from 'express-oauth2-jwt-bearer'
 
-import { HttpError, InsufficientScopeError, InternalError, UnauthorizedError } from '@crowd/common'
-import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
+import {
+  ConflictError,
+  HttpError,
+  InsufficientScopeError,
+  InternalError,
+  UnauthorizedError,
+} from '@crowd/common'
+
+import { alertOnce } from '@/api/public/alerts/alertOnce'
 
 /**
  * Converts errors to structured JSON: `{ error: { code, message } }`.
@@ -18,6 +25,14 @@ export const errorHandler: ErrorRequestHandler = (
   _next: NextFunction,
 ) => {
   if (error instanceof HttpError) {
+    void alertOnce(req, {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+      name: error.name,
+      context: error instanceof ConflictError ? error.context : undefined,
+      stack: error.status >= 500 ? error.stack : undefined,
+    })
     res.status(error.status).json(error.toJSON())
     return
   }
@@ -45,29 +60,13 @@ export const errorHandler: ErrorRequestHandler = (
     'Unhandled error in public API',
   )
 
-  sendSlackNotification(
-    SlackChannel.CDP_ALERTS,
-    SlackPersona.ERROR_REPORTER,
-    `Public API Error 500: ${req.method} ${req.url}`,
-    [
-      {
-        title: 'Request',
-        text: `*Method:* \`${req.method}\`\n*URL:* \`${req.url}\``,
-      },
-      {
-        title: 'Error',
-        text: `*Name:* \`${error?.name || 'Unknown'}\`\n*Message:* ${error?.message || 'No message'}`,
-      },
-      ...(error?.stack
-        ? [
-            {
-              title: 'Stack Trace',
-              text: `\`\`\`${error.stack.substring(0, 2700)}\`\`\``,
-            },
-          ]
-        : []),
-    ],
-  )
+  void alertOnce(req, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: error?.message || 'No message',
+    name: error?.name || 'Unknown',
+    stack: error?.stack,
+  })
 
   const unknownError = new InternalError()
   res.status(unknownError.status).json(unknownError.toJSON())

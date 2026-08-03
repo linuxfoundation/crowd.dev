@@ -47,6 +47,7 @@ SOURCE="lfxOne-api-e2e"
 
 PASS=0
 FAIL=0
+FAILURE_LINES=()
 TOKEN=""
 HTTP_CODE=""
 BODY=""
@@ -81,11 +82,17 @@ log_fail_body() {
   printf '  body: %s\n' "$snippet"
 }
 
+record_failure() {
+  local line=$1
+  FAILURE_LINES+=("$line")
+  printf '  %s\n' "$line"
+}
+
 check() {
   local name=$1 expected=$2
   shift 2
   if [[ $HTTP_CODE != "$expected" ]]; then
-    printf '  FAIL  %s — expected HTTP %s, got %s\n' "$name" "$expected" "$HTTP_CODE"
+    record_failure "FAIL  ${name} — expected HTTP ${expected}, got ${HTTP_CODE}"
     log_fail_body
     FAIL=$((FAIL + 1))
     return
@@ -93,7 +100,7 @@ check() {
   local expr
   for expr in "$@"; do
     if ! jq -e "$expr" >/dev/null 2>&1 <<<"$BODY"; then
-      printf '  FAIL  %s (%s)\n' "$name" "$expr"
+      record_failure "FAIL  ${name} (${expr})"
       log_fail_body
       FAIL=$((FAIL + 1))
       return
@@ -101,6 +108,16 @@ check() {
   done
   printf '  PASS  %s (HTTP %s)\n' "$name" "$HTTP_CODE"
   PASS=$((PASS + 1))
+}
+
+write_summary() {
+  local path="${E2E_SUMMARY_PATH:-}"
+  [[ -n "$path" ]] || return 0
+  {
+    printf 'passed=%s\n' "$PASS"
+    printf 'failed=%s\n' "$FAIL"
+    printf '%s\n' "${FAILURE_LINES[@]+"${FAILURE_LINES[@]}"}"
+  } >"$path"
 }
 
 require() {
@@ -502,6 +519,7 @@ main() {
   echo "=== Results ==="
   printf 'Passed: %s\n' "$PASS"
   printf 'Failed: %s\n' "$FAIL"
+  write_summary
   [[ $FAIL -eq 0 ]]
 }
 
