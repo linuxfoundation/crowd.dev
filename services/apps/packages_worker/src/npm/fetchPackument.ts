@@ -44,12 +44,11 @@ export async function fetchPackument(
   if (res.status === 404)
     return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
   if (res.status === 429) {
-    const retryAfter = parseInt(res.headers.get('retry-after') ?? '', 10)
     return {
       kind: 'RATE_LIMIT',
       message: 'rate limited',
       statusCode: 429,
-      retryAfterSec: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+      retryAfterSec: parseRetryAfterSec(res.headers.get('retry-after')),
     }
   }
   if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
@@ -68,6 +67,18 @@ export async function fetchPackument(
   }
   delete (json as unknown as Record<string, unknown>).readme
   return json
+}
+
+// Retry-After is either delta-seconds or an HTTP-date (RFC 9110). Returns whole seconds,
+// or undefined when absent/unparseable/expired so the caller applies its own default.
+function parseRetryAfterSec(header: string | null): number | undefined {
+  if (!header) return undefined
+  const seconds = Number(header)
+  if (Number.isFinite(seconds)) return seconds > 0 ? Math.ceil(seconds) : undefined
+  const date = new Date(header)
+  if (Number.isNaN(date.getTime())) return undefined
+  const untilSec = Math.ceil((date.getTime() - Date.now()) / 1000)
+  return untilSec > 0 ? untilSec : undefined
 }
 
 function isPackument(v: unknown): v is Packument {

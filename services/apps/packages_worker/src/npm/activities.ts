@@ -123,7 +123,7 @@ async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatche
     // 429 → fail the attempt, but schedule the retry past the server-stated penalty window
     // (npm blocks for ~300s; the default 30/60/120s ladder always lands back inside it).
     if (packumentResult.kind === 'RATE_LIMIT') {
-      const delaySec = Math.min(Math.max(packumentResult.retryAfterSec ?? 300, 30), 900) + 5
+      const delaySec = Math.min(Math.max(packumentResult.retryAfterSec ?? 300, 30), 3600) + 5
       throw ApplicationFailure.create({
         message: `Failed to fetch packument for ${name}: ${packumentResult.message}`,
         nextRetryDelay: `${delaySec}s`,
