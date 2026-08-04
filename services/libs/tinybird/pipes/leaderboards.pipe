@@ -29,12 +29,14 @@ SQL >
         l.status AS status,
         l.totalCount AS totalCount
     FROM leaderboards_copy_ds AS l
-    INNER JOIN (
-        SELECT leaderboardType, max(snapshotId) AS maxSnapshotId
-        FROM leaderboards_copy_ds
-        GROUP BY leaderboardType
-    ) AS latest
-    ON l.leaderboardType = latest.leaderboardType AND l.snapshotId = latest.maxSnapshotId
+    INNER JOIN
+        (
+            SELECT leaderboardType, max(snapshotId) AS maxSnapshotId
+            FROM leaderboards_copy_ds
+            GROUP BY leaderboardType
+        ) AS latest
+        ON l.leaderboardType = latest.leaderboardType
+        AND l.snapshotId = latest.maxSnapshotId
     WHERE
         1
         {% if defined(slug) %}
