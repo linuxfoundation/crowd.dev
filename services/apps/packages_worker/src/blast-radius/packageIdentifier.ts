@@ -44,6 +44,27 @@ export function toBareGoModule(input: string): string {
   return name
 }
 
+// Same normalization as toBareGoModule, but for Cargo: crates.io purls spell the
+// ecosystem 'cargo' and crate names never contain '@' themselves either.
+export function toBareCargoName(input: string): string {
+  let name = input.trim()
+
+  const q = name.indexOf('?')
+  const h = name.indexOf('#')
+  const cut = q === -1 ? h : h === -1 ? q : Math.min(q, h)
+  if (cut !== -1) name = name.slice(0, cut)
+
+  name = decodeURIComponent(name)
+
+  if (name.startsWith('pkg:cargo/')) {
+    name = name.slice('pkg:cargo/'.length)
+  }
+
+  name = name.replace(/@[^/@]+$/, '')
+
+  return name
+}
+
 // Maven has no single "bare name" — accepts either the "groupId:artifactId" coordinate
 // (OSV's package.name spelling) or a purl (pkg:maven/groupId/artifactId@version).
 export function toBareMavenCoordinate(input: string): { groupId: string; artifactId: string } {
