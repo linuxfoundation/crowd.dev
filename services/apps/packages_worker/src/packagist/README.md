@@ -178,9 +178,10 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 completion** (effectively weekly, after the Sunday drain finishes), the same
 event-not-clock idiom as seed → metadata. A **ledger-gated backstop cron**
 (`packagist-transitive-backstop`, Monday 04:41 UTC) covers broken weeks: it
-no-ops when a run completed within 6 days, otherwise chain-starts the same
-fixed workflow id — so it can never race a live drain and a healthy week never
-pays a second scan. Recover manually with
+no-ops when a run completed within 6 days or while the metadata drain is still
+crawling (whose completion chains the closure itself), otherwise chain-starts
+the same fixed workflow id — so it can never race a live drain and a healthy
+week never pays a second scan. Recover manually with
 `pnpm trigger-packagist:local transitive`.
 **Targets:** every packagist package (the merge zero-fills leaves).
 

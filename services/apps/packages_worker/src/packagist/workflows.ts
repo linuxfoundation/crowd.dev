@@ -152,6 +152,9 @@ const TRANSITIVE_BACKSTOP_FRESH_DAYS = 6
 // workflow id, so it can never race a live drain.
 export async function backstopPackagistTransitiveDrain(): Promise<void> {
   if (await acts.packagistTransitiveRanRecently(TRANSITIVE_BACKSTOP_FRESH_DAYS)) return
+  // A mid-crawl metadata drain will chain the closure itself on completion; starting it
+  // now would snapshot changing edges AND make that completion chain-start bounce.
+  if (await acts.packagistMetadataDrainRunning()) return
   await chainTransitiveDrain()
 }
 

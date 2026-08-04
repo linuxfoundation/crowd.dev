@@ -205,8 +205,9 @@ run aborts loudly on an empty edge snapshot, the merge side refuses to run again
 counts table (a crash-truncated UNLOGGED staging table can never be zero-filled over good
 data), and a permanently failed merge marks the run `failed` instead of stranding it in
 `merging`. A weekly **ledger-gated backstop cron** (Monday, after the Sunday chain) covers
-broken chains: it no-ops when the ledger shows a `done` run within 6 days, else chain-starts
-the fixed workflow id — clock as safety net, event chain as primary.
+broken chains: it no-ops when the ledger shows a `done` run within 6 days or while the metadata drain is
+still running (whose completion chains the closure), else chain-starts the fixed workflow
+id — clock as safety net, event chain as primary.
 
 **Provenance.** deps.dev has no Packagist coverage, and Packagist's own API reports only
 direct dependents — so this is the only ecosystem where the transitive signal must come from

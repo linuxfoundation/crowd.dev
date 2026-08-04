@@ -35,6 +35,7 @@ import {
 import type { PackagistTransitiveMergeResult } from '@crowd/data-access-layer/src/packages/transitiveDependents'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceChildLogger } from '@crowd/logging'
+import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
 
 import { getPackagesDb } from '../db'
 import { mapWithConcurrency } from '../utils/concurrency'
@@ -567,6 +568,19 @@ export async function finishPackagistTransitiveRun(
 export async function packagistTransitiveRanRecently(withinDays: number): Promise<boolean> {
   const qx = await getPackagesDb()
   return hasRecentDonePackagistTransitiveRun(qx, withinDays)
+}
+
+// Backstop gate: is the fixed-id metadata drain mid-crawl? Its completion chains the
+// closure itself, so the backstop must stand down instead of snapshotting changing edges.
+export async function packagistMetadataDrainRunning(): Promise<boolean> {
+  const client = await getTemporalClient(TEMPORAL_CONFIG())
+  try {
+    const description = await client.workflow.getHandle('packagist-metadata-drain').describe()
+    return description.status.name === 'RUNNING'
+  } catch (err) {
+    if (err instanceof Error && err.name === 'WorkflowNotFoundError') return false
+    throw err
+  }
 }
 
 export async function failPackagistTransitiveRun(

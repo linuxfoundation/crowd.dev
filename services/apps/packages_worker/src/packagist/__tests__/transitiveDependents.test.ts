@@ -6,6 +6,7 @@ import {
   failPackagistTransitiveRun,
   finishPackagistTransitiveRun,
   mergePackagistTransitiveBatch,
+  packagistMetadataDrainRunning,
   preparePackagistTransitiveCounts,
 } from '../activities'
 import {
@@ -30,11 +31,13 @@ const h = vi.hoisted(() => ({
     finishPackagistTransitiveRun: vi.fn(),
     failPackagistTransitiveRun: vi.fn(),
     packagistTransitiveRanRecently: vi.fn(),
+    packagistMetadataDrainRunning: vi.fn(),
   },
   startChild: vi.fn(),
   continueAsNew: vi.fn(),
   logWarn: vi.fn(),
   attempt: vi.fn(),
+  describeWorkflow: vi.fn(),
   snapshot: vi.fn(),
   closure: vi.fn(),
   mergeDal: vi.fn(),
@@ -66,6 +69,14 @@ vi.mock('@temporalio/activity', async (importOriginal) => ({
   Context: {
     current: () => ({ info: { attempt: h.attempt() }, heartbeat: vi.fn() }),
   },
+}))
+
+vi.mock('@crowd/temporal', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  TEMPORAL_CONFIG: () => ({}),
+  getTemporalClient: async () => ({
+    workflow: { getHandle: () => ({ describe: h.describeWorkflow }) },
+  }),
 }))
 
 vi.mock('../../db', async (importOriginal) => ({
@@ -109,6 +120,7 @@ beforeEach(() => {
   h.startChild.mockResolvedValue(undefined)
   h.continueAsNew.mockResolvedValue(undefined)
   h.attempt.mockReturnValue(1)
+  h.acts.packagistMetadataDrainRunning.mockResolvedValue(false)
 })
 
 describe('ingestPackagistMetadata — chaining the transitive drain', () => {
@@ -315,6 +327,15 @@ describe('backstopPackagistTransitiveDrain — workflow', () => {
     expect(h.startChild).not.toHaveBeenCalled()
   })
 
+  it('stands down while the metadata drain is still crawling — its completion chains the closure', async () => {
+    h.acts.packagistTransitiveRanRecently.mockResolvedValue(false)
+    h.acts.packagistMetadataDrainRunning.mockResolvedValue(true)
+
+    await backstopPackagistTransitiveDrain()
+
+    expect(h.startChild).not.toHaveBeenCalled()
+  })
+
   it('chain-starts the drain (fixed workflow id) when the week had no successful run', async () => {
     h.acts.packagistTransitiveRanRecently.mockResolvedValue(false)
 
@@ -335,6 +356,32 @@ describe('backstopPackagistTransitiveDrain — workflow', () => {
     )
 
     await expect(backstopPackagistTransitiveDrain()).resolves.toBeUndefined()
+  })
+})
+
+describe('packagistMetadataDrainRunning — activity', () => {
+  it.each([
+    ['RUNNING', true],
+    ['COMPLETED', false],
+    ['FAILED', false],
+  ])('classifies workflow status %s as %s', async (status, expected) => {
+    h.describeWorkflow.mockResolvedValue({ status: { name: status } })
+
+    await expect(packagistMetadataDrainRunning()).resolves.toBe(expected)
+  })
+
+  it('treats a never-started drain as not running', async () => {
+    h.describeWorkflow.mockRejectedValue(
+      Object.assign(new Error('not found'), { name: 'WorkflowNotFoundError' }),
+    )
+
+    await expect(packagistMetadataDrainRunning()).resolves.toBe(false)
+  })
+
+  it('propagates unexpected describe errors', async () => {
+    h.describeWorkflow.mockRejectedValueOnce(new Error('temporal unreachable'))
+
+    await expect(packagistMetadataDrainRunning()).rejects.toThrow(/unreachable/)
   })
 })
 
