@@ -7,6 +7,7 @@ export interface ReverseDependentRow {
   name: string
   versionNumber: string
   versionConstraint: string
+  resolvedVersionNumber: string | null
   dependencyKind: string
   dependentCount: number | null
   // bigint column — the packages DB connection only overrides the NUMERIC/int4 type
@@ -37,10 +38,12 @@ export async function getReverseDependents(
               p.id AS package_id, p.purl, p.namespace, p.name,
               v.number AS version_number,
               pd.version_constraint, pd.dependency_kind,
+              rv.number AS resolved_version_number,
               p.dependent_count, p.transitive_dependent_count, p.dependent_repos_count
          FROM package_dependencies pd
          JOIN packages p ON p.id = pd.package_id
          JOIN versions v ON v.id = pd.version_id AND v.package_id = pd.package_id
+         LEFT JOIN versions rv ON rv.id = pd.depends_on_version_id AND rv.package_id = pd.depends_on_id
         WHERE pd.depends_on_id = $(dependsOnId)
           AND p.ecosystem = $(ecosystem)
         ORDER BY p.id, v.is_latest DESC NULLS LAST, v.published_at DESC NULLS LAST
@@ -59,6 +62,7 @@ export async function getReverseDependents(
     name: row.name as string,
     versionNumber: row.version_number as string,
     versionConstraint: row.version_constraint as string,
+    resolvedVersionNumber: row.resolved_version_number as string | null,
     dependencyKind: row.dependency_kind as string,
     dependentCount: row.dependent_count as number | null,
     transitiveDependentCount: row.transitive_dependent_count as string | null,

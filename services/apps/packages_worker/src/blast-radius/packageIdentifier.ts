@@ -43,3 +43,29 @@ export function toBareGoModule(input: string): string {
 
   return name
 }
+
+// Maven has no single "bare name" — accepts either the "groupId:artifactId" coordinate
+// (OSV's package.name spelling) or a purl (pkg:maven/groupId/artifactId@version).
+export function toBareMavenCoordinate(input: string): { groupId: string; artifactId: string } {
+  let name = input.trim()
+
+  const q = name.indexOf('?')
+  const h = name.indexOf('#')
+  const cut = q === -1 ? h : h === -1 ? q : Math.min(q, h)
+  if (cut !== -1) name = name.slice(0, cut)
+
+  name = decodeURIComponent(name)
+
+  if (name.startsWith('pkg:maven/')) {
+    name = name.slice('pkg:maven/'.length)
+    name = name.replace(/@[^/@]+$/, '')
+    const slash = name.indexOf('/')
+    if (slash === -1) return { groupId: name, artifactId: '' }
+    return { groupId: name.slice(0, slash), artifactId: name.slice(slash + 1) }
+  }
+
+  name = name.replace(/@[^/@]+$/, '')
+  const colon = name.indexOf(':')
+  if (colon === -1) return { groupId: '', artifactId: name }
+  return { groupId: name.slice(0, colon), artifactId: name.slice(colon + 1) }
+}

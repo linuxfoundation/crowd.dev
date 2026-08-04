@@ -48,11 +48,25 @@ function toResultConfidence(confidence: number): BlastRadiusResultConfidence {
   return 'low'
 }
 
+// d.name shape varies by ecosystem: npm/go store a plain name, maven stores
+// "groupId:artifactId" — split on the first colon only, artifactId may itself contain one.
+//
 // Scoped npm names (@scope/name) need their leading @ percent-encoded to %40 —
 // matching both purl.ts's normalizePurl and the contract's own example response
 // bodies (e.g. pkg:npm/%40angular/core in openapi.yaml).
-function toPurl(name: string): string {
-  return `pkg:npm/${name.replace(/^@/, '%40')}`
+function toPurl(ecosystem: BlastRadiusJobEcosystem, name: string): string {
+  switch (ecosystem) {
+    case 'maven': {
+      const colon = name.indexOf(':')
+      if (colon === -1) return `pkg:maven/${name}`
+      return `pkg:maven/${name.slice(0, colon)}/${name.slice(colon + 1)}`
+    }
+    case 'go':
+      return `pkg:golang/${name}`
+    case 'npm':
+    default:
+      return `pkg:npm/${name.replace(/^@/, '%40')}`
+  }
 }
 
 function flattenEvidence(evidence: Record<string, unknown>[] | null): string | null {
@@ -81,10 +95,13 @@ function toVerdict(reachableVerdict: string): BlastRadiusVerdict {
   return 'unclear'
 }
 
-function toResultItem(row: VerdictResultRow): BlastRadiusResultItem {
+function toResultItem(
+  ecosystem: BlastRadiusJobEcosystem,
+  row: VerdictResultRow,
+): BlastRadiusResultItem {
   const verdict = toVerdict(row.reachable_verdict)
   return {
-    dependent: toPurl(row.name),
+    dependent: toPurl(ecosystem, row.name),
     affected: verdict === 'affected',
     verdict,
     confidence: toResultConfidence(row.confidence),
@@ -128,15 +145,16 @@ export function toBlastRadiusAnalysis(
 ): BlastRadiusAnalysis {
   const status = analysis.status as BlastRadiusJobStatus
   const done = status === 'done'
+  const ecosystem = analysis.ecosystem as BlastRadiusJobEcosystem
 
-  const results = done ? verdictRows.map(toResultItem) : null
+  const results = done ? verdictRows.map((row) => toResultItem(ecosystem, row)) : null
 
   return {
     analysisId: analysis.id,
     status,
     advisoryId: analysis.advisory_osv_id,
     package: analysis.package_name,
-    ecosystem: analysis.ecosystem as BlastRadiusJobEcosystem,
+    ecosystem,
     submittedAt: analysis.started_at,
     completedAt: analysis.completed_at,
     errorMessage: analysis.error,

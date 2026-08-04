@@ -1,8 +1,7 @@
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { runDependentsStageGo } from './go/dependentsGo'
-import { runDependentsStageNpm } from './npm/dependentsNpm'
+import { getEcosystemConfig } from './ecosystems'
 
 export async function runDependentsStage(
   qx: QueryExecutor,
@@ -11,8 +10,6 @@ export async function runDependentsStage(
   signal?: AbortSignal,
 ): Promise<void> {
   const detail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-  if ((detail?.ecosystem ?? 'npm') === 'go') {
-    return runDependentsStageGo(qx, analysisId, onProgress, signal)
-  }
-  return runDependentsStageNpm(qx, analysisId, onProgress, signal)
+  const cfg = getEcosystemConfig(detail?.ecosystem)
+  return cfg.runDependents(qx, analysisId, onProgress, signal)
 }
