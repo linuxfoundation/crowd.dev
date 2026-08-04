@@ -1150,3 +1150,98 @@ export async function getAdvisoriesByPurls(
     isCritical: r.isCritical,
   }))
 }
+
+// A single assembled vulnerability-reporting method for a repo — how an external
+// reporter is expected to reach out. Mirrors the JSONB shape written by the
+// packages_worker assemble stage into repo_reporting_protocols.methods.
+export interface ReportingProtocolMethod {
+  type: string
+  status: string
+  endpoint: string
+  condition: string | null
+  confidence: 'declared' | 'inferred'
+  provenance: Record<string, unknown>
+}
+
+export interface ReportingProtocolGuidelines {
+  generalPrinciples: string[]
+  avoid: string[]
+  recommend: Array<{ scenario: string; action: string }>
+}
+
+export interface ReportingProtocolRow {
+  purl: string
+  declared: boolean
+  methods: ReportingProtocolMethod[]
+  guidelines: ReportingProtocolGuidelines | null
+  sources: Array<Record<string, unknown>>
+  bugBountyUrl: string | null
+  // Raw Postgres timestamptz string (OID 1184 returned verbatim) — normalize at the mapper.
+  assembledAt: string | null
+}
+
+// Resolve a package's assembled reporting protocol via its best repo link, using the
+// same canonical pick as getPackageDetailByPurl (confidence DESC, declared source
+// preferred) so the protocol matches the repo surfaced everywhere else. Returns null
+// when the purl is unknown or its best repo has no assembled protocol row.
+export async function getReportingProtocolByPurl(
+  qx: QueryExecutor,
+  purl: string,
+): Promise<ReportingProtocolRow | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT
+      p.purl,
+      rp.declared,
+      rp.methods,
+      rp.guidelines,
+      rp.sources,
+      r.bug_bounty_url AS "bugBountyUrl",
+      rp.assembled_at AS "assembledAt"
+    FROM packages p
+    JOIN LATERAL (
+      SELECT pr2.repo_id
+      FROM package_repos pr2
+      WHERE pr2.package_id = p.id
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
+      LIMIT 1
+    ) pr ON true
+    JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    JOIN repos r ON r.id = pr.repo_id
+    WHERE p.purl = $(purl)
+    `,
+    { purl },
+  )
+}
+
+// Batch variant of getReportingProtocolByPurl; unmatched purls are absent from the result.
+export async function getReportingProtocolsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<ReportingProtocolRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      rp.declared,
+      rp.methods,
+      rp.guidelines,
+      rp.sources,
+      r.bug_bounty_url AS "bugBountyUrl",
+      rp.assembled_at AS "assembledAt"
+    FROM packages p
+    JOIN LATERAL (
+      SELECT pr2.repo_id
+      FROM package_repos pr2
+      WHERE pr2.package_id = p.id
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
+      LIMIT 1
+    ) pr ON true
+    JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    JOIN repos r ON r.id = pr.repo_id
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
+  )
+}

@@ -94,15 +94,6 @@ describe('toAkritesExternalContactDetail', () => {
     expect(emptyContacts.overallConfidenceBand).toBe('NONE')
   })
 
-  it('always returns the reserved fields as null', () => {
-    const result = toAkritesExternalContactDetail(baseRow())
-    expect(result.targetOrganizationName).toBeNull()
-    expect(result.bugBountyProgramFlag).toBeNull()
-    expect(result.reportingMethods).toBeNull()
-    expect(result.reportingGuidelines).toBeNull()
-    expect(result.integrationHints).toBeNull()
-  })
-
   it('passes through the repo-sourced policy fields', () => {
     const result = toAkritesExternalContactDetail(
       baseRow({ vulnerabilityReportingUrl: 'https://example.org/report', pvrEnabled: false }),
