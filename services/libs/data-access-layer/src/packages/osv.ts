@@ -313,7 +313,7 @@ export async function resolveMissingPackageIds(qx: QueryExecutor): Promise<numbe
       AND ap.package_name = CASE
         WHEN p.namespace IS NULL THEN p.name
         WHEN p.ecosystem = 'maven' THEN p.namespace || ':' || p.name
-        WHEN p.ecosystem = 'npm' THEN '@' || p.namespace || '/' || p.name
+        WHEN p.ecosystem = 'npm' THEN p.namespace || '/' || p.name
         ELSE p.name
       END
   `)

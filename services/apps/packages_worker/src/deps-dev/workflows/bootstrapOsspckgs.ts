@@ -300,19 +300,30 @@ export async function bootstrapOsspckgs(opts: {
     }
   }
   if (runs('advisories') || runs('advisory_packages')) {
-    await executeChild(ingestAdvisories, {
-      args: [
-        {
-          runId,
-          syncMode: opts.mode,
-          today,
-          watermark: wm('advisories'),
-          ecosystems: opts.ecosystems,
-          reuseExports: opts.reuseExports,
-          exportName: opts.exportName,
-        },
-      ],
-    })
+    try {
+      await executeChild(ingestAdvisories, {
+        args: [
+          {
+            runId,
+            syncMode: opts.mode,
+            today,
+            watermark: wm('advisories'),
+            ecosystems: opts.ecosystems,
+            reuseExports: opts.reuseExports,
+            exportName: opts.exportName,
+          },
+        ],
+      })
+    } catch (err) {
+      // Only soft-fail on the BQ byte-ceiling guard (CM-1362), mirroring the dependent_counts /
+      // package_dependencies handling above. advisories is the last data kind — letting a ceiling
+      // breach here propagate unhandled used to strand scorecard + ranking below for the whole
+      // run. All other errors (BQ timeout, DB failure, etc.) still propagate.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'BQ_CEILING_EXCEEDED') {
+        throw err
+      }
+    }
   }
   if (runs('scorecard')) {
     await executeChild(ingestScorecard, {
