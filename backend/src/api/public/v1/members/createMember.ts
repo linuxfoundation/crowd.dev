@@ -3,12 +3,16 @@ import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
 import { getProperDisplayName } from '@crowd/common'
-import { createMember as insertMember, insertMemberIdentities } from '@crowd/data-access-layer'
+import {
+  findMemberIdByVerifiedIdentity,
+  createMember as insertMember,
+  insertMemberIdentities,
+} from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
 
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const bodySchema = z.object({
@@ -62,9 +66,17 @@ export async function createMember(req: Request, res: Response): Promise<void> {
       return { dbMember, dbIdentities }
     } catch (error) {
       // Only notify for a single identity because we can't tell which one conflicted in a batch.
-      if (identities.length === 1) {
+      if (identities.length === 1 && isMemberIdentityDbConflict(error)) {
         const identity = identities[0]
+        const conflictMemberId = await findMemberIdByVerifiedIdentity(
+          qx,
+          identity.platform,
+          identity.value,
+          identity.type,
+        )
+
         return rethrowDbConflict(error, {
+          ...(conflictMemberId ? { conflictMemberId } : {}),
           platform: identity.platform,
           value: identity.value,
           type: identity.type,

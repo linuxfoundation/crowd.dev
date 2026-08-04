@@ -17,6 +17,7 @@ import {
   MemberField,
   deleteMemberIdentity,
   findMemberById,
+  findMemberIdByVerifiedIdentity,
   findMemberIdentityById,
   queryActivityRelations,
   updateMemberIdentity,
@@ -30,7 +31,7 @@ import {
 
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { noContent, ok } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -92,9 +93,17 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
             verifiedBy,
           })
         } catch (error) {
-          if (verified) {
+          if (verified && isMemberIdentityDbConflict(error)) {
+            const conflictMemberId = await findMemberIdByVerifiedIdentity(
+              qx,
+              identity.platform,
+              identity.value,
+              identity.type,
+            )
+
             rethrowDbConflict(error, {
               memberId,
+              ...(conflictMemberId ? { conflictMemberId } : {}),
               platform: identity.platform,
               value: identity.value,
               type: identity.type,
