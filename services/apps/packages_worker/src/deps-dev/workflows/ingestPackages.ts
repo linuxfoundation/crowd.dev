@@ -1,11 +1,14 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../activities'
-import { packageNameSplitSql } from '../queries/pgIdentity'
 import { buildPackagesFullSql, buildPackagesIncrementalSql } from '../queries/packagesSql'
+import { packageNameSplitSql } from '../queries/pgIdentity'
 import { toSystemsFilter } from '../queries/systems'
 
-const { namespace: NAMESPACE_SPLIT_SQL, name: NAME_SPLIT_SQL } = packageNameSplitSql('s', 'raw_name')
+const { namespace: NAMESPACE_SPLIT_SQL, name: NAME_SPLIT_SQL } = packageNameSplitSql(
+  's',
+  'raw_name',
+)
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '1 hour',
