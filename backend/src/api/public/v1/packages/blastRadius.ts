@@ -1,7 +1,5 @@
 import { z } from 'zod'
 
-// TEMP LOCAL-ONLY GATE FLIP — do not commit. go re-disabled pending comment #1's other
-// requirement (API tests/types update) before this is a real PR-ready change.
 export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm', 'go'] as const
 
 // Always exactly one job per request — advisory-wide (package omitted) or narrowed

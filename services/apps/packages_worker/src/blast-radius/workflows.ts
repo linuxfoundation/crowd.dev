@@ -5,8 +5,6 @@ import type { ITriggerBlastRadiusAnalysis } from '@crowd/types'
 import type * as activities from './activities'
 import { buildEcosystemNotSupportedFailure } from './ecosystemSupport'
 
-// TEMP LOCAL-ONLY GATE FLIP — do not commit. go re-disabled pending comment #1's other
-// requirement (API tests/types update) before this is a real PR-ready change.
 const SUPPORTED_ECOSYSTEMS = ['npm', 'go']
 
 const { blastRadiusStart, blastRadiusFail } = proxyActivities<typeof activities>({
