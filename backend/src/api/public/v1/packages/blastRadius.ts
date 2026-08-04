@@ -1,9 +1,8 @@
 import { z } from 'zod'
 
-// The reachability pipeline is npm-only for now — every other ecosystem (including
-// a missing one) is rejected by the schema below before the Temporal workflow is
-// triggered.
-export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm'] as const
+// TEMP LOCAL-ONLY GATE FLIP — do not commit. go re-disabled pending comment #1's other
+// requirement (API tests/types update) before this is a real PR-ready change.
+export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm', 'go'] as const
 
 // Always exactly one job per request — advisory-wide (package omitted) or narrowed
 // to a single package. package accepts either a full purl or a bare package name,

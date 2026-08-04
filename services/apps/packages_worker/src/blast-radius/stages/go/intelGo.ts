@@ -18,19 +18,13 @@ import {
   fixReferenceUrls,
   semverRangeEvents,
 } from '../../clients/osvClient'
+import { toBareGoModule } from '../../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../../semverRange'
 
 // OSV spells the Go ecosystem 'Go' (capital), unlike our DB's lowercase 'go' — see
 // ADR-0001 §OSV "Ecosystem normalization" for the DB-side convention.
 const OSV_GO_ECOSYSTEM = 'Go'
 const GO_PROXY_FETCH_TIMEOUT_MS = 15_000
-
-// Go module paths (e.g. "github.com/pubnub/go/v7") are already bare — unlike npm,
-// there's no '@scope/name' packing to undo, only an optional purl wrapper to strip.
-function toBareGoModule(input: string): string {
-  const decoded = decodeURIComponent(input)
-  return decoded.startsWith('pkg:golang/') ? decoded.slice('pkg:golang/'.length) : decoded
-}
 
 export async function runIntelStageGo(
   qx: QueryExecutor,

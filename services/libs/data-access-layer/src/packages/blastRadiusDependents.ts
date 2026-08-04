@@ -5,10 +5,13 @@ export interface ReverseDependentRow {
   purl: string
   namespace: string | null
   name: string
+  versionNumber: string
   versionConstraint: string
   dependencyKind: string
   dependentCount: number | null
-  transitiveDependentCount: number | null
+  // bigint column — the packages DB connection only overrides the NUMERIC/int4 type
+  // parsers (see @crowd/database connection.ts), so int8 comes back as a string.
+  transitiveDependentCount: string | null
   dependentReposCount: number | null
 }
 
@@ -16,6 +19,12 @@ export interface ReverseDependentRow {
 // ingestion-writer dependencies.ts. Filtering on depends_on_id alone hits a single
 // partition of package_dependencies (HASH-partitioned on that column); the ecosystem
 // filter on packages further narrows without needing a composite index.
+//
+// package_dependencies is unique per (version_id, depends_on_id, dependency_kind), not
+// per depends_on_id alone — a package with many historical versions that all require
+// the vulnerable package would otherwise surface as multiple rows and could consume the
+// whole LIMIT. DISTINCT ON (p.id) collapses to one concrete version per dependent package
+// first, preferring its latest ingested version, before ranking/limiting.
 export async function getReverseDependents(
   qx: QueryExecutor,
   dependsOnId: string,
@@ -23,16 +32,23 @@ export async function getReverseDependents(
   limit: number,
 ): Promise<ReverseDependentRow[]> {
   const rows = await qx.select(
-    `SELECT p.id AS package_id, p.purl, p.namespace, p.name,
-            pd.version_constraint, pd.dependency_kind,
-            p.dependent_count, p.transitive_dependent_count, p.dependent_repos_count
-       FROM package_dependencies pd
-       JOIN packages p ON p.id = pd.package_id
-      WHERE pd.depends_on_id = $(dependsOnId)
-        AND p.ecosystem = $(ecosystem)
-      ORDER BY COALESCE(p.dependent_repos_count, 0) DESC,
-               COALESCE(p.dependent_count, 0) DESC
-      LIMIT $(limit)`,
+    `WITH deduped AS (
+       SELECT DISTINCT ON (p.id)
+              p.id AS package_id, p.purl, p.namespace, p.name,
+              v.number AS version_number,
+              pd.version_constraint, pd.dependency_kind,
+              p.dependent_count, p.transitive_dependent_count, p.dependent_repos_count
+         FROM package_dependencies pd
+         JOIN packages p ON p.id = pd.package_id
+         JOIN versions v ON v.id = pd.version_id AND v.package_id = pd.package_id
+        WHERE pd.depends_on_id = $(dependsOnId)
+          AND p.ecosystem = $(ecosystem)
+        ORDER BY p.id, v.is_latest DESC NULLS LAST, v.published_at DESC NULLS LAST
+     )
+     SELECT * FROM deduped
+     ORDER BY COALESCE(dependent_repos_count, 0) DESC,
+              COALESCE(dependent_count, 0) DESC
+     LIMIT $(limit)`,
     { dependsOnId, ecosystem, limit },
   )
 
@@ -41,10 +57,11 @@ export async function getReverseDependents(
     purl: row.purl as string,
     namespace: row.namespace as string | null,
     name: row.name as string,
+    versionNumber: row.version_number as string,
     versionConstraint: row.version_constraint as string,
     dependencyKind: row.dependency_kind as string,
     dependentCount: row.dependent_count as number | null,
-    transitiveDependentCount: row.transitive_dependent_count as number | null,
+    transitiveDependentCount: row.transitive_dependent_count as string | null,
     dependentReposCount: row.dependent_repos_count as number | null,
   }))
 }

@@ -84,6 +84,7 @@ export interface DependentRow {
   id: string
   analysis_id: string
   name: string
+  version: string | null
   excluded_by_range: boolean
   tarball_url: string | null
 }
@@ -445,7 +446,7 @@ export async function getDependentsNeedingVerdict(
 ): Promise<DependentRow[]> {
   return qx.select(
     `
-    SELECT id, analysis_id, name, excluded_by_range, tarball_url
+    SELECT id, analysis_id, name, version, excluded_by_range, tarball_url
     FROM blast_radius_dependents
     WHERE analysis_id = $(analysisId)
       AND excluded_by_range = FALSE

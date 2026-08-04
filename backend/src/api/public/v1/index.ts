@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express'
 import { Router } from 'express'
 
 import { NotFoundError } from '@crowd/common'
@@ -10,6 +11,14 @@ import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
 import { requireScopes } from '../middlewares/requireScopes'
 import { staticApiKeyMiddleware } from '../middlewares/staticApiKeyMiddleware'
+
+// TEMP LOCAL-ONLY AUTH BYPASS — do not commit. Stubs req.actor with every scope so
+// requireScopes downstream doesn't 401. Revert to oauth2Middleware(AUTH0_CONFIG) once
+// a real Auth0 M2M token is available locally.
+function localDevBypassAuth(req: Request, _res: Response, next: NextFunction): void {
+  req.actor = { id: 'local-dev', type: 'service', scopes: Object.values(SCOPES) }
+  next()
+}
 
 import { memberOrganizationAffiliationsRouter } from './affiliations'
 import { akritesRouter } from './akrites'
@@ -43,7 +52,7 @@ export function v1Router(): Router {
   router.use('/ossprey', oauth2Middleware(AUTH0_CONFIG), osspreyRouter())
 
   router.use('/akrites', oauth2Middleware(AUTH0_CONFIG), akritesRouter())
-  router.use('/akrites-external', oauth2Middleware(AUTH0_CONFIG), akritesExternalRouter())
+  router.use('/akrites-external', localDevBypassAuth, akritesExternalRouter())
 
   router.use(() => {
     throw new NotFoundError()

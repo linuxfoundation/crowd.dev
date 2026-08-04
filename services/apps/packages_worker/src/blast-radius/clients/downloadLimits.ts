@@ -7,12 +7,15 @@ export const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
 export const MAX_EXTRACTED_BYTES = 500 * 1024 * 1024
 export const MAX_EXTRACTED_FILES = 20_000
 
-export function createDownloadLimiter(errorMessage: string): Transform {
+export function createDownloadLimiter(
+  errorMessage: string,
+  maxBytes: number = MAX_DOWNLOAD_BYTES,
+): Transform {
   let downloadedBytes = 0
   return new Transform({
     transform(chunk, _encoding, callback) {
       downloadedBytes += chunk.length
-      if (downloadedBytes > MAX_DOWNLOAD_BYTES) {
+      if (downloadedBytes > maxBytes) {
         callback(new Error(errorMessage))
         return
       }

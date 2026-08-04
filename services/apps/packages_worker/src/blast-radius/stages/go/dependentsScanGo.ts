@@ -36,7 +36,7 @@ export async function scanGoDependents(
     const rangeCheck = goConstraintMayInclude(row.versionConstraint, maxVulnerableVersion)
     return {
       name: row.name,
-      version: null,
+      version: row.versionNumber,
       downloads: row.dependentReposCount ?? row.dependentCount ?? null,
       declaredRange: row.versionConstraint,
       dependencyKind: row.dependencyKind,

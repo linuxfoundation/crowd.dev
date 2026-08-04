@@ -75,20 +75,7 @@ describe('downloadAndExtractGoModule', () => {
     )
   })
 
-  it('rejects zips exceeding the download-size cap', async () => {
-    // Stored (uncompressed) entries make download size == extracted size, so a
-    // fixture this large trips the download-byte guard before extraction even begins.
-    const bigContent = 'x'.repeat(1024 * 1024)
-    const entries = Array.from({ length: 250 }, (_, i) => ({
-      path: `${PREFIX}file${i}.txt`,
-      content: bigContent,
-    }))
-    const zip = buildStoredZip(entries)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeZipResponse(zip)))
-
-    destDir = mkdtempSync(path.join(os.tmpdir(), 'gomodzip-test-'))
-    await expect(downloadAndExtractGoModule(MODULE, VERSION, destDir)).rejects.toThrow(
-      /exceeded size limit/,
-    )
-  }, 20_000)
+  // The download-size cap itself (200 MiB) is unit-tested directly against
+  // createDownloadLimiter in downloadLimits.test.ts with a KiB-scale fixture —
+  // building a fixture that large here would burn CI memory/time for no extra coverage.
 })

@@ -57,12 +57,16 @@ describe.skipIf(!HAVE_DB)('getReverseDependents — real packages-db', () => {
     return row.id
   }
 
-  async function makeVersion(packageId: string, number: string): Promise<string> {
+  async function makeVersion(
+    packageId: string,
+    number: string,
+    opts: { isLatest?: boolean } = {},
+  ): Promise<string> {
     const row = await qx.selectOne(
-      `INSERT INTO versions (package_id, ecosystem, number, name)
-       VALUES ($(packageId), 'go', $(number), $(number))
+      `INSERT INTO versions (package_id, ecosystem, number, name, is_latest)
+       VALUES ($(packageId), 'go', $(number), $(number), $(isLatest))
        RETURNING id`,
-      { packageId, number },
+      { packageId, number, isLatest: opts.isLatest ?? null },
     )
     return row.id
   }
@@ -123,6 +127,18 @@ describe.skipIf(!HAVE_DB)('getReverseDependents — real packages-db', () => {
 
     await makeVersion(dependsOnId, 'v7.0.0')
     await makeVersion(dependsOnId, 'v7.1.0')
+
+    // Same dependent package, two historical versions both requiring dependsOnId —
+    // getReverseDependents must collapse these to a single row (the is_latest one),
+    // not let both consume the LIMIT.
+    const depC = await makePackage('github.com/c/multi-version', {
+      dependentCount: 3,
+      dependentReposCount: 10,
+    })
+    const depCOldVersion = await makeVersion(depC, 'v1.0.0', { isLatest: false })
+    await makeDependency(depC, depCOldVersion, dependsOnId, '>=v1.0.0')
+    const depCLatestVersion = await makeVersion(depC, 'v2.0.0', { isLatest: true })
+    await makeDependency(depC, depCLatestVersion, dependsOnId, '>=v2.0.0')
   }, 30_000)
 
   afterAll(async () => {
@@ -132,8 +148,13 @@ describe.skipIf(!HAVE_DB)('getReverseDependents — real packages-db', () => {
   it('returns only same-ecosystem dependents, ranked by dependent_repos_count desc', async () => {
     const rows = await getReverseDependents(qx, dependsOnId, 'go', 10)
 
-    expect(rows.map((r) => r.name)).toEqual(['github.com/a/high-impact', 'github.com/b/low-impact'])
+    expect(rows.map((r) => r.name)).toEqual([
+      'github.com/a/high-impact',
+      'github.com/c/multi-version',
+      'github.com/b/low-impact',
+    ])
     expect(rows[0].versionConstraint).toBe('v1.0.0')
+    expect(rows[0].versionNumber).toBe('v1.0.0')
     expect(rows[0].dependencyKind).toBe('direct')
   })
 
@@ -141,6 +162,15 @@ describe.skipIf(!HAVE_DB)('getReverseDependents — real packages-db', () => {
     const rows = await getReverseDependents(qx, dependsOnId, 'go', 1)
     expect(rows).toHaveLength(1)
     expect(rows[0].name).toBe('github.com/a/high-impact')
+  })
+
+  it('collapses a dependent with multiple historical versions to its is_latest one', async () => {
+    const rows = await getReverseDependents(qx, dependsOnId, 'go', 10)
+    const multiVersionRows = rows.filter((r) => r.name === 'github.com/c/multi-version')
+
+    expect(multiVersionRows).toHaveLength(1)
+    expect(multiVersionRows[0].versionNumber).toBe('v2.0.0')
+    expect(multiVersionRows[0].versionConstraint).toBe('>=v2.0.0')
   })
 
   it('returns an empty list for an ecosystem with no matching dependents', async () => {

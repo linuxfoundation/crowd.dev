@@ -29,7 +29,10 @@ export const goReachabilityConfig: ReachabilitySourceConfig = {
   schema: GO_VERDICT_SCHEMA,
   buildSystemPrompt: buildGoReachabilitySystemPrompt,
   prepareSource: async (dep) => {
-    const version = await resolveGoVersion(dep.name)
+    // Prefer the exact version the reverse-dependency edge was resolved against (see
+    // getReverseDependents) — falling back to @latest would analyze different code than
+    // the go.mod that produced this constraint.
+    const version = dep.version ?? (await resolveGoVersion(dep.name))
     if (!version) return null
     return { download: (destDir) => downloadAndExtractGoModule(dep.name, version, destDir) }
   },
