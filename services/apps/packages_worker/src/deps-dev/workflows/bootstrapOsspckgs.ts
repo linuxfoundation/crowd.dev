@@ -331,7 +331,10 @@ export async function bootstrapOsspckgs(opts: {
       // Unlike checkDependentCountsGuard/checkEdgeSnapshotQuality, this failure happens before
       // any ingest-job row is created, so there's no failed-job row for an operator to notice —
       // alert explicitly or repeated skips go unnoticed (review comment on CM-1362).
-      await notifyBqCeilingSkip({ jobKind: 'advisory_packages', message: cause.message })
+      // ingestAdvisories carries the failing export's jobKind as the failure detail ('advisories'
+      // or 'advisory_packages') so the alert names the export that actually breached.
+      const jobKind = typeof cause.details?.[0] === 'string' ? cause.details[0] : 'advisories'
+      await notifyBqCeilingSkip({ jobKind, message: cause.message })
     }
   }
   if (runs('scorecard')) {

@@ -31,6 +31,25 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 1 },
 })
 
+// bqExportToGcs throws ApplicationFailure.nonRetryable('BQ_CEILING_EXCEEDED') directly from
+// activity code, which the SDK surfaces here as ActivityFailure.cause. Rethrow as a workflow-level
+// ApplicationFailure carrying the job kind as a detail so bootstrapOsspckgs's unwrap (err.cause on
+// the resulting ChildWorkflowFailure) can match it, soft-fail, and alert on whichever export
+// actually breached — mirroring the DEPENDENT_COUNTS_GUARD / EDGE_SNAPSHOT_GUARD pattern there.
+// Applies to both exports below (review comment on CM-1362): a ceiling breach on either one must
+// be recognized, not just advisory_packages.
+async function exportWithCeilingGuard(input: Parameters<typeof bqExportToGcs>[0]) {
+  try {
+    return await bqExportToGcs(input)
+  } catch (err) {
+    const cause = err instanceof ActivityFailure ? err.cause : err
+    if (cause instanceof ApplicationFailure && cause.type === 'BQ_CEILING_EXCEEDED') {
+      throw ApplicationFailure.nonRetryable(cause.message, 'BQ_CEILING_EXCEEDED', input.jobKind)
+    }
+    throw err
+  }
+}
+
 const ADVISORIES_STAGING_TABLE = 'staging.osspckgs_advisories_raw'
 const ADVISORY_PACKAGES_STAGING_TABLE = 'staging.osspckgs_advisory_packages_raw'
 
@@ -201,7 +220,7 @@ export async function ingestAdvisories(opts: {
   const systems = toSystemsFilter(opts.ecosystems)
 
   // Step 1: advisories header rows
-  const advisoriesExport = await bqExportToGcs({
+  const advisoriesExport = await exportWithCeilingGuard({
     jobKind: 'advisories',
     sql: ADVISORIES_SQL,
     runId: opts.runId,
@@ -275,33 +294,19 @@ export async function ingestAdvisories(opts: {
   }
 
   // Step 2: advisory_packages + affected ranges (FK → advisories must exist first)
-  let pkgsExport: Awaited<ReturnType<typeof bqExportToGcs>>
-  try {
-    pkgsExport = await bqExportToGcs({
-      jobKind: 'advisory_packages',
-      sql: buildAdvisoryPackagesSql(systems),
-      runId: opts.runId,
-      syncMode: opts.syncMode,
-      snapshotAt: opts.today,
-      // No purl_map (CM-1362): measured actual scan is ~1.4 GB against AdvisoriesLatest; 50 GB
-      // keeps this a real regression gate instead of a ceiling that periodically needs raising.
-      maxBytesGb: 50,
-      reuseExports: opts.reuseExports,
-      exportName: opts.exportName,
-      ecosystems: opts.ecosystems,
-    })
-  } catch (err) {
-    // bqExportToGcs throws ApplicationFailure.nonRetryable('BQ_CEILING_EXCEEDED') directly from
-    // activity code, which the SDK surfaces here as ActivityFailure.cause. Rethrow as a
-    // workflow-level ApplicationFailure of the same type so bootstrapOsspckgs's unwrap
-    // (err.cause on the resulting ChildWorkflowFailure) can match it and soft-fail — mirroring
-    // the DEPENDENT_COUNTS_GUARD / EDGE_SNAPSHOT_GUARD pattern there.
-    const cause = err instanceof ActivityFailure ? err.cause : err
-    if (cause instanceof ApplicationFailure && cause.type === 'BQ_CEILING_EXCEEDED') {
-      throw ApplicationFailure.nonRetryable(cause.message, 'BQ_CEILING_EXCEEDED')
-    }
-    throw err
-  }
+  const pkgsExport = await exportWithCeilingGuard({
+    jobKind: 'advisory_packages',
+    sql: buildAdvisoryPackagesSql(systems),
+    runId: opts.runId,
+    syncMode: opts.syncMode,
+    snapshotAt: opts.today,
+    // No purl_map (CM-1362): measured actual scan is ~1.4 GB against AdvisoriesLatest; 50 GB
+    // keeps this a real regression gate instead of a ceiling that periodically needs raising.
+    maxBytesGb: 50,
+    reuseExports: opts.reuseExports,
+    exportName: opts.exportName,
+    ecosystems: opts.ecosystems,
+  })
 
   const { fileNames: pkgFileNames, rowCounts: pkgRowCounts } = await listParquetFiles({
     gcsPrefix: pkgsExport.gcsPrefix,
