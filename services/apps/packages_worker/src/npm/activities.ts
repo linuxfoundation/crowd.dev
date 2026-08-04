@@ -39,7 +39,7 @@ import {
 import { fetchPackument } from './fetchPackument'
 import { Last30dWindow, computeMissingLast30dWindows } from './last30dGaps'
 import { laneCount, proxyForLane } from './proxies'
-import { isFetchError } from './types'
+import { FetchErrorKind, isFetchError } from './types'
 import { upsertPackage } from './upsertPackage'
 
 const log = getServiceChildLogger('npm')
@@ -122,7 +122,7 @@ async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatche
 
     // 429 → fail the attempt, but schedule the retry past the server-stated penalty window
     // (npm blocks for ~300s; the default 30/60/120s ladder always lands back inside it).
-    if (packumentResult.kind === 'RATE_LIMIT') {
+    if (packumentResult.kind === FetchErrorKind.RATE_LIMIT) {
       const delaySec = Math.min(Math.max(packumentResult.retryAfterSec ?? 300, 30), 3600) + 5
       throw ApplicationFailure.create({
         message: `Failed to fetch packument for ${name}: ${packumentResult.message}`,
@@ -135,7 +135,7 @@ async function ingestOne(qx: QueryExecutor, purl: string, dispatcher?: Dispatche
     // so it takes the quick-retry-then-skip path below instead of poisoning the lane forever.
     if (
       !isClientError(packumentResult.statusCode, packumentResult.kind) &&
-      packumentResult.kind !== 'MALFORMED'
+      packumentResult.kind !== FetchErrorKind.MALFORMED
     ) {
       throw new Error(`Failed to fetch packument for ${name}: ${packumentResult.message}`)
     }

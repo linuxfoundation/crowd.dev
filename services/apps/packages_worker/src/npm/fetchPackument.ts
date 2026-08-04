@@ -1,7 +1,7 @@
 import type { Dispatcher } from 'undici'
 
 import { combineSignals } from './signals'
-import type { FetchError, Packument } from './types'
+import { type FetchError, FetchErrorKind, type Packument } from './types'
 
 const REGISTRY = 'https://registry.npmjs.org'
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
@@ -36,34 +36,35 @@ export async function fetchPackument(
     if (dispatcher) init.dispatcher = dispatcher
     res = await fetch(url, init as RequestInit)
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
   if (res.status === 404)
-    return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
+    return { kind: FetchErrorKind.NOT_FOUND, message: `${name} not found`, statusCode: 404 }
   if (res.status === 429) {
     return {
-      kind: 'RATE_LIMIT',
+      kind: FetchErrorKind.RATE_LIMIT,
       message: 'rate limited',
       statusCode: 429,
       retryAfterSec: parseRetryAfterSec(res.headers.get('retry-after')),
     }
   }
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
 
   let json: unknown
   try {
     json = await res.json()
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
   if (!isPackument(json)) {
     const stub = asUnpublishedStub(json)
     if (stub) return stub
-    return { kind: 'MALFORMED', message: 'unexpected shape' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'unexpected shape' }
   }
   delete (json as unknown as Record<string, unknown>).readme
   return json
