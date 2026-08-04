@@ -30,7 +30,7 @@ interface MetadataState {
 export const TRANSITIVE_MERGE_BATCH = 10_000
 
 const transitivePrepareActs = proxyActivities<typeof activities>({
-  startToCloseTimeout: '45 minutes',
+  startToCloseTimeout: '90 minutes',
   heartbeatTimeout: '2 minutes',
   retry: {
     initialInterval: '1 minute',

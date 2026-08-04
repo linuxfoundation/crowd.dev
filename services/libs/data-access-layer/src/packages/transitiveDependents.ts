@@ -29,8 +29,8 @@ async function rebuildStagingTable(
 ): Promise<number> {
   return qx.tx(async (tx) => {
     await tx.result(`SET LOCAL max_parallel_workers_per_gather = 4`)
-    // Below the activity's 45-min deadline: Temporal timeouts don't kill an in-flight
-    // statement, so without this a timed-out CTAS would keep running alongside its retry.
+    // Temporal timeouts don't kill in-flight SQL — this bounds each statement so a hung
+    // CTAS dies well inside the 90-min activity deadline (2 statements + slack).
     await tx.result(`SET LOCAL statement_timeout = '40min'`)
     await tx.result(`DROP TABLE IF EXISTS ${table}`)
     const rows = await tx.result(`CREATE UNLOGGED TABLE ${table} AS ${createAsSql}`)

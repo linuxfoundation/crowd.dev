@@ -50,12 +50,15 @@ export async function markPackagistTransitiveRunMerging(
   runId: number,
   graph: { edgeCount: number; packagesWithDependents: number },
 ): Promise<void> {
+  // Guarded transitions make terminal states absorbing: a zombie attempt that outlived
+  // its Temporal timeout can never revive a run another attempt already finished/failed.
   await qx.result(
     `UPDATE packagist_transitive_runs
         SET status = 'merging',
             edge_count = $(edgeCount),
             packages_with_dependents = $(packagesWithDependents)
-      WHERE id = $(runId)`,
+      WHERE id = $(runId)
+        AND status IN ('pending', 'merging')`,
     { runId, edgeCount: graph.edgeCount, packagesWithDependents: graph.packagesWithDependents },
   )
 }
@@ -71,7 +74,8 @@ export async function finishPackagistTransitiveRun(
             processed_rows = $(processed),
             changed_rows = $(changed),
             finished_at = NOW()
-      WHERE id = $(runId)`,
+      WHERE id = $(runId)
+        AND status = 'merging'`,
     { runId, processed: totals.processed, changed: totals.changed },
   )
 }
@@ -86,7 +90,8 @@ export async function failPackagistTransitiveRun(
         SET status = 'failed',
             error_message = $(errorMessage),
             finished_at = NOW()
-      WHERE id = $(runId)`,
+      WHERE id = $(runId)
+        AND status IN ('pending', 'merging')`,
     { runId, errorMessage },
   )
 }

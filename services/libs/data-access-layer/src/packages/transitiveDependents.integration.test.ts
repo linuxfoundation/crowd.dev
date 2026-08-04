@@ -463,6 +463,41 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
         expect(row.finished_at).not.toBeNull()
       })
 
+      it('terminal states are absorbing — zombie transitions cannot revive a run', async () => {
+        const zombie = await createPackagistTransitiveRun(qx)
+        runIds.push(zombie)
+        await failPackagistTransitiveRun(qx, zombie, 'boom')
+
+        // a timed-out attempt's late markMerging/finish must bounce off the failed row
+        await markPackagistTransitiveRunMerging(qx, zombie, {
+          edgeCount: 1,
+          packagesWithDependents: 1,
+        })
+        await finishPackagistTransitiveRun(qx, zombie, { processed: 1, changed: 1 })
+        const failedRow = await qx.selectOne(
+          `SELECT status, edge_count FROM packagist_transitive_runs WHERE id = $(id)`,
+          { id: zombie },
+        )
+        expect(failedRow.status).toBe('failed')
+        expect(failedRow.edge_count).toBeNull()
+
+        // and a late fail-mark can never overwrite a completed run
+        const completed = await createPackagistTransitiveRun(qx)
+        runIds.push(completed)
+        await markPackagistTransitiveRunMerging(qx, completed, {
+          edgeCount: 2,
+          packagesWithDependents: 2,
+        })
+        await finishPackagistTransitiveRun(qx, completed, { processed: 2, changed: 2 })
+        await failPackagistTransitiveRun(qx, completed, 'late zombie failure')
+        const doneRow = await qx.selectOne(
+          `SELECT status, error_message FROM packagist_transitive_runs WHERE id = $(id)`,
+          { id: completed },
+        )
+        expect(doneRow.status).toBe('done')
+        expect(doneRow.error_message).toBeNull()
+      })
+
       it('records terminal failure with the error message', async () => {
         const run = await createPackagistTransitiveRun(qx)
         runIds.push(run)
