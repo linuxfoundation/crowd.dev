@@ -24,6 +24,11 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActi
   retry: { maximumAttempts: 3 },
 })
 
+const { notifyBqCeilingSkip } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
+
 type JobKind =
   | 'packages'
   | 'repos'
@@ -323,6 +328,10 @@ export async function bootstrapOsspckgs(opts: {
       if (!(cause instanceof ApplicationFailure) || cause.type !== 'BQ_CEILING_EXCEEDED') {
         throw err
       }
+      // Unlike checkDependentCountsGuard/checkEdgeSnapshotQuality, this failure happens before
+      // any ingest-job row is created, so there's no failed-job row for an operator to notice —
+      // alert explicitly or repeated skips go unnoticed (review comment on CM-1362).
+      await notifyBqCeilingSkip({ jobKind: 'advisory_packages', message: cause.message })
     }
   }
   if (runs('scorecard')) {
