@@ -41,7 +41,9 @@ function parseMavenInterval(seg: string): MavenInterval | null {
   const comma = body.indexOf(',')
 
   if (comma === -1) {
-    // Exact version, e.g. "[1.0]"
+    // Exact version, e.g. "[1.0]" — requires both brackets closed, unlike a mismatched
+    // "(1.0)" or "[1.0)", which is malformed and must fall through to unparseable-included.
+    if (!lowerInclusive || !upperInclusive) return null
     const exact = body.trim()
     if (!exact) return null
     return { lower: exact, lowerInclusive: true, upper: exact, upperInclusive: true }
@@ -89,12 +91,19 @@ function intervalMayInclude(interval: MavenInterval, version: string): boolean {
 
 // Over-inclusive by design: the reachability stage (real source analysis) is the
 // actual precision filter, so an unparseable constraint is always surfaced, never dropped.
+//
+// Checks against every vulnerable version, not just the highest one: unlike Go's
+// unbounded-above floors (where the max alone determines the match), Maven hard ranges
+// like "[1.0,1.2]" or "[1.0]" are bounded and can include an older vulnerable version
+// without including the max.
 export function mavenConstraintMayInclude(
   constraint: string,
-  maxVulnerableVersion: string,
+  vulnerableVersions: string[],
 ): MavenConstraintMatch {
   const intervals = parseMavenRange(constraint)
   if (!intervals) return 'unparseable-included'
-  const matched = intervals.some((interval) => intervalMayInclude(interval, maxVulnerableVersion))
+  const matched = intervals.some((interval) =>
+    vulnerableVersions.some((version) => intervalMayInclude(interval, version)),
+  )
   return matched ? 'matched' : 'excluded'
 }

@@ -48,8 +48,8 @@ describe('mavenVersions', () => {
 
     it('excludes when an unparseable bound makes a bound comparison ambiguous', () => {
       const versions = ['1.0']
-      const ranges = [{ introduced: null, fixed: null, lastAffected: null }]
-      expect(versionsInRanges(versions, ranges)).toEqual(['1.0'])
+      const ranges = [{ introduced: '---', fixed: null, lastAffected: null }]
+      expect(versionsInRanges(versions, ranges)).toEqual([])
     })
   })
 

@@ -31,7 +31,7 @@ export async function scanMavenDependents(
   const rows = await getReverseDependents(qx, vulnerablePackageId, 'maven', scanLimit)
 
   const candidates: DependentCandidate[] = rows.map((row) => {
-    const rangeCheck = mavenConstraintMayInclude(row.versionConstraint, maxVulnerableVersion)
+    const rangeCheck = mavenConstraintMayInclude(row.versionConstraint, vulnerableVersions)
     return {
       name: `${row.namespace}:${row.name}`,
       version: row.versionNumber,
