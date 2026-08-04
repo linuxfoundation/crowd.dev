@@ -143,6 +143,31 @@ export async function findPackageIdsByName(
   return new Map(rows.map((r) => [r.name, r.id]))
 }
 
+// Batched form of findPackageId for (groupId, artifactId) pairs — kept separate from
+// findPackageIdsByName's '/'-joined reconstruction. Map keys are "groupId:artifactId".
+export async function findPackageIdsByGroupArtifact(
+  qx: QueryExecutor,
+  ecosystem: string,
+  pairs: Array<{ groupId: string; artifactId: string }>,
+): Promise<Map<string, string>> {
+  if (pairs.length === 0) return new Map()
+  const rows: Array<{ id: string; group_id: string; artifact_id: string }> = await qx.select(
+    `
+    SELECT p.id, u.group_id, u.artifact_id
+    FROM packages p
+    JOIN unnest($(groupIds)::text[], $(artifactIds)::text[]) AS u(group_id, artifact_id)
+      ON p.namespace = u.group_id AND p.name = u.artifact_id
+    WHERE p.ecosystem = $(ecosystem)
+    `,
+    {
+      ecosystem,
+      groupIds: pairs.map((p) => p.groupId),
+      artifactIds: pairs.map((p) => p.artifactId),
+    },
+  )
+  return new Map(rows.map((r) => [`${r.group_id}:${r.artifact_id}`, r.id]))
+}
+
 export async function upsertAdvisoryPackage(
   qx: QueryExecutor,
   input: AdvisoryPackageUpsertInput,

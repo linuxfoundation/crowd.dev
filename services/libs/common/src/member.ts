@@ -64,6 +64,38 @@ export function normalizeMemberIdentities<
   return Array.from(seen.values())
 }
 
+/** Prefer `default`, else first non-empty string source value. */
+export function getAttributeValue(attribute: unknown): string | undefined {
+  if (!attribute || typeof attribute !== 'object') {
+    return undefined
+  }
+
+  const record = attribute as Record<string, unknown>
+
+  if (typeof record.default === 'string' && record.default.trim()) {
+    return record.default
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'default') continue
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+export function hasAttributeValue(attribute: unknown): boolean {
+  if (!attribute || typeof attribute !== 'object') {
+    return false
+  }
+
+  return Object.values(attribute as Record<string, unknown>).some(
+    (v) => typeof v === 'string' && v.trim().length > 0,
+  )
+}
+
 export async function setAttributesDefaultValues(
   attributes: Record<string, unknown>,
   priorities: string[],

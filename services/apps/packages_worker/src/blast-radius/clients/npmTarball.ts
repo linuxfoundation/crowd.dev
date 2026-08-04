@@ -1,15 +1,14 @@
 import * as fs from 'fs'
-import { Readable, Transform, Writable } from 'stream'
+import { Readable, Writable } from 'stream'
 import type { ReadableStream as NodeWebReadableStream } from 'stream/web'
 import * as tar from 'tar'
 
-// Tarball content here is third-party (dependent packages), not something we
-// control — bound both the download and the extraction so a huge or maliciously
-// crafted archive (decompression bomb) can't exhaust a worker's disk/CPU.
-const FETCH_TIMEOUT_MS = 2 * 60 * 1000
-const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
-const MAX_EXTRACTED_BYTES = 500 * 1024 * 1024
-const MAX_EXTRACTED_FILES = 20_000
+import {
+  FETCH_TIMEOUT_MS,
+  MAX_EXTRACTED_BYTES,
+  MAX_EXTRACTED_FILES,
+  createDownloadLimiter,
+} from './downloadLimits'
 
 // Downloads an npm tarball and extracts it directly into destDir, stripping
 // the package's own top-level `package/` wrapper directory (npm tarballs are
@@ -58,17 +57,7 @@ export async function downloadAndExtractTarball(
       },
     })
 
-    let downloadedBytes = 0
-    const downloadLimiter = new Transform({
-      transform(chunk, _encoding, callback) {
-        downloadedBytes += chunk.length
-        if (downloadedBytes > MAX_DOWNLOAD_BYTES) {
-          callback(new Error('Tarball download exceeded size limit'))
-          return
-        }
-        callback(null, chunk)
-      },
-    })
+    const downloadLimiter = createDownloadLimiter('Tarball download exceeded size limit')
 
     await new Promise<void>((resolve, reject) => {
       Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>)

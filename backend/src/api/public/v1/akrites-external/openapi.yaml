@@ -11,8 +11,8 @@ info:
 
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
     submit (2a) and poll (2b) are both implemented, backed by a 4-stage
-    Temporal pipeline (intel, dependents, reachability, report) for npm
-    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
+    Temporal pipeline (intel, dependents, reachability, report) for npm, go, and
+    maven packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
     7-day result cache is specced separately and not yet built.
 
 
@@ -61,7 +61,7 @@ tags:
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
       implemented, each with a bulk counterpart. Submitting kicks off a
-      Temporal workflow that runs the npm reachability pipeline (other
+      Temporal workflow that runs the npm, go, or maven reachability pipeline (other
       ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED); poll returns job
       status and, once done, results. Bulk submit (jobs:batch) is capped at
       20 jobs per request (10 recommended as the default batch size) — each
@@ -411,10 +411,10 @@ components:
           example: GHSA-jf85-cpcp-j695
         ecosystem:
           type: string
-          enum: [npm]
+          enum: [npm, go, maven]
           description: >
-            Required. The reachability pipeline is npm-only today — any other
-            value, or a missing ecosystem, is rejected with a 400.
+            Required. The reachability pipeline supports npm, go, and maven today —
+            any other value, or a missing ecosystem, is rejected with a 400.
           example: npm
         package:
           type: string
@@ -448,7 +448,7 @@ components:
           description: Echoes the request's package. Null when the request omitted it.
         ecosystem:
           type: string
-          enum: [npm]
+          enum: [npm, go, maven]
           description: Echoes the request's ecosystem. Always present — the request requires it.
         status:
           type: string
@@ -609,7 +609,7 @@ components:
           nullable: true
         ecosystem:
           type: string
-          enum: [npm]
+          enum: [npm, go, maven]
         submittedAt:
           type: string
           nullable: true
@@ -1240,9 +1240,9 @@ paths:
         Always exactly one job per request — no bulk submit. Omit package for
         an advisory-wide analysis; provide it to narrow to a single package.
         Starts a Temporal workflow running the 4-stage reachability pipeline
-        (intel, dependents, reachability, report) for npm; other ecosystems
-        fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results via
-        GET /jobs/{analysisId}.
+        (intel, dependents, reachability, report) for npm, go, or maven; other
+        ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results
+        via GET /jobs/{analysisId}.
 
 
         Not yet implemented: the 7-day result cache and force-bypass semantics.
@@ -1268,9 +1268,9 @@ paths:
         '400':
           description: >
             Validation error (missing/empty advisoryId), or an unsupported
-            ecosystem — only npm is supported today, so any other value
-            (including a missing ecosystem) is rejected before a workflow
-            is started.
+            ecosystem — only npm, go, and maven are supported today, so any other
+            value (including a missing ecosystem) is rejected before a
+            workflow is started.
           content:
             application/json:
               schema:

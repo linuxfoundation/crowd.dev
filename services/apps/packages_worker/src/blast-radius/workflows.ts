@@ -3,11 +3,7 @@ import { ApplicationFailure, log, proxyActivities, rootCause } from '@temporalio
 import type { ITriggerBlastRadiusAnalysis } from '@crowd/types'
 
 import type * as activities from './activities'
-import { buildEcosystemNotSupportedFailure } from './ecosystemSupport'
-
-// Reachability analysis only exists for npm today — every other ecosystem still
-// fails fast with a non-retryable failure (see ecosystemSupport.ts).
-const SUPPORTED_ECOSYSTEMS = ['npm']
+import { SUPPORTED_ECOSYSTEMS, buildEcosystemNotSupportedFailure } from './ecosystemSupport'
 
 const { blastRadiusStart, blastRadiusFail } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
@@ -56,7 +52,7 @@ const { blastRadiusReport } = proxyActivities<typeof activities>({
 export async function analyzeBlastRadius(input: ITriggerBlastRadiusAnalysis): Promise<void> {
   log.info('analyzeBlastRadius received', { ...input })
 
-  if (!SUPPORTED_ECOSYSTEMS.includes(input.ecosystem)) {
+  if (!(SUPPORTED_ECOSYSTEMS as readonly string[]).includes(input.ecosystem)) {
     throw buildEcosystemNotSupportedFailure(input.ecosystem)
   }
 

@@ -4,7 +4,15 @@ import moment from 'moment-timezone'
 import validator from 'validator'
 
 import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
-import { Error400, calculateReach, getProperDisplayName, isDomainExcluded } from '@crowd/common'
+import {
+  Error400,
+  calculateReach,
+  getAttributeValue,
+  getCountry,
+  getProperDisplayName,
+  hasAttributeValue,
+  isDomainExcluded,
+} from '@crowd/common'
 import {
   CommonMemberService,
   getGithubInstallationToken,
@@ -446,6 +454,17 @@ export default class MemberService extends LoggerBase {
         const toUpdate = CommonMemberService.membersMerge(existing, data)
 
         if (toUpdate.attributes) {
+          if (!hasAttributeValue(toUpdate.attributes.country)) {
+            const location = getAttributeValue(toUpdate.attributes.location)
+            const country = getCountry(location)
+            if (country) {
+              toUpdate.attributes.country = {
+                ...toUpdate.attributes.country,
+                system: country,
+              }
+            }
+          }
+
           toUpdate.attributes = await this.setAttributesDefaultValues(toUpdate.attributes)
         }
 
@@ -459,6 +478,17 @@ export default class MemberService extends LoggerBase {
         // It is important to call it with doPopulateRelations=false
         // because otherwise the performance is greatly decreased in integrations
         if (data.attributes) {
+          if (!hasAttributeValue(data.attributes.country)) {
+            const location = getAttributeValue(data.attributes.location)
+            const country = getCountry(location)
+            if (country) {
+              data.attributes.country = {
+                ...data.attributes.country,
+                system: country,
+              }
+            }
+          }
+
           data.attributes = await this.setAttributesDefaultValues(data.attributes)
         }
 
@@ -787,6 +817,20 @@ export default class MemberService extends LoggerBase {
 
       if (data.displayName) {
         data.displayName = getProperDisplayName(data.displayName)
+      }
+
+      if (data.attributes) {
+        if (!hasAttributeValue(data.attributes.country)) {
+          const location = getAttributeValue(data.attributes.location)
+          const country = getCountry(location)
+          if (country) {
+            data.attributes.country = {
+              ...data.attributes.country,
+              system: country,
+              default: data.attributes.country?.default ?? country,
+            }
+          }
+        }
       }
 
       const record = await MemberRepository.update(id, data, repoOptions, {

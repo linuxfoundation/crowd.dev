@@ -4,7 +4,7 @@ import * as path from 'path'
 
 import { fetchBulkPointRange, fetchPointRange } from '../npm/fetchDownloads'
 import { fetchPackument } from '../npm/fetchPackument'
-import { FetchError, isFetchError } from '../npm/types'
+import { FetchError, FetchErrorKind, isFetchError } from '../npm/types'
 
 import { fetchAbbreviatedPackument } from './clients/npmAbbreviated'
 import { downloadAndExtractTarball } from './clients/npmTarball'
@@ -120,7 +120,7 @@ async function withRateLimitRetry<T>(
 ): Promise<T | FetchError> {
   let result = await fetchFn()
   for (const delayMs of RATE_LIMIT_RETRY_DELAYS_MS) {
-    if (!isFetchError(result) || result.kind !== 'RATE_LIMIT' || signal?.aborted) break
+    if (!isFetchError(result) || result.kind !== FetchErrorKind.RATE_LIMIT || signal?.aborted) break
     await new Promise((resolve) => setTimeout(resolve, delayMs))
     if (signal?.aborted) break
     result = await fetchFn()

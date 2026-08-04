@@ -94,7 +94,7 @@ describe('submitBlastRadiusJobBatch', () => {
     const { req, res, start } = mockReqRes({
       jobs: [
         { advisoryId: 'GHSA-jf85-cpcp-j695', ecosystem: 'npm' },
-        { advisoryId: 'GHSA-652q-gvq3-74qv', ecosystem: 'maven' },
+        { advisoryId: 'GHSA-652q-gvq3-74qv', ecosystem: 'pypi' },
       ],
     })
 
