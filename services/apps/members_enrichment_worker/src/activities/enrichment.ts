@@ -359,6 +359,7 @@ export async function updateMemberUsingSquashedPayload(
       attributes = _.merge({}, attributes, squashedPayload.attributes)
 
       if (Object.keys(attributes).length > 0) {
+        // Infer country from location when no country source is set.
         if (!hasAttributeValue(attributes.country)) {
           const location = getAttributeValue(attributes.location)
           const country = getCountry(location)
