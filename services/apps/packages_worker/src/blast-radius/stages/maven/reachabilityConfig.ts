@@ -1,4 +1,5 @@
 import { resolveLatestVersion } from '../../../maven/metadata'
+import { resolveBlastRadiusMavenBaseUrl } from '../../../maven/registry'
 import {
   MAVEN_REACHABILITY_PROMPT,
   MAVEN_VERDICT_SCHEMA,
@@ -11,7 +12,7 @@ import { ReachabilitySourceConfig } from '../reachabilityStage'
 // Prefer the version the reverse-dependency edge resolved against; fall back to
 // Maven Central's current release when the dependent only declared a range/floor.
 async function resolveMavenVersion(groupId: string, artifactId: string): Promise<string | null> {
-  return resolveLatestVersion(groupId, artifactId)
+  return resolveLatestVersion(groupId, artifactId, resolveBlastRadiusMavenBaseUrl(groupId))
 }
 
 export const mavenReachabilityConfig: ReachabilitySourceConfig = {

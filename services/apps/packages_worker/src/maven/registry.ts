@@ -20,6 +20,8 @@
 export const MAVEN_CENTRAL_BASE_URL = 'https://repo1.maven.org/maven2'
 export const GRADLE_PLUGIN_PORTAL_BASE_URL = 'https://plugins.gradle.org/m2'
 export const JITPACK_BASE_URL = 'https://jitpack.io'
+export const MAVEN_GCS_MIRROR_BASE_URL =
+  'https://maven-central.storage-download.googleapis.com/maven2'
 
 interface RegistryEntry {
   prefix: string
@@ -150,6 +152,14 @@ function findEntry(groupId: string): RegistryEntry | undefined {
   )
 }
 
+// Shared by resolveRegistryBaseUrl and resolveBlastRadiusMavenBaseUrl: alternative
+// registries always win, everything else falls back to a caller-chosen env var/default.
+function resolveBaseUrl(groupId: string, envVarName: string, defaultUrl: string): string {
+  const entry = findEntry(groupId)
+  if (entry) return entry.baseUrl
+  return process.env[envVarName] ?? defaultUrl
+}
+
 /**
  * Returns the Maven repository base URL for the given groupId.
  *
@@ -159,9 +169,7 @@ function findEntry(groupId: string): RegistryEntry | undefined {
  * For everything else, falls back to MAVEN_FETCHER_BASE_URL ?? Maven Central.
  */
 export function resolveRegistryBaseUrl(groupId: string): string {
-  const entry = findEntry(groupId)
-  if (entry) return entry.baseUrl
-  return process.env.MAVEN_FETCHER_BASE_URL ?? MAVEN_CENTRAL_BASE_URL
+  return resolveBaseUrl(groupId, 'MAVEN_FETCHER_BASE_URL', MAVEN_CENTRAL_BASE_URL)
 }
 
 /**
@@ -172,6 +180,21 @@ export function resolveRegistryBaseUrl(groupId: string): string {
  */
 export function isAlternativeRegistry(groupId: string): boolean {
   return findEntry(groupId) !== undefined
+}
+
+/**
+ * Like resolveRegistryBaseUrl, but for the blast-radius pipeline, which fetches
+ * one artifact/version at a time rather than the daily critical-batch ingestion.
+ *
+ * Blast-radius uses its own env var (BLAST_RADIUS_MAVEN_BASE_URL, defaulting to a
+ * GCS mirror of Central) instead of MAVEN_FETCHER_BASE_URL, because activities.ts
+ * mutates MAVEN_FETCHER_BASE_URL at runtime for the daily job — sharing it would
+ * make blast-radius's registry target flip depending on whether that job just ran
+ * in the same worker process. Alternative-registry namespaces still bypass any
+ * override, same as resolveRegistryBaseUrl.
+ */
+export function resolveBlastRadiusMavenBaseUrl(groupId: string): string {
+  return resolveBaseUrl(groupId, 'BLAST_RADIUS_MAVEN_BASE_URL', MAVEN_GCS_MIRROR_BASE_URL)
 }
 
 /**

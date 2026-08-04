@@ -8,6 +8,7 @@ import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { resolveVersionsList } from '../../../maven/metadata'
+import { resolveBlastRadiusMavenBaseUrl } from '../../../maven/registry'
 import {
   MAVEN_INTEL_SCHEMA,
   MAVEN_INTEL_SYSTEM_PROMPT,
@@ -90,7 +91,11 @@ export async function runIntelStageMaven(
     // maven-metadata.xml is the authoritative version list; fall back to our own
     // ingested `versions` rows (deps.dev) if the registry is unreachable/rate-limited
     // and the artifact is already known to us.
-    const versionListResult = await resolveVersionsList(groupId, artifactId)
+    const versionListResult = await resolveVersionsList(
+      groupId,
+      artifactId,
+      resolveBlastRadiusMavenBaseUrl(groupId),
+    )
     let allVersions: string[]
     if (!('kind' in versionListResult)) {
       allVersions = versionListResult.versions

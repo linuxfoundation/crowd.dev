@@ -5,7 +5,7 @@ import { pipeline } from 'stream/promises'
 import type { ReadableStream as NodeWebReadableStream } from 'stream/web'
 import unzipper from 'unzipper'
 
-import { resolveRegistryBaseUrl } from '../../maven/registry'
+import { resolveBlastRadiusMavenBaseUrl } from '../../maven/registry'
 
 import {
   FETCH_TIMEOUT_MS,
@@ -34,7 +34,7 @@ export async function downloadAndExtractMavenSources(
   mkdirSync(destDir, { recursive: true })
   const jarPath = `${destDir}.jar`
   const groupPath = groupId.replace(/\./g, '/')
-  const url = `${resolveRegistryBaseUrl(groupId)}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}-sources.jar`
+  const url = `${resolveBlastRadiusMavenBaseUrl(groupId)}/${groupPath}/${artifactId}/${version}/${artifactId}-${version}-sources.jar`
 
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
