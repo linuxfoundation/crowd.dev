@@ -19,10 +19,16 @@ describe('package.json worker scripts', () => {
 })
 
 describe('schedule cadence', () => {
-  it('defines the three packagist crons with minutes off :00 (crawler guideline)', () => {
-    // metadata has no cron — the seed workflow chains it as a child on completion
+  it('defines the four packagist crons with minutes off :00 (crawler guideline)', () => {
+    // metadata has no cron — the seed workflow chains it as a child on completion; the
+    // transitive closure has only the ledger-gated backstop cron, not a primary one
     const crons = Object.entries(PACKAGIST_CRONS)
-    expect(crons.map(([name]) => name).sort()).toEqual(['downloads30d', 'downloadsDaily', 'seed'])
+    expect(crons.map(([name]) => name).sort()).toEqual([
+      'downloads30d',
+      'downloadsDaily',
+      'seed',
+      'transitiveBackstop',
+    ])
     for (const [name, cron] of crons) {
       const minute = cron.split(' ')[0]
       expect(minute, `${name} cron minute`).toMatch(/^[1-9][0-9]?$/)
@@ -30,7 +36,7 @@ describe('schedule cadence', () => {
     }
   })
 
-  it('runs seed weekly, the 30d window capture monthly on the 1st, and daily downloads daily', () => {
+  it('runs seed weekly, 30d monthly on the 1st, daily downloads daily, backstop weekly after the chain', () => {
     expect(PACKAGIST_CRONS.seed.split(' ')).toHaveLength(5)
     expect(PACKAGIST_CRONS.seed.split(' ')[4]).not.toBe('*')
     // monthly, anchored on the 1st so the observed rolling value sits on the boundary
@@ -38,6 +44,9 @@ describe('schedule cadence', () => {
     expect(PACKAGIST_CRONS.downloads30d.split(' ')[4]).toBe('*')
     expect(PACKAGIST_CRONS.downloadsDaily.split(' ')[2]).toBe('*')
     expect(PACKAGIST_CRONS.downloadsDaily.split(' ')[4]).toBe('*')
+    // weekly, a day after the Sunday seed so a healthy chain has already run
+    expect(PACKAGIST_CRONS.transitiveBackstop.split(' ')[4]).toBe('1')
+    expect(PACKAGIST_CRONS.transitiveBackstop.split(' ')[2]).toBe('*')
   })
 })
 

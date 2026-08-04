@@ -11,6 +11,7 @@ import {
 import {
   ROUNDS_PER_RUN,
   TRANSITIVE_MERGE_BATCH,
+  backstopPackagistTransitiveDrain,
   computePackagistTransitiveDependents,
   ingestPackagistMetadata,
 } from '../workflows'
@@ -28,6 +29,7 @@ const h = vi.hoisted(() => ({
     mergePackagistTransitiveBatch: vi.fn(),
     finishPackagistTransitiveRun: vi.fn(),
     failPackagistTransitiveRun: vi.fn(),
+    packagistTransitiveRanRecently: vi.fn(),
   },
   startChild: vi.fn(),
   continueAsNew: vi.fn(),
@@ -301,6 +303,38 @@ describe('computePackagistTransitiveDependents — workflow', () => {
     h.acts.failPackagistTransitiveRun.mockRejectedValueOnce(new Error('ledger write refused'))
 
     await expect(computePackagistTransitiveDependents({})).rejects.toThrow(/merge exploded/)
+  })
+})
+
+describe('backstopPackagistTransitiveDrain — workflow', () => {
+  it('does nothing when a run completed recently', async () => {
+    h.acts.packagistTransitiveRanRecently.mockResolvedValue(true)
+
+    await backstopPackagistTransitiveDrain()
+
+    expect(h.startChild).not.toHaveBeenCalled()
+  })
+
+  it('chain-starts the drain (fixed workflow id) when the week had no successful run', async () => {
+    h.acts.packagistTransitiveRanRecently.mockResolvedValue(false)
+
+    await backstopPackagistTransitiveDrain()
+
+    expect(h.startChild).toHaveBeenCalledTimes(1)
+    const [wf, opts] = h.startChild.mock.calls[0]
+    expect(wf).toBe(computePackagistTransitiveDependents)
+    expect(opts).toMatchObject({ workflowId: 'packagist-transitive-drain' })
+  })
+
+  it('swallows already-started so it can never race a live drain', async () => {
+    h.acts.packagistTransitiveRanRecently.mockResolvedValue(false)
+    h.startChild.mockRejectedValueOnce(
+      Object.assign(new Error('already started'), {
+        name: 'WorkflowExecutionAlreadyStartedError',
+      }),
+    )
+
+    await expect(backstopPackagistTransitiveDrain()).resolves.toBeUndefined()
   })
 })
 

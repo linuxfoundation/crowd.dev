@@ -3,11 +3,11 @@
 The Packagist worker keeps the PHP/Composer slice of the packages database fresh
 by crawling **packagist.org directly** — deps.dev has no Packagist coverage, so
 unlike npm/maven/pypi there is no BigQuery universe to import from; the registry
-crawl _is_ the universe source. It runs **five Temporal workflows** on the
-`packagist-worker` task queue: three cron schedules registered at worker boot
-(`src/bin/packagist-worker.ts`), plus two event-chained drains — the metadata
-drain (chained off the seed) and the transitive-dependents closure (chained off
-the metadata drain).
+crawl _is_ the universe source. It runs **six Temporal workflows** on the
+`packagist-worker` task queue: four cron schedules registered at worker boot
+(`src/bin/packagist-worker.ts` — including the transitive backstop), plus two
+event-chained drains — the metadata drain (chained off the seed) and the
+transitive-dependents closure (chained off the metadata drain).
 
 Identity: ecosystem `packagist`, purls `pkg:composer/{vendor}/{name}`
 (namespace = vendor). Audit tag: `packagist` in `audit_field_changes`.
@@ -174,9 +174,13 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 ## 5. `computePackagistTransitiveDependents` — weekly reverse-closure counts
 
-**Schedule:** none of its own — **chained off the metadata drain's natural
+**Schedule:** primary trigger is the **chain off the metadata drain's natural
 completion** (effectively weekly, after the Sunday drain finishes), the same
-event-not-clock idiom as seed → metadata. Recover a missed run with
+event-not-clock idiom as seed → metadata. A **ledger-gated backstop cron**
+(`packagist-transitive-backstop`, Monday 04:41 UTC) covers broken weeks: it
+no-ops when a run completed within 6 days, otherwise chain-starts the same
+fixed workflow id — so it can never race a live drain and a healthy week never
+pays a second scan. Recover manually with
 `pnpm trigger-packagist:local transitive`.
 **Targets:** every packagist package (the merge zero-fills leaves).
 

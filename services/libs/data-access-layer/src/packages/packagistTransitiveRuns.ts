@@ -28,6 +28,23 @@ export async function findUnfinishedPackagistTransitiveRun(
   return row?.id ?? null
 }
 
+// Backstop gate: has a run completed within the window? Failed runs don't count —
+// the backstop exists precisely to retry after a broken week.
+export async function hasRecentDonePackagistTransitiveRun(
+  qx: QueryExecutor,
+  withinDays: number,
+): Promise<boolean> {
+  const row = await qx.selectOne(
+    `SELECT EXISTS (
+       SELECT 1 FROM packagist_transitive_runs
+        WHERE status = 'done'
+          AND finished_at > NOW() - $(withinDays) * INTERVAL '1 day'
+     ) AS recent`,
+    { withinDays },
+  )
+  return Boolean(row.recent)
+}
+
 export async function markPackagistTransitiveRunMerging(
   qx: QueryExecutor,
   runId: number,

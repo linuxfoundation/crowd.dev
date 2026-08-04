@@ -11,6 +11,7 @@ import {
   failPackagistTransitiveRun,
   findUnfinishedPackagistTransitiveRun,
   finishPackagistTransitiveRun,
+  hasRecentDonePackagistTransitiveRun,
   markPackagistTransitiveRunMerging,
 } from './packagistTransitiveRuns'
 import {
@@ -451,6 +452,10 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
           { id: runB },
         )
         expect(row.status).toBe('done')
+        // window arithmetic: the fresh 'done' row is inside a 7-day window; a zero-day
+        // window can match nothing (nothing finishes in the future)
+        expect(await hasRecentDonePackagistTransitiveRun(qx, 7)).toBe(true)
+        expect(await hasRecentDonePackagistTransitiveRun(qx, 0)).toBe(false)
         expect(Number(row.edge_count)).toBe(918346)
         expect(Number(row.packages_with_dependents)).toBe(85600)
         expect(Number(row.processed_rows)).toBe(454455)

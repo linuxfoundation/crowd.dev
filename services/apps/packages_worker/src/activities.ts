@@ -51,6 +51,7 @@ export {
   mergePackagistTransitiveBatch,
   finishPackagistTransitiveRun,
   failPackagistTransitiveRun,
+  packagistTransitiveRanRecently,
 } from './packagist/activities'
 export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubygems/activities'
 export {

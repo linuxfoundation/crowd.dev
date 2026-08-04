@@ -23,6 +23,7 @@ import {
   failPackagistTransitiveRun as failRunInLedger,
   findUnfinishedPackagistTransitiveRun,
   finishPackagistTransitiveRun as finishRunInLedger,
+  hasRecentDonePackagistTransitiveRun,
   markPackagistTransitiveRunMerging,
 } from '@crowd/data-access-layer/src/packages/packagistTransitiveRuns'
 import {
@@ -563,6 +564,11 @@ export async function finishPackagistTransitiveRun(
 
 // Terminal failure marking for the merge phase — called from the workflow's catch so a
 // permanently failed drain reads 'failed' instead of sitting in 'merging' forever.
+export async function packagistTransitiveRanRecently(withinDays: number): Promise<boolean> {
+  const qx = await getPackagesDb()
+  return hasRecentDonePackagistTransitiveRun(qx, withinDays)
+}
+
 export async function failPackagistTransitiveRun(
   runId: number,
   errorMessage: string,

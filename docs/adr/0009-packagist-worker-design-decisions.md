@@ -204,7 +204,9 @@ BQ-ingest ledger (gcs/bq columns, ingest-shaped kinds), so overloading it was re
 run aborts loudly on an empty edge snapshot, the merge side refuses to run against an empty
 counts table (a crash-truncated UNLOGGED staging table can never be zero-filled over good
 data), and a permanently failed merge marks the run `failed` instead of stranding it in
-`merging`.
+`merging`. A weekly **ledger-gated backstop cron** (Monday, after the Sunday chain) covers
+broken chains: it no-ops when the ledger shows a `done` run within 6 days, else chain-starts
+the fixed workflow id — clock as safety net, event chain as primary.
 
 **Provenance.** deps.dev has no Packagist coverage, and Packagist's own API reports only
 direct dependents — so this is the only ecosystem where the transitive signal must come from
@@ -271,3 +273,6 @@ count as leaves — both bias counts down, so criticality conclusions stay conse
 - **2026-07-27** — Added _Transitive dependent counts: weekly materialized reverse closure over
   our own edges_ (the fifth lane; resolves the `transitive_dependent_count` gap flagged in the
   original risks).
+- **2026-08-04** — Revised _Transitive dependent counts_: run state moved to the dedicated
+  `packagist_transitive_runs` ledger, and a ledger-gated weekly backstop cron added for weeks
+  where the seed→metadata chain breaks.
