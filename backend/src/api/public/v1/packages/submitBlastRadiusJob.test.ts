@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { submitBlastRadiusJob } from './submitBlastRadiusJob'
 
-const { start, createAnalysis, failAnalysis } = vi.hoisted(() => ({
+const { start, createAnalysis, failAnalysis, getRecentDoneAnalysis } = vi.hoisted(() => ({
   start: vi.fn().mockResolvedValue(undefined),
   createAnalysis: vi.fn().mockResolvedValue(undefined),
   failAnalysis: vi.fn().mockResolvedValue(undefined),
+  getRecentDoneAnalysis: vi.fn(),
 }))
 
 vi.mock('@/db/packagesTemporal', () => ({
@@ -20,12 +21,15 @@ vi.mock('@/db/packagesDb', () => ({
 vi.mock('@crowd/data-access-layer/src/packages/blastRadius', () => ({
   createAnalysis,
   failAnalysis,
+  getRecentDoneAnalysis,
 }))
 
 function mockReqRes(body: unknown) {
   start.mockClear()
   createAnalysis.mockClear()
   failAnalysis.mockClear()
+  getRecentDoneAnalysis.mockClear()
+  getRecentDoneAnalysis.mockResolvedValue(null)
 
   const req = { body } as unknown as Request
 
@@ -151,5 +155,63 @@ describe('submitBlastRadiusJob', () => {
       force: false,
     })
     expect(errorMessage).toBe('temporal unreachable')
+  })
+
+  it('reuses a recent done analysis instead of starting a workflow', async () => {
+    const { req, res, start, status, json } = mockReqRes({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'npm',
+    })
+    getRecentDoneAnalysis.mockResolvedValue({
+      id: 'cached-analysis-id',
+      advisory_osv_id: 'GHSA-jf85-cpcp-j695',
+      package_name: null,
+      ecosystem: 'npm',
+      status: 'done',
+      error: null,
+      candidates_considered: 5,
+      started_at: '2026-07-01T00:00:00.000Z',
+      completed_at: '2026-07-01T01:00:00.000Z',
+    })
+
+    await submitBlastRadiusJob(req, res)
+
+    expect(createAnalysis).not.toHaveBeenCalled()
+    expect(start).not.toHaveBeenCalled()
+    expect(status).toHaveBeenCalledWith(202)
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analysisId: 'cached-analysis-id',
+        advisoryId: 'GHSA-jf85-cpcp-j695',
+        package: null,
+        ecosystem: 'npm',
+        status: 'done',
+      }),
+    )
+  })
+
+  it('bypasses the cache and starts a new workflow when force is true, even with a recent done analysis', async () => {
+    const { req, res, start } = mockReqRes({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'npm',
+      force: true,
+    })
+    getRecentDoneAnalysis.mockResolvedValue({
+      id: 'cached-analysis-id',
+      advisory_osv_id: 'GHSA-jf85-cpcp-j695',
+      package_name: null,
+      ecosystem: 'npm',
+      status: 'done',
+      error: null,
+      candidates_considered: 5,
+      started_at: '2026-07-01T00:00:00.000Z',
+      completed_at: '2026-07-01T01:00:00.000Z',
+    })
+
+    await submitBlastRadiusJob(req, res)
+
+    expect(getRecentDoneAnalysis).not.toHaveBeenCalled()
+    expect(createAnalysis).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledTimes(1)
   })
 })

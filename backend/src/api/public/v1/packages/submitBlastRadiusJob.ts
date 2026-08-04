@@ -8,15 +8,32 @@ import { getPackagesQx } from '@/db/packagesDb'
 import { getPackagesTemporalClient } from '@/db/packagesTemporal'
 import { validateOrThrow } from '@/utils/validation'
 
-import { blastRadiusJobRequestSchema, toBlastRadiusJobEntry } from './blastRadius'
+import {
+  blastRadiusJobRequestSchema,
+  getCachedJobEntry,
+  toBlastRadiusJobEntry,
+} from './blastRadius'
 
-// 2a — submit a blast-radius analysis job. Always exactly one job per request.
-// Every submission gets a fresh analysisId and status pending.
+// 2a — submit a blast-radius analysis job. Always exactly one job per request,
+// unless getCachedJobEntry returns a hit — then that's returned instead, with
+// no new row and no workflow start.
 export async function submitBlastRadiusJob(req: Request, res: Response): Promise<void> {
   const body = validateOrThrow(blastRadiusJobRequestSchema, req.body)
 
   const jobPackage = body.package ?? null
   const jobEcosystem = body.ecosystem
+
+  const qx = await getPackagesQx()
+  const cached = await getCachedJobEntry(qx, {
+    advisoryId: body.advisoryId,
+    package: jobPackage,
+    ecosystem: jobEcosystem,
+    force: body.force,
+  })
+  if (cached) {
+    res.status(202).json(cached)
+    return
+  }
 
   const analysisId = generateUUIDv4()
 
@@ -25,7 +42,6 @@ export async function submitBlastRadiusJob(req: Request, res: Response): Promise
   // blastRadiusStart's own createAnalysis call and get a 404 for a job that was, in
   // fact, accepted. blastRadiusStart's createAnalysis upserts the same row, so this
   // is safe to run again from the workflow.
-  const qx = await getPackagesQx()
   await blastRadiusDal.createAnalysis(qx, {
     id: analysisId,
     advisoryOsvId: body.advisoryId,

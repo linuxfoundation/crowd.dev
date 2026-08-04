@@ -12,21 +12,18 @@ import { validateOrThrow } from '@/utils/validation'
 import {
   type BlastRadiusJobEntry,
   type BlastRadiusJobRequest,
+  getCachedJobEntry,
   toBlastRadiusJobEntry,
 } from './blastRadius'
 import { blastRadiusJobBatchRequestSchema } from './blastRadiusBatch'
 
 // 2a bulk — submit multiple blast-radius analysis jobs in one request, one per
-// array entry. Same lifecycle as the single-job submit, just looped: each entry
-// gets its own analysisId, its own pending row, and its own Temporal workflow
-// start. Unlike the read-only batch endpoints (packages/advisories/contacts),
-// this multiplies workflow starts per request, so the batch size is capped much
-// lower (see MAX_BLAST_RADIUS_JOBS_PER_BATCH) and the route stays behind the same
-// strict blastRadiusRateLimiter as the single-job route.
-//
-// A per-job failure (e.g. workflow.start throwing) does not fail the whole
-// batch — that job's entry comes back status: 'failed' and the rest still
-// submit, matching the partial-result shape of the other batch endpoints.
+// array entry (each may hit the cache via getCachedJobEntry). Unlike the
+// read-only batch endpoints (packages/advisories/contacts), this multiplies
+// workflow starts per request, so the batch size is capped much lower (see
+// MAX_BLAST_RADIUS_JOBS_PER_BATCH) and the route stays behind the same strict
+// blastRadiusRateLimiter as the single-job route. A per-job failure does not
+// fail the whole batch — that job's entry comes back status: 'failed'.
 export async function submitBlastRadiusJobBatch(req: Request, res: Response): Promise<void> {
   const { jobs } = validateOrThrow(blastRadiusJobBatchRequestSchema, req.body)
 
@@ -55,10 +52,20 @@ async function submitOneJob(
   }
 
   try {
+    // Cache lookup is inside the try too, so a DB error here resolves this
+    // job's entry as 'failed' instead of rejecting the whole batch.
+    const cached = await getCachedJobEntry(qx, {
+      advisoryId: body.advisoryId,
+      package: jobPackage,
+      ecosystem: jobEcosystem,
+      force: body.force,
+    })
+    if (cached) {
+      return cached
+    }
+
     // Create the pending row synchronously, before starting the workflow — see the
-    // same comment on submitBlastRadiusJob for why (avoids a poll-race 404). This is
-    // inside the try too — unlike the single-job submit, a createAnalysis failure
-    // must not reject the whole batch's Promise.all, only this job's entry.
+    // same comment on submitBlastRadiusJob for why (avoids a poll-race 404).
     await blastRadiusDal.createAnalysis(qx, analysisInput)
 
     // Acquired per job (inside the try), not once up front — getPackagesTemporalClient
@@ -101,12 +108,12 @@ async function submitOneJob(
       // best-effort — the job's entry below still reports status: 'failed'
     }
 
-    return {
+    return toBlastRadiusJobEntry({
       analysisId,
       advisoryId: body.advisoryId,
       package: jobPackage,
       ecosystem: jobEcosystem,
       status: 'failed',
-    }
+    })
   }
 }

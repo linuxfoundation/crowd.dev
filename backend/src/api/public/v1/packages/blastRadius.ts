@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+
 // The reachability pipeline is npm-only for now — every other ecosystem (including
 // a missing one) is rejected by the schema below before the Temporal workflow is
 // triggered.
@@ -9,6 +12,14 @@ export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm'] as const
 // to a single package. package accepts either a full purl or a bare package name,
 // so it is NOT run through purlFieldSchema/normalizePurl like the other endpoints.
 const ADVISORY_ID_PATTERN = /^(GHSA-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{4}|CVE-\d{4}-\d{4,})$/
+
+// How recent a 'done' analysis has to be for submit to reuse it instead of
+// starting a new workflow — see getCachedJobEntry. force=true bypasses this.
+const blastRadiusCacheMaxAgeDaysEnv = Number(process.env.AKRITES_BLAST_RADIUS_CACHE_MAX_AGE_DAYS)
+export const BLAST_RADIUS_CACHE_MAX_AGE_DAYS =
+  Number.isSafeInteger(blastRadiusCacheMaxAgeDaysEnv) && blastRadiusCacheMaxAgeDaysEnv > 0
+    ? blastRadiusCacheMaxAgeDaysEnv
+    : 1
 
 export const blastRadiusJobRequestSchema = z.object({
   advisoryId: z
@@ -36,19 +47,53 @@ export interface BlastRadiusJobEntry {
   status: BlastRadiusJobStatus
 }
 
-// Builds the 2a response body. The pipeline isn't implemented yet, so every freshly
-// submitted job comes back pending — see analyzeBlastRadius in packages_worker.
+// Builds the 2a response body. status defaults to 'pending', but a cache hit
+// passes 'done' so the caller doesn't need to poll a job that's already finished.
 export function toBlastRadiusJobEntry(params: {
   analysisId: string
   advisoryId: string
   package: string | null
   ecosystem: BlastRadiusJobEcosystem
+  status?: BlastRadiusJobStatus
 }): BlastRadiusJobEntry {
   return {
     analysisId: params.analysisId,
     advisoryId: params.advisoryId,
     package: params.package,
     ecosystem: params.ecosystem,
-    status: 'pending',
+    status: params.status ?? 'pending',
   }
+}
+
+// Shared by submitBlastRadiusJob and submitBlastRadiusJobBatch — returns the
+// cached job entry on a hit, or null on a cache miss or force=true.
+export async function getCachedJobEntry(
+  qx: QueryExecutor,
+  params: {
+    advisoryId: string
+    package: string | null
+    ecosystem: BlastRadiusJobEcosystem
+    force: boolean
+  },
+): Promise<BlastRadiusJobEntry | null> {
+  if (params.force) {
+    return null
+  }
+
+  const cached = await blastRadiusDal.getRecentDoneAnalysis(
+    qx,
+    { advisoryOsvId: params.advisoryId, packageName: params.package, ecosystem: params.ecosystem },
+    BLAST_RADIUS_CACHE_MAX_AGE_DAYS,
+  )
+  if (!cached) {
+    return null
+  }
+
+  return toBlastRadiusJobEntry({
+    analysisId: cached.id,
+    advisoryId: params.advisoryId,
+    package: params.package,
+    ecosystem: params.ecosystem,
+    status: 'done',
+  })
 }

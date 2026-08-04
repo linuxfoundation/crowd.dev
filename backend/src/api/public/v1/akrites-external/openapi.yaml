@@ -12,8 +12,10 @@ info:
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
     submit (2a) and poll (2b) are both implemented, backed by a 4-stage
     Temporal pipeline (intel, dependents, reachability, report) for npm
-    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
-    7-day result cache is specced separately and not yet built.
+    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. Submit
+    reuses a 'done' analysis for the same advisory/package/ecosystem if it
+    completed within the last day (configurable, see the `force` field below)
+    instead of starting a new Temporal workflow.
 
 
     Auth0 now issues a dedicated Akrites Enclave M2M client with its own
@@ -427,7 +429,10 @@ components:
         force:
           type: boolean
           default: false
-          description: Bypasses the 7-day cache and always triggers a new run. Use sparingly.
+          description: >
+            Bypasses the advisory cache (a 'done' analysis for the same
+            advisory/package/ecosystem completed within the last day, by
+            default) and always triggers a new run. Use sparingly.
 
     BlastRadiusJobEntry:
       type: object
@@ -454,8 +459,10 @@ components:
           type: string
           enum: [pending, running, done, failed]
           description: >
-            Pending in the single-job submit response, always returned before the
-            Temporal workflow runs. In the batch submit response, a job whose
+            Pending when a job is freshly submitted, returned before the Temporal
+            workflow runs. Done when the advisory cache is reused instead — see
+            force above — in which case analysisId is the cached analysis's own
+            id, already completed. In the batch submit response, a job whose
             workflow failed to start comes back as failed instead — the rest of
             the batch is unaffected.
 
@@ -482,6 +489,69 @@ components:
         Plain array in request order, one entry per requested job — unlike the
         read batches there is no found/not-found case, but a job can still come
         back with status: failed if row creation or the workflow start failed.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobEntry'
+
+    BlastRadiusJobPollBatchRequest:
+      type: object
+      required: [analysisIds]
+      properties:
+        analysisIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+
+    BlastRadiusAnalysisBulkEntry:
+      type: object
+      required: [requestedAnalysisId, found, analysis]
+      properties:
+        requestedAnalysisId:
+          type: string
+        found:
+          type: boolean
+        analysis:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BlastRadiusAnalysis'
+
+    BlastRadiusJobBatchRequest:
+      type: object
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: >
+            Capped much lower than the 100-item read batches — each entry
+            starts its own Temporal workflow, so the batch multiplies
+            workflow starts (and reachability-analysis cost) per request.
+            10 is the recommended default batch size; 20 is the hard limit.
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobRequest'
+
+    BlastRadiusJobBatchResponse:
+      type: object
+      required: [results]
+      description: >
+        Plain array in request order, one entry per submitted job — unlike the
+        read batches there is no found/not-found case, every job is submitted.
       properties:
         results:
           type: array
@@ -1242,10 +1312,9 @@ paths:
         Starts a Temporal workflow running the 4-stage reachability pipeline
         (intel, dependents, reachability, report) for npm; other ecosystems
         fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results via
-        GET /jobs/{analysisId}.
-
-
-        Not yet implemented: the 7-day result cache and force-bypass semantics.
+        GET /jobs/{analysisId}. Reuses a 'done' analysis for the same
+        advisory/package/ecosystem completed within the last day (by
+        default) instead of starting a new workflow, unless force is true.
       tags: [Blast Radius]
       security:
         - M2MBearer:
