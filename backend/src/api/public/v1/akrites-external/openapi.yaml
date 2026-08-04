@@ -421,9 +421,11 @@ components:
           nullable: true
           description: >
             Optional. Full purl or bare package name. If omitted, the analysis
-            is advisory-wide: reachability is evaluated across every package
-            the advisory affects, returned as one aggregate result — not one
-            job per affected package.
+            is advisory-wide: for advisories affecting a single package, that
+            package is analyzed. Advisories affecting multiple packages
+            require an explicit package — the job fails (status: 'failed')
+            otherwise, since analyzing every affected package in one
+            aggregate result is not yet supported.
         force:
           type: boolean
           default: false
@@ -1238,8 +1240,10 @@ paths:
       summary: 2a — Submit a blast-radius analysis job
       description: >
         Always exactly one job per request — no bulk submit. Omit package for
-        an advisory-wide analysis; provide it to narrow to a single package.
-        Starts a Temporal workflow running the 4-stage reachability pipeline
+        an advisory-wide analysis (only supported for single-package
+        advisories); provide it to narrow to one package, which is required
+        for advisories affecting more than one. Starts a Temporal workflow
+        running the 4-stage reachability pipeline
         (intel, dependents, reachability, report) for npm, go, or maven; other
         ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results
         via GET /jobs/{analysisId}.
@@ -1300,8 +1304,9 @@ paths:
       summary: 2a bulk — Submit multiple blast-radius analysis jobs
       description: >
         One job per array entry, same semantics as the single-job submit —
-        omit package for an advisory-wide analysis, provide it to narrow to a
-        single package. Each entry starts its own Temporal workflow, so the
+        omit package for an advisory-wide analysis (only supported for
+        single-package advisories), provide it to narrow to a single package.
+        Each entry starts its own Temporal workflow, so the
         batch is capped at 20 jobs (10 recommended as the default batch
         size), much lower than the 100-item read batches, and stays behind
         the same strict rate limiter as the single-job route.

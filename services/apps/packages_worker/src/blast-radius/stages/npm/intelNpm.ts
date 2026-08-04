@@ -22,6 +22,7 @@ import {
 import { asNpmVersionManifest } from '../../npmManifest'
 import { toBareNpmName } from '../../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../../semverRange'
+import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
 export async function runIntelStageNpm(
   qx: QueryExecutor,
@@ -56,18 +57,18 @@ export async function runIntelStageNpm(
       throw new Error(`No npm entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Multi-package advisories list one npm entry per affected package — pick the one
-    // the analysis was actually requested for, falling back to the first entry when no
-    // specific package was requested (analysis-wide advisory scan). The request accepts
-    // either a bare name or a full purl (see blastRadiusJobRequestSchema), but OSV entries
-    // are always bare names, so the requested package must be normalized before comparing.
+    // Requested package may be a bare name or full purl; OSV entries are always bare
+    // names, so normalize before comparing (see selectAdvisoryEntry for rejection rules).
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requestedPackage = analysisDetail?.package_name
       ? toBareNpmName(analysisDetail.package_name)
       : null
-    const entry =
-      (requestedPackage && npmEntries.find((e) => e.package.name === requestedPackage)) ||
-      npmEntries[0]
+    const entry = selectAdvisoryEntry(
+      npmEntries,
+      requestedPackage,
+      (e) => e.package.name === requestedPackage,
+      advisoryOsvId,
+    )
     const package_ = entry.package.name
     const ecosystem = entry.package.ecosystem
     const relatedAffectedPackages = npmEntries

@@ -23,6 +23,7 @@ import {
   fixReferenceUrls,
 } from '../../clients/osvClient'
 import { toBareMavenCoordinate } from '../../packageIdentifier'
+import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
 import { highestVersion, mavenRangeEvents, versionsInRanges } from './mavenVersions'
 
@@ -61,19 +62,22 @@ export async function runIntelStageMaven(
       throw new Error(`No Maven entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Multi-artifact advisories list one Maven entry per affected artifact — pick the one
-    // the analysis was actually requested for, falling back to the first entry otherwise.
+    // Pick the Maven entry the analysis was requested for; see selectAdvisoryEntry for
+    // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requested = analysisDetail?.package_name
       ? toBareMavenCoordinate(analysisDetail.package_name)
       : null
-    const entry =
-      (requested &&
-        mavenEntries.find((e) => {
-          const coord = toBareMavenCoordinate(e.package.name)
-          return coord.groupId === requested.groupId && coord.artifactId === requested.artifactId
-        })) ||
-      mavenEntries[0]
+    const requestedCoordinate = requested ? `${requested.groupId}:${requested.artifactId}` : null
+    const entry = selectAdvisoryEntry(
+      mavenEntries,
+      requestedCoordinate,
+      (e) => {
+        const coord = toBareMavenCoordinate(e.package.name)
+        return `${coord.groupId}:${coord.artifactId}` === requestedCoordinate
+      },
+      advisoryOsvId,
+    )
 
     const { groupId, artifactId } = toBareMavenCoordinate(entry.package.name)
     const coordinate = `${groupId}:${artifactId}`
