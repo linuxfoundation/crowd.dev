@@ -1,0 +1,23 @@
+NODE health_score_v2_select_fields
+SQL >
+    -- Scheduled at 03:30 UTC, after project_insights_copy_ds's own 03:00 refresh, so this
+    -- export reflects the current day's data (v1's 00:30 schedule predates its source refresh).
+    SELECT
+        id,
+        slug,
+        healthScoreV2,
+        healthLabel,
+        lifecycleLabel,
+        impactScore,
+        impactLabel,
+        toStartOfDay(now()) as date
+    FROM project_insights_copy_ds
+    WHERE type = 'project'
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE 30 3 * * *
+EXPORT_FORMAT csv
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC health_score_v2_sink
