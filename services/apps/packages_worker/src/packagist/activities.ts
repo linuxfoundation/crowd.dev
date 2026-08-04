@@ -522,7 +522,13 @@ export async function preparePackagistTransitiveCounts(): Promise<{ runId: numbe
   } catch (err) {
     const nonRetryable = err instanceof ApplicationFailure && err.nonRetryable
     if (nonRetryable || activityAttempt() >= TRANSITIVE_PREPARE_MAX_ATTEMPTS) {
-      await failRunInLedger(qx, runId, (err as Error).message)
+      // Best-effort: a failing ledger write must never replace the original error —
+      // that would turn a non-retryable abort into a retryable one.
+      try {
+        await failRunInLedger(qx, runId, (err as Error).message)
+      } catch (markErr) {
+        log.warn({ runId, err: String(markErr) }, 'could not fail-mark transitive run')
+      }
     }
     throw err
   } finally {

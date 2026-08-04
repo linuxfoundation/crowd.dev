@@ -82,7 +82,12 @@ export async function computePackagistTransitiveDependents(
       cursor = batch.nextCursor
     }
   } catch (err) {
-    await acts.failPackagistTransitiveRun(runId, rootErrorMessage(err))
+    // Best-effort: fail-marking must never replace the drain's original error.
+    try {
+      await acts.failPackagistTransitiveRun(runId, rootErrorMessage(err))
+    } catch (markErr) {
+      log.warn(`could not fail-mark transitive run ${runId}: ${String(markErr)}`)
+    }
     throw err
   }
 

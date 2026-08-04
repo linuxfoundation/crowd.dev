@@ -294,6 +294,14 @@ describe('computePackagistTransitiveDependents — workflow', () => {
     expect(h.acts.finishPackagistTransitiveRun).not.toHaveBeenCalled()
     expect(h.continueAsNew).not.toHaveBeenCalled()
   })
+
+  it('rethrows the ORIGINAL merge error even when fail-marking itself fails', async () => {
+    h.acts.preparePackagistTransitiveCounts.mockResolvedValue({ runId: 7 })
+    h.acts.mergePackagistTransitiveBatch.mockRejectedValue(new Error('merge exploded'))
+    h.acts.failPackagistTransitiveRun.mockRejectedValueOnce(new Error('ledger write refused'))
+
+    await expect(computePackagistTransitiveDependents({})).rejects.toThrow(/merge exploded/)
+  })
 })
 
 describe('preparePackagistTransitiveCounts — activity', () => {
@@ -360,6 +368,17 @@ describe('preparePackagistTransitiveCounts — activity', () => {
       43,
       expect.stringMatching(/no packagist direct edges/i),
     )
+  })
+
+  it('rethrows the ORIGINAL non-retryable abort even when fail-marking itself fails', async () => {
+    h.findPendingRun.mockResolvedValue(null)
+    h.createRun.mockResolvedValue(43)
+    h.snapshot.mockResolvedValue(0)
+    h.failRun.mockRejectedValueOnce(new Error('ledger write refused'))
+
+    // A masked original would surface as the retryable ledger error and let Temporal
+    // rerun the full package_dependencies scan.
+    await expect(preparePackagistTransitiveCounts()).rejects.toThrow(/no packagist direct edges/i)
   })
 })
 
