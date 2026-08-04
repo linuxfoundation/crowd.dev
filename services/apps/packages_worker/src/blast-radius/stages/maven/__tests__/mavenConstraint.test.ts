@@ -1,18 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { mavenConstraintMayInclude } from '../mavenConstraint'
+import { mavenConstraintMayInclude, mavenDependencyMayIncludeVuln } from '../mavenConstraint'
 
 describe('mavenConstraintMayInclude', () => {
-  it('matches a soft version floor below the max vulnerable version', () => {
-    expect(mavenConstraintMayInclude('1.0', ['1.5'])).toBe('matched')
-  })
-
-  it('matches a soft version floor equal to the max vulnerable version', () => {
-    expect(mavenConstraintMayInclude('1.5', ['1.5'])).toBe('matched')
-  })
-
-  it('excludes a soft version floor above the max vulnerable version', () => {
-    expect(mavenConstraintMayInclude('2.0', ['1.5'])).toBe('excluded')
+  it('conservatively includes a bare soft-requirement version instead of treating it as a floor', () => {
+    // Maven bare versions are recommendations, not enforced ranges — mediation elsewhere in
+    // the tree can resolve to any other version, so ">= 1.0" can't be assumed.
+    expect(mavenConstraintMayInclude('1.0', ['1.5'])).toBe('unparseable-included')
+    expect(mavenConstraintMayInclude('1.5', ['1.5'])).toBe('unparseable-included')
+    expect(mavenConstraintMayInclude('2.0', ['1.5'])).toBe('unparseable-included')
   })
 
   it('matches a half-open hard range containing the max vulnerable version', () => {
@@ -56,9 +52,6 @@ describe('mavenConstraintMayInclude', () => {
   })
 
   it('conservatively includes an empty constraint', () => {
-    // parseMavenRange itself is the only source of 'unparseable-included' — a soft floor
-    // whose bound compareVersion can't tokenize (e.g. "---") is still over-inclusive
-    // via intervalMayInclude's null handling, which reports as 'matched', not this branch.
     expect(mavenConstraintMayInclude('', ['1.5'])).toBe('unparseable-included')
   })
 
@@ -91,5 +84,31 @@ describe('mavenConstraintMayInclude', () => {
 
   it('conservatively includes a range with a dangling unmatched opening bracket', () => {
     expect(mavenConstraintMayInclude('[1.0,2.0', ['3.0'])).toBe('unparseable-included')
+  })
+})
+
+describe('mavenDependencyMayIncludeVuln', () => {
+  it('matches when the resolved version equals a vulnerable version', () => {
+    expect(mavenDependencyMayIncludeVuln('1.5', '[9.0,)', ['1.5'])).toBe('matched')
+  })
+
+  it('excludes a resolved version outside the vulnerable set even if the declared range would match', () => {
+    // Mediation elsewhere in the tree can override even a hard declared range — the
+    // concrete resolved version wins over the constraint.
+    expect(mavenDependencyMayIncludeVuln('5.0', '[1.0,10.0)', ['1.5'])).toBe('excluded')
+  })
+
+  it('conservatively includes an unparseable resolved version', () => {
+    // compareMaven only returns null for punctuation-only/empty input (see versionCompare.ts) —
+    // a plain string like "not-a-version" still tokenizes and compares fine.
+    expect(mavenDependencyMayIncludeVuln('---', '[9.0,)', ['1.5'])).toBe('unparseable-included')
+  })
+
+  it('falls back to the declared constraint when resolution is unavailable', () => {
+    expect(mavenDependencyMayIncludeVuln(null, '[1.0,2.0)', ['1.5'])).toBe('matched')
+  })
+
+  it('conservatively includes a bare soft-requirement constraint when resolution is unavailable', () => {
+    expect(mavenDependencyMayIncludeVuln(null, '1.0', ['1.5'])).toBe('unparseable-included')
   })
 })

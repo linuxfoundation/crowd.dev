@@ -60,28 +60,25 @@ function parseMavenInterval(seg: string): MavenInterval | null {
   return { lower, lowerInclusive, upper, upperInclusive }
 }
 
-// A soft requirement (bare version, e.g. "1.5") is Maven's recommended version, not an
-// enforced range — modeled as a floor: an unbounded-above interval starting there.
+// A bare version (e.g. "1.5") is Maven's soft requirement, not an enforced floor — mediation
+// elsewhere in the tree can override it, so it's treated as unparseable rather than ">= 1.5".
 function parseMavenRange(constraint: string | null): MavenInterval[] | null {
   // package_dependencies.version_constraint is nullable (deps.dev fill path) — treat a
   // missing constraint the same as an unparseable one, not a crash on .trim().
   if (constraint == null) return null
   const trimmed = constraint.trim()
   if (!trimmed) return null
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('(')) return null
 
-  if (trimmed.startsWith('[') || trimmed.startsWith('(')) {
-    const segments = splitTopLevelCommas(trimmed)
-    if (!segments || segments.length === 0) return null
-    const intervals: MavenInterval[] = []
-    for (const seg of segments) {
-      const interval = parseMavenInterval(seg)
-      if (!interval) return null
-      intervals.push(interval)
-    }
-    return intervals
+  const segments = splitTopLevelCommas(trimmed)
+  if (!segments || segments.length === 0) return null
+  const intervals: MavenInterval[] = []
+  for (const seg of segments) {
+    const interval = parseMavenInterval(seg)
+    if (!interval) return null
+    intervals.push(interval)
   }
-
-  return [{ lower: trimmed, lowerInclusive: true, upper: null, upperInclusive: false }]
+  return intervals
 }
 
 function intervalMayInclude(interval: MavenInterval, version: string): boolean {
@@ -115,4 +112,21 @@ export function mavenConstraintMayInclude(
     vulnerableVersions.some((version) => intervalMayInclude(interval, version)),
   )
   return matched ? 'matched' : 'excluded'
+}
+
+// Prefers the edge's concrete resolved version over the declared constraint when known — mediation
+// can override even an explicit range, and it's the only sound way to evaluate a bare requirement.
+export function mavenDependencyMayIncludeVuln(
+  resolvedVersion: string | null,
+  constraint: string | null,
+  vulnerableVersions: string[],
+): MavenConstraintMatch {
+  if (!resolvedVersion) return mavenConstraintMayInclude(constraint, vulnerableVersions)
+
+  const comparisons = vulnerableVersions.map((version) =>
+    compareVersion('maven', resolvedVersion, version),
+  )
+  if (comparisons.includes(0)) return 'matched'
+  if (comparisons.includes(null)) return 'unparseable-included'
+  return 'excluded'
 }

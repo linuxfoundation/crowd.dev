@@ -3,7 +3,7 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
 
-import { mavenConstraintMayInclude } from './mavenConstraint'
+import { mavenDependencyMayIncludeVuln } from './mavenConstraint'
 import { highestVersion } from './mavenVersions'
 
 // Maven dependents come from package_dependencies (deps.dev BigQuery ingestion), same as
@@ -31,7 +31,11 @@ export async function scanMavenDependents(
   const rows = await getReverseDependents(qx, vulnerablePackageId, 'maven', scanLimit)
 
   const candidates: DependentCandidate[] = rows.map((row) => {
-    const rangeCheck = mavenConstraintMayInclude(row.versionConstraint, vulnerableVersions)
+    const rangeCheck = mavenDependencyMayIncludeVuln(
+      row.resolvedVersionNumber,
+      row.versionConstraint,
+      vulnerableVersions,
+    )
     return {
       name: `${row.namespace}:${row.name}`,
       version: row.versionNumber,
