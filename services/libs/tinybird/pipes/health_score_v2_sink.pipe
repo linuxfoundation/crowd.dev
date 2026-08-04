@@ -1,23 +1,47 @@
 NODE health_score_v2_select_fields
 SQL >
-    -- Scheduled at 03:30 UTC, after project_insights_copy_ds's own 03:00 refresh, so this
-    -- export reflects the current day's data (v1's 00:30 schedule predates its source refresh).
+    -- No EXPORT_SCHEDULE (disabled on purpose): pushed inert per product's request, only
+    -- fireable on-demand via `tb pipe sink run` until external-stakeholder communication
+    -- is confirmed. Add an EXPORT_SCHEDULE line to activate the recurring export.
+    --
+    -- Joins in the Health breakdown (maintainerHealthScoreV2/securitySupplyChainScoreV2/
+    -- developmentActivityScoreV2, already columns on project_insights_copy_ds) and the
+    -- Impact breakdown (directDependents/transitiveDependents/downloads/centrality +
+    -- their percentile bands, from the separate project_insights_impact_breakdown_ds --
+    -- materialized on its own 02:40 UTC schedule, see that datasource's pipe for why it's
+    -- a separate table) via a LEFT JOIN on id, so a project missing impact data still sinks
+    -- its health fields rather than being dropped.
     SELECT
-        id,
-        slug,
-        healthScoreV2,
-        healthLabel,
-        lifecycleLabel,
-        impactScore,
-        impactLabel,
+        p.id AS id,
+        p.slug AS slug,
+        p.healthScoreV2 AS healthScoreV2,
+        p.healthLabel AS healthLabel,
+        p.lifecycleLabel AS lifecycleLabel,
+        p.impactScore AS impactScore,
+        p.impactLabel AS impactLabel,
+        p.maintainerHealthScoreV2 AS maintainerHealthScoreV2,
+        p.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
+        p.developmentActivityScoreV2 AS developmentActivityScoreV2,
+        i.directDependents AS directDependents,
+        i.directDependentsTopPct AS directDependentsTopPct,
+        i.directDependentsBand AS directDependentsBand,
+        i.transitiveDependents AS transitiveDependents,
+        i.transitiveDependentsTopPct AS transitiveDependentsTopPct,
+        i.transitiveDependentsBand AS transitiveDependentsBand,
+        i.downloads AS downloads,
+        i.downloadsTopPct AS downloadsTopPct,
+        i.downloadsBand AS downloadsBand,
+        i.centrality AS centrality,
+        i.centralityTopPct AS centralityTopPct,
+        i.centralityBand AS centralityBand,
         toStartOfDay(now()) as date
-    FROM project_insights_copy_ds
-    WHERE type = 'project'
+    FROM project_insights_copy_ds AS p
+    LEFT JOIN project_insights_impact_breakdown_ds AS i ON p.id = i.id
+    WHERE p.type = 'project'
 
 TYPE SINK
 EXPORT_SERVICE kafka
 EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
-EXPORT_SCHEDULE 30 3 * * *
 EXPORT_FORMAT csv
 EXPORT_STRATEGY @new
 EXPORT_KAFKA_TOPIC health_score_v2_sink
