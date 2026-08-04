@@ -1,11 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { NotFoundError } from '@crowd/common'
+import { ConflictError, NotFoundError } from '@crowd/common'
 import { findMemberIdsByIdentities } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType, PlatformType } from '@crowd/types'
 
-import { throwMemberResolveConflict } from '@/api/public/alerts/memberResolveConflict'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
@@ -39,7 +38,7 @@ export async function resolveMemberByIdentities(req: Request, res: Response): Pr
   if (memberIds.length === 0) {
     throw new NotFoundError('Member not found')
   } else if (memberIds.length > 1) {
-    throwMemberResolveConflict(req, memberIds)
+    throw new ConflictError('Multiple member profiles matched', { memberIds })
   }
 
   const memberId = memberIds[0]

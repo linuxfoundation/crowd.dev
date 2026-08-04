@@ -6,6 +6,7 @@ import { NotFoundError } from '@crowd/common'
 import {
   MemberField,
   findMemberById,
+  findMemberIdByVerifiedIdentity,
   findMemberIdentitiesByValue,
   insertMemberIdentities,
   touchMemberUpdatedAt,
@@ -13,9 +14,9 @@ import {
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
-import { rethrowIdentityConflict } from '@/api/public/alerts/identityConflict'
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created, ok } from '@/utils/api'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -101,12 +102,24 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
         } catch (error) {
-          rethrowIdentityConflict(req, error, {
-            memberId,
-            platform: data.platform,
-            value: data.value,
-            type: data.type,
-          })
+          if (isMemberIdentityDbConflict(error)) {
+            const conflictMemberId = await findMemberIdByVerifiedIdentity(
+              qx,
+              data.platform,
+              data.value,
+              data.type,
+            )
+
+            rethrowDbConflict(error, {
+              memberId,
+              ...(conflictMemberId ? { conflictMemberId } : {}),
+              platform: data.platform,
+              value: data.value,
+              type: data.type,
+            })
+          }
+
+          throw error
         }
 
         await touchMemberUpdatedAt(tx, memberId)

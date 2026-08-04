@@ -9,6 +9,10 @@ const DB_CONFLICT_MAP: Record<string, ConflictFactory> = {
     new ConflictError('Identity already exists on another member', context),
 }
 
+export function isMemberIdentityDbConflict(error: unknown): boolean {
+  return (getDbConstraint(error) ?? '') in DB_CONFLICT_MAP
+}
+
 export function rethrowDbConflict(error: unknown, context?: Record<string, unknown>): never {
   const factory = DB_CONFLICT_MAP[getDbConstraint(error) ?? '']
 

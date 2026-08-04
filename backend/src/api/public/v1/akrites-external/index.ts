@@ -11,6 +11,8 @@ import { getAkritesExternalContactDetail } from '../packages/getAkritesExternalC
 import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExternalContactDetailBatch'
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
+import { getAkritesExternalProjectProfiling } from '../packages/getAkritesExternalProjectProfiling'
+import { getAkritesExternalProjectProfilingBatch } from '../packages/getAkritesExternalProjectProfilingBatch'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
 import { getBlastRadiusJobBatch } from '../packages/getBlastRadiusJobBatch'
 import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
@@ -64,6 +66,23 @@ export function akritesExternalRouter(): Router {
   packagesSubRouter.get('/detail', safeWrap(getAkritesExternalPackageDetail))
   packagesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalPackageDetailBatch))
   router.use('/packages', packagesSubRouter)
+
+  // Assembled protocol methods include inferred security_contacts fallbacks whose
+  // endpoint can be a maintainer/committer email (contact PII), so these routes ride
+  // the same maintainer scopes as /contacts, never the packages scopes.
+  const projectProfilingScopes = [SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS]
+  router.get(
+    '/project-profiling',
+    rateLimiter,
+    requireScopes(projectProfilingScopes, 'any'),
+    safeWrap(getAkritesExternalProjectProfiling),
+  )
+  router.post(
+    /^\/project-profiling:batch\/?$/,
+    rateLimiter,
+    requireScopes(projectProfilingScopes, 'any'),
+    safeWrap(getAkritesExternalProjectProfilingBatch),
+  )
 
   // Dedicated read:akrites-advisories, or Self Serve's read:packages as a
   // fallback until Akrites cuts over — drop it then.
