@@ -351,32 +351,55 @@ export async function insertDependents(
   dependents: DependentInput[],
 ): Promise<void> {
   if (dependents.length === 0) return
-  for (const dep of dependents) {
-    await qx.result(
-      `
-      INSERT INTO blast_radius_dependents
-        (analysis_id, package_id, name, version, downloads, declared_range,
-         dependency_kind, range_includes_vuln, range_check, tarball_url,
-         excluded_by_range, exclusion_reason, created_at)
-      VALUES
-        ($(analysisId), $(packageId), $(name), $(version), $(downloads),
-         $(declaredRange), $(dependencyKind), $(rangeIncludesVuln),
-         $(rangeCheck), $(tarballUrl), $(excludedByRange), $(exclusionReason), NOW())
-      ON CONFLICT (analysis_id, name) DO UPDATE SET
-        package_id = EXCLUDED.package_id,
-        version = EXCLUDED.version,
-        downloads = EXCLUDED.downloads,
-        declared_range = EXCLUDED.declared_range,
-        dependency_kind = EXCLUDED.dependency_kind,
-        range_includes_vuln = EXCLUDED.range_includes_vuln,
-        range_check = EXCLUDED.range_check,
-        tarball_url = EXCLUDED.tarball_url,
-        excluded_by_range = EXCLUDED.excluded_by_range,
-        exclusion_reason = EXCLUDED.exclusion_reason
-      `,
-      dep,
-    )
+
+  // Batched via unnest instead of one INSERT per row — an analysis can persist ~225
+  // dependents (topN analyzed + excludedByRange), which was 225 round trips before.
+  const params = {
+    analysisIds: dependents.map((d) => d.analysisId),
+    packageIds: dependents.map((d) => d.packageId),
+    names: dependents.map((d) => d.name),
+    versions: dependents.map((d) => d.version),
+    downloads: dependents.map((d) => d.downloads),
+    declaredRanges: dependents.map((d) => d.declaredRange),
+    dependencyKinds: dependents.map((d) => d.dependencyKind),
+    rangeIncludesVulns: dependents.map((d) => d.rangeIncludesVuln),
+    rangeChecks: dependents.map((d) => d.rangeCheck),
+    tarballUrls: dependents.map((d) => d.tarballUrl),
+    excludedByRanges: dependents.map((d) => d.excludedByRange),
+    exclusionReasons: dependents.map((d) => d.exclusionReason),
   }
+
+  await qx.result(
+    `
+    INSERT INTO blast_radius_dependents
+      (analysis_id, package_id, name, version, downloads, declared_range,
+       dependency_kind, range_includes_vuln, range_check, tarball_url,
+       excluded_by_range, exclusion_reason, created_at)
+    SELECT t.analysis_id, t.package_id, t.name, t.version, t.downloads, t.declared_range,
+           t.dependency_kind, t.range_includes_vuln, t.range_check, t.tarball_url,
+           t.excluded_by_range, t.exclusion_reason, NOW()
+    FROM unnest(
+      $(analysisIds)::uuid[], $(packageIds)::bigint[], $(names)::text[], $(versions)::text[],
+      $(downloads)::bigint[], $(declaredRanges)::text[], $(dependencyKinds)::text[],
+      $(rangeIncludesVulns)::boolean[], $(rangeChecks)::text[], $(tarballUrls)::text[],
+      $(excludedByRanges)::boolean[], $(exclusionReasons)::text[]
+    ) AS t(analysis_id, package_id, name, version, downloads, declared_range,
+           dependency_kind, range_includes_vuln, range_check, tarball_url,
+           excluded_by_range, exclusion_reason)
+    ON CONFLICT (analysis_id, name) DO UPDATE SET
+      package_id = EXCLUDED.package_id,
+      version = EXCLUDED.version,
+      downloads = EXCLUDED.downloads,
+      declared_range = EXCLUDED.declared_range,
+      dependency_kind = EXCLUDED.dependency_kind,
+      range_includes_vuln = EXCLUDED.range_includes_vuln,
+      range_check = EXCLUDED.range_check,
+      tarball_url = EXCLUDED.tarball_url,
+      excluded_by_range = EXCLUDED.excluded_by_range,
+      exclusion_reason = EXCLUDED.exclusion_reason
+    `,
+    params,
+  )
 }
 
 // Actual range-excluded count (capped at the 200 rows insertDependents persists per

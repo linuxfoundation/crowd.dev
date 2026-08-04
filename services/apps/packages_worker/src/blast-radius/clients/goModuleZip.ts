@@ -1,6 +1,6 @@
 import { createWriteStream, mkdirSync, rmSync } from 'fs'
 import * as path from 'path'
-import { Readable, Transform } from 'stream'
+import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { ReadableStream as NodeWebReadableStream } from 'stream/web'
 import unzipper from 'unzipper'
@@ -61,7 +61,7 @@ export async function downloadAndExtractGoModule(
       }
 
       const prefix = `${module}@${version}/`
-      let extractedBytes = 0
+      const extractedByteCounter = { bytes: 0 }
       let extractedFiles = 0
 
       for (const entry of directory.files) {
@@ -89,18 +89,13 @@ export async function downloadAndExtractGoModule(
         // Stream to disk and count actual decompressed bytes as they flow, rather than
         // trusting entry.uncompressedSize (zip metadata a malicious archive could lie
         // about) or materializing the whole entry in memory via entry.buffer().
-        const extractionByteCounter = new Transform({
-          transform(chunk, _encoding, callback) {
-            extractedBytes += chunk.length
-            if (extractedBytes > MAX_EXTRACTED_BYTES) {
-              callback(new Error('Go module zip extraction exceeded size/file limits'))
-              return
-            }
-            callback(null, chunk)
-          },
-        })
+        const extractionLimiter = createDownloadLimiter(
+          'Go module zip extraction exceeded size/file limits',
+          MAX_EXTRACTED_BYTES,
+          extractedByteCounter,
+        )
 
-        await pipeline(entry.stream(), extractionByteCounter, createWriteStream(resolvedPath))
+        await pipeline(entry.stream(), extractionLimiter, createWriteStream(resolvedPath))
       }
     } finally {
       rmSync(zipPath, { force: true })
