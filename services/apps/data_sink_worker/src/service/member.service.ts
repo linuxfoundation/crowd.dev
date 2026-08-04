@@ -5,8 +5,11 @@ import uniqby from 'lodash.uniqby'
 import {
   ApplicationError,
   DEFAULT_TENANT_ID,
+  getAttributeValue,
+  getCountry,
   getEarliestValidDate,
   getProperDisplayName,
+  hasAttributeValue,
   isDomainExcluded,
   isObjectEmpty,
   isSameMemberIdentity,
@@ -331,6 +334,14 @@ export default class MemberService extends LoggerBase {
               'memberService -> create -> validateAttributes',
             )
 
+            if (!hasAttributeValue(attributes.country)) {
+              const location = getAttributeValue(attributes.location)
+              const country = getCountry(location)
+              if (country) {
+                attributes.country = Object.assign({}, attributes.country, { system: country })
+              }
+            }
+
             attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(attributes),
               this.log,
@@ -592,6 +603,17 @@ export default class MemberService extends LoggerBase {
 
           if (toUpdate.attributes) {
             this.log.trace({ memberId: id }, 'Setting attribute default values!')
+
+            if (!hasAttributeValue(toUpdate.attributes.country)) {
+              const location = getAttributeValue(toUpdate.attributes.location)
+              const country = getCountry(location)
+              if (country) {
+                toUpdate.attributes.country = Object.assign({}, toUpdate.attributes.country, {
+                  system: country,
+                })
+              }
+            }
+
             toUpdate.attributes = await logExecutionTimeV2(
               () => memberAttributeService.setAttributesDefaultValues(toUpdate.attributes),
               this.log,

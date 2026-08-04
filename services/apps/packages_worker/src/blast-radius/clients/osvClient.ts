@@ -43,10 +43,19 @@ export async function fetchOsvVuln(vulnId: string): Promise<OsvVuln> {
   return (await res.json()) as OsvVuln
 }
 
+// Extract affected packages for a given OSV ecosystem name (as OSV spells it,
+// e.g. 'npm', 'Go' — case-sensitive, matches OSV's own casing verbatim).
+export function affectedEntriesForEcosystem(
+  vuln: OsvVuln,
+  ecosystem: string,
+): OsvAffectedPackage[] {
+  if (!vuln.affected) return []
+  return vuln.affected.filter((a) => a.package?.ecosystem === ecosystem)
+}
+
 // Extract npm-specific affected packages from an OSV record.
 export function affectedNpmEntries(vuln: OsvVuln): OsvAffectedPackage[] {
-  if (!vuln.affected) return []
-  return vuln.affected.filter((a) => a.package?.ecosystem === 'npm')
+  return affectedEntriesForEcosystem(vuln, 'npm')
 }
 
 // Flatten SEMVER-type ranges in an affected package into {introduced, fixed, lastAffected}

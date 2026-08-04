@@ -22,3 +22,24 @@ export function toBareNpmName(input: string): string {
 
   return name
 }
+
+// Same normalization as toBareNpmName, but for Go: purls have no %40-escaped scope
+// separator to unescape, and module paths never contain '@' themselves.
+export function toBareGoModule(input: string): string {
+  let name = input.trim()
+
+  const q = name.indexOf('?')
+  const h = name.indexOf('#')
+  const cut = q === -1 ? h : h === -1 ? q : Math.min(q, h)
+  if (cut !== -1) name = name.slice(0, cut)
+
+  name = decodeURIComponent(name)
+
+  if (name.startsWith('pkg:golang/')) {
+    name = name.slice('pkg:golang/'.length)
+  }
+
+  name = name.replace(/@[^/@]+$/, '')
+
+  return name
+}

@@ -1,5 +1,5 @@
 import { combineSignals } from '../../npm/signals'
-import type { FetchError } from '../../npm/types'
+import { type FetchError, FetchErrorKind } from '../../npm/types'
 
 const REGISTRY = 'https://registry.npmjs.org'
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
@@ -43,21 +43,23 @@ export async function fetchAbbreviatedPackument(
       signal: combinedSignal,
     })
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
   if (res.status === 404)
-    return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
-  if (res.status === 429) return { kind: 'RATE_LIMIT', message: 'rate limited', statusCode: 429 }
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+    return { kind: FetchErrorKind.NOT_FOUND, message: `${name} not found`, statusCode: 404 }
+  if (res.status === 429)
+    return { kind: FetchErrorKind.RATE_LIMIT, message: 'rate limited', statusCode: 429 }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
 
   let json: unknown
   try {
     json = await res.json()
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
   if (
@@ -66,7 +68,7 @@ export async function fetchAbbreviatedPackument(
     !('versions' in json) ||
     !('dist-tags' in json)
   ) {
-    return { kind: 'MALFORMED', message: 'unexpected shape' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'unexpected shape' }
   }
 
   return json as AbbreviatedPackument
