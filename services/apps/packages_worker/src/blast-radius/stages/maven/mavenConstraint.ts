@@ -11,7 +11,11 @@ interface MavenInterval {
 
 // A top-level comma joins alternative intervals, e.g. "[1.0,2.0),[3.0,4.0)" — track
 // bracket depth only to skip the comma inside an interval's own lower/upper bound.
-function splitTopLevelCommas(s: string): string[] {
+// Returns null (not a partial result) on unmatched brackets or trailing text after
+// the last closed interval, e.g. "[1.0,2.0)garbage" — accepting the valid-looking
+// prefix there would silently drop the "garbage" tail and could wrongly exclude a
+// vulnerable version instead of falling through to unparseable-included.
+function splitTopLevelCommas(s: string): string[] | null {
   const parts: string[] = []
   let depth = 0
   let start = 0
@@ -19,6 +23,7 @@ function splitTopLevelCommas(s: string): string[] {
     if (s[i] === '[' || s[i] === '(') depth++
     else if (s[i] === ']' || s[i] === ')') {
       depth--
+      if (depth < 0) return null
       if (depth === 0) {
         parts.push(s.slice(start, i + 1))
         start = i + 1
@@ -26,6 +31,7 @@ function splitTopLevelCommas(s: string): string[] {
       }
     }
   }
+  if (depth !== 0 || start !== s.length) return null
   return parts.filter(Boolean)
 }
 
@@ -56,13 +62,16 @@ function parseMavenInterval(seg: string): MavenInterval | null {
 
 // A soft requirement (bare version, e.g. "1.5") is Maven's recommended version, not an
 // enforced range — modeled as a floor: an unbounded-above interval starting there.
-function parseMavenRange(constraint: string): MavenInterval[] | null {
+function parseMavenRange(constraint: string | null): MavenInterval[] | null {
+  // package_dependencies.version_constraint is nullable (deps.dev fill path) — treat a
+  // missing constraint the same as an unparseable one, not a crash on .trim().
+  if (constraint == null) return null
   const trimmed = constraint.trim()
   if (!trimmed) return null
 
   if (trimmed.startsWith('[') || trimmed.startsWith('(')) {
     const segments = splitTopLevelCommas(trimmed)
-    if (segments.length === 0) return null
+    if (!segments || segments.length === 0) return null
     const intervals: MavenInterval[] = []
     for (const seg of segments) {
       const interval = parseMavenInterval(seg)
@@ -97,7 +106,7 @@ function intervalMayInclude(interval: MavenInterval, version: string): boolean {
 // like "[1.0,1.2]" or "[1.0]" are bounded and can include an older vulnerable version
 // without including the max.
 export function mavenConstraintMayInclude(
-  constraint: string,
+  constraint: string | null,
   vulnerableVersions: string[],
 ): MavenConstraintMatch {
   const intervals = parseMavenRange(constraint)

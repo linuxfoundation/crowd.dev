@@ -78,4 +78,18 @@ describe('mavenConstraintMayInclude', () => {
     expect(mavenConstraintMayInclude('(1.0)', ['1.5'])).toBe('unparseable-included')
     expect(mavenConstraintMayInclude('[1.0)', ['1.5'])).toBe('unparseable-included')
   })
+
+  it('conservatively includes a null constraint instead of throwing', () => {
+    expect(mavenConstraintMayInclude(null, ['1.5'])).toBe('unparseable-included')
+  })
+
+  it('conservatively includes a range with trailing garbage after the closed interval', () => {
+    // Must not silently accept the "[1.0,2.0)" prefix and exclude 3.0 — the malformed
+    // trailing text makes the whole constraint unparseable.
+    expect(mavenConstraintMayInclude('[1.0,2.0)garbage', ['3.0'])).toBe('unparseable-included')
+  })
+
+  it('conservatively includes a range with a dangling unmatched opening bracket', () => {
+    expect(mavenConstraintMayInclude('[1.0,2.0', ['3.0'])).toBe('unparseable-included')
+  })
 })
