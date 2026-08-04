@@ -14,8 +14,7 @@ function normalizeWhitespace(value: string): string {
 
 function normalizeToken(value: string): string {
   return normalizeWhitespace(value)
-    .replace(/[.!?]+$/g, '')
-    .trim()
+    .replace(/[.!?]+$/, '')
     .toLowerCase()
 }
 
@@ -71,8 +70,9 @@ export function getCountry(location: string | null | undefined): string | undefi
 
   // Prefer later segments (…, Country) but also accept Country, City.
   const parts = normalized
-    .replace(/\s+-\s+/g, ',')
-    .replace(/[/|]/g, ',')
+    .replaceAll(' - ', ',')
+    .replaceAll('/', ',')
+    .replaceAll('|', ',')
     .split(',')
     .map((part) => normalizeToken(part))
     .filter(Boolean)
