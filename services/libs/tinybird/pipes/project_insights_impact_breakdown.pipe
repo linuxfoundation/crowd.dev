@@ -1,215 +1,31 @@
 DESCRIPTION >
-    - `project_insights_impact_breakdown.pipe` rolls up the 4 Impact sub-metrics from package level
-    to project level and computes a percentile rank-band for each, for the new project overview
-    page's "Impact breakdown" section (IN-1212).
-    - Join path: `repositories` (project's own repos, filtered `enabled = true AND excluded = false`,
-    matching the population convention used by `project_insights_copy.pipe`'s health-v2 rollup) ->
-    `repos` (matched on URL, since `packageRepos.repoId` references `repos.id`, NOT
-    `repositories.id` — these are two different tables/id-spaces) -> `packageRepos` (the verified
-    package<->repo provenance mapping) -> `ossPackages_enriched_ds` (the 4 raw metrics). This
-    mirrors the exact join `health_score_v2_impact.pipe` already uses for its per-repo
-    `impactScore = MAX(packages.impact)` computation — deliberately NOT a naive URL/string LIKE
-    match against `purl`/`repositoryUrl`, which was confirmed to return false-positive matches
-    (mirrors, forks, unrelated same-named repos) during investigation for this pipe.
-    - Aggregation per metric (package level -> project level), each chosen per-metric rather than
-    defaulting to one rule for all 4, and verified against real data (see reasoning + evidence):
-    - `directDependents` (from `dependentCount`): MAX. Mirrors the precedent set by
-    `health_score_v2_impact.pipe`'s `impactScore = MAX(packages.impact)`. A project's most-depended
-    -upon package is the meaningful adoption signal; MAX also avoids inflating the metric across a
-    project's own multiple packages.
-    - `transitiveDependents` (from `transitiveDependentCount`): MAX, NOT SUM. Verified live against
-    Kubernetes (897 linked packages): dozens of the project's own Go packages carry the *same*
-    ~677,129 transitive-dependent count (transitive counts are graph-wide per ecosystem tooling,
-    not package-unique), so SUM would have multiplied a single real signal by the package count
-    (e.g. ~300x for k8s) into a meaningless number. MAX picks the project's single most-connected
-    package, which is graph-correct.
-    - `downloads` (from `downloadsLast30d`): SUM, not MAX. Verified live against Kubernetes: its
-    linked packages (pypi `kubernetes`, npm `@kubernetes/client-node`, nuget `KubernetesClient`,
-    etc.) are independently-tracked registry packages with no shared/duplicated download counts, so
-    summing is safe and reflects the project's true total adoption footprint across ecosystems/
-    package managers, which is more meaningful than its single highest-downloaded package alone.
-    - `centrality` (from `centralityScore`): MAX. A PageRank-style per-package score, not a
-    countable/additive quantity, so SUM would be meaningless; MAX surfaces the project's most
-    centrally-important package. NOTE (data-quality caveat, see below): confirmed 0 of ~4.2M npm
-    packages (and 0 across every other ecosystem) currently have a non-NULL `centralityScore` in
-    production — this metric will render as "no data" for every project today until the centrality
-    scoring worker actually populates it. The rollup/percentile logic is still implemented and
-    correct so it activates automatically once that backfill lands.
-    - Percentile methodology: projects are ranked GLOBALLY against all other projects with a
-    non-NULL value for that metric — NOT partitioned per-ecosystem. This is a deliberate
-    departure from a naive per-ecosystem percentile: verified live that only 43% of projects
-    with linked packages (3,397 of 7,906) are single-ecosystem; the rest span 2-8 ecosystems
-    (e.g. opentelemetry spans 8), so there is no single well-defined "project's ecosystem" to
-    partition by at the project grain. Package-level percentiles are ecosystem-partitioned
-    elsewhere for exactly this reason, but a PROJECT-level rollup value (e.g. total downloads
-    summed across a project's npm + PyPI + Go packages) is compared fairly against other
-    projects' equally cross-ecosystem-summed values, so a global rank is the correct comparison
-    for this grain, not an ecosystem-partitioned one.
-    - Rank -> band: `rank() OVER (ORDER BY metric DESC)` divided by the count of ranked (non-NULL)
-    projects gives a "top X%" position, bucketed into display bands (Top 1% / Top 10% / Top 25% /
-    Top 50% / rest). Projects with a NULL source metric (no linked packages, or linked packages
-    with no value for that specific metric) are excluded from the ranking population entirely
-    (not ranked as 0 / not given a fabricated low percentile) and surface `NULL` band + `NULL`
-    value — the UI should render this as "no data", not "Top 100%" or similar.
+    - `project_insights_impact_breakdown.pipe` serves the 4 Impact sub-metrics rolled up to project
+    level, each with a global percentile rank-band, for the project overview page's "Impact
+    breakdown" section (IN-1212).
+    - Performance: this endpoint reads from the pre-materialized `project_insights_impact_breakdown_ds`
+    (populated on a schedule by `project_insights_impact_breakdown_copy.pipe`) rather than computing
+    the rollup/percentile ranking live. The original live version ran a `rank() OVER (ORDER BY ...)`
+    across the entire ~37M-row joined population on every request — window functions require the
+    full ordered population in scope, so ClickHouse could not push a `WHERE slug = ...` filter down
+    before the scan, meaning every single-project request paid the full-scan cost (~3.3-3.5s,
+    ~37M rows/~2.2GB). Materializing the rollup on a schedule (see the copy pipe's DESCRIPTION for
+    the chosen schedule and why) turns this endpoint into a cheap filtered SELECT against an
+    already-ranked table, matching the pattern `project_insights.pipe` uses against
+    `project_insights_copy_ds`. See `project_insights_impact_breakdown_copy.pipe` for the full
+    rollup/percentile methodology (per-metric aggregation choice, global (non-ecosystem-partitioned)
+    percentile ranking, NULL-preserving LEFT JOIN semantics) — unchanged by this performance fix.
     - Parameters: `slug` (single project), `slugs` (array), `ids` (array of project ids). At least
     one should be provided; with none, returns all projects (ranking population is always global
-    regardless of the filter — filtering narrows the OUTPUT rows, not the ranking denominator).
+    regardless of the filter — filtering narrows the OUTPUT rows, not the ranking denominator,
+    since ranking already happened at materialization time).
 
 TAGS "Insights, Widget", "Project", "Impact"
-
-NODE project_impact_raw
-DESCRIPTION >
-    Project-level raw metric rollup from linked packages, via repositories -> repos ->
-    packageRepos -> ossPackages_enriched_ds (same join mechanism as health_score_v2_impact.pipe).
-    Population matches project_insights_copy.pipe's repo filter: enabled, non-excluded repos only.
-    The chain is LEFT JOINed from `insightsProjects` all the way through so every project is
-    present in the output — a project with zero enabled/non-excluded repos, or repos with zero
-    linked packages, naturally gets NULL for all 4 metrics rather than being dropped from the
-    result set entirely (verified live: an INNER JOIN chain here silently drops projects like
-    `pygithub` that have no linked packages at all — that's the wrong behavior for a UI section
-    that must render an explicit "no data" state per metric).
-
-SQL >
-    SELECT
-        ip.id AS projectId,
-        ip.slug AS slug,
-        ip.name AS name,
-        max(pk.dependentCount) AS directDependents,
-        max(pk.transitiveDependentCount) AS transitiveDependents,
-        sum(pk.downloadsLast30d) AS downloads,
-        max(toFloat64OrNull(pk.centralityScore)) AS centrality
-    FROM insightsProjects ip FINAL
-    LEFT JOIN
-        repositories rep FINAL
-        ON rep.insightsProjectId = ip.id
-        AND rep.enabled = true
-        AND rep.excluded = false
-    LEFT JOIN repos r ON r.url = rep.url
-    LEFT JOIN packageRepos pr ON pr.repoId = r.id
-    LEFT JOIN ossPackages_enriched_ds pk ON pk.id = pr.packageId
-    GROUP BY ip.id, ip.slug, ip.name
-
-NODE project_impact_ranked
-DESCRIPTION >
-    Global percentile rank per metric, computed only over projects with a non-NULL value for that
-    metric (NULLs excluded from the ranking population rather than ranked as 0).
-
-SQL >
-    SELECT
-        projectId,
-        slug,
-        name,
-        directDependents,
-        transitiveDependents,
-        downloads,
-        centrality,
-        rank() OVER (ORDER BY directDependents DESC) AS directDependentsRank,
-        countIf(directDependents IS NOT NULL) OVER () AS directDependentsTotalRanked,
-        rank() OVER (ORDER BY transitiveDependents DESC) AS transitiveDependentsRank,
-        countIf(transitiveDependents IS NOT NULL) OVER () AS transitiveDependentsTotalRanked,
-        rank() OVER (ORDER BY downloads DESC) AS downloadsRank,
-        countIf(downloads IS NOT NULL) OVER () AS downloadsTotalRanked,
-        rank() OVER (ORDER BY centrality DESC) AS centralityRank,
-        countIf(centrality IS NOT NULL) OVER () AS centralityTotalRanked
-    FROM project_impact_raw
-
-NODE project_impact_bands
-DESCRIPTION >
-    Converts each metric's rank/totalRanked position into a display band. NULL source value ->
-    NULL percentile + NULL band ("no data"), never a fabricated 0th-percentile/last-place band.
-
-SQL >
-    SELECT
-        projectId,
-        slug,
-        name,
-        directDependents,
-        if(
-            directDependents IS NULL,
-            NULL,
-            round(100.0 * directDependentsRank / directDependentsTotalRanked, 2)
-        ) AS directDependentsTopPct,
-        if(
-            directDependents IS NULL,
-            NULL,
-            multiIf(
-                directDependentsRank <= 0.01 * directDependentsTotalRanked,
-                'Top 1%',
-                directDependentsRank <= 0.10 * directDependentsTotalRanked,
-                'Top 10%',
-                directDependentsRank <= 0.25 * directDependentsTotalRanked,
-                'Top 25%',
-                directDependentsRank <= 0.50 * directDependentsTotalRanked,
-                'Top 50%',
-                'Bottom 50%'
-            )
-        ) AS directDependentsBand,
-        transitiveDependents,
-        if(
-            transitiveDependents IS NULL,
-            NULL,
-            round(100.0 * transitiveDependentsRank / transitiveDependentsTotalRanked, 2)
-        ) AS transitiveDependentsTopPct,
-        if(
-            transitiveDependents IS NULL,
-            NULL,
-            multiIf(
-                transitiveDependentsRank <= 0.01 * transitiveDependentsTotalRanked,
-                'Top 1%',
-                transitiveDependentsRank <= 0.10 * transitiveDependentsTotalRanked,
-                'Top 10%',
-                transitiveDependentsRank <= 0.25 * transitiveDependentsTotalRanked,
-                'Top 25%',
-                transitiveDependentsRank <= 0.50 * transitiveDependentsTotalRanked,
-                'Top 50%',
-                'Bottom 50%'
-            )
-        ) AS transitiveDependentsBand,
-        downloads,
-        if(
-            downloads IS NULL, NULL, round(100.0 * downloadsRank / downloadsTotalRanked, 2)
-        ) AS downloadsTopPct,
-        if(
-            downloads IS NULL,
-            NULL,
-            multiIf(
-                downloadsRank <= 0.01 * downloadsTotalRanked,
-                'Top 1%',
-                downloadsRank <= 0.10 * downloadsTotalRanked,
-                'Top 10%',
-                downloadsRank <= 0.25 * downloadsTotalRanked,
-                'Top 25%',
-                downloadsRank <= 0.50 * downloadsTotalRanked,
-                'Top 50%',
-                'Bottom 50%'
-            )
-        ) AS downloadsBand,
-        centrality,
-        if(
-            centrality IS NULL, NULL, round(100.0 * centralityRank / centralityTotalRanked, 2)
-        ) AS centralityTopPct,
-        if(
-            centrality IS NULL,
-            NULL,
-            multiIf(
-                centralityRank <= 0.01 * centralityTotalRanked,
-                'Top 1%',
-                centralityRank <= 0.10 * centralityTotalRanked,
-                'Top 10%',
-                centralityRank <= 0.25 * centralityTotalRanked,
-                'Top 25%',
-                centralityRank <= 0.50 * centralityTotalRanked,
-                'Top 50%',
-                'Bottom 50%'
-            )
-        ) AS centralityBand
-    FROM project_impact_ranked
 
 NODE project_insights_impact_breakdown_endpoint
 SQL >
     %
     SELECT
-        projectId AS id,
+        id,
         slug,
         name,
         directDependents,
@@ -224,7 +40,7 @@ SQL >
         centrality,
         centralityTopPct,
         centralityBand
-    FROM project_impact_bands
+    FROM project_insights_impact_breakdown_ds
     WHERE
         1 = 1
         {% if defined(slug) %}
@@ -235,7 +51,7 @@ SQL >
             IN {{ Array(slugs, 'String', description="Filter by project slug list", required=False) }}
         {% end %}
         {% if defined(ids) %}
-            AND projectId
+            AND id
             IN {{ Array(ids, 'String', description="Filter by project id list", required=False) }}
         {% end %}
     ORDER BY name ASC
