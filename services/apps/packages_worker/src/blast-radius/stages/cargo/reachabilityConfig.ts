@@ -14,13 +14,18 @@ import { ReachabilitySourceConfig } from '../reachabilityStage'
 
 const CRATES_IO_FETCH_TIMEOUT_MS = 15_000
 
-// Resolve concrete crate version: try fetchCrateLatestVersion first, then full list.
-async function resolveCargoVersion(name: string): Promise<string | null> {
+// dep.name is packages.name ('-'/'_' normalized, see cargo/loadDump.ts), not necessarily
+// crates.io's published spelling — static.crates.io needs the latter, so always resolve it.
+async function resolveCargoCanonical(
+  name: string,
+): Promise<{ name: string; version: string | null } | null> {
   const latest = await fetchCrateLatestVersion(name, CRATES_IO_FETCH_TIMEOUT_MS)
-  if (typeof latest === 'string') return latest
+  if ('name' in latest) return { name: latest.name, version: latest.version }
 
-  const versions = await fetchCrateVersions(name, CRATES_IO_FETCH_TIMEOUT_MS)
-  if (Array.isArray(versions)) return highestVersion(versions)
+  const versionsResult = await fetchCrateVersions(name, CRATES_IO_FETCH_TIMEOUT_MS)
+  if ('name' in versionsResult) {
+    return { name: versionsResult.name, version: highestVersion(versionsResult.versions) }
+  }
   return null
 }
 
@@ -29,11 +34,14 @@ export const cargoReachabilityConfig: ReachabilitySourceConfig = {
   schema: CARGO_VERDICT_SCHEMA,
   buildSystemPrompt: buildCargoReachabilitySystemPrompt,
   prepareSource: async (dep) => {
-    // Use resolved version; fall back to highest published (ensures Cargo.lock consistency).
-    const version = dep.version ?? (await resolveCargoVersion(dep.name))
+    const canonical = await resolveCargoCanonical(dep.name)
+    if (!canonical) return null
+    // Prefer the already-resolved dependency version; fall back to highest published.
+    const version = dep.version ?? canonical.version
     if (!version) return null
     return {
-      download: (destDir) => downloadAndExtractTarball(crateSourceUrl(dep.name, version), destDir),
+      download: (destDir) =>
+        downloadAndExtractTarball(crateSourceUrl(canonical.name, version), destDir),
     }
   },
   noSourceMessage: 'Could not resolve a concrete crate version',

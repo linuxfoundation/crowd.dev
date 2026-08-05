@@ -55,19 +55,26 @@ async function getWithRetry(url: string, timeoutMs: number): Promise<Response | 
   throw new Error('unreachable')
 }
 
+export interface CrateVersionsResult {
+  // crates.io's canonical (as-published) spelling — see fetchCrateLatestVersion for why
+  // this can differ from the queried `name`.
+  name: string
+  versions: string[]
+}
+
 // GET /api/v1/crates/{name}/versions — includes yanked versions (still installable/vulnerable).
 export async function fetchCrateVersions(
   name: string,
   timeoutMs: number,
-): Promise<string[] | FetchError> {
+): Promise<CrateVersionsResult | FetchError> {
   const url = `${API_BASE}/api/v1/crates/${encodeURIComponent(name)}/versions`
 
   const res = await getWithRetry(url, timeoutMs)
   if (!('ok' in res)) return res
 
-  let body: { versions?: Array<{ num?: string }> }
+  let body: { versions?: Array<{ num?: string; crate?: string }> }
   try {
-    body = (await res.json()) as { versions?: Array<{ num?: string }> }
+    body = (await res.json()) as { versions?: Array<{ num?: string; crate?: string }> }
   } catch {
     return { kind: 'MALFORMED', message: 'invalid json' }
   }
@@ -75,22 +82,34 @@ export async function fetchCrateVersions(
     return { kind: 'MALFORMED', message: 'missing versions array' }
   }
 
-  return body.versions.map((v) => v.num).filter((num): num is string => Boolean(num))
+  return {
+    name: body.versions.find((v) => v.crate)?.crate ?? name,
+    versions: body.versions.map((v) => v.num).filter((num): num is string => Boolean(num)),
+  }
+}
+
+export interface CrateLatestVersionResult {
+  // static.crates.io requires this exact canonical spelling for downloads, unlike
+  // this API's lookup, which normalizes '-'/'_' in the queried `name`.
+  name: string
+  version: string
 }
 
 // GET /api/v1/crates/{name} — lightweight call for latest version (avoids full list).
 export async function fetchCrateLatestVersion(
   name: string,
   timeoutMs: number,
-): Promise<string | FetchError> {
+): Promise<CrateLatestVersionResult | FetchError> {
   const url = `${API_BASE}/api/v1/crates/${encodeURIComponent(name)}`
 
   const res = await getWithRetry(url, timeoutMs)
   if (!('ok' in res)) return res
 
-  let body: { crate?: { newest_version?: string; max_version?: string } }
+  let body: { crate?: { name?: string; newest_version?: string; max_version?: string } }
   try {
-    body = (await res.json()) as { crate?: { newest_version?: string; max_version?: string } }
+    body = (await res.json()) as {
+      crate?: { name?: string; newest_version?: string; max_version?: string }
+    }
   } catch {
     return { kind: 'MALFORMED', message: 'invalid json' }
   }
@@ -99,7 +118,7 @@ export async function fetchCrateLatestVersion(
     return { kind: 'MALFORMED', message: 'missing crate.newest_version and crate.max_version' }
   }
 
-  return version
+  return { name: body.crate?.name ?? name, version }
 }
 
 // static.crates.io serves .crate files at a fixed, predictable path — no API call needed.

@@ -36,7 +36,7 @@ describe('fetchCrateVersions', () => {
       ),
     )
     const result = await fetchCrateVersions('serde', 5000)
-    expect(result).toEqual(['1.0.0', '1.1.0', '2.0.0'])
+    expect(result).toEqual({ name: 'serde', versions: ['1.0.0', '1.1.0', '2.0.0'] })
   })
 
   it('filters out entries with missing num field', async () => {
@@ -49,7 +49,20 @@ describe('fetchCrateVersions', () => {
       ),
     )
     const result = await fetchCrateVersions('serde', 5000)
-    expect(result).toEqual(['1.0.0', '1.1.0'])
+    expect(result).toEqual({ name: 'serde', versions: ['1.0.0', '1.1.0'] })
+  })
+
+  it('resolves the canonical crate name from a versions entry', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        fakeResponse(200, {
+          versions: [{ num: '1.0.0', crate: 'serde-json' }],
+        }),
+      ),
+    )
+    const result = await fetchCrateVersions('serde_json', 5000)
+    expect(result).toEqual({ name: 'serde-json', versions: ['1.0.0'] })
   })
 
   it('maps a 404 to NOT_FOUND', async () => {
@@ -106,7 +119,7 @@ describe('fetchCrateVersions', () => {
     await vi.runAllTimersAsync()
 
     const result = await promise
-    expect(result).toEqual(['1.0.0'])
+    expect(result).toEqual({ name: 'serde', versions: ['1.0.0'] })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
@@ -141,7 +154,7 @@ describe('fetchCrateLatestVersion', () => {
       ),
     )
     const result = await fetchCrateLatestVersion('serde', 5000)
-    expect(result).toBe('1.5.0')
+    expect(result).toEqual({ name: 'serde', version: '1.5.0' })
   })
 
   it('falls back to max_version when newest_version is missing', async () => {
@@ -154,7 +167,20 @@ describe('fetchCrateLatestVersion', () => {
       ),
     )
     const result = await fetchCrateLatestVersion('serde', 5000)
-    expect(result).toBe('1.4.0')
+    expect(result).toEqual({ name: 'serde', version: '1.4.0' })
+  })
+
+  it('resolves the canonical crate name from crate.name', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        fakeResponse(200, {
+          crate: { name: 'serde-json', newest_version: '1.0.0' },
+        }),
+      ),
+    )
+    const result = await fetchCrateLatestVersion('serde_json', 5000)
+    expect(result).toEqual({ name: 'serde-json', version: '1.0.0' })
   })
 
   it('returns MALFORMED when neither newest_version nor max_version present', async () => {
@@ -185,7 +211,7 @@ describe('fetchCrateLatestVersion', () => {
     await vi.runAllTimersAsync()
 
     const result = await promise
-    expect(result).toBe('1.5.0')
+    expect(result).toEqual({ name: 'serde', version: '1.5.0' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

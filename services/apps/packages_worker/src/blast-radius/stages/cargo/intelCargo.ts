@@ -89,8 +89,8 @@ export async function runIntelStageCargo(
     // Use crates.io version list; fall back to our DB if unreachable and crate is known.
     const versionListResult = await fetchCrateVersions(crate, CRATES_IO_FETCH_TIMEOUT_MS)
     let allVersions: string[]
-    if (Array.isArray(versionListResult)) {
-      allVersions = versionListResult
+    if ('versions' in versionListResult) {
+      allVersions = versionListResult.versions
     } else if (packageId !== null) {
       allVersions = await getVersionNumbers(qx, String(packageId))
     } else {

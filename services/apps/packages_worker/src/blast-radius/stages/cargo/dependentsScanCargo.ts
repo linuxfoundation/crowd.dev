@@ -6,9 +6,8 @@ import { toDbCargoName } from '../../packageIdentifier'
 
 import { cargoDependencyMayIncludeVuln } from './cargoConstraint'
 
-// Cargo dependents come straight from our own DB (package_dependencies, populated via
-// deps.dev BigQuery ingestion) rather than an external ranking list — no download-count
-// signal exists for crates.io the way npm has one, same as Go.
+// Cargo dependents come from our own DB (package_dependencies), same as Go — no
+// download-count signal exists for crates.io the way npm has one.
 export async function scanCargoDependents(
   qx: QueryExecutor,
   vulnerablePackageId: string,

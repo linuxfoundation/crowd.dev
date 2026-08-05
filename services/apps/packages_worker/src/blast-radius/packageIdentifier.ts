@@ -1,8 +1,5 @@
-// The blast-radius submit endpoint accepts either a bare npm package name
-// ("lodash", "@babel/core") or a full purl ("pkg:npm/lodash", "pkg:npm/%40babel/core@4.17.21")
-// for the `package` field — see blastRadiusJobRequestSchema. OSV affected-package entries and
-// the npm registry only ever use bare names, so a purl must be reduced to that form before
-// it's compared against them (raw string equality otherwise never matches a purl input).
+// Accepts a bare npm name or a full purl (see blastRadiusJobRequestSchema) and reduces
+// it to the bare form OSV/the npm registry compare against.
 export function toBareNpmName(input: string): string {
   let name = input.trim()
 
@@ -65,10 +62,8 @@ export function toBareCargoName(input: string): string {
   return name
 }
 
-// crates.io treats '-' and '_' as the same crate (you can't publish both), and our
-// packages/purl rows store the '_' form (see cargo/loadDump.ts's DENORMALIZE join) while
-// OSV/crates.io always spell names with '-'. Apply this ONLY at the packages-table lookup
-// boundary — never to the name shown to users, crates.io API calls, or OSV entry matching.
+// packages/purl rows store cargo names '_'-normalized (see cargo/loadDump.ts) while
+// OSV/crates.io use '-'. Apply ONLY at the packages-table lookup boundary.
 export function toDbCargoName(name: string): string {
   return name.toLowerCase().replace(/-/g, '_')
 }
