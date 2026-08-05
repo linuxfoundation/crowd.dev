@@ -69,4 +69,16 @@ Millions of rows. Every query matters.
 - Define types properly — extend and reuse existing types. Don't sprinkle `any`.
 - Don't touch working code outside the scope of the current task.
 - Prefer doing less over introducing risk. Weigh trade-offs before acting.
-- Default to no comments. When one is warranted (non-obvious WHY), keep it to 2 lines max.
+- No comments. Code must be self-explanatory: name things well and extract
+  functions instead of explaining them.
+- A comment is allowed ONLY if one of these is true, and the reason cannot be
+  expressed in code:
+  - workaround for an external bug/API quirk (link it)
+  - non-obvious invariant or ordering the caller must respect
+  - performance/concurrency constraint that looks removable but isn't
+  - genuinely convoluted logic (e.g. inherited/legacy complexity) that can't
+    be simplified or extracted right now — prefer refactoring over commenting
+  - `TODO(CM-XXX):` with a ticket
+- Never comment: what the code does, section headers, JSDoc on obvious
+  functions, notes about the change you just made.
+- When allowed: 2 lines max.

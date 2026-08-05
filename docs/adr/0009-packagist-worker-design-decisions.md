@@ -27,6 +27,7 @@ like the one deps.dev exposes in BigQuery.
 | Dependency model | decided |
 | Metadata enrichment scope | decided |
 | Lane architecture & cadence | decided |
+| Transitive dependent counts | decided |
 
 ---
 
@@ -187,6 +188,78 @@ that week's enrichment (recoverable via the manual trigger).
 
 ---
 
+### Transitive dependent counts: weekly materialized reverse closure over our own edges
+
+A fifth lane, `computePackagistTransitiveDependents`, populates
+`packages.transitive_dependent_count` for packagist weekly: snapshot the direct edges to
+package-level pairs (`staging.packagist_transitive_edges`), compute the **exact** reverse
+transitive closure in one recursive statement (`staging.packagist_transitive_counts`), then
+keyset-merge into `packages` with zero-fill and `IS DISTINCT FROM` churn protection. It is
+chained off the metadata drain's natural completion (event, not clock — the same idiom as
+seed → metadata) and tracked in its own run ledger, `packagist_transitive_runs`
+(`pending → merging → done | failed`, one row per run with graph sizes and merge totals):
+per-purl `packagist_package_state` exists for lanes whose HTTP fetches fail per package —
+a whole-ecosystem batch has no per-purl outcomes — and `osspckgs_ingest_jobs` is the
+BQ-ingest ledger (gcs/bq columns, ingest-shaped kinds), so overloading it was rejected. The
+run aborts loudly on an empty edge snapshot, the merge side refuses to run against an empty
+counts table (a crash-truncated UNLOGGED staging table can never be zero-filled over good
+data), and a permanently failed merge marks the run `failed` instead of stranding it in
+`merging`. A weekly **ledger-gated backstop cron** (Monday, after the Sunday chain) covers
+broken chains: it no-ops when the ledger shows a `done` run within 6 days or while the metadata drain is
+still running (whose completion chains the closure), else chain-starts the fixed workflow
+id — clock as safety net, event chain as primary.
+
+**Provenance.** deps.dev has no Packagist coverage, and Packagist's own API reports only
+direct dependents — so this is the only ecosystem where the transitive signal must come from
+our own stored graph. `rank_packages()` already carries `transitive_dependents` as a coverage
+signal but silently drops it while the ecosystem total is zero; measurement showed the closure
+surfaces hidden infrastructure with tiny direct counts (symfony/polyfill-php80 ≈ 196K
+transitive dependents vs 471 registry-reported direct) and closes most of the critical-set gap
+vs ecosyste.ms. `is_critical` is a BOOL_OR across signals, so enabling this can only add
+critical packages — the same measurement-first precedent as the sonatype signal.
+
+**This does not reopen the "no resolved graph at ingest" decision** (see *Dependency model*
+above). No versions are resolved and no per-edge resolved targets are stored; the closure is a
+package-level derived aggregate — the same count columns deps.dev hands us pre-computed for
+npm/maven/pypi/cargo, and the same exact-closure computation the deps-dev worker already runs
+in BigQuery for GO/NUGET/RUBYGEMS. Packagist's edges live in Postgres instead of BigQuery, so
+the closure runs there.
+
+**Semantics** match the deps.dev convention (`MinimumDepth > 1`): dependents reachable only at
+depth ≥ 2, direct dependents excluded, computed from the same edge set (never mixed with the
+registry-reported `dependent_count`, which stays its own signal); dev-deps excluded (Composer
+does not install them transitively); cycles terminate and a package is never its own
+dependent; `0` means "computed, none" vs NULL "never computed". Count updates are **not
+audited** — bulk derived analytics, matching the deps.dev dependent-counts merges rather than
+this worker's registry-fact auditing.
+
+**Costs, measured.** The snapshot is the only step touching the full `package_dependencies`
+table (~1.5B rows, no index on `package_id`): a deliberate weekly parallel seq scan,
+~10–20 min projected in prod — the same accepted access pattern as the criticality PageRank
+edge loader. The closure itself runs on the ~919K-row package-level snapshot: ~29.3M reachable
+pairs in ~51 s (validated end-to-end locally on the full real dataset: 88 s wall clock,
+454,455 rows merged, +95 packages newly critical from the signal alone).
+
+**Consequences.**
+
+_Positive:_ the criticality gap for packagist closes without any ranking change; the lane is
+idempotent and resumable (continueAsNew keyset drain, pending-run reuse); Tinybird sees only
+real changes.
+
+_Negative / trade-offs:_ a weekly full scan of the shared 1.5B-row table; counts refresh at
+most weekly (with the edges), so they lag registry reality by up to a week.
+
+_Risks / escape hatch:_ if the weekly scan becomes a problem, the metadata lane already holds
+each package's edges in memory at write time and could co-maintain the package-level edge
+table incrementally, eliminating the scan — the snapshot step is isolated in one activity so
+the source can be swapped without touching the closure or merge. Undercount caveats: edges
+exist only for dependency targets that resolved to known package rows, and edge-less packages
+count as leaves — both bias counts down, so criticality conclusions stay conservative.
+
+**Decided**: 2026-07-27
+
+---
+
 ## Changelog
 
 - **2026-07-13** — ADR created. First entry: _Dependency model: direct edges + declared constraints,
@@ -198,3 +271,9 @@ that week's enrichment (recoverable via the manual trigger).
 - **2026-07-17** — Corrected stale "critical slice only" wording left over in the _Dependency
   model_ entry from before the _Metadata enrichment scope_ decision widened it to all packages;
   set `Status` to `accepted` (matching ADR-0005's precedent for a living/consolidated doc).
+- **2026-07-27** — Added _Transitive dependent counts: weekly materialized reverse closure over
+  our own edges_ (the fifth lane; resolves the `transitive_dependent_count` gap flagged in the
+  original risks).
+- **2026-08-04** — Revised _Transitive dependent counts_: run state moved to the dedicated
+  `packagist_transitive_runs` ledger, and a ledger-gated weekly backstop cron added for weeks
+  where the seed→metadata chain breaks.

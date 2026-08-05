@@ -8,7 +8,7 @@ import {
 } from '@temporalio/workflow'
 
 import type * as activities from './activities'
-import { INGEST_MAX_ATTEMPTS } from './retryPolicy'
+import { INGEST_MAX_ATTEMPTS, TRANSITIVE_PREPARE_MAX_ATTEMPTS } from './retryPolicy'
 
 const acts = proxyActivities<typeof activities>({
   startToCloseTimeout: '15 minutes',
@@ -20,11 +20,83 @@ const acts = proxyActivities<typeof activities>({
 })
 
 const INGEST_BATCH = 50
-const ROUNDS_PER_RUN = 20
+export const ROUNDS_PER_RUN = 20
 
 interface MetadataState {
   cutoff?: string
   cursor?: string
+}
+
+export const TRANSITIVE_MERGE_BATCH = 10_000
+
+const transitivePrepareActs = proxyActivities<typeof activities>({
+  startToCloseTimeout: '90 minutes',
+  heartbeatTimeout: '2 minutes',
+  retry: {
+    initialInterval: '1 minute',
+    backoffCoefficient: 2,
+    // Lockstep with the activity's terminal fail-marking (see retryPolicy.ts).
+    maximumAttempts: TRANSITIVE_PREPARE_MAX_ATTEMPTS,
+  },
+})
+
+interface TransitiveState {
+  runId?: number
+  cursor?: string
+  processed?: number
+  changed?: number
+}
+
+// ActivityFailure's own message is the generic "Activity task failed"; the reason a
+// human wants in error_message sits at the bottom of the cause chain.
+function rootErrorMessage(err: unknown): string {
+  let cur = err
+  for (;;) {
+    // `cause` is untyped under the es2017 lib this workspace compiles with, but it is
+    // present at runtime on Node 20 / Temporal failures.
+    const cause = cur instanceof Error ? (cur as { cause?: unknown }).cause : undefined
+    if (!(cause instanceof Error)) break
+    cur = cause
+  }
+  return cur instanceof Error ? cur.message : String(cur)
+}
+
+export async function computePackagistTransitiveDependents(
+  state: TransitiveState = {},
+): Promise<void> {
+  const runId =
+    state.runId ?? (await transitivePrepareActs.preparePackagistTransitiveCounts()).runId
+  let cursor = state.cursor ?? ''
+  let processed = state.processed ?? 0
+  let changed = state.changed ?? 0
+
+  try {
+    for (let r = 0; r < ROUNDS_PER_RUN; r++) {
+      const batch = await acts.mergePackagistTransitiveBatch(cursor, TRANSITIVE_MERGE_BATCH)
+      processed += batch.processed
+      changed += batch.changed
+      if (batch.processed < TRANSITIVE_MERGE_BATCH) {
+        await acts.finishPackagistTransitiveRun(runId, { processed, changed })
+        return
+      }
+      cursor = batch.nextCursor
+    }
+  } catch (err) {
+    // Best-effort: fail-marking must never replace the drain's original error.
+    try {
+      await acts.failPackagistTransitiveRun(runId, rootErrorMessage(err))
+    } catch (markErr) {
+      log.warn(`could not fail-mark transitive run ${runId}: ${String(markErr)}`)
+    }
+    throw err
+  }
+
+  await continueAsNew<typeof computePackagistTransitiveDependents>({
+    runId,
+    cursor,
+    processed,
+    changed,
+  })
 }
 
 interface DownloadsState {
@@ -32,33 +104,58 @@ interface DownloadsState {
   cursor?: string
 }
 
-export async function seedPackagistPackages(): Promise<void> {
-  await acts.runPackagistPackageSeed()
-
-  // Chain the drain off seed completion (not a cron) so newly discovered packages exist
-  // as rows first. ABANDON so it outlives this workflow; fixed id + ALLOW_DUPLICATE means
-  // a drain that outlasts the week makes next Sunday's seed skip its start instead of
-  // doubling the crawl (a still-RUNNING id always throws regardless of reuse policy).
+async function chainDrain(
+  workflow: typeof ingestPackagistMetadata | typeof computePackagistTransitiveDependents,
+  workflowId: string,
+  stillRunningMessage: string,
+): Promise<void> {
   try {
-    await startChild(ingestPackagistMetadata, {
-      workflowId: 'packagist-metadata-drain',
+    await startChild(workflow, {
+      workflowId,
       workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       args: [{}],
       parentClosePolicy: ParentClosePolicy.ABANDON,
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'WorkflowExecutionAlreadyStartedError') {
-      log.warn('packagist metadata drain still running from a prior seed — skipping chain-start')
+      log.warn(stillRunningMessage)
       return
     }
     throw err
   }
 }
 
-// The cutoff is fixed once per run (deterministic activity), same pattern as the
-// downloads-30d/daily lanes — a keyset scan only ever visits each purl once per drain,
-// so due-selection must be anchored to a stable point in time rather than a live NOW()
-// that would let a purl processed early in the run dodge this cycle's refresh window.
+export async function seedPackagistPackages(): Promise<void> {
+  await acts.runPackagistPackageSeed()
+
+  // Chain the drain off seed completion (not a cron) so newly discovered packages exist
+  // as rows first.
+  await chainDrain(
+    ingestPackagistMetadata,
+    'packagist-metadata-drain',
+    'packagist metadata drain still running from a prior seed — skipping chain-start',
+  )
+}
+
+const chainTransitiveDrain = (): Promise<void> =>
+  chainDrain(
+    computePackagistTransitiveDependents,
+    'packagist-transitive-drain',
+    'packagist transitive drain still running — skipping chain-start',
+  )
+
+const TRANSITIVE_BACKSTOP_FRESH_DAYS = 6
+
+// Safety net for weeks where the seed→metadata chain broke: ledger-gated (healthy
+// weeks skip) and routed through the fixed workflow id, so it never races drains.
+export async function backstopPackagistTransitiveDrain(): Promise<void> {
+  if (await acts.packagistTransitiveRanRecently(TRANSITIVE_BACKSTOP_FRESH_DAYS)) return
+  // A mid-crawl metadata drain will chain the closure itself on completion; starting it
+  // now would snapshot changing edges AND make that completion chain-start bounce.
+  if (await acts.packagistMetadataDrainRunning()) return
+  await chainTransitiveDrain()
+}
+
 export async function ingestPackagistMetadata(state: MetadataState = {}): Promise<void> {
   const cutoff = state.cutoff ?? (await acts.packagistCurrentTimestamp())
   let cursor = state.cursor || ''
@@ -70,11 +167,17 @@ export async function ingestPackagistMetadata(state: MetadataState = {}): Promis
       cursor,
       INGEST_BATCH,
     )
-    if (candidates.length === 0) return
+    if (candidates.length === 0) {
+      if (!stopAfterFirstPage) await chainTransitiveDrain()
+      return
+    }
     await acts.ingestPackagistMetadataBatch(candidates)
     cursor = nextCursor
     if (stopAfterFirstPage) return
-    if (candidates.length < INGEST_BATCH) return
+    if (candidates.length < INGEST_BATCH) {
+      await chainTransitiveDrain()
+      return
+    }
   }
 
   await continueAsNew<typeof ingestPackagistMetadata>({ cutoff, cursor })
