@@ -60,6 +60,12 @@ describe('ecosystemVersions', () => {
       const ranges = [{ introduced: '0', fixed: '2.0.0', lastAffected: null }]
       expect(versionsInRanges('nuget', versions, ranges)).toEqual(['1.0.0', '1.5.0'])
     })
+
+    it('includes four-component NuGet versions, which node-semver cannot parse', () => {
+      const versions = ['4.5.0.0', '4.5.0.1', '4.6.0.0']
+      const ranges = [{ introduced: '4.5.0.0', fixed: '4.6.0.0', lastAffected: null }]
+      expect(versionsInRanges('nuget', versions, ranges)).toEqual(['4.5.0.0', '4.5.0.1'])
+    })
   })
 
   describe('highestVersion', () => {
@@ -73,6 +79,10 @@ describe('ecosystemVersions', () => {
 
     it('handles an empty list', () => {
       expect(highestVersion('nuget', [])).toBeNull()
+    })
+
+    it('picks the correct highest four-component NuGet version', () => {
+      expect(highestVersion('nuget', ['4.5.0.0', '4.5.0.10', '4.5.0.2'])).toBe('4.5.0.10')
     })
   })
 })

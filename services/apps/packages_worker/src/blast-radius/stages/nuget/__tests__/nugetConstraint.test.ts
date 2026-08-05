@@ -92,4 +92,9 @@ describe('nugetConstraintMayInclude', () => {
   it('conservatively includes a comma-separated union with a trailing comma', () => {
     expect(nugetConstraintMayInclude('[1.0.0,2.0.0),', ['3.5.0'])).toBe('unparseable-included')
   })
+
+  it('matches four-component versions, which node-semver cannot parse', () => {
+    expect(nugetConstraintMayInclude('[4.5.0.0,4.6.0.0)', ['4.5.0.5'])).toBe('matched')
+    expect(nugetConstraintMayInclude('[4.5.0.0,4.6.0.0)', ['4.6.0.0'])).toBe('excluded')
+  })
 })

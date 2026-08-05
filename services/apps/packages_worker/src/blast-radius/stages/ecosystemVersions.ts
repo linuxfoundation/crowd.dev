@@ -1,6 +1,8 @@
 import { compareVersion } from '../../osv/versionCompare'
 import { OsvAffectedPackage } from '../clients/osvClient'
 
+import { compareNuGetVersion } from './nuget/nugetVersionCompare'
+
 // Shared by any ecosystem whose OSV advisories use ECOSYSTEM-typed ranges (ordered via
 // compareVersion(ecosystem, …) rather than node-semver) instead of SEMVER-typed ranges —
 // currently Maven and NuGet. Parameterized by ecosystem so the two don't duplicate this
@@ -49,7 +51,10 @@ export function ecosystemRangeEvents(entry: OsvAffectedPackage): EcosystemRange[
   return events
 }
 
+// NuGet accepts a 4th numeric component (Major.Minor.Patch.Revision), which node-semver
+// rejects outright — see nugetVersionCompare.ts for why 'nuget' can't share compareVersion.
 function compareOrNull(ecosystem: string, a: string, b: string): number | null {
+  if (ecosystem === 'nuget') return compareNuGetVersion(a, b)
   return compareVersion(ecosystem, a, b)
 }
 

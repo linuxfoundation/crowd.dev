@@ -1,4 +1,4 @@
-import { compareVersion } from '../../../osv/versionCompare'
+import { compareNuGetVersion } from './nugetVersionCompare'
 
 export type NuGetConstraintMatch = 'matched' | 'excluded' | 'unparseable-included'
 
@@ -100,12 +100,12 @@ function parseNuGetRange(constraint: string | null): NuGetInterval[] | null {
 
 function intervalMayInclude(interval: NuGetInterval, version: string): boolean {
   if (interval.lower) {
-    const c = compareVersion('nuget', version, interval.lower)
+    const c = compareNuGetVersion(version, interval.lower)
     if (c === null) return true // unparseable bound — over-inclusive
     if (interval.lowerInclusive ? c < 0 : c <= 0) return false
   }
   if (interval.upper) {
-    const c = compareVersion('nuget', version, interval.upper)
+    const c = compareNuGetVersion(version, interval.upper)
     if (c === null) return true
     if (interval.upperInclusive ? c > 0 : c >= 0) return false
   }
