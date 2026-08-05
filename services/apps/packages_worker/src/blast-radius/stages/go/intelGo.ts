@@ -61,9 +61,8 @@ export async function runIntelStageGo(
     // Pick the Go entry the analysis was requested for; see selectAdvisoryEntry for
     // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requestedModule = analysisDetail?.package_name
-      ? toBareGoModule(analysisDetail.package_name)
-      : null
+    const requestedModule =
+      analysisDetail?.package_name != null ? toBareGoModule(analysisDetail.package_name) : null
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       goEntries,
       requestedModule,

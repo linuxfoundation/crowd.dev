@@ -3,28 +3,35 @@ import * as os from 'os'
 import * as path from 'path'
 
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
+import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { fetchPackument } from '../../../npm/fetchPackument'
-import { parseNpmName } from '../../../npm/normalize'
-import { isFetchError } from '../../../npm/types'
-import { INTEL_SCHEMA, INTEL_SYSTEM_PROMPT, buildIntelPrompt } from '../../agent/prompts'
+import {
+  CARGO_INTEL_SCHEMA,
+  CARGO_INTEL_SYSTEM_PROMPT,
+  buildCargoIntelPrompt,
+} from '../../agent/cargoPrompts'
 import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import { downloadAndExtractTarball } from '../../clients/npmTarball'
 import {
-  affectedNpmEntries,
+  affectedEntriesForEcosystem,
   fetchOsvVuln,
   fixReferenceUrls,
   semverRangeEvents,
 } from '../../clients/osvClient'
-import { asNpmVersionManifest } from '../../npmManifest'
-import { toBareNpmName } from '../../packageIdentifier'
+import { crateSourceUrl, fetchCrateVersions } from '../../crates/registryClient'
+import { toBareCargoName, toDbCargoName } from '../../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../../semverRange'
 import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
-export async function runIntelStageNpm(
+// OSV spells the Cargo ecosystem 'crates.io', unlike our DB's lowercase 'cargo' — see
+// ADR-0001 §OSV "Ecosystem normalization" for the DB-side convention.
+const OSV_CARGO_ECOSYSTEM = 'crates.io'
+const CRATES_IO_FETCH_TIMEOUT_MS = 15_000
+
+export async function runIntelStageCargo(
   qx: QueryExecutor,
   analysisId: string,
   advisoryOsvId: string,
@@ -33,15 +40,13 @@ export async function runIntelStageNpm(
   const startTime = Date.now()
 
   try {
-    // Check if already done. Guard on the stage_run's own status rather than symbol-spec
-    // presence — a crash between upsertSymbolSpec and completeStageRun would otherwise
-    // leave the stage_run stuck failed/running forever while retries skip past it.
+    // Guard on stage_run status to avoid stuck failed/running state if intel crashes
+    // between upsertSymbolSpec and completeStageRun.
     const existingStatus = await blastRadiusDal.getStageRunStatus(qx, analysisId, 'intel')
     if (existingStatus === 'succeeded') {
       return
     }
 
-    // Start stage run record
     await blastRadiusDal.startStageRun(qx, {
       analysisId,
       stage: 'intel',
@@ -49,74 +54,80 @@ export async function runIntelStageNpm(
       model: 'claude-opus-4-8',
     })
 
-    // Fetch OSV record
     const osv = await fetchOsvVuln(advisoryOsvId)
 
-    const npmEntries = affectedNpmEntries(osv)
-    if (npmEntries.length === 0) {
-      throw new Error(`No npm entries found in advisory ${advisoryOsvId}`)
+    const cargoEntries = affectedEntriesForEcosystem(osv, OSV_CARGO_ECOSYSTEM)
+    if (cargoEntries.length === 0) {
+      throw new Error(`No Cargo entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Requested package may be a bare name or full purl; OSV entries are always bare
-    // names, so normalize before comparing (see selectAdvisoryEntry for rejection rules).
+    // Pick the crate entry the analysis was requested for; see selectAdvisoryEntry for
+    // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requestedPackage =
-      analysisDetail?.package_name != null ? toBareNpmName(analysisDetail.package_name) : null
+    const requestedCrate = analysisDetail?.package_name
+      ? toBareCargoName(analysisDetail.package_name)
+      : null
+    const requestedCrateDbName = requestedCrate !== null ? toDbCargoName(requestedCrate) : null
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
-      npmEntries,
-      requestedPackage,
-      (e) => e.package.name === requestedPackage,
+      cargoEntries,
+      requestedCrate,
+      (e) => toDbCargoName(e.package.name) === requestedCrateDbName,
       advisoryOsvId,
     )
-    const package_ = entry.package.name
-    const ecosystem = entry.package.ecosystem
+    const crate = entry.package.name
+    const ecosystem = 'cargo'
 
-    // Fetch the registry packument so vulnerable-version resolution runs against versions
-    // npm actually published, not just the OSV range's introduced/fixed boundary strings —
-    // most advisories only list range boundaries, so that set is typically incomplete and
-    // silently drops real published versions from vulnerableVersions/analyzed.
-    const packument = await fetchPackument(package_)
-    if (isFetchError(packument)) {
-      throw new Error(`Failed to fetch npm packument for ${package_}: ${packument.message}`)
-    }
-    const allVersions = Object.keys(packument.versions || {})
-
-    // Resolve vulnerable versions from ranges
+    // Resolve vulnerable versions from OSV ranges first (crates.io OSV ranges are
+    // SEMVER-typed, same event shape as npm's/Go's).
     const ranges = semverRangeEvents(entry)
+
+    const packageId = await findPackageId(qx, {
+      ecosystem,
+      namespace: null,
+      name: toDbCargoName(crate),
+    })
+
+    // Use crates.io version list; fall back to our DB if unreachable and crate is known.
+    const versionListResult = await fetchCrateVersions(crate, CRATES_IO_FETCH_TIMEOUT_MS)
+    let allVersions: string[]
+    if ('versions' in versionListResult) {
+      allVersions = versionListResult.versions
+    } else if (packageId !== null) {
+      allVersions = await getVersionNumbers(qx, String(packageId))
+    } else {
+      throw new Error(
+        `Failed to fetch versions for ${crate} (${versionListResult.message}) and crate is not in our DB`,
+      )
+    }
+
     const vulnerableVersions = versionsInRanges(allVersions, ranges)
 
     const analyzed = highestVersion(vulnerableVersions)
     if (!analyzed) {
-      throw new Error(`Could not determine analyzed version for ${package_}`)
+      throw new Error(`Could not determine analyzed version for ${crate}`)
     }
 
-    // Download pkgsrc and patches
-    const pkgsrcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkgsrc-'))
+    const pkgsrcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cratesrc-'))
     const patches: Record<string, string> = {}
 
     try {
-      // Download package source (using npm registry)
-      const versionData = packument.versions?.[analyzed]
-      const tarballUrl = versionData ? asNpmVersionManifest(versionData).dist?.tarball : undefined
-      if (!tarballUrl) {
-        throw new Error(`No tarball URL found for ${package_}@${analyzed}`)
-      }
-      await downloadAndExtractTarball(tarballUrl, pkgsrcDir)
+      await downloadAndExtractTarball(crateSourceUrl(crate, analyzed), pkgsrcDir)
 
-      // Fetch up to 3 patches from fix references
       const patchUrls = fixReferenceUrls(osv)
-      for (const url of patchUrls.slice(0, 3)) {
-        try {
+      const patchResults = await Promise.allSettled(
+        patchUrls.slice(0, 3).map(async (url) => {
           const patchText = await fetchPatch(url)
           const slug = new URL(url).pathname.split('/').filter(Boolean).join('-')
-          patches[slug] = patchText
-        } catch {
-          // Ignore patch fetch errors
+          return { slug, patchText }
+        }),
+      )
+      patchResults.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          patches[result.value.slug] = result.value.patchText
         }
-      }
+      })
 
-      // Run intelligence agent
-      const agentPrompt = buildIntelPrompt(
+      const agentPrompt = buildCargoIntelPrompt(
         osv.id || advisoryOsvId,
         osv.aliases || [],
         osv.details || osv.summary || '',
@@ -126,10 +137,10 @@ export async function runIntelStageNpm(
 
       const agentResult = await runAnalysisAgent({
         prompt: agentPrompt,
-        systemPrompt: INTEL_SYSTEM_PROMPT,
+        systemPrompt: CARGO_INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,
         model: 'claude-opus-4-8',
-        schema: INTEL_SCHEMA,
+        schema: CARGO_INTEL_SCHEMA,
         maxTurns: 15,
         timeoutMs: 600_000,
         onProgress,
@@ -139,13 +150,12 @@ export async function runIntelStageNpm(
         throw new Error(`Agent failed: ${agentResult.errorMessage}`)
       }
 
-      // Persist symbol spec
       const output = agentResult.structuredOutput
       await blastRadiusDal.upsertSymbolSpec(qx, {
         analysisId,
         vulnId: osv.id || advisoryOsvId,
         aliases: osv.aliases || [],
-        package: package_,
+        package: crate,
         ecosystem,
         affectedRanges: ranges,
         vulnerableVersions,
@@ -160,10 +170,6 @@ export async function runIntelStageNpm(
         summary: String(output.summary || ''),
       })
 
-      // Resolve advisory_id and package_id (null if the package isn't in our DB yet —
-      // resolveAdvisoryAndPackageIds COALESCEs, so this never clobbers an existing value)
-      const { namespace, name } = parseNpmName(package_)
-      const packageId = await findPackageId(qx, { ecosystem, namespace, name })
       await blastRadiusDal.resolveAdvisoryAndPackageIds(qx, analysisId, advisoryOsvId, packageId)
 
       const duration = Date.now() - startTime

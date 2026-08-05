@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm', 'go', 'maven'] as const
+export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = ['npm', 'go', 'maven', 'cargo', 'nuget'] as const
 
 // Always exactly one job per request — advisory-wide (package omitted) or narrowed
 // to a single package. package accepts either a full purl or a bare package name,

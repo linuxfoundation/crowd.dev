@@ -2,7 +2,7 @@ import { ApplicationFailure } from '@temporalio/workflow'
 
 // Single source of truth for supported ecosystems — kept in this leaf, I/O-free file
 // (no activities/DAL imports) so the workflow bundle stays deterministic-safe.
-export const SUPPORTED_ECOSYSTEMS = ['npm', 'go', 'maven'] as const
+export const SUPPORTED_ECOSYSTEMS = ['npm', 'go', 'maven', 'cargo', 'nuget'] as const
 export type Ecosystem = (typeof SUPPORTED_ECOSYSTEMS)[number]
 
 // Pure so it's testable outside the workflow sandbox (Workflow.log/context calls
