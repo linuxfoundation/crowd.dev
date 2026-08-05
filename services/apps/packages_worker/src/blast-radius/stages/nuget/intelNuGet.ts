@@ -80,7 +80,13 @@ export async function runIntelStageNuGet(
     // ECOSYSTEM-typed, not SEMVER — same shape as Maven, see ecosystemVersions.ts).
     const ranges = ecosystemRangeEvents(entry)
 
-    const dbPackageId = await findPackageId(qx, { ecosystem, namespace: null, name: nugetId })
+    // deps.dev/nuget.org store packages.name in lowercase canonical form, but OSV
+    // publishes the developer-facing PascalCase spelling — lowercase to match.
+    const dbPackageId = await findPackageId(qx, {
+      ecosystem,
+      namespace: null,
+      name: nugetId.toLowerCase(),
+    })
 
     // The nuget.org registration index is the authoritative version list; fall back to
     // our own ingested `versions` rows (deps.dev) if the registry is unreachable/rate-limited
