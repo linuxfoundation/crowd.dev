@@ -63,7 +63,7 @@ export async function runIntelStageNpm(
     const requestedPackage = analysisDetail?.package_name
       ? toBareNpmName(analysisDetail.package_name)
       : null
-    const entry = selectAdvisoryEntry(
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       npmEntries,
       requestedPackage,
       (e) => e.package.name === requestedPackage,
@@ -71,9 +71,6 @@ export async function runIntelStageNpm(
     )
     const package_ = entry.package.name
     const ecosystem = entry.package.ecosystem
-    const relatedAffectedPackages = npmEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== package_)
 
     // Fetch the registry packument so vulnerable-version resolution runs against versions
     // npm actually published, not just the OSV range's introduced/fixed boundary strings —

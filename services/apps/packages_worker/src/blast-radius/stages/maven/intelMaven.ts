@@ -69,7 +69,7 @@ export async function runIntelStageMaven(
       ? toBareMavenCoordinate(analysisDetail.package_name)
       : null
     const requestedCoordinate = requested ? `${requested.groupId}:${requested.artifactId}` : null
-    const entry = selectAdvisoryEntry(
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       mavenEntries,
       requestedCoordinate,
       (e) => {
@@ -79,12 +79,9 @@ export async function runIntelStageMaven(
       advisoryOsvId,
     )
 
-    const { groupId, artifactId } = toBareMavenCoordinate(entry.package.name)
+    const { groupId, artifactId } = requested ?? toBareMavenCoordinate(entry.package.name)
     const coordinate = `${groupId}:${artifactId}`
     const ecosystem = 'maven'
-    const relatedAffectedPackages = mavenEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== entry.package.name)
 
     // Resolve vulnerable versions from OSV ranges first (Maven OSV ranges are
     // ECOSYSTEM-typed, not SEMVER — Maven versions don't follow semver ordering).

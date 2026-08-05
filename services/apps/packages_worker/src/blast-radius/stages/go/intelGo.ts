@@ -64,7 +64,7 @@ export async function runIntelStageGo(
     const requestedModule = analysisDetail?.package_name
       ? toBareGoModule(analysisDetail.package_name)
       : null
-    const entry = selectAdvisoryEntry(
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       goEntries,
       requestedModule,
       (e) => e.package.name === requestedModule,
@@ -72,9 +72,6 @@ export async function runIntelStageGo(
     )
     const module_ = entry.package.name
     const ecosystem = 'go'
-    const relatedAffectedPackages = goEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== module_)
 
     // Resolve vulnerable versions from OSV ranges first (Go OSV ranges are SEMVER-typed,
     // same event shape as npm's).
