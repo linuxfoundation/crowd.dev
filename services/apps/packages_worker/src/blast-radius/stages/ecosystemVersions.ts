@@ -3,10 +3,8 @@ import { OsvAffectedPackage } from '../clients/osvClient'
 
 import { compareNuGetVersion } from './nuget/nugetVersionCompare'
 
-// Shared by any ecosystem whose OSV advisories use ECOSYSTEM-typed ranges (ordered via
-// compareVersion(ecosystem, …) rather than node-semver) instead of SEMVER-typed ranges —
-// currently Maven and NuGet. Parameterized by ecosystem so the two don't duplicate this
-// logic; see mavenVersions.ts for the ecosystem-bound wrappers Maven's stage files import.
+// Shared range type for Maven and NuGet (ecosystems with ECOSYSTEM-typed OSV ranges).
+// Parameterized by ecosystem to avoid duplication; see mavenVersions.ts for wrappers.
 export interface EcosystemRange {
   introduced: string | null
   fixed: string | null

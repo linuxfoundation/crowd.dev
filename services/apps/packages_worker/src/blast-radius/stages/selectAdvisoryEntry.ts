@@ -13,30 +13,28 @@ export function selectAdvisoryEntry<T extends { package: { name: string } }>(
   matchesRequested: (entry: T) => boolean,
   advisoryOsvId: string,
 ): SelectedAdvisoryEntry<T> {
+  const affectedNames = entries.map((e) => e.package.name)
+
   // `!== null`, not truthiness — an empty string is still an explicit (if malformed)
   // request and must go through matching/rejection, not be treated as "none requested".
   if (requestedPackageName !== null) {
     const entry = entries.find(matchesRequested)
     if (!entry) {
-      const affectedNames = entries.map((e) => e.package.name).join(', ')
       throw ApplicationFailure.nonRetryable(
         `Requested package ${requestedPackageName} not found in advisory ${advisoryOsvId} ` +
-          `(affected: ${affectedNames})`,
+          `(affected: ${affectedNames.join(', ')})`,
         'ADVISORY_PACKAGE_NOT_FOUND',
       )
     }
     return {
       entry,
-      relatedAffectedPackages: entries
-        .map((e) => e.package.name)
-        .filter((name) => name !== entry.package.name),
+      relatedAffectedPackages: affectedNames.filter((name) => name !== entry.package.name),
     }
   }
 
   if (entries.length > 1) {
-    const affectedNames = entries.map((e) => e.package.name).join(', ')
     throw ApplicationFailure.nonRetryable(
-      `Advisory ${advisoryOsvId} affects ${entries.length} packages (${affectedNames}); ` +
+      `Advisory ${advisoryOsvId} affects ${entries.length} packages (${affectedNames.join(', ')}); ` +
         `advisory-wide analysis is not supported for multi-artifact advisories — specify one via 'package'`,
       'ADVISORY_MULTI_ARTIFACT_AMBIGUOUS',
     )

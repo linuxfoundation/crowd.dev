@@ -47,12 +47,8 @@ function codeloadTarballUrl(owner: string, repo: string, ref: string): string {
   return `https://codeload.github.com/${owner}/${repo}/tar.gz/${ref}`
 }
 
-// .nupkg ships compiled DLLs, not C# source (unlike Maven's -sources.jar), so source
-// must come from GitHub. Ordered candidates: the exact commit the nuspec <repository>
-// element records (most precise), then a couple of common version-tag conventions
-// against the same repo. Only GitHub repos are supported — GitLab/Bitbucket tarballs
-// don't share codeload's single-wrapper-directory layout that downloadAndExtractTarball
-// (strip: 1) relies on.
+// .nupkg has no source (unlike Maven's -sources.jar), so fetch from GitHub repo.
+// Try exact commit first, then common version-tag conventions.
 async function candidateSourceTarballUrls(packageId: string, version: string): Promise<string[]> {
   const nuspec = await fetchNuspec(packageId, version)
   if (isNuGetFetchError(nuspec)) return []
@@ -66,11 +62,14 @@ async function candidateSourceTarballUrls(packageId: string, version: string): P
   const ownerRepo = githubOwnerRepo(canonical.url)
   if (!ownerRepo) return []
 
-  const candidates: string[] = []
-  if (commit) candidates.push(codeloadTarballUrl(ownerRepo.owner, ownerRepo.repo, commit))
-  candidates.push(codeloadTarballUrl(ownerRepo.owner, ownerRepo.repo, `v${version}`))
-  candidates.push(codeloadTarballUrl(ownerRepo.owner, ownerRepo.repo, version))
-  return candidates
+  // An authoritative commit must never fall through to guessed tags, which could
+  // resolve to a different revision and produce a verdict from mismatched source.
+  if (commit) return [codeloadTarballUrl(ownerRepo.owner, ownerRepo.repo, commit)]
+
+  return [
+    codeloadTarballUrl(ownerRepo.owner, ownerRepo.repo, `v${version}`),
+    codeloadTarballUrl(ownerRepo.owner, ownerRepo.repo, version),
+  ]
 }
 
 export async function downloadAndExtractNuGetSource(

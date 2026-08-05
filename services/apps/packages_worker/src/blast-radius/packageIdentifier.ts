@@ -1,4 +1,3 @@
-// Strip query string and fragment from a purl or identifier string.
 function stripQueryAndFragment(input: string): string {
   const q = input.indexOf('?')
   const h = input.indexOf('#')
@@ -6,11 +5,8 @@ function stripQueryAndFragment(input: string): string {
   return cut === -1 ? input : input.slice(0, cut)
 }
 
-// The blast-radius submit endpoint accepts either a bare npm package name
-// ("lodash", "@babel/core") or a full purl ("pkg:npm/lodash", "pkg:npm/%40babel/core@4.17.21")
-// for the `package` field — see blastRadiusJobRequestSchema. OSV affected-package entries and
-// the npm registry only ever use bare names, so a purl must be reduced to that form before
-// it's compared against them (raw string equality otherwise never matches a purl input).
+// OSV/npm registry use bare names only, so purls must be normalized before comparison.
+// See blastRadiusJobRequestSchema for accepted formats.
 export function toBareNpmName(input: string): string {
   let name = input.trim()
 
