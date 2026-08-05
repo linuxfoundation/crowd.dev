@@ -27,7 +27,13 @@ function splitTopLevelCommas(s: string): string[] | null {
       if (depth === 0) {
         parts.push(s.slice(start, i + 1))
         start = i + 1
-        if (s[start] === ',') start++
+        if (start < s.length) {
+          // Exactly one comma must separate top-level intervals — no separator
+          // (e.g. "[1,2)[3,4)") and a trailing comma are both malformed.
+          if (s[start] !== ',') return null
+          start++
+          if (start >= s.length) return null
+        }
       }
     }
   }

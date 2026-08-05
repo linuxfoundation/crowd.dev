@@ -63,15 +63,17 @@ export async function runIntelStageNuGet(
     // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requestedId =
-      analysisDetail?.package_name !== undefined ? toBareNuGetId(analysisDetail.package_name) : null
+      analysisDetail?.package_name != null ? toBareNuGetId(analysisDetail.package_name) : null
+    // NuGet package IDs are case-insensitive; match case-insensitively but resolve
+    // to OSV's own canonical spelling below so the case-sensitive DB lookup succeeds.
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       nugetEntries,
       requestedId,
-      (e) => e.package.name === requestedId,
+      (e) => e.package.name.toLowerCase() === requestedId?.toLowerCase(),
       advisoryOsvId,
     )
 
-    const nugetId = requestedId ?? entry.package.name
+    const nugetId = entry.package.name
     const ecosystem = 'nuget'
 
     // Resolve vulnerable versions from OSV ranges first (NuGet OSV ranges are

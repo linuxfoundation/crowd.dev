@@ -56,7 +56,9 @@ function compareOrNull(ecosystem: string, a: string, b: string): number | null {
 // Unparseable bound → treated as NOT in range (unlike the constraint helpers' over-inclusive
 // stance — this only decides the vulnerable-version set, not dependent reachability).
 function isInRange(ecosystem: string, version: string, range: EcosystemRange): boolean {
-  if (range.introduced) {
+  // OSV defines introduced: "0" as "vulnerable from the beginning" — not a real version
+  // to parse/compare (see osv/deriveCriticalFlag.ts's identical special case).
+  if (range.introduced && range.introduced !== '0') {
     const c = compareOrNull(ecosystem, version, range.introduced)
     if (c === null || c < 0) return false
   }

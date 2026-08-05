@@ -54,6 +54,12 @@ describe('ecosystemVersions', () => {
       const ranges = [{ introduced: '---', fixed: null, lastAffected: null }]
       expect(versionsInRanges('nuget', versions, ranges)).toEqual([])
     })
+
+    it('treats introduced "0" as "from the beginning" instead of an unparseable bound', () => {
+      const versions = ['1.0.0', '1.5.0', '2.0.0']
+      const ranges = [{ introduced: '0', fixed: '2.0.0', lastAffected: null }]
+      expect(versionsInRanges('nuget', versions, ranges)).toEqual(['1.0.0', '1.5.0'])
+    })
   })
 
   describe('highestVersion', () => {

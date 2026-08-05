@@ -66,7 +66,7 @@ export async function runIntelStageMaven(
     // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requested =
-      analysisDetail?.package_name !== undefined
+      analysisDetail?.package_name != null
         ? toBareMavenCoordinate(analysisDetail.package_name)
         : null
     const requestedCoordinate = requested ? `${requested.groupId}:${requested.artifactId}` : null

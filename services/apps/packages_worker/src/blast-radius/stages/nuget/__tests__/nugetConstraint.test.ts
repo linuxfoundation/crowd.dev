@@ -82,4 +82,14 @@ describe('nugetConstraintMayInclude', () => {
       'unparseable-included',
     )
   })
+
+  it('conservatively includes adjacent intervals missing their comma separator', () => {
+    expect(nugetConstraintMayInclude('[1.0.0,2.0.0)[3.0.0,4.0.0)', ['3.5.0'])).toBe(
+      'unparseable-included',
+    )
+  })
+
+  it('conservatively includes a comma-separated union with a trailing comma', () => {
+    expect(nugetConstraintMayInclude('[1.0.0,2.0.0),', ['3.5.0'])).toBe('unparseable-included')
+  })
 })

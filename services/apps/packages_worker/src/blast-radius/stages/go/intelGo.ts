@@ -62,9 +62,7 @@ export async function runIntelStageGo(
     // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requestedModule =
-      analysisDetail?.package_name !== undefined
-        ? toBareGoModule(analysisDetail.package_name)
-        : null
+      analysisDetail?.package_name != null ? toBareGoModule(analysisDetail.package_name) : null
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       goEntries,
       requestedModule,
