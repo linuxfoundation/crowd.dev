@@ -67,10 +67,11 @@ export async function runIntelStageCargo(
     const requestedCrate = analysisDetail?.package_name
       ? toBareCargoName(analysisDetail.package_name)
       : null
+    const requestedCrateDbName = requestedCrate !== null ? toDbCargoName(requestedCrate) : null
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       cargoEntries,
       requestedCrate,
-      (e) => e.package.name === requestedCrate,
+      (e) => toDbCargoName(e.package.name) === requestedCrateDbName,
       advisoryOsvId,
     )
     const crate = entry.package.name
