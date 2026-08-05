@@ -76,6 +76,7 @@ export async function downloadAndExtractNuGetSource(
   packageId: string,
   version: string,
   destDir: string,
+  onProgress?: () => void,
 ): Promise<void> {
   const candidates = await candidateSourceTarballUrls(packageId, version)
   if (candidates.length === 0) {
@@ -84,6 +85,10 @@ export async function downloadAndExtractNuGetSource(
 
   let lastErr: unknown
   for (const url of candidates) {
+    // Some GitHub repos backing a NuGet package are monorepos (e.g. dotnet/runtime),
+    // so the tarball fetched here is the whole repo, not just this package — heartbeat
+    // periodically or a slow-but-completing download can trip the activity's heartbeat timeout.
+    const heartbeatInterval = onProgress ? setInterval(onProgress, 60_000) : null
     try {
       // Clear between attempts — a prior candidate's partial extraction (e.g. hit an
       // extraction limit mid-stream) must not leave stale files a later candidate builds on.
@@ -92,6 +97,8 @@ export async function downloadAndExtractNuGetSource(
       return
     } catch (err) {
       lastErr = err
+    } finally {
+      if (heartbeatInterval) clearInterval(heartbeatInterval)
     }
   }
 

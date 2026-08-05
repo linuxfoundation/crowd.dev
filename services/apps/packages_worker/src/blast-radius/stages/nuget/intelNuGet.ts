@@ -108,7 +108,7 @@ export async function runIntelStageNuGet(
     const patches: Record<string, string> = {}
 
     try {
-      await downloadAndExtractNuGetSource(nugetId, analyzed, pkgsrcDir)
+      await downloadAndExtractNuGetSource(nugetId, analyzed, pkgsrcDir, onProgress)
 
       const patchUrls = fixReferenceUrls(osv)
       for (const url of patchUrls.slice(0, 3)) {
