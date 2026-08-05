@@ -16,6 +16,9 @@ import { mavenReachabilityConfig } from '../maven/reachabilityConfig'
 import { runDependentsStageNpm } from '../npm/dependentsNpm'
 import { runIntelStageNpm } from '../npm/intelNpm'
 import { npmReachabilityConfig } from '../npm/reachabilityConfig'
+import { runDependentsStageNuGet } from '../nuget/dependentsNuGet'
+import { runIntelStageNuGet } from '../nuget/intelNuGet'
+import { nugetReachabilityConfig } from '../nuget/reachabilityConfig'
 import { runReachabilityStage } from '../reachability'
 import { runReachabilityStage as runReachabilityStageWithConfig } from '../reachabilityStage'
 
@@ -30,6 +33,9 @@ vi.mock('../maven/intelMaven', () => ({
 vi.mock('../cargo/intelCargo', () => ({
   runIntelStageCargo: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('../nuget/intelNuGet', () => ({
+  runIntelStageNuGet: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../go/dependentsGo', () => ({
   runDependentsStageGo: vi.fn().mockResolvedValue(undefined),
 }))
@@ -41,6 +47,9 @@ vi.mock('../maven/dependentsMaven', () => ({
 }))
 vi.mock('../cargo/dependentsCargo', () => ({
   runDependentsStageCargo: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../nuget/dependentsNuGet', () => ({
+  runDependentsStageNuGet: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../reachabilityStage', () => ({
   runReachabilityStage: vi.fn().mockResolvedValue(undefined),
@@ -89,12 +98,22 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
     expect(runIntelStageMaven).not.toHaveBeenCalled()
   })
 
+  it('routes intel to the NuGet body when ecosystem is nuget', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'nuget' } as never)
+    await runIntelStage(qx, 'analysis-1', 'GHSA-xxxx', undefined)
+    expect(runIntelStageNuGet).toHaveBeenCalledWith(qx, 'analysis-1', 'GHSA-xxxx', undefined)
+    expect(runIntelStageGo).not.toHaveBeenCalled()
+    expect(runIntelStageNpm).not.toHaveBeenCalled()
+    expect(runIntelStageMaven).not.toHaveBeenCalled()
+  })
+
   it('routes intel to the npm body when ecosystem is missing/unknown', async () => {
     mockGetAnalysisDetail.mockResolvedValue(null)
     await runIntelStage(qx, 'analysis-1', 'GHSA-xxxx', undefined)
     expect(runIntelStageNpm).toHaveBeenCalled()
     expect(runIntelStageGo).not.toHaveBeenCalled()
     expect(runIntelStageMaven).not.toHaveBeenCalled()
+    expect(runIntelStageNuGet).not.toHaveBeenCalled()
   })
 
   it('routes dependents to the Go body when ecosystem is go', async () => {
@@ -122,12 +141,22 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
     expect(runDependentsStageMaven).not.toHaveBeenCalled()
   })
 
+  it('routes dependents to the NuGet body when ecosystem is nuget', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'nuget' } as never)
+    await runDependentsStage(qx, 'analysis-1', undefined, undefined)
+    expect(runDependentsStageNuGet).toHaveBeenCalled()
+    expect(runDependentsStageGo).not.toHaveBeenCalled()
+    expect(runDependentsStageNpm).not.toHaveBeenCalled()
+    expect(runDependentsStageMaven).not.toHaveBeenCalled()
+  })
+
   it('routes dependents to the npm body for npm/unknown ecosystems', async () => {
     mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'npm' } as never)
     await runDependentsStage(qx, 'analysis-1', undefined, undefined)
     expect(runDependentsStageNpm).toHaveBeenCalled()
     expect(runDependentsStageGo).not.toHaveBeenCalled()
     expect(runDependentsStageMaven).not.toHaveBeenCalled()
+    expect(runDependentsStageNuGet).not.toHaveBeenCalled()
   })
 
   it('routes reachability to the Go config when ecosystem is go', async () => {
@@ -159,6 +188,17 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
       qx,
       'analysis-1',
       cargoReachabilityConfig,
+      undefined,
+    )
+  })
+
+  it('routes reachability to the NuGet config when ecosystem is nuget', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'nuget' } as never)
+    await runReachabilityStage(qx, 'analysis-1', undefined)
+    expect(mockRunReachabilityStageWithConfig).toHaveBeenCalledWith(
+      qx,
+      'analysis-1',
+      nugetReachabilityConfig,
       undefined,
     )
   })

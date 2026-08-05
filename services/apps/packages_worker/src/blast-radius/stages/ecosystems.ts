@@ -14,6 +14,9 @@ import { mavenReachabilityConfig } from './maven/reachabilityConfig'
 import { runDependentsStageNpm } from './npm/dependentsNpm'
 import { runIntelStageNpm } from './npm/intelNpm'
 import { npmReachabilityConfig } from './npm/reachabilityConfig'
+import { runDependentsStageNuGet } from './nuget/dependentsNuGet'
+import { runIntelStageNuGet } from './nuget/intelNuGet'
+import { nugetReachabilityConfig } from './nuget/reachabilityConfig'
 import { ReachabilitySourceConfig } from './reachabilityStage'
 
 // Replaces the 3 scattered `if (ecosystem === 'go')` dispatch branches. Record<Ecosystem, …>
@@ -54,6 +57,11 @@ const ECOSYSTEMS: Record<Ecosystem, EcosystemConfig> = {
     runIntel: runIntelStageCargo,
     runDependents: runDependentsStageCargo,
     reachability: cargoReachabilityConfig,
+  },
+  nuget: {
+    runIntel: runIntelStageNuGet,
+    runDependents: runDependentsStageNuGet,
+    reachability: nugetReachabilityConfig,
   },
 }
 

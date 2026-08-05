@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toBareNpmName, toDbCargoName } from '../packageIdentifier'
+import { toBareNpmName, toBareNuGetId, toDbCargoName } from '../packageIdentifier'
 
 describe('toBareNpmName', () => {
   it('returns a bare name unchanged', () => {
@@ -43,5 +43,29 @@ describe('toDbCargoName', () => {
 
   it('lowercases mixed-case names', () => {
     expect(toDbCargoName('Actix-Web')).toBe('actix_web')
+  })
+})
+
+describe('toBareNuGetId', () => {
+  it('returns a bare id unchanged, preserving casing', () => {
+    expect(toBareNuGetId('Newtonsoft.Json')).toBe('Newtonsoft.Json')
+  })
+
+  it('strips the pkg:nuget/ prefix', () => {
+    expect(toBareNuGetId('pkg:nuget/Newtonsoft.Json')).toBe('Newtonsoft.Json')
+  })
+
+  it('strips a trailing version', () => {
+    expect(toBareNuGetId('pkg:nuget/Newtonsoft.Json@13.0.1')).toBe('Newtonsoft.Json')
+  })
+
+  it('strips qualifiers and subpath', () => {
+    expect(toBareNuGetId('pkg:nuget/Newtonsoft.Json@13.0.1?foo=bar#sub')).toBe('Newtonsoft.Json')
+  })
+
+  it('does not lowercase the id — DB lookups are case-sensitive', () => {
+    expect(toBareNuGetId('pkg:nuget/Microsoft.AspNetCore.Mvc@2.2.0')).toBe(
+      'Microsoft.AspNetCore.Mvc',
+    )
   })
 })

@@ -60,7 +60,8 @@ function mergeDuplicatePackageEntries(entries: OsvAffectedPackage[]): OsvAffecte
   const merged = new Map<string, OsvAffectedPackage>()
 
   for (const entry of entries) {
-    const key = `${entry.package.ecosystem}|${entry.package.name}`
+    // All entries share same ecosystem (filtered upstream), so just use package name as key.
+    const key = entry.package.name
     const existing = merged.get(key)
     if (!existing) {
       merged.set(key, {
@@ -71,8 +72,8 @@ function mergeDuplicatePackageEntries(entries: OsvAffectedPackage[]): OsvAffecte
       continue
     }
     if (entry.ranges) {
-      const seen = new Set((existing.ranges ?? []).map((r) => JSON.stringify(r)))
-      const newRanges = entry.ranges.filter((r) => !seen.has(JSON.stringify(r)))
+      const existingRangeStrs = new Set((existing.ranges ?? []).map((r) => JSON.stringify(r)))
+      const newRanges = entry.ranges.filter((r) => !existingRangeStrs.has(JSON.stringify(r)))
       existing.ranges = [...(existing.ranges ?? []), ...newRanges]
     }
     if (entry.versions) {

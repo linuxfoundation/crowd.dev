@@ -60,9 +60,8 @@ export async function runIntelStageNpm(
     // Requested package may be a bare name or full purl; OSV entries are always bare
     // names, so normalize before comparing (see selectAdvisoryEntry for rejection rules).
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requestedPackage = analysisDetail?.package_name
-      ? toBareNpmName(analysisDetail.package_name)
-      : null
+    const requestedPackage =
+      analysisDetail?.package_name !== undefined ? toBareNpmName(analysisDetail.package_name) : null
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       npmEntries,
       requestedPackage,
