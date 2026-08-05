@@ -20,11 +20,8 @@ import {
   snapshotPackagistDirectEdges,
 } from './transitiveDependents'
 
-// Integration test: hits the running packages-db, DESTRUCTIVELY; it drops and rebuilds
-// the production-named staging.packagist_transitive_* tables, which would break a live
-// transitive drain on a shared DB. Credentials alone are therefore not enough to run it:
-// it also requires the explicit CROWD_PACKAGES_TESTS_DESTRUCTIVE=1 opt-in. Skipped
-// automatically otherwise so unit-test runs in CI stay green.
+// DESTRUCTIVE: drops and rebuilds the live staging tables, so DB credentials alone
+// never run it; requires the explicit CROWD_PACKAGES_TESTS_DESTRUCTIVE=1 opt-in.
 const DESTRUCTIVE_OPT_IN = process.env.CROWD_PACKAGES_TESTS_DESTRUCTIVE === '1'
 const HAVE_DB =
   !!process.env.CROWD_PACKAGES_DB_WRITE_HOST &&
@@ -36,18 +33,9 @@ const HAVE_DB =
 const FIXTURE_TAG = 'fable-transitive-dependents-fixture'
 const VENDOR = 'fable-tdx'
 
-// The packagist reverse transitive closure: collapse version-level direct edges to
-// package-level pairs (snapshot), compute per-package transitive dependent counts
-// (closure), merge them into packages.transitive_dependent_count (merge).
-//
-// Fixture graph (dep → subj means "dep depends on subj"):
-//   collapse:  col-a v1 → col-x, col-a v2 → col-x (dedup), col-a v1 → col-dev (dev kind),
-//              col-self → col-self (self), n1 → n2 (npm)
-//   chain:     c1 → c2 → c3                        (c3: 1 transitive)
-//   diamond:   d1 → {d2,d3}, {d2,d3} → d4          (d4: 1 transitive - d1 counted once)
-//   cycle:     y1 → y2, y2 → y1, y3 → y1           (y2: 1 transitive - y3 through the cycle)
-//   multipath: x1 → x3, x1 → x2, x2 → x3           (x3: 0 - x1 is direct, not double-counted)
-//   leaf:      no edges at all                     (merge zero-fills 0)
+// Snapshot → closure → merge over a fixture graph: chain c1→c2→c3, diamond
+// d1→{d2,d3}→d4, cycle y1↔y2 plus y3→y1, multipath x1→x3/x1→x2→x3, collapse
+// dedup/dev/self/npm cases, and a leaf.
 describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
   'packagist transitive dependents — real packages-db',
   () => {
@@ -273,9 +261,8 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
     describe('closure + merge — fixture-only edge set', () => {
       let packagesWithDependents: number
 
-      // Rebuild the snapshot table with ONLY the fixture's package-level pairs so the
-      // closure output is fully deterministic (the snapshot suite above owns testing the
-      // collapse itself; this suite owns the closure/merge arithmetic).
+      // Fixture-only pairs make the closure output deterministic; the snapshot suite
+      // owns collapse testing, this suite owns closure/merge arithmetic.
       beforeAll(async () => {
         await qx.result(`DROP TABLE IF EXISTS staging.packagist_transitive_edges`)
         await qx.result(
@@ -394,9 +381,8 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
         expect(BigInt(second.nextCursor)).toBeGreaterThan(BigInt(first.nextCursor))
       })
 
-      // Last on purpose: it empties the counts table the earlier cases depend on. The
-      // UNLOGGED staging table is truncated by crash recovery, and the zero-fill merge
-      // would otherwise read that as "every package is a leaf" and wipe real counts.
+      // Last on purpose: it empties the counts table earlier cases depend on. Crash
+      // recovery truncates UNLOGGED tables; zero-fill would then wipe real counts.
       it('refuses to merge when the counts staging table is empty', async () => {
         await qx.result(`TRUNCATE staging.packagist_transitive_counts`)
 

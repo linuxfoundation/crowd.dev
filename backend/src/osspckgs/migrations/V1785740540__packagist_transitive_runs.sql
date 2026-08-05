@@ -1,11 +1,5 @@
--- Packagist transitive-dependents lane: run-level state ledger.
---
--- The lane is a whole-ecosystem batch (snapshot → closure → keyset merge), so its
--- natural unit of record is a run
---
--- One row per run (weekly cadence + manual triggers). A 'pending' row is reused
--- across Temporal retries of the prepare activity; 'merging' rows either finish
--- ('done') or are marked 'failed' by the workflow's terminal error handling.
+-- Run ledger for the packagist transitive-dependents lane: one row per run;
+-- prepare retries reuse 'pending', and 'merging' rows end 'done' or 'failed'.
 CREATE TABLE packagist_transitive_runs (
   id                        serial      PRIMARY KEY,
   status                    text        NOT NULL DEFAULT 'pending'

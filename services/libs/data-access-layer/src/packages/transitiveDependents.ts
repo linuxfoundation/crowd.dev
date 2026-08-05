@@ -17,10 +17,8 @@ export class EmptyPackagistTransitiveCountsError extends Error {
   }
 }
 
-// Shared scaffold for the two staging builders. The CTAS command tag already carries the
-// row count, so no separate COUNT(*) rescan is needed. ANALYZE matters: a just-created
-// table has no pg_statistic rows, and both consumers (the recursive closure, the 45-odd
-// merge-batch joins) would otherwise plan against default selectivity guesses.
+// The CTAS command tag already carries the row count. ANALYZE matters: a fresh
+// table has no pg_statistic rows, so consumers would plan on default selectivity.
 async function rebuildStagingTable(
   qx: QueryExecutor,
   table: string,
@@ -40,11 +38,8 @@ async function rebuildStagingTable(
   })
 }
 
-// Collapses version-level direct requires into distinct package-level pairs.
-// dep = requirer, subj = depended-upon; same naming as the GO closure script in
-// packages_worker/src/deps-dev/queries/dependentCountsSql.ts.
-// The only query here that touches the ~1.5B-row package_dependencies table; package_id
-// has no index, so this is a deliberate weekly parallel seq scan.
+// dep = requirer, subj = depended-upon (GO closure script naming). package_id has
+// no index on the ~1.5B-row table; the weekly seq scan is deliberate.
 export async function snapshotPackagistDirectEdges(qx: QueryExecutor): Promise<number> {
   return rebuildStagingTable(
     qx,
@@ -60,9 +55,8 @@ export async function snapshotPackagistDirectEdges(qx: QueryExecutor): Promise<n
   )
 }
 
-// Reverse transitive closure over the snapshot: one row per package with ≥1 dependent,
-// transitive = distinct reach minus distinct direct. The snapshot excludes self-edges,
-// but cycles re-introduce (subj, subj) pairs in reach, hence the dep != subj filter.
+// One row per package with ≥1 dependent; transitive = reach minus direct. Cycles
+// re-introduce (subj, subj) pairs, hence the dep != subj filter.
 export async function computePackagistTransitiveCounts(qx: QueryExecutor): Promise<number> {
   return rebuildStagingTable(
     qx,
@@ -83,19 +77,15 @@ export async function computePackagistTransitiveCounts(qx: QueryExecutor): Promi
   )
 }
 
-// One keyset batch of packagist package ids merged from the counts staging table.
-// COALESCE zero-fills packages with no dependents ("computed, none" vs NULL "never
-// computed"); IS DISTINCT FROM keeps re-runs churn-free for Sequin/Tinybird. An empty
-// afterId means "from the start" so first-generation callers don't need a sentinel.
+// COALESCE zero-fills dependent-less packages ("computed, none" vs NULL "never
+// computed"); IS DISTINCT FROM keeps re-runs churn-free. Empty afterId means "from the start".
 export async function mergePackagistTransitiveCounts(
   qx: QueryExecutor,
   afterId: string,
   limit: number,
 ): Promise<PackagistTransitiveMergeResult> {
-  // The zero-fill makes an empty counts table indistinguishable from "every package is
-  // a leaf", and the table is UNLOGGED, so a crash-recovery truncation mid-drain would
-  // otherwise silently wipe every remaining count. A non-empty closure output is
-  // guaranteed by prepare's own empty-snapshot abort, so empty here is always an error.
+  // An empty counts table reads as "all leaves", and UNLOGGED tables truncate on
+  // crash recovery; prepare guarantees non-empty output, so empty is always an error.
   const guard = await qx.selectOne(
     `SELECT EXISTS (SELECT 1 FROM staging.packagist_transitive_counts) AS populated`,
   )

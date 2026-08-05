@@ -30,9 +30,8 @@ Examples:
 const TARGETS = ['seed', 'metadata', 'downloads-30d', 'downloads-daily', 'transitive'] as const
 type Target = (typeof TARGETS)[number]
 
-// seed is dispatched separately (no state arg); Record keys keep this exhaustive: a
-// target added to TARGETS without a mapping fails to compile instead of silently
-// starting the wrong workflow.
+// Record keys keep dispatch exhaustive: a target without a mapping fails to
+// compile. seed dispatches separately (no state arg).
 const WORKFLOWS: Record<Exclude<Target, 'seed'>, (state?: object) => Promise<void>> = {
   metadata: ingestPackagistMetadata,
   'downloads-30d': ingestPackagistDownloads30d,
@@ -72,9 +71,8 @@ async function main(): Promise<void> {
     return
   }
 
-  // The transitive drain must be single-instance: it drops and rebuilds global staging
-  // tables, so a manual run racing the chained weekly drain would corrupt the merge.
-  // Reusing the chained drain's fixed workflow id makes Temporal reject the overlap.
+  // The drain drops shared staging tables; reusing the chained drain's fixed
+  // workflow id lets Temporal reject an overlapping manual start.
   const workflowId =
     target === 'transitive' ? 'packagist-transitive-drain' : `packagist-${target}-manual-${now}`
 

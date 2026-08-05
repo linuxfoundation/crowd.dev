@@ -59,8 +59,7 @@ export interface MarkJobStatusFields {
   exportName?: string
 }
 
-// Returns the newest pending job id for the kind, so a retried activity can reuse the
-// row from its prior attempt instead of creating a duplicate.
+// Newest pending job id for the kind, so a retried activity reuses its prior row.
 export async function findPendingJobByKind(
   qx: QueryExecutor,
   jobKind: OsspckgsJobKind,

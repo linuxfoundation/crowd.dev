@@ -1,9 +1,7 @@
 import { QueryExecutor } from '../queryExecutor'
 
-// Run-level ledger for the packagist transitive-dependents lane (one row per run).
-// The lane is a whole-ecosystem batch, so (unlike the per-purl watermarks in
-// packagist_package_state) its state is a run lifecycle:
-// pending → merging → done | failed.
+// Run-level ledger for the packagist transitive lane, one row per run:
+// pending → merging → done | failed. A whole-ecosystem batch has no per-purl outcomes.
 
 export async function createPackagistTransitiveRun(qx: QueryExecutor): Promise<number> {
   const row = await qx.selectOne(
@@ -12,11 +10,8 @@ export async function createPackagistTransitiveRun(qx: QueryExecutor): Promise<n
   return row.id
 }
 
-// Newest unfinished run ('pending' OR 'merging'): a Temporal retry of the prepare
-// activity must adopt the row it may have already marked merging (the activity's
-// completion can be lost after the DB commit) instead of minting a duplicate and
-// stranding the original. Safe because the fixed workflow id keeps the lane
-// single-instance, so an unfinished row always belongs to this logical run.
+// A prepare retry must adopt the row it may have already marked 'merging'
+// (completion can be lost post-commit) instead of minting a stranded duplicate.
 export async function findUnfinishedPackagistTransitiveRun(
   qx: QueryExecutor,
 ): Promise<number | null> {

@@ -492,9 +492,8 @@ export async function getCriticalPackagistCount(): Promise<number> {
   return getCriticalPackagistPackageCount(qx)
 }
 
-// The heavy phase of the transitive lane: snapshot the direct edges, run the closure,
-// leave the run in 'merging' for the keyset drain that follows. The graph sizes land
-// on the run row; the workflow only needs the id.
+// Snapshot the edges, run the closure, leave the run 'merging' for the keyset
+// drain; graph sizes land on the run row.
 export async function preparePackagistTransitiveCounts(): Promise<{ runId: number }> {
   const qx = await getPackagesDb()
 

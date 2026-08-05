@@ -146,10 +146,8 @@ const chainTransitiveDrain = (): Promise<void> =>
 
 const TRANSITIVE_BACKSTOP_FRESH_DAYS = 6
 
-// Clock-based safety net for the event chain: a broken seed or metadata drain means no
-// chain fired this week, so start the closure anyway instead of letting counts go stale.
-// Ledger-gated (a healthy week costs no second scan) and routed through the fixed
-// workflow id, so it can never race a live drain.
+// Safety net for weeks where the seed→metadata chain broke: ledger-gated (healthy
+// weeks skip) and routed through the fixed workflow id, so it never races drains.
 export async function backstopPackagistTransitiveDrain(): Promise<void> {
   if (await acts.packagistTransitiveRanRecently(TRANSITIVE_BACKSTOP_FRESH_DAYS)) return
   // A mid-crawl metadata drain will chain the closure itself on completion; starting it
