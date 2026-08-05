@@ -1,9 +1,7 @@
 import { getSecurityContactsConfig } from '../../config'
 import { FetchError } from '../../go/types'
 
-// crates.io API client for blast-radius's per-crate needs — separate from the bulk
-// db-dump worker in ../../cargo/ (that ingests the full registry, this fetches one
-// crate at a time). Mirrors go/proxyClient.ts's 429-retry/backoff shape.
+// crates.io API client for blast-radius; mirrors go/proxyClient.ts's retry/backoff shape.
 
 const API_BASE = process.env.CRATES_IO_BASE_URL ?? 'https://crates.io'
 const STATIC_BASE = process.env.CRATES_STATIC_BASE_URL ?? 'https://static.crates.io'
@@ -55,9 +53,7 @@ async function getWithRetry(url: string, timeoutMs: number): Promise<Response | 
   return { kind: 'RATE_LIMIT', statusCode: 429, message: '429 after retries' }
 }
 
-// GET /api/v1/crates/{name}/versions — returns every published version, including
-// yanked ones (a yanked version can still be installed/vulnerable, so it must stay
-// in the candidate pool for vulnerable-version resolution).
+// GET /api/v1/crates/{name}/versions — includes yanked versions (still installable/vulnerable).
 export async function fetchCrateVersions(
   name: string,
   timeoutMs: number,
@@ -80,9 +76,7 @@ export async function fetchCrateVersions(
   return body.versions.map((v) => v.num).filter((num): num is string => Boolean(num))
 }
 
-// GET /api/v1/crates/{name} — single lightweight call for just the newest version,
-// avoiding a full /versions fetch (hundreds of entries for popular crates) when only
-// the latest is needed.
+// GET /api/v1/crates/{name} — lightweight call for latest version (avoids full list).
 export async function fetchCrateLatestVersion(
   name: string,
   timeoutMs: number,
@@ -99,7 +93,7 @@ export async function fetchCrateLatestVersion(
     return { kind: 'MALFORMED', message: 'invalid json' }
   }
   const version = body.crate?.newest_version ?? body.crate?.max_version
-  if (!version) {
+  if (version === undefined || version === null) {
     return { kind: 'MALFORMED', message: 'missing crate.newest_version' }
   }
 

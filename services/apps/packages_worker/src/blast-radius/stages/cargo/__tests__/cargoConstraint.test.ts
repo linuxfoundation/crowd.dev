@@ -31,7 +31,9 @@ describe('cargoConstraintMayInclude', () => {
 
   it('treats a bare prerelease version as caret, not an exact pin', () => {
     expect(cargoConstraintMayInclude('1.2.0-alpha.1', ['1.2.0-alpha.1'])).toBe('matched')
-    expect(cargoConstraintMayInclude('1.2.0-alpha.1', ['1.2.4-alpha.2'])).toBe('matched')
+    expect(cargoConstraintMayInclude('1.2.0-alpha.1', ['1.2.0-beta.1'])).toBe('matched')
+    expect(cargoConstraintMayInclude('1.2.0-alpha.1', ['1.2.4-alpha.2'])).toBe('excluded')
+    expect(cargoConstraintMayInclude('1.2.0-alpha.1', ['1.3.0'])).toBe('matched')
     expect(cargoConstraintMayInclude('1.2.0-alpha.1', ['2.0.0'])).toBe('excluded')
   })
 

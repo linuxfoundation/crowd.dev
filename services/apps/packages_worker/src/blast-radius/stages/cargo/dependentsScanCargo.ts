@@ -13,6 +13,7 @@ export async function scanCargoDependents(
   vulnerablePackageId: string,
   vulnerableVersions: string[],
   topN: number,
+  relatedAffectedPackages?: string[],
 ): Promise<ScanDependentsResult> {
   if (vulnerableVersions.length === 0) {
     return {
@@ -28,14 +29,20 @@ export async function scanCargoDependents(
   // still visible for diagnostics, same pattern as npm's scanLimit.
   const scanLimit = Math.max(topN * 8, 200)
   const rows = await getReverseDependents(qx, vulnerablePackageId, 'cargo', scanLimit)
+  const relatedPackageNames = new Set(relatedAffectedPackages || [])
 
-  const candidates: DependentCandidate[] = rows.map((row) => {
+  const included: DependentCandidate[] = []
+  const excluded: DependentCandidate[] = []
+
+  for (const row of rows) {
+    if (relatedPackageNames.has(row.name)) continue
+
     const rangeCheck = cargoDependencyMayIncludeVuln(
-      row.versionNumber,
+      row.resolvedVersionNumber,
       row.versionConstraint,
       vulnerableVersions,
     )
-    return {
+    const candidate: DependentCandidate = {
       name: row.name,
       version: row.versionNumber,
       downloads: row.dependentReposCount ?? row.dependentCount ?? null,
@@ -45,14 +52,16 @@ export async function scanCargoDependents(
       rangeCheck,
       tarballUrl: null,
     }
-  })
-
-  const included = candidates.filter((c) => c.rangeIncludesVuln)
-  const excluded = candidates.filter((c) => !c.rangeIncludesVuln)
+    if (candidate.rangeIncludesVuln) {
+      included.push(candidate)
+    } else {
+      excluded.push(candidate)
+    }
+  }
 
   return {
     source: 'package_dependencies',
-    candidatesConsidered: candidates.length,
+    candidatesConsidered: included.length + excluded.length,
     analyzed: included.slice(0, topN),
     excludedByRange: excluded.slice(0, 200),
     excludedByRangeCount: excluded.length,

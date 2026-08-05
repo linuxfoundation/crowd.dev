@@ -40,10 +40,8 @@ export async function runDependentsStageCargo(
     }
 
     const vulnerableVersions = (spec.vulnerable_versions || []) as string[]
+    const relatedAffectedPackages = (spec.related_affected_packages || []) as string[]
 
-    // Heartbeat before the scan starts, not just after it completes — the scan is a
-    // single DB round trip that could otherwise run past the activity's heartbeat
-    // timeout with no heartbeat sent in between.
     onProgress?.()
 
     const scanResult = await scanCargoDependents(
@@ -51,6 +49,7 @@ export async function runDependentsStageCargo(
       String(analysis.package_id),
       vulnerableVersions,
       25,
+      relatedAffectedPackages,
     )
 
     if (signal?.aborted) {

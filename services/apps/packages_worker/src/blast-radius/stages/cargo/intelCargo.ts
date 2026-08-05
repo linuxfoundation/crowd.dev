@@ -40,9 +40,8 @@ export async function runIntelStageCargo(
   const startTime = Date.now()
 
   try {
-    // Check if already done. Guard on the stage_run's own status rather than symbol-spec
-    // presence — a crash between upsertSymbolSpec and completeStageRun would otherwise
-    // leave the stage_run stuck failed/running forever while retries skip past it.
+    // Guard on stage_run status to avoid stuck failed/running state if intel crashes
+    // between upsertSymbolSpec and completeStageRun.
     const existingStatus = await blastRadiusDal.getStageRunStatus(qx, analysisId, 'intel')
     if (existingStatus === 'succeeded') {
       return
@@ -68,7 +67,7 @@ export async function runIntelStageCargo(
     const requestedCrate = analysisDetail?.package_name
       ? toBareCargoName(analysisDetail.package_name)
       : null
-    const entry = selectAdvisoryEntry(
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       cargoEntries,
       requestedCrate,
       (e) => e.package.name === requestedCrate,
@@ -76,9 +75,6 @@ export async function runIntelStageCargo(
     )
     const crate = entry.package.name
     const ecosystem = 'cargo'
-    const relatedAffectedPackages = cargoEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== crate)
 
     // Resolve vulnerable versions from OSV ranges first (crates.io OSV ranges are
     // SEMVER-typed, same event shape as npm's/Go's).
@@ -86,9 +82,7 @@ export async function runIntelStageCargo(
 
     const packageId = await findPackageId(qx, { ecosystem, namespace: null, name: crate })
 
-    // crates.io's own version list is authoritative; fall back to our own ingested
-    // `versions` rows (deps.dev) if crates.io is unreachable/rate-limited and the crate
-    // is already known to us.
+    // Use crates.io version list; fall back to our DB if unreachable and crate is known.
     const versionListResult = await fetchCrateVersions(crate, CRATES_IO_FETCH_TIMEOUT_MS)
     let allVersions: string[]
     if (Array.isArray(versionListResult)) {
@@ -115,15 +109,18 @@ export async function runIntelStageCargo(
       await downloadAndExtractTarball(crateSourceUrl(crate, analyzed), pkgsrcDir)
 
       const patchUrls = fixReferenceUrls(osv)
-      for (const url of patchUrls.slice(0, 3)) {
-        try {
+      const patchResults = await Promise.allSettled(
+        patchUrls.slice(0, 3).map(async (url) => {
           const patchText = await fetchPatch(url)
           const slug = new URL(url).pathname.split('/').filter(Boolean).join('-')
-          patches[slug] = patchText
-        } catch {
-          // Ignore patch fetch errors
+          return { slug, patchText }
+        }),
+      )
+      patchResults.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          patches[result.value.slug] = result.value.patchText
         }
-      }
+      })
 
       const agentPrompt = buildCargoIntelPrompt(
         osv.id || advisoryOsvId,
