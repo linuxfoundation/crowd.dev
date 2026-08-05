@@ -512,7 +512,7 @@ export async function preparePackagistTransitiveCounts(): Promise<{ runId: numbe
   try {
     const edgeCount = await snapshotPackagistDirectEdges(qx)
     if (edgeCount === 0) {
-      // A genuinely empty graph means upstream ingestion is broken — retrying won't help.
+      // A genuinely empty graph means upstream ingestion is broken; retrying won't help.
       throw ApplicationFailure.nonRetryable(
         'no packagist direct edges found — snapshot produced an empty graph',
       )
@@ -524,7 +524,7 @@ export async function preparePackagistTransitiveCounts(): Promise<{ runId: numbe
   } catch (err) {
     const nonRetryable = err instanceof ApplicationFailure && err.nonRetryable
     if (nonRetryable || activityAttempt() >= TRANSITIVE_PREPARE_MAX_ATTEMPTS) {
-      // Best-effort: a failing ledger write must never replace the original error —
+      // Best-effort: a failing ledger write must never replace the original error;
       // that would turn a non-retryable abort into a retryable one.
       try {
         await failRunInLedger(qx, runId, (err as Error).message)
@@ -546,7 +546,7 @@ export async function mergePackagistTransitiveBatch(
   try {
     return await mergePackagistTransitiveCounts(qx, afterId, limit)
   } catch (err) {
-    // An empty counts table cannot heal by retrying — fail fast so the workflow
+    // An empty counts table cannot heal by retrying; fail fast so the workflow
     // fail-marks the run instead of burning the retry schedule against it.
     if (err instanceof EmptyPackagistTransitiveCountsError) {
       throw ApplicationFailure.nonRetryable(err.message)
@@ -563,7 +563,7 @@ export async function finishPackagistTransitiveRun(
   await finishRunInLedger(qx, runId, totals)
 }
 
-// Terminal failure marking for the merge phase — called from the workflow's catch so a
+// Terminal failure marking for the merge phase, called from the workflow's catch so a
 // permanently failed drain reads 'failed' instead of sitting in 'merging' forever.
 export async function packagistTransitiveRanRecently(withinDays: number): Promise<boolean> {
   const qx = await getPackagesDb()

@@ -280,7 +280,7 @@ describe('computePackagistTransitiveDependents — workflow', () => {
     await computePackagistTransitiveDependents({})
 
     expect(h.acts.finishPackagistTransitiveRun).not.toHaveBeenCalled()
-    // Pin the cap itself — deriving expectations from the observed call count would
+    // Pin the cap itself; deriving expectations from the observed call count would
     // stay green for any (broken) number of rounds.
     expect(h.acts.mergePackagistTransitiveBatch).toHaveBeenCalledTimes(ROUNDS_PER_RUN)
     expect(h.continueAsNew).toHaveBeenCalledTimes(1)
@@ -295,7 +295,7 @@ describe('computePackagistTransitiveDependents — workflow', () => {
   it('marks the run failed with the ROOT cause and rethrows when a merge batch fails permanently', async () => {
     h.acts.preparePackagistTransitiveCounts.mockResolvedValue({ runId: 7 })
     // Shaped like Temporal's ActivityFailure: a generic wrapper whose cause chain
-    // carries the real reason — error_message must record the root, not the wrapper.
+    // carries the real reason; error_message must record the root, not the wrapper.
     h.acts.mergePackagistTransitiveBatch.mockRejectedValue(
       Object.assign(new Error('Activity task failed'), {
         cause: new Error('counts table is empty'),
@@ -422,7 +422,7 @@ describe('preparePackagistTransitiveCounts — activity', () => {
 
     await expect(preparePackagistTransitiveCounts()).rejects.toThrow(/connection reset/)
 
-    // the retry adopts the same unfinished row — fail-marking it early would strand it
+    // the retry adopts the same unfinished row; fail-marking it early would strand it
     expect(h.failRun).not.toHaveBeenCalled()
   })
 

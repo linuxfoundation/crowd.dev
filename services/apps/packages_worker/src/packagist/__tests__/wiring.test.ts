@@ -20,7 +20,7 @@ describe('package.json worker scripts', () => {
 
 describe('schedule cadence', () => {
   it('defines the four packagist crons with minutes off :00 (crawler guideline)', () => {
-    // metadata has no cron — the seed workflow chains it as a child on completion; the
+    // metadata has no cron: the seed workflow chains it as a child on completion; the
     // transitive closure has only the ledger-gated backstop cron, not a primary one
     const crons = Object.entries(PACKAGIST_CRONS)
     expect(crons.map(([name]) => name).sort()).toEqual([

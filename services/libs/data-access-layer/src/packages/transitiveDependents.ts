@@ -29,7 +29,7 @@ async function rebuildStagingTable(
 ): Promise<number> {
   return qx.tx(async (tx) => {
     await tx.result(`SET LOCAL max_parallel_workers_per_gather = 4`)
-    // Temporal timeouts don't kill in-flight SQL — this bounds each statement so a hung
+    // Temporal timeouts don't kill in-flight SQL; this bounds each statement so a hung
     // CTAS dies well inside the 90-min activity deadline (2 statements + slack).
     await tx.result(`SET LOCAL statement_timeout = '40min'`)
     await tx.result(`DROP TABLE IF EXISTS ${table}`)
@@ -41,7 +41,7 @@ async function rebuildStagingTable(
 }
 
 // Collapses version-level direct requires into distinct package-level pairs.
-// dep = requirer, subj = depended-upon — same naming as the GO closure script in
+// dep = requirer, subj = depended-upon; same naming as the GO closure script in
 // packages_worker/src/deps-dev/queries/dependentCountsSql.ts.
 // The only query here that touches the ~1.5B-row package_dependencies table; package_id
 // has no index, so this is a deliberate weekly parallel seq scan.
@@ -62,7 +62,7 @@ export async function snapshotPackagistDirectEdges(qx: QueryExecutor): Promise<n
 
 // Reverse transitive closure over the snapshot: one row per package with ≥1 dependent,
 // transitive = distinct reach minus distinct direct. The snapshot excludes self-edges,
-// but cycles re-introduce (subj, subj) pairs in reach — hence the dep != subj filter.
+// but cycles re-introduce (subj, subj) pairs in reach, hence the dep != subj filter.
 export async function computePackagistTransitiveCounts(qx: QueryExecutor): Promise<number> {
   return rebuildStagingTable(
     qx,
@@ -93,7 +93,7 @@ export async function mergePackagistTransitiveCounts(
   limit: number,
 ): Promise<PackagistTransitiveMergeResult> {
   // The zero-fill makes an empty counts table indistinguishable from "every package is
-  // a leaf" — and the table is UNLOGGED, so a crash-recovery truncation mid-drain would
+  // a leaf", and the table is UNLOGGED, so a crash-recovery truncation mid-drain would
   // otherwise silently wipe every remaining count. A non-empty closure output is
   // guaranteed by prepare's own empty-snapshot abort, so empty here is always an error.
   const guard = await qx.selectOne(

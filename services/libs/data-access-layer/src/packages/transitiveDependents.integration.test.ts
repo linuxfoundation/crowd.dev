@@ -20,7 +20,7 @@ import {
   snapshotPackagistDirectEdges,
 } from './transitiveDependents'
 
-// Integration test: hits the running packages-db, DESTRUCTIVELY — it drops and rebuilds
+// Integration test: hits the running packages-db, DESTRUCTIVELY; it drops and rebuilds
 // the production-named staging.packagist_transitive_* tables, which would break a live
 // transitive drain on a shared DB. Credentials alone are therefore not enough to run it:
 // it also requires the explicit CROWD_PACKAGES_TESTS_DESTRUCTIVE=1 opt-in. Skipped
@@ -44,9 +44,9 @@ const VENDOR = 'fable-tdx'
 //   collapse:  col-a v1 → col-x, col-a v2 → col-x (dedup), col-a v1 → col-dev (dev kind),
 //              col-self → col-self (self), n1 → n2 (npm)
 //   chain:     c1 → c2 → c3                        (c3: 1 transitive)
-//   diamond:   d1 → {d2,d3}, {d2,d3} → d4          (d4: 1 transitive — d1 counted once)
-//   cycle:     y1 → y2, y2 → y1, y3 → y1           (y2: 1 transitive — y3 through the cycle)
-//   multipath: x1 → x3, x1 → x2, x2 → x3           (x3: 0 — x1 is direct, not double-counted)
+//   diamond:   d1 → {d2,d3}, {d2,d3} → d4          (d4: 1 transitive - d1 counted once)
+//   cycle:     y1 → y2, y2 → y1, y3 → y1           (y2: 1 transitive - y3 through the cycle)
+//   multipath: x1 → x3, x1 → x2, x2 → x3           (x3: 0 - x1 is direct, not double-counted)
 //   leaf:      no edges at all                     (merge zero-fills 0)
 describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
   'packagist transitive dependents — real packages-db',
@@ -81,7 +81,7 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
         })
       }
       // The suites below destructively replace the REAL staging tables the live drain
-      // reads — drop them so no fixture-only remnant can ever feed a later merge.
+      // reads; drop them so no fixture-only remnant can ever feed a later merge.
       await qx.result(`DROP TABLE IF EXISTS staging.packagist_transitive_edges`)
       await qx.result(`DROP TABLE IF EXISTS staging.packagist_transitive_counts`)
     }
@@ -233,7 +233,7 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
     }
 
     // Runs against the REAL package_dependencies table (plus the fixture rows), so each
-    // pass scans the full local dataset — hence the generous per-test timeouts.
+    // pass scans the full local dataset, hence the generous per-test timeouts.
     describe('snapshotPackagistDirectEdges — package-level collapse', () => {
       it('collapses version rows to distinct package edges, excluding dev/self/non-packagist', async () => {
         const edgeCount = await snapshotPackagistDirectEdges(qx)
@@ -414,7 +414,7 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
         jobIds.push(jobB)
 
         // createIngestJob returns the raw bigserial id (a string at runtime);
-        // findPendingJobByKind normalizes to number — compare accordingly.
+        // findPendingJobByKind normalizes to number; compare accordingly.
         const found = await findPendingJobByKind(qx, 'ranking')
         expect(found).toBe(Number(jobB))
 
@@ -431,19 +431,19 @@ describe.skipIf(!HAVE_DB || !DESTRUCTIVE_OPT_IN)(
         const runB = await createPackagistTransitiveRun(qx)
         runIds.push(runB)
 
-        // newest unfinished wins — a Temporal retry reuses it instead of minting a third
+        // newest unfinished wins: a Temporal retry reuses it instead of minting a third
         expect(await findUnfinishedPackagistTransitiveRun(qx)).toBe(runB)
 
         await markPackagistTransitiveRunMerging(qx, runB, {
           edgeCount: 918346,
           packagesWithDependents: 85600,
         })
-        // still adoptable while merging — a retry whose completion was lost after the
+        // still adoptable while merging: a retry whose completion was lost after the
         // commit must find the row it already marked, not mint a duplicate
         expect(await findUnfinishedPackagistTransitiveRun(qx)).toBe(runB)
 
         await finishPackagistTransitiveRun(qx, runB, { processed: 454455, changed: 86000 })
-        // finished runs are no longer adoptable — the older pending row surfaces again
+        // finished runs are no longer adoptable; the older pending row surfaces again
         expect(await findUnfinishedPackagistTransitiveRun(qx)).toBe(runA)
 
         const row = await qx.selectOne(

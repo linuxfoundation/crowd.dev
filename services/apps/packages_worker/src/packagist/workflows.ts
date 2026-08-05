@@ -35,7 +35,7 @@ const transitivePrepareActs = proxyActivities<typeof activities>({
   retry: {
     initialInterval: '1 minute',
     backoffCoefficient: 2,
-    // Lockstep with the activity's terminal fail-marking — see retryPolicy.ts.
+    // Lockstep with the activity's terminal fail-marking (see retryPolicy.ts).
     maximumAttempts: TRANSITIVE_PREPARE_MAX_ATTEMPTS,
   },
 })
@@ -47,7 +47,7 @@ interface TransitiveState {
   changed?: number
 }
 
-// ActivityFailure's own message is the generic "Activity task failed" — the reason a
+// ActivityFailure's own message is the generic "Activity task failed"; the reason a
 // human wants in error_message sits at the bottom of the cause chain.
 function rootErrorMessage(err: unknown): string {
   let cur = err
@@ -147,7 +147,7 @@ const chainTransitiveDrain = (): Promise<void> =>
 const TRANSITIVE_BACKSTOP_FRESH_DAYS = 6
 
 // Clock-based safety net for the event chain: a broken seed or metadata drain means no
-// chain fired this week — start the closure anyway instead of letting counts go stale.
+// chain fired this week, so start the closure anyway instead of letting counts go stale.
 // Ledger-gated (a healthy week costs no second scan) and routed through the fixed
 // workflow id, so it can never race a live drain.
 export async function backstopPackagistTransitiveDrain(): Promise<void> {

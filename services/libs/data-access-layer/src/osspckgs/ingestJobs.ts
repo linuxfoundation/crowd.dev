@@ -76,7 +76,7 @@ export async function findPendingJobByKind(
     `,
     { jobKind },
   )
-  // id is bigserial (pg returns int8 as a string) — convert so the declared type is true.
+  // id is bigserial (pg returns int8 as a string); convert so the declared type is true.
   return row ? Number(row.id) : null
 }
 

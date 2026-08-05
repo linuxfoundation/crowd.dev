@@ -30,7 +30,7 @@ Examples:
 const TARGETS = ['seed', 'metadata', 'downloads-30d', 'downloads-daily', 'transitive'] as const
 type Target = (typeof TARGETS)[number]
 
-// seed is dispatched separately (no state arg); Record keys keep this exhaustive — a
+// seed is dispatched separately (no state arg); Record keys keep this exhaustive: a
 // target added to TARGETS without a mapping fails to compile instead of silently
 // starting the wrong workflow.
 const WORKFLOWS: Record<Exclude<Target, 'seed'>, (state?: object) => Promise<void>> = {
