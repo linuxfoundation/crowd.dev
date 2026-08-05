@@ -22,7 +22,7 @@ import {
   semverRangeEvents,
 } from '../../clients/osvClient'
 import { crateSourceUrl, fetchCrateVersions } from '../../crates/registryClient'
-import { toBareCargoName } from '../../packageIdentifier'
+import { toBareCargoName, toDbCargoName } from '../../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../../semverRange'
 import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
@@ -80,14 +80,18 @@ export async function runIntelStageCargo(
     // SEMVER-typed, same event shape as npm's/Go's).
     const ranges = semverRangeEvents(entry)
 
-    const packageId = await findPackageId(qx, { ecosystem, namespace: null, name: crate })
+    const packageId = await findPackageId(qx, {
+      ecosystem,
+      namespace: null,
+      name: toDbCargoName(crate),
+    })
 
     // Use crates.io version list; fall back to our DB if unreachable and crate is known.
     const versionListResult = await fetchCrateVersions(crate, CRATES_IO_FETCH_TIMEOUT_MS)
     let allVersions: string[]
     if (Array.isArray(versionListResult)) {
       allVersions = versionListResult
-    } else if (packageId) {
+    } else if (packageId !== null) {
       allVersions = await getVersionNumbers(qx, String(packageId))
     } else {
       throw new Error(

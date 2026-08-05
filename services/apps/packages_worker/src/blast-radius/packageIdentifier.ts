@@ -65,6 +65,14 @@ export function toBareCargoName(input: string): string {
   return name
 }
 
+// crates.io treats '-' and '_' as the same crate (you can't publish both), and our
+// packages/purl rows store the '_' form (see cargo/loadDump.ts's DENORMALIZE join) while
+// OSV/crates.io always spell names with '-'. Apply this ONLY at the packages-table lookup
+// boundary — never to the name shown to users, crates.io API calls, or OSV entry matching.
+export function toDbCargoName(name: string): string {
+  return name.toLowerCase().replace(/-/g, '_')
+}
+
 // Maven has no single "bare name" — accepts either the "groupId:artifactId" coordinate
 // (OSV's package.name spelling) or a purl (pkg:maven/groupId/artifactId@version).
 export function toBareMavenCoordinate(input: string): { groupId: string; artifactId: string } {

@@ -2,6 +2,7 @@ import { getReverseDependents } from '@crowd/data-access-layer/src/packages/blas
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
+import { toDbCargoName } from '../../packageIdentifier'
 
 import { cargoDependencyMayIncludeVuln } from './cargoConstraint'
 
@@ -29,7 +30,9 @@ export async function scanCargoDependents(
   // still visible for diagnostics, same pattern as npm's scanLimit.
   const scanLimit = Math.max(topN * 8, 200)
   const rows = await getReverseDependents(qx, vulnerablePackageId, 'cargo', scanLimit)
-  const relatedPackageNames = new Set(relatedAffectedPackages || [])
+  // row.name comes from packages.name (the '_' form); relatedAffectedPackages are OSV-spelled
+  // ('-' form) — normalize to the DB form before comparing, see toDbCargoName.
+  const relatedPackageNames = new Set((relatedAffectedPackages || []).map(toDbCargoName))
 
   const included: DependentCandidate[] = []
   const excluded: DependentCandidate[] = []

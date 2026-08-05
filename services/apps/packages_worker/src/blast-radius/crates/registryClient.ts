@@ -50,7 +50,9 @@ async function getWithRetry(url: string, timeoutMs: number): Promise<Response | 
     return res
   }
 
-  return { kind: 'RATE_LIMIT', statusCode: 429, message: '429 after retries' }
+  // Unreachable: every loop iteration returns or continues, and the final
+  // attempt (attempt === MAX_429_RETRIES) always returns on a 429.
+  throw new Error('unreachable')
 }
 
 // GET /api/v1/crates/{name}/versions — includes yanked versions (still installable/vulnerable).
@@ -94,7 +96,7 @@ export async function fetchCrateLatestVersion(
   }
   const version = body.crate?.newest_version ?? body.crate?.max_version
   if (version === undefined || version === null) {
-    return { kind: 'MALFORMED', message: 'missing crate.newest_version' }
+    return { kind: 'MALFORMED', message: 'missing crate.newest_version and crate.max_version' }
   }
 
   return version

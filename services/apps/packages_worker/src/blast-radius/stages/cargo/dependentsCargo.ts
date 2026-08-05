@@ -2,6 +2,8 @@ import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadi
 import { findPackageIdsByName } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { toDbCargoName } from '../../packageIdentifier'
+
 import { scanCargoDependents } from './dependentsScanCargo'
 
 export async function runDependentsStageCargo(
@@ -60,13 +62,13 @@ export async function runDependentsStageCargo(
     const packageIdsByName = await findPackageIdsByName(
       qx,
       'cargo',
-      scanResult.analyzed.map((d) => d.name),
+      scanResult.analyzed.map((d) => toDbCargoName(d.name)),
     )
 
     const dependentInputs = [
       ...scanResult.analyzed.map((d) => ({
         analysisId,
-        packageId: packageIdsByName.get(d.name) ?? null,
+        packageId: packageIdsByName.get(toDbCargoName(d.name)) ?? null,
         name: d.name,
         version: d.version,
         downloads: d.downloads,

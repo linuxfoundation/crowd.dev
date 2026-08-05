@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toBareNpmName } from '../packageIdentifier'
+import { toBareNpmName, toDbCargoName } from '../packageIdentifier'
 
 describe('toBareNpmName', () => {
   it('returns a bare name unchanged', () => {
@@ -29,5 +29,19 @@ describe('toBareNpmName', () => {
 
   it('strips qualifiers and subpath', () => {
     expect(toBareNpmName('pkg:npm/lodash@4.17.21?foo=bar#sub')).toBe('lodash')
+  })
+})
+
+describe('toDbCargoName', () => {
+  it('leaves an already-underscored name unchanged', () => {
+    expect(toDbCargoName('serde_json')).toBe('serde_json')
+  })
+
+  it('converts hyphens to underscores, matching packages.name for hyphenated crates', () => {
+    expect(toDbCargoName('serde-json')).toBe('serde_json')
+  })
+
+  it('lowercases mixed-case names', () => {
+    expect(toDbCargoName('Actix-Web')).toBe('actix_web')
   })
 })
