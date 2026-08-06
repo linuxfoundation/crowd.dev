@@ -78,6 +78,26 @@ export function toBareNuGetId(input: string): string {
   return name
 }
 
+// Same normalization as toBareGoModule, but for RubyGems: purls spell the type 'gem'
+// (not 'rubygems'), and gem names never contain '@' themselves either. Deliberately does
+// NOT lowercase — deps.dev and rubygems.org both store the canonical published spelling,
+// which is not universally lowercase (e.g. RedCloth, Ascii85).
+export function toBareGemName(input: string): string {
+  let name = input.trim()
+
+  name = stripQueryAndFragment(name)
+
+  name = decodeURIComponent(name)
+
+  if (name.startsWith('pkg:gem/')) {
+    name = name.slice('pkg:gem/'.length)
+  }
+
+  name = name.replace(/@[^/@]+$/, '')
+
+  return name
+}
+
 // packages/purl rows store cargo names '_'-normalized (see cargo/loadDump.ts) while
 // OSV/crates.io use '-'. Apply ONLY at the packages-table lookup boundary.
 export function toDbCargoName(name: string): string {

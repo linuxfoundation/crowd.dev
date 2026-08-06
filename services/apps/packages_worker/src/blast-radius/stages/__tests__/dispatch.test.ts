@@ -21,6 +21,9 @@ import { runIntelStageNuGet } from '../nuget/intelNuGet'
 import { nugetReachabilityConfig } from '../nuget/reachabilityConfig'
 import { runReachabilityStage } from '../reachability'
 import { runReachabilityStage as runReachabilityStageWithConfig } from '../reachabilityStage'
+import { runDependentsStageRubyGems } from '../rubygems/dependentsRubyGems'
+import { runIntelStageRubyGems } from '../rubygems/intelRubyGems'
+import { rubygemsReachabilityConfig } from '../rubygems/reachabilityConfig'
 
 vi.mock('@crowd/data-access-layer/src/packages/blastRadius', () => ({
   getAnalysisDetail: vi.fn(),
@@ -36,6 +39,9 @@ vi.mock('../cargo/intelCargo', () => ({
 vi.mock('../nuget/intelNuGet', () => ({
   runIntelStageNuGet: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('../rubygems/intelRubyGems', () => ({
+  runIntelStageRubyGems: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../go/dependentsGo', () => ({
   runDependentsStageGo: vi.fn().mockResolvedValue(undefined),
 }))
@@ -50,6 +56,9 @@ vi.mock('../cargo/dependentsCargo', () => ({
 }))
 vi.mock('../nuget/dependentsNuGet', () => ({
   runDependentsStageNuGet: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../rubygems/dependentsRubyGems', () => ({
+  runDependentsStageRubyGems: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../reachabilityStage', () => ({
   runReachabilityStage: vi.fn().mockResolvedValue(undefined),
@@ -107,6 +116,15 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
     expect(runIntelStageMaven).not.toHaveBeenCalled()
   })
 
+  it('routes intel to the RubyGems body when ecosystem is rubygems', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'rubygems' } as never)
+    await runIntelStage(qx, 'analysis-1', 'GHSA-xxxx', undefined)
+    expect(runIntelStageRubyGems).toHaveBeenCalledWith(qx, 'analysis-1', 'GHSA-xxxx', undefined)
+    expect(runIntelStageGo).not.toHaveBeenCalled()
+    expect(runIntelStageNpm).not.toHaveBeenCalled()
+    expect(runIntelStageMaven).not.toHaveBeenCalled()
+  })
+
   it('routes intel to the npm body when ecosystem is missing/unknown', async () => {
     mockGetAnalysisDetail.mockResolvedValue(null)
     await runIntelStage(qx, 'analysis-1', 'GHSA-xxxx', undefined)
@@ -145,6 +163,15 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
     mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'nuget' } as never)
     await runDependentsStage(qx, 'analysis-1', undefined, undefined)
     expect(runDependentsStageNuGet).toHaveBeenCalled()
+    expect(runDependentsStageGo).not.toHaveBeenCalled()
+    expect(runDependentsStageNpm).not.toHaveBeenCalled()
+    expect(runDependentsStageMaven).not.toHaveBeenCalled()
+  })
+
+  it('routes dependents to the RubyGems body when ecosystem is rubygems', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'rubygems' } as never)
+    await runDependentsStage(qx, 'analysis-1', undefined, undefined)
+    expect(runDependentsStageRubyGems).toHaveBeenCalled()
     expect(runDependentsStageGo).not.toHaveBeenCalled()
     expect(runDependentsStageNpm).not.toHaveBeenCalled()
     expect(runDependentsStageMaven).not.toHaveBeenCalled()
@@ -199,6 +226,17 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
       qx,
       'analysis-1',
       nugetReachabilityConfig,
+      undefined,
+    )
+  })
+
+  it('routes reachability to the RubyGems config when ecosystem is rubygems', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'rubygems' } as never)
+    await runReachabilityStage(qx, 'analysis-1', undefined)
+    expect(mockRunReachabilityStageWithConfig).toHaveBeenCalledWith(
+      qx,
+      'analysis-1',
+      rubygemsReachabilityConfig,
       undefined,
     )
   })
