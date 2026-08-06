@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toBareNpmName, toBareNuGetId, toDbCargoName } from '../packageIdentifier'
+import { toBareGemName, toBareNpmName, toBareNuGetId, toDbCargoName } from '../packageIdentifier'
 
 describe('toBareNpmName', () => {
   it('returns a bare name unchanged', () => {
@@ -67,5 +67,27 @@ describe('toBareNuGetId', () => {
     expect(toBareNuGetId('pkg:nuget/Microsoft.AspNetCore.Mvc@2.2.0')).toBe(
       'Microsoft.AspNetCore.Mvc',
     )
+  })
+})
+
+describe('toBareGemName', () => {
+  it('returns a bare name unchanged', () => {
+    expect(toBareGemName('rack')).toBe('rack')
+  })
+
+  it('strips the pkg:gem/ prefix', () => {
+    expect(toBareGemName('pkg:gem/rack')).toBe('rack')
+  })
+
+  it('strips a trailing version', () => {
+    expect(toBareGemName('pkg:gem/rack@3.0.8')).toBe('rack')
+  })
+
+  it('strips qualifiers and subpath', () => {
+    expect(toBareGemName('pkg:gem/rack@3.0.8?foo=bar#sub')).toBe('rack')
+  })
+
+  it('does not lowercase the name — preserves non-lowercase published spellings', () => {
+    expect(toBareGemName('pkg:gem/RedCloth@4.3.2')).toBe('RedCloth')
   })
 })

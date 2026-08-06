@@ -31,7 +31,11 @@ export function toBareGoModule(input: string): string {
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:golang/')) {
     name = name.slice('pkg:golang/'.length)
@@ -49,7 +53,11 @@ export function toBareCargoName(input: string): string {
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:cargo/')) {
     name = name.slice('pkg:cargo/'.length)
@@ -67,10 +75,36 @@ export function toBareNuGetId(input: string): string {
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:nuget/')) {
     name = name.slice('pkg:nuget/'.length)
+  }
+
+  name = name.replace(/@[^/@]+$/, '')
+
+  return name
+}
+
+// Same as toBareGoModule, but purls spell the type 'gem'. Deliberately does NOT lowercase —
+// deps.dev/rubygems.org store the canonical published spelling (e.g. RedCloth, Ascii85).
+export function toBareGemName(input: string): string {
+  let name = input.trim()
+
+  name = stripQueryAndFragment(name)
+
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
+
+  if (name.startsWith('pkg:gem/')) {
+    name = name.slice('pkg:gem/'.length)
   }
 
   name = name.replace(/@[^/@]+$/, '')

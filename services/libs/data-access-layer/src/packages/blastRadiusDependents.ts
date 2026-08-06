@@ -6,7 +6,7 @@ export interface ReverseDependentRow {
   namespace: string | null
   name: string
   versionNumber: string
-  versionConstraint: string
+  versionConstraint: string | null
   resolvedVersionNumber: string | null
   dependencyKind: string
   dependentCount: number | null
@@ -61,7 +61,7 @@ export async function getReverseDependents(
     namespace: row.namespace as string | null,
     name: row.name as string,
     versionNumber: row.version_number as string,
-    versionConstraint: row.version_constraint as string,
+    versionConstraint: row.version_constraint as string | null,
     resolvedVersionNumber: row.resolved_version_number as string | null,
     dependencyKind: row.dependency_kind as string,
     dependentCount: row.dependent_count as number | null,

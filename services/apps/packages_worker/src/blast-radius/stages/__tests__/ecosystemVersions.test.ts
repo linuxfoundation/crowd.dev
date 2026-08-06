@@ -66,6 +66,12 @@ describe('ecosystemVersions', () => {
       const ranges = [{ introduced: '4.5.0.0', fixed: '4.6.0.0', lastAffected: null }]
       expect(versionsInRanges('nuget', versions, ranges)).toEqual(['4.5.0.0', '4.5.0.1'])
     })
+
+    it('includes four-component RubyGems versions, which node-semver cannot parse', () => {
+      const versions = ['3.0.9.0', '3.0.9.1', '3.0.10.0']
+      const ranges = [{ introduced: '3.0.0', fixed: '3.0.9.1', lastAffected: null }]
+      expect(versionsInRanges('rubygems', versions, ranges)).toEqual(['3.0.9.0'])
+    })
   })
 
   describe('highestVersion', () => {
@@ -83,6 +89,10 @@ describe('ecosystemVersions', () => {
 
     it('picks the correct highest four-component NuGet version', () => {
       expect(highestVersion('nuget', ['4.5.0.0', '4.5.0.10', '4.5.0.2'])).toBe('4.5.0.10')
+    })
+
+    it('picks the correct highest four-component RubyGems version', () => {
+      expect(highestVersion('rubygems', ['2.2.8.0', '2.2.8.10', '2.2.8.2'])).toBe('2.2.8.10')
     })
   })
 })
