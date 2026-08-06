@@ -340,7 +340,7 @@ export async function getPackageStatusCounts(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true
     ${where}
@@ -521,7 +521,7 @@ export async function listPackagesForApi(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true`
 
@@ -976,7 +976,7 @@ export async function listPackagesForScatter(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
@@ -1203,7 +1203,7 @@ export async function getReportingProtocolByPurl(
       SELECT pr2.repo_id
       FROM package_repos pr2
       WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
       LIMIT 1
     ) pr ON true
     JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
@@ -1235,7 +1235,7 @@ export async function getReportingProtocolsByPurls(
       SELECT pr2.repo_id
       FROM package_repos pr2
       WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
       LIMIT 1
     ) pr ON true
     JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
