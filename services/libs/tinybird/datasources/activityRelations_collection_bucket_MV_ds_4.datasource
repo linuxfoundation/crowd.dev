@@ -1,0 +1,30 @@
+SCHEMA >
+    `activityId` String,
+    `conversationId` String,
+    `createdAt` DateTime64(3),
+    `updatedAt` DateTime64(3),
+    `memberId` String,
+    `objectMemberId` String,
+    `objectMemberUsername` String,
+    `organizationId` String,
+    `parentId` String,
+    `platform` LowCardinality(String),
+    `segmentId` String,
+    `username` String,
+    `sourceId` String,
+    `type` LowCardinality(String),
+    `timestamp` DateTime64(3),
+    `sourceParentId` String,
+    `channel` String,
+    `sentimentScore` Int8,
+    `gitInsertions` UInt32,
+    `gitDeletions` UInt32,
+    `score` Int8,
+    `isContribution` UInt8,
+    `pullRequestReviewState` LowCardinality(String),
+    `collectionSlug` String
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY collectionSlug, segmentId, timestamp, type, platform, channel, sourceId
+ENGINE_VER updatedAt

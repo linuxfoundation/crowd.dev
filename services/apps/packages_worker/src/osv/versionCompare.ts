@@ -126,7 +126,76 @@ function compareMaven(a: string, b: string): number | null {
   return 0
 }
 
-const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget'])
+// Mirrors Gem::Version::VERSION_PATTERN / ANCHORED_VERSION_PATTERN — a hyphen
+// only ever introduces a single trailing prerelease group.
+const RUBYGEMS_VERSION_PATTERN =
+  /^\s*[0-9]+(\.[0-9a-zA-Z]+)*(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?\s*$/
+
+// Splits a version into alternating digit/letter runs, per Gem::Version#segments.
+// A hyphen is a prerelease marker (Gem::Version#initialize rewrites "-" to
+// ".pre." before tokenizing), not a plain separator. Numeric runs use bigint
+// so segments beyond Number.MAX_SAFE_INTEGER still compare exactly.
+function toRubyGemsSegments(version: string): (bigint | string)[] {
+  if (!RUBYGEMS_VERSION_PATTERN.test(version)) return []
+  const normalized = version.replace(/-/g, '.pre.')
+  const runs = normalized.match(/[0-9]+|[a-zA-Z]+/g) ?? []
+  return runs.map((run) => (/^[0-9]+$/.test(run) ? BigInt(run) : run))
+}
+
+// Mirrors Gem::Version#canonical_segments: drop trailing zero segments, then
+// drop any zero segments that sit directly before the first letter segment.
+function canonicalRubyGemsSegments(segments: (bigint | string)[]): (bigint | string)[] {
+  const trimmed = [...segments]
+  while (trimmed.length > 1 && trimmed[trimmed.length - 1] === BigInt(0)) trimmed.pop()
+
+  const firstLetterIndex = trimmed.findIndex((segment) => typeof segment === 'string')
+  if (firstLetterIndex === -1) return trimmed
+
+  let zeroRunStart = firstLetterIndex
+  while (zeroRunStart > 0 && trimmed[zeroRunStart - 1] === BigInt(0)) zeroRunStart--
+  trimmed.splice(zeroRunStart, firstLetterIndex - zeroRunStart)
+
+  return trimmed
+}
+
+// Compares one pair of segments the way Gem::Version#<=> does: a letter
+// segment always sorts below a numeric segment, regardless of its value.
+function compareRubyGemsSegment(lhs: bigint | string, rhs: bigint | string): number {
+  if (typeof lhs === 'string' && typeof rhs !== 'string') return -1
+  if (typeof lhs !== 'string' && typeof rhs === 'string') return 1
+  return lhs < rhs ? -1 : lhs > rhs ? 1 : 0
+}
+
+// Once the shorter side is exhausted, Gem::Version#<=> walks the longer
+// side's remaining segments: a letter segment means the longer side is a
+// prerelease of the shorter one (sorts lower); a nonzero number means the
+// longer side sorts higher; zeros (already mostly trimmed) are skipped.
+function rubyGemsTailSign(segments: (bigint | string)[], startIndex: number): number {
+  for (let i = startIndex; i < segments.length; i++) {
+    const segment = segments[i]
+    if (typeof segment === 'string') return -1
+    if (segment !== BigInt(0)) return 1
+  }
+  return 0
+}
+
+function compareRubyGems(a: string, b: string): number | null {
+  const aSegments = canonicalRubyGemsSegments(toRubyGemsSegments(a))
+  const bSegments = canonicalRubyGemsSegments(toRubyGemsSegments(b))
+  if (aSegments.length === 0 || bSegments.length === 0) return null
+
+  const limit = Math.min(aSegments.length, bSegments.length)
+  for (let i = 0; i < limit; i++) {
+    if (aSegments[i] === bSegments[i]) continue
+    return compareRubyGemsSegment(aSegments[i], bSegments[i])
+  }
+
+  if (aSegments.length > bSegments.length) return rubyGemsTailSign(aSegments, limit)
+  if (bSegments.length > aSegments.length) return -rubyGemsTailSign(bSegments, limit)
+  return 0
+}
+
+const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget', 'go'])
 
 // Ecosystem names are stored lowercase in packages-db per ADR-0001 §OSV
 // "Ecosystem normalization" — 'npm', 'maven', 'cargo'. Callers (deriveCriticalFlag)
@@ -134,5 +203,6 @@ const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget'])
 export function compareVersion(ecosystem: string, a: string, b: string): number | null {
   if (SEMVER_ECOSYSTEMS.has(ecosystem)) return compareSemver(a, b)
   if (ecosystem === 'maven') return compareMaven(a, b)
+  if (ecosystem === 'rubygems') return compareRubyGems(a, b)
   return null
 }

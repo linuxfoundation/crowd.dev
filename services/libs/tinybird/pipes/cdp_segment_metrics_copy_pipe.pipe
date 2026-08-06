@@ -1,9 +1,9 @@
 DESCRIPTION >
     Daily batch job that builds segment-level aggregate states from existing
     member and organization segment aggregate datasources.
-    Activities computed from activityRelations_enriched_deduplicated_ds (latest snapshotId).
-    Optimized: compute only for "valid segments" early, compute latest snapshot once,
-    and reuse empty states as constants.
+    Activities computed from activityRelations_enriched_deduplicated_bucket_union
+    (each bucket holds exactly one snapshot, so no snapshot filtering is needed).
+    Optimized: compute only for "valid segments" early and reuse empty states as constants.
 
 NODE validSegments
 SQL >
@@ -26,16 +26,8 @@ SQL >
         countState(
             if(ar.timestamp >= now() - INTERVAL 30 DAY, CAST(1 AS UInt8), NULL)
         ) AS activitiesLast30DaysState
-    FROM activityRelations_enriched_deduplicated_ds AS ar
-    WHERE
-        snapshotId = (
-            SELECT snapshotId
-            FROM activityRelations_enriched_deduplicated_ds
-            ORDER BY snapshotId DESC
-            LIMIT 1
-        )
-        AND segmentId IS NOT NULL
-        AND segmentId != ''
+    FROM activityRelations_enriched_deduplicated_bucket_union AS ar
+    WHERE segmentId IS NOT NULL AND segmentId != ''
     GROUP BY ar.segmentId
 
 NODE memberPerSegment

@@ -9,11 +9,8 @@ SQL >
     SELECT
         count() AS activitiesTotal,
         countIf(timestamp >= now() - INTERVAL 30 DAY) AS activitiesLast30Days
-    FROM activityRelations_enriched_deduplicated_ds
-    WHERE
-        snapshotId = (SELECT max(snapshotId) FROM activityRelations_enriched_deduplicated_ds)
-        AND segmentId IS NOT NULL
-        AND segmentId != ''
+    FROM activityRelations_enriched_deduplicated_bucket_union
+    WHERE segmentId IS NOT NULL AND segmentId != ''
 
 NODE cdpDashboardMetricsTotal
 SQL >

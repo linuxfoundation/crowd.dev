@@ -166,7 +166,10 @@ const isModalOpen = computed<boolean>({
 
 const addIdentities = () => {
   sending.value = true;
-  createContributorIdentities(props.contributor.id, form)
+  createContributorIdentities(
+    props.contributor.id,
+    form.map(({ id, ...identity }) => identity),
+  )
     .then(() => {
       ToastStore.success('Identities successfully added');
       isModalOpen.value = false;

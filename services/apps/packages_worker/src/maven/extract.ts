@@ -47,6 +47,7 @@ interface PomData {
   developers?: { developer?: unknown }
   contributors?: { contributor?: unknown }
   parent?: { groupId?: unknown; artifactId?: unknown; version?: unknown }
+  properties?: unknown
 }
 
 interface PomPerson {
@@ -262,6 +263,9 @@ interface ResolvedFields {
   developers: PomMaintainer[]
   contributors: PomMaintainer[]
   hops: number
+  // Merged <properties> across the resolved parent chain (child overrides parent),
+  // used to interpolate ${...} placeholders in the SCM URL.
+  properties: Record<string, string>
 }
 
 // prettier-ignore
@@ -273,9 +277,12 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
   const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
   const developers = extractPersons(pom.developers?.developer, 'author')
   const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
+  const properties = extractProperties(pom)
 
   const missingLicense = licenses.length === 0
-  const missingScm = !scmUrl
+  // An unresolved ${...} placeholder counts as missing: the property that defines it
+  // may live in a parent POM, so we still need to walk the chain to collect it.
+  const missingScm = !scmUrl || scmUrl.includes('${')
   const missingDevelopers = developers.length === 0 || contributors.length === 0
   const parent = extractParent(pom)
 
@@ -306,6 +313,8 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
         developers: developers.length > 0 ? developers : parentFields.developers,
         contributors: contributors.length > 0 ? contributors : parentFields.contributors,
         hops: parentFields.hops,
+        // Child properties override the parent's.
+        properties: { ...parentFields.properties, ...properties },
       }
     }
   }
@@ -319,6 +328,7 @@ async function resolveWithInheritance(groupId: string, artifactId: string, versi
     developers,
     contributors,
     hops: depth,
+    properties,
   }
 }
 
@@ -355,7 +365,12 @@ export async function extractArtifactDirect(groupId: string, artifactId: string,
   }
 
   const licenses = extractLicenses(pom)
-  const scmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
+  const rawScmUrl = extractStr(pom.scm?.url ?? pom.scm?.connection)
+  const props = {
+    ...extractProperties(pom),
+    ...builtinProjectProperties(groupId, artifactId, version),
+  }
+  const scmUrl = rawScmUrl ? interpolateProperties(rawScmUrl, props) : null
   const developers = extractPersons(pom.developers?.developer, 'author')
   const contributors = extractPersons(pom.contributors?.contributor, 'maintainer')
 
@@ -414,6 +429,14 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
       new Set(),
       baseUrl,
     )
+    // Resolve ${...} placeholders in the SCM URL using the merged chain properties
+    // plus the leaf's built-in project.* values. Best-effort: unresolved placeholders
+    // stay literal and are rejected downstream by normalizeScmUrl.
+    const props = {
+      ...resolved.properties,
+      ...builtinProjectProperties(groupId, artifactId, version),
+    }
+    const scmUrl = resolved.scmUrl ? interpolateProperties(resolved.scmUrl, props) : null
     return {
       groupId,
       artifactId,
@@ -422,7 +445,7 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
       description: resolved.description,
       licenses: resolved.licenses,
       licensesRaw: resolved.licensesRaw,
-      scmUrl: resolved.scmUrl,
+      scmUrl,
       homepageUrl: resolved.homepageUrl,
       developers: resolved.developers,
       contributors: resolved.contributors,
@@ -453,37 +476,642 @@ export async function extractArtifact(groupId: string, artifactId: string, versi
 // ─── SCM URL normalisation ───────────────────────────────────────────────────
 
 /**
- * Converts the raw SCM URL from a POM (declared_repository_url) into a clean
- * HTTPS repository URL suitable for storage as repository_url.
+ * Known source-code-hosting hosts. A normalised repository_url is only produced
+ * when the URL resolves to one of these — anything else (homepages, doc sites,
+ * placeholders) yields null so it is never stored as a repository link.
+ *
+ * TODO(CM): host list pending product confirmation before rollout.
+ *
+ * The ambiguous `git.*` hosts git.iem.at, git.i-novus.ru and git.oschina.net were
+ * curl-verified live and ARE included in SCM_HOSTS below. Other hosts found in Maven
+ * declared_repository_url that need more than a flat owner/repo allowlist are handled
+ * by their own dedicated normalizers below rather than here:
+ *   - git.eclipse.org: cgit `/c/<owner>/<repo>` paths → normalizeEclipseCgitUrl.
+ *   - android.googlesource.com / cs.android.com: Gitiles identity paths (the Android
+ *     Code Search UI mirrors the same repo naming as the Gitiles source itself) →
+ *     normalizeGooglesourceUrl.
+ *   - ec.europa.eu: Bitbucket-Server `/projects/x/repos/y` → normalizeBitbucketServerUrl.
+ *   - gitbox.apache.org / git.apache.org / git-wip-us.apache.org: gitweb
+ *     `/repos/asf/<repo>` or `?p=<repo>` → normalizeApacheGitwebUrl.
+ *
+ * Still NOT handled (need more than a host allowlist, or are unreachable):
+ *   - eclipse.gerrithub.io: Gerrit admin-UI paths (`/admin/repos/...`), not a clone shape.
+ *   - gerrit.onosproject.org: every occurrence observed is the bare Gerrit root
+ *     (`http://gerrit.onosproject.org/`) with no path at all — nothing to extract,
+ *     unlike git.opendaylight.org which has resolvable gitweb/SSH forms.
+ *
+ * Internal-only hosts (git.corp.adobe.com, fit.corp.adobe.com, gitlab.alibaba-inc.com)
+ * are included below even though they're unreachable for external consumers — per
+ * product decision, an internal SCM URL should still resolve to a canonical link
+ * rather than being dropped to null.
+ */
+const SCM_HOSTS = new Set([
+  'github.com',
+  'gitlab.com',
+  'bitbucket.org',
+  'gitee.com',
+  'codeberg.org',
+  // Self-hosted GitLab / Gitea instances seen in Maven POMs with clean
+  // /<owner>/<repo> paths (same shape as gitlab.com — handled by the generic logic).
+  // The ≥2-segment owner/repo requirement acts as a safety net so a mis-classified
+  // host yields NULL, never a junk link.
+  'gitlab.smartb.city',
+  'git.corp.adobe.com',
+  'fit.corp.adobe.com',
+  'gitlab.alibaba-inc.com',
+  'gitlab.ow2.org',
+  'gitlab.nuiton.org',
+  'gitlab.inria.fr',
+  'git.neckar.it',
+  'git.iem.at',
+  'git.oschina.net',
+  'git.i-novus.ru',
+  'gitlab.protontech.ch',
+  'git.catchpoint.net',
+  'git.dorkbox.com',
+  'git.adorsys.de',
+  // Low-traffic residual hosts (1-6 rows each) found by re-classifying the
+  // remaining unresolved repository_url hosts — each individually curl-verified
+  // live at its reconstructed /<owner>/<repo> URL.
+  'code.briarproject.org',
+  'code.europa.eu',
+  'code.haverbeke.berlin',
+  'forgemia.inra.fr',
+  'git.chainmaker.org.cn',
+  'git.coding.net',
+  'git.flyfish.dev',
+  'git.infodavid.org',
+  'git.informatik.uni-rostock.de',
+  'git.jfronny.dev',
+  'git.qoto.org',
+  'git.savannah.gnu.org',
+  'git.sr.ht',
+  'git.struchkov.dev',
+  'gitlab.ceh.ac.uk',
+  'gitlab.cylab.be',
+  'gitlab.ontotext.com',
+  'gitlab.prodevelop.es',
+  'gitlab.uni-oldenburg.de',
+  'gitlab.waveinformatica.com',
+  'gitverse.ru',
+  'gl.kwarc.info',
+  'gricad-gitlab.univ-grenoble-alpes.fr',
+  'opensource.tbank.ru',
+  'oss.brouillard.fr',
+  'xbib.org',
+])
+
+/** Hosts whose owner/repo path is case-insensitive and should be lower-cased. */
+const CASE_INSENSITIVE_HOSTS = new Set(['github.com', 'gitlab.com'])
+
+/**
+ * Apache's gitweb-based hosts serve every repo under a fixed /repos/asf/ prefix,
+ * in two equivalent forms: /repos/asf/<repo>.git (path) or /repos/asf?p=<repo>.git
+ * (classic gitweb query-string). Neither is an owner/repo shape — the generic path
+ * logic would either reject the query form (no second segment) or collapse every
+ * repo to the literal segments "repos"/"asf" for the path form. Handled on the same
+ * host rather than mapped to a github.com/apache mirror, since that mapping isn't
+ * guaranteed to hold for every repo. git.apache.org (ASF's pre-2016 mirror) also
+ * serves the same repos directly at the root (e.g. /kafka.git) — verified live
+ * alongside its /repos/asf/kafka.git equivalent — so that shape is accepted as a
+ * fallback for this host only.
+ */
+const APACHE_GITWEB_HOSTS = new Set([
+  'gitbox.apache.org',
+  'git.apache.org',
+  'git-wip-us.apache.org',
+  'git1-us-west.apache.org',
+])
+
+/**
+ * gitweb's ?p=<repo>.git query param is frequently followed by further gitweb
+ * params (a=, f=, h=, hb=, ...) joined with `;` — gitweb's own separator,
+ * inherited from Perl CGI.pm — not `&`, so URLSearchParams alone can't isolate
+ * `p` from what follows it (e.g. `p=lucene-solr.git;f=lucene/analysis/common`
+ * comes back as one opaque value). The repo name can also have a subpath
+ * appended directly after `.git` with no separator at all (e.g.
+ * `p=hbase.git/hbase-build-configuration/hbase-client`, likely a hand-edited
+ * SCM url) — same problem in the /repos/asf/<repo>.git path form. Taking
+ * everything up to the first literal `.git` handles both without parsing
+ * gitweb's param syntax.
+ */
+function extractGitwebRepoName(raw: string): string | null {
+  const gitIndex = raw.indexOf('.git')
+  const name = (gitIndex === -1 ? raw : raw.slice(0, gitIndex)).replace(/^\/+|\/+$/g, '')
+  if (!name || name.includes('/') || /\$\{|%7B/i.test(name)) return null
+  return name
+}
+
+function wrapAsfRepo(host: string, name: string | null): string | null {
+  return name ? `https://${host}/repos/asf/${name}` : null
+}
+
+function normalizeApacheGitwebUrl(host: string, pathname: string, search: string): string | null {
+  const queryRepo = new URLSearchParams(search).get('p')
+  if (queryRepo) return wrapAsfRepo(host, extractGitwebRepoName(queryRepo))
+
+  if (pathname.startsWith('/repos/asf/')) {
+    return wrapAsfRepo(host, extractGitwebRepoName(pathname.slice('/repos/asf/'.length)))
+  }
+
+  if (host === 'git.apache.org') {
+    return wrapAsfRepo(host, extractGitwebRepoName(pathname))
+  }
+
+  return null
+}
+
+/**
+ * Hosts running plain gitweb outside Apache's fixed /repos/asf/ layout — the
+ * repo comes from the ?p=<repo>.git query param only; the map value is the
+ * gitweb script path itself (part of the working URL, not something to parse).
+ * Verified live: stripping a real URL down to just host+scriptPath+?p=<repo>.git
+ * (dropping any trailing ;a=/;h=/... params) still resolves.
+ */
+const GITWEB_QUERY_HOSTS = new Map([
+  ['git.shibboleth.net', '/view/'],
+  ['jogamp.org', '/git/'],
+])
+
+function normalizeGitwebQueryUrl(host: string, search: string): string | null {
+  const name = extractGitwebRepoName(new URLSearchParams(search).get('p') ?? '')
+  if (!name) return null
+  return `https://${host}${GITWEB_QUERY_HOSTS.get(host)}?p=${name}.git`
+}
+
+/**
+ * Hosts whose declared SCM URL points at a GitHub-adjacent surface (raw file
+ * CDN, Packages registry) rather than github.com itself, but whose path still
+ * carries owner/repo as its first two segments — same shape the generic
+ * SCM_HOSTS logic already expects, so only the host needs remapping. Verified
+ * live: github.com/<owner>/<repo> resolves for a same-shape sample from each.
+ */
+const GITHUB_HOST_ALIASES = new Map([
+  ['raw.githubusercontent.com', 'github.com'],
+  ['maven.pkg.github.com', 'github.com'],
+])
+
+/**
+ * Legacy pre-2013 GitHub Pages domain (github.io replaced it) — kept as an
+ * explicit set rather than matching *.github.com generally, since that
+ * pattern would also catch real non-Pages GitHub subdomains (api., raw., …).
+ */
+const LEGACY_GITHUB_PAGES_HOSTS = new Set(['zqq90.github.com', 'mhellkamp.github.com'])
+
+/**
+ * GitHub Pages URLs declared as scm.url: project pages (`<owner>.github.io/<repo>`)
+ * and user/org pages (`<owner>.github.io` with no path, which serve the repo
+ * literally named `<owner>.github.io`) both deterministically encode the source
+ * repo. Also covers a bare `github.io/<owner>/<repo>` (subdomain dropped by
+ * mistake) and the legacy `.github.com` Pages domain. Verified live for one
+ * sample of each shape. Skipped when the path carries an unresolved ${...}
+ * placeholder (interpolation failure upstream, not a Pages-mapping problem).
+ */
+function normalizeGithubPagesUrl(host: string, pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments.some((s) => /\$\{|%7B/i.test(s))) return null
+
+  if (host === 'github.io') {
+    if (segments.length < 2) return null
+    return `https://github.com/${segments[0]}/${segments[1].replace(/\.git$/, '')}`.toLowerCase()
+  }
+
+  const owner = host.replace(/\.github\.(io|com)$/, '')
+  const repo = segments[0]?.replace(/\.git$/, '') || host
+  return `https://github.com/${owner}/${repo}`.toLowerCase()
+}
+
+/**
+ * Eclipse's cgit instance serves repos as /c/<owner>/<repo>[.git][/tree/...], the
+ * same owner/repo shape as the generic hosts but under a fixed /c/ prefix that
+ * cgit requires for a working link (unlike GitHub-style hosts, a bare
+ * https://git.eclipse.org/<owner>/<repo> does not resolve) — so the prefix is
+ * kept in the output rather than stripped like the generic path logic would.
+ */
+const ECLIPSE_CGIT_HOSTS = new Set(['git.eclipse.org'])
+
+function normalizeEclipseCgitUrl(host: string, pathname: string): string | null {
+  if (!pathname.startsWith('/c/')) return null
+
+  const segments = pathname.slice('/c/'.length).split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  const owner = segments[0]
+  const name = segments[1].replace(/\.git$/, '')
+  if (!owner || !name || /\$\{|%7B/i.test(owner) || /\$\{|%7B/i.test(name)) return null
+
+  return `https://${host}/c/${owner}/${name}`
+}
+
+/**
+ * Self-hosted Atlassian Bitbucket Server ("Stash") instances. Both the git-clone
+ * form (/scm/<PROJECT>/<repo>.git) and the browse form
+ * (/projects/<PROJECT>/repos/<repo>/...) encode the same project+repo regardless
+ * of what context path precedes them — the clone form 501s over plain HTTP, so
+ * both are normalized to the browse form. Verified live for one sample per host;
+ * other Stash hosts seen in the data were dead (DNS failure / 503) and excluded.
+ */
+const BITBUCKET_SERVER_HOSTS = new Set(['ec.europa.eu', 'source.opendof.org'])
+
+function normalizeBitbucketServerUrl(host: string, pathname: string): string | null {
+  const match =
+    pathname.match(/^(.*)\/projects\/([^/]+)\/repos\/([^/]+)(?:\/|$)/) ??
+    pathname.match(/^(.*)\/scm\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/|$)/)
+  if (!match) return null
+
+  const [, prefix, project, repo] = match
+  if (!project || !repo || /\$\{|%7B/i.test(project) || /\$\{|%7B/i.test(repo)) return null
+
+  return `https://${host}${prefix}/projects/${project}/repos/${repo}`
+}
+
+/**
+ * Azure DevOps repos: /<org>/_git/<repo>, optionally with a /<project>/ segment
+ * between org and _git. The literal "_git" segment is the only reliable marker —
+ * everything before it is kept verbatim as-is, only a trailing branch/path suffix
+ * after the repo name is dropped.
+ */
+const AZURE_DEVOPS_HOSTS = new Set(['dev.azure.com'])
+
+function normalizeAzureDevOpsUrl(host: string, pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean)
+  const gitIndex = segments.indexOf('_git')
+  if (gitIndex < 1 || gitIndex + 1 >= segments.length) return null
+
+  const scope = segments.slice(0, gitIndex)
+  const repo = segments[gitIndex + 1]
+  if (!repo || [...scope, repo].some((s) => /\$\{|%7B/i.test(s))) return null
+
+  return `https://${host}/${scope.join('/')}/_git/${repo}`
+}
+
+/**
+ * Aliyun Codeup group URLs prefix owner/repo with a 24-char hex group id
+ * (/<groupId>/<owner>/<repo>.git) that is not part of the repo path itself.
+ */
+const ALIYUN_CODEUP_HOSTS = new Set(['codeup.aliyun.com'])
+const ALIYUN_GROUP_ID_RE = /^[0-9a-f]{24}$/i
+
+function normalizeAliyunCodeupUrl(host: string, pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean)
+  const parts =
+    segments.length >= 3 && ALIYUN_GROUP_ID_RE.test(segments[0]) ? segments.slice(1) : segments
+  if (parts.length < 2) return null
+
+  const owner = parts[0]
+  const name = parts[1].replace(/\.git$/, '')
+  if (!owner || !name || /\$\{|%7B/i.test(owner) || /\$\{|%7B/i.test(name)) return null
+
+  return `https://${host}/${owner}/${name}`
+}
+
+/**
+ * Android's Gerrit/Gitiles mirror already uses its full path as the canonical,
+ * resolvable repo name (e.g. /platform/tools/base) — nested repo naming is normal
+ * here, so this is an identity passthrough rather than an owner/repo split.
+ *
+ * cs.android.com (Android Code Search) is included too: it's a browsing UI over
+ * the same Gitiles-backed repos and mirrors the identical path naming (e.g.
+ * /androidx/platform/frameworks/support) — same passthrough applies.
+ */
+const GOOGLESOURCE_IDENTITY_HOSTS = new Set(['android.googlesource.com', 'cs.android.com'])
+
+function normalizeGooglesourceUrl(host: string, pathname: string): string | null {
+  const path = pathname.replace(/\/+$/, '').replace(/\.git$/, '')
+  if (!path || /\$\{|%7B/i.test(path)) return null
+
+  return `https://${host}${path}`
+}
+
+/**
+ * OpenDaylight's self-hosted Gerrit serves the same flat (no-owner) repo naming as
+ * ASF's gitweb, in two forms seen in the wild: a gitweb browse query
+ * (`/gerrit/gitweb?p=<repo>.git;a=summary`) and an SSH clone URL with an explicit
+ * Gerrit port and no `git@` user (`ssh://git.opendaylight.org:29418/<repo>.git`).
+ * Both are unified to the gitweb browse form so the stored link is always
+ * resolvable in a browser, not just via `git clone`.
+ */
+export const OPENDALIGHT_GERRIT_HOST = 'git.opendaylight.org'
+export const OPENDALIGHT_GERRIT_GITWEB_PATH = '/gerrit/gitweb'
+
+function normalizeOpendaylightGerritUrl(pathname: string, search: string): string | null {
+  // Query extraction only applies to the actual gitweb browse script — a `p` query
+  // on some unrelated path isn't a repo reference.
+  const queryRepo =
+    pathname === OPENDALIGHT_GERRIT_GITWEB_PATH ? new URLSearchParams(search).get('p') : null
+  const segments = pathname.split('/').filter(Boolean)
+  // The one-segment SSH-clone form must end in .git, otherwise any arbitrary
+  // single-segment path (e.g. /favicon.ico) would be mistaken for a repo.
+  const rawName =
+    queryRepo ?? (segments.length === 1 && segments[0].endsWith('.git') ? segments[0] : null)
+  const name = rawName ? extractGitwebRepoName(rawName) : null
+  if (!name) return null
+
+  return `https://${OPENDALIGHT_GERRIT_HOST}/gerrit/gitweb?p=${name}.git`
+}
+
+/**
+ * GitLab — gitlab.com and self-hosted instances — supports nested group
+ * namespaces (group/subgroup/.../project), so the repository path is NOT limited
+ * to owner/repo: taking only the first two segments would turn a valid repo like
+ * gitlab.com/group/subgroup/project into the group URL gitlab.com/group/subgroup.
+ * The full namespace/project path is everything up to GitLab's `/-/` route marker
+ * (which prefixes non-repo routes such as /-/tree, /-/blob, /-/merge_requests).
+ * Only applied to already-allowlisted hosts, so this never widens acceptance.
+ */
+function isGitlabHost(host: string): boolean {
+  return host === 'gitlab.com' || host.includes('gitlab')
+}
+
+function normalizeGitlabUrl(host: string, pathname: string): string | null {
+  const projectPath = pathname.split('/-/')[0]
+  const segments = projectPath.split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  segments[segments.length - 1] = segments[segments.length - 1].replace(/\.git$/, '')
+  if (segments.some((s) => !s || /\$\{|%7B/i.test(s))) return null
+
+  const path = segments.join('/')
+  // gitlab.com paths are case-insensitive (see CASE_INSENSITIVE_HOSTS); self-hosted
+  // instances are left as-is since their case sensitivity is not guaranteed.
+  return `https://${host}/${host === 'gitlab.com' ? path.toLowerCase() : path}`
+}
+
+/**
+ * Subversion hosts unambiguously identifiable by hostname alone (the "svn" in the
+ * name), so a bare `http://svn.apache.org/...` URL is recognised as SVN even without
+ * an `scm:svn:` connection-string prefix or `svn(+ssh)://` scheme.
+ */
+const SVN_HOSTS = new Set([
+  'svn.apache.org',
+  'svn.eu.apache.org',
+  'svn.sonatype.org',
+  'svn.forge.objectweb.org',
+  'svn.code.sf.net',
+  'svn.codehaus.org',
+  'svn.java.net',
+  'websvn.ow2.org',
+])
+
+/**
+ * Hosts that only count as SVN when explicitly marked (`scm:svn:` prefix or
+ * `svn(+ssh)://` scheme) — the bare hostname is shared with non-SVN content
+ * (java.net hosted forums, wikis, JIRA, etc. alongside its SVN forge).
+ */
+const SVN_HOSTS_REQUIRE_EXPLICIT_MARKER = new Set(['java.net'])
+
+function isSvnSourceforgeHost(host: string): boolean {
+  return host.endsWith('.svn.sourceforge.net')
+}
+
+const APACHE_SVN_HOSTS = new Set(['svn.apache.org', 'svn.eu.apache.org'])
+
+/**
+ * Whether `host` (lowercased, no `www.`) is one of the SVN hosts this module
+ * normalizes. Exported so callers persisting the normalized URL elsewhere
+ * (e.g. `parseRepoUrl` in `./normalize`) can special-case SVN's owner/repo-less
+ * path shape instead of applying a generic two-segment split.
+ */
+export function isSvnHost(host: string): boolean {
+  return (
+    SVN_HOSTS.has(host) || isSvnSourceforgeHost(host) || SVN_HOSTS_REQUIRE_EXPLICIT_MARKER.has(host)
+  )
+}
+
+/**
+ * Subversion has no owner/repo shape — its near-universal convention is
+ * <project>[/<module>]/{trunk|tags|branches}/... . The canonical link keeps
+ * everything up to (but not including) that trunk/tags/branches marker, the closest
+ * SVN equivalent of a repo root. Apache's three script fronts (viewvc, viewcvs.cgi,
+ * repos/asf) all serve the same repos, so they're unified to the /repos/asf/ form
+ * regardless of which one the declared URL used — mirrors wrapAsfRepo for git.
+ *
+ * Kept even though these hosts are largely dead/unreachable today (Apache, Sonatype
+ * and ObjectWeb's SVN forges have moved to Git) per explicit product decision: an SVN
+ * declared_repository_url should still resolve to a canonical link, not stay null.
+ */
+function normalizeSvnUrl(host: string, pathname: string): string | null {
+  const rest = pathname.replace(/^\/+/, '')
+  // The trailing group is optional so a marker-only root (e.g. "/repos/asf" with
+  // no trailing slash) still matches, leaving an empty remainder instead of
+  // falling through to be mis-parsed as project segments "repos"/"asf".
+  const markerMatch = rest.match(/^(viewvc|viewcvs\.cgi|repos\/asf|svnroot|svn|p)(?:\/(.*))?$/)
+  const scriptPrefix = markerMatch?.[1] ?? null
+  const afterPrefix = markerMatch ? (markerMatch[2] ?? '') : rest
+
+  const segments = afterPrefix.split('/').filter(Boolean)
+  if (segments.some((s) => /\$\{|%7B/i.test(s))) return null
+
+  if (scriptPrefix === 'p') {
+    // SourceForge /p/<project>/code/... — "code" is a fixed marker, not part of the path.
+    return segments[0] ? `https://${host}/p/${segments[0]}/code` : null
+  }
+
+  const branchMarkerIndex = segments.findIndex((s) => /^(trunk|tags|branches)$/i.test(s))
+  const projectSegments = branchMarkerIndex === -1 ? segments : segments.slice(0, branchMarkerIndex)
+
+  if (projectSegments.length === 0) {
+    // Legacy SourceForge subdomain form (<project>.svn.sourceforge.net) with no
+    // path beyond trunk/tags/branches — the project name is the subdomain itself.
+    if (isSvnSourceforgeHost(host)) {
+      const project = host.replace(/\.svn\.sourceforge\.net$/, '')
+      return project ? `https://${host}/svnroot/${project}` : null
+    }
+    return null
+  }
+
+  if (APACHE_SVN_HOSTS.has(host)) return `https://${host}/repos/asf/${projectSegments.join('/')}`
+
+  const prefix = scriptPrefix && scriptPrefix !== 'repos/asf' ? `${scriptPrefix}/` : ''
+  return `https://${host}${prefix ? `/${prefix}` : '/'}${projectSegments.join('/')}`
+}
+
+/**
+ * Detects and normalizes Maven `scm:svn:` connection strings and bare SVN URLs.
+ * Returns `undefined` when the input isn't SVN at all (falls through to the
+ * git-oriented logic below); `null` when it's SVN but not on a known SVN host or
+ * not resolvable; otherwise the canonical link.
+ */
+function normalizeSvnScmUrl(raw: string): string | null | undefined {
+  const hadSvnScmPrefix = /^scm:svn:/i.test(raw)
+  let s = raw.replace(/^scm:svn:/i, '')
+
+  const hasSvnScheme = /^svn(\+ssh)?:\/\//i.test(s)
+  s = s.replace(/^svn\+ssh:\/\//i, 'https://').replace(/^svn:\/\//i, 'https://')
+
+  if (!/^https?:\/\//i.test(s)) {
+    if (!hadSvnScmPrefix && !hasSvnScheme) return undefined
+    s = `https://${s.replace(/^https?:\/\//i, '')}`
+  }
+
+  // Strip an embedded user@ (svn+ssh://user@host/... form)
+  s = s.replace(/^(https?:\/\/)[^@/]+@/, '$1')
+
+  let parsed: URL
+  try {
+    parsed = new URL(s)
+  } catch {
+    return hadSvnScmPrefix || hasSvnScheme ? null : undefined
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  const isUnambiguousSvnHost = SVN_HOSTS.has(host) || isSvnSourceforgeHost(host)
+
+  if (!hadSvnScmPrefix && !hasSvnScheme && !isUnambiguousSvnHost) return undefined
+
+  const isSvnHost =
+    isUnambiguousSvnHost ||
+    (SVN_HOSTS_REQUIRE_EXPLICIT_MARKER.has(host) && (hadSvnScmPrefix || hasSvnScheme))
+  if (!isSvnHost) return null
+
+  return normalizeSvnUrl(host, parsed.pathname)
+}
+
+/**
+ * Converts the raw SCM URL from a POM (declared_repository_url) into a clean,
+ * canonical `https://<host>/<owner>/<repo>` repository URL suitable for storage
+ * as repository_url. Returns null when the input does not resolve to a real
+ * repository on a known SCM host.
  *
  * Handles common Maven SCM URL forms:
- *   scm:git:git@github.com:owner/repo.git  → https://github.com/owner/repo
- *   scm:git:https://github.com/owner/repo  → https://github.com/owner/repo
- *   git://github.com/owner/repo.git        → https://github.com/owner/repo
- *   https://github.com/owner/repo/tree/... → https://github.com/owner/repo
+ *   scm:git:git@github.com:owner/repo.git    → https://github.com/owner/repo
+ *   scm:git:https://github.com/owner/repo    → https://github.com/owner/repo
+ *   scm:git:github.com/owner/repo            → https://github.com/owner/repo
+ *   github.com/owner/repo (no scheme)        → https://github.com/owner/repo
+ *   git://github.com/owner/repo.git          → https://github.com/owner/repo
+ *   http://github.com/owner/repo/tree/...    → https://github.com/owner/repo
+ *   github.com:owner/repo.git (SCP colon)    → https://github.com/owner/repo
+ *   https://github.com:owner/repo            → https://github.com/owner/repo
+ *   ssh://git@github.com:owner/repo.git      → https://github.com/owner/repo
+ *
+ * SVN connection strings (`scm:svn:...`, `svn(+ssh)://...`) are handled separately
+ * by normalizeSvnScmUrl, which has no owner/repo shape and is dispatched before any
+ * of the git-oriented rewriting below — see its docstring for the SVN conventions.
+ *
+ * Rejected (→ null): website-only URLs (https://meson.ai/), non-SCM hosts
+ * (http://source.android.com), placeholders (Private, ${scm-url}).
  */
 export function normalizeScmUrl(raw: string | null): string | null {
   if (!raw) return null
-  let url = raw.trim()
+  let s = raw.trim()
+  if (!s) return null
 
-  // Strip scm:git: or scm: prefix
-  url = url.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
+  const svnResult = normalizeSvnScmUrl(s)
+  if (svnResult !== undefined) return svnResult
 
-  // Convert SSH git@host:owner/repo → https://host/owner/repo
-  url = url.replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
+  // Strip Maven scm:git: / scm: prefix
+  s = s.replace(/^scm:git:/i, '').replace(/^scm:/i, '')
 
-  // Convert git:// → https://
-  url = url.replace(/^git:\/\//, 'https://')
+  // git+https://… → https://…
+  s = s.replace(/^git\+/, '')
 
-  // Strip trailing .git
-  url = url.replace(/\.git$/, '')
+  // SCP form git@host:owner/repo → https://host/owner/repo
+  s = s.replace(/^git@([^:/]+):(.+)$/, 'https://$1/$2')
 
-  // Strip /tree/... or /blob/... path suffixes (keep only host + owner + repo)
-  url = url.replace(/\/(tree|blob)(\/.*)?$/, '')
+  // ssh://git@host:owner/repo → https://host/owner/repo (SCP colon under ssh)
+  s = s.replace(/^ssh:\/\/git@([^:/]+):(?=\D)/, 'https://$1/')
 
-  if (!url.startsWith('https://')) return null
+  // ssh://git@host/… → https://host/…
+  s = s.replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
 
-  return url.replace(/\/$/, '')
+  // ssh://host:port/… (no git@ user, real numeric Gerrit-style port) → https://host/…
+  s = s.replace(/^ssh:\/\/([^@/:]+):\d+\//, 'https://$1/')
+
+  // git:// → https://, and upgrade http:// → https:// — done before the SCP-colon
+  // rule below so that git://host:owner/repo is normalised too.
+  s = s.replace(/^git:\/\//, 'https://').replace(/^http:\/\//, 'https://')
+
+  // scheme://host:owner/repo → scheme://host/owner/repo — the colon is an SCP path
+  // separator, not a port (guarded by \D so real numeric ports are left intact).
+  s = s.replace(/^(https?):\/\/([^:/]+):(?=\D)/, '$1://$2/')
+
+  // No scheme at all (e.g. "github.com/owner/repo") → assume https
+  if (!s.includes('://')) {
+    // Bare SCP form "host:owner/repo" → "host/owner/repo" before assuming https.
+    s = s.replace(/^([^/:]+):(?=\D)/, '$1/')
+    s = `https://${s}`
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(s)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== 'https:') return null
+
+  const rawHost = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  const host = GITHUB_HOST_ALIASES.get(rawHost) ?? rawHost
+
+  if (
+    rawHost === 'github.io' ||
+    rawHost.endsWith('.github.io') ||
+    LEGACY_GITHUB_PAGES_HOSTS.has(rawHost)
+  ) {
+    return normalizeGithubPagesUrl(rawHost, parsed.pathname)
+  }
+
+  if (APACHE_GITWEB_HOSTS.has(host)) {
+    return normalizeApacheGitwebUrl(host, parsed.pathname, parsed.search)
+  }
+
+  if (GITWEB_QUERY_HOSTS.has(host)) {
+    return normalizeGitwebQueryUrl(host, parsed.search)
+  }
+
+  if (host === OPENDALIGHT_GERRIT_HOST) {
+    return normalizeOpendaylightGerritUrl(parsed.pathname, parsed.search)
+  }
+
+  if (ECLIPSE_CGIT_HOSTS.has(host)) {
+    return normalizeEclipseCgitUrl(host, parsed.pathname)
+  }
+
+  if (BITBUCKET_SERVER_HOSTS.has(host)) {
+    return normalizeBitbucketServerUrl(host, parsed.pathname)
+  }
+
+  if (AZURE_DEVOPS_HOSTS.has(host)) {
+    return normalizeAzureDevOpsUrl(host, parsed.pathname)
+  }
+
+  if (ALIYUN_CODEUP_HOSTS.has(host)) {
+    return normalizeAliyunCodeupUrl(host, parsed.pathname)
+  }
+
+  if (GOOGLESOURCE_IDENTITY_HOSTS.has(host)) {
+    return normalizeGooglesourceUrl(host, parsed.pathname)
+  }
+
+  if (!SCM_HOSTS.has(host)) return null
+
+  // GitLab (incl. self-hosted) allows nested group namespaces, so its repo path is
+  // more than owner/repo — handled separately from the generic 2-segment logic.
+  if (isGitlabHost(host)) return normalizeGitlabUrl(host, parsed.pathname)
+
+  // Require at least owner + repo path segments
+  const segments = parsed.pathname.split('/').filter(Boolean)
+  if (segments.length < 2) return null
+
+  let owner = segments[0]
+  let name = segments[1].replace(/\.git$/, '')
+  if (!owner || !name) return null
+
+  // A leftover ${...} in owner/repo means best-effort interpolation upstream could
+  // not resolve it — reject rather than store a junk link. The URL parser
+  // percent-encodes { and } in the path, so check both forms. Placeholders in a
+  // trailing suffix (e.g. /tree/${project.scm.tag}) are irrelevant here since only
+  // segments[0]/[1] are inspected — that suffix is simply never read.
+  const hasPlaceholder = (seg: string) => /\$\{|%7B/i.test(seg)
+  if (hasPlaceholder(owner) || hasPlaceholder(name)) return null
+
+  if (CASE_INSENSITIVE_HOSTS.has(host)) {
+    owner = owner.toLowerCase()
+    name = name.toLowerCase()
+  }
+
+  return `https://${host}/${owner}/${name}`
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -516,6 +1144,59 @@ function extractPersons(raw: unknown, role: 'author' | 'maintainer'): PomMaintai
     }))
 }
 
+/** Flattens a POM's <properties> block into a string→string map (non-string values skipped). */
+function extractProperties(pom: PomData): Record<string, string> {
+  const raw = pom.properties
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string') out[key] = value
+    else if (typeof value === 'number') out[key] = String(value)
+  }
+  return out
+}
+
+/** Maven built-in project.* / pom.* properties for the leaf coordinates. */
+function builtinProjectProperties(
+  groupId: string,
+  artifactId: string,
+  version: string,
+): Record<string, string> {
+  return {
+    'project.groupId': groupId,
+    'project.artifactId': artifactId,
+    'project.version': version,
+    'pom.groupId': groupId,
+    'pom.artifactId': artifactId,
+    'pom.version': version,
+    groupId,
+    artifactId,
+    version,
+  }
+}
+
+const MAX_INTERPOLATION_DEPTH = 10
+
+/**
+ * Best-effort Maven property interpolation of ${...} placeholders. Resolves
+ * recursively (a property value may itself reference another) up to a depth cap
+ * to guard against cycles. Placeholders with no matching property (e.g. defined
+ * in a profile/settings, or method calls like ${x.substring(8)}) are left as-is
+ * so the SCM normaliser rejects them.
+ */
+export function interpolateProperties(value: string, props: Record<string, string>): string {
+  let current = value
+  for (let i = 0; i < MAX_INTERPOLATION_DEPTH && current.includes('${'); i++) {
+    const next = current.replace(/\$\{([^{}]+)\}/g, (match, key) => {
+      const resolved = props[(key as string).trim()]
+      return resolved !== undefined ? resolved : match
+    })
+    if (next === current) break
+    current = next
+  }
+  return current
+}
+
 function extractParent(
   pom: PomData,
 ): { groupId: string; artifactId: string; version: string } | null {
@@ -538,5 +1219,6 @@ function emptyFields(hops: number): ResolvedFields {
     developers: [],
     contributors: [],
     hops,
+    properties: {},
   }
 }

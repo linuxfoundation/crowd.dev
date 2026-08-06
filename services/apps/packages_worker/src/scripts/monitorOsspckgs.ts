@@ -22,6 +22,8 @@ const A = {
   altOn: '\x1b[?1049h',
   altOff: '\x1b[?1049l',
   clear: '\x1b[2J\x1b[H',
+  home: '\x1b[H', // cursor to top-left without clearing — overwrite in place (no flicker)
+  eos: '\x1b[0J', // erase from cursor to end of screen — clears leftover rows from a taller frame
   // fg
   black: '\x1b[30m',
   red: '\x1b[31m',
@@ -44,10 +46,18 @@ const move = (row: number, col: number) => `${ESC}${row};${col}H`
 const clearLine = () => `${ESC}2K`
 const w = process.stdout
 
+// When frameBuf is non-null a render() is in progress: accumulate the whole frame into one string
+// and flush it with a single w.write() so the terminal paints it as one frame (no partial-frame
+// flicker). Outside render(), write() flushes immediately as before.
+let frameBuf: string | null = null
+let maxRow = 0
+
 function write(s: string) {
-  w.write(s)
+  if (frameBuf !== null) frameBuf += s
+  else w.write(s)
 }
 function writeln(row: number, col: number, s: string) {
+  if (row > maxRow) maxRow = row
   write(move(row, col) + clearLine() + s)
 }
 
@@ -114,7 +124,9 @@ function statusStr(status: string, step?: string | null, stuck?: boolean) {
   const c = stuck ? A.yellow : (STATUS_COLOR[status as keyof typeof STATUS_COLOR] ?? '')
   const i = stuck ? '⚠' : (STATUS_ICON[status as keyof typeof STATUS_ICON] ?? '?')
   const label =
-    step && !['done', 'failed', 'cleaned'].includes(status) ? `${status}·${step}` : status
+    step && step !== status && !['done', 'failed', 'cleaned'].includes(status)
+      ? `${status}·${step}`
+      : status
   return `${c}${i} ${label}${A.reset}`
 }
 
@@ -236,6 +248,7 @@ const KIND_TABLES: Record<string, string[]> = {
   dependent_counts: ['packages'],
   dependent_counts_go: ['packages'],
   dependent_counts_nuget: ['packages'],
+  dependent_counts_rubygems: ['packages'],
   ranking: ['packages'],
   pypi_downloads_30d: ['downloads_last_30d', 'packages'],
   pypi_downloads_daily: ['downloads_daily'],
@@ -273,7 +286,7 @@ async function fetchTableCounts(): Promise<Record<string, number>> {
 
 // ── Ecosystem extraction ───────────────────────────────────────────────────────
 
-const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo']
+const KNOWN_ECOSYSTEMS = ['npm', 'go', 'maven', 'pypi', 'nuget', 'cargo', 'rubygems']
 
 // Reads ecosystems from table_row_counts['meta:ecosystems'] (new jobs) or falls back to
 // parsing gcs_prefix/export_name for jobs created before the meta key was added.
@@ -715,8 +728,10 @@ function updateChunkHistory(job: any, now: number) {
 }
 
 // ETA to finish merging the current staging chunk.
-// Uses historical merge rate from completed chunks when available; falls back to overall job
-// throughput (includes loading time, so slightly conservative) when none observed yet.
+// Uses historical merge rate from completed chunks only. With no chunk history yet
+// (e.g. monitor started mid-merge) there is no trustworthy throughput signal — pgRows/elapsed
+// is diluted by the export+download phases where pgRows is ~0 and mis-projects by ~30x — so we
+// show "—" until a chunk boundary is observed rather than print a wildly wrong number.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeChunkEta(job: any) {
   if (job.status !== 'merging') return null
@@ -724,29 +739,20 @@ function computeChunkEta(job: any) {
   if (!stagingRows) return null
   const hist = chunkMergeHistory.get(job.id)
   if (!hist || hist.mergeStart == null) return null
+  if (hist.completedChunks.length === 0) return null
 
-  let rateRowsPerMs: number
-  if (hist.completedChunks.length > 0) {
-    // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
-    // Most recent chunk contributes ~50% of the rate; history stabilises it.
-    const chunks = hist.completedChunks
-    let weightedRate = 0,
-      totalWeight = 0
-    for (let i = 0; i < chunks.length; i++) {
-      const w = Math.pow(2, i)
-      weightedRate += (chunks[i].stagingRows / chunks[i].durationMs) * w
-      totalWeight += w
-    }
-    if (totalWeight === 0) return null
-    rateRowsPerMs = weightedRate / totalWeight
-  } else {
-    // No completed chunks observed — derive rate from overall job progress (conservative: includes loading)
-    const pgRows = Number(job.row_count_pg) || 0
-    if (!pgRows || !job.started_at) return null
-    const jobElapsedMs = Date.now() - new Date(job.started_at).getTime()
-    if (jobElapsedMs < 10000) return null
-    rateRowsPerMs = pgRows / jobElapsedMs
+  // Exponential recency weighting: chunk i gets weight 2^i (oldest=0, newest=n-1).
+  // Most recent chunk contributes ~50% of the rate; history stabilises it.
+  const chunks = hist.completedChunks
+  let weightedRate = 0,
+    totalWeight = 0
+  for (let i = 0; i < chunks.length; i++) {
+    const w = Math.pow(2, i)
+    weightedRate += (chunks[i].stagingRows / chunks[i].durationMs) * w
+    totalWeight += w
   }
+  if (totalWeight === 0) return null
+  const rateRowsPerMs = weightedRate / totalWeight
 
   const estimatedDurationMs = stagingRows / rateRowsPerMs
   const elapsedMs = Date.now() - hist.mergeStart
@@ -760,34 +766,30 @@ function computeChunkEta(job: any) {
 }
 
 // ETA for the entire job (all remaining files + merges).
-// Uses job.started_at so rate includes both loading and merging time naturally.
+// Driven by file progress, not pgRows-vs-bqRows: pgRows is the merged delta and
+// converges to staging size (after dedup), never to the raw BQ scan count — so a
+// bqRows target overstates remaining work, and a pgRows/total-elapsed rate is diluted
+// by the export+download+staging phases where pgRows is still 0. Files are the unit
+// that actually advances, and elapsed already amortizes every per-file phase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeTotalEta(job: any) {
   if (!['loading', 'merging'].includes(job.status)) return null
-  const pgRows = Number(job.row_count_pg) || 0
   const trc = job.table_row_counts ?? {}
   const filesDone = Number(trc['progress:done']) || 0
   const filesTotal = Number(trc['progress:total']) || 0
-  const stagingRows = Number(job.row_count_staging) || 0
-  if (!filesDone || !filesTotal || !pgRows || !job.started_at) return null
-  const bqRows = Number(job.row_count_bq) || 0
-  const rowsPerFile =
-    bqRows > 0 && filesTotal > 0
-      ? bqRows / filesTotal
-      : stagingRows > 0
-        ? stagingRows / filesDone
-        : 0
-  if (!rowsPerFile) return null
-  const estimatedTotal = bqRows > 0 ? bqRows : rowsPerFile * filesTotal
-  if (pgRows >= estimatedTotal) return null
+  if (!filesDone || !filesTotal || !job.started_at) return null
+  if (filesDone >= filesTotal) return null
   const elapsedMs = Date.now() - new Date(job.started_at).getTime()
-  if (elapsedMs < 10000 || pgRows < 1000) return null
-  const ratePerMs = pgRows / elapsedMs
-  if (ratePerMs <= 0) return null
+  if (elapsedMs < 10000) return null
+  const msPerFile = elapsedMs / filesDone
+  const remainingMs = msPerFile * (filesTotal - filesDone)
+  if (remainingMs <= 0) return null
+  // Throughput display: staging rows landed per minute over the whole job.
+  const stagingRows = Number(job.row_count_staging) || 0
   return {
-    ms: (estimatedTotal - pgRows) / ratePerMs,
-    ratio: Math.min(pgRows / estimatedTotal, 1),
-    ratePerMin: ratePerMs * 60000,
+    ms: remainingMs,
+    ratio: filesDone / filesTotal,
+    ratePerMin: stagingRows > 0 ? (stagingRows / elapsedMs) * 60000 : 0,
   }
 }
 
@@ -795,7 +797,17 @@ function computeTotalEta(job: any) {
 
 function render() {
   const { rows, columns } = process.stdout
-  write(A.reset + A.hide + A.clear)
+  // Buffer the whole frame, then flush once. Home (not clear) + overwrite-in-place kills the flicker;
+  // eos at the end erases any rows a shorter frame left behind (e.g. detail panel closed, resize).
+  frameBuf = ''
+  maxRow = 0
+  write(A.reset + A.hide + A.home)
+  const flush = () => {
+    write(move(maxRow + 1, 1) + A.eos + A.show)
+    const out = frameBuf ?? ''
+    frameBuf = null
+    w.write(out)
+  }
 
   const refreshStr = lastRefresh ? `last refresh: ${lastRefresh}` : 'loading…'
   const title = ` ${A.bold}${A.cyan}OSSPCKGS Monitor${A.reset}  ${A.dim}${refreshStr}${A.reset}`
@@ -805,7 +817,7 @@ function render() {
 
   if (error) {
     writeln(3, 1, `${A.red}DB Error: ${error}${A.reset}`)
-    write(A.show)
+    flush()
     return
   }
 
@@ -874,7 +886,7 @@ function render() {
     }
   }
 
-  write(A.show)
+  flush()
 }
 
 // ── Data ───────────────────────────────────────────────────────────────────────

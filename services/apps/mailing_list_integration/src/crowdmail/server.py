@@ -1,0 +1,47 @@
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from loguru import logger
+
+from crowdmail.settings import WORKER_SHUTDOWN_TIMEOUT_SEC
+from crowdmail.worker.list_worker import run_worker, shutdown_worker
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """FastAPI lifespan context manager"""
+    logger.info("Starting application lifespan")
+
+    worker_task = None
+    try:
+        worker_task = asyncio.create_task(run_worker())
+        logger.info("List worker started successfully")
+        # Yield control to FastAPI - it will handle signals and trigger shutdown
+        yield
+    finally:
+        await shutdown_worker()  # stopping worker to process new lists
+        if worker_task is not None:
+            try:
+                await asyncio.wait_for(worker_task, timeout=WORKER_SHUTDOWN_TIMEOUT_SEC)
+                logger.info("Worker shutdown complete")
+            except TimeoutError:
+                logger.warning("Worker shutdown timeout, forcing cancellation")
+                worker_task.cancel()
+                # cancel() only schedules cancellation - awaiting the task lets
+                # run_worker()'s finally block finish (Kafka producer shutdown)
+                # before the event loop tears down, instead of racing it.
+                try:
+                    await worker_task
+                except asyncio.CancelledError:
+                    pass
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/")
+async def root():
+    """Health check endpoint"""
+    return {"message": "Mailing List Integration Worker Running", "status": "healthy"}

@@ -2,12 +2,99 @@ import merge from 'lodash.merge'
 import ldSum from 'lodash.sum'
 
 import {
+  MemberIdentityType,
   MemberOrganizationDateInput,
   MemberOrganizationDateRange,
   OrganizationSource,
 } from '@crowd/types'
 
+import { isValidEmail } from './email'
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+export function isSameMemberIdentity(
+  a: { platform: string; type: string; value: string },
+  b: { platform: string; type: string; value: string },
+): boolean {
+  return (
+    a.platform === b.platform &&
+    a.type === b.type &&
+    a.value.trim().toLowerCase() === b.value.trim().toLowerCase()
+  )
+}
+
+/** Email-shaped → lowercase; otherwise trim and keep preferred casing. */
+export function normalizeMemberIdentityValue(value: string): string {
+  const trimmed = value.trim()
+  const lower = trimmed.toLowerCase()
+  return isValidEmail(lower) ? lower : trimmed
+}
+
+/** Normalize values, drop empties, dedupe by (platform, type, lower(value)) preferring verified. */
+export function normalizeMemberIdentities<
+  T extends { platform: string; type: string; value: string; verified?: boolean },
+>(identities: T[], options: { dropInvalidEmails?: boolean } = {}): T[] {
+  const seen = new Map<string, T>()
+
+  for (const identity of identities) {
+    if (!identity.value?.trim()) {
+      continue
+    }
+
+    const normalized = {
+      ...identity,
+      value: normalizeMemberIdentityValue(identity.value),
+    }
+
+    if (
+      options.dropInvalidEmails &&
+      normalized.type === MemberIdentityType.EMAIL &&
+      !isValidEmail(normalized.value)
+    ) {
+      continue
+    }
+
+    const key = `${normalized.platform}:${normalized.type}:${normalized.value.toLowerCase()}`
+    const existing = seen.get(key)
+    if (!existing || (!existing.verified && normalized.verified)) {
+      seen.set(key, normalized)
+    }
+  }
+
+  return Array.from(seen.values())
+}
+
+/** Prefer `default`, else first non-empty string source value. */
+export function getAttributeValue(attribute: unknown): string | undefined {
+  if (!attribute || typeof attribute !== 'object') {
+    return undefined
+  }
+
+  const record = attribute as Record<string, unknown>
+
+  if (typeof record.default === 'string' && record.default.trim()) {
+    return record.default
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'default') continue
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+export function hasAttributeValue(attribute: unknown): boolean {
+  if (!attribute || typeof attribute !== 'object') {
+    return false
+  }
+
+  return Object.values(attribute as Record<string, unknown>).some(
+    (v) => typeof v === 'string' && v.trim().length > 0,
+  )
+}
 
 export async function setAttributesDefaultValues(
   attributes: Record<string, unknown>,
@@ -91,9 +178,10 @@ export const calculateReach = (oldReach: any, newReach: any): { total: number } 
  */
 export function getMemberOrganizationSourceRank(source: string | null | undefined): number {
   if (source === OrganizationSource.UI) return 0
-  if (source === OrganizationSource.EMAIL_DOMAIN) return 1
-  if (source?.startsWith('enrichment-')) return 2
-  return 3
+  if (source === OrganizationSource.PROJECT_REGISTRY) return 1
+  if (source === OrganizationSource.EMAIL_DOMAIN) return 2
+  if (source?.startsWith('enrichment-')) return 3
+  return 4
 }
 
 /**

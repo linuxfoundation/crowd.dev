@@ -47,11 +47,12 @@ GROUP BY pm.purl
 `
 }
 
-// GO/NUGET reverse-dependent counts. deps.dev publishes NO reverse-dependent or transitive graph for
-// these two ecosystems (absent from Dependents/Dependencies/DependencyGraphEdges — see ADR-0004), so
-// we compute the EXACT reverse transitive closure ourselves from the direct manifests it DOES publish
-// (GoRequirementsLatest / NuGetRequirementsLatest). The "Latest" tables hold the highest release per
-// package, matching the DependentIsHighestReleaseWithResolution semantics of the edge query.
+// GO/NUGET/RUBYGEMS reverse-dependent counts. deps.dev publishes NO reverse-dependent or transitive
+// graph for these three ecosystems (absent from Dependents/Dependencies/DependencyGraphEdges — see
+// ADR-0004), so we compute the EXACT reverse transitive closure ourselves from the direct manifests
+// it DOES publish (GoRequirementsLatest / NuGetRequirementsLatest / RubyGemsRequirementsLatest). The
+// "Latest" tables hold the highest release per package, matching the
+// DependentIsHighestReleaseWithResolution semantics of the edge query.
 //
 // Unlike the edge query (a single SELECT), this is a multi-statement BQ SCRIPT: a semi-naive fixpoint
 // over session-scoped TEMP tables, run via bqExportToGcs's isScript mode. It ends by creating
@@ -68,7 +69,7 @@ const MAX_CLOSURE_ITERATIONS = 60
 // Builds the full closure script for one ecosystem. `edgesSql` must SELECT DISTINCT a `dep` (requirer)
 // and `subj` (depended-upon) name column from that ecosystem's manifest table.
 function buildClosureScript(
-  system: 'GO' | 'NUGET',
+  system: 'GO' | 'NUGET' | 'RUBYGEMS',
   edgesSql: string,
   snapshotDate: string,
 ): string {
@@ -193,4 +194,17 @@ UNNEST(n.DependencyGroups) AS grp,
 UNNEST(grp.Dependencies) AS dp
 WHERE dp.Name NOT LIKE '%>%' AND n.Name NOT LIKE '%>%' AND n.Name != dp.Name`
   return buildClosureScript('NUGET', edgesSql, snapshotDate)
+}
+
+// RubyGems has no reverse-dependent/transitive graph in deps.dev either (Dependents contains only
+// {NPM, MAVEN, PYPI, CARGO} — verified via BQ 2026-07-13), so — like GO/NUGET — the exact reverse
+// transitive closure is computed from the runtime-dependency manifest (RubyGemsRequirementsLatest),
+// matching the RuntimeDependencies-only scope used for the forward package_dependencies ingest.
+export function buildRubygemsDependentCountsSql(snapshotDate: string): string {
+  const edgesSql = `
+SELECT DISTINCT r.Name AS dep, d.Name AS subj
+FROM \`bigquery-public-data.deps_dev_v1.RubyGemsRequirementsLatest\` r,
+UNNEST(r.RuntimeDependencies) AS d
+WHERE d.Name NOT LIKE '%>%' AND r.Name NOT LIKE '%>%' AND r.Name != d.Name`
+  return buildClosureScript('RUBYGEMS', edgesSql, snapshotDate)
 }

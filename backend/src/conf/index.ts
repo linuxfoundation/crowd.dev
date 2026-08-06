@@ -86,6 +86,14 @@ export const PACKAGES_DB_CONFIG: IDatabaseConfig | undefined = config.has('packa
   ? config.get<IDatabaseConfig>('packagesDb')
   : undefined
 
+// packages_worker (npm/maven/pypi/osv/security-contacts/...) runs in its own Temporal
+// namespace, separate from the API's default namespace — see CROWD_PACKAGES_TEMPORAL_NAMESPACE.
+export const PACKAGES_TEMPORAL_CONFIG: ITemporalConfig | undefined = config.has(
+  'packagesTemporal.namespace',
+)
+  ? config.get<ITemporalConfig>('packagesTemporal')
+  : undefined
+
 export const SEGMENT_CONFIG: SegmentConfiguration = config.get<SegmentConfiguration>('segment')
 
 export const COMPREHEND_CONFIG: ComprehendConfiguration =

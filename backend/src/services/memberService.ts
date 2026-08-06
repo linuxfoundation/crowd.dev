@@ -4,7 +4,15 @@ import moment from 'moment-timezone'
 import validator from 'validator'
 
 import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
-import { Error400, calculateReach, getProperDisplayName, isDomainExcluded } from '@crowd/common'
+import {
+  Error400,
+  calculateReach,
+  getAttributeValue,
+  getCountry,
+  getProperDisplayName,
+  hasAttributeValue,
+  isDomainExcluded,
+} from '@crowd/common'
 import {
   CommonMemberService,
   getGithubInstallationToken,
@@ -21,7 +29,7 @@ import {
   insertMemberSegmentAggregates,
   queryMembersAdvanced,
 } from '@crowd/data-access-layer/src/members'
-import { QueryExecutor, optionsBgQx, optionsQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
   decrementMemberMergeSuggestionCounts,
   fetchManySegments,
@@ -41,13 +49,14 @@ import {
   SyncMode,
 } from '@crowd/types'
 
+import { optionsBgQx, optionsQx } from '@/database/sequelizeQueryExecutor'
+
 import MemberAttributeSettingsRepository from '../database/repositories/memberAttributeSettingsRepository'
 import MemberRepository from '../database/repositories/memberRepository'
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'
 import SequelizeRepository from '../database/repositories/sequelizeRepository'
 import {
   BasicMemberIdentity,
-  IMemberMergeSuggestion,
   mapUsernameToIdentities,
 } from '../database/repositories/types/memberTypes'
 import telemetryTrack from '../segment/telemetryTrack'
@@ -445,6 +454,17 @@ export default class MemberService extends LoggerBase {
         const toUpdate = CommonMemberService.membersMerge(existing, data)
 
         if (toUpdate.attributes) {
+          if (!hasAttributeValue(toUpdate.attributes.country)) {
+            const location = getAttributeValue(toUpdate.attributes.location)
+            const country = getCountry(location)
+            if (country) {
+              toUpdate.attributes.country = {
+                ...toUpdate.attributes.country,
+                system: country,
+              }
+            }
+          }
+
           toUpdate.attributes = await this.setAttributesDefaultValues(toUpdate.attributes)
         }
 
@@ -458,6 +478,17 @@ export default class MemberService extends LoggerBase {
         // It is important to call it with doPopulateRelations=false
         // because otherwise the performance is greatly decreased in integrations
         if (data.attributes) {
+          if (!hasAttributeValue(data.attributes.country)) {
+            const location = getAttributeValue(data.attributes.location)
+            const country = getCountry(location)
+            if (country) {
+              data.attributes.country = {
+                ...data.attributes.country,
+                system: country,
+              }
+            }
+          }
+
           data.attributes = await this.setAttributesDefaultValues(data.attributes)
         }
 
@@ -728,32 +759,6 @@ export default class MemberService extends LoggerBase {
   }
 
   /**
-   * Given two members, add them to the toMerge fields of each other.
-   * It will also update the tenant's toMerge list, removing any entry that contains
-   * the pair.
-   * @returns Success/Error message
-   */
-  async addToMerge(suggestions: IMemberMergeSuggestion[]) {
-    const transaction = await SequelizeRepository.createTransaction(this.options)
-    try {
-      const searchSyncService = new SearchSyncService(this.options)
-
-      await MemberRepository.addToMerge(suggestions, { ...this.options, transaction })
-      await SequelizeRepository.commitTransaction(transaction)
-
-      for (const suggestion of suggestions) {
-        await searchSyncService.triggerMemberSync(suggestion.members[0])
-        await searchSyncService.triggerMemberSync(suggestion.members[1])
-      }
-      return { status: 200 }
-    } catch (error) {
-      await SequelizeRepository.rollbackTransaction(transaction)
-      this.log.error(error, 'Error while adding members to merge')
-      throw error
-    }
-  }
-
-  /**
    * Given two members, add them to the noMerge fields of each other.
    * @param memberOneId ID of the first member
    * @param memberTwoId ID of the second member
@@ -766,8 +771,9 @@ export default class MemberService extends LoggerBase {
     try {
       await MemberRepository.addNoMerge(memberOneId, memberTwoId, txOptions)
       await MemberRepository.addNoMerge(memberTwoId, memberOneId, txOptions)
+
+      // Removes from either order of the pair
       await MemberRepository.removeToMerge(memberOneId, memberTwoId, txOptions)
-      await MemberRepository.removeToMerge(memberTwoId, memberOneId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (error) {
@@ -811,6 +817,20 @@ export default class MemberService extends LoggerBase {
 
       if (data.displayName) {
         data.displayName = getProperDisplayName(data.displayName)
+      }
+
+      if (data.attributes) {
+        if (!hasAttributeValue(data.attributes.country)) {
+          const location = getAttributeValue(data.attributes.location)
+          const country = getCountry(location)
+          if (country) {
+            data.attributes.country = {
+              ...data.attributes.country,
+              system: country,
+              default: data.attributes.country?.default ?? country,
+            }
+          }
+        }
       }
 
       const record = await MemberRepository.update(id, data, repoOptions, {

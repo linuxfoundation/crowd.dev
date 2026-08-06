@@ -1,12 +1,13 @@
 // NPM, MAVEN, PYPI, CARGO are in DependencyGraphEdgesLatest / DependenciesLatest.
 // GO uses GoRequirementsLatest (DirectDependencies, no resolved to_version).
 // NUGET uses NuGetRequirementsLatest (DependencyGroups → Dependencies, no resolved to_version).
-// Confirmed via BQ query 2026-06-17: DependencyGraphEdgesLatest and DependenciesLatest
-// both contain exactly {NPM, MAVEN, PYPI, CARGO} — GO and NUGET absent from both.
+// RUBYGEMS uses RubyGemsRequirementsLatest (RuntimeDependencies, no resolved to_version).
+// Confirmed via BQ query: DependencyGraphEdgesLatest and DependenciesLatest contain exactly
+// {NPM, MAVEN, PYPI, CARGO} — GO, NUGET and RUBYGEMS absent from both (rubygems verified 2026-07-03).
 
 const EDGE_SYSTEMS = new Set(['NPM', 'MAVEN', 'PYPI', 'CARGO'])
 
-export const DEPS_DEFAULT_ECOSYSTEMS = ['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO']
+export const DEPS_DEFAULT_ECOSYSTEMS = ['NPM', 'GO', 'MAVEN', 'PYPI', 'NUGET', 'CARGO', 'RUBYGEMS']
 
 // --- Full SQL helpers ---
 
@@ -21,8 +22,8 @@ SELECT
 FROM \`bigquery-public-data.deps_dev_v1.GoRequirementsLatest\` g,
 UNNEST(g.DirectDependencies) AS d`
 
-// NuGet groups deps by TargetFramework — flatten all groups, dedup handled downstream
-// by DISTINCT ON in MERGE_SQL_FULL and ON CONFLICT in MERGE_SQL.
+// NuGet groups deps by TargetFramework — flatten all groups, duplicate (root, dep) pairs are
+// deduped downstream by DISTINCT ON + ON CONFLICT in MERGE_SQL (and the fill-constraints variant).
 const NUGET_FULL_PART = `
 SELECT
   'nuget'                AS ecosystem,
@@ -34,6 +35,18 @@ SELECT
 FROM \`bigquery-public-data.deps_dev_v1.NuGetRequirementsLatest\` n,
 UNNEST(n.DependencyGroups) AS grp,
 UNNEST(grp.Dependencies) AS dep`
+
+// RubyGems: RuntimeDependencies only (the runtime graph — dev deps excluded, matching GO/NUGET).
+const RUBYGEMS_FULL_PART = `
+SELECT
+  'rubygems'             AS ecosystem,
+  r.Name                 AS root_name,
+  r.Version              AS root_version,
+  d.Name                 AS to_name,
+  CAST(NULL AS STRING)   AS to_version,
+  d.Requirement          AS version_constraint
+FROM \`bigquery-public-data.deps_dev_v1.RubyGemsRequirementsLatest\` r,
+UNNEST(r.RuntimeDependencies) AS d`
 
 // ADR-0003 Option A: DependencyGraphEdgesLatest for NPM/MAVEN/PYPI/CARGO — has version_constraint.
 // GO + NUGET always come from their ecosystem-specific tables regardless of option.
@@ -59,6 +72,7 @@ WHERE e.System IN (${filter})
 
   if (ecosystems.includes('GO')) parts.push(GO_FULL_PART)
   if (ecosystems.includes('NUGET')) parts.push(NUGET_FULL_PART)
+  if (ecosystems.includes('RUBYGEMS')) parts.push(RUBYGEMS_FULL_PART)
 
   return parts.join('\nUNION ALL\n')
 }
@@ -86,6 +100,7 @@ WHERE d.System IN (${filter})
 
   if (ecosystems.includes('GO')) parts.push(GO_FULL_PART)
   if (ecosystems.includes('NUGET')) parts.push(NUGET_FULL_PART)
+  if (ecosystems.includes('RUBYGEMS')) parts.push(RUBYGEMS_FULL_PART)
 
   return parts.join('\nUNION ALL\n')
 }
@@ -208,6 +223,38 @@ function nugetIncrementalBranch(
   }
 }
 
+// RubyGems manifest — RuntimeDependencies only (runtime graph; dev deps excluded, matching GO/NUGET).
+function rubygemsIncrementalBranch(
+  today: string,
+  watermark: string,
+): { ctes: string[]; select: string } {
+  return {
+    ctes: [
+      `today_rubygems AS (
+  SELECT
+    'rubygems'           AS ecosystem,
+    r.Name               AS root_name,
+    r.Version            AS root_version,
+    d.Name               AS to_name,
+    CAST(NULL AS STRING) AS to_version,
+    MAX(d.Requirement)   AS version_constraint
+  FROM \`${DEPS_DEV}.RubyGemsRequirements\` r,
+  UNNEST(r.RuntimeDependencies) AS d
+  WHERE ${snapshotRange('r.SnapshotAt', today)}
+  GROUP BY 1, 2, 3, 4
+)`,
+      `watermark_rubygems AS (
+  SELECT 'rubygems' AS ecosystem, r.Name AS root_name, r.Version AS root_version, d.Name AS to_name
+  FROM \`${DEPS_DEV}.RubyGemsRequirements\` r,
+  UNNEST(r.RuntimeDependencies) AS d
+  WHERE ${snapshotRange('r.SnapshotAt', watermark)}
+  GROUP BY 1, 2, 3, 4
+)`,
+    ],
+    select: antiJoinSelect('today_rubygems', 'watermark_rubygems'),
+  }
+}
+
 export function buildDepsIncrementalSqlA(
   today: string,
   watermark: string,
@@ -216,6 +263,7 @@ export function buildDepsIncrementalSqlA(
   const edgeSystems = ecosystems.filter((s) => EDGE_SYSTEMS.has(s))
   const includeGo = ecosystems.includes('GO')
   const includeNuget = ecosystems.includes('NUGET')
+  const includeRubygems = ecosystems.includes('RUBYGEMS')
 
   const ctes: string[] = []
   const selects: string[] = []
@@ -261,6 +309,12 @@ export function buildDepsIncrementalSqlA(
     selects.push(select)
   }
 
+  if (includeRubygems) {
+    const { ctes: rubygemsCtes, select } = rubygemsIncrementalBranch(today, watermark)
+    ctes.push(...rubygemsCtes)
+    selects.push(select)
+  }
+
   return `WITH\n${ctes.join(',\n')}\n${selects.join('\nUNION ALL\n')}`
 }
 
@@ -272,6 +326,7 @@ export function buildDepsIncrementalSqlB(
   const depsSystems = ecosystems.filter((s) => EDGE_SYSTEMS.has(s))
   const includeGo = ecosystems.includes('GO')
   const includeNuget = ecosystems.includes('NUGET')
+  const includeRubygems = ecosystems.includes('RUBYGEMS')
 
   const ctes: string[] = []
   const selects: string[] = []
@@ -314,6 +369,12 @@ export function buildDepsIncrementalSqlB(
   if (includeNuget) {
     const { ctes: nugetCtes, select } = nugetIncrementalBranch(today, watermark)
     ctes.push(...nugetCtes)
+    selects.push(select)
+  }
+
+  if (includeRubygems) {
+    const { ctes: rubygemsCtes, select } = rubygemsIncrementalBranch(today, watermark)
+    ctes.push(...rubygemsCtes)
     selects.push(select)
   }
 

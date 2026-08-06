@@ -11,7 +11,6 @@ import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
   moveMembersBetweenOrganizations,
-  optionsQx,
   removeMemberRole,
 } from '@crowd/data-access-layer'
 import { hasLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
@@ -54,6 +53,7 @@ import {
 
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import MemberOrganizationRepository from '@/database/repositories/memberOrganizationRepository'
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import getObjectWithoutKey from '@/utils/getObjectWithoutKey'
 
 import { MergeActionsRepository } from '../database/repositories/mergeActionsRepository'

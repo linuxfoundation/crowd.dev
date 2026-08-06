@@ -12,16 +12,18 @@ import {
   IOrganizationIdentity,
   IQueryTimeseriesParams,
   ITimeseriesDatapoint,
+  OrganizationDbInsert,
+  OrganizationDbRow,
   OrganizationIdentityType,
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
 import { findLfSegmentByName } from '../segments'
-import { QueryOptions, QueryResult, queryTable, queryTableById } from '../utils'
+import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
 
 import { findOrgAttributes, markOrgAttributeDefault, upsertOrgAttributes } from './attributes'
-import { addOrgIdentity, upsertOrgIdentities } from './identities'
+import { insertOrganizationIdentities, upsertOrgIdentities } from './identities'
 import { IDbOrganization, IDbOrganizationInput } from './types'
 import { prepareOrganizationData } from './utils'
 
@@ -363,6 +365,80 @@ export async function insertOrganization(
   return id
 }
 
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<OrganizationDbRow[]>
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertOrganizations(
+  qx: QueryExecutor,
+  organizations: OrganizationDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<OrganizationDbRow[] | number> {
+  if (organizations.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const ts = new Date()
+
+  const query = prepareBulkInsert(
+    'organizations',
+    [
+      'id',
+      'displayName',
+      'description',
+      'logo',
+      'tags',
+      'employees',
+      'revenueRange',
+      'importHash',
+      'location',
+      'isTeamOrganization',
+      'isAffiliationBlocked',
+      'type',
+      'size',
+      'headline',
+      'industry',
+      'founded',
+      'employeeChurnRate',
+      'employeeGrowthRate',
+      'manuallyCreated',
+      'createdById',
+      'updatedById',
+      'tenantId',
+      'createdAt',
+      'updatedAt',
+    ],
+    organizations.map((o) => ({
+      ...o,
+      id: o.id ?? generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+      createdAt: ts,
+      updatedAt: ts,
+      // NOT NULL DEFAULT false — must set while column is in INSERT list
+      isTeamOrganization: o.isTeamOrganization ?? false,
+      isAffiliationBlocked: o.isAffiliationBlocked ?? false,
+      manuallyCreated: o.manuallyCreated ?? false,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
+  )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
+}
+
 export async function updateOrganization(
   qe: QueryExecutor,
   organizationId: string,
@@ -628,22 +704,25 @@ export async function findOrCreateOrganization(
       }
 
       // create identities
-      for (const i of data.identities) {
-        // add the identity
+      if (data.identities.length > 0) {
         await logExecutionTimeV2(
-          async () =>
-            addOrgIdentity(qe, {
-              organizationId: id,
-              platform: i.platform,
-              type: i.type,
-              value: i.value,
-              verified: i.verified,
-              sourceId: i.sourceId,
-              integrationId,
-              source: i.source,
-            }),
+          () =>
+            insertOrganizationIdentities(
+              qe,
+              data.identities.map((i) => ({
+                organizationId: id,
+                platform: i.platform,
+                type: i.type,
+                value: i.value,
+                verified: i.verified,
+                sourceId: i.sourceId,
+                integrationId,
+                source: i.source,
+              })),
+              false,
+            ),
           log,
-          'organizationService -> findOrCreateOrganization -> addOrgIdentity',
+          'organizationService -> findOrCreateOrganization -> insertOrganizationIdentities',
         )
       }
     }
@@ -727,4 +806,83 @@ export async function findNonExistingOrganizationIds(
   )
 
   return rows.map((r: { id: string }) => r.id)
+}
+
+type OrganizationSummary = Pick<IDbOrganization, 'id' | 'logo'> & {
+  name: string
+  domain: string
+}
+
+export async function findOrganizationByNameOrDomain(
+  qx: QueryExecutor,
+  { name, domain }: { name?: string; domain?: string },
+): Promise<OrganizationSummary | null> {
+  if (!name && !domain) {
+    return null
+  }
+
+  const domainJoin = domain
+    ? `
+      INNER JOIN "organizationIdentities" oi
+        ON oi."organizationId" = o.id
+       AND oi.type = 'primary-domain'
+       AND oi.verified = true
+       AND lower(oi.value) = lower($(domain))`
+    : ''
+
+  const filters = ['o."deletedAt" IS NULL']
+
+  if (name) {
+    filters.push(
+      `trim(lower(o."displayName")) = trim(lower($(name)))`,
+      `EXISTS (
+        SELECT 1
+        FROM "organizationIdentities" oi_check
+        WHERE oi_check."organizationId" = o.id
+          AND oi_check.type = 'primary-domain'
+          AND oi_check.verified = true
+      )`,
+    )
+  }
+
+  const domainSelect = domain
+    ? 'lower(oi.value) AS domain'
+    : `(
+        SELECT lower(oi_domain.value)
+        FROM "organizationIdentities" oi_domain
+        WHERE oi_domain."organizationId" = o.id
+          AND oi_domain.type = 'primary-domain'
+          AND oi_domain.verified = true
+        ORDER BY lower(oi_domain.value)
+        LIMIT 1
+      ) AS domain`
+
+  const sql = `
+    SELECT
+      o.id,
+      o."displayName" AS name,
+      o.logo,
+      ${domainSelect}
+    FROM "organizations" o
+    ${domainJoin}
+    LEFT JOIN "organizationsGlobalActivityCount" gac
+      ON gac."organizationId" = o.id
+    WHERE
+      ${filters.join(' AND ')}
+    ORDER BY
+      COALESCE(gac.total_count_estimate, 0) DESC,
+      (
+        SELECT COUNT(DISTINCT mo."memberId")
+        FROM "memberOrganizations" mo
+        WHERE mo."organizationId" = o.id
+          AND mo."deletedAt" IS NULL
+      ) DESC,
+      o.id
+    LIMIT 1;
+  `
+
+  return qx.selectOneOrNone(sql, {
+    name,
+    domain,
+  })
 }

@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-01
 **Status**: accepted
-**Deciders**: Anil B
+**Deciders**: Anil Bostanci
 
 _Consolidated ADR for the PyPI downloads worker — record further PyPI-worker download decisions here rather than opening new ADRs._
 

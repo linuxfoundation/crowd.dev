@@ -14,7 +14,7 @@ interface ParseResult {
 }
 
 export const cleanURL = (url: string): string =>
-  url.replace(/^(?:https?:\/\/)?(?:www\.)?([^/]+)(?:\/.*)?$/, '$1')
+  url.replace(/^(?:https?:\/\/)?(?:www\.)?([^/]+)(?:\/.*)?$/i, '$1')
 
 export const isValidDomain = (parsed: ParseResult): boolean =>
   Boolean(parsed.domain && parsed.isIcann)

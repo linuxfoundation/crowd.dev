@@ -1,6 +1,7 @@
 export * from './connection'
 export * from './dbStore'
 export * from './locking'
+export * from './queryExecutor'
 export * from './repoBase'
 export * from './tinybirdClient'
 export * from './types'

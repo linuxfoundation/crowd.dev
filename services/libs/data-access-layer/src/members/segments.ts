@@ -189,8 +189,9 @@ export async function findMemberManualAffiliation(
         AND (
           ("dateStart" <= $(timestamp) AND "dateEnd" >= $(timestamp))
           OR ("dateStart" <= $(timestamp) AND "dateEnd" IS NULL)
+          OR ("dateStart" IS NULL AND "dateEnd" IS NULL)
         )
-      ORDER BY "dateStart" DESC, id
+      ORDER BY "dateStart" DESC NULLS LAST, id
       LIMIT 1
     `,
     {

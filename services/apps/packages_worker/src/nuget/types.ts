@@ -1,3 +1,5 @@
+import { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
+
 export interface NuGetConfig {
   batchSize: number
   concurrency: number
@@ -73,7 +75,7 @@ export interface NormalizedNuGetPackage {
   description: string | null
   homepage: string | null
   declaredRepositoryUrl: string | null
-  repositoryUrl: string | null
+  repo: CanonicalRepo | null
   licenses: string[] | null
   licensesRaw: string | null
   keywords: string[] | null

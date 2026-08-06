@@ -1,3 +1,7 @@
+import { XMLParser } from 'fast-xml-parser'
+
+import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+
 import {
   NormalizedNuGetPackage,
   NormalizedNuGetVersion,
@@ -19,17 +23,26 @@ function isPrerelease(version: string): boolean {
   return version.includes('-')
 }
 
-const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
-
-function normalizeRepoUrl(url: string | undefined): string | null {
-  if (!url) return null
-  return url
-    .trim()
-    .replace(/\.git$/, '')
-    .replace(/^git\+/, '')
-    .replace(/^git:\/\//, 'https://')
-    .replace(/^http:\/\/github\.com\//, 'https://github.com/')
+// NuGet stamps unlisted versions with 1900-01-01T00:00:00Z as a sentinel — treat as absent.
+function parsePublishedDate(published: string | undefined): Date | null {
+  if (!published) return null
+  const date = new Date(published)
+  return !isNaN(date.getTime()) && date.getUTCFullYear() > 1900 ? date : null
 }
+
+const nuspecParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
+
+export function parseNuspecRepositoryUrl(nuspecXml: string): string | null {
+  try {
+    const doc = nuspecParser.parse(nuspecXml)
+    const url = doc?.package?.metadata?.repository?.['@_url']
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : null
+  } catch {
+    return null
+  }
+}
+
+const SCM_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org']
 
 function isScmUrl(url: string | undefined): boolean {
   if (!url) return false
@@ -57,6 +70,7 @@ export function normalizeNuGetPackage(
   packageId: string,
   searchResult: NuGetSearchItem | null,
   registration: NuGetRegistrationIndex,
+  nuspecXml?: string | null,
 ): NormalizedNuGetPackage {
   const allLeaves = registration.items.flatMap((page) => page.items ?? [])
   const allEntries: NuGetCatalogEntry[] = allLeaves.map((leaf) => leaf.catalogEntry)
@@ -89,10 +103,13 @@ export function normalizeNuGetPackage(
         ...(latestEntry ? [latestEntry] : []),
       ]
     : [...allEntries].reverse()
-  const nuspecRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const catalogRepoUrl = entriesForRepo.find((e) => e.repository?.url)?.repository?.url
+  const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
+  const nuspecRepoUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl
   const declaredRepositoryUrl = nuspecRepoUrl ?? null
-  const repoCandidate = nuspecRepoUrl ?? (isScmUrl(homepage) ? homepage : null)
-  const repositoryUrl = normalizeRepoUrl(repoCandidate ?? undefined)
+  const repo =
+    (nuspecRepoUrl ? canonicalizeRepoUrl(nuspecRepoUrl) : null) ??
+    (isScmUrl(homepage) ? canonicalizeRepoUrl(homepage) : null)
 
   const keywords = searchResult?.tags && searchResult.tags.length > 0 ? searchResult.tags : null
 
@@ -105,25 +122,15 @@ export function normalizeNuGetPackage(
     status = 'active'
   }
 
-  // NuGet stamps unlisted versions with 1900-01-01T00:00:00Z as a sentinel — exclude them.
   const publishedDates = allEntries
-    .filter((e) => e.published)
-    .map((e) => new Date(e.published as string))
-    .filter((d) => !isNaN(d.getTime()) && d.getUTCFullYear() > 1900)
+    .map((e) => parsePublishedDate(e.published))
+    .filter((d): d is Date => d !== null)
     .sort((a, b) => a.getTime() - b.getTime())
 
   const firstReleaseAt = publishedDates.length > 0 ? publishedDates[0] : null
 
   const latestEntry4Date = latestListedEntry ?? latestEntry
-  const latestReleaseAtRaw = latestEntry4Date?.published
-    ? new Date(latestEntry4Date.published)
-    : null
-  const latestReleaseAt =
-    latestReleaseAtRaw &&
-    !isNaN(latestReleaseAtRaw.getTime()) &&
-    latestReleaseAtRaw.getUTCFullYear() > 1900
-      ? latestReleaseAtRaw
-      : null
+  const latestReleaseAt = parsePublishedDate(latestEntry4Date?.published)
 
   const totalDownloads = searchResult?.totalDownloads ?? 0
 
@@ -144,7 +151,7 @@ export function normalizeNuGetPackage(
     const { licenses: vLicenses } = parseLicense(entry.licenseExpression, entry.licenseUrl)
     return {
       number: ver,
-      publishedAt: entry.published ? new Date(entry.published) : null,
+      publishedAt: parsePublishedDate(entry.published),
       isLatest: ver === latestVersion,
       isPrerelease: isPrerelease(ver),
       isYanked: entry.listed === false,
@@ -157,7 +164,7 @@ export function normalizeNuGetPackage(
     description,
     homepage: homepage || null,
     declaredRepositoryUrl,
-    repositoryUrl,
+    repo,
     licenses,
     licensesRaw,
     keywords,

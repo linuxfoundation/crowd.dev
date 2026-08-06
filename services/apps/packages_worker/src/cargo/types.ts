@@ -12,6 +12,11 @@ export interface LoadResult {
   durationMs: number
 }
 
+export interface NormalizeReposResult {
+  scanned: number
+  normalized: number
+}
+
 export interface EnrichPackagesResult {
   updated: number
 }
@@ -23,6 +28,7 @@ export interface EnrichVersionsResult {
 export interface EnrichReposResult {
   repos: number
   links: number
+  pruned: number
 }
 
 export interface EnrichMaintainersResult {

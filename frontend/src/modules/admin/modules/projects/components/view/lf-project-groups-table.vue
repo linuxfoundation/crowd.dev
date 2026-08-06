@@ -26,7 +26,10 @@
             </div>
           </lf-table-cell>
           <lf-table-cell>
-            <app-lf-project-column :projects="projectGroup.projects" />
+            <app-lf-project-column
+              :projects="projectGroup.projects || []"
+              :project-count="projectGroup.projectCount"
+            />
           </lf-table-cell>
           <lf-table-cell class="pr-2 flex justify-end">
             <app-lf-project-groups-dropdown

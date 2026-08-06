@@ -18,6 +18,9 @@ class ErrorCode(str, Enum):
     NO_MAINTAINER_FOUND = "no-maintainer-found"
     MAINTAINER_ANALYSIS_FAILED = "maintainer-analysis-failed"
     MAINTAINER_INTERVAL_NOT_ELAPSED = "maintainer-interval-not-elapsed"
+    NO_AFFILIATION_FILE = "no-affiliation-file"
+    AFFILIATION_ANALYSIS_FAILED = "affiliation-analysis-failed"
+    AFFILIATION_INTERVAL_NOT_ELAPSED = "affiliation-interval-not-elapsed"
     CLEANUP_FAILED = "cleanup-failed"
     PARENT_REPO_INVALID = "parent-repo-invalid"
     REONBOARDING_REQUIRED = "reonboarding-required"
@@ -67,11 +70,19 @@ class ExecutionStatus(str, Enum):
     FAILURE = "failure"
 
 
+class AffiliationRegistryStatus(str, Enum):
+    SUCCESS = "success"
+    NOT_FOUND = "not_found"
+    UNUSABLE = "unusable"
+    ERROR = "error"
+
+
 class OperationType(str, Enum):
     """Service operation types for metrics tracking"""
 
     CLONE = "Clone"
     COMMIT = "Commit"
     MAINTAINER = "Maintainer"
+    AFFILIATION = "Affiliation"
     SOFTWARE_VALUE = "SoftwareValue"
     VULNERABILITY_SCAN = "VulnerabilityScanner"

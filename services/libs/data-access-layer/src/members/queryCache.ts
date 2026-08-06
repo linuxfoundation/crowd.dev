@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'crypto'
+import { createHash } from 'crypto'
 
 import { getServiceLogger } from '@crowd/logging'
 import { RedisCache, RedisClient } from '@crowd/redis'
@@ -25,27 +25,6 @@ export class MemberQueryCache {
     this.cache = new RedisCache('members-advanced', redis, log)
     this.countCache = new RedisCache('members-count', redis, log)
     this.lockCache = new RedisCache('members-refresh-lock', redis, log)
-  }
-
-  // Returns true if lock was acquired (no other refresh in progress for this key).
-  // Uses a cryptographically random token to distinguish "we set it" from "already existed".
-  // TTL ensures the lock auto-expires if the refresh crashes without releasing it.
-  async tryAcquireRefreshLock(cacheKey: string, ttlSeconds = 90): Promise<boolean> {
-    try {
-      const token = randomBytes(16).toString('hex')
-      const stored = await this.lockCache.setIfNotExistsOrGet(cacheKey, token, ttlSeconds)
-      return stored === token
-    } catch {
-      return true // fail open: if Redis is down, let the refresh proceed
-    }
-  }
-
-  async releaseRefreshLock(cacheKey: string): Promise<void> {
-    try {
-      await this.lockCache.delete(cacheKey)
-    } catch {
-      // best effort
-    }
   }
 
   buildCacheKey(params: {

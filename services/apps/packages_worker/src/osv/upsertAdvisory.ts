@@ -1,7 +1,9 @@
 import {
-  deleteOsvOnlyRanges,
+  AdvisoryRangeInsertInput,
   findPackageId,
-  insertAdvisoryRange,
+  findRemovedAdvisoryPackageIds,
+  reconcileOsvRanges,
+  supersedeDepsDevRanges,
   upsertAdvisory,
   upsertAdvisoryPackage,
 } from '@crowd/data-access-layer/src/packages/osv'
@@ -32,10 +34,14 @@ export function dedupeRanges(ranges: NormalizedRange[]): NormalizedRange[] {
 
 async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<void> {
   const { advisory, packages } = record
-  if (packages.length === 0) return
 
   const advisoryId = await upsertAdvisory(qx, advisory)
 
+  const entries: {
+    advisoryPackageId: number
+    ranges: AdvisoryRangeInsertInput[]
+    supersedeDepsDev: boolean
+  }[] = []
   for (const entry of packages) {
     const packageId = await findPackageId(qx, entry.pkg)
 
@@ -46,16 +52,57 @@ async function upsertOne(qx: QueryExecutor, record: NormalizedRecord): Promise<v
       packageName: entry.pkg.packageName,
     })
 
-    await deleteOsvOnlyRanges(qx, advisoryPackageId)
-
-    for (const range of dedupeRanges(entry.ranges)) {
-      await insertAdvisoryRange(qx, {
+    entries.push({
+      advisoryPackageId,
+      ranges: dedupeRanges(entry.ranges).map((range) => ({
         advisoryPackageId,
         introducedVersion: range.introducedVersion,
         fixedVersion: range.fixedVersion,
         lastAffected: range.lastAffected,
-      })
-    }
+      })),
+      supersedeDepsDev: true,
+    })
+  }
+
+  // Packages OSV reported in a prior sync but that are missing from this payload
+  // (parseOsvRecord drops a package once it has no usable ranges left, and a
+  // corrected upstream record can drop one outright) never reach the loop above,
+  // so their previously live OSV ranges would otherwise sit forever as false
+  // positives and permanently block deps.dev's NOT EXISTS ownership guard.
+  // Reconcile them too, with an empty range set — reconcileOsvRanges soft-deletes
+  // every live OSV row when nothing in the new set matches. Not superseding
+  // deps.dev here: OSV no longer covers the package, so a live deps.dev row (if
+  // any) should stay live rather than be torn down alongside it.
+  const removedIds = await findRemovedAdvisoryPackageIds(
+    qx,
+    advisoryId,
+    entries.map((e) => e.advisoryPackageId),
+  )
+  for (const advisoryPackageId of removedIds) {
+    entries.push({ advisoryPackageId, ranges: [], supersedeDepsDev: false })
+  }
+
+  // Lock advisory_packages rows in ascending id order — the same order deps.dev's
+  // bulk merge locks them in (ADVISORY_PACKAGES_LOCK_SQL's ORDER BY ap.id in
+  // ingestAdvisories.ts). OSV's payload order is otherwise arbitrary; locking out
+  // of order here would let this per-record transaction and a concurrent deps.dev
+  // chunk each hold one row and wait on the other's, deadlocking — and deps.dev's
+  // maximumAttempts: 1 turns a deadlock abort into a hard merge failure, not a retry.
+  entries.sort((a, b) => a.advisoryPackageId - b.advisoryPackageId)
+
+  for (const { advisoryPackageId, ranges, supersedeDepsDev } of entries) {
+    // Row-locks this advisory_packages row (held until the enclosing transaction
+    // commits) before touching advisory_affected_ranges, matching the lock
+    // deps.dev's bulk merge takes on the same row — whichever writer locks first
+    // forces the other to wait and see its committed writes, closing the
+    // ownership race between the two independently-scheduled write paths
+    // (ADR-0001 §Write semantics).
+    await qx.result(`SELECT id FROM advisory_packages WHERE id = $(advisoryPackageId) FOR UPDATE`, {
+      advisoryPackageId,
+    })
+
+    await reconcileOsvRanges(qx, advisoryPackageId, ranges)
+    if (supersedeDepsDev) await supersedeDepsDevRanges(qx, advisoryPackageId)
   }
 }
 

@@ -1,0 +1,43 @@
+DESCRIPTION >
+    - `project_insights_impact_breakdown_ds` contains the materialized project-level Impact
+    breakdown (IN-1212), populated by `project_insights_impact_breakdown_copy.pipe` on a schedule.
+    - Precomputed so the public `project_insights_impact_breakdown.pipe` endpoint is a cheap filtered
+    SELECT rather than a live global window-function scan — see that pipe's DESCRIPTION and
+    `project_insights_impact_breakdown_copy.pipe`'s DESCRIPTION for the full rollup/percentile
+    methodology (per-metric aggregation choice, global (non-ecosystem-partitioned) percentile
+    ranking, NULL-preserving LEFT JOIN semantics).
+    - `id` is the project id (`insightsProjects.id`).
+    - `slug` is the project's URL-friendly identifier — the primary filter key for the endpoint.
+    - `name` is the project's human-readable name.
+    - `directDependents` is the project's max package-level direct dependent count; NULL when the
+    project has no linked packages.
+    - `directDependentsTopPct` is the global percentile position (lower = more central) among
+    projects with a non-NULL `directDependents`; NULL when `directDependents` is NULL.
+    - `directDependentsBand` buckets `directDependentsTopPct` into a display band (Top 1% / Top 10% /
+    Top 25% / Top 50% / Bottom 50%); NULL when `directDependents` is NULL.
+    - `transitiveDependents`, `transitiveDependentsTopPct`, `transitiveDependentsBand` mirror the
+    above for the project's max package-level transitive dependent count.
+    - `downloads`, `downloadsTopPct`, `downloadsBand` mirror the above for the project's summed
+    package-level last-30-day download count.
+    - `centrality`, `centralityTopPct`, `centralityBand` mirror the above for the project's max
+    package-level centrality score.
+
+SCHEMA >
+    `id` String,
+    `slug` String,
+    `name` String,
+    `directDependents` Nullable(UInt64),
+    `directDependentsTopPct` Nullable(Float64),
+    `directDependentsBand` Nullable(String),
+    `transitiveDependents` Nullable(UInt64),
+    `transitiveDependentsTopPct` Nullable(Float64),
+    `transitiveDependentsBand` Nullable(String),
+    `downloads` Nullable(UInt64),
+    `downloadsTopPct` Nullable(Float64),
+    `downloadsBand` Nullable(String),
+    `centrality` Nullable(Float64),
+    `centralityTopPct` Nullable(Float64),
+    `centralityBand` Nullable(String)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY slug, id

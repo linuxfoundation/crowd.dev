@@ -185,9 +185,18 @@ watch(error, (err) => {
   }
 });
 
-watch(selectedProjectGroupId, (newVal) => {
+watch(selectedProjectGroupId, async (newVal) => {
   if (newVal && newVal !== '') {
-    selectedProjectGroup.value = projectGroupsList.value.find((pg) => pg.id === newVal) || null;
+    const fromList = projectGroupsList.value.find((pg) => pg.id === newVal) || null;
+    selectedProjectGroup.value = fromList;
+
+    if (!fromList?.projects?.length) {
+      try {
+        selectedProjectGroup.value = await segmentService.getSegmentById(newVal) as ProjectGroup;
+      } catch (e) {
+        ToastStore.error('Something went wrong while loading the project group');
+      }
+    }
   } else {
     selectedProjectGroup.value = null;
     selectedProjectId.value = '';

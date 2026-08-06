@@ -1,0 +1,24 @@
+DESCRIPTION >
+    Fan-out materialized view for curated-collection bucket 9. Joins each inserted
+    activityRelations row to its project's collectionsSlugs (via insights_projects_populated_ds),
+    explodes to one row per collection membership, restricts to curated collections only
+    (ssoUserId IS NULL, via the curated_collection_slugs dictionary-like lookup), and keeps only
+    rows whose collectionSlug hashes into bucket 9. A project in N curated collections produces
+    up to N rows across up to N different buckets - this is intentional write amplification, see
+    bucketing-architecture.md's collection-bucketing addendum.
+
+NODE curated_collection_slugs_9
+SQL >
+    SELECT slug FROM collections FINAL WHERE isNull (deletedAt) AND isNull (ssoUserId)
+
+NODE collection_fanout_9
+SQL >
+    SELECT a.*, arrayJoin(p.collectionsSlugs) AS collectionSlug
+    FROM activityRelations a
+    LEFT JOIN insights_projects_populated_ds p ON p.segmentId = a.segmentId
+    WHERE
+        collectionSlug IN (SELECT slug FROM curated_collection_slugs_9)
+        AND cityHash64(collectionSlug) % 10 = 9
+
+TYPE MATERIALIZED
+DATASOURCE activityRelations_collection_bucket_MV_ds_9

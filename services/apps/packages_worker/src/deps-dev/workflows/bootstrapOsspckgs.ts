@@ -24,6 +24,11 @@ const { getLastSnapshot, probePartitionExists, resolveSnapshotDate } = proxyActi
   retry: { maximumAttempts: 3 },
 })
 
+const { notifyBqCeilingSkip } = proxyActivities<typeof depsDevActivities>({
+  startToCloseTimeout: '1 minute',
+  retry: { maximumAttempts: 3 },
+})
+
 type JobKind =
   | 'packages'
   | 'repos'
@@ -35,10 +40,12 @@ type JobKind =
   | 'dependent_counts'
   | 'dependent_counts_go'
   | 'dependent_counts_nuget'
+  | 'dependent_counts_rubygems'
 
 // deps.dev retains weekly snapshots for ~3 years; 1095 days (3 years) gives comfortable headroom.
 // advisories/advisory_packages use AdvisoriesLatest (no partition history) → effectively unlimited.
-// dependent_counts_go/_nuget read *RequirementsLatest (no partition history) → effectively unlimited.
+// dependent_counts_go/_nuget/_rubygems read *RequirementsLatest (no partition history) → effectively
+// unlimited.
 const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   packages: 1095,
   repos: 1095,
@@ -50,6 +57,7 @@ const RETENTION_DAYS_BY_KIND: Record<JobKind, number> = {
   dependent_counts: 1095,
   dependent_counts_go: 999_999,
   dependent_counts_nuget: 999_999,
+  dependent_counts_rubygems: 999_999,
 }
 
 // Kinds whose incremental diff is driven by a BQ partition snapshot date.
@@ -69,11 +77,16 @@ export async function bootstrapOsspckgs(opts: {
   exportName?: string
   snapshotDate?: string // YYYY-MM-DD — override BQ snapshot resolution for all partition-filtered kinds
   fillConstraints?: boolean // re-export full deps BQ data, upsert version_constraint where NULL
+  resumeJobId?: number // resume a partially-merged package_dependencies job by id (skips its BQ export)
 }): Promise<void> {
   // B3: deterministic timestamps — workflowInfo().startTime is replay-stable; new Date() is not.
   const start = workflowInfo().startTime
   const runId = start.toISOString().replace(/[:.]/g, '-')
   const today = start.toISOString().slice(0, 10)
+
+  // Resume mode reuses a prior job's export, so there is no fresh BQ export to validate. Skip the
+  // incremental watermark/partition checks below — the resumed partition may not match `today`.
+  const resume = opts.resumeJobId != null
 
   // Recovery: each child workflow updates osspckgs_ingest_jobs independently.
   // If a child fails mid-bootstrap, re-run with the SAME mode.
@@ -87,6 +100,18 @@ export async function bootstrapOsspckgs(opts: {
 
   const activeKinds = opts.kinds ? new Set(opts.kinds) : null
   const runs = (kind: string) => !activeKinds || activeKinds.has(kind)
+
+  // Resume reuses a prior package_dependencies export and skips watermark/partition validation.
+  // Hard-enforce it targets ONLY package_dependencies so a stray resumeJobId can't silently run other
+  // kinds without their safety checks. The CLI validates this too; this is the fail-fast backstop.
+  if (
+    resume &&
+    !(activeKinds && activeKinds.size === 1 && activeKinds.has('package_dependencies'))
+  ) {
+    throw new ApplicationFailure(
+      'resumeJobId is only valid with kinds=[package_dependencies] — refusing to skip validation for other kinds',
+    )
+  }
 
   const jobKinds: JobKind[] = (
     ['packages', 'versions', 'package_dependencies', 'advisories', 'advisory_packages'] as JobKind[]
@@ -119,7 +144,7 @@ export async function bootstrapOsspckgs(opts: {
 
   // Validate all watermarks up-front before touching BQ (fail fast, not mid-run)
   for (const jobKind of jobKinds) {
-    if (opts.mode === 'incremental') {
+    if (opts.mode === 'incremental' && !resume) {
       const { snapshotAt } = await getLastSnapshot({ jobKind })
       if (!snapshotAt) {
         throw new ApplicationFailure(`No watermark for ${jobKind} — run full bootstrap first`)
@@ -187,13 +212,14 @@ export async function bootstrapOsspckgs(opts: {
       }
     }
   }
-  // GO/NUGET reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
-  // NuGetRequirementsLatest), computed via the exact reverse transitive closure script. The manifests
+  // GO/NUGET/RUBYGEMS reverse-dependent counts: separate kinds, manifest-sourced (GoRequirementsLatest /
+  // NuGetRequirementsLatest / RubyGemsRequirementsLatest), computed via the exact reverse transitive
+  // closure script. The manifests
   // are *Latest views (no resolution needed); `today` is the snapshot_at stamp AND the anchor for the
   // dependent_repos partition window (latest PackageVersionToProject snapshot within 60 days). Each
   // guards against its own history and merges a disjoint purl space, so an edge-snapshot corruption
   // that aborts `dependent_counts` never blocks these.
-  for (const variant of ['go', 'nuget'] as const) {
+  for (const variant of ['go', 'nuget', 'rubygems'] as const) {
     const kind = `dependent_counts_${variant}` as const
     if (!runs(kind)) continue
     try {
@@ -262,6 +288,7 @@ export async function bootstrapOsspckgs(opts: {
             depsTableOption: opts.depsTableOption,
             exportName: opts.exportName,
             fillConstraints: opts.fillConstraints,
+            resumeJobId: opts.resumeJobId,
           },
         ],
       })
@@ -278,19 +305,37 @@ export async function bootstrapOsspckgs(opts: {
     }
   }
   if (runs('advisories') || runs('advisory_packages')) {
-    await executeChild(ingestAdvisories, {
-      args: [
-        {
-          runId,
-          syncMode: opts.mode,
-          today,
-          watermark: wm('advisories'),
-          ecosystems: opts.ecosystems,
-          reuseExports: opts.reuseExports,
-          exportName: opts.exportName,
-        },
-      ],
-    })
+    try {
+      await executeChild(ingestAdvisories, {
+        args: [
+          {
+            runId,
+            syncMode: opts.mode,
+            today,
+            watermark: wm('advisories'),
+            ecosystems: opts.ecosystems,
+            reuseExports: opts.reuseExports,
+            exportName: opts.exportName,
+          },
+        ],
+      })
+    } catch (err) {
+      // Only soft-fail on the BQ byte-ceiling guard (CM-1362), mirroring the dependent_counts /
+      // package_dependencies handling above. advisories is the last data kind — letting a ceiling
+      // breach here propagate unhandled used to strand scorecard + ranking below for the whole
+      // run. All other errors (BQ timeout, DB failure, etc.) still propagate.
+      const cause = err instanceof ChildWorkflowFailure ? err.cause : err
+      if (!(cause instanceof ApplicationFailure) || cause.type !== 'BQ_CEILING_EXCEEDED') {
+        throw err
+      }
+      // Unlike checkDependentCountsGuard/checkEdgeSnapshotQuality, this failure happens before
+      // any ingest-job row is created, so there's no failed-job row for an operator to notice —
+      // alert explicitly or repeated skips go unnoticed (review comment on CM-1362).
+      // ingestAdvisories carries the failing export's jobKind as the failure detail ('advisories'
+      // or 'advisory_packages') so the alert names the export that actually breached.
+      const jobKind = typeof cause.details?.[0] === 'string' ? cause.details[0] : 'advisories'
+      await notifyBqCeilingSkip({ jobKind, message: cause.message })
+    }
   }
   if (runs('scorecard')) {
     await executeChild(ingestScorecard, {

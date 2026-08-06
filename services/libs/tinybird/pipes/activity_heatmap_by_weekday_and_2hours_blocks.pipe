@@ -5,7 +5,8 @@ DESCRIPTION >
     - Returns a complete grid of all weekday/time combinations with zero counts for periods with no activity, ensuring consistent heatmap visualization.
     - Primary use case: identifying contribution patterns outside traditional work hours for community health analysis.
     - Parameters:
-    - `project`: Inherited from `segments_filtered`, project slug (e.g., 'k8s', 'tensorflow')
+    - `project`: Inherited from `segments_filtered`, project slug (e.g., 'k8s', 'tensorflow'). Required unless `collectionSlug` is given.
+    - `collectionSlug`: Inherited from `segments_filtered_by_collection`, collection slug (e.g., 'cncf'). Required unless `project` is given.
     - `repos`: Inherited from `segments_filtered`, array of repository URLs for filtering
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -18,7 +19,10 @@ SQL >
     select count(id) as activityCount, weekday, two_hours_block
     from contributions_with_local_time_ds a
     where
-        segmentId = (SELECT segmentId FROM segments_filtered)
+        {% if defined(collectionSlug) %}
+            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %}
         {% if defined(startDate) %}
             AND a.timestamp
             > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}

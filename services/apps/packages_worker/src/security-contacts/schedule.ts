@@ -13,7 +13,7 @@ function scheduleAction() {
     type: 'startWorkflow' as const,
     workflowType: ingestSecurityContacts,
     workflowId: 'security-contacts-daily',
-    taskQueue: 'packages-worker',
+    taskQueue: 'security-contacts-worker',
     workflowExecutionTimeout: WORKFLOW_EXECUTION_TIMEOUT,
     retry: {
       initialInterval: '30 seconds',

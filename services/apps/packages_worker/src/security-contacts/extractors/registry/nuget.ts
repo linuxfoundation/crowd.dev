@@ -1,11 +1,14 @@
 import { XMLParser } from 'fast-xml-parser'
 
+import { resolveEndpoints } from '../../../nuget/client'
 import { ExtractorResult, ProvenanceEntry, RawContact } from '../../types'
 import { extractEmails, fetchJson, fetchText, registryHeaders } from '../http'
 
+import { toHandleCandidates } from './handles'
 import { ParsedPurl } from './purl'
 
 const SOURCE = 'nuget-nuspec'
+const SEARCH_SOURCE = 'nuget-search'
 const BASE = 'https://api.nuget.org/v3-flatcontainer'
 const parser = new XMLParser({ ignoreAttributes: true })
 
@@ -45,6 +48,44 @@ export function mapNuspec(xml: string, sourceUrl: string, fetchedAt: string): Ra
   return contacts
 }
 
+// NuGet.org accounts are independent of GitHub, so an owner username matching a GitHub login is
+// only a guess — emitted as candidates that must pass repo-contributor corroboration before use.
+export function mapNugetOwnerHandles(
+  doc: unknown,
+  packageId: string,
+  sourceUrl: string,
+  fetchedAt: string,
+): RawContact[] {
+  const data = (doc as any)?.data
+  if (!Array.isArray(data)) return []
+  // The exact package is not guaranteed to be the first result — scan for the id match,
+  // same as fetchSearch in src/nuget/client.ts.
+  const lowerId = packageId.toLowerCase()
+  const entry = data.find((e) => typeof e?.id === 'string' && e.id.toLowerCase() === lowerId) as
+    | Record<string, unknown>
+    | undefined
+  if (!entry || !Array.isArray(entry.owners)) return []
+  return toHandleCandidates(entry.owners, SEARCH_SOURCE, sourceUrl, fetchedAt)
+}
+
+// Owner usernames are only exposed by the search service, not the flatcontainer API; the
+// search host is resolved from the V3 service index (it is regional and can rotate).
+async function fetchOwnerCandidates(
+  id: string,
+  timeoutMs: number,
+  userAgent: string,
+  fetchedAt: string,
+): Promise<RawContact[]> {
+  try {
+    const { searchBaseUrl } = await resolveEndpoints()
+    const searchUrl = `${searchBaseUrl}?q=packageid:${encodeURIComponent(id)}&prerelease=true&semVerLevel=2.0.0`
+    const { json } = await fetchJson(searchUrl, timeoutMs, registryHeaders(userAgent))
+    return mapNugetOwnerHandles(json, id, searchUrl, fetchedAt)
+  } catch {
+    return []
+  }
+}
+
 async function latestStableVersion(
   id: string,
   timeoutMs: number,
@@ -67,11 +108,17 @@ export async function fetchNuget(
   userAgent: string,
 ): Promise<ExtractorResult> {
   const id = parsed.name.toLowerCase()
-  const version = await latestStableVersion(id, timeoutMs, userAgent)
-  if (!version) return { contacts: [], policies: {} }
+  const fetchedAt = new Date().toISOString()
+
+  const [version, handleCandidates] = await Promise.all([
+    latestStableVersion(id, timeoutMs, userAgent),
+    fetchOwnerCandidates(id, timeoutMs, userAgent, fetchedAt),
+  ])
+
+  if (!version) return { contacts: [], policies: {}, handleCandidates }
 
   const url = `${BASE}/${id}/${version}/${id}.nuspec`
   const { text } = await fetchText(url, timeoutMs, registryHeaders(userAgent))
-  if (!text) return { contacts: [], policies: {} }
-  return { contacts: mapNuspec(text, url, new Date().toISOString()), policies: {} }
+  if (!text) return { contacts: [], policies: {}, handleCandidates }
+  return { contacts: mapNuspec(text, url, fetchedAt), policies: {}, handleCandidates }
 }

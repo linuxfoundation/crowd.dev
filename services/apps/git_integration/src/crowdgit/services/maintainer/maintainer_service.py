@@ -38,7 +38,7 @@ from crowdgit.models.maintainer_info import (
 )
 from crowdgit.models.service_execution import ServiceExecution
 from crowdgit.services.base.base_service import BaseService
-from crowdgit.services.maintainer.bedrock import invoke_bedrock
+from crowdgit.services.llm.bedrock import invoke_bedrock
 from crowdgit.services.maintainer.section_extractor import SectionExtractor
 from crowdgit.services.utils import run_shell_command, safe_decode
 from crowdgit.settings import MAINTAINER_RETRY_INTERVAL_DAYS, MAINTAINER_UPDATE_INTERVAL_HOURS
@@ -56,6 +56,8 @@ class MaintainerService(BaseService):
         "maintainers",
         "maintainers.md",
         "maintainer.md",
+        "maintainers.yml",
+        "maintainers.yaml",
         "codeowners",
         "codeowners.md",
         "contributors",
@@ -70,6 +72,8 @@ class MaintainerService(BaseService):
         ".github/contributors.md",
         ".github/codeowners",
         "security-insights.md",
+        "security-insights.yml",
+        "security-insights.yaml",
         "readme.md",
     }
 

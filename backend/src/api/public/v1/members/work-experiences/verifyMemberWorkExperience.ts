@@ -10,14 +10,14 @@ import {
   fetchManyMemberOrgsWithOrgData,
   fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { IMemberOrganization, IMemberRoleWithOrganization } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import {
-  getOverlappingEmailDomainMemberOrganizations,
+  getOverlappingGroupedMemberOrganizations,
   groupMemberOrganizations,
   toMemberWorkExperience,
 } from '@/utils/mapper'
@@ -52,15 +52,22 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Work experience not found')
   }
 
-  const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
-    memberOrgs,
-    memberOrg,
+  // Stash org fields for response fallback when reject soft-deletes the row.
+  const memberOrgsWithOrgDataBeforeChange = verified
+    ? []
+    : ((
+        await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+          withDomains: true,
+        })
+      ).get(memberId) ?? [])
+
+  const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
+
+  const overlappingRowsWithIds = overlappingGroupedRows.filter(
+    (row): row is typeof row & { id: string } => !!row.id,
   )
 
-  const memberOrgIdsToDelete = [
-    workExperienceId,
-    ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
-  ]
+  const memberOrgIdsToDelete = [workExperienceId, ...overlappingRowsWithIds.map((row) => row.id)]
 
   const verifiedUpdate = { verified, verifiedBy }
 
@@ -81,9 +88,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
             verifiedUpdate,
           )
 
-          for (const overlappingRow of overlappingEmailDomainRows.filter(
-            (row): row is typeof row & { id: string } => !!row.id,
-          )) {
+          for (const overlappingRow of overlappingRowsWithIds) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, verifiedUpdate)
           }
         } else {
@@ -99,17 +104,26 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
         })
       }
 
-      captureNewState(updatedMemberOrg ?? { ...memberOrg, verified, verifiedBy })
+      captureNewState(updatedMemberOrg ?? { ...memberOrg, ...verifiedUpdate })
     }),
   )
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], {
+    withDomains: true,
+  })
+
+  const groupedMemberOrgs = groupMemberOrganizations(orgsMap.get(memberId) ?? [])
+  const groupedMemberOrgsBeforeChange = groupMemberOrganizations(memberOrgsWithOrgDataBeforeChange)
+
+  const fallbackMo = groupedMemberOrgsBeforeChange.find((mo) => mo.id === workExperienceId)
 
   const responseMo: IMemberRoleWithOrganization =
-    groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
-      (mo) => mo.id === workExperienceId,
-    ) ??
-    ({ ...memberOrg, ...updatedMemberOrg, verified, verifiedBy } as IMemberRoleWithOrganization)
+    groupedMemberOrgs.find((mo) => mo.id === workExperienceId) ??
+    (fallbackMo ? { ...fallbackMo, ...verifiedUpdate } : undefined)
+
+  if (!responseMo) {
+    throw new NotFoundError('Work experience not found')
+  }
 
   ok(res, toMemberWorkExperience(responseMo))
 }

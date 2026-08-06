@@ -1,48 +1,59 @@
 DESCRIPTION >
     Main leaderboard query endpoint that retrieves leaderboard data from the consolidated datasource.
     Supports filtering by project slug, leaderboard type, and search term. Includes pagination support.
-    Automatically filters to the latest snapshotId for fresh data.
+    Automatically filters to the latest snapshotId per leaderboardType for fresh data.
 
 NODE leaderboards_list
 DESCRIPTION >
     Queries the unified leaderboards datasource with optional filtering and pagination.
-    Always filters by the latest snapshotId to return current data.
+    Always filters to each leaderboardType's own latest snapshotId, since the 14 copy pipes
+    that populate this table run on a staggered daily schedule (not all at once) — filtering
+    against a single table-wide max(snapshotId) would hide every type whose pipe hasn't run
+    yet today behind whichever type's pipe ran first.
 
 SQL >
     %
     SELECT
-        rank,
-        id,
-        segmentId,
-        name,
-        slug,
-        logoUrl,
-        leaderboardType,
-        value,
-        previousPeriodValue,
-        collectionsSlugs,
-        isLF,
-        githubHandleArray,
-        status,
-        totalCount
-    FROM leaderboards_copy_ds
+        l.rank AS rank,
+        l.id AS id,
+        l.segmentId AS segmentId,
+        l.name AS name,
+        l.slug AS slug,
+        l.logoUrl AS logoUrl,
+        l.leaderboardType AS leaderboardType,
+        l.value AS value,
+        l.previousPeriodValue AS previousPeriodValue,
+        l.collectionsSlugs AS collectionsSlugs,
+        l.isLF AS isLF,
+        l.githubHandleArray AS githubHandleArray,
+        l.status AS status,
+        l.totalCount AS totalCount
+    FROM leaderboards_copy_ds AS l
+    INNER JOIN
+        (
+            SELECT leaderboardType, max(snapshotId) AS maxSnapshotId
+            FROM leaderboards_copy_ds
+            GROUP BY leaderboardType
+        ) AS latest
+        ON l.leaderboardType = latest.leaderboardType
+        AND l.snapshotId = latest.maxSnapshotId
     WHERE
-        snapshotId = (SELECT max(snapshotId) FROM leaderboards_copy_ds)
+        1
         {% if defined(slug) %}
-            AND slug = {{ String(slug, description="Project slug", required=False) }}
+            AND l.slug = {{ String(slug, description="Project slug", required=False) }}
         {% end %}
         {% if defined(leaderboardType) %}
-            AND leaderboardType
+            AND l.leaderboardType
             = {{ String(leaderboardType, description="Leaderboard type", required=False) }}
         {% end %}
         {% if defined(collectionSlug) %}
             AND has(
-                collectionsSlugs,
+                l.collectionsSlugs,
                 {{ String(collectionSlug, description="Filter collection by slug", required=False) }}
             )
         {% end %}
         {% if defined(search) %}
-            AND name
+            AND l.name
             ilike '%'
             || {{
                 String(
@@ -54,7 +65,7 @@ SQL >
             || '%'
         {% end %}
         {% if defined(maxRank) %}
-            AND rank
+            AND l.rank
             <= {{
                 Int32(
                     maxRank,
@@ -63,7 +74,7 @@ SQL >
                 )
             }}
         {% end %}
-    ORDER BY rank ASC
+    ORDER BY l.rank ASC
     {% if not defined(maxRank) %}
         LIMIT {{ Int32(pageSize, 20) }} OFFSET {{ Int32(page, 0) * Int32(pageSize, 20) }}
     {% end %}

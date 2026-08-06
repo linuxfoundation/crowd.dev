@@ -16,6 +16,7 @@ export { processMavenCriticalBatch } from './maven/activities'
 export { criticalityComputePageRank, rankPackages } from './criticality/activities'
 export {
   cargoDownloadAndLoad,
+  cargoNormalizeRepos,
   cargoEnrichPackages,
   cargoEnrichVersions,
   cargoEnrichRepos,
@@ -32,4 +33,40 @@ export {
 } from './pypi/activities'
 export { getCriticalPypiCount } from './pypi/downloads/getCriticalPypiCount'
 export { processNuGetBatch } from './nuget/activities'
-export { processSecurityContactsBatch } from './security-contacts/activities'
+export {
+  ingestOnePackagistMetadata,
+  ingestOnePackagist30dWindow,
+  ingestOnePackagistDailyDownload,
+  runPackagistPackageSeed,
+  getPackagistMetadataBatch,
+  ingestPackagistMetadataBatch,
+  getPackagist30dBatch,
+  ingestPackagist30dBatch,
+  getPackagistDailyBatch,
+  ingestPackagistDailyBatch,
+  getCriticalPackagistCount,
+  packagistCurrentTimestamp,
+  packagistStopAfterFirstPage,
+  preparePackagistTransitiveCounts,
+  mergePackagistTransitiveBatch,
+  finishPackagistTransitiveRun,
+  failPackagistTransitiveRun,
+  packagistTransitiveRanRecently,
+  packagistMetadataDrainRunning,
+} from './packagist/activities'
+export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubygems/activities'
+export {
+  processSecurityContactsBatch,
+  ingestSecurityContactsForPurlActivity,
+  runProtocolParseBatch,
+  runProtocolAssembleBatch,
+} from './security-contacts/activities'
+export {
+  blastRadiusStart,
+  blastRadiusFail,
+  blastRadiusIntel,
+  blastRadiusDependents,
+  blastRadiusReachability,
+  blastRadiusReport,
+} from './blast-radius/activities'
+export { slackNotify } from './activities/index'
