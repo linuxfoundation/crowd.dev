@@ -70,11 +70,12 @@ SQL >
     SELECT
         packageId,
         max(publishedAt) AS maxPublished,
-        arrayElement(
-            arraySort(x -> (- toUnixTimestamp(x)), groupArray(publishedAt)), 2
-        ) AS secondPublished
+        arrayElement(arrayReverseSort(groupArray(publishedAt)), 2) AS secondPublished
     FROM versions FINAL
-    WHERE isNotNull(publishedAt)
+    WHERE
+        isNotNull(publishedAt)
+        AND publishedAt >= toDateTime64('1970-01-01 00:00:00', 3)
+        AND publishedAt < now() + INTERVAL 1 DAY
     GROUP BY packageId
 
 NODE ossPackages_enriched_open_vulns
