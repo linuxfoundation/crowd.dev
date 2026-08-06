@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { isEmail, replaceDoubleQuotes } from '@crowd/common'
+import { replaceDoubleQuotes } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   IMemberEnrichmentCache,
@@ -25,8 +25,8 @@ import {
 import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
 
 import {
-  IMemberEnrichmentCrustdataAPIErrorResponse,
-  IMemberEnrichmentCrustdataAPIResponse,
+  IMemberEnrichmentCrustdataEnrichResponse,
+  IMemberEnrichmentCrustdataPersonData,
   IMemberEnrichmentCrustdataRemainingCredits,
   IMemberEnrichmentDataCrustdata,
 } from './types'
@@ -51,38 +51,41 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
   public attributeSettings: IMemberEnrichmentAttributeSettings = {
     [MemberAttributeName.AVATAR_URL]: {
-      fields: ['profile_picture_url'],
+      // Fallback order: stable permalink, then CDN url.
+      fields: [
+        'professional_network.profile_picture_permalink',
+        'basic_profile.profile_picture_permalink',
+        'professional_network.profile_picture_url',
+      ],
     },
     [MemberAttributeName.JOB_TITLE]: {
-      fields: ['title'],
+      fields: ['basic_profile.current_title'],
     },
     [MemberAttributeName.BIO]: {
-      fields: ['summary', 'headline'],
+      fields: ['basic_profile.summary', 'basic_profile.headline'],
     },
     [MemberAttributeName.SKILLS]: {
-      fields: ['skills'],
-      // Note: Crustdata API docs specify skills as string, but API returns string[]
-      // So we're handling both cases in the transformer.
-      transform: (skills: string | string[]) => {
+      fields: ['skills.professional_network_skills'],
+      transform: (skills: string[]) => {
         if (!skills) {
           return []
         }
 
-        const arr = Array.isArray(skills) ? skills : skills.split(',')
-
-        return arr
+        return skills
           .map((s) => s.trim())
           .filter(Boolean)
           .sort()
       },
     },
     [MemberAttributeName.LANGUAGES]: {
-      fields: ['languages'],
-      transform: (languages: string[]) => languages.sort(),
+      fields: ['basic_profile.languages'],
+      transform: (languages: string[]) => (languages || []).sort(),
     },
     [MemberAttributeName.SCHOOLS]: {
-      fields: ['all_schools'],
-      transform: (schools: string[]) => schools.sort(),
+      // Same school can appear multiple times (different degrees).
+      fields: ['education.schools'],
+      transform: (schools: Array<{ school?: string }>) =>
+        [...new Set((schools || []).map((s) => s.school?.trim()).filter(Boolean))].sort(),
     },
   }
 
@@ -134,16 +137,17 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     try {
       const config = {
         method: 'get',
-        url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}/user/credits`,
+        url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}/account/credits`,
         headers: {
-          Authorization: `Token ${process.env['CROWD_ENRICHMENT_CRUSTDATA_API_KEY']}`,
+          Authorization: `Bearer ${process.env['CROWD_ENRICHMENT_CRUSTDATA_API_KEY']}`,
+          'x-api-version': '2025-11-01',
         },
       }
 
       const response: IMemberEnrichmentCrustdataRemainingCredits = (await axios(config)).data
 
-      // realtime linkedin enrichment costs 5 credits
-      return response.credits > 5
+      // Live enrich costs 7 credits per profile.
+      return response.account.credits > 7
     } catch (error) {
       this.log.error('Error while checking Crustdata account usage', error)
       throw error
@@ -174,40 +178,47 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
   private async getDataUsingLinkedinHandle(
     handle: string,
-  ): Promise<IMemberEnrichmentDataCrustdata | null> {
+  ): Promise<IMemberEnrichmentCrustdataPersonData | null> {
     const config = {
-      method: 'get',
-      url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}/screener/person/enrich`,
-      params: {
-        linkedin_profile_url: `https://linkedin.com/in/${encodeURIComponent(handle)}`,
-        enrich_realtime: true,
-      },
+      method: 'post',
+      url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}/person/professional_network/enrich/live`,
       headers: {
-        Authorization: `Token ${process.env['CROWD_ENRICHMENT_CRUSTDATA_API_KEY']}`,
+        Authorization: `Bearer ${process.env['CROWD_ENRICHMENT_CRUSTDATA_API_KEY']}`,
+        'x-api-version': '2025-11-01',
+        'content-type': 'application/json',
+      },
+      data: {
+        professional_network_profile_urls: [`https://www.linkedin.com/in/${handle}`],
+        // Default response is only basic_profile + social_handles.
+        fields: [
+          'basic_profile',
+          'social_handles',
+          'professional_network',
+          'experience',
+          'education',
+          'skills',
+        ],
       },
       validateStatus: function (status) {
-        return (status >= 200 && status < 300) || status === 404 || status === 422
+        return (status >= 200 && status < 300) || status === 404
       },
     }
 
-    const response = await axios(config)
+    const response = await axios<IMemberEnrichmentCrustdataEnrichResponse>(config)
 
-    if (response.status === 404 || response.status === 422) {
+    if (response.status === 404) {
       this.log.debug({ source: this.source, handle }, 'No data found for linkedin handle!')
       return null
     }
 
-    if (response.data.length === 0 || this.isErrorResponse(response.data[0])) {
+    // No match returns 200 with empty matches[].
+    const match = response.data?.[0]?.matches?.[0]
+    if (!match?.person_data) {
+      this.log.debug({ source: this.source, handle }, 'No data found for linkedin handle!')
       return null
     }
 
-    return response.data[0]
-  }
-
-  private isErrorResponse(
-    response: IMemberEnrichmentCrustdataAPIResponse,
-  ): response is IMemberEnrichmentCrustdataAPIErrorResponse {
-    return (response as IMemberEnrichmentCrustdataAPIErrorResponse).error !== undefined
+    return match.person_data
   }
 
   private async findDistinctScrapableLinkedinIdentities(
@@ -288,8 +299,8 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     normalized = normalizeAttributes(data, normalized, this.attributeSettings, this.platform)
     normalized = this.normalizeEmployment(data, normalized)
 
-    if (data.num_of_connections) {
-      normalized.reach[this.platform] = data.num_of_connections
+    if (data.professional_network?.connections) {
+      normalized.reach[this.platform] = data.professional_network.connections
     }
 
     return normalized
@@ -307,34 +318,17 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       normalized.attributes = {}
     }
 
-    if (data.name) {
-      normalized.displayName = data.name
+    if (data.basic_profile?.name) {
+      normalized.displayName = data.basic_profile.name
     }
 
-    if (data.email) {
-      let emails: string[]
-
-      if (Array.isArray(data.email)) {
-        emails = data.email
-      } else {
-        emails = data.email.split(',').filter(isEmail)
-      }
-
-      for (const email of emails) {
-        normalized.identities.push({
-          type: MemberIdentityType.EMAIL,
-          platform: this.platform,
-          value: email.trim(),
-          verified: false,
-          source: 'enrichment',
-        })
-      }
-    }
-
-    if (data.twitter_handle) {
+    // Crustdata social_handles use generic identifiers:
+    // professional_network = LinkedIn, dev_platform = GitHub.
+    const twitterHandle = data.social_handles?.twitter_identifier?.slug
+    if (twitterHandle) {
       normalized = normalizeSocialIdentity(
         {
-          handle: data.twitter_handle,
+          handle: twitterHandle,
           platform: PlatformType.TWITTER,
         },
         MemberIdentityType.USERNAME,
@@ -342,15 +336,31 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       )
     }
 
-    if (data.linkedin_flagship_url) {
+    const linkedinUrl = data.social_handles?.professional_network_identifier?.profile_url
+    if (linkedinUrl) {
       normalized = normalizeSocialIdentity(
         {
-          handle: data.linkedin_flagship_url.split('/').pop(),
+          handle: linkedinUrl.split('/').filter(Boolean).pop(),
           platform: PlatformType.LINKEDIN,
         },
         MemberIdentityType.USERNAME,
         normalized,
       )
+    }
+
+    const githubUrl = data.social_handles?.dev_platform_identifier?.profile_url
+    if (githubUrl) {
+      const handle = githubUrl.split('/').filter(Boolean).pop()
+      if (handle) {
+        normalized = normalizeSocialIdentity(
+          {
+            handle,
+            platform: PlatformType.GITHUB,
+          },
+          MemberIdentityType.USERNAME,
+          normalized,
+        )
+      }
     }
 
     return normalized
@@ -364,15 +374,17 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       normalized.memberOrganizations = []
     }
 
-    const employmentInformation = (data.past_employers || []).concat(data.current_employers || [])
+    const employmentInformation = (data.experience?.employment_details?.past || []).concat(
+      data.experience?.employment_details?.current || [],
+    )
     if (employmentInformation.length > 0) {
       for (const workExperience of employmentInformation) {
         const identities = []
 
-        if (workExperience.employer_linkedin_id) {
+        if (workExperience.professional_network_id) {
           identities.push({
             platform: PlatformType.LINKEDIN,
-            value: `company:${workExperience.employer_linkedin_id}`,
+            value: `company:${workExperience.professional_network_id}`,
             type: OrganizationIdentityType.USERNAME,
             verified: true,
             source: 'enrichment',
@@ -380,15 +392,12 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
         }
 
         normalized.memberOrganizations.push({
-          name: replaceDoubleQuotes(workExperience.employer_name),
+          name: replaceDoubleQuotes(workExperience.name),
           source: OrganizationSource.ENRICHMENT_CRUSTDATA,
           identities,
-          title: replaceDoubleQuotes(workExperience.employee_title),
+          title: replaceDoubleQuotes(workExperience.title),
           startDate: workExperience?.start_date ?? null,
           endDate: workExperience?.end_date ?? null,
-          organizationDescription: replaceDoubleQuotes(
-            workExperience.employer_linkedin_description,
-          ),
         })
       }
     }

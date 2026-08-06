@@ -1,53 +1,73 @@
 import { IMemberEnrichmentLinkedinScraperMetadata } from '../../types'
 
 export interface IMemberEnrichmentCrustdataEmployer {
-  employer_name: string
-  employer_linkedin_id: string
-  employer_linkedin_description?: string
-  employer_company_id: number[]
-  employee_position_id?: number
-  employee_title: string
-  employee_description?: string
-  employee_location: string
-  start_date: string
-  end_date: string
+  name?: string
+  title?: string
+  professional_network_id?: string
+  start_date?: string
+  end_date?: string
 }
 
-export interface IMemberEnrichmentDataCrustdata {
-  linkedin_profile_url: string
-  linkedin_flagship_url: string
-  name: string
-  email: string | string[]
-  title: string
-  last_updated: string
-  headline: string
-  summary: string
-  num_of_connections: number
-  skills: string
-  profile_picture_url: string
-  twitter_handle: string
-  languages: string[]
-  all_employers: string[]
-  past_employers: IMemberEnrichmentCrustdataEmployer[]
-  current_employers: IMemberEnrichmentCrustdataEmployer[]
-  all_employers_company_id: number[]
-  all_titles: string[]
-  all_schools: string[]
-  all_degrees: string[]
+export interface IMemberEnrichmentCrustdataPersonData {
+  basic_profile?: {
+    name?: string
+    current_title?: string
+    headline?: string
+    summary?: string
+    languages?: string[]
+    profile_picture_permalink?: string
+  }
+  social_handles?: {
+    professional_network_identifier?: {
+      profile_url?: string
+    }
+    twitter_identifier?: {
+      slug?: string
+    }
+    dev_platform_identifier?: {
+      profile_url?: string
+    }
+  }
+  professional_network?: {
+    connections?: number
+    profile_picture_url?: string
+    profile_picture_permalink?: string
+  }
+  skills?: {
+    professional_network_skills?: string[]
+  }
+  education?: {
+    schools?: Array<{
+      school?: string
+    }>
+  }
+  experience?: {
+    employment_details?: {
+      current?: IMemberEnrichmentCrustdataEmployer[]
+      past?: IMemberEnrichmentCrustdataEmployer[]
+    }
+  }
+}
+
+export interface IMemberEnrichmentDataCrustdata extends IMemberEnrichmentCrustdataPersonData {
   metadata: IMemberEnrichmentLinkedinScraperMetadata
 }
 
-export type IMemberEnrichmentCrustdataAPIResponse =
-  | IMemberEnrichmentDataCrustdata
-  | IMemberEnrichmentCrustdataAPIErrorResponse
-
-export interface IMemberEnrichmentCrustdataAPIErrorResponse {
-  error: string
-  linkedin_profile_url: string
-  last_tried_linkedin_enrichment_date: string
-  did_last_linkedin_enrichment_succeed: boolean
+export interface IMemberEnrichmentCrustdataEnrichMatch {
+  confidence_score: number
+  person_data: IMemberEnrichmentCrustdataPersonData
 }
 
+export interface IMemberEnrichmentCrustdataEnrichResult {
+  matched_on: string
+  match_type: string
+  matches: IMemberEnrichmentCrustdataEnrichMatch[]
+}
+
+export type IMemberEnrichmentCrustdataEnrichResponse = IMemberEnrichmentCrustdataEnrichResult[]
+
 export interface IMemberEnrichmentCrustdataRemainingCredits {
-  credits: number
+  account: {
+    credits: number
+  }
 }
