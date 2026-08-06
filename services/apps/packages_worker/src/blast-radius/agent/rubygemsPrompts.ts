@@ -1,5 +1,3 @@
-// Parallels nugetPrompts.ts/goPrompts.ts — shared shape lives in promptKit.ts;
-// only Ruby-specific keys/enum and system-prompt prose live here.
 import {
   buildIntelPrompt,
   buildIntelSchema,
@@ -7,8 +5,6 @@ import {
   buildVerdictSchema,
 } from './promptKit'
 import { SymbolSpec } from './prompts'
-
-// ---------- STAGE 1: INTEL ----------
 
 const IMPORT_SIGNATURE_KEYS = ['require', 'require_relative', 'autoload', 'gem_dependency']
 
@@ -42,8 +38,6 @@ Rules:
   identifies the symbol(s); lower if you had to infer from indirect evidence.`
 
 export const buildRubyGemsIntelPrompt = buildIntelPrompt
-
-// ---------- STAGE 3: REACHABILITY ----------
 
 const IMPORT_STYLE_ENUM = [
   'require',

@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { Readable, Writable } from 'stream'
+import { Readable } from 'stream'
 import type { ReadableStream as NodeWebReadableStream } from 'stream/web'
 import * as tar from 'tar'
 
@@ -21,21 +21,25 @@ export class RubyGemsSourceNotFoundError extends Error {
   }
 }
 
-function gemDownloadUrl(packageName: string, version: string): string {
-  return `https://rubygems.org/downloads/${packageName}-${version}.gem`
+// rubygems.org omits the platform suffix only for the default 'ruby' platform; every
+// other platform (java, x86_64-linux, ...) requires it, and some gems/versions are only
+// ever published for a non-'ruby' platform.
+function gemDownloadUrl(packageName: string, version: string, platform?: string | null): string {
+  const suffix = platform && platform !== 'ruby' ? `-${platform}` : ''
+  return `https://rubygems.org/downloads/${packageName}-${version}${suffix}.gem`
 }
 
-// A .gem is an uncompressed POSIX tar containing metadata.gz, data.tar.gz and
-// checksums.yaml.gz — unlike npm/cargo, the actual source lives one level deeper, inside
-// data.tar.gz, whose entries sit at the archive root with no wrapper directory.
+// A .gem is an uncompressed POSIX tar wrapping metadata.gz/data.tar.gz/checksums.yaml.gz —
+// the actual source lives one level deeper, inside data.tar.gz, with no wrapper directory.
 export async function downloadAndExtractRubyGemsSource(
   packageName: string,
   version: string,
   destDir: string,
+  platform?: string | null,
 ): Promise<void> {
   fs.mkdirSync(destDir, { recursive: true })
 
-  const url = gemDownloadUrl(packageName, version)
+  const url = gemDownloadUrl(packageName, version, platform)
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
@@ -68,7 +72,7 @@ export async function downloadAndExtractRubyGemsSource(
           outerExtractedFiles > MAX_EXTRACTED_FILES ||
           outerExtractedBytes > MAX_EXTRACTED_BYTES
         ) {
-          ;(outerExtract as unknown as Writable).destroy(new Error('Gem exceeded size/file limits'))
+          outerExtract.abort(new Error('Gem exceeded size/file limits'))
         }
       },
     })
@@ -93,15 +97,14 @@ export async function downloadAndExtractRubyGemsSource(
     const innerExtract = tar.extract({
       cwd: destDir,
       strict: true,
-      filter: () => {
-        innerExtractedFiles++
-        if (innerExtractedFiles > MAX_EXTRACTED_FILES) return false
-        return true
-      },
       onentry: (entry) => {
+        innerExtractedFiles++
         innerExtractedBytes += entry.size ?? 0
-        if (innerExtractedBytes > MAX_EXTRACTED_BYTES) {
-          ;(innerExtract as unknown as Writable).destroy(new Error('Gem exceeded size/file limits'))
+        if (
+          innerExtractedFiles > MAX_EXTRACTED_FILES ||
+          innerExtractedBytes > MAX_EXTRACTED_BYTES
+        ) {
+          innerExtract.abort(new Error('Gem exceeded size/file limits'))
         }
       },
     })

@@ -11,11 +11,8 @@ interface RubyGemsClause {
 
 const OPERATORS: (Op | '~>')[] = ['!=', '>=', '<=', '~>', '>', '<', '=']
 
-// deps.dev's d.Requirement for RubyGems is a Gem::Requirement string: comma-separated
-// clauses ANDed together, each "<op> <version>" (bare version means "="). "~>" is the
-// pessimistic operator — expands to a floor/ceiling pair below, not a single clause.
-// Longest operators are checked first (a naive single regex backtracks ">=" into ">"
-// plus a bogus "=" version when nothing follows the operator).
+// Gem::Requirement clauses: comma-separated "<op> <version>" (bare version means "=").
+// Longest operators checked first — a naive regex backtracks ">=" into ">" plus a bogus "=".
 function parseClause(raw: string): RubyGemsClause[] | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
@@ -61,7 +58,7 @@ function parseRequirement(constraint: string | null): RubyGemsClause[] | null {
     if (!parsed) return null
     clauses.push(...parsed)
   }
-  return clauses.length > 0 ? clauses : null
+  return clauses
 }
 
 function clauseMatches(clause: RubyGemsClause, version: string): boolean {
@@ -84,11 +81,8 @@ function clauseMatches(clause: RubyGemsClause, version: string): boolean {
   }
 }
 
-// Over-inclusive by design: the reachability stage (real source analysis) is the actual
-// precision filter, so an unparseable constraint is always surfaced, never dropped.
-//
-// Checks against every vulnerable version, not just the highest one: a bounded "~>"
-// constraint can include an older vulnerable version without including the max.
+// Over-inclusive by design — reachability is the real precision filter. Checks every
+// vulnerable version, not just the highest: a bounded "~>" can include an older one.
 export function rubygemsConstraintMayInclude(
   constraint: string | null,
   vulnerableVersions: string[],

@@ -2,21 +2,18 @@ import { getReverseDependents } from '@crowd/data-access-layer/src/packages/blas
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { DependentCandidate, ScanDependentsResult } from '../../dependentsScan'
-import { highestVersion } from '../ecosystemVersions'
 
 import { rubygemsConstraintMayInclude } from './rubygemsConstraint'
 
-// RubyGems dependents come from package_dependencies (deps.dev BigQuery ingestion), same as
-// Maven/Go/NuGet — no download-count signal, and deps.dev never resolves a concrete version
-// for RubyGems edges, so matching goes purely through version_constraint.
+// Same as Maven/Go/NuGet: no download-count signal, and deps.dev never resolves a
+// concrete version for RubyGems edges, so matching goes purely through version_constraint.
 export async function scanRubyGemsDependents(
   qx: QueryExecutor,
   vulnerablePackageId: string,
   vulnerableVersions: string[],
   topN: number,
 ): Promise<ScanDependentsResult> {
-  const maxVulnerableVersion = highestVersion('rubygems', vulnerableVersions)
-  if (!maxVulnerableVersion) {
+  if (vulnerableVersions.length === 0) {
     return {
       source: 'package_dependencies',
       candidatesConsidered: 0,

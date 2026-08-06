@@ -31,7 +31,11 @@ export function toBareGoModule(input: string): string {
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:golang/')) {
     name = name.slice('pkg:golang/'.length)
@@ -49,7 +53,11 @@ export function toBareCargoName(input: string): string {
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:cargo/')) {
     name = name.slice('pkg:cargo/'.length)
@@ -67,7 +75,11 @@ export function toBareNuGetId(input: string): string {
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:nuget/')) {
     name = name.slice('pkg:nuget/'.length)
@@ -78,16 +90,18 @@ export function toBareNuGetId(input: string): string {
   return name
 }
 
-// Same normalization as toBareGoModule, but for RubyGems: purls spell the type 'gem'
-// (not 'rubygems'), and gem names never contain '@' themselves either. Deliberately does
-// NOT lowercase — deps.dev and rubygems.org both store the canonical published spelling,
-// which is not universally lowercase (e.g. RedCloth, Ascii85).
+// Same as toBareGoModule, but purls spell the type 'gem'. Deliberately does NOT lowercase —
+// deps.dev/rubygems.org store the canonical published spelling (e.g. RedCloth, Ascii85).
 export function toBareGemName(input: string): string {
   let name = input.trim()
 
   name = stripQueryAndFragment(name)
 
-  name = decodeURIComponent(name)
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    return name
+  }
 
   if (name.startsWith('pkg:gem/')) {
     name = name.slice('pkg:gem/'.length)

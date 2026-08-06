@@ -7,9 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RubyGemsSourceNotFoundError, downloadAndExtractRubyGemsSource } from '../rubygemsSource'
 
-// Builds a real .gem-shaped fixture: an uncompressed outer tar containing metadata.gz,
-// data.tar.gz and checksums.yaml.gz, where data.tar.gz is itself a gzip-tar with its
-// entries at the archive root — matching the real format verified against rubygems.org.
+vi.mock('../downloadLimits', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../downloadLimits')>()
+  return { ...actual, MAX_EXTRACTED_FILES: 5 }
+})
+
 async function buildFixtureGem(files: Record<string, string>): Promise<Buffer> {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemfixture-'))
   try {
@@ -89,6 +91,43 @@ describe('downloadAndExtractRubyGemsSource', () => {
 
     await expect(downloadAndExtractRubyGemsSource('rack', '3.0.8', destDir)).rejects.toThrow(
       RubyGemsSourceNotFoundError,
+    )
+  })
+
+  it('requests the platform-suffixed URL when a non-ruby platform is passed', async () => {
+    const gemBuffer = await buildFixtureGem({ 'lib/x.rb': 'X' })
+    mockFetchOnce({ body: gemBuffer })
+
+    await downloadAndExtractRubyGemsSource('nokogiri', '1.13.0', destDir, 'x86_64-linux')
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://rubygems.org/downloads/nokogiri-1.13.0-x86_64-linux.gem',
+      expect.anything(),
+    )
+  })
+
+  it('omits the platform suffix for the default "ruby" platform', async () => {
+    const gemBuffer = await buildFixtureGem({ 'lib/x.rb': 'X' })
+    mockFetchOnce({ body: gemBuffer })
+
+    await downloadAndExtractRubyGemsSource('rack', '3.0.8', destDir, 'ruby')
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://rubygems.org/downloads/rack-3.0.8.gem',
+      expect.anything(),
+    )
+  })
+
+  it('destroys extraction instead of silently truncating when the file count exceeds the limit', async () => {
+    const files: Record<string, string> = {}
+    for (let i = 0; i < 7; i++) {
+      files[`lib/file${i}.rb`] = `# file ${i}`
+    }
+    const gemBuffer = await buildFixtureGem(files)
+    mockFetchOnce({ body: gemBuffer })
+
+    await expect(downloadAndExtractRubyGemsSource('bloated-gem', '1.0.0', destDir)).rejects.toThrow(
+      'Gem exceeded size/file limits',
     )
   })
 

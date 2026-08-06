@@ -26,7 +26,8 @@ import { toBareGemName } from '../../packageIdentifier'
 import { ecosystemRangeEvents, highestVersion, versionsInRanges } from '../ecosystemVersions'
 import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
-// OSV spells the RubyGems ecosystem 'RubyGems' (mixed case), unlike our DB's lowercase 'rubygems'.
+import { pickPlatform } from './rubygemsPlatform'
+
 const OSV_RUBYGEMS_ECOSYSTEM = 'RubyGems'
 
 export async function runIntelStageRubyGems(
@@ -59,8 +60,6 @@ export async function runIntelStageRubyGems(
       throw new Error(`No RubyGems entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Pick the RubyGems entry the analysis was requested for; see selectAdvisoryEntry for
-    // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
     const requestedName =
       analysisDetail?.package_name != null ? toBareGemName(analysisDetail.package_name) : null
@@ -85,8 +84,7 @@ export async function runIntelStageRubyGems(
     })
 
     // rubygems.org is the authoritative version list; fall back to our own ingested
-    // `versions` rows (deps.dev/rubygems sync) if the registry is unreachable/rate-limited
-    // and the package is already known to us.
+    // `versions` rows if the registry is unreachable/rate-limited and we know the package.
     const versionsResult = await fetchVersions(gemName)
     let allVersions: string[]
     if (!isRubyGemsFetchError(versionsResult)) {
@@ -106,11 +104,17 @@ export async function runIntelStageRubyGems(
       throw new Error(`Could not determine analyzed version for ${gemName}`)
     }
 
+    // Platform is only known when versionsResult came from the live registry — the
+    // DB fallback doesn't carry it.
+    const platform = isRubyGemsFetchError(versionsResult)
+      ? null
+      : pickPlatform(versionsResult, analyzed)
+
     const pkgsrcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemsrc-'))
     const patches: Record<string, string> = {}
 
     try {
-      await downloadAndExtractRubyGemsSource(gemName, analyzed, pkgsrcDir)
+      await downloadAndExtractRubyGemsSource(gemName, analyzed, pkgsrcDir, platform)
       onProgress?.()
 
       const patchUrls = fixReferenceUrls(osv)
