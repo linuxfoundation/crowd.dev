@@ -20,11 +20,45 @@ SQL >
             coveredWeight / 35.0 < 0.4,
             NULL,
             toNullable(toUInt8(round(least(35.0, rawScore * (35.0 / coveredWeight)))))
-        ) AS securitySupplyChainScoreV2
+        ) AS securitySupplyChainScoreV2,
+        openVulnScore,
+        openCriticals,
+        openHighs,
+        openModerates,
+        scorecardScorePts,
+        scorecardAvailable,
+        scorecardScore,
+        securityPracticesScore,
+        securityPracticesAvailable,
+        securityPolicyEnabled,
+        branchProtectionEnabled,
+        branchProtectionRequiredReviews,
+        branchProtectionRequiresStatusChecks,
+        branchProtectionAllowsForcePush,
+        dependencyHealthScore,
+        dependencyHealthAvailable,
+        vulnerableDeps
     FROM
         (
             SELECT
                 repoUrl,
+                openVulnScore,
+                openCriticals,
+                openHighs,
+                openModerates,
+                scorecardScorePts,
+                scorecardAvailable,
+                scorecardScore,
+                securityPracticesScore,
+                securityPracticesAvailable,
+                securityPolicyEnabled,
+                branchProtectionEnabled,
+                branchProtectionRequiredReviews,
+                branchProtectionRequiresStatusChecks,
+                branchProtectionAllowsForcePush,
+                dependencyHealthScore,
+                dependencyHealthAvailable,
+                vulnerableDeps,
                 (
                     openVulnScore
                     + scorecardAvailable * scorecardScorePts
@@ -41,18 +75,24 @@ SQL >
                 (
                     SELECT
                         allRepos.url AS repoUrl,
-                        greatest(
-                            0,
-                            10
-                            - 6 * coalesce(vc.openCriticals, 0)
-                            - 3 * coalesce(vc.openHighs, 0)
-                            - 1 * coalesce(vc.openModerates, 0)
+                        toUInt8(
+                            greatest(
+                                0,
+                                10
+                                - 6 * coalesce(vc.openCriticals, 0)
+                                - 3 * coalesce(vc.openHighs, 0)
+                                - 1 * coalesce(vc.openModerates, 0)
+                            )
                         ) AS openVulnScore,
+                        vc.openCriticals AS openCriticals,
+                        vc.openHighs AS openHighs,
+                        vc.openModerates AS openModerates,
                         toUInt8(
                             round(least(toFloat64OrZero(rd.scorecardScore), 10) * 0.7)
                         ) AS scorecardScorePts,
                         (rd.url != '') AS scorecardAvailable,
-                        (
+                        rd.scorecardScore AS scorecardScore,
+                        toUInt8(
                             2 * coalesce(rd.securityPolicyEnabled, 0)
                             + 2 * coalesce(rd.branchProtectionEnabled, 0)
                             + if(coalesce(rd.branchProtectionRequiredReviews, 0) >= 1, 1, 0)
@@ -60,6 +100,11 @@ SQL >
                             + if(coalesce(rd.branchProtectionAllowsForcePush, 1) = 0, 1, 0)
                         ) AS securityPracticesScore,
                         (rd.url != '') AS securityPracticesAvailable,
+                        rd.securityPolicyEnabled AS securityPolicyEnabled,
+                        rd.branchProtectionEnabled AS branchProtectionEnabled,
+                        rd.branchProtectionRequiredReviews AS branchProtectionRequiredReviews,
+                        rd.branchProtectionRequiresStatusChecks AS branchProtectionRequiresStatusChecks,
+                        rd.branchProtectionAllowsForcePush AS branchProtectionAllowsForcePush,
                         multiIf(
                             coalesce(dh.vulnerableDeps, 0) = 0,
                             5,
@@ -69,7 +114,8 @@ SQL >
                             1,
                             0
                         ) AS dependencyHealthScore,
-                        (pkgs.repoUrl != '') AS dependencyHealthAvailable
+                        (pkgs.repoUrl != '') AS dependencyHealthAvailable,
+                        dh.vulnerableDeps AS vulnerableDeps
                     FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS allRepos
                     LEFT JOIN
                         (

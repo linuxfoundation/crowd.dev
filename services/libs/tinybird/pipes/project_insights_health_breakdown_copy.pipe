@@ -1,0 +1,113 @@
+DESCRIPTION >
+    - `project_insights_health_breakdown_copy.pipe` is the scheduled `TYPE COPY` pipe that rolls up
+    the per-repo Health Score v2 signal detail (`health_score_v2_signal_detail_ds`, IN-1212) to
+    project level into `project_insights_health_breakdown_ds`, for the project overview page's
+    Health breakdown section (spec sections 4-7: category tab descriptions and per-signal rows).
+    Mirrors `project_insights_impact_breakdown_copy.pipe`'s overall structure (single rollup NODE,
+    `TYPE COPY`, scheduled after its upstream dependency).
+    - Join path: `repositories` (project's own repos, filtered `enabled = true AND excluded = false`)
+    -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.url`) — same population filter
+    and join shape as `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node.
+    - Aggregation per column, chosen per column type (not one rule for all columns), per the IN-1212
+    content-spec execution plan:
+    - Score columns (`busFactorScore`, `orgDiversityScore`, `responsivenessScore`, `openVulnScore`,
+    `scorecardScorePts`, `securityPracticesScore`, `dependencyHealthScore`, `releaseCadenceScore`,
+    `commitActivityScore`, `issueResolutionScore`, `prMergeScore`): `avg()`, matching the
+    category-total rollup convention already used for `maintainerHealthScoreV2` etc. in
+    `project_insights_copy_health_v2_project`.
+    - Count columns (`busFactorCount`, `orgCount`, `openCriticals`, `openHighs`, `openModerates`,
+    `vulnerableDeps`, `commitsLast6m`, `closed12m`, `opened12m`, `merged12m`, `closedUnmerged12m`,
+    `daysSinceLatest`, `daysBetweenRecent`, `branchProtectionRequiredReviews`): `max()` across repos —
+    the most-staffed/most-active/most-protected repo is the meaningful project-level signal, matching
+    the precedent set by `project_insights_impact_breakdown_copy.pipe`'s `directDependents` MAX
+    rollup and bus factor's own per-repo tiering logic.
+    - Median-seconds columns (`medianPrResponseS`, `medianIssueResponseS`, `medianCloseS`,
+    `medianMergeS`): `avg()` of the medians — acceptable approximation; an exact cross-repo median
+    would need raw response-time data, out of scope for this rollup.
+    - `scorecardScore`: stored as a String on the source datasource (matching `repos.scorecardScore`'s
+    convention), cast to Float64 and averaged like the other raw score-ish values.
+    - Boolean/flag columns (`busFactorAvailable`, `orgDiversityAvailable`, `responsivenessAvailable`,
+    `scorecardAvailable`, `securityPracticesAvailable`, `dependencyHealthAvailable`,
+    `releaseCadenceAvailable`, `issueResolutionAvailable`, `prMergeAvailable`,
+    `securityPolicyEnabled`, `branchProtectionEnabled`, `branchProtectionRequiresStatusChecks`,
+    `branchProtectionAllowsForcePush`): `max()` — true if any repo in the project has it.
+    - `isGerrit`/`isExcluded`: `min()` — false if any repo is a "normal" GitHub repo, since the
+    "not applicable" framing per spec is about the project's overall data availability, not a single
+    repo's classification.
+    - `lastCommitAt`: `max()` — the most recent commit across the project's repos.
+    - Schedule: `health_score_v2_signal_detail.pipe` (populates the source `_ds`) runs at
+    `25 2 * * *`. This pipe runs at `35 2 * * *`, mirroring
+    `project_insights_impact_breakdown_copy.pipe`'s 10-minute-buffer convention, and before
+    `project_insights_copy.pipe`'s `0 3 * * *`.
+
+NODE project_insights_health_breakdown_raw
+DESCRIPTION >
+    Project-level rollup of per-repo Health Score v2 signal detail, via repositories ->
+    health_score_v2_signal_detail_ds (same join mechanism and population filter as
+    `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node). LEFT JOINed from
+    `insightsProjects` so every project is present in the output, even one with zero enabled/
+    non-excluded repos.
+
+SQL >
+    SELECT
+        ip.id AS projectId,
+        ip.slug AS slug,
+        avg(sd.busFactorScore) AS busFactorScore,
+        max(sd.busFactorAvailable) AS busFactorAvailable,
+        max(sd.busFactorCount) AS busFactorCount,
+        avg(sd.orgDiversityScore) AS orgDiversityScore,
+        max(sd.orgDiversityAvailable) AS orgDiversityAvailable,
+        max(sd.orgCount) AS orgCount,
+        avg(sd.responsivenessScore) AS responsivenessScore,
+        max(sd.responsivenessAvailable) AS responsivenessAvailable,
+        avg(sd.medianPrResponseS) AS medianPrResponseS,
+        avg(sd.medianIssueResponseS) AS medianIssueResponseS,
+        min(sd.isGerrit) AS isGerrit,
+        min(sd.isExcluded) AS isExcluded,
+        avg(sd.openVulnScore) AS openVulnScore,
+        max(sd.openCriticals) AS openCriticals,
+        max(sd.openHighs) AS openHighs,
+        max(sd.openModerates) AS openModerates,
+        avg(sd.scorecardScorePts) AS scorecardScorePts,
+        max(sd.scorecardAvailable) AS scorecardAvailable,
+        avg(toFloat64OrNull(sd.scorecardScore)) AS scorecardScore,
+        avg(sd.securityPracticesScore) AS securityPracticesScore,
+        max(sd.securityPracticesAvailable) AS securityPracticesAvailable,
+        max(sd.securityPolicyEnabled) AS securityPolicyEnabled,
+        max(sd.branchProtectionEnabled) AS branchProtectionEnabled,
+        max(sd.branchProtectionRequiredReviews) AS branchProtectionRequiredReviews,
+        max(sd.branchProtectionRequiresStatusChecks) AS branchProtectionRequiresStatusChecks,
+        max(sd.branchProtectionAllowsForcePush) AS branchProtectionAllowsForcePush,
+        avg(sd.dependencyHealthScore) AS dependencyHealthScore,
+        max(sd.dependencyHealthAvailable) AS dependencyHealthAvailable,
+        max(sd.vulnerableDeps) AS vulnerableDeps,
+        avg(sd.releaseCadenceScore) AS releaseCadenceScore,
+        max(sd.releaseCadenceAvailable) AS releaseCadenceAvailable,
+        max(sd.daysSinceLatest) AS daysSinceLatest,
+        max(sd.daysBetweenRecent) AS daysBetweenRecent,
+        avg(sd.commitActivityScore) AS commitActivityScore,
+        max(sd.commitsLast6m) AS commitsLast6m,
+        max(sd.lastCommitAt) AS lastCommitAt,
+        avg(sd.issueResolutionScore) AS issueResolutionScore,
+        max(sd.issueResolutionAvailable) AS issueResolutionAvailable,
+        max(sd.closed12m) AS closed12m,
+        max(sd.opened12m) AS opened12m,
+        avg(sd.medianCloseS) AS medianCloseS,
+        avg(sd.prMergeScore) AS prMergeScore,
+        max(sd.prMergeAvailable) AS prMergeAvailable,
+        max(sd.merged12m) AS merged12m,
+        max(sd.closedUnmerged12m) AS closedUnmerged12m,
+        avg(sd.medianMergeS) AS medianMergeS
+    FROM insightsProjects ip FINAL
+    LEFT JOIN
+        repositories rep FINAL
+        ON rep.insightsProjectId = ip.id
+        AND rep.enabled = true
+        AND rep.excluded = false
+    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
+    GROUP BY ip.id, ip.slug
+
+TYPE COPY
+TARGET_DATASOURCE project_insights_health_breakdown_ds
+COPY_MODE replace
+COPY_SCHEDULE 35 2 * * *

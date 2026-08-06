@@ -4,10 +4,40 @@ DESCRIPTION >
     - `repoUrl` is the repository URL — the join key back to `repositories`.
     - `securitySupplyChainScoreV2` — NULL when covered sub-signal weight is <40% of the 35pt max
     (spec Layer 1 graceful degradation), otherwise the rescaled 0-35 score.
+    - `openVulnScore`/`scorecardScorePts`/`securityPracticesScore`/`dependencyHealthScore` (IN-1212)
+    are the raw per-signal sub-scores before rescaling, as computed in `health_score_v2_security.pipe`.
+    - `scorecardAvailable`/`securityPracticesAvailable`/`dependencyHealthAvailable` (IN-1212) are the
+    Layer 1 coverage flags — 0 means the signal was `blocked` (no data), not scored 0.
+    - `openCriticals`/`openHighs`/`openModerates` (IN-1212) are the raw open-vulnerability counts by
+    severity; NULL when the repo has no rows in `vulnerabilities`.
+    - `scorecardScore` (IN-1212) is the raw OpenSSF Scorecard aggregate score (0-10 as a string,
+    passed through from `repos.scorecardScore`; empty string when unavailable).
+    - `securityPolicyEnabled`/`branchProtectionEnabled`/`branchProtectionRequiredReviews`/
+    `branchProtectionRequiresStatusChecks`/`branchProtectionAllowsForcePush` (IN-1212) are the raw
+    security-practice flags behind `securityPracticesScore`; NULL when unavailable.
+    - `vulnerableDeps` (IN-1212) is the raw count of dependencies with an open HIGH/CRITICAL advisory
+    behind `dependencyHealthScore`; NULL when the repo has no published packages.
 
 SCHEMA >
     `repoUrl` String,
-    `securitySupplyChainScoreV2` Nullable(UInt8)
+    `securitySupplyChainScoreV2` Nullable(UInt8),
+    `openVulnScore` UInt8,
+    `openCriticals` Nullable(UInt64),
+    `openHighs` Nullable(UInt64),
+    `openModerates` Nullable(UInt64),
+    `scorecardScorePts` UInt8,
+    `scorecardAvailable` UInt8,
+    `scorecardScore` String,
+    `securityPracticesScore` UInt8,
+    `securityPracticesAvailable` UInt8,
+    `securityPolicyEnabled` Nullable(UInt8),
+    `branchProtectionEnabled` Nullable(UInt8),
+    `branchProtectionRequiredReviews` Nullable(Int32),
+    `branchProtectionRequiresStatusChecks` Nullable(UInt8),
+    `branchProtectionAllowsForcePush` Nullable(UInt8),
+    `dependencyHealthScore` UInt8,
+    `dependencyHealthAvailable` UInt8,
+    `vulnerableDeps` Nullable(UInt64)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

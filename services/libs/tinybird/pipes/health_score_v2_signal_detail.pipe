@@ -1,0 +1,75 @@
+DESCRIPTION >
+    - Combines the 3 widened Health Score v2 category datasources (maintainer/security/development,
+    each carrying their promoted per-signal raw values and `*Available` coverage flags as of IN-1212)
+    into a single flat per-repo row, for the Health Score v2 Content Spec's per-signal breakdown UI
+    (spec section 7 "Signal Rows" — the "blocked" dash/dimmed state renders directly off the
+    `*Available` flags carried here, no separate computation needed).
+    - Same join pattern as `health_score_v2.pipe`'s `health_score_v2_results` node: a base repo list
+    LEFT JOINed against each category datasource on `repoUrl`, so every repo is present even when a
+    category is entirely unscored.
+    - Schedule runs after all 3 category pipes (`0 2`/`5 2`/`10 2 * * *`) and before
+    `health_score_v2.pipe` (`30 2 * * *`), matching the existing convention of chaining same-window
+    dependent jobs (e.g. `health_score_v2.pipe`'s own DESCRIPTION notes the same pattern for
+    `health_score_v2_sink.pipe`). `25 2 * * *` (not `20 2 * * *`, which `health_score_v2_impact.pipe`
+    already occupies) leaves a 15-minute buffer after `health_score_v2_development.pipe`'s `10 2`
+    and 5 minutes before `health_score_v2.pipe`'s `30 2`.
+
+NODE health_score_v2_signal_detail_calc
+SQL >
+    SELECT
+        base.repoUrl AS repoUrl,
+        m.busFactorScore AS busFactorScore,
+        m.busFactorAvailable AS busFactorAvailable,
+        m.busFactorCount AS busFactorCount,
+        m.orgDiversityScore AS orgDiversityScore,
+        m.orgDiversityAvailable AS orgDiversityAvailable,
+        m.orgCount AS orgCount,
+        m.responsivenessScore AS responsivenessScore,
+        m.responsivenessAvailable AS responsivenessAvailable,
+        m.medianPrResponseS AS medianPrResponseS,
+        m.medianIssueResponseS AS medianIssueResponseS,
+        m.isGerrit AS isGerrit,
+        m.isExcluded AS isExcluded,
+        s.openVulnScore AS openVulnScore,
+        s.openCriticals AS openCriticals,
+        s.openHighs AS openHighs,
+        s.openModerates AS openModerates,
+        s.scorecardScorePts AS scorecardScorePts,
+        s.scorecardAvailable AS scorecardAvailable,
+        s.scorecardScore AS scorecardScore,
+        s.securityPracticesScore AS securityPracticesScore,
+        s.securityPracticesAvailable AS securityPracticesAvailable,
+        s.securityPolicyEnabled AS securityPolicyEnabled,
+        s.branchProtectionEnabled AS branchProtectionEnabled,
+        s.branchProtectionRequiredReviews AS branchProtectionRequiredReviews,
+        s.branchProtectionRequiresStatusChecks AS branchProtectionRequiresStatusChecks,
+        s.branchProtectionAllowsForcePush AS branchProtectionAllowsForcePush,
+        s.dependencyHealthScore AS dependencyHealthScore,
+        s.dependencyHealthAvailable AS dependencyHealthAvailable,
+        s.vulnerableDeps AS vulnerableDeps,
+        d.releaseCadenceScore AS releaseCadenceScore,
+        d.releaseCadenceAvailable AS releaseCadenceAvailable,
+        d.daysSinceLatest AS daysSinceLatest,
+        d.daysBetweenRecent AS daysBetweenRecent,
+        d.commitActivityScore AS commitActivityScore,
+        d.commitsLast6m AS commitsLast6m,
+        d.lastCommitAt AS lastCommitAt,
+        d.issueResolutionScore AS issueResolutionScore,
+        d.issueResolutionAvailable AS issueResolutionAvailable,
+        d.closed12m AS closed12m,
+        d.opened12m AS opened12m,
+        d.medianCloseS AS medianCloseS,
+        d.prMergeScore AS prMergeScore,
+        d.prMergeAvailable AS prMergeAvailable,
+        d.merged12m AS merged12m,
+        d.closedUnmerged12m AS closedUnmerged12m,
+        d.medianMergeS AS medianMergeS
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS base
+    LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
+    LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
+    LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_signal_detail_ds
+COPY_MODE replace
+COPY_SCHEDULE 25 2 * * *

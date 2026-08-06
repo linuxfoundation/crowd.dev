@@ -37,19 +37,47 @@ SQL >
             coveredWeight / 40.0 < 0.4,
             NULL,
             toNullable(toUInt8(round(least(40.0, rawScore * (40.0 / coveredWeight)))))
-        ) AS maintainerHealthScoreV2
+        ) AS maintainerHealthScoreV2,
+        base.busFactorScore AS busFactorScore,
+        base.busFactorAvailable AS busFactorAvailable,
+        base.busFactorCount AS busFactorCount,
+        base.orgDiversityScore AS orgDiversityScore,
+        base.orgDiversityAvailable AS orgDiversityAvailable,
+        base.orgCount AS orgCount,
+        base.responsivenessScore AS responsivenessScore,
+        base.responsivenessAvailable AS responsivenessAvailable,
+        base.medianPrResponseS AS medianPrResponseS,
+        base.medianIssueResponseS AS medianIssueResponseS,
+        base.isGerrit AS isGerrit,
+        base.isExcluded AS isExcluded,
+        coveredWeight AS coveredWeight
     FROM
         (
             SELECT
                 repoUrl,
+                busFactorScore,
+                busFactorAvailable,
+                busFactorCount,
+                orgDiversityScore,
+                orgDiversityAvailable,
+                orgCount,
+                responsivenessScore,
+                responsivenessAvailable,
+                medianPrResponseS,
+                medianIssueResponseS,
+                isGerrit,
+                isExcluded,
                 (busFactorScore + orgDiversityScore + responsivenessScore) AS rawScore,
-                (
+                toUInt8(
                     busFactorAvailable * 18 + orgDiversityAvailable * 7 + responsivenessAvailable * 15
                 ) AS coveredWeight
             FROM
                 (
                     SELECT
                         allRepos.repoUrl AS repoUrl,
+                        allRepos.isGerrit AS isGerrit,
+                        allRepos.isExcluded AS isExcluded,
+                        bf.busFactorCount AS busFactorCount,
                         bf.repoUrl != '' AS busFactorAvailable,
                         multiIf(
                             bf.busFactorCount >= 5,
@@ -62,6 +90,7 @@ SQL >
                             3,
                             0
                         ) AS busFactorScore,
+                        od.orgCount AS orgCount,
                         od.repoUrl != '' AS orgDiversityAvailable,
                         multiIf(
                             coalesce(od.orgCount, 0) >= 3,
@@ -72,6 +101,8 @@ SQL >
                             2,
                             0
                         ) AS orgDiversityScore,
+                        r.medianPrResponseS AS medianPrResponseS,
+                        ir.medianIssueResponseS AS medianIssueResponseS,
                         multiIf(
                             allRepos.isExcluded, false, allRepos.isGerrit, r.repoUrl != '', true
                         ) AS responsivenessAvailable,
