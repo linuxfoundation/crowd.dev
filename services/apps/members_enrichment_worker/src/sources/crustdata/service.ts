@@ -82,7 +82,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       transform: (languages: string[]) => (languages || []).sort(),
     },
     [MemberAttributeName.SCHOOLS]: {
-      // Same school can appear multiple times (different degrees).
+      // education.schools[] is one entry per degree; CDP stores school names only.
       fields: ['education.schools'],
       transform: (schools: Array<{ school?: string }>) =>
         [...new Set((schools || []).map((s) => s.school?.trim()).filter(Boolean))].sort(),
@@ -147,7 +147,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       const response: IMemberEnrichmentCrustdataRemainingCredits = (await axios(config)).data
 
       // Live enrich costs 7 credits per profile.
-      return response.account.credits > 7
+      return response.account.credits >= 7
     } catch (error) {
       this.log.error('Error while checking Crustdata account usage', error)
       throw error
