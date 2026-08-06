@@ -338,14 +338,17 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
     const linkedinUrl = data.social_handles?.professional_network_identifier?.profile_url
     if (linkedinUrl) {
-      normalized = normalizeSocialIdentity(
-        {
-          handle: linkedinUrl.split('/').filter(Boolean).pop(),
-          platform: PlatformType.LINKEDIN,
-        },
-        MemberIdentityType.USERNAME,
-        normalized,
-      )
+      const handle = linkedinUrl.split('/').filter(Boolean).pop()
+      if (handle) {
+        normalized = normalizeSocialIdentity(
+          {
+            handle,
+            platform: PlatformType.LINKEDIN,
+          },
+          MemberIdentityType.USERNAME,
+          normalized,
+        )
+      }
     }
 
     const githubUrl = data.social_handles?.dev_platform_identifier?.profile_url
