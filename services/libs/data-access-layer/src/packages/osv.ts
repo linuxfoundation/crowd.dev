@@ -119,6 +119,12 @@ export async function findPackageId(
   return (row?.id as number | undefined) ?? null
 }
 
+// Use purl as key for ecosystems where name drifts; purl is UNIQUE NOT NULL and always normalized.
+export async function findPackageIdByPurl(qx: QueryExecutor, purl: string): Promise<number | null> {
+  const row = await qx.selectOneOrNone(`SELECT id FROM packages WHERE purl = $(purl)`, { purl })
+  return (row?.id as number | undefined) ?? null
+}
+
 // Batched form of findPackageId for a flat list of full package names (e.g.
 // "lodash", "@babel/core") — one round-trip instead of one query per name.
 // Mirrors getNpmPurlsForChangedNames's namespace/name reconstruction join.

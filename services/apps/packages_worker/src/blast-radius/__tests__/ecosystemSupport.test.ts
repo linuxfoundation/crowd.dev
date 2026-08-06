@@ -4,8 +4,16 @@ import { describe, expect, it } from 'vitest'
 import { SUPPORTED_ECOSYSTEMS, buildEcosystemNotSupportedFailure } from '../ecosystemSupport'
 
 describe('SUPPORTED_ECOSYSTEMS', () => {
-  it('includes cargo, nuget, and rubygems alongside npm, go, and maven', () => {
-    expect(SUPPORTED_ECOSYSTEMS).toEqual(['npm', 'go', 'maven', 'cargo', 'nuget', 'rubygems'])
+  it('includes cargo, nuget, rubygems, and pypi alongside npm, go, and maven', () => {
+    expect(SUPPORTED_ECOSYSTEMS).toEqual([
+      'npm',
+      'go',
+      'maven',
+      'cargo',
+      'nuget',
+      'rubygems',
+      'pypi',
+    ])
   })
 })
 

@@ -161,11 +161,35 @@ describe('compareVersion — rubygems (Gem::Version-style)', () => {
   })
 })
 
-describe('compareVersion — unsupported ecosystems', () => {
-  it('returns null for ecosystems we have no comparator for', () => {
-    expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()
+describe('compareVersion — pypi (PEP 440)', () => {
+  it.each([
+    ['1!1.0', '2.0', 1], // epoch always outranks the release tuple
+    ['1.0.dev1', '1.0a1', -1],
+    ['1.0a1', '1.0b1', -1],
+    ['1.0b1', '1.0rc1', -1],
+    ['1.0rc1', '1.0', -1],
+    ['1.0', '1.0.post1', -1],
+    ['1.0a1.dev1', '1.0a1', -1], // a pre-release's own dev build sorts below it
+    ['1.0alpha1', '1.0a1', 0], // normalization alias
+    ['1.0.beta.2', '1.0b2', 0], // separators before a phase marker are optional
+    ['1.0', '1.0.0', 0], // release tuple zero-padded to equal length
+    ['1.0+local', '1.0', 1], // local version sorts above the same plain version
+    ['1.0+a.2', '1.0+a.10', -1], // numeric local segments compare numerically
+  ])('compareVersion("pypi", %s, %s) sign = %s', (a, b, expected) => {
+    expect(sign(compareVersion('pypi', a, b))).toBe(expected)
   })
 
+  it('returns null for unparseable pypi versions', () => {
+    expect(compareVersion('pypi', '', '1.0.0')).toBeNull()
+    expect(compareVersion('pypi', 'not-a-version', '1.0.0')).toBeNull()
+  })
+
+  it('rejects titlecase "PyPI" — production storage is always lowercase', () => {
+    expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()
+  })
+})
+
+describe('compareVersion — unsupported ecosystems', () => {
   it('rejects titlecase "Maven" — production storage is always lowercase', () => {
     // Regression guard for the casing bug Fix 1 missed: deriveCriticalFlag
     // reads `ecosystem` from packages-db where it's lowercase. The comparator

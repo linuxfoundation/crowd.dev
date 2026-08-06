@@ -118,6 +118,33 @@ export function toDbCargoName(name: string): string {
   return name.toLowerCase().replace(/-/g, '_')
 }
 
+export function toBarePypiName(input: string): string {
+  let name = input.trim()
+
+  name = stripQueryAndFragment(name)
+
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    // Continue normalizing even if decoding fails — purl stripping and version removal
+    // are independent of decoding success.
+  }
+
+  if (name.startsWith('pkg:pypi/')) {
+    name = name.slice('pkg:pypi/'.length)
+  }
+
+  name = name.replace(/@[^/@]+$/, '')
+
+  return name
+}
+
+// PEP 503 normalization: packages.purl is always normalized, packages.name is not —
+// normalize before purl lookup.
+export function toPypiNormalizedName(name: string): string {
+  return name.toLowerCase().replace(/[-_.]+/g, '-')
+}
+
 // Maven has no single "bare name" — accepts either the "groupId:artifactId" coordinate
 // (OSV's package.name spelling) or a purl (pkg:maven/groupId/artifactId@version).
 export function toBareMavenCoordinate(input: string): { groupId: string; artifactId: string } {
