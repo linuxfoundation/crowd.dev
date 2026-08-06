@@ -1,0 +1,49 @@
+DESCRIPTION >
+    - `collection_insights_aggregate.pipe` serves aggregate insights metrics for a collection.
+    - Returns a single row with metrics aggregated across every project in the collection, not one row per project.
+    - Now a lightweight join of two precomputed tables:
+    - `collection_insights_aggregate_consolidated_ds`: consolidated unique contributor counts (1 row per collection per snapshot)
+    - `collection_insights_aggregate_projects_ds`: project count and average health score (1 row per collection)
+    - Updated daily: contributor aggregates run 2:05-2:50 UTC (staggered per-bucket, all append to shared table), projects aggregate runs 3:00 UTC (after all contributors finish).
+    - Filters to latest snapshotId for current data (argMax-per-collection-slug pattern).
+    - Parameters:
+    - `collectionSlug`: Required collection slug. Joins both tables on this slug.
+    - Response:
+    - `projectCount`: count of distinct projects in the collection.
+    - `uniqueContributorCount`: total unique contributors across all projects in the collection, deduplicated (a contributor active on multiple projects in the collection is counted once).
+    - `avgHealthScore`: average health score across the collection's onboarded projects, rounded. A project
+    is "onboarded" when it has at least one contributor or organization attributed to it (same definition
+    used by insightsProjects_filtered.pipe's `onboarded` filter and the frontend's project-row `isOnboarded`
+    check) — projects with no attributed contributors/organizations have no meaningful health signal yet
+    and would otherwise pull the average down artificially.
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Collection"
+
+NODE collection_insights_aggregate_results
+DESCRIPTION >
+    Lightweight join of precomputed contributors and projects tables for the requested collection slug.
+    Filters contributors to latest snapshot using max(snapshotId) and retrieves project metrics.
+    Collections are bucketed deterministically (cityHash64(slug) % 10) for per-bucket read efficiency;
+    all buckets' output is consolidated into a single target datasource.
+
+SQL >
+    %
+    SELECT p.projectCount, c.uniqueContributorCount, p.avgHealthScore
+    FROM collection_insights_aggregate_projects_ds p
+    LEFT JOIN
+        (
+            SELECT collectionSlug, uniqueContributorCount, snapshotId
+            FROM collection_insights_aggregate_consolidated_ds
+            WHERE
+                (collectionSlug, snapshotId) IN (
+                    SELECT collectionSlug, max(snapshotId)
+                    FROM collection_insights_aggregate_consolidated_ds
+                    GROUP BY collectionSlug
+                )
+        ) c
+        ON p.collectionSlug = c.collectionSlug
+    WHERE
+        p.collectionSlug
+        = {{ String(collectionSlug, description="Filter by collection slug", required=True) }}

@@ -1,6 +1,7 @@
 import type { Dispatcher } from 'undici'
 
-import type { FetchError } from './types'
+import { combineSignals } from './signals'
+import { type FetchError, FetchErrorKind } from './types'
 
 const USER_AGENT = 'lfx-packages-worker/0.1 (+https://lfx.linuxfoundation.org)'
 
@@ -40,6 +41,7 @@ export async function fetchBulkPointRange(
   start: string,
   end: string,
   dispatcher?: Dispatcher,
+  signal?: AbortSignal,
 ): Promise<BulkPointRangeResult | FetchError> {
   if (names.length > 128)
     throw new Error(`fetchBulkPointRange: too many names (${names.length} > 128)`)
@@ -48,36 +50,37 @@ export async function fetchBulkPointRange(
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, downloadInit(dispatcher, abort.signal))
+    res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
   if (res.status === 404)
-    return { kind: 'NOT_FOUND', message: `bulk request not found`, statusCode: 404 }
+    return { kind: FetchErrorKind.NOT_FOUND, message: `bulk request not found`, statusCode: 404 }
   if (res.status === 429) {
     const headers: Record<string, string> = {}
     for (const [k, v] of res.headers.entries()) headers[k] = v
     const body = await res.text().catch(() => '')
     return {
-      kind: 'RATE_LIMIT',
+      kind: FetchErrorKind.RATE_LIMIT,
       message: `rate limited by npm downloads API — headers: ${JSON.stringify(headers)} body: ${body}`,
       statusCode: 429,
     }
   }
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
 
   let json: unknown
   try {
     json = await res.json()
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
   if (typeof json !== 'object' || json === null)
-    return { kind: 'MALFORMED', message: 'expected object response' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'expected object response' }
 
   const raw = json as Record<string, { downloads?: unknown; start?: unknown; end?: unknown } | null>
   const counts = new Map<string, number>()
@@ -100,43 +103,45 @@ export async function fetchPointRange(
   start: string,
   end: string,
   dispatcher?: Dispatcher,
+  signal?: AbortSignal,
 ): Promise<PointRangeResult | FetchError> {
   const url = `https://api.npmjs.org/downloads/point/${start}:${end}/${encodeNpmName(name)}`
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
   let res: Response
   try {
-    res = await fetch(url, downloadInit(dispatcher, abort.signal))
+    res = await fetch(url, downloadInit(dispatcher, combineSignals(abort.signal, signal)))
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
   if (res.status === 404)
-    return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
+    return { kind: FetchErrorKind.NOT_FOUND, message: `${name} not found`, statusCode: 404 }
   if (res.status === 429) {
     const headers: Record<string, string> = {}
     for (const [k, v] of res.headers.entries()) headers[k] = v
     const body = await res.text().catch(() => '')
     return {
-      kind: 'RATE_LIMIT',
+      kind: FetchErrorKind.RATE_LIMIT,
       message: `rate limited by npm downloads API — headers: ${JSON.stringify(headers)} body: ${body}`,
       statusCode: 429,
     }
   }
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
 
   let json: unknown
   try {
     json = await res.json()
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
   const data = json as { downloads?: unknown; start?: unknown; end?: unknown }
   if (typeof data.downloads !== 'number')
-    return { kind: 'MALFORMED', message: 'missing downloads field' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'missing downloads field' }
 
   return {
     count: data.downloads,
@@ -165,35 +170,36 @@ export async function fetchDailyRange(
   try {
     res = await fetch(url, downloadInit(dispatcher, abort.signal))
   } catch (err) {
-    return { kind: 'TRANSIENT', message: String(err) }
+    return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {
     clearTimeout(timer)
   }
 
   if (res.status === 404)
-    return { kind: 'NOT_FOUND', message: `${name} not found`, statusCode: 404 }
+    return { kind: FetchErrorKind.NOT_FOUND, message: `${name} not found`, statusCode: 404 }
   if (res.status === 429) {
     const headers: Record<string, string> = {}
     for (const [k, v] of res.headers.entries()) headers[k] = v
     const body = await res.text().catch(() => '')
     return {
-      kind: 'RATE_LIMIT',
+      kind: FetchErrorKind.RATE_LIMIT,
       message: `rate limited by npm downloads API — headers: ${JSON.stringify(headers)} body: ${body}`,
       statusCode: 429,
     }
   }
-  if (!res.ok) return { kind: 'TRANSIENT', message: `HTTP ${res.status}`, statusCode: res.status }
+  if (!res.ok)
+    return { kind: FetchErrorKind.TRANSIENT, message: `HTTP ${res.status}`, statusCode: res.status }
 
   let json: unknown
   try {
     json = await res.json()
   } catch {
-    return { kind: 'MALFORMED', message: 'invalid JSON' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'invalid JSON' }
   }
 
   const data = json as { start?: unknown; end?: unknown; downloads?: unknown }
   if (!Array.isArray(data.downloads))
-    return { kind: 'MALFORMED', message: 'missing downloads array' }
+    return { kind: FetchErrorKind.MALFORMED, message: 'missing downloads array' }
 
   return {
     start: typeof data.start === 'string' ? data.start : start,

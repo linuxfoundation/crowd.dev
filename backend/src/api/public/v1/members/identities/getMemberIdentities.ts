@@ -2,13 +2,9 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { NotFoundError } from '@crowd/common'
-import {
-  MemberField,
-  fetchMemberIdentities,
-  findMemberById,
-  optionsQx,
-} from '@crowd/data-access-layer'
+import { MemberField, fetchMemberIdentities, findMemberById } from '@crowd/data-access-layer'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { validateOrThrow } from '@/utils/validation'
 

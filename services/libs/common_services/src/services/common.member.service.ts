@@ -3,6 +3,7 @@ import pick from 'lodash.pick'
 import moment from 'moment'
 
 import {
+  buildAuditLogOptions,
   captureApiChange,
   memberEditOrganizationsAction,
   memberMergeAction,
@@ -14,11 +15,13 @@ import {
   getEarliestValidDate,
   getLongestDateRange,
   getMemberOrganizationSourceRank,
+  isSameMemberIdentity,
   mergeObjects,
   safeObjectMerge,
   sanitizeMemberOrganizationDateRange,
 } from '@crowd/common'
 import {
+  ActorType,
   MEMBER_MERGE_FIELDS,
   MemberField,
   QueryExecutor,
@@ -315,6 +318,11 @@ export class CommonMemberService extends LoggerBase {
       }
     }
 
+    const audit = buildAuditLogOptions(options)
+
+    const actorId = audit?.actorId
+    const notifyUserId = audit?.actorType === ActorType.USER ? actorId : undefined
+
     const mergeActions = await queryMergeActions(this.qx, {
       fields: ['id', 'state'],
       filter: {
@@ -386,19 +394,14 @@ export class CommonMemberService extends LoggerBase {
             MergeActionStep.MERGE_STARTED,
             MergeActionState.IN_PROGRESS,
             backup,
-            options?.currentUser?.id,
+            actorId,
           )
 
           await this.qx.tx(async (txQx) => {
             const identitiesToUpdate = []
             const identitiesToMove = []
             for (const identity of toMergeIdentities) {
-              const existing = originalIdentities.find(
-                (i) =>
-                  i.platform === identity.platform &&
-                  i.type === identity.type &&
-                  i.value === identity.value,
-              )
+              const existing = originalIdentities.find((i) => isSameMemberIdentity(i, identity))
 
               if (existing) {
                 // if it's not verified but it should be
@@ -469,13 +472,7 @@ export class CommonMemberService extends LoggerBase {
         retry: {
           maximumAttempts: 10,
         },
-        args: [
-          originalId,
-          toMergeId,
-          original.displayName,
-          toMerge.displayName,
-          options?.currentUser?.id,
-        ],
+        args: [originalId, toMergeId, original.displayName, toMerge.displayName, notifyUserId],
         searchAttributes: {
           TenantId: [DEFAULT_TENANT_ID],
         },

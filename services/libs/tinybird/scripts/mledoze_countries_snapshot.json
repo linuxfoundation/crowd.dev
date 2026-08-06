@@ -1,0 +1,1252 @@
+[
+  {
+    "cca2": "AW",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "AF",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "AO",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "AI",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "AX",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "AL",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "AD",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "AE",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "AR",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "AM",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "AS",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "AQ",
+    "region": "Antarctic",
+    "subregion": ""
+  },
+  {
+    "cca2": "TF",
+    "region": "Antarctic",
+    "subregion": ""
+  },
+  {
+    "cca2": "AG",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "AU",
+    "region": "Oceania",
+    "subregion": "Australia and New Zealand"
+  },
+  {
+    "cca2": "AT",
+    "region": "Europe",
+    "subregion": "Central Europe"
+  },
+  {
+    "cca2": "AZ",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "BI",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "BE",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "BJ",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "BF",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "BD",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "BG",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "BH",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "BS",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "BA",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "BL",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "SH",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "BY",
+    "region": "Europe",
+    "subregion": "Eastern Europe"
+  },
+  {
+    "cca2": "BZ",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "BM",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "BO",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "BQ",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "BR",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "BB",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "BN",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "BT",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "BV",
+    "region": "Antarctic",
+    "subregion": ""
+  },
+  {
+    "cca2": "BW",
+    "region": "Africa",
+    "subregion": "Southern Africa"
+  },
+  {
+    "cca2": "CF",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "CA",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "CC",
+    "region": "Oceania",
+    "subregion": "Australia and New Zealand"
+  },
+  {
+    "cca2": "CH",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "CL",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "CN",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "CI",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "CM",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "CD",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "CG",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "CK",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "CO",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "KM",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "CV",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "CR",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "CU",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "CW",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "CX",
+    "region": "Oceania",
+    "subregion": "Australia and New Zealand"
+  },
+  {
+    "cca2": "KY",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "CY",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "CZ",
+    "region": "Europe",
+    "subregion": "Central Europe"
+  },
+  {
+    "cca2": "DE",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "DJ",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "DM",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "DK",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "DO",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "DZ",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "EC",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "EG",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "ER",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "EH",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "ES",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "EE",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "ET",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "FI",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "FJ",
+    "region": "Oceania",
+    "subregion": "Melanesia"
+  },
+  {
+    "cca2": "FK",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "FR",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "FO",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "FM",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "GA",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "GB",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "GE",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "GG",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "GH",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "GI",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "GN",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "GP",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "GM",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "GW",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "GQ",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "GR",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "GD",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "GL",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "GT",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "GF",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "GU",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "GY",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "HK",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "HM",
+    "region": "Antarctic",
+    "subregion": ""
+  },
+  {
+    "cca2": "HN",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "HR",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "HT",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "HU",
+    "region": "Europe",
+    "subregion": "Central Europe"
+  },
+  {
+    "cca2": "ID",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "IM",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "IN",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "IO",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "IE",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "IR",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "IQ",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "IS",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "IL",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "IT",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "JM",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "JE",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "JO",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "JP",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "KZ",
+    "region": "Asia",
+    "subregion": "Central Asia"
+  },
+  {
+    "cca2": "KE",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "KG",
+    "region": "Asia",
+    "subregion": "Central Asia"
+  },
+  {
+    "cca2": "KH",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "KI",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "KN",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "KR",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "XK",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "KW",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "LA",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "LB",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "LR",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "LY",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "LC",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "LI",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "LK",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "LS",
+    "region": "Africa",
+    "subregion": "Southern Africa"
+  },
+  {
+    "cca2": "LT",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "LU",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "LV",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "MO",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "MF",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "MA",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "MC",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "MD",
+    "region": "Europe",
+    "subregion": "Eastern Europe"
+  },
+  {
+    "cca2": "MG",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "MV",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "MX",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "MH",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "MK",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "ML",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "MT",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "MM",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "ME",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "MN",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "MP",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "MZ",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "MR",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "MS",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "MQ",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "MU",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "MW",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "MY",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "YT",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "NA",
+    "region": "Africa",
+    "subregion": "Southern Africa"
+  },
+  {
+    "cca2": "NC",
+    "region": "Oceania",
+    "subregion": "Melanesia"
+  },
+  {
+    "cca2": "NE",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "NF",
+    "region": "Oceania",
+    "subregion": "Australia and New Zealand"
+  },
+  {
+    "cca2": "NG",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "NI",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "NU",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "NL",
+    "region": "Europe",
+    "subregion": "Western Europe"
+  },
+  {
+    "cca2": "NO",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "NP",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "NR",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "NZ",
+    "region": "Oceania",
+    "subregion": "Australia and New Zealand"
+  },
+  {
+    "cca2": "OM",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "PK",
+    "region": "Asia",
+    "subregion": "Southern Asia"
+  },
+  {
+    "cca2": "PA",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "PN",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "PE",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "PH",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "PW",
+    "region": "Oceania",
+    "subregion": "Micronesia"
+  },
+  {
+    "cca2": "PG",
+    "region": "Oceania",
+    "subregion": "Melanesia"
+  },
+  {
+    "cca2": "PL",
+    "region": "Europe",
+    "subregion": "Central Europe"
+  },
+  {
+    "cca2": "PR",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "KP",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "PT",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "PY",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "PS",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "PF",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "QA",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "RE",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "RO",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "RU",
+    "region": "Europe",
+    "subregion": "Eastern Europe"
+  },
+  {
+    "cca2": "RW",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "SA",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "SD",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "SN",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "SG",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "GS",
+    "region": "Antarctic",
+    "subregion": ""
+  },
+  {
+    "cca2": "SJ",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "SB",
+    "region": "Oceania",
+    "subregion": "Melanesia"
+  },
+  {
+    "cca2": "SL",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "SV",
+    "region": "Americas",
+    "subregion": "Central America"
+  },
+  {
+    "cca2": "SM",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "SO",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "PM",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "RS",
+    "region": "Europe",
+    "subregion": "Southeast Europe"
+  },
+  {
+    "cca2": "SS",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "ST",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "SR",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "SK",
+    "region": "Europe",
+    "subregion": "Central Europe"
+  },
+  {
+    "cca2": "SI",
+    "region": "Europe",
+    "subregion": "Central Europe"
+  },
+  {
+    "cca2": "SE",
+    "region": "Europe",
+    "subregion": "Northern Europe"
+  },
+  {
+    "cca2": "SZ",
+    "region": "Africa",
+    "subregion": "Southern Africa"
+  },
+  {
+    "cca2": "SX",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "SC",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "SY",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "TC",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "TD",
+    "region": "Africa",
+    "subregion": "Middle Africa"
+  },
+  {
+    "cca2": "TG",
+    "region": "Africa",
+    "subregion": "Western Africa"
+  },
+  {
+    "cca2": "TH",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "TJ",
+    "region": "Asia",
+    "subregion": "Central Asia"
+  },
+  {
+    "cca2": "TK",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "TM",
+    "region": "Asia",
+    "subregion": "Central Asia"
+  },
+  {
+    "cca2": "TL",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "TO",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "TT",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "TN",
+    "region": "Africa",
+    "subregion": "Northern Africa"
+  },
+  {
+    "cca2": "TR",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "TV",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "TW",
+    "region": "Asia",
+    "subregion": "Eastern Asia"
+  },
+  {
+    "cca2": "TZ",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "UG",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "UA",
+    "region": "Europe",
+    "subregion": "Eastern Europe"
+  },
+  {
+    "cca2": "UM",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "UY",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "US",
+    "region": "Americas",
+    "subregion": "North America"
+  },
+  {
+    "cca2": "UZ",
+    "region": "Asia",
+    "subregion": "Central Asia"
+  },
+  {
+    "cca2": "VA",
+    "region": "Europe",
+    "subregion": "Southern Europe"
+  },
+  {
+    "cca2": "VC",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "VE",
+    "region": "Americas",
+    "subregion": "South America"
+  },
+  {
+    "cca2": "VG",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "VI",
+    "region": "Americas",
+    "subregion": "Caribbean"
+  },
+  {
+    "cca2": "VN",
+    "region": "Asia",
+    "subregion": "South-Eastern Asia"
+  },
+  {
+    "cca2": "VU",
+    "region": "Oceania",
+    "subregion": "Melanesia"
+  },
+  {
+    "cca2": "WF",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "WS",
+    "region": "Oceania",
+    "subregion": "Polynesia"
+  },
+  {
+    "cca2": "YE",
+    "region": "Asia",
+    "subregion": "Western Asia"
+  },
+  {
+    "cca2": "ZA",
+    "region": "Africa",
+    "subregion": "Southern Africa"
+  },
+  {
+    "cca2": "ZM",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  },
+  {
+    "cca2": "ZW",
+    "region": "Africa",
+    "subregion": "Eastern Africa"
+  }
+]

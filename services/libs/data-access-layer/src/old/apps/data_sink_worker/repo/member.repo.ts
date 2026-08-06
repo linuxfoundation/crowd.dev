@@ -3,10 +3,7 @@ import { DbColumnSet, DbStore, RepositoryBase } from '@crowd/database'
 import { Logger } from '@crowd/logging'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
-import {
-  deleteManyMemberIdentities,
-  insertManyMemberIdentities,
-} from '../../../../members/identities'
+import { deleteManyMemberIdentities, insertMemberIdentities } from '../../../../members/identities'
 import { PgPromiseQueryExecutor } from '../../../../queryExecutor'
 
 import { IDbMember, getInsertMemberColumnSet, getSelectMemberColumnSet } from './member.data'
@@ -101,11 +98,7 @@ export default class MemberRepository extends RepositoryBase<MemberRepository> {
       }
     })
 
-    return insertManyMemberIdentities(
-      new PgPromiseQueryExecutor(this.db()),
-      objects,
-      failOnConflict,
-    )
+    return insertMemberIdentities(new PgPromiseQueryExecutor(this.db()), objects, failOnConflict)
   }
 
   public async addToSegments(memberId: string, segmentIds: string[]): Promise<void> {

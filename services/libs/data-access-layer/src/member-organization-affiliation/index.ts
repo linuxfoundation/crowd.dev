@@ -7,6 +7,7 @@ import {
   IChangeAffiliationOverrideData,
   IMemberOrganization,
   IMemberOrganizationAffiliationOverride,
+  type MemberOrganizationAffiliationOverrideDbRow,
 } from '@crowd/types'
 
 import { findMemberAffiliations } from '../member_segment_affiliations'
@@ -31,7 +32,7 @@ const isMemberOrganizationWithOverrides = (
   row: AffiliationItem,
 ): row is MemberOrganizationWithOverrides => !isManualAffiliation(row)
 
-async function prepareMemberOrganizationAffiliationTimeline(
+export async function prepareMemberOrganizationAffiliationTimeline(
   qx: QueryExecutor,
   memberId: string,
 ): Promise<TimelineItem[]> {
@@ -522,9 +523,20 @@ export async function refreshMemberOrganizationAffiliations(qx: QueryExecutor, m
 export async function changeMemberOrganizationAffiliationOverrides(
   qx: QueryExecutor,
   data: IChangeAffiliationOverrideData[],
-): Promise<void> {
+  returnRows: true,
+): Promise<MemberOrganizationAffiliationOverrideDbRow[]>
+export async function changeMemberOrganizationAffiliationOverrides(
+  qx: QueryExecutor,
+  data: IChangeAffiliationOverrideData[],
+  returnRows?: false,
+): Promise<void>
+export async function changeMemberOrganizationAffiliationOverrides(
+  qx: QueryExecutor,
+  data: IChangeAffiliationOverrideData[],
+  returnRows = false,
+): Promise<MemberOrganizationAffiliationOverrideDbRow[] | void> {
   if (!Array.isArray(data) || data.length === 0) {
-    return
+    return returnRows ? [] : undefined
   }
 
   const rows: IMemberOrganizationAffiliationOverride[] = []
@@ -539,7 +551,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
     }
 
     rows.push({
-      id: uuid(),
+      id: d.id ?? uuid(),
       memberId: d.memberId,
       memberOrganizationId: d.memberOrganizationId,
       allowAffiliation: d.allowAffiliation,
@@ -548,7 +560,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
   }
 
   if (rows.length === 0) {
-    return
+    return returnRows ? [] : undefined
   }
 
   const valuesSql = rows
@@ -577,8 +589,7 @@ export async function changeMemberOrganizationAffiliationOverrides(
     {} as Record<string, unknown>,
   )
 
-  await qx.result(
-    `
+  const query = `
       INSERT INTO "memberOrganizationAffiliationOverrides" (
         id,
         "memberId",
@@ -590,10 +601,15 @@ export async function changeMemberOrganizationAffiliationOverrides(
       ON CONFLICT ("memberId", "memberOrganizationId")
       DO UPDATE SET
         "allowAffiliation" = COALESCE(EXCLUDED."allowAffiliation", "memberOrganizationAffiliationOverrides"."allowAffiliation"),
-        "isPrimaryWorkExperience" = COALESCE(EXCLUDED."isPrimaryWorkExperience", "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience");
-    `,
-    params,
-  )
+        "isPrimaryWorkExperience" = COALESCE(EXCLUDED."isPrimaryWorkExperience", "memberOrganizationAffiliationOverrides"."isPrimaryWorkExperience")
+      ${returnRows ? 'RETURNING *' : ''}
+    `
+
+  if (returnRows) {
+    return qx.select(query, params)
+  }
+
+  await qx.result(query, params)
 }
 
 export async function findMemberAffiliationOverrides(

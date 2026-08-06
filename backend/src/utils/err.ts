@@ -5,6 +5,12 @@ type ConflictFactory = (context?: Record<string, unknown>) => Error
 const DB_CONFLICT_MAP: Record<string, ConflictFactory> = {
   uix_memberIdentities_platform_value_type_verified: (context) =>
     new ConflictError('Identity already exists on another member', context),
+  uix_memberIdentities_platform_type_lower_value_verified: (context) =>
+    new ConflictError('Identity already exists on another member', context),
+}
+
+export function isMemberIdentityDbConflict(error: unknown): boolean {
+  return (getDbConstraint(error) ?? '') in DB_CONFLICT_MAP
 }
 
 export function rethrowDbConflict(error: unknown, context?: Record<string, unknown>): never {

@@ -1,3 +1,5 @@
+import { ApplicationFailure } from '@temporalio/client'
+
 import {
   OsspckgsJobKind,
   OsspckgsSyncMode,
@@ -6,6 +8,7 @@ import {
   findExportedJobByGcsPrefix,
   findLatestExportedJobByKind,
   markJobStatus,
+  mergeJobTableRowCounts,
 } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
@@ -25,6 +28,19 @@ export interface BqExportToGcsInput {
   reuseExports?: boolean
   exportName?: string
   ecosystems?: string[]
+  // Script mode (GO/NUGET reverse transitive closure). When true, `sql` is a full multi-statement
+  // BQ script (semi-naive fixpoint over TEMP tables) that ends by creating `TEMP TABLE _export_data`
+  // holding the final result set. The activity appends only the EXPORT DATA statement instead of
+  // wrapping `sql` in a subquery (a script cannot be a subquery). The up-front dry-run ceiling check
+  // is replaced by a server-side maximumBytesBilled cap, since a dry-run only validates the first
+  // statement and cannot predict the WHILE loop's total scan. See ADR-0004.
+  isScript?: boolean
+  // Fill-constraints run (package_dependencies only): the export is a full Option-A scan but the
+  // downstream merge upserts version_constraint (ON CONFLICT DO UPDATE) instead of DO NOTHING. Full
+  // and fill produce identical parquet, so sync_mode alone can't tell them apart — persist it in the
+  // job meta so a --resume-job run reprocesses the export with the correct merge instead of silently
+  // reverting to DO NOTHING (which skips the backfill).
+  isFill?: boolean
 }
 
 export interface BqExportToGcsOutput {
@@ -45,6 +61,8 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
     reuseExports,
     exportName,
     ecosystems,
+    isScript,
+    isFill,
   } = input
 
   // Named exports use a stable GCS path independent of runId so they survive across bootstrap runs.
@@ -71,6 +89,12 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           { jobKind, exportName, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
           'exportName match — skipping BQ, loading from named export',
         )
+        // The reusing run drives the chunk merge on this same job row, so meta:fill must reflect
+        // THIS run's intent — write it both ways. Setting it (fill run) stops a later --resume-job
+        // reverting to ON CONFLICT DO NOTHING and skipping the version_constraint backfill; clearing
+        // it (non-fill run reusing a row an earlier fill run set) stops resume forcing an unintended
+        // upsert. Absent and 0 both read back as fill=false (COALESCE in getIngestJobForResume).
+        await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': isFill ? 1 : 0 })
         return {
           gcsPrefix: prior.gcsPrefix,
           rowCount: prior.rowCountBq,
@@ -107,6 +131,7 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           tableRowCounts: {
             'bq:export': 0,
             ...(ecosystems ? { 'meta:ecosystems': ecosystems } : {}),
+            ...(isFill ? { 'meta:fill': 1 } : {}),
           },
         })
         return { gcsPrefix: namedPrefix, rowCount: 0, bqBytesBilled: 0, jobId }
@@ -127,6 +152,9 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
           { jobKind, jobId: prior.id, gcsPrefix: prior.gcsPrefix },
           'reuseExports=true — skipping BQ, loading from prior export',
         )
+        // See named-export path above: write THIS run's fill intent both ways so a later
+        // --resume-job matches the most recent run instead of a stale meta value.
+        await mergeJobTableRowCounts(qx, prior.id, { 'meta:fill': isFill ? 1 : 0 })
         return {
           gcsPrefix: prior.gcsPrefix,
           rowCount: prior.rowCountBq,
@@ -155,15 +183,15 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
         { jobKind, jobId: existing.id, gcsPrefix },
         'GCS files already exist — reusing export',
       )
+      // Same-runId reuse (Temporal retry): re-stamp THIS run's fill intent both ways so the flag
+      // always matches the most recent run and can never be lost or left stale on reuse.
+      await mergeJobTableRowCounts(qx, existing.id, { 'meta:fill': isFill ? 1 : 0 })
       return { gcsPrefix, rowCount: existing.rowCountBq, bqBytesBilled: 0, jobId: existing.id }
     }
   }
 
-  // M4: explicit location to avoid cross-region error when account default != US
-  const [dryRunJob] = await bigquery.createQueryJob({ query: sql, dryRun: true, location: 'US' })
-  const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
-  log.info({ jobKind, dryRunBytes, maxBytesGb }, 'BQ dry-run complete')
-
+  // Resolve the effective byte ceiling first — both the single-SELECT dry-run check and the
+  // script-mode maximumBytesBilled cap derive from it.
   // Override table is in src/deps-dev/README.md — update it when adding new job kinds.
   // Mode-specific key takes precedence over the generic key (needed for kinds like "packages"
   // that have separate full/incremental ceilings: BQ_DATASET_INGEST_PACKAGES_FULL_MAX_BQ_GB).
@@ -182,26 +210,55 @@ export async function bqExportToGcs(input: BqExportToGcsInput): Promise<BqExport
   }
   const effectiveMaxBytesGb = envOverride !== undefined ? Number(envOverride) : maxBytesGb
   const ceiling = effectiveMaxBytesGb * 1e9
-  if (dryRunBytes > ceiling) {
-    throw new Error(
-      `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,
+
+  // Single-SELECT exports: dry-run up-front, abort if the scan exceeds the ceiling.
+  // Script exports (isScript): a dry-run only validates the first statement and cannot price the
+  // semi-naive WHILE loop, so the dry-run is skipped here; the ceiling is instead enforced
+  // server-side via maximumBytesBilled on the real job below (see ADR-0004).
+  if (!isScript) {
+    // M4: explicit location to avoid cross-region error when account default != US
+    const [dryRunJob] = await bigquery.createQueryJob({ query: sql, dryRun: true, location: 'US' })
+    const dryRunBytes = Number(dryRunJob.metadata.statistics.totalBytesProcessed ?? 0)
+    // Log the effective ceiling (env override may differ from the default maxBytesGb) and the
+    // computed byte ceiling, so ops can see what the abort decision is actually compared against.
+    log.info(
+      { jobKind, dryRunBytes, maxBytesGb, effectiveMaxBytesGb, ceiling },
+      'BQ dry-run complete',
     )
+    if (dryRunBytes > ceiling) {
+      // Non-retryable: the dry-run byte count is deterministic for a given query, so retrying
+      // (the caller's default maximumAttempts: 3) just repeats the same failed dry-run 3 times.
+      throw ApplicationFailure.nonRetryable(
+        `BQ dry-run for ${jobKind} reports ${dryRunBytes} bytes > ceiling ${ceiling} — aborting`,
+        'BQ_CEILING_EXCEEDED',
+      )
+    }
   }
 
   const provisionalDate = snapshotAt ? new Date(snapshotAt) : null
   const jobId = await createIngestJob(qx, jobKind, syncMode, provisionalDate, exportName)
 
-  // H7: mark exporting before we start the BQ job; store ecosystems filter in table_row_counts JSONB.
+  // H7: mark exporting before we start the BQ job; store ecosystems filter + fill flag in the
+  // table_row_counts JSONB so --resume-job can restore the original export's settings.
+  const exportMeta: Record<string, string | number | string[]> = {}
+  if (ecosystems) exportMeta['meta:ecosystems'] = ecosystems
+  if (isFill) exportMeta['meta:fill'] = 1
   await markJobStatus(qx, jobId, 'exporting', {
-    ...(ecosystems ? { tableRowCounts: { 'meta:ecosystems': ecosystems } } : {}),
+    ...(Object.keys(exportMeta).length > 0 ? { tableRowCounts: exportMeta } : {}),
   })
 
-  // B9: wrap in SELECT * FROM (...) so QUALIFY / top-level set ops don't break EXPORT DATA syntax.
-  // CREATE TEMP TABLE first so BQ materializes the result before exporting — direct EXPORT DATA
-  // from a subquery produces O(rows) micro-files (~1 KB each); a temp table forces proper sharding.
-  const innerSql = sql.replace(/;\s*$/, '')
-  const exportSql = `
-CREATE TEMP TABLE _export_data AS SELECT * FROM (${innerSql});
+  // From here the row is 'exporting'; any BQ failure (incl. script-mode maximumBytesBilled aborts)
+  // must flip it to 'failed' with the reason, else it stays stuck 'exporting' forever and the
+  // failure reason is lost to monitoring. Mirrors the rankPackages pattern (criticality/activities).
+  try {
+    // Both modes finish by exporting from a `_export_data` TEMP table — materializing first forces
+    // BQ to shard the parquet output properly (direct EXPORT DATA from a subquery emits O(rows)
+    // ~1 KB micro-files).
+    // - Single-SELECT: wrap `sql` in SELECT * FROM (...) so QUALIFY / top-level set ops don't break
+    //   the CREATE TEMP TABLE, then export.
+    // - Script (isScript): the script already builds `_export_data` as its final statement, so we
+    //   append only the EXPORT DATA — its temp tables run inline and auto-drop when the session ends.
+    const exportTail = `
 EXPORT DATA OPTIONS(
   uri='${gcsPrefix}*.parquet',
   format='PARQUET',
@@ -209,36 +266,52 @@ EXPORT DATA OPTIONS(
   overwrite=true
 ) AS SELECT * FROM _export_data;
 `
+    const exportSql = isScript
+      ? `${sql.replace(/;\s*$/, '')};\n${exportTail}`
+      : `\nCREATE TEMP TABLE _export_data AS SELECT * FROM (${sql.replace(/;\s*$/, '')});\n${exportTail}`
 
-  log.info({ jobKind, jobId, gcsPrefix }, 'Starting BQ export')
+    log.info({ jobKind, jobId, gcsPrefix, isScript: Boolean(isScript) }, 'Starting BQ export')
 
-  const [job] = await bigquery.createQueryJob({ query: exportSql, location: 'US' })
-  await job.promise()
-  const bqStats = await extractBqStats(job, bigquery)
+    const [job] = await bigquery.createQueryJob({
+      query: exportSql,
+      location: 'US',
+      // Server-side runaway guard for script mode — aborts the job if a statement scans beyond the
+      // ceiling. Single-SELECT mode is already gated by the dry-run check above.
+      ...(isScript ? { maximumBytesBilled: String(Math.floor(ceiling)) } : {}),
+    })
+    await job.promise()
+    const bqStats = await extractBqStats(job, bigquery)
 
-  const rowCount = bqStats.outputRows ?? 0
+    const rowCount = bqStats.outputRows ?? 0
 
-  await markJobStatus(qx, jobId, 'exported', {
-    gcsPrefix,
-    rowCountBq: rowCount,
-    bqBytesBilled: bqStats.bqBytesBilled,
-    bqJobId: bqStats.bqJobId,
-    bqStats,
-    tableRowCounts: { 'bq:export': rowCount },
-  })
-
-  log.info(
-    {
-      jobKind,
-      jobId,
-      rowCount,
+    await markJobStatus(qx, jobId, 'exported', {
+      gcsPrefix,
+      rowCountBq: rowCount,
+      bqBytesBilled: bqStats.bqBytesBilled,
       bqJobId: bqStats.bqJobId,
-      totalBytesProcessed: bqStats.totalBytesProcessed,
-      totalSlotMs: bqStats.totalSlotMs,
-      durationMs: bqStats.durationMs,
-    },
-    'BQ export complete',
-  )
+      bqStats,
+      tableRowCounts: { 'bq:export': rowCount },
+    })
 
-  return { gcsPrefix, rowCount, bqBytesBilled: bqStats.bqBytesBilled, jobId }
+    log.info(
+      {
+        jobKind,
+        jobId,
+        rowCount,
+        bqJobId: bqStats.bqJobId,
+        totalBytesProcessed: bqStats.totalBytesProcessed,
+        totalSlotMs: bqStats.totalSlotMs,
+        durationMs: bqStats.durationMs,
+      },
+      'BQ export complete',
+    )
+
+    return { gcsPrefix, rowCount, bqBytesBilled: bqStats.bqBytesBilled, jobId }
+  } catch (err) {
+    await markJobStatus(qx, jobId, 'failed', {
+      errorMessage: err instanceof Error ? err.message : String(err),
+      finishedAt: new Date(),
+    })
+    throw err
+  }
 }

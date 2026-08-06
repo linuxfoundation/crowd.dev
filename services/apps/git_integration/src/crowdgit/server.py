@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from loguru import logger
 
 from crowdgit.services import (
+    AffiliationService,
     CloneService,
     CommitService,
     LicenseService,
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     software_value_service = SoftwareValueService()
     vulnerability_scanner_service = VulnerabilityScannerService()
     maintainer_service = MaintainerService()
+    affiliation_service = AffiliationService()
     license_service = LicenseService()
 
     worker_task = None
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         software_value_service=software_value_service,
         vulnerability_scanner_service=vulnerability_scanner_service,
         maintainer_service=maintainer_service,
+        affiliation_service=affiliation_service,
         license_service=license_service,
         queue_service=queue_service,
     )

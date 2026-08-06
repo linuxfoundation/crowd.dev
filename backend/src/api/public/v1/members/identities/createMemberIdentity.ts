@@ -6,16 +6,17 @@ import { NotFoundError } from '@crowd/common'
 import {
   MemberField,
   findMemberById,
+  findMemberIdByVerifiedIdentity,
   findMemberIdentitiesByValue,
-  createMemberIdentity as insertMemberIdentity,
-  optionsQx,
+  insertMemberIdentities,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
 import { IMemberIdentity, MemberIdentityType } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created, ok } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -46,10 +47,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     throw new NotFoundError('Member not found')
   }
 
-  // The data-sink writes identity values as trimmed lowercase, so normalize here
-  // to keep idempotency checks reliable against existing rows.
-  const normalizedValue = data.value.trim().toLowerCase()
-
   let result!: IMemberIdentity
   let alreadyExisted = false
 
@@ -59,7 +56,7 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
       captureOldState({})
 
       await qx.tx(async (tx) => {
-        const existing = await findMemberIdentitiesByValue(tx, memberId, normalizedValue, {
+        const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
           type: data.type,
         })
         const exactMatch = existing.find((i) => i.platform === data.platform)
@@ -69,20 +66,23 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             alreadyExisted = true
             result = exactMatch
           } else {
-            result = await insertMemberIdentity(
+            const [created] = await insertMemberIdentities(
               tx,
-              {
-                memberId,
-                platform: data.platform,
-                value: normalizedValue,
-                type: data.type,
-                source: data.source,
-                verified: data.verified,
-                verifiedBy: data.verifiedBy,
-              },
+              [
+                {
+                  memberId,
+                  platform: data.platform,
+                  value: data.value,
+                  type: data.type,
+                  source: data.source,
+                  verified: data.verified,
+                  verifiedBy: data.verifiedBy,
+                },
+              ],
               true,
               true,
             )
+            result = created
           }
 
           // A verified identity confirms the same value for this member, so keep same-value
@@ -102,8 +102,24 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
             }
           }
         } catch (error) {
-          const ctx = { platform: data.platform, value: normalizedValue, type: data.type }
-          rethrowDbConflict(error, ctx)
+          if (isMemberIdentityDbConflict(error)) {
+            const conflictMemberId = await findMemberIdByVerifiedIdentity(
+              qx,
+              data.platform,
+              data.value,
+              data.type,
+            )
+
+            rethrowDbConflict(error, {
+              memberId,
+              ...(conflictMemberId ? { conflictMemberId } : {}),
+              platform: data.platform,
+              value: data.value,
+              type: data.type,
+            })
+          }
+
+          throw error
         }
 
         await touchMemberUpdatedAt(tx, memberId)

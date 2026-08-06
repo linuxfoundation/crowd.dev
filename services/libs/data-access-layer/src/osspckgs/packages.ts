@@ -1,6 +1,6 @@
 import { QueryExecutor } from '../queryExecutor'
 
-import { IDbPackageUniverse, IDbPackageUpsert } from './types'
+import { IDbPackageUniverse, IDbPackageUpsert, IDbSonatypePopularityUpsert } from './types'
 
 export async function findPackageIdsByPurl(
   qx: QueryExecutor,
@@ -116,6 +116,132 @@ export async function listMavenPackagesToSync(
     `,
     { limit, refreshDays },
   )
+}
+
+/**
+ * Keyset-paginated scan of every critical Maven package, independent of the
+ * staleness window. Unlike `listMavenPackagesToSync` — which drains by predicate
+ * (a row leaves the set once it is fresh) and therefore cannot terminate with
+ * refreshDays=0 — this pages strictly by `id > afterId`, so each row is visited
+ * exactly once and the scan always terminates. Used by the `--force` full-refresh
+ * backfill to re-run POM extraction over the entire critical set regardless of
+ * last_synced_at / ingestion_source.
+ */
+export async function listMavenCriticalPackagesById(
+  qx: QueryExecutor,
+  options: { afterId: string; limit: number },
+): Promise<MavenPackageToSync[]> {
+  return qx.select(
+    `
+    SELECT
+      p.id,
+      p.purl,
+      p.namespace,
+      p.name,
+      p.dependent_count          AS "dependentPackagesCount",
+      p.dependent_repos_count    AS "dependentReposCount",
+      p.latest_version           AS "latestVersion"
+    FROM packages p
+    WHERE p.ecosystem = 'maven'
+      AND p.is_critical
+      AND p.namespace IS NOT NULL
+      AND p.id > $(afterId)::bigint
+    ORDER BY p.id ASC
+    LIMIT $(limit)
+    `,
+    { afterId: options.afterId, limit: options.limit },
+  )
+}
+
+// ─── repository_url backfill ──────────────────────────────────────────────────
+
+export type MavenRepoUrlRow = {
+  id: number
+  declaredRepositoryUrl: string | null
+  repositoryUrl: string | null
+}
+
+/**
+ * Keyset-paginated scan of Maven rows that carry a declared repository value.
+ * The backfill recomputes repository_url *from* declared_repository_url, so rows
+ * with no declared value are skipped: there is nothing to recompute from, and a
+ * null declaration must never be used to clear an existing repository_url that a
+ * different source may have set.
+ * Used to re-run the normalizer over stored data without re-fetching POMs.
+ *
+ * `criticalOnly` restricts the scan to is_critical rows (index-backed by the
+ * partial index on is_critical) — used for a fast, consumer-facing first pass.
+ */
+export async function listMavenPackagesForRepoUrlRecompute(
+  qx: QueryExecutor,
+  options: { afterId: number; limit: number; criticalOnly?: boolean },
+): Promise<MavenRepoUrlRow[]> {
+  return qx.select(
+    `
+    SELECT
+      id,
+      declared_repository_url AS "declaredRepositoryUrl",
+      repository_url          AS "repositoryUrl"
+    FROM packages
+    WHERE ecosystem = 'maven'
+      ${options.criticalOnly ? 'AND is_critical' : ''}
+      AND id > $(afterId)
+      AND declared_repository_url IS NOT NULL
+    ORDER BY id ASC
+    LIMIT $(limit)
+    `,
+    { afterId: options.afterId, limit: options.limit },
+  )
+}
+
+/**
+ * Applies a batch of recomputed repository_url values via direct UPDATE — the
+ * only way to clear a stale value, since the enrichment upsert COALESCEs and
+ * cannot write NULL. Splits clears (→ NULL) from sets to avoid NULLs inside a
+ * text[] array literal.
+ *
+ * Both branches also bump last_synced_at. repository_url is exported to Tinybird
+ * (ossPackages datasource) via a ReplacingMergeTree whose ENGINE_VER is
+ * last_synced_at; without advancing it, a same-version CDC row may lose to the
+ * older one and the correction would never reach downstream consumers. The
+ * trade-off is that these rows look freshly synced to the enrichment freshness
+ * window (listMavenPackagesToSync/refreshDays) and are re-enriched slightly
+ * later — acceptable, since the recomputed value is already current.
+ */
+export async function updateMavenRepositoryUrls(
+  qx: QueryExecutor,
+  updates: { id: number; repositoryUrl: string | null }[],
+): Promise<void> {
+  if (updates.length === 0) return
+
+  const toClear = updates.filter((u) => u.repositoryUrl === null).map((u) => u.id)
+  const toSet = updates.filter(
+    (u): u is { id: number; repositoryUrl: string } => u.repositoryUrl !== null,
+  )
+
+  if (toClear.length > 0) {
+    await qx.result(
+      `UPDATE packages SET repository_url = NULL, last_synced_at = NOW()
+       WHERE id = ANY($(ids)::bigint[]) AND repository_url IS NOT NULL`,
+      { ids: toClear },
+    )
+  }
+
+  if (toSet.length > 0) {
+    await qx.result(
+      `
+      UPDATE packages p
+      SET repository_url = v.repository_url, last_synced_at = NOW()
+      FROM (
+        SELECT unnest($(ids)::bigint[]) AS id,
+               unnest($(urls)::text[])  AS repository_url
+      ) v
+      WHERE p.id = v.id
+        AND p.repository_url IS DISTINCT FROM v.repository_url
+      `,
+      { ids: toSet.map((u) => u.id), urls: toSet.map((u) => u.repositoryUrl) },
+    )
+  }
 }
 
 // ─── packages touch ───────────────────────────────────────────────────────────
@@ -240,4 +366,64 @@ export async function upsertPackage(
     },
   )
   return { id: row.id as number, changedFields: row.changed_fields as string[] }
+}
+
+// ─── sonatype popularity upsert ────────────────────────────────────────────────
+
+/**
+ * Upserts the Sonatype popularity signal for a Maven component, keyed by the
+ * composite identity (ecosystem, namespace, name) — not purl — so it is immune
+ * to purl format and matches the granularity of the unique index.
+ *
+ * Insert-if-missing: Sonatype's list is "what industry actually uses", so some
+ * rows may not exist in `packages` yet. Those are inserted with
+ * ingestion_source='sonatype' and only the identity + sonatype_* columns; the
+ * rest is backfilled later by deps.dev / Maven enrichment.
+ *
+ * On conflict only the sonatype_* fields are updated — ingestion_source is
+ * deliberately preserved so we never clobber how an existing row was ingested.
+ *
+ * Returns whether the row was inserted (true) or updated (false).
+ */
+export async function upsertSonatypePopularity(
+  qx: QueryExecutor,
+  item: IDbSonatypePopularityUpsert,
+): Promise<{ id: number; inserted: boolean }> {
+  const row = await qx.selectOne(
+    `
+    WITH existing AS (
+      -- Evaluated against the pre-INSERT snapshot, so it reflects whether the row
+      -- already existed. More robust than the xmax=0 trick for insert-vs-update.
+      SELECT id FROM packages
+       WHERE ecosystem = $(ecosystem)
+         AND COALESCE(namespace, '') = COALESCE($(namespace), '')
+         AND name = $(name)
+    ),
+    ins AS (
+      INSERT INTO packages (
+        purl, ecosystem, namespace, name,
+        sonatype_popularity_score, sonatype_rank, sonatype_tier,
+        sonatype_snapshot_at, sonatype_updated_at,
+        ingestion_source
+      ) VALUES (
+        $(purl), $(ecosystem), $(namespace), $(name),
+        $(sonatypePopularityScore), $(sonatypeRank), $(sonatypeTier),
+        $(sonatypeSnapshotAt), NOW(),
+        'sonatype'
+      )
+      ON CONFLICT (ecosystem, COALESCE(namespace, ''), name) DO UPDATE SET
+        sonatype_popularity_score = EXCLUDED.sonatype_popularity_score,
+        sonatype_rank             = EXCLUDED.sonatype_rank,
+        sonatype_tier             = EXCLUDED.sonatype_tier,
+        sonatype_snapshot_at      = EXCLUDED.sonatype_snapshot_at,
+        sonatype_updated_at       = NOW()
+        -- ingestion_source intentionally left untouched on update
+      RETURNING id
+    )
+    SELECT ins.id, NOT EXISTS (SELECT 1 FROM existing) AS inserted
+      FROM ins
+    `,
+    item,
+  )
+  return { id: row.id as number, inserted: row.inserted as boolean }
 }

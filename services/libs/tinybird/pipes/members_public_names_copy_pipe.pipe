@@ -1,6 +1,8 @@
 NODE segmentIds_in_nonlf_projects
 SQL >
-    select segmentId from insightsProjects where isLF = 0 and segmentId != '' and isNull (deletedAt)
+    select segmentId
+    from insightsProjects
+    where isLF = 0 and segmentId != '' and isNull (deletedAt) and enabled = 1
 
 NODE members_public_names_result
 SQL >

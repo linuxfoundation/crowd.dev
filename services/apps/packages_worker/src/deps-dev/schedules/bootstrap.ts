@@ -21,7 +21,12 @@ export async function scheduleOsspckgsBootstrap(): Promise<void> {
         type: 'startWorkflow',
         workflowType: bootstrapOsspckgs,
         taskQueue: 'bq-dataset-ingest',
-        workflowExecutionTimeout: '12 hours',
+        // Per-attempt cap, not whole-tree. workflowExecutionTimeout spans the entire retry chain +
+        // continue-as-new, so a 12h execution timeout left retries with zero budget after attempt 1
+        // ate it all — and 12h was too short for the package_dependencies merge loop anyway
+        // (~500 chunks × ~1min + BQ exports + preceding kinds). workflowRunTimeout bounds each
+        // attempt independently, so the 3 retries each get a fresh 24h.
+        workflowRunTimeout: '24 hours',
         retry: {
           initialInterval: '1 minute',
           backoffCoefficient: 2,

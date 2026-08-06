@@ -1,0 +1,57 @@
+DESCRIPTION >
+    - `project_insights_impact_breakdown.pipe` serves the 4 Impact sub-metrics rolled up to project
+    level, each with a global percentile rank-band, for the project overview page's "Impact
+    breakdown" section (IN-1212).
+    - Performance: this endpoint reads from the pre-materialized `project_insights_impact_breakdown_ds`
+    (populated on a schedule by `project_insights_impact_breakdown_copy.pipe`) rather than computing
+    the rollup/percentile ranking live. The original live version ran a `rank() OVER (ORDER BY ...)`
+    across the entire ~37M-row joined population on every request — window functions require the
+    full ordered population in scope, so ClickHouse could not push a `WHERE slug = ...` filter down
+    before the scan, meaning every single-project request paid the full-scan cost (~3.3-3.5s,
+    ~37M rows/~2.2GB). Materializing the rollup on a schedule (see the copy pipe's DESCRIPTION for
+    the chosen schedule and why) turns this endpoint into a cheap filtered SELECT against an
+    already-ranked table, matching the pattern `project_insights.pipe` uses against
+    `project_insights_copy_ds`. See `project_insights_impact_breakdown_copy.pipe` for the full
+    rollup/percentile methodology (per-metric aggregation choice, global (non-ecosystem-partitioned)
+    percentile ranking, NULL-preserving LEFT JOIN semantics) — unchanged by this performance fix.
+    - Parameters: `slug` (single project), `slugs` (array), `ids` (array of project ids). At least
+    one should be provided; with none, returns all projects (ranking population is always global
+    regardless of the filter — filtering narrows the OUTPUT rows, not the ranking denominator,
+    since ranking already happened at materialization time).
+
+TAGS "Insights, Widget", "Project", "Impact"
+
+NODE project_insights_impact_breakdown_endpoint
+SQL >
+    %
+    SELECT
+        id,
+        slug,
+        name,
+        directDependents,
+        directDependentsTopPct,
+        directDependentsBand,
+        transitiveDependents,
+        transitiveDependentsTopPct,
+        transitiveDependentsBand,
+        downloads,
+        downloadsTopPct,
+        downloadsBand,
+        centrality,
+        centralityTopPct,
+        centralityBand
+    FROM project_insights_impact_breakdown_ds
+    WHERE
+        1 = 1
+        {% if defined(slug) %}
+            AND slug = {{ String(slug, description="Project slug", required=False) }}
+        {% end %}
+        {% if defined(slugs) %}
+            AND slug
+            IN {{ Array(slugs, 'String', description="Filter by project slug list", required=False) }}
+        {% end %}
+        {% if defined(ids) %}
+            AND id
+            IN {{ Array(ids, 'String', description="Filter by project id list", required=False) }}
+        {% end %}
+    ORDER BY name ASC

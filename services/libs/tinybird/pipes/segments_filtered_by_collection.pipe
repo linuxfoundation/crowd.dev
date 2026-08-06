@@ -1,0 +1,35 @@
+DESCRIPTION >
+    - `segments_filtered_by_collection.pipe` is the collection-scoped counterpart to `segments_filtered.pipe`:
+    it establishes project scope for the widget pipes that back the Collection detail page's Contributors,
+    Popularity, and Development tabs, resolving a collection to every one of its member projects instead of
+    a single project.
+    - **Requires `collectionSlug` parameter** - without it, returns no results (WHERE clause becomes AND false).
+    - Returns one row per project in the collection (not a single aggregate row) - `insights_projects_populated_ds.collectionsSlugs`
+    already lists every collection each project belongs to (see `insightsProjects_filtered.pipe` and
+    `collection_insights_aggregate.pipe` for the same `has(collectionsSlugs, ...)` filter pattern), so this
+    pipe resolves collection membership directly rather than requiring the caller to first look up a project
+    id list.
+    - Downstream pipes that today do `segmentId = (SELECT segmentId FROM segments_filtered)` (a single-value
+    scalar subquery) must switch to `segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)`
+    when scoping by collection instead of by project, since this pipe can return multiple rows.
+    - Ensures only enabled projects are accessible.
+    - Parameters:
+    - `collectionSlug`: Required string for collection slug (e.g., 'cncf', 'agentic-ai-foundation')
+    - Response: `insightsProjectId`, `segmentId`, `repositories` (array of the project's own repositories) - one row per project in the collection
+
+TAGS "Infrastructure", "Core", "Project scoping", "Security", "Collection"
+
+NODE segments_filtered_by_collection_0
+SQL >
+    %
+    SELECT id as insightsProjectId, segmentId, repositories
+    FROM insights_projects_populated_ds
+    WHERE
+        enabled = 1
+        {% if defined(collectionSlug) %}
+            AND has(
+                collectionsSlugs,
+                {{ String(collectionSlug, description="Filter by collection slug", required=True) }}
+            )
+        {% else %} AND false
+        {% end %}

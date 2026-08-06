@@ -24,7 +24,7 @@ function buildSourceQuery(): string {
       p.description,
       p.project_logo,
       p.project_status,
-      p.project_maturity_level,
+      p.project_admin_category,
       ps.mapped_project_id,
       ps.mapped_project_name,
       ps.mapped_project_slug,

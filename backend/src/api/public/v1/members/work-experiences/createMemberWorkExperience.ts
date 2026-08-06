@@ -17,7 +17,6 @@ import {
   fetchManyMemberOrgsWithOrgData,
   fetchManyOrganizationAffiliationPolicies,
   findMemberById,
-  optionsQx,
 } from '@crowd/data-access-layer'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import type {
@@ -26,6 +25,7 @@ import type {
   MemberOrganizationDateRange,
 } from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
 import { toMemberWorkExperience } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
@@ -117,7 +117,7 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
         memberOrganizationIds: [data.organizationId],
       })
 
-      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
       createdMo = (orgsMap.get(memberId) ?? []).find((mo) => mo.id === newMemberOrgId)
 
       captureNewState(createdMo ?? null)

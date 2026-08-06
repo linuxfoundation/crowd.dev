@@ -1,6 +1,6 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import { LLMSuggestionVerdictType, MemberMergeSuggestionTable } from '@crowd/types'
+import { LLMSuggestionVerdictType } from '@crowd/types'
 
 import type * as activities from '../activities'
 import { ILLMResult, IProcessMergeMemberSuggestionsWithLLM } from '../types'
@@ -73,16 +73,22 @@ export async function mergeMembersWithLLM(
     return
   }
 
+  const mergedAwayMemberIds = new Set<string>()
+
   for (const suggestion of suggestions) {
+    if (mergedAwayMemberIds.has(suggestion[0]) || mergedAwayMemberIds.has(suggestion[1])) {
+      console.log(
+        `Skipping suggestion because a member was already merged away in this run: ${suggestion}`,
+      )
+      await removeMemberMergeSuggestion(suggestion)
+      continue
+    }
+
     const members = await getMembersForLLMConsumption(suggestion)
 
     if (members.length !== 2) {
       console.log(`Failed getting members data in suggestion. Skipping suggestion: ${suggestion}`)
-      await removeMemberMergeSuggestion(suggestion, MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW)
-      await removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
-      )
+      await removeMemberMergeSuggestion(suggestion)
       continue
     }
 
@@ -111,15 +117,12 @@ export async function mergeMembersWithLLM(
         `LLM verdict says these two members are the same. Merging members: ${suggestion[0]} and ${suggestion[1]}!`,
       )
       await mergeMembers(suggestion[0], suggestion[1])
+      mergedAwayMemberIds.add(suggestion[1])
     } else {
       console.log(
         `LLM doesn't think these members are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await removeMemberMergeSuggestion(
-        suggestion,
-        MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
-      )
-      await removeMemberMergeSuggestion(suggestion, MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW)
+      await removeMemberMergeSuggestion(suggestion)
       await addMemberSuggestionToNoMerge(suggestion)
     }
   }

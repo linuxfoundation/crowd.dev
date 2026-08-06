@@ -2,26 +2,49 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditOrganizationsAction } from '@crowd/audit-logs'
-import { BadRequestError, NotFoundError, sanitizeMemberOrganizationDateRange } from '@crowd/common'
-import { signalMemberUpdate } from '@crowd/common_services'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  sanitizeMemberOrganizationDateRange,
+} from '@crowd/common'
+import { normalizeMemberOrganizationDate, signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
   cleanSoftDeletedMemberOrganization,
+  deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
   fetchMemberOrganizations,
   findMemberById,
-  optionsQx,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
-import type { MemberOrganizationDateRange, MemberOrganizationUpdate } from '@crowd/types'
+import type {
+  IMemberOrganization,
+  MemberOrganizationDateRange,
+  MemberOrganizationUpdate,
+} from '@crowd/types'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import {
-  getOverlappingEmailDomainMemberOrganizations,
+  getOverlappingGroupedMemberOrganizations,
   groupMemberOrganizations,
+  isCollapsibleMemberOrganization,
   toMemberWorkExperience,
 } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
+
+/** Matches the active unique index on memberOrganizations (org + date range). */
+function sameUniqueKey(
+  a: Pick<IMemberOrganization, 'organizationId' | 'dateStart' | 'dateEnd'>,
+  b: Pick<IMemberOrganization, 'organizationId' | 'dateStart' | 'dateEnd'>,
+): boolean {
+  return (
+    a.organizationId === b.organizationId &&
+    normalizeMemberOrganizationDate(a.dateStart) === normalizeMemberOrganizationDate(b.dateStart) &&
+    normalizeMemberOrganizationDate(a.dateEnd) === normalizeMemberOrganizationDate(b.dateEnd)
+  )
+}
 
 const paramsSchema = z.object({
   memberId: z.uuid(),
@@ -83,13 +106,51 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
       captureOldState(existing)
 
       await qx.tx(async (tx) => {
+        // Avoid unique-index collisions before we UPDATE the visible row.
+        const conflictingRows = memberOrgs.filter(
+          (row) =>
+            !!row.id &&
+            row.id !== workExperienceId &&
+            sameUniqueKey(row, {
+              organizationId: data.organizationId,
+              dateStart: dates.dateStart,
+              dateEnd: dates.dateEnd,
+            }),
+        )
+
+        // Conflict if a visible work experience with the same dates already exists. Throw a conflict error.
+        const conflictingVisibleIds = conflictingRows
+          .filter((row) => !isCollapsibleMemberOrganization(row))
+          .map((row) => row.id)
+          .filter((id): id is string => !!id)
+
+        if (conflictingVisibleIds.length > 0) {
+          throw new ConflictError('A work experience with the same dates already exists')
+        }
+
+        // Conflict if a collapsible work experience with the same dates already exists.
+        // Soft-delete it so the visible update can take that unique key.
+        const conflictingHiddenIds = conflictingRows
+          .filter((row) => isCollapsibleMemberOrganization(row))
+          .map((row) => row.id)
+          .filter((id): id is string => !!id)
+
+        if (conflictingHiddenIds.length > 0) {
+          await deleteMemberOrganizations(tx, memberId, conflictingHiddenIds)
+        }
+
+        // Fan-out below should not touch rows we just soft-deleted.
+        const memberOrgsAfterConflict = memberOrgs.filter(
+          (row) => !row.id || !conflictingHiddenIds.includes(row.id),
+        )
+
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)
         await updateMemberOrganization(tx, memberId, workExperienceId, update)
 
         const overlapBasis = { ...existing, ...update }
 
-        const overlappingEmailDomainRows = getOverlappingEmailDomainMemberOrganizations(
-          memberOrgs,
+        const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
+          memberOrgsAfterConflict,
           overlapBasis,
         )
 
@@ -106,8 +167,8 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           groupedUpdate.verifiedBy = data.verifiedBy
         }
 
-        if (overlappingEmailDomainRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
-          for (const overlappingRow of overlappingEmailDomainRows.filter(
+        if (overlappingGroupedRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
+          for (const overlappingRow of overlappingGroupedRows.filter(
             (row): row is typeof row & { id: string } => !!row.id,
           )) {
             await updateMemberOrganization(tx, memberId, overlappingRow.id, groupedUpdate)
@@ -120,7 +181,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
         memberOrganizationIds: [data.organizationId],
       })
 
-      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+      const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
 
       const updatedMo = groupMemberOrganizations(orgsMap.get(memberId) ?? []).find(
         (mo) => mo.id === workExperienceId,

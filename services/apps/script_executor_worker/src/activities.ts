@@ -37,6 +37,7 @@ import {
   findMemberById,
   findMemberIdentitiesGroupedByPlatform,
   findMemberMergeActions,
+  findMergeActionUnmergeBackup,
 } from './activities/dissect-member'
 import {
   getBotMembersWithOrgAffiliation,
@@ -66,6 +67,7 @@ export {
   findMembersWithSamePlatformIdentitiesDifferentCapitalization,
   mergeMembers,
   findMemberMergeActions,
+  findMergeActionUnmergeBackup,
   unmergeMembers,
   unmergeMembersPreview,
   waitForTemporalWorkflowExecutionFinish,

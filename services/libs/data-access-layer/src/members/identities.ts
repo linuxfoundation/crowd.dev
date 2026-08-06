@@ -1,8 +1,9 @@
-import { DEFAULT_TENANT_ID } from '@crowd/common'
+import { DEFAULT_TENANT_ID, generateUUIDv1, normalizeMemberIdentityValue } from '@crowd/common'
 import {
   IMemberIdentity,
+  MemberIdentityDbInsert,
+  MemberIdentityDbRow,
   MemberIdentityType,
-  NewMemberIdentity,
   PlatformType,
   UpdateMemberIdentity,
 } from '@crowd/types'
@@ -62,14 +63,14 @@ export async function findMemberIdentityConflict(
 ): Promise<{ id: string; memberId: string } | null> {
   return qx.selectOneOrNone(
     `
-      SELECT id, "memberId"
-      FROM "memberIdentities"
-      WHERE platform = $(platform)
-        AND type = $(type)
-        AND lower(value) = lower($(value))
-        AND "deletedAt" IS NULL
-        ${params.excludeMemberId ? 'AND "memberId" <> $(excludeMemberId)' : ''}
-      LIMIT 1;
+      select id, "memberId"
+      from "memberIdentities"
+      where platform = $(platform)
+        and type = $(type)
+        and lower(value) = lower($(value))
+        and "deletedAt" is null
+        ${params.excludeMemberId ? 'and "memberId" <> $(excludeMemberId)' : ''}
+      limit 1;
     `,
     params,
   )
@@ -105,12 +106,12 @@ export async function findMemberIdentitiesByValue(
 ): Promise<IMemberIdentity[]> {
   return qx.select(
     `
-        SELECT *
-        FROM "memberIdentities"
-        WHERE value = $(value) 
-          AND "memberId" = $(memberId)
-          AND "deletedAt" is null
-        ${filter.type ? 'AND type = $(type)' : ''}
+        select *
+        from "memberIdentities"
+        where lower(value) = lower($(value))
+          and "memberId" = $(memberId)
+          and "deletedAt" is null
+        ${filter.type ? 'and type = $(type)' : ''}
     `,
     { value, memberId, type: filter.type },
   )
@@ -140,6 +141,10 @@ export async function updateMemberIdentity(
   )
 
   if (Object.keys(filtered).length === 0) return null
+
+  if (typeof filtered.value === 'string') {
+    filtered.value = normalizeMemberIdentityValue(filtered.value)
+  }
 
   const setClause = Object.keys(filtered).map((key) => `"${key}" = $(${key})`)
   setClause.push('"updatedAt" = now()')
@@ -221,39 +226,44 @@ export async function findMemberIdByVerifiedIdentity(
   type: MemberIdentityType,
 ): Promise<string | null> {
   const result = await qx.selectOneOrNone(
-    `SELECT "memberId" FROM "memberIdentities"
-     WHERE platform = $(platform)
-       AND value = $(value)
-       AND type = $(type)
-       AND verified = true
-       AND "deletedAt" IS NULL
-     LIMIT 1`,
+    `select "memberId" from "memberIdentities"
+     where platform = $(platform)
+       and lower(value) = lower($(value))
+       and type = $(type)
+       and verified = true
+       and "deletedAt" is null
+     limit 1`,
     { platform, value, type },
   )
   return result?.memberId ?? null
 }
 
-export async function insertManyMemberIdentities(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict: boolean,
   returnRows: true,
-): Promise<IMemberIdentity[]>
-export async function insertManyMemberIdentities(
+): Promise<MemberIdentityDbRow[]>
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict?: boolean,
   returnRows?: false,
 ): Promise<number>
-export async function insertManyMemberIdentities(
+export async function insertMemberIdentities(
   qx: QueryExecutor,
-  identities: NewMemberIdentity[],
+  identities: MemberIdentityDbInsert[],
   failOnConflict = false,
   returnRows = false,
-): Promise<IMemberIdentity[] | number> {
+): Promise<MemberIdentityDbRow[] | number> {
+  if (identities.length === 0) {
+    return returnRows ? [] : 0
+  }
+
   const query = prepareBulkInsert(
     'memberIdentities',
     [
+      'id',
       'memberId',
       'tenantId',
       'integrationId',
@@ -265,12 +275,12 @@ export async function insertManyMemberIdentities(
       'verified',
       'verifiedBy',
     ],
-    identities.map((i) => {
-      return {
-        tenantId: DEFAULT_TENANT_ID,
-        ...i,
-      }
-    }),
+    identities.map((i) => ({
+      ...i,
+      id: i.id || generateUUIDv1(),
+      tenantId: DEFAULT_TENANT_ID,
+      value: normalizeMemberIdentityValue(i.value),
+    })),
     failOnConflict ? undefined : 'DO NOTHING',
     returnRows,
   )
@@ -280,32 +290,6 @@ export async function insertManyMemberIdentities(
   }
 
   return qx.result(query)
-}
-
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: NewMemberIdentity,
-  failOnConflict: boolean,
-  returnRows: true,
-): Promise<IMemberIdentity>
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: NewMemberIdentity,
-  failOnConflict?: boolean,
-  returnRows?: false,
-): Promise<void>
-export async function createMemberIdentity(
-  qx: QueryExecutor,
-  i: NewMemberIdentity,
-  failOnConflict = false,
-  returnRows = false,
-): Promise<IMemberIdentity | void> {
-  if (returnRows) {
-    const rows = await insertManyMemberIdentities(qx, [i], failOnConflict, true)
-    return rows[0]
-  }
-
-  await insertManyMemberIdentities(qx, [i], failOnConflict)
 }
 
 export async function moveToNewMember(
@@ -393,7 +377,7 @@ export async function updateVerifiedFlag(
       where
         "memberId" = $(memberId) and
         platform = $(platform) and
-        value = $(value) and
+        lower(value) = lower($(value)) and
         type = $(type) and
         "deletedAt" is null
     `,
@@ -408,10 +392,10 @@ export async function deleteMemberIdentities(
   return qx.result(
     `
       update "memberIdentities" set "deletedAt" = now()
-      where "memberId" = $(memberId) 
-        and platform = $(platform) 
-        and value = $(value) 
-        and type = $(type) 
+      where "memberId" = $(memberId)
+        and platform = $(platform)
+        and lower(value) = lower($(value))
+        and type = $(type)
         and "deletedAt" is null;
     `,
     p,
@@ -729,6 +713,45 @@ export async function findMembersByGithubHandles(
       platform: PlatformType.GITHUB,
       type: MemberIdentityType.USERNAME,
       lowercasedHandles,
+    },
+  )
+}
+
+export async function findResolvableEmailsForMembers(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<{ memberId: string; email: string; verified: boolean }[]> {
+  if (memberIds.length === 0) return []
+  return qx.select(
+    `
+      WITH emails AS (
+        SELECT "memberId", lower(value) AS email, bool_or(verified) AS verified
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(emailType)
+          AND value NOT ILIKE '%@users.noreply.github.com'
+          AND "deletedAt" IS NULL
+        GROUP BY "memberId", lower(value)
+      ),
+      "usernameTwins" AS (
+        SELECT "memberId", lower(value) AS email
+        FROM "memberIdentities"
+        WHERE "memberId" IN ($(memberIds:csv))
+          AND type = $(usernameType)
+          AND verified = true
+          AND "deletedAt" IS NULL
+      )
+      SELECT
+        e."memberId",
+        e.email,
+        (e.verified OR t.email IS NOT NULL) AS verified
+      FROM emails e
+      LEFT JOIN "usernameTwins" t ON t."memberId" = e."memberId" AND t.email = e.email
+    `,
+    {
+      memberIds,
+      emailType: MemberIdentityType.EMAIL,
+      usernameType: MemberIdentityType.USERNAME,
     },
   )
 }

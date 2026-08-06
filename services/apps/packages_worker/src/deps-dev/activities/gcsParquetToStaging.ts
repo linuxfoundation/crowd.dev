@@ -114,66 +114,76 @@ export async function gcsParquetToStaging(input: GcsToStagingInput): Promise<Gcs
   const qx = await getPackagesDb()
 
   await markJobStatus(qx, jobId, 'loading')
-  if (stagingDdl) {
-    const stmts = Array.isArray(stagingDdl) ? stagingDdl : [stagingDdl]
-    for (const stmt of stmts) await qx.result(stmt)
-  }
-  await qx.result(`TRUNCATE ${stagingTable}`)
-  // Reset progress at the start of a fresh run (first chunk). This handles job ID reuse
-  // via --export-name: a previous run's 193/193 would otherwise persist due to GREATEST.
-  if (filesOffset === 0 && input.totalFiles != null) {
-    await updateLoadingProgress(qx, jobId, 0, input.totalFiles, true)
-  }
+  // Row is 'loading' from here; a staging-load failure must flip it to 'failed' with the reason
+  // rather than leave it stuck 'loading'. Mirrors the rankPackages pattern (criticality/activities).
+  try {
+    if (stagingDdl) {
+      const stmts = Array.isArray(stagingDdl) ? stagingDdl : [stagingDdl]
+      for (const stmt of stmts) await qx.result(stmt)
+    }
+    await qx.result(`TRUNCATE ${stagingTable}`)
+    // Reset progress at the start of a fresh run (first chunk). This handles job ID reuse
+    // via --export-name: a previous run's 193/193 would otherwise persist due to GREATEST.
+    if (filesOffset === 0 && input.totalFiles != null) {
+      await updateLoadingProgress(qx, jobId, 0, input.totalFiles, true)
+    }
 
-  let parquetFileNames: string[]
-  if (input.fileNames) {
-    parquetFileNames = input.fileNames
-  } else if (input.gcsPrefix) {
-    const objectPrefix = gcsPrefixToObjectPrefix(input.gcsPrefix)
-    const [files] = await bucket.getFiles({ prefix: objectPrefix })
-    parquetFileNames = files.filter((f) => f.name.endsWith('.parquet')).map((f) => f.name)
-  } else {
-    throw new Error('gcsParquetToStaging: must provide either fileNames or gcsPrefix')
-  }
+    let parquetFileNames: string[]
+    if (input.fileNames) {
+      parquetFileNames = input.fileNames
+    } else if (input.gcsPrefix) {
+      const objectPrefix = gcsPrefixToObjectPrefix(input.gcsPrefix)
+      const [files] = await bucket.getFiles({ prefix: objectPrefix })
+      parquetFileNames = files.filter((f) => f.name.endsWith('.parquet')).map((f) => f.name)
+    } else {
+      throw new Error('gcsParquetToStaging: must provide either fileNames or gcsPrefix')
+    }
 
-  const totalFiles = input.totalFiles ?? parquetFileNames.length
+    const totalFiles = input.totalFiles ?? parquetFileNames.length
 
-  log.info(
-    { jobId, stagingTable, fileCount: parquetFileNames.length, filesOffset, totalFiles },
-    'Loading parquet files into staging',
-  )
-
-  let totalLoaded = 0
-
-  for (let i = 0; i < parquetFileNames.length; i += MAX_CONCURRENT) {
-    const chunk = parquetFileNames.slice(i, i + MAX_CONCURRENT)
-    const counts = await Promise.all(
-      chunk.map((name) => loadParquetFile(qx, stagingTable, pgColumns, name, tsCols, decCols)),
-    )
-    totalLoaded += counts.reduce((a, b) => a + b, 0)
-    const doneInBatch = i + chunk.length
-    const doneGlobal = filesOffset + doneInBatch
     log.info(
-      {
-        jobId,
-        totalLoaded,
-        progress: `${doneGlobal}/${totalFiles} (${Math.round((doneGlobal / totalFiles) * 100)}%)`,
-      },
-      'Staging load progress',
+      { jobId, stagingTable, fileCount: parquetFileNames.length, filesOffset, totalFiles },
+      'Loading parquet files into staging',
     )
-    Context.current().heartbeat({ done: doneGlobal, total: totalFiles })
-    await updateLoadingProgress(qx, jobId, doneGlobal, totalFiles)
+
+    let totalLoaded = 0
+
+    for (let i = 0; i < parquetFileNames.length; i += MAX_CONCURRENT) {
+      const chunk = parquetFileNames.slice(i, i + MAX_CONCURRENT)
+      const counts = await Promise.all(
+        chunk.map((name) => loadParquetFile(qx, stagingTable, pgColumns, name, tsCols, decCols)),
+      )
+      totalLoaded += counts.reduce((a, b) => a + b, 0)
+      const doneInBatch = i + chunk.length
+      const doneGlobal = filesOffset + doneInBatch
+      log.info(
+        {
+          jobId,
+          totalLoaded,
+          progress: `${doneGlobal}/${totalFiles} (${Math.round((doneGlobal / totalFiles) * 100)}%)`,
+        },
+        'Staging load progress',
+      )
+      Context.current().heartbeat({ done: doneGlobal, total: totalFiles })
+      await updateLoadingProgress(qx, jobId, doneGlobal, totalFiles)
+    }
+
+    const cumulativeStagingRows = (input.priorStagingRows ?? 0) + totalLoaded
+    await markJobStatus(qx, jobId, 'loading', {
+      rowCountStaging: cumulativeStagingRows,
+      tableRowCounts: { [`staging:${stagingTable}`]: totalLoaded },
+    })
+
+    await qx.result(`ANALYZE ${stagingTable}`)
+
+    log.info({ jobId, stagingTable, totalLoaded }, 'Staging load complete')
+
+    return { rowsLoaded: totalLoaded }
+  } catch (err) {
+    await markJobStatus(qx, jobId, 'failed', {
+      errorMessage: err instanceof Error ? err.message : String(err),
+      finishedAt: new Date(),
+    })
+    throw err
   }
-
-  const cumulativeStagingRows = (input.priorStagingRows ?? 0) + totalLoaded
-  await markJobStatus(qx, jobId, 'loading', {
-    rowCountStaging: cumulativeStagingRows,
-    tableRowCounts: { [`staging:${stagingTable}`]: totalLoaded },
-  })
-
-  await qx.result(`ANALYZE ${stagingTable}`)
-
-  log.info({ jobId, stagingTable, totalLoaded }, 'Staging load complete')
-
-  return { rowsLoaded: totalLoaded }
 }

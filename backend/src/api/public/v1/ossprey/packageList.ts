@@ -20,33 +20,38 @@ const LIFECYCLE_SET = new Set<string>(LIFECYCLE_VALUES)
 
 const boolParam = z.preprocess((v) => v === 'true', z.boolean()).default(false)
 
-const querySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(25),
-  ecosystem: z.string().trim().optional(),
-  lifecycle: z.enum(LIFECYCLE_VALUES).optional(),
-  name: z.string().trim().optional(),
-  purl: purlFilterSchema,
-  status: z
-    .enum([
-      'unassigned',
-      'open',
-      'assessing',
-      'active',
-      'needs_attention',
-      'escalated',
-      'blocked',
-      'inactive',
-    ])
-    .optional(),
-  healthBand: z.enum(HEALTH_BAND_VALUES).optional(),
-  vulnSeverity: z.enum(['any', 'high', 'critical', 'none']).optional(),
-  staleOnly: boolParam,
-  unstewardedOnly: boolParam,
-  busFactor1Only: boolParam,
-  sortBy: z.enum(['name', 'risk', 'impact', 'openVulns', 'health']).default('risk'),
-  sortDir: z.enum(['asc', 'desc']).default('desc'),
-})
+const querySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(25),
+    ecosystem: z.string().trim().optional(),
+    lifecycle: z.enum(LIFECYCLE_VALUES).optional(),
+    name: z.string().trim().optional(),
+    purl: purlFilterSchema,
+    status: z
+      .enum([
+        'unassigned',
+        'open',
+        'assessing',
+        'active',
+        'needs_attention',
+        'escalated',
+        'blocked',
+        'inactive',
+      ])
+      .optional(),
+    healthBand: z.enum(HEALTH_BAND_VALUES).optional(),
+    vulnSeverity: z.enum(['any', 'high', 'critical', 'none']).optional(),
+    staleOnly: boolParam,
+    unstewardedOnly: boolParam,
+    busFactor1Only: boolParam,
+    sortBy: z.enum(['name', 'risk', 'impact', 'openVulns', 'health']).default('risk'),
+    sortDir: z.enum(['asc', 'desc']).optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    sortDir: data.sortDir ?? (data.sortBy === 'name' || data.sortBy === 'health' ? 'asc' : 'desc'),
+  }))
 
 export async function packageListHandler(req: Request, res: Response): Promise<void> {
   const params = validateOrThrow(querySchema, req.query)

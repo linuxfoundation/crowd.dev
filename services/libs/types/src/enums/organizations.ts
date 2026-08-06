@@ -7,6 +7,7 @@ export enum OrganizationAttributeName {
 
 export enum OrganizationSource {
   EMAIL_DOMAIN = 'email-domain',
+  PROJECT_REGISTRY = 'project-registry',
   ENRICHMENT_PROGAI = 'enrichment-progai',
   ENRICHMENT_CLEARBIT = 'enrichment-clearbit',
   ENRICHMENT_CRUSTDATA = 'enrichment-crustdata',

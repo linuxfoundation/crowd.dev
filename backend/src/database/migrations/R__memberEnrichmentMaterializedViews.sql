@@ -10,8 +10,7 @@ where msa."segmentId" IN (
         where "grandparentId" is not null
             and "parentId" is not null
     )
-group by msa."memberId"
-order by sum(msa."activityCount") desc;
+group by msa."memberId";
 create unique index ix_member_global_activity_count_member_id on "membersGlobalActivityCount" ("memberId");
 create index ix_member_global_activity_count on "membersGlobalActivityCount" (total_count);
 

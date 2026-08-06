@@ -1,4 +1,5 @@
 import { getLastCompletedJobRowCount as dalGetLastCompletedJobRowCount } from '@crowd/data-access-layer'
+import type { OsspckgsJobKind } from '@crowd/data-access-layer'
 import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 
 import { getPackagesDb } from '../../db'
@@ -6,6 +7,31 @@ import { getPackagesDb } from '../../db'
 export interface CheckDependentCountsGuardInput {
   currentRowCount: number
   snapshotDate: string
+  // Which dependent-counts job kind to baseline against. The four ways each guard against their
+  // own history: 'dependent_counts' (edges) | 'dependent_counts_go' | 'dependent_counts_nuget'
+  // | 'dependent_counts_rubygems'.
+  jobKind?: OsspckgsJobKind
+}
+
+// Source table to point operators at in the Slack alert, keyed by job kind — the edge variant reads
+// deps.dev's `Dependents` reverse index, while GO/NUGET/RUBYGEMS invert their own manifest table
+// (they're absent from `Dependents`, see ADR-0004). A hardcoded "check Dependents" message would send
+// on-call to the wrong table for those three.
+const GUARD_SOURCE_TABLE: Partial<Record<OsspckgsJobKind, string>> = {
+  dependent_counts: 'Dependents',
+  dependent_counts_go: 'GoRequirementsLatest',
+  dependent_counts_nuget: 'NuGetRequirementsLatest',
+  dependent_counts_rubygems: 'RubyGemsRequirementsLatest',
+}
+
+// `Dependents` is snapshotted per-date, so "for this snapshot date" is actionable there. The
+// GO/NUGET/RubyGems `*RequirementsLatest` views have no snapshot history (see bootstrapOsspckgs.ts,
+// RETENTION_DAYS_BY_KIND) — telling an operator to check "this snapshot date" on those is misleading.
+const GUARD_HAS_SNAPSHOT_HISTORY: Partial<Record<OsspckgsJobKind, boolean>> = {
+  dependent_counts: true,
+  dependent_counts_go: false,
+  dependent_counts_nuget: false,
+  dependent_counts_rubygems: false,
 }
 
 export interface CheckDependentCountsGuardOutput {
@@ -20,7 +46,8 @@ export async function checkDependentCountsGuard(
   input: CheckDependentCountsGuardInput,
 ): Promise<CheckDependentCountsGuardOutput> {
   const qx = await getPackagesDb()
-  const prevRowCount = await dalGetLastCompletedJobRowCount(qx, 'dependent_counts')
+  const jobKind = input.jobKind ?? 'dependent_counts'
+  const prevRowCount = await dalGetLastCompletedJobRowCount(qx, jobKind)
 
   if (prevRowCount === null || prevRowCount <= 0) {
     return { ok: true, prevRowCount, dropPct: null }
@@ -32,7 +59,7 @@ export async function checkDependentCountsGuard(
     sendSlackNotification(
       SlackChannel.CDP_CRITICAL_ALERTS,
       SlackPersona.CRITICAL_ALERTER,
-      ':warning: dependent_counts row count anomaly detected',
+      `:warning: ${jobKind} row count anomaly detected`,
       [
         {
           title: 'Snapshot',
@@ -44,7 +71,7 @@ export async function checkDependentCountsGuard(
         },
         {
           title: 'Action',
-          text: 'Ingest aborted — existing `dependent_count` values preserved. Check deps.dev `Dependents` table for this snapshot date.',
+          text: `Ingest aborted — existing \`dependent_count\` values preserved. Check deps.dev \`${GUARD_SOURCE_TABLE[jobKind] ?? 'Dependents'}\` table${(GUARD_HAS_SNAPSHOT_HISTORY[jobKind] ?? true) ? ' for this snapshot date' : ''}.`,
         },
       ],
     )

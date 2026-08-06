@@ -1,6 +1,9 @@
-import { v4 as uuid } from 'uuid'
-
-import { IMemberAffiliation } from '@crowd/types'
+import { generateUUIDv1 } from '@crowd/common'
+import {
+  type IMemberAffiliation,
+  type MemberSegmentAffiliationDbInsert,
+  type MemberSegmentAffiliationDbRow,
+} from '@crowd/types'
 
 import { IManualAffiliationData } from '../old/apps/data_sink_worker/repo/memberAffiliation.data'
 import { QueryExecutor } from '../queryExecutor'
@@ -78,22 +81,54 @@ export async function findMemberAffiliations(
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function insertMemberAffiliations(qx: QueryExecutor, memberId: string, data: any[]) {
-  return qx.result(
-    prepareBulkInsert(
-      'memberSegmentAffiliations',
-      ['id', 'memberId', 'segmentId', 'organizationId', 'dateStart', 'dateEnd'],
-      data.map((item) => ({
-        id: uuid(),
-        memberId,
-        segmentId: item.segmentId,
-        organizationId: item.organizationId,
-        dateStart: item.dateStart || null,
-        dateEnd: item.dateEnd || null,
-      })),
-    ),
+export async function insertMemberSegmentAffiliations(
+  qx: QueryExecutor,
+  affiliations: MemberSegmentAffiliationDbInsert[],
+  failOnConflict: boolean,
+  returnRows: true,
+): Promise<MemberSegmentAffiliationDbRow[]>
+export async function insertMemberSegmentAffiliations(
+  qx: QueryExecutor,
+  affiliations: MemberSegmentAffiliationDbInsert[],
+  failOnConflict?: boolean,
+  returnRows?: false,
+): Promise<number>
+export async function insertMemberSegmentAffiliations(
+  qx: QueryExecutor,
+  affiliations: MemberSegmentAffiliationDbInsert[],
+  failOnConflict = false,
+  returnRows = false,
+): Promise<MemberSegmentAffiliationDbRow[] | number> {
+  if (affiliations.length === 0) {
+    return returnRows ? [] : 0
+  }
+
+  const query = prepareBulkInsert(
+    'memberSegmentAffiliations',
+    [
+      'id',
+      'memberId',
+      'segmentId',
+      'organizationId',
+      'dateStart',
+      'dateEnd',
+      'verified',
+      'verifiedBy',
+    ],
+    affiliations.map((a) => ({
+      ...a,
+      id: a.id ?? generateUUIDv1(),
+      verified: a.verified ?? false,
+    })),
+    failOnConflict ? undefined : 'DO NOTHING',
+    returnRows,
   )
+
+  if (returnRows) {
+    return qx.select(query)
+  }
+
+  return qx.result(query)
 }
 
 export async function fetchMemberAffiliations(

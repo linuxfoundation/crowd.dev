@@ -5,8 +5,11 @@ DESCRIPTION >
     - Excludes Gerrit platform as it uses a different workflow model.
     - Queries `pull_requests_analyzed` directly for optimal performance using sorting key on `segmentId, channel, openedAt`.
     - Primary use case: displaying average PR resolution time metrics in development health dashboards.
+    - The pipe scopes data either to a single project (via `segments_filtered`) or to every project in a
+    collection (via `segments_filtered_by_collection`). Exactly one of `project`/`collectionSlug` must be given.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`
+    - `project`: Project slug (e.g., 'k8s', 'tensorflow') - inherited from `segments_filtered`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `segments_filtered_by_collection`. Required unless `project` is given.
     - `repos`: Optional array of repository URLs for filtering (e.g., ['https://github.com/kubernetes/kubernetes'])
     - `startDate`: Optional DateTime filter for PRs opened after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for PRs opened before timestamp (e.g., '2024-12-31 23:59:59')
@@ -18,10 +21,10 @@ SQL >
     SELECT round(avg(resolvedInSeconds)) AS "averagePullRequestResolveVelocitySeconds"
     FROM pull_requests_analyzed
     WHERE
-        segmentId = (SELECT segmentId FROM segments_filtered)
-        AND isNotNull(resolvedAt)
-        AND resolvedInSeconds > 0
-        AND platform != 'gerrit'
+        {% if defined(collectionSlug) %}
+            segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
+        {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
+        {% end %} AND isNotNull(resolvedAt) AND resolvedInSeconds > 0 AND platform != 'gerrit'
         {% if defined(repos) %}
             AND channel
             IN {{ Array(repos, 'String', description="Filter activity repo list", required=False) }}

@@ -1,0 +1,224 @@
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
+import { promisify } from 'util'
+
+import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
+import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+
+import { toPromptSymbolSpec } from '../agent/promptKit'
+import { SymbolSpec } from '../agent/prompts'
+import { runAnalysisAgent } from '../agent/runner'
+import { forEachWithConcurrency } from '../dependentsScan'
+
+const mkdtemp = promisify(fs.mkdtemp)
+
+const MAX_ATTEMPTS = 3
+const RETRY_BACKOFF_BASE = 15_000 // 15 seconds
+// Tunable for load testing, same pattern as BLAST_RADIUS_SCAN_CONCURRENCY for phase 1/2 —
+// default matches the previous hardcoded value. Clamped to a positive integer for the
+// same reason (see dependentsScan.ts's SCAN_CONCURRENCY): a negative/fractional override
+// would make forEachWithConcurrency spin up zero workers and silently skip all work.
+const REACHABILITY_CONCURRENCY =
+  Math.max(1, Math.floor(Number(process.env.BLAST_RADIUS_REACHABILITY_CONCURRENCY))) || 4
+
+export interface PreparedSource {
+  download: (destDir: string) => Promise<void>
+}
+
+// The one thing every ecosystem's reachability stage does differently: how to turn a
+// dependent row into a concrete, downloadable source. npm already has a tarball_url
+// persisted from the dependents stage; Go must resolve a concrete module version at
+// runtime (dependents only carry a require-directive floor, not an installed version).
+export interface ReachabilitySourceConfig {
+  prompt: string
+  schema: Record<string, unknown>
+  buildSystemPrompt: (spec: SymbolSpec) => string
+  prepareSource: (dep: blastRadiusDal.DependentRow) => Promise<PreparedSource | null>
+  noSourceMessage: string
+  downloadErrorPrefix: string
+}
+
+export async function runReachabilityStage(
+  qx: QueryExecutor,
+  analysisId: string,
+  cfg: ReachabilitySourceConfig,
+  onProgress?: () => void,
+): Promise<void> {
+  const startTime = Date.now()
+
+  try {
+    // Check if already done — avoid clobbering a succeeded stage_run's status/started_at
+    // on a redundant re-invocation (startStageRun's ON CONFLICT always overwrites status).
+    const existingStatus = await blastRadiusDal.getStageRunStatus(qx, analysisId, 'reachability')
+    if (existingStatus === 'succeeded') {
+      return
+    }
+
+    // Start stage run record
+    await blastRadiusDal.startStageRun(qx, {
+      analysisId,
+      stage: 'reachability',
+      status: 'running',
+      model: 'claude-sonnet-5',
+    })
+
+    // Get symbol spec and dependents needing verdict
+    const specRow = await blastRadiusDal.getSymbolSpec(qx, analysisId)
+    if (!specRow) {
+      throw new Error('Symbol spec not found')
+    }
+    const spec = toPromptSymbolSpec(specRow)
+
+    const dependents = await blastRadiusDal.getDependentsNeedingVerdict(qx, analysisId)
+
+    const upsertErrorVerdict = (
+      dependentId: string,
+      reasoning: string,
+      model: string | null,
+      costUsd = 0,
+    ) =>
+      blastRadiusDal.upsertVerdict(qx, {
+        analysisId,
+        dependentId,
+        usesPackage: false,
+        importsVulnerableSymbol: false,
+        importStyle: null,
+        reachableVerdict: 'unclear',
+        confidence: 0,
+        evidence: null,
+        reasoning,
+        model,
+        turnsUsed: null,
+        costUsd,
+      })
+
+    const processOne = async (dep: blastRadiusDal.DependentRow): Promise<void> => {
+      let source: Awaited<ReturnType<typeof cfg.prepareSource>>
+      try {
+        source = await cfg.prepareSource(dep)
+      } catch (err) {
+        await upsertErrorVerdict(
+          dep.id,
+          `${cfg.noSourceMessage}: ${err instanceof Error ? err.message : String(err)}`,
+          null,
+        )
+        return
+      }
+      if (!source) {
+        await upsertErrorVerdict(dep.id, cfg.noSourceMessage, null)
+        return
+      }
+
+      // Create temp dir for this dependent. Fixed prefix, not dep.name — scoped
+      // package names contain a `/` (e.g. @babel/core), which would otherwise
+      // produce a mkdtemp prefix pointing at a nonexistent intermediate directory.
+      const depDir = await mkdtemp(path.join(os.tmpdir(), 'blast-radius-dep-'))
+
+      try {
+        // Download and extract. Isolated from the batch below — a single dependent's
+        // source-fetch failure (bad URL, registry 5xx, corrupt archive) must not reject
+        // the whole Promise.all and fail every other dependent in the batch.
+        try {
+          await source.download(depDir)
+        } catch (err) {
+          await upsertErrorVerdict(
+            dep.id,
+            `${cfg.downloadErrorPrefix}: ${err instanceof Error ? err.message : String(err)}`,
+            null,
+          )
+          return
+        }
+
+        // Try agent up to MAX_ATTEMPTS times with exponential backoff. costUsd is
+        // accumulated across attempts — a persistent failure still spends real money
+        // on every retry, and that spend must show up in the verdict/stage/analysis
+        // totals even though only the last attempt's outcome is persisted.
+        let accumulatedCost = 0
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          try {
+            const systemPrompt = cfg.buildSystemPrompt(spec)
+
+            const agentResult = await runAnalysisAgent({
+              prompt: cfg.prompt,
+              systemPrompt,
+              cwd: depDir,
+              model: 'claude-sonnet-5',
+              schema: cfg.schema,
+              maxTurns: 15,
+              timeoutMs: 600_000,
+              onProgress,
+            })
+            accumulatedCost += agentResult.costUsd || 0
+
+            if (!agentResult.isError && agentResult.structuredOutput) {
+              const output = agentResult.structuredOutput
+
+              await blastRadiusDal.upsertVerdict(qx, {
+                analysisId,
+                dependentId: dep.id,
+                usesPackage: Boolean(output.uses_package),
+                importsVulnerableSymbol: Boolean(output.imports_vulnerable_symbol),
+                importStyle: String(output.import_style || 'none'),
+                reachableVerdict: String(output.reachable_verdict || 'unclear'),
+                confidence: Number(output.confidence || 0),
+                evidence: (output.evidence as unknown as Record<string, unknown>[]) ?? null,
+                reasoning: String(output.reasoning || ''),
+                model: 'claude-sonnet-5',
+                turnsUsed: agentResult.numTurns,
+                costUsd: accumulatedCost,
+              })
+
+              return
+            }
+
+            // Agent error (not a thrown exception) — throw so the catch below applies
+            // the same backoff-or-persist handling as a genuine exception.
+            throw new Error(agentResult.errorMessage || 'Agent failed')
+          } catch (err) {
+            if (attempt === MAX_ATTEMPTS) {
+              // Last attempt; save error verdict
+              await upsertErrorVerdict(
+                dep.id,
+                `Agent failed: ${err instanceof Error ? err.message : String(err)}`,
+                'claude-sonnet-5',
+                accumulatedCost,
+              )
+              return
+            }
+
+            // Backoff before retry. Heartbeat partway through — the longest backoff
+            // (attempt 2, 30s) is still well under the stage's 5-minute heartbeatTimeout
+            // on its own, but 4 dependents processing concurrently can each be mid-backoff
+            // at once with nothing else heartbeating in between.
+            const delayMs = RETRY_BACKOFF_BASE * attempt
+            await new Promise((resolve) => setTimeout(resolve, delayMs))
+            onProgress?.()
+          }
+        }
+      } finally {
+        // Clean up temp dir
+        fs.rmSync(depDir, { recursive: true, force: true })
+        onProgress?.()
+      }
+    }
+
+    // Bounded-concurrency pool instead of fixed batches — a worker picks up the next
+    // dependent as soon as it's free, instead of idling until the slowest item in its
+    // batch finishes (batching wastes slots when dependents' processing times vary,
+    // e.g. one slow agent retry loop stalling 3 otherwise-free slots).
+    await forEachWithConcurrency(dependents, REACHABILITY_CONCURRENCY, processOne)
+
+    // Sum cost from persisted verdicts rather than tracking it locally — a resumed
+    // run only processes dependents still missing a verdict, so a local counter would
+    // drop the cost already spent (and recorded) on verdicts from prior attempts.
+    const duration = Date.now() - startTime
+    const totalCost = await blastRadiusDal.getVerdictsCost(qx, analysisId)
+    await blastRadiusDal.completeStageRun(qx, analysisId, 'reachability', duration, totalCost)
+  } catch (err) {
+    const duration = Date.now() - startTime
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    await blastRadiusDal.failStageRun(qx, analysisId, 'reachability', duration, errorMsg)
+    throw err
+  }
+}

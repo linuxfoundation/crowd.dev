@@ -6,9 +6,9 @@ import {
   MemberField,
   fetchManyMemberOrgsWithOrgData,
   findMemberById,
-  optionsQx,
 } from '@crowd/data-access-layer'
 
+import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { ok } from '@/utils/api'
 import { groupMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
@@ -27,7 +27,7 @@ export async function getMemberWorkExperiences(req: Request, res: Response): Pro
     throw new NotFoundError('Member not found')
   }
 
-  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId])
+  const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
   const workExperiences = groupMemberOrganizations(orgsMap.get(memberId) ?? []).map(
     toMemberWorkExperience,
   )

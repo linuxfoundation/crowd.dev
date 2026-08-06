@@ -4,17 +4,21 @@ import {
   DEFAULT_TENANT_ID,
   Error400,
   RawQueryParser,
+  TimeoutError,
   generateUUIDv1,
+  generateUUIDv4,
   getProperDisplayName,
   groupBy,
 } from '@crowd/common'
 import { formatSql, getDbInstance, prepareForModification } from '@crowd/database'
 import { getServiceLogger } from '@crowd/logging'
-import { RedisClient } from '@crowd/redis'
+import { RedisClient, acquireLock, releaseLock, withSingleFlight } from '@crowd/redis'
 import {
   ALL_PLATFORM_TYPES,
   IMemberContribution,
   MemberAttributeType,
+  MemberDbInsert,
+  MemberDbRow,
   MemberRow,
   PageData,
   SegmentType,
@@ -34,6 +38,20 @@ import { IDbMemberAttributeSetting, IDbMemberData } from './types'
 import { fetchManyMemberIdentities, fetchManyMemberOrgs, fetchManyMemberSegments } from '.'
 
 const log = getServiceLogger()
+
+// How long a compute lock covers a legitimately slow query. Also used as the wait
+// timeout for requests single-flighting behind it — the two must not drift apart:
+// a shorter wait timeout lets waiters give up and run the query themselves while the
+// original holder is still legitimately within its TTL, reproducing the stampede this
+// lock exists to prevent. See services/libs/redis/src/singleFlight.ts for the mechanics.
+const COMPUTE_LOCK_TTL_SECONDS = 90
+
+const toCountPage = (count: number, limit: number, offset: number): PageData<IDbMemberData> => ({
+  rows: [],
+  count,
+  limit,
+  offset,
+})
 
 interface IQueryMembersAdvancedParams {
   filter?: Record<string, unknown>
@@ -75,15 +93,8 @@ export enum MemberField {
   UPDATED_BY_ID = 'updatedById',
 }
 
-export interface MemberCreateInput {
-  id?: string
-  displayName: string
-  joinedAt: string
-  attributes: Record<string, unknown>
-  reach: Partial<Record<string, number>>
-  manuallyCreated?: boolean
-  contributions?: IMemberContribution[]
-}
+/** @deprecated Prefer `MemberDbInsert` from `@crowd/types`. */
+export type MemberCreateInput = MemberDbInsert
 
 export interface MemberUpdateInput {
   joinedAt?: string
@@ -132,13 +143,19 @@ export const MEMBER_INSERT_COLUMNS = [
   'attributes',
   'contributions',
   'createdAt',
+  'createdById',
   'displayName',
+  'enrichedBy',
   'id',
+  'importHash',
   'joinedAt',
+  'manuallyChangedFields',
   'manuallyCreated',
   'reach',
+  'score',
   'tenantId',
   'updatedAt',
+  'updatedById',
 ]
 
 const QUERY_FILTER_COLUMN_MAP: Map<string, { name: string; queryable?: boolean }> = new Map([
@@ -195,9 +212,12 @@ export async function queryMembersAdvanced(
   // Initialize cache
   const cache = new MemberQueryCache(redis)
 
-  // Build cache key
+  // Normalize search once: trim whitespace, lowercase (buildSearchCTE lowercases anyway),
+  // convert empty string to null so "" and null hash identically.
+  const normalizedSearch = search?.trim().toLowerCase() || null
+
+  // Full result key — includes pagination and projection so page 1 and page 2 are separate entries.
   const cacheKey = cache.buildCacheKey({
-    countOnly,
     fields,
     filter,
     include,
@@ -205,18 +225,30 @@ export async function queryMembersAdvanced(
     limit,
     offset,
     orderBy,
-    search,
+    search: normalizedSearch,
+    segmentId,
+  })
+
+  // Count key — excludes pagination/projection and include flags since the count query
+  // only depends on filter, search, and segmentId (buildCountQuery hardcodes includeMemberOrgs=false).
+  const countCacheKey = cache.buildCountCacheKey({
+    filter,
+    search: normalizedSearch,
     segmentId,
   })
 
   // Try to get from cache first
   const cachedResult = countOnly ? null : await cache.get(cacheKey)
-  const cachedCount = countOnly ? null : await cache.getCount(cacheKey)
+  const cachedCount = countOnly ? await cache.getCount(countCacheKey) : null
 
   if (cachedResult) {
+    log.info(
+      { cacheKey, segmentId, search: normalizedSearch, limit, offset, orderBy },
+      'Members advanced query cache hit — returning cached result, scheduling background refresh',
+    )
     refreshCacheInBackground(bgQx, redis, cacheKey, {
       filter,
-      search,
+      search: normalizedSearch,
       limit,
       offset,
       orderBy,
@@ -227,43 +259,103 @@ export async function queryMembersAdvanced(
       includeAllAttributes,
       attributeSettings,
     })
-
-    log.info(`Members advanced query cache hit: ${cacheKey}`)
     return cachedResult
   }
 
   if (countOnly && cachedCount !== null) {
-    refreshCountCacheInBackground(bgQx, redis, cacheKey, {
-      filter,
-      search,
-      segmentId,
-      include,
-      includeAllAttributes,
-      attributeSettings,
-    })
-
-    log.debug(`Members advanced count query cache hit: ${cacheKey}`)
-    return {
-      rows: [],
-      count: cachedCount,
-      limit,
-      offset,
-    }
+    log.info(
+      { countCacheKey, segmentId, search: normalizedSearch },
+      'Members advanced count cache hit — returning cached count',
+    )
+    // No background refresh for count hits: the count is a single integer with a 6h TTL,
+    // refreshing it on every hit would fire a COUNT(*) query per request, defeating the cache.
+    // The count is kept fresh by: (1) full-result refreshes that also write countCacheKey,
+    // (2) natural TTL expiry, (3) explicit cache invalidation on member updates.
+    return toCountPage(cachedCount, limit, offset)
   }
 
-  return await executeQuery(qx, redis, cacheKey, {
-    filter,
-    search,
-    limit,
-    offset,
-    orderBy,
-    segmentId,
-    countOnly,
-    fields,
-    include,
-    includeAllAttributes,
-    attributeSettings,
-  })
+  // Single-flight: only the request that wins the lock hits the DB. Everyone else
+  // piling onto the same cold key waits on the lock instead of firing the same
+  // heavy query in parallel (this is what turns one slow query into a stampede).
+  const computeLockKey = countOnly ? countCacheKey : cacheKey
+
+  const readComputeCache = async (): Promise<PageData<IDbMemberData> | null> => {
+    if (countOnly) {
+      const count = await cache.getCount(countCacheKey)
+      return count !== null ? toCountPage(count, limit, offset) : null
+    }
+    return cache.get(cacheKey)
+  }
+
+  try {
+    return await withSingleFlight(
+      redis,
+      computeLockKey,
+      {
+        lockTtlSeconds: COMPUTE_LOCK_TTL_SECONDS,
+        waitTimeoutSeconds: COMPUTE_LOCK_TTL_SECONDS,
+      },
+      readComputeCache,
+      () => {
+        log.info(
+          {
+            cacheKey,
+            countCacheKey,
+            segmentId,
+            search: normalizedSearch,
+            limit,
+            offset,
+            orderBy,
+            countOnly,
+          },
+          'Members advanced query cache miss — executing query synchronously',
+        )
+        return executeQuery(qx, redis, cacheKey, {
+          filter,
+          search: normalizedSearch,
+          limit,
+          offset,
+          orderBy,
+          segmentId,
+          countOnly,
+          fields,
+          include,
+          includeAllAttributes,
+          attributeSettings,
+        })
+      },
+    )
+  } catch (error) {
+    log.warn(
+      { cacheKey, countCacheKey, segmentId, search: normalizedSearch, countOnly, err: error },
+      'Members advanced query failed on cache miss — scheduling background refresh for next retry',
+    )
+    if (countOnly) {
+      refreshCountCacheInBackground(bgQx, redis, countCacheKey, {
+        filter,
+        search: normalizedSearch,
+        segmentId,
+        include,
+        includeAllAttributes,
+        attributeSettings,
+      })
+    } else {
+      refreshCacheInBackground(bgQx, redis, cacheKey, {
+        filter,
+        search: normalizedSearch,
+        limit,
+        offset,
+        orderBy,
+        segmentId,
+        countOnly: false,
+        fields,
+        include,
+        includeAllAttributes,
+        attributeSettings,
+      })
+    }
+    throw error
+  }
 }
 
 export async function executeQuery(
@@ -299,6 +391,11 @@ export async function executeQuery(
   }: IQueryMembersAdvancedParams,
 ): Promise<PageData<IDbMemberData>> {
   const cache = new MemberQueryCache(redis)
+  const countCacheKey = cache.buildCountCacheKey({
+    filter,
+    search: search ?? null,
+    segmentId,
+  })
   const withAggregates = !!segmentId
   const searchConfig = buildSearchCTE(search)
 
@@ -343,22 +440,18 @@ export async function executeQuery(
     withAggregates,
     searchConfig,
     filterString,
-    includeMemberOrgs: include.memberOrganizations,
+    // Count never needs org data in SELECT — filterHasMo inside buildCountQuery already
+    // handles the case where the filter itself references mo.* columns.
+    includeMemberOrgs: false,
   })
 
   if (countOnly) {
     const result = await qx.selectOne(countQuery, params)
     const count = parseInt(result.count, 10)
 
-    // Cache the count
-    await cache.setCount(cacheKey, count, 21600) // 6 hours TTL
+    await cache.setCount(countCacheKey, count, 21600)
 
-    return {
-      rows: [],
-      count,
-      limit,
-      offset,
-    }
+    return toCountPage(count, limit, offset)
   }
 
   // Prepare fields for main query
@@ -385,7 +478,12 @@ export async function executeQuery(
   const mainQuery = buildQuery({
     fields: preparedFields,
     withAggregates,
-    includeMemberOrgs: include.memberOrganizations,
+    // Org data for the returned page is always fetched separately via fetchManyMemberOrgs
+    // below — the 'organizations' field is queryable: false, so it's never selected here.
+    // The mo join is only needed when the filter itself references mo.*, which filterHasMo
+    // (computed inside buildQuery) already covers — mirrors the same fix already applied
+    // to buildCountQuery above.
+    includeMemberOrgs: false,
     searchConfig,
     filterString,
     orderBy,
@@ -393,16 +491,24 @@ export async function executeQuery(
     offset,
   })
 
+  // Skip the count sub-query if the count is already cached — saves a full table scan
+  // on every page navigation after the first (page 2, 3, ... all share the same countCacheKey).
+  const cachedCount = await cache.getCount(countCacheKey)
   const [rows, countResult] = await Promise.all([
     qx.select(mainQuery, params),
-    qx.selectOne(countQuery, params),
+    cachedCount === null ? qx.selectOne(countQuery, params) : Promise.resolve(null),
   ])
 
-  const count = parseInt(countResult.count, 10)
+  const count = cachedCount !== null ? cachedCount : parseInt(countResult?.count ?? '0', 10)
   const memberIds = rows.map((org) => org.id)
 
   if (memberIds.length === 0) {
-    return { rows: [], count, limit, offset }
+    const emptyResult = { rows: [], count, limit, offset }
+    await Promise.all([
+      cache.set(cacheKey, emptyResult, 21600),
+      cachedCount === null ? cache.setCount(countCacheKey, count, 21600) : Promise.resolve(),
+    ])
+    return emptyResult
   }
 
   const [memberOrganizations, identities, memberSegments, maintainerRoles] = await Promise.all([
@@ -537,7 +643,10 @@ export async function executeQuery(
 
   const result = { rows, count, limit, offset }
 
-  await cache.set(cacheKey, result, 21600) // 6 hours TTL
+  await Promise.all([
+    cache.set(cacheKey, result, 21600),
+    cache.setCount(countCacheKey, count, 21600),
+  ])
 
   return result
 }
@@ -547,26 +656,49 @@ async function refreshCacheInBackground(
   redis: RedisClient,
   cacheKey: string,
   params: IQueryMembersAdvancedParams,
+  countOnly = false,
 ): Promise<void> {
+  const label = countOnly ? 'count cache' : 'query cache'
+
+  // Same lock (same key, same acquireLock/releaseLock primitive) that the synchronous
+  // cache-miss path takes via withSingleFlight — a single non-blocking attempt (0s wait)
+  // since this is best-effort background work: if the miss path (or another background
+  // refresh) already holds it, just skip rather than duplicate the query. Sharing the
+  // lock is what stops a hit-triggered refresh and a miss-triggered compute from ever
+  // running the same heavy query concurrently for the same cache key.
+  const token = generateUUIDv4()
   try {
-    await executeQuery(qx, redis, cacheKey, params)
+    await acquireLock(redis, cacheKey, token, COMPUTE_LOCK_TTL_SECONDS, 0)
   } catch (error) {
-    log.warn('Background cache refresh failed:', error)
+    if (error instanceof TimeoutError) {
+      log.debug(
+        { cacheKey },
+        `Members advanced ${label} refresh already in progress — skipping duplicate`,
+      )
+    } else {
+      log.warn({ cacheKey, err: error }, `Members advanced ${label} refresh lock unavailable`)
+    }
+    return
+  }
+
+  try {
+    log.info({ cacheKey }, `Members advanced ${label} background refresh started`)
+    await executeQuery(qx, redis, cacheKey, countOnly ? { ...params, countOnly: true } : params)
+    log.info({ cacheKey }, `Members advanced ${label} background refresh completed`)
+  } catch (error) {
+    log.warn({ cacheKey, err: error }, `Members advanced ${label} background refresh failed`)
+  } finally {
+    await releaseLock(redis, cacheKey, token)
   }
 }
 
-async function refreshCountCacheInBackground(
+function refreshCountCacheInBackground(
   qx: QueryExecutor,
   redis: RedisClient,
   cacheKey: string,
   params: IQueryMembersAdvancedParams,
 ): Promise<void> {
-  try {
-    log.info(`Refreshing members advanced count cache in background: ${cacheKey}`)
-    await executeQuery(qx, redis, cacheKey, { ...params, countOnly: true })
-  } catch (error) {
-    log.warn('Background count cache refresh failed:', error)
-  }
+  return refreshCacheInBackground(qx, redis, cacheKey, params, true)
 }
 
 export async function queryMembers<T extends MemberField>(
@@ -668,15 +800,10 @@ export async function updateMember(
   return qx.selectOneOrNone(`${query} ${condition} returning *`)
 }
 
-export async function createMember(qx: QueryExecutor, data: MemberCreateInput): Promise<MemberRow> {
+export async function createMember(qx: QueryExecutor, data: MemberDbInsert): Promise<MemberDbRow> {
   const id = data.id ?? generateUUIDv1()
   const ts = new Date()
   const dbInstance = getDbInstance()
-  const columnSet = new dbInstance.helpers.ColumnSet(MEMBER_INSERT_COLUMNS, {
-    table: {
-      table: 'members',
-    },
-  })
 
   const dbData: Record<string, unknown> = {
     ...data,
@@ -686,6 +813,16 @@ export async function createMember(qx: QueryExecutor, data: MemberCreateInput): 
     createdAt: ts,
     updatedAt: ts,
   }
+
+  // Omit unset columns so Postgres DEFAULT applies (listing a column with
+  // undefined/null bypasses DEFAULT and inserts NULL instead).
+  const columns = MEMBER_INSERT_COLUMNS.filter((column) => dbData[column] !== undefined)
+
+  const columnSet = new dbInstance.helpers.ColumnSet(columns, {
+    table: {
+      table: 'members',
+    },
+  })
 
   if (Array.isArray(dbData.contributions)) {
     dbData.contributions = JSON.stringify(dbData.contributions)

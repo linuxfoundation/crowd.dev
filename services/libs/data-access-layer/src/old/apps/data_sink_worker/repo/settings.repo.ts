@@ -1,6 +1,6 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { DbStore, RepositoryBase } from '@crowd/database'
-import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations'
+import { DEFAULT_ACTIVITY_TYPE_SETTINGS } from '@crowd/integrations/src/integrations/activityTypes'
 import { Logger } from '@crowd/logging'
 import { PlatformType } from '@crowd/types'
 

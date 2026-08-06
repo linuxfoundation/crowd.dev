@@ -1,5 +1,4 @@
 export * from './bootstrapOsspckgs'
-export * from './cleanupOsspckgs'
 export * from './ingestAdvisories'
 export * from './ingestDependentCounts'
 export * from './ingestDependencies'

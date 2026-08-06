@@ -1,0 +1,35 @@
+DESCRIPTION >
+    - Per-bucket contributor aggregation copy pipe for bucket 9.
+    - Scans ONLY activityRelations_collection_deduplicated_cleaned_bucket_9_ds (no 10-way union).
+    - Computes uniqueContributorCount per collection slug for all collections that route to bucket 9.
+    - Runs after bucket 9's enrich job completes (1:05 UTC + ~20min runtime typically finishes by 1:25 UTC).
+    - Scheduled at 2:50 UTC to comfortably clear after enrich job (5min margin, allows for timing variance).
+    - COPY_MODE append: appends rows tagged with snapshotId to shared collection_insights_aggregate_consolidated_ds.
+
+TAGS "Insights, Widget", "Collection"
+
+NODE collection_insights_aggregate_bucket_9_contributors
+DESCRIPTION >
+    Aggregates unique contributor counts per collection from bucket 9's activity relations.
+    Matches the activity type filtering (code contributions + collaboration) from the original logic.
+    Tags each row with snapshotId (start of current day) for versioning.
+
+SQL >
+    SELECT
+        ar.collectionSlug,
+        uniq(ar.memberId) as uniqueContributorCount,
+        toStartOfInterval(now(), INTERVAL 1 day) as snapshotId
+    FROM activityRelations_collection_deduplicated_cleaned_bucket_9_ds ar
+    WHERE
+        ar.memberId != ''
+        AND (ar.type, ar.platform) IN (
+            SELECT activityType, platform
+            FROM activityTypes
+            WHERE isCodeContribution = 1 OR isCollaboration = 1
+        )
+    GROUP BY ar.collectionSlug
+
+TYPE COPY
+TARGET_DATASOURCE collection_insights_aggregate_consolidated_ds
+COPY_MODE append
+COPY_SCHEDULE 50 5 * * *

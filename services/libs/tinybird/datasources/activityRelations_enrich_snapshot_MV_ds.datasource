@@ -31,4 +31,4 @@ SCHEMA >
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYYYYMM(snapshotId)
 ENGINE_SORTING_KEY snapshotId, segmentId, timestamp, type, platform, channel, sourceId
-ENGINE_TTL toDateTime(snapshotId) + toIntervalDay(1)
+ENGINE_TTL toDateTime(snapshotId) + toIntervalDay(3)

@@ -115,7 +115,11 @@ SQL >
         argMin(
             updatedAt,
             if(
-                type IN ('pull_request-reviewed', 'merge_request-review-changes-requested')
+                type IN (
+                    'pull_request-reviewed',
+                    'merge_request-review-changes-requested',
+                    'merge_request-review-approved'
+                )
                 OR (
                     type = 'patchset_approval-created'
                     AND splitByChar('-', sourceParentId)[1] = prSourceId
@@ -126,7 +130,11 @@ SQL >
         ) AS reviewedUpdatedAt,
         min(
             if(
-                type IN ('pull_request-reviewed', 'merge_request-review-changes-requested')
+                type IN (
+                    'pull_request-reviewed',
+                    'merge_request-review-changes-requested',
+                    'merge_request-review-approved'
+                )
                 OR (
                     type = 'patchset_approval-created'
                     AND splitByChar('-', sourceParentId)[1] = prSourceId
@@ -246,7 +254,7 @@ SQL >
     SELECT
         if(existing.id != '', existing.id, new.id) as id,
         if(existing.sourceId != '', existing.sourceId, new.prSourceId) as sourceId,
-        COALESCE(existing.openedAt, new.openedAt) as openedAt,
+        if(existing.openedAt != toDateTime(0), existing.openedAt, new.openedAt) as openedAt,
         if(existing.segmentId != '', existing.segmentId, new.segmentId) as segmentId,
         if(existing.channel != '', existing.channel, new.channel) as channel,
         if(existing.memberId != '', existing.memberId, new.memberId) as memberId,

@@ -6,7 +6,7 @@ import { IUpsertOSPSBaselineSecurityInsightsParams } from '../types'
 const { getOSPSBaselineInsights, saveOSPSBaselineInsightsToDB } = proxyActivities<
   typeof activities
 >({
-  startToCloseTimeout: '5 minutes',
+  startToCloseTimeout: '15 minutes',
   retry: { maximumAttempts: 5, initialInterval: 2 * 1000, backoffCoefficient: 1 },
 })
 

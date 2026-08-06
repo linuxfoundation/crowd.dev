@@ -1,5 +1,5 @@
 DESCRIPTION >
-    Activity timeseries for a given organization, bucketed by year (all-time).
+    Contribution timeseries for a given organization, bucketed by year (last 10 years).
 
 TAGS "Organization page"
 

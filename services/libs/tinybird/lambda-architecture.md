@@ -4,7 +4,7 @@
 
 - [Overview](#overview)
 - [Main Activity Relations Pipeline](#main-activity-relations-pipeline-lambda-architecture---produces-unfiltered-data)
-- [Downstream Consumers](#downstream-consumers-of-activityrelations_enriched_deduplicated_ds)
+- [Downstream Consumers](#downstream-consumers-of-activityrelations_enriched_deduplicated_bucket_union)
 - [Timeline View](#timeline-view-hourly-execution)
 - [Snapshot-Based Deduplication](#snapshot-based-deduplication-strategy)
 - [Pull Requests Pipeline](#pull-requests-pipeline-primary-lambda-architecture-use-case)
@@ -115,51 +115,65 @@ This document explains the **Lambda Architecture** implementation used in our Ti
     (see below)            (future: issues, commits, etc.)
 
 
-[4] Merge Layer - Snapshot Merger Copy Pipe
+[4] Merge Layer - Bucketed Snapshot Merger Copy Pipes
     ┌────────────────────────────────────────┐
     │  activityRelations_snapshot_           │
-    │  merger_copy                           │
-    │  (TYPE: COPY, every day at 1 AM)       │
+    │  merger_copy_0 .. _2                   │
+    │  (TYPE: COPY, daily, staggered)        │
     └────────────────────────────────────────┘
                      ↓
 
-    What it does:
-    ├─ Fetches: NEW data from MV result datasource (latest snapshotId + 1 hour)
-    ├─ Fetches: OLD data from serving layer (current max snapshotId)
-    ├─ Merges: UNION ALL → creates new snapshot
-    ├─ Mode: append
-    └─ Schedule: 0 1 * * * (every day at 1 AM UTC)
+    What each bucket pipe does (bucketing key: cityHash64(segmentId) % 3):
+    ├─ Fetches: NEW deltas for its bucket from MV_ds (snapshotId >= bucket's last
+    │   snapshot — inclusive, so rows arriving late for an already-merged day are
+    │   replayed on the next run; the dedup below makes the replay idempotent)
+    ├─ Collapses multi-day deltas: ORDER BY updatedAt DESC LIMIT 1 BY dedup key (no FINAL)
+    ├─ Fetches: OLD data from its own bucket datasource (carry-forward, NOT IN delta keys)
+    ├─ Merges: UNION ALL → one fresh snapshot for the bucket
+    ├─ Mode: replace (atomic — a failed run leaves the previous bucket data intact)
+    └─ Schedule: daily, staggered at 01:30/01:34/01:38 UTC
+
+    Why replace-mode buckets (vs the old single append pipe + TTL):
+    ├─ Old: one 380GB+ copy per day, running at 40-75% of the 3600s copy timeout,
+    │        with a memory-heavy NOT IN over the full realtime snapshot
+    ├─ Old: TTL (snapshotId + 2 days) expired the last good snapshot one hour BEFORE
+    │        the next scheduled run — a single failed run emptied the datasource, and
+    │        the empty state self-perpetuated (max(snapshotId) = epoch matches no MV
+    │        rows), requiring a manual full re-bootstrap
+    └─ New: 1/3rd-sized copies far from timeout/memory limits; a failure loses
+             nothing; a bucket self-heals for up to ~2 missed days (MV delta
+             retention is 3 days); longer gaps → run that bucket's initial snapshot
 
 
-[5] Final Datasource
+[5] Final Datasources + Union
     ┌────────────────────────────────────────┐
     │  activityRelations_enriched            │
-    │  _deduplicated_ds                      │
+    │  _deduplicated_bucket_0_ds .. _2_ds    │
     │  (UNFILTERED - used by CDP, monitoring)│
     └────────────────────────────────────────┘
                      ↓
-    • TYPE: MergeTree
-    • Partitioned by: snapshotId
+    • TYPE: MergeTree (each bucket)
+    • Partitioned by: toYear(timestamp)
     • Sorting Key: segmentId, timestamp, type, platform, memberId, organizationId
-    • TTL: snapshotId + 6 hours (keeps last ~6 snapshots)
-    • Query Pattern: WHERE snapshotId = (SELECT max(snapshotId) FROM ...)
+    • No TTL — replace-mode copies keep exactly ONE snapshot per bucket
+    • Query via: activityRelations_enriched_deduplicated_bucket_union (UNION ALL of 3)
+    • Bucket count: 3 for now — increasing it later remaps cityHash64(segmentId) % N,
+      so add the new datasources/pipes, update the union, and re-run ALL initial
+      snapshot pipes afterwards (replace mode makes the re-bootstrap safe)
 
-    Data structure:
-    ├─ Record A, snapshotId: 14:00
-    ├─ Record A, snapshotId: 15:00  (same record, updated snapshot)
-    ├─ Record A, snapshotId: 16:00  (same record, latest snapshot)
-    ├─ Record B, snapshotId: 15:00
-    └─ Record B, snapshotId: 16:00
-
-    ⚠️  Multiple copies exist physically
-    ✅  Deduplication happens at query time via max(snapshotId) filter
+    ⚠️  Do NOT filter by max(snapshotId) across the union: buckets may legitimately
+        sit on different snapshot days after a partial failure, and a global max
+        filter would silently drop the lagging buckets. Each bucket already holds
+        exactly one snapshot, so no snapshot filtering is needed at all.
 ```
 
 ---
 
-## Downstream Consumers of activityRelations_enriched_deduplicated_ds
+## Downstream Consumers of activityRelations_enriched_deduplicated_bucket_union
 
-The unfiltered lambda architecture output is consumed by:
+The unfiltered lambda architecture output is consumed through the
+`activityRelations_enriched_deduplicated_bucket_union` pipe (never by querying
+bucket datasources directly) by:
 
 ### 1. Pull Requests Pipeline (Primary consumer - detailed section below)
 - Analyzes PR lifecycle: opened → reviewed → approved → merged
@@ -253,7 +267,11 @@ Instead of using FINAL in copy pipes or query time, our approach uses **snapshot
 
 1. **Physical Storage**: Multiple copies of the same record exist across different snapshots
 2. **Logical View**: Queries filter by `max(snapshotId)` to see only the latest version
-3. **Automatic Cleanup**: TTL removes old snapshots (keeps last 6 hours)
+3. **Automatic Cleanup**: TTL removes old snapshots
+
+> **Note**: This applies to append-mode pipelines. The unfiltered activityRelations
+> serving layer now uses replace-mode bucket copies instead — each bucket holds exactly
+> one snapshot, so neither TTL cleanup nor query-time snapshot filtering is involved.
 
 ### Example
 
@@ -267,10 +285,11 @@ Instead of using FINAL in copy pipes or query time, our approach uses **snapshot
 │ 2       │ some_value  │ 2024-01-01 15:00 │
 └─────────┴─────────────┴──────────────────┘
 
--- Query with snapshot filter:
+-- Query with snapshot filter (generic pattern — substitute your append-mode,
+-- snapshot-stamped datasource):
 SELECT *
-FROM activityRelations_enriched_deduplicated_ds
-WHERE snapshotId = (SELECT max(snapshotId) FROM activityRelations_enriched_deduplicated_ds)
+FROM your_snapshot_ds
+WHERE snapshotId = (SELECT max(snapshotId) FROM your_snapshot_ds)
 
 -- Result (deduplicated logical view):
 ┌─────────┬─────────────┬──────────────────┐
@@ -493,24 +512,25 @@ Initial snapshot pipes:
 
 ### Examples
 
-#### 1. activityRelations_enrich_initial_snapshot
+#### 1. activityRelations_enrich_initial_snapshot_0 .. _2 (per bucket)
 
 ```
-File: activityRelations_enrich_initial_snapshot.pipe
+Files: activityRelations_enrich_initial_snapshot_0.pipe .. _2.pipe
 
 TYPE: COPY
 COPY_MODE: replace
 COPY_SCHEDULE: @on-demand
-TARGET_DATASOURCE: activityRelations_enriched_deduplicated_ds
+TARGET_DATASOURCE: activityRelations_enriched_deduplicated_bucket_<N>_ds
 
-What it does:
-├─ Reads raw activityRelations (base table)
+What each one does:
+├─ Reads raw activityRelations (base table), filtered to cityHash64(segmentId) % 3 = N
 ├─ Enriches with country codes, org names, gitChangedLines buckets
-├─ Filters valid members, repos, segments
-├─ Creates snapshotId: toStartOfInterval(now(), INTERVAL 1 hour)
-└─ Writes initial baseline to serving datasource
+├─ Creates snapshotId: toStartOfInterval(now(), INTERVAL 1 day)
+└─ Replaces bucket N of the serving layer
 
-Usage: Run once to bootstrap activityRelations serving layer
+Usage: Run all 3 to bootstrap the serving layer, or a single one to rebuild a
+bucket that fell behind further than the MV delta retention (3 days). Replace
+mode makes them safe to re-run.
 ```
 
 #### 2. pull_request_analysis_initial_snapshot
@@ -564,21 +584,21 @@ Usage: Run once to bootstrap segment-level metrics
 **How to run:**
 ```bash
 # Via Tinybird CLI (assuming you have tb CLI configured)
-tb pipe copy run activityRelations_enrich_initial_snapshot --wait
+for N in 0 1 2; do tb pipe copy run activityRelations_enrich_initial_snapshot_$N --wait; done
 tb pipe copy run pull_request_analysis_initial_snapshot --wait
 tb pipe copy run segmentId_aggregates_initial_snapshot --wait
 ```
 
 ### Comparison: Initial vs Merger Copy Pipes
 
-| Aspect | Initial Snapshot | Merger Copy Pipe |
-|--------|------------------|------------------|
-| **Schedule** | @on-demand (manual) | Hourly (10 * * * * or 0 * * * *) |
-| **Mode** | replace (overwrites all) | append (adds new snapshot) |
-| **Purpose** | Bootstrap/reset | Incremental updates |
-| **Source** | Base tables or latest snapshot | MV output + existing serving data |
-| **Frequency** | Once (or rarely) | Continuous (hourly) |
-| **Snapshot Strategy** | Create first snapshot | Create new snapshots, merge with old |
+| Aspect | Initial Snapshot | Bucket Merger (activityRelations) | PR Merger |
+|--------|------------------|-----------------------------------|-----------|
+| **Schedule** | @on-demand (manual) | Daily (01:30/01:34/01:38 UTC) | Hourly (0 * * * *) |
+| **Mode** | replace (overwrites all) | replace (atomic per-bucket swap) | replace |
+| **Purpose** | Bootstrap/reset | Incremental merge of MV deltas | Incremental merge of PR events |
+| **Source** | Base tables | MV output + own bucket (carry-forward) | MV output + own target |
+| **Frequency** | Once (or rarely) | Continuous (daily) | Continuous (hourly) |
+| **Snapshot Strategy** | Create first snapshot | One snapshot per bucket, re-stamped each run | Single snapshot, replaced each run |
 
 
 ## Troubleshooting
@@ -606,11 +626,16 @@ WHERE snapshotId = (SELECT max(snapshotId) FROM datasource_name)
 **Symptom**: Recent data not appearing
 
 **Possible Causes**:
-1. **TTL deleted it**: Old snapshots auto-deleted (6-hour window for activities, 1-day for MV output)
+1. **TTL deleted MV deltas**: MV output retention is 3 days — a bucket that missed more
+   than 2 daily runs can no longer catch up incrementally and needs its initial
+   snapshot pipe re-run (the bucket keeps serving its last good data meanwhile)
 2. **MV behind**: Check latest `snapshotId` in MV_ds
-3. **Copy pipe not run**: Runs at :10 past the hour (activities) or :00 (PRs)
+3. **Copy pipe not run**: Bucket mergers run daily at 01:30-01:38 UTC; PR merger hourly at :00
 4. **Filtering**: Check member/repo/segment filters in MV
+5. **A bucket is lagging**: Compare `max(snapshotId)` per bucket datasource — with
+   replace-mode buckets a failed run leaves old (not missing) data, so look for
+   buckets whose snapshotId is older than the others
 
 ## TLDR
 
-This architecture moves heavyweight operations (enrichment, filtering, joins) to ingestion time via Materialized Views. Copy pipes only handle snapshot merging (UNION ALL of new + old data). Deduplication happens at query time by filtering `WHERE snapshotId = max(snapshotId)`, not in copy pipes or with FINAL. This makes hourly copies fast and lightweight, while queries remain fast by reading pre-processed snapshots.
+This architecture moves heavyweight operations (enrichment, filtering, joins) to ingestion time via Materialized Views. Copy pipes only handle snapshot merging (UNION ALL of new + old data). For the unfiltered activityRelations serving layer the merge is split across 3 hash buckets with replace-mode copies — each bucket holds exactly one snapshot, so a failed copy leaves the previous data intact and queries need no snapshot filter (read the bucket union). Append-mode pipelines (e.g. historical patterns described above) deduplicate at query time by filtering `WHERE snapshotId = max(snapshotId)`, not in copy pipes or with FINAL. This keeps scheduled copies fast and lightweight, while queries remain fast by reading pre-processed snapshots.

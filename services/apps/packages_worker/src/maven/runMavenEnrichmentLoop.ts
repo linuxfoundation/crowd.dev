@@ -1,6 +1,7 @@
 import {
   MavenPackageToSync,
   QueryExecutor,
+  listMavenCriticalPackagesById,
   listMavenPackagesToSync,
   logAuditFieldChange,
   replacePackageMaintainers,
@@ -18,6 +19,16 @@ import { getMavenConfig } from '../config'
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
 import { isPrerelease, parseRepoUrl } from './normalize'
+import {
+  GRADLE_PLUGIN_PORTAL_BASE_URL,
+  JITPACK_BASE_URL,
+  MAVEN_CENTRAL_BASE_URL,
+  isAlternativeRegistry,
+  isJitpackNamespace,
+  resolveRegistryBaseUrl,
+  resolveRegistryPageUrl,
+  resolveRegistryPageUrlFromBase,
+} from './registry'
 
 const log = getServiceChildLogger('maven')
 
@@ -36,21 +47,14 @@ interface CriticalPackageResult {
   status: CriticalStatus
 }
 
+// prettier-ignore
 type MavenConfig = ReturnType<typeof getMavenConfig>
 type PackageRow = MavenPackageToSync
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mavenRegistryUrl(groupId: string, artifactId: string): string {
-  return `https://central.sonatype.com/artifact/${groupId}/${artifactId}`
-}
-
-async function writeRepoLink(
-  qx: QueryExecutor,
-  packageId: number,
-  repositoryUrl: string | null,
-  changed: Set<string>,
-): Promise<void> {
+// prettier-ignore
+export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>): Promise<void> {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
@@ -61,13 +65,14 @@ async function writeRepoLink(
     source: 'declared',
     confidence: 0.8,
   })
-  repoChanged.forEach((f) => changed.add(f))
+  repoChanged.forEach((f) => changed?.add(f))
 }
 
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
 // rows (e.g. maintainer 'hboutemy' across many org.apache packages, or the shared apache repo)
 // can form a lock cycle. Re-running the whole transaction resolves it — the upserts are idempotent.
-async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+// prettier-ignore
+export async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn()
@@ -87,6 +92,7 @@ async function withDeadlockRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Prom
 
 // ─── Non-critical: copy universe stats into packages ─────────────────────────
 
+// prettier-ignore
 async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Promise<void> {
   await upsertPackage(qx, {
     purl: pkg.purl,
@@ -95,7 +101,7 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
     name: pkg.name,
     description: null,
     homepage: null,
-    registryUrl: pkg.namespace ? mavenRegistryUrl(pkg.namespace, pkg.name) : null,
+    registryUrl: pkg.namespace ? resolveRegistryPageUrl(pkg.namespace, pkg.name) : null,
     declaredRepositoryUrl: null,
     repositoryUrl: null,
     licenses: null,
@@ -109,11 +115,8 @@ async function processNonCriticalPackage(qx: QueryExecutor, pkg: PackageRow): Pr
 
 // ─── Critical: full POM extraction ───────────────────────────────────────────
 
-async function processCriticalPackage(
-  qx: QueryExecutor,
-  pkg: PackageRow,
-  forceFullExtraction: boolean,
-): Promise<CriticalPackageResult> {
+// prettier-ignore
+async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceFullExtraction: boolean): Promise<CriticalPackageResult> {
   const groupId = pkg.namespace
   const artifactId = pkg.name
 
@@ -122,8 +125,51 @@ async function processCriticalPackage(
     return { status: 'skipped' }
   }
 
+  let baseUrl = resolveRegistryBaseUrl(groupId)
+
   // Phase 1: lightweight metadata fetch to get the current upstream version.
-  const metadata = await resolveVersionsList(groupId, artifactId)
+  let metadata = await resolveVersionsList(groupId, artifactId, baseUrl)
+
+  // If the primary (non-Central) registry returned NOT_FOUND, try Maven Central as a
+  // fallback. This handles artifacts that share a namespace with non-Central packages but
+  // are themselves published on Central — e.g. com.google.firebase:firebase-admin is the
+  // server-side Java SDK on Central, while most com.google.firebase artifacts are Android
+  // SDKs on Google Maven.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isAlternativeRegistry(groupId)) {
+    const centralUrl = process.env.MAVEN_FETCHER_BASE_URL ?? MAVEN_CENTRAL_BASE_URL
+    const centralMetadata = await resolveVersionsList(groupId, artifactId, centralUrl)
+    if (!isMavenFetchError(centralMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary registry — resolved via Maven Central fallback')
+      baseUrl = centralUrl
+      metadata = centralMetadata
+    }
+  }
+
+  // Second fallback: JitPack for io.github.* / com.github.* packages not found on
+  // Maven Central. These namespaces are also used by well-known Central artifacts
+  // (e.g. resilience4j, caffeine), so Central is tried first; JitPack is the fallback
+  // for packages that genuinely live only on JitPack.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && isJitpackNamespace(groupId)) {
+    const jitpackMetadata = await resolveVersionsList(groupId, artifactId, JITPACK_BASE_URL)
+    if (!isMavenFetchError(jitpackMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found on Maven Central — resolved via JitPack fallback')
+      baseUrl = JITPACK_BASE_URL
+      metadata = jitpackMetadata
+    }
+  }
+
+  // Third fallback: Gradle Plugin Portal. Plugins can be published under any groupId
+  // (not just gradle.plugin.*), so this is worth trying for all NOT_FOUND packages.
+  // Skip when GPP is already the primary registry (gradle.plugin.*) to avoid a
+  // redundant second call to the same URL.
+  if (isMavenFetchError(metadata) && metadata.kind === 'NOT_FOUND' && baseUrl !== GRADLE_PLUGIN_PORTAL_BASE_URL) {
+    const gradlePortalMetadata = await resolveVersionsList(groupId, artifactId, GRADLE_PLUGIN_PORTAL_BASE_URL)
+    if (!isMavenFetchError(gradlePortalMetadata)) {
+      log.info({ groupId, artifactId }, 'Not found in primary/Central — resolved via Gradle Plugin Portal fallback')
+      baseUrl = GRADLE_PLUGIN_PORTAL_BASE_URL
+      metadata = gradlePortalMetadata
+    }
+  }
 
   if (isMavenFetchError(metadata)) {
     if (metadata.kind === 'NOT_FOUND') {
@@ -134,7 +180,7 @@ async function processCriticalPackage(
         name: artifactId,
         description: null,
         homepage: null,
-        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: null,
         repositoryUrl: null,
         licenses: null,
@@ -144,7 +190,7 @@ async function processCriticalPackage(
         dependentPackagesCount: pkg.dependentPackagesCount,
         dependentReposCount: pkg.dependentReposCount,
       })
-      log.warn({ groupId, artifactId }, 'Not on Maven Central — writing minimal record')
+      log.warn({ groupId, artifactId, baseUrl }, 'Not found in registry — writing minimal record')
       return { status: 'skipped' }
     }
     if (metadata.kind === 'RATE_LIMIT') {
@@ -169,7 +215,7 @@ async function processCriticalPackage(
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -195,7 +241,7 @@ async function processCriticalPackage(
 
   // Phase 3: full POM extraction with parent-chain resolution — wrapped in a
   // transaction so partial writes never leave the package in an inconsistent state.
-  const result = await extractArtifact(groupId, artifactId, version)
+  const result = await extractArtifact(groupId, artifactId, version, baseUrl)
 
   if (result.error) {
     log.warn({ groupId, artifactId, version, error: result.error }, 'POM extraction failed')
@@ -206,7 +252,7 @@ async function processCriticalPackage(
       name: artifactId,
       description: null,
       homepage: null,
-      registryUrl: mavenRegistryUrl(groupId, artifactId),
+      registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
       declaredRepositoryUrl: null,
       repositoryUrl: null,
       licenses: null,
@@ -222,7 +268,7 @@ async function processCriticalPackage(
   const repositoryUrl = normalizeScmUrl(result.scmUrl)
 
   await withDeadlockRetry(() =>
-    qx.tx(async (t) => {
+    qx.tx(async (t: QueryExecutor) => {
       const changed = new Set<string>()
 
       const { id: packageId, changedFields: pkgChanged } = await upsertPackage(t, {
@@ -232,7 +278,7 @@ async function processCriticalPackage(
         name: artifactId,
         description: result.description,
         homepage: result.homepageUrl,
-        registryUrl: mavenRegistryUrl(groupId, artifactId),
+        registryUrl: resolveRegistryPageUrlFromBase(groupId, artifactId, baseUrl),
         declaredRepositoryUrl: result.scmUrl,
         repositoryUrl,
         licenses: result.licenses.length > 0 ? result.licenses : null,
@@ -317,12 +363,8 @@ async function processCriticalPackage(
 
 // ─── Batch processing ─────────────────────────────────────────────────────────
 
-export async function processBatch(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isCritical: boolean,
-  forceFullExtraction: boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+export async function processBatch(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const batchSize = isCritical ? config.batchSize : config.nonCriticalBatchSize
   const refreshDays = config.refreshDays
 
@@ -332,13 +374,8 @@ export async function processBatch(
 }
 
 // Runs a concrete list of packages through the enrichment pipeline.
-async function processPackages(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  packages: PackageRow[],
-  isCritical: boolean,
-  forceFullExtraction: boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+async function processPackages(qx: QueryExecutor, config: MavenConfig, packages: PackageRow[], isCritical: boolean, forceFullExtraction: boolean): Promise<BatchResult> {
   const concurrency = isCritical ? config.concurrency : config.nonCriticalConcurrency
 
   if (packages.length === 0) return { processed: 0, skipped: 0, error: 0, unchanged: 0 }
@@ -401,12 +438,8 @@ async function processPackages(
 
 // ─── Phase runner ─────────────────────────────────────────────────────────────
 
-async function runPhase(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isCritical: boolean,
-  isShuttingDown: () => boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+async function runPhase(qx: QueryExecutor, config: MavenConfig, isCritical: boolean, isShuttingDown: () => boolean): Promise<BatchResult> {
   const label = isCritical ? 'critical' : 'non-critical'
   const total: BatchResult = {
     processed: 0,
@@ -461,10 +494,67 @@ async function runPhase(
  * triggered manually (e.g. `pnpm backfill:maven` execed into the packages-worker
  * container).
  */
-export async function runMavenCriticalBackfill(
-  qx: QueryExecutor,
-  config: MavenConfig,
-  isShuttingDown: () => boolean,
-): Promise<BatchResult> {
+// prettier-ignore
+export async function runMavenCriticalBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
   return runPhase(qx, config, true, isShuttingDown)
+}
+
+/**
+ * Force full-refresh backfill: re-runs POM extraction over EVERY critical Maven
+ * row, ignoring the staleness window. Unlike runMavenCriticalBackfill (which
+ * drains listMavenPackagesToSync by predicate and cannot terminate with
+ * refreshDays=0 — the freshly-synced top rows re-qualify every batch), this pages
+ * strictly by `id > afterId`, so each row is processed exactly once and the scan
+ * always terminates. Every page runs with forceFullExtraction=true.
+ *
+ * Trade-off vs. the normal path: rows are visited in id order, not
+ * dependent_count order, so if interrupted the most-depended-on packages are not
+ * guaranteed to be done first. Restart re-scans from id 0 (idempotent upserts).
+ */
+// prettier-ignore
+export async function runMavenCriticalForceBackfill(qx: QueryExecutor, config: MavenConfig, isShuttingDown: () => boolean): Promise<BatchResult> {
+  const total: BatchResult = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
+  const startedAt = Date.now()
+  // Cursor kept as a string: id is a Postgres bigint, and Number() coercion would
+  // silently lose precision above 2^53, corrupting the cursor and skipping rows.
+  let afterId = '0'
+  let batchNum = 0
+
+  log.info('Force full-refresh started (all critical rows, keyset by id, ignoring refreshDays)')
+
+  while (!isShuttingDown()) {
+    const page = await listMavenCriticalPackagesById(qx, { afterId, limit: config.batchSize })
+    if (page.length === 0) break
+
+    // Capture the cursor before processPackages reorders the page in place (it
+    // clusters by namespace for the parent-POM cache). Rows come back id-ordered,
+    // so the max id is the last element — kept as a string to preserve bigint precision.
+    afterId = page[page.length - 1].id
+
+    const result = await processPackages(qx, config, page, true, true)
+    batchNum++
+    total.processed += result.processed
+    total.skipped += result.skipped
+    total.error += result.error
+    total.unchanged += result.unchanged
+
+    log.info(
+      {
+        batch: batchNum,
+        afterId,
+        totalProcessed: total.processed,
+        totalSkipped: total.skipped,
+        totalUnchanged: total.unchanged,
+        totalErrors: total.error,
+        elapsedSec: Math.round((Date.now() - startedAt) / 1000),
+      },
+      'Force batch done',
+    )
+  }
+
+  log.info(
+    { ...total, durationSec: Math.round((Date.now() - startedAt) / 1000) },
+    'Force full-refresh complete',
+  )
+  return total
 }

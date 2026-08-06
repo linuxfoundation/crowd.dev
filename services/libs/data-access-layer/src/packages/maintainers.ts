@@ -1,16 +1,17 @@
 import { QueryExecutor } from '../queryExecutor'
 
-export interface NpmMaintainerInput {
+export interface PackageMaintainerInput {
   username: string
   displayName: string | null
   email: string | null
   role: 'author' | 'maintainer'
 }
 
-export async function upsertNpmMaintainers(
+export async function upsertPackageMaintainers(
   qx: QueryExecutor,
   packageId: string,
-  maintainers: NpmMaintainerInput[],
+  maintainers: PackageMaintainerInput[],
+  ecosystem = 'npm',
 ): Promise<string[]> {
   const changed = new Set<string>()
 
@@ -21,11 +22,11 @@ export async function upsertNpmMaintainers(
   for (const m of ordered) {
     const row: { changed_fields: string[] } = await qx.selectOne(
       `WITH old AS (
-         SELECT display_name, email FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
+         SELECT display_name, email FROM maintainers WHERE ecosystem = $(ecosystem) AND username = $(username)
        ),
        ins AS (
          INSERT INTO maintainers (ecosystem, username, display_name, email, created_at, updated_at)
-         VALUES ('npm', $(username), $(displayName), $(email), NOW(), NOW())
+         VALUES ($(ecosystem), $(username), $(displayName), $(email), NOW(), NOW())
          ON CONFLICT (ecosystem, username) DO UPDATE SET
            display_name = COALESCE(EXCLUDED.display_name, maintainers.display_name),
            email        = COALESCE(EXCLUDED.email, maintainers.email),
@@ -37,7 +38,7 @@ export async function upsertNpmMaintainers(
          CASE WHEN o.email        IS DISTINCT FROM ins.email        THEN 'maintainers.email' END
        ], NULL) AS changed_fields
        FROM ins LEFT JOIN old o ON true`,
-      { username: m.username, displayName: m.displayName, email: m.email },
+      { ecosystem, username: m.username, displayName: m.displayName, email: m.email },
     )
     row.changed_fields.forEach((f) => changed.add(f))
   }
@@ -57,10 +58,10 @@ export async function upsertNpmMaintainers(
   for (const m of ordered) {
     const row: { maintainer_id: string } | null = await qx.selectOneOrNone(
       `INSERT INTO package_maintainers (package_id, maintainer_id, role, created_at, updated_at)
-       SELECT $(packageId)::bigint, id, $(role), NOW(), NOW() FROM maintainers WHERE ecosystem = 'npm' AND username = $(username)
+       SELECT $(packageId)::bigint, id, $(role), NOW(), NOW() FROM maintainers WHERE ecosystem = $(ecosystem) AND username = $(username)
        ON CONFLICT (package_id, maintainer_id) DO UPDATE SET role = EXCLUDED.role, updated_at = EXCLUDED.updated_at
        RETURNING maintainer_id::text AS maintainer_id`,
-      { packageId, role: m.role, username: m.username },
+      { packageId, role: m.role, username: m.username, ecosystem },
     )
     if (row) afterMap.set(row.maintainer_id, m.role)
   }

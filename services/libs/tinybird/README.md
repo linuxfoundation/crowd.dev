@@ -32,7 +32,7 @@ See [dataflow](./dataflow.md) for a visual diagram showing how data flows from C
 We use **two parallel architectures** to process activityRelations data:
 
 ### Lambda Architecture 
-1) Deduplicates activityRelations without any filtering. Mainly consumed in CDP, and monitoring pipes. Output: `activityRelations_enriched_deduplicated_ds` 
+1) Deduplicates activityRelations without any filtering. Mainly consumed in CDP, and monitoring pipes. Output: `activityRelations_enriched_deduplicated_bucket_0-2_ds`, queried via `activityRelations_enriched_deduplicated_bucket_union` 
 
 2) Used for ingesting pull request event data and merging with existing events. Output: `pull_requests_analyzed`
 
@@ -59,20 +59,20 @@ The following table compares the two parallel architectures processing activityR
 | Aspect | Lambda Architecture | Bucketing Architecture |
 |--------|---------------------|------------------------|
 | **Primary Use Case** | Pull requests, CDP, monitoring, member management | Insights API queries |
-| **Output Datasource** | pull_requests_analyzed, activityRelations_enriched_deduplicated_ds  | activityRelations_deduplicated_cleaned_bucket_0-9_ds |
+| **Output Datasource** | pull_requests_analyzed, activityRelations_enriched_deduplicated_bucket_0-2_ds  | activityRelations_deduplicated_cleaned_bucket_0-9_ds |
 | **Data Filtering** | UNFILTERED (includes bots, all repos) | FILTERED (valid members, enabled repos) |
-| **Partitioning Strategy** | Single datasource, snapshot-based | 10 parallel buckets, hash-based |
-| **Copy Mode** | Append (creates new snapshots) | Replace (hourly full refresh) |
-| **Query Pattern** | Filter by max(snapshotId) | Union all buckets or route to specific bucket |
-| **TTL** | 6 hours (keeps ~6 snapshots) | No TTL on buckets (replace mode) |
-| **Scalability** | Vertical (single large datasource) | Horizontal (add more buckets) |
+| **Partitioning Strategy** | 3 parallel buckets, hash-based | 10 parallel buckets, hash-based |
+| **Copy Mode** | Replace (daily per-bucket incremental merge) | Replace (hourly full refresh) |
+| **Query Pattern** | Union all buckets (no snapshot filter) | Union all buckets or route to specific bucket |
+| **TTL** | No TTL on buckets (replace mode) | No TTL on buckets (replace mode) |
+| **Scalability** | Horizontal (add more buckets) | Horizontal (add more buckets) |
 | **Dependencies** | Single-table triggers work well | Multi-table dependencies (members, repos) |
 
 **Which activityRelations output to use:**
 
 - Use Bucketing Architecture output (`activityRelations_deduplicated_cleaned_bucket_*_ds`) for: Insights API, project-specific analytics, filtered queries - since each bucket contains a subset of project data, main use-case is project-specific widgets
 
-- **Use Lambda Architecture output** (`activityRelations_enriched_deduplicated_ds`) for: CDP operations, monitoring, any use case requiring complete unfiltered data, where we can not use the buckets
+- **Use Lambda Architecture output** (`activityRelations_enriched_deduplicated_bucket_union`) for: CDP operations, monitoring, any use case requiring complete unfiltered data, where we can not use the filtered buckets
 
 ## Making changes to resources
 1. Install the **tb client** for classic tinybird

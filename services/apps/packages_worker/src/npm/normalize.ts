@@ -13,27 +13,6 @@ export function parseNpmName(raw: string): { namespace: string | null; name: str
   return { namespace: null, name: raw }
 }
 
-// Postgres text columns cannot store NUL (U+0000); npm packuments occasionally
-// carry them (e.g. mojibake descriptions). Strip them in place from every string
-// in the packument before persisting — otherwise the inlined value breaks the
-// PostgreSQL wire protocol ("invalid message format").
-export function stripNullBytesDeep<T>(value: T): T {
-  if (typeof value === 'string') {
-    // eslint-disable-next-line no-control-regex
-    return value.replace(/\u0000/g, '') as T
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) value[i] = stripNullBytesDeep(value[i])
-    return value
-  }
-  if (value !== null && typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    for (const k of Object.keys(obj)) obj[k] = stripNullBytesDeep(obj[k])
-    return value
-  }
-  return value
-}
-
 export function normalizeLicenses(packument: Packument): string[] {
   const rawArr = packument.licenses
   if (rawArr && Array.isArray(rawArr)) {

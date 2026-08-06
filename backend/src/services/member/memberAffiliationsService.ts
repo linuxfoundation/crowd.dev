@@ -20,7 +20,7 @@ import {
 
 import MemberAffiliationsRepository from '@/database/repositories/member/memberAffiliationsRepository'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { getOverlappingEmailDomainMemberOrganizations } from '@/utils/mapper'
+import { getOverlappingGroupedMemberOrganizations } from '@/utils/mapper'
 
 import { IServiceOptions } from '../IServiceOptions'
 
@@ -113,13 +113,13 @@ export default class MemberAffiliationsService extends LoggerBase {
     const memberOrgs = await fetchMemberOrganizations(qx, data.memberId)
     const memberOrg = memberOrgs.find((mo) => mo.id === data.memberOrganizationId)
 
-    const overlappingEmailDomainRows = memberOrg
-      ? getOverlappingEmailDomainMemberOrganizations(memberOrgs, memberOrg)
+    const overlappingGroupedRows = memberOrg
+      ? getOverlappingGroupedMemberOrganizations(memberOrgs, memberOrg)
       : []
 
     const memberOrgIds = [
       data.memberOrganizationId,
-      ...overlappingEmailDomainRows.flatMap((row) => (row.id ? [row.id] : [])),
+      ...overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : [])),
     ]
 
     // Apply the override to hidden grouped rows so the merged work experience has one decision

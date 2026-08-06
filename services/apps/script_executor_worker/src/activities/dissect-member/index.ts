@@ -30,6 +30,17 @@ export async function findMemberMergeActions(
   return mergeActions
 }
 
+export async function findMergeActionUnmergeBackup(
+  mergeActionId: string,
+): Promise<IMergeAction['unmergeBackup'] | null> {
+  try {
+    const mergeActionRepo = new MergeActionRepository(svc.postgres.reader.connection(), svc.log)
+    return await mergeActionRepo.findMergeActionUnmergeBackup(mergeActionId)
+  } catch (err) {
+    throw new Error(err)
+  }
+}
+
 export async function findMemberIdentitiesGroupedByPlatform(
   memberId: string,
 ): Promise<IFindMemberIdentitiesGroupedByPlatformResult[]> {
