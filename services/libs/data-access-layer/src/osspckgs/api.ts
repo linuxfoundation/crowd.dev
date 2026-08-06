@@ -340,7 +340,7 @@ export async function getPackageStatusCounts(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, pr.repo_id DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true
     ${where}
@@ -521,7 +521,7 @@ export async function listPackagesForApi(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, pr.repo_id DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true`
 
@@ -976,7 +976,7 @@ export async function listPackagesForScatter(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC, pr.repo_id DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
