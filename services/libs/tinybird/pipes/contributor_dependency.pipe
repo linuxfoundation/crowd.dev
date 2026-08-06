@@ -3,9 +3,14 @@ DESCRIPTION >
     - Identifies contributors whose combined contributions reach or exceed 51% of total project activity (bus factor analysis).
     - Uses running total calculation to find the minimum set of contributors representing majority contribution share.
     - Combines data from `contributors_leaderboard` and `active_contributors` to provide dependency risk assessment.
-    - Primary use case: measuring project sustainability and identifying key contributor dependencies for risk management.
+    - Scopes to either a single project or every project in a collection - exactly one of `project`/`collectionSlug`
+    must be provided, inherited transitively from `contributors_leaderboard`/`active_contributors`'s own
+    `collectionSlug` branch. Callers doing bus-factor analysis should pass `limit=100` explicitly (same
+    convention regardless of scope) to reliably reach the 51% cutoff.
+    - Primary use case: measuring project (or collection) sustainability and identifying key contributor dependencies for risk management.
     - Parameters:
-    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow') - inherited from `contributors_leaderboard`
+    - `project`: Project slug (e.g., 'k8s', 'tensorflow') - inherited from `contributors_leaderboard`. Required unless `collectionSlug` is given.
+    - `collectionSlug`: Collection slug (e.g., 'cncf') - inherited from `contributors_leaderboard`. Required unless `project` is given.
     - `repos`: Optional array of repository URLs for filtering (inherited from `contributors_leaderboard`)
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -14,6 +19,7 @@ DESCRIPTION >
     - `activity_type`: Optional string filter for single activity type (e.g., 'authored-commit')
     - `activity_types`: Optional array of activity types (e.g., ['authored-commit', 'co-authored-commit'])
     - `onlyContributions`: Optional boolean, defaults to 1 (contributions only), set to 0 for all activities
+    - `limit`: Optional integer for the number of top contributors to rank before finding the 51% cutoff. Inherited from `contributors_leaderboard` (default 10 if omitted) - pass 100 explicitly for bus-factor analysis.
     - Response: `id`, `displayName`, `githubHandleArray`, `contributionCount`, `contributionPercentage`, `roles`, `contributionPercentageRunningTotal`, `totalContributorCount`
 
 NODE contributions_percentage_running_total

@@ -1,0 +1,21 @@
+DESCRIPTION >
+    Unions the 3 unfiltered enriched activityRelations buckets. This replaces direct reads of
+    activityRelations_enriched_deduplicated_ds. Do NOT filter by max(snapshotId) here or in
+    consumers: each bucket holds exactly one snapshot (replace-mode copies), and buckets may
+    legitimately sit on different snapshot days after a partial failure — a global max filter
+    would silently drop lagging buckets.
+    Also: never run a bare count() over this union — it cannot use the trivial-count
+    optimization and times out. For whole-table counts, count() per bucket datasource and
+    sum the results (see monitoring_entities for the pattern). Filtered/column-reading
+    queries push down into each bucket normally and perform fine.
+
+NODE activityRelations_enriched_deduplicated_BUCKET_UNION_0
+SQL >
+    SELECT *
+    FROM activityRelations_enriched_deduplicated_bucket_0_ds
+    UNION ALL
+    SELECT *
+    FROM activityRelations_enriched_deduplicated_bucket_1_ds
+    UNION ALL
+    SELECT *
+    FROM activityRelations_enriched_deduplicated_bucket_2_ds

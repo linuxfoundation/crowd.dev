@@ -18,7 +18,10 @@ SQL >
 
 NODE ossPackages_enriched_pkg_repo
 SQL >
-    SELECT packageId, argMax(repoId, (toFloat64OrZero(confidence), verifiedAt)) AS repoId, 1 AS hasRepo
+    SELECT
+        packageId,
+        argMax(repoId, (toFloat64OrZero(confidence), verifiedAt, repoId)) AS repoId,
+        1 AS hasRepo
     FROM packageRepos FINAL
     GROUP BY packageId
 
@@ -70,11 +73,12 @@ SQL >
     SELECT
         packageId,
         max(publishedAt) AS maxPublished,
-        arrayElement(
-            arraySort(x -> (- toUnixTimestamp(x)), groupArray(publishedAt)), 2
-        ) AS secondPublished
+        arrayElement(arrayReverseSort(groupArray(publishedAt)), 2) AS secondPublished
     FROM versions FINAL
-    WHERE isNotNull(publishedAt)
+    WHERE
+        isNotNull(publishedAt)
+        AND publishedAt >= toDateTime64('1970-01-01 00:00:00', 3)
+        AND publishedAt < now() + INTERVAL 1 DAY
     GROUP BY packageId
 
 NODE ossPackages_enriched_open_vulns
@@ -92,7 +96,8 @@ SQL >
     FROM ossPackages_enriched_packages AS p
     INNER JOIN advisoryPackages AS ap FINAL ON ap.packageId = p.id
     INNER JOIN advisories AS a FINAL ON a.id = ap.advisoryId
-    INNER JOIN advisoryAffectedRanges AS aar FINAL ON aar.advisoryPackageId = ap.id
+    INNER JOIN
+        advisoryAffectedRanges AS aar FINAL ON aar.advisoryPackageId = ap.id AND aar.deletedAt IS NULL
     LEFT JOIN
         (SELECT packageId, number, publishedAt AS introducedAt FROM versions FINAL) AS vi
         ON vi.packageId = p.id

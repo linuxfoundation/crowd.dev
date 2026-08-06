@@ -3,11 +3,7 @@ import { ApplicationFailure, log, proxyActivities, rootCause } from '@temporalio
 import type { ITriggerBlastRadiusAnalysis } from '@crowd/types'
 
 import type * as activities from './activities'
-import { buildEcosystemNotSupportedFailure } from './ecosystemSupport'
-
-// Reachability analysis only exists for npm today — every other ecosystem still
-// fails fast with a non-retryable failure (see ecosystemSupport.ts).
-const SUPPORTED_ECOSYSTEMS = ['npm']
+import { SUPPORTED_ECOSYSTEMS, buildEcosystemNotSupportedFailure } from './ecosystemSupport'
 
 const { blastRadiusStart, blastRadiusFail } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
@@ -22,8 +18,13 @@ const { blastRadiusIntel } = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 2 },
 })
 
+// Load-tested at SCAN_CONCURRENCY=8: avg 27:18 at 8 concurrent jobs, up to 33:31 at
+// 20 — 15 minutes routinely timed out mid-scan, and the scan has no cancellation
+// awareness, so the timed-out attempt kept running as a zombie while the retry
+// started a duplicate scan of the same analysis. Raised well past the observed
+// worst case; the scan itself is now cancellation-aware too (see dependentsScan.ts).
 const { blastRadiusDependents } = proxyActivities<typeof activities>({
-  startToCloseTimeout: '15 minutes',
+  startToCloseTimeout: '45 minutes',
   heartbeatTimeout: '3 minutes',
   retry: { maximumAttempts: 2 },
 })
@@ -36,6 +37,9 @@ const { blastRadiusReachability } = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 2 },
 })
 
+// No heartbeatTimeout — runReportStage doesn't heartbeat until after it completes
+// (see activities.ts), so any run taking over a minute would otherwise always
+// heartbeat-timeout and retry before its first heartbeat.
 const { blastRadiusReport } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
   retry: { maximumAttempts: 3 },
@@ -48,7 +52,7 @@ const { blastRadiusReport } = proxyActivities<typeof activities>({
 export async function analyzeBlastRadius(input: ITriggerBlastRadiusAnalysis): Promise<void> {
   log.info('analyzeBlastRadius received', { ...input })
 
-  if (!SUPPORTED_ECOSYSTEMS.includes(input.ecosystem)) {
+  if (!(SUPPORTED_ECOSYSTEMS as readonly string[]).includes(input.ecosystem)) {
     throw buildEcosystemNotSupportedFailure(input.ecosystem)
   }
 
@@ -62,11 +66,32 @@ export async function analyzeBlastRadius(input: ITriggerBlastRadiusAnalysis): Pr
     })
 
     await blastRadiusIntel({ analysisId: input.analysisId, advisoryOsvId: input.advisoryId })
+    if (input.stopAfterStage === 'intel') {
+      log.info('analyzeBlastRadius stopped after intel (stopAfterStage)', {
+        analysisId: input.analysisId,
+      })
+      return
+    }
+
     await blastRadiusDependents({ analysisId: input.analysisId, advisoryOsvId: input.advisoryId })
+    if (input.stopAfterStage === 'dependents') {
+      log.info('analyzeBlastRadius stopped after dependents (stopAfterStage)', {
+        analysisId: input.analysisId,
+      })
+      return
+    }
+
     await blastRadiusReachability({
       analysisId: input.analysisId,
       advisoryOsvId: input.advisoryId,
     })
+    if (input.stopAfterStage === 'reachability') {
+      log.info('analyzeBlastRadius stopped after reachability (stopAfterStage)', {
+        analysisId: input.analysisId,
+      })
+      return
+    }
+
     await blastRadiusReport({ analysisId: input.analysisId, advisoryOsvId: input.advisoryId })
   } catch (err) {
     // rootCause unwraps Temporal's ActivityFailure wrapper (whose own .message is a

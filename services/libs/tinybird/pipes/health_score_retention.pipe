@@ -128,7 +128,7 @@ SQL >
             0
         ) AS retentionRate
     FROM health_score_retention_current_quarter AS cur
-    LEFT JOIN health_score_retention_previous_quarter AS prev USING (segmentId)
+    LEFT JOIN health_score_retention_previous_quarter AS prev ON cur.segmentId = prev.segmentId
 
 NODE health_score_retention_benchmark
 SQL >

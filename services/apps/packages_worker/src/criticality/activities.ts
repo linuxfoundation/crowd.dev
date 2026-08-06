@@ -1,6 +1,6 @@
 import { Context } from '@temporalio/activity'
 
-import { createIngestJob, markJobStatus } from '@crowd/data-access-layer'
+import { createIngestJob, findPendingJobByKind, markJobStatus } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getPackagesDb } from '../db'
@@ -70,13 +70,9 @@ export async function rankPackages(): Promise<{ scoredRows: number; rankedRows: 
 
   // On retry, a pending row from the prior attempt may already exist — reuse it.
   // Do NOT reuse a done row: it belongs to a previous bootstrap run and ranking must re-execute.
-  const existing = await qx.selectOneOrNone(
-    `SELECT id FROM osspckgs_ingest_jobs
-     WHERE job_kind = 'ranking' AND status = 'pending'
-     ORDER BY id DESC LIMIT 1`,
-  )
-
-  const jobId = existing?.id ?? (await createIngestJob(qx, 'ranking', 'ranking', null))
+  const jobId =
+    (await findPendingJobByKind(qx, 'ranking')) ??
+    (await createIngestJob(qx, 'ranking', 'ranking', null))
   try {
     await markJobStatus(qx, jobId, 'merging')
     const [result] = await qx.select(`SELECT * FROM rank_packages()`)

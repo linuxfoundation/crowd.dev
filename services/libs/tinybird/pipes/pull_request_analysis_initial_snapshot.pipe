@@ -17,12 +17,9 @@ SQL >
         organizationId,
         platform,
         updatedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND (
-            type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created'
-        )
+        (type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created')
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
@@ -40,10 +37,9 @@ NODE pull_request_first_assigned
 SQL >
     %
     SELECT sourceParentId, argMin(updatedAt, timestamp) AS updatedAt, min(timestamp) AS assignedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND type IN ('pull_request-assigned', 'merge_request-assigned')
+        type IN ('pull_request-assigned', 'merge_request-assigned')
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
@@ -64,10 +60,9 @@ SQL >
     %
     SELECT
         sourceParentId, argMin(updatedAt, timestamp) AS updatedAt, MIN(timestamp) AS reviewRequestedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND (type = 'pull_request-review-requested' OR type = 'merge_request-review-requested')
+        (type = 'pull_request-review-requested' OR type = 'merge_request-review-requested')
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
@@ -91,10 +86,9 @@ SQL >
         ) AS sourceParentId,
         argMin(updatedAt, timestamp) AS updatedAt,
         MIN(timestamp) AS reviewedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND sourceParentId <> ''
+        sourceParentId <> ''
         and (
             type = 'pull_request-reviewed'
             OR type = 'merge_request-review-changes-requested'
@@ -124,10 +118,9 @@ SQL >
         ) AS sourceParentId,
         argMin(updatedAt, timestamp) AS updatedAt,
         MIN(timestamp) AS approvedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND (
+        (
             (type = 'pull_request-reviewed' and pullRequestReviewState = 'APPROVED')
             OR type = 'merge_request-review-approved'
             OR type = 'patchset_approval-created'
@@ -153,10 +146,9 @@ SQL >
         if(type = 'changeset-abandoned', sourceId, sourceParentId) AS sourceParentId,
         argMin(updatedAt, timestamp) AS updatedAt,
         MIN(timestamp) AS closedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND (
+        (
             type = 'pull_request-closed'
             OR type = 'merge_request-closed'
             OR type = 'changeset-closed'
@@ -186,10 +178,9 @@ SQL >
         if(type = 'changeset-merged', sourceId, sourceParentId) AS sourceParentId,
         argMin(updatedAt, timestamp) AS updatedAt,
         MIN(timestamp) AS mergedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND (type = 'pull_request-merged' OR type = 'merge_request-merged' OR type = 'changeset-merged')
+        (type = 'pull_request-merged' OR type = 'merge_request-merged' OR type = 'changeset-merged')
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
@@ -213,10 +204,9 @@ SQL >
         ) AS sourceParentId,
         argMin(updatedAt, timestamp) AS updatedAt,
         MIN(timestamp) AS resolvedAt
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND (
+        (
             type = 'pull_request-closed'
             OR type = 'pull_request-merged'
             OR type = 'merge_request-closed'
@@ -246,11 +236,9 @@ DESCRIPTION >
 SQL >
     %
     SELECT sourceParentId, toInt64(COUNT(*)) AS numberOfPatchsets
-    FROM activityRelations_enriched_deduplicated_ds
+    FROM activityRelations_enriched_deduplicated_bucket_union
     WHERE
-        snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-        AND type = 'patchset-created'
-        AND sourceParentId != ''
+        type = 'patchset-created' AND sourceParentId != ''
         {% if defined(bucket_id) %}
             AND cityHash64(segmentId)
             % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}

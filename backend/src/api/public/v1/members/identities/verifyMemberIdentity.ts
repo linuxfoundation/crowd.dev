@@ -17,11 +17,11 @@ import {
   MemberField,
   deleteMemberIdentity,
   findMemberById,
+  findMemberIdByVerifiedIdentity,
   findMemberIdentityById,
   queryActivityRelations,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
-import { SlackChannel, SlackPersona, sendSlackNotification } from '@crowd/slack'
 import {
   IMemberIdentity,
   IMemberUnmergePreviewResult,
@@ -31,7 +31,7 @@ import {
 
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { noContent, ok } from '@/utils/api'
-import { rethrowDbConflict } from '@/utils/err'
+import { isMemberIdentityDbConflict, rethrowDbConflict } from '@/utils/err'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -93,9 +93,21 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
             verifiedBy,
           })
         } catch (error) {
-          if (verified) {
-            const ctx = { platform: identity.platform, value: identity.value, type: identity.type }
-            rethrowDbConflict(error, ctx)
+          if (verified && isMemberIdentityDbConflict(error)) {
+            const conflictMemberId = await findMemberIdByVerifiedIdentity(
+              qx,
+              identity.platform,
+              identity.value,
+              identity.type,
+            )
+
+            rethrowDbConflict(error, {
+              memberId,
+              ...(conflictMemberId ? { conflictMemberId } : {}),
+              platform: identity.platform,
+              value: identity.value,
+              type: identity.type,
+            })
           }
 
           throw error
@@ -137,26 +149,16 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
   if (unmerge) {
     const { preview, result } = unmerge
 
-    try {
-      await captureApiChange(
-        req,
-        memberUnmergeAction(memberId, async (captureOldState, captureNewState) => {
-          captureOldState({ primary: preview.primary })
-          captureNewState({
-            primary: result.primary,
-            secondary: result.secondary,
-          })
-        }),
-      )
-    } catch (error) {
-      req.log.warn({ error }, 'Audit log capture failed after identity unmerge')
-      sendSlackNotification(
-        SlackChannel.CDP_ALERTS,
-        SlackPersona.ERROR_REPORTER,
-        `Audit log capture failed after identity unmerge: member ${memberId}`,
-        [{ title: 'Error', text: `\`${error?.message || error}\`` }],
-      )
-    }
+    await captureApiChange(
+      req,
+      memberUnmergeAction(memberId, async (captureOldState, captureNewState) => {
+        captureOldState({ primary: preview.primary })
+        captureNewState({
+          primary: result.primary,
+          secondary: result.secondary,
+        })
+      }),
+    )
 
     try {
       await invalidateMemberQueryCache(req.redis, [result.primary.id, result.secondary.id], true)
@@ -174,19 +176,8 @@ export async function verifyMemberIdentity(req: Request, res: Response): Promise
         actorId: req.actor.id,
       })
     } catch (error) {
-      req.log.warn({ error }, 'Failed to start unmerge workflow after identity unmerge')
-      sendSlackNotification(
-        SlackChannel.CDP_ALERTS,
-        SlackPersona.ERROR_REPORTER,
-        `Failed to start unmerge workflow after identity unmerge: member ${memberId}`,
-        [
-          {
-            title: 'Context',
-            text: `*Primary:* \`${result.primary.id}\`\n*Secondary:* \`${result.secondary.id}\``,
-          },
-          { title: 'Error', text: `\`${error?.message || error}\`` },
-        ],
-      )
+      req.log.error({ error }, 'Failed to start unmerge workflow')
+      throw error
     }
   }
 

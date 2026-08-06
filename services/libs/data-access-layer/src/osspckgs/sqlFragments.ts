@@ -24,7 +24,7 @@ export const BEST_REPO_LINK_JOIN = `LEFT JOIN LATERAL (
       SELECT pr2.repo_id, pr2.confidence
       FROM package_repos pr2
       WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
       LIMIT 1
     ) pr ON true
     LEFT JOIN repos r ON r.id = pr.repo_id`

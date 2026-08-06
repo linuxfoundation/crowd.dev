@@ -1,0 +1,71 @@
+# Base image for both stages
+FROM python:3.13.5-slim-bookworm AS base
+
+# Builder stage: install build dependencies, uv, and dependencies
+FROM base AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy uv binary from official image
+COPY --from=ghcr.io/astral-sh/uv:0.7.17 /uv /usr/local/bin/uv
+
+WORKDIR /usr/crowd/app
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PYTHON=python3.13 \
+    UV_PROJECT_ENVIRONMENT=/usr/crowd/app/.venv \
+    UV_VENV_PATH=/usr/crowd/app/.venv
+
+# Copy only lock, pyproject.toml and License for dependency install caching
+COPY ./services/apps/mailing_list_integration/pyproject.toml ./services/apps/mailing_list_integration/uv.lock ./LICENSE ./
+
+# Install dependencies excluding the project itself for better caching
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+
+# Copy full source code
+COPY ./services/apps/mailing_list_integration ./LICENSE ./
+
+# Sync full project including the project itself
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+
+# Runner: minimal image with runtime deps and virtualenv only
+FROM base AS runner
+
+# Install runtime dependencies, including public-inbox for mirroring lists
+# curl is required by public-inbox-clone itself (not pulled in via --no-install-recommends)
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    git \
+    public-inbox \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=off
+
+WORKDIR /usr/crowd/app
+
+# Copy virtual environment and app source from builder
+COPY --from=builder /usr/crowd/app/.venv /usr/crowd/app/.venv
+COPY --from=builder /usr/crowd/app /usr/crowd/app
+
+# Add virtual environment bin to PATH
+ENV PATH="/usr/crowd/app/.venv/bin:$PATH"
+
+# Make runner script executable
+RUN chmod +x ./src/runner.sh
+
+EXPOSE 8085
+
+CMD ["./src/runner.sh"]

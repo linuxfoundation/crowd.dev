@@ -4,6 +4,9 @@ import _ from 'lodash'
 
 import {
   generateUUIDv1,
+  getAttributeValue,
+  getCountry,
+  hasAttributeValue,
   hasIntersection,
   replaceDoubleQuotes,
   sanitizeMemberOrganizationDateRange,
@@ -45,6 +48,7 @@ import { refreshMaterializedView } from '@crowd/data-access-layer/src/utils'
 import { SearchSyncApiClient } from '@crowd/opensearch'
 import { RedisCache } from '@crowd/redis'
 import {
+  IAttributes,
   IEnrichableMember,
   IEnrichableMemberIdentityActivityAggregate,
   IMemberEnrichmentCache,
@@ -347,7 +351,7 @@ export async function updateMemberUsingSquashedPayload(
     }
 
     // process attributes
-    let attributes = existingMemberData.attributes as Record<string, unknown>
+    let attributes = existingMemberData.attributes as IAttributes
 
     if (squashedPayload.attributes) {
       svc.log.debug({ memberId }, 'Updating member attributes!')
@@ -355,8 +359,20 @@ export async function updateMemberUsingSquashedPayload(
       attributes = _.merge({}, attributes, squashedPayload.attributes)
 
       if (Object.keys(attributes).length > 0) {
+        // Infer country from location when no country source is set.
+        if (!hasAttributeValue(attributes.country)) {
+          const location = getAttributeValue(attributes.location)
+          const country = getCountry(location)
+          if (country) {
+            attributes.country = {
+              ...attributes.country,
+              system: country,
+            }
+          }
+        }
+
         const priorities = await getPriorityArray()
-        attributes = await setAttributesDefaultValues(attributes, priorities)
+        attributes = (await setAttributesDefaultValues(attributes, priorities)) as IAttributes
       }
       didUpdate = true
       await updateMemberAttributes(qx, memberId, attributes)

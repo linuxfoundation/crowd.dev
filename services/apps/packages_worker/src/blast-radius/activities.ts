@@ -1,4 +1,4 @@
-import { heartbeat } from '@temporalio/activity'
+import { Context, heartbeat } from '@temporalio/activity'
 
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getServiceChildLogger } from '@crowd/logging'
@@ -75,7 +75,10 @@ export async function blastRadiusIntel(input: BlastRadiusActivityInput): Promise
 export async function blastRadiusDependents(input: BlastRadiusActivityInput): Promise<void> {
   log.info({ analysisId: input.analysisId }, 'blast-radius: dependents stage starting')
   const qx = await getPackagesDb()
-  await runDependentsStage(qx, input.analysisId, heartbeat)
+  // Pass Temporal's own cancellation signal through to the scan so a timed-out or
+  // cancelled attempt actually stops its in-flight fetches instead of running on as
+  // a zombie in the background while a retry starts a duplicate scan of the same analysis.
+  await runDependentsStage(qx, input.analysisId, heartbeat, Context.current().cancellationSignal)
   log.info({ analysisId: input.analysisId }, 'blast-radius: dependents stage done')
 }
 

@@ -11,71 +11,142 @@ import { getAkritesExternalContactDetail } from '../packages/getAkritesExternalC
 import { getAkritesExternalContactDetailBatch } from '../packages/getAkritesExternalContactDetailBatch'
 import { getAkritesExternalPackageDetail } from '../packages/getAkritesExternalPackageDetail'
 import { getAkritesExternalPackageDetailBatch } from '../packages/getAkritesExternalPackageDetailBatch'
+import { getAkritesExternalProjectProfiling } from '../packages/getAkritesExternalProjectProfiling'
+import { getAkritesExternalProjectProfilingBatch } from '../packages/getAkritesExternalProjectProfilingBatch'
 import { getBlastRadiusJob } from '../packages/getBlastRadiusJob'
+import { getBlastRadiusJobBatch } from '../packages/getBlastRadiusJobBatch'
+import { ingestAkritesExternalContactDetail } from '../packages/ingestAkritesExternalContactDetail'
 import { submitBlastRadiusJob } from '../packages/submitBlastRadiusJob'
+import { submitBlastRadiusJobBatch } from '../packages/submitBlastRadiusJobBatch'
 
 const rateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
-// Blast-radius jobs kick off a Temporal workflow per request, so they get their own,
-// much stricter limiter — configurable via env so it can be tuned without a redeploy.
-// Defaults to 5 requests/hour.
-const blastRadiusRateLimitMax = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX)
-const blastRadiusRateLimitWindowMs = Number(process.env.AKRITES_BLAST_RADIUS_RATE_LIMIT_WINDOW_MS)
+// Shared by every endpoint below that kicks off a Temporal workflow per request — those
+// get their own, much stricter limiter than plain reads, configurable via env so it can
+// be tuned without a redeploy.
+function envTunableRateLimiter(envPrefix: string, defaultMax: number, defaultWindowMs: number) {
+  const max = Number(process.env[`${envPrefix}_MAX`])
+  const windowMs = Number(process.env[`${envPrefix}_WINDOW_MS`])
+  return createRateLimiter({
+    max: Number.isSafeInteger(max) && max > 0 ? max : defaultMax,
+    windowMs: Number.isSafeInteger(windowMs) && windowMs > 0 ? windowMs : defaultWindowMs,
+  })
+}
 
-const blastRadiusRateLimiter = createRateLimiter({
-  max:
-    Number.isSafeInteger(blastRadiusRateLimitMax) && blastRadiusRateLimitMax > 0
-      ? blastRadiusRateLimitMax
-      : 5,
-  windowMs:
-    Number.isSafeInteger(blastRadiusRateLimitWindowMs) && blastRadiusRateLimitWindowMs > 0
-      ? blastRadiusRateLimitWindowMs
-      : 60 * 60 * 1000,
-})
+// Blast-radius jobs default to 50 requests/hour.
+const blastRadiusRateLimiter = envTunableRateLimiter(
+  'AKRITES_BLAST_RADIUS_RATE_LIMIT',
+  5,
+  60 * 60 * 1000,
+)
+
+// /contacts/ingest starts a Temporal workflow and blocks for it (worst case ~95s per
+// attempt cycle, plus unbounded time waiting for a free worker slot — see
+// security-contacts/workflows.ts's singleActs config), vs. the read-only /contacts/detail
+// endpoints, so it gets its own limiter. Defaults to 20 requests/hour.
+const contactIngestRateLimiter = envTunableRateLimiter(
+  'AKRITES_CONTACT_INGEST_RATE_LIMIT',
+  20,
+  60 * 60 * 1000,
+)
 
 export function akritesExternalRouter(): Router {
   const router = Router()
 
-  // TODO: swap for a dedicated cdp:packages:read scope once Akrites gets its own
-  // Auth0 M2M scopes (per the akrites-external draft contract) — reusing the
-  // internal CDP UI scopes for now since that's what's actually issued today.
+  // Any one of the dedicated Akrites scope or the old Self Serve scopes works for now —
+  // drop READ_PACKAGES/READ_STEWARDSHIPS once Akrites cuts over.
   const packagesSubRouter = Router()
   packagesSubRouter.use(rateLimiter)
-  packagesSubRouter.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'all'))
+  packagesSubRouter.use(
+    requireScopes(
+      [SCOPES.READ_AKRITES_PACKAGES, SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS],
+      'any',
+    ),
+  )
   packagesSubRouter.get('/detail', safeWrap(getAkritesExternalPackageDetail))
   packagesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalPackageDetailBatch))
   router.use('/packages', packagesSubRouter)
 
-  // TODO: the contract gates advisories behind a dedicated read:advisories scope
-  // (see the scope-naming note in the akrites-external OpenAPI). That scope isn't
-  // issued by Auth0 yet, so reuse READ_PACKAGES for now — advisories are package
-  // security data and, unlike the packages endpoints above, need no stewardship read.
+  // Assembled protocol methods include inferred security_contacts fallbacks whose
+  // endpoint can be a maintainer/committer email (contact PII), so these routes ride
+  // the same maintainer scopes as /contacts, never the packages scopes.
+  const projectProfilingScopes = [SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS]
+  router.get(
+    '/project-profiling',
+    rateLimiter,
+    requireScopes(projectProfilingScopes, 'any'),
+    safeWrap(getAkritesExternalProjectProfiling),
+  )
+  router.post(
+    /^\/project-profiling:batch\/?$/,
+    rateLimiter,
+    requireScopes(projectProfilingScopes, 'any'),
+    safeWrap(getAkritesExternalProjectProfilingBatch),
+  )
+
+  // Dedicated read:akrites-advisories, or Self Serve's read:packages as a
+  // fallback until Akrites cuts over — drop it then.
+  const advisoriesScopes = [SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES]
   const advisoriesSubRouter = Router()
   advisoriesSubRouter.use(rateLimiter)
-  advisoriesSubRouter.use(requireScopes([SCOPES.READ_PACKAGES]))
+  advisoriesSubRouter.use(requireScopes(advisoriesScopes, 'any'))
   advisoriesSubRouter.get('/detail', safeWrap(getAkritesExternalAdvisoryDetail))
   advisoriesSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalAdvisoryDetailBatch))
   router.use('/advisories', advisoriesSubRouter)
 
-  // Security contacts expose contact PII (e.g. reporter emails), so the contract gates
-  // them behind a dedicated cdp:maintainers:read scope and explicitly forbids reaching
-  // them via the packages scope. That scope isn't issued by Auth0 yet, so reuse the
-  // closest issued one — READ_MAINTAINER_ROLES (maintainer data) — NOT READ_PACKAGES.
-  // TODO: swap for cdp:maintainers:read once issued.
+  // Contact PII stays behind a dedicated scope, never the packages scope: dedicated
+  // read:akrites-maintainers, or Self Serve's read:maintainer-roles as a fallback.
+  //
+  // requireScopes is applied per-route (not router-level) so each route can put its own
+  // rate limiter *before* the scope check — failed-auth requests still count against that
+  // route's quota — without forcing every route in this subrouter onto the same limiter
+  // instance. /ingest gets its own dedicated contactIngestRateLimiter instead of sharing
+  // the read endpoints' quota, matching the blast-radius jobs endpoint below.
+  const contactsScopes = [SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS]
   const contactsSubRouter = Router()
-  contactsSubRouter.use(rateLimiter)
-  contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES]))
-  contactsSubRouter.get('/detail', safeWrap(getAkritesExternalContactDetail))
-  contactsSubRouter.post(/^\/detail:batch\/?$/, safeWrap(getAkritesExternalContactDetailBatch))
+  contactsSubRouter.get(
+    '/detail',
+    rateLimiter,
+    requireScopes(contactsScopes, 'any'),
+    safeWrap(getAkritesExternalContactDetail),
+  )
+  contactsSubRouter.post(
+    /^\/detail:batch\/?$/,
+    rateLimiter,
+    requireScopes(contactsScopes, 'any'),
+    safeWrap(getAkritesExternalContactDetailBatch),
+  )
+  // Sync, single-purl on-demand ingest — starts a Temporal workflow and blocks a while,
+  // so it gets the dedicated contactIngestRateLimiter, not the shared rateLimiter above.
+  contactsSubRouter.post(
+    '/ingest',
+    contactIngestRateLimiter,
+    requireScopes(contactsScopes, 'any'),
+    safeWrap(ingestAkritesExternalContactDetail),
+  )
   router.use('/contacts', contactsSubRouter)
 
-  // TODO: the contract gates blast-radius behind a dedicated read:advisories scope
-  // (same as advisories above — see the scope-naming note in the akrites-external
-  // OpenAPI). Not issued by Auth0 yet, so reuse READ_PACKAGES for now.
+  // Same underlying data as advisories above, same scopes: read:akrites-advisories,
+  // or Self Serve's read:packages as a fallback until Akrites cuts over.
   const blastRadiusSubRouter = Router()
-  blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES]))
+  blastRadiusSubRouter.use(requireScopes(advisoriesScopes, 'any'))
   blastRadiusSubRouter.post('/jobs', blastRadiusRateLimiter, safeWrap(submitBlastRadiusJob))
+  // Bulk submit multiplies Temporal workflow starts per request (up to
+  // MAX_BLAST_RADIUS_JOBS_PER_BATCH), so it sits behind the same strict
+  // blastRadiusRateLimiter as the single-job route, not the regular one.
+  blastRadiusSubRouter.post(
+    /^\/jobs:batch\/?$/,
+    blastRadiusRateLimiter,
+    safeWrap(submitBlastRadiusJobBatch),
+  )
   blastRadiusSubRouter.get('/jobs/:analysisId', rateLimiter, safeWrap(getBlastRadiusJob))
+  // Bulk poll is read-only, same cost profile as the other batch endpoints, so
+  // it uses the regular rateLimiter.
+  blastRadiusSubRouter.post(
+    /^\/jobs:batch\/poll\/?$/,
+    rateLimiter,
+    safeWrap(getBlastRadiusJobBatch),
+  )
   router.use('/blast-radius', blastRadiusSubRouter)
 
   return router

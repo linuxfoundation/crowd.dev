@@ -25,7 +25,8 @@ SQL >
         organizations_populated_slug.slug AS slug,
         organizations_populated_slug.contributionCount AS contributionCount
     FROM organizations_populated_slug
-    INNER JOIN organizations_code_contributors
+    INNER JOIN
+        organizations_code_contributors
         ON organizations_populated_slug.id = organizations_code_contributors.organizationId
     where
         1 = 1

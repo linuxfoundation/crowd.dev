@@ -14,6 +14,7 @@ import { DbStore, getDbConnection } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { OpenSearchService, getOpensearchClient } from '@crowd/opensearch'
 import { IQueue, QueueFactory } from '@crowd/queue'
+import { SlackChannel } from '@crowd/slack'
 import { getDataConverter } from '@crowd/temporal'
 
 import * as metricActivities from './activities'
@@ -51,6 +52,7 @@ Options is used to configure the worker service.
 export interface Options {
   maxTaskQueueActivitiesPerSecond?: number
   maxConcurrentActivityTaskExecutions?: number
+  alertChannel?: SlackChannel
   postgres?: {
     enabled: boolean
   }
@@ -288,7 +290,7 @@ export class ServiceWorker extends Service {
             activity: [
               (ctx) => {
                 return {
-                  inbound: new ActivityMonitoringInterceptor(ctx),
+                  inbound: new ActivityMonitoringInterceptor(ctx, this.options.alertChannel),
                 }
               },
             ],

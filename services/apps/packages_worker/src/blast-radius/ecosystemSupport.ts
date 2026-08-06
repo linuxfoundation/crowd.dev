@@ -1,10 +1,12 @@
 import { ApplicationFailure } from '@temporalio/workflow'
 
+// Single source of truth for supported ecosystems — kept in this leaf, I/O-free file
+// (no activities/DAL imports) so the workflow bundle stays deterministic-safe.
+export const SUPPORTED_ECOSYSTEMS = ['npm', 'go', 'maven', 'cargo', 'nuget', 'rubygems'] as const
+export type Ecosystem = (typeof SUPPORTED_ECOSYSTEMS)[number]
+
 // Pure so it's testable outside the workflow sandbox (Workflow.log/context calls
 // throw when invoked outside a running workflow — this helper makes none).
-// The reachability pipeline isn't built yet — npm is the only ecosystem that will
-// eventually get true reachability analysis, others a basic scoring result — so
-// every ecosystem fails today, npm included.
 export function buildEcosystemNotSupportedFailure(ecosystem: string | null): ApplicationFailure {
   return ApplicationFailure.nonRetryable(
     `Blast-radius analysis not supported for ecosystem "${ecosystem ?? 'unknown'}"`,

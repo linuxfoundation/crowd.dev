@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   GRADLE_PLUGIN_PORTAL_BASE_URL,
   JITPACK_BASE_URL,
   MAVEN_CENTRAL_BASE_URL,
+  MAVEN_GCS_MIRROR_BASE_URL,
   isJitpackNamespace,
   jitpackPageUrl,
+  resolveBlastRadiusMavenBaseUrl,
   resolveRegistryBaseUrl,
   resolveRegistryPageUrl,
   resolveRegistryPageUrlFromBase,
@@ -167,6 +169,28 @@ describe('resolveRegistryBaseUrl', () => {
 
   it('returns Maven Central for io.githubfoo (no dot boundary)', () => {
     expect(resolveRegistryBaseUrl('io.githubfoo')).toBe(MAVEN_CENTRAL_BASE_URL)
+  })
+})
+
+describe('resolveBlastRadiusMavenBaseUrl', () => {
+  afterEach(() => {
+    delete process.env.BLAST_RADIUS_MAVEN_BASE_URL
+  })
+
+  it('defaults to the GCS mirror for an unknown namespace', () => {
+    expect(resolveBlastRadiusMavenBaseUrl('org.apache.commons')).toBe(MAVEN_GCS_MIRROR_BASE_URL)
+  })
+
+  it('honors BLAST_RADIUS_MAVEN_BASE_URL when set', () => {
+    process.env.BLAST_RADIUS_MAVEN_BASE_URL = 'https://example.test/mirror'
+    expect(resolveBlastRadiusMavenBaseUrl('org.apache.commons')).toBe('https://example.test/mirror')
+  })
+
+  it('bypasses the mirror for alternative-registry namespaces regardless of the env var', () => {
+    process.env.BLAST_RADIUS_MAVEN_BASE_URL = 'https://example.test/mirror'
+    expect(resolveBlastRadiusMavenBaseUrl('androidx.annotation')).toBe(
+      'https://dl.google.com/dl/android/maven2',
+    )
   })
 })
 

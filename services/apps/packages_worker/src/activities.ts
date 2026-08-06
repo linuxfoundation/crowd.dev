@@ -47,11 +47,19 @@ export {
   getCriticalPackagistCount,
   packagistCurrentTimestamp,
   packagistStopAfterFirstPage,
+  preparePackagistTransitiveCounts,
+  mergePackagistTransitiveBatch,
+  finishPackagistTransitiveRun,
+  failPackagistTransitiveRun,
+  packagistTransitiveRanRecently,
+  packagistMetadataDrainRunning,
 } from './packagist/activities'
 export { processRubyGemsCoreBatch, processRubyGemsCriticalBatch } from './rubygems/activities'
 export {
   processSecurityContactsBatch,
   ingestSecurityContactsForPurlActivity,
+  runProtocolParseBatch,
+  runProtocolAssembleBatch,
 } from './security-contacts/activities'
 export {
   blastRadiusStart,
@@ -61,3 +69,4 @@ export {
   blastRadiusReachability,
   blastRadiusReport,
 } from './blast-radius/activities'
+export { slackNotify } from './activities/index'

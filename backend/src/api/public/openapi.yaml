@@ -855,7 +855,6 @@ paths:
                 - name
                 - domain
                 - source
-                - logo
               properties:
                 name:
                   type: string
@@ -872,7 +871,7 @@ paths:
                 logo:
                   type: string
                   format: uri
-                  description: URL of the organization's logo.
+                  description: Optional URL of the organization's logo.
             example:
               name: Acme Corp
               domain: acme.com

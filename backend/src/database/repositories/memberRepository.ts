@@ -14,6 +14,7 @@ import {
   Error409,
   RawQueryParser,
   groupBy,
+  normalizeMemberIdentityValue,
 } from '@crowd/common'
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
 import {
@@ -1852,6 +1853,7 @@ class MemberRepository {
     const transaction = SequelizeRepository.getTransaction(options)
 
     const seq = SequelizeRepository.getSequelize(options)
+    const normalizedValue = normalizeMemberIdentityValue(value)
 
     const query = `
       insert into "memberIdentities"("memberId", platform, type, value, "tenantId", verified)
@@ -1863,7 +1865,7 @@ class MemberRepository {
       await seq.query(query, {
         replacements: {
           memberId,
-          value,
+          value: normalizedValue,
           type,
           platform,
           tenantId: DEFAULT_TENANT_ID,

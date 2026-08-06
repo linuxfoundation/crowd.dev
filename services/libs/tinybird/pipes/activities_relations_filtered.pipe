@@ -44,10 +44,9 @@ SQL >
                 ar.sourceParentId AS sourceParentId,
                 ar.timestamp AS timestamp,
                 ar.type AS type
-            FROM activityRelations_enriched_deduplicated_ds AS ar
+            FROM activityRelations_enriched_deduplicated_bucket_union AS ar
             WHERE
-                snapshotId = (select max(snapshotId) from activityRelations_enriched_deduplicated_ds)
-                AND (length(segments_arr) = 0 OR ar.segmentId IN segments_arr)
+                (length(segments_arr) = 0 OR ar.segmentId IN segments_arr)
                 {% if defined(startDate) %}
                     AND ar.timestamp > parseDateTimeBestEffort({{ String(startDate) }})
                 {% end %}

@@ -4,6 +4,7 @@ import { MemberEnrichmentSource, PlatformType } from '@crowd/types'
 
 import * as activities from '../activities'
 import { IMemberEnrichmentDataNormalized, IProcessMemberSourcesArgs } from '../types'
+import { SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES } from '../utils/config'
 
 const {
   findMemberEnrichmentCache,
@@ -35,9 +36,25 @@ const { squashMultipleValueAttributesWithLLM, squashWorkExperiencesWithLLM } = p
   },
 })
 
+function getEnrichmentAttributeValue(
+  attributes: IMemberEnrichmentDataNormalized['attributes'],
+  attributeName: string,
+) {
+  const values = attributes?.[attributeName]
+  if (!values) {
+    return undefined
+  }
+
+  const enrichmentKey = Object.keys(values).find((key) => key.startsWith('enrichment-'))
+  return enrichmentKey ? values[enrichmentKey] : undefined
+}
+
 export async function processMemberSources(args: IProcessMemberSourcesArgs): Promise<boolean> {
   // without contributions since they take a lot of space
-  const toBeSquashed = {}
+  const toBeSquashed: Record<
+    string,
+    IMemberEnrichmentDataNormalized | IMemberEnrichmentDataNormalized[]
+  > = {}
 
   let hasContributions = false
 
@@ -46,10 +63,9 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
   for (const source of args.sources) {
     const cache = caches.find((c) => c.source === source)
     if (cache && cache.data) {
-      const normalized = (await normalizeEnrichmentData(
-        source,
-        cache.data,
-      )) as IMemberEnrichmentDataNormalized
+      const normalized = (await normalizeEnrichmentData(source, cache.data)) as
+        | IMemberEnrichmentDataNormalized
+        | IMemberEnrichmentDataNormalized[]
 
       if (Array.isArray(normalized)) {
         for (const n of normalized) {
@@ -64,43 +80,65 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
             delete n.reach
           }
         }
-      }
+      } else {
+        if (normalized.contributions) {
+          delete normalized.contributions
+        }
 
-      if (normalized.contributions) {
-        delete normalized.contributions
-      }
-
-      if (normalized.reach) {
-        delete normalized.reach
+        if (normalized.reach) {
+          delete normalized.reach
+        }
       }
 
       toBeSquashed[source] = normalized
     }
   }
 
-  if (Object.keys(toBeSquashed).length > 1) {
-    const existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
+  let existingMemberData = null
 
-    let progaiLinkedinScraperProfileSelected: IMemberEnrichmentDataNormalized = null
-    let crustDataProfileSelected: IMemberEnrichmentDataNormalized = null
+  const arraySources = Object.keys(toBeSquashed).filter((source) =>
+    Array.isArray(toBeSquashed[source]),
+  )
 
-    if (toBeSquashed[MemberEnrichmentSource.CRUSTDATA]) {
+  // Only resolve arrays when an apply path can run afterward.
+  if (
+    arraySources.length > 0 &&
+    (Object.keys(toBeSquashed).length === 1 || args.activityCount > 100)
+  ) {
+    existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
+
+    const orderedArraySources = [
+      ...arraySources.filter((source) => source === MemberEnrichmentSource.CRUSTDATA),
+      ...arraySources.filter((source) => source === MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER),
+      ...arraySources.filter(
+        (source) =>
+          source !== MemberEnrichmentSource.CRUSTDATA &&
+          source !== MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER,
+      ),
+    ]
+
+    for (const source of orderedArraySources) {
+      const normalized = toBeSquashed[source]
+      if (!Array.isArray(normalized)) {
+        continue
+      }
+
       const categorizationResult = await findWhichLinkedinProfileToUseAmongScraperResult(
         args.memberId,
         existingMemberData,
-        toBeSquashed[MemberEnrichmentSource.CRUSTDATA],
+        normalized,
       )
 
-      crustDataProfileSelected = categorizationResult.selected
-
-      if (crustDataProfileSelected) {
-        toBeSquashed[MemberEnrichmentSource.CRUSTDATA] = crustDataProfileSelected
+      if (categorizationResult.selected) {
+        toBeSquashed[source] = categorizationResult.selected
+      } else {
+        delete toBeSquashed[source]
       }
 
       // check if there are any discarded profiles
       if (categorizationResult.discarded.length > 0) {
         for (const discardedProfile of categorizationResult.discarded) {
-          const discardedLinkedinIdentity = discardedProfile.identities.find(
+          const discardedLinkedinIdentity = discardedProfile.identities?.find(
             (i) => i.platform === PlatformType.LINKEDIN,
           )
 
@@ -110,61 +148,80 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
           }
 
           // remove the root source where the discarded linkedin profile is coming from
-          for (const source of Object.keys(toBeSquashed)) {
+          for (const otherSource of Object.keys(toBeSquashed)) {
+            const profile = toBeSquashed[otherSource]
+            if (Array.isArray(profile)) {
+              continue
+            }
+
             if (
-              (toBeSquashed[source].identities || []).some(
+              (profile.identities || []).some(
                 (i) =>
-                  i.value === discardedLinkedinIdentity.value &&
+                  i.value.trim().toLowerCase() ===
+                    discardedLinkedinIdentity.value.trim().toLowerCase() &&
                   i.platform === PlatformType.LINKEDIN,
               )
             ) {
-              delete toBeSquashed[source]
+              delete toBeSquashed[otherSource]
             }
           }
         }
       }
     }
+  }
 
-    if (toBeSquashed[MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER]) {
-      const categorizationResult = await findWhichLinkedinProfileToUseAmongScraperResult(
-        args.memberId,
-        existingMemberData,
-        toBeSquashed[MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER],
-      )
+  const sourceKeys = Object.keys(toBeSquashed)
 
-      progaiLinkedinScraperProfileSelected = categorizationResult.selected
+  // A single source isn't reliable enough for a full profile update, but some attributes
+  // are still useful for aggregate consumers, where coverage matters more than certainty.
+  if (sourceKeys.length === 1) {
+    const source = sourceKeys[0]
+    const normalized = toBeSquashed[source] as IMemberEnrichmentDataNormalized
 
-      if (progaiLinkedinScraperProfileSelected) {
-        toBeSquashed[MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER] =
-          progaiLinkedinScraperProfileSelected
-      }
+    if (normalized.attributes) {
+      const attributes = {}
 
-      if (categorizationResult.discarded.length > 0) {
-        for (const discardedProfile of categorizationResult.discarded) {
-          const discardedLinkedinIdentity = discardedProfile.identities.find(
-            (i) => i.platform === PlatformType.LINKEDIN,
-          )
-
-          // Skip if no LinkedIn identity found
-          if (!discardedLinkedinIdentity) {
-            continue
-          }
-
-          // remove the root source where the discarded linkedin profile is coming from
-          for (const source of Object.keys(toBeSquashed)) {
-            if (
-              (toBeSquashed[source].identities || []).some(
-                (i) =>
-                  i.value === discardedLinkedinIdentity.value &&
-                  i.platform === PlatformType.LINKEDIN,
-              )
-            ) {
-              delete toBeSquashed[source]
-            }
+      for (const attributeName of SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES) {
+        const value = getEnrichmentAttributeValue(normalized.attributes, attributeName)
+        if (value) {
+          attributes[attributeName] = {
+            enrichment: await cleanAttributeValue(value),
           }
         }
       }
+
+      if (Object.keys(attributes).length > 0) {
+        if (!existingMemberData) {
+          existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
+        }
+
+        return updateMemberUsingSquashedPayload(
+          args.memberId,
+          existingMemberData,
+          {
+            identities: [],
+            attributes,
+            memberOrganizations: [],
+            reach: {},
+          },
+          false,
+          false,
+        )
+      }
     }
+  }
+
+  if (sourceKeys.length > 1 && args.activityCount > 100) {
+    if (!existingMemberData) {
+      existingMemberData = await fetchMemberDataForLLMSquashing(args.memberId)
+    }
+
+    const crustDataProfileSelected = toBeSquashed[
+      MemberEnrichmentSource.CRUSTDATA
+    ] as IMemberEnrichmentDataNormalized
+    const progaiLinkedinScraperProfileSelected = toBeSquashed[
+      MemberEnrichmentSource.PROGAI_LINKEDIN_SCRAPER
+    ] as IMemberEnrichmentDataNormalized
 
     // start squashing the data
     const squashedPayload: IMemberEnrichmentDataNormalized = {
@@ -176,23 +233,17 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
 
     // 1) squash identities
     for (const source of Object.keys(toBeSquashed)) {
-      if (toBeSquashed[source].identities) {
-        for (const identity of toBeSquashed[source].identities) {
-          // check if identity already exists, if not add it to squashedPayload
+      const profile = toBeSquashed[source] as IMemberEnrichmentDataNormalized
+      if (profile.identities) {
+        for (const identity of profile.identities) {
+          const sameIdentity = (i: { platform: string; type: string; value: string }) =>
+            i.platform === identity.platform &&
+            i.type === identity.type &&
+            i.value.trim().toLowerCase() === identity.value.trim().toLowerCase()
+
           if (
-            !squashedPayload.identities.find(
-              (i) =>
-                i.platform === identity.platform &&
-                i.type === identity.type &&
-                i.value === identity.value,
-            ) &&
-            // check in member data as well
-            !existingMemberData.identities.find(
-              (i) =>
-                i.platform === identity.platform &&
-                i.type === identity.type &&
-                i.value === identity.value,
-            )
+            !squashedPayload.identities.find(sameIdentity) &&
+            !existingMemberData.identities.find(sameIdentity)
           ) {
             squashedPayload.identities.push(identity)
           }
@@ -206,23 +257,21 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
 
     // 2) squash attributes
     for (const source of Object.keys(toBeSquashed)) {
-      if (toBeSquashed[source].attributes) {
-        for (const attribute of Object.keys(toBeSquashed[source].attributes)) {
-          if (toBeSquashed[source].attributes[attribute][`enrichment-${source}`]) {
+      const profile = toBeSquashed[source] as IMemberEnrichmentDataNormalized
+      if (profile.attributes) {
+        for (const attribute of Object.keys(profile.attributes)) {
+          const value = getEnrichmentAttributeValue(profile.attributes, attribute)
+          if (value) {
             if (attributeCountMap[attribute]) {
               attributeCountMap[attribute] = attributeCountMap[attribute] + 1
               delete attributesSquashed[attribute]
-              attributeValues[attribute].push(
-                toBeSquashed[source].attributes[attribute][`enrichment-${source}`],
-              )
+              attributeValues[attribute].push(value)
             } else {
               attributeCountMap[attribute] = 1
               attributesSquashed[attribute] = {
-                enrichment: toBeSquashed[source].attributes[attribute][`enrichment-${source}`],
+                enrichment: value,
               }
-              attributeValues[attribute] = [
-                toBeSquashed[source].attributes[attribute][`enrichment-${source}`],
-              ]
+              attributeValues[attribute] = [value]
             }
           }
         }
@@ -268,11 +317,9 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
       // check if there are multiple work experiences from different sources
       const workExperienceDataInDifferentSources = []
       for (const source of Object.keys(toBeSquashed)) {
-        if (
-          toBeSquashed[source].memberOrganizations &&
-          toBeSquashed[source].memberOrganizations.length > 0
-        ) {
-          workExperienceDataInDifferentSources.push(toBeSquashed[source].memberOrganizations)
+        const profile = toBeSquashed[source] as IMemberEnrichmentDataNormalized
+        if (profile.memberOrganizations && profile.memberOrganizations.length > 0) {
+          workExperienceDataInDifferentSources.push(profile.memberOrganizations)
         }
       }
 
@@ -313,7 +360,7 @@ export async function processMemberSources(args: IProcessMemberSourcesArgs): Pro
       args.memberId,
       existingMemberData,
       squashedPayload,
-      progaiLinkedinScraperProfileSelected && hasContributions,
+      !!progaiLinkedinScraperProfileSelected && hasContributions,
       !!crustDataProfileSelected,
     )
 

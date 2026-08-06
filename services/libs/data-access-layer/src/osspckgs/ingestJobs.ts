@@ -59,6 +59,26 @@ export interface MarkJobStatusFields {
   exportName?: string
 }
 
+// Newest pending job id for the kind, so a retried activity reuses its prior row.
+export async function findPendingJobByKind(
+  qx: QueryExecutor,
+  jobKind: OsspckgsJobKind,
+): Promise<number | null> {
+  const row = await qx.selectOneOrNone(
+    `
+    SELECT id
+    FROM osspckgs_ingest_jobs
+    WHERE job_kind = $(jobKind)
+      AND status = 'pending'
+    ORDER BY id DESC
+    LIMIT 1
+    `,
+    { jobKind },
+  )
+  // id is bigserial (pg returns int8 as a string); convert so the declared type is true.
+  return row ? Number(row.id) : null
+}
+
 // Returns the most recent job for the given kind that has already been exported to GCS,
 // so callers can skip re-running BQ when the user explicitly opts to reuse prior data.
 export async function findLatestExportedJobByKind(

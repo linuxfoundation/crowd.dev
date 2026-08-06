@@ -49,10 +49,11 @@ type PackageStatus = 'processed' | 'skipped' | 'error' | 'unchanged'
 async function processPackage(
   qx: QueryExecutor,
   pkg: RubyGemsCriticalPackageToSync,
+  signal?: AbortSignal,
 ): Promise<PackageStatus> {
   const [versionsResult, ownersResult] = await Promise.all([
-    fetchVersions(pkg.name),
-    fetchOwners(pkg.name),
+    fetchVersions(pkg.name, signal),
+    fetchOwners(pkg.name, signal),
   ])
 
   if (isRubyGemsFetchError(versionsResult)) {
@@ -147,6 +148,7 @@ export async function processBatch(
   qx: QueryExecutor,
   config: RubyGemsCriticalConfig,
   afterId: string,
+  signal?: AbortSignal,
 ): Promise<BatchResult & { lastId: string | null }> {
   const packages = await listRubyGemsCriticalPackagesToSync(qx, {
     limit: config.batchSize,
@@ -162,14 +164,16 @@ export async function processBatch(
   const counts = { processed: 0, skipped: 0, error: 0, unchanged: 0 }
 
   for (let batchStart = 0; batchStart < packages.length; batchStart += config.concurrency) {
+    signal?.throwIfAborted()
     const group = packages.slice(batchStart, batchStart + config.concurrency)
 
     await Promise.all(
       group.map(async (pkg) => {
         try {
-          const status = await processPackage(qx, pkg)
+          const status = await processPackage(qx, pkg, signal)
           counts[status]++
         } catch (err) {
+          signal?.throwIfAborted()
           const message = err instanceof Error ? err.message : String(err)
           log.error(
             { purl: pkg.purl, error: message },
@@ -179,6 +183,7 @@ export async function processBatch(
         }
       }),
     )
+    signal?.throwIfAborted()
 
     const done = batchStart + group.length
     if (done % 1000 === 0 || done === packages.length) {

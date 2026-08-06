@@ -30,10 +30,13 @@ export {
   ingestPackagistMetadata,
   ingestPackagistDownloads30d,
   ingestPackagistDownloadsDaily,
+  computePackagistTransitiveDependents,
+  backstopPackagistTransitiveDrain,
 } from '../packagist/workflows'
 export { ingestRubyGemsCriticalDetails, ingestRubyGemsPackages } from '../rubygems/workflows'
 export {
   ingestSecurityContacts,
   ingestSecurityContactsForPurlWorkflow,
+  ingestReportingProtocols,
 } from '../security-contacts/workflows'
 export { analyzeBlastRadius } from '../blast-radius/workflows'

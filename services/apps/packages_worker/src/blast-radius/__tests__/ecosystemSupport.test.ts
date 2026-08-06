@@ -1,7 +1,13 @@
 import { ApplicationFailure } from '@temporalio/workflow'
 import { describe, expect, it } from 'vitest'
 
-import { buildEcosystemNotSupportedFailure } from '../ecosystemSupport'
+import { SUPPORTED_ECOSYSTEMS, buildEcosystemNotSupportedFailure } from '../ecosystemSupport'
+
+describe('SUPPORTED_ECOSYSTEMS', () => {
+  it('includes cargo, nuget, and rubygems alongside npm, go, and maven', () => {
+    expect(SUPPORTED_ECOSYSTEMS).toEqual(['npm', 'go', 'maven', 'cargo', 'nuget', 'rubygems'])
+  })
+})
 
 describe('buildEcosystemNotSupportedFailure', () => {
   it('builds a non-retryable ApplicationFailure tagged ECOSYSTEM_NOT_SUPPORTED', () => {

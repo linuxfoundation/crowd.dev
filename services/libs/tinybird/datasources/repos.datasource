@@ -33,6 +33,8 @@ DESCRIPTION >
     - `branchProtectionAllowsForcePush` is 1 if force pushes are allowed despite branch protection, 0 if not, NULL until enriched.
     - `branchProtectionRequiredReviews` is the number of required approving reviews before merging (NULL until enriched).
     - `branchProtectionRequiresStatusChecks` is 1 if status checks are required before merging, 0 if not, NULL until enriched.
+    - `collaborationScore` is the collaboration track record score 0-100 (NULL when unknown or inactive).
+    - `collaborationTier` is the collaboration tier: responsive | mixed | unresponsive | unknown | inactive (NULL until the scoring pass reaches the repo).
     - `updatedAt` is the row-level audit timestamp used as the Tinybird watermark for sync.
 
 SCHEMA >
@@ -67,6 +69,8 @@ SCHEMA >
     `branchProtectionAllowsForcePush` Nullable(UInt8) `json:$.record.branch_protection_allows_force_push`,
     `branchProtectionRequiredReviews` Nullable(Int32) `json:$.record.branch_protection_required_reviews`,
     `branchProtectionRequiresStatusChecks` Nullable(UInt8) `json:$.record.branch_protection_requires_status_checks`,
+    `collaborationScore` Nullable(Int32) `json:$.record.collaboration_score`,
+    `collaborationTier` Nullable(String) `json:$.record.collaboration_tier`,
     `updatedAt` DateTime64(3) `json:$.record.updated_at`
 
 ENGINE ReplacingMergeTree

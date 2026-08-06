@@ -340,7 +340,7 @@ export async function getPackageStatusCounts(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true
     ${where}
@@ -521,7 +521,7 @@ export async function listPackagesForApi(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true`
 
@@ -875,12 +875,20 @@ export async function getPackageDetailsByPurls(
 // live on the repo, not the package). A missing purl yields no row → "not found"; a found
 // package with no contacts yields a row with securityContacts null → resolves to [].
 export interface AkritesExternalContactDetailRow
-  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem'>,
+  extends Pick<PackageDbRow, 'purl' | 'name' | 'ecosystem' | 'declaredRepositoryUrl'>,
     Pick<
       RepoDbRow,
-      'securityPolicyUrl' | 'vulnerabilityReportingUrl' | 'bugBountyUrl' | 'pvrEnabled'
+      | 'securityPolicyUrl'
+      | 'vulnerabilityReportingUrl'
+      | 'bugBountyUrl'
+      | 'pvrEnabled'
+      | 'contactsLastRefreshed'
     > {
   securityContacts: SecurityContactRow[] | null
+  // --- joined from repos via package_repos, same BEST_REPO_LINK_JOIN as
+  // AkritesExternalPackageDetailRow — not part of the packages or repos row.
+  resolvedRepositoryUrl: string | null
+  repoMappingConfidence: number | null
 }
 
 export async function getContactDetailsByPurls(
@@ -894,10 +902,14 @@ export async function getContactDetailsByPurls(
       p.purl,
       p.name,
       p.ecosystem,
+      p.declared_repository_url     AS "declaredRepositoryUrl",
+      r.url                         AS "resolvedRepositoryUrl",
+      pr.confidence                 AS "repoMappingConfidence",
       r.security_policy_url         AS "securityPolicyUrl",
       r.vulnerability_reporting_url AS "vulnerabilityReportingUrl",
       r.bug_bounty_url              AS "bugBountyUrl",
       r.pvr_enabled                 AS "pvrEnabled",
+      r.contacts_last_refreshed     AS "contactsLastRefreshed",
       ${SECURITY_CONTACTS_SUBQUERY} AS "securityContacts"
     FROM packages p
     ${BEST_REPO_LINK_JOIN}
@@ -964,7 +976,7 @@ export async function listPackagesForScatter(
       FROM package_repos pr
       JOIN repos r ON r.id = pr.repo_id
       WHERE pr.package_id = p.id
-      ORDER BY pr.confidence DESC
+      ORDER BY pr.confidence DESC, (pr.source = 'declared') DESC, pr.repo_id DESC
       LIMIT 1
     ) r_sc ON true
     WHERE p.is_critical = true
@@ -1009,7 +1021,7 @@ export async function getAdvisoriesByPackageId(
         ${ADVISORY_RESOLUTION_EXPR} AS resolution
       FROM advisory_packages ap
       JOIN advisories a ON a.id = ap.advisory_id
-      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+      LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
       JOIN packages p ON p.id = ap.package_id
       WHERE ap.package_id = $(packageId)::bigint
       GROUP BY a.osv_id, a.severity, a.is_critical, p.latest_version
@@ -1117,7 +1129,7 @@ export async function getAdvisoriesByPurls(
     FROM packages p
     LEFT JOIN advisory_packages ap ON ap.package_id = p.id
     LEFT JOIN advisories a ON a.id = ap.advisory_id
-    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id
+    LEFT JOIN advisory_affected_ranges ar ON ar.advisory_package_id = ap.id AND ar.deleted_at IS NULL
     WHERE p.purl = ANY($(purls))
     GROUP BY p.purl, p.latest_version, a.osv_id, a.severity, a.is_critical
     ORDER BY
@@ -1137,4 +1149,99 @@ export async function getAdvisoriesByPurls(
     resolution: r.osvId === null ? null : resolveAdvisory(r.latestVersion, r.ranges),
     isCritical: r.isCritical,
   }))
+}
+
+// A single assembled vulnerability-reporting method for a repo — how an external
+// reporter is expected to reach out. Mirrors the JSONB shape written by the
+// packages_worker assemble stage into repo_reporting_protocols.methods.
+export interface ReportingProtocolMethod {
+  type: string
+  status: string
+  endpoint: string
+  condition: string | null
+  confidence: 'declared' | 'inferred'
+  provenance: Record<string, unknown>
+}
+
+export interface ReportingProtocolGuidelines {
+  generalPrinciples: string[]
+  avoid: string[]
+  recommend: Array<{ scenario: string; action: string }>
+}
+
+export interface ReportingProtocolRow {
+  purl: string
+  declared: boolean
+  methods: ReportingProtocolMethod[]
+  guidelines: ReportingProtocolGuidelines | null
+  sources: Array<Record<string, unknown>>
+  bugBountyUrl: string | null
+  // Raw Postgres timestamptz string (OID 1184 returned verbatim) — normalize at the mapper.
+  assembledAt: string | null
+}
+
+// Resolve a package's assembled reporting protocol via its best repo link, using the
+// same canonical pick as getPackageDetailByPurl (confidence DESC, declared source
+// preferred) so the protocol matches the repo surfaced everywhere else. Returns null
+// when the purl is unknown or its best repo has no assembled protocol row.
+export async function getReportingProtocolByPurl(
+  qx: QueryExecutor,
+  purl: string,
+): Promise<ReportingProtocolRow | null> {
+  return qx.selectOneOrNone(
+    `
+    SELECT
+      p.purl,
+      rp.declared,
+      rp.methods,
+      rp.guidelines,
+      rp.sources,
+      r.bug_bounty_url AS "bugBountyUrl",
+      rp.assembled_at AS "assembledAt"
+    FROM packages p
+    JOIN LATERAL (
+      SELECT pr2.repo_id
+      FROM package_repos pr2
+      WHERE pr2.package_id = p.id
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
+      LIMIT 1
+    ) pr ON true
+    JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    JOIN repos r ON r.id = pr.repo_id
+    WHERE p.purl = $(purl)
+    `,
+    { purl },
+  )
+}
+
+// Batch variant of getReportingProtocolByPurl; unmatched purls are absent from the result.
+export async function getReportingProtocolsByPurls(
+  qx: QueryExecutor,
+  purls: string[],
+): Promise<ReportingProtocolRow[]> {
+  if (purls.length === 0) return []
+  return qx.select(
+    `
+    SELECT
+      p.purl,
+      rp.declared,
+      rp.methods,
+      rp.guidelines,
+      rp.sources,
+      r.bug_bounty_url AS "bugBountyUrl",
+      rp.assembled_at AS "assembledAt"
+    FROM packages p
+    JOIN LATERAL (
+      SELECT pr2.repo_id
+      FROM package_repos pr2
+      WHERE pr2.package_id = p.id
+      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
+      LIMIT 1
+    ) pr ON true
+    JOIN repo_reporting_protocols rp ON rp.repo_id = pr.repo_id
+    JOIN repos r ON r.id = pr.repo_id
+    WHERE p.purl = ANY($(purls))
+    `,
+    { purls },
+  )
 }

@@ -20,6 +20,7 @@ export enum PlatformType {
   GIT = 'git',
   CRUNCHBASE = 'crunchbase',
   GROUPSIO = 'groupsio',
+  MAILINGLIST = 'mailinglist',
   COMMITTEES = 'committees',
   CONFLUENCE = 'confluence',
   GERRIT = 'gerrit',

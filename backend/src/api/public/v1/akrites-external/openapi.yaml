@@ -11,15 +11,18 @@ info:
 
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
     submit (2a) and poll (2b) are both implemented, backed by a 4-stage
-    Temporal pipeline (intel, dependents, reachability, report) for npm
-    packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
+    Temporal pipeline (intel, dependents, reachability, report) for npm, go, maven, and
+    cargo packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
     7-day result cache is specced separately and not yet built.
 
 
-    TODO: scopes below (read:packages, read:stewardships) are the existing
-    internal CDP UI scopes, reused here for now. Swap for a dedicated
-    cdp:packages:read scope once Akrites gets its own Auth0 M2M scopes per
-    the akrites-external draft contract.
+    Auth0 now issues a dedicated Akrites Enclave M2M client with its own
+    read:akrites-packages / read:akrites-advisories / read:akrites-maintainers
+    scopes. Until Akrites cuts over to that client's credentials, the Self Serve
+    client's existing scopes (read:packages, read:stewardships,
+    read:maintainer-roles) still work on every operation below — each operation
+    lists both the new dedicated scope(s) and the old fallback scope(s) as
+    alternatives. Drop the old alternative once the cutover is confirmed.
 
 servers:
   - url: https://cm.lfx.dev/api/v1
@@ -27,44 +30,61 @@ servers:
 
 security:
   - M2MBearer:
+      - read:akrites-packages
+  - M2MBearer:
       - read:packages
+  - M2MBearer:
       - read:stewardships
 
 tags:
   - name: Packages
-    description: Package detail — requires read:packages and read:stewardships (see TODO above).
+    description: >
+      Package detail — requires read:akrites-packages (dedicated Akrites Enclave
+      scope), or either read:packages or read:stewardships from the old Self Serve
+      client as a fallback until the cutover completes.
   - name: Advisories
     description: >
-      Security advisories for a package, split out of package detail. The draft
-      contract gates these behind a dedicated read:advisories scope; until Auth0
-      issues it, the implementation reuses read:packages (advisories need no
-      stewardship read). Confirm the final scope name (read:advisories vs
-      cdp:advisories:read) with Akrites/product.
+      Security advisories for a package, split out of package detail. Requires
+      read:akrites-advisories (dedicated Akrites Enclave scope), or read:packages
+      from the old Self Serve client as a fallback until the cutover completes
+      (advisories need no stewardship read).
   - name: Contacts
     description: >
       Security contacts for a package — includes contact PII (e.g. reporter
-      emails). The contract gates these behind a dedicated cdp:maintainers:read
-      scope and forbids reaching them via the packages scope; until Auth0 issues
-      it, the implementation requires read:maintainer-roles (NOT read:packages).
-      The response shape is still under discussion upstream (reportingMethods /
-      reportingGuidelines / integrationHints are reserved and always null today).
+      emails). Requires read:akrites-maintainers (dedicated Akrites Enclave
+      scope), or read:maintainer-roles from the old Self Serve client as a
+      fallback until the cutover completes — never reachable via the packages
+      scopes. Reserved for security contacts only — the assembled
+      vulnerability-reporting protocol (methods and guidelines)
+      is served by GET /akrites-external/project-profiling.
   - name: Blast Radius
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
-      implemented. Submitting kicks off a Temporal workflow that runs the
-      npm reachability pipeline (other ecosystems fail fast with
-      ECOSYSTEM_NOT_SUPPORTED); poll returns job status and, once done,
-      results. Rate-limited independently of the other akrites-external
-      endpoints (default 5 requests/hour, configurable via
-      AKRITES_BLAST_RADIUS_RATE_LIMIT_MAX / _WINDOW_MS). Same interim scope
-      note as Advisories applies (read:packages, pending a dedicated
-      read:advisories scope).
+      implemented, each with a bulk counterpart. Submitting kicks off a
+      Temporal workflow that runs the npm, go, maven, or cargo reachability pipeline (other
+      ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED); poll returns job
+      status and, once done, results. Bulk submit (jobs:batch) is capped at
+      20 jobs per request (10 recommended as the default batch size) — each
+      entry starts its own workflow — and stays behind the same strict rate
+      limiter as the single-job route; bulk poll
+      (jobs:batch/poll) is read-only and capped at 100 like the other batch
+      endpoints. Same scope note as Advisories applies (read:akrites-advisories,
+      or read:packages as a fallback until the cutover completes).
+  - name: Project Profiling
+    description: >
+      Assembled vulnerability-reporting protocol for a package's best-matched
+      repo — the full ordered list of ways to report a vulnerability (declared
+      methods first, security-contact fallbacks after) plus any disclosure
+      guidelines. Fallback methods can carry contact PII (maintainer/committer
+      emails), so it takes the same scopes as Contacts: read:akrites-maintainers,
+      or read:maintainer-roles as a fallback until the cutover completes — never
+      reachable via the packages scopes.
 
 components:
   securitySchemes:
     # Modeled as oauth2/clientCredentials (not http/bearer): OpenAPI only allows
     # non-empty scope arrays in security requirements for oauth2 / openIdConnect
-    # schemes, and the operations below require read:packages + read:stewardships.
+    # schemes.
     M2MBearer:
       type: oauth2
       description: >
@@ -75,9 +95,12 @@ components:
         clientCredentials:
           tokenUrl: https://linuxfoundation.auth0.com/oauth/token
           scopes:
-            read:packages: Read package detail
-            read:stewardships: Read package stewardship data
-            read:maintainer-roles: Read security contacts (interim scope for Contacts; see the Contacts tag)
+            read:akrites-packages: Read package detail (dedicated Akrites Enclave scope)
+            read:akrites-advisories: Read security advisories and submit/poll blast-radius jobs (dedicated Akrites Enclave scope)
+            read:akrites-maintainers: Read security contacts (dedicated Akrites Enclave scope)
+            read:packages: Read package detail (fallback — old Self Serve client scope, being phased out)
+            read:stewardships: Read package stewardship data (fallback — old Self Serve client scope, being phased out)
+            read:maintainer-roles: Read security contacts (fallback — old Self Serve client scope, being phased out)
 
   schemas:
     Error:
@@ -388,19 +411,21 @@ components:
           example: GHSA-jf85-cpcp-j695
         ecosystem:
           type: string
-          enum: [npm]
+          enum: [npm, go, maven, cargo]
           description: >
-            Required. The reachability pipeline is npm-only today — any other
-            value, or a missing ecosystem, is rejected with a 400.
+            Required. The reachability pipeline supports npm, go, maven, and cargo today —
+            any other value, or a missing ecosystem, is rejected with a 400.
           example: npm
         package:
           type: string
           nullable: true
           description: >
             Optional. Full purl or bare package name. If omitted, the analysis
-            is advisory-wide: reachability is evaluated across every package
-            the advisory affects, returned as one aggregate result — not one
-            job per affected package.
+            is advisory-wide: for advisories affecting a single package, that
+            package is analyzed. Advisories affecting multiple packages
+            require an explicit package — the job fails (status: 'failed')
+            otherwise, since analyzing every affected package in one
+            aggregate result is not yet supported.
         force:
           type: boolean
           default: false
@@ -409,7 +434,10 @@ components:
     BlastRadiusJobEntry:
       type: object
       required: [analysisId, advisoryId, package, ecosystem, status]
-      description: Response body of 2a — one job per request, never wrapped in an array.
+      description: >
+        Response body of 2a for a single submitted job. Returned directly (not
+        wrapped in an array) by the single-job submit; the batch submit (2a bulk)
+        returns an array of these under `results` — see BlastRadiusJobBatchResponse.
       properties:
         analysisId:
           type: string
@@ -422,12 +450,80 @@ components:
           description: Echoes the request's package. Null when the request omitted it.
         ecosystem:
           type: string
-          enum: [npm]
+          enum: [npm, go, maven, cargo]
           description: Echoes the request's ecosystem. Always present — the request requires it.
         status:
           type: string
           enum: [pending, running, done, failed]
-          description: Always pending — the response is returned before the Temporal workflow runs.
+          description: >
+            Pending in the single-job submit response, always returned before the
+            Temporal workflow runs. In the batch submit response, a job whose
+            workflow failed to start comes back as failed instead — the rest of
+            the batch is unaffected.
+
+    BlastRadiusJobBatchRequest:
+      type: object
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: >
+            Capped much lower than the 100-item read batches — each entry
+            starts its own Temporal workflow, so the batch multiplies
+            workflow starts (and reachability-analysis cost) per request.
+            10 is the recommended default batch size; 20 is the hard limit.
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobRequest'
+
+    BlastRadiusJobBatchResponse:
+      type: object
+      required: [results]
+      description: >
+        Plain array in request order, one entry per requested job — unlike the
+        read batches there is no found/not-found case, but a job can still come
+        back with status: failed if row creation or the workflow start failed.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlastRadiusJobEntry'
+
+    BlastRadiusJobPollBatchRequest:
+      type: object
+      required: [analysisIds]
+      properties:
+        analysisIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+
+    BlastRadiusAnalysisBulkEntry:
+      type: object
+      required: [requestedAnalysisId, found, analysis]
+      properties:
+        requestedAnalysisId:
+          type: string
+        found:
+          type: boolean
+        analysis:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BlastRadiusAnalysis'
 
     BlastRadiusResultConfidence:
       type: string
@@ -515,7 +611,7 @@ components:
           nullable: true
         ecosystem:
           type: string
-          enum: [npm]
+          enum: [npm, go, maven, cargo]
         submittedAt:
           type: string
           nullable: true
@@ -577,105 +673,114 @@ components:
           minimum: 0
           maximum: 1
 
-    ReportingMethod:
+    ProjectProfilingMethod:
       type: object
-      nullable: true
-      description: Reserved shape — always null until SECURITY.md parsing ships.
-      required: [methodId, type, status, description, actionRequired]
+      description: >
+        One assembled way to report a vulnerability. Declared methods (confidence
+        'declared') come from the repo's SECURITY.md / linked policy pages / PVR
+        flag / security.txt; inferred methods (confidence 'inferred') are
+        security-contact fallbacks. Ordered preferred → accepted → fallback →
+        prohibited in the parent methods array.
+      required: [type, status, endpoint, condition, confidence, provenance]
       properties:
-        methodId:
-          type: integer
         type:
           type: string
+          description: Channel type, e.g. github-pvr, email, web-form, security-txt, bounty-platform, mailing-list.
         status:
           type: string
-          enum: [preferred, fallback]
-        recipient:
+          enum: [preferred, accepted, fallback, prohibited]
+        endpoint:
+          type: string
+          description: Actionable target — a URL or email address.
+          example: https://github.com/o/r/security/advisories/new
+        condition:
           type: string
           nullable: true
-        description:
+          description: Optional precondition on using this method, verbatim from the source.
+        confidence:
           type: string
-        actionRequired:
-          type: string
+          enum: [declared, inferred]
+        provenance:
+          type: object
+          additionalProperties: true
+          description: Where this method was derived from (e.g. file path + blobOid + parser, an api flag, or a contact channel/table).
 
-    ReportingGuidelines:
+    ProjectProfilingGuidelines:
       type: object
       nullable: true
-      description: Reserved shape — always null until SECURITY.md parsing ships.
-      required: [generalPrinciples, qualityRequirements]
+      description: Disclosure guidelines parsed from the security policy, or null when none were found.
+      required: [generalPrinciples, avoid, recommend]
       properties:
         generalPrinciples:
           type: array
           items:
             type: string
-        qualityRequirements:
-          type: object
-          required: [avoid, recommend]
-          properties:
-            avoid:
-              type: array
-              items:
+        avoid:
+          type: array
+          items:
+            type: string
+        recommend:
+          type: array
+          items:
+            type: object
+            required: [scenario, action]
+            properties:
+              scenario:
                 type: string
-            recommend:
-              type: array
-              items:
-                type: object
-                required: [scenario, action]
-                properties:
-                  scenario:
-                    type: string
-                  action:
-                    type: string
+              action:
+                type: string
 
-    IntegrationHints:
+    ProjectProfiling:
       type: object
-      nullable: true
-      description: Reserved shape — always null until computed.
-      required: [primaryEndpoint, fallbackEndpoint, validationHints]
+      required: [purl, declared, methods, guidelines, sources, bugBountyUrl, assembledAt]
       properties:
-        primaryEndpoint:
+        purl:
+          type: string
+        declared:
+          type: boolean
+          description: True when a reporting protocol was explicitly declared (vs. purely inferred from contacts).
+        methods:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectProfilingMethod'
+        guidelines:
+          $ref: '#/components/schemas/ProjectProfilingGuidelines'
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Provenance records for the signals that fed this assembly.
+        bugBountyUrl:
+          type: string
+          nullable: true
+          description: Bug-bounty program URL for the best-matched repo, or null when none is known.
+        assembledAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ProjectProfilingBulkEntry:
+      type: object
+      required: [requestedPurl, found, profiling]
+      properties:
+        requestedPurl:
+          type: string
+        found:
+          type: boolean
+        profiling:
           type: object
           nullable: true
-          required: [type, target]
-          properties:
-            type:
-              type: string
-            target:
-              type: string
-        fallbackEndpoint:
-          type: object
-          nullable: true
-          required: [type, target]
-          properties:
-            type:
-              type: string
-            target:
-              type: string
-        validationHints:
-          type: object
-          nullable: true
-          required: [falsePositiveRules, requirePocForSeverity, debounce]
-          properties:
-            falsePositiveRules:
-              type: array
-              items:
-                type: string
-            requirePocForSeverity:
-              type: array
-              items:
-                type: string
-            debounce:
-              type: string
-              nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ProjectProfiling'
 
     ContactDetail:
       type: object
       description: >
-        NOTE: shape not final — still under discussion upstream, in particular
-        how reportingMethods / reportingGuidelines / integrationHints will be
-        derived from SECURITY.md parsing. Those three, plus targetOrganizationName
-        and bugBountyProgramFlag, are always null today (not stored). Expect this
-        schema to change before the contract is frozen.
+        Security contacts for a package, plus its security-policy URLs and repo
+        mapping. Reserved for security contacts only — the assembled
+        vulnerability-reporting protocol (methods and guidelines)
+        is served by GET /akrites-external/project-profiling.
       required:
         - purl
         - name
@@ -686,11 +791,9 @@ components:
         - vulnerabilityReportingUrl
         - bugBountyUrl
         - pvrEnabled
-        - targetOrganizationName
-        - bugBountyProgramFlag
-        - reportingMethods
-        - reportingGuidelines
-        - integrationHints
+        - declaredRepositoryUrl
+        - resolvedRepositoryUrl
+        - repoMappingConfidence
       properties:
         purl:
           type: string
@@ -716,23 +819,28 @@ components:
         pvrEnabled:
           type: boolean
           nullable: true
-        targetOrganizationName:
+        declaredRepositoryUrl:
           type: string
           nullable: true
-          description: Reserved — not stored today, always null.
-        bugBountyProgramFlag:
-          type: boolean
+          description: Raw repository URL as declared in the package's own metadata.
+        resolvedRepositoryUrl:
+          type: string
           nullable: true
-          description: Reserved — not stored today, always null.
-        reportingMethods:
-          type: array
+          description: >
+            Best available repository URL, resolved via the confidence-ranked
+            package_repos → repos join — the repo CDP has actually resolved and
+            enriched (scorecard, branch protection, etc.). Null when the
+            package has no package_repos link yet.
+        repoMappingConfidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
           nullable: true
-          items:
-            $ref: '#/components/schemas/ReportingMethod'
-        reportingGuidelines:
-          $ref: '#/components/schemas/ReportingGuidelines'
-        integrationHints:
-          $ref: '#/components/schemas/IntegrationHints'
+          description: >
+            Confidence score of the package_repos mapping used to resolve
+            resolvedRepositoryUrl. Null when the package has no package_repos
+            link yet.
 
     ContactDetailBulkEntry:
       type: object
@@ -756,7 +864,10 @@ paths:
       tags: [Packages]
       security:
         - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
             - read:packages
+        - M2MBearer:
             - read:stewardships
       parameters:
         - name: purl
@@ -785,7 +896,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages or read:stewardships scope.
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
           content:
             application/json:
               schema:
@@ -804,7 +915,10 @@ paths:
       tags: [Packages]
       security:
         - M2MBearer:
+            - read:akrites-packages
+        - M2MBearer:
             - read:packages
+        - M2MBearer:
             - read:stewardships
       requestBody:
         required: true
@@ -862,7 +976,138 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages or read:stewardships scope.
+          description: Token missing read:akrites-packages, read:packages, or read:stewardships scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/project-profiling:
+    get:
+      operationId: getProjectProfiling
+      summary: Get the assembled vulnerability-reporting protocol by PURL
+      description: >
+        Assembled methods can include inferred security_contacts fallbacks whose
+        endpoint is a maintainer/committer email (contact PII), so this endpoint
+        requires read:akrites-maintainers, or read:maintainer-roles from the old
+        Self Serve client as a fallback. Never reachable with the packages scopes.
+      tags: [Project Profiling]
+      security:
+        - M2MBearer:
+            - read:akrites-maintainers
+        - M2MBearer:
+            - read:maintainer-roles
+      parameters:
+        - name: purl
+          in: query
+          required: true
+          schema:
+            type: string
+            example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: The assembled reporting protocol for the package's best-matched repo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectProfiling'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-maintainers or read:maintainer-roles scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found, or its best-matched repo has no assembled protocol.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/project-profiling:batch:
+    post:
+      operationId: getProjectProfilingBatch
+      summary: Bulk assembled reporting-protocol lookup by PURL
+      description: >
+        Assembled methods can include inferred security_contacts fallbacks whose
+        endpoint is a maintainer/committer email (contact PII), so this endpoint
+        requires read:akrites-maintainers, or read:maintainer-roles from the old
+        Self Serve client as a fallback. Never reachable with the packages scopes.
+      tags: [Project Profiling]
+      security:
+        - M2MBearer:
+            - read:akrites-maintainers
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purls]
+              properties:
+                purls:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                pageSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested purls, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectProfilingBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, malformed purl).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-maintainers or read:maintainer-roles scope.
           content:
             application/json:
               schema:
@@ -874,6 +1119,8 @@ paths:
       summary: Get advisories for a package by PURL
       tags: [Advisories]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       parameters:
@@ -903,7 +1150,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -921,6 +1168,8 @@ paths:
       summary: Bulk advisory lookup
       tags: [Advisories]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -979,7 +1228,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -991,16 +1240,20 @@ paths:
       summary: 2a — Submit a blast-radius analysis job
       description: >
         Always exactly one job per request — no bulk submit. Omit package for
-        an advisory-wide analysis; provide it to narrow to a single package.
-        Starts a Temporal workflow running the 4-stage reachability pipeline
-        (intel, dependents, reachability, report) for npm; other ecosystems
-        fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results via
-        GET /jobs/{analysisId}.
+        an advisory-wide analysis (only supported for single-package
+        advisories); provide it to narrow to one package, which is required
+        for advisories affecting more than one. Starts a Temporal workflow
+        running the 4-stage reachability pipeline
+        (intel, dependents, reachability, report) for npm, go, maven, or cargo; other
+        ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results
+        via GET /jobs/{analysisId}.
 
 
         Not yet implemented: the 7-day result cache and force-bypass semantics.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       requestBody:
@@ -1019,9 +1272,9 @@ paths:
         '400':
           description: >
             Validation error (missing/empty advisoryId), or an unsupported
-            ecosystem — only npm is supported today, so any other value
-            (including a missing ecosystem) is rejected before a workflow
-            is started.
+            ecosystem — only npm, go, maven, and cargo are supported today, so any other
+            value (including a missing ecosystem) is rejected before a
+            workflow is started.
           content:
             application/json:
               schema:
@@ -1033,13 +1286,134 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '429':
           description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:batch:
+    post:
+      operationId: submitBlastRadiusJobBatch
+      summary: 2a bulk — Submit multiple blast-radius analysis jobs
+      description: >
+        One job per array entry, same semantics as the single-job submit —
+        omit package for an advisory-wide analysis (only supported for
+        single-package advisories), provide it to narrow to a single package.
+        Each entry starts its own Temporal workflow, so the
+        batch is capped at 20 jobs (10 recommended as the default batch
+        size), much lower than the 100-item read batches, and stays behind
+        the same strict rate limiter as the single-job route.
+
+
+        A per-job failure does not fail the whole batch — that entry comes
+        back with status: 'failed' and the rest still submit.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:akrites-advisories
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobBatchRequest'
+      responses:
+        '202':
+          description: Jobs accepted, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlastRadiusJobBatchResponse'
+        '400':
+          description: Validation error (empty array, >20 items, or an invalid job entry).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-advisories, or read:packages, scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/blast-radius/jobs:batch/poll:
+    post:
+      operationId: getBlastRadiusJobBatch
+      summary: 2b bulk — Poll multiple blast-radius analysis jobs
+      description: >
+        Same found/not-found echo shape as the other batch endpoints: an
+        unknown analysisId comes back { found: false, analysis: null }
+        instead of 404ing the whole request. Read-only, so it is rate-limited
+        the same as the other non-blast-radius endpoints, not the strict
+        submit limiter.
+      tags: [Blast Radius]
+      security:
+        - M2MBearer:
+            - read:akrites-advisories
+        - M2MBearer:
+            - read:packages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlastRadiusJobPollBatchRequest'
+      responses:
+        '200':
+          description: One page of results, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page, pageSize, total, results]
+                properties:
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+                    description: Total number of requested analysisIds, across all pages.
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlastRadiusAnalysisBulkEntry'
+        '400':
+          description: Validation error (empty array, >100 items, or a non-uuid analysisId).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1055,6 +1429,8 @@ paths:
         status.
       tags: [Blast Radius]
       security:
+        - M2MBearer:
+            - read:akrites-advisories
         - M2MBearer:
             - read:packages
       parameters:
@@ -1084,7 +1460,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:packages scope.
+          description: Token missing read:akrites-advisories, or read:packages, scope.
           content:
             application/json:
               schema:
@@ -1107,10 +1483,12 @@ paths:
       operationId: getContactDetail
       summary: Get security contact detail by PURL
       description: >
-        Requires read:maintainer-roles (interim for the contract's cdp:maintainers:read).
-        Never reachable with the packages scope.
+        Requires read:akrites-maintainers, or read:maintainer-roles from the old Self
+        Serve client as a fallback. Never reachable with the packages scope.
       tags: [Contacts]
       security:
+        - M2MBearer:
+            - read:akrites-maintainers
         - M2MBearer:
             - read:maintainer-roles
       parameters:
@@ -1140,7 +1518,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
           content:
             application/json:
               schema:
@@ -1158,6 +1536,8 @@ paths:
       summary: Bulk security contact lookup
       tags: [Contacts]
       security:
+        - M2MBearer:
+            - read:akrites-maintainers
         - M2MBearer:
             - read:maintainer-roles
       requestBody:
@@ -1216,7 +1596,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Token missing read:maintainer-roles scope.
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /akrites-external/contacts/ingest:
+    post:
+      operationId: ingestContactDetail
+      summary: On-demand security-contacts ingest for a single PURL
+      description: >
+        Synchronous, single-purl only — no batch variant, since fanning this out over
+        many purls would multiply concurrent Temporal workflow starts.
+
+        If the linked repo's security contacts have already been ingested at least
+        once, returns the existing ContactDetail immediately without triggering the
+        workflow. If the purl is unknown, or the package has no linked repo at all,
+        returns 404 immediately without triggering the workflow either. Otherwise
+        blocks while a single-repo Temporal workflow (ingestSecurityContactsForPurlWorkflow)
+        ingests the linked repo's security contacts — worst case ~95s per attempt
+        cycle, plus unbounded time waiting for a free worker slot — then returns the
+        same ContactDetail payload as GET /contacts/detail. Concurrent requests for
+        the same purl attach to the same running workflow instead of starting
+        duplicates.
+
+
+        Note: the underlying workflow itself has no "already ingested" gate — it
+        reprocesses and can replace a repo's contacts on every invocation. This
+        endpoint is what prevents repeat calls from re-triggering it for a purl
+        that's already been ingested.
+
+
+        Rate limited independently of the other /contacts endpoints — default
+        20 requests/hour, tunable via AKRITES_CONTACT_INGEST_RATE_LIMIT_MAX /
+        AKRITES_CONTACT_INGEST_RATE_LIMIT_WINDOW_MS.
+
+
+        Not yet implemented: this is a synchronous, blocking call. Future work should
+        make this async — an accept-and-poll job, similar to POST /blast-radius/jobs —
+        so callers aren't held open for the duration of the ingest.
+      tags: [Contacts]
+      security:
+        - M2MBearer:
+            - read:akrites-maintainers
+        - M2MBearer:
+            - read:maintainer-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purl]
+              properties:
+                purl:
+                  type: string
+                  example: pkg:npm/%40angular/core
+      responses:
+        '200':
+          description: >-
+            Security contact detail — either just ingested by this call, or
+            returned from a prior ingest without re-triggering the workflow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '400':
+          description: Malformed purl.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token missing read:akrites-maintainers, or read:maintainer-roles, scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: >-
+            Purl is unknown, or the package has no linked repo to ingest
+            contacts from — returned without triggering the workflow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests — rate-limited independently of the other endpoints.
           content:
             application/json:
               schema:
