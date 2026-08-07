@@ -184,6 +184,12 @@ describe('compareVersion — pypi (PEP 440)', () => {
     expect(compareVersion('pypi', 'not-a-version', '1.0.0')).toBeNull()
   })
 
+  it('distinguishes release segments beyond Number.MAX_SAFE_INTEGER', () => {
+    expect(sign(compareVersion('pypi', '1.9007199254740992', '1.9007199254740993'))).toBe(-1)
+    expect(sign(compareVersion('pypi', '1.9007199254740993', '1.9007199254740992'))).toBe(1)
+    expect(compareVersion('pypi', '1.9007199254740992', '1.9007199254740992')).toBe(0)
+  })
+
   it('rejects titlecase "PyPI" — production storage is always lowercase', () => {
     expect(compareVersion('PyPI', '1.0.0', '2.0.0')).toBeNull()
   })

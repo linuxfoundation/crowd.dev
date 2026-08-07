@@ -2,9 +2,9 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
-import { findPackageIdsByPurl } from '@crowd/data-access-layer/src/osspckgs/packages'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
+import { findPackageIdByPurl } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { fetchProject } from '../../../pypi/fetchProject'
@@ -84,7 +84,7 @@ export async function runIntelStagePyPi(
     // packages.purl is always normalized; packages.name can drift from canonical PEP 503.
     // See: blast-radius PyPI plan's name-casing section.
     const purl = `pkg:pypi/${normalizedName}`
-    const packageId = (await findPackageIdsByPurl(qx, [purl])).get(purl) ?? null
+    const packageId = await findPackageIdByPurl(qx, purl)
 
     // pypi.org's JSON API is authoritative; fall back to ingested versions if unreachable.
     const projectResult = await fetchProject(normalizedName)

@@ -77,4 +77,10 @@ describe('pypiDependencyMayIncludeVuln', () => {
     expect(pypiDependencyMayIncludeVuln('1.0', '<2.0', ['1.0.0'])).toBe('matched')
     expect(pypiDependencyMayIncludeVuln('1.0alpha1', '<2.0', ['1.0a1'])).toBe('matched')
   })
+
+  it('is over-inclusive when the resolved version cannot be parsed', () => {
+    expect(pypiDependencyMayIncludeVuln('not-a-version', '<2.0', ['1.0.0'])).toBe(
+      'unparseable-included',
+    )
+  })
 })

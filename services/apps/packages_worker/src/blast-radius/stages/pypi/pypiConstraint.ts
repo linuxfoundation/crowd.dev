@@ -137,8 +137,10 @@ export function pypiDependencyMayIncludeVuln(
   vulnerableVersions: string[],
 ): PypiConstraintMatch {
   if (resolvedVersion) {
-    const matched = vulnerableVersions.some((v) => compareVersion('pypi', resolvedVersion, v) === 0)
-    return matched ? 'matched' : 'excluded'
+    const comparisons = vulnerableVersions.map((v) => compareVersion('pypi', resolvedVersion, v))
+    if (comparisons.includes(0)) return 'matched'
+    if (comparisons.includes(null)) return 'unparseable-included'
+    return 'excluded'
   }
   return pypiConstraintMayInclude(constraint, vulnerableVersions)
 }

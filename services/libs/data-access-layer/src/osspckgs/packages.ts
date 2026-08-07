@@ -2,17 +2,15 @@ import { QueryExecutor } from '../queryExecutor'
 
 import { IDbPackageUniverse, IDbPackageUpsert, IDbSonatypePopularityUpsert } from './types'
 
-// Returns IDs as strings: packages.id is BIGSERIAL (int8) and pg-promise leaves int8
-// values as strings to avoid silently losing precision via Number() coercion.
 export async function findPackageIdsByPurl(
   qx: QueryExecutor,
   purls: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, number>> {
   if (purls.length === 0) return new Map()
   const rows = await qx.select(`SELECT id, purl FROM packages WHERE purl = ANY($(purls))`, {
     purls,
   })
-  return new Map(rows.map((r: { purl: string; id: string }) => [r.purl, r.id]))
+  return new Map(rows.map((r: { purl: string; id: number }) => [r.purl, r.id]))
 }
 // ─── packages_universe ────────────────────────────────────────────────────────
 
