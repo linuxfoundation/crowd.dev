@@ -11,7 +11,7 @@ const { blastRadiusStart, blastRadiusFail } = proxyActivities<typeof activities>
 })
 
 // Intel runs an Opus agent over the downloaded package source (up to 15 turns,
-// 10-minute agent timeout in runAnalysisAgent) — give it headroom past that.
+// 10-minute agent timeout in runClaudeAgentQuery) — give it headroom past that.
 const { blastRadiusIntel } = proxyActivities<typeof activities>({
   startToCloseTimeout: '20 minutes',
   heartbeatTimeout: '5 minutes',

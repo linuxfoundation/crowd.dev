@@ -3,12 +3,12 @@ import * as os from 'os'
 import * as path from 'path'
 import { promisify } from 'util'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { toPromptSymbolSpec } from '../agent/promptKit'
 import { SymbolSpec } from '../agent/prompts'
-import { runAnalysisAgent } from '../agent/runner'
 import { forEachWithConcurrency } from '../dependentsScan'
 
 const mkdtemp = promisify(fs.mkdtemp)
@@ -139,7 +139,7 @@ export async function runReachabilityStage(
           try {
             const systemPrompt = cfg.buildSystemPrompt(spec)
 
-            const agentResult = await runAnalysisAgent({
+            const agentResult = await runClaudeAgentQuery({
               prompt: cfg.prompt,
               systemPrompt,
               cwd: depDir,

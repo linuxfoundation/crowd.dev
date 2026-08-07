@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -10,7 +11,6 @@ import { fetchPackument } from '../../../npm/fetchPackument'
 import { parseNpmName } from '../../../npm/normalize'
 import { isFetchError } from '../../../npm/types'
 import { INTEL_SCHEMA, INTEL_SYSTEM_PROMPT, buildIntelPrompt } from '../../agent/prompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import { downloadAndExtractTarball } from '../../clients/npmTarball'
 import {
@@ -124,7 +124,7 @@ export async function runIntelStageNpm(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,
