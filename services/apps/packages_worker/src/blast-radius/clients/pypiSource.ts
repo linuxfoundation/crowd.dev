@@ -112,14 +112,19 @@ async function downloadSdist(
   }
 }
 
-// A .whl is a zip with no wrapper directory. Zip's central directory sits at the end of
-// the file, so unlike tar we can't stream-extract incrementally — download to a scratch
-// file first, then extract, same as goModuleZip.ts.
-async function downloadWheel(
+// A sdist can ship as either .tar.gz/.tgz or .zip — packagetype only tells us
+// "source distribution", not the archive format, so dispatch on the actual filename.
+function isZipArchive(filename: string): boolean {
+  return filename.toLowerCase().endsWith('.zip')
+}
+
+// Zip's central directory is at the end; download first, then extract (see goModuleZip.ts).
+async function downloadZip(
   url: string,
   destDir: string,
   packageName: string,
   version: string,
+  stripTopLevelDir: boolean,
 ): Promise<void> {
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -159,22 +164,25 @@ async function downloadWheel(
     for (const entry of directory.files) {
       if (entry.type !== 'File') continue
 
-      // Wheel contents originate from a third-party package — guard path traversal
+      const relativePath = stripTopLevelDir ? entry.path.split('/').slice(1).join('/') : entry.path
+      if (!relativePath) continue
+
+      // Archive contents originate from a third-party package — guard path traversal
       // defensively rather than trust the archive (no tar-style preservePaths here).
-      const resolvedPath = path.resolve(destDir, entry.path)
+      const resolvedPath = path.resolve(destDir, relativePath)
       if (resolvedPath !== destDir && !resolvedPath.startsWith(destDir + path.sep)) {
-        throw new Error(`Wheel entry escapes destination dir: ${entry.path}`)
+        throw new Error(`Zip entry escapes destination dir: ${entry.path}`)
       }
 
       extractedFiles++
       if (extractedFiles > MAX_EXTRACTED_FILES) {
-        throw new Error('Wheel extraction exceeded size/file limits')
+        throw new Error('Zip extraction exceeded size/file limits')
       }
 
       mkdirSync(path.dirname(resolvedPath), { recursive: true })
 
       const extractionLimiter = createDownloadLimiter(
-        'Wheel extraction exceeded size/file limits',
+        'Zip extraction exceeded size/file limits',
         MAX_EXTRACTED_BYTES,
         extractedByteCounter,
       )
@@ -201,8 +209,12 @@ export async function downloadAndExtractPypiSource(
   mkdirSync(destDir, { recursive: true })
 
   if (dist.packagetype === 'sdist') {
-    await downloadSdist(dist.url, destDir, packageName, version)
+    if (isZipArchive(dist.filename)) {
+      await downloadZip(dist.url, destDir, packageName, version, true)
+    } else {
+      await downloadSdist(dist.url, destDir, packageName, version)
+    }
   } else {
-    await downloadWheel(dist.url, destDir, packageName, version)
+    await downloadZip(dist.url, destDir, packageName, version, false)
   }
 }

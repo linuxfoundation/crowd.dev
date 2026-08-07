@@ -135,6 +135,29 @@ describe('downloadAndExtractPypiSource', () => {
     )
   })
 
+  it('extracts a zip-format sdist, stripping the wrapper directory', async () => {
+    const sdistBuf = buildStoredZip([{ path: 'flask-3.0.0/src/flask/__init__.py', content: 'x=1' }])
+    mockFetchSequence([
+      {
+        json: {
+          info: { name: 'flask' },
+          urls: [
+            {
+              packagetype: 'sdist',
+              url: 'https://files.pythonhosted.org/sdist.zip',
+              filename: 'flask-3.0.0.zip',
+            },
+          ],
+        },
+      },
+      { body: sdistBuf },
+    ])
+
+    await downloadAndExtractPypiSource('flask', '3.0.0', destDir)
+
+    expect(fs.readFileSync(path.join(destDir, 'src/flask/__init__.py'), 'utf8')).toBe('x=1')
+  })
+
   it('throws PypiSourceNotFoundError when neither sdist nor wheel is present', async () => {
     mockFetchSequence([{ json: { info: { name: 'flask' }, urls: [] } }])
 

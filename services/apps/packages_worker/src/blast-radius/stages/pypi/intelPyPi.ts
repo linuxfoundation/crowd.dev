@@ -2,9 +2,9 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { findPackageIdsByPurl } from '@crowd/data-access-layer/src/osspckgs/packages'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
-import { findPackageIdByPurl } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { fetchProject } from '../../../pypi/fetchProject'
@@ -81,20 +81,18 @@ export async function runIntelStagePyPi(
     // ECOSYSTEM-typed, not SEMVER — PEP 440 versions don't follow semver ordering).
     const ranges = ecosystemRangeEvents(entry)
 
-    // packages.name can drift from the canonical PEP 503 spelling for pypi rows (a
-    // pre-existing data-quality issue — see the blast-radius PyPI plan's name-casing
-    // section); packages.purl is always PEP 503-normalized, so look up by purl instead.
-    const packageId = await findPackageIdByPurl(qx, `pkg:pypi/${normalizedName}`)
+    // packages.purl is always normalized; packages.name can drift from canonical PEP 503.
+    // See: blast-radius PyPI plan's name-casing section.
+    const purl = `pkg:pypi/${normalizedName}`
+    const packageId = (await findPackageIdsByPurl(qx, [purl])).get(purl) ?? null
 
-    // pypi.org's JSON API is the authoritative version list; fall back to our own
-    // ingested `versions` rows (deps.dev) if the registry is unreachable and the
-    // project is already known to us.
+    // pypi.org's JSON API is authoritative; fall back to ingested versions if unreachable.
     const projectResult = await fetchProject(normalizedName)
     let allVersions: string[]
     if (!isFetchError(projectResult)) {
       allVersions = Object.keys(projectResult.releases ?? {})
     } else if (packageId !== null) {
-      allVersions = await getVersionNumbers(qx, String(packageId))
+      allVersions = await getVersionNumbers(qx, packageId)
     } else {
       throw new Error(
         `Failed to fetch PyPI versions for ${project} (${projectResult.message}) and project is not in our DB`,

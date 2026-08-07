@@ -139,7 +139,7 @@ async function main() {
         const role = normaliseRole(r.role)
         const insertedId = await insertPackageMaintainerLink(
           tqx,
-          packageId,
+          Number(packageId),
           maintainerId,
           role,
           'manual_csv',

@@ -8,8 +8,6 @@ import {
 } from './promptKit'
 import { SymbolSpec } from './prompts'
 
-// ---------- STAGE 1: INTEL ----------
-
 const IMPORT_SIGNATURE_KEYS = ['import_module', 'from_import', 'attribute_access', 'dynamic_import']
 
 export const PYPI_INTEL_SCHEMA = buildIntelSchema(IMPORT_SIGNATURE_KEYS)
@@ -46,8 +44,6 @@ Rules:
   identifies the symbol(s); lower if you had to infer from indirect evidence.`
 
 export const buildPyPiIntelPrompt = buildIntelPrompt
-
-// ---------- STAGE 3: REACHABILITY ----------
 
 const IMPORT_STYLE_ENUM = [
   'import-module',

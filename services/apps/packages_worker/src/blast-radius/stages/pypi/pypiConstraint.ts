@@ -70,10 +70,18 @@ function parseSpecifierSet(constraint: string | null): PypiClause[] | null {
   return clauses
 }
 
-// Wildcard matching reduces to a public-version string prefix check — deliberately
-// over-inclusive rather than spec-exact, consistent with every other clause here.
 function normalizedForWildcard(version: string): string {
   return version.trim().toLowerCase().replace(/^v/, '').split('+')[0]
+}
+
+// PEP 440 wildcard matching is a release-segment prefix match, not a raw string prefix —
+// "==2.2.*" must not match "2.20.0", so the char right after the prefix can't be a digit.
+function matchesWildcardPrefix(version: string, prefix: string): boolean {
+  const normalized = normalizedForWildcard(version)
+  const normalizedPrefix = prefix.toLowerCase()
+  if (!normalized.startsWith(normalizedPrefix)) return false
+  const boundaryChar = normalized[normalizedPrefix.length]
+  return boundaryChar === undefined || !/[0-9]/.test(boundaryChar)
 }
 
 function clauseMatches(clause: PypiClause, version: string): boolean {
@@ -82,7 +90,7 @@ function clauseMatches(clause: PypiClause, version: string): boolean {
   }
 
   if (clause.wildcard) {
-    const matches = normalizedForWildcard(version).startsWith(clause.version.toLowerCase())
+    const matches = matchesWildcardPrefix(version, clause.version)
     return clause.op === '==' ? matches : !matches
   }
 
@@ -122,16 +130,15 @@ export function pypiConstraintMayInclude(
   return matched ? 'matched' : 'excluded'
 }
 
-// Prefers resolved version over the declared specifier (ground truth vs. declared) — PyPI
-// is a deps.dev EDGE ecosystem, so a resolved version is usually available; mirrors
-// cargoDependencyMayIncludeVuln.
+// Prefers resolved version (ground truth); PyPI is a deps.dev EDGE ecosystem.
 export function pypiDependencyMayIncludeVuln(
   resolvedVersion: string | null,
   constraint: string | null,
   vulnerableVersions: string[],
 ): PypiConstraintMatch {
   if (resolvedVersion) {
-    return vulnerableVersions.includes(resolvedVersion) ? 'matched' : 'excluded'
+    const matched = vulnerableVersions.some((v) => compareVersion('pypi', resolvedVersion, v) === 0)
+    return matched ? 'matched' : 'excluded'
   }
   return pypiConstraintMayInclude(constraint, vulnerableVersions)
 }

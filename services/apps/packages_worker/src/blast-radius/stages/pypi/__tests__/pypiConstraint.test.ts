@@ -21,6 +21,11 @@ describe('pypiConstraintMayInclude', () => {
     expect(pypiConstraintMayInclude('==2.2.*', ['2.3.0'])).toBe('excluded')
   })
 
+  it('does not let wildcard prefix matching cross a release-segment boundary', () => {
+    expect(pypiConstraintMayInclude('==2.2.*', ['2.20.0'])).toBe('excluded')
+    expect(pypiConstraintMayInclude('~=1.4.5', ['1.40.0'])).toBe('excluded')
+  })
+
   it('matches "!=" with a ".*" wildcard as exclusion of the prefix', () => {
     expect(pypiConstraintMayInclude('!=2.2.*', ['2.3.0'])).toBe('matched')
     expect(pypiConstraintMayInclude('!=2.2.*', ['2.2.0'])).toBe('excluded')
@@ -66,5 +71,10 @@ describe('pypiDependencyMayIncludeVuln', () => {
   it('falls back to the constraint when no resolved version is present', () => {
     expect(pypiDependencyMayIncludeVuln(null, '==1.0.0', ['1.0.0'])).toBe('matched')
     expect(pypiDependencyMayIncludeVuln(null, null, ['1.0.0'])).toBe('unparseable-included')
+  })
+
+  it('recognizes PEP 440-equivalent resolved versions, not just exact strings', () => {
+    expect(pypiDependencyMayIncludeVuln('1.0', '<2.0', ['1.0.0'])).toBe('matched')
+    expect(pypiDependencyMayIncludeVuln('1.0alpha1', '<2.0', ['1.0a1'])).toBe('matched')
   })
 })

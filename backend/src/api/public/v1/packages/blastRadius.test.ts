@@ -85,9 +85,17 @@ describe('blastRadiusJobRequestSchema', () => {
   it('rejects an unsupported ecosystem', () => {
     const result = blastRadiusJobRequestSchema.safeParse({
       advisoryId: 'GHSA-jf85-cpcp-j695',
-      ecosystem: 'pypi',
+      ecosystem: 'homebrew',
     })
     expect(result.success).toBe(false)
+  })
+
+  it('accepts pypi as a supported ecosystem', () => {
+    const result = blastRadiusJobRequestSchema.safeParse({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'pypi',
+    })
+    expect(result.success).toBe(true)
   })
 })
 

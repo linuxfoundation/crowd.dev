@@ -7,9 +7,7 @@ import { downloadAndExtractPypiSource } from '../../clients/pypiSource'
 import { toPypiNormalizedName } from '../../packageIdentifier'
 import { ReachabilitySourceConfig } from '../reachabilityStage'
 
-// PyPI is a deps.dev EDGE ecosystem, so dep.version is the dependent's own resolved
-// version and is never null — no canonical-name round trip is needed the way Cargo's
-// resolveCargoCanonical requires, since the PyPI JSON API accepts normalized names.
+// PyPI is a deps.dev EDGE ecosystem; dep.version is the dependent's resolved version.
 export const pypiReachabilityConfig: ReachabilitySourceConfig = {
   prompt: PYPI_REACHABILITY_PROMPT,
   schema: PYPI_VERDICT_SCHEMA,
