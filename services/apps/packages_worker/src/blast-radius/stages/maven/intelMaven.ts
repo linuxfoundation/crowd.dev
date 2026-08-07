@@ -65,9 +65,10 @@ export async function runIntelStageMaven(
     // Pick the Maven entry the analysis was requested for; see selectAdvisoryEntry for
     // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requested = analysisDetail?.package_name
-      ? toBareMavenCoordinate(analysisDetail.package_name)
-      : null
+    const requested =
+      analysisDetail?.package_name != null
+        ? toBareMavenCoordinate(analysisDetail.package_name)
+        : null
     const requestedCoordinate = requested ? `${requested.groupId}:${requested.artifactId}` : null
     const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
       mavenEntries,

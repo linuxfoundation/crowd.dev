@@ -5,6 +5,7 @@ import {
   NuGetRegistrationIndex,
   NuGetRegistrationPage,
   NuGetSearchItem,
+  isNuGetFetchError,
 } from './types'
 
 const SERVICE_INDEX_URL = 'https://api.nuget.org/v3/index.json'
@@ -144,6 +145,17 @@ export async function fetchRegistration(
     if (classified) return classified
     throw err
   }
+}
+
+// Thin wrapper for callers (blast-radius intel) that only need the version strings,
+// not the full registration payload with per-version metadata.
+export async function fetchVersionList(packageId: string): Promise<string[] | NuGetFetchError> {
+  const registration = await fetchRegistration(packageId)
+  if (isNuGetFetchError(registration)) return registration
+
+  return registration.items.flatMap((page) =>
+    (page.items ?? []).map((leaf) => leaf.catalogEntry.version),
+  )
 }
 
 // The registration API never exposes the nuspec <repository> element — it must be read from the

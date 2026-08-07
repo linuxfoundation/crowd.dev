@@ -2,6 +2,9 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { Ecosystem } from '../ecosystemSupport'
 
+import { runDependentsStageCargo } from './cargo/dependentsCargo'
+import { runIntelStageCargo } from './cargo/intelCargo'
+import { cargoReachabilityConfig } from './cargo/reachabilityConfig'
 import { runDependentsStageGo } from './go/dependentsGo'
 import { runIntelStageGo } from './go/intelGo'
 import { goReachabilityConfig } from './go/reachabilityConfig'
@@ -11,7 +14,13 @@ import { mavenReachabilityConfig } from './maven/reachabilityConfig'
 import { runDependentsStageNpm } from './npm/dependentsNpm'
 import { runIntelStageNpm } from './npm/intelNpm'
 import { npmReachabilityConfig } from './npm/reachabilityConfig'
+import { runDependentsStageNuGet } from './nuget/dependentsNuGet'
+import { runIntelStageNuGet } from './nuget/intelNuGet'
+import { nugetReachabilityConfig } from './nuget/reachabilityConfig'
 import { ReachabilitySourceConfig } from './reachabilityStage'
+import { runDependentsStageRubyGems } from './rubygems/dependentsRubyGems'
+import { runIntelStageRubyGems } from './rubygems/intelRubyGems'
+import { rubygemsReachabilityConfig } from './rubygems/reachabilityConfig'
 
 // Replaces the 3 scattered `if (ecosystem === 'go')` dispatch branches. Record<Ecosystem, …>
 // enforces at compile time that every SUPPORTED_ECOSYSTEMS entry has a config.
@@ -46,6 +55,21 @@ const ECOSYSTEMS: Record<Ecosystem, EcosystemConfig> = {
     runIntel: runIntelStageMaven,
     runDependents: runDependentsStageMaven,
     reachability: mavenReachabilityConfig,
+  },
+  cargo: {
+    runIntel: runIntelStageCargo,
+    runDependents: runDependentsStageCargo,
+    reachability: cargoReachabilityConfig,
+  },
+  nuget: {
+    runIntel: runIntelStageNuGet,
+    runDependents: runDependentsStageNuGet,
+    reachability: nugetReachabilityConfig,
+  },
+  rubygems: {
+    runIntel: runIntelStageRubyGems,
+    runDependents: runDependentsStageRubyGems,
+    reachability: rubygemsReachabilityConfig,
   },
 }
 
