@@ -68,7 +68,7 @@ SQL >
         d.merged12m AS merged12m,
         d.closedUnmerged12m AS closedUnmerged12m,
         d.medianMergeS AS medianMergeS
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE isNull(deletedAt)) AS base
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE isNull (deletedAt)) AS base
     LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
     LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
     LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl

@@ -10,9 +10,9 @@ DESCRIPTION >
     `project_insights_impact_breakdown_ds`.
     - Parameters: `slug` (single project).
 
-TAGS "Insights, Widget", "Project", "Health"
-
 TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Project", "Health"
 
 NODE project_insights_health_breakdown_endpoint
 SQL >
