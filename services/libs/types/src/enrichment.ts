@@ -43,6 +43,10 @@ export interface IMemberOrganizationData {
   identities?: IOrganizationIdentity[]
 }
 
+export interface IDeletedMemberOrganizationData {
+  orgId: string
+}
+
 export interface IMemberOriginalData {
   // members table data
   displayName: string
@@ -55,6 +59,8 @@ export interface IMemberOriginalData {
 
   // memberOrganizations table data
   organizations: IMemberOrganizationData[]
+  // memberOrganizations rows manually deleted, source not UI/PROJECT_REGISTRY — tombstones enrichment must not recreate
+  deletedOrganizations: IDeletedMemberOrganizationData[]
 }
 
 export interface IOrganizationEnrichmentCache<T> {
