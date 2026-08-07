@@ -57,7 +57,13 @@ export async function fetchMemberDataForLLMSquashing(
                         where mo."memberId" = $(memberId)
                           and mo."deletedAt" is null
                           and o."deletedAt" is null
-                        group by mo."memberId", mo."organizationId", o."displayName", mo.id)
+                        group by mo."memberId", mo."organizationId", o."displayName", mo.id),
+    deleted_member_orgs as (select distinct
+                              mo."organizationId" as "orgId"
+                            from "memberOrganizations" mo
+                            where mo."memberId" = $(memberId)
+                              and mo."deletedAt" is not null
+                              and mo.source not in ('ui', 'project-registry'))
     select m."displayName",
           m.attributes,
           m."manuallyChangedFields",
@@ -90,7 +96,10 @@ export async function fetchMemberDataForLLMSquashing(
                   where mo."memberId" = m.id
               )
               else '[]'::json
-              end as organizations
+              end as organizations,
+          coalesce(
+                  (select json_agg(jsonb_build_object('orgId', d."orgId") order by d."orgId") from deleted_member_orgs d), '[]'::json
+          ) as "deletedOrganizations"
     from members m
     where m.id = $(memberId)
       and m."deletedAt" is null

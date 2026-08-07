@@ -244,7 +244,7 @@ export async function getPriorityArray(): Promise<string[]> {
 
 export async function fetchMemberDataForLLMSquashing(
   memberId: string,
-): Promise<IMemberOriginalData> {
+): Promise<IMemberOriginalData | null> {
   return fetchMemberDataForLLMSquashingDb(svc.postgres.reader.connection(), memberId)
 }
 
@@ -601,6 +601,7 @@ export async function updateMemberUsingSquashedPayload(
         existingMemberData.organizations,
         squashedPayload.memberOrganizations,
         isHighConfidenceSourceSelectedForWorkExperiences,
+        new Set(existingMemberData.deletedOrganizations.map((o) => o.orgId)),
       )
 
       // Enrichment often deletes and recreates the same orgs with identical dates.
@@ -834,11 +835,15 @@ function prepareWorkExperiences(
   oldVersion: IMemberOrganizationData[],
   newVersion: IMemberEnrichmentDataNormalizedOrganization[],
   isHighConfidenceSourceSelectedForWorkExperiences: boolean,
+  deletedOrganizationIds: Set<string>,
 ): IWorkExperienceChanges {
   // we delete all the work experiences that were not manually created or from the project registry.
   const toDelete = oldVersion.filter(
     (c) => c.source !== OrganizationSource.UI && c.source !== OrganizationSource.PROJECT_REGISTRY,
   )
+
+  // never recreate an affiliation that was manually deleted — enrichment providers keep resupplying it
+  newVersion = newVersion.filter((e) => !deletedOrganizationIds.has(e.organizationId))
 
   const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
