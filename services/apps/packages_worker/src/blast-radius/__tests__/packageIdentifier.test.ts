@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { toBareGemName, toBareNpmName, toBareNuGetId, toDbCargoName } from '../packageIdentifier'
+import {
+  toBareGemName,
+  toBareNpmName,
+  toBareNuGetId,
+  toBarePypiName,
+  toDbCargoName,
+  toPypiNormalizedName,
+} from '../packageIdentifier'
 
 describe('toBareNpmName', () => {
   it('returns a bare name unchanged', () => {
@@ -89,5 +96,49 @@ describe('toBareGemName', () => {
 
   it('does not lowercase the name — preserves non-lowercase published spellings', () => {
     expect(toBareGemName('pkg:gem/RedCloth@4.3.2')).toBe('RedCloth')
+  })
+})
+
+describe('toBarePypiName', () => {
+  it('returns a bare name unchanged', () => {
+    expect(toBarePypiName('flask')).toBe('flask')
+  })
+
+  it('strips the pkg:pypi/ prefix', () => {
+    expect(toBarePypiName('pkg:pypi/flask')).toBe('flask')
+  })
+
+  it('strips a trailing version', () => {
+    expect(toBarePypiName('pkg:pypi/flask@3.0.0')).toBe('flask')
+  })
+
+  it('strips qualifiers and subpath', () => {
+    expect(toBarePypiName('pkg:pypi/flask@3.0.0?foo=bar#sub')).toBe('flask')
+  })
+
+  it('does not lowercase the name — preserves the publisher-cased spelling', () => {
+    expect(toBarePypiName('pkg:pypi/Jinja2@3.1.2')).toBe('Jinja2')
+  })
+
+  it('decodes a percent-encoded name', () => {
+    expect(toBarePypiName('pkg:pypi/py%2Dyaml')).toBe('py-yaml')
+  })
+
+  it('keeps normalizing after a decode failure', () => {
+    expect(toBarePypiName('pkg:pypi/flask@3.0.0%')).toBe('flask')
+  })
+})
+
+describe('toPypiNormalizedName', () => {
+  it('applies PEP 503 normalization', () => {
+    expect(toPypiNormalizedName('Foo_Bar.Baz')).toBe('foo-bar-baz')
+  })
+
+  it('collapses repeated separators into a single dash', () => {
+    expect(toPypiNormalizedName('foo--bar__baz')).toBe('foo-bar-baz')
+  })
+
+  it('is idempotent on an already-normalized name', () => {
+    expect(toPypiNormalizedName('jinja2')).toBe('jinja2')
   })
 })

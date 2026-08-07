@@ -7,6 +7,7 @@ export const SUPPORTED_BLAST_RADIUS_ECOSYSTEMS = [
   'cargo',
   'nuget',
   'rubygems',
+  'pypi',
 ] as const
 
 // Always exactly one job per request — advisory-wide (package omitted) or narrowed

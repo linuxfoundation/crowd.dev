@@ -21,6 +21,7 @@ import {
 
 export { getDbConstraint } from './errors/db'
 
+export * from './agentAuth'
 export * from './env'
 export * from './timing'
 export * from './utils'

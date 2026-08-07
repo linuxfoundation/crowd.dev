@@ -17,6 +17,9 @@ import { npmReachabilityConfig } from './npm/reachabilityConfig'
 import { runDependentsStageNuGet } from './nuget/dependentsNuGet'
 import { runIntelStageNuGet } from './nuget/intelNuGet'
 import { nugetReachabilityConfig } from './nuget/reachabilityConfig'
+import { runDependentsStagePyPi } from './pypi/dependentsPyPi'
+import { runIntelStagePyPi } from './pypi/intelPyPi'
+import { pypiReachabilityConfig } from './pypi/reachabilityConfig'
 import { ReachabilitySourceConfig } from './reachabilityStage'
 import { runDependentsStageRubyGems } from './rubygems/dependentsRubyGems'
 import { runIntelStageRubyGems } from './rubygems/intelRubyGems'
@@ -70,6 +73,11 @@ const ECOSYSTEMS: Record<Ecosystem, EcosystemConfig> = {
     runIntel: runIntelStageRubyGems,
     runDependents: runDependentsStageRubyGems,
     reachability: rubygemsReachabilityConfig,
+  },
+  pypi: {
+    runIntel: runIntelStagePyPi,
+    runDependents: runDependentsStagePyPi,
+    reachability: pypiReachabilityConfig,
   },
 }
 

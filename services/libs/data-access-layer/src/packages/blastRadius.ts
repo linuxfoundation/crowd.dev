@@ -220,7 +220,7 @@ export async function resolveAdvisoryAndPackageIds(
   qx: QueryExecutor,
   analysisId: string,
   advisoryOsvId: string,
-  packageId: number | null,
+  packageId: number | string | null,
 ): Promise<void> {
   await qx.result(
     `

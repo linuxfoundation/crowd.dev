@@ -94,13 +94,23 @@ describe('submitBlastRadiusJobBatch', () => {
     const { req, res, start } = mockReqRes({
       jobs: [
         { advisoryId: 'GHSA-jf85-cpcp-j695', ecosystem: 'npm' },
-        { advisoryId: 'GHSA-652q-gvq3-74qv', ecosystem: 'pypi' },
+        { advisoryId: 'GHSA-652q-gvq3-74qv', ecosystem: 'homebrew' },
       ],
     })
 
     await expect(submitBlastRadiusJobBatch(req, res)).rejects.toThrow()
     expect(start).not.toHaveBeenCalled()
     expect(createAnalysis).not.toHaveBeenCalled()
+  })
+
+  it('accepts a batch containing a pypi job', async () => {
+    const { req, res, start } = mockReqRes({
+      jobs: [{ advisoryId: 'GHSA-652q-gvq3-74qv', ecosystem: 'pypi' }],
+    })
+
+    await submitBlastRadiusJobBatch(req, res)
+
+    expect(start).toHaveBeenCalledTimes(1)
   })
 
   it('rejects a batch with more than 20 jobs without submitting any job', async () => {
