@@ -8,6 +8,7 @@ export interface OrganizationDbRow {
   revenueRange: Record<string, unknown> | null
   importHash: string | null
   location: string | null
+  country: string | null
   isTeamOrganization: boolean
   isAffiliationBlocked: boolean
   type: string | null

@@ -16,6 +16,7 @@ export const ORG_DB_FIELDS = [
   'revenueRange',
   'importHash',
   'location',
+  'country',
   'isTeamOrganization',
   'isAffiliationBlocked',
   'type',
@@ -51,6 +52,12 @@ export const ORG_DB_ATTRIBUTES: OrgAttributeDef[] = [
     incomingType: OrganizationAttributeType.STRING,
     type: OrganizationAttributeType.STRING,
     defaultColumn: 'location',
+  },
+  {
+    name: 'country',
+    incomingType: OrganizationAttributeType.STRING,
+    type: OrganizationAttributeType.STRING,
+    defaultColumn: 'country',
   },
   {
     name: 'type',
@@ -230,6 +237,7 @@ export function findAttribute(name: string): OrgAttributeDef {
 export const ORG_DB_ATTRIBUTE_SOURCE_PRIORITY = [
   OrganizationAttributeSource.CUSTOM,
   OrganizationAttributeSource.LFX_SERVE,
+  OrganizationAttributeSource.SYSTEM,
   OrganizationAttributeSource.ENRICHMENT_LFX_INTERNAL_API,
   OrganizationAttributeSource.ENRICHMENT_PEOPLEDATALABS,
   OrganizationAttributeSource.CVENT,
