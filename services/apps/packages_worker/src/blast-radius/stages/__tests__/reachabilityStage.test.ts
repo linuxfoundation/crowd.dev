@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 
-import { runAnalysisAgent } from '../../agent/runner'
 import { ReachabilitySourceConfig, runReachabilityStage } from '../reachabilityStage'
 
 vi.mock('@crowd/data-access-layer/src/packages/blastRadius', () => ({
@@ -15,7 +15,7 @@ vi.mock('@crowd/data-access-layer/src/packages/blastRadius', () => ({
   completeStageRun: vi.fn(),
   failStageRun: vi.fn(),
 }))
-vi.mock('../../agent/runner', () => ({ runAnalysisAgent: vi.fn() }))
+vi.mock('@crowd/anthropic-aws', () => ({ runClaudeAgentQuery: vi.fn() }))
 
 const qx = {} as never
 const SYMBOL_SPEC_ROW = {
@@ -71,7 +71,7 @@ describe('runReachabilityStage', () => {
       qx,
       expect.objectContaining({ dependentId: 'dep-1', reasoning: 'no source', model: null }),
     )
-    expect(runAnalysisAgent).not.toHaveBeenCalled()
+    expect(runClaudeAgentQuery).not.toHaveBeenCalled()
   })
 
   it('persists an error verdict with downloadErrorPrefix when download throws', async () => {
@@ -89,11 +89,11 @@ describe('runReachabilityStage', () => {
         reasoning: 'download failed: boom',
       }),
     )
-    expect(runAnalysisAgent).not.toHaveBeenCalled()
+    expect(runClaudeAgentQuery).not.toHaveBeenCalled()
   })
 
   it('persists the mapped verdict on a successful agent run', async () => {
-    vi.mocked(runAnalysisAgent).mockResolvedValue({
+    vi.mocked(runClaudeAgentQuery).mockResolvedValue({
       structuredOutput: {
         uses_package: true,
         imports_vulnerable_symbol: true,
@@ -127,7 +127,7 @@ describe('runReachabilityStage', () => {
   })
 
   it('retries on agent error and succeeds on a later attempt', async () => {
-    vi.mocked(runAnalysisAgent)
+    vi.mocked(runClaudeAgentQuery)
       .mockResolvedValueOnce({
         structuredOutput: null,
         isError: true,
@@ -153,7 +153,7 @@ describe('runReachabilityStage', () => {
 
     await runReachabilityStage(qx, 'analysis-1', makeConfig())
 
-    expect(runAnalysisAgent).toHaveBeenCalledTimes(2)
+    expect(runClaudeAgentQuery).toHaveBeenCalledTimes(2)
     expect(blastRadiusDal.upsertVerdict).toHaveBeenCalledWith(
       qx,
       expect.objectContaining({ dependentId: 'dep-1', reachableVerdict: 'not_affected' }),
