@@ -1,10 +1,8 @@
-// @anthropic-ai/claude-agent-sdk ships ESM-only; packages_worker compiles to
-// CommonJS, so it must be loaded via dynamic import rather than a static one.
-// Agent runner wrapping Claude Agent SDK with read-only tool restrictions,
-// API key fallback, structured output, and timeout support.
 import { getServiceChildLogger } from '@crowd/logging'
 
-const log = getServiceChildLogger('blast-radius-agent-runner')
+import { getAnthropicAwsAgentSdkEnv } from './credentials'
+
+const log = getServiceChildLogger('anthropic-aws-agent')
 
 export interface AgentRunResult {
   structuredOutput: Record<string, unknown> | null
@@ -14,7 +12,7 @@ export interface AgentRunResult {
   costUsd: number
 }
 
-export interface RunAnalysisAgentInput {
+export interface RunClaudeAgentQueryInput {
   prompt: string
   systemPrompt: string
   cwd: string
@@ -22,13 +20,43 @@ export interface RunAnalysisAgentInput {
   schema: Record<string, unknown>
   maxTurns?: number
   timeoutMs?: number
-  // Called on every streamed message (i.e. at least once per agent turn), so a
-  // caller can heartbeat a Temporal activity during a single up-to-timeoutMs
-  // agent call rather than only once the whole call returns.
+  // Read-only tools auto-allowed instead of bypassing permissions entirely.
+  // CLI refuses --dangerously-skip-permissions as root (container standard).
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  // Called on every message to allow Temporal heartbeat without waiting for run completion.
+  // Enables activity to signal liveness during up-to-timeoutMs agent call.
   onProgress?: () => void
 }
 
-export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<AgentRunResult> {
+const DEFAULT_ALLOWED_TOOLS = ['Read', 'Grep', 'Glob']
+const DEFAULT_DISALLOWED_TOOLS = [
+  'Bash',
+  'Write',
+  'Edit',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+  'Task',
+]
+
+function getErrorMessage(
+  isError: boolean,
+  result: string | undefined,
+  structuredOutput: Record<string, unknown> | null,
+): string {
+  if (isError) return result || 'Unknown error'
+  if (!structuredOutput)
+    return `Agent completed without structured output: ${result || 'no result text'}`
+  return ''
+}
+
+// @anthropic-ai/claude-agent-sdk ships ESM-only; callers may compile to
+// CommonJS, so dynamic import is required. Wraps SDK with read-only tool restrictions,
+// AWS auth fallback, structured output, and timeout support.
+export async function runClaudeAgentQuery(
+  input: RunClaudeAgentQueryInput,
+): Promise<AgentRunResult> {
   const {
     prompt,
     systemPrompt,
@@ -37,34 +65,25 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
     schema,
     maxTurns = 15,
     timeoutMs = 600_000,
+    allowedTools = DEFAULT_ALLOWED_TOOLS,
+    disallowedTools = DEFAULT_DISALLOWED_TOOLS,
     onProgress,
   } = input
 
-  const apiKey = process.env.BLAST_RADIUS_ANTHROPIC_API_KEY
-  const baseUrl = process.env.BLAST_RADIUS_ANTHROPIC_BASE_URL
+  // Build environment: if Claude Platform on AWS credentials are configured, route
+  // the agent through them; otherwise omit to fall back to local CLI auth (dev only).
+  let env: NodeJS.ProcessEnv | undefined
+  let authMode = 'fallback on local claude code token'
+  try {
+    env = { ...process.env, ...getAnthropicAwsAgentSdkEnv() }
+    authMode = 'claude-platform-on-aws'
+  } catch (err) {
+    env = undefined
+    log.warn({ err }, 'anthropic-aws agent: Claude Platform on AWS not configured, falling back')
+  }
 
-  // Build environment: if API key is set, pass it (and an optional base URL override,
-  // e.g. for routing through a LiteLLM proxy); otherwise omit to fall back to CLI auth.
-  const env = apiKey
-    ? {
-        ...process.env,
-        ANTHROPIC_API_KEY: apiKey,
-        ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
-      }
-    : undefined
+  log.info({ authMode }, 'anthropic-aws agent: auth mode for this run')
 
-  log.info(
-    {
-      authMode: apiKey
-        ? baseUrl
-          ? 'api-key via base-url override (e.g. LiteLLM)'
-          : 'api-key'
-        : 'fallback on local claude code token',
-    },
-    'blast-radius agent: auth mode for this run',
-  )
-
-  // Setup timeout via AbortController
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -77,13 +96,9 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
         cwd,
         model,
         maxTurns,
-        tools: ['Read', 'Grep', 'Glob'],
-        disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task'],
-        // Read/Grep/Glob are read-only — auto-allow them instead of bypassing permissions
-        // entirely. bypassPermissions requires --dangerously-skip-permissions, which the
-        // Claude Code CLI refuses to run as root — the exact setup packages_worker's
-        // container runs under.
-        allowedTools: ['Read', 'Grep', 'Glob'],
+        tools: allowedTools,
+        disallowedTools,
+        allowedTools,
         outputFormat: {
           type: 'json_schema',
           schema,
@@ -97,7 +112,11 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
     let turns = 0
 
     for await (const message of q) {
-      onProgress?.()
+      try {
+        onProgress?.()
+      } catch (err) {
+        log.warn({ err }, 'onProgress callback failed, continuing')
+      }
 
       if (message.type === 'result') {
         turns = message.num_turns ?? 0
@@ -118,11 +137,7 @@ export async function runAnalysisAgent(input: RunAnalysisAgentInput): Promise<Ag
           result = {
             structuredOutput,
             isError: message.is_error,
-            errorMessage: message.is_error
-              ? message.result || 'Unknown error'
-              : !structuredOutput
-                ? `Agent completed without structured output: ${message.result || 'no result text'}`
-                : '',
+            errorMessage: getErrorMessage(message.is_error, message.result, structuredOutput),
             numTurns: turns,
             costUsd: message.total_cost_usd ?? 0,
           }

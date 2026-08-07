@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
@@ -14,7 +15,6 @@ import {
   RUBYGEMS_INTEL_SYSTEM_PROMPT,
   buildRubyGemsIntelPrompt,
 } from '../../agent/rubygemsPrompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import {
   affectedEntriesForEcosystem,
@@ -136,7 +136,7 @@ export async function runIntelStageRubyGems(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: RUBYGEMS_INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,
