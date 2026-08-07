@@ -7,12 +7,16 @@ DESCRIPTION >
     - Same join pattern as `health_score_v2.pipe`'s `health_score_v2_results` node: a base repo list
     LEFT JOINed against each category datasource on `repoUrl`, so every repo is present even when a
     category is entirely unscored.
-    - Schedule runs after all 3 category pipes (`0 2`/`5 2`/`10 2 * * *`) and before
-    `health_score_v2.pipe` (`30 2 * * *`), matching the existing convention of chaining same-window
-    dependent jobs (e.g. `health_score_v2.pipe`'s own DESCRIPTION notes the same pattern for
-    `health_score_v2_sink.pipe`). `25 2 * * *` (not `20 2 * * *`, which `health_score_v2_impact.pipe`
-    already occupies) leaves a 15-minute buffer after `health_score_v2_development.pipe`'s `10 2`
-    and 5 minutes before `health_score_v2.pipe`'s `30 2`.
+    - Schedule: `50 2 * * *`, moved post-review (epipav: "schedule these to later and make sure they
+    don't intersect with existing copies") from the original `25 2 * * *`. Real production data
+    (`tinybird.jobs_log` over 7 days) confirmed the original slot wasn't wrong in isolation — this
+    pipe runs in ~3 seconds — but it launched into the most crowded 20-40-minute stretch of hour 2
+    (several long-running neighbors, e.g. `issue_analysis_copy_pipe` spanning ~14 minutes through
+    that window, `ossPackages_enriched` ~7 minutes), the same neighborhood as the one observed
+    hour-2 concurrent-copy-job cap error in that period. `50 2` lands in hour 2's emptiest observed
+    stretch (no other copy job scheduled after `:50`) with a comfortable margin before
+    `project_insights_health_breakdown_copy.pipe`'s `55 2` and `project_insights_copy.pipe`'s hard
+    `0 3 * * *` deadline (which reads from this pipe's output transitively).
 
 NODE health_score_v2_signal_detail_calc
 SQL >
@@ -64,7 +68,7 @@ SQL >
         d.merged12m AS merged12m,
         d.closedUnmerged12m AS closedUnmerged12m,
         d.medianMergeS AS medianMergeS
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS base
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE isNull(deletedAt)) AS base
     LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
     LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
     LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl
@@ -72,4 +76,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_signal_detail_ds
 COPY_MODE replace
-COPY_SCHEDULE 25 2 * * *
+COPY_SCHEDULE 50 2 * * *

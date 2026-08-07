@@ -12,6 +12,8 @@ DESCRIPTION >
 
 TAGS "Insights, Widget", "Project", "Health"
 
+TOKEN "insights-app-token" READ
+
 NODE project_insights_health_breakdown_endpoint
 SQL >
     %
