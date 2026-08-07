@@ -25,4 +25,5 @@ export enum Platform {
     JIRA = 'jira',
     GITHUB_NANGO = 'github-nango',
     GERRIT = 'gerrit',
+    SCHED = 'sched',
 }

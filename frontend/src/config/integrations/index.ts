@@ -16,6 +16,7 @@ import gitlab from './gitlab/config';
 import gerrit from './gerrit/config';
 import discourse from './discourse/config';
 import devto from './devto/config';
+import sched from './sched/config';
 
 export interface ActionRequiredMessage {
   key: string
@@ -67,4 +68,5 @@ export const lfIntegrations: (useGitHubNango?: boolean) => Record<string, Integr
   stackoverflow,
   discourse,
   devto,
+  sched,
 });

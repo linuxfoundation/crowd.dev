@@ -14,5 +14,6 @@ export default [
   Platform.HUBSPOT,
   Platform.GIT,
   Platform.GROUPS_IO,
+  Platform.SCHED,
   Platform.CUSTOM,
 ];
