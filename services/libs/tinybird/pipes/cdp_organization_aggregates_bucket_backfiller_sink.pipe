@@ -13,9 +13,9 @@ SQL >
         round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
         max(updatedAt) AS updatedAt
     FROM cdp_organization_segment_aggregates_ds
-    {% if defined(bucket_id) %}
-        WHERE
-            organizationId <> ''
+    WHERE
+        organizationId <> ''
+        {% if defined(bucket_id) %}
             AND cityHash64(segmentId) % 5
             = {{
                 UInt8(
@@ -25,7 +25,7 @@ SQL >
                     required=False,
                 )
             }}
-    {% end %}
+        {% end %}
     GROUP BY segmentId, organizationId
 
 NODE parent_segment_aggregates
@@ -44,9 +44,9 @@ SQL >
         max(updatedAt) AS updatedAt
     FROM cdp_organization_segment_aggregates_ds as cdp_aggs
     join segments s on s.id = cdp_aggs.segmentId
-    {% if defined(bucket_id) %}
-        WHERE
-            organizationId <> ''
+    WHERE
+        organizationId <> '' AND s.parentId <> ''
+        {% if defined(bucket_id) %}
             AND cityHash64(parentId) % 5
             = {{
                 UInt8(
@@ -56,7 +56,7 @@ SQL >
                     required=False,
                 )
             }}
-    {% end %}
+        {% end %}
     GROUP BY parentId, organizationId
 
 NODE grandparent_segment_aggregates
@@ -75,9 +75,9 @@ SQL >
         max(updatedAt) AS updatedAt
     FROM cdp_organization_segment_aggregates_ds as cdp_aggs
     join segments s on s.id = cdp_aggs.segmentId
-    {% if defined(bucket_id) %}
-        WHERE
-            organizationId <> ''
+    WHERE
+        organizationId <> '' AND s.grandparentId <> ''
+        {% if defined(bucket_id) %}
             AND cityHash64(grandparentId) % 5
             = {{
                 UInt8(
@@ -87,7 +87,7 @@ SQL >
                     required=False,
                 )
             }}
-    {% end %}
+        {% end %}
     GROUP BY grandparentId, organizationId
 
 NODE cdp_organization_segment_aggs_union
