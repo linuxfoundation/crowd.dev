@@ -20,8 +20,17 @@ DESCRIPTION >
     project_insights_copy.pipe.
     - `impactScore` (0-100) — MAX(packages.impact) * 100 over packages published by this repo. NULL when
     the repo has no linked packages.
-    - No graceful-degradation/signal-coverage redistribution yet — a repo with zero signal in a category
-    scores 0 there rather than having points redistributed from available categories.
+    - Graceful degradation (spec Layer 1+2): per-category pipes emit NULL when covered sub-signal weight
+    is <40% of that category's max pts (Layer 1); the aggregate health_score_v2 applies Layer 2 rescaling
+    (`SUM(available categories) * (100 / SUM(available category weights))`) so only actually-available
+    scores are summed. If all three categories are unavailable, healthScoreV2 itself is NULL (see
+    health_score_v2.pipe DESCRIPTION for the full spec).
+    - Known temporary gap: security-practices score's spec-stated max is 8 points (includes +1 for
+    `security_contact_email IS NOT NULL` flag), but no `security_contact_email` column exists yet in
+    the GitHub enrichment datasource, so the current maximum achievable is 7 points. This gap is
+    intentional and temporary — do not fabricate the missing column or change scoring. When the email
+    field becomes available in repos, security-practices score will automatically rise to its full 8-point
+    potential.
 
 SCHEMA >
     `repoUrl` String,
@@ -30,7 +39,8 @@ SCHEMA >
     `developmentActivityScoreV2` Nullable(UInt8),
     `healthScoreV2` Nullable(UInt8),
     `lifecycleLabelV2` Nullable(String),
-    `impactScore` Nullable(UInt8)
+    `impactScore` Nullable(UInt8),
+    `methodologyVersion` String
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

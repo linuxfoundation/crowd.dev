@@ -29,6 +29,17 @@ DESCRIPTION >
     legitimate 'active' classification under the existing spec, not the bug being fixed here.
 
 NODE health_score_v2_lifecycle_calc
+DESCRIPTION >
+    - Precedence (first match wins): archived > abandoned > inert > declining > stable > active.
+    - Threshold note (provisional, pending validation analysis): abandoned uses 90-180 day
+    unanswered-issue window and 12-month no-maintainer-activity gates; inert uses 18-month
+    no-commits AND zero open issues/PRs gates. These day counts are under review via the
+    abandoned-threshold-sweep validation analysis and may shift in a follow-up tuning pass.
+    - Unanswered: minimum one issue opened in 18mo window + has unanswered issues now.
+    - Declining: commit count down >50% vs prior 6mo AND issues opened up vs prior 6mo.
+    - Stable: release within 12mo, <50 open issues, no open critical vulns, AND commits down
+    >50% vs prior 6mo.
+
 SQL >
     SELECT
         r.url AS repoUrl,
@@ -42,9 +53,13 @@ SQL >
                 multiIf(
                     r.archived = 1,
                     'archived',
+                    coalesce(w.issuesInWindow18m, 0) > 0
+                    AND coalesce(w.unansweredCount, 0) > 0
+                    AND (r.lastCommitAt < now() - INTERVAL 12 MONTH),
+                    'abandoned',
                     (r.lastCommitAt < now() - INTERVAL 18 MONTH)
                     AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
-                    'abandoned',
+                    'inert',
                     coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
                     AND coalesce(w.issuesOpenedLast6m, 0) > coalesce(w.issuesOpenedPrior6m, 0),
                     'declining',
@@ -56,7 +71,8 @@ SQL >
                     'active'
                 )
             )
-        ) AS lifecycleLabelV2
+        ) AS lifecycleLabelV2,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT base.url AS url, base.archived AS archived, rc.lastCommitAt AS lastCommitAt
@@ -95,7 +111,10 @@ SQL >
                 countIf(
                     openedAt <= now() - INTERVAL 6 MONTH AND openedAt > now() - INTERVAL 12 MONTH
                 ) AS issuesOpenedPrior6m,
-                countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m
+                countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m,
+                countIf(
+                    openedAt > now() - INTERVAL 18 MONTH AND respondedInSeconds IS NULL
+                ) AS unansweredCount
             FROM issues_analyzed
             GROUP BY channel
         ) AS w

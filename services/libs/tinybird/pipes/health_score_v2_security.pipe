@@ -37,7 +37,8 @@ SQL >
         branchProtectionAllowsForcePush,
         dependencyHealthScore,
         dependencyHealthAvailable,
-        vulnerableDeps
+        vulnerableDeps,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT

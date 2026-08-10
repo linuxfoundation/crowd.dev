@@ -28,6 +28,10 @@ DESCRIPTION >
     repo within the same trailing 12-month window used elsewhere in this pipe, not just an unexpired
     role record. This was the direct cause of dead repos hitting healthScoreV2=100 after Layer 2
     rescaling (see LFX/cdp/health-score-v2-renormalization-bug.md).
+    - Bus factor enhancement (IN-1226): Added parallel count of observed review/merge actors in the
+    trailing 12-month window. Final busFactorCount = max(curated_maintainers_count, observed_actors_count).
+    busFactorAvailable = 1 if either source has data. This ensures teams relying on informal review
+    duties aren't penalized for lack of formal role curation.
 
 NODE health_score_v2_maintainer_calc
 SQL >
@@ -50,7 +54,8 @@ SQL >
         base.medianIssueResponseS AS medianIssueResponseS,
         base.isGerrit AS isGerrit,
         base.isExcluded AS isExcluded,
-        coveredWeight AS coveredWeight
+        coveredWeight AS coveredWeight,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT
@@ -77,16 +82,16 @@ SQL >
                         allRepos.repoUrl AS repoUrl,
                         allRepos.isGerrit AS isGerrit,
                         allRepos.isExcluded AS isExcluded,
-                        bf.busFactorCount AS busFactorCount,
-                        bf.repoUrl != '' AS busFactorAvailable,
+                        greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) AS busFactorCount,
+                        (bf.repoUrl != '' OR obs.repoUrl != '') AS busFactorAvailable,
                         multiIf(
-                            bf.busFactorCount >= 5,
+                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) >= 5,
                             18,
-                            bf.busFactorCount >= 3,
+                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) >= 3,
                             15,
-                            bf.busFactorCount = 2,
+                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) = 2,
                             6,
-                            bf.busFactorCount = 1,
+                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) = 1,
                             3,
                             0
                         ) AS busFactorScore,
@@ -181,12 +186,12 @@ SQL >
                         ) AS allRepos
                     LEFT JOIN
                         (
-                            SELECT mr.repoUrl AS repoUrl, count(DISTINCT mr.memberId) AS busFactorCount
+                            SELECT mr.repoUrl AS repoUrl, count(DISTINCT mr.memberId) AS curatedBusFactorCount
                             FROM maintainers_roles_copy_ds mr
                             INNER JOIN
                                 (
                                     SELECT DISTINCT memberId, channel AS repoUrl
-                                    FROM activityRelations
+                                    FROM activityRelations_deduplicated_cleaned_bucket_union
                                     WHERE timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId
@@ -199,8 +204,25 @@ SQL >
                         ON bf.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
+                            SELECT
+                                channel AS repoUrl,
+                                count(DISTINCT memberId) AS observedActorsCount
+                            FROM activityRelations_deduplicated_cleaned_bucket_union
+                            WHERE
+                                timestamp > now() - INTERVAL 12 MONTH
+                                AND (
+                                    type = 'pull_request-reviewed'
+                                    OR type = 'pull_request-merged'
+                                    OR type = 'merge_request-review-approved'
+                                    OR type = 'merge_request-merged'
+                                )
+                            GROUP BY channel
+                        ) AS obs
+                        ON obs.repoUrl = allRepos.repoUrl
+                    LEFT JOIN
+                        (
                             SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
-                            FROM activityRelations
+                            FROM activityRelations_deduplicated_cleaned_bucket_union
                             WHERE timestamp > now() - INTERVAL 12 MONTH AND organizationId != ''
                             GROUP BY channel
                         ) AS od
