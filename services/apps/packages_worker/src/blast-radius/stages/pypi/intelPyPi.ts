@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
 import { findPackageIdByPurl } from '@crowd/data-access-layer/src/packages/osv'
@@ -14,7 +15,6 @@ import {
   PYPI_INTEL_SYSTEM_PROMPT,
   buildPyPiIntelPrompt,
 } from '../../agent/pypiPrompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import {
   affectedEntriesForEcosystem,
@@ -134,7 +134,7 @@ export async function runIntelStagePyPi(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: PYPI_INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,
