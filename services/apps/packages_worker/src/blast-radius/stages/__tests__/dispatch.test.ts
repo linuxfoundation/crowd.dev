@@ -19,6 +19,9 @@ import { npmReachabilityConfig } from '../npm/reachabilityConfig'
 import { runDependentsStageNuGet } from '../nuget/dependentsNuGet'
 import { runIntelStageNuGet } from '../nuget/intelNuGet'
 import { nugetReachabilityConfig } from '../nuget/reachabilityConfig'
+import { runDependentsStagePyPi } from '../pypi/dependentsPyPi'
+import { runIntelStagePyPi } from '../pypi/intelPyPi'
+import { pypiReachabilityConfig } from '../pypi/reachabilityConfig'
 import { runReachabilityStage } from '../reachability'
 import { runReachabilityStage as runReachabilityStageWithConfig } from '../reachabilityStage'
 import { runDependentsStageRubyGems } from '../rubygems/dependentsRubyGems'
@@ -42,6 +45,9 @@ vi.mock('../nuget/intelNuGet', () => ({
 vi.mock('../rubygems/intelRubyGems', () => ({
   runIntelStageRubyGems: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('../pypi/intelPyPi', () => ({
+  runIntelStagePyPi: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../go/dependentsGo', () => ({
   runDependentsStageGo: vi.fn().mockResolvedValue(undefined),
 }))
@@ -59,6 +65,9 @@ vi.mock('../nuget/dependentsNuGet', () => ({
 }))
 vi.mock('../rubygems/dependentsRubyGems', () => ({
   runDependentsStageRubyGems: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../pypi/dependentsPyPi', () => ({
+  runDependentsStagePyPi: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../reachabilityStage', () => ({
   runReachabilityStage: vi.fn().mockResolvedValue(undefined),
@@ -125,6 +134,15 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
     expect(runIntelStageMaven).not.toHaveBeenCalled()
   })
 
+  it('routes intel to the PyPI body when ecosystem is pypi', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'pypi' } as never)
+    await runIntelStage(qx, 'analysis-1', 'GHSA-xxxx', undefined)
+    expect(runIntelStagePyPi).toHaveBeenCalledWith(qx, 'analysis-1', 'GHSA-xxxx', undefined)
+    expect(runIntelStageGo).not.toHaveBeenCalled()
+    expect(runIntelStageNpm).not.toHaveBeenCalled()
+    expect(runIntelStageMaven).not.toHaveBeenCalled()
+  })
+
   it('routes intel to the npm body when ecosystem is missing/unknown', async () => {
     mockGetAnalysisDetail.mockResolvedValue(null)
     await runIntelStage(qx, 'analysis-1', 'GHSA-xxxx', undefined)
@@ -172,6 +190,15 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
     mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'rubygems' } as never)
     await runDependentsStage(qx, 'analysis-1', undefined, undefined)
     expect(runDependentsStageRubyGems).toHaveBeenCalled()
+    expect(runDependentsStageGo).not.toHaveBeenCalled()
+    expect(runDependentsStageNpm).not.toHaveBeenCalled()
+    expect(runDependentsStageMaven).not.toHaveBeenCalled()
+  })
+
+  it('routes dependents to the PyPI body when ecosystem is pypi', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'pypi' } as never)
+    await runDependentsStage(qx, 'analysis-1', undefined, undefined)
+    expect(runDependentsStagePyPi).toHaveBeenCalled()
     expect(runDependentsStageGo).not.toHaveBeenCalled()
     expect(runDependentsStageNpm).not.toHaveBeenCalled()
     expect(runDependentsStageMaven).not.toHaveBeenCalled()
@@ -237,6 +264,17 @@ describe('stage dispatchers (EcosystemConfig registry)', () => {
       qx,
       'analysis-1',
       rubygemsReachabilityConfig,
+      undefined,
+    )
+  })
+
+  it('routes reachability to the PyPI config when ecosystem is pypi', async () => {
+    mockGetAnalysisDetail.mockResolvedValue({ ecosystem: 'pypi' } as never)
+    await runReachabilityStage(qx, 'analysis-1', undefined)
+    expect(mockRunReachabilityStageWithConfig).toHaveBeenCalledWith(
+      qx,
+      'analysis-1',
+      pypiReachabilityConfig,
       undefined,
     )
   })

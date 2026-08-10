@@ -119,6 +119,23 @@ export async function findPackageId(
   return (row?.id as number | undefined) ?? null
 }
 
+// purl-based counterpart of findPackageId, for ecosystems (e.g. PyPI) where
+// packages.name can drift from the canonical normalized form but packages.purl
+// is always normalized. Returns the ID as a string: packages.id is BIGSERIAL
+// (int8) and pg-promise leaves int8 values as strings to avoid silently losing
+// precision via Number() coercion.
+export async function findPackageIdByPurl(qx: QueryExecutor, purl: string): Promise<string | null> {
+  const row = await qx.selectOneOrNone(
+    `
+    SELECT id
+    FROM packages
+    WHERE purl = $(purl)
+    `,
+    { purl },
+  )
+  return (row?.id as string | undefined) ?? null
+}
+
 // Batched form of findPackageId for a flat list of full package names (e.g.
 // "lodash", "@babel/core") — one round-trip instead of one query per name.
 // Mirrors getNpmPurlsForChangedNames's namespace/name reconstruction join.

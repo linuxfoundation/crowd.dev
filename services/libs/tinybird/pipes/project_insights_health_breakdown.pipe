@@ -1,0 +1,75 @@
+DESCRIPTION >
+    - `project_insights_health_breakdown.pipe` serves the Health Score v2 per-signal breakdown rolled
+    up to project level, for the project overview page's Health breakdown section (IN-1212 Content
+    Spec sections 4-7: category tab descriptions and per-signal rows, including the `*Available`
+    graceful-degradation flags for the "Unavailable — category dropped" and per-signal "blocked" dash
+    states).
+    - Performance: this endpoint reads from the pre-materialized `project_insights_health_breakdown_ds`
+    (populated on a schedule by `project_insights_health_breakdown_copy.pipe`) rather than computing
+    the rollup live, matching the pattern `project_insights_impact_breakdown.pipe` uses against
+    `project_insights_impact_breakdown_ds`.
+    - Parameters: `slug` (single project).
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Project", "Health"
+
+NODE project_insights_health_breakdown_endpoint
+SQL >
+    %
+    SELECT
+        projectId,
+        slug,
+        busFactorScore,
+        busFactorAvailable,
+        busFactorCount,
+        orgDiversityScore,
+        orgDiversityAvailable,
+        orgCount,
+        responsivenessScore,
+        responsivenessAvailable,
+        medianPrResponseS,
+        medianIssueResponseS,
+        isGerrit,
+        isExcluded,
+        openVulnScore,
+        openCriticals,
+        openHighs,
+        openModerates,
+        scorecardScorePts,
+        scorecardAvailable,
+        scorecardScore,
+        securityPracticesScore,
+        securityPracticesAvailable,
+        securityPolicyEnabled,
+        branchProtectionEnabled,
+        branchProtectionRequiredReviews,
+        branchProtectionRequiresStatusChecks,
+        branchProtectionAllowsForcePush,
+        dependencyHealthScore,
+        dependencyHealthAvailable,
+        vulnerableDeps,
+        releaseCadenceScore,
+        releaseCadenceAvailable,
+        daysSinceLatest,
+        daysBetweenRecent,
+        commitActivityScore,
+        commitsLast6m,
+        lastCommitAt,
+        issueResolutionScore,
+        issueResolutionAvailable,
+        closed12m,
+        opened12m,
+        medianCloseS,
+        prMergeScore,
+        prMergeAvailable,
+        merged12m,
+        closedUnmerged12m,
+        medianMergeS
+    FROM project_insights_health_breakdown_ds
+    WHERE
+        1 = 1
+        {% if defined(slug) %}
+            AND slug = {{ String(slug, description="Project slug", required=False) }}
+        {% end %}
+    ORDER BY slug ASC

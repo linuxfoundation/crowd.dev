@@ -1,0 +1,77 @@
+DESCRIPTION >
+    - `health_score_v2_signal_detail_ds` holds the per-repo flat signal-detail row for Health Score v2
+    (IN-1212 Content Spec) — every promoted per-signal raw value and `*Available` coverage flag from
+    the 3 category datasources (`health_score_v2_maintainer_ds`, `health_score_v2_security_ds`,
+    `health_score_v2_development_ds`), joined on `repoUrl`. Populated by
+    `health_score_v2_signal_detail.pipe`.
+    - `repoUrl` is the repository URL — the join key back to `repositories`.
+    - Maintainer signals: `busFactorScore`, `busFactorAvailable`, `busFactorCount`,
+    `orgDiversityScore`, `orgDiversityAvailable`, `orgCount`, `responsivenessScore`,
+    `responsivenessAvailable`, `medianPrResponseS`, `medianIssueResponseS`, `isGerrit`, `isExcluded`
+    — see `health_score_v2_maintainer_ds` for definitions.
+    - Security signals: `openVulnScore`, `openCriticals`, `openHighs`, `openModerates`,
+    `scorecardScorePts`, `scorecardAvailable`, `scorecardScore`, `securityPracticesScore`,
+    `securityPracticesAvailable`, `securityPolicyEnabled`, `branchProtectionEnabled`,
+    `branchProtectionRequiredReviews`, `branchProtectionRequiresStatusChecks`,
+    `branchProtectionAllowsForcePush`, `dependencyHealthScore`, `dependencyHealthAvailable`,
+    `vulnerableDeps` — see `health_score_v2_security_ds` for definitions.
+    - Development signals: `releaseCadenceScore`, `releaseCadenceAvailable`, `daysSinceLatest`,
+    `daysBetweenRecent`, `commitActivityScore`, `commitsLast6m`, `lastCommitAt`,
+    `issueResolutionScore`, `issueResolutionAvailable`, `closed12m`, `opened12m`, `medianCloseS`,
+    `prMergeScore`, `prMergeAvailable`, `merged12m`, `closedUnmerged12m`, `medianMergeS` — see
+    `health_score_v2_development_ds` for definitions.
+    - All columns except `repoUrl` are Nullable here (even ones that are non-Nullable in their source
+    `_ds`) because this table is built via LEFT JOIN — a repo missing from one of the 3 source
+    datasources surfaces NULL for that category's columns rather than dropping the repo.
+
+SCHEMA >
+    `repoUrl` String,
+    `busFactorScore` Nullable(UInt8),
+    `busFactorAvailable` Nullable(UInt8),
+    `busFactorCount` Nullable(UInt64),
+    `orgDiversityScore` Nullable(UInt8),
+    `orgDiversityAvailable` Nullable(UInt8),
+    `orgCount` Nullable(UInt64),
+    `responsivenessScore` Nullable(UInt8),
+    `responsivenessAvailable` Nullable(UInt8),
+    `medianPrResponseS` Nullable(Float64),
+    `medianIssueResponseS` Nullable(Float64),
+    `isGerrit` Nullable(UInt8),
+    `isExcluded` Nullable(UInt8),
+    `openVulnScore` Nullable(UInt8),
+    `openCriticals` Nullable(UInt64),
+    `openHighs` Nullable(UInt64),
+    `openModerates` Nullable(UInt64),
+    `scorecardScorePts` Nullable(UInt8),
+    `scorecardAvailable` Nullable(UInt8),
+    `scorecardScore` Nullable(String),
+    `securityPracticesScore` Nullable(UInt8),
+    `securityPracticesAvailable` Nullable(UInt8),
+    `securityPolicyEnabled` Nullable(UInt8),
+    `branchProtectionEnabled` Nullable(UInt8),
+    `branchProtectionRequiredReviews` Nullable(Int32),
+    `branchProtectionRequiresStatusChecks` Nullable(UInt8),
+    `branchProtectionAllowsForcePush` Nullable(UInt8),
+    `dependencyHealthScore` Nullable(UInt8),
+    `dependencyHealthAvailable` Nullable(UInt8),
+    `vulnerableDeps` Nullable(UInt64),
+    `releaseCadenceScore` Nullable(UInt8),
+    `releaseCadenceAvailable` Nullable(UInt8),
+    `daysSinceLatest` Nullable(Int64),
+    `daysBetweenRecent` Nullable(Int64),
+    `commitActivityScore` Nullable(UInt8),
+    `commitsLast6m` Nullable(UInt64),
+    `lastCommitAt` Nullable(DateTime64(3)),
+    `issueResolutionScore` Nullable(UInt8),
+    `issueResolutionAvailable` Nullable(UInt8),
+    `closed12m` Nullable(UInt64),
+    `opened12m` Nullable(UInt64),
+    `medianCloseS` Nullable(Float64),
+    `prMergeScore` Nullable(UInt8),
+    `prMergeAvailable` Nullable(UInt8),
+    `merged12m` Nullable(UInt64),
+    `closedUnmerged12m` Nullable(UInt64),
+    `medianMergeS` Nullable(Float64)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY repoUrl

@@ -1,6 +1,6 @@
 DESCRIPTION >
     - `organizations_geo_distribution.pipe` serves the organization geographic distribution widget showing organization counts by country.
-    - Maps organization locations to countries using fuzzy matching with the `country_mapping` lookup table.
+    - Prefers country when set, otherwise falls back to location for country mapping.
     - Handles unknown/unmappable locations by grouping them under "Unknown" with ❓ flag and 'XX' country code.
     - Calculates both absolute organization counts and percentage distribution for visualization.
     - Primary use case: displaying geographic diversity of organizations in project insights.
@@ -25,8 +25,9 @@ SQL >
     SELECT
         o.id,
         o.location,
+        o.country,
         arrayFilter(
-            x -> position(upper(o.location), upper(x .1)) > 0,
+            x -> position(upper(coalesce(nullIf(o.country, ''), o.location)), upper(x .1)) > 0,
             (SELECT country_data FROM country_mapping_array)
         ) AS matched_countries,
         arrayJoin(

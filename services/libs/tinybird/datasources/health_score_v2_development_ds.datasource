@@ -4,10 +4,41 @@ DESCRIPTION >
     - `repoUrl` is the repository URL — the join key back to `repositories`.
     - `developmentActivityScoreV2` — NULL when covered sub-signal weight is <40% of the 25pt max
     (spec Layer 1 graceful degradation), otherwise the rescaled 0-25 score.
+    - `releaseCadenceScore`/`commitActivityScore`/`issueResolutionScore`/`prMergeScore` (IN-1212) are
+    the raw per-signal sub-scores before rescaling, as computed in `health_score_v2_development.pipe`.
+    - `releaseCadenceAvailable`/`issueResolutionAvailable`/`prMergeAvailable` (IN-1212) are the Layer 1
+    coverage flags — 0 means the signal was `blocked` (no data), not scored 0. Commit activity has no
+    `Available` flag: it always contributes via the `repos.lastCommitAt` fallback (see pipe DESCRIPTION).
+    - `daysSinceLatest`/`daysBetweenRecent` (IN-1212) are the raw release-cadence signal; NULL when the
+    repo has no published packages with release dates.
+    - `commitsLast6m` (IN-1212) is the raw commit count behind `commitActivityScore`; NULL when the repo
+    has no `authored-commit` activity (the score then falls back to `lastCommitAt`).
+    - `lastCommitAt` (IN-1212) is the repo's last commit timestamp, used as the commit-activity fallback.
+    - `closed12m`/`opened12m`/`medianCloseS` (IN-1212) are the raw issue-resolution counts/median behind
+    `issueResolutionScore`; NULL when unavailable.
+    - `merged12m`/`closedUnmerged12m`/`medianMergeS` (IN-1212) are the raw PR-merge counts/median behind
+    `prMergeScore`; NULL when unavailable.
 
 SCHEMA >
     `repoUrl` String,
-    `developmentActivityScoreV2` Nullable(UInt8)
+    `developmentActivityScoreV2` Nullable(UInt8),
+    `releaseCadenceScore` UInt8,
+    `releaseCadenceAvailable` UInt8,
+    `daysSinceLatest` Nullable(Int64),
+    `daysBetweenRecent` Nullable(Int64),
+    `commitActivityScore` UInt8,
+    `commitsLast6m` Nullable(UInt64),
+    `lastCommitAt` Nullable(DateTime64(3)),
+    `issueResolutionScore` UInt8,
+    `issueResolutionAvailable` UInt8,
+    `closed12m` Nullable(UInt64),
+    `opened12m` Nullable(UInt64),
+    `medianCloseS` Nullable(Float64),
+    `prMergeScore` UInt8,
+    `prMergeAvailable` UInt8,
+    `merged12m` Nullable(UInt64),
+    `closedUnmerged12m` Nullable(UInt64),
+    `medianMergeS` Nullable(Float64)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

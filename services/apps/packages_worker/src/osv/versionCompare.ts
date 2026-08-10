@@ -195,6 +195,165 @@ function compareRubyGems(a: string, b: string): number | null {
   return 0
 }
 
+interface Pep440Pre {
+  letter: 'a' | 'b' | 'rc'
+  num: bigint
+}
+
+interface Pep440Version {
+  epoch: bigint
+  release: bigint[]
+  pre: Pep440Pre | null
+  post: bigint | null
+  dev: bigint | null
+  local: (bigint | string)[]
+}
+
+// Longest-alias-first: JS regex alternation picks the first matching alternative, not the
+// longest, so "a" would swallow only the first letter of "alpha" if it came first.
+const PEP440_PRE_ALIASES: Record<string, 'a' | 'b' | 'rc'> = {
+  alpha: 'a',
+  a: 'a',
+  beta: 'b',
+  b: 'b',
+  preview: 'rc',
+  pre: 'rc',
+  rc: 'rc',
+  c: 'rc',
+}
+const PEP440_PRE_RE = /^[-_.]?(alpha|beta|preview|pre|rc|a|b|c)[-_.]?([0-9]*)/
+const PEP440_POST_RE = /^[-_.]?(?:post|rev|r)[-_.]?([0-9]*)/
+const PEP440_DEV_RE = /^[-_.]?dev[-_.]?([0-9]*)/
+const PEP440_LOCAL_RE = /^\+([a-z0-9]+(?:[-_.][a-z0-9]+)*)/
+
+// https://peps.python.org/pep-0440/#version-scheme — consumes the grammar left to right;
+// anything left unconsumed means the input isn't a valid PEP 440 version.
+function parsePep440(raw: string): Pep440Version | null {
+  let s = raw.trim().toLowerCase().replace(/^v/, '')
+
+  let epoch = BigInt(0)
+  const epochMatch = s.match(/^([0-9]+)!/)
+  if (epochMatch) {
+    epoch = BigInt(epochMatch[1])
+    s = s.slice(epochMatch[0].length)
+  }
+
+  const releaseMatch = s.match(/^[0-9]+(?:\.[0-9]+)*/)
+  if (!releaseMatch) return null
+  const release = releaseMatch[0].split('.').map((n) => BigInt(n))
+  s = s.slice(releaseMatch[0].length)
+
+  let pre: Pep440Pre | null = null
+  const preMatch = s.match(PEP440_PRE_RE)
+  if (preMatch) {
+    pre = {
+      letter: PEP440_PRE_ALIASES[preMatch[1]],
+      num: preMatch[2] ? BigInt(preMatch[2]) : BigInt(0),
+    }
+    s = s.slice(preMatch[0].length)
+  }
+
+  let post: bigint | null = null
+  const implicitPostMatch = s.match(/^-([0-9]+)/)
+  if (implicitPostMatch) {
+    post = BigInt(implicitPostMatch[1])
+    s = s.slice(implicitPostMatch[0].length)
+  } else {
+    const postMatch = s.match(PEP440_POST_RE)
+    if (postMatch) {
+      post = postMatch[1] ? BigInt(postMatch[1]) : BigInt(0)
+      s = s.slice(postMatch[0].length)
+    }
+  }
+
+  let dev: bigint | null = null
+  const devMatch = s.match(PEP440_DEV_RE)
+  if (devMatch) {
+    dev = devMatch[1] ? BigInt(devMatch[1]) : BigInt(0)
+    s = s.slice(devMatch[0].length)
+  }
+
+  let local: (bigint | string)[] = []
+  const localMatch = s.match(PEP440_LOCAL_RE)
+  if (localMatch) {
+    local = localMatch[1].split(/[-_.]/).map((seg) => (/^[0-9]+$/.test(seg) ? BigInt(seg) : seg))
+    s = s.slice(localMatch[0].length)
+  }
+
+  if (s.length > 0) return null
+
+  return { epoch, release, pre, post, dev, local }
+}
+
+const PEP440_PRE_RANK: Record<'a' | 'b' | 'rc', bigint> = {
+  a: BigInt(0),
+  b: BigInt(1),
+  rc: BigInt(2),
+}
+
+// Bare dev release sorts below pre-releases; release with no pre-release sorts above them —
+// see PEP 440's documented order .devN < aN < bN < rcN < final < .postN.
+function pep440PreOrder(v: Pep440Version): [bigint, bigint, bigint] {
+  if (v.pre) return [BigInt(0), PEP440_PRE_RANK[v.pre.letter], v.pre.num]
+  if (v.post === null && v.dev !== null) return [BigInt(-1), BigInt(0), BigInt(0)]
+  return [BigInt(1), BigInt(0), BigInt(0)]
+}
+
+function comparePep440Local(a: (bigint | string)[], b: (bigint | string)[]): number {
+  const len = Math.max(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    if (i >= a.length) return -1
+    if (i >= b.length) return 1
+    const [x, y] = [a[i], b[i]]
+    if (typeof x === 'bigint' && typeof y === 'bigint') {
+      if (x !== y) return x < y ? -1 : 1
+      continue
+    }
+    if (typeof x === 'bigint') return 1
+    if (typeof y === 'bigint') return -1
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+function comparePep440(a: string, b: string): number | null {
+  const pa = parsePep440(a)
+  const pb = parsePep440(b)
+  if (!pa || !pb) return null
+
+  if (pa.epoch !== pb.epoch) return pa.epoch < pb.epoch ? -1 : 1
+
+  const relLen = Math.max(pa.release.length, pb.release.length)
+  for (let i = 0; i < relLen; i++) {
+    const ra = pa.release[i] ?? BigInt(0)
+    const rb = pb.release[i] ?? BigInt(0)
+    if (ra !== rb) return ra < rb ? -1 : 1
+  }
+
+  const preA = pep440PreOrder(pa)
+  const preB = pep440PreOrder(pb)
+  for (let i = 0; i < 3; i++) {
+    if (preA[i] !== preB[i]) return preA[i] < preB[i] ? -1 : 1
+  }
+
+  const postA = pa.post ?? BigInt(-1)
+  const postB = pb.post ?? BigInt(-1)
+  if (postA !== postB) return postA < postB ? -1 : 1
+
+  const devA = pa.dev
+  const devB = pb.dev
+  if (devA !== devB) {
+    if (devA === null) return 1
+    if (devB === null) return -1
+    return devA < devB ? -1 : 1
+  }
+
+  if (pa.local.length === 0 && pb.local.length === 0) return 0
+  if (pa.local.length === 0) return -1
+  if (pb.local.length === 0) return 1
+  return comparePep440Local(pa.local, pb.local)
+}
+
 const SEMVER_ECOSYSTEMS = new Set(['npm', 'cargo', 'nuget', 'go'])
 
 // Ecosystem names are stored lowercase in packages-db per ADR-0001 §OSV
@@ -204,5 +363,6 @@ export function compareVersion(ecosystem: string, a: string, b: string): number 
   if (SEMVER_ECOSYSTEMS.has(ecosystem)) return compareSemver(a, b)
   if (ecosystem === 'maven') return compareMaven(a, b)
   if (ecosystem === 'rubygems') return compareRubyGems(a, b)
+  if (ecosystem === 'pypi') return comparePep440(a, b)
   return null
 }

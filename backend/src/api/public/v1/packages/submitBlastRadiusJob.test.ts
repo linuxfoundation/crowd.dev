@@ -109,12 +109,28 @@ describe('submitBlastRadiusJob', () => {
   it('rejects an unsupported ecosystem without starting a workflow', async () => {
     const { req, res, start } = mockReqRes({
       advisoryId: 'GHSA-jf85-cpcp-j695',
-      ecosystem: 'pypi',
+      ecosystem: 'homebrew',
     })
 
     await expect(submitBlastRadiusJob(req, res)).rejects.toThrow(/not supported/)
     expect(start).not.toHaveBeenCalled()
     expect(createAnalysis).not.toHaveBeenCalled()
+  })
+
+  it('starts a workflow for a pypi ecosystem request', async () => {
+    const { req, res, start } = mockReqRes({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'pypi',
+    })
+
+    await submitBlastRadiusJob(req, res)
+
+    expect(start).toHaveBeenCalledTimes(1)
+    const [, options] = start.mock.calls[0]
+    expect(options.args[0]).toMatchObject({
+      advisoryId: 'GHSA-jf85-cpcp-j695',
+      ecosystem: 'pypi',
+    })
   })
 
   it('rejects a missing ecosystem without starting a workflow', async () => {
