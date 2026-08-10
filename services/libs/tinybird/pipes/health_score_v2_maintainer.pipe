@@ -82,16 +82,34 @@ SQL >
                         allRepos.repoUrl AS repoUrl,
                         allRepos.isGerrit AS isGerrit,
                         allRepos.isExcluded AS isExcluded,
-                        greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) AS busFactorCount,
+                        greatest(
+                            coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)
+                        ) AS busFactorCount,
                         (bf.repoUrl != '' OR obs.repoUrl != '') AS busFactorAvailable,
                         multiIf(
-                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) >= 5,
+                            greatest(
+                                coalesce(bf.curatedBusFactorCount, 0),
+                                coalesce(obs.observedActorsCount, 0)
+                            )
+                            >= 5,
                             18,
-                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) >= 3,
+                            greatest(
+                                coalesce(bf.curatedBusFactorCount, 0),
+                                coalesce(obs.observedActorsCount, 0)
+                            )
+                            >= 3,
                             15,
-                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) = 2,
+                            greatest(
+                                coalesce(bf.curatedBusFactorCount, 0),
+                                coalesce(obs.observedActorsCount, 0)
+                            )
+                            = 2,
                             6,
-                            greatest(coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)) = 1,
+                            greatest(
+                                coalesce(bf.curatedBusFactorCount, 0),
+                                coalesce(obs.observedActorsCount, 0)
+                            )
+                            = 1,
                             3,
                             0
                         ) AS busFactorScore,
@@ -186,7 +204,9 @@ SQL >
                         ) AS allRepos
                     LEFT JOIN
                         (
-                            SELECT mr.repoUrl AS repoUrl, count(DISTINCT mr.memberId) AS curatedBusFactorCount
+                            SELECT
+                                mr.repoUrl AS repoUrl,
+                                count(DISTINCT mr.memberId) AS curatedBusFactorCount
                             FROM maintainers_roles_copy_ds mr
                             INNER JOIN
                                 (
@@ -204,9 +224,7 @@ SQL >
                         ON bf.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
-                            SELECT
-                                channel AS repoUrl,
-                                count(DISTINCT memberId) AS observedActorsCount
+                            SELECT channel AS repoUrl, count(DISTINCT memberId) AS observedActorsCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union
                             WHERE
                                 timestamp > now() - INTERVAL 12 MONTH

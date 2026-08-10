@@ -24,12 +24,7 @@ SQL >
         od.orgCount,
         r.medianPrResponseS,
         ir.medianIssueResponseS
-    FROM
-        (
-            SELECT DISTINCT url AS repoUrl
-            FROM repositories
-            WHERE deletedAt IS NULL
-        ) AS allRepos
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
         (
             SELECT mr.repoUrl, count(DISTINCT mr.memberId) AS curatedBusFactorCount
@@ -42,17 +37,13 @@ SQL >
                 ) AS recentActivity
                 ON recentActivity.memberId = mr.memberId
                 AND recentActivity.repoUrl = mr.repoUrl
-            WHERE
-                mr.endDate = '1970-01-01 00:00:00'
-                OR mr.endDate > now() - INTERVAL 12 MONTH
+            WHERE mr.endDate = '1970-01-01 00:00:00' OR mr.endDate > now() - INTERVAL 12 MONTH
             GROUP BY mr.repoUrl
         ) AS bf
         ON bf.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT
-                channel AS repoUrl,
-                count(DISTINCT memberId) AS observedActorsCount
+            SELECT channel AS repoUrl, count(DISTINCT memberId) AS observedActorsCount
             FROM activityRelations_deduplicated_cleaned_bucket_union
             WHERE
                 timestamp > now() - INTERVAL 12 MONTH
@@ -75,9 +66,7 @@ SQL >
         ON od.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT
-                channel AS repoUrl,
-                quantile(0.5)(reviewedInSeconds) AS medianPrResponseS
+            SELECT channel AS repoUrl, quantile(0.5)(reviewedInSeconds) AS medianPrResponseS
             FROM pull_requests_analyzed
             WHERE openedAt > now() - INTERVAL 12 MONTH AND reviewedInSeconds IS NOT NULL
             GROUP BY channel
@@ -85,12 +74,9 @@ SQL >
         ON r.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT
-                channel AS repoUrl,
-                quantile(0.5)(respondedInSeconds) AS medianIssueResponseS
+            SELECT channel AS repoUrl, quantile(0.5)(respondedInSeconds) AS medianIssueResponseS
             FROM issues_analyzed
-            WHERE
-                openedAt > now() - INTERVAL 12 MONTH AND respondedInSeconds IS NOT NULL
+            WHERE openedAt > now() - INTERVAL 12 MONTH AND respondedInSeconds IS NOT NULL
             GROUP BY channel
         ) AS ir
         ON ir.repoUrl = allRepos.repoUrl
@@ -113,17 +99,14 @@ SQL >
         repos.branchProtectionRequiresStatusChecks,
         repos.branchProtectionAllowsForcePush,
         deps.vulnerableDeps
-    FROM
-        (
-            SELECT DISTINCT url AS repoUrl
-            FROM repositories
-            WHERE deletedAt IS NULL
-        ) AS allRepos
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
         (
-            SELECT repoUrl, countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
-            countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
-            countIf(status = 'OPEN' AND severity = 'MODERATE') AS openModerates
+            SELECT
+                repoUrl,
+                countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
+                countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
+                countIf(status = 'OPEN' AND severity = 'MODERATE') AS openModerates
             FROM vulnerabilities
             GROUP BY repoUrl
         ) AS v
@@ -143,13 +126,17 @@ SQL >
         ON repos.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT
-                r2.url AS repoUrl,
-                count(DISTINCT ad.id) AS vulnerableDeps
+            SELECT r2.url AS repoUrl, count(DISTINCT pd.dependsOnId) AS vulnerableDeps
             FROM repos r2
             INNER JOIN packageRepos pr ON pr.repoId = r2.id
-            INNER JOIN dependencies ad ON ad.packageId = pr.packageId
-            WHERE ad.advisoryCountCritical > 0 OR ad.advisoryCountHigh > 0
+            INNER JOIN packageDependencies pd ON pd.packageId = pr.packageId
+            WHERE
+                pd.dependsOnId IN (
+                    SELECT ap.packageId
+                    FROM advisoryPackages ap
+                    INNER JOIN advisories a ON a.id = ap.advisoryId
+                    WHERE a.severity IN ('HIGH', 'CRITICAL')
+                )
             GROUP BY r2.url
         ) AS deps
         ON deps.repoUrl = allRepos.repoUrl
@@ -173,18 +160,16 @@ SQL >
         p.merged12m,
         p.closedUnmerged12m,
         p.medianMergeS
-    FROM
-        (
-            SELECT DISTINCT url AS repoUrl
-            FROM repositories
-            WHERE deletedAt IS NULL
-        ) AS allRepos
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
         (
             SELECT
                 r2.url AS repoUrl,
                 dateDiff('day', max(rd.releaseDay), today()) AS daysSinceLatest,
-                quantile(0.5)(dateDiff('day', rd.releaseDay, max(rd.releaseDay) OVER (PARTITION BY r2.url))) AS daysBetweenRecent
+                quantile(0.5)
+                (
+                    dateDiff('day', rd.releaseDay, max(rd.releaseDay) OVER (PARTITION BY r2.url))
+                ) AS daysBetweenRecent
             FROM repos r2
             INNER JOIN packageRepos pr ON pr.repoId = r2.id
             INNER JOIN
@@ -210,19 +195,15 @@ SQL >
             GROUP BY channel
         ) AS c
         ON c.repoUrl = allRepos.repoUrl
-    LEFT JOIN
-        (
-            SELECT url AS repoUrl, lastCommitAt
-            FROM repos
-        ) AS rc
-        ON rc.repoUrl = allRepos.repoUrl
+    LEFT JOIN (SELECT url AS repoUrl, lastCommitAt FROM repos) AS rc ON rc.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
             SELECT
                 channel AS repoUrl,
                 countIf(closedAt IS NOT NULL AND closedAt > now() - INTERVAL 12 MONTH) AS closed12m,
                 countIf(openedAt > now() - INTERVAL 12 MONTH) AS opened12m,
-                quantile(0.5)(closedInSeconds) AS medianCloseS
+                quantile(0.5)
+                (closedInSeconds) AS medianCloseS
             FROM issues_analyzed
             GROUP BY channel
         ) AS w
@@ -232,8 +213,11 @@ SQL >
             SELECT
                 channel AS repoUrl,
                 countIf(mergedAt IS NOT NULL AND mergedAt > now() - INTERVAL 12 MONTH) AS merged12m,
-                countIf(closedAt IS NOT NULL AND mergedAt IS NULL AND closedAt > now() - INTERVAL 12 MONTH) AS closedUnmerged12m,
-                quantile(0.5)(mergedInSeconds) AS medianMergeS
+                countIf(
+                    closedAt IS NOT NULL AND mergedAt IS NULL AND closedAt > now() - INTERVAL 12 MONTH
+                ) AS closedUnmerged12m,
+                quantile(0.5)
+                (mergedInSeconds) AS medianMergeS
             FROM pull_requests_analyzed
             GROUP BY channel
         ) AS p

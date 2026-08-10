@@ -22,11 +22,9 @@ SQL >
     WHERE type = 'issues-closed' AND sourceParentId != '' AND toYear(timestamp) >= 1971
     GROUP BY sourceParentId
 
-NODE issues_comment
+NODE issues_comment_non_author
 SQL >
-    SELECT
-        c.sourceParentId,
-        MIN(c.timestamp) AS commentedAt
+    SELECT c.sourceParentId, MIN(c.timestamp) AS respondedAt
     FROM activityRelations_deduplicated_cleaned_bucket_union c
     INNER JOIN issues_opened opened ON c.sourceParentId = opened.sourceId
     WHERE
@@ -47,7 +45,9 @@ SQL >
         opened.memberId,
         opened.organizationId,
         opened.openedAt,
-        IF(comment_non_author.respondedAt = toDateTime(0), NULL, comment_non_author.respondedAt) AS commentedAt,
+        IF(
+            comment_non_author.respondedAt = toDateTime(0), NULL, comment_non_author.respondedAt
+        ) AS commentedAt,
         IF(closed.closedAt = toDateTime(0), NULL, closed.closedAt) AS closedAt,
         IF(
             closedAt IS NULL,
@@ -62,7 +62,9 @@ SQL >
         ) AS respondedInSeconds
     FROM issues_opened opened
     LEFT JOIN issues_closed AS closed ON opened.sourceId = closed.sourceParentId
-    LEFT JOIN issues_comment_non_author AS comment_non_author ON opened.sourceId = comment_non_author.sourceParentId
+    LEFT JOIN
+        issues_comment_non_author AS comment_non_author
+        ON opened.sourceId = comment_non_author.sourceParentId
 
 TYPE COPY
 TARGET_DATASOURCE issues_analyzed

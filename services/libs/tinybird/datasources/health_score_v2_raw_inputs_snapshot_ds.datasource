@@ -4,12 +4,12 @@ DESCRIPTION >
     - Populated by `health_score_v2_raw_inputs_snapshot.pipe` (append-mode, monthly cadence).
     - Each row is keyed by `repoUrl + snapshotDate + methodologyVersion` and captures all the atomic
     measurement signals used to compute the three health score categories:
-      - Maintainer signals: bus factor (curated maintainer count), observed review/merge actors,
-      organization diversity (distinct org count), PR/issue response times (medians).
-      - Security signals: open CVE counts (critical/high/moderate), OpenSSF Scorecard score, security
-      practices flags (policy/branch-protection state), vulnerable dependencies count.
-      - Development signals: release recency/cadence, commit counts (6m windows), issue counts/closure
-      times, PR counts/merge times.
+    - Maintainer signals: bus factor (curated maintainer count), observed review/merge actors,
+    organization diversity (distinct org count), PR/issue response times (medians).
+    - Security signals: open CVE counts (critical/high/moderate), OpenSSF Scorecard score, security
+    practices flags (policy/branch-protection state), vulnerable dependencies count.
+    - Development signals: release recency/cadence, commit counts (6m windows), issue counts/closure
+    times, PR counts/merge times.
     - Does NOT include computed category/overall scores — those are derived from these raw inputs via
     the scoring logic in the respective pipes. This datasource is for tracing where scores come from.
     - snapshotId = `toStartOfInterval(now(), INTERVAL 1 day)` at pipe execution time.
