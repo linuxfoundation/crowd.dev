@@ -51,6 +51,15 @@ Self Serve) cannot carry them. CDP's per-endpoint `requireScopes` middleware
 is the sole enforcement point at the API layer — no `azp` allowlist or other
 client-identity inspection in CDP source.
 
+**Transitional scope acceptance (current code):** During the Akrites
+integration cut-over, each `/akrites-external` subrouter accepts either the
+Akrites-namespaced scope _or_ the corresponding legacy Self Serve scope
+(`read:packages` / `read:stewardships` / `read:maintainer-roles`) via
+`requireScopes([...], 'any')`. This lets the Self Serve team test the route
+before Akrites' token flow is live. The legacy fallback scopes are removed
+once Akrites confirms end-to-end token exchange — at that point only the
+Akrites-namespaced scopes remain, matching the target state described above.
+
 CDP does not validate client_id or client_secret. It only sees the
 Auth0-signed bearer token. Both `lfx_one` (`client_secret_post`) and
 `Akrites Enclave` (`private_key_jwt`) obtain tokens against the same
@@ -217,21 +226,28 @@ No mount-level `requireScopes` — scope checks are per-subrouter inside
 `akritesExternalRouter()`, same pattern as `akritesRouter()`.
 
 **`backend/src/api/public/v1/akrites-external/index.ts`** — each subrouter
-gates on its Akrites-namespaced scope:
+gates on its Akrites-namespaced scope. During the cut-over period the
+legacy Self Serve scopes are also accepted (`'any'`); remove them once
+Akrites confirms end-to-end token exchange:
 
 ```ts
-// packages subrouter
-packagesSubRouter.use(requireScopes([SCOPES.READ_AKRITES_PACKAGES]))
+// packages subrouter — drop READ_PACKAGES/READ_STEWARDSHIPS on cut-over
+packagesSubRouter.use(
+  requireScopes([SCOPES.READ_AKRITES_PACKAGES, SCOPES.READ_PACKAGES, SCOPES.READ_STEWARDSHIPS], 'any'),
+)
 
-// advisories subrouter
-advisoriesSubRouter.use(requireScopes([SCOPES.READ_AKRITES_ADVISORIES]))
+// advisories subrouter — drop READ_PACKAGES on cut-over
+advisoriesSubRouter.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES], 'any'))
 
-// contacts subrouter
-contactsSubRouter.use(requireScopes([SCOPES.READ_AKRITES_MAINTAINERS]))
+// contacts subrouter — drop READ_MAINTAINER_ROLES on cut-over
+contactsSubRouter.use(requireScopes([SCOPES.READ_MAINTAINER_ROLES, SCOPES.READ_AKRITES_MAINTAINERS], 'any'))
 
-// blast-radius subrouter (same surface as advisories per the contract)
-blastRadiusSubRouter.use(requireScopes([SCOPES.READ_AKRITES_ADVISORIES]))
+// blast-radius subrouter — drop READ_PACKAGES on cut-over
+blastRadiusSubRouter.use(requireScopes([SCOPES.READ_PACKAGES, SCOPES.READ_AKRITES_ADVISORIES], 'any'))
 ```
+
+Target state (post cut-over): `requireScopes([SCOPES.READ_AKRITES_*])` with
+no `'any'` fallback — dedicated scope per subrouter, no legacy scopes.
 
 **`backend/src/api/public/v1/akrites-external/openapi.yaml`** — advertises
 the Akrites-namespaced scopes everywhere scopes appear: global and
