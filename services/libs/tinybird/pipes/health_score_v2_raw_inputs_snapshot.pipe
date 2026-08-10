@@ -11,19 +11,46 @@ DESCRIPTION >
 
 TAGS "Validation", "Health Score v2"
 
-NODE raw_inputs_maintainer
+NODE health_score_v2_raw_inputs_snapshot_calc
 DESCRIPTION >
-    Raw maintainer-health measurement signals: bus-factor counts (curated and observed),
-    org diversity, and response times.
+    Combines raw input signals from all three categories (maintainer, security, development)
+    and tags with snapshot metadata. Inlined as one node (rather than three joined nodes)
+    because Tinybird cannot resolve column references across multiple independently-defined
+    subqueries once inlined together — each category's raw-input subquery is joined directly
+    against a single shared repo base here, matching the pattern already proven in the
+    single-node health_score_v2_maintainer/_security/_development pipes.
 
 SQL >
     SELECT
         allRepos.repoUrl,
-        bf.curatedBusFactorCount,
-        obs.observedActorsCount,
-        od.orgCount,
-        r.medianPrResponseS,
-        ir.medianIssueResponseS
+        toStartOfInterval(now(), INTERVAL 1 day) AS snapshotDate,
+        '2.0.0' AS methodologyVersion,
+        bf.curatedBusFactorCount AS busFactorCuratedCount,
+        obs.observedActorsCount AS busFactorObservedActorsCount,
+        od.orgCount AS orgDiversityCount,
+        r.medianPrResponseS AS medianPrResponseSeconds,
+        ir.medianIssueResponseS AS medianIssueResponseSeconds,
+        coalesce(v.openCriticals, 0) AS openCriticalVulns,
+        coalesce(v.openHighs, 0) AS openHighVulns,
+        coalesce(v.openModerates, 0) AS openModerateVulns,
+        repoMeta.scorecardScore,
+        repoMeta.securityPolicyEnabled,
+        repoMeta.branchProtectionEnabled,
+        repoMeta.branchProtectionRequiredReviews,
+        repoMeta.branchProtectionRequiresStatusChecks,
+        repoMeta.branchProtectionAllowsForcePush,
+        deps.vulnerableDeps,
+        rl.daysSinceLatest AS daysSinceLatestRelease,
+        rl.daysBetweenRecent AS daysBetweenRecentReleases,
+        c.commitsLast6m,
+        c.commitsPrior6m,
+        rc.lastCommitAt,
+        w.closed12m AS issuesClosedLast12m,
+        w.opened12m AS issuesOpenedLast12m,
+        w.medianCloseS AS medianIssueCloseSeconds,
+        p.merged12m AS prsMergedLast12m,
+        p.closedUnmerged12m AS prsClosedUnmergedLast12m,
+        p.medianMergeS AS medianPrMergeSeconds
     FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
         (
@@ -80,26 +107,6 @@ SQL >
             GROUP BY channel
         ) AS ir
         ON ir.repoUrl = allRepos.repoUrl
-
-NODE raw_inputs_security
-DESCRIPTION >
-    Raw security-health measurement signals: vulnerability counts, scorecard score, and branch
-    protection / security policy flags.
-
-SQL >
-    SELECT
-        allRepos.repoUrl,
-        coalesce(v.openCriticals, 0) AS openCriticals,
-        coalesce(v.openHighs, 0) AS openHighs,
-        coalesce(v.openModerates, 0) AS openModerates,
-        repos.scorecardScore,
-        repos.securityPolicyEnabled,
-        repos.branchProtectionEnabled,
-        repos.branchProtectionRequiredReviews,
-        repos.branchProtectionRequiresStatusChecks,
-        repos.branchProtectionAllowsForcePush,
-        deps.vulnerableDeps
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
         (
             SELECT
@@ -122,8 +129,8 @@ SQL >
                 branchProtectionRequiresStatusChecks,
                 branchProtectionAllowsForcePush
             FROM repos
-        ) AS repos
-        ON repos.repoUrl = allRepos.repoUrl
+        ) AS repoMeta
+        ON repoMeta.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
             SELECT r2.url AS repoUrl, count(DISTINCT pd.dependsOnId) AS vulnerableDeps
@@ -140,27 +147,6 @@ SQL >
             GROUP BY r2.url
         ) AS deps
         ON deps.repoUrl = allRepos.repoUrl
-
-NODE raw_inputs_development
-DESCRIPTION >
-    Raw development-activity measurement signals: release cadence, commit counts, issue/PR
-    resolution metrics.
-
-SQL >
-    SELECT
-        allRepos.repoUrl,
-        rl.daysSinceLatest,
-        rl.daysBetweenRecent,
-        c.commitsLast6m,
-        c.commitsPrior6m,
-        rc.lastCommitAt,
-        w.closed12m,
-        w.opened12m,
-        w.medianCloseS,
-        p.merged12m,
-        p.closedUnmerged12m,
-        p.medianMergeS
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
         (
             SELECT
@@ -222,45 +208,6 @@ SQL >
             GROUP BY channel
         ) AS p
         ON p.repoUrl = allRepos.repoUrl
-
-NODE health_score_v2_raw_inputs_snapshot_calc
-DESCRIPTION >
-    Combines raw input signals from all three categories and tags with snapshot metadata.
-
-SQL >
-    SELECT
-        m.repoUrl,
-        toStartOfInterval(now(), INTERVAL 1 day) AS snapshotDate,
-        '2.0.0' AS methodologyVersion,
-        m.curatedBusFactorCount,
-        m.observedActorsCount,
-        m.orgCount,
-        m.medianPrResponseS,
-        m.medianIssueResponseS,
-        s.openCriticals,
-        s.openHighs,
-        s.openModerates,
-        s.scorecardScore,
-        s.securityPolicyEnabled,
-        s.branchProtectionEnabled,
-        s.branchProtectionRequiredReviews,
-        s.branchProtectionRequiresStatusChecks,
-        s.branchProtectionAllowsForcePush,
-        s.vulnerableDeps,
-        d.daysSinceLatest,
-        d.daysBetweenRecent,
-        d.commitsLast6m,
-        d.commitsPrior6m,
-        d.lastCommitAt,
-        d.closed12m,
-        d.opened12m,
-        d.medianCloseS,
-        d.merged12m,
-        d.closedUnmerged12m,
-        d.medianMergeS
-    FROM raw_inputs_maintainer m
-    LEFT JOIN raw_inputs_security s ON s.repoUrl = m.repoUrl
-    LEFT JOIN raw_inputs_development d ON d.repoUrl = m.repoUrl
 
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_raw_inputs_snapshot_ds
