@@ -113,7 +113,7 @@ SQL >
                 repoUrl,
                 countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
                 countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
-                countIf(status = 'OPEN' AND severity = 'MODERATE') AS openModerates
+                countIf(status = 'OPEN' AND severity = 'MEDIUM') AS openModerates
             FROM vulnerabilities
             GROUP BY repoUrl
         ) AS v
@@ -190,8 +190,11 @@ SQL >
         ) AS c
         ON c.repoUrl = allRepos.repoUrl
     LEFT JOIN
-        (SELECT url AS repoUrl, argMax(lastCommitAt, updatedAt) AS lastCommitAt FROM repos GROUP BY url)
-        AS rc
+        (
+            SELECT url AS repoUrl, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+            FROM repos
+            GROUP BY url
+        ) AS rc
         ON rc.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
