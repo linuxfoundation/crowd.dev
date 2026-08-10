@@ -1,6 +1,6 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
-import { getAnthropicAwsAgentSdkEnv } from './credentials'
+import { getAnthropicAwsAgentSdkEnv, getAnthropicPersonalAuthEnv } from './credentials'
 
 const log = getServiceChildLogger('anthropic-aws-agent')
 
@@ -70,16 +70,22 @@ export async function runClaudeAgentQuery(
     onProgress,
   } = input
 
-  // Build environment: if Claude Platform on AWS credentials are configured, route
-  // the agent through them; otherwise omit to fall back to local CLI auth (dev only).
+  // Build environment: prefer Claude Platform on AWS, then a personal `claude
+  // setup-token` OAuth token (local dev), then omit to fall back to local CLI auth.
   let env: NodeJS.ProcessEnv | undefined
   let authMode = 'fallback on local claude code token'
   try {
     env = { ...process.env, ...getAnthropicAwsAgentSdkEnv() }
     authMode = 'claude-platform-on-aws'
   } catch (err) {
-    env = undefined
-    log.warn({ err }, 'anthropic-aws agent: Claude Platform on AWS not configured, falling back')
+    const personalAuthEnv = getAnthropicPersonalAuthEnv()
+    if (personalAuthEnv) {
+      env = { ...process.env, ...personalAuthEnv }
+      authMode = 'personal-oauth-token'
+    } else {
+      env = undefined
+      log.warn({ err }, 'anthropic-aws agent: Claude Platform on AWS not configured, falling back')
+    }
   }
 
   log.info({ authMode }, 'anthropic-aws agent: auth mode for this run')
