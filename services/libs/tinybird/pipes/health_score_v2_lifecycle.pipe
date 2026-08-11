@@ -47,9 +47,12 @@ DESCRIPTION >
     'abandoned' once its ignored issues age past the upper bound (they still block 'inert' via
     issuesInWindow18m, so the repo would flip back to 'active'). The spec's "~90-180 days" is
     the tuning range for this one threshold — the abandoned-threshold-sweep validation analysis
-    picks the final value. The no-commit gate uses repos.lastCommitAt — last commit by anyone,
-    not maintainer-specific activity; whether maintainer review/comment activity should also
-    block 'abandoned' is an open question on the PR.
+    picks the final value. The no-commit gate requires BOTH commit signals to be silent: zero
+    authored-commit activity in both trailing 6mo windows (covers repos where lastCommitAt is
+    NULL/stale from the upstream `repos` data gap but real commits exist in activityRelations)
+    AND repos.lastCommitAt NULL or older than 12mo (covers the reverse gap). Both signals are
+    last-commit-by-anyone, not maintainer-specific activity; whether maintainer review/comment
+    activity should also block 'abandoned' is an open question on the PR.
     - Inert: lastCommitAt older than 18mo AND zero issues/PRs opened in the 18mo window.
     lastCommitAt IS NULL deliberately does NOT qualify: a NULL-with-no-signal repo is already
     caught by the NULL guard above, and a NULL-with-recent-commits repo (upstream data gap in
@@ -79,6 +82,8 @@ SQL >
                     r.archived = 1,
                     'archived',
                     (coalesce(w.unansweredAged90d, 0) > 0 OR coalesce(pw.unansweredAged90d, 0) > 0)
+                    AND coalesce(c.commitsLast6m, 0) = 0
+                    AND coalesce(c.commitsPrior6m, 0) = 0
                     AND (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 12 MONTH),
                     'abandoned',
                     r.lastCommitAt < now() - INTERVAL 18 MONTH
