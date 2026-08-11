@@ -147,6 +147,7 @@ SQL >
                 countIf(
                     openedAt > now() - INTERVAL 18 MONTH
                     AND reviewedAt IS NULL
+                    AND approvedAt IS NULL
                     AND closedAt IS NULL
                     AND openedAt <= now() - INTERVAL 90 DAY
                     AND openedAt > now() - INTERVAL 180 DAY
