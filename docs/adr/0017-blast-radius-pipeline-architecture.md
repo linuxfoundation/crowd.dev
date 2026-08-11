@@ -16,7 +16,12 @@ The feature started as npm-only (`feat/add-blast-radius-methodlogy`, CM-1328) an
 generalized to go, maven, cargo, nuget, rubygems, and pypi one ecosystem at a time
 (CM-1358). It is consumed exclusively through a public, asynchronous Public API
 (`submitBlastRadiusJob(Batch)` / `getBlastRadiusJob(Batch)` in
-`backend/src/api/public/v1/packages/`) — there is no CLI or batch-report consumer.
+`backend/src/api/public/v1/packages/`) in production — there is no CLI or batch-report
+consumer of *finished* analyses. The one exception is
+`backend/src/bin/scripts/blastRadiusLoadTest.ts`, a dev-only harness that starts
+`analyzeBlastRadius` workflows directly through the Temporal client, bypassing the HTTP
+layer (and its Zod validation/Auth0) entirely — it exists to load-test the pipeline, not
+to consume its output.
 
 ## Decision
 Implement blast radius as a 4-stage Temporal workflow (`analyzeBlastRadius` in
@@ -30,8 +35,12 @@ developer's personal Claude Code OAuth token for local runs without AWS access.
 Every arrow below is a hard sequential dependency, not a fan-out: stage *N+1* only
 starts once stage *N*'s activity has returned successfully (`workflows.ts` simply
 `await`s each activity in order — see the workflow code after the diagram). There is no
-parallelism between stages; the only concurrency in the whole pipeline is *within* stage 3
-(up to 4 dependents downloaded/analyzed at once).
+parallelism *between* stages. *Within* a stage, though, there's real concurrency: stage 2
+(dependents) scans candidate npm packages with `forEachWithConcurrency(..., SCAN_CONCURRENCY)`,
+32 by default (`dependentsScan.ts`), and stage 3 (reachability) downloads/judges up to 4
+dependents at once (`REACHABILITY_CONCURRENCY`). Both are bounded worker pools, not
+per-stage sequential loops — the sequential guarantee is only about stage ordering, not
+about how each stage does its own work.
 
 ```mermaid
 flowchart LR
@@ -60,8 +69,8 @@ flowchart LR
 
     subgraph S3["3 · Reachability (blastRadiusReachability)<br/><span style='font-size:4px'>&nbsp;</span>"]
         direction TB
-        R1["Download each dependent's source<br/>(4 concurrent, up to 3 attempts each)"]
-        R2["Claude Sonnet judges reachability<br/>of the vulnerable symbol"]
+        R1["Download each dependent's source<br/>(4 concurrent, one attempt — failure → 'unclear')"]
+        R2["Claude Sonnet judges reachability<br/>(up to 3 attempts on agent failure)"]
         R3["Write blast_radius_verdicts<br/>(affected / not_affected / unclear)"]
         R1 --> R2 --> R3
     end
@@ -88,9 +97,12 @@ flowchart LR
    ecosystem-specific scan of the dependency graph for up to 25 candidate downstream
    projects that import the vulnerable package. Persists to `blast_radius_dependents`.
 3. **Reachability** (`stages/reachabilityStage.ts`, 1 hour timeout) — downloads each
-   candidate's source (4 concurrent, up to 3 attempts each) and runs a **Claude Sonnet**
-   agent (`model: 'claude-sonnet-5'`) to judge whether the vulnerable symbol is actually
-   reachable, under the same tool/turn/timeout constraints as intel above. Persists a
+   candidate's source (4 concurrent) and runs a **Claude Sonnet** agent
+   (`model: 'claude-sonnet-5'`) to judge whether the vulnerable symbol is actually
+   reachable, under the same tool/turn/timeout constraints as intel above. Only the agent
+   call is retried (up to 3 attempts, exponential backoff): `source.download` runs once
+   per dependent, and a download failure immediately persists an `unclear` verdict rather
+   than retrying the download itself (`reachabilityStage.ts:118-138`). Persists a
    verdict + evidence + confidence per dependent to `blast_radius_verdicts`. This is the
    slowest and most expensive stage, sized accordingly.
 4. **Report** (`stages/report.ts`, 2 min timeout) — **not** a human-readable report. It sums
@@ -105,9 +117,20 @@ flowchart LR
    scope for this ADR (touches the DB check constraint, `stage_runs` rows, and tests) but is
    a reasonable low-risk follow-up.
 
-Each stage is independently resumable: it checks its own `stage_run` status first and
-no-ops if already `succeeded`, so a retried workflow (Temporal-level retry, or a re-submitted
-job reusing the same `analysisId` via `force`) skips whatever already completed. Stages run
+Each stage is independently resumable: it checks its own `stage_run` status first (a plain
+`getStageRunStatus` read, not part of an atomic transaction with the `startStageRun` that
+follows it) and no-ops if already `succeeded`. In practice this guards two things: the
+per-stage activity retries Temporal already applies within a single workflow run
+(`proxyActivities`'s `retry: { maximumAttempts: 2-3 }` per stage in `workflows.ts`), and any
+explicit re-invocation of `analyzeBlastRadius` with the same `analysisId` (e.g. from
+internal tooling). It does **not** come from the public submit endpoints or `force`:
+`submitBlastRadiusJob(Batch)` generates a fresh `analysisId` on every call regardless of
+`force` (`generateUUIDv4()`, unconditional), and the workflow itself is started with
+`retry: { maximumAttempts: 1 }` — so there is no workflow-level retry to resume from on
+that path either. Because the guard is two separate queries rather than one atomic
+check-and-claim, it reduces but doesn't strictly prevent duplicate work if two attempts at
+the same `analysisId`/stage genuinely overlap (e.g. a heartbeat-timeout retry racing an
+still-running prior attempt); it is not an exactly-once coordination mechanism. Stages run
 strictly in sequence within one workflow — there is no cross-stage parallelism — because
 each stage's output is the next stage's required input (symbol spec → candidate list →
 per-candidate verdicts → aggregate cost).
@@ -136,12 +159,15 @@ where semver isn't directly reusable (Go's pseudo-versions, Maven's version rang
 comparer, RubyGems platform-qualified gems).
 
 The one axis that genuinely differs per ecosystem, rather than being boilerplate, is how a
-dependent row becomes a downloadable source in stage 3: npm already has a `tarball_url`
-persisted by its dependents stage, so `prepareSource` is a direct download; Go's manifest
-only carries a `require` floor version, so `prepareSource` must resolve a concrete version
-(often `@latest`) before it can fetch anything. Every other ecosystem falls between these
-two extremes but implements the same `prepareSource` contract, which is what let 6
-ecosystems be added after npm without touching the shared stage code.
+dependent row becomes a downloadable source in stage 3 — and it's a spread of strategies,
+not a clean npm-vs-everyone-else split. npm and RubyGems require an already-resolved
+`version`/`tarball_url` from the dependents stage and return `null` (→ `unclear` verdict)
+if it's missing; PyPI is the same shape (`version` required, no resolution attempted). Go,
+Maven, Cargo, and NuGet instead resolve a version when the dependents stage only recorded a
+constraint (`dep.version ?? resolveXVersion(...)`), each against a different registry API.
+Every ecosystem implements the same `prepareSource` contract regardless of which strategy it
+uses, which is what let 6 ecosystems be added after npm without touching the shared stage
+code.
 
 ### Local testing with a personal Claude Code token
 
@@ -159,7 +185,13 @@ resolves credentials in this order (`anthropic-aws/src/credentials.ts`):
 
 This resolution chain was centralized in `services/libs/anthropic-aws` in
 `feat: centralize anthropic usage (CM-1357)` (#4452), replacing per-ecosystem duplicated
-auth logic that previously lived alongside each `intel{Ecosystem}.ts`.
+auth logic that previously lived alongside each `intel{Ecosystem}.ts` (and, before that, a
+shared `agentAuth.ts` in `services/libs/common`). It lives under `services/libs/`, not
+inside `packages_worker`, specifically so any future Temporal worker that needs a Claude
+agent call gets this credential chain (and the same local-token override) for free. As of
+this ADR, `packages_worker`'s blast-radius stages are its only consumer — no other worker
+imports it yet — but the split into `libs/` was made for that reuse, not just for
+blast-radius's own organization.
 
 ### Dedicated node pool and scaling headroom
 
@@ -196,13 +228,14 @@ packages pipeline, in both directions, without a capacity trade-off against unre
 workers:
 
 - **Horizontally**: currently `replicas: 1`. Each replica is a stateless Temporal
-  task-queue poller; every stage guards on its own `stage_run` status before doing work
-  (see the resumability note above), so multiple replicas polling
-  `blast-radius-worker`'s task queue concurrently can safely pick up different
-  `analysisId`s without coordination or duplicate work. Scaling out is therefore a matter
-  of raising `replicas` (and, if node capacity is the ceiling, adding nodes to the
-  `pg-blast-radius` pool) — no code or workflow change needed to add throughput for a
-  backlog of pending analyses.
+  task-queue poller, and Temporal distributes activity tasks across pollers so
+  concurrent replicas normally pick up different `analysisId`s rather than duplicating
+  the same one. The `stage_run` status check (see the resumability note above) narrows
+  the remaining edge case — genuinely overlapping attempts at the same stage — but isn't
+  an atomic claim, so it's not a strict guarantee against duplicate work under retry
+  overlap. Scaling out is therefore a matter of raising `replicas` (and, if node capacity
+  is the ceiling, adding nodes to the `pg-blast-radius` pool) — no code or workflow change
+  needed to add throughput for a backlog of pending analyses.
 - **Vertically**: `requests`/`limits` and `NODE_OPTIONS`'s heap ceiling can be raised
   together (keeping the same fraction-of-limit ratio that fixed the 2026-07-29 OOM) if a
   single analysis's concurrency settings (`BLAST_RADIUS_SCAN_CONCURRENCY`,
@@ -281,10 +314,12 @@ workers:
 - Two different models are hardcoded per stage (`claude-opus-4-8` for intel,
   `claude-sonnet-5` for reachability) rather than centrally configured; a future model
   deprecation requires touching each `intel{Ecosystem}.ts` file individually.
-- The `prepareSource` contract's asymmetry (npm has a pre-resolved tarball URL, every other
-  ecosystem resolves a version at reachability time) means a new ecosystem's author must
-  understand this distinction rather than copy any single existing ecosystem verbatim —
-  mitigated by the existing 7 implementations covering both shapes as reference examples.
+- `prepareSource` covers a real spread of source-preparation strategies per ecosystem
+  (some require an already-resolved version and fail closed if it's missing; others
+  conditionally resolve one against their own registry API at reachability time) rather
+  than one shared shape — a new ecosystem's author must pick the right strategy for that
+  registry rather than copy any single existing ecosystem verbatim. Mitigated by 7
+  existing implementations spanning the range as reference examples.
 - `replicas: 1` today with no autoscaler (HPA) defined — scaling horizontally is a manual
   `kubectl`/manifest change, not automatic in response to queue depth or CPU. Node-pool
   capacity in `pg-blast-radius` is also a manually managed ceiling, not autoscaled at the
