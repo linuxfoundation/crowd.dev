@@ -24,12 +24,10 @@ then
     if [ ! -d services/libs/tinybird/.venv ]
     then
         echo "tinybird .venv not found, skipping tb fmt (see services/libs/tinybird/README.md to set it up)"
+    elif ! (cd services/libs/tinybird && source .venv/bin/activate && pip install -q -r requirements.txt)
+    then
+        echo "tinybird pip install failed, skipping tb fmt"
     else
-        (
-            cd services/libs/tinybird
-            source .venv/bin/activate
-            pip install -q -r requirements.txt
-        ) || echo "tinybird pip install failed, skipping tb fmt"
         (
             cd services/libs/tinybird/scripts
             source ../.venv/bin/activate
