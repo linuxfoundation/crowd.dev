@@ -21,20 +21,24 @@ fi
 
 if [ -n "$tinybird_files" ]
 then
-    (
-        cd services/libs/tinybird
-        [ -d .venv ] || python3 -m venv .venv
-        source .venv/bin/activate
-        pip install -q -r requirements.txt
-    ) || exit 1
-    (
-        cd services/libs/tinybird/scripts
-        source ../.venv/bin/activate
-        for f in $tinybird_files; do
-            ./format.sh --match "$(basename "$f")" --sequential || true
-        done
-    )
-    git add $tinybird_files || exit 1
+    if [ ! -d services/libs/tinybird/.venv ]
+    then
+        echo "tinybird .venv not found, skipping tb fmt (see services/libs/tinybird/README.md to set it up)"
+    else
+        (
+            cd services/libs/tinybird
+            source .venv/bin/activate
+            pip install -q -r requirements.txt
+        ) || echo "tinybird pip install failed, skipping tb fmt"
+        (
+            cd services/libs/tinybird/scripts
+            source ../.venv/bin/activate
+            for f in $tinybird_files; do
+                ./format.sh --match "$(basename "$f")" --sequential || true
+            done
+        )
+        git add $tinybird_files || exit 1
+    fi
 fi
 
 exit 0
