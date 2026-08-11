@@ -6,8 +6,6 @@ wc -l`
 # grep -E "backend\/.+\.(?:js|ts|vue|scss|html)$" |
 # wc -l`
 
-tinybird_files=`git --no-pager diff --name-only --cached |
-grep -E "services/libs/tinybird/(pipes|datasources)/.+\.(pipe|datasource)$" || true`
 
 if [ $frontend_files -gt 0 ]
 then
@@ -18,24 +16,3 @@ fi
 # then
 #     cd backend && npx lint-staged
 # fi
-
-if [ -n "$tinybird_files" ]
-then
-    if [ ! -d services/libs/tinybird/.venv ]
-    then
-        echo "tinybird .venv not found, skipping tb fmt (see services/libs/tinybird/README.md to set it up)"
-    elif ! (cd services/libs/tinybird && . .venv/bin/activate && pip install -q -r requirements.txt)
-    then
-        echo "tinybird pip install failed, skipping tb fmt"
-    else
-        (
-            cd services/libs/tinybird/scripts
-            . ../.venv/bin/activate
-            for f in $tinybird_files; do
-                ./format.sh --match "$(basename "$f")" --sequential || true
-            done
-        )
-    fi
-fi
-
-exit 0
