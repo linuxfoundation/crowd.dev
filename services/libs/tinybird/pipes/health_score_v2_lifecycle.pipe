@@ -1,6 +1,7 @@
 DESCRIPTION >
     Per-repo Lifecycle state, computed via the spec's decision tree (first match wins):
-    archived (repos.archived) > abandoned (no commits in 18mo AND no issue/PR activity in 18mo) >
+    archived (repos.archived) > abandoned (an issue or PR unanswered 90-180 days AND no maintainer
+    commits in 12mo) > inert (no commits in 18mo AND no issue/PR activity in 18mo) >
     declining (commits down >50% vs prior 6mo AND issues opened up vs prior 6mo) > stable (release
     within 12mo, <50 open issues, no open critical vulns, commits down >50% vs prior 6mo) > active
     (fallback) — but NULL overrides all of the above when there is no usable signal at all (see
@@ -31,11 +32,18 @@ DESCRIPTION >
 NODE health_score_v2_lifecycle_calc
 DESCRIPTION >
     - Precedence (first match wins): archived > abandoned > inert > declining > stable > active.
-    - Threshold note (provisional, pending validation analysis): abandoned uses 90-180 day
-    unanswered-issue window and 12-month no-maintainer-activity gates; inert uses 18-month
-    no-commits AND zero open issues/PRs gates. These day counts are under review via the
-    abandoned-threshold-sweep validation analysis and may shift in a follow-up tuning pass.
-    - Unanswered: minimum one issue opened in 18mo window + has unanswered issues now.
+    - Threshold note (provisional, pending validation analysis): abandoned now requires at least
+    one issue OR PR that has sat unanswered for 90-180 days (per Joana's 2026-08-11 PR feedback —
+    previously this branch only checked whether ANY unanswered issue existed, ever, with no age
+    gate at all) plus 12-month no-maintainer-activity; inert uses 18-month no-commits AND zero
+    open issues/PRs gates. The 90/180-day bounds are under review via the abandoned-threshold-sweep
+    validation analysis and may shift in a follow-up tuning pass.
+    - Unanswered issue: opened in the 18mo window, no non-author comment, still open, and has been
+    open 90-180 days.
+    - Unanswered PR: opened in the 18mo window, no reviewer activity (reviewedAt IS NULL), still
+    open (closedAt IS NULL), and has been open 90-180 days. Mirrors the issue-side signal using
+    pull_requests_analyzed.reviewedAt, which is already the first-response timestamp for PRs
+    (first review / changes-requested / Gerrit patchset approval) — no new datasource field needed.
     - Declining: commit count down >50% vs prior 6mo AND issues opened up vs prior 6mo.
     - Stable: release within 12mo, <50 open issues, no open critical vulns, AND commits down
     >50% vs prior 6mo.
@@ -53,9 +61,10 @@ SQL >
                 multiIf(
                     r.archived = 1,
                     'archived',
-                    coalesce(w.issuesInWindow18m, 0) > 0
-                    AND coalesce(w.unansweredCount, 0) > 0
-                    AND coalesce(n.issuesOpenNow, 0) > 0
+                    (
+                        coalesce(w.unansweredAged90to180d, 0) > 0
+                        OR coalesce(pw.unansweredAged90to180d, 0) > 0
+                    )
                     AND (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 12 MONTH),
                     'abandoned',
                     (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 18 MONTH)
@@ -114,8 +123,12 @@ SQL >
                 ) AS issuesOpenedPrior6m,
                 countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m,
                 countIf(
-                    openedAt > now() - INTERVAL 18 MONTH AND respondedInSeconds IS NULL AND closedAt IS NULL
-                ) AS unansweredCount
+                    openedAt > now() - INTERVAL 18 MONTH
+                    AND respondedInSeconds IS NULL
+                    AND closedAt IS NULL
+                    AND openedAt <= now() - INTERVAL 90 DAY
+                    AND openedAt > now() - INTERVAL 180 DAY
+                ) AS unansweredAged90to180d
             FROM issues_analyzed
             GROUP BY channel
         ) AS w
@@ -127,6 +140,21 @@ SQL >
             GROUP BY channel
         ) AS p
         ON p.repoUrl = r.url
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(
+                    openedAt > now() - INTERVAL 18 MONTH
+                    AND reviewedAt IS NULL
+                    AND closedAt IS NULL
+                    AND openedAt <= now() - INTERVAL 90 DAY
+                    AND openedAt > now() - INTERVAL 180 DAY
+                ) AS unansweredAged90to180d
+            FROM pull_requests_analyzed
+            GROUP BY channel
+        ) AS pw
+        ON pw.repoUrl = r.url
     LEFT JOIN
         (
             SELECT repoUrl, countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals
