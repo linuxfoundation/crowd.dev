@@ -2,10 +2,11 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditAffiliationsAction } from '@crowd/audit-logs'
-import { NotFoundError } from '@crowd/common'
+import { BadRequestError, NotFoundError } from '@crowd/common'
 import { signalMemberUpdate } from '@crowd/common_services'
 import {
   MemberField,
+  fetchManyOrganizationAffiliationPolicies,
   fetchMemberProjectSegments,
   fetchMemberSegmentAffiliationsForProject,
   findMaintainerRoles,
@@ -60,6 +61,17 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
   const [segment] = await fetchMemberProjectSegments(qx, memberId, projectId)
   if (!segment) {
     throw new NotFoundError('Project not found')
+  }
+
+  if (affiliations.length > 0) {
+    const policies = await fetchManyOrganizationAffiliationPolicies(
+      qx,
+      affiliations.map((a) => a.organizationId),
+    )
+
+    if ([...policies.values()].some((isBlocked) => isBlocked)) {
+      throw new BadRequestError('This organization does not allow affiliations')
+    }
   }
 
   const existingAffiliations = await fetchMemberSegmentAffiliationsForProject(
