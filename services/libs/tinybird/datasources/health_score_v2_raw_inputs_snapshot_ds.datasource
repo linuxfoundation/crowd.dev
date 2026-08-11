@@ -53,4 +53,3 @@ ENGINE MergeTree
 ENGINE_SORTING_KEY (snapshotDate, repoUrl)
 ENGINE_PARTITION_KEY toYYYYMM(snapshotDate)
 ENGINE_TTL snapshotDate + INTERVAL 24 MONTH
-UNIQUE_KEY (repoUrl, snapshotDate, methodologyVersion)
