@@ -7,7 +7,7 @@ wc -l`
 # wc -l`
 
 tinybird_files=`git --no-pager diff --name-only --cached |
-grep -E "services/libs/tinybird/(pipes|datasources)/.+\.(pipe|datasource)$"`
+grep -E "services/libs/tinybird/(pipes|datasources)/.+\.(pipe|datasource)$" || true`
 
 if [ $frontend_files -gt 0 ]
 then
@@ -21,7 +21,12 @@ fi
 
 if [ -n "$tinybird_files" ]
 then
-    (cd services/libs/tinybird && source .venv/bin/activate && pip install -q -r requirements.txt) || exit 1
+    (
+        cd services/libs/tinybird
+        [ -d .venv ] || python3 -m venv .venv
+        source .venv/bin/activate
+        pip install -q -r requirements.txt
+    ) || exit 1
     (
         cd services/libs/tinybird/scripts
         source ../.venv/bin/activate
@@ -31,3 +36,5 @@ then
     )
     git add $tinybird_files || exit 1
 fi
+
+exit 0
