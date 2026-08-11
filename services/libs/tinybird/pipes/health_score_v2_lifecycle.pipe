@@ -1,6 +1,6 @@
 DESCRIPTION >
     Per-repo Lifecycle state, computed via the spec's decision tree (first match wins):
-    archived (repos.archived) > abandoned (an issue or PR unanswered 90-180 days AND no maintainer
+    archived (repos.archived) > abandoned (an issue or PR open and unanswered for 90+ days AND no
     commits in 12mo) > inert (no commits in 18mo AND no issue/PR activity in 18mo) >
     declining (commits down >50% vs prior 6mo AND issues opened up vs prior 6mo) > stable (release
     within 12mo, <50 open issues, no open critical vulns, commits down >50% vs prior 6mo) > active
@@ -28,20 +28,36 @@ DESCRIPTION >
     commitsLast6m=0 (down from 1895 prior), because it still has 3 real PRs in the 18mo window —
     real activity, just not enough to clear any of the other branches' thresholds. That's a
     legitimate 'active' classification under the existing spec, not the bug being fixed here.
+    - `r.lastCommitAt IS NULL` added to the NULL-guard condition (2026-08-11, per Joana's PR
+    review): the guard as written (zero commits in both 6mo windows + zero issue/PR activity in
+    18mo) was a strict superset of the `inert` branch's own condition (no commits in 18mo + zero
+    issue/PR activity), since zero commits across the trailing 12mo already implies
+    `lastCommitAt` is either NULL or older than 18mo. That made the guard fire first on every repo
+    that could otherwise have matched `inert`, so `inert` was dead code — never actually emitted.
+    Restricting the guard to the `lastCommitAt IS NULL` case (matching the blocknetdx/blocknet
+    example this branch was originally written for) lets repos with a known, stale last-commit
+    timestamp fall through into the real decision tree, where `inert` can now actually fire.
 
 NODE health_score_v2_lifecycle_calc
 DESCRIPTION >
     - Precedence (first match wins): archived > abandoned > inert > declining > stable > active.
-    - Threshold note (provisional, pending validation analysis): abandoned now requires at least
-    one issue OR PR that has sat unanswered for 90-180 days (per Joana's 2026-08-11 PR feedback —
-    previously this branch only checked whether ANY unanswered issue existed, ever, with no age
-    gate at all) plus 12-month no-maintainer-activity; inert uses 18-month no-commits AND zero
-    open issues/PRs gates. The 90/180-day bounds are under review via the abandoned-threshold-sweep
-    validation analysis and may shift in a follow-up tuning pass.
+    - Threshold note (provisional, pending validation analysis): abandoned requires at least one
+    issue OR PR that has sat unanswered for 90+ days, plus a 12-month no-commit gate. The age
+    gate is a single threshold, NOT a closed 90-180 band: a band would let a repo exit
+    'abandoned' once its ignored issues age past the upper bound (they still block 'inert' via
+    issuesInWindow18m, so the repo would flip back to 'active'). The spec's "~90-180 days" is
+    the tuning range for this one threshold — the abandoned-threshold-sweep validation analysis
+    picks the final value. The no-commit gate uses repos.lastCommitAt — last commit by anyone,
+    not maintainer-specific activity; whether maintainer review/comment activity should also
+    block 'abandoned' is an open question on the PR.
+    - Inert: lastCommitAt older than 18mo AND zero issues/PRs opened in the 18mo window.
+    lastCommitAt IS NULL deliberately does NOT qualify: a NULL-with-no-signal repo is already
+    caught by the NULL guard above, and a NULL-with-recent-commits repo (upstream data gap in
+    `repos`) must not be mislabeled inert just because one timestamp field is missing.
     - Unanswered issue: opened in the 18mo window, no non-author comment, still open, and has been
-    open 90-180 days.
+    open 90+ days.
     - Unanswered PR: opened in the 18mo window, no reviewer activity (reviewedAt IS NULL), still
-    open (closedAt IS NULL), and has been open 90-180 days. Mirrors the issue-side signal using
+    open (closedAt IS NULL), and has been open 90+ days. Mirrors the issue-side signal using
     pull_requests_analyzed.reviewedAt, which is already the first-response timestamp for PRs
     (first review / changes-requested / Gerrit patchset approval) — no new datasource field needed.
     - Declining: commit count down >50% vs prior 6mo AND issues opened up vs prior 6mo.
@@ -53,6 +69,7 @@ SQL >
         r.url AS repoUrl,
         if(
             r.archived != 1
+            AND r.lastCommitAt IS NULL
             AND coalesce(c.commitsLast6m, 0) = 0
             AND coalesce(c.commitsPrior6m, 0) = 0
             AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
@@ -61,13 +78,10 @@ SQL >
                 multiIf(
                     r.archived = 1,
                     'archived',
-                    (
-                        coalesce(w.unansweredAged90to180d, 0) > 0
-                        OR coalesce(pw.unansweredAged90to180d, 0) > 0
-                    )
+                    (coalesce(w.unansweredAged90d, 0) > 0 OR coalesce(pw.unansweredAged90d, 0) > 0)
                     AND (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 12 MONTH),
                     'abandoned',
-                    (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 18 MONTH)
+                    r.lastCommitAt < now() - INTERVAL 18 MONTH
                     AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
                     'inert',
                     coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
@@ -127,8 +141,7 @@ SQL >
                     AND respondedInSeconds IS NULL
                     AND closedAt IS NULL
                     AND openedAt <= now() - INTERVAL 90 DAY
-                    AND openedAt > now() - INTERVAL 180 DAY
-                ) AS unansweredAged90to180d
+                ) AS unansweredAged90d
             FROM issues_analyzed
             GROUP BY channel
         ) AS w
@@ -150,8 +163,7 @@ SQL >
                     AND approvedAt IS NULL
                     AND closedAt IS NULL
                     AND openedAt <= now() - INTERVAL 90 DAY
-                    AND openedAt > now() - INTERVAL 180 DAY
-                ) AS unansweredAged90to180d
+                ) AS unansweredAged90d
             FROM pull_requests_analyzed
             GROUP BY channel
         ) AS pw

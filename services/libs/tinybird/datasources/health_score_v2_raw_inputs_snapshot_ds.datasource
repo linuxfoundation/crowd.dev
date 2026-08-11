@@ -10,11 +10,21 @@ DESCRIPTION >
     practices flags (policy/branch-protection state), vulnerable dependencies count.
     - Development signals: release recency/cadence, commit counts (6m windows), issue counts/closure
     times, PR counts/merge times.
+    - Responsiveness/lifecycle signals: unanswered aged issue/PR counts and 18mo opened totals
+    (the per-repo unanswered count/ratio the compliance spec item 6 requires, and the historical
+    input the abandoned-threshold-sweep validation analysis runs against). Definitions mirror
+    health_score_v2_lifecycle.pipe: open, no non-author response, aged 90+ days, opened within
+    the 18mo window.
     - Does NOT include computed category/overall scores — those are derived from these raw inputs via
     the scoring logic in the respective pipes. This datasource is for tracing where scores come from.
     - snapshotId = `toStartOfInterval(now(), INTERVAL 1 day)` at pipe execution time.
     - Partitioned by year(snapshotDate) and month(snapshotDate) for efficient time-based queries.
     - TTL set to 24 months (enough for trend analysis and validation studies).
+    - ReplacingMergeTree keyed on (snapshotDate, repoUrl, methodologyVersion): a same-day manual
+    re-run of the copy converges to one row per key after background merges instead of
+    accumulating duplicates (UNIQUE_KEY is not a thing in Tinybird — attempted and reverted in
+    cdf6cf263). Validation queries must still read with FINAL (or dedupe via argMax/LIMIT BY)
+    since replacement is asynchronous.
 
 SCHEMA >
     `repoUrl` String,
@@ -47,9 +57,13 @@ SCHEMA >
     `prsClosedUnmergedLast12m` Nullable(UInt64),
     `medianPrMergeSeconds` Nullable(Float64),
     `excluded` Nullable(UInt8),
-    `trackedPackageCount` Nullable(UInt64)
+    `trackedPackageCount` Nullable(UInt64),
+    `unansweredIssuesAged90d` Nullable(UInt64),
+    `unansweredPrsAged90d` Nullable(UInt64),
+    `issuesOpenedLast18m` Nullable(UInt64),
+    `prsOpenedLast18m` Nullable(UInt64)
 
-ENGINE MergeTree
+ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYYYYMM(snapshotDate)
-ENGINE_SORTING_KEY (snapshotDate, repoUrl)
+ENGINE_SORTING_KEY (snapshotDate, repoUrl, methodologyVersion)
 ENGINE_TTL snapshotDate + INTERVAL 24 MONTH

@@ -128,7 +128,7 @@ SQL >
                 arrayElement(
                     arraySort(
                         x -> indexOf(
-                            ['active', 'stable', 'declining', 'abandoned', 'inert', 'archived'], x
+                            ['active', 'stable', 'declining', 'inert', 'abandoned', 'archived'], x
                         ),
                         groupArray(hv2.lifecycleLabelV2)
                     ),
