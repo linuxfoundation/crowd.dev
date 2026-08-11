@@ -24,13 +24,13 @@ SQL >
         memberId,
         organizationId,
         platform
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'pull_request-opened' OR type = 'merge_request-opened' OR type = 'changeset-created'
 
 NODE pull_request_first_assigned
 SQL >
     SELECT sourceParentId, MIN(timestamp) AS assignedAt
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'pull_request-assigned' OR type = 'merge_request-assigned'
     GROUP BY sourceParentId
     order by min(timestamp) desc
@@ -38,7 +38,7 @@ SQL >
 NODE pull_request_first_review_requested
 SQL >
     SELECT sourceParentId, MIN(timestamp) AS reviewRequestedAt
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'pull_request-review-requested' OR type = 'merge_request-review-requested'
     GROUP BY sourceParentId
 
@@ -55,7 +55,7 @@ SQL >
                 ) AS prSourceId,
                 timestamp,
                 memberId
-            FROM activityRelations_deduplicated_cleaned_ds
+            FROM activityRelations_deduplicated_cleaned_bucket_union
             WHERE
                 type = 'pull_request-reviewed'
                 OR type = 'merge_request-review-changes-requested'
@@ -78,7 +78,7 @@ SQL >
                 ) AS prSourceId,
                 timestamp,
                 memberId
-            FROM activityRelations_deduplicated_cleaned_ds
+            FROM activityRelations_deduplicated_cleaned_bucket_union
             WHERE
                 (type = 'pull_request-reviewed' and pullRequestReviewState = 'APPROVED')
                 OR type = 'merge_request-review-approved'
@@ -93,7 +93,7 @@ SQL >
     SELECT
         if(type = 'changeset-abandoned', sourceId, sourceParentId) AS sourceParentId,
         MIN(timestamp) AS closedAt
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE
         type = 'pull_request-closed'
         OR type = 'merge_request-closed'
@@ -109,7 +109,7 @@ SQL >
     SELECT
         if(type = 'changeset-merged', sourceId, sourceParentId) AS sourceParentId,
         MIN(timestamp) AS mergedAt
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'pull_request-merged' OR type = 'merge_request-merged' OR type = 'changeset-merged'
     GROUP BY sourceParentId
 
@@ -120,7 +120,7 @@ SQL >
             type IN ('changeset-abandoned', 'changeset-merged'), sourceId, sourceParentId
         ) AS sourceParentId,
         MIN(timestamp) AS resolvedAt
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE
         type = 'pull_request-closed'
         OR type = 'pull_request-merged'
@@ -137,7 +137,7 @@ DESCRIPTION >
 
 SQL >
     SELECT sourceParentId, toInt64(COUNT(*)) AS numberOfPatchsets
-    FROM activityRelations_deduplicated_cleaned_ds
+    FROM activityRelations_deduplicated_cleaned_bucket_union
     WHERE type = 'patchset-created'
     GROUP BY sourceParentId
 
