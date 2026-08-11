@@ -11,6 +11,17 @@ DESCRIPTION >
     when either identity is unresolved, so such events don't count as a response. Empirically
     vacuous today — 0 of 38.5M PR openers and 0 of 16.5M issue openers have an empty memberId in
     prod (checked 2026-08-11) — so no PR loses a real review to this guard in practice.
+    - `activityRelations_deduplicated_cleaned_ds` -> `activityRelations_deduplicated_cleaned_bucket_union`
+    rename (2026-08-11, IN-1226): the old singular datasource no longer exists in production (gone by
+    the time of this deploy); this pipe was the only one still referencing it instead of the bucketed
+    union pattern already used by issue_analysis_copy_pipe.pipe and health_score_v2_maintainer.pipe.
+    Straight rename, no logic change.
+    - COPY_SCHEDULE set to `@on-demand` (2026-08-11, IN-1226), not restored to its prior hourly cron:
+    this pipe's job history shows a 5-day gap (2026-08-06 to 2026-08-11) with zero executions of any
+    kind before this deploy, preceded by three consecutive `Copy operation timed out after 3600s`
+    failures — an unexplained prior stoppage this deploy did not investigate or resolve. Schedule
+    stays disabled until that gap is understood and a full recompute is deliberately triggered; do not
+    re-enable the cron or run this pipe without that context.
 
 NODE pull_request_opened
 SQL >
@@ -199,4 +210,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE pull_requests_analyzed
 COPY_MODE replace
-COPY_SCHEDULE 20 * * * *
+COPY_SCHEDULE @on-demand
