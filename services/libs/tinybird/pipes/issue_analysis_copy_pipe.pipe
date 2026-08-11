@@ -30,6 +30,8 @@ SQL >
     WHERE
         c.type = 'issue-comment'
         AND c.sourceParentId != ''
+        AND c.memberId != ''
+        AND opened.memberId != ''
         AND c.memberId != opened.memberId
         AND toYear(c.timestamp) >= 1971
     GROUP BY c.sourceParentId

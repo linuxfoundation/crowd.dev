@@ -47,7 +47,8 @@ SQL >
             r.archived != 1
             AND coalesce(c.commitsLast6m, 0) = 0
             AND coalesce(c.commitsPrior6m, 0) = 0
-            AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
+            AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0
+            AND r.lastCommitAt IS NOT NULL,
             NULL,
             toNullable(
                 multiIf(
@@ -55,9 +56,10 @@ SQL >
                     'archived',
                     coalesce(w.issuesInWindow18m, 0) > 0
                     AND coalesce(w.unansweredCount, 0) > 0
-                    AND (r.lastCommitAt < now() - INTERVAL 12 MONTH),
+                    AND coalesce(w.issuesOpenNow, 0) > 0
+                    AND (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 12 MONTH),
                     'abandoned',
-                    (r.lastCommitAt < now() - INTERVAL 18 MONTH)
+                    (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 18 MONTH)
                     AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
                     'inert',
                     coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
@@ -113,7 +115,7 @@ SQL >
                 ) AS issuesOpenedPrior6m,
                 countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m,
                 countIf(
-                    openedAt > now() - INTERVAL 18 MONTH AND respondedInSeconds IS NULL
+                    openedAt > now() - INTERVAL 18 MONTH AND respondedInSeconds IS NULL AND closedAt IS NULL
                 ) AS unansweredCount
             FROM issues_analyzed
             GROUP BY channel

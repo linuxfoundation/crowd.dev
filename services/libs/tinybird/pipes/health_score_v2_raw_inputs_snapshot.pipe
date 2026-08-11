@@ -50,8 +50,15 @@ SQL >
         w.medianCloseS AS medianIssueCloseSeconds,
         p.merged12m AS prsMergedLast12m,
         p.closedUnmerged12m AS prsClosedUnmergedLast12m,
-        p.medianMergeS AS medianPrMergeSeconds
-    FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS allRepos
+        p.medianMergeS AS medianPrMergeSeconds,
+        r.excluded,
+        pkgs.trackedPackageCount
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE deletedAt IS NULL) AS allRepos
+    LEFT JOIN
+        (
+            SELECT url, excluded FROM repositories FINAL WHERE deletedAt IS NULL
+        ) AS r
+        ON r.url = allRepos.repoUrl
     LEFT JOIN
         (
             SELECT mr.repoUrl, count(DISTINCT mr.memberId) AS curatedBusFactorCount
@@ -74,11 +81,15 @@ SQL >
             FROM activityRelations_deduplicated_cleaned_bucket_union
             WHERE
                 timestamp > now() - INTERVAL 12 MONTH
+                AND memberId != ''
                 AND (
                     type = 'pull_request-reviewed'
                     OR type = 'pull_request-merged'
                     OR type = 'merge_request-review-approved'
                     OR type = 'merge_request-merged'
+                    OR type = 'patchset_approval-created'
+                    OR type = 'merge_request-review-unapproved'
+                    OR type = 'merge_request-review-commented'
                 )
             GROUP BY channel
         ) AS obs
@@ -202,8 +213,9 @@ SQL >
                 channel AS repoUrl,
                 countIf(closedAt IS NOT NULL AND closedAt > now() - INTERVAL 12 MONTH) AS closed12m,
                 countIf(openedAt > now() - INTERVAL 12 MONTH) AS opened12m,
-                quantile(0.5)
-                (closedInSeconds) AS medianCloseS
+                quantile(0.5)(
+                    closedInSeconds
+                ) FILTER (WHERE openedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
             FROM issues_analyzed
             GROUP BY channel
         ) AS w
@@ -216,12 +228,21 @@ SQL >
                 countIf(
                     closedAt IS NOT NULL AND mergedAt IS NULL AND closedAt > now() - INTERVAL 12 MONTH
                 ) AS closedUnmerged12m,
-                quantile(0.5)
-                (mergedInSeconds) AS medianMergeS
+                quantile(0.5)(
+                    mergedInSeconds
+                ) FILTER (WHERE openedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
             FROM pull_requests_analyzed
             GROUP BY channel
         ) AS p
         ON p.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT r2.url AS repoUrl, count(DISTINCT pr.packageId) AS trackedPackageCount
+            FROM (SELECT url, argMax(id, updatedAt) AS id FROM repos GROUP BY url) r2
+            LEFT JOIN packageRepos pr ON pr.repoId = r2.id
+            GROUP BY r2.url
+        ) AS pkgs
+        ON pkgs.repoUrl = allRepos.repoUrl
 
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_raw_inputs_snapshot_ds

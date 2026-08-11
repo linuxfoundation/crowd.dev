@@ -45,8 +45,12 @@ SCHEMA >
     `medianIssueCloseSeconds` Nullable(Float64),
     `prsMergedLast12m` Nullable(UInt64),
     `prsClosedUnmergedLast12m` Nullable(UInt64),
-    `medianPrMergeSeconds` Nullable(Float64)
+    `medianPrMergeSeconds` Nullable(Float64),
+    `excluded` Nullable(UInt8),
+    `trackedPackageCount` Nullable(UInt64)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY (snapshotDate, repoUrl)
+ENGINE_PARTITION_KEY toYYYYMM(snapshotDate)
 ENGINE_TTL snapshotDate + INTERVAL 24 MONTH
+UNIQUE_KEY (repoUrl, snapshotDate, methodologyVersion)

@@ -363,7 +363,7 @@ Repositories can be marked as excluded from health scoring by setting the `repos
 UPDATE repositories SET excluded = 1 WHERE url = 'https://github.com/org/repo-meta';
 ```
 
-The flag is read by `health_score_v2_maintainer.pipe` and `health_score_v2_lifecycle.pipe` as part of their graceful-degradation logic.
+The flag is read by `project_insights_copy.pipe` and `health_score_v2_raw_inputs_snapshot.pipe` as part of their graceful-degradation and audit logic.
 
 ---
 
