@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
@@ -12,7 +13,6 @@ import {
   CARGO_INTEL_SYSTEM_PROMPT,
   buildCargoIntelPrompt,
 } from '../../agent/cargoPrompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import { downloadAndExtractTarball } from '../../clients/npmTarball'
 import {
@@ -135,7 +135,7 @@ export async function runIntelStageCargo(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: CARGO_INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,
