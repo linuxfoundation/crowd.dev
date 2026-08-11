@@ -164,7 +164,7 @@ auth logic that previously lived alongside each `intel{Ecosystem}.ts`.
 ### Dedicated node pool and scaling headroom
 
 `blast-radius-worker` runs on its own Kubernetes node pool, `pg-blast-radius`
-(`nodeSelector.name` in `crowd-kube/lf-prod-oracle/k8s/blast-radius-worker.yaml`), rather
+(configured in the separate infrastructure repository via `nodeSelector.name`), rather
 than the shared `pg-packages` pool used by every other `packages_worker` entry point
 (npm, go, maven, cargo, nuget, rubygems, pypi, osv, packagist workers all set
 `nodeSelector.name: pg-packages`). It's the only packages-pipeline worker with a pool of
