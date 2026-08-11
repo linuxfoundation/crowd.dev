@@ -32,3 +32,11 @@ export function getAnthropicAwsAgentSdkEnv(
     ANTHROPIC_AWS_API_KEY: credentials.apiKey,
   }
 }
+
+export function getAnthropicPersonalAuthEnv(): Record<string, string> | undefined {
+  const oauthToken = process.env.CROWD_AKRITES_CLAUDE_CODE_DEV_OAUTH_TOKEN
+  if (!oauthToken) {
+    return undefined
+  }
+  return { CLAUDE_CODE_OAUTH_TOKEN: oauthToken }
+}
