@@ -6,6 +6,11 @@ DESCRIPTION >
     issue_analysis_copy_pipe.pipe — the compliance commitment is that responsiveness counts a
     response from someone other than the author. Affects every consumer of reviewedAt/
     reviewedInSeconds/approvedAt, including the health score v2 lifecycle "unanswered PR" signal.
+    - The both-IDs-non-empty guard is deliberate and mirrors the issue-side convention (strict
+    identity verification was explicitly requested in review there): authorship can't be verified
+    when either identity is unresolved, so such events don't count as a response. Empirically
+    vacuous today — 0 of 38.5M PR openers and 0 of 16.5M issue openers have an empty memberId in
+    prod (checked 2026-08-11) — so no PR loses a real review to this guard in practice.
 
 NODE pull_request_opened
 SQL >
