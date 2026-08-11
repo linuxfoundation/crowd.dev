@@ -55,9 +55,7 @@ SQL >
         pkgs.trackedPackageCount
     FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE deletedAt IS NULL) AS allRepos
     LEFT JOIN
-        (
-            SELECT url, excluded FROM repositories FINAL WHERE deletedAt IS NULL
-        ) AS rf
+        (SELECT url, excluded FROM repositories FINAL WHERE deletedAt IS NULL) AS rf
         ON rf.url = allRepos.repoUrl
     LEFT JOIN
         (
@@ -213,9 +211,8 @@ SQL >
                 channel AS repoUrl,
                 countIf(closedAt IS NOT NULL AND closedAt > now() - INTERVAL 12 MONTH) AS closed12m,
                 countIf(openedAt > now() - INTERVAL 12 MONTH) AS opened12m,
-                quantile(0.5)(
-                    closedInSeconds
-                ) FILTER (WHERE openedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
+                quantile(0.5)
+                (closedInSeconds) FILTER (WHERE openedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
             FROM issues_analyzed
             GROUP BY channel
         ) AS w
@@ -228,9 +225,8 @@ SQL >
                 countIf(
                     closedAt IS NOT NULL AND mergedAt IS NULL AND closedAt > now() - INTERVAL 12 MONTH
                 ) AS closedUnmerged12m,
-                quantile(0.5)(
-                    mergedInSeconds
-                ) FILTER (WHERE openedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
+                quantile(0.5)
+                (mergedInSeconds) FILTER (WHERE openedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
             FROM pull_requests_analyzed
             GROUP BY channel
         ) AS p

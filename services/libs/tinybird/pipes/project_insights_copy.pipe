@@ -127,7 +127,9 @@ SQL >
             toNullable(
                 arrayElement(
                     arraySort(
-                        x -> indexOf(['active', 'stable', 'declining', 'abandoned', 'inert', 'archived'], x),
+                        x -> indexOf(
+                            ['active', 'stable', 'declining', 'abandoned', 'inert', 'archived'], x
+                        ),
                         groupArray(hv2.lifecycleLabelV2)
                     ),
                     1
