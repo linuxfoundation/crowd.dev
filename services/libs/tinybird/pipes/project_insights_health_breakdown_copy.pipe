@@ -127,7 +127,7 @@ SQL >
             coalesce(sd.commitsLast6m, 0) * coalesce(sd.busFactorScore, 0),
             sd.busFactorAvailable
         ) / nullIf(
-            sumIf(coalesce(sd.commitsLast6m, 0), sd.busFactorAvailable), 0
+            sumIf(coalesce(sd.commitsLast6m, 0), sd.busFactorAvailable AND sd.commitsLast6m IS NOT NULL), 0
         ) AS busFactorScoreActivityWeightedMean
     FROM insightsProjects ip FINAL
     LEFT JOIN

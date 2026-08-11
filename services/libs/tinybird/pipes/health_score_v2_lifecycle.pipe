@@ -47,8 +47,7 @@ SQL >
             r.archived != 1
             AND coalesce(c.commitsLast6m, 0) = 0
             AND coalesce(c.commitsPrior6m, 0) = 0
-            AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0
-            AND r.lastCommitAt IS NOT NULL,
+            AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
             NULL,
             toNullable(
                 multiIf(
@@ -56,7 +55,7 @@ SQL >
                     'archived',
                     coalesce(w.issuesInWindow18m, 0) > 0
                     AND coalesce(w.unansweredCount, 0) > 0
-                    AND coalesce(w.issuesOpenNow, 0) > 0
+                    AND coalesce(n.issuesOpenNow, 0) > 0
                     AND (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 12 MONTH),
                     'abandoned',
                     (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 18 MONTH)

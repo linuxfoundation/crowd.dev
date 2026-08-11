@@ -72,7 +72,7 @@ SCHEMA >
     `merged12m` Nullable(UInt64),
     `closedUnmerged12m` Nullable(UInt64),
     `medianMergeS` Nullable(Float64),
-    `methodologyVersion` Nullable(String)
+    `methodologyVersion` String
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl
