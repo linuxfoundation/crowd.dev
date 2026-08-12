@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { replaceDoubleQuotes } from '@crowd/common'
+import { isDomainExcluded, replaceDoubleQuotes } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   IMemberEnrichmentCache,
@@ -26,10 +26,18 @@ import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common
 
 import {
   IMemberEnrichmentCrustdataEnrichResponse,
-  IMemberEnrichmentCrustdataPersonData,
   IMemberEnrichmentCrustdataRemainingCredits,
   IMemberEnrichmentDataCrustdata,
 } from './types'
+
+const PROFILE_FIELDS = [
+  'basic_profile',
+  'social_handles',
+  'professional_network',
+  'experience',
+  'education',
+  'skills',
+]
 
 export default class EnrichmentServiceCrustdata extends LoggerBase implements IEnrichmentService {
   public source: MemberEnrichmentSource = MemberEnrichmentSource.CRUSTDATA
@@ -43,7 +51,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
   public enrichMembersWithActivityMoreThan = 100
 
-  public enrichableBySql = `("membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan}) AND mi.verified AND mi.type = 'username' and mi.platform = 'linkedin'`
+  public enrichableBySql = `("membersGlobalActivityCount".total_count > ${this.enrichMembersWithActivityMoreThan}) AND mi.verified AND ((mi.type = 'username' AND mi.platform = 'linkedin') OR (mi.type = 'email'))`
 
   public neverReenrich = true
 
@@ -126,10 +134,12 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       }
     }
 
+    const hasVerifiedLinkedin = input.linkedin.some((i) => i.value && i.verified)
+    const hasWorkEmail = this.getWorkEmails(input).length > 0
+
     return (
       input.activityCount > this.enrichMembersWithActivityMoreThan &&
-      (hasEnrichableLinkedinInCache ||
-        (input.linkedin && input.linkedin.value && input.linkedin.verified))
+      (hasEnrichableLinkedinInCache || hasVerifiedLinkedin || hasWorkEmail)
     )
   }
 
@@ -146,8 +156,8 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
       const response: IMemberEnrichmentCrustdataRemainingCredits = (await axios(config)).data
 
-      // Live enrich costs 7 credits per profile.
-      return response.account.credits >= 7
+      // Live enrich (7) + business email contact (1).
+      return response.account.credits >= 8
     } catch (error) {
       this.log.error('Error while checking Crustdata account usage', error)
       throw error
@@ -155,78 +165,221 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
   }
 
   async getData(input: IEnrichmentSourceInput): Promise<IMemberEnrichmentDataCrustdata[] | null> {
-    const profiles: IMemberEnrichmentDataCrustdata[] = []
     const caches = await findMemberEnrichmentCacheForAllSources(input.memberId)
+    const linkedinIdentities = this.findDistinctScrapableLinkedinIdentities(input, caches).slice(
+      0,
+      2,
+    )
+    const workEmails = this.getWorkEmails(input)
 
-    const consumableIdentities = await this.findDistinctScrapableLinkedinIdentities(input, caches)
+    let profiles: IMemberEnrichmentDataCrustdata[] = null
 
-    for (const identity of consumableIdentities) {
-      const data = await this.getDataUsingLinkedinHandle(identity.value)
-      if (data) {
-        profiles.push({
-          ...data,
-          metadata: {
-            repeatedTimesInDifferentSources: identity.repeatedTimesInDifferentSources,
-            isFromVerifiedSource: identity.isFromVerifiedSource,
-          },
-        })
-      }
+    if (linkedinIdentities.length > 0) {
+      profiles = await this.getDataUsingLinkedinHandles(linkedinIdentities)
     }
 
-    return profiles.length > 0 ? profiles : null
+    if (!profiles && workEmails.length > 0) {
+      profiles = await this.getDataUsingWorkEmails(workEmails)
+    }
+
+    return profiles
   }
 
-  private async getDataUsingLinkedinHandle(
-    handle: string,
-  ): Promise<IMemberEnrichmentCrustdataPersonData | null> {
-    const config = {
+  private getWorkEmails(input: IEnrichmentSourceInput): string[] {
+    const emails: string[] = []
+    const seen = new Set<string>()
+
+    for (const identity of input.emails) {
+      if (emails.length >= 5) {
+        break
+      }
+
+      const email = identity.value?.trim().toLowerCase()
+      if (!email || !identity.verified || seen.has(email)) {
+        continue
+      }
+
+      const domain = email.split('@')[1]
+      if (!domain || isDomainExcluded(domain)) {
+        continue
+      }
+
+      seen.add(email)
+      emails.push(email)
+    }
+
+    return emails
+  }
+
+  private async getDataUsingLinkedinHandles(
+    identities: ConsumableIdentity[],
+  ): Promise<IMemberEnrichmentDataCrustdata[] | null> {
+    const urls = identities.map((identity) => `https://www.linkedin.com/in/${identity.value}`)
+
+    const response = await this.requestEnrich('/person/professional_network/enrich/live', {
+      professional_network_profile_urls: urls,
+      fields: PROFILE_FIELDS,
+    })
+
+    const profiles: IMemberEnrichmentDataCrustdata[] = []
+    const matchedOns: string[] = []
+
+    for (const result of response || []) {
+      const personData = result.matches?.[0]?.person_data
+      if (!personData || !result.matched_on) {
+        continue
+      }
+
+      const handle = result.matched_on.split('/').filter(Boolean).pop()?.toLowerCase()
+      const identity = identities.find((i) => i.value.toLowerCase() === handle)
+      if (!identity) {
+        continue
+      }
+
+      matchedOns.push(result.matched_on)
+      profiles.push({
+        ...personData,
+        metadata: {
+          repeatedTimesInDifferentSources: identity.repeatedTimesInDifferentSources,
+          isFromVerifiedSource: identity.isFromVerifiedSource,
+        },
+      })
+    }
+
+    if (profiles.length === 0) {
+      return null
+    }
+
+    return this.withContact(profiles, matchedOns, 'linkedin')
+  }
+
+  private async getDataUsingWorkEmails(
+    emails: string[],
+  ): Promise<IMemberEnrichmentDataCrustdata[] | null> {
+    const response = await this.requestEnrich('/person/enrich', {
+      business_emails: emails,
+      fields: PROFILE_FIELDS,
+    })
+
+    const profiles: IMemberEnrichmentDataCrustdata[] = []
+    const matchedOns: string[] = []
+
+    for (const result of response || []) {
+      const personData = result.matches?.[0]?.person_data
+      if (!personData || !result.matched_on) {
+        continue
+      }
+
+      matchedOns.push(result.matched_on)
+      profiles.push({
+        ...personData,
+        metadata: {
+          repeatedTimesInDifferentSources: 1,
+          isFromVerifiedSource: true,
+        },
+      })
+    }
+
+    if (profiles.length === 0) {
+      return null
+    }
+
+    return this.withContact(profiles, matchedOns, 'email')
+  }
+
+  private async withContact(
+    profiles: IMemberEnrichmentDataCrustdata[],
+    matchedOns: string[],
+    identifierType: 'linkedin' | 'email',
+  ): Promise<IMemberEnrichmentDataCrustdata[]> {
+    const body =
+      identifierType === 'linkedin'
+        ? {
+            professional_network_profile_urls: matchedOns,
+            fields: ['contact.business_emails'],
+          }
+        : {
+            business_emails: matchedOns,
+            fields: ['contact.business_emails'],
+          }
+
+    const response = await this.requestEnrich('/person/contact/enrich', body)
+    if (!response?.length) {
+      return profiles
+    }
+
+    const contactByMatchedOn = new Map(
+      response
+        .filter((result) => result.matched_on && result.matches?.[0]?.person_data?.contact)
+        .map((result) => [
+          result.matched_on.trim().toLowerCase().replace(/\/+$/, ''),
+          result.matches[0].person_data.contact,
+        ]),
+    )
+
+    return profiles.map((profile, index) => {
+      const contact = contactByMatchedOn.get(
+        matchedOns[index].trim().toLowerCase().replace(/\/+$/, ''),
+      )
+      if (!contact) {
+        return profile
+      }
+      return { ...profile, contact }
+    })
+  }
+
+  private async requestEnrich(
+    path: string,
+    data: Record<string, unknown>,
+  ): Promise<IMemberEnrichmentCrustdataEnrichResponse | null> {
+    const response = await axios<IMemberEnrichmentCrustdataEnrichResponse>({
       method: 'post',
-      url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}/person/professional_network/enrich/live`,
+      url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}${path}`,
       headers: {
         Authorization: `Bearer ${process.env['CROWD_ENRICHMENT_CRUSTDATA_API_KEY']}`,
         'x-api-version': '2025-11-01',
         'content-type': 'application/json',
       },
-      data: {
-        professional_network_profile_urls: [`https://www.linkedin.com/in/${handle}`],
-        // Default response is only basic_profile + social_handles.
-        fields: [
-          'basic_profile',
-          'social_handles',
-          'professional_network',
-          'experience',
-          'education',
-          'skills',
-        ],
-      },
+      data,
       validateStatus: function (status) {
         return (status >= 200 && status < 300) || status === 404
       },
-    }
-
-    const response = await axios<IMemberEnrichmentCrustdataEnrichResponse>(config)
+    })
 
     if (response.status === 404) {
-      this.log.debug({ source: this.source, handle }, 'No data found for linkedin handle!')
       return null
     }
 
-    // No match returns 200 with empty matches[].
-    const match = response.data?.[0]?.matches?.[0]
-    if (!match?.person_data) {
-      this.log.debug({ source: this.source, handle }, 'No data found for linkedin handle!')
-      return null
-    }
-
-    return match.person_data
+    return response.data
   }
 
-  private async findDistinctScrapableLinkedinIdentities(
+  private findDistinctScrapableLinkedinIdentities(
     input: IEnrichmentSourceInput,
     caches: IMemberEnrichmentCache<IMemberEnrichmentData>[],
-  ): Promise<ConsumableIdentity[]> {
+  ): ConsumableIdentity[] {
     const consumableIdentities: ConsumableIdentity[] = []
     const linkedinUrlHashmap = new Map<string, number>()
+
+    for (const linkedin of input.linkedin) {
+      if (linkedin && linkedin.value && linkedin.verified) {
+        const handle = linkedin.value.replace(/\//g, '')
+        if (!linkedinUrlHashmap.get(handle)) {
+          consumableIdentities.push({
+            ...linkedin,
+            value: handle,
+            repeatedTimesInDifferentSources: 1,
+            isFromVerifiedSource: true,
+          })
+          linkedinUrlHashmap.set(handle, 1)
+        } else {
+          const repeatedTimesInDifferentSources = linkedinUrlHashmap.get(handle) + 1
+          linkedinUrlHashmap.set(handle, repeatedTimesInDifferentSources)
+          const identityFound = consumableIdentities.find((i) => i.value === handle)
+          identityFound.repeatedTimesInDifferentSources = repeatedTimesInDifferentSources
+          identityFound.isFromVerifiedSource = true
+        }
+      }
+    }
 
     for (const cache of caches) {
       if (this.alsoFindInputsInSourceCaches.includes(cache.source)) {
@@ -237,40 +390,25 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
         const normalized = service.normalize(cache.data) as IMemberEnrichmentDataNormalized
         if (normalized.identities.some((i) => i.platform === PlatformType.LINKEDIN)) {
           const identity = normalized.identities.find((i) => i.platform === PlatformType.LINKEDIN)
-          if (!linkedinUrlHashmap.get(identity.value)) {
+          const handle = identity.value.replace(/\//g, '')
+          if (!linkedinUrlHashmap.get(handle)) {
             consumableIdentities.push({
               ...identity,
+              value: handle,
               repeatedTimesInDifferentSources: 1,
               isFromVerifiedSource: false,
             })
-            linkedinUrlHashmap.set(identity.value, 1)
+            linkedinUrlHashmap.set(handle, 1)
           } else {
-            const repeatedTimesInDifferentSources = linkedinUrlHashmap.get(identity.value) + 1
-            linkedinUrlHashmap.set(identity.value, repeatedTimesInDifferentSources)
-            consumableIdentities.find(
-              (i) => i.value === identity.value,
-            ).repeatedTimesInDifferentSources = repeatedTimesInDifferentSources
+            const repeatedTimesInDifferentSources = linkedinUrlHashmap.get(handle) + 1
+            linkedinUrlHashmap.set(handle, repeatedTimesInDifferentSources)
+            consumableIdentities.find((i) => i.value === handle).repeatedTimesInDifferentSources =
+              repeatedTimesInDifferentSources
           }
         }
       }
     }
 
-    if (input.linkedin && input.linkedin.value && input.linkedin.verified) {
-      if (!linkedinUrlHashmap.get(input.linkedin.value)) {
-        consumableIdentities.push({
-          ...input.linkedin,
-          value: input.linkedin.value.replace(/\//g, ''),
-          repeatedTimesInDifferentSources: 1,
-          isFromVerifiedSource: true,
-        })
-      } else {
-        const repeatedTimesInDifferentSources = linkedinUrlHashmap.get(input.linkedin.value) + 1
-        const identityFound = consumableIdentities.find((i) => i.value === input.linkedin.value)
-
-        identityFound.repeatedTimesInDifferentSources = repeatedTimesInDifferentSources
-        identityFound.isFromVerifiedSource = true
-      }
-    }
     return consumableIdentities
   }
 
@@ -364,6 +502,27 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
           normalized,
         )
       }
+    }
+
+    const seenEmails = new Set<string>()
+    for (const entry of data.contact?.business_emails || []) {
+      if (entry.status !== 'deliverable' || !entry.email) {
+        continue
+      }
+
+      const email = entry.email.trim().toLowerCase()
+      if (seenEmails.has(email)) {
+        continue
+      }
+      seenEmails.add(email)
+
+      normalized.identities.push({
+        value: email,
+        type: MemberIdentityType.EMAIL,
+        platform: this.platform,
+        verified: false,
+        source: 'enrichment',
+      })
     }
 
     return normalized

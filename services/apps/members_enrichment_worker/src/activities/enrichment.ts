@@ -145,8 +145,8 @@ export async function getEnrichmentInput(
 ): Promise<IEnrichmentSourceInput> {
   const enrichmentInput: IEnrichmentSourceInput = {
     memberId: input.id,
-    email: input.identities.find((i) => i.verified && i.type === MemberIdentityType.EMAIL),
-    linkedin: input.identities.find(
+    emails: input.identities.filter((i) => i.verified && i.type === MemberIdentityType.EMAIL),
+    linkedin: input.identities.filter(
       (i) =>
         i.verified &&
         i.platform === PlatformType.LINKEDIN &&
