@@ -195,7 +195,7 @@ export function sanitizeMemberOrganizationDateRange(
   throwError = false,
 ): MemberOrganizationDateRange {
   const normalize = (date: MemberOrganizationDateInput) =>
-    date === undefined || date === null || date === '' ? null : new Date(date)
+    date === undefined || date === null || date === '' ? null : date
 
   const start = normalize(dateStart)
   const end = normalize(dateEnd)
@@ -209,8 +209,8 @@ export function sanitizeMemberOrganizationDateRange(
     return handleError('Member organization with dateEnd and without dateStart!')
   }
 
-  const startTime = start ? start.getTime() : null
-  const endTime = end ? end.getTime() : null
+  const startTime = start ? new Date(start).getTime() : null
+  const endTime = end ? new Date(end).getTime() : null
 
   if ((start && Number.isNaN(startTime)) || (end && Number.isNaN(endTime))) {
     return handleError('Invalid member organization date format!')
