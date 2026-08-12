@@ -160,14 +160,8 @@ function resolveBaseUrl(groupId: string, envVarName: string, defaultUrl: string)
   return process.env[envVarName] ?? defaultUrl
 }
 
-/**
- * Returns the Maven repository base URL for the given groupId.
- *
- * For known alternative-registry namespaces, always returns the hardcoded
- * URL — the MAVEN_FETCHER_BASE_URL env var (used to point at a GCS mirror for
- * backfill) is intentionally bypassed for these groups because no mirror exists.
- * For everything else, falls back to MAVEN_FETCHER_BASE_URL ?? Maven Central.
- */
+// Alternative-registry groups bypass MAVEN_FETCHER_BASE_URL — no mirror exists for them.
+// Everything else: MAVEN_FETCHER_BASE_URL ?? Maven Central.
 export function resolveRegistryBaseUrl(groupId: string): string {
   return resolveBaseUrl(groupId, 'MAVEN_FETCHER_BASE_URL', MAVEN_CENTRAL_BASE_URL)
 }
