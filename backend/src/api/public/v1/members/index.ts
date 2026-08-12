@@ -19,14 +19,14 @@ import { getMemberWorkExperiences } from './work-experiences/getMemberWorkExperi
 import { updateMemberWorkExperience } from './work-experiences/updateMemberWorkExperience'
 import { verifyMemberWorkExperience } from './work-experiences/verifyMemberWorkExperience'
 
+const resolveMemberRateLimiter = createRateLimiter({
+  max: 200,
+  windowMs: 60 * 1000,
+  keyGenerator: (req) => req.actor.id,
+})
+
 export function membersRouter(): Router {
   const router = Router()
-
-  const resolveMemberRateLimiter = createRateLimiter({
-    max: 200,
-    windowMs: 60 * 1000,
-    keyGenerator: (req) => req.actor?.id ?? (req.ip as string),
-  })
 
   router.post('/', requireScopes([SCOPES.WRITE_MEMBERS]), safeWrap(createMember))
 
