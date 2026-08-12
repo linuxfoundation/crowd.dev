@@ -182,7 +182,13 @@ SQL >
                         ) AS responsivenessScore
                     FROM
                         (
-                            SELECT DISTINCT repoUrl, isGerrit, isExcluded FROM repos_channels_ds
+                            SELECT
+                                r.url AS repoUrl,
+                                (i.platform = 'gerrit') AS isGerrit,
+                                r.excluded AS isExcluded
+                            FROM repositories r FINAL
+                            LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+                            WHERE r.deletedAt IS NULL
                         ) AS allRepos
                     LEFT JOIN
                         (
