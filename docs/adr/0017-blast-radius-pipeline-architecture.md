@@ -95,7 +95,12 @@ flowchart LR
    limited to Read/Grep/Glob, `maxTurns: 15`, `timeoutMs: 600_000` (10 minutes).
 2. **Dependents** (`stages/dependents.ts`, 45 min timeout, cancellation-aware) — an
    ecosystem-specific scan of the dependency graph for up to 25 candidate downstream
-   projects that import the vulnerable package. Persists to `blast_radius_dependents`.
+   projects that import the vulnerable package. Persists to `blast_radius_dependents`. The
+   25 cap (`topN: 25`, e.g. `stages/npm/dependentsNpm.ts:53`) is a cost lever, not a
+   technical ceiling: every candidate that clears this stage gets a source download plus a
+   Claude agent call in stage 3, so per-analysis cost scales linearly with it. 25 is the
+   default chosen to balance coverage against spend, and is the same knob to raise if a
+   future analysis needs deeper coverage at higher cost.
 3. **Reachability** (`stages/reachabilityStage.ts`, 1 hour timeout) — downloads each
    candidate's source (4 concurrent) and runs a **Claude Sonnet** agent
    (`model: 'claude-sonnet-5'`) to judge whether the vulnerable symbol is actually
@@ -169,12 +174,15 @@ Every ecosystem implements the same `prepareSource` contract regardless of which
 uses, which is what let 6 ecosystems be added after npm without touching the shared stage
 code.
 
-### Local testing with a personal Claude Code token
+### Production credentials and local testing with a personal Claude Code token
 
 Both agent stages call `runClaudeAgentQuery` from `services/libs/anthropic-aws`, which
 resolves credentials in this order (`anthropic-aws/src/credentials.ts`):
 1. Claude on AWS Bedrock via `CROWD_AKRITES_ANTHROPIC_AWS_{REGION,WORKSPACE_ID,API_KEY}` —
-   production path.
+   production path. This key is purchased through the AWS Marketplace (Bedrock), not a
+   direct Anthropic console key. The credential itself is stored in the shared 1Password
+   vault **CM Credentials**, under the item **"akrites anthropic aws"** — that item is the
+   source of truth for rotation/lookup; no value is reproduced here.
 2. A developer's personal Claude Code OAuth token via
    `CROWD_AKRITES_CLAUDE_CODE_DEV_OAUTH_TOKEN` (generate it with `claude setup-token` and
    set it in the local `.env`), forwarded to the agent SDK as `CLAUDE_CODE_OAUTH_TOKEN` —
