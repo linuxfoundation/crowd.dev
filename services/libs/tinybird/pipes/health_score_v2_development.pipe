@@ -21,6 +21,7 @@ DESCRIPTION >
     Expand each repo URL to all possible activity channel forms. Mirrors repos_to_channels.pipe
     expansion logic. Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url
     plus the /q/project: variant used by Gerrit activity ingestion.
+
 SQL >
     SELECT r.url AS repoUrl, r.url AS channel
     FROM repositories r FINAL
@@ -30,12 +31,15 @@ SQL >
         r.url AS repoUrl,
         CASE
             WHEN position(r.url, '/r/') > 0
-                THEN replaceOne(r.url, '/r/', '/r/q/project:')
+            THEN replaceOne(r.url, '/r/', '/r/q/project:')
             WHEN position(r.url, '/gerrit/') > 0
-                THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
+            THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
             ELSE
                 concat(
-                    protocol(r.url), '://', domain(r.url), '/q/project:',
+                    protocol(r.url),
+                    '://',
+                    domain(r.url),
+                    '/q/project:',
                     if(path(r.url) = '/', '', substring(path(r.url), 2))
                 )
         END AS channel
@@ -239,7 +243,9 @@ SQL >
                                 countIf(ia.closedAt IS NOT NULL) AS closed12m,
                                 count() AS opened12m,
                                 quantileIf(0.5)
-                                (ia.closedInSeconds, ia.closedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
+                                (
+                                    ia.closedInSeconds, ia.closedAt > now() - INTERVAL 12 MONTH
+                                ) AS medianCloseS
                             FROM issues_analyzed ia
                             INNER JOIN channels ch ON ia.channel = ch.channel
                             WHERE ia.openedAt > now() - INTERVAL 12 MONTH
@@ -251,9 +257,13 @@ SQL >
                             SELECT
                                 ch.repoUrl AS repoUrl,
                                 countIf(pra.mergedAt IS NOT NULL) AS merged12m,
-                                countIf(pra.closedAt IS NOT NULL AND pra.mergedAt IS NULL) AS closedUnmerged12m,
+                                countIf(
+                                    pra.closedAt IS NOT NULL AND pra.mergedAt IS NULL
+                                ) AS closedUnmerged12m,
                                 quantileIf(0.5)
-                                (pra.mergedInSeconds, pra.mergedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
+                                (
+                                    pra.mergedInSeconds, pra.mergedAt > now() - INTERVAL 12 MONTH
+                                ) AS medianMergeS
                             FROM pull_requests_analyzed pra
                             INNER JOIN channels ch ON pra.channel = ch.channel
                             WHERE pra.openedAt > now() - INTERVAL 12 MONTH

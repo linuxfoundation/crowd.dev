@@ -46,6 +46,7 @@ DESCRIPTION >
     Expand each repo URL to all possible activity channel forms. Mirrors repos_to_channels.pipe
     expansion logic. Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url
     plus the /q/project: variant used by Gerrit activity ingestion.
+
 SQL >
     SELECT
         r.url AS repoUrl,
@@ -60,12 +61,15 @@ SQL >
         r.url AS repoUrl,
         CASE
             WHEN position(r.url, '/r/') > 0
-                THEN replaceOne(r.url, '/r/', '/r/q/project:')
+            THEN replaceOne(r.url, '/r/', '/r/q/project:')
             WHEN position(r.url, '/gerrit/') > 0
-                THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
+            THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
             ELSE
                 concat(
-                    protocol(r.url), '://', domain(r.url), '/q/project:',
+                    protocol(r.url),
+                    '://',
+                    domain(r.url),
+                    '/q/project:',
                     if(path(r.url) = '/', '', substring(path(r.url), 2))
                 )
         END AS channel,
@@ -217,11 +221,7 @@ SQL >
                                 0
                             )
                         ) AS responsivenessScore
-                    FROM
-                        (
-                            SELECT DISTINCT repoUrl, isGerrit, isExcluded
-                            FROM channels
-                        ) AS allRepos
+                    FROM (SELECT DISTINCT repoUrl, isGerrit, isExcluded FROM channels) AS allRepos
                     LEFT JOIN
                         (
                             SELECT
@@ -245,7 +245,9 @@ SQL >
                         ON bf.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
-                            SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.memberId) AS observedActorsCount
+                            SELECT
+                                ch.repoUrl AS repoUrl,
+                                count(DISTINCT ar.memberId) AS observedActorsCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
                             INNER JOIN channels ch ON ar.channel = ch.channel
                             WHERE
@@ -277,10 +279,13 @@ SQL >
                         (
                             SELECT
                                 ch.repoUrl AS repoUrl,
-                                quantile(0.5)(pra.reviewedInSeconds) AS medianPrResponseS
+                                quantile(0.5)
+                                (pra.reviewedInSeconds) AS medianPrResponseS
                             FROM pull_requests_analyzed pra
                             INNER JOIN channels ch ON pra.channel = ch.channel
-                            WHERE pra.openedAt > now() - INTERVAL 12 MONTH AND pra.reviewedInSeconds IS NOT NULL
+                            WHERE
+                                pra.openedAt > now() - INTERVAL 12 MONTH
+                                AND pra.reviewedInSeconds IS NOT NULL
                             GROUP BY ch.repoUrl
                         ) AS r
                         ON r.repoUrl = allRepos.repoUrl
@@ -288,11 +293,13 @@ SQL >
                         (
                             SELECT
                                 ch.repoUrl AS repoUrl,
-                                quantile(0.5)(ia.respondedInSeconds) AS medianIssueResponseS
+                                quantile(0.5)
+                                (ia.respondedInSeconds) AS medianIssueResponseS
                             FROM issues_analyzed ia
                             INNER JOIN channels ch ON ia.channel = ch.channel
                             WHERE
-                                ia.openedAt > now() - INTERVAL 12 MONTH AND ia.respondedInSeconds IS NOT NULL
+                                ia.openedAt > now() - INTERVAL 12 MONTH
+                                AND ia.respondedInSeconds IS NOT NULL
                             GROUP BY ch.repoUrl
                         ) AS ir
                         ON ir.repoUrl = allRepos.repoUrl

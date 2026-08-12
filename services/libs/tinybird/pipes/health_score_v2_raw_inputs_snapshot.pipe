@@ -33,6 +33,7 @@ DESCRIPTION >
     Expand each repo URL to all possible activity channel forms. Mirrors repos_to_channels.pipe
     expansion logic. Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url
     plus the /q/project: variant used by Gerrit activity ingestion.
+
 SQL >
     SELECT r.url AS repoUrl, r.url AS channel
     FROM repositories r FINAL
@@ -42,12 +43,15 @@ SQL >
         r.url AS repoUrl,
         CASE
             WHEN position(r.url, '/r/') > 0
-                THEN replaceOne(r.url, '/r/', '/r/q/project:')
+            THEN replaceOne(r.url, '/r/', '/r/q/project:')
             WHEN position(r.url, '/gerrit/') > 0
-                THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
+            THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
             ELSE
                 concat(
-                    protocol(r.url), '://', domain(r.url), '/q/project:',
+                    protocol(r.url),
+                    '://',
+                    domain(r.url),
+                    '/q/project:',
                     if(path(r.url) = '/', '', substring(path(r.url), 2))
                 )
         END AS channel
@@ -245,7 +249,8 @@ SQL >
                 ch.repoUrl AS repoUrl,
                 countIf(ar.timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
                 countIf(
-                    ar.timestamp <= now() - INTERVAL 6 MONTH AND ar.timestamp > now() - INTERVAL 12 MONTH
+                    ar.timestamp <= now() - INTERVAL 6 MONTH
+                    AND ar.timestamp > now() - INTERVAL 12 MONTH
                 ) AS commitsPrior6m
             FROM activityRelations_deduplicated_cleaned_bucket_union ar
             INNER JOIN channels ch ON ar.channel = ch.channel
