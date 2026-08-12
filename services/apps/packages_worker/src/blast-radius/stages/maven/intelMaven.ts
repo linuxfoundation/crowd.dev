@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
@@ -14,7 +15,6 @@ import {
   MAVEN_INTEL_SYSTEM_PROMPT,
   buildMavenIntelPrompt,
 } from '../../agent/mavenPrompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import { downloadAndExtractMavenSources } from '../../clients/mavenSourcesJar'
 import {
@@ -23,6 +23,7 @@ import {
   fixReferenceUrls,
 } from '../../clients/osvClient'
 import { toBareMavenCoordinate } from '../../packageIdentifier'
+import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
 import { highestVersion, mavenRangeEvents, versionsInRanges } from './mavenVersions'
 
@@ -61,26 +62,27 @@ export async function runIntelStageMaven(
       throw new Error(`No Maven entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Multi-artifact advisories list one Maven entry per affected artifact — pick the one
-    // the analysis was actually requested for, falling back to the first entry otherwise.
+    // Pick the Maven entry the analysis was requested for; see selectAdvisoryEntry for
+    // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requested = analysisDetail?.package_name
-      ? toBareMavenCoordinate(analysisDetail.package_name)
-      : null
-    const entry =
-      (requested &&
-        mavenEntries.find((e) => {
-          const coord = toBareMavenCoordinate(e.package.name)
-          return coord.groupId === requested.groupId && coord.artifactId === requested.artifactId
-        })) ||
-      mavenEntries[0]
+    const requested =
+      analysisDetail?.package_name != null
+        ? toBareMavenCoordinate(analysisDetail.package_name)
+        : null
+    const requestedCoordinate = requested ? `${requested.groupId}:${requested.artifactId}` : null
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
+      mavenEntries,
+      requestedCoordinate,
+      (e) => {
+        const coord = toBareMavenCoordinate(e.package.name)
+        return `${coord.groupId}:${coord.artifactId}` === requestedCoordinate
+      },
+      advisoryOsvId,
+    )
 
-    const { groupId, artifactId } = toBareMavenCoordinate(entry.package.name)
+    const { groupId, artifactId } = requested ?? toBareMavenCoordinate(entry.package.name)
     const coordinate = `${groupId}:${artifactId}`
     const ecosystem = 'maven'
-    const relatedAffectedPackages = mavenEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== entry.package.name)
 
     // Resolve vulnerable versions from OSV ranges first (Maven OSV ranges are
     // ECOSYSTEM-typed, not SEMVER — Maven versions don't follow semver ordering).
@@ -139,7 +141,7 @@ export async function runIntelStageMaven(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: MAVEN_INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,

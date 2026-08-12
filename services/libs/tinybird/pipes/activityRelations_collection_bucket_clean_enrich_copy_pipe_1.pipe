@@ -14,7 +14,7 @@ SQL >
 NODE activityRelations_collection_deduplicated_cleaned_denormalized_1
 SQL >
     WITH
-        upperUTF8(o.location) AS search_u,
+        upperUTF8(coalesce(nullIf(o.country, ''), o.location)) AS search_u,
         (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
         (SELECT country_data FROM country_mapping_array) AS mapping,
         multiSearchFirstIndexUTF8(search_u, names_u) AS idx,

@@ -11,8 +11,8 @@ info:
 
     Packages, Advisories and Contacts endpoints are implemented. Blast Radius
     submit (2a) and poll (2b) are both implemented, backed by a 4-stage
-    Temporal pipeline (intel, dependents, reachability, report) for npm, go, and
-    maven packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
+    Temporal pipeline (intel, dependents, reachability, report) for npm, go, maven, and
+    cargo packages; other ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. The
     7-day result cache is specced separately and not yet built.
 
 
@@ -61,7 +61,7 @@ tags:
     description: >
       Advisory reachability analysis — submit (2a) and poll (2b) are both
       implemented, each with a bulk counterpart. Submitting kicks off a
-      Temporal workflow that runs the npm, go, or maven reachability pipeline (other
+      Temporal workflow that runs the npm, go, maven, or cargo reachability pipeline (other
       ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED); poll returns job
       status and, once done, results. Bulk submit (jobs:batch) is capped at
       20 jobs per request (10 recommended as the default batch size) — each
@@ -411,9 +411,9 @@ components:
           example: GHSA-jf85-cpcp-j695
         ecosystem:
           type: string
-          enum: [npm, go, maven]
+          enum: [npm, go, maven, cargo]
           description: >
-            Required. The reachability pipeline supports npm, go, and maven today —
+            Required. The reachability pipeline supports npm, go, maven, and cargo today —
             any other value, or a missing ecosystem, is rejected with a 400.
           example: npm
         package:
@@ -421,9 +421,11 @@ components:
           nullable: true
           description: >
             Optional. Full purl or bare package name. If omitted, the analysis
-            is advisory-wide: reachability is evaluated across every package
-            the advisory affects, returned as one aggregate result — not one
-            job per affected package.
+            is advisory-wide: for advisories affecting a single package, that
+            package is analyzed. Advisories affecting multiple packages
+            require an explicit package — the job fails (status: 'failed')
+            otherwise, since analyzing every affected package in one
+            aggregate result is not yet supported.
         force:
           type: boolean
           default: false
@@ -448,7 +450,7 @@ components:
           description: Echoes the request's package. Null when the request omitted it.
         ecosystem:
           type: string
-          enum: [npm, go, maven]
+          enum: [npm, go, maven, cargo]
           description: Echoes the request's ecosystem. Always present — the request requires it.
         status:
           type: string
@@ -609,7 +611,7 @@ components:
           nullable: true
         ecosystem:
           type: string
-          enum: [npm, go, maven]
+          enum: [npm, go, maven, cargo]
         submittedAt:
           type: string
           nullable: true
@@ -1238,9 +1240,11 @@ paths:
       summary: 2a — Submit a blast-radius analysis job
       description: >
         Always exactly one job per request — no bulk submit. Omit package for
-        an advisory-wide analysis; provide it to narrow to a single package.
-        Starts a Temporal workflow running the 4-stage reachability pipeline
-        (intel, dependents, reachability, report) for npm, go, or maven; other
+        an advisory-wide analysis (only supported for single-package
+        advisories); provide it to narrow to one package, which is required
+        for advisories affecting more than one. Starts a Temporal workflow
+        running the 4-stage reachability pipeline
+        (intel, dependents, reachability, report) for npm, go, maven, or cargo; other
         ecosystems fail fast with ECOSYSTEM_NOT_SUPPORTED. Poll status/results
         via GET /jobs/{analysisId}.
 
@@ -1268,7 +1272,7 @@ paths:
         '400':
           description: >
             Validation error (missing/empty advisoryId), or an unsupported
-            ecosystem — only npm, go, and maven are supported today, so any other
+            ecosystem — only npm, go, maven, and cargo are supported today, so any other
             value (including a missing ecosystem) is rejected before a
             workflow is started.
           content:
@@ -1300,8 +1304,9 @@ paths:
       summary: 2a bulk — Submit multiple blast-radius analysis jobs
       description: >
         One job per array entry, same semantics as the single-job submit —
-        omit package for an advisory-wide analysis, provide it to narrow to a
-        single package. Each entry starts its own Temporal workflow, so the
+        omit package for an advisory-wide analysis (only supported for
+        single-package advisories), provide it to narrow to a single package.
+        Each entry starts its own Temporal workflow, so the
         batch is capped at 20 jobs (10 recommended as the default batch
         size), much lower than the 100-item read batches, and stays behind
         the same strict rate limiter as the single-job route.

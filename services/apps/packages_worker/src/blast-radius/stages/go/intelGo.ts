@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { getVersionNumbers } from '@crowd/data-access-layer/src/packages/blastRadiusDependents'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
@@ -9,7 +10,6 @@ import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { fetchVersionList } from '../../../go/proxyClient'
 import { GO_INTEL_SCHEMA, GO_INTEL_SYSTEM_PROMPT, buildGoIntelPrompt } from '../../agent/goPrompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import { downloadAndExtractGoModule } from '../../clients/goModuleZip'
 import {
@@ -20,6 +20,7 @@ import {
 } from '../../clients/osvClient'
 import { toBareGoModule } from '../../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../../semverRange'
+import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
 // OSV spells the Go ecosystem 'Go' (capital), unlike our DB's lowercase 'go' — see
 // ADR-0001 §OSV "Ecosystem normalization" for the DB-side convention.
@@ -57,19 +58,19 @@ export async function runIntelStageGo(
       throw new Error(`No Go entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Multi-module advisories list one Go entry per affected module — pick the one the
-    // analysis was actually requested for, falling back to the first entry otherwise.
+    // Pick the Go entry the analysis was requested for; see selectAdvisoryEntry for
+    // rejection rules on non-matching or omitted requests.
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requestedModule = analysisDetail?.package_name
-      ? toBareGoModule(analysisDetail.package_name)
-      : null
-    const entry =
-      (requestedModule && goEntries.find((e) => e.package.name === requestedModule)) || goEntries[0]
+    const requestedModule =
+      analysisDetail?.package_name != null ? toBareGoModule(analysisDetail.package_name) : null
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
+      goEntries,
+      requestedModule,
+      (e) => e.package.name === requestedModule,
+      advisoryOsvId,
+    )
     const module_ = entry.package.name
     const ecosystem = 'go'
-    const relatedAffectedPackages = goEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== module_)
 
     // Resolve vulnerable versions from OSV ranges first (Go OSV ranges are SEMVER-typed,
     // same event shape as npm's).
@@ -124,7 +125,7 @@ export async function runIntelStageGo(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: GO_INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,

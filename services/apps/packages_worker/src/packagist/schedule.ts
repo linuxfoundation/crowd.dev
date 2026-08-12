@@ -10,6 +10,9 @@ export const PACKAGIST_CRONS = {
   // Late in the UTC day on purpose: Packagist's `daily` figure is mostly real data by
   // 22:23 (vs. mostly borrowed from yesterday earlier on), with buffer before midnight.
   downloadsDaily: '23 22 * * *',
+  // Monday, ~24h after the Sunday chain normally completes: a ledger-gated no-op on
+  // healthy weeks, a fresh closure start when the seed→metadata chain broke.
+  transitiveBackstop: '41 4 * * 1',
 }
 
 // Workflow types by name (not function reference) so this module doesn't pull the
@@ -32,6 +35,12 @@ const SCHEDULES = [
     cron: PACKAGIST_CRONS.downloadsDaily,
     workflowType: 'ingestPackagistDownloadsDaily',
     args: [{}] as unknown[],
+  },
+  {
+    scheduleId: 'packagist-transitive-backstop',
+    cron: PACKAGIST_CRONS.transitiveBackstop,
+    workflowType: 'backstopPackagistTransitiveDrain',
+    args: [] as unknown[],
   },
 ]
 

@@ -63,6 +63,8 @@ function toPurl(ecosystem: BlastRadiusJobEcosystem, name: string): string {
     }
     case 'go':
       return `pkg:golang/${name}`
+    case 'cargo':
+      return `pkg:cargo/${name}`
     case 'npm':
     default:
       return `pkg:npm/${name.replace(/^@/, '%40')}`

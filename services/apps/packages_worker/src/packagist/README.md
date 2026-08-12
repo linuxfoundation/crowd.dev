@@ -3,10 +3,11 @@
 The Packagist worker keeps the PHP/Composer slice of the packages database fresh
 by crawling **packagist.org directly** — deps.dev has no Packagist coverage, so
 unlike npm/maven/pypi there is no BigQuery universe to import from; the registry
-crawl _is_ the universe source. It runs **four Temporal workflows** on the
-`packagist-worker` task queue: three cron schedules registered at worker boot
-(`src/bin/packagist-worker.ts`), plus the metadata drain, which the seed chains
-as a child workflow on completion.
+crawl _is_ the universe source. It runs **six Temporal workflows** on the
+`packagist-worker` task queue: four cron schedules registered at worker boot
+(`src/bin/packagist-worker.ts` — including the transitive backstop), plus two
+event-chained drains — the metadata drain (chained off the seed) and the
+transitive-dependents closure (chained off the metadata drain).
 
 Identity: ecosystem `packagist`, purls `pkg:composer/{vendor}/{name}`
 (namespace = vendor). Audit tag: `packagist` in `audit_field_changes`.
@@ -115,6 +116,11 @@ touching p2.
   `If-Modified-Since` next run).
 - `audit_field_changes` — every changed field above, worker tag `packagist`.
 
+On natural completion (not in `STOP_AFTER_FIRST_PAGE` debug runs) the drain
+**chain-starts the transitive-dependents closure** (§5) — freshly refreshed
+edges are what the closure consumes, so it follows the drain as an event, not
+a clock offset.
+
 ---
 
 ## 3. `ingestPackagistDownloads30d` — monthly rolling-window capture
@@ -166,11 +172,70 @@ last. State: `daily_downloads_last_run_at` + `daily_downloads_run_result`.
 
 ---
 
+## 5. `computePackagistTransitiveDependents` — weekly reverse-closure counts
+
+**Schedule:** primary trigger is the **chain off the metadata drain's natural
+completion** (effectively weekly, after the Sunday drain finishes), the same
+event-not-clock idiom as seed → metadata. A **ledger-gated backstop cron**
+(`packagist-transitive-backstop`, Monday 04:41 UTC) covers broken weeks: it
+no-ops when a run completed within 6 days or while the metadata drain is still
+crawling (whose completion chains the closure itself), otherwise chain-starts
+the same fixed workflow id — so it can never race a live drain and a healthy
+week never pays a second scan. Recover manually with
+`pnpm trigger-packagist:local transitive`.
+**Targets:** every packagist package (the merge zero-fills leaves).
+
+**What it does:** three steps —
+
+1. **Snapshot** — collapses the packagist slice of `package_dependencies` into
+   `staging.packagist_transitive_edges`: distinct package-level pairs, `require`
+   edges only (`require-dev` excluded — Composer does not install dev deps
+   transitively), self-edges dropped. This is the only step touching the full
+   ~1.5B-row table; `package_id` has no index there, so it is a deliberate
+   weekly parallel seq scan (same access pattern the criticality PageRank loader
+   already uses).
+2. **Closure** — the exact reverse transitive closure in one recursive
+   statement into `staging.packagist_transitive_counts` (~29M reachable pairs,
+   ~51 s measured on the full dataset). Cycles terminate; a package is never
+   counted as its own dependent.
+3. **Merge** — keyset batches of 10K into
+   `packages.transitive_dependent_count`, zero-filling packages with no
+   dependents (`0` = "computed, none" vs NULL = "never computed").
+   `IS DISTINCT FROM` keeps re-runs churn-free — `last_synced_at` (the
+   Sequin/Tinybird signal) moves only on real changes.
+
+**Populates:** `packages.transitive_dependent_count` for packagist rows only —
+dependents reachable **only at depth ≥ 2**; direct dependents are excluded,
+matching the deps.dev `MinimumDepth > 1` convention every other ecosystem uses.
+The registry-reported `dependent_count` is untouched. **No audit rows** — bulk
+derived analytics, same policy as the deps.dev dependent-counts merges. Run
+state: one `packagist_transitive_runs` row per run
+(`pending → merging → done | failed`, with graph sizes and merge totals) —
+per-purl `packagist_package_state` doesn't fit a whole-ecosystem batch, and
+`osspckgs_ingest_jobs` is the BQ-ingest ledger. An empty edge snapshot
+hard-aborts the run (`failed`) instead of writing zeros over good data; the
+merge itself refuses an empty counts table — the staging tables are UNLOGGED
+(truncated by crash recovery), and a mid-drain truncation must never be
+zero-filled over real counts — and a merge phase that fails permanently marks
+the run `failed` rather than leaving it in `merging`.
+
+**Why:** deps.dev has zero Packagist coverage, so no external source can supply
+this signal. `rank_packages()` already has `transitive_dependents` wired in but
+drops it while the ecosystem total is zero — the first pass after this lane
+runs picks it up automatically, and since `is_critical` is a BOOL_OR across
+signals it can only add critical packages, never remove any.
+
+**Known undercounts (conservative by design):** edges exist only where the
+dependency target resolved to a known packages row (unresolved targets are
+skipped at ingest), and packages with no stored edges count as leaves.
+
+---
+
 ## What this worker deliberately does NOT write
 
-- `transitive_dependent_count`, `dependent_repos_count` — not computable from
-  the registry; needs a reverse-closure over our stored direct edges
-  (future work, see ADR-0009 risks).
+- `dependent_repos_count` — not computable from the registry; needs a
+  package→repo mapping across the dependent set (deps.dev provides this for
+  its ecosystems; Packagist has no equivalent).
 - Advisories — the OSV worker owns security data platform-wide.
 - `is_critical` / `criticality_score` / ranking columns — the shared
   criticality worker; this worker only _reads_ `is_critical` for scoping.
@@ -199,14 +264,17 @@ DEV=1 ./scripts/cli service packagist-worker up
 # trigger on demand instead of waiting for the crons
 cd services/apps/packages_worker
 pnpm trigger-packagist:local seed             # discovery (chain-starts metadata!)
-pnpm trigger-packagist:local metadata         # enrichment: info + versions + deps
+pnpm trigger-packagist:local metadata         # enrichment: info + versions + deps (chain-starts transitive!)
 pnpm trigger-packagist:local downloads-30d    # monthly rolling-window capture
 pnpm trigger-packagist:local downloads-daily  # daily capture, critical slice
+pnpm trigger-packagist:local transitive       # reverse-closure transitive dependent counts
 ```
 
 Note: triggering `seed` also chain-starts the full `metadata` drain (set
 `CROWD_PACKAGES_PACKAGIST_STOP_AFTER_FIRST_PAGE=true` locally to bound it).
-Local smoke order: seed → metadata → (rank) → downloads lanes for
-critical-scoped writes. State lives in `packagist_package_state`
-(migration `V1784314023__packagist_worker.sql`); design decisions in
+Local smoke order: seed → metadata → transitive → (rank) → downloads lanes for
+critical-scoped writes. Per-purl state lives in `packagist_package_state`
+(migration `V1784314023__packagist_worker.sql`); the transitive lane tracks its
+runs in `packagist_transitive_runs` (migration
+`V1785740540__packagist_transitive_runs.sql`). Design decisions in
 `docs/adr/0009-packagist-worker-design-decisions.md`.

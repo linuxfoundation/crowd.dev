@@ -19,11 +19,46 @@ SQL >
             coveredWeight / 25.0 < 0.4,
             NULL,
             toNullable(toUInt8(round(least(25.0, rawScore * (25.0 / coveredWeight)))))
-        ) AS developmentActivityScoreV2
+        ) AS developmentActivityScoreV2,
+        releaseCadenceScore,
+        releaseCadenceAvailable,
+        daysSinceLatest,
+        daysBetweenRecent,
+        commitActivityScore,
+        commitsLast6m,
+        lastCommitAt,
+        issueResolutionScore,
+        issueResolutionAvailable,
+        closed12m,
+        opened12m,
+        medianCloseS,
+        prMergeScore,
+        prMergeAvailable,
+        merged12m,
+        closedUnmerged12m,
+        medianMergeS,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT
                 repoUrl,
+                releaseCadenceScore,
+                releaseCadenceAvailable,
+                daysSinceLatest,
+                daysBetweenRecent,
+                commitActivityScore,
+                commitsLast6m,
+                lastCommitAt,
+                issueResolutionScore,
+                issueResolutionAvailable,
+                closed12m,
+                opened12m,
+                medianCloseS,
+                prMergeScore,
+                prMergeAvailable,
+                merged12m,
+                closedUnmerged12m,
+                medianMergeS,
                 (
                     releaseCadenceAvailable * releaseCadenceScore
                     + commitActivityScore
@@ -40,7 +75,10 @@ SQL >
                 (
                     SELECT
                         rp.repoUrl AS repoUrl,
+                        rp.lastCommitAt AS lastCommitAt,
                         (rs.repoUrl != '') AS releaseCadenceAvailable,
+                        rs.daysSinceLatest AS daysSinceLatest,
+                        rs.daysBetweenRecent AS daysBetweenRecent,
                         multiIf(
                             rs.daysSinceLatest < 90 AND rs.daysBetweenRecent < 90,
                             8,
@@ -52,6 +90,7 @@ SQL >
                             2,
                             0
                         ) AS releaseCadenceScore,
+                        c.commitsLast6m AS commitsLast6m,
                         -- commit activity is never `blocked`: it has its own spec-mandated fallback to
                         -- repos.lastCommitAt, so it always contributes its full 5pt weight to coverage
                         multiIf(
@@ -74,7 +113,10 @@ SQL >
                             0
                         ) AS commitActivityScore,
                         (ist.repoUrl != '') AS issueResolutionAvailable,
-                        (
+                        ist.closed12m AS closed12m,
+                        ist.opened12m AS opened12m,
+                        ist.medianCloseS AS medianCloseS,
+                        toUInt8(
                             multiIf(
                                 ist.opened12m = 0,
                                 0,
@@ -87,7 +129,10 @@ SQL >
                             + multiIf(ist.medianCloseS < 604800, 3, ist.medianCloseS < 2592000, 2, 0)
                         ) AS issueResolutionScore,
                         (prs.repoUrl != '') AS prMergeAvailable,
-                        (
+                        prs.merged12m AS merged12m,
+                        prs.closedUnmerged12m AS closedUnmerged12m,
+                        prs.medianMergeS AS medianMergeS,
+                        toUInt8(
                             multiIf(
                                 (prs.merged12m + prs.closedUnmerged12m) = 0,
                                 0,

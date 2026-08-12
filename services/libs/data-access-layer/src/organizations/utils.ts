@@ -1,4 +1,4 @@
-import { groupBy } from '@crowd/common'
+import { getCountry, groupBy } from '@crowd/common'
 import { OrganizationAttributeSource, OrganizationAttributeType } from '@crowd/types'
 
 import {
@@ -216,7 +216,32 @@ export function prepareOrganizationData(
     }
   }
 
-  // we should have organization data and processed attributes at the end
+  // Infer country from location when missing
+  if (
+    !attributes.some(({ name }) => name === 'country') &&
+    !(existingAttributes ?? []).some(({ name }) => name === 'country')
+  ) {
+    const location =
+      attributes.find(({ name, default: isDefault }) => name === 'location' && isDefault)?.value ??
+      (existingAttributes ?? []).find(
+        ({ name, default: isDefault }) => name === 'location' && isDefault,
+      )?.value ??
+      existingOrg?.location
+
+    const country = getCountry(location)
+
+    if (country) {
+      attributes.push({
+        name: 'country',
+        source: OrganizationAttributeSource.SYSTEM,
+        default: true,
+        value: country,
+      })
+
+      orgRes.country = country
+    }
+  }
+
   return {
     organization: orgRes,
     attributes,

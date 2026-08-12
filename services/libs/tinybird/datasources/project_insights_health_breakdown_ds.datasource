@@ -1,0 +1,83 @@
+DESCRIPTION >
+    - `project_insights_health_breakdown_ds` contains the materialized project-level Health Score v2
+    signal breakdown (IN-1212), populated by `project_insights_health_breakdown_copy.pipe` on a
+    schedule.
+    - Precomputed so the public `project_insights_health_breakdown.pipe` endpoint is a cheap filtered
+    SELECT rather than a live per-request rollup — see that pipe's DESCRIPTION and
+    `project_insights_health_breakdown_copy.pipe`'s DESCRIPTION for the full per-column aggregation
+    methodology (score columns avg, count columns max, median-seconds columns avg, boolean/flag
+    columns max, `isGerrit`/`isExcluded` min).
+    - `projectId` is the project id (`insightsProjects.id`).
+    - `slug` is the project's URL-friendly identifier — the primary filter key for the endpoint.
+    - Maintainer signals: `busFactorScore` (avg), `busFactorAvailable` (max), `busFactorCount` (max),
+    `orgDiversityScore` (avg), `orgDiversityAvailable` (max), `orgCount` (max),
+    `responsivenessScore` (avg), `responsivenessAvailable` (max), `medianPrResponseS` (avg),
+    `medianIssueResponseS` (avg), `isGerrit` (min), `isExcluded` (min),
+    `busFactorScoreActivityWeightedMean` (activity-weighted mean of bus-factor score across repos).
+    - Security signals: `openVulnScore` (avg), `openCriticals`/`openHighs`/`openModerates` (max),
+    `scorecardScorePts` (avg), `scorecardAvailable` (max), `scorecardScore` (avg, cast from the raw
+    String), `securityPracticesScore` (avg), `securityPracticesAvailable` (max),
+    `securityPolicyEnabled`/`branchProtectionEnabled`/`branchProtectionRequiredReviews`/
+    `branchProtectionRequiresStatusChecks`/`branchProtectionAllowsForcePush` (max),
+    `dependencyHealthScore` (avg), `dependencyHealthAvailable` (max), `vulnerableDeps` (max).
+    - Development signals: `releaseCadenceScore` (avg), `releaseCadenceAvailable` (max),
+    `daysSinceLatest`/`daysBetweenRecent` (max), `commitActivityScore` (avg), `commitsLast6m` (max),
+    `lastCommitAt` (max), `issueResolutionScore` (avg), `issueResolutionAvailable` (max),
+    `closed12m`/`opened12m` (max), `medianCloseS` (avg), `prMergeScore` (avg), `prMergeAvailable`
+    (max), `merged12m`/`closedUnmerged12m` (max), `medianMergeS` (avg).
+    - All columns except `projectId`/`slug` are Nullable: a project with zero enabled/non-excluded
+    repos, or repos with no Health Score v2 signal data, rolls up to NULL rather than a fabricated 0.
+
+SCHEMA >
+    `projectId` String,
+    `slug` String,
+    `busFactorScore` Nullable(Float64),
+    `busFactorAvailable` Nullable(UInt8),
+    `busFactorCount` Nullable(UInt64),
+    `orgDiversityScore` Nullable(Float64),
+    `orgDiversityAvailable` Nullable(UInt8),
+    `orgCount` Nullable(UInt64),
+    `responsivenessScore` Nullable(Float64),
+    `responsivenessAvailable` Nullable(UInt8),
+    `medianPrResponseS` Nullable(Float64),
+    `medianIssueResponseS` Nullable(Float64),
+    `isGerrit` Nullable(UInt8),
+    `isExcluded` Nullable(UInt8),
+    `openVulnScore` Nullable(Float64),
+    `openCriticals` Nullable(UInt64),
+    `openHighs` Nullable(UInt64),
+    `openModerates` Nullable(UInt64),
+    `scorecardScorePts` Nullable(Float64),
+    `scorecardAvailable` Nullable(UInt8),
+    `scorecardScore` Nullable(Float64),
+    `securityPracticesScore` Nullable(Float64),
+    `securityPracticesAvailable` Nullable(UInt8),
+    `securityPolicyEnabled` Nullable(UInt8),
+    `branchProtectionEnabled` Nullable(UInt8),
+    `branchProtectionRequiredReviews` Nullable(Int32),
+    `branchProtectionRequiresStatusChecks` Nullable(UInt8),
+    `branchProtectionAllowsForcePush` Nullable(UInt8),
+    `dependencyHealthScore` Nullable(Float64),
+    `dependencyHealthAvailable` Nullable(UInt8),
+    `vulnerableDeps` Nullable(UInt64),
+    `releaseCadenceScore` Nullable(Float64),
+    `releaseCadenceAvailable` Nullable(UInt8),
+    `daysSinceLatest` Nullable(Int64),
+    `daysBetweenRecent` Nullable(Int64),
+    `commitActivityScore` Nullable(Float64),
+    `commitsLast6m` Nullable(UInt64),
+    `lastCommitAt` Nullable(DateTime64(3)),
+    `issueResolutionScore` Nullable(Float64),
+    `issueResolutionAvailable` Nullable(UInt8),
+    `closed12m` Nullable(UInt64),
+    `opened12m` Nullable(UInt64),
+    `medianCloseS` Nullable(Float64),
+    `prMergeScore` Nullable(Float64),
+    `prMergeAvailable` Nullable(UInt8),
+    `merged12m` Nullable(UInt64),
+    `closedUnmerged12m` Nullable(UInt64),
+    `medianMergeS` Nullable(Float64),
+    `busFactorScoreActivityWeightedMean` Nullable(Float64)
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY slug, projectId

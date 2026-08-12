@@ -34,6 +34,7 @@ export interface RubyGemsVersionItem {
   created_at: string
   prerelease?: boolean
   licenses?: string[] | null
+  platform?: string
 }
 
 export interface RubyGemsOwner {

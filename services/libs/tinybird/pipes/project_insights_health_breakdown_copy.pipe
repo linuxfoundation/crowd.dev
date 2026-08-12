@@ -1,0 +1,147 @@
+DESCRIPTION >
+    - `project_insights_health_breakdown_copy.pipe` is the scheduled `TYPE COPY` pipe that rolls up
+    the per-repo Health Score v2 signal detail (`health_score_v2_signal_detail_ds`, IN-1212) to
+    project level into `project_insights_health_breakdown_ds`, for the project overview page's
+    Health breakdown section (spec sections 4-7: category tab descriptions and per-signal rows).
+    Mirrors `project_insights_impact_breakdown_copy.pipe`'s overall structure (single rollup NODE,
+    `TYPE COPY`, scheduled after its upstream dependency).
+    - Join path: `repositories` (project's own repos, filtered `enabled = true AND excluded = false`)
+    -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.url`) — same population filter
+    and join shape as `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node.
+    - Aggregation per column, chosen per column type (not one rule for all columns), per the IN-1212
+    content-spec execution plan:
+    - Score columns with a matching `*Available` flag (`busFactorScore`, `orgDiversityScore`,
+    `responsivenessScore`, `scorecardScorePts`, `scorecardScore`, `securityPracticesScore`,
+    `dependencyHealthScore`, `releaseCadenceScore`, `issueResolutionScore`, `prMergeScore`):
+    `sumIf(score, available) / nullIf(countIf(available), 0)` — a coverage-filtered average that
+    excludes blocked repos entirely and yields NULL (not 0 or NaN) when no repo in the project has
+    the signal. Plain `avg()` was the original approach but is wrong: the underlying per-repo score
+    is a non-nullable `multiIf(..., 0)` (see `health_score_v2_maintainer/security/development.pipe`),
+    so a blocked repo's score is a real `0`, not NULL — `avg()` folds that placeholder zero into the
+    mean for any project with at least one available sibling repo, silently understating the
+    project-level score. (Fixed post-review.)
+    - `openVulnScore`/`commitActivityScore`: plain `avg()` — these 2 of 11 signals have no matching
+    `*Available` flag (confirmed against the category pipes' own `coveredWeight` SQL, which treats
+    both as unconditionally covered), so there's no blocked-repo case to filter out.
+    - Count columns (`busFactorCount`, `orgCount`, `openCriticals`, `openHighs`, `openModerates`,
+    `vulnerableDeps`, `commitsLast6m`, `closed12m`, `opened12m`, `merged12m`, `closedUnmerged12m`,
+    `branchProtectionRequiredReviews`): `max()` across repos — the most-staffed/most-active/
+    most-protected repo is the meaningful project-level signal, matching the precedent set by
+    `project_insights_impact_breakdown_copy.pipe`'s `directDependents` MAX rollup and bus factor's
+    own per-repo tiering logic.
+    - `daysSinceLatest`/`daysBetweenRecent`: `min()`, not `max()` — these are inverse-activity
+    durations (per `health_score_v2_development.pipe`'s own scoring: smaller = more recent/frequent
+    releases = higher score). `max()` here would silently pick the stalest repo as the project-level
+    signal, contradicting the "most-active repo" framing above and the `lastCommitAt = max()` rollup
+    immediately below, where `max` correctly means "most recent timestamp." (Fixed post-review.)
+    - Median-seconds columns (`medianPrResponseS`, `medianIssueResponseS`, `medianCloseS`,
+    `medianMergeS`): `avg()` of the medians — acceptable approximation; an exact cross-repo median
+    would need raw response-time data, out of scope for this rollup.
+    - `scorecardScore`: stored as a String on the source datasource (matching `repos.scorecardScore`'s
+    convention), cast to Float64 and averaged like the other raw score-ish values.
+    - Boolean/flag columns (`busFactorAvailable`, `orgDiversityAvailable`, `responsivenessAvailable`,
+    `scorecardAvailable`, `securityPracticesAvailable`, `dependencyHealthAvailable`,
+    `releaseCadenceAvailable`, `issueResolutionAvailable`, `prMergeAvailable`,
+    `securityPolicyEnabled`, `branchProtectionEnabled`, `branchProtectionRequiresStatusChecks`,
+    `branchProtectionAllowsForcePush`): `max()` — true if any repo in the project has it.
+    - `isGerrit`/`isExcluded`: `min()` — false if any repo is a "normal" GitHub repo, since the
+    "not applicable" framing per spec is about the project's overall data availability, not a single
+    repo's classification.
+    - `lastCommitAt`: `max()` — the most recent commit across the project's repos.
+    - Schedule: `55 2 * * *`, moved post-review (epipav) from the original `35 2 * * *` — see
+    `health_score_v2_signal_detail.pipe`'s DESCRIPTION for the production-data-backed rationale
+    (real job-log analysis, not a guess). `health_score_v2_signal_detail.pipe` (populates the source
+    `_ds`) now runs at `50 2 * * *`; this pipe follows 5 minutes later, both observed at ~3-second
+    runtimes in production so the buffer is very conservative, and completes 5 minutes before
+    `project_insights_copy.pipe`'s hard `0 3 * * *` deadline (which reads this pipe's output).
+
+NODE project_insights_health_breakdown_raw
+DESCRIPTION >
+    Project-level rollup of per-repo Health Score v2 signal detail, via repositories ->
+    health_score_v2_signal_detail_ds (same join mechanism and population filter as
+    `project_insights_copy.pipe`'s `project_insights_copy_health_v2_project` node). LEFT JOINed from
+    `insightsProjects` so every project is present in the output, even one with zero enabled/
+    non-excluded repos.
+
+SQL >
+    SELECT
+        ip.id AS projectId,
+        ip.slug AS slug,
+        sumIf(sd.busFactorScore, sd.busFactorAvailable)
+        / nullIf(countIf(sd.busFactorAvailable), 0) AS busFactorScore,
+        max(sd.busFactorAvailable) AS busFactorAvailable,
+        max(sd.busFactorCount) AS busFactorCount,
+        sumIf(sd.orgDiversityScore, sd.orgDiversityAvailable)
+        / nullIf(countIf(sd.orgDiversityAvailable), 0) AS orgDiversityScore,
+        max(sd.orgDiversityAvailable) AS orgDiversityAvailable,
+        max(sd.orgCount) AS orgCount,
+        sumIf(sd.responsivenessScore, sd.responsivenessAvailable)
+        / nullIf(countIf(sd.responsivenessAvailable), 0) AS responsivenessScore,
+        max(sd.responsivenessAvailable) AS responsivenessAvailable,
+        avg(sd.medianPrResponseS) AS medianPrResponseS,
+        avg(sd.medianIssueResponseS) AS medianIssueResponseS,
+        min(sd.isGerrit) AS isGerrit,
+        min(sd.isExcluded) AS isExcluded,
+        avg(sd.openVulnScore) AS openVulnScore,
+        max(sd.openCriticals) AS openCriticals,
+        max(sd.openHighs) AS openHighs,
+        max(sd.openModerates) AS openModerates,
+        sumIf(sd.scorecardScorePts, sd.scorecardAvailable)
+        / nullIf(countIf(sd.scorecardAvailable), 0) AS scorecardScorePts,
+        max(sd.scorecardAvailable) AS scorecardAvailable,
+        sumIf(toFloat64OrNull(sd.scorecardScore), sd.scorecardAvailable)
+        / nullIf(countIf(sd.scorecardAvailable), 0) AS scorecardScore,
+        sumIf(sd.securityPracticesScore, sd.securityPracticesAvailable)
+        / nullIf(countIf(sd.securityPracticesAvailable), 0) AS securityPracticesScore,
+        max(sd.securityPracticesAvailable) AS securityPracticesAvailable,
+        max(sd.securityPolicyEnabled) AS securityPolicyEnabled,
+        max(sd.branchProtectionEnabled) AS branchProtectionEnabled,
+        max(sd.branchProtectionRequiredReviews) AS branchProtectionRequiredReviews,
+        max(sd.branchProtectionRequiresStatusChecks) AS branchProtectionRequiresStatusChecks,
+        max(sd.branchProtectionAllowsForcePush) AS branchProtectionAllowsForcePush,
+        sumIf(sd.dependencyHealthScore, sd.dependencyHealthAvailable)
+        / nullIf(countIf(sd.dependencyHealthAvailable), 0) AS dependencyHealthScore,
+        max(sd.dependencyHealthAvailable) AS dependencyHealthAvailable,
+        max(sd.vulnerableDeps) AS vulnerableDeps,
+        sumIf(sd.releaseCadenceScore, sd.releaseCadenceAvailable)
+        / nullIf(countIf(sd.releaseCadenceAvailable), 0) AS releaseCadenceScore,
+        max(sd.releaseCadenceAvailable) AS releaseCadenceAvailable,
+        min(sd.daysSinceLatest) AS daysSinceLatest,
+        min(sd.daysBetweenRecent) AS daysBetweenRecent,
+        avg(sd.commitActivityScore) AS commitActivityScore,
+        max(sd.commitsLast6m) AS commitsLast6m,
+        max(sd.lastCommitAt) AS lastCommitAt,
+        sumIf(sd.issueResolutionScore, sd.issueResolutionAvailable)
+        / nullIf(countIf(sd.issueResolutionAvailable), 0) AS issueResolutionScore,
+        max(sd.issueResolutionAvailable) AS issueResolutionAvailable,
+        max(sd.closed12m) AS closed12m,
+        max(sd.opened12m) AS opened12m,
+        avg(sd.medianCloseS) AS medianCloseS,
+        sumIf(sd.prMergeScore, sd.prMergeAvailable)
+        / nullIf(countIf(sd.prMergeAvailable), 0) AS prMergeScore,
+        max(sd.prMergeAvailable) AS prMergeAvailable,
+        max(sd.merged12m) AS merged12m,
+        max(sd.closedUnmerged12m) AS closedUnmerged12m,
+        avg(sd.medianMergeS) AS medianMergeS,
+        sumIf(
+            coalesce(sd.commitsLast6m, 0) * coalesce(sd.busFactorScore, 0),
+            sd.busFactorAvailable
+        ) / nullIf(
+            sumIf(
+                coalesce(sd.commitsLast6m, 0), sd.busFactorAvailable AND sd.commitsLast6m IS NOT NULL
+            ),
+            0
+        ) AS busFactorScoreActivityWeightedMean
+    FROM insightsProjects ip FINAL
+    LEFT JOIN
+        repositories rep FINAL
+        ON rep.insightsProjectId = ip.id
+        AND rep.enabled = true
+        AND rep.excluded = false
+    LEFT JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
+    GROUP BY ip.id, ip.slug
+
+TYPE COPY
+TARGET_DATASOURCE project_insights_health_breakdown_ds
+COPY_MODE replace
+COPY_SCHEDULE 55 2 * * *

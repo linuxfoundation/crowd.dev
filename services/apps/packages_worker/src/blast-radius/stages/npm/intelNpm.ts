@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
+import { runClaudeAgentQuery } from '@crowd/anthropic-aws'
 import * as blastRadiusDal from '@crowd/data-access-layer/src/packages/blastRadius'
 import { findPackageId } from '@crowd/data-access-layer/src/packages/osv'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -10,7 +11,6 @@ import { fetchPackument } from '../../../npm/fetchPackument'
 import { parseNpmName } from '../../../npm/normalize'
 import { isFetchError } from '../../../npm/types'
 import { INTEL_SCHEMA, INTEL_SYSTEM_PROMPT, buildIntelPrompt } from '../../agent/prompts'
-import { runAnalysisAgent } from '../../agent/runner'
 import { fetchPatch } from '../../clients/githubPatch'
 import { downloadAndExtractTarball } from '../../clients/npmTarball'
 import {
@@ -22,6 +22,7 @@ import {
 import { asNpmVersionManifest } from '../../npmManifest'
 import { toBareNpmName } from '../../packageIdentifier'
 import { highestVersion, versionsInRanges } from '../../semverRange'
+import { selectAdvisoryEntry } from '../selectAdvisoryEntry'
 
 export async function runIntelStageNpm(
   qx: QueryExecutor,
@@ -56,23 +57,19 @@ export async function runIntelStageNpm(
       throw new Error(`No npm entries found in advisory ${advisoryOsvId}`)
     }
 
-    // Multi-package advisories list one npm entry per affected package — pick the one
-    // the analysis was actually requested for, falling back to the first entry when no
-    // specific package was requested (analysis-wide advisory scan). The request accepts
-    // either a bare name or a full purl (see blastRadiusJobRequestSchema), but OSV entries
-    // are always bare names, so the requested package must be normalized before comparing.
+    // Requested package may be a bare name or full purl; OSV entries are always bare
+    // names, so normalize before comparing (see selectAdvisoryEntry for rejection rules).
     const analysisDetail = await blastRadiusDal.getAnalysisDetail(qx, analysisId)
-    const requestedPackage = analysisDetail?.package_name
-      ? toBareNpmName(analysisDetail.package_name)
-      : null
-    const entry =
-      (requestedPackage && npmEntries.find((e) => e.package.name === requestedPackage)) ||
-      npmEntries[0]
+    const requestedPackage =
+      analysisDetail?.package_name != null ? toBareNpmName(analysisDetail.package_name) : null
+    const { entry, relatedAffectedPackages } = selectAdvisoryEntry(
+      npmEntries,
+      requestedPackage,
+      (e) => e.package.name === requestedPackage,
+      advisoryOsvId,
+    )
     const package_ = entry.package.name
     const ecosystem = entry.package.ecosystem
-    const relatedAffectedPackages = npmEntries
-      .map((e) => e.package.name)
-      .filter((name) => name !== package_)
 
     // Fetch the registry packument so vulnerable-version resolution runs against versions
     // npm actually published, not just the OSV range's introduced/fixed boundary strings —
@@ -127,7 +124,7 @@ export async function runIntelStageNpm(
         patches,
       )
 
-      const agentResult = await runAnalysisAgent({
+      const agentResult = await runClaudeAgentQuery({
         prompt: agentPrompt,
         systemPrompt: INTEL_SYSTEM_PROMPT,
         cwd: pkgsrcDir,

@@ -210,6 +210,8 @@ export async function applyEnrichmentToOrganization(
   const orgData = await findOrgById(qx, organizationId, [
     OrganizationField.ID,
     OrganizationField.DISPLAY_NAME,
+    OrganizationField.LOCATION,
+    OrganizationField.COUNTRY,
     OrganizationField.IS_TEAM_ORGANIZATION,
     OrganizationField.MANUALLY_CREATED,
   ])

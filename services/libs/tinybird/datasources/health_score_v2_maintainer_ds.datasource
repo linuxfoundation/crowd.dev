@@ -4,10 +4,37 @@ DESCRIPTION >
     - `repoUrl` is the repository URL — the join key back to `repositories`.
     - `maintainerHealthScoreV2` — NULL when covered sub-signal weight is <40% of the 40pt max
     (spec Layer 1 graceful degradation), otherwise the rescaled 0-40 score.
+    - `busFactorScore`/`orgDiversityScore`/`responsivenessScore` (IN-1212) are the raw per-signal
+    sub-scores before rescaling, as computed in `health_score_v2_maintainer.pipe`.
+    - `busFactorAvailable`/`orgDiversityAvailable`/`responsivenessAvailable` (IN-1212) are the Layer 1
+    coverage flags — 0 means the signal was `blocked` (no data), not scored 0.
+    - `busFactorCount`/`orgCount` (IN-1212) are the raw counts behind the bus-factor and org-diversity
+    scores; NULL when the signal is blocked.
+    - `medianPrResponseS`/`medianIssueResponseS` (IN-1212) are the raw median response times (seconds)
+    behind the responsiveness score; NULL when unavailable.
+    - `isGerrit`/`isExcluded` (IN-1212) are the repo classification flags used to decide responsiveness
+    availability and scoring branch.
+    - `coveredWeight` (IN-1212) is the sum of available sub-signal weights (max 40) used as the
+    rescale denominator for `maintainerHealthScoreV2` — exposed so the content spec's "category
+    coverage" UI can show what fraction of the 40pt max was actually scored.
 
 SCHEMA >
     `repoUrl` String,
-    `maintainerHealthScoreV2` Nullable(UInt8)
+    `maintainerHealthScoreV2` Nullable(UInt8),
+    `busFactorScore` UInt8,
+    `busFactorAvailable` UInt8,
+    `busFactorCount` Nullable(UInt64),
+    `orgDiversityScore` UInt8,
+    `orgDiversityAvailable` UInt8,
+    `orgCount` Nullable(UInt64),
+    `responsivenessScore` UInt8,
+    `responsivenessAvailable` UInt8,
+    `medianPrResponseS` Nullable(Float64),
+    `medianIssueResponseS` Nullable(Float64),
+    `isGerrit` UInt8,
+    `isExcluded` UInt8,
+    `coveredWeight` UInt8,
+    `methodologyVersion` String
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

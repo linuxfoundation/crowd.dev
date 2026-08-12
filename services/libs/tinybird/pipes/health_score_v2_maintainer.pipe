@@ -28,6 +28,10 @@ DESCRIPTION >
     repo within the same trailing 12-month window used elsewhere in this pipe, not just an unexpired
     role record. This was the direct cause of dead repos hitting healthScoreV2=100 after Layer 2
     rescaling (see LFX/cdp/health-score-v2-renormalization-bug.md).
+    - Bus factor enhancement (IN-1226): Added parallel count of observed review/merge actors in the
+    trailing 12-month window. Final busFactorCount = max(curated_maintainers_count, observed_actors_count).
+    busFactorAvailable = 1 if either source has data. This ensures teams relying on informal review
+    duties aren't penalized for lack of formal role curation.
 
 NODE health_score_v2_maintainer_calc
 SQL >
@@ -37,31 +41,63 @@ SQL >
             coveredWeight / 40.0 < 0.4,
             NULL,
             toNullable(toUInt8(round(least(40.0, rawScore * (40.0 / coveredWeight)))))
-        ) AS maintainerHealthScoreV2
+        ) AS maintainerHealthScoreV2,
+        base.busFactorScore AS busFactorScore,
+        base.busFactorAvailable AS busFactorAvailable,
+        base.busFactorCount AS busFactorCount,
+        base.orgDiversityScore AS orgDiversityScore,
+        base.orgDiversityAvailable AS orgDiversityAvailable,
+        base.orgCount AS orgCount,
+        base.responsivenessScore AS responsivenessScore,
+        base.responsivenessAvailable AS responsivenessAvailable,
+        base.medianPrResponseS AS medianPrResponseS,
+        base.medianIssueResponseS AS medianIssueResponseS,
+        base.isGerrit AS isGerrit,
+        base.isExcluded AS isExcluded,
+        coveredWeight AS coveredWeight,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT
                 repoUrl,
+                busFactorScore,
+                busFactorAvailable,
+                busFactorCount,
+                orgDiversityScore,
+                orgDiversityAvailable,
+                orgCount,
+                responsivenessScore,
+                responsivenessAvailable,
+                medianPrResponseS,
+                medianIssueResponseS,
+                isGerrit,
+                isExcluded,
                 (busFactorScore + orgDiversityScore + responsivenessScore) AS rawScore,
-                (
+                toUInt8(
                     busFactorAvailable * 18 + orgDiversityAvailable * 7 + responsivenessAvailable * 15
                 ) AS coveredWeight
             FROM
                 (
                     SELECT
                         allRepos.repoUrl AS repoUrl,
-                        bf.repoUrl != '' AS busFactorAvailable,
+                        allRepos.isGerrit AS isGerrit,
+                        allRepos.isExcluded AS isExcluded,
+                        greatest(
+                            coalesce(bf.curatedBusFactorCount, 0), coalesce(obs.observedActorsCount, 0)
+                        ) AS busFactorCount,
+                        (bf.repoUrl != '' OR obs.repoUrl != '') AS busFactorAvailable,
                         multiIf(
-                            bf.busFactorCount >= 5,
+                            busFactorCount >= 5,
                             18,
-                            bf.busFactorCount >= 3,
+                            busFactorCount >= 3,
                             15,
-                            bf.busFactorCount = 2,
+                            busFactorCount = 2,
                             6,
-                            bf.busFactorCount = 1,
+                            busFactorCount = 1,
                             3,
                             0
                         ) AS busFactorScore,
+                        od.orgCount AS orgCount,
                         od.repoUrl != '' AS orgDiversityAvailable,
                         multiIf(
                             coalesce(od.orgCount, 0) >= 3,
@@ -72,6 +108,8 @@ SQL >
                             2,
                             0
                         ) AS orgDiversityScore,
+                        r.medianPrResponseS AS medianPrResponseS,
+                        ir.medianIssueResponseS AS medianIssueResponseS,
                         multiIf(
                             allRepos.isExcluded, false, allRepos.isGerrit, r.repoUrl != '', true
                         ) AS responsivenessAvailable,
@@ -150,12 +188,14 @@ SQL >
                         ) AS allRepos
                     LEFT JOIN
                         (
-                            SELECT mr.repoUrl AS repoUrl, count(DISTINCT mr.memberId) AS busFactorCount
+                            SELECT
+                                mr.repoUrl AS repoUrl,
+                                count(DISTINCT mr.memberId) AS curatedBusFactorCount
                             FROM maintainers_roles_copy_ds mr
                             INNER JOIN
                                 (
                                     SELECT DISTINCT memberId, channel AS repoUrl
-                                    FROM activityRelations
+                                    FROM activityRelations_deduplicated_cleaned_bucket_union
                                     WHERE timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId
@@ -168,8 +208,27 @@ SQL >
                         ON bf.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
+                            SELECT channel AS repoUrl, count(DISTINCT memberId) AS observedActorsCount
+                            FROM activityRelations_deduplicated_cleaned_bucket_union
+                            WHERE
+                                timestamp > now() - INTERVAL 12 MONTH
+                                AND memberId != ''
+                                AND (
+                                    type = 'pull_request-reviewed'
+                                    OR type = 'pull_request-merged'
+                                    OR type = 'merge_request-review-approved'
+                                    OR type = 'merge_request-merged'
+                                    OR type = 'patchset_approval-created'
+                                    OR type = 'merge_request-review-unapproved'
+                                    OR type = 'merge_request-review-commented'
+                                )
+                            GROUP BY channel
+                        ) AS obs
+                        ON obs.repoUrl = allRepos.repoUrl
+                    LEFT JOIN
+                        (
                             SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
-                            FROM activityRelations
+                            FROM activityRelations_deduplicated_cleaned_bucket_union
                             WHERE timestamp > now() - INTERVAL 12 MONTH AND organizationId != ''
                             GROUP BY channel
                         ) AS od

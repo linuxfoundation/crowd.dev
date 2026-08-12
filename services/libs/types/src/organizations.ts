@@ -38,6 +38,7 @@ export interface IOrganization {
   employees?: number
   revenueRange?: IOrganizationRevenueRange
   location?: string
+  country?: string
   type?: string
   size?: string
   industry?: string

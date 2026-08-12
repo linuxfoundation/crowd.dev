@@ -50,7 +50,38 @@ export function affectedEntriesForEcosystem(
   ecosystem: string,
 ): OsvAffectedPackage[] {
   if (!vuln.affected) return []
-  return vuln.affected.filter((a) => a.package?.ecosystem === ecosystem)
+  const filtered = vuln.affected.filter((a) => a.package?.ecosystem === ecosystem)
+  return mergeDuplicatePackageEntries(filtered)
+}
+
+// OSV can legitimately list the same package multiple times to represent disjoint
+// vulnerable-version ranges — merge duplicates so callers see every range for a package.
+function mergeDuplicatePackageEntries(entries: OsvAffectedPackage[]): OsvAffectedPackage[] {
+  const merged = new Map<string, OsvAffectedPackage>()
+
+  for (const entry of entries) {
+    // All entries share same ecosystem (filtered upstream), so just use package name as key.
+    const key = entry.package.name
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, {
+        package: entry.package,
+        ranges: entry.ranges ? [...entry.ranges] : undefined,
+        versions: entry.versions ? [...entry.versions] : undefined,
+      })
+      continue
+    }
+    if (entry.ranges) {
+      const existingRangeStrs = new Set((existing.ranges ?? []).map((r) => JSON.stringify(r)))
+      const newRanges = entry.ranges.filter((r) => !existingRangeStrs.has(JSON.stringify(r)))
+      existing.ranges = [...(existing.ranges ?? []), ...newRanges]
+    }
+    if (entry.versions) {
+      existing.versions = [...new Set([...(existing.versions ?? []), ...entry.versions])]
+    }
+  }
+
+  return [...merged.values()]
 }
 
 // Extract npm-specific affected packages from an OSV record.

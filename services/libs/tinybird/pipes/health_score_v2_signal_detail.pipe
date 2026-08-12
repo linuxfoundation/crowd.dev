@@ -1,0 +1,80 @@
+DESCRIPTION >
+    - Combines the 3 widened Health Score v2 category datasources (maintainer/security/development,
+    each carrying their promoted per-signal raw values and `*Available` coverage flags as of IN-1212)
+    into a single flat per-repo row, for the Health Score v2 Content Spec's per-signal breakdown UI
+    (spec section 7 "Signal Rows" — the "blocked" dash/dimmed state renders directly off the
+    `*Available` flags carried here, no separate computation needed).
+    - Same join pattern as `health_score_v2.pipe`'s `health_score_v2_results` node: a base repo list
+    LEFT JOINed against each category datasource on `repoUrl`, so every repo is present even when a
+    category is entirely unscored.
+    - Schedule: `50 2 * * *`, moved post-review (epipav: "schedule these to later and make sure they
+    don't intersect with existing copies") from the original `25 2 * * *`. Real production data
+    (`tinybird.jobs_log` over 7 days) confirmed the original slot wasn't wrong in isolation — this
+    pipe runs in ~3 seconds — but it launched into the most crowded 20-40-minute stretch of hour 2
+    (several long-running neighbors, e.g. `issue_analysis_copy_pipe` spanning ~14 minutes through
+    that window, `ossPackages_enriched` ~7 minutes), the same neighborhood as the one observed
+    hour-2 concurrent-copy-job cap error in that period. `50 2` lands in hour 2's emptiest observed
+    stretch (no other copy job scheduled after `:50`) with a comfortable margin before
+    `project_insights_health_breakdown_copy.pipe`'s `55 2` and `project_insights_copy.pipe`'s hard
+    `0 3 * * *` deadline (which reads from this pipe's output transitively).
+
+NODE health_score_v2_signal_detail_calc
+SQL >
+    SELECT
+        base.repoUrl AS repoUrl,
+        m.busFactorScore AS busFactorScore,
+        m.busFactorAvailable AS busFactorAvailable,
+        m.busFactorCount AS busFactorCount,
+        m.orgDiversityScore AS orgDiversityScore,
+        m.orgDiversityAvailable AS orgDiversityAvailable,
+        m.orgCount AS orgCount,
+        m.responsivenessScore AS responsivenessScore,
+        m.responsivenessAvailable AS responsivenessAvailable,
+        m.medianPrResponseS AS medianPrResponseS,
+        m.medianIssueResponseS AS medianIssueResponseS,
+        m.isGerrit AS isGerrit,
+        m.isExcluded AS isExcluded,
+        s.openVulnScore AS openVulnScore,
+        s.openCriticals AS openCriticals,
+        s.openHighs AS openHighs,
+        s.openModerates AS openModerates,
+        s.scorecardScorePts AS scorecardScorePts,
+        s.scorecardAvailable AS scorecardAvailable,
+        s.scorecardScore AS scorecardScore,
+        s.securityPracticesScore AS securityPracticesScore,
+        s.securityPracticesAvailable AS securityPracticesAvailable,
+        s.securityPolicyEnabled AS securityPolicyEnabled,
+        s.branchProtectionEnabled AS branchProtectionEnabled,
+        s.branchProtectionRequiredReviews AS branchProtectionRequiredReviews,
+        s.branchProtectionRequiresStatusChecks AS branchProtectionRequiresStatusChecks,
+        s.branchProtectionAllowsForcePush AS branchProtectionAllowsForcePush,
+        s.dependencyHealthScore AS dependencyHealthScore,
+        s.dependencyHealthAvailable AS dependencyHealthAvailable,
+        s.vulnerableDeps AS vulnerableDeps,
+        d.releaseCadenceScore AS releaseCadenceScore,
+        d.releaseCadenceAvailable AS releaseCadenceAvailable,
+        d.daysSinceLatest AS daysSinceLatest,
+        d.daysBetweenRecent AS daysBetweenRecent,
+        d.commitActivityScore AS commitActivityScore,
+        d.commitsLast6m AS commitsLast6m,
+        d.lastCommitAt AS lastCommitAt,
+        d.issueResolutionScore AS issueResolutionScore,
+        d.issueResolutionAvailable AS issueResolutionAvailable,
+        d.closed12m AS closed12m,
+        d.opened12m AS opened12m,
+        d.medianCloseS AS medianCloseS,
+        d.prMergeScore AS prMergeScore,
+        d.prMergeAvailable AS prMergeAvailable,
+        d.merged12m AS merged12m,
+        d.closedUnmerged12m AS closedUnmerged12m,
+        d.medianMergeS AS medianMergeS,
+        coalesce(m.methodologyVersion, '2.0.0') AS methodologyVersion
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE isNull (deletedAt)) AS base
+    LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
+    LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
+    LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_signal_detail_ds
+COPY_MODE replace
+COPY_SCHEDULE 50 2 * * *

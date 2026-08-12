@@ -40,7 +40,8 @@ SQL >
         lifecycleLabelV2,
         if(
             impactScoreRaw IS NULL, NULL, toNullable(toUInt8(round(least(impactScoreRaw, 100))))
-        ) AS impactScore
+        ) AS impactScore,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT
