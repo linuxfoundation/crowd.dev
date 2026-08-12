@@ -9,7 +9,7 @@ const PROFILE = __ENV.PROFILE || 'steady'
 const API_BASE_URL = __ENV.API_BASE_URL || 'https://api.staging.crowd.dev'
 const ALLOW_PROD = __ENV.ALLOW_PROD === '1'
 
-const PROD_HOSTS = /^(api\.crowd\.dev|cm\.lfx\.linuxfoundation\.org)(:\d+)?$/
+const PROD_HOSTS = /^(api\.crowd\.dev|cm\.lfx\.dev)(:\d+)?$/
 
 const parsedHost = new URL(API_BASE_URL).host
 
