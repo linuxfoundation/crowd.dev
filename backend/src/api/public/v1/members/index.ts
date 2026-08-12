@@ -1,8 +1,15 @@
 import { Router } from 'express'
 
+import { createRateLimiter } from '@/api/apiRateLimiter'
 import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
+
+const resolveMemberRateLimiter = createRateLimiter({
+  max: 200,
+  windowMs: 60 * 1000,
+  keyGenerator: (req) => req.actor?.id ?? (req.ip as string),
+})
 
 import { createMember } from './createMember'
 import { createMemberIdentity } from './identities/createMemberIdentity'
@@ -23,7 +30,12 @@ export function membersRouter(): Router {
 
   router.post('/', requireScopes([SCOPES.WRITE_MEMBERS]), safeWrap(createMember))
 
-  router.post('/resolve', requireScopes([SCOPES.READ_MEMBERS]), safeWrap(resolveMemberByIdentities))
+  router.post(
+    '/resolve',
+    resolveMemberRateLimiter,
+    requireScopes([SCOPES.READ_MEMBERS]),
+    safeWrap(resolveMemberByIdentities),
+  )
 
   router.get(
     '/:memberId/identities',
