@@ -122,7 +122,16 @@ SQL >
         max(sd.prMergeAvailable) AS prMergeAvailable,
         max(sd.merged12m) AS merged12m,
         max(sd.closedUnmerged12m) AS closedUnmerged12m,
-        avg(sd.medianMergeS) AS medianMergeS
+        avg(sd.medianMergeS) AS medianMergeS,
+        sumIf(
+            coalesce(sd.commitsLast6m, 0) * coalesce(sd.busFactorScore, 0),
+            sd.busFactorAvailable
+        ) / nullIf(
+            sumIf(
+                coalesce(sd.commitsLast6m, 0), sd.busFactorAvailable AND sd.commitsLast6m IS NOT NULL
+            ),
+            0
+        ) AS busFactorScoreActivityWeightedMean
     FROM insightsProjects ip FINAL
     LEFT JOIN
         repositories rep FINAL

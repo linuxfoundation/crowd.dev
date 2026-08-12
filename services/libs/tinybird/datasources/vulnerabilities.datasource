@@ -7,7 +7,7 @@ DESCRIPTION >
     - `cveIds` is an array of CVE identifiers associated with this vulnerability (empty array default).
     - `ghsaIds` is an array of GitHub Security Advisory identifiers.
     - `otherIds` is an array of other vulnerability identifiers.
-    - `severity` is the vulnerability severity level (UNKNOWN, LOW, MODERATE, HIGH, CRITICAL).
+    - `severity` is the vulnerability severity level (UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL).
     - `cvssScore` is the raw CVSS score (nullable, null when score is unavailable).
     - `summary` is a short description of the vulnerability.
     - `details` contains detailed information about the vulnerability.

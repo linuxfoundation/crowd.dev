@@ -36,7 +36,8 @@ SQL >
         prMergeAvailable,
         merged12m,
         closedUnmerged12m,
-        medianMergeS
+        medianMergeS,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT

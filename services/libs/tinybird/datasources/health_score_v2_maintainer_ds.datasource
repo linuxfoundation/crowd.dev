@@ -33,7 +33,8 @@ SCHEMA >
     `medianIssueResponseS` Nullable(Float64),
     `isGerrit` UInt8,
     `isExcluded` UInt8,
-    `coveredWeight` UInt8
+    `coveredWeight` UInt8,
+    `methodologyVersion` String
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

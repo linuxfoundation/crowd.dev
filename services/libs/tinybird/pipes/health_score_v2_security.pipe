@@ -37,7 +37,8 @@ SQL >
         branchProtectionAllowsForcePush,
         dependencyHealthScore,
         dependencyHealthAvailable,
-        vulnerableDeps
+        vulnerableDeps,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT
@@ -143,7 +144,7 @@ SQL >
                                 repoUrl,
                                 countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
                                 countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
-                                countIf(status = 'OPEN' AND severity = 'MODERATE') AS openModerates
+                                countIf(status = 'OPEN' AND severity = 'MEDIUM') AS openModerates
                             FROM vulnerabilities
                             GROUP BY repoUrl
                         ) AS vc

@@ -78,66 +78,96 @@ SQL >
     GROUP BY sourceParentId
 
 NODE pull_request_first_reviewed
+DESCRIPTION >
+    Non-author reviews only (2026-08-11, IN-1226) — same rule as the baseline-merge MV.
+
 SQL >
     %
     SELECT
-        if(
-            type = 'patchset_approval-created', splitByChar('-', sourceParentId)[1], sourceParentId
-        ) AS sourceParentId,
-        argMin(updatedAt, timestamp) AS updatedAt,
-        MIN(timestamp) AS reviewedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
-    WHERE
-        sourceParentId <> ''
-        and (
-            type = 'pull_request-reviewed'
-            OR type = 'merge_request-review-changes-requested'
-            OR type = 'merge_request-review-approved'
-            OR type = 'patchset_approval-created'
-        )
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
+        r.prSourceId AS sourceParentId,
+        argMin(r.updatedAt, r.timestamp) AS updatedAt,
+        MIN(r.timestamp) AS reviewedAt
+    FROM
+        (
+            SELECT
+                if(
+                    type = 'patchset_approval-created',
+                    splitByChar('-', sourceParentId)[1],
+                    sourceParentId
+                ) AS prSourceId,
+                timestamp,
+                updatedAt,
+                memberId
+            FROM activityRelations_enriched_deduplicated_bucket_union
+            WHERE
+                sourceParentId <> ''
+                and (
+                    type = 'pull_request-reviewed'
+                    OR type = 'merge_request-review-changes-requested'
+                    OR type = 'merge_request-review-approved'
+                    OR type = 'patchset_approval-created'
                 )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
+                {% if defined(bucket_id) %}
+                    AND cityHash64(segmentId)
+                    % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+                    = {{
+                        UInt8(
+                            bucket_id,
+                            0,
+                            description="Bucket index to process (0 to num_buckets-1)",
+                            required=False,
+                        )
+                    }}
+                {% end %}
+        ) AS r
+    INNER JOIN pull_request_opened opened ON r.prSourceId = opened.sourceId
+    WHERE r.memberId != '' AND opened.memberId != '' AND r.memberId != opened.memberId
+    GROUP BY r.prSourceId
 
 NODE pull_request_first_review_approved
+DESCRIPTION >
+    Non-author approvals only (2026-08-11, IN-1226) — same rule as the baseline-merge MV.
+
 SQL >
     %
     SELECT
-        if(
-            type = 'patchset_approval-created', splitByChar('-', sourceParentId)[1], sourceParentId
-        ) AS sourceParentId,
-        argMin(updatedAt, timestamp) AS updatedAt,
-        MIN(timestamp) AS approvedAt
-    FROM activityRelations_enriched_deduplicated_bucket_union
-    WHERE
+        r.prSourceId AS sourceParentId,
+        argMin(r.updatedAt, r.timestamp) AS updatedAt,
+        MIN(r.timestamp) AS approvedAt
+    FROM
         (
-            (type = 'pull_request-reviewed' and pullRequestReviewState = 'APPROVED')
-            OR type = 'merge_request-review-approved'
-            OR type = 'patchset_approval-created'
-        )
-        {% if defined(bucket_id) %}
-            AND cityHash64(segmentId)
-            % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
-            = {{
-                UInt8(
-                    bucket_id,
-                    0,
-                    description="Bucket index to process (0 to num_buckets-1)",
-                    required=False,
+            SELECT
+                if(
+                    type = 'patchset_approval-created',
+                    splitByChar('-', sourceParentId)[1],
+                    sourceParentId
+                ) AS prSourceId,
+                timestamp,
+                updatedAt,
+                memberId
+            FROM activityRelations_enriched_deduplicated_bucket_union
+            WHERE
+                (
+                    (type = 'pull_request-reviewed' and pullRequestReviewState = 'APPROVED')
+                    OR type = 'merge_request-review-approved'
+                    OR type = 'patchset_approval-created'
                 )
-            }}
-        {% end %}
-    GROUP BY sourceParentId
+                {% if defined(bucket_id) %}
+                    AND cityHash64(segmentId)
+                    % {{ UInt8(num_buckets, 5, description="Total number of buckets", required=False) }}
+                    = {{
+                        UInt8(
+                            bucket_id,
+                            0,
+                            description="Bucket index to process (0 to num_buckets-1)",
+                            required=False,
+                        )
+                    }}
+                {% end %}
+        ) AS r
+    INNER JOIN pull_request_opened opened ON r.prSourceId = opened.sourceId
+    WHERE r.memberId != '' AND opened.memberId != '' AND r.memberId != opened.memberId
+    GROUP BY r.prSourceId
 
 NODE pull_request_first_closed
 SQL >

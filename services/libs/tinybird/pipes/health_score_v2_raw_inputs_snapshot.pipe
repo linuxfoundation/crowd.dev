@@ -1,0 +1,294 @@
+DESCRIPTION >
+    - Periodic snapshot of raw measured inputs (not computed scores) for Health Score v2 validation
+    and historical trend analysis. Runs monthly (1st of each month) and appends one row per repo.
+    - Each execution creates a snapshotDate = toStartOfInterval(now(), INTERVAL 1 day), tagged with
+    the current methodologyVersion ('2.0.0').
+    - Sources the same base data as the individual category pipes (health_score_v2_maintainer,
+    health_score_v2_security, health_score_v2_development) but captures RAW measured values only —
+    not computed scores. This allows downstream validation queries to reconstruct or audit scoring
+    without needing access to the category pipes' intermediate logic.
+    - Append-mode COPY, partitioned by date, with 24-month TTL. The target is a
+    ReplacingMergeTree keyed on (snapshotDate, repoUrl, methodologyVersion), so a same-day
+    re-run converges instead of duplicating — see the datasource description.
+    - Also captures the per-repo unanswered issue/PR counts (open, no non-author response, aged
+    90+ days, opened within 18mo — same definitions as health_score_v2_lifecycle.pipe) plus the
+    18mo opened totals, giving the unanswered ratio required by compliance spec item 6 and the
+    historical input for the abandoned-threshold-sweep validation analysis.
+    - Issue/PR subqueries scope their population by `openedAt > 12 MONTH` first, then count/quantile
+    within that set (2026-08-11, per Joana's PR review) — matching `health_score_v2_development.pipe`
+    exactly, so the snapshot's raw counts and medians reconstruct the same population the development
+    category score was computed from. The prior version scoped `opened12m`/quantiles independently
+    per-column (via a `FILTER`/inline date check on `closedAt`/`mergedAt` instead of `openedAt`),
+    which measured a different, unbounded-by-openedAt population than the category pipe — the two
+    could never be reconciled.
+
+TAGS "Validation", "Health Score v2"
+
+NODE health_score_v2_raw_inputs_snapshot_calc
+DESCRIPTION >
+    Combines raw input signals from all three categories (maintainer, security, development)
+    and tags with snapshot metadata. Inlined as one node (rather than three joined nodes)
+    because Tinybird cannot resolve column references across multiple independently-defined
+    subqueries once inlined together — each category's raw-input subquery is joined directly
+    against a single shared repo base here, matching the pattern already proven in the
+    single-node health_score_v2_maintainer/_security/_development pipes.
+
+SQL >
+    SELECT
+        allRepos.repoUrl AS repoUrl,
+        toStartOfInterval(now(), INTERVAL 1 day) AS snapshotDate,
+        '2.0.0' AS methodologyVersion,
+        bf.curatedBusFactorCount AS busFactorCuratedCount,
+        obs.observedActorsCount AS busFactorObservedActorsCount,
+        od.orgCount AS orgDiversityCount,
+        r.medianPrResponseS AS medianPrResponseSeconds,
+        ir.medianIssueResponseS AS medianIssueResponseSeconds,
+        coalesce(v.openCriticals, 0) AS openCriticalVulns,
+        coalesce(v.openHighs, 0) AS openHighVulns,
+        coalesce(v.openModerates, 0) AS openModerateVulns,
+        repoMeta.scorecardScore,
+        repoMeta.securityPolicyEnabled,
+        repoMeta.branchProtectionEnabled,
+        repoMeta.branchProtectionRequiredReviews,
+        repoMeta.branchProtectionRequiresStatusChecks,
+        repoMeta.branchProtectionAllowsForcePush,
+        deps.vulnerableDeps,
+        rl.daysSinceLatest AS daysSinceLatestRelease,
+        rl.daysBetweenRecent AS daysBetweenRecentReleases,
+        c.commitsLast6m,
+        c.commitsPrior6m,
+        rc.lastCommitAt,
+        w.closed12m AS issuesClosedLast12m,
+        w.opened12m AS issuesOpenedLast12m,
+        w.medianCloseS AS medianIssueCloseSeconds,
+        p.merged12m AS prsMergedLast12m,
+        p.closedUnmerged12m AS prsClosedUnmergedLast12m,
+        p.medianMergeS AS medianPrMergeSeconds,
+        rf.excluded,
+        pkgs.trackedPackageCount,
+        uw.unansweredAged90d AS unansweredIssuesAged90d,
+        upw.unansweredAged90d AS unansweredPrsAged90d,
+        uw.openedLast18m AS issuesOpenedLast18m,
+        upw.openedLast18m AS prsOpenedLast18m
+    FROM (SELECT DISTINCT url AS repoUrl FROM repositories FINAL WHERE deletedAt IS NULL) AS allRepos
+    LEFT JOIN
+        (SELECT url, excluded FROM repositories FINAL WHERE deletedAt IS NULL) AS rf
+        ON rf.url = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT mr.repoUrl, count(DISTINCT mr.memberId) AS curatedBusFactorCount
+            FROM maintainers_roles_copy_ds mr
+            INNER JOIN
+                (
+                    SELECT DISTINCT memberId, channel AS repoUrl
+                    FROM activityRelations_deduplicated_cleaned_bucket_union
+                    WHERE timestamp > now() - INTERVAL 12 MONTH
+                ) AS recentActivity
+                ON recentActivity.memberId = mr.memberId
+                AND recentActivity.repoUrl = mr.repoUrl
+            WHERE mr.endDate = '1970-01-01 00:00:00' OR mr.endDate > now() - INTERVAL 12 MONTH
+            GROUP BY mr.repoUrl
+        ) AS bf
+        ON bf.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT channel AS repoUrl, count(DISTINCT memberId) AS observedActorsCount
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                timestamp > now() - INTERVAL 12 MONTH
+                AND memberId != ''
+                AND (
+                    type = 'pull_request-reviewed'
+                    OR type = 'pull_request-merged'
+                    OR type = 'merge_request-review-approved'
+                    OR type = 'merge_request-merged'
+                    OR type = 'patchset_approval-created'
+                    OR type = 'merge_request-review-unapproved'
+                    OR type = 'merge_request-review-commented'
+                )
+            GROUP BY channel
+        ) AS obs
+        ON obs.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE timestamp > now() - INTERVAL 12 MONTH AND organizationId != ''
+            GROUP BY channel
+        ) AS od
+        ON od.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT channel AS repoUrl, quantile(0.5)(reviewedInSeconds) AS medianPrResponseS
+            FROM pull_requests_analyzed
+            WHERE openedAt > now() - INTERVAL 12 MONTH AND reviewedInSeconds IS NOT NULL
+            GROUP BY channel
+        ) AS r
+        ON r.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT channel AS repoUrl, quantile(0.5)(respondedInSeconds) AS medianIssueResponseS
+            FROM issues_analyzed
+            WHERE openedAt > now() - INTERVAL 12 MONTH AND respondedInSeconds IS NOT NULL
+            GROUP BY channel
+        ) AS ir
+        ON ir.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                repoUrl,
+                countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
+                countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
+                countIf(status = 'OPEN' AND severity = 'MEDIUM') AS openModerates
+            FROM vulnerabilities FINAL
+            GROUP BY repoUrl
+        ) AS v
+        ON v.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                url AS repoUrl,
+                argMax(scorecardScore, updatedAt) AS scorecardScore,
+                argMax(securityPolicyEnabled, updatedAt) AS securityPolicyEnabled,
+                argMax(branchProtectionEnabled, updatedAt) AS branchProtectionEnabled,
+                argMax(branchProtectionRequiredReviews, updatedAt) AS branchProtectionRequiredReviews,
+                argMax(
+                    branchProtectionRequiresStatusChecks, updatedAt
+                ) AS branchProtectionRequiresStatusChecks,
+                argMax(branchProtectionAllowsForcePush, updatedAt) AS branchProtectionAllowsForcePush
+            FROM repos
+            GROUP BY url
+        ) AS repoMeta
+        ON repoMeta.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT r2.url AS repoUrl, count(DISTINCT pd.dependsOnId) AS vulnerableDeps
+            FROM (SELECT url, argMax(id, updatedAt) AS id FROM repos GROUP BY url) r2
+            INNER JOIN packageRepos pr ON pr.repoId = r2.id
+            INNER JOIN packageDependencies pd ON pd.packageId = pr.packageId
+            WHERE
+                pd.dependsOnId IN (
+                    SELECT ap.packageId
+                    FROM advisoryPackages ap
+                    INNER JOIN advisories a ON a.id = ap.advisoryId
+                    WHERE a.severity IN ('HIGH', 'CRITICAL')
+                )
+            GROUP BY r2.url
+        ) AS deps
+        ON deps.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                repoUrl,
+                dateDiff('day', top2[1], today()) AS daysSinceLatest,
+                if(length(top2) >= 2, dateDiff('day', top2[2], top2[1]), 9999) AS daysBetweenRecent
+            FROM
+                (
+                    SELECT
+                        r2.url AS repoUrl,
+                        arraySlice(
+                            arraySort(x -> - toInt64(x), arrayDistinct(groupArray(rd.releaseDay))), 1, 2
+                        ) AS top2
+                    FROM (SELECT url, argMax(id, updatedAt) AS id FROM repos GROUP BY url) r2
+                    INNER JOIN packageRepos pr ON pr.repoId = r2.id
+                    INNER JOIN
+                        (
+                            SELECT DISTINCT packageId, toDate(publishedAt) AS releaseDay
+                            FROM versions
+                            WHERE publishedAt IS NOT NULL
+                        ) rd
+                        ON rd.packageId = pr.packageId
+                    GROUP BY r2.url
+                )
+        ) AS rl
+        ON rl.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
+                countIf(
+                    timestamp <= now() - INTERVAL 6 MONTH AND timestamp > now() - INTERVAL 12 MONTH
+                ) AS commitsPrior6m
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE type = 'authored-commit'
+            GROUP BY channel
+        ) AS c
+        ON c.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT url AS repoUrl, argMax(lastCommitAt, updatedAt) AS lastCommitAt
+            FROM repos
+            GROUP BY url
+        ) AS rc
+        ON rc.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(closedAt IS NOT NULL) AS closed12m,
+                count() AS opened12m,
+                quantileIf(0.5)
+                (closedInSeconds, closedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
+            FROM issues_analyzed
+            WHERE openedAt > now() - INTERVAL 12 MONTH
+            GROUP BY channel
+        ) AS w
+        ON w.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(mergedAt IS NOT NULL) AS merged12m,
+                countIf(closedAt IS NOT NULL AND mergedAt IS NULL) AS closedUnmerged12m,
+                quantileIf(0.5)
+                (mergedInSeconds, mergedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
+            FROM pull_requests_analyzed
+            WHERE openedAt > now() - INTERVAL 12 MONTH
+            GROUP BY channel
+        ) AS p
+        ON p.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(
+                    respondedInSeconds IS NULL
+                    AND closedAt IS NULL
+                    AND openedAt <= now() - INTERVAL 90 DAY
+                ) AS unansweredAged90d,
+                count() AS openedLast18m
+            FROM issues_analyzed
+            WHERE openedAt > now() - INTERVAL 18 MONTH
+            GROUP BY channel
+        ) AS uw
+        ON uw.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(
+                    reviewedAt IS NULL
+                    AND approvedAt IS NULL
+                    AND closedAt IS NULL
+                    AND openedAt <= now() - INTERVAL 90 DAY
+                ) AS unansweredAged90d,
+                count() AS openedLast18m
+            FROM pull_requests_analyzed
+            WHERE openedAt > now() - INTERVAL 18 MONTH
+            GROUP BY channel
+        ) AS upw
+        ON upw.repoUrl = allRepos.repoUrl
+    LEFT JOIN
+        (
+            SELECT r2.url AS repoUrl, count(DISTINCT pr.packageId) AS trackedPackageCount
+            FROM (SELECT url, argMax(id, updatedAt) AS id FROM repos GROUP BY url) r2
+            INNER JOIN packageRepos pr ON pr.repoId = r2.id
+            GROUP BY r2.url
+        ) AS pkgs
+        ON pkgs.repoUrl = allRepos.repoUrl
+
+TYPE COPY
+TARGET_DATASOURCE health_score_v2_raw_inputs_snapshot_ds
+COPY_MODE append
+COPY_SCHEDULE 30 0 1 * *
