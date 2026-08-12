@@ -10,11 +10,9 @@ DESCRIPTION >
     (most repos) having lastCommitAt from GitHub enrichment — the fallback covers the vast majority.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
     health_score_v2_maintainer.pipe description for why.
-    - Gerrit channel fix (IN-1229): activity rows for Gerrit repos ingested via opendev.org (and
-    other Gerrit hosts) are stored under the /q/project: channel variant, not the plain repo URL.
-    All joins against activityRelations, pull_requests_analyzed, and issues_analyzed now route
-    through `repos_channels_ds` (populated by repos_channels_copy.pipe) which expands each repo URL
-    to all its possible channel forms.
+    - All joins against activityRelations, pull_requests_analyzed, and issues_analyzed route through
+    `repos_channels_ds` (populated by repos_channels_copy.pipe), which expands each Gerrit repo URL
+    to both its plain URL and /q/project: channel variant.
 
 NODE health_score_v2_development_calc
 SQL >

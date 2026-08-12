@@ -21,10 +21,9 @@ DESCRIPTION >
     per-column (via a `FILTER`/inline date check on `closedAt`/`mergedAt` instead of `openedAt`),
     which measured a different, unbounded-by-openedAt population than the category pipe — the two
     could never be reconciled.
-    - Gerrit channel fix (IN-1229): all activityRelations, pull_requests_analyzed, and
-    issues_analyzed joins now route through `repos_channels_ds` (populated by repos_channels_copy.pipe)
-    which expands each Gerrit repo URL to its /q/project: variant so Gerrit activity is correctly
-    matched.
+    - All joins against activityRelations, pull_requests_analyzed, and issues_analyzed route through
+    `repos_channels_ds` (populated by repos_channels_copy.pipe), which expands each Gerrit repo URL
+    to both its plain URL and /q/project: channel variant.
 
 TAGS "Validation", "Health Score v2"
 

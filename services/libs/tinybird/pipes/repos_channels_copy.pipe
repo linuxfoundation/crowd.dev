@@ -4,8 +4,8 @@ DESCRIPTION >
     /q/project: variant used by Gerrit activity ingestion.
     - Mirrors the expansion logic in repos_to_channels.pipe but as a COPY pipe so the result can
     be joined by other COPY pipes (which cannot use template-based API pipes).
-    - Runs daily at 01:00 UTC, before health score pipes (02:00 UTC), so channel mappings are
-    always fresh when scores are computed.
+    - Runs daily at 00:00 UTC, before health score pipes (02:00 UTC) and the monthly raw inputs
+    snapshot (00:30 on the 1st), so channel mappings are always current when scores are computed.
 
 TAGS "Repository URLs", "Gerrit", "Health Score v2"
 
@@ -45,4 +45,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE repos_channels_ds
 COPY_MODE replace
-COPY_SCHEDULE 0 1 * * *
+COPY_SCHEDULE 0 0 * * *
