@@ -4,3 +4,4 @@ admin
 venv-*
 .serverless
 .claude
+load-tests
