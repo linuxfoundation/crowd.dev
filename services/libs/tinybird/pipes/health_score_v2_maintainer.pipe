@@ -6,9 +6,9 @@ DESCRIPTION >
     Responsiveness follows Joana's 2026-07-23 review (per-platform, not a blanket rule):
     - GitHub/GitLab (and any other non-Gerrit host): scores 0/15 when there are no PRs or issues
     in the window — that's real signal (unresponsive), not a data gap, so it's never `blocked`.
-    - Gerrit (review.opendev.org, gerrit.*): Gerrit has no issue tracker, so only PR/changeset
-    response time counts. Scores 0/15 when there's no changeset data; issue-response is excluded
-    from the calculation entirely rather than penalizing repos for a concept that doesn't exist there.
+    - Gerrit: Gerrit has no issue tracker, so only PR/changeset response time counts. Scores 0/15
+    when there's no changeset data; issue-response is excluded from the calculation entirely rather
+    than penalizing repos for a concept that doesn't exist there.
     - Repos marked `excluded` in the repositories table (e.g. .github meta repos where no PRs or
     issues are ever expected) are `blocked` for responsiveness regardless of platform — never
     scored 0 for an absence that was never expected to be filled.
@@ -32,6 +32,48 @@ DESCRIPTION >
     trailing 12-month window. Final busFactorCount = max(curated_maintainers_count, observed_actors_count).
     busFactorAvailable = 1 if either source has data. This ensures teams relying on informal review
     duties aren't penalized for lack of formal role curation.
+    - Gerrit channel fix (IN-1229): activity rows for Gerrit repos ingested via opendev.org (and
+    other Gerrit hosts) are stored under the /q/project: channel variant, not the plain repo URL.
+    Added a `channels` node that expands each repo URL to all its possible channel forms — matching
+    the logic in repos_to_channels.pipe — so joins against activityRelations, pull_requests_analyzed,
+    and issues_analyzed correctly match Gerrit activity. isGerrit now derived from
+    integrations.platform='gerrit' rather than domain regex, covering git.opendaylight.org and any
+    custom-domain Gerrit instance. changeset-merged added to observedActorsCount so admin/cherry-pick
+    merges count toward bus factor.
+
+NODE channels
+DESCRIPTION >
+    Expand each repo URL to all possible activity channel forms. Mirrors repos_to_channels.pipe
+    expansion logic. Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url
+    plus the /q/project: variant used by Gerrit activity ingestion.
+SQL >
+    SELECT
+        r.url AS repoUrl,
+        r.url AS channel,
+        (i.platform = 'gerrit') AS isGerrit,
+        r.excluded AS isExcluded
+    FROM repositories r
+    LEFT JOIN integrations i ON r.sourceIntegrationId = i.id
+    WHERE r.deletedAt IS NULL
+    UNION ALL
+    SELECT
+        r.url AS repoUrl,
+        CASE
+            WHEN position(r.url, '/r/') > 0
+                THEN replaceOne(r.url, '/r/', '/r/q/project:')
+            WHEN position(r.url, '/gerrit/') > 0
+                THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
+            ELSE
+                concat(
+                    protocol(r.url), '://', domain(r.url), '/q/project:',
+                    if(path(r.url) = '/', '', substring(path(r.url), 2))
+                )
+        END AS channel,
+        1 AS isGerrit,
+        r.excluded AS isExcluded
+    FROM repositories r
+    INNER JOIN integrations i ON r.sourceIntegrationId = i.id
+    WHERE r.deletedAt IS NULL AND i.platform = 'gerrit'
 
 NODE health_score_v2_maintainer_calc
 SQL >
@@ -177,14 +219,8 @@ SQL >
                         ) AS responsivenessScore
                     FROM
                         (
-                            SELECT DISTINCT
-                                url AS repoUrl,
-                                (
-                                    domain(url) = 'review.opendev.org' OR domain(url) LIKE 'gerrit.%'
-                                ) AS isGerrit,
-                                excluded AS isExcluded
-                            FROM repositories
-                            WHERE deletedAt IS NULL
+                            SELECT DISTINCT repoUrl, isGerrit, isExcluded
+                            FROM channels
                         ) AS allRepos
                     LEFT JOIN
                         (
@@ -194,9 +230,10 @@ SQL >
                             FROM maintainers_roles_copy_ds mr
                             INNER JOIN
                                 (
-                                    SELECT DISTINCT memberId, channel AS repoUrl
-                                    FROM activityRelations_deduplicated_cleaned_bucket_union
-                                    WHERE timestamp > now() - INTERVAL 12 MONTH
+                                    SELECT DISTINCT ch.repoUrl AS repoUrl, ar.memberId AS memberId
+                                    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+                                    INNER JOIN channels ch ON ar.channel = ch.channel
+                                    WHERE ar.timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId
                                 AND recentActivity.repoUrl = mr.repoUrl
@@ -208,52 +245,55 @@ SQL >
                         ON bf.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
-                            SELECT channel AS repoUrl, count(DISTINCT memberId) AS observedActorsCount
-                            FROM activityRelations_deduplicated_cleaned_bucket_union
+                            SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.memberId) AS observedActorsCount
+                            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+                            INNER JOIN channels ch ON ar.channel = ch.channel
                             WHERE
-                                timestamp > now() - INTERVAL 12 MONTH
-                                AND memberId != ''
+                                ar.timestamp > now() - INTERVAL 12 MONTH
+                                AND ar.memberId != ''
                                 AND (
-                                    type = 'pull_request-reviewed'
-                                    OR type = 'pull_request-merged'
-                                    OR type = 'merge_request-review-approved'
-                                    OR type = 'merge_request-merged'
-                                    OR type = 'patchset_approval-created'
-                                    OR type = 'merge_request-review-unapproved'
-                                    OR type = 'merge_request-review-commented'
+                                    ar.type = 'pull_request-reviewed'
+                                    OR ar.type = 'pull_request-merged'
+                                    OR ar.type = 'merge_request-review-approved'
+                                    OR ar.type = 'merge_request-merged'
+                                    OR ar.type = 'patchset_approval-created'
+                                    OR ar.type = 'merge_request-review-unapproved'
+                                    OR ar.type = 'merge_request-review-commented'
+                                    OR ar.type = 'changeset-merged'
                                 )
-                            GROUP BY channel
+                            GROUP BY ch.repoUrl
                         ) AS obs
                         ON obs.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
-                            SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
-                            FROM activityRelations_deduplicated_cleaned_bucket_union
-                            WHERE timestamp > now() - INTERVAL 12 MONTH AND organizationId != ''
-                            GROUP BY channel
+                            SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.organizationId) AS orgCount
+                            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+                            INNER JOIN channels ch ON ar.channel = ch.channel
+                            WHERE ar.timestamp > now() - INTERVAL 12 MONTH AND ar.organizationId != ''
+                            GROUP BY ch.repoUrl
                         ) AS od
                         ON od.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
                             SELECT
-                                channel AS repoUrl,
-                                quantile(0.5)
-                                (reviewedInSeconds) AS medianPrResponseS
-                            FROM pull_requests_analyzed
-                            WHERE openedAt > now() - INTERVAL 12 MONTH AND reviewedInSeconds IS NOT NULL
-                            GROUP BY channel
+                                ch.repoUrl AS repoUrl,
+                                quantile(0.5)(pra.reviewedInSeconds) AS medianPrResponseS
+                            FROM pull_requests_analyzed pra
+                            INNER JOIN channels ch ON pra.channel = ch.channel
+                            WHERE pra.openedAt > now() - INTERVAL 12 MONTH AND pra.reviewedInSeconds IS NOT NULL
+                            GROUP BY ch.repoUrl
                         ) AS r
                         ON r.repoUrl = allRepos.repoUrl
                     LEFT JOIN
                         (
                             SELECT
-                                channel AS repoUrl,
-                                quantile(0.5)
-                                (respondedInSeconds) AS medianIssueResponseS
-                            FROM issues_analyzed
+                                ch.repoUrl AS repoUrl,
+                                quantile(0.5)(ia.respondedInSeconds) AS medianIssueResponseS
+                            FROM issues_analyzed ia
+                            INNER JOIN channels ch ON ia.channel = ch.channel
                             WHERE
-                                openedAt > now() - INTERVAL 12 MONTH AND respondedInSeconds IS NOT NULL
-                            GROUP BY channel
+                                ia.openedAt > now() - INTERVAL 12 MONTH AND ia.respondedInSeconds IS NOT NULL
+                            GROUP BY ch.repoUrl
                         ) AS ir
                         ON ir.repoUrl = allRepos.repoUrl
                 )
