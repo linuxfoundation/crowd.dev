@@ -140,7 +140,7 @@ SQL >
                 countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
                 countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
                 countIf(status = 'OPEN' AND severity = 'MEDIUM') AS openModerates
-            FROM vulnerabilities
+            FROM vulnerabilities FINAL
             GROUP BY repoUrl
         ) AS v
         ON v.repoUrl = allRepos.repoUrl
