@@ -156,8 +156,9 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
       const response: IMemberEnrichmentCrustdataRemainingCredits = (await axios(config)).data
 
-      // Live enrich (7) + business email contact (1).
-      return response.account.credits >= 8
+      // Live enrich sends up to 2 verified LinkedIn handles
+      // Each match costs 7 credits (realtime) + 1 credit (business email)
+      return response.account.credits >= 16
     } catch (error) {
       this.log.error('Error while checking Crustdata account usage', error)
       throw error
