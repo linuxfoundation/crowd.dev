@@ -307,9 +307,9 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     let response: IMemberEnrichmentCrustdataEnrichResponse | null
 
     try {
+      // contact is best effort, so we don't want to fail the enrichment if it fails.
       response = await this.requestEnrich('/person/contact/enrich', body)
     } catch (error) {
-      // Don't fail after a paid profile match; retry would re-run live enrich.
       if (
         axios.isAxiosError(error) &&
         (error.response?.status === 401 || error.response?.status === 403)
