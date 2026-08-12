@@ -331,7 +331,10 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
 
     if (date.startsWith('1970-01-01')) return null
 
-    return date.replace('Z', '+00:00')
+    const parsed = new Date(date)
+    if (Number.isNaN(parsed.getTime())) return null
+
+    return parsed.toISOString().replace('Z', '+00:00')
   }
 
   private getLinkedInProfileHandle(url: string): string | null {
