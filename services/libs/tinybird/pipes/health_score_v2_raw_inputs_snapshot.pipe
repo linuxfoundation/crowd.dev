@@ -21,8 +21,39 @@ DESCRIPTION >
     per-column (via a `FILTER`/inline date check on `closedAt`/`mergedAt` instead of `openedAt`),
     which measured a different, unbounded-by-openedAt population than the category pipe — the two
     could never be reconciled.
+    - Gerrit channel fix (IN-1229): mirrors the same fix applied to health_score_v2_maintainer.pipe
+    and health_score_v2_development.pipe — all activityRelations, pull_requests_analyzed, and
+    issues_analyzed joins now route through a `channels` node that expands each Gerrit repo URL to
+    its /q/project: variant so Gerrit activity is correctly matched.
 
 TAGS "Validation", "Health Score v2"
+
+NODE channels
+DESCRIPTION >
+    Expand each repo URL to all possible activity channel forms. Mirrors repos_to_channels.pipe
+    expansion logic. Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url
+    plus the /q/project: variant used by Gerrit activity ingestion.
+SQL >
+    SELECT r.url AS repoUrl, r.url AS channel
+    FROM repositories r FINAL
+    WHERE r.deletedAt IS NULL
+    UNION ALL
+    SELECT
+        r.url AS repoUrl,
+        CASE
+            WHEN position(r.url, '/r/') > 0
+                THEN replaceOne(r.url, '/r/', '/r/q/project:')
+            WHEN position(r.url, '/gerrit/') > 0
+                THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
+            ELSE
+                concat(
+                    protocol(r.url), '://', domain(r.url), '/q/project:',
+                    if(path(r.url) = '/', '', substring(path(r.url), 2))
+                )
+        END AS channel
+    FROM repositories r FINAL
+    INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+    WHERE r.deletedAt IS NULL AND i.platform = 'gerrit'
 
 NODE health_score_v2_raw_inputs_snapshot_calc
 DESCRIPTION >
@@ -80,9 +111,10 @@ SQL >
             FROM maintainers_roles_copy_ds mr
             INNER JOIN
                 (
-                    SELECT DISTINCT memberId, channel AS repoUrl
-                    FROM activityRelations_deduplicated_cleaned_bucket_union
-                    WHERE timestamp > now() - INTERVAL 12 MONTH
+                    SELECT DISTINCT ch.repoUrl AS repoUrl, ar.memberId AS memberId
+                    FROM activityRelations_deduplicated_cleaned_bucket_union ar
+                    INNER JOIN channels ch ON ar.channel = ch.channel
+                    WHERE ar.timestamp > now() - INTERVAL 12 MONTH
                 ) AS recentActivity
                 ON recentActivity.memberId = mr.memberId
                 AND recentActivity.repoUrl = mr.repoUrl
@@ -92,45 +124,50 @@ SQL >
         ON bf.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT channel AS repoUrl, count(DISTINCT memberId) AS observedActorsCount
-            FROM activityRelations_deduplicated_cleaned_bucket_union
+            SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.memberId) AS observedActorsCount
+            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+            INNER JOIN channels ch ON ar.channel = ch.channel
             WHERE
-                timestamp > now() - INTERVAL 12 MONTH
-                AND memberId != ''
+                ar.timestamp > now() - INTERVAL 12 MONTH
+                AND ar.memberId != ''
                 AND (
-                    type = 'pull_request-reviewed'
-                    OR type = 'pull_request-merged'
-                    OR type = 'merge_request-review-approved'
-                    OR type = 'merge_request-merged'
-                    OR type = 'patchset_approval-created'
-                    OR type = 'merge_request-review-unapproved'
-                    OR type = 'merge_request-review-commented'
+                    ar.type = 'pull_request-reviewed'
+                    OR ar.type = 'pull_request-merged'
+                    OR ar.type = 'merge_request-review-approved'
+                    OR ar.type = 'merge_request-merged'
+                    OR ar.type = 'patchset_approval-created'
+                    OR ar.type = 'merge_request-review-unapproved'
+                    OR ar.type = 'merge_request-review-commented'
+                    OR ar.type = 'changeset-merged'
                 )
-            GROUP BY channel
+            GROUP BY ch.repoUrl
         ) AS obs
         ON obs.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT channel AS repoUrl, count(DISTINCT organizationId) AS orgCount
-            FROM activityRelations_deduplicated_cleaned_bucket_union
-            WHERE timestamp > now() - INTERVAL 12 MONTH AND organizationId != ''
-            GROUP BY channel
+            SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.organizationId) AS orgCount
+            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+            INNER JOIN channels ch ON ar.channel = ch.channel
+            WHERE ar.timestamp > now() - INTERVAL 12 MONTH AND ar.organizationId != ''
+            GROUP BY ch.repoUrl
         ) AS od
         ON od.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT channel AS repoUrl, quantile(0.5)(reviewedInSeconds) AS medianPrResponseS
-            FROM pull_requests_analyzed
-            WHERE openedAt > now() - INTERVAL 12 MONTH AND reviewedInSeconds IS NOT NULL
-            GROUP BY channel
+            SELECT ch.repoUrl AS repoUrl, quantile(0.5)(pra.reviewedInSeconds) AS medianPrResponseS
+            FROM pull_requests_analyzed pra
+            INNER JOIN channels ch ON pra.channel = ch.channel
+            WHERE pra.openedAt > now() - INTERVAL 12 MONTH AND pra.reviewedInSeconds IS NOT NULL
+            GROUP BY ch.repoUrl
         ) AS r
         ON r.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
-            SELECT channel AS repoUrl, quantile(0.5)(respondedInSeconds) AS medianIssueResponseS
-            FROM issues_analyzed
-            WHERE openedAt > now() - INTERVAL 12 MONTH AND respondedInSeconds IS NOT NULL
-            GROUP BY channel
+            SELECT ch.repoUrl AS repoUrl, quantile(0.5)(ia.respondedInSeconds) AS medianIssueResponseS
+            FROM issues_analyzed ia
+            INNER JOIN channels ch ON ia.channel = ch.channel
+            WHERE ia.openedAt > now() - INTERVAL 12 MONTH AND ia.respondedInSeconds IS NOT NULL
+            GROUP BY ch.repoUrl
         ) AS ir
         ON ir.repoUrl = allRepos.repoUrl
     LEFT JOIN
@@ -205,14 +242,15 @@ SQL >
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
-                countIf(timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
+                ch.repoUrl AS repoUrl,
+                countIf(ar.timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
                 countIf(
-                    timestamp <= now() - INTERVAL 6 MONTH AND timestamp > now() - INTERVAL 12 MONTH
+                    ar.timestamp <= now() - INTERVAL 6 MONTH AND ar.timestamp > now() - INTERVAL 12 MONTH
                 ) AS commitsPrior6m
-            FROM activityRelations_deduplicated_cleaned_bucket_union
-            WHERE type = 'authored-commit'
-            GROUP BY channel
+            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+            INNER JOIN channels ch ON ar.channel = ch.channel
+            WHERE ar.type = 'authored-commit'
+            GROUP BY ch.repoUrl
         ) AS c
         ON c.repoUrl = allRepos.repoUrl
     LEFT JOIN
@@ -225,58 +263,62 @@ SQL >
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
-                countIf(closedAt IS NOT NULL) AS closed12m,
+                ch.repoUrl AS repoUrl,
+                countIf(ia.closedAt IS NOT NULL) AS closed12m,
                 count() AS opened12m,
                 quantileIf(0.5)
-                (closedInSeconds, closedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
-            FROM issues_analyzed
-            WHERE openedAt > now() - INTERVAL 12 MONTH
-            GROUP BY channel
+                (ia.closedInSeconds, ia.closedAt > now() - INTERVAL 12 MONTH) AS medianCloseS
+            FROM issues_analyzed ia
+            INNER JOIN channels ch ON ia.channel = ch.channel
+            WHERE ia.openedAt > now() - INTERVAL 12 MONTH
+            GROUP BY ch.repoUrl
         ) AS w
         ON w.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
-                countIf(mergedAt IS NOT NULL) AS merged12m,
-                countIf(closedAt IS NOT NULL AND mergedAt IS NULL) AS closedUnmerged12m,
+                ch.repoUrl AS repoUrl,
+                countIf(pra.mergedAt IS NOT NULL) AS merged12m,
+                countIf(pra.closedAt IS NOT NULL AND pra.mergedAt IS NULL) AS closedUnmerged12m,
                 quantileIf(0.5)
-                (mergedInSeconds, mergedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
-            FROM pull_requests_analyzed
-            WHERE openedAt > now() - INTERVAL 12 MONTH
-            GROUP BY channel
+                (pra.mergedInSeconds, pra.mergedAt > now() - INTERVAL 12 MONTH) AS medianMergeS
+            FROM pull_requests_analyzed pra
+            INNER JOIN channels ch ON pra.channel = ch.channel
+            WHERE pra.openedAt > now() - INTERVAL 12 MONTH
+            GROUP BY ch.repoUrl
         ) AS p
         ON p.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
+                ch.repoUrl AS repoUrl,
                 countIf(
-                    respondedInSeconds IS NULL
-                    AND closedAt IS NULL
-                    AND openedAt <= now() - INTERVAL 90 DAY
+                    ia.respondedInSeconds IS NULL
+                    AND ia.closedAt IS NULL
+                    AND ia.openedAt <= now() - INTERVAL 90 DAY
                 ) AS unansweredAged90d,
                 count() AS openedLast18m
-            FROM issues_analyzed
-            WHERE openedAt > now() - INTERVAL 18 MONTH
-            GROUP BY channel
+            FROM issues_analyzed ia
+            INNER JOIN channels ch ON ia.channel = ch.channel
+            WHERE ia.openedAt > now() - INTERVAL 18 MONTH
+            GROUP BY ch.repoUrl
         ) AS uw
         ON uw.repoUrl = allRepos.repoUrl
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
+                ch.repoUrl AS repoUrl,
                 countIf(
-                    reviewedAt IS NULL
-                    AND approvedAt IS NULL
-                    AND closedAt IS NULL
-                    AND openedAt <= now() - INTERVAL 90 DAY
+                    pra.reviewedAt IS NULL
+                    AND pra.approvedAt IS NULL
+                    AND pra.closedAt IS NULL
+                    AND pra.openedAt <= now() - INTERVAL 90 DAY
                 ) AS unansweredAged90d,
                 count() AS openedLast18m
-            FROM pull_requests_analyzed
-            WHERE openedAt > now() - INTERVAL 18 MONTH
-            GROUP BY channel
+            FROM pull_requests_analyzed pra
+            INNER JOIN channels ch ON pra.channel = ch.channel
+            WHERE pra.openedAt > now() - INTERVAL 18 MONTH
+            GROUP BY ch.repoUrl
         ) AS upw
         ON upw.repoUrl = allRepos.repoUrl
     LEFT JOIN
