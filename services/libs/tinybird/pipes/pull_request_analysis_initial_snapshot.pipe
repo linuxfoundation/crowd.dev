@@ -79,8 +79,7 @@ SQL >
 
 NODE pull_request_first_reviewed
 DESCRIPTION >
-    Non-author reviews only (2026-08-11, IN-1226) — same rule as
-    pull_request_analysis_copy_pipe.pipe and the baseline-merge MV.
+    Non-author reviews only (2026-08-11, IN-1226) — same rule as the baseline-merge MV.
 
 SQL >
     %
@@ -127,8 +126,7 @@ SQL >
 
 NODE pull_request_first_review_approved
 DESCRIPTION >
-    Non-author approvals only (2026-08-11, IN-1226) — same rule as
-    pull_request_analysis_copy_pipe.pipe and the baseline-merge MV.
+    Non-author approvals only (2026-08-11, IN-1226) — same rule as the baseline-merge MV.
 
 SQL >
     %

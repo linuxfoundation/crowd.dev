@@ -3,9 +3,15 @@ DESCRIPTION >
     Uses existing pull_requests_analyzed data as baseline and merges new events on top.
     - reviewedAt/approvedAt count only NON-AUTHOR activity (2026-08-11, IN-1226): this incremental
     path feeds the minute-0 snapshot merger that replaces pull_requests_analyzed right before the
-    02:00-02:15 health score jobs read it, so it must apply the same non-author rule as the
-    minute-20 full recompute in pull_request_analysis_copy_pipe.pipe — otherwise self-review
-    timestamps reappear every hour. See the non-author filter node below.
+    02:00-02:15 health score jobs read it. See the non-author filter node below.
+    - `pull_request_analysis_copy_pipe.pipe` (2026-08-11/12, IN-1226): deleted — confirmed obsolete
+    by Anıl Bostancı (2026-08-12): "prs now run through MV + merger copy pipe, this was the old one
+    that copied everything at once." It referenced a datasource deleted in January's bucketing
+    migration (`activityRelations_deduplicated_cleaned_ds` -> `..._bucket_union`) and had been
+    disabled/not running since 2026-08-06, which is why the reference had gone stale unnoticed.
+    This MV + pull_request_analysis_snapshot_merger_copy.pipe are the real hourly path; this MV +
+    pull_request_analysis_initial_snapshot.pipe (bootstrap) are the only two places the non-author
+    filter needs to live.
 
 NODE snapshot_resolver
 DESCRIPTION >
