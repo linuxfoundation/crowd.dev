@@ -304,7 +304,26 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
             fields: ['contact.business_emails'],
           }
 
-    const response = await this.requestEnrich('/person/contact/enrich', body)
+    let response: IMemberEnrichmentCrustdataEnrichResponse | null
+
+    try {
+      response = await this.requestEnrich('/person/contact/enrich', body)
+    } catch (error) {
+      // Don't fail after a paid profile match; retry would re-run live enrich.
+      if (
+        axios.isAxiosError(error) &&
+        (error.response?.status === 401 || error.response?.status === 403)
+      ) {
+        throw error
+      }
+
+      this.log.error(
+        { source: this.source, error },
+        'Crustdata contact enrich failed; keeping profile without contact',
+      )
+      return profiles
+    }
+
     if (!response?.length) {
       return profiles
     }
