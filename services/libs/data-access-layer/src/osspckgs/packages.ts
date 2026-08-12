@@ -250,6 +250,9 @@ export async function updateMavenRepositoryUrls(
  * Bumps last_synced_at without re-fetching POM data.
  * Used when the upstream version is unchanged — avoids a full extraction pass
  * while keeping the staleness timer fresh and syncing latest universe metrics.
+ * Also sets ingestion_source, otherwise it stays NULL forever and
+ * listMavenPackagesToSync's `ingestion_source IS NULL` clause re-selects the
+ * same row on every batch.
  */
 export async function touchPackageSyncedAt(
   qx: QueryExecutor,
@@ -263,12 +266,14 @@ export async function touchPackageSyncedAt(
     `
     UPDATE packages SET
       last_synced_at           = NOW(),
+      ingestion_source         = $(ingestionSource),
       dependent_count          = COALESCE($(dependentPackagesCount), dependent_count),
       dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count)
     WHERE purl = $(purl)
     `,
     {
       purl,
+      ingestionSource: MAVEN_WORKER_OUTCOMES[0],
       dependentPackagesCount: metrics.dependentPackagesCount ?? null,
       dependentReposCount: metrics.dependentReposCount ?? null,
     },
