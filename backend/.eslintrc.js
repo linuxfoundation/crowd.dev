@@ -6,7 +6,7 @@ module.exports = {
   extends: ['airbnb-base', 'prettier'],
   parser: '@typescript-eslint/parser',
   plugins: ['@typescript-eslint'],
-  ignorePatterns: ['dist/*', '**/*.test.ts'],
+  ignorePatterns: ['dist/*', '**/*.test.ts', 'load-tests/*'],
   rules: {
     semi: ['error', 'never'],
     'prefer-destructuring': ['error', { object: false, array: false }],
