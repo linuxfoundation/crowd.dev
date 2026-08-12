@@ -5,12 +5,6 @@ import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 
-const resolveMemberRateLimiter = createRateLimiter({
-  max: 200,
-  windowMs: 60 * 1000,
-  keyGenerator: (req) => req.actor?.id ?? (req.ip as string),
-})
-
 import { createMember } from './createMember'
 import { createMemberIdentity } from './identities/createMemberIdentity'
 import { getMemberIdentities } from './identities/getMemberIdentities'
@@ -27,6 +21,12 @@ import { verifyMemberWorkExperience } from './work-experiences/verifyMemberWorkE
 
 export function membersRouter(): Router {
   const router = Router()
+
+  const resolveMemberRateLimiter = createRateLimiter({
+    max: 200,
+    windowMs: 60 * 1000,
+    keyGenerator: (req) => req.actor?.id ?? (req.ip as string),
+  })
 
   router.post('/', requireScopes([SCOPES.WRITE_MEMBERS]), safeWrap(createMember))
 

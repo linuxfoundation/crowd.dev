@@ -7,10 +7,12 @@ export function createRateLimiter({
   max,
   windowMs,
   keyGenerator,
+  skip: additionalSkip,
 }: {
   max: number
   windowMs: number
   keyGenerator?: (req: Request) => string
+  skip?: (req: Request) => boolean
 }) {
   return rateLimit({
     max,
@@ -21,6 +23,9 @@ export function createRateLimiter({
       const err = new RateLimitError()
       res.status(err.status).json(err.toJSON())
     },
-    skip: (req) => req.method === 'OPTIONS' || req.originalUrl.endsWith('/import'),
+    skip: (req) =>
+      req.method === 'OPTIONS' ||
+      req.originalUrl.endsWith('/import') ||
+      (additionalSkip ? additionalSkip(req) : false),
   })
 }

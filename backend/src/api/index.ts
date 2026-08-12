@@ -136,6 +136,7 @@ setImmediate(async () => {
   const defaultRateLimiter = createRateLimiter({
     max: 200,
     windowMs: 60 * 1000,
+    skip: (req) => req.originalUrl.includes('/api/public/v1/members/resolve'),
   })
 
   app.use(defaultRateLimiter)
