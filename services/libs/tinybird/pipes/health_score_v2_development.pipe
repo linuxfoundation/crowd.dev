@@ -23,7 +23,7 @@ DESCRIPTION >
     plus the /q/project: variant used by Gerrit activity ingestion.
 SQL >
     SELECT r.url AS repoUrl, r.url AS channel
-    FROM repositories r
+    FROM repositories r FINAL
     WHERE r.deletedAt IS NULL
     UNION ALL
     SELECT
@@ -39,8 +39,8 @@ SQL >
                     if(path(r.url) = '/', '', substring(path(r.url), 2))
                 )
         END AS channel
-    FROM repositories r
-    INNER JOIN integrations i ON r.sourceIntegrationId = i.id
+    FROM repositories r FINAL
+    INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
     WHERE r.deletedAt IS NULL AND i.platform = 'gerrit'
 
 NODE health_score_v2_development_calc
