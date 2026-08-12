@@ -163,7 +163,6 @@ export default class EnrichmentServiceProgAILinkedinScraper
       }
     }
 
-    // also add the linkedin identities from the input
     for (const linkedin of input.linkedin) {
       if (linkedin && linkedin.value && linkedin.verified) {
         if (!linkedinUrlHashmap.get(linkedin.value)) {
