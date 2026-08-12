@@ -1,0 +1,48 @@
+DESCRIPTION >
+    - Populates `repos_channels_ds` with the expanded channel set for every repository.
+    - Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url plus the
+    /q/project: variant used by Gerrit activity ingestion.
+    - Mirrors the expansion logic in repos_to_channels.pipe but as a COPY pipe so the result can
+    be joined by other COPY pipes (which cannot use template-based API pipes).
+    - Runs daily at 01:00 UTC, before health score pipes (02:00 UTC), so channel mappings are
+    always fresh when scores are computed.
+
+TAGS "Repository URLs", "Gerrit", "Health Score v2"
+
+NODE repos_channels_copy_calc
+SQL >
+    SELECT
+        r.url AS repoUrl,
+        r.url AS channel,
+        (i.platform = 'gerrit') AS isGerrit,
+        r.excluded AS isExcluded
+    FROM repositories r FINAL
+    LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+    WHERE r.deletedAt IS NULL
+    UNION ALL
+    SELECT
+        r.url AS repoUrl,
+        CASE
+            WHEN position(r.url, '/r/') > 0
+            THEN replaceOne(r.url, '/r/', '/r/q/project:')
+            WHEN position(r.url, '/gerrit/') > 0
+            THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
+            ELSE
+                concat(
+                    protocol(r.url),
+                    '://',
+                    domain(r.url),
+                    '/q/project:',
+                    if(path(r.url) = '/', '', substring(path(r.url), 2))
+                )
+        END AS channel,
+        1 AS isGerrit,
+        r.excluded AS isExcluded
+    FROM repositories r FINAL
+    INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
+    WHERE r.deletedAt IS NULL AND i.platform = 'gerrit'
+
+TYPE COPY
+TARGET_DATASOURCE repos_channels_ds
+COPY_MODE replace
+COPY_SCHEDULE 0 1 * * *

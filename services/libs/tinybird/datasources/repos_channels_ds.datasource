@@ -1,0 +1,18 @@
+DESCRIPTION >
+    - Materialized channel expansion for all repositories. Populated by `repos_channels_copy.pipe`
+    (daily, before health score pipes run).
+    - Each non-Gerrit repo produces one row (channel = url). Each Gerrit repo produces two rows:
+    the plain URL and the /q/project: variant used by Gerrit activity ingestion.
+    - `isGerrit` and `isExcluded` are denormalized from `repositories`/`integrations` so health
+    score pipes can classify repos without re-joining those tables.
+    - Sorting key is `channel` because all consumers join on `channel`; `repoUrl` lookups are
+    full-scans but the table is small enough that this is fine.
+
+SCHEMA >
+    `repoUrl` String,
+    `channel` String,
+    `isGerrit` UInt8,
+    `isExcluded` UInt8
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY channel

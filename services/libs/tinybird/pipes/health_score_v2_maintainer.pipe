@@ -34,50 +34,11 @@ DESCRIPTION >
     duties aren't penalized for lack of formal role curation.
     - Gerrit channel fix (IN-1229): activity rows for Gerrit repos ingested via opendev.org (and
     other Gerrit hosts) are stored under the /q/project: channel variant, not the plain repo URL.
-    Added a `channels` node that expands each repo URL to all its possible channel forms — matching
-    the logic in repos_to_channels.pipe — so joins against activityRelations, pull_requests_analyzed,
-    and issues_analyzed correctly match Gerrit activity. isGerrit now derived from
-    integrations.platform='gerrit' rather than domain regex, covering git.opendaylight.org and any
-    custom-domain Gerrit instance. changeset-merged added to observedActorsCount so admin/cherry-pick
-    merges count toward bus factor.
-
-NODE channels
-DESCRIPTION >
-    Expand each repo URL to all possible activity channel forms. Mirrors repos_to_channels.pipe
-    expansion logic. Non-Gerrit repos: one row (channel = url). Gerrit repos: two rows — plain url
-    plus the /q/project: variant used by Gerrit activity ingestion.
-
-SQL >
-    SELECT
-        r.url AS repoUrl,
-        r.url AS channel,
-        (i.platform = 'gerrit') AS isGerrit,
-        r.excluded AS isExcluded
-    FROM repositories r FINAL
-    LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    WHERE r.deletedAt IS NULL
-    UNION ALL
-    SELECT
-        r.url AS repoUrl,
-        CASE
-            WHEN position(r.url, '/r/') > 0
-            THEN replaceOne(r.url, '/r/', '/r/q/project:')
-            WHEN position(r.url, '/gerrit/') > 0
-            THEN replaceOne(r.url, '/gerrit/', '/gerrit/q/project:')
-            ELSE
-                concat(
-                    protocol(r.url),
-                    '://',
-                    domain(r.url),
-                    '/q/project:',
-                    if(path(r.url) = '/', '', substring(path(r.url), 2))
-                )
-        END AS channel,
-        1 AS isGerrit,
-        r.excluded AS isExcluded
-    FROM repositories r FINAL
-    INNER JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-    WHERE r.deletedAt IS NULL AND i.platform = 'gerrit'
+    All joins against activityRelations, pull_requests_analyzed, and issues_analyzed now route
+    through `repos_channels_ds` (populated by repos_channels_copy.pipe) which expands each repo URL
+    to all its possible channel forms. isGerrit now derived from integrations.platform='gerrit'
+    rather than domain regex, covering git.opendaylight.org and any custom-domain Gerrit instance.
+    changeset-merged added to observedActorsCount so admin/cherry-pick merges count toward bus factor.
 
 NODE health_score_v2_maintainer_calc
 SQL >
@@ -221,7 +182,10 @@ SQL >
                                 0
                             )
                         ) AS responsivenessScore
-                    FROM (SELECT DISTINCT repoUrl, isGerrit, isExcluded FROM channels) AS allRepos
+                    FROM
+                        (
+                            SELECT DISTINCT repoUrl, isGerrit, isExcluded FROM repos_channels_ds
+                        ) AS allRepos
                     LEFT JOIN
                         (
                             SELECT
@@ -232,7 +196,7 @@ SQL >
                                 (
                                     SELECT DISTINCT ch.repoUrl AS repoUrl, ar.memberId AS memberId
                                     FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                                    INNER JOIN channels ch ON ar.channel = ch.channel
+                                    INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
                                     WHERE ar.timestamp > now() - INTERVAL 12 MONTH
                                 ) AS recentActivity
                                 ON recentActivity.memberId = mr.memberId
@@ -249,7 +213,7 @@ SQL >
                                 ch.repoUrl AS repoUrl,
                                 count(DISTINCT ar.memberId) AS observedActorsCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN channels ch ON ar.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
                             WHERE
                                 ar.timestamp > now() - INTERVAL 12 MONTH
                                 AND ar.memberId != ''
@@ -270,7 +234,7 @@ SQL >
                         (
                             SELECT ch.repoUrl AS repoUrl, count(DISTINCT ar.organizationId) AS orgCount
                             FROM activityRelations_deduplicated_cleaned_bucket_union ar
-                            INNER JOIN channels ch ON ar.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
                             WHERE ar.timestamp > now() - INTERVAL 12 MONTH AND ar.organizationId != ''
                             GROUP BY ch.repoUrl
                         ) AS od
@@ -282,7 +246,7 @@ SQL >
                                 quantile(0.5)
                                 (pra.reviewedInSeconds) AS medianPrResponseS
                             FROM pull_requests_analyzed pra
-                            INNER JOIN channels ch ON pra.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
                             WHERE
                                 pra.openedAt > now() - INTERVAL 12 MONTH
                                 AND pra.reviewedInSeconds IS NOT NULL
@@ -296,7 +260,7 @@ SQL >
                                 quantile(0.5)
                                 (ia.respondedInSeconds) AS medianIssueResponseS
                             FROM issues_analyzed ia
-                            INNER JOIN channels ch ON ia.channel = ch.channel
+                            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
                             WHERE
                                 ia.openedAt > now() - INTERVAL 12 MONTH
                                 AND ia.respondedInSeconds IS NOT NULL
