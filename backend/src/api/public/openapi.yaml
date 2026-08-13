@@ -197,6 +197,33 @@ paths:
                 error:
                   code: CONFLICT
                   message: Multiple member profiles matched
+        '429':
+          description: Per-client rate limit exceeded (200 req/min).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+            RateLimit-Limit:
+              description: Allowed requests per window.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests remaining in current window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: UTC epoch seconds when the window resets.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpError'
+              example:
+                error:
+                  code: RATE_LIMITED
+                  message: Too many requests, please try again later
 
   # ──────────────────────────────────────────────
   # Member Identities
