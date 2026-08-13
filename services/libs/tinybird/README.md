@@ -339,6 +339,34 @@ tb sql "SELECT count() FROM activities_backup FINAL"
 If both pairs match, the backup is **logically consistent** with the source dataset.
 
 
+---
+
+## Health Score v2 Configuration
+
+### Excluding Repositories from Health Score
+
+Repositories can be marked as excluded from health scoring by setting the `repositories.excluded` flag to `1`. This is the official mechanism for marking experimental, sandbox, meta, or otherwise out-of-scope repositories.
+
+**Use cases for exclusion:**
+- `.github` meta repositories (configuration-only, no product code)
+- Archived experiments or prototypes
+- Forks created for testing purposes
+- Any repository where activity metrics are meaningless or undesired
+
+**Behavior when excluded:**
+- Health Score v2 categorizes excluded repos as `unavailable` for responsiveness scoring (never scored 0 for missing PR/issue data)
+- Other category signals continue to be scored normally
+- Project-level health scores (when a project contains multiple repos) exclude the marked repo from aggregation
+
+**Setting the flag:**
+```sql
+UPDATE repositories SET excluded = TRUE WHERE url = 'https://github.com/org/repo-meta';
+```
+
+The flag is read by `project_insights_copy.pipe` and `health_score_v2_raw_inputs_snapshot.pipe` as part of their graceful-degradation and audit logic.
+
+---
+
 ## Glossary
 
 - **CDP (Community Data Platform)**: Customer data operations and management pipelines

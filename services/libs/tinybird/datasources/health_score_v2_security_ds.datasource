@@ -37,7 +37,8 @@ SCHEMA >
     `branchProtectionAllowsForcePush` Nullable(UInt8),
     `dependencyHealthScore` UInt8,
     `dependencyHealthAvailable` UInt8,
-    `vulnerableDeps` Nullable(UInt64)
+    `vulnerableDeps` Nullable(UInt64),
+    `methodologyVersion` String
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

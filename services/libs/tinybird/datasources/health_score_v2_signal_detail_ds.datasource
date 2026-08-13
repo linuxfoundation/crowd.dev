@@ -71,7 +71,8 @@ SCHEMA >
     `prMergeAvailable` Nullable(UInt8),
     `merged12m` Nullable(UInt64),
     `closedUnmerged12m` Nullable(UInt64),
-    `medianMergeS` Nullable(Float64)
+    `medianMergeS` Nullable(Float64),
+    `methodologyVersion` String
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY repoUrl

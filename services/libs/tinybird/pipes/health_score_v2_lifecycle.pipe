@@ -1,6 +1,7 @@
 DESCRIPTION >
     Per-repo Lifecycle state, computed via the spec's decision tree (first match wins):
-    archived (repos.archived) > abandoned (no commits in 18mo AND no issue/PR activity in 18mo) >
+    archived (repos.archived) > abandoned (an issue or PR open and unanswered for 90+ days AND no
+    commits in 12mo) > inert (no commits in 18mo AND no issue/PR activity in 18mo) >
     declining (commits down >50% vs prior 6mo AND issues opened up vs prior 6mo) > stable (release
     within 12mo, <50 open issues, no open critical vulns, commits down >50% vs prior 6mo) > active
     (fallback) — but NULL overrides all of the above when there is no usable signal at all (see
@@ -27,13 +28,51 @@ DESCRIPTION >
     commitsLast6m=0 (down from 1895 prior), because it still has 3 real PRs in the 18mo window —
     real activity, just not enough to clear any of the other branches' thresholds. That's a
     legitimate 'active' classification under the existing spec, not the bug being fixed here.
+    - `r.lastCommitAt IS NULL` added to the NULL-guard condition (2026-08-11, per Joana's PR
+    review): the guard as written (zero commits in both 6mo windows + zero issue/PR activity in
+    18mo) was a strict superset of the `inert` branch's own condition (no commits in 18mo + zero
+    issue/PR activity), since zero commits across the trailing 12mo already implies
+    `lastCommitAt` is either NULL or older than 18mo. That made the guard fire first on every repo
+    that could otherwise have matched `inert`, so `inert` was dead code — never actually emitted.
+    Restricting the guard to the `lastCommitAt IS NULL` case (matching the blocknetdx/blocknet
+    example this branch was originally written for) lets repos with a known, stale last-commit
+    timestamp fall through into the real decision tree, where `inert` can now actually fire.
 
 NODE health_score_v2_lifecycle_calc
+DESCRIPTION >
+    - Precedence (first match wins): archived > abandoned > inert > declining > stable > active.
+    - Threshold note (provisional, pending validation analysis): abandoned requires at least one
+    issue OR PR that has sat unanswered for 90+ days, plus a 12-month no-commit gate. The age
+    gate is a single threshold, NOT a closed 90-180 band: a band would let a repo exit
+    'abandoned' once its ignored issues age past the upper bound (they still block 'inert' via
+    issuesInWindow18m, so the repo would flip back to 'active'). The spec's "~90-180 days" is
+    the tuning range for this one threshold — the abandoned-threshold-sweep validation analysis
+    picks the final value. The no-commit gate requires BOTH commit signals to be silent: zero
+    authored-commit activity in both trailing 6mo windows (covers repos where lastCommitAt is
+    NULL/stale from the upstream `repos` data gap but real commits exist in activityRelations)
+    AND repos.lastCommitAt NULL or older than 12mo (covers the reverse gap). Both signals are
+    last-commit-by-anyone, not maintainer-specific activity; whether maintainer review/comment
+    activity should also block 'abandoned' is an open question on the PR.
+    - Inert: lastCommitAt older than 18mo AND zero issues/PRs opened in the 18mo window.
+    lastCommitAt IS NULL deliberately does NOT qualify: a NULL-with-no-signal repo is already
+    caught by the NULL guard above, and a NULL-with-recent-commits repo (upstream data gap in
+    `repos`) must not be mislabeled inert just because one timestamp field is missing.
+    - Unanswered issue: opened in the 18mo window, no non-author comment, still open, and has been
+    open 90+ days.
+    - Unanswered PR: opened in the 18mo window, no reviewer activity (reviewedAt IS NULL), still
+    open (closedAt IS NULL), and has been open 90+ days. Mirrors the issue-side signal using
+    pull_requests_analyzed.reviewedAt, which is already the first-response timestamp for PRs
+    (first review / changes-requested / Gerrit patchset approval) — no new datasource field needed.
+    - Declining: commit count down >50% vs prior 6mo AND issues opened up vs prior 6mo.
+    - Stable: release within 12mo, <50 open issues, no open critical vulns, AND commits down
+    >50% vs prior 6mo.
+
 SQL >
     SELECT
         r.url AS repoUrl,
         if(
             r.archived != 1
+            AND r.lastCommitAt IS NULL
             AND coalesce(c.commitsLast6m, 0) = 0
             AND coalesce(c.commitsPrior6m, 0) = 0
             AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
@@ -42,9 +81,14 @@ SQL >
                 multiIf(
                     r.archived = 1,
                     'archived',
-                    (r.lastCommitAt < now() - INTERVAL 18 MONTH)
-                    AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
+                    (coalesce(w.unansweredAged90d, 0) > 0 OR coalesce(pw.unansweredAged90d, 0) > 0)
+                    AND coalesce(c.commitsLast6m, 0) = 0
+                    AND coalesce(c.commitsPrior6m, 0) = 0
+                    AND (r.lastCommitAt IS NULL OR r.lastCommitAt < now() - INTERVAL 12 MONTH),
                     'abandoned',
+                    r.lastCommitAt < now() - INTERVAL 18 MONTH
+                    AND coalesce(w.issuesInWindow18m, 0) + coalesce(p.prsInWindow18m, 0) = 0,
+                    'inert',
                     coalesce(c.commitsLast6m, 0) < coalesce(c.commitsPrior6m, 0) * 0.5
                     AND coalesce(w.issuesOpenedLast6m, 0) > coalesce(w.issuesOpenedPrior6m, 0),
                     'declining',
@@ -56,7 +100,8 @@ SQL >
                     'active'
                 )
             )
-        ) AS lifecycleLabelV2
+        ) AS lifecycleLabelV2,
+        '2.0.0' AS methodologyVersion
     FROM
         (
             SELECT base.url AS url, base.archived AS archived, rc.lastCommitAt AS lastCommitAt
@@ -95,7 +140,13 @@ SQL >
                 countIf(
                     openedAt <= now() - INTERVAL 6 MONTH AND openedAt > now() - INTERVAL 12 MONTH
                 ) AS issuesOpenedPrior6m,
-                countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m
+                countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m,
+                countIf(
+                    openedAt > now() - INTERVAL 18 MONTH
+                    AND respondedInSeconds IS NULL
+                    AND closedAt IS NULL
+                    AND openedAt <= now() - INTERVAL 90 DAY
+                ) AS unansweredAged90d
             FROM issues_analyzed
             GROUP BY channel
         ) AS w
@@ -107,6 +158,21 @@ SQL >
             GROUP BY channel
         ) AS p
         ON p.repoUrl = r.url
+    LEFT JOIN
+        (
+            SELECT
+                channel AS repoUrl,
+                countIf(
+                    openedAt > now() - INTERVAL 18 MONTH
+                    AND reviewedAt IS NULL
+                    AND approvedAt IS NULL
+                    AND closedAt IS NULL
+                    AND openedAt <= now() - INTERVAL 90 DAY
+                ) AS unansweredAged90d
+            FROM pull_requests_analyzed
+            GROUP BY channel
+        ) AS pw
+        ON pw.repoUrl = r.url
     LEFT JOIN
         (
             SELECT repoUrl, countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals

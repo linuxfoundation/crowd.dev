@@ -12,7 +12,8 @@ DESCRIPTION >
     - Maintainer signals: `busFactorScore` (avg), `busFactorAvailable` (max), `busFactorCount` (max),
     `orgDiversityScore` (avg), `orgDiversityAvailable` (max), `orgCount` (max),
     `responsivenessScore` (avg), `responsivenessAvailable` (max), `medianPrResponseS` (avg),
-    `medianIssueResponseS` (avg), `isGerrit` (min), `isExcluded` (min).
+    `medianIssueResponseS` (avg), `isGerrit` (min), `isExcluded` (min),
+    `busFactorScoreActivityWeightedMean` (activity-weighted mean of bus-factor score across repos).
     - Security signals: `openVulnScore` (avg), `openCriticals`/`openHighs`/`openModerates` (max),
     `scorecardScorePts` (avg), `scorecardAvailable` (max), `scorecardScore` (avg, cast from the raw
     String), `securityPracticesScore` (avg), `securityPracticesAvailable` (max),
@@ -75,7 +76,8 @@ SCHEMA >
     `prMergeAvailable` Nullable(UInt8),
     `merged12m` Nullable(UInt64),
     `closedUnmerged12m` Nullable(UInt64),
-    `medianMergeS` Nullable(Float64)
+    `medianMergeS` Nullable(Float64),
+    `busFactorScoreActivityWeightedMean` Nullable(Float64)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY slug, projectId

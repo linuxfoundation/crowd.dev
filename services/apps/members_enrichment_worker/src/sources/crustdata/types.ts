@@ -8,6 +8,17 @@ export interface IMemberEnrichmentCrustdataEmployer {
   end_date?: string
 }
 
+export interface IMemberEnrichmentCrustdataBusinessEmail {
+  email?: string
+  status?: string
+  last_updated?: string | null
+  crustdata_company_id?: number
+}
+
+export interface IMemberEnrichmentCrustdataContact {
+  business_emails?: IMemberEnrichmentCrustdataBusinessEmail[]
+}
+
 export interface IMemberEnrichmentCrustdataPersonData {
   basic_profile?: {
     name?: string
@@ -47,6 +58,7 @@ export interface IMemberEnrichmentCrustdataPersonData {
       past?: IMemberEnrichmentCrustdataEmployer[]
     }
   }
+  contact?: IMemberEnrichmentCrustdataContact
 }
 
 export interface IMemberEnrichmentDataCrustdata extends IMemberEnrichmentCrustdataPersonData {

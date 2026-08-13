@@ -1,17 +1,19 @@
 NODE health_score_select_fields
 SQL >
     SELECT
-        id,
-        segmentId,
-        slug,
-        if(isNaN(overallScore), null, overallScore) as overallScore,
-        if(isNaN(securityPercentage), null, securityPercentage) as securityPercentage,
-        securityCategoryPercentage,
-        if(isNaN(contributorPercentage), null, contributorPercentage) as contributorPercentage,
-        if(isNaN(popularityPercentage), null, popularityPercentage) as popularityPercentage,
-        if(isNaN(developmentPercentage), null, developmentPercentage) as developmentPercentage,
+        hs.id,
+        hs.segmentId,
+        hs.slug,
+        if(isNaN(hs.overallScore), null, hs.overallScore) as overallScore,
+        if(isNaN(hs.securityPercentage), null, hs.securityPercentage) as securityPercentage,
+        hs.securityCategoryPercentage,
+        if(isNaN(hs.contributorPercentage), null, hs.contributorPercentage) as contributorPercentage,
+        if(isNaN(hs.popularityPercentage), null, hs.popularityPercentage) as popularityPercentage,
+        if(isNaN(hs.developmentPercentage), null, hs.developmentPercentage) as developmentPercentage,
+        p.healthScoreV2 as overall_score_v2,
         toStartOfDay(now()) as date
-    FROM health_score_copy_ds
+    FROM health_score_copy_ds AS hs
+    LEFT JOIN project_insights_copy_ds AS p ON hs.id = p.id AND p.type = 'project'
 
 TYPE SINK
 EXPORT_SERVICE kafka
