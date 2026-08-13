@@ -137,6 +137,23 @@ describe('prepareWorkExperiences', () => {
     expect(result.toUpdate.size).toBe(0)
   })
 
+  it('matches multiple same-title stints at one org by date, regardless of payload order', () => {
+    const stintA = oldRow({ id: 'row-a', dateStart: '2018-01-01', dateEnd: '2019-01-01' })
+    const stintB = oldRow({ id: 'row-b', dateStart: '2020-01-01', dateEnd: '2021-01-01' })
+    const entryForB = newEntry({ startDate: '2020-01-01', endDate: '2021-01-01' })
+    const entryForA = newEntry({ startDate: '2018-01-01', endDate: '2019-01-01' })
+    const result = prepareWorkExperiences(
+      [stintA, stintB],
+      [entryForB, entryForA],
+      false,
+      new Set(),
+    )
+
+    expect(result.toDelete).toEqual([])
+    expect(result.toCreate).toEqual([])
+    expect(result.toUpdate.size).toBe(0)
+  })
+
   it('fills a UI row null dateEnd from a matching provider entry', () => {
     const uiRow = oldRow({ id: 'row-ui', source: OrganizationSource.UI, dateEnd: null })
     const matching = newEntry({ endDate: '2021-01-01' })

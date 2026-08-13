@@ -63,6 +63,12 @@ function reconcileEnrichmentOrgs(
       (c) => !matchedOldIds.has(c.id),
     )
     const match =
+      candidates.find(
+        (c) =>
+          normalizeTitle(c.jobTitle) === normalizeTitle(entry.title) &&
+          normalizeDate(c.dateStart) === normalizeDate(entry.startDate) &&
+          normalizeDate(c.dateEnd) === normalizeDate(entry.endDate),
+      ) ??
       candidates.find((c) => normalizeTitle(c.jobTitle) === normalizeTitle(entry.title)) ??
       candidates[0]
 
