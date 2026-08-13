@@ -61,7 +61,12 @@ SQL >
                 ) AS coveredCategoryWeight,
                 l.lifecycleLabelV2 AS lifecycleLabelV2,
                 i.impactScoreRaw AS impactScoreRaw
-            FROM (SELECT DISTINCT url AS repoUrl FROM repositories WHERE deletedAt IS NULL) AS base
+            FROM
+                (
+                    SELECT DISTINCT url AS repoUrl
+                    FROM repositories
+                    WHERE deletedAt IS NULL AND archived = false AND excluded = false
+                ) AS base
             LEFT JOIN health_score_v2_maintainer_ds AS m ON m.repoUrl = base.repoUrl
             LEFT JOIN health_score_v2_security_ds AS s ON s.repoUrl = base.repoUrl
             LEFT JOIN health_score_v2_development_ds AS d ON d.repoUrl = base.repoUrl

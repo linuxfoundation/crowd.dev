@@ -117,7 +117,12 @@ SQL >
                         ) AS dependencyHealthScore,
                         (pkgs.repoUrl != '') AS dependencyHealthAvailable,
                         dh.vulnerableDeps AS vulnerableDeps
-                    FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS allRepos
+                    FROM
+                        (
+                            SELECT DISTINCT url
+                            FROM repositories
+                            WHERE deletedAt IS NULL AND archived = false AND excluded = false
+                        ) AS allRepos
                     LEFT JOIN
                         (
                             SELECT
