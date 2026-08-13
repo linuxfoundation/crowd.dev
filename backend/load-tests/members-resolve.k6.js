@@ -6,12 +6,12 @@ const rateLimited = new Counter('rate_limited_429')
 const errorRate = new Rate('errors')
 
 const PROFILE = __ENV.PROFILE || 'steady'
-const API_BASE_URL = __ENV.API_BASE_URL || 'https://api.staging.crowd.dev'
+const API_BASE_URL = __ENV.API_BASE_URL || 'https://lf-staging.crowd.dev'
 const ALLOW_PROD = __ENV.ALLOW_PROD === '1'
 
 const PROD_HOSTS = /^(api\.crowd\.dev|cm\.lfx\.dev)(:\d+)?$/
 
-const parsedHost = new URL(API_BASE_URL).host
+const parsedHost = API_BASE_URL.replace(/^https?:\/\//, '').split('/')[0]
 
 if (PROD_HOSTS.test(parsedHost) && !ALLOW_PROD) {
   throw new Error(
@@ -50,12 +50,12 @@ const PROFILES = {
         startRate: 0,
         timeUnit: '1m',
         stages: [
-          { target: 400, duration: '2m' },
-          { target: 400, duration: '5m' },
+          { target: 800, duration: '2m' },
+          { target: 800, duration: '5m' },
           { target: 0, duration: '1m' },
         ],
-        preAllocatedVUs: 40,
-        maxVUs: 100,
+        preAllocatedVUs: 80,
+        maxVUs: 200,
       },
     },
     thresholds: {
@@ -103,9 +103,11 @@ export function setup() {
   return { token: tokenRes.json('access_token') }
 }
 
-const LFIDS = __ENV.LFIDS
-  ? JSON.parse(__ENV.LFIDS)
-  : ['testuser1', 'testuser2', 'testuser3', 'testuser4', 'testuser5']
+const LFIDS = __ENV.LFIDS_FILE
+  ? JSON.parse(open(__ENV.LFIDS_FILE))
+  : __ENV.LFIDS
+    ? JSON.parse(__ENV.LFIDS)
+    : ['testuser1', 'testuser2', 'testuser3', 'testuser4', 'testuser5']
 
 let cursor = 0
 
@@ -114,7 +116,7 @@ export default function main(data) {
   cursor += 1
 
   const res = http.post(
-    `${API_BASE_URL}/api/public/v1/members/resolve`,
+    `${API_BASE_URL}/v1/members/resolve`,
     JSON.stringify({ lfids: [lfid] }),
     {
       headers: {
@@ -132,6 +134,7 @@ export default function main(data) {
     rateLimited.add(1)
     errorRate.add(0)
   } else if (!valid) {
+    console.error(`unexpected status=${res.status} lfid=${lfid} body=${res.body}`)
     errorRate.add(1)
   } else {
     errorRate.add(0)

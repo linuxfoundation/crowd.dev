@@ -12,18 +12,18 @@ brew install k6
 
 | Variable | Description |
 |---|---|
-| `AUTH0_TOKEN_URL` | Auth0 `/oauth/token` endpoint |
+| `AUTH0_TOKEN_URL` | Auth0 `/oauth/token` endpoint — e.g. `https://linuxfoundation.auth0.com/oauth/token` |
 | `AUTH0_CLIENT_ID` | M2M client ID |
 | `AUTH0_CLIENT_SECRET` | M2M client secret |
-| `AUTH0_AUDIENCE` | API audience |
-| `API_BASE_URL` | Target base URL (default: `https://api.staging.crowd.dev`) |
+| `AUTH0_AUDIENCE` | API audience — staging: `https://lf-staging.crowd.dev/api/`, prod: `https://cm.lfx.dev/api/` |
+| `API_BASE_URL` | Target base URL (default: `https://lf-staging.crowd.dev`) |
 
 Optional:
 
 | Variable | Description |
 |---|---|
 | `PROFILE` | `steady` (default), `burst`, or `soak` |
-| `LFIDS` | JSON array of LFIDs to rotate through — e.g. `'["user1","user2"]'` |
+| `LFIDS_FILE` | Path to JSON file containing array of LFIDs (relative to script dir) — e.g. `tmp/lfids.json` |
 | `ALLOW_PROD` | Set to `1` to enable production runs (requires coordination window) |
 
 ## Running
@@ -31,10 +31,19 @@ Optional:
 ```bash
 # Steady state — 200 req/min for 10 min (staging)
 k6 run \
-  -e AUTH0_TOKEN_URL=https://lf.auth0.com/oauth/token \
+  -e AUTH0_TOKEN_URL=https://linuxfoundation.auth0.com/oauth/token \
   -e AUTH0_CLIENT_ID=... \
   -e AUTH0_CLIENT_SECRET=... \
-  -e AUTH0_AUDIENCE=https://api.crowd.dev \
+  -e AUTH0_AUDIENCE=https://lf-staging.crowd.dev/api/ \
+  backend/load-tests/members-resolve.k6.js
+
+# With real LFIDs from staging DB (avoids shell arg limit)
+k6 run \
+  -e AUTH0_TOKEN_URL=https://linuxfoundation.auth0.com/oauth/token \
+  -e AUTH0_CLIENT_ID=... \
+  -e AUTH0_CLIENT_SECRET=... \
+  -e AUTH0_AUDIENCE=https://lf-staging.crowd.dev/api/ \
+  -e LFIDS_FILE=tmp/lfids.json \
   backend/load-tests/members-resolve.k6.js
 
 # Burst — ramps to 400 req/min to confirm 429 behaviour
@@ -45,8 +54,9 @@ k6 run -e PROFILE=soak ... backend/load-tests/members-resolve.k6.js
 
 # Production (requires explicit opt-in)
 k6 run \
-  -e API_BASE_URL=https://api.crowd.dev \
+  -e API_BASE_URL=https://cm.lfx.dev \
   -e ALLOW_PROD=1 \
+  -e AUTH0_AUDIENCE=https://cm.lfx.dev/api/ \
   ... backend/load-tests/members-resolve.k6.js
 ```
 
@@ -71,7 +81,7 @@ FROM (SELECT username FROM "memberIdentities" WHERE platform = 'lfid' LIMIT 1000
 ```
 
 ```bash
-k6 run -e LFIDS="$(cat backend/load-tests/tmp/lfids.json)" ... backend/load-tests/members-resolve.k6.js
+k6 run -e LFIDS_FILE=tmp/lfids.json ... backend/load-tests/members-resolve.k6.js
 ```
 
 `backend/load-tests/tmp/` is gitignored.
