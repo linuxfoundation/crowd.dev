@@ -120,7 +120,7 @@ SQL >
                     FROM
                         (
                             SELECT DISTINCT url
-                            FROM repositories
+                            FROM repositories FINAL
                             WHERE deletedAt IS NULL AND archived = false AND excluded = false
                         ) AS allRepos
                     LEFT JOIN
@@ -150,7 +150,7 @@ SQL >
                                 countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
                                 countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
                                 countIf(status = 'OPEN' AND severity = 'MEDIUM') AS openModerates
-                            FROM vulnerabilities
+                            FROM vulnerabilities FINAL
                             GROUP BY repoUrl
                         ) AS vc
                         ON vc.repoUrl = allRepos.url

@@ -108,7 +108,7 @@ SQL >
             FROM
                 (
                     SELECT DISTINCT url, archived
-                    FROM repositories
+                    FROM repositories FINAL
                     WHERE deletedAt IS NULL AND excluded = false
                 ) AS base
             LEFT JOIN
@@ -189,7 +189,7 @@ SQL >
     LEFT JOIN
         (
             SELECT repoUrl, countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals
-            FROM vulnerabilities
+            FROM vulnerabilities FINAL
             GROUP BY repoUrl
         ) AS v
         ON v.repoUrl = r.url
