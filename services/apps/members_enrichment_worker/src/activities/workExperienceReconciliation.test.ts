@@ -65,6 +65,22 @@ describe('prepareWorkExperiences', () => {
     expect(result.toUpdate.has(verified)).toBe(false)
   })
 
+  it('does not insert a duplicate affiliation for a provider entry matching a verified org+title', () => {
+    const verified = oldRow({ id: 'row-verified', verified: true, verifiedBy: 'jane' })
+    const duplicate = newEntry({ startDate: '2021-06-01', endDate: '2022-01-01' })
+    const result = prepareWorkExperiences([verified], [duplicate], false, new Set())
+
+    expect(result.toCreate).toEqual([])
+  })
+
+  it('still creates an entry for a distinct role at the same org as a verified row', () => {
+    const verified = oldRow({ id: 'row-verified', verified: true, verifiedBy: 'jane' })
+    const distinctRole = newEntry({ title: 'Manager', startDate: '2022-01-01', endDate: null })
+    const result = prepareWorkExperiences([verified], [distinctRole], false, new Set())
+
+    expect(result.toCreate).toEqual([distinctRole])
+  })
+
   it('never recreates an organization a person deleted on purpose (tombstoned)', () => {
     const tombstonedEntry = newEntry({ organizationId: 'org-deleted' })
     const result = prepareWorkExperiences([], [tombstonedEntry], false, new Set(['org-deleted']))
@@ -101,6 +117,24 @@ describe('prepareWorkExperiences', () => {
     expect(result.toCreate).toEqual([])
     expect(result.toDelete).toEqual([])
     expect(result.toUpdate.get(existing)).toEqual({ dateEnd: '2021-12-31' })
+  })
+
+  it('adopts the incoming source on a matched row when the provider source changed', () => {
+    const existing = oldRow({ source: OrganizationSource.ENRICHMENT_PROGAI })
+    const resupplied = newEntry({ source: OrganizationSource.ENRICHMENT_CRUSTDATA })
+    const result = prepareWorkExperiences([existing], [resupplied], false, new Set())
+
+    expect(result.toUpdate.get(existing)).toEqual({
+      source: OrganizationSource.ENRICHMENT_CRUSTDATA,
+    })
+  })
+
+  it('does not treat a date-only vs full-timestamp difference as a change', () => {
+    const existing = oldRow({ dateStart: '2020-01-01T00:00:00.000Z', dateEnd: null })
+    const resupplied = newEntry({ startDate: '2020-01-01', endDate: null })
+    const result = prepareWorkExperiences([existing], [resupplied], false, new Set())
+
+    expect(result.toUpdate.size).toBe(0)
   })
 
   it('fills a UI row null dateEnd from a matching provider entry', () => {

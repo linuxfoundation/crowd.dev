@@ -515,9 +515,8 @@ export async function deleteMemberOrganizations(
   softDelete = true,
   deletedBy?: string,
 ): Promise<void> {
-  // Base query depends on soft vs hard delete. deletedBy marks this as a human-initiated
-  // delete — the enrichment worker's own rebuild deletes must never set it, since only a
-  // human delete is meant to permanently block the affiliation from being recreated.
+  // deletedBy marks a human delete; the enrichment worker's own rebuild deletes must
+  // never set it, since only a human delete permanently blocks recreation.
   const baseQuery = softDelete
     ? deletedBy
       ? 'UPDATE "memberOrganizations" SET "deletedAt" = NOW(), "deletedBy" = $(deletedBy)'

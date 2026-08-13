@@ -10,6 +10,9 @@ export interface IWorkExperienceChanges {
   toUpdate: Map<IMemberOrganizationData, Record<string, any>>
 }
 
+const normalizeTitle = (title: string | null | undefined) => (title ?? '').trim().toLowerCase()
+const normalizeDate = (date: string | null | undefined) => (date ? date.substring(0, 10) : '')
+
 /**
  * Returns true when the set of (orgId, startDate, endDate) tuples differs
  * between deletes and creates. Fields like title or source don't affect
@@ -20,7 +23,7 @@ export function hasMemberOrganizationTimelineChange(
   toCreate: IMemberEnrichmentDataNormalizedOrganization[],
 ): boolean {
   const toKey = (orgId: string, start: string | null | undefined, end: string | null | undefined) =>
-    `${orgId}|${start ? start.substring(0, 10) : ''}|${end ? end.substring(0, 10) : ''}`
+    `${orgId}|${normalizeDate(start)}|${normalizeDate(end)}`
 
   const deletedKeys = new Set(toDelete.map((d) => toKey(d.orgId, d.dateStart, d.dateEnd)))
   const createdKeys = new Set(toCreate.map((c) => toKey(c.organizationId, c.startDate, c.endDate)))
@@ -36,14 +39,13 @@ export function hasMemberOrganizationTimelineChange(
  * Reconciles enrichment-owned memberOrganizations rows against the incoming payload
  * in place: matched rows are updated (only the fields that actually changed), unmatched
  * old rows are deleted, unmatched new entries are created. Never touches UI/project-registry
- * or verified rows — callers must exclude those from oldEnrichmentRows.
+ * or verified rows — callers must exclude those from oldEnrichmentRows and filter matching
+ * newEntries out beforehand.
  */
 function reconcileEnrichmentOrgs(
   oldEnrichmentRows: IMemberOrganizationData[],
   newEntries: IMemberEnrichmentDataNormalizedOrganization[],
 ): IWorkExperienceChanges {
-  const normalizeTitle = (title: string | null | undefined) => (title ?? '').trim().toLowerCase()
-
   const oldByOrg = new Map<string, IMemberOrganizationData[]>()
   for (const old of oldEnrichmentRows) {
     const bucket = oldByOrg.get(old.orgId) ?? []
@@ -76,11 +78,14 @@ function reconcileEnrichmentOrgs(
     if (entry.title !== undefined && entry.title !== match.jobTitle) {
       toUpdateInner.title = entry.title
     }
-    if (entry.startDate !== match.dateStart) {
+    if (normalizeDate(entry.startDate) !== normalizeDate(match.dateStart)) {
       toUpdateInner.dateStart = entry.startDate
     }
-    if (entry.endDate !== match.dateEnd) {
+    if (normalizeDate(entry.endDate) !== normalizeDate(match.dateEnd)) {
       toUpdateInner.dateEnd = entry.endDate
+    }
+    if (entry.source !== undefined && entry.source !== match.source) {
+      toUpdateInner.source = entry.source
     }
     if (Object.keys(toUpdateInner).length > 0) {
       toUpdate.set(match, toUpdateInner)
@@ -109,6 +114,19 @@ export function prepareWorkExperiences(
 
   // never recreate an affiliation that a person deleted on purpose — providers keep resupplying it
   newVersion = newVersion.filter((e) => !deletedOrganizationIds.has(e.organizationId))
+
+  // verified rows are excluded from oldEnrichmentRows above, so a matching provider entry
+  // must be dropped here too, or it lands in toCreate as a conflicting duplicate
+  const verifiedRows = oldVersion.filter((c) => c.verified === true)
+  newVersion = newVersion.filter(
+    (e) =>
+      !verifiedRows.some(
+        (v) =>
+          normalizeTitle(v.jobTitle) === normalizeTitle(e.title) &&
+          e.identities &&
+          e.identities.some((i) => i.organizationId === v.orgId),
+      ),
+  )
 
   if (isHighConfidenceSourceSelectedForWorkExperiences) {
     const uiEntries = oldVersion.filter((c) => c.source === OrganizationSource.UI)
