@@ -604,7 +604,7 @@ export async function updateMemberUsingSquashedPayload(
         existingMemberData.organizations,
         squashedPayload.memberOrganizations,
         isHighConfidenceSourceSelectedForWorkExperiences,
-        new Set(existingMemberData.deletedOrganizations.map((o) => o.orgId)),
+        new Set((existingMemberData.deletedOrganizations ?? []).map((o) => o.orgId)),
       )
 
       // Skip the refresh when the timeline that drives activityRelations hasn't changed —

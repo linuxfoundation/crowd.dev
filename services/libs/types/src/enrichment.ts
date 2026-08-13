@@ -61,8 +61,9 @@ export interface IMemberOriginalData {
 
   // memberOrganizations table data
   organizations: IMemberOrganizationData[]
-  // memberOrganizations rows manually deleted by a person (deletedBy set)
-  deletedOrganizations: IDeletedMemberOrganizationData[]
+  // memberOrganizations rows manually deleted by a person (deletedBy set). Optional because
+  // in-flight Temporal histories may carry a pre-rollout result that predates this field.
+  deletedOrganizations?: IDeletedMemberOrganizationData[]
 }
 
 export interface IOrganizationEnrichmentCache<T> {
