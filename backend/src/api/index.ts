@@ -136,7 +136,6 @@ setImmediate(async () => {
   const defaultRateLimiter = createRateLimiter({
     max: 200,
     windowMs: 60 * 1000,
-    skip: (req) => req.method === 'POST' && req.originalUrl.split('?')[0] === '/v1/members/resolve',
   })
 
   app.use(defaultRateLimiter)
