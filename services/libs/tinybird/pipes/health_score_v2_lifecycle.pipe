@@ -115,62 +115,70 @@ SQL >
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
-                countIf(timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
+                ch.repoUrl AS repoUrl,
+                countIf(ar.timestamp > now() - INTERVAL 6 MONTH) AS commitsLast6m,
                 countIf(
-                    timestamp <= now() - INTERVAL 6 MONTH AND timestamp > now() - INTERVAL 12 MONTH
+                    ar.timestamp <= now() - INTERVAL 6 MONTH
+                    AND ar.timestamp > now() - INTERVAL 12 MONTH
                 ) AS commitsPrior6m
-            FROM activityRelations_deduplicated_cleaned_bucket_union
-            WHERE type = 'authored-commit'
-            GROUP BY channel
+            FROM activityRelations_deduplicated_cleaned_bucket_union ar
+            INNER JOIN repos_channels_ds ch ON ar.channel = ch.channel
+            WHERE ar.type = 'authored-commit'
+            GROUP BY ch.repoUrl
         ) AS c
         ON c.repoUrl = r.url
     LEFT JOIN
         (
-            SELECT channel AS repoUrl, countIf(closedAt IS NULL) AS issuesOpenNow
-            FROM issues_analyzed
-            GROUP BY channel
+            SELECT ch.repoUrl AS repoUrl, countIf(ia.closedAt IS NULL) AS issuesOpenNow
+            FROM issues_analyzed ia
+            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
+            GROUP BY ch.repoUrl
         ) AS n
         ON n.repoUrl = r.url
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
-                countIf(openedAt > now() - INTERVAL 6 MONTH) AS issuesOpenedLast6m,
+                ch.repoUrl AS repoUrl,
+                countIf(ia.openedAt > now() - INTERVAL 6 MONTH) AS issuesOpenedLast6m,
                 countIf(
-                    openedAt <= now() - INTERVAL 6 MONTH AND openedAt > now() - INTERVAL 12 MONTH
+                    ia.openedAt <= now() - INTERVAL 6 MONTH AND ia.openedAt > now() - INTERVAL 12 MONTH
                 ) AS issuesOpenedPrior6m,
-                countIf(openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m,
+                countIf(ia.openedAt > now() - INTERVAL 18 MONTH) AS issuesInWindow18m,
                 countIf(
-                    openedAt > now() - INTERVAL 18 MONTH
-                    AND respondedInSeconds IS NULL
-                    AND closedAt IS NULL
-                    AND openedAt <= now() - INTERVAL 90 DAY
+                    ia.openedAt > now() - INTERVAL 18 MONTH
+                    AND ia.respondedInSeconds IS NULL
+                    AND ia.closedAt IS NULL
+                    AND ia.openedAt <= now() - INTERVAL 90 DAY
                 ) AS unansweredAged90d
-            FROM issues_analyzed
-            GROUP BY channel
+            FROM issues_analyzed ia
+            INNER JOIN repos_channels_ds ch ON ia.channel = ch.channel
+            GROUP BY ch.repoUrl
         ) AS w
         ON w.repoUrl = r.url
     LEFT JOIN
         (
-            SELECT channel AS repoUrl, countIf(openedAt > now() - INTERVAL 18 MONTH) AS prsInWindow18m
-            FROM pull_requests_analyzed
-            GROUP BY channel
+            SELECT
+                ch.repoUrl AS repoUrl,
+                countIf(pra.openedAt > now() - INTERVAL 18 MONTH) AS prsInWindow18m
+            FROM pull_requests_analyzed pra
+            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
+            GROUP BY ch.repoUrl
         ) AS p
         ON p.repoUrl = r.url
     LEFT JOIN
         (
             SELECT
-                channel AS repoUrl,
+                ch.repoUrl AS repoUrl,
                 countIf(
-                    openedAt > now() - INTERVAL 18 MONTH
-                    AND reviewedAt IS NULL
-                    AND approvedAt IS NULL
-                    AND closedAt IS NULL
-                    AND openedAt <= now() - INTERVAL 90 DAY
+                    pra.openedAt > now() - INTERVAL 18 MONTH
+                    AND pra.reviewedAt IS NULL
+                    AND pra.approvedAt IS NULL
+                    AND pra.closedAt IS NULL
+                    AND pra.openedAt <= now() - INTERVAL 90 DAY
                 ) AS unansweredAged90d
-            FROM pull_requests_analyzed
-            GROUP BY channel
+            FROM pull_requests_analyzed pra
+            INNER JOIN repos_channels_ds ch ON pra.channel = ch.channel
+            GROUP BY ch.repoUrl
         ) AS pw
         ON pw.repoUrl = r.url
     LEFT JOIN
