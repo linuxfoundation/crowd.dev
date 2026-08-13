@@ -105,7 +105,12 @@ SQL >
     FROM
         (
             SELECT base.url AS url, base.archived AS archived, rc.lastCommitAt AS lastCommitAt
-            FROM (SELECT DISTINCT url, archived FROM repositories WHERE deletedAt IS NULL) AS base
+            FROM
+                (
+                    SELECT DISTINCT url, archived
+                    FROM repositories
+                    WHERE deletedAt IS NULL AND excluded = false
+                ) AS base
             LEFT JOIN
                 (
                     SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt FROM repos GROUP BY url

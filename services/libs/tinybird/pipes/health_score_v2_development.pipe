@@ -150,7 +150,12 @@ SQL >
                     FROM
                         (
                             SELECT base.url AS repoUrl, rc.lastCommitAt AS lastCommitAt
-                            FROM (SELECT DISTINCT url FROM repositories WHERE deletedAt IS NULL) AS base
+                            FROM
+                                (
+                                    SELECT DISTINCT url
+                                    FROM repositories
+                                    WHERE deletedAt IS NULL AND archived = false AND excluded = false
+                                ) AS base
                             LEFT JOIN
                                 (
                                     SELECT url, argMax(lastCommitAt, updatedAt) AS lastCommitAt

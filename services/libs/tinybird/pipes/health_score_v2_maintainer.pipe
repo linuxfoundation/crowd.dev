@@ -188,7 +188,7 @@ SQL >
                                 r.excluded AS isExcluded
                             FROM repositories r FINAL
                             LEFT JOIN integrations i FINAL ON r.sourceIntegrationId = i.id
-                            WHERE r.deletedAt IS NULL
+                            WHERE r.deletedAt IS NULL AND r.archived = false AND r.excluded = false
                         ) AS allRepos
                     LEFT JOIN
                         (
