@@ -12,5 +12,3 @@ dist/
 
 *.tmp
 
-load-tests/tmp/
-
