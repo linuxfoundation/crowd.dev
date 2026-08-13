@@ -10,7 +10,8 @@
     "lint": "npx eslint --ext .ts src --max-warnings=0",
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
-    "tsc-check": "tsc --noEmit"
+    "tsc-check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@types/node": "^20.8.2",
     "@types/uuid": "~9.0.6",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "vitest": "^3.2.4"
   }
 }

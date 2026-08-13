@@ -44,6 +44,8 @@ export async function fetchMemberDataForLLMSquashing(
                             mo."dateStart",
                             mo."dateEnd",
                             mo.source,
+                            mo.verified,
+                            mo."verifiedBy",
                             jsonb_agg(jsonb_build_object(
                               'organizationId', oi."organizationId",
                               'platform', oi.platform,
@@ -63,7 +65,7 @@ export async function fetchMemberDataForLLMSquashing(
                             from "memberOrganizations" mo
                             where mo."memberId" = $(memberId)
                               and mo."deletedAt" is not null
-                              and mo.source not in ('ui', 'project-registry'))
+                              and mo."deletedBy" is not null)
     select m."displayName",
           m.attributes,
           m."manuallyChangedFields",
@@ -90,6 +92,8 @@ export async function fetchMemberDataForLLMSquashing(
                                                 mo."dateStart",
                                                 mo."dateEnd",
                                                 mo.source,
+                                                mo.verified,
+                                                mo."verifiedBy",
                                                 coalesce(mo.identities, '[]'::jsonb) as identities) r)
                           )
                   from member_orgs mo
@@ -571,7 +575,7 @@ export async function updateMemberOrg(
     return null
   }
 
-  const sets = keys.map((k) => `"${k}" = $(${k})`)
+  const sets = [...keys.map((k) => `"${k}" = $(${k})`), `"updatedAt" = now()`]
 
   const result = await tx.oneOrNone(
     `

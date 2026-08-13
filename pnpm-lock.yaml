@@ -1071,6 +1071,9 @@ importers:
       nodemon:
         specifier: ^3.0.1
         version: 3.1.0
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@20.12.7)(jiti@2.4.2)(terser@5.43.1)(tsx@4.7.3)(yaml@2.7.0)
 
   services/apps/merge_suggestions_worker:
     dependencies:

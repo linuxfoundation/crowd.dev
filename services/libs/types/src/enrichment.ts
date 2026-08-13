@@ -40,6 +40,8 @@ export interface IMemberOrganizationData {
   dateStart: string
   dateEnd: string
   source: string
+  verified?: boolean
+  verifiedBy?: string | null
   identities?: IOrganizationIdentity[]
 }
 
@@ -59,7 +61,7 @@ export interface IMemberOriginalData {
 
   // memberOrganizations table data
   organizations: IMemberOrganizationData[]
-  // memberOrganizations rows manually deleted, source not UI/PROJECT_REGISTRY — tombstones enrichment must not recreate
+  // memberOrganizations rows manually deleted by a person (deletedBy set)
   deletedOrganizations: IDeletedMemberOrganizationData[]
 }
 

@@ -513,15 +513,20 @@ export async function deleteMemberOrganizations(
   memberId: string,
   ids?: string[],
   softDelete = true,
+  deletedBy?: string,
 ): Promise<void> {
-  // Base query depends on soft vs hard delete
+  // Base query depends on soft vs hard delete. deletedBy marks this as a human-initiated
+  // delete — the enrichment worker's own rebuild deletes must never set it, since only a
+  // human delete is meant to permanently block the affiliation from being recreated.
   const baseQuery = softDelete
-    ? 'UPDATE "memberOrganizations" SET "deletedAt" = NOW()'
+    ? deletedBy
+      ? 'UPDATE "memberOrganizations" SET "deletedAt" = NOW(), "deletedBy" = $(deletedBy)'
+      : 'UPDATE "memberOrganizations" SET "deletedAt" = NOW()'
     : 'DELETE FROM "memberOrganizations"'
 
   // Build WHERE clause
   const conditions = ['"memberId" = $(memberId)']
-  const params: Record<string, unknown> = { memberId }
+  const params: Record<string, unknown> = { memberId, deletedBy }
 
   if (ids?.length) {
     conditions.push(`"id" IN ($(ids:csv))`)

@@ -3,7 +3,6 @@ import axios from 'axios'
 import _ from 'lodash'
 
 import {
-  generateUUIDv1,
   getAttributeValue,
   getCountry,
   hasAttributeValue,
@@ -60,7 +59,6 @@ import {
   OrganizationAttributeSource,
   OrganizationIdentityType,
   OrganizationMergeSuggestionTable,
-  OrganizationSource,
   PlatformType,
 } from '@crowd/types'
 
@@ -73,6 +71,11 @@ import {
   IMemberEnrichmentDataNormalized,
   IMemberEnrichmentDataNormalizedOrganization,
 } from '../types'
+
+import {
+  hasMemberOrganizationTimelineChange,
+  prepareWorkExperiences,
+} from './workExperienceReconciliation'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -604,10 +607,13 @@ export async function updateMemberUsingSquashedPayload(
         new Set(existingMemberData.deletedOrganizations.map((o) => o.orgId)),
       )
 
-      // Enrichment often deletes and recreates the same orgs with identical dates.
-      // Skip the refresh when the timeline that drives activityRelations hasn't changed.
+      // Skip the refresh when the timeline that drives activityRelations hasn't changed —
+      // e.g. a title-only update-in-place shouldn't trigger a full recompute.
+      const toUpdateHasTimelineChange = Array.from(results.toUpdate.values()).some(
+        (fields) => 'dateStart' in fields || 'dateEnd' in fields,
+      )
       affiliationNeedsRefresh =
-        results.toUpdate.size > 0 ||
+        toUpdateHasTimelineChange ||
         hasMemberOrganizationTimelineChange(results.toDelete, results.toCreate)
 
       if (results.toDelete.length > 0) {
@@ -789,12 +795,6 @@ export async function refreshMemberEnrichmentMaterializedView(mvName: string): P
   await refreshMaterializedView(svc.postgres.writer.connection(), mvName, true)
 }
 
-interface IWorkExperienceChanges {
-  toDelete: IMemberOrganizationData[]
-  toCreate: IMemberEnrichmentDataNormalizedOrganization[]
-  toUpdate: Map<IMemberOrganizationData, Record<string, any>>
-}
-
 function sanitizeWorkExperienceDateRanges(
   organizations: IMemberEnrichmentDataNormalizedOrganization[],
 ): IMemberEnrichmentDataNormalizedOrganization[] {
@@ -807,139 +807,6 @@ function sanitizeWorkExperienceDateRanges(
       endDate: dates.dateEnd instanceof Date ? dates.dateEnd.toISOString() : dates.dateEnd,
     }
   })
-}
-
-/**
- * Returns true when the set of (orgId, startDate, endDate) tuples differs
- * between deletes and creates. Fields like title or source don't affect
- * the affiliation timeline, so they're intentionally ignored.
- */
-function hasMemberOrganizationTimelineChange(
-  toDelete: IMemberOrganizationData[],
-  toCreate: IMemberEnrichmentDataNormalizedOrganization[],
-): boolean {
-  const toKey = (orgId: string, start: string | null | undefined, end: string | null | undefined) =>
-    `${orgId}|${start ? start.substring(0, 10) : ''}|${end ? end.substring(0, 10) : ''}`
-
-  const deletedKeys = new Set(toDelete.map((d) => toKey(d.orgId, d.dateStart, d.dateEnd)))
-  const createdKeys = new Set(toCreate.map((c) => toKey(c.organizationId, c.startDate, c.endDate)))
-
-  if (deletedKeys.size !== createdKeys.size) return true
-  for (const key of deletedKeys) {
-    if (!createdKeys.has(key)) return true
-  }
-  return false
-}
-
-function prepareWorkExperiences(
-  oldVersion: IMemberOrganizationData[],
-  newVersion: IMemberEnrichmentDataNormalizedOrganization[],
-  isHighConfidenceSourceSelectedForWorkExperiences: boolean,
-  deletedOrganizationIds: Set<string>,
-): IWorkExperienceChanges {
-  // we delete all the work experiences that were not manually created or from the project registry.
-  const toDelete = oldVersion.filter(
-    (c) => c.source !== OrganizationSource.UI && c.source !== OrganizationSource.PROJECT_REGISTRY,
-  )
-
-  // never recreate an affiliation that was manually deleted — enrichment providers keep resupplying it
-  newVersion = newVersion.filter((e) => !deletedOrganizationIds.has(e.organizationId))
-
-  const toCreate: IMemberEnrichmentDataNormalizedOrganization[] = []
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toUpdate: Map<IMemberOrganizationData, Record<string, any>> = new Map()
-
-  if (isHighConfidenceSourceSelectedForWorkExperiences) {
-    const uiEntries = oldVersion.filter((c) => c.source === OrganizationSource.UI)
-    const filteredNewVersion = newVersion.filter(
-      (e) =>
-        !uiEntries.some(
-          (ui) =>
-            e.title === ui.jobTitle &&
-            e.identities &&
-            e.identities.some((i) => i.organizationId === ui.orgId),
-        ),
-    )
-    toCreate.push(...filteredNewVersion)
-    return {
-      toDelete,
-      toCreate,
-      toUpdate,
-    }
-  }
-
-  // sort both versions by start date and only use manual changes from the current version
-  const orderedCurrentVersion = oldVersion
-    .filter((c) => c.source === OrganizationSource.UI)
-    .sort((a, b) => {
-      // If either value is null/undefined, move it to the beginning
-      if (!a.dateStart && !b.dateStart) return 0
-      if (!a.dateStart) return -1
-      if (!b.dateStart) return 1
-
-      // Compare dates if both values exist
-      return new Date(a.dateStart as string).getTime() - new Date(b.dateStart as string).getTime()
-    })
-
-  let orderedNewVersion = newVersion.sort((a, b) => {
-    // If either value is null/undefined, move it to the beginning
-    if (!a.startDate && !b.startDate) return 0
-    if (!a.startDate) return -1
-    if (!b.startDate) return 1
-
-    // Compare dates if both values exist
-    return new Date(a.startDate as string).getTime() - new Date(b.startDate as string).getTime()
-  })
-
-  // set ids and new flag to new versions just so we can easily manipulate the array later
-  for (const exp of orderedNewVersion) {
-    exp.id = generateUUIDv1()
-  }
-
-  // we iterate through the existing version experiences to see if update is needed
-  for (const current of orderedCurrentVersion) {
-    // try and find a matching experience in the new versions by title
-    const match = orderedNewVersion.find(
-      (e) =>
-        e.title === current.jobTitle &&
-        e.identities &&
-        e.identities.some((e) => e.organizationId === current.orgId),
-    )
-
-    // if we found a match we can check if we need something to update
-    if (
-      match &&
-      current.dateStart === match.startDate &&
-      current.dateEnd === null &&
-      match.endDate !== null
-    ) {
-      const toUpdateInner: Record<string, any> = {}
-
-      toUpdateInner.dateEnd = match.endDate
-      toUpdate.set(current, toUpdateInner)
-
-      // remove the match from the new version array so we later don't process it again
-      orderedNewVersion = orderedNewVersion.filter((e) => e.id !== match.id)
-    } else if (
-      match &&
-      (current.dateStart !== match.startDate || current.dateEnd !== null || match.endDate === null)
-    ) {
-      // there's an incoming work experiences, but it's conflicting with the existing manually updated data
-      // we shouldn't add or update anything when this happens
-      // we can only update dateEnd of existing manually changed data, when it has a null dateEnd
-      orderedNewVersion = orderedNewVersion.filter((e) => e.id !== match.id)
-    }
-    // if we didn't find a match we should just leave it as it is in the database since it was manual input
-  }
-
-  // the remaining experiences in the new version array are just new experiences to create
-  toCreate.push(...orderedNewVersion)
-
-  return {
-    toDelete,
-    toCreate,
-    toUpdate,
-  }
 }
 
 export async function syncMember(memberId: string): Promise<void> {
