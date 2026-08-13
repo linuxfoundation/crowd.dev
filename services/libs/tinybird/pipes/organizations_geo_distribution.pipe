@@ -44,7 +44,7 @@ SQL >
         country_data .3 AS country_code,
         COUNT(id) AS organizationCount,
         round(
-            (count(id) / (select "organizationCount" from active_organizations)) * 100
+            (count(id) / (select "organizationCount" from active_organizations)) * 100, 2
         ) as "organizationPercentage"
     FROM parsed_country
     GROUP BY country, flag, country_code
