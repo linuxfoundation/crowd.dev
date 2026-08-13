@@ -2,6 +2,7 @@ import { getServiceLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
 import { getPackagesDb } from '../db'
+import { MAVEN_GCS_MIRROR_BASE_URL } from '../maven/registry'
 import {
   runMavenCriticalBackfill,
   runMavenCriticalForceBackfill,
@@ -25,8 +26,7 @@ process.on('SIGTERM', shutdown)
 
 const main = async () => {
   process.env.MAVEN_FETCHER_BASE_URL =
-    process.env.MAVEN_FETCHER_BASE_URL_BACKFILL ??
-    'https://maven-central.storage-download.googleapis.com/maven2'
+    process.env.MAVEN_FETCHER_BASE_URL_BACKFILL ?? MAVEN_GCS_MIRROR_BASE_URL
 
   // --force: re-run POM extraction over EVERY critical row, ignoring the
   // staleness window. Use to fully re-apply extraction changes (e.g. SCM

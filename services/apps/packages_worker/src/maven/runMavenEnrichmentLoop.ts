@@ -229,8 +229,9 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
     return { status: 'skipped' }
   }
 
-  // Phase 2: skip full POM extraction when upstream version matches what we already have.
-  if (!forceFullExtraction && version === pkg.latestVersion) {
+  // Phase 2: skip full POM extraction only if this row was already Maven-enriched —
+  // a version match on a never-extracted row (fresh promotion, error, deps_dev) is coincidental.
+  if (!forceFullExtraction && version === pkg.latestVersion && pkg.ingestionSource === 'maven-registry') {
     await touchPackageSyncedAt(qx, pkg.purl, {
       dependentPackagesCount: pkg.dependentPackagesCount,
       dependentReposCount: pkg.dependentReposCount,

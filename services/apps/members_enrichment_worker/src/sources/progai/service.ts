@@ -110,7 +110,8 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
 
   async isEnrichableBySource(input: IEnrichmentSourceInput): Promise<boolean> {
     const enrichableUsingGithubHandle = !!input.github?.value
-    const enrichableUsingEmail = this.alsoUseEmailIdentitiesForEnrichment && !!input.email?.value
+    const enrichableUsingEmail =
+      this.alsoUseEmailIdentitiesForEnrichment && !!input.emails[0]?.value
     return enrichableUsingGithubHandle || enrichableUsingEmail
   }
 
@@ -127,8 +128,8 @@ export default class EnrichmentServiceProgAI extends LoggerBase implements IEnri
     }
 
     if (this.alsoUseEmailIdentitiesForEnrichment) {
-      if (!enriched && input.email) {
-        enriched = await this.getDataUsingEmailAddress(input.email.value)
+      if (!enriched && input.emails[0]) {
+        enriched = await this.getDataUsingEmailAddress(input.emails[0].value)
       }
     }
 

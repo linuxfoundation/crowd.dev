@@ -60,7 +60,7 @@ export default class EnrichmentServiceProgAILinkedinScraper
 
     return (
       hasEnrichableLinkedinInCache ||
-      (input.linkedin && input.linkedin.value && input.linkedin.verified)
+      (input.linkedin[0] && input.linkedin[0].value && input.linkedin[0].verified)
     )
   }
 
@@ -163,21 +163,22 @@ export default class EnrichmentServiceProgAILinkedinScraper
       }
     }
 
-    // also add the linkedin identity from the input
-    if (input.linkedin && input.linkedin.value && input.linkedin.verified) {
-      if (!linkedinUrlHashmap.get(input.linkedin.value)) {
-        consumableIdentities.push({
-          ...input.linkedin,
-          value: input.linkedin.value.replace(/\//g, ''),
-          repeatedTimesInDifferentSources: 1,
-          isFromVerifiedSource: true,
-        })
-      } else {
-        const repeatedTimesInDifferentSources = linkedinUrlHashmap.get(input.linkedin.value) + 1
-        const identityFound = consumableIdentities.find((i) => i.value === input.linkedin.value)
+    for (const linkedin of input.linkedin) {
+      if (linkedin && linkedin.value && linkedin.verified) {
+        if (!linkedinUrlHashmap.get(linkedin.value)) {
+          consumableIdentities.push({
+            ...linkedin,
+            value: linkedin.value.replace(/\//g, ''),
+            repeatedTimesInDifferentSources: 1,
+            isFromVerifiedSource: true,
+          })
+        } else {
+          const repeatedTimesInDifferentSources = linkedinUrlHashmap.get(linkedin.value) + 1
+          const identityFound = consumableIdentities.find((i) => i.value === linkedin.value)
 
-        identityFound.repeatedTimesInDifferentSources = repeatedTimesInDifferentSources
-        identityFound.isFromVerifiedSource = true
+          identityFound.repeatedTimesInDifferentSources = repeatedTimesInDifferentSources
+          identityFound.isFromVerifiedSource = true
+        }
       }
     }
     return consumableIdentities

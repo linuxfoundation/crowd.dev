@@ -25,6 +25,7 @@ export type MavenPackageToSync = Pick<
 > & {
   purl: string
   latestVersion: string | null
+  ingestionSource: string | null
 }
 
 // ingestion_source values this worker writes once it has attempted a package
@@ -67,7 +68,8 @@ export async function listMavenPackagesToSync(
         p.name,
         p.dependent_count          AS "dependentPackagesCount",
         p.dependent_repos_count    AS "dependentReposCount",
-        p.latest_version           AS "latestVersion"
+        p.latest_version           AS "latestVersion",
+        p.ingestion_source         AS "ingestionSource"
       FROM packages p
       WHERE
         p.ecosystem = 'maven'
@@ -97,7 +99,8 @@ export async function listMavenPackagesToSync(
       pu.name,
       pu.dependent_count          AS "dependentPackagesCount",
       pu.dependent_repos_count    AS "dependentReposCount",
-      p.latest_version            AS "latestVersion"
+      p.latest_version            AS "latestVersion",
+      p.ingestion_source          AS "ingestionSource"
     FROM packages_universe pu
     LEFT JOIN packages p ON p.purl = pu.purl
     WHERE
@@ -140,7 +143,8 @@ export async function listMavenCriticalPackagesById(
       p.name,
       p.dependent_count          AS "dependentPackagesCount",
       p.dependent_repos_count    AS "dependentReposCount",
-      p.latest_version           AS "latestVersion"
+      p.latest_version           AS "latestVersion",
+      p.ingestion_source         AS "ingestionSource"
     FROM packages p
     WHERE p.ecosystem = 'maven'
       AND p.is_critical
@@ -247,9 +251,8 @@ export async function updateMavenRepositoryUrls(
 // ─── packages touch ───────────────────────────────────────────────────────────
 
 /**
- * Bumps last_synced_at without re-fetching POM data.
- * Used when the upstream version is unchanged — avoids a full extraction pass
- * while keeping the staleness timer fresh and syncing latest universe metrics.
+ * Bumps last_synced_at (+ ingestion_source) without re-fetching POM data.
+ * Caller must only use this on rows already Maven-enriched — see processCriticalPackage.
  */
 export async function touchPackageSyncedAt(
   qx: QueryExecutor,
@@ -263,12 +266,14 @@ export async function touchPackageSyncedAt(
     `
     UPDATE packages SET
       last_synced_at           = NOW(),
+      ingestion_source         = $(ingestionSource),
       dependent_count          = COALESCE($(dependentPackagesCount), dependent_count),
       dependent_repos_count    = COALESCE($(dependentReposCount),    dependent_repos_count)
     WHERE purl = $(purl)
     `,
     {
       purl,
+      ingestionSource: MAVEN_WORKER_OUTCOMES[0],
       dependentPackagesCount: metrics.dependentPackagesCount ?? null,
       dependentReposCount: metrics.dependentReposCount ?? null,
     },
