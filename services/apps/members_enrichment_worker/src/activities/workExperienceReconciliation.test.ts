@@ -34,9 +34,10 @@ function newEntry(
     startDate: '2020-01-01',
     endDate: null,
     source: OrganizationSource.ENRICHMENT_PROGAI,
+    // on real data the resolved org lands on organizationId, not on identities — enrichment
+    // does not backfill identities with the org it just resolved
     identities: [
       {
-        organizationId,
         platform: 'linkedin',
         value: 'org-one',
         type: OrganizationIdentityType.USERNAME,

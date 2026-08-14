@@ -190,28 +190,22 @@ export function prepareWorkExperiences(
   newVersion = newVersion.filter((e) => !deletedOrganizationIds.has(e.organizationId))
 
   // verified rows are excluded from oldEnrichmentRows above, so a matching provider entry
-  // must be dropped here too, or it lands in toCreate as a conflicting duplicate
+  // must be dropped here too, or it lands in toCreate as a conflicting duplicate. Match on
+  // e.organizationId, not e.identities — enrichment resolves the org onto organizationId
+  // without necessarily adding it to identities.
   const verifiedRows = oldVersion.filter((c) => c.verified === true)
   newVersion = newVersion.filter(
     (e) =>
       !verifiedRows.some(
         (v) =>
-          normalizeTitle(v.jobTitle) === normalizeTitle(e.title) &&
-          e.identities &&
-          e.identities.some((i) => i.organizationId === v.orgId),
+          normalizeTitle(v.jobTitle) === normalizeTitle(e.title) && e.organizationId === v.orgId,
       ),
   )
 
   if (isHighConfidenceSourceSelectedForWorkExperiences) {
     const uiEntries = oldVersion.filter((c) => c.source === OrganizationSource.UI)
     const filteredNewVersion = newVersion.filter(
-      (e) =>
-        !uiEntries.some(
-          (ui) =>
-            e.title === ui.jobTitle &&
-            e.identities &&
-            e.identities.some((i) => i.organizationId === ui.orgId),
-        ),
+      (e) => !uiEntries.some((ui) => e.title === ui.jobTitle && e.organizationId === ui.orgId),
     )
     return reconcileEnrichmentOrgs(oldEnrichmentRows, filteredNewVersion)
   }
@@ -251,10 +245,7 @@ export function prepareWorkExperiences(
   for (const current of orderedCurrentVersion) {
     // try and find a matching experience in the new versions by title
     const match = orderedNewVersion.find(
-      (e) =>
-        e.title === current.jobTitle &&
-        e.identities &&
-        e.identities.some((e) => e.organizationId === current.orgId),
+      (e) => e.title === current.jobTitle && e.organizationId === current.orgId,
     )
 
     // if we found a match we can check if we need something to update
