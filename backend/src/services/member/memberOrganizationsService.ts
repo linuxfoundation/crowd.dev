@@ -363,7 +363,13 @@ export default class MemberOrganizationsService extends LoggerBase {
       ]
 
       // Delete hidden grouped rows with the visible row so list responses stay consistent
-      await deleteMemberOrganizations(qx, memberId, memberOrganizationIdsToDelete, true)
+      await deleteMemberOrganizations(
+        qx,
+        memberId,
+        memberOrganizationIdsToDelete,
+        true,
+        this.options.currentUser.id,
+      )
 
       const result = await this.list(memberId, transaction)
 

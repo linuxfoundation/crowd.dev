@@ -44,6 +44,8 @@ export async function fetchMemberDataForLLMSquashing(
                             mo."dateStart",
                             mo."dateEnd",
                             mo.source,
+                            mo.verified,
+                            mo."verifiedBy",
                             jsonb_agg(jsonb_build_object(
                               'organizationId', oi."organizationId",
                               'platform', oi.platform,
@@ -57,7 +59,13 @@ export async function fetchMemberDataForLLMSquashing(
                         where mo."memberId" = $(memberId)
                           and mo."deletedAt" is null
                           and o."deletedAt" is null
-                        group by mo."memberId", mo."organizationId", o."displayName", mo.id)
+                        group by mo."memberId", mo."organizationId", o."displayName", mo.id),
+    deleted_member_orgs as (select distinct
+                              mo."organizationId" as "orgId"
+                            from "memberOrganizations" mo
+                            where mo."memberId" = $(memberId)
+                              and mo."deletedAt" is not null
+                              and mo."deletedBy" is not null)
     select m."displayName",
           m.attributes,
           m."manuallyChangedFields",
@@ -84,13 +92,18 @@ export async function fetchMemberDataForLLMSquashing(
                                                 mo."dateStart",
                                                 mo."dateEnd",
                                                 mo.source,
+                                                mo.verified,
+                                                mo."verifiedBy",
                                                 coalesce(mo.identities, '[]'::jsonb) as identities) r)
                           )
                   from member_orgs mo
                   where mo."memberId" = m.id
               )
               else '[]'::json
-              end as organizations
+              end as organizations,
+          coalesce(
+                  (select json_agg(jsonb_build_object('orgId', d."orgId") order by d."orgId") from deleted_member_orgs d), '[]'::json
+          ) as "deletedOrganizations"
     from members m
     where m.id = $(memberId)
       and m."deletedAt" is null
@@ -562,7 +575,7 @@ export async function updateMemberOrg(
     return null
   }
 
-  const sets = keys.map((k) => `"${k}" = $(${k})`)
+  const sets = [...keys.map((k) => `"${k}" = $(${k})`), `"updatedAt" = now()`]
 
   const result = await tx.oneOrNone(
     `
