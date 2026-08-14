@@ -10,6 +10,7 @@ import {
   findMemberIdentitiesByValue,
   findMemberIdentityConflict,
   insertMemberIdentities,
+  lockMemberIdentityKeys,
   touchMemberUpdatedAt,
   updateMemberIdentity,
 } from '@crowd/data-access-layer'
@@ -76,6 +77,8 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
         // Unverified identities aren't unique in the db, so the same handle or
         // email can sit on several members. Reject it here if someone else has it.
         if (!result && !data.verified) {
+          await lockMemberIdentityKeys(tx, [data])
+
           const conflict = await findMemberIdentityConflict(tx, {
             value: data.value,
             platform: data.platform,

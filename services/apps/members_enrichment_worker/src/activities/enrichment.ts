@@ -17,6 +17,7 @@ import {
   fetchManyOrganizationAffiliationPolicies,
   findMembersByIdentities,
   insertMemberIdentities,
+  lockMemberIdentityKeys,
   updateMemberAttributes,
   updateMemberContributions,
   updateMemberReach,
@@ -318,6 +319,8 @@ export async function updateMemberUsingSquashedPayload(
       // Unverified identities aren't unique in the db, so the same handle or
       // email can sit on several members. Skip the ones already taken.
       const unverified = squashedPayload.identities.filter((identity) => !identity.verified)
+
+      await lockMemberIdentityKeys(qx, unverified)
 
       const owners =
         unverified.length > 0

@@ -8,6 +8,7 @@ import {
   findMembersByIdentities,
   createMember as insertMember,
   insertMemberIdentities,
+  lockMemberIdentityKeys,
 } from '@crowd/data-access-layer'
 import { MemberIdentityType } from '@crowd/types'
 
@@ -49,6 +50,8 @@ export async function createMember(req: Request, res: Response): Promise<void> {
     const unverified = identities.filter((identity) => !identity.verified)
 
     if (unverified.length > 0) {
+      await lockMemberIdentityKeys(tx, unverified)
+
       const owners = await findMembersByIdentities(tx, unverified)
 
       const hit = unverified.find((identity) =>
@@ -109,25 +112,24 @@ export async function createMember(req: Request, res: Response): Promise<void> {
     }
   })
 
-  await Promise.all([
-    captureApiChange(
-      req,
-      memberCreateAction(dbMember.id, async (captureNewState) => {
-        captureNewState({
-          memberId: dbMember.id,
-          displayName: dbMember.displayName,
-          manuallyCreated: true,
-        })
-      }),
-    ),
-    captureApiChange(
-      req,
-      memberEditIdentitiesAction(dbMember.id, async (captureOldState, captureNewState) => {
-        captureOldState({})
-        captureNewState(dbIdentities)
-      }),
-    ),
-  ])
+  await captureApiChange(
+    req,
+    memberCreateAction(dbMember.id, async (captureNewState) => {
+      captureNewState({
+        memberId: dbMember.id,
+        displayName: dbMember.displayName,
+        manuallyCreated: true,
+      })
+    }),
+  )
+
+  await captureApiChange(
+    req,
+    memberEditIdentitiesAction(dbMember.id, async (captureOldState, captureNewState) => {
+      captureOldState({})
+      captureNewState(dbIdentities)
+    }),
+  )
 
   created(res, { memberId: dbMember.id })
 }
