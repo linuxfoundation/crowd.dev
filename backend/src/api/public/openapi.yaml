@@ -52,6 +52,7 @@ paths:
       summary: Create a member profile
       description: >
         Create a new member profile in CDP with one or more identities.
+        Returns 409 if an identity already exists on another member.
       tags:
         - Members
       security:
@@ -265,8 +266,8 @@ paths:
       operationId: createMemberIdentity
       summary: Add a new identity
       description: >
-        Add a new identity to a member profile. Returns 409 if the identity
-        already exists on this member or is verified on another member.
+        Add a new identity to a member profile. Returns 200 if it already exists
+        on this member. Returns 409 if it already exists on another member.
       tags:
         - Member Identities
       security:
