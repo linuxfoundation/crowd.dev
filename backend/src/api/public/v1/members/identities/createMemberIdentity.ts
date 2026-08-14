@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { ConflictError, NotFoundError } from '@crowd/common'
+import { ConflictError, NotFoundError, normalizeMemberIdentityValue } from '@crowd/common'
 import {
   MemberField,
   findMemberById,
@@ -40,7 +40,11 @@ const bodySchema = z
 
 export async function createMemberIdentity(req: Request, res: Response): Promise<void> {
   const { memberId } = validateOrThrow(paramsSchema, req.params)
-  const data = validateOrThrow(bodySchema, req.body)
+  const raw = validateOrThrow(bodySchema, req.body)
+  const data = {
+    ...raw,
+    value: normalizeMemberIdentityValue(raw.value),
+  }
 
   const qx = optionsQx(req)
   const member = await findMemberById(qx, memberId, [MemberField.ID])
