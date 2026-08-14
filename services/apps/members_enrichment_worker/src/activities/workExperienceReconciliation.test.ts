@@ -154,6 +154,90 @@ describe('prepareWorkExperiences', () => {
     expect(result.toUpdate.size).toBe(0)
   })
 
+  it('survives two active stints swapping their date ranges instead of dropping one', () => {
+    // distinct titles force title-based matching, so the swap can't be masked by
+    // exact-date-match-first picking up the "other" row by its still-current dates
+    const stintEngineer = oldRow({
+      id: 'row-engineer',
+      jobTitle: 'Engineer',
+      dateStart: '2018-01-01',
+      dateEnd: '2019-01-01',
+    })
+    const stintManager = oldRow({
+      id: 'row-manager',
+      jobTitle: 'Manager',
+      dateStart: '2020-01-01',
+      dateEnd: '2021-01-01',
+    })
+    // provider now reports each role with the other role's current date range
+    const entryForEngineer = newEntry({
+      title: 'Engineer',
+      startDate: '2020-01-01',
+      endDate: '2021-01-01',
+    })
+    const entryForManager = newEntry({
+      title: 'Manager',
+      startDate: '2018-01-01',
+      endDate: '2019-01-01',
+    })
+
+    const result = prepareWorkExperiences(
+      [stintEngineer, stintManager],
+      [entryForEngineer, entryForManager],
+      false,
+      new Set(),
+    )
+
+    // a genuine cycle (each target tuple is held by the other row) can't be resolved by
+    // reordering, so both stints fall back to delete+create pairs instead of an in-place update
+    expect(result.toDelete.length).toBe(2)
+    expect(result.toCreate.length).toBe(2)
+    expect(result.toUpdate.size).toBe(0)
+
+    const finalTuplesByTitle = new Map<string, string>()
+    for (const [oldOrg, changes] of result.toUpdate) {
+      finalTuplesByTitle.set(
+        changes.title ?? oldOrg.jobTitle,
+        `${changes.dateStart ?? oldOrg.dateStart}|${changes.dateEnd ?? oldOrg.dateEnd}`,
+      )
+    }
+    for (const created of result.toCreate) {
+      finalTuplesByTitle.set(created.title, `${created.startDate}|${created.endDate}`)
+    }
+    expect(finalTuplesByTitle.get('Engineer')).toBe('2020-01-01|2021-01-01')
+    expect(finalTuplesByTitle.get('Manager')).toBe('2018-01-01|2019-01-01')
+  })
+
+  it('resolves a date-shift chain via in-place updates without falling back to delete+create', () => {
+    // row-x's new target tuple is free from the start, so it can update first and free
+    // its own old tuple for row-y — a chain, not a cycle, so no fallback is needed
+    const rowX = oldRow({
+      id: 'row-x',
+      jobTitle: 'Engineer',
+      dateStart: '2018-01-01',
+      dateEnd: '2019-01-01',
+    })
+    const rowY = oldRow({
+      id: 'row-y',
+      jobTitle: 'Manager',
+      dateStart: '2019-01-01',
+      dateEnd: '2020-01-01',
+    })
+    const entryForX = newEntry({
+      title: 'Engineer',
+      startDate: '2019-01-01',
+      endDate: '2020-01-01',
+    })
+    const entryForY = newEntry({ title: 'Manager', startDate: '2020-01-01', endDate: '2021-01-01' })
+
+    const result = prepareWorkExperiences([rowX, rowY], [entryForX, entryForY], false, new Set())
+
+    expect(result.toDelete).toEqual([])
+    expect(result.toCreate).toEqual([])
+    expect(result.toUpdate.get(rowX)).toEqual({ dateStart: '2019-01-01', dateEnd: '2020-01-01' })
+    expect(result.toUpdate.get(rowY)).toEqual({ dateStart: '2020-01-01', dateEnd: '2021-01-01' })
+  })
+
   it('fills a UI row null dateEnd from a matching provider entry', () => {
     const uiRow = oldRow({ id: 'row-ui', source: OrganizationSource.UI, dateEnd: null })
     const matching = newEntry({ endDate: '2021-01-01' })

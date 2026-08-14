@@ -12,6 +12,11 @@ export interface IWorkExperienceChanges {
 
 const normalizeTitle = (title: string | null | undefined) => (title ?? '').trim().toLowerCase()
 const normalizeDate = (date: string | null | undefined) => (date ? date.substring(0, 10) : '')
+const dateTupleKey = (
+  orgId: string,
+  start: string | null | undefined,
+  end: string | null | undefined,
+) => `${orgId}|${normalizeDate(start)}|${normalizeDate(end)}`
 
 /**
  * Returns true when the set of (orgId, startDate, endDate) tuples differs
@@ -22,17 +27,70 @@ export function hasMemberOrganizationTimelineChange(
   toDelete: IMemberOrganizationData[],
   toCreate: IMemberEnrichmentDataNormalizedOrganization[],
 ): boolean {
-  const toKey = (orgId: string, start: string | null | undefined, end: string | null | undefined) =>
-    `${orgId}|${normalizeDate(start)}|${normalizeDate(end)}`
-
-  const deletedKeys = new Set(toDelete.map((d) => toKey(d.orgId, d.dateStart, d.dateEnd)))
-  const createdKeys = new Set(toCreate.map((c) => toKey(c.organizationId, c.startDate, c.endDate)))
+  const deletedKeys = new Set(toDelete.map((d) => dateTupleKey(d.orgId, d.dateStart, d.dateEnd)))
+  const createdKeys = new Set(
+    toCreate.map((c) => dateTupleKey(c.organizationId, c.startDate, c.endDate)),
+  )
 
   if (deletedKeys.size !== createdKeys.size) return true
   for (const key of deletedKeys) {
     if (!createdKeys.has(key)) return true
   }
   return false
+}
+
+interface IPendingOrgUpdate {
+  oldRow: IMemberOrganizationData
+  entry: IMemberEnrichmentDataNormalizedOrganization
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  toUpdateInner: Record<string, any>
+}
+
+/**
+ * The unique index on (memberId, organizationId, dateStart, dateEnd) means an in-place update
+ * can only be applied while its target tuple isn't still held by another row. Schedules
+ * date-changing updates in an order where every target tuple is free by the time it runs;
+ * rows caught in a genuine swap/cycle (no valid order exists) fall back to delete+create,
+ * which the caller always applies before any update.
+ */
+function scheduleDateChangingUpdates(
+  pending: IPendingOrgUpdate[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  toUpdate: Map<IMemberOrganizationData, Record<string, any>>,
+  toCreate: IMemberEnrichmentDataNormalizedOrganization[],
+  toDelete: IMemberOrganizationData[],
+) {
+  const targetKey = (u: IPendingOrgUpdate) =>
+    dateTupleKey(
+      u.oldRow.orgId,
+      u.toUpdateInner.dateStart ?? u.oldRow.dateStart,
+      u.toUpdateInner.dateEnd ?? u.oldRow.dateEnd,
+    )
+  const currentKey = (u: IPendingOrgUpdate) =>
+    dateTupleKey(u.oldRow.orgId, u.oldRow.dateStart, u.oldRow.dateEnd)
+
+  let remaining = pending
+  let progress = true
+  while (remaining.length > 0 && progress) {
+    progress = false
+    const stillHeldKeys = new Set(remaining.map(currentKey))
+    const next: IPendingOrgUpdate[] = []
+    for (const u of remaining) {
+      if (!stillHeldKeys.has(targetKey(u))) {
+        toUpdate.set(u.oldRow, u.toUpdateInner)
+        progress = true
+      } else {
+        next.push(u)
+      }
+    }
+    remaining = next
+  }
+
+  // a genuine cycle — no sequential order frees every target tuple in time
+  for (const u of remaining) {
+    toDelete.push(u.oldRow)
+    toCreate.push(u.entry)
+  }
 }
 
 /**
@@ -57,6 +115,7 @@ function reconcileEnrichmentOrgs(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toUpdate: Map<IMemberOrganizationData, Record<string, any>> = new Map()
   const matchedOldIds = new Set<string>()
+  const pendingDateChanges: IPendingOrgUpdate[] = []
 
   for (const entry of newEntries) {
     const candidates = (oldByOrg.get(entry.organizationId) ?? []).filter(
@@ -84,21 +143,30 @@ function reconcileEnrichmentOrgs(
     if (entry.title !== undefined && entry.title !== match.jobTitle) {
       toUpdateInner.title = entry.title
     }
-    if (normalizeDate(entry.startDate) !== normalizeDate(match.dateStart)) {
+    const startChanged = normalizeDate(entry.startDate) !== normalizeDate(match.dateStart)
+    const endChanged = normalizeDate(entry.endDate) !== normalizeDate(match.dateEnd)
+    if (startChanged) {
       toUpdateInner.dateStart = entry.startDate
     }
-    if (normalizeDate(entry.endDate) !== normalizeDate(match.dateEnd)) {
+    if (endChanged) {
       toUpdateInner.dateEnd = entry.endDate
     }
     if (entry.source !== undefined && entry.source !== match.source) {
       toUpdateInner.source = entry.source
     }
-    if (Object.keys(toUpdateInner).length > 0) {
+    if (Object.keys(toUpdateInner).length === 0) {
+      continue
+    }
+    if (startChanged || endChanged) {
+      pendingDateChanges.push({ oldRow: match, entry, toUpdateInner })
+    } else {
       toUpdate.set(match, toUpdateInner)
     }
   }
 
   const toDelete = oldEnrichmentRows.filter((old) => !matchedOldIds.has(old.id))
+
+  scheduleDateChangingUpdates(pendingDateChanges, toUpdate, toCreate, toDelete)
 
   return { toDelete, toCreate, toUpdate }
 }
