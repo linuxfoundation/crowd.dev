@@ -2,9 +2,10 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { getProperDisplayName } from '@crowd/common'
+import { ConflictError, getProperDisplayName } from '@crowd/common'
 import {
   findMemberIdByVerifiedIdentity,
+  findMembersByIdentities,
   createMember as insertMember,
   insertMemberIdentities,
 } from '@crowd/data-access-layer'
@@ -43,6 +44,27 @@ export async function createMember(req: Request, res: Response): Promise<void> {
   const normalizedDisplayName = getProperDisplayName(displayName)
 
   const { dbMember, dbIdentities } = await qx.tx(async (tx) => {
+    // Unverified identities aren't unique in the db, so the same handle or
+    // email can sit on several members. Reject it here if someone else has it.
+    const unverified = identities.filter((identity) => !identity.verified)
+
+    if (unverified.length > 0) {
+      const owners = await findMembersByIdentities(tx, unverified)
+
+      const hit = unverified.find((identity) =>
+        owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+      )
+
+      if (hit) {
+        throw new ConflictError('Identity already exists on another member', {
+          conflictMemberId: owners.get(`${hit.platform}:${hit.type}:${hit.value.trim()}`),
+          platform: hit.platform,
+          value: hit.value,
+          type: hit.type,
+        })
+      }
+    }
+
     try {
       const dbMember = await insertMember(tx, {
         displayName: normalizedDisplayName,
@@ -87,24 +109,25 @@ export async function createMember(req: Request, res: Response): Promise<void> {
     }
   })
 
-  await captureApiChange(
-    req,
-    memberCreateAction(dbMember.id, async (captureNewState) => {
-      captureNewState({
-        memberId: dbMember.id,
-        displayName: dbMember.displayName,
-        manuallyCreated: true,
-      })
-    }),
-  )
-
-  await captureApiChange(
-    req,
-    memberEditIdentitiesAction(dbMember.id, async (captureOldState, captureNewState) => {
-      captureOldState({})
-      captureNewState(dbIdentities)
-    }),
-  )
+  await Promise.all([
+    captureApiChange(
+      req,
+      memberCreateAction(dbMember.id, async (captureNewState) => {
+        captureNewState({
+          memberId: dbMember.id,
+          displayName: dbMember.displayName,
+          manuallyCreated: true,
+        })
+      }),
+    ),
+    captureApiChange(
+      req,
+      memberEditIdentitiesAction(dbMember.id, async (captureOldState, captureNewState) => {
+        captureOldState({})
+        captureNewState(dbIdentities)
+      }),
+    ),
+  ])
 
   created(res, { memberId: dbMember.id })
 }

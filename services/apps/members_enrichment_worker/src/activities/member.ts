@@ -3,6 +3,7 @@ import {
   MemberField,
   PgPromiseQueryExecutor,
   findMemberById,
+  findMembersByIdentities,
   insertMemberIdentities,
   pgpQx,
 } from '@crowd/data-access-layer'
@@ -89,17 +90,35 @@ export async function updateMemberWithEnrichmentData(
 ): Promise<void> {
   await svc.postgres.writer.connection().tx(async (tx) => {
     if (identities.length > 0) {
-      await insertMemberIdentities(
-        new PgPromiseQueryExecutor(tx),
-        identities.map((identity) => ({
+      const qx = new PgPromiseQueryExecutor(tx)
+
+      // Unverified identities aren't unique in the db, so the same handle or
+      // email can sit on several members. Skip the ones already taken.
+      const unverified = identities.filter((identity) => !identity.verified)
+
+      const owners =
+        unverified.length > 0
+          ? await findMembersByIdentities(qx, unverified, memberId)
+          : new Map<string, string>()
+
+      const identitiesToInsert = identities
+        .filter(
+          (identity) =>
+            Boolean(identity.verified) ||
+            !owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+        )
+        .map((identity) => ({
           memberId,
           platform: identity.platform,
           value: identity.value,
           type: identity.type,
           verified: identity.verified || false,
           source: 'enrichment',
-        })),
-      )
+        }))
+
+      if (identitiesToInsert.length > 0) {
+        await insertMemberIdentities(qx, identitiesToInsert)
+      }
     }
     if (attributes) {
       await updateMemberAttributes(tx, memberId, attributes)

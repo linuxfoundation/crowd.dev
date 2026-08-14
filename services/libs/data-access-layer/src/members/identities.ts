@@ -576,6 +576,10 @@ export async function findMembersByIdentities(
     conditions.push('mi.verified = true')
   }
 
+  if (identities.length === 0) {
+    return new Map()
+  }
+
   const identityTuples = identities.map((identity, i) => {
     params[`ip${i}`] = identity.platform
     params[`iv${i}`] = identity.value.trim()
@@ -596,7 +600,7 @@ export async function findMembersByIdentities(
         and lower(mi.value) = lower(i.value)
         and mi.type = i.type
         and mi."deletedAt" is null
-    where ${conditions.join(' and ')}
+    ${conditions.length > 0 ? `where ${conditions.join(' and ')}` : ''}
   `,
     params,
   )
