@@ -5,7 +5,6 @@ import {
   findMemberById,
   findMembersByIdentities,
   insertMemberIdentities,
-  lockMemberIdentityKeys,
   pgpQx,
 } from '@crowd/data-access-layer'
 import {
@@ -96,8 +95,6 @@ export async function updateMemberWithEnrichmentData(
       // Unverified identities aren't unique in the db, so the same handle or
       // email can sit on several members. Skip the ones already taken.
       const unverified = identities.filter((identity) => !identity.verified)
-
-      await lockMemberIdentityKeys(qx, unverified)
 
       const owners =
         unverified.length > 0

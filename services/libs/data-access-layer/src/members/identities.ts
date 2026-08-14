@@ -57,35 +57,6 @@ interface FindMemberIdentityConflictParams {
   excludeMemberId?: string
 }
 
-interface MemberIdentityKey {
-  platform: string
-  type: MemberIdentityType
-  value: string
-}
-
-// The executor must use the transaction that performs the conflict check and insert.
-export async function lockMemberIdentityKeys(
-  qx: QueryExecutor,
-  identities: MemberIdentityKey[],
-): Promise<void> {
-  const keys = [
-    ...new Set(
-      identities.map((identity) =>
-        JSON.stringify([
-          'memberIdentity',
-          identity.platform,
-          identity.type,
-          normalizeMemberIdentityValue(identity.value).toLowerCase(),
-        ]),
-      ),
-    ),
-  ].sort()
-
-  for (const key of keys) {
-    await qx.result(`select pg_advisory_xact_lock(hashtext($(key))::bigint)`, { key })
-  }
-}
-
 export async function findMemberIdentityConflict(
   qx: QueryExecutor,
   params: FindMemberIdentityConflictParams,
