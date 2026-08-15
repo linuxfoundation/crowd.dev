@@ -1,0 +1,1 @@
+{"version":3,"file":"opensearchMiddleware.js","sourceRoot":"","sources":["opensearchMiddleware.ts"],"names":[],"mappings":";;AAEA,oDAKC;AALD,SAAgB,oBAAoB,CAAC,GAAW;IAC9C,OAAO,KAAK,EAAE,GAAG,EAAE,GAAG,EAAE,IAAI,EAAE,EAAE;QAC9B,GAAG,CAAC,UAAU,GAAG,GAAG,CAAA;QACpB,IAAI,EAAE,CAAA;IACR,CAAC,CAAA;AACH,CAAC"}

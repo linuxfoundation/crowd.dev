@@ -506,66 +506,72 @@ Before the Lambda Architecture can run continuously, we need to **create the fir
 Initial snapshot pipes:
 - Create the baseline/first snapshot in serving datasources
 - Run once at system startup or when resetting the pipeline
-- Use `COPY_MODE: replace` to overwrite the entire target datasource
 - Process current data to create a deterministic starting point
 - Enable subsequent merger copy pipes to work incrementally
 
+**Three independent pipe families serve different datasources:**
+1. **`activityRelations_enrich_initial_snapshot_*` (0, 1, 2)** — Bootstrap the unfiltered `activityRelations_enriched_deduplicated_bucket_*_ds` per-bucket serving layer. Uses `COPY_MODE replace` (atomic, safe to re-run). Replace mode makes these stateless — run all 3 at any time to bootstrap or recover.
+2. **`segmentId_aggregates_initial_snapshot`** — Bootstrap segment-level aggregates in `segmentsAggregatedMV`. Uses `COPY_MODE replace` (atomic). Run once at setup to initialize segment metrics.
+3. **`pull_request_analysis_initial_snapshot`** — Bootstrap PR lifecycle analysis in `pull_requests_analyzed`. Uses `COPY_MODE append` and **must be run bucketed** (see "How to run" below). This is the only append-mode initial snapshot — it splits the work into 10 pieces (`bucket_id=0..9, num_buckets=10`) to avoid timeout on the full dataset. The single-shot unbucketed invocation is deprecated (does not reliably finish).
+
 ### Examples
 
-#### 1. activityRelations_enrich_initial_snapshot_0 .. _2 (per bucket)
+#### 1. activityRelations_enrich_initial_snapshot_0 .. _2 (replace-mode, per bucket)
 
 ```
-Files: activityRelations_enrich_initial_snapshot_0.pipe .. _2.pipe
+Files: activityRelations_enrich_initial_snapshot_0.pipe, _1.pipe, _2.pipe
+TYPE: COPY, COPY_MODE: replace, COPY_SCHEDULE: @on-demand
+TARGET: activityRelations_enriched_deduplicated_bucket_<N>_ds
 
-TYPE: COPY
-COPY_MODE: replace
-COPY_SCHEDULE: @on-demand
-TARGET_DATASOURCE: activityRelations_enriched_deduplicated_bucket_<N>_ds
-
-What each one does:
-├─ Reads raw activityRelations (base table), filtered to cityHash64(segmentId) % 3 = N
+Each of the 3 pipes:
+├─ Reads raw activityRelations base table, filtered to cityHash64(segmentId) % 3 = N
 ├─ Enriches with country codes, org names, gitChangedLines buckets
-├─ Creates snapshotId: toStartOfInterval(now(), INTERVAL 1 day)
-└─ Replaces bucket N of the serving layer
+├─ Assigns snapshotId: toStartOfInterval(now(), INTERVAL 1 day)
+└─ Replaces (overwrites) bucket N of the serving layer — atomically safe to re-run
 
-Usage: Run all 3 to bootstrap the serving layer, or a single one to rebuild a
-bucket that fell behind further than the MV delta retention (3 days). Replace
-mode makes them safe to re-run.
+When to run:
+  • First deployment: Run all 3 to bootstrap the unfiltered serving layer
+  • Recovery: Run a single bucket N if it fell behind >3 days (beyond MV retention)
+  • Replace mode guarantees atomicity — a failed run leaves the previous data intact
 ```
 
-#### 2. pull_request_analysis_initial_snapshot (run bucketed, not single-shot)
+#### 2. pull_request_analysis_initial_snapshot (append-mode, bucketed)
 
-**The single-shot invocation is deprecated** — running the whole pipe in one `tb pipe copy run pull_request_analysis_initial_snapshot --wait` call against the full dataset does not reliably finish (times out on the full scan). The pipe itself is still needed for a full bootstrap/rebuild of `pull_requests_analyzed` and has **not** been removed.
+```
+File: pull_request_analysis_initial_snapshot.pipe
+TYPE: COPY, COPY_MODE: append, COPY_SCHEDULE: @on-demand
+TARGET: pull_requests_analyzed
+Params: bucket_id (0..9), num_buckets (set to 10)
 
-Instead, run it **bucketed**: the pipe's own SQL supports `bucket_id`/`num_buckets` params (`cityHash64(segmentId) % num_buckets = bucket_id`, `COPY_MODE: append`) so a full run can be split into N smaller pieces:
+Purpose: Bootstrap PR lifecycle analysis (opened → reviewed → approved → merged)
 
-```bash
-for N in $(seq 0 9); do
-  tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=$N --param num_buckets=10 --mode append
-done
+Critical note: APPEND mode. Single-shot invocation is deprecated (times out on full dataset).
+  ✗ DEPRECATED: tb pipe copy run pull_request_analysis_initial_snapshot --wait
+  ✓ CORRECT:   for N in $(seq 0 9); tb pipe copy run ... --param bucket_id=$N --param num_buckets=10
+
+Execution splits the scan into 10 buckets (cityHash64(segmentId) % 10 = bucket_id).
+Each invocation appends its results; rows accumulate into the full dataset.
+
+⚠️  Before the first bucket run, ENSURE pull_requests_analyzed is empty (append mode does NOT deduplicate).
+
+This is separate from the hourly PR Merger (pull_request_analysis_snapshot_merger_copy.pipe),
+which increments pull_requests_analyzed via baseline-merge once the initial snapshot is populated.
 ```
 
-This is the same subbucketing mechanism used by the generic `activityRelations_bucket_MV_snapshot_*` family described in `bucketing-architecture.md`, applied here directly inside `pull_request_analysis_initial_snapshot.pipe` rather than via a separate set of pipe files.
-
-This is separate from the **hourly PR Merger** (`pull_request_analysis_baseline_merge_MV.pipe` + `pull_request_analysis_snapshot_merger_copy.pipe`, `COPY_MODE: replace`, `COPY_SCHEDULE: 0 * * * *`), which handles ongoing incremental dedup of `pull_requests_analyzed` once it's populated — it does not perform the initial bootstrap and does not replace the need to run `pull_request_analysis_initial_snapshot` for a full rebuild.
-
-#### 3. segmentId_aggregates_initial_snapshot
+#### 3. segmentId_aggregates_initial_snapshot (replace-mode)
 
 ```
 File: segmentId_aggregates_initial_snapshot.pipe
-
-TYPE: COPY
-COPY_MODE: replace
-COPY_SCHEDULE: @on-demand
-TARGET_DATASOURCE: segmentsAggregatedMV
+TYPE: COPY, COPY_MODE: replace, COPY_SCHEDULE: @on-demand
+TARGET: segmentsAggregatedMV
 
 What it does:
-├─ Reads from activityRelations_deduplicated_cleaned_ds (latest snapshot)
+├─ Queries activityRelations_enriched_deduplicated_bucket_union at latest snapshot
 ├─ Groups by segmentId
 ├─ Counts distinct contributors (memberId) and organizations (organizationId)
-└─ Writes initial segment aggregates
+└─ Overwrites (replaces) segment-level aggregates — atomically safe to re-run
 
-Usage: Run once to bootstrap segment-level metrics
+When to run: Once at initial setup to populate segment metrics
 ```
 
 ### When to Run Initial Snapshots
@@ -584,20 +590,37 @@ for N in 0 1 2; do tb pipe copy run activityRelations_enrich_initial_snapshot_$N
 tb pipe copy run segmentId_aggregates_initial_snapshot --wait
 ```
 
+**Important — Append-Mode Safety (PR Initial Snapshot):**
+
+`pull_request_analysis_initial_snapshot.pipe` uses `COPY_MODE append` and runs split into `num_buckets` pieces. **Before running the first bucket, ensure the target `pull_requests_analyzed` datasource is empty**, otherwise successive runs will append duplicate rows and violate the deduplication contract (consumers reading all rows will see stale/duplicate metrics). Replace-mode pipes above (`activityRelations_*` and `segmentId_aggregates`) are safe to re-run (they overwrite atomically), but this append-mode pipe requires a clean slate:
+
+```bash
+# Ensure pull_requests_analyzed is empty (or back it up before reset)
+# Then run all 10 buckets sequentially (append mode — rows accumulate):
+for N in $(seq 0 9); do
+  tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=$N --param num_buckets=10 --mode append
+done
+```
+
+If you interrupted a mid-run or suspect duplicates exist, either clear the datasource before retrying or use the scheduled PR Merger (`pull_request_analysis_snapshot_merger_copy`) to replace the entire snapshot (but note it requires the existing baseline to compute deltas — an empty datasource will produce no output).
+
 ### Comparison: Initial vs Merger Copy Pipes
 
-| Aspect | Initial Snapshot | Bucket Merger (activityRelations) | PR Merger |
-|--------|------------------|-----------------------------------|-----------|
-| **Status** | Active — **run bucketed only**, single-shot deprecated | Active | Active |
-| **Schedule** | @on-demand (manual) | Daily (01:30/01:34/01:38 UTC) | Hourly (0 * * * *) |
-| **Mode** | append¹ / replace² | replace (atomic per-bucket swap) | replace |
-| **Purpose** | Bootstrap/reset (full rebuild only, run bucketed) | Incremental merge of MV deltas | Incremental merge of PR events |
-| **Source** | Base tables | MV output + own bucket (carry-forward) | MV output + own target |
-| **Frequency** | Once (or rarely), split across `num_buckets` runs | Continuous (daily) | Continuous (hourly) |
-| **Snapshot Strategy** | Create first snapshot, one `bucket_id` at a time | One snapshot per bucket, re-stamped each run | Single snapshot, replaced each run |
+| Aspect | activityRelations Initial Snapshot | segmentId_aggregates Initial Snapshot | PR Initial Snapshot | Bucket Merger (activityRelations) | PR Merger |
+|--------|-----------------------------------|--------------------------------------|---------------------|-----------------------------------|-----------|
+| **Pipe Name(s)** | `activityRelations_enrich_initial_snapshot_0..2` | `segmentId_aggregates_initial_snapshot` | `pull_request_analysis_initial_snapshot` | `activityRelations_snapshot_merger_copy_0..2` | `pull_request_analysis_snapshot_merger_copy` |
+| **Status** | Active | Active | Active (bucketed only; single-shot deprecated) | Active | Active |
+| **Schedule** | @on-demand (manual) | @on-demand (manual) | @on-demand (manual) | Daily (01:30/01:34/01:38 UTC) | Hourly (0 * * * *) |
+| **Mode** | replace (atomic) | replace (atomic) | append (splits into `num_buckets` runs) | replace (atomic per-bucket) | replace |
+| **Purpose** | Bootstrap activityRelations serving layer (3 buckets) | Bootstrap segment aggregates | Bootstrap PR analytics (full rebuild, run with params) | Incremental merge of activityRelations MV deltas | Incremental merge of PR events |
+| **Source** | Base `activityRelations` table | Latest snapshot (query-time) | Base `activityRelations_enriched_deduplicated_bucket_union` | MV output + own bucket (carry-forward) | PR MV output + target |
+| **Target Datasource** | `activityRelations_enriched_deduplicated_bucket_<N>_ds` | `segmentsAggregatedMV` | `pull_requests_analyzed` | `activityRelations_enriched_deduplicated_bucket_<N>_ds` | `pull_requests_analyzed` |
+| **Frequency** | Once at setup (or rarely to recover a bucket) | Once at setup | Once at setup (split as: `for N in 0..9; tb pipe copy run ... --param bucket_id=$N --param num_buckets=10`) | Continuous (daily, one run per bucket) | Continuous (hourly) |
 
-¹ `pull_request_analysis_initial_snapshot`: `COPY_MODE append` (bootstrap by appending)  
-² `activityRelations_enrich_initial_snapshot_*` and `segmentId_aggregates_initial_snapshot`: `COPY_MODE replace` (overwrite entire target)
+**Key Distinctions:**
+- **replace mode** (activityRelations + segmentId + PR mergers): Atomic, safe to re-run; overwrites entire target
+- **append mode** (PR initial snapshot bucketed): Runs split into `num_buckets` pieces; **target must be empty before first run** to avoid duplicates
+- All pipes are documented and active; **only** the single-shot (unbucketed) invocation of `pull_request_analysis_initial_snapshot` is deprecated
 
 ---
 
