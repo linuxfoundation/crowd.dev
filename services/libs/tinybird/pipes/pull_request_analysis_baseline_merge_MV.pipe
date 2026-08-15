@@ -9,9 +9,9 @@ DESCRIPTION >
     that copied everything at once." It referenced a datasource deleted in January's bucketing
     migration (`activityRelations_deduplicated_cleaned_ds` -> `..._bucket_union`) and had been
     disabled/not running since 2026-08-06, which is why the reference had gone stale unnoticed.
-    This MV + pull_request_analysis_snapshot_merger_copy.pipe are the real hourly path; this MV +
-    pull_request_analysis_initial_snapshot.pipe (bootstrap) are the only two places the non-author
-    filter needs to live.
+    This MV + pull_request_analysis_snapshot_merger_copy.pipe are the real hourly path.
+    Note: pull_request_analysis_initial_snapshot.pipe (bootstrap) is now DEPRECATED (see lambda-architecture.md);
+    the new bucket-pipe architecture handles both bootstrap and ongoing deduplication.
 
 NODE snapshot_resolver
 DESCRIPTION >

@@ -533,25 +533,18 @@ bucket that fell behind further than the MV delta retention (3 days). Replace
 mode makes them safe to re-run.
 ```
 
-#### 2. pull_request_analysis_initial_snapshot
+#### 2. pull_request_analysis_initial_snapshot (DEPRECATED)
 
-```
-File: pull_request_analysis_initial_snapshot.pipe
+**DEPRECATED** — Replaced by the bucket-pipe architecture. See `bucketing-architecture.md`.
 
-TYPE: COPY
-COPY_MODE: replace
-COPY_SCHEDULE: @on-demand
-TARGET_DATASOURCE: pull_requests_analyzed
+**New Approach: Bucket-Pipe Architecture for activityRelations Bootstrap & Deduplication**
 
-What it does:
-├─ Reads from activityRelations_deduplicated_cleaned_ds (latest snapshot)
-├─ Extracts all PR lifecycle events (opened, assigned, reviewed, approved, closed, merged)
-├─ Joins lifecycle events by sourceId/sourceParentId
-├─ Computes duration metrics (assignedInSeconds, reviewedInSeconds, etc.)
-└─ Writes initial PR analysis baseline
+The replacement architecture uses two families of bucketed snapshot pipes, each distributing work across 10 hash buckets (configured via `cityHash64(field) % 10`):
 
-Usage: Run once to bootstrap pull_requests_analyzed serving layer
-```
+- **`activityRelations_bucket_MV_snapshot_0..9.pipe`**: Buckets raw activities by `cityHash64(segmentId) % 10`
+- **`activityRelations_collection_bucket_MV_snapshot_0..9.pipe`**: Buckets by `cityHash64(collectionSlug) % 10`
+
+Each pipe is configured with `COPY_MODE: append` and `COPY_SCHEDULE: @on-demand` (manual execution). Together they handle both initial bootstrap (first-time snapshot creation) and ongoing deduplication by replaying the latest MV deltas into the bucket datasources. This replaces the old pattern of a single initial-snapshot pipe followed by a separate merger—all functionality is now unified in the bucket pipes themselves.
 
 #### 3. segmentId_aggregates_initial_snapshot
 
@@ -585,7 +578,6 @@ Usage: Run once to bootstrap segment-level metrics
 ```bash
 # Via Tinybird CLI (assuming you have tb CLI configured)
 for N in 0 1 2; do tb pipe copy run activityRelations_enrich_initial_snapshot_$N --wait; done
-tb pipe copy run pull_request_analysis_initial_snapshot --wait
 tb pipe copy run segmentId_aggregates_initial_snapshot --wait
 ```
 
@@ -593,13 +585,15 @@ tb pipe copy run segmentId_aggregates_initial_snapshot --wait
 
 | Aspect | Initial Snapshot | Bucket Merger (activityRelations) | PR Merger |
 |--------|------------------|-----------------------------------|-----------|
+| **Status** | **DEPRECATED** | Active | Active |
 | **Schedule** | @on-demand (manual) | Daily (01:30/01:34/01:38 UTC) | Hourly (0 * * * *) |
 | **Mode** | replace (overwrites all) | replace (atomic per-bucket swap) | replace |
-| **Purpose** | Bootstrap/reset | Incremental merge of MV deltas | Incremental merge of PR events |
+| **Purpose** | ~~Bootstrap/reset~~ | Incremental merge of MV deltas | Incremental merge of PR events |
 | **Source** | Base tables | MV output + own bucket (carry-forward) | MV output + own target |
-| **Frequency** | Once (or rarely) | Continuous (daily) | Continuous (hourly) |
-| **Snapshot Strategy** | Create first snapshot | One snapshot per bucket, re-stamped each run | Single snapshot, replaced each run |
+| **Frequency** | ~~Once (or rarely)~~ | Continuous (daily) | Continuous (hourly) |
+| **Snapshot Strategy** | ~~Create first snapshot~~ | One snapshot per bucket, re-stamped each run | Single snapshot, replaced each run |
 
+---
 
 ## Troubleshooting
 

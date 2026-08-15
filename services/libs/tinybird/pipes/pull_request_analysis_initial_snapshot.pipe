@@ -1,7 +1,5 @@
 DESCRIPTION >
-    Compacts activities from same PR into one, keeping necessary information in a single row. Helps to serve PR-wide widgets in the development tab.
-    Run with bucket_id (0-4) and num_buckets (default 5) to process a subset of segments at a time, avoiding memory limits.
-    After all buckets complete, the hourly snapshot merger takes over.
+    **DEPRECATED** — Replaced by the bucket-pipe architecture. See bucketing-architecture.md.
 
 NODE pull_request_opened
 SQL >
