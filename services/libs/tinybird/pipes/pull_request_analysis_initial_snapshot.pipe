@@ -1,5 +1,8 @@
 DESCRIPTION >
-    **DEPRECATED** — Replaced by the bucket-pipe architecture. See bucketing-architecture.md.
+    Bootstrap/full-rebuild pipe for pull_requests_analyzed. Do not run single-shot
+    (`--wait` with no bucket params) — it does not finish against the full dataset.
+    Run bucketed instead, one bucket_id at a time (see lambda-architecture.md):
+    tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=N --param num_buckets=10 --mode append
 
 NODE pull_request_opened
 SQL >
