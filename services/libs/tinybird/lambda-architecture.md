@@ -537,14 +537,14 @@ mode makes them safe to re-run.
 
 **DEPRECATED** — Replaced by the bucket-pipe architecture. See `bucketing-architecture.md`.
 
-**New Approach: Bucket-Pipe Architecture for activityRelations Bootstrap & Deduplication**
+**Replacement: PR Merger (Baseline-Merge MV + Hourly Copy Pipe)**
 
-The replacement architecture uses two families of bucketed snapshot pipes, each distributing work across 10 hash buckets (configured via `cityHash64(field) % 10`):
+`pull_request_analysis_initial_snapshot.pipe` (bootstrap only, `COPY_MODE: append`, `@on-demand`) is no longer needed. It has been replaced by the pre-existing hourly PR Merger:
 
-- **`activityRelations_bucket_MV_snapshot_0..9.pipe`**: Buckets raw activities by `cityHash64(segmentId) % 10`
-- **`activityRelations_collection_bucket_MV_snapshot_0..9.pipe`**: Buckets by `cityHash64(collectionSlug) % 10`
+- **`pull_request_analysis_baseline_merge_MV.pipe`**: Materialized View that incrementally merges new PR events with existing PR data (feeds `pull_request_analyzed_MV_ds`)
+- **`pull_request_analysis_snapshot_merger_copy.pipe`**: Copy pipe (`COPY_MODE: replace`, `COPY_SCHEDULE: 0 * * * *` = hourly) that replaces the `pull_requests_analyzed` datasource with the latest snapshot
 
-Each pipe is configured with `COPY_MODE: append` and `COPY_SCHEDULE: @on-demand` (manual execution). Together they handle both initial bootstrap (first-time snapshot creation) and ongoing deduplication by replaying the latest MV deltas into the bucket datasources. This replaces the old pattern of a single initial-snapshot pipe followed by a separate merger—all functionality is now unified in the bucket pipes themselves.
+The merger handles both first-time population (when a PR first appears) and ongoing deduplication automatically via its hourly run, making a separate bootstrap step unnecessary. Read the comments in `pull_request_analysis_baseline_merge_MV.pipe` itself (lines 1–14, DESCRIPTION field) for the full context: "This MV + `pull_request_analysis_snapshot_merger_copy.pipe` are the real hourly path" — this path was already running in production.
 
 #### 3. segmentId_aggregates_initial_snapshot
 
@@ -587,11 +587,14 @@ tb pipe copy run segmentId_aggregates_initial_snapshot --wait
 |--------|------------------|-----------------------------------|-----------|
 | **Status** | **DEPRECATED** | Active | Active |
 | **Schedule** | @on-demand (manual) | Daily (01:30/01:34/01:38 UTC) | Hourly (0 * * * *) |
-| **Mode** | replace (overwrites all) | replace (atomic per-bucket swap) | replace |
+| **Mode** | append¹ / replace² | replace (atomic per-bucket swap) | replace |
 | **Purpose** | ~~Bootstrap/reset~~ | Incremental merge of MV deltas | Incremental merge of PR events |
 | **Source** | Base tables | MV output + own bucket (carry-forward) | MV output + own target |
 | **Frequency** | ~~Once (or rarely)~~ | Continuous (daily) | Continuous (hourly) |
 | **Snapshot Strategy** | ~~Create first snapshot~~ | One snapshot per bucket, re-stamped each run | Single snapshot, replaced each run |
+
+¹ `pull_request_analysis_initial_snapshot`: `COPY_MODE append` (bootstrap by appending)  
+² `activityRelations_enrich_initial_snapshot_*` and `segmentId_aggregates_initial_snapshot`: `COPY_MODE replace` (overwrite entire target)
 
 ---
 
