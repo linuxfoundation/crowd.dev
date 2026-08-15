@@ -1,1 +1,0 @@
-{"version":3,"file":"activityTypeList.js","sourceRoot":"","sources":["activityTypeList.ts"],"names":[],"mappings":";;;;;AAAA,mFAA0D;AAE1D;;;;;;;;;;;;GAYG;AACH,kBAAe,KAAK,EAAE,GAAG,EAAE,GAAG,EAAE,EAAE;IAChC,MAAM,OAAO,GAAG,wBAAc,CAAC,iBAAiB,CAAC,GAAG,CAAC,CAAA;IAErD,MAAM,GAAG,CAAC,eAAe,CAAC,OAAO,CAAC,GAAG,EAAE,GAAG,EAAE,OAAO,CAAC,CAAA;AACtD,CAAC,CAAA"}

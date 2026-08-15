@@ -1,1 +1,0 @@
-{"version":3,"file":"productDbMiddleware.js","sourceRoot":"","sources":["productDbMiddleware.ts"],"names":[],"mappings":";;AAEA,8DAKC;AALD,SAAgB,yBAAyB,CAAC,EAAgB;IACxD,OAAO,KAAK,EAAE,GAAG,EAAE,GAAG,EAAE,IAAI,EAAE,EAAE;QAC9B,GAAG,CAAC,SAAS,GAAG,EAAE,CAAA;QAClB,IAAI,EAAE,CAAA;IACR,CAAC,CAAA;AACH,CAAC"}

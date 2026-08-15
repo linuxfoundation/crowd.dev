@@ -1,1 +1,0 @@
-{"version":3,"file":"rateLimitError.js","sourceRoot":"","sources":["rateLimitError.ts"],"names":[],"mappings":";;;AAAA,4CAAwC;AAExC,MAAa,cAAe,SAAQ,qBAAS;IAG3C,YAAY,qBAA6B,EAAE,QAAgB,EAAE,SAAe;QAC1E,KAAK,CAAC,cAAc,QAAQ,uBAAuB,EAAE,SAAS,CAAC,CAAA;QAC/D,IAAI,CAAC,qBAAqB,GAAG,qBAAqB,CAAA;IACpD,CAAC;CACF;AAPD,wCAOC"}
