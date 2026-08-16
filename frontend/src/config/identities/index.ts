@@ -22,6 +22,7 @@ import slack from './slack/config';
 import stackoverflow from './stackoverflow/config';
 import tnc from './tnc/config';
 import twitter from './twitter/config';
+import sched from './sched/config';
 import zapier from './zapier/config';
 
 export interface IdentityConfig {
@@ -75,4 +76,5 @@ export const lfIdentities: Record<string, IdentityConfig> = {
   n8n,
   training_cert: tnc,
   zapier,
+  sched,
 };

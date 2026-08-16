@@ -1,0 +1,38 @@
+<template>
+  <lf-button
+    type="outline"
+    @click="isSchedSettingsDrawerVisible = true"
+  >
+    <lf-icon name="link-simple" />
+    <slot>Connect</slot>
+  </lf-button>
+
+  <lf-sched-settings-drawer
+    v-if="isSchedSettingsDrawerVisible"
+    v-model="isSchedSettingsDrawerVisible"
+    :integration="props.integration"
+    :segment-id="props.segmentId"
+    :grandparent-id="props.grandparentId"
+  />
+</template>
+
+<script setup lang="ts">
+import { defineProps, ref } from 'vue';
+import LfIcon from '@/ui-kit/icon/Icon.vue';
+import LfButton from '@/ui-kit/button/Button.vue';
+import LfSchedSettingsDrawer from '@/config/integrations/sched/components/sched-settings-drawer.vue';
+
+const props = defineProps<{
+  integration: any;
+  segmentId: string;
+  grandparentId: string;
+}>();
+
+const isSchedSettingsDrawerVisible = ref(false);
+</script>
+
+<script lang="ts">
+export default {
+  name: 'LfSchedConnect',
+};
+</script>

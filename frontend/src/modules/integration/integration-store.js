@@ -620,6 +620,46 @@ export default {
       }
     },
 
+    async doSchedConnect(
+      { commit },
+      {
+        id, settings, isUpdate, segmentId, grandparentId,
+      },
+    ) {
+      try {
+        commit('CREATE_STARTED');
+
+        const integration = await IntegrationService.schedConnect(
+          id,
+          settings,
+          segmentId,
+        );
+
+        commit('CREATE_SUCCESS', integration);
+
+        ToastStore.success(
+          'The first activities will show up in a couple of seconds. <br /> <br /> '
+            + 'This process might take a few minutes to finish, depending on the amount of data.',
+          {
+            title: `Sched integration ${
+              isUpdate ? 'updated' : 'created'
+            } successfully`,
+          },
+        );
+
+        router.push({
+          name: 'integration',
+          params: {
+            id: segmentId,
+            grandparentId,
+          },
+        });
+      } catch (error) {
+        Errors.handle(error);
+        commit('CREATE_ERROR');
+      }
+    },
+
     async doGerritConnect(
       { commit, dispatch },
       {
