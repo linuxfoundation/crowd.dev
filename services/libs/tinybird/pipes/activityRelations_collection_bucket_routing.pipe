@@ -13,6 +13,5 @@ SQL >
         {% elif bucketId == '7' %} activityRelations_collection_deduplicated_cleaned_bucket_7_ds
         {% elif bucketId == '8' %} activityRelations_collection_deduplicated_cleaned_bucket_8_ds
         {% elif bucketId == '9' %} activityRelations_collection_deduplicated_cleaned_bucket_9_ds
-        -- fallback, should never happen
         {% else %} activityRelations_collection_deduplicated_cleaned_bucket_0_ds
         {% end %} as selected_bucket
