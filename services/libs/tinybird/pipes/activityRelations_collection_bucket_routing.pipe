@@ -1,11 +1,3 @@
-DESCRIPTION >
-    - Routes a collection-scoped activity query directly to its single bucket table, mirroring
-    `activityRelations_bucket_routing.pipe`'s role for projects.
-    - Requires `bucketId` to already be resolved by the caller (via `collection_buckets.pipe`)
-    and passed in - this pipe only does the Jinja table-name branch, it does not compute the hash.
-    - Callers must still filter on `collectionSlug`, since a bucket can hold multiple curated
-    collections' activities.
-
 NODE activityRelations_collection_bucket_routing_2
 SQL >
     %

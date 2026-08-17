@@ -38,8 +38,7 @@ SQL >
         {% if defined(collectionSlug) %}
             segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
             {% if defined(bucketId) %}
-                AND a.collectionSlug
-                = {{ String(collectionSlug, description="Collection slug for bucket-scoped reads", required=False) }}
+                AND a.collectionSlug = {{ String(collectionSlug) }}
             {% end %}
         {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
         {% end %}
