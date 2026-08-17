@@ -1,7 +1,8 @@
 DESCRIPTION >
-    Compacts activities from same PR into one, keeping necessary information in a single row. Helps to serve PR-wide widgets in the development tab.
-    Run with bucket_id (0-4) and num_buckets (default 5) to process a subset of segments at a time, avoiding memory limits.
-    After all buckets complete, the hourly snapshot merger takes over.
+    Bootstrap/full-rebuild pipe for pull_requests_analyzed. Do not run single-shot
+    (`--wait` with no bucket params) — it does not finish against the full dataset.
+    Run bucketed instead, one bucket_id at a time (see lambda-architecture.md):
+    tb pipe copy run pull_request_analysis_initial_snapshot --param bucket_id=N --param num_buckets=10 --mode append
 
 NODE pull_request_opened
 SQL >
