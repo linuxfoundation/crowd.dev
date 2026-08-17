@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { isDomainExcluded, replaceDoubleQuotes } from '@crowd/common'
+import { isDomainExcluded, isValidEmail, replaceDoubleQuotes } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   IMemberEnrichmentCache,
@@ -196,7 +196,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       }
 
       const email = identity.value?.trim().toLowerCase()
-      if (!email || !identity.verified || seen.has(email)) {
+      if (!email || !identity.verified || seen.has(email) || !isValidEmail(email)) {
         continue
       }
 
