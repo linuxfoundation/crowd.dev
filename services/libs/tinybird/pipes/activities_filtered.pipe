@@ -37,9 +37,7 @@ SQL >
     where
         {% if defined(collectionSlug) %}
             segmentId IN (SELECT segmentId FROM segments_filtered_by_collection)
-            {% if defined(bucketId) %}
-                AND a.collectionSlug = {{ String(collectionSlug) }}
-            {% end %}
+            {% if defined(bucketId) %} AND a.collectionSlug = {{ String(collectionSlug) }} {% end %}
         {% else %} segmentId = (SELECT segmentId FROM segments_filtered)
         {% end %}
         {% if defined(startDate) %}
