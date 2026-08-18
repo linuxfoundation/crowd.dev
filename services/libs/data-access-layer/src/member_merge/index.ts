@@ -50,6 +50,33 @@ export async function insertMemberNoMerge(
   )
 }
 
+export async function moveMemberNoMerge(
+  qx: QueryExecutor,
+  fromMemberId: string,
+  toMemberId: string,
+): Promise<void> {
+  await qx.result(
+    `
+      with "blockedMembers" as (
+        select distinct
+          case when "memberId" = $(fromMemberId) then "noMergeId" else "memberId" end as id
+        from "memberNoMerge"
+        where "memberId" = $(fromMemberId) or "noMergeId" = $(fromMemberId)
+      )
+      insert into "memberNoMerge" ("memberId", "noMergeId", "createdAt", "updatedAt")
+      select "memberId", "noMergeId", NOW(), NOW()
+      from (
+        select $(toMemberId)::uuid as "memberId", b.id as "noMergeId" from "blockedMembers" b
+        union
+        select b.id as "memberId", $(toMemberId)::uuid as "noMergeId" from "blockedMembers" b
+      ) edges
+      where "memberId" != "noMergeId"
+      ON CONFLICT ("memberId", "noMergeId") DO NOTHING
+    `,
+    { fromMemberId, toMemberId },
+  )
+}
+
 export async function getMemberNoMerge(
   qx: QueryExecutor,
   memberIds: string[],

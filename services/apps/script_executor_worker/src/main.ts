@@ -7,6 +7,7 @@ import {
   scheduleOrganizationSegmentAggCleanup,
   scheduleOrganizationsCleanup,
 } from './schedules/scheduleCleanup'
+import { scheduleMergeMembersWithSameVerifiedEmails } from './schedules/scheduleMemberDeduplication'
 
 const config: Config = {
   envvars: [
@@ -47,6 +48,7 @@ setImmediate(async () => {
   await scheduleOrganizationsCleanup()
   await scheduleMemberSegmentsAggCleanup()
   await scheduleOrganizationSegmentAggCleanup()
+  await scheduleMergeMembersWithSameVerifiedEmails()
 
   await svc.start()
 })

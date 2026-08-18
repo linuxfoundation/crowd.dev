@@ -27,6 +27,7 @@ import {
 import {
   getWorkflowsCount,
   mergeMembers,
+  mergeMembersIfAllowed,
   mergeOrganizations,
   triggerMemberAffiliationsRefresh,
   unmergeMembers,
@@ -66,6 +67,7 @@ export {
   findMembersWithSameVerifiedEmailsInDifferentPlatforms,
   findMembersWithSamePlatformIdentitiesDifferentCapitalization,
   mergeMembers,
+  mergeMembersIfAllowed,
   findMemberMergeActions,
   findMergeActionUnmergeBackup,
   unmergeMembers,

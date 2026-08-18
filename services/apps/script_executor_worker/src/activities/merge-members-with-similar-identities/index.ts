@@ -5,13 +5,18 @@ import { svc } from '../../main'
 
 export async function findMembersWithSameVerifiedEmailsInDifferentPlatforms(
   limit: number,
-  afterHash?: number,
+  afterHighMemberId?: string,
+  afterLowMemberId?: string,
 ): Promise<ISimilarMember[]> {
   let rows: ISimilarMember[] = []
 
   try {
     const memberRepo = new MemberRepository(svc.postgres.reader.connection(), svc.log)
-    rows = await memberRepo.findMembersWithSameVerifiedEmailsInDifferentPlatforms(limit, afterHash)
+    rows = await memberRepo.findMembersWithSameVerifiedEmailsInDifferentPlatforms(
+      limit,
+      afterHighMemberId,
+      afterLowMemberId,
+    )
   } catch (err) {
     throw new Error(err)
   }

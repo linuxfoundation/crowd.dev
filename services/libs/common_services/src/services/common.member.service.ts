@@ -47,7 +47,7 @@ import {
   preferCompanyOverUniversityWhenOverlapping,
   updateMember,
 } from '@crowd/data-access-layer'
-import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import { moveMemberNoMerge, removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
@@ -420,6 +420,8 @@ export class CommonMemberService extends LoggerBase {
               identitiesToMove,
               identitiesToUpdate,
             )
+
+            await moveMemberNoMerge(txQx, toMergeId, originalId)
 
             // Update member segment affiliations and organization affiliation overrides
             await moveAffiliationsBetweenMembers(txQx, toMergeId, originalId)

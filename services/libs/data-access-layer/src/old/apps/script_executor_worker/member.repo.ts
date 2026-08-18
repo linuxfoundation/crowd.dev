@@ -16,13 +16,15 @@ class MemberRepository {
 
   async findMembersWithSameVerifiedEmailsInDifferentPlatforms(
     limit = 50,
-    afterHash: number = undefined,
+    afterHighMemberId: string = undefined,
+    afterLowMemberId: string = undefined,
   ): Promise<ISimilarMember[]> {
     let rows: ISimilarMember[] = []
     try {
-      const afterHashFilter = afterHash
-        ? ` and Greatest(Hashtext(Concat(a."memberId", b."memberId")), Hashtext(Concat(b."memberId", a."memberId"))) < $(afterHash) `
-        : ''
+      const afterPairFilter =
+        afterHighMemberId && afterLowMemberId
+          ? ` and (Greatest(a."memberId"::text, b."memberId"::text), Least(a."memberId"::text, b."memberId"::text)) < ($(afterHighMemberId), $(afterLowMemberId)) `
+          : ''
       rows = await this.connection.query(
         `
     select 
@@ -39,13 +41,19 @@ class MemberRepository {
         and a.type = 'email'
         and a."deletedAt" is null
         and b."deletedAt" is null
-        ${afterHashFilter}
-    group by hash
-    order by hash desc
+        ${afterPairFilter}
+    group by
+        Greatest(a."memberId"::text, b."memberId"::text),
+        Least(a."memberId"::text, b."memberId"::text),
+        hash
+    order by
+        Greatest(a."memberId"::text, b."memberId"::text) desc,
+        Least(a."memberId"::text, b."memberId"::text) desc
     limit $(limit);
       `,
         {
-          afterHash,
+          afterHighMemberId,
+          afterLowMemberId,
           limit,
         },
       )
