@@ -31,7 +31,7 @@ const bodySchema = z
     type: z.enum(MemberIdentityType),
     source: z.string().min(1),
     verified: z.boolean(),
-    verifiedBy: z.string().optional(),
+    verifiedBy: z.string().trim().min(1).optional(),
   })
   .refine((data) => !data.verified || data.verifiedBy, {
     message: 'verifiedBy is required when verified is true',
