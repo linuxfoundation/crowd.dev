@@ -22,7 +22,7 @@ const paramsSchema = z.object({
 })
 
 const bodySchema = z.object({
-  deletedBy: z.string(),
+  deletedBy: z.string().trim().min(1).max(255),
 })
 
 export async function deleteMemberWorkExperience(req: Request, res: Response): Promise<void> {
