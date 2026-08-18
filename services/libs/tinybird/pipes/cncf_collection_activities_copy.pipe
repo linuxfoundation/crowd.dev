@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `cncf_collection_activities_copy.pipe` materializes CNCF-collection-scoped activity relations into `cncf_collection_activities_ds`.
     - Reads from `activityRelations_collection_deduplicated_cleaned_bucket_8_ds` filtered to `collectionSlug = 'cncf'` (`cityHash64('cncf') % 10 = 8`, so all CNCF rows land in bucket 8).
-    - Runs daily after bucket 8's clean/enrich copy pipe (`activityRelations_collection_bucket_clean_enrich_copy_pipe_8.pipe`, scheduled 04:40), so it always reads that day's fresh full-replace of bucket 8.
+    - Runs daily at 06:15, well after bucket 8's clean/enrich copy pipe (`activityRelations_collection_bucket_clean_enrich_copy_pipe_8.pipe`, scheduled 04:40) finishes, so it always reads that day's fresh full-replace of bucket 8. 06:15 also avoids the dense job clustering in hours 00:00-05:00 (bucket cleanup/copy stages), landing in one of the lightest windows in the schedule.
     - Full-replace, since the upstream bucket is itself a daily full recompute (not append-safe).
 
 TAGS "Report"
@@ -15,4 +15,4 @@ SQL >
 TYPE COPY
 TARGET_DATASOURCE cncf_collection_activities_ds
 COPY_MODE replace
-COPY_SCHEDULE 0 5 * * *
+COPY_SCHEDULE 15 6 * * *
