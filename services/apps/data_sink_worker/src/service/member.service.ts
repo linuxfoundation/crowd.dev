@@ -141,8 +141,24 @@ export default class MemberService extends LoggerBase {
     // from firing when a payload contains the same identity twice with different verified values.
     const deduped = normalizeMemberIdentities(identities)
 
+    const unverified = deduped.filter((identity) => !identity.verified)
+    const owners =
+      unverified.length > 0
+        ? await findMembersByIdentities(this.pgQx, unverified, memberId)
+        : new Map<string, string>()
+
+    const toInsert = deduped.filter(
+      (identity) =>
+        identity.verified ||
+        !owners.has(`${identity.platform}:${identity.type}:${identity.value.trim()}`),
+    )
+
+    if (toInsert.length === 0) {
+      return
+    }
+
     try {
-      await this.memberRepo.insertIdentities(memberId, integrationId, deduped, true)
+      await this.memberRepo.insertIdentities(memberId, integrationId, toInsert, true)
     } catch (err) {
       if (
         !err?.constraint ||
@@ -152,7 +168,7 @@ export default class MemberService extends LoggerBase {
         throw err
       }
 
-      const verifiedIncoming = deduped.filter((i) => i.verified)
+      const verifiedIncoming = toInsert.filter((i) => i.verified)
       if (verifiedIncoming.length === 0) throw err
 
       // Use the structured identities array to find the owner — avoids fragile Postgres
