@@ -40,7 +40,7 @@ const bodySchema = z
           message: 'dateEnd must be greater than or equal to dateStart',
         }),
     ),
-    verifiedBy: z.string().max(255).optional(),
+    verifiedBy: z.string().trim().min(1).optional(),
   })
   .refine((b) => b.affiliations.length === 0 || b.verifiedBy != null, {
     message: 'verifiedBy is required when affiliations is non-empty',

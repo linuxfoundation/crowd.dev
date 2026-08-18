@@ -55,7 +55,7 @@ const bodySchema = z.object({
   organizationId: z.uuid(),
   jobTitle: z.string(),
   verified: z.boolean(),
-  verifiedBy: z.string(),
+  verifiedBy: z.string().trim().min(1),
   source: z.string(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),

@@ -311,6 +311,7 @@ paths:
                   description: Whether the identity is verified.
                 verifiedBy:
                   type: string
+                  minLength: 1
                   description: Required when `verified` is true. Identifier of who verified.
             example:
               value: johndoe
@@ -383,6 +384,7 @@ paths:
                     `true` to verify the identity, `false` to reject it.
                 verifiedBy:
                   type: string
+                  minLength: 1
                   description: Identifier of who performed the verification.
             example:
               verified: true
@@ -628,6 +630,7 @@ paths:
                     `true` to verify, `false` to reject (soft-delete).
                 verifiedBy:
                   type: string
+                  minLength: 1
                   description: Identifier of who performed the verification.
             example:
               verified: true
@@ -664,9 +667,26 @@ paths:
       parameters:
         - $ref: '#/components/parameters/MemberId'
         - $ref: '#/components/parameters/WorkExperienceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deletedBy
+              properties:
+                deletedBy:
+                  type: string
+                  minLength: 1
+                  description: Identifier of who performed the deletion.
+            example:
+              deletedBy: admin@lfx.dev
       responses:
         '204':
           description: Work experience deleted. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -773,7 +793,7 @@ paths:
                         description: End date, or null if currently active.
                 verifiedBy:
                   type: string
-                  maxLength: 255
+                  minLength: 1
                   description: Required when `affiliations` is non-empty.
             example:
               affiliations:
@@ -1162,6 +1182,7 @@ components:
           description: Whether the identity is verified.
         verifiedBy:
           type: string
+          minLength: 1
           description: Required when `verified` is true. Identifier of who verified.
 
     MemberIdentity:
@@ -1356,6 +1377,7 @@ components:
           type: boolean
         verifiedBy:
           type: string
+          minLength: 1
           description: Identifier of who verified this work experience.
         source:
           type: string
