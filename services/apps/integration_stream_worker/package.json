@@ -30,7 +30,7 @@
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
-    "config": "^3.3.9",
+    "config": "^3.3.12",
     "tsx": "^4.7.1",
     "typescript": "^5.6.3"
   },

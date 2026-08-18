@@ -20,7 +20,7 @@
     "@crowd/redis": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "bunyan-middleware": "^1.0.2",
-    "config": "^3.3.9",
+    "config": "^3.3.12",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "tsx": "^4.7.1",

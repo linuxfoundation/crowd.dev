@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@crowd/types": "workspace:*",
-    "config": "^3.3.9",
+    "config": "^3.3.12",
     "i18n-iso-countries": "^7.14.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.get": "~4.4.2",
