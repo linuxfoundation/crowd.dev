@@ -452,7 +452,8 @@ suite_member_work_experiences() {
   check "POST create stint for delete" 201
   doomed_we="$(body_field id)"
 
-  api v1 DELETE "/members/${PERSON_ID}/work-experiences/${doomed_we}"
+  api v1 DELETE "/members/${PERSON_ID}/work-experiences/${doomed_we}" \
+    "$(json --arg by "$VERIFIED_BY" '{deletedBy: $by}')"
   check "DELETE work experience" 204
 
   api v1 GET "/members/${PERSON_ID}/work-experiences"

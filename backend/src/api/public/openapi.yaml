@@ -664,9 +664,25 @@ paths:
       parameters:
         - $ref: '#/components/parameters/MemberId'
         - $ref: '#/components/parameters/WorkExperienceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deletedBy
+              properties:
+                deletedBy:
+                  type: string
+                  description: Identifier of who performed the deletion.
+            example:
+              deletedBy: admin@lfx.dev
       responses:
         '204':
           description: Work experience deleted. No response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

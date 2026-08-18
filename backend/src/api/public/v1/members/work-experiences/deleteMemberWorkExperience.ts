@@ -21,8 +21,13 @@ const paramsSchema = z.object({
   workExperienceId: z.uuid(),
 })
 
+const bodySchema = z.object({
+  deletedBy: z.string(),
+})
+
 export async function deleteMemberWorkExperience(req: Request, res: Response): Promise<void> {
   const { memberId, workExperienceId } = validateOrThrow(paramsSchema, req.params)
+  const { deletedBy } = validateOrThrow(bodySchema, req.body)
 
   const qx = optionsQx(req)
 
@@ -53,7 +58,7 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
       captureOldState(memberOrg)
 
       await qx.tx(async (tx) => {
-        await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete)
+        await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete, true, deletedBy)
       })
 
       // Signal after commit so the workflow sees persisted changes
