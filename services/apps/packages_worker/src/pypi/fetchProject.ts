@@ -31,8 +31,8 @@ export async function fetchProject(
           'User-Agent': USER_AGENT,
         },
         signal: abort.signal,
-        dispatcher,
-      } as RequestInit)
+        dispatcher: dispatcher as RequestInit['dispatcher'],
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: String(err) }
     }

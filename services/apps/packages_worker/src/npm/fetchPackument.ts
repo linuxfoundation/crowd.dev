@@ -32,8 +32,8 @@ export async function fetchPackument(
         'User-Agent': USER_AGENT,
       },
       signal: combinedSignal,
-      dispatcher,
-    } as RequestInit)
+      dispatcher: dispatcher as RequestInit['dispatcher'],
+    })
   } catch (err) {
     return { kind: FetchErrorKind.TRANSIENT, message: String(err) }
   } finally {

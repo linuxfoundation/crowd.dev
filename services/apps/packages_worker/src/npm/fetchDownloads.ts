@@ -14,8 +14,8 @@ function downloadInit(dispatcher?: Dispatcher, signal?: AbortSignal): RequestIni
   return {
     headers: { 'User-Agent': USER_AGENT },
     signal,
-    dispatcher,
-  } as RequestInit
+    dispatcher: dispatcher as RequestInit['dispatcher'],
+  }
 }
 
 export interface PointRangeResult {

@@ -92,8 +92,8 @@ export async function fetchPackagistPackageList(): Promise<unknown | FetchError>
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
-        dispatcher: packagistDispatcher,
-      } as RequestInit)
+        dispatcher: packagistDispatcher as RequestInit['dispatcher'],
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }

@@ -61,8 +61,8 @@ export async function fetchPackagistStats(name: string): Promise<PackagistStatsJ
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
-        dispatcher: packagistDispatcher,
-      } as RequestInit)
+        dispatcher: packagistDispatcher as RequestInit['dispatcher'],
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
@@ -122,8 +122,8 @@ export async function fetchPackagistP2(
       res = await fetch(url, {
         headers,
         signal: abort.signal,
-        dispatcher: packagistDispatcher,
-      } as RequestInit)
+        dispatcher: packagistDispatcher as RequestInit['dispatcher'],
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
