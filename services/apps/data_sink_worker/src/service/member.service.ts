@@ -141,9 +141,7 @@ export default class MemberService extends LoggerBase {
     // from firing when a payload contains the same identity twice with different verified values.
     const deduped = normalizeMemberIdentities(identities)
 
-    // Unverified identities are hints (e.g. GitHub twitterUsername), not ownership proof.
-    // Skip when another member already has the same row — matches enrichment and stops
-    // integration updates from re-opening duplicate groups after cleanup.
+    // Skip unverified rows another member already has (same as enrichment).
     const unverified = deduped.filter((identity) => !identity.verified)
     const owners =
       unverified.length > 0
