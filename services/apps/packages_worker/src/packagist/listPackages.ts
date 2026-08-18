@@ -85,14 +85,13 @@ export async function fetchPackagistPackageList(): Promise<unknown | FetchError>
   try {
     let res: Response
     try {
-      // Node 24 and undici 5 have different Dispatcher types.
       res = await fetch(PACKAGIST_LIST, {
         headers: {
           Accept: 'application/json',
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
-        dispatcher: packagistDispatcher as RequestInit['dispatcher'],
+        dispatcher: packagistDispatcher,
       })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }

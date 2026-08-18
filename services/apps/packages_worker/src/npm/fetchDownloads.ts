@@ -9,12 +9,11 @@ function encodeNpmName(name: string): string {
   return name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name)
 }
 
-// Node 24 and undici 5 have different Dispatcher types.
 function downloadInit(dispatcher?: Dispatcher, signal?: AbortSignal): RequestInit {
   return {
     headers: { 'User-Agent': USER_AGENT },
     signal,
-    dispatcher: dispatcher as RequestInit['dispatcher'],
+    dispatcher,
   }
 }
 

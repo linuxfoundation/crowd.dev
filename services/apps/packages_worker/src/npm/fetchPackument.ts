@@ -25,14 +25,13 @@ export async function fetchPackument(
   const combinedSignal = combineSignals(abort.signal, signal)
   let res: Response
   try {
-    // Node 24 and undici 5 have different Dispatcher types.
     res = await fetch(url, {
       headers: {
         Accept: 'application/json',
         'User-Agent': USER_AGENT,
       },
       signal: combinedSignal,
-      dispatcher: dispatcher as RequestInit['dispatcher'],
+      dispatcher,
     })
   } catch (err) {
     return { kind: FetchErrorKind.TRANSIENT, message: String(err) }

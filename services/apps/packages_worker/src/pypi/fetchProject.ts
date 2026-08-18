@@ -24,14 +24,13 @@ export async function fetchProject(
   try {
     let res: Response
     try {
-      // Node 24 and undici 5 have different Dispatcher types.
       res = await fetch(url, {
         headers: {
           Accept: 'application/json',
           'User-Agent': USER_AGENT,
         },
         signal: abort.signal,
-        dispatcher: dispatcher as RequestInit['dispatcher'],
+        dispatcher,
       })
     } catch (err) {
       return { kind: 'TRANSIENT', message: String(err) }

@@ -54,14 +54,13 @@ export async function fetchPackagistStats(name: string): Promise<PackagistStatsJ
   try {
     let res: Response
     try {
-      // Node 24 and undici 5 have different Dispatcher types.
       res = await fetch(url, {
         headers: {
           Accept: 'application/json',
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
-        dispatcher: packagistDispatcher as RequestInit['dispatcher'],
+        dispatcher: packagistDispatcher,
       })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
@@ -118,11 +117,10 @@ export async function fetchPackagistP2(
 
     let res: Response
     try {
-      // Node 24 and undici 5 have different Dispatcher types.
       res = await fetch(url, {
         headers,
         signal: abort.signal,
-        dispatcher: packagistDispatcher as RequestInit['dispatcher'],
+        dispatcher: packagistDispatcher,
       })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
