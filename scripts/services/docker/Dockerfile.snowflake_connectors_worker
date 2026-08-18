@@ -1,4 +1,4 @@
-FROM node:20-bullseye-slim AS builder
+FROM node:24-bullseye-slim AS builder
 
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
@@ -11,7 +11,7 @@ RUN pnpm fetch
 COPY ./services ./services
 RUN pnpm i --frozen-lockfile
 
-FROM node:20-bullseye-slim AS runner
+FROM node:24-bullseye-slim AS runner
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 

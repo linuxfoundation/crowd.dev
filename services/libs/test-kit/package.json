@@ -23,7 +23,7 @@
     "pg-promise": "^11.4.3"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^24.13.3",
     "typescript": "^5.6.3",
     "vitest": "4.1.7"
   }

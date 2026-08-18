@@ -9,16 +9,13 @@ function encodeNpmName(name: string): string {
   return name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name)
 }
 
-// Build a fetch init with the optional undici `dispatcher` (a ProxyAgent) so a lane
-// can egress through its own proxy IP. `dispatcher` is an undici-specific option not
-// present in the DOM RequestInit type, so it's spliced in here.
+// Node 24 and undici 5 have different Dispatcher types.
 function downloadInit(dispatcher?: Dispatcher, signal?: AbortSignal): RequestInit {
-  const init: RequestInit & { dispatcher?: Dispatcher } = {
+  return {
     headers: { 'User-Agent': USER_AGENT },
     signal,
-  }
-  if (dispatcher) init.dispatcher = dispatcher
-  return init as RequestInit
+    dispatcher,
+  } as RequestInit
 }
 
 export interface PointRangeResult {

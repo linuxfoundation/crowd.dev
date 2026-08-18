@@ -20,9 +20,9 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version-file: '.nvmrc'
 
       - name: Install dependencies
         run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
@@ -48,9 +48,9 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version-file: '.nvmrc'
 
       - name: Install dependencies
         run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile

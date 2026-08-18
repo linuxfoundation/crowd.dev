@@ -1,4 +1,4 @@
-FROM node:20-alpine as builder
+FROM node:24-alpine as builder
 
 RUN apk add --no-cache python3 make g++
 
@@ -11,7 +11,7 @@ RUN pnpm fetch
 COPY ./services ./services
 RUN pnpm i --frozen-lockfile
 
-FROM node:20-bookworm-slim as runner
+FROM node:24-bookworm-slim as runner
 
 WORKDIR /usr/crowd/app
 RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate && apt update && apt install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
