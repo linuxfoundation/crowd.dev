@@ -27,7 +27,6 @@
     "@crowd/logging": "workspace:*",
     "@crowd/opensearch": "workspace:*",
     "@crowd/redis": "workspace:*",
-    "@crowd/snowflake": "workspace:*",
     "@crowd/types": "workspace:*",
     "@crowd/temporal": "workspace:*",
     "@temporalio/client": "~1.17.2",

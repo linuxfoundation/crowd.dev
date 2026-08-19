@@ -20,7 +20,6 @@
     "@crowd/logging": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@crowd/snowflake": "workspace:*",
     "@gitbeaker/rest": "^43.5.0",
     "@octokit/auth-app": "^4.0.13",
     "@octokit/graphql": "^5.0.6",
