@@ -24,7 +24,7 @@ import {
   getOrganizations,
   getOrganizationsForLLMConsumption,
   getRawOrganizationMergeSuggestions,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergeSuggestion,
   updateOrganizationMergeSuggestionsLastGeneratedAt,
 } from './activities/organizationMergeSuggestions'
 
@@ -44,7 +44,7 @@ export {
   getMembersForLLMConsumption,
   getOrganizationsForLLMConsumption,
   getRawOrganizationMergeSuggestions,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergeSuggestion,
   getRawMemberMergeSuggestions,
   removeMemberMergeSuggestion,
   saveLLMVerdict,

@@ -1,6 +1,6 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import { LLMSuggestionVerdictType, OrganizationMergeSuggestionTable } from '@crowd/types'
+import { LLMSuggestionVerdictType } from '@crowd/types'
 
 import type * as activities from '../activities'
 import { ILLMResult, IProcessMergeOrganizationSuggestionsWithLLM } from '../types'
@@ -8,7 +8,7 @@ import { ILLMResult, IProcessMergeOrganizationSuggestionsWithLLM } from '../type
 const {
   getRawOrganizationMergeSuggestions,
   getOrganizationsForLLMConsumption,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergeSuggestion,
   addOrganizationSuggestionToNoMerge,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
@@ -50,21 +50,27 @@ export async function mergeOrganizationsWithLLM(
     return
   }
 
+  const mergedAwayOrganizationIds = new Set<string>()
+
   for (const suggestion of suggestions) {
+    if (
+      mergedAwayOrganizationIds.has(suggestion[0]) ||
+      mergedAwayOrganizationIds.has(suggestion[1])
+    ) {
+      console.log(
+        `Skipping suggestion because an organization was already merged away in this run: ${suggestion}`,
+      )
+      await removeOrganizationMergeSuggestion(suggestion)
+      continue
+    }
+
     const organizations = await getOrganizationsForLLMConsumption(suggestion)
 
     if (organizations.length !== 2) {
       console.log(
         `Failed getting organization data in suggestion. Skipping suggestion: ${suggestion}`,
       )
-      await removeOrganizationMergeSuggestions(
-        suggestion,
-        OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
-      )
-      await removeOrganizationMergeSuggestions(
-        suggestion,
-        OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
-      )
+      await removeOrganizationMergeSuggestion(suggestion)
       continue
     }
 
@@ -93,18 +99,12 @@ export async function mergeOrganizationsWithLLM(
         `LLM verdict says these two orgs are the same. Merging organizations: ${suggestion[0]} and ${suggestion[1]}!`,
       )
       await mergeOrganizations(suggestion[0], suggestion[1])
+      mergedAwayOrganizationIds.add(suggestion[1])
     } else {
       console.log(
         `LLM doesn't think these orgs are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await removeOrganizationMergeSuggestions(
-        suggestion,
-        OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
-      )
-      await removeOrganizationMergeSuggestions(
-        suggestion,
-        OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
-      )
+      await removeOrganizationMergeSuggestion(suggestion)
       await addOrganizationSuggestionToNoMerge(suggestion)
     }
   }
