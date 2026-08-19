@@ -1012,6 +1012,8 @@ async function moveRolesBetweenEntities(
     }
   }
 
+  // Active roles were moved above; re-point deleted roles to the primary
+  // without restoring them so their tombstones are preserved.
   await relocateSoftDeletedRoles(qx, primaryId, secondaryId, mergeStrat.entityIdField)
 
   return { shouldRecalculateAffiliations }
