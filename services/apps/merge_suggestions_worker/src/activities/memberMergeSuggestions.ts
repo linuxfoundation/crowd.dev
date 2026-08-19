@@ -515,5 +515,15 @@ export async function addMemberSuggestionToNoMerge(suggestion: string[]): Promis
   }
   const qx = pgpQx(svc.postgres.writer.connection())
 
-  await insertMemberNoMerge(qx, suggestion[0], suggestion[1])
+  try {
+    await insertMemberNoMerge(qx, suggestion[0], suggestion[1])
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === '23503') {
+      svc.log.info({ suggestion }, 'Foreign key constraint violation, skipping no merge!')
+      return
+    }
+
+    svc.log.error({ error, suggestion }, 'Error adding member suggestion to no merge!')
+    throw error
+  }
 }
