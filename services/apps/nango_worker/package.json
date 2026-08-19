@@ -19,8 +19,8 @@
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
-    "@crowd/data-access-layer": "workspace:*",
     "@crowd/common_services": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
     "@crowd/redis": "workspace:*",
@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.8.2",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "pg-promise": "^11.4.3"
   }
 }
