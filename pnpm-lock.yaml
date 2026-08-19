@@ -166,8 +166,8 @@ importers:
         specifier: 2.814.0
         version: 2.814.0
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       bcrypt:
         specifier: 6.0.0
         version: 6.0.0
@@ -906,8 +906,8 @@ importers:
         specifier: workspace:*
         version: link:../../libs/types
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       config:
         specifier: ^3.3.12
         version: 3.3.12
@@ -1047,8 +1047,8 @@ importers:
         specifier: ^4.3.1
         version: 4.3.1
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       lodash:
         specifier: ~4.17.21
         version: 4.17.21
@@ -1108,8 +1108,8 @@ importers:
         specifier: ~1.17.2
         version: 1.17.2
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       fast-levenshtein:
         specifier: ^3.0.0
         version: 3.0.0
@@ -1267,8 +1267,8 @@ importers:
         specifier: ~1.17.2
         version: 1.17.2
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       lodash.isequal:
         specifier: ^4.5.0
         version: 4.5.0
@@ -1349,8 +1349,8 @@ importers:
         specifier: ~1.17.2
         version: 1.17.2
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       fast-xml-parser:
         specifier: ^5.8.0
         version: 5.8.0
@@ -1480,8 +1480,8 @@ importers:
         specifier: ~1.17.2
         version: 1.17.2
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       lodash.mergewith:
         specifier: ^4.6.2
         version: 4.6.2
@@ -1581,8 +1581,8 @@ importers:
         specifier: ~1.17.2
         version: 1.17.2
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       csv-parse:
         specifier: ^5.5.6
         version: 5.5.6
@@ -1731,8 +1731,8 @@ importers:
         specifier: ~1.17.2
         version: 1.17.2
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       js-yaml:
         specifier: ^4.1.1
         version: 4.1.1
@@ -2202,8 +2202,8 @@ importers:
         specifier: ^22.0.0
         version: 22.0.0
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       jsonwebtoken:
         specifier: ^9.0.0
         version: 9.0.3
@@ -2315,8 +2315,8 @@ importers:
         specifier: workspace:*
         version: link:../logging
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       pg-promise:
         specifier: ^11.4.3
         version: 11.6.0
@@ -2358,8 +2358,8 @@ importers:
         specifier: ^5.0.6
         version: 5.0.6(encoding@0.1.13)
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       he:
         specifier: ^1.2.0
         version: 1.2.0
@@ -2435,8 +2435,8 @@ importers:
         specifier: ^0.69.22
         version: 0.69.22
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
@@ -2475,8 +2475,8 @@ importers:
         specifier: ^2.11.0
         version: 2.11.0
       axios:
-        specifier: ^1.16.1
-        version: 1.16.1
+        specifier: ^1.19.0
+        version: 1.19.0
       lodash.merge:
         specifier: ^4.6.2
         version: 4.6.2
@@ -5867,8 +5867,8 @@ packages:
   axios@1.12.0:
     resolution: {integrity: sha512-oXTDccv8PcfjZmPGlWsPSwtOJCZ/b6W5jAMCNcfwJbCzDckwG0jrYJFaWH1yvivfCXjVzV/SPDEhMB3Q+DSurg==}
 
-  axios@1.16.1:
-    resolution: {integrity: sha512-caYkukvroVPO8KrzuJEb50Hm07KwfBZPEC3VeFHTsqWHvKTsy54hjJz9BS/cdaypROE2rH6xvm9mHX4fgWkr3A==}
+  axios@1.19.0:
+    resolution: {integrity: sha512-ht/iuYZXEjFxLH/Hkezgd7m6JKlHHXEUSneaDz8uZe1Gj5QZtCnpyDsckvAiEnT89OEbCLmnte4R4sn7P0EKFw==}
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -6776,10 +6776,6 @@ packages:
     resolution: {integrity: sha512-e+HfNH61Bj1X9/jLc5v1owaLYuHdeHHSQlkhCBiTK8rBvKaULl/beGMxwrMXjpYrv4pz22BlY570vVePA2ho4A==}
     engines: {node: '>= 0.4'}
 
-  es-define-property@1.0.0:
-    resolution: {integrity: sha512-jxayLKShrEqqzJ0eumQbVhTYQM27CfT1T35+gCgDFoL82JLsXqTJ76zv6A0YLOgEnLUMvLzsDsGIrl8NFpT2gQ==}
-    engines: {node: '>= 0.4'}
-
   es-define-property@1.0.1:
     resolution: {integrity: sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==}
     engines: {node: '>= 0.4'}
@@ -7230,15 +7226,6 @@ packages:
   fn.name@1.1.0:
     resolution: {integrity: sha512-GRnmB5gPyJpAhTQdSZTSp9uaPSvl09KoYcMQtsB9rQoOmzs9dH6ffeccH+Z+cv6P68Hu5bC6JjRh4Ah/mHSNRw==}
 
-  follow-redirects@1.15.11:
-    resolution: {integrity: sha512-deG2P0JfjrTxl50XGCDyfI97ZGVCxIpfKYmfyrQ54n5FO/0gfIES8C/Psl6kWVDolizcaaxZJnTS0QSMxvnsBQ==}
-    engines: {node: '>=4.0'}
-    peerDependencies:
-      debug: '*'
-    peerDependenciesMeta:
-      debug:
-        optional: true
-
   follow-redirects@1.15.6:
     resolution: {integrity: sha512-wWN62YITEaOpSK584EZXJafH1AGpO8RVgElfkuXbTOrPX4fIfOyEpW/CsiNd8JdYrAoOvafRTOEnvsO++qCqFA==}
     engines: {node: '>=4.0'}
@@ -7488,9 +7475,6 @@ packages:
     engines: {node: '>=10'}
     deprecated: Package is no longer maintained
     hasBin: true
-
-  gopd@1.0.1:
-    resolution: {integrity: sha512-d65bNlIadxvpb/A2abVdlqKqV563juRnZ1Wtk6s1sIR8uNsXR70xqIzVqxVf1eTqDunwT2MkczEeaezCKTZhwA==}
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
@@ -13852,7 +13836,7 @@ snapshots:
   '@sendgrid/client@8.1.3':
     dependencies:
       '@sendgrid/helpers': 8.0.0
-      axios: 1.16.1
+      axios: 1.19.0
     transitivePeerDependencies:
       - debug
       - supports-color
@@ -13885,7 +13869,7 @@ snapshots:
       '@slack/types': 2.22.0
       '@types/node': 24.13.3
       '@types/retry': 0.12.0
-      axios: 1.16.1
+      axios: 1.19.0
       eventemitter3: 5.0.1
       form-data: 4.0.6
       is-electron: 2.2.2
@@ -15563,7 +15547,7 @@ snapshots:
 
   axios@0.21.4:
     dependencies:
-      follow-redirects: 1.15.11
+      follow-redirects: 1.16.0
     transitivePeerDependencies:
       - debug
 
@@ -15576,13 +15560,13 @@ snapshots:
 
   axios@1.12.0:
     dependencies:
-      follow-redirects: 1.15.11
+      follow-redirects: 1.16.0
       form-data: 4.0.6
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
       - debug
 
-  axios@1.16.1:
+  axios@1.19.0:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.6
@@ -15821,10 +15805,10 @@ snapshots:
 
   call-bind@1.0.7:
     dependencies:
-      es-define-property: 1.0.0
+      es-define-property: 1.0.1
       es-errors: 1.3.0
       function-bind: 1.1.2
-      get-intrinsic: 1.2.4
+      get-intrinsic: 1.3.0
       set-function-length: 1.2.2
 
   call-bound@1.0.4:
@@ -16563,20 +16547,20 @@ snapshots:
       data-view-buffer: 1.0.1
       data-view-byte-length: 1.0.1
       data-view-byte-offset: 1.0.0
-      es-define-property: 1.0.0
+      es-define-property: 1.0.1
       es-errors: 1.3.0
-      es-object-atoms: 1.0.0
+      es-object-atoms: 1.1.1
       es-set-tostringtag: 2.1.0
       es-to-primitive: 1.2.1
       function.prototype.name: 1.1.6
-      get-intrinsic: 1.2.4
+      get-intrinsic: 1.3.0
       get-symbol-description: 1.0.2
       globalthis: 1.0.3
-      gopd: 1.0.1
+      gopd: 1.2.0
       has-property-descriptors: 1.0.2
       has-proto: 1.0.3
-      has-symbols: 1.0.3
-      hasown: 2.0.2
+      has-symbols: 1.1.0
+      hasown: 2.0.4
       internal-slot: 1.0.7
       is-array-buffer: 3.0.4
       is-callable: 1.2.7
@@ -16603,10 +16587,6 @@ snapshots:
       unbox-primitive: 1.0.2
       which-typed-array: 1.1.15
 
-  es-define-property@1.0.0:
-    dependencies:
-      get-intrinsic: 1.3.0
-
   es-define-property@1.0.1: {}
 
   es-errors@1.3.0: {}
@@ -16630,11 +16610,11 @@ snapshots:
       es-errors: 1.3.0
       get-intrinsic: 1.3.0
       has-tostringtag: 1.0.2
-      hasown: 2.0.2
+      hasown: 2.0.4
 
   es-shim-unscopables@1.0.2:
     dependencies:
-      hasown: 2.0.2
+      hasown: 2.0.4
 
   es-to-primitive@1.2.1:
     dependencies:
@@ -17295,8 +17275,6 @@ snapshots:
 
   fn.name@1.1.0: {}
 
-  follow-redirects@1.15.11: {}
-
   follow-redirects@1.15.6: {}
 
   follow-redirects@1.16.0: {}
@@ -17472,8 +17450,8 @@ snapshots:
       es-errors: 1.3.0
       function-bind: 1.1.2
       has-proto: 1.0.3
-      has-symbols: 1.0.3
-      hasown: 2.0.2
+      has-symbols: 1.1.0
+      hasown: 2.0.4
 
   get-intrinsic@1.3.0:
     dependencies:
@@ -17627,10 +17605,6 @@ snapshots:
   google-p12-pem@3.1.4:
     dependencies:
       node-forge: 1.3.1
-
-  gopd@1.0.1:
-    dependencies:
-      get-intrinsic: 1.3.0
 
   gopd@1.2.0: {}
 
@@ -17910,7 +17884,7 @@ snapshots:
   internal-slot@1.0.7:
     dependencies:
       es-errors: 1.3.0
-      hasown: 2.0.2
+      hasown: 2.0.4
       side-channel: 1.1.1
 
   invert-kv@1.0.0: {}
@@ -19188,7 +19162,7 @@ snapshots:
 
   peopledatalabs@6.1.5:
     dependencies:
-      axios: 1.16.1
+      axios: 1.19.0
       copy-anything: 3.0.5
     transitivePeerDependencies:
       - debug
@@ -20055,7 +20029,7 @@ snapshots:
       asn1.js: 5.4.1
       asn1.js-rfc2560: 5.0.1(asn1.js@5.4.1)
       asn1.js-rfc5280: 3.0.0
-      axios: 1.16.1
+      axios: 1.19.0
       big-integer: 1.6.52
       bignumber.js: 9.1.2
       expand-tilde: 2.0.2
