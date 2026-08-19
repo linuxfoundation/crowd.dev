@@ -1,0 +1,57 @@
+version: '3.1'
+
+x-env-args: &env-args
+  DOCKER_BUILDKIT: 1
+  NODE_ENV: docker
+  SERVICE: connectors-worker
+  CROWD_TEMPORAL_TASKQUEUE: connectors
+  SHELL: /bin/sh
+
+services:
+  connectors-worker:
+    build:
+      context: ../../
+      dockerfile: ./scripts/services/docker/Dockerfile.connectors_worker
+    command: 'pnpm run start'
+    working_dir: /usr/crowd/app/services/apps/connectors_worker
+    env_file:
+      - ../../backend/.env.dist.local
+      - ../../backend/.env.dist.composed
+      - ../../backend/.env.override.local
+      - ../../backend/.env.override.composed
+    environment:
+      <<: *env-args
+    restart: always
+    networks:
+      - crowd-bridge
+
+  connectors-worker-dev:
+    build:
+      context: ../../
+      dockerfile: ./scripts/services/docker/Dockerfile.connectors_worker
+    command: 'pnpm run dev'
+    working_dir: /usr/crowd/app/services/apps/connectors_worker
+    env_file:
+      - ../../backend/.env.dist.local
+      - ../../backend/.env.dist.composed
+      - ../../backend/.env.override.local
+      - ../../backend/.env.override.composed
+    environment:
+      <<: *env-args
+    hostname: connectors-worker
+    networks:
+      - crowd-bridge
+    volumes:
+      - ../../services/libs/common/src:/usr/crowd/app/services/libs/common/src
+      - ../../services/libs/connectors/src:/usr/crowd/app/services/libs/connectors/src
+      - ../../services/libs/data-access-layer/src:/usr/crowd/app/services/libs/data-access-layer/src
+      - ../../services/libs/database/src:/usr/crowd/app/services/libs/database/src
+      - ../../services/libs/logging/src:/usr/crowd/app/services/libs/logging/src
+      - ../../services/libs/redis/src:/usr/crowd/app/services/libs/redis/src
+      - ../../services/libs/temporal/src:/usr/crowd/app/services/libs/temporal/src
+      - ../../services/libs/types/src:/usr/crowd/app/services/libs/types/src
+      - ../../services/apps/connectors_worker/src:/usr/crowd/app/services/apps/connectors_worker/src
+
+networks:
+  crowd-bridge:
+    external: true
