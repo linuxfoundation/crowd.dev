@@ -70,9 +70,9 @@ export async function insertOrganizationNoMerge(
   await qx.result(
     `
       INSERT INTO "organizationNoMerge" ("organizationId", "noMergeId", "createdAt", "updatedAt")
-      SELECT $(organizationId), $(noMergeId), NOW(), NOW()
-      WHERE EXISTS (SELECT 1 FROM organizations WHERE id = $(organizationId))
-        AND EXISTS (SELECT 1 FROM organizations WHERE id = $(noMergeId))
+      VALUES
+        ($(organizationId), $(noMergeId), NOW(), NOW()),
+        ($(noMergeId), $(organizationId), NOW(), NOW())
       ON CONFLICT ("organizationId", "noMergeId") DO NOTHING
     `,
     { organizationId, noMergeId },

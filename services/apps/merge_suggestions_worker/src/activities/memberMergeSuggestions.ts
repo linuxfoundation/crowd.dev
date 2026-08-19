@@ -516,5 +516,4 @@ export async function addMemberSuggestionToNoMerge(suggestion: string[]): Promis
   const qx = pgpQx(svc.postgres.writer.connection())
 
   await insertMemberNoMerge(qx, suggestion[0], suggestion[1])
-  await insertMemberNoMerge(qx, suggestion[1], suggestion[0])
 }

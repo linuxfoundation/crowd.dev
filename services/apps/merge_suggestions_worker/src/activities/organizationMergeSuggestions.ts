@@ -516,5 +516,4 @@ export async function addOrganizationSuggestionToNoMerge(suggestion: string[]): 
   const qx = pgpQx(svc.postgres.writer.connection())
 
   await insertOrganizationNoMerge(qx, suggestion[0], suggestion[1])
-  await insertOrganizationNoMerge(qx, suggestion[1], suggestion[0])
 }

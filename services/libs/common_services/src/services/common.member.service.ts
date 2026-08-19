@@ -435,7 +435,7 @@ export class CommonMemberService extends LoggerBase {
             // update members that belong to source organization to destination org
             await moveOrgsBetweenMembers(txQx, originalId, toMergeId)
 
-            // Secondary is gone; drop all of its leftover suggestions.
+            // Drop leftover suggestions that still mention the secondary.
             await removeMemberMergeSuggestions(txQx, toMergeId)
 
             const secondMemberSegments = await getMemberSegments(txQx, toMergeId)

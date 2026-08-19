@@ -719,7 +719,6 @@ class OrganizationRepository {
     const qx = SequelizeRepository.getQueryExecutor(options)
 
     await insertOrganizationNoMerge(qx, organizationId, noMergeId)
-    await insertOrganizationNoMerge(qx, noMergeId, organizationId)
   }
 
   static async removeToMerge(

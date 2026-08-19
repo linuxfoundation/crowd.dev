@@ -726,7 +726,7 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
 
-          // Secondary is gone; drop all of its leftover suggestions.
+          // Drop leftover suggestions that still mention the secondary.
           await removeOrganizationMergeSuggestions(optionsQx(repoOptions), toMergeId)
 
           await SequelizeRepository.commitTransaction(tx)
