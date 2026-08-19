@@ -24,32 +24,42 @@ export async function removeOrganizationToMerge(
   organizationId: string,
   toMergeId: string,
 ): Promise<void> {
-  const replacements = { organizationId, toMergeId }
-
-  const whereClause = `
-    WHERE
-      ("organizationId" = $(organizationId) AND "toMergeId" = $(toMergeId))
-      OR
-      ("organizationId" = $(toMergeId) AND "toMergeId" = $(organizationId))
-  `
-
-  await qx.tx(async (tx) => {
-    await tx.result(
-      `
+  await qx.result(
+    `
+      WITH deleted_filtered AS (
         DELETE FROM "organizationToMerge"
-        ${whereClause}
-      `,
-      replacements,
-    )
+        WHERE
+          ("organizationId" = $(organizationId) AND "toMergeId" = $(toMergeId))
+          OR
+          ("organizationId" = $(toMergeId) AND "toMergeId" = $(organizationId))
+      )
+      DELETE FROM "organizationToMergeRaw"
+      WHERE
+        ("organizationId" = $(organizationId) AND "toMergeId" = $(toMergeId))
+        OR
+        ("organizationId" = $(toMergeId) AND "toMergeId" = $(organizationId))
+    `,
+    { organizationId, toMergeId },
+  )
+}
 
-    await tx.result(
-      `
-        DELETE FROM "organizationToMergeRaw"
-        ${whereClause}
-      `,
-      replacements,
-    )
-  })
+export async function removeOrganizationMergeSuggestions(
+  qx: QueryExecutor,
+  organizationId: string,
+): Promise<void> {
+  await qx.result(
+    `
+      WITH deleted_filtered AS (
+        DELETE FROM "organizationToMerge"
+        WHERE "organizationId" = $(organizationId)
+           OR "toMergeId" = $(organizationId)
+      )
+      DELETE FROM "organizationToMergeRaw"
+      WHERE "organizationId" = $(organizationId)
+         OR "toMergeId" = $(organizationId)
+    `,
+    { organizationId },
+  )
 }
 
 export async function insertOrganizationNoMerge(

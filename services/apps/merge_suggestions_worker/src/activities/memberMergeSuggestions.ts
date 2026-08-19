@@ -498,7 +498,7 @@ export async function getRawMemberMergeSuggestions(
   return memberMergeSuggestionsRepo.getRawMemberSuggestions(similarityFilter, limit)
 }
 
-export async function removeMemberMergeSuggestion(suggestion: string[]): Promise<void> {
+export async function removeMemberMergePair(suggestion: string[]): Promise<void> {
   if (suggestion.length !== 2) {
     svc.log.debug(`Suggestions array must have two ids!`)
     return

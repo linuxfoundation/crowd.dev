@@ -497,7 +497,7 @@ export async function getRawOrganizationMergeSuggestions(
   return suggestions
 }
 
-export async function removeOrganizationMergeSuggestion(suggestion: string[]): Promise<void> {
+export async function removeOrganizationMergePair(suggestion: string[]): Promise<void> {
   if (suggestion.length !== 2) {
     svc.log.debug(`Suggestions array must have two ids!`)
     return

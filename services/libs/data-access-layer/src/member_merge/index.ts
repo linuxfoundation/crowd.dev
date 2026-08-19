@@ -5,32 +5,42 @@ export async function removeMemberToMerge(
   memberId: string,
   toMergeId: string,
 ): Promise<void> {
-  const replacements = { memberId, toMergeId }
-
-  const whereClause = `
-    WHERE
-      ("memberId" = $(memberId) AND "toMergeId" = $(toMergeId))
-      OR
-      ("memberId" = $(toMergeId) AND "toMergeId" = $(memberId))
-  `
-
-  await qx.tx(async (tx) => {
-    await tx.result(
-      `
+  await qx.result(
+    `
+      WITH deleted_filtered AS (
         DELETE FROM "memberToMerge"
-        ${whereClause}
-      `,
-      replacements,
-    )
+        WHERE
+          ("memberId" = $(memberId) AND "toMergeId" = $(toMergeId))
+          OR
+          ("memberId" = $(toMergeId) AND "toMergeId" = $(memberId))
+      )
+      DELETE FROM "memberToMergeRaw"
+      WHERE
+        ("memberId" = $(memberId) AND "toMergeId" = $(toMergeId))
+        OR
+        ("memberId" = $(toMergeId) AND "toMergeId" = $(memberId))
+    `,
+    { memberId, toMergeId },
+  )
+}
 
-    await tx.result(
-      `
-        DELETE FROM "memberToMergeRaw"
-        ${whereClause}
-      `,
-      replacements,
-    )
-  })
+export async function removeMemberMergeSuggestions(
+  qx: QueryExecutor,
+  memberId: string,
+): Promise<void> {
+  await qx.result(
+    `
+      WITH deleted_filtered AS (
+        DELETE FROM "memberToMerge"
+        WHERE "memberId" = $(memberId)
+           OR "toMergeId" = $(memberId)
+      )
+      DELETE FROM "memberToMergeRaw"
+      WHERE "memberId" = $(memberId)
+         OR "toMergeId" = $(memberId)
+    `,
+    { memberId },
+  )
 }
 
 export async function insertMemberNoMerge(

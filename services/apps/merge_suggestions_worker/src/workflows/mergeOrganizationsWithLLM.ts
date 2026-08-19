@@ -8,7 +8,7 @@ import { ILLMResult, IProcessMergeOrganizationSuggestionsWithLLM } from '../type
 const {
   getRawOrganizationMergeSuggestions,
   getOrganizationsForLLMConsumption,
-  removeOrganizationMergeSuggestion,
+  removeOrganizationMergePair,
   addOrganizationSuggestionToNoMerge,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
@@ -60,7 +60,7 @@ export async function mergeOrganizationsWithLLM(
       console.log(
         `Skipping suggestion because an organization was already merged away in this run: ${suggestion}`,
       )
-      await removeOrganizationMergeSuggestion(suggestion)
+      await removeOrganizationMergePair(suggestion)
       continue
     }
 
@@ -70,7 +70,7 @@ export async function mergeOrganizationsWithLLM(
       console.log(
         `Failed getting organization data in suggestion. Skipping suggestion: ${suggestion}`,
       )
-      await removeOrganizationMergeSuggestion(suggestion)
+      await removeOrganizationMergePair(suggestion)
       continue
     }
 
@@ -104,7 +104,7 @@ export async function mergeOrganizationsWithLLM(
       console.log(
         `LLM doesn't think these orgs are the same. Removing from suggestions and adding to no merge: ${suggestion[0]} and ${suggestion[1]}!`,
       )
-      await removeOrganizationMergeSuggestion(suggestion)
+      await removeOrganizationMergePair(suggestion)
       await addOrganizationSuggestionToNoMerge(suggestion)
     }
   }

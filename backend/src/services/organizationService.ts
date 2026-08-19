@@ -21,7 +21,7 @@ import {
   queryMergeActions,
   setMergeAction,
 } from '@crowd/data-access-layer/src/mergeActions/repo'
-import { removeOrganizationToMerge } from '@crowd/data-access-layer/src/org_merge'
+import { removeOrganizationMergeSuggestions } from '@crowd/data-access-layer/src/org_merge'
 import {
   OrganizationField,
   addOrgsToSegments,
@@ -726,7 +726,8 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
 
-          await removeOrganizationToMerge(optionsQx(repoOptions), originalId, toMergeId)
+          // Secondary is gone; drop all of its leftover suggestions.
+          await removeOrganizationMergeSuggestions(optionsQx(repoOptions), toMergeId)
 
           await SequelizeRepository.commitTransaction(tx)
 
