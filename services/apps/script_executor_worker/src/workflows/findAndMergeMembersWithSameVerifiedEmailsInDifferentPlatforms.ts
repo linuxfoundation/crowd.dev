@@ -22,7 +22,8 @@ export async function findAndMergeMembersWithSameVerifiedEmailsInDifferentPlatfo
   const mergeableMemberCouples =
     await activity.findMembersWithSameVerifiedEmailsInDifferentPlatforms(
       PROCESS_MEMBERS_PER_RUN,
-      args.afterHash || undefined,
+      args.afterHighMemberId || undefined,
+      args.afterLowMemberId || undefined,
     )
 
   if (mergeableMemberCouples.length === 0) {
@@ -31,13 +32,27 @@ export async function findAndMergeMembersWithSameVerifiedEmailsInDifferentPlatfo
   }
 
   for (const couple of mergeableMemberCouples) {
-    console.log(
-      `Merging ${couple.secondaryMemberId} [${couple.secondaryMemberIdentityValue}] into ${couple.primaryMemberId} [${couple.primaryMemberIdentityValue}]! `,
-    )
-    await common.mergeMembers(couple.primaryMemberId, couple.secondaryMemberId)
+    const coupleDescription = `${couple.secondaryMemberId} [${couple.secondaryMemberIdentityValue}] into ${couple.primaryMemberId} [${couple.primaryMemberIdentityValue}]`
+
+    if (args.dryRun) {
+      console.log(`[dry run] Would merge ${coupleDescription}!`)
+      continue
+    }
+
+    console.log(`Merging ${coupleDescription}!`)
+
+    await common.mergeMembersIfAllowed(couple.primaryMemberId, couple.secondaryMemberId)
   }
 
+  const lastCouple = mergeableMemberCouples[mergeableMemberCouples.length - 1]
+  const [afterLowMemberId, afterHighMemberId] = [
+    lastCouple.primaryMemberId,
+    lastCouple.secondaryMemberId,
+  ].sort()
+
   await continueAsNew<typeof findAndMergeMembersWithSameVerifiedEmailsInDifferentPlatforms>({
-    afterHash: mergeableMemberCouples[mergeableMemberCouples.length - 1]?.hash,
+    afterHighMemberId,
+    afterLowMemberId,
+    dryRun: args.dryRun,
   })
 }

@@ -716,6 +716,17 @@ export async function findMemberById<T extends MemberField>(
   return queryTableById(qx, 'members', Object.values(MemberField), memberId, fields)
 }
 
+export async function findExistingMemberIds(
+  qx: QueryExecutor,
+  memberIds: string[],
+): Promise<string[]> {
+  const rows = await qx.select(`select id from members where id in ($(memberIds:csv))`, {
+    memberIds,
+  })
+
+  return rows.map((row) => row.id)
+}
+
 export async function moveAffiliationsBetweenMembers(
   qx: QueryExecutor,
   fromMemberId: string,

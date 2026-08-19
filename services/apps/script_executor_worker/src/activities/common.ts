@@ -1,7 +1,8 @@
 import axios from 'axios'
 
 import { CommonMemberService, signalMemberUpdate } from '@crowd/common_services'
-import { pgpQx } from '@crowd/data-access-layer'
+import { findExistingMemberIds, pgpQx } from '@crowd/data-access-layer'
+import { getMemberNoMerge } from '@crowd/data-access-layer/src/member_merge'
 import {
   IMemberIdentity,
   IMemberUnmergeBackup,
@@ -25,6 +26,57 @@ export async function mergeMembers(
     svc.log.error({ err: error }, 'Failed to merge members')
     throw error
   }
+}
+
+export async function mergeMembersIfAllowed(
+  primaryMemberId: string,
+  secondaryMemberId: string,
+): Promise<boolean> {
+  const qx = pgpQx(svc.postgres.writer.connection())
+
+  const existingMemberIds = await findExistingMemberIds(qx, [primaryMemberId, secondaryMemberId])
+
+  if (existingMemberIds.length < 2) {
+    svc.log.info(
+      { primaryMemberId, secondaryMemberId },
+      'One of the members no longer exists - skipping merge!',
+    )
+    return false
+  }
+
+  const noMergeIds = await getMemberNoMerge(qx, [primaryMemberId, secondaryMemberId])
+  const blockedByNoMerge = noMergeIds.some(
+    (m) =>
+      (m.memberId === primaryMemberId && m.noMergeId === secondaryMemberId) ||
+      (m.memberId === secondaryMemberId && m.noMergeId === primaryMemberId),
+  )
+
+  if (blockedByNoMerge) {
+    svc.log.warn(
+      { primaryMemberId, secondaryMemberId },
+      'Members are marked as no-merge - skipping merge!',
+    )
+    return false
+  }
+
+  const memberService = new CommonMemberService(qx, svc.temporal, svc.log)
+
+  try {
+    await memberService.merge(primaryMemberId, secondaryMemberId)
+  } catch (error) {
+    if (error?.code === 409) {
+      svc.log.info(
+        { primaryMemberId, secondaryMemberId },
+        'Another merge is already in progress - skipping merge!',
+      )
+      return false
+    }
+
+    svc.log.error({ err: error, primaryMemberId, secondaryMemberId }, 'Failed to merge members')
+    throw error
+  }
+
+  return true
 }
 
 export async function unmergeMembers(
