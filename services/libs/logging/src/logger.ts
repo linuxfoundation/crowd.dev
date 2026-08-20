@@ -5,36 +5,6 @@ import { IS_DEV_ENV, IS_TEST_ENV, LOG_LEVEL, SERVICE } from '@crowd/common'
 
 import { Logger } from './types'
 
-type SerializableError = {
-  toJSON?: () => unknown
-}
-
-function serializeError(err: unknown) {
-  if (err && typeof err === 'object') {
-    const toJSON = (err as SerializableError).toJSON
-
-    if (typeof toJSON === 'function') {
-      try {
-        const serialized = toJSON.call(err)
-
-        if (serialized !== undefined) {
-          return serialized
-        }
-      } catch {
-        // Fall back to Bunyan's standard error serialization.
-      }
-    }
-  }
-
-  return Bunyan.stdSerializers.err(err)
-}
-
-const serializers = {
-  ...Bunyan.stdSerializers,
-  err: serializeError,
-  error: serializeError,
-}
-
 const PRETTY_FORMAT = new BunyanFormat({
   outputMode: 'short',
   levelInString: true,
@@ -58,7 +28,10 @@ export function getServiceLogger(): Logger {
     name: SERVICE,
     level: LOG_LEVEL as Bunyan.LogLevel,
     stream: usePrettyLogs ? PRETTY_FORMAT : JSON_FORMAT,
-    serializers,
+    serializers: {
+      ...Bunyan.stdSerializers,
+      error: Bunyan.stdSerializers.err,
+    },
   }
 
   serviceLoggerInstance = Bunyan.createLogger(options)
