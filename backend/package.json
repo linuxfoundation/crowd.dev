@@ -83,7 +83,6 @@
     "bunyan": "^1.8.15",
     "bunyan-format": "^0.2.1",
     "bunyan-middleware": "^1.0.2",
-    "clearbit": "^1.3.5",
     "cli-highlight": "2.1.6",
     "command-line-args": "^5.2.1",
     "command-line-usage": "^6.1.3",
