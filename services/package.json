@@ -4,10 +4,9 @@
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
     "@typescript-eslint/eslint-plugin": "^5.59.2",
     "@typescript-eslint/parser": "^5.59.2",
-    "eslint": "^8.39.0",
+    "eslint": "catalog:",
     "eslint-config-prettier": "^8.8.0",
     "eslint-plugin-prettier": "^5.2.1",
-    "prettier": "^3.3.3"
-  },
-  "packageManager": "pnpm@9.15.0"
+    "prettier": "catalog:"
+  }
 }

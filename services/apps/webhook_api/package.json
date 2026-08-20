@@ -7,9 +7,9 @@
     "start:debug": "SERVICE=webhook-api LOG_LEVEL=trace tsx --inspect=0.0.0.0:9236 src/main.ts",
     "dev:local": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug:local",
     "dev": "nodemon --watch src --watch ../../libs --ext ts --exec pnpm run start:debug",
-    "lint": "npx eslint --ext .ts src --max-warnings=0",
-    "format": "npx prettier --write \"src/**/*.ts\"",
-    "format-check": "npx prettier --check .",
+    "lint": "eslint --ext .ts src --max-warnings=0",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format-check": "prettier --check .",
     "tsc-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,16 +23,18 @@
     "@crowd/types": "workspace:*",
     "@types/config": "^3.3.0",
     "@types/express": "^4.17.17",
-    "@types/node": "^24.13.3",
+    "@types/node": "catalog:",
     "bunyan-middleware": "^1.0.2",
-    "config": "^3.3.12",
+    "config": "catalog:",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "tsx": "^4.20.3",
-    "typescript": "^5.6.3",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
     "verify-github-webhook": "^1.0.1"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "^2.0.22",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
   }
 }
