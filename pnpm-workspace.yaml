@@ -23,6 +23,8 @@ catalog:
   tsx: ^4.20.3
   typescript: ^5.6.3
 
+catalogMode: prefer
+
 allowBuilds:
   '@datadog/native-appsec': false
   '@datadog/native-iast-taint-tracking': false
