@@ -15,7 +15,7 @@ FROM node:24-bullseye-slim AS runner
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/crowd/app
-ENV pnpm_config_verifyDepsBeforeRun=false
+ENV pnpm_config_verify_deps_before_run=false
 COPY ./package.json ./
 RUN corepack enable && corepack prepare --activate
 

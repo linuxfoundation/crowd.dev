@@ -43,7 +43,7 @@ RUN echo "{\"plugins\":[{\"name\":\"github-repo\",\"version\":\"${PVTR_VERSION}\
 COPY ./services/apps/security_best_practices_worker/example-config.yml /.privateer/example-config.yml
 
 WORKDIR /usr/crowd/app
-ENV pnpm_config_verifyDepsBeforeRun=false
+ENV pnpm_config_verify_deps_before_run=false
 COPY ./package.json ./
 RUN corepack enable && corepack prepare --activate && apt update && apt install -y ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
