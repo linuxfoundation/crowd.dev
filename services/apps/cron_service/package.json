@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
-    "@crowd/snowflake": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",

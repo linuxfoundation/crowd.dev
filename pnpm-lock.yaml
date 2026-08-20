@@ -123,9 +123,6 @@ importers:
       '@crowd/slack':
         specifier: workspace:*
         version: link:../services/libs/slack
-      '@crowd/snowflake':
-        specifier: workspace:*
-        version: link:../services/libs/snowflake
       '@crowd/telemetry':
         specifier: workspace:*
         version: link:../services/libs/telemetry
@@ -637,9 +634,6 @@ importers:
       '@crowd/slack':
         specifier: workspace:*
         version: link:../../libs/slack
-      '@crowd/snowflake':
-        specifier: workspace:*
-        version: link:../../libs/snowflake
       '@crowd/telemetry':
         specifier: workspace:*
         version: link:../../libs/telemetry
@@ -1565,9 +1559,6 @@ importers:
       '@crowd/redis':
         specifier: workspace:*
         version: link:../../libs/redis
-      '@crowd/snowflake':
-        specifier: workspace:*
-        version: link:../../libs/snowflake
       '@crowd/temporal':
         specifier: workspace:*
         version: link:../../libs/temporal
@@ -2339,9 +2330,6 @@ importers:
       '@crowd/logging':
         specifier: workspace:*
         version: link:../logging
-      '@crowd/snowflake':
-        specifier: workspace:*
-        version: link:../snowflake
       '@crowd/telemetry':
         specifier: workspace:*
         version: link:../telemetry
