@@ -95,10 +95,8 @@ SQL >
                 ar.sourceParentId AS sourceParentId,
                 ar.timestamp AS timestamp,
                 ar.type AS type
-            {% if route_member_mirror == 1 %}
-                FROM activityRelations_by_member_ds AS ar
-            {% else %}
-                FROM activityRelations_enriched_deduplicated_bucket_union AS ar
+            {% if route_member_mirror == 1 %} FROM activityRelations_by_member_ds AS ar
+            {% else %} FROM activityRelations_enriched_deduplicated_bucket_union AS ar
             {% end %}
             WHERE
                 (length(segments_arr) = 0 OR ar.segmentId IN segments_arr)
