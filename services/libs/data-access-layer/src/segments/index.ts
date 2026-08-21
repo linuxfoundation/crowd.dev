@@ -34,19 +34,26 @@ export async function findProjectGroupByName(
   )
 }
 
-export async function findLfSegmentByName(
+export async function findManyLfSegmentsByNames(
   qx: QueryExecutor,
-  name: string,
-): Promise<SegmentData | null> {
-  return qx.selectOneOrNone(
+  names: string[],
+): Promise<SegmentData[]> {
+  if (names.length === 0) {
+    return []
+  }
+
+  return qx.select(
     `
       SELECT *
       FROM segments
       WHERE "isLF" = true
-        AND trim(lower(name)) = trim(lower($(name)))
-      LIMIT 1;
+        AND (
+          trim(lower(name)) IN ($(names:csv))
+          OR trim(both FROM regexp_replace(trim(lower(name)), '\\s*\\([^)]*\\)\\s*$', ''))
+            IN ($(names:csv))
+        )
     `,
-    { name },
+    { names },
   )
 }
 
