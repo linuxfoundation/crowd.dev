@@ -1,0 +1,17 @@
+NODE activityRelations_collection_bucket_routing_2
+SQL >
+    %
+    SELECT selected_bucket.*
+    FROM
+        {% if bucketId == '0' %} activityRelations_collection_deduplicated_cleaned_bucket_0_ds
+        {% elif bucketId == '1' %} activityRelations_collection_deduplicated_cleaned_bucket_1_ds
+        {% elif bucketId == '2' %} activityRelations_collection_deduplicated_cleaned_bucket_2_ds
+        {% elif bucketId == '3' %} activityRelations_collection_deduplicated_cleaned_bucket_3_ds
+        {% elif bucketId == '4' %} activityRelations_collection_deduplicated_cleaned_bucket_4_ds
+        {% elif bucketId == '5' %} activityRelations_collection_deduplicated_cleaned_bucket_5_ds
+        {% elif bucketId == '6' %} activityRelations_collection_deduplicated_cleaned_bucket_6_ds
+        {% elif bucketId == '7' %} activityRelations_collection_deduplicated_cleaned_bucket_7_ds
+        {% elif bucketId == '8' %} activityRelations_collection_deduplicated_cleaned_bucket_8_ds
+        {% elif bucketId == '9' %} activityRelations_collection_deduplicated_cleaned_bucket_9_ds
+        {% else %} activityRelations_collection_deduplicated_cleaned_bucket_0_ds
+        {% end %} as selected_bucket

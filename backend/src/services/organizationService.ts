@@ -21,6 +21,7 @@ import {
   queryMergeActions,
   setMergeAction,
 } from '@crowd/data-access-layer/src/mergeActions/repo'
+import { removeOrganizationMergeSuggestions } from '@crowd/data-access-layer/src/org_merge'
 import {
   OrganizationField,
   addOrgsToSegments,
@@ -526,6 +527,7 @@ export default class OrganizationService extends LoggerBase {
 
           if (originalWithLfxMembership && toMergeWithLfxMembership) {
             await OrganizationRepository.addNoMerge(originalId, toMergeId, this.options)
+            await OrganizationRepository.removeToMerge(originalId, toMergeId, this.options)
             this.log.info(
               { originalId, toMergeId },
               '[Merge Organizations] - Skipping merge of two LFX membership orgs!',
@@ -724,6 +726,9 @@ export default class OrganizationService extends LoggerBase {
             '[Merge Organizations] - Including original organisation into secondary organisation segments done!',
           )
 
+          // Drop leftover suggestions that still mention the secondary.
+          await removeOrganizationMergeSuggestions(optionsQx(repoOptions), toMergeId)
+
           await SequelizeRepository.commitTransaction(tx)
 
           this.log.info({ originalId, toMergeId }, '[Merge Organizations] - Transaction commited!')
@@ -829,9 +834,7 @@ export default class OrganizationService extends LoggerBase {
 
     try {
       await OrganizationRepository.addNoMerge(organizationId, noMergeId, txOptions)
-      await OrganizationRepository.addNoMerge(noMergeId, organizationId, txOptions)
       await OrganizationRepository.removeToMerge(organizationId, noMergeId, txOptions)
-      await OrganizationRepository.removeToMerge(noMergeId, organizationId, txOptions)
 
       await SequelizeRepository.commitTransaction(transaction)
     } catch (error) {

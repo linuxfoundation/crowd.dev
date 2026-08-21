@@ -39,13 +39,13 @@
     "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
-    "config": "^3.3.9",
-    "tsx": "^4.7.1",
+    "config": "^3.3.12",
+    "tsx": "^4.20.3",
     "typescript": "^5.6.3"
   },
   "devDependencies": {
     "@types/config": "^3.3.0",
-    "@types/node": "^20.8.2",
+    "@types/node": "^24.13.3",
     "nodemon": "^2.0.22"
   }
 }

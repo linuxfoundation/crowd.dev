@@ -9,13 +9,13 @@
     "tsc-check": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^20.8.2",
+    "@types/node": "^24.13.3",
     "typescript": "^5.6.3"
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
     "@crowd/logging": "workspace:*",
-    "axios": "^1.11.0",
+    "axios": "^1.19.0",
     "pg-promise": "^11.4.3"
   }
 }

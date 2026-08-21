@@ -47,7 +47,7 @@ import {
   preferCompanyOverUniversityWhenOverlapping,
   updateMember,
 } from '@crowd/data-access-layer'
-import { removeMemberToMerge } from '@crowd/data-access-layer/src/member_merge'
+import { removeMemberMergeSuggestions } from '@crowd/data-access-layer/src/member_merge'
 import {
   deleteMemberSegmentAffiliations,
   findMemberAffiliations,
@@ -435,8 +435,8 @@ export class CommonMemberService extends LoggerBase {
             // update members that belong to source organization to destination org
             await moveOrgsBetweenMembers(txQx, originalId, toMergeId)
 
-            // Remove toMerge from original member
-            await removeMemberToMerge(txQx, originalId, toMergeId)
+            // Drop leftover suggestions that still mention the secondary.
+            await removeMemberMergeSuggestions(txQx, toMergeId)
 
             const secondMemberSegments = await getMemberSegments(txQx, toMergeId)
 

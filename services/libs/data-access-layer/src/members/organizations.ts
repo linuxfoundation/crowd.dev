@@ -847,6 +847,24 @@ export async function addMemberRole(
   return row?.id
 }
 
+async function relocateSoftDeletedRoles(
+  qx: QueryExecutor,
+  primaryId: string,
+  secondaryId: string,
+  entityIdField: EntityField,
+): Promise<void> {
+  await qx.result(
+    `
+      UPDATE "memberOrganizations"
+      SET "${entityIdField}" = $(primaryId),
+          "updatedAt" = NOW()
+      WHERE "${entityIdField}" = $(secondaryId)
+        AND "deletedAt" IS NOT NULL
+    `,
+    { primaryId, secondaryId },
+  )
+}
+
 async function moveRolesBetweenEntities(
   qx: QueryExecutor,
   primaryId: string,
@@ -993,6 +1011,10 @@ async function moveRolesBetweenEntities(
       shouldRecalculateAffiliations = true
     }
   }
+
+  // Active roles were moved above; re-point deleted roles to the primary
+  // without restoring them so their tombstones are preserved.
+  await relocateSoftDeletedRoles(qx, primaryId, secondaryId, mergeStrat.entityIdField)
 
   return { shouldRecalculateAffiliations }
 }

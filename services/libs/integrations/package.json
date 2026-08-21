@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@types/he": "^1.2.0",
-    "@types/node": "^20.8.2",
+    "@types/node": "^24.13.3",
     "@types/sanitize-html": "^2.9.0",
     "typescript": "^5.6.3"
   },
@@ -20,11 +20,10 @@
     "@crowd/logging": "workspace:*",
     "@crowd/telemetry": "workspace:*",
     "@crowd/types": "workspace:*",
-    "@crowd/snowflake": "workspace:*",
     "@gitbeaker/rest": "^43.5.0",
     "@octokit/auth-app": "^4.0.13",
     "@octokit/graphql": "^5.0.6",
-    "axios": "^1.4.0",
+    "axios": "^1.19.0",
     "he": "^1.2.0",
     "lodash.clonedeep": "^4.5.0",
     "lodash.merge": "^4.6.2",

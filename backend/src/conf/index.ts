@@ -10,7 +10,6 @@ import { IGithubIssueReporterConfiguration, IJiraIssueReporterConfiguration } fr
 import {
   ApiConfiguration,
   Auth0Configuration,
-  ClearbitConfiguration,
   ComprehendConfiguration,
   CrowdAnalyticsConfiguration,
   DbConfiguration,
@@ -98,8 +97,6 @@ export const SEGMENT_CONFIG: SegmentConfiguration = config.get<SegmentConfigurat
 
 export const COMPREHEND_CONFIG: ComprehendConfiguration =
   config.get<ComprehendConfiguration>('comprehend')
-
-export const CLEARBIT_CONFIG: ClearbitConfiguration = config.get<ClearbitConfiguration>('clearbit')
 
 export const API_CONFIG: ApiConfiguration = config.get<ApiConfiguration>('api')
 

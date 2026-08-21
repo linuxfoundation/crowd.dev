@@ -13,7 +13,7 @@ import {
   getMembers,
   getMembersForLLMConsumption,
   getRawMemberMergeSuggestions,
-  removeMemberMergeSuggestion,
+  removeMemberMergePair,
   updateMemberMergeSuggestionsLastGeneratedAt,
 } from './activities/memberMergeSuggestions'
 import {
@@ -24,7 +24,7 @@ import {
   getOrganizations,
   getOrganizationsForLLMConsumption,
   getRawOrganizationMergeSuggestions,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergePair,
   updateOrganizationMergeSuggestionsLastGeneratedAt,
 } from './activities/organizationMergeSuggestions'
 
@@ -44,9 +44,9 @@ export {
   getMembersForLLMConsumption,
   getOrganizationsForLLMConsumption,
   getRawOrganizationMergeSuggestions,
-  removeOrganizationMergeSuggestions,
+  removeOrganizationMergePair,
   getRawMemberMergeSuggestions,
-  removeMemberMergeSuggestion,
+  removeMemberMergePair,
   saveLLMVerdict,
   mergeMembers,
   mergeOrganizations,

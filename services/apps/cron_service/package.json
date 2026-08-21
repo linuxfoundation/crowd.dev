@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@crowd/common": "workspace:*",
-    "@crowd/snowflake": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
@@ -34,12 +33,12 @@
     "cron-time-generator": "^1.3.0",
     "p-queue": "^8.1.0",
     "pidusage": "^3.0.2",
-    "tsx": "^4.7.1",
+    "tsx": "^4.20.3",
     "typescript": "^5.6.3"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20.8.2",
+    "@types/node": "^24.13.3",
     "nodemon": "^3.0.1"
   }
 }

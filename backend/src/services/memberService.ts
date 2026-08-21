@@ -770,7 +770,6 @@ export default class MemberService extends LoggerBase {
 
     try {
       await MemberRepository.addNoMerge(memberOneId, memberTwoId, txOptions)
-      await MemberRepository.addNoMerge(memberTwoId, memberOneId, txOptions)
 
       // Removes from either order of the pair
       await MemberRepository.removeToMerge(memberOneId, memberTwoId, txOptions)

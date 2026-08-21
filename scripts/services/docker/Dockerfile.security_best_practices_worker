@@ -20,7 +20,7 @@ ARG PVTR_VERSION
 RUN git clone https://github.com/ossf/pvtr-github-repo-scanner.git && cd pvtr-github-repo-scanner && git checkout ${PVTR_COMMIT}
 RUN cd pvtr-github-repo-scanner && make binary && cp github-repo ../github-repo
 
-FROM node:20-alpine as builder
+FROM node:24-alpine as builder
 
 RUN apk add --no-cache python3 make g++
 
@@ -33,7 +33,7 @@ RUN pnpm fetch
 COPY ./services ./services
 RUN pnpm i --frozen-lockfile
 
-FROM node:20-bookworm-slim as runner
+FROM node:24-bookworm-slim as runner
 
 RUN mkdir -p /.privateer/bin
 WORKDIR /.privateer/bin

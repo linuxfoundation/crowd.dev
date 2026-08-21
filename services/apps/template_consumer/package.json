@@ -15,11 +15,11 @@
   "dependencies": {
     "@crowd/archetype-consumer": "workspace:*",
     "@crowd/archetype-standard": "workspace:*",
-    "tsx": "^4.7.1",
+    "tsx": "^4.20.3",
     "typescript": "^5.6.3"
   },
   "devDependencies": {
-    "@types/node": "^20.8.2",
+    "@types/node": "^24.13.3",
     "nodemon": "^3.0.1"
   }
 }

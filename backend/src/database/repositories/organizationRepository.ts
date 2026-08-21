@@ -12,6 +12,10 @@ import { Error400, Error404, Error409, RawQueryParser } from '@crowd/common'
 import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
+  insertOrganizationNoMerge,
+  removeOrganizationToMerge,
+} from '@crowd/data-access-layer/src/org_merge'
+import {
   IDbOrgAttribute,
   IDbOrganization,
   OrgIdentityField,
@@ -712,30 +716,9 @@ class OrganizationRepository {
     noMergeId: string,
     options: IRepositoryOptions,
   ): Promise<void> {
-    const seq = SequelizeRepository.getSequelize(options)
-    const transaction = SequelizeRepository.getTransaction(options)
+    const qx = SequelizeRepository.getQueryExecutor(options)
 
-    const query = `
-    insert into "organizationNoMerge" ("organizationId", "noMergeId", "createdAt", "updatedAt")
-    values
-    (:organizationId, :noMergeId, now(), now()),
-    (:noMergeId, :organizationId, now(), now())
-    on conflict do nothing;
-  `
-
-    try {
-      await seq.query(query, {
-        replacements: {
-          organizationId,
-          noMergeId,
-        },
-        type: QueryTypes.INSERT,
-        transaction,
-      })
-    } catch (error) {
-      options.log.error('Error adding organizations no merge!', error)
-      throw error
-    }
+    await insertOrganizationNoMerge(qx, organizationId, noMergeId)
   }
 
   static async removeToMerge(
@@ -743,27 +726,9 @@ class OrganizationRepository {
     toMergeId: string,
     options: IRepositoryOptions,
   ): Promise<void> {
-    const seq = SequelizeRepository.getSequelize(options)
-    const transaction = SequelizeRepository.getTransaction(options)
+    const qx = SequelizeRepository.getQueryExecutor(options)
 
-    const query = `
-    delete from "organizationToMerge"
-    where ("organizationId" = :organizationId and "toMergeId" = :toMergeId) or ("organizationId" = :toMergeId and "toMergeId" = :organizationId);
-  `
-
-    try {
-      await seq.query(query, {
-        replacements: {
-          organizationId,
-          toMergeId,
-        },
-        type: QueryTypes.DELETE,
-        transaction,
-      })
-    } catch (error) {
-      options.log.error('Error while removing organizations to merge!', error)
-      throw error
-    }
+    await removeOrganizationToMerge(qx, organizationId, toMergeId)
   }
 
   static async findNonExistingIds(ids: string[], options: IRepositoryOptions): Promise<string[]> {

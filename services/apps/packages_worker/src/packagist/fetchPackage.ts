@@ -54,16 +54,14 @@ export async function fetchPackagistStats(name: string): Promise<PackagistStatsJ
   try {
     let res: Response
     try {
-      // `dispatcher` is an undici-specific fetch option not present in the DOM RequestInit type.
-      const init: RequestInit & { dispatcher?: Dispatcher } = {
+      res = await fetch(url, {
         headers: {
           Accept: 'application/json',
           'User-Agent': buildPackagistUserAgent(),
         },
         signal: abort.signal,
         dispatcher: packagistDispatcher,
-      }
-      res = await fetch(url, init as RequestInit)
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
@@ -119,12 +117,11 @@ export async function fetchPackagistP2(
 
     let res: Response
     try {
-      const init: RequestInit & { dispatcher?: Dispatcher } = {
+      res = await fetch(url, {
         headers,
         signal: abort.signal,
         dispatcher: packagistDispatcher,
-      }
-      res = await fetch(url, init as RequestInit)
+      })
     } catch (err) {
       return { kind: 'TRANSIENT', message: describeFetchFailure(err) }
     }
