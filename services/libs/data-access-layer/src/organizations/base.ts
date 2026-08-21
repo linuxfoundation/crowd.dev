@@ -1,6 +1,7 @@
 import {
   DEFAULT_TENANT_ID,
   UnrepeatableError,
+  generateOrganizationNameVariants,
   generateUUIDv1,
   normalizeHostname,
 } from '@crowd/common'
@@ -18,7 +19,7 @@ import {
 } from '@crowd/types'
 
 import { QueryExecutor } from '../queryExecutor'
-import { findLfSegmentByName } from '../segments'
+import { findManyLfSegmentsByNames } from '../segments'
 import { QueryOptions, QueryResult, prepareBulkInsert, queryTable, queryTableById } from '../utils'
 import { prepareSelectColumns } from '../utils'
 
@@ -131,24 +132,23 @@ export async function findOrgsByIds(
   return results
 }
 
-export async function findOrganizationsByName(
+export async function findManyOrganizationsByNames(
   qx: QueryExecutor,
-  name: string,
-  options: { limit?: number } = {},
+  names: string[],
 ): Promise<IDbOrganization[]> {
-  const { limit } = options
+  const normalized = names.map((name) => name.trim().toLowerCase()).filter(Boolean)
+  if (normalized.length === 0) {
+    return []
+  }
 
   return qx.select(
     `
       select ${prepareSelectColumns(ORG_SELECT_COLUMNS, 'o')}
       from organizations o
-      where lower(trim(o."displayName")) = lower(trim($(name)))
-      ${limit !== undefined ? 'limit $(limit)' : ''}
+      where o."deletedAt" is null
+        and trim(lower(o."displayName")) in ($(names:csv))
     `,
-    {
-      name,
-      limit,
-    },
+    { names: normalized },
   )
 }
 
@@ -584,9 +584,9 @@ export async function findOrCreateOrganization(
 
     if (!existing) {
       const organizations = await logExecutionTimeV2(
-        async () => findOrganizationsByName(qe, data.displayName, { limit: 1 }),
+        async () => findManyOrganizationsByNames(qe, [data.displayName]),
         log,
-        'organizationService -> findOrCreateOrganization -> findOrganizationsByName',
+        'organizationService -> findOrCreateOrganization -> findManyOrganizationsByNames',
       )
 
       if (organizations.length > 0) {
@@ -673,8 +673,11 @@ export async function findOrCreateOrganization(
 
       // Block organization affiliation if a segment (project, subproject, or project group)
       // has the same name as the organization when creating one.
-      const lfSegment = await findLfSegmentByName(qe, displayName)
-      if (lfSegment) {
+      const lfSegments = await findManyLfSegmentsByNames(
+        qe,
+        generateOrganizationNameVariants(displayName),
+      )
+      if (lfSegments.length > 0) {
         payload.isAffiliationBlocked = true
       }
 
