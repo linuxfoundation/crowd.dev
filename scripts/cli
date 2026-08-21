@@ -756,6 +756,7 @@ function migrate_tinybird_local() {
     tb push datasources/activities_deduplicated_ds.datasource
     tb push datasources/activities.datasource
     tb push datasources/activityRelations.datasource
+    tb push datasources/activityRelations_by_member_ds.datasource
 
     tb push pipes/activities_relations_filtered.pipe
     tb push pipes/activities_daily_counts.pipe

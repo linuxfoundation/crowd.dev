@@ -10,8 +10,7 @@ DESCRIPTION >
 
 NODE member_sorted_snapshot
 SQL >
-    SELECT *
-    FROM activityRelations_enriched_deduplicated_bucket_union
+    SELECT * FROM activityRelations_enriched_deduplicated_bucket_union
 
 TYPE COPY
 TARGET_DATASOURCE activityRelations_by_member_ds
