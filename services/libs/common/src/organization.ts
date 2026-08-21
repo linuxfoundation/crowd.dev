@@ -12,7 +12,13 @@ export function generateOrganizationNameVariants(name: string): string[] {
     }
   }
 
-  const withoutParens = exact.replace(/\s*\([^)]*\)\s*$/, '').trim()
+  let withoutParens = exact
+  if (exact.endsWith(')')) {
+    const open = exact.lastIndexOf('(')
+    if (open !== -1 && !exact.slice(open + 1, -1).includes(')')) {
+      withoutParens = exact.slice(0, open).trimEnd()
+    }
+  }
   if (withoutParens !== exact && withoutParens.length >= 8) {
     add(withoutParens)
   }

@@ -1,9 +1,9 @@
 import {
   DEFAULT_TENANT_ID,
   UnrepeatableError,
+  generateOrganizationNameVariants,
   generateUUIDv1,
   normalizeHostname,
-  generateOrganizationNameVariants,
 } from '@crowd/common'
 import { getServiceChildLogger, logExecutionTimeV2 } from '@crowd/logging'
 import {

@@ -6,7 +6,14 @@ import {
   organizationMergeAction,
   organizationUnmergeAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, generateOrganizationNameVariants, mergeObjects, normalizeHostname } from '@crowd/common'
+import {
+  Error400,
+  Error404,
+  Error409,
+  generateOrganizationNameVariants,
+  mergeObjects,
+  normalizeHostname,
+} from '@crowd/common'
 import { unmergeRoles } from '@crowd/common_services'
 import {
   addMemberRole,
