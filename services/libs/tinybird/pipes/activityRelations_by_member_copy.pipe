@@ -1,0 +1,19 @@
+DESCRIPTION >
+    Nightly rebuild of `activityRelations_by_member_ds` (member-sorted mirror serving
+    the member-feed fast path in `activities_relations_filtered`). Reads the full
+    enriched bucket union (~920M rows, ~22 min) and replaces the mirror atomically;
+    a failed run keeps yesterday's data and self-heals on the next run.
+    Scheduled 03:35 UTC: the producing bucket rebuilds
+    (activityRelations_snapshot_merger_copy_0/1/2, 01:30-01:38) have a worst observed
+    finish of 02:00, and 03:35 sits in the quietest overnight copy-job window,
+    clearing before the 04:00 collection-bucket copy band.
+
+NODE member_sorted_snapshot
+SQL >
+    SELECT *
+    FROM activityRelations_enriched_deduplicated_bucket_union
+
+TYPE COPY
+TARGET_DATASOURCE activityRelations_by_member_ds
+COPY_MODE replace
+COPY_SCHEDULE 35 3 * * *

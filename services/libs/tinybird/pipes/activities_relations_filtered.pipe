@@ -17,6 +17,7 @@ DESCRIPTION >
     - `pageSize`: Optional integer page size, defaults to 10.
     - Response (final node): all relation fields from Node 1 plus `url`, `body`, `title` from activities.
     - Performance:
+    - When `G1_memberIds` is set and no G2..G5 parameter is set (the dominant member-feed shape), Node 1 reads from `activityRelations_by_member_ds`, a nightly member-sorted mirror of the bucket union, turning the scan into a keyed (memberId, timestamp) range read. Any other shape falls back to `activityRelations_enriched_deduplicated_bucket_union`. Both sources hold identical rows, so routing never changes results.
     - The enrichment only scans the subset of `activities_deduplicated_ds` whose `id` is found in the filtered page from Node 1, minimizing I/O.
     - Keep page sizes reasonable (50–200) for consistent latency.
     - Ensure `activityId` and `id` types are aligned (both UUID or both String). If they differ, this pipe casts to String at join time.
@@ -28,6 +29,56 @@ SQL >
     {% if defined(countOnly) %}
         {% if String(countOnly) == '1' or Int8(countOnly, 0) == 1 %} {% set is_count = 1 %} {% end %}
     {% end %}
+    {% set route_member_mirror = 0 %}
+    {% if defined(G1_memberIds) %} {% set route_member_mirror = 1 %} {% end %}
+    {% if defined(G2_memberIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_memberIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_activityTypes) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_activityTypes_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_organizationIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_organizationIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_platforms) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_platforms_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_channels) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_channels_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_ids) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G2_ids_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_memberIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_memberIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_activityTypes) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_activityTypes_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_organizationIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_organizationIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_platforms) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_platforms_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_channels) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_channels_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_ids) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G3_ids_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_memberIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_memberIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_activityTypes) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_activityTypes_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_organizationIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_organizationIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_platforms) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_platforms_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_channels) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_channels_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_ids) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G4_ids_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_memberIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_memberIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_activityTypes) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_activityTypes_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_organizationIds) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_organizationIds_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_platforms) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_platforms_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_channels) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_channels_exclude) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_ids) %} {% set route_member_mirror = 0 %} {% end %}
+    {% if defined(G5_ids_exclude) %} {% set route_member_mirror = 0 %} {% end %}
     WITH
         {% if defined(segments) %} arrayDistinct({{ Array(segments, 'String') }}) AS segments_arr
         {% else %} [] AS segments_arr
@@ -44,7 +95,11 @@ SQL >
                 ar.sourceParentId AS sourceParentId,
                 ar.timestamp AS timestamp,
                 ar.type AS type
-            FROM activityRelations_enriched_deduplicated_bucket_union AS ar
+            {% if route_member_mirror == 1 %}
+                FROM activityRelations_by_member_ds AS ar
+            {% else %}
+                FROM activityRelations_enriched_deduplicated_bucket_union AS ar
+            {% end %}
             WHERE
                 (length(segments_arr) = 0 OR ar.segmentId IN segments_arr)
                 {% if defined(startDate) %}
