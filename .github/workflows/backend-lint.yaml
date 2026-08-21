@@ -19,13 +19,10 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version-file: '.nvmrc'
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
+          cache: true
 
       - name: Check linting
         run: pnpm run lint
@@ -47,13 +44,10 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version-file: '.nvmrc'
-
-      - name: Install dependencies
-        run: cd .. && npm install -g corepack@latest && corepack enable pnpm && pnpm i --frozen-lockfile
+          cache: true
 
       - name: Check library linting, format and typescript
         run: ./scripts/lint_libs.sh

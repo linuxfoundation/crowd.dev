@@ -54,17 +54,10 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup pnpm and node
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
-          node-version-file: '.nvmrc'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm i --frozen-lockfile
+          cache: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
