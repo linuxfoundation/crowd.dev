@@ -136,7 +136,8 @@ export async function findManyOrganizationsByNames(
   qx: QueryExecutor,
   names: string[],
 ): Promise<IDbOrganization[]> {
-  if (names.length === 0) {
+  const normalized = names.map((name) => name.trim().toLowerCase()).filter(Boolean)
+  if (normalized.length === 0) {
     return []
   }
 
@@ -147,7 +148,7 @@ export async function findManyOrganizationsByNames(
       where o."deletedAt" is null
         and trim(lower(o."displayName")) in ($(names:csv))
     `,
-    { names },
+    { names: normalized },
   )
 }
 
