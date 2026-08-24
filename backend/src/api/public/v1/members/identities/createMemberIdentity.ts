@@ -67,35 +67,37 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
     memberEditIdentitiesAction(memberId, async (captureOldState, captureNewState) => {
       captureOldState({})
 
-      const outcome = await qx.tx(async (tx) => {
-        const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
-          type: data.type,
-        })
+      let outcome: { identity: IMemberIdentity; alreadyExisted: boolean }
 
-        const exactMatch = existing.find((row) => row.platform === data.platform)
-
-        let result = exactMatch
-        const existed = Boolean(exactMatch)
-
-        // Unverified identities aren't unique in the db, so the same handle or
-        // email can sit on several members. Reject it here if someone else has it.
-        if (!result && !data.verified) {
-          const conflict = await findMemberIdentityConflict(tx, {
-            value: data.value,
-            platform: data.platform,
+      try {
+        outcome = await qx.tx(async (tx) => {
+          const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
             type: data.type,
-            excludeMemberId: memberId,
           })
 
-          if (conflict) {
-            throw new ConflictError('Identity already exists on another member', {
-              ...conflictContext,
-              conflictMemberId: conflict.memberId,
-            })
-          }
-        }
+          const exactMatch = existing.find((row) => row.platform === data.platform)
 
-        try {
+          let result = exactMatch
+          const existed = Boolean(exactMatch)
+
+          // Unverified identities aren't unique in the db, so the same handle or
+          // email can sit on several members. Reject it here if someone else has it.
+          if (!result && !data.verified) {
+            const conflict = await findMemberIdentityConflict(tx, {
+              value: data.value,
+              platform: data.platform,
+              type: data.type,
+              excludeMemberId: memberId,
+            })
+
+            if (conflict) {
+              throw new ConflictError('Identity already exists on another member', {
+                ...conflictContext,
+                conflictMemberId: conflict.memberId,
+              })
+            }
+          }
+
           if (!result) {
             const [inserted] = await insertMemberIdentities(
               tx,
@@ -135,28 +137,37 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
               result = updatedExact
             }
           }
-        } catch (error) {
-          if (isMemberIdentityDbConflict(error)) {
-            const conflictMemberId = await findMemberIdByVerifiedIdentity(
-              qx,
-              data.platform,
-              data.value,
-              data.type,
-            )
 
-            rethrowDbConflict(error, {
-              ...conflictContext,
-              ...(conflictMemberId ? { conflictMemberId } : {}),
-            })
-          }
+          await touchMemberUpdatedAt(tx, memberId)
 
+          return { identity: result, alreadyExisted: existed }
+        })
+      } catch (error) {
+        if (!isMemberIdentityDbConflict(error)) {
           throw error
         }
 
-        await touchMemberUpdatedAt(tx, memberId)
+        const existing = await findMemberIdentitiesByValue(qx, memberId, data.value, {
+          type: data.type,
+        })
+        const exactMatch = existing.find((row) => row.platform === data.platform)
 
-        return { identity: result, alreadyExisted: existed }
-      })
+        if (exactMatch) {
+          outcome = { identity: exactMatch, alreadyExisted: true }
+        } else {
+          const conflictMemberId = await findMemberIdByVerifiedIdentity(
+            qx,
+            data.platform,
+            data.value,
+            data.type,
+          )
+
+          rethrowDbConflict(error, {
+            ...conflictContext,
+            ...(conflictMemberId ? { conflictMemberId } : {}),
+          })
+        }
+      }
 
       identity = outcome.identity
       alreadyExisted = outcome.alreadyExisted
