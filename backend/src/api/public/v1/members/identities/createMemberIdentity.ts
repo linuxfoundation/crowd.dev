@@ -71,8 +71,6 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
 
       try {
         outcome = await qx.tx(async (tx) => {
-          // Identities this member already has with the same value and type,
-          // on any platform (e.g. github email and custom email).
           const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
             type: data.type,
           })
