@@ -38,7 +38,10 @@ export async function findManyLfSegmentsByNames(
   qx: QueryExecutor,
   names: string[],
 ): Promise<SegmentData[]> {
-  const normalized = names.map((name) => name.trim().toLowerCase()).filter(Boolean)
+  const normalized = names
+    .map((name) => name?.trim().toLowerCase())
+    .filter((name): name is string => Boolean(name))
+
   if (normalized.length === 0) {
     return []
   }
