@@ -71,6 +71,8 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
 
       try {
         outcome = await qx.tx(async (tx) => {
+          // Identities this member already has with the same value and type,
+          // on any platform (e.g. github email and custom email).
           const existing = await findMemberIdentitiesByValue(tx, memberId, data.value, {
             type: data.type,
           })
@@ -80,8 +82,8 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
           let result = exactMatch
           const existed = Boolean(exactMatch)
 
-          // Unverified identities aren't unique in the db, so the same handle or
-          // email can sit on several members. Reject it here if someone else has it.
+          // Unverified identities aren't unique in the db, so reject here if
+          // someone else has it. Verified uniqueness is left to Postgres.
           if (!result && !data.verified) {
             const conflict = await findMemberIdentityConflict(tx, {
               value: data.value,
@@ -152,7 +154,9 @@ export async function createMemberIdentity(req: Request, res: Response): Promise
         })
         const exactMatch = existing.find((row) => row.platform === data.platform)
 
-        if (exactMatch) {
+        // Rolled back unique error. 200 if this member already has what they
+        // asked for; asked to verify but still unverified is a failed verify (409).
+        if (exactMatch && (!data.verified || exactMatch.verified)) {
           outcome = { identity: exactMatch, alreadyExisted: true }
         } else {
           const conflictMemberId = await findMemberIdByVerifiedIdentity(
