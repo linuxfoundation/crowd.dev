@@ -1,6 +1,10 @@
 DESCRIPTION >
     Top contributors for a given organization leaderboard.
     Returns members sorted by contribution count within the specified date range.
+    When no startDate/endDate is given (the dominant traffic shape), reads precomputed
+    per-(organizationId, memberId) counts from org_page_contributors_copy_ds (keyed
+    lookup) instead of scanning the full activityRelations cleaned bucket union
+    (~744M rows) per request. Date-filtered requests fall back to the full scan.
 
 TAGS "Organization page"
 
@@ -14,49 +18,83 @@ SQL >
 NODE org_page_contributors_activity_aggregates
 SQL >
     %
+    {% set use_precomputed = 1 %}
+    {% if defined(startDate) %} {% set use_precomputed = 0 %} {% end %}
+    {% if defined(endDate) %} {% set use_precomputed = 0 %} {% end %}
     {% if Boolean(count, false) %}
-        SELECT count(distinct memberId)
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE
-            organizationId = (SELECT id FROM org_slug_lookup)
-            {% if defined(startDate) %}
-                AND timestamp
-                >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
-            {% end %}
-            {% if defined(endDate) %}
-                AND timestamp < {{ DateTime(endDate, description="Filter activity timestamp before") }}
-            {% end %}
+        {% if use_precomputed == 1 %}
+            SELECT count()
+            FROM org_page_contributors_copy_ds
+            WHERE organizationId = (SELECT id FROM org_slug_lookup)
+        {% else %}
+            SELECT count(distinct memberId)
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                organizationId = (SELECT id FROM org_slug_lookup)
+                {% if defined(startDate) %}
+                    AND timestamp
+                    >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
+                {% end %}
+                {% if defined(endDate) %}
+                    AND timestamp
+                    < {{ DateTime(endDate, description="Filter activity timestamp before") }}
+                {% end %}
+        {% end %}
     {% else %}
-        SELECT
-            memberId,
-            count() as "contributionCount",
-            ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as "contributionPercentage"
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE
-            organizationId = (SELECT id FROM org_slug_lookup)
-            {% if defined(startDate) %}
-                AND timestamp
-                >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
-            {% end %}
-            {% if defined(endDate) %}
-                AND timestamp < {{ DateTime(endDate, description="Filter activity timestamp before") }}
-            {% end %}
-        GROUP BY memberId
-        ORDER BY contributionCount DESC, memberId DESC
-        LIMIT {{ Int32(limit, 10) }}
-        OFFSET {{ Int32(offset, 0) }}
+        {% if use_precomputed == 1 %}
+            SELECT
+                memberId,
+                contributionCount,
+                ROUND(
+                    contributionCount * 100.0 / SUM(contributionCount) OVER (), 2
+                ) as "contributionPercentage"
+            FROM org_page_contributors_copy_ds
+            WHERE organizationId = (SELECT id FROM org_slug_lookup)
+            ORDER BY contributionCount DESC, memberId DESC
+            LIMIT {{ Int32(limit, 10) }}
+            OFFSET {{ Int32(offset, 0) }}
+        {% else %}
+            SELECT
+                memberId,
+                count() as "contributionCount",
+                ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as "contributionPercentage"
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                organizationId = (SELECT id FROM org_slug_lookup)
+                {% if defined(startDate) %}
+                    AND timestamp
+                    >= {{ DateTime(startDate, description="Filter activity timestamp after") }}
+                {% end %}
+                {% if defined(endDate) %}
+                    AND timestamp
+                    < {{ DateTime(endDate, description="Filter activity timestamp before") }}
+                {% end %}
+            GROUP BY memberId
+            ORDER BY contributionCount DESC, memberId DESC
+            LIMIT {{ Int32(limit, 10) }}
+            OFFSET {{ Int32(offset, 0) }}
+        {% end %}
     {% end %}
 
 NODE org_page_contributors_leaderboard
 SQL >
     %
+    {% set use_precomputed = 1 %}
+    {% if defined(startDate) %} {% set use_precomputed = 0 %} {% end %}
+    {% if defined(endDate) %} {% set use_precomputed = 0 %} {% end %}
     {% if Boolean(count, false) %}
-        SELECT count(distinct memberId) as count
-        FROM activityRelations_deduplicated_cleaned_bucket_union
-        WHERE
-            organizationId = (SELECT id FROM org_slug_lookup)
-            {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }} {% end %}
-            {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }} {% end %}
+        {% if use_precomputed == 1 %}
+            SELECT count() as count
+            FROM org_page_contributors_copy_ds
+            WHERE organizationId = (SELECT id FROM org_slug_lookup)
+        {% else %}
+            SELECT count(distinct memberId) as count
+            FROM activityRelations_deduplicated_cleaned_bucket_union
+            WHERE
+                organizationId = (SELECT id FROM org_slug_lookup)
+                {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }} {% end %}
+                {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }} {% end %}
+        {% end %}
     {% else %}
         SELECT
             m.id,
