@@ -15,14 +15,21 @@ import {
   fetchManyOrganizationAffiliationPolicies,
   fetchMemberOrganizationsBySource,
   findMemberById,
+  findOrgsByIds,
   updateMemberOrganization,
 } from '@crowd/data-access-layer'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
+import { Logger } from '@crowd/logging'
 import { REDIS_CONFIG, RedisCache, RedisClient, getRedisClient } from '@crowd/redis'
 import { TEMPORAL_CONFIG, getTemporalClient } from '@crowd/temporal'
-import { MemberOrgDate, MemberOrgStintChange, OrganizationSource } from '@crowd/types'
+import {
+  IMemberOrganization,
+  MemberOrgDate,
+  MemberOrgStintChange,
+  OrganizationSource,
+} from '@crowd/types'
 
 import { IJobDefinition } from '../types'
 
@@ -78,7 +85,15 @@ const job: IJobDefinition = {
             { withDeleted: true },
           )
 
-          const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, orgDates)
+          const validOrgDates = await dropStaleOrganizationDates(
+            qx,
+            existingOrgs,
+            orgDates,
+            memberId,
+            ctx.log,
+          )
+
+          const changes = inferMemberOrganizationStintChanges(memberId, existingOrgs, validOrgDates)
 
           if (changes.length > 0) {
             ctx.log.debug({ memberId, changes }, 'Stint changes identified.')
@@ -104,12 +119,9 @@ const job: IJobDefinition = {
 
         processed++
       } catch (err) {
+        // Rare race past dropStaleOrganizationDates(): leave the entry queued, next tick self-heals.
         if ((err as { code?: string })?.code === '23503') {
-          ctx.log.warn(
-            { memberId, err },
-            'Stint change referenced a missing organization, purging from queue.',
-          )
-          await purgeMember(redis, memberId)
+          ctx.log.warn(err, { memberId }, 'Stint change referenced missing organization.')
           continue
         }
 
@@ -136,6 +148,42 @@ function parseSetMembers(members: string[]): MemberOrgDate[] {
   }
 
   return results
+}
+
+/**
+ * Drops queued dates for organizations that no longer exist (deleted/merged after being
+ * queued), so a single stale reference can't FK-violate and roll back the whole member's
+ * transaction, taking other, still-valid queued dates down with it.
+ */
+async function dropStaleOrganizationDates(
+  qx: QueryExecutor,
+  existingOrgs: IMemberOrganization[],
+  orgDates: MemberOrgDate[],
+  memberId: string,
+  log: Logger,
+): Promise<MemberOrgDate[]> {
+  const knownOrgIds = new Set(existingOrgs.map((o) => o.organizationId))
+  const orgIdsToVerify = [...new Set(orgDates.map((d) => d.organizationId))].filter(
+    (id) => !knownOrgIds.has(id),
+  )
+
+  if (orgIdsToVerify.length === 0) {
+    return orgDates
+  }
+
+  const existingOrgIds = new Set((await findOrgsByIds(qx, orgIdsToVerify)).map((o) => o.id))
+  const staleOrgIds = orgIdsToVerify.filter((id) => !existingOrgIds.has(id))
+
+  if (staleOrgIds.length === 0) {
+    return orgDates
+  }
+
+  log.warn(
+    { memberId, staleOrgIds },
+    'Dropping queued stint dates for organizations that no longer exist.',
+  )
+
+  return orgDates.filter((d) => !staleOrgIds.includes(d.organizationId))
 }
 
 /**

@@ -176,9 +176,7 @@ export function inferMemberOrganizationStintChanges(
   const activeRows = normalizedRows.filter((row) => !row.deletedAt)
 
   const tombstonedOrgIds = new Set(
-    normalizedRows
-      .filter((row) => !!row.deletedAt && !!row.deletedBy)
-      .map((row) => row.organizationId),
+    normalizedRows.filter((row) => row.deletedAt && row.deletedBy).map((row) => row.organizationId),
   )
 
   // Deleted dated rows suppress recreation for dates the user removed
