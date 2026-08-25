@@ -14,7 +14,8 @@ DESCRIPTION >
     `responsivenessScore` (avg), `responsivenessAvailable` (max), `medianPrResponseS` (avg),
     `medianIssueResponseS` (avg), `isGerrit` (min), `isExcluded` (min),
     `busFactorScoreActivityWeightedMean` (activity-weighted mean of bus-factor score across repos).
-    - Security signals: `openVulnScore` (avg), `openCriticals`/`openHighs`/`openModerates` (max),
+    - Security signals: `openVulnScore` (avg), `openVulnAvailable` (max),
+    `openCriticals`/`openHighs`/`openModerates` (max),
     `scorecardScorePts` (avg), `scorecardAvailable` (max), `scorecardScore` (avg, cast from the raw
     String), `securityPracticesScore` (avg), `securityPracticesAvailable` (max),
     `securityPolicyEnabled`/`branchProtectionEnabled`/`branchProtectionRequiredReviews`/
@@ -44,6 +45,7 @@ SCHEMA >
     `isGerrit` Nullable(UInt8),
     `isExcluded` Nullable(UInt8),
     `openVulnScore` Nullable(Float64),
+    `openVulnAvailable` Nullable(UInt8),
     `openCriticals` Nullable(UInt64),
     `openHighs` Nullable(UInt64),
     `openModerates` Nullable(UInt64),

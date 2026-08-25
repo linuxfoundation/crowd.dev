@@ -1,5 +1,7 @@
 DESCRIPTION >
-    Security & Supply Chain category (max 35 pts): open vulnerabilities (10), OpenSSF Scorecard (7,
+    Security & Supply Chain category (max 35 pts): open vulnerabilities (10, blocked when the repo
+    has never completed a vulnerability scan — see vulnerability_scans — so "0 open vulns" isn't
+    conflated with "never scanned"), OpenSSF Scorecard (7,
     blocked for repos with no repos-table row — effectively non-GitHub hosts), security practices
     (spec max 8, but capped here at 7 achievable — the spec's 6th bullet, security_contact_email,
     has no corresponding column anywhere in our GitHub enrichment data, so it's permanently omitted
@@ -22,6 +24,7 @@ SQL >
             toNullable(toUInt8(round(least(35.0, rawScore * (35.0 / coveredWeight)))))
         ) AS securitySupplyChainScoreV2,
         openVulnScore,
+        openVulnAvailable,
         openCriticals,
         openHighs,
         openModerates,
@@ -44,6 +47,7 @@ SQL >
             SELECT
                 repoUrl,
                 openVulnScore,
+                openVulnAvailable,
                 openCriticals,
                 openHighs,
                 openModerates,
@@ -61,13 +65,13 @@ SQL >
                 dependencyHealthAvailable,
                 vulnerableDeps,
                 (
-                    openVulnScore
+                    openVulnAvailable * openVulnScore
                     + scorecardAvailable * scorecardScorePts
                     + securityPracticesAvailable * securityPracticesScore
                     + dependencyHealthAvailable * dependencyHealthScore
                 ) AS rawScore,
                 (
-                    10
+                    openVulnAvailable * 10
                     + scorecardAvailable * 7
                     + securityPracticesAvailable * 7
                     + dependencyHealthAvailable * 5
@@ -85,6 +89,7 @@ SQL >
                                 - 1 * coalesce(vc.openModerates, 0)
                             )
                         ) AS openVulnScore,
+                        (coalesce(vs.completedScans, 0) > 0) AS openVulnAvailable,
                         vc.openCriticals AS openCriticals,
                         vc.openHighs AS openHighs,
                         vc.openModerates AS openModerates,
@@ -154,6 +159,15 @@ SQL >
                             GROUP BY repoUrl
                         ) AS vc
                         ON vc.repoUrl = allRepos.url
+                    LEFT JOIN
+                        (
+                            SELECT
+                                repoUrl,
+                                countIf(status = 'completed') AS completedScans
+                            FROM vulnerability_scans FINAL
+                            GROUP BY repoUrl
+                        ) AS vs
+                        ON vs.repoUrl = allRepos.url
                     LEFT JOIN
                         (
                             SELECT r.url AS repoUrl, count(DISTINCT pd.dependsOnId) AS vulnerableDeps
