@@ -119,7 +119,6 @@ const job: IJobDefinition = {
 
         processed++
       } catch (err) {
-        // Rare race past dropStaleOrganizationDates(): leave the entry queued, next tick self-heals.
         if ((err as { code?: string })?.code === '23503') {
           ctx.log.warn(err, { memberId }, 'Stint change referenced missing organization.')
           continue
