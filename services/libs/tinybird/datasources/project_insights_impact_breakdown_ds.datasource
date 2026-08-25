@@ -21,6 +21,13 @@ DESCRIPTION >
     package-level last-30-day download count.
     - `centrality`, `centralityTopPct`, `centralityBand` mirror the above for the project's max
     package-level centrality score.
+    - `sonatypePopularityScore` is the project's max package-level Sonatype popularity score (Maven
+    ecosystem only, 0-100 normalized); NULL when the project has no linked Maven packages with a
+    Sonatype score.
+    - `sonatypePopularityScoreTopPct` is the global percentile position among projects with a
+    non-NULL `sonatypePopularityScore`; NULL when `sonatypePopularityScore` is NULL.
+    - `sonatypePopularityScoreBand` buckets `sonatypePopularityScoreTopPct` into a display band
+    (Top 1% / Top 10% / Top 25% / Top 50% / Bottom 50%); NULL when `sonatypePopularityScore` is NULL.
 
 SCHEMA >
     `id` String,
@@ -37,7 +44,10 @@ SCHEMA >
     `downloadsBand` Nullable(String),
     `centrality` Nullable(Float64),
     `centralityTopPct` Nullable(Float64),
-    `centralityBand` Nullable(String)
+    `centralityBand` Nullable(String),
+    `sonatypePopularityScore` Nullable(UInt8),
+    `sonatypePopularityScoreTopPct` Nullable(Float64),
+    `sonatypePopularityScoreBand` Nullable(String)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY slug, id

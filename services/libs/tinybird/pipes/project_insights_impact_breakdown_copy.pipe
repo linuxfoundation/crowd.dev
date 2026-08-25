@@ -38,7 +38,10 @@ DESCRIPTION >
     production — this metric will render as "no data" for every project today until the centrality
     scoring worker actually populates it. The rollup/percentile logic is still implemented and
     correct so it activates automatically once that backfill lands.
-    - Percentile methodology: projects are ranked GLOBALLY against all other projects with a
+    - `sonatypePopularityScore` (from `sonatypePopularityScore`): MAX. Sonatype-derived popularity
+    signal (Maven ecosystem only, 0-100 normalized). Non-Maven projects or Maven packages without
+    a Sonatype score (P1/P2/P3 tiers outside initial P0-only delivery) will have NULL for this metric.
+    Percentile methodology: projects are ranked GLOBALLY against all other projects with a
     non-NULL value for that metric — NOT partitioned per-ecosystem. This is a deliberate
     departure from a naive per-ecosystem percentile: verified live that only 43% of projects
     with linked packages (3,397 of 7,906) are single-ecosystem; the rest span 2-8 ecosystems
@@ -83,7 +86,8 @@ SQL >
         max(pk.dependentCount) AS directDependents,
         max(pk.transitiveDependentCount) AS transitiveDependents,
         sum(pk.downloadsLast30d) AS downloads,
-        max(toFloat64OrNull(pk.centralityScore)) AS centrality
+        max(toFloat64OrNull(pk.centralityScore)) AS centrality,
+        max(pk.sonatypePopularityScore) AS sonatypePopularityScore
     FROM insightsProjects ip FINAL
     LEFT JOIN
         repositories rep FINAL
@@ -109,6 +113,7 @@ SQL >
         transitiveDependents,
         downloads,
         centrality,
+        sonatypePopularityScore,
         rank() OVER (ORDER BY directDependents DESC) AS directDependentsRank,
         countIf(directDependents IS NOT NULL) OVER () AS directDependentsTotalRanked,
         rank() OVER (ORDER BY transitiveDependents DESC) AS transitiveDependentsRank,
@@ -116,7 +121,9 @@ SQL >
         rank() OVER (ORDER BY downloads DESC) AS downloadsRank,
         countIf(downloads IS NOT NULL) OVER () AS downloadsTotalRanked,
         rank() OVER (ORDER BY centrality DESC) AS centralityRank,
-        countIf(centrality IS NOT NULL) OVER () AS centralityTotalRanked
+        countIf(centrality IS NOT NULL) OVER () AS centralityTotalRanked,
+        rank() OVER (ORDER BY sonatypePopularityScore DESC) AS sonatypePopularityScoreRank,
+        countIf(sonatypePopularityScore IS NOT NULL) OVER () AS sonatypePopularityScoreTotalRanked
     FROM project_impact_raw
 
 NODE project_impact_bands
@@ -208,7 +215,26 @@ SQL >
                 'Top 50%',
                 'Bottom 50%'
             )
-        ) AS centralityBand
+        ) AS centralityBand,
+        sonatypePopularityScore,
+        if(
+            sonatypePopularityScore IS NULL, NULL, round(100.0 * sonatypePopularityScoreRank / sonatypePopularityScoreTotalRanked, 2)
+        ) AS sonatypePopularityScoreTopPct,
+        if(
+            sonatypePopularityScore IS NULL,
+            NULL,
+            multiIf(
+                sonatypePopularityScoreRank <= 0.01 * sonatypePopularityScoreTotalRanked,
+                'Top 1%',
+                sonatypePopularityScoreRank <= 0.10 * sonatypePopularityScoreTotalRanked,
+                'Top 10%',
+                sonatypePopularityScoreRank <= 0.25 * sonatypePopularityScoreTotalRanked,
+                'Top 25%',
+                sonatypePopularityScoreRank <= 0.50 * sonatypePopularityScoreTotalRanked,
+                'Top 50%',
+                'Bottom 50%'
+            )
+        ) AS sonatypePopularityScoreBand
     FROM project_impact_ranked
 
 TYPE COPY

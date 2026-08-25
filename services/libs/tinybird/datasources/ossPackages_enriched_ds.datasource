@@ -1,6 +1,6 @@
 DESCRIPTION >
     - `ossPackages_enriched_ds` contains all `ossPackages` metadata plus derived enrichment fields, materialized by `ossPackages_enriched.pipe` (daily COPY, replace mode).
-    - Carries every column from the `ossPackages` datasource verbatim, so it can serve as a drop-in enriched replacement for package analytics.
+    - Carries all columns from the `ossPackages` datasource verbatim (via `SELECT *`), so it serves as a drop-in enriched replacement for package analytics.
     - `lifecycleLabel` is the categorical maintenance state of the package's primary repository, derived from repo + activity-snapshot signals: 'active', 'stable', 'declining', 'abandoned', or 'archived'.
     - `healthScore` is the composite 0–100 health score = `maintainerHealthScore` (≤40) + `securitySupplyChainScore` (≤35) + `developmentActivityScore` (≤25).
     - `healthLabel` buckets `healthScore`: 'excellent' (85+), 'healthy' (70–84), 'fair' (50–69), 'concerning' (30–49), 'critical' (<30).
@@ -42,6 +42,7 @@ SCHEMA >
     `lastRankPassAt` Nullable(DateTime64(3)),
     `downloadsLast30d` Nullable(UInt64),
     `centralityScore` Nullable(String),
+    `sonatypePopularityScore` Nullable(UInt8),
     `rankInEcosystem` Nullable(UInt32),
     `ingestionSource` Nullable(String),
     `lastSyncedAt` DateTime64(3),

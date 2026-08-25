@@ -30,6 +30,7 @@ DESCRIPTION >
     - `lastRankPassAt` is when the criticality ranking worker last processed this package (NULL if never ranked).
     - `downloadsLast30d` is the 30-day npm download count cached for ranking (0 if not yet populated).
     - `centralityScore` is the PageRank-based centrality score stored for future ranking formula use ('0' if not yet computed).
+    - `sonatypePopularityScore` is the Sonatype-derived popularity score (Maven ecosystem only, 0-100 normalized) for criticality ranking; NULL for non-Maven packages.
     - `rankInEcosystem` is the ordinal rank within the ecosystem from the most recent ranking pass (NULL if not yet ranked).
     - `ingestionSource` identifies which worker last wrote the row: 'npm-registry', 'deps_dev', etc. (empty string if unknown).
     - `lastSyncedAt` is when the row was last written by any worker — serves as the updated_at watermark for sync.
@@ -66,6 +67,7 @@ SCHEMA >
     `lastRankPassAt` Nullable(DateTime64(3)) `json:$.record.last_rank_pass_at`,
     `downloadsLast30d` Nullable(UInt64) `json:$.record.downloads_last_30d`,
     `centralityScore` Nullable(String) `json:$.record.centrality_score`,
+    `sonatypePopularityScore` Nullable(UInt8) `json:$.record.sonatype_popularity_score`,
     `rankInEcosystem` Nullable(UInt32) `json:$.record.rank_in_ecosystem`,
     `ingestionSource` Nullable(String) `json:$.record.ingestion_source`,
     `lastSyncedAt` DateTime64(3) `json:$.record.last_synced_at`,
