@@ -49,7 +49,6 @@ export async function generateMemberMergeSuggestions(
   }
 
   if (allMergeSuggestions.length > 0) {
-    // Writes raw and UI together so a rescore below the threshold cannot leave a stale UI row.
     await activity.addMemberToMerge(allMergeSuggestions, SIMILARITY_CONFIDENCE_SCORE_THRESHOLD)
   }
 
