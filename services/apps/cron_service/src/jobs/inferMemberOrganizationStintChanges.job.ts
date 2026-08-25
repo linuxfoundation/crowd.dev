@@ -104,6 +104,15 @@ const job: IJobDefinition = {
 
         processed++
       } catch (err) {
+        if ((err as { code?: string })?.code === '23503') {
+          ctx.log.warn(
+            { memberId, err },
+            'Stint change referenced a missing organization, purging from queue.',
+          )
+          await purgeMember(redis, memberId)
+          continue
+        }
+
         ctx.log.error(err, { memberId }, 'Failed to process member stint inference.')
         throw err
       }
