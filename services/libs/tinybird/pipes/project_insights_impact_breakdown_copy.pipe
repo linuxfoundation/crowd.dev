@@ -38,9 +38,9 @@ DESCRIPTION >
     production — this metric will render as "no data" for every project today until the centrality
     scoring worker actually populates it. The rollup/percentile logic is still implemented and
     correct so it activates automatically once that backfill lands.
-    - `sonatypePopularityScore` (from `sonatypePopularityScore`): MAX. Sonatype-derived popularity
-    signal (Maven ecosystem only, 0-100 normalized). Non-Maven projects or Maven packages without
-    a Sonatype score (P1/P2/P3 tiers outside initial P0-only delivery) will have NULL for this metric.
+    - `sonatypePopularityScore`: MAX. Sonatype-derived popularity signal (Maven ecosystem only,
+    0-100 normalized). Non-Maven projects or Maven packages without a Sonatype score (P1/P2/P3
+    tiers outside initial P0-only delivery) will have NULL for this metric.
     Percentile methodology: projects are ranked GLOBALLY against all other projects with a
     non-NULL value for that metric — NOT partitioned per-ecosystem. This is a deliberate
     departure from a naive per-ecosystem percentile: verified live that only 43% of projects
