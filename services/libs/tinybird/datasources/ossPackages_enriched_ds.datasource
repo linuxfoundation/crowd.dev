@@ -42,7 +42,7 @@ SCHEMA >
     `lastRankPassAt` Nullable(DateTime64(3)),
     `downloadsLast30d` Nullable(UInt64),
     `centralityScore` Nullable(String),
-    `sonatypePopularityScore` Nullable(UInt8),
+    `sonatypePopularityScore` Nullable(Float64),
     `rankInEcosystem` Nullable(UInt32),
     `ingestionSource` Nullable(String),
     `lastSyncedAt` DateTime64(3),

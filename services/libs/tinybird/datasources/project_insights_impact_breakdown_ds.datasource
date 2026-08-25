@@ -45,7 +45,7 @@ SCHEMA >
     `centrality` Nullable(Float64),
     `centralityTopPct` Nullable(Float64),
     `centralityBand` Nullable(String),
-    `sonatypePopularityScore` Nullable(UInt8),
+    `sonatypePopularityScore` Nullable(Float64),
     `sonatypePopularityScoreTopPct` Nullable(Float64),
     `sonatypePopularityScoreBand` Nullable(String)
 
