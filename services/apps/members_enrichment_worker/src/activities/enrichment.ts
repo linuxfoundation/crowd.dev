@@ -59,7 +59,6 @@ import {
   MemberIdentityType,
   OrganizationAttributeSource,
   OrganizationIdentityType,
-  OrganizationMergeSuggestionTable,
   PlatformType,
 } from '@crowd/types'
 
@@ -587,14 +586,7 @@ export async function updateMemberUsingSquashedPayload(
             if (mergeSuggestions.length > 0) {
               // A shared verified identity is a strong merge signal, unless the pair was
               // explicitly marked as no-merge by a reviewer.
-              await mergeSuggestionsRepo.addToMerge(
-                mergeSuggestions,
-                OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
-              )
-              await mergeSuggestionsRepo.addToMerge(
-                mergeSuggestions,
-                OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
-              )
+              await mergeSuggestionsRepo.addToMerge(mergeSuggestions)
             }
           }
         }

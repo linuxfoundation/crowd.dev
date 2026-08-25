@@ -13,7 +13,6 @@ import {
   IMemberIdentity,
   IMemberMergeSuggestion,
   MemberIdentityType,
-  MemberMergeSuggestionTable,
   OpenSearchIndex,
   PlatformType,
 } from '@crowd/types'
@@ -379,14 +378,14 @@ export async function getMemberMergeSuggestions(
 
 export async function addMemberToMerge(
   suggestions: IMemberMergeSuggestion[],
-  table: MemberMergeSuggestionTable,
+  similarityThreshold = 0.75,
 ): Promise<void> {
   if (suggestions.length > 0) {
     const memberMergeSuggestionsRepo = new MemberMergeSuggestionsRepository(
       svc.postgres.writer.connection(),
       svc.log,
     )
-    await memberMergeSuggestionsRepo.addToMerge(suggestions, table)
+    await memberMergeSuggestionsRepo.addToMerge(suggestions, similarityThreshold)
   }
 }
 

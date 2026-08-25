@@ -82,7 +82,7 @@ class MemberMergeSuggestionsRepository {
 
   async addToMerge(
     suggestions: IMemberMergeSuggestion[],
-    table: MemberMergeSuggestionTable,
+    similarityThreshold = 0.75,
   ): Promise<void> {
     // Remove possible duplicates
     suggestions = removeDuplicateSuggestions<IMemberMergeSuggestion>(
@@ -99,9 +99,9 @@ class MemberMergeSuggestionsRepository {
       }, new Set<string>()),
     )
 
-    // filter non existing member ids from suggestions
     const nonExistingIds = await this.findNonExistingIds(uniqueMemberIds)
 
+    // filter non existing member ids from suggestions
     suggestions = suggestions.filter(
       (s) => !nonExistingIds.includes(s.members[0]) && !nonExistingIds.includes(s.members[1]),
     )
@@ -135,9 +135,68 @@ class MemberMergeSuggestionsRepository {
       }
     }
 
+    const upsertTable = async (
+      table: MemberMergeSuggestionTable,
+      placeholders: string[],
+      replacements: Record<string, unknown>,
+      onlyAboveThreshold: boolean,
+    ) => {
+      const thresholdFilter = onlyAboveThreshold
+        ? 'and v.similarity > $(similarityThreshold)'
+        : ''
+
+      // Update existing rows if they already exist
+      await this.connection.none(
+        `
+            update "${table}" t
+            set
+              similarity = v.similarity,
+              "activityEstimate" = v."activityEstimate",
+              "updatedAt" = now()
+            from (
+              values
+                ${placeholders.join(', ')}
+            ) as v("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
+            where
+              (
+                (t."memberId" = v."memberId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
+                or
+                (t."memberId" = v."toMergeId"::uuid and t."toMergeId" = v."memberId"::uuid)
+              )
+              ${thresholdFilter};
+        `,
+        replacements,
+      )
+
+      // Insert only new rows and enforce bidirectional uniqueness
+      await this.connection.none(
+        `
+            insert into "${table}"
+              ("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
+            select v.*
+            from (
+              values
+                ${placeholders.join(', ')}
+            ) as v("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
+            where not exists (
+              select 1
+              from "${table}" t
+              where
+                (t."memberId" = v."memberId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
+                or
+                (t."memberId" = v."toMergeId"::uuid and t."toMergeId" = v."memberId"::uuid)
+            )
+            ${thresholdFilter};
+        `,
+        replacements,
+      )
+    }
+
     for (const suggestionChunk of suggestionChunks) {
       const placeholders: string[] = []
-      let replacements: Record<string, unknown> = {}
+      let replacements: Record<string, unknown> = {
+        similarityThreshold,
+      }
 
       suggestionChunk.forEach((suggestion, index) => {
         const { query, replacements: chunkReplacements } = insertValues(
@@ -152,45 +211,37 @@ class MemberMergeSuggestionsRepository {
       })
 
       try {
-        // 1. Update existing rows if they already exist
-        await this.connection.none(
-          `
-            update "${table}" t
-            set 
-              similarity = v.similarity,
-              "activityEstimate" = v."activityEstimate",
-              "updatedAt" = now()
-            from (
-              values
-                ${placeholders.join(', ')}
-            ) as v("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
-            where 
-              (t."memberId" = v."memberId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
-              or
-              (t."memberId" = v."toMergeId"::uuid and t."toMergeId" = v."memberId"::uuid);
-        `,
+        // memberToMerge is the high-confidence slice of raw (score > similarityThreshold).
+        // A later run can score the same pair lower, so drop it from UI when it falls to or below the cutoff.
+        await upsertTable(
+          MemberMergeSuggestionTable.MEMBER_TO_MERGE_RAW,
+          placeholders,
           replacements,
+          false,
         )
 
-        // 2. Insert only new rows and enforce bidirectional uniqueness
+        await upsertTable(
+          MemberMergeSuggestionTable.MEMBER_TO_MERGE_FILTERED,
+          placeholders,
+          replacements,
+          true,
+        )
+
         await this.connection.none(
           `
-            insert into "${table}" 
-              ("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
-            select v.*
-            from (
+            delete from "memberToMerge" t
+            using (
               values
                 ${placeholders.join(', ')}
             ) as v("memberId", "toMergeId", "similarity", "activityEstimate", "createdAt", "updatedAt")
-            where not exists (
-              select 1
-              from "${table}" t
-              where 
+            where
+              (
                 (t."memberId" = v."memberId"::uuid and t."toMergeId" = v."toMergeId"::uuid)
                 or
                 (t."memberId" = v."toMergeId"::uuid and t."toMergeId" = v."memberId"::uuid)
-            );
-        `,
+              )
+              and v.similarity <= $(similarityThreshold);
+          `,
           replacements,
         )
       } catch (error) {

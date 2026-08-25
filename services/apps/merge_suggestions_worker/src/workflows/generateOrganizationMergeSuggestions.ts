@@ -1,10 +1,6 @@
 import { continueAsNew, proxyActivities } from '@temporalio/workflow'
 
-import {
-  IOrganizationBaseForMergeSuggestions,
-  IOrganizationMergeSuggestion,
-  OrganizationMergeSuggestionTable,
-} from '@crowd/types'
+import { IOrganizationBaseForMergeSuggestions, IOrganizationMergeSuggestion } from '@crowd/types'
 
 import * as activities from '../activities/organizationMergeSuggestions'
 import { IProcessGenerateOrganizationMergeSuggestionsArgs } from '../types'
@@ -55,16 +51,11 @@ export async function generateOrganizationMergeSuggestions(
     allMergeSuggestions.push(...mergeSuggestionsResults.flat())
   }
 
-  // Add all merge suggestions to add to merge
   if (allMergeSuggestions.length > 0) {
+    // Writes raw and UI together so a rescore below the threshold cannot leave a stale UI row.
     await activity.addOrganizationToMerge(
       allMergeSuggestions,
-      OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_RAW,
-    )
-
-    await activity.addOrganizationToMerge(
-      allMergeSuggestions.filter((s) => s.similarity > SIMILARITY_CONFIDENCE_SCORE_THRESHOLD),
-      OrganizationMergeSuggestionTable.ORGANIZATION_TO_MERGE_FILTERED,
+      SIMILARITY_CONFIDENCE_SCORE_THRESHOLD,
     )
   }
 
