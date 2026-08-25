@@ -137,9 +137,7 @@ class OrganizationMergeSuggestionsRepository {
       replacements: Record<string, unknown>,
       onlyAboveThreshold: boolean,
     ) => {
-      const thresholdFilter = onlyAboveThreshold
-        ? 'and v.similarity > $(similarityThreshold)'
-        : ''
+      const thresholdFilter = onlyAboveThreshold ? 'and v.similarity > $(similarityThreshold)' : ''
 
       // Update existing rows if they already exist
       await this.connection.none(
