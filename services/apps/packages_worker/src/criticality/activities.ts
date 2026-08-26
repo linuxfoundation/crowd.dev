@@ -3,7 +3,7 @@ import { Context } from '@temporalio/activity'
 import { createIngestJob, findPendingJobByKind, markJobStatus } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
-import { getPackagesDb } from '../db'
+import { getPackagesDb, getPackagesDbConnection } from '../db'
 
 import { buildGraph, computePageRank } from './graph'
 import { loadDirectEdges, mergeCentralityScores } from './queries'
@@ -75,12 +75,15 @@ export async function rankPackages(): Promise<{ appliedRows: number }> {
     (await createIngestJob(qx, 'ranking', 'ranking', null))
   try {
     await markJobStatus(qx, jobId, 'merging')
-    // Not wrapped in qx.tx(): the procedure COMMITs internally (once per apply
-    // chunk), which is only legal outside an explicit transaction block.
-    // SET (not SET LOCAL inside the procedure) so the timeout survives those commits.
-    const [result] = await qx.select(
-      `SET statement_timeout = '75min'; CALL rank_packages_chunked(0.90, NULL, 25000, 0)`,
-    )
+    // Not wrapped in qx.tx()/db.tx(): the procedure COMMITs internally (once per
+    // apply chunk), which is only legal outside an explicit transaction block.
+    // db.task() pins both statements to one connection (unlike two qx.select()
+    // calls, which may land on different pooled connections) without opening one.
+    const conn = await getPackagesDbConnection()
+    const [result] = await conn.task(async (t) => {
+      await t.none(`SET statement_timeout = '75min'`)
+      return t.query(`CALL rank_packages_chunked(0.90, NULL, 25000, 0)`)
+    })
     const appliedRows = Number(result.applied_rows ?? 0)
     await markJobStatus(qx, jobId, 'done', {
       rowCountPg: appliedRows,
