@@ -35,6 +35,8 @@ import {
 
 import { IJobDefinition } from '../types'
 
+const MAX_FK_VIOLATION_RETRIES = 3
+
 const job: IJobDefinition = {
   name: 'infer-member-organization-stint-changes',
   cronTime: CronTime.every(5).minutes(),
@@ -122,16 +124,29 @@ const job: IJobDefinition = {
           memberId,
           rawMembers,
         )
+        await redis.del(fkViolationRetryKey(memberId))
 
         processed++
       } catch (err) {
         if ((err as { code?: string })?.code === '23503') {
           const constraint = (err as { constraint?: string })?.constraint
-          ctx.log.warn(
-            err,
-            { memberId, constraint },
-            'Stint change referenced a missing related record.',
-          )
+          const retryKey = fkViolationRetryKey(memberId)
+          const retries = await redis.incr(retryKey)
+
+          if (retries >= MAX_FK_VIOLATION_RETRIES) {
+            ctx.log.error(
+              err,
+              { memberId, constraint, retries },
+              'Stint change repeatedly referenced a missing related record; purging poisoned queue entry.',
+            )
+            await purgeMember(redis, memberId)
+          } else {
+            ctx.log.warn(
+              err,
+              { memberId, constraint, retries },
+              'Stint change referenced a missing related record, will retry.',
+            )
+          }
           continue
         }
 
@@ -209,8 +224,18 @@ async function reconcileOrganizationDates(
  */
 async function purgeMember(redis: RedisClient, memberId: string): Promise<void> {
   const datesKey = `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:${memberId}`
+  const retryKey = fkViolationRetryKey(memberId)
 
-  await redis.multi().del(datesKey).sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId).exec()
+  await redis
+    .multi()
+    .del(datesKey)
+    .del(retryKey)
+    .sRem(MEMBER_ORG_STINT_CHANGES_QUEUE, memberId)
+    .exec()
+}
+
+function fkViolationRetryKey(memberId: string): string {
+  return `${MEMBER_ORG_STINT_CHANGES_DATES_PREFIX}:fk-violation-retries:${memberId}`
 }
 
 /**
@@ -218,9 +243,7 @@ async function purgeMember(redis: RedisClient, memberId: string): Promise<void> 
  */
 async function applyStintChanges(qx: QueryExecutor, changes: MemberOrgStintChange[]) {
   const insertOrgIds = [
-    ...new Set(
-      changes.filter((c) => c.type === 'insert').map((c) => c.organizationId),
-    ),
+    ...new Set(changes.filter((c) => c.type === 'insert').map((c) => c.organizationId)),
   ]
   const orgAffiliationPolicies = await fetchManyOrganizationAffiliationPolicies(qx, insertOrgIds)
 
