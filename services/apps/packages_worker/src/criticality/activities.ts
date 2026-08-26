@@ -75,15 +75,17 @@ export async function rankPackages(): Promise<{ appliedRows: number }> {
     (await createIngestJob(qx, 'ranking', 'ranking', null))
   try {
     await markJobStatus(qx, jobId, 'merging')
-    // Not wrapped in qx.tx()/db.tx(): the procedure COMMITs internally (once per
-    // apply chunk), which is only legal outside an explicit transaction block.
-    // db.task() pins both statements to one connection (unlike two qx.select()
-    // calls, which may land on different pooled connections) without opening one.
-    const conn = await getPackagesDbConnection()
-    const [result] = await conn.task(async (t) => {
-      await t.none(`SET statement_timeout = '75min'`)
-      return t.query(`CALL rank_packages_chunked(0.90, NULL, 25000, 0)`)
-    })
+    // Dedicated connection, killed in `finally` so the procedure's advisory lock
+    // always releases, even mid-run — a recycled pooled connection would keep it held.
+    const db = await getPackagesDbConnection()
+    const conn = await db.connect()
+    let result
+    try {
+      await conn.none(`SET statement_timeout = '75min'`)
+      ;[result] = await conn.query(`CALL rank_packages_chunked(0.90, NULL, 25000, 0)`)
+    } finally {
+      conn.done(true)
+    }
     const appliedRows = Number(result.applied_rows ?? 0)
     await markJobStatus(qx, jobId, 'done', {
       rowCountPg: appliedRows,
