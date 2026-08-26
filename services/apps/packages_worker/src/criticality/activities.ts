@@ -77,7 +77,10 @@ export async function rankPackages(): Promise<{ appliedRows: number }> {
     await markJobStatus(qx, jobId, 'merging')
     // Not wrapped in qx.tx(): the procedure COMMITs internally (once per apply
     // chunk), which is only legal outside an explicit transaction block.
-    const [result] = await qx.select(`CALL rank_packages_chunked(0.90, NULL, 25000, 0)`)
+    // SET (not SET LOCAL inside the procedure) so the timeout survives those commits.
+    const [result] = await qx.select(
+      `SET statement_timeout = '75min'; CALL rank_packages_chunked(0.90, NULL, 25000, 0)`,
+    )
     const appliedRows = Number(result.applied_rows ?? 0)
     await markJobStatus(qx, jobId, 'done', {
       rowCountPg: appliedRows,

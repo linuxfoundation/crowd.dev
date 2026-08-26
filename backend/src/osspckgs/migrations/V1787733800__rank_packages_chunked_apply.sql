@@ -24,8 +24,16 @@ DECLARE
     batch_rows            int;
     cursor_id             bigint := 0;
 BEGIN
-    SET LOCAL statement_timeout = '75min';
     SET LOCAL max_parallel_workers_per_gather = 4;
+
+    IF chunk_size IS NULL OR chunk_size <= 0 THEN
+        RAISE EXCEPTION 'rank_packages_chunked: chunk_size must be a positive integer, got %', chunk_size;
+    END IF;
+
+    -- Session-level: survives the internal COMMITs below
+    IF NOT pg_try_advisory_lock(hashtextextended('rank_packages_chunked', 0)) THEN
+        RAISE EXCEPTION 'rank_packages_chunked: another execution is already in progress';
+    END IF;
 
     applied_rows := 0;
 
@@ -139,5 +147,7 @@ BEGIN
 
         EXIT WHEN batch_rows < chunk_size;
     END LOOP;
+
+    PERFORM pg_advisory_unlock(hashtextextended('rank_packages_chunked', 0));
 END;
 $$;
