@@ -161,9 +161,7 @@ SQL >
                         ON vc.repoUrl = allRepos.url
                     LEFT JOIN
                         (
-                            SELECT
-                                repoUrl,
-                                countIf(status = 'success') AS completedScans
+                            SELECT repoUrl, countIf(status = 'success') AS completedScans
                             FROM vulnerability_scans FINAL
                             GROUP BY repoUrl
                         ) AS vs
