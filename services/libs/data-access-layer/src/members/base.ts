@@ -7,7 +7,7 @@ import {
   TimeoutError,
   generateUUIDv1,
   generateUUIDv4,
-  getProperDisplayName,
+  normalizeDisplayName,
   groupBy,
 } from '@crowd/common'
 import { formatSql, getDbInstance, prepareForModification } from '@crowd/database'
@@ -763,7 +763,7 @@ export async function updateMember(
   }
 
   if (typeof dbData.displayName === 'string' && dbData.displayName) {
-    dbData.displayName = getProperDisplayName(dbData.displayName)
+    dbData.displayName = normalizeDisplayName(dbData.displayName)
   }
 
   if (Array.isArray(dbData.contributions)) {
