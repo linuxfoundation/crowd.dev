@@ -1,4 +1,4 @@
-# ADR-0019: Match builder and runner libc; Debian for Temporal TypeScript workers
+# ADR-0019: Use matching Node image families in Docker builds
 
 **Date**: 2026-08-27
 **Status**: accepted
