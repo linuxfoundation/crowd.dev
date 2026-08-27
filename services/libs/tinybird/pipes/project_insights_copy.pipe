@@ -121,7 +121,8 @@ DESCRIPTION >
 SQL >
     SELECT
         rep.insightsProjectId AS insightsProjectId,
-        quantileExact(0.5)(hv2.healthScoreV2) AS healthScoreV2,
+        quantileExact(0.5)
+        (hv2.healthScoreV2) AS healthScoreV2,
         if(
             empty(groupArray(hv2.lifecycleLabelV2)),
             NULL,
@@ -138,9 +139,12 @@ SQL >
             )
         ) AS lifecycleLabelV2,
         maxOrNull(hv2.impactScore) AS impactScoreRaw,
-        quantileExact(0.5)(hv2.maintainerHealthScoreV2) AS maintainerHealthScoreV2,
-        quantileExact(0.5)(hv2.securitySupplyChainScoreV2) AS securitySupplyChainScoreV2,
-        quantileExact(0.5)(hv2.developmentActivityScoreV2) AS developmentActivityScoreV2
+        quantileExact(0.5)
+        (hv2.maintainerHealthScoreV2) AS maintainerHealthScoreV2,
+        quantileExact(0.5)
+        (hv2.securitySupplyChainScoreV2) AS securitySupplyChainScoreV2,
+        quantileExact(0.5)
+        (hv2.developmentActivityScoreV2) AS developmentActivityScoreV2
     FROM repositories rep FINAL
     INNER JOIN health_score_v2_repo_copy_ds hv2 ON hv2.repoUrl = rep.url
     WHERE rep.insightsProjectId != '' AND rep.enabled = true AND rep.excluded = false
