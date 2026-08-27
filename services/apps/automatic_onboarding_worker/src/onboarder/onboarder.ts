@@ -5,7 +5,7 @@ const LINUX_KERNEL_GITHUB_URL = 'https://github.com/torvalds/linux'
 const LINUX_KERNEL_GIT_URL = 'https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux'
 
 interface ISegmentQueryResponse {
-  rows?: Array<{ subprojects?: Array<{ id: string }> }>
+  rows?: Array<{ subprojects?: Array<{ id: string; name: string }> }>
 }
 
 export function deriveProjectName(repoName: string): string {
@@ -81,7 +81,7 @@ async function queryProjectByName(
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       filter: { name, parentSlug: LF_OSS_INDEX_PROJECT_GROUP_SLUG },
-      limit: 1,
+      limit: 20,
       offset: 0,
     }),
   })
@@ -91,7 +91,13 @@ async function queryProjectByName(
   }
 
   const body = (await response.json()) as ISegmentQueryResponse
-  return body.rows?.[0]?.subprojects?.[0]?.id ?? null
+  const subprojects = body.rows?.flatMap((row) => row.subprojects ?? []) ?? []
+
+  const exactMatch = subprojects.find(
+    (subproject) => subproject.name.toLowerCase() === name.toLowerCase(),
+  )
+
+  return exactMatch?.id ?? null
 }
 
 async function createProjectSegment(
@@ -115,7 +121,7 @@ async function createProjectSegment(
     throw new Error(`Segment creation returned HTTP ${response.status}: ${response.statusText}`)
   }
 
-  // The create response payload is unreliable — always re-query for the real segment id.
+  // POST /segment/project does not return the created segment's id in its response body; re-query by name to get it.
   const segmentId = await queryProjectByName(name, apiUrl, token)
   if (!segmentId) {
     throw new Error(`Segment created but could not be found by name "${name}" afterwards`)
