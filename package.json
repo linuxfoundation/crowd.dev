@@ -3,13 +3,6 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "devEngines": {
-    "runtime": {
-      "name": "node",
-      "version": "24.x",
-      "onFail": "download"
-    }
-  },
   "scripts": {
     "prepare": "husky",
     "test": "vitest run",

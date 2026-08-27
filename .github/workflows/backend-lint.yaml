@@ -7,6 +7,8 @@ on:
     paths:
       - 'backend/**'
       - 'services/**'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
 jobs:
   lint-format:
     runs-on: ubuntu-latest
@@ -22,6 +24,7 @@ jobs:
       - name: Setup pnpm and node
         uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
+          runtime: node@24
           cache: true
 
       - name: Check linting
@@ -47,6 +50,7 @@ jobs:
       - name: Setup pnpm and node
         uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
+          runtime: node@24
           cache: true
 
       - name: Check library linting, format and typescript
