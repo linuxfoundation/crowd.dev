@@ -10,9 +10,7 @@ const URL_REGEXP = new RegExp(
   'i',
 )
 
-const PARTIAL_EMAIL_LOCAL = new Set(
-  "abcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+/=?^_`{|}~-",
-)
+const PARTIAL_EMAIL_LOCAL = new Set("abcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+/=?^_`{|}~-")
 const PARTIAL_EMAIL_HOST = new Set('abcdefghijklmnopqrstuvwxyz0123456789-')
 
 export const isUrl = (value: string): boolean => {

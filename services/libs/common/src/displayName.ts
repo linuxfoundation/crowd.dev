@@ -22,9 +22,7 @@ export function normalizeDisplayName(name: string): string {
     return nameParts[0]
   }
 
-  const filteredNameParts = nameParts.filter(
-    (part) => !isValidEmail(part) && !isPartialEmail(part),
-  )
+  const filteredNameParts = nameParts.filter((part) => !isValidEmail(part) && !isPartialEmail(part))
 
   if (filteredNameParts.length > 0) {
     return filteredNameParts.join(' ')
