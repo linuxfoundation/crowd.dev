@@ -1,0 +1,25 @@
+{
+  "name": "@crowd/connectors",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "lint": "npx eslint --ext .ts src --max-warnings=0",
+    "format": "npx prettier --write \"src/**/*.ts\"",
+    "format-check": "npx prettier --check .",
+    "tsc-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@crowd/common": "workspace:*",
+    "@crowd/common_services": "workspace:*",
+    "@crowd/data-access-layer": "workspace:*",
+    "@crowd/logging": "workspace:*",
+    "@crowd/redis": "workspace:*",
+    "@crowd/types": "workspace:*",
+    "axios": "^1.6.8",
+    "zod": "^3.22.0"
+  }
+}
