@@ -32,7 +32,7 @@ DESCRIPTION >
     - `activeContributorsPrevious365Days` column is the unique count of active contributors in the previous 365 days (365-730 days ago).
     - `activeOrganizationsPrevious365Days` column is the unique count of active organizations in the previous 365 days (365-730 days ago).
     - `status` column is the current status of the project (e.g., 'active', 'archived').
-    - `healthScoreV2` column is the Akrites-methodology composite health score (0-100), median (`quantileExact(0.5)`) of repo scores across the project's enabled, non-excluded repos. Distinct from the legacy `healthScore` column (community/contributor-based); null when the project has no linked repo data.
+    - `healthScoreV2` column is the Akrites-methodology composite health score (0-100), median (`quantileExact(0.5)`) of repo scores across the project's enabled, non-excluded repos. Distinct from the legacy `healthScore` column (community/contributor-based); null when the project has no enabled, non-excluded repos or when all such repos have null scores (insufficient coverage data).
     - `healthLabel` column buckets `healthScoreV2`: 'excellent' (85+), 'healthy' (70-84), 'fair' (50-69), 'concerning' (30-49), 'critical' (<30). Lowercase, matches `ossPackages_enriched_ds.healthLabel` convention.
     - `lifecycleLabel` column is the project's aggregated maintenance state across its packages, using best-state-wins precedence (active > stable > declining > abandoned > archived) over `ossPackages_enriched_ds.lifecycleLabel`.
     - `impactScore` column is the average Osprey criticality `impact` (0-100) across the project's packages. Null when the project has no linked package data.
