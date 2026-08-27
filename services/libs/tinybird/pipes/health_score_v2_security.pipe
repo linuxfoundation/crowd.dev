@@ -13,6 +13,9 @@ DESCRIPTION >
     (NULL) when covered weight is <40% of 35.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
     health_score_v2_maintainer.pipe description for why.
+    - Scorecard banded mapping (2026-08-27, IN-1247): raw ≥ 7 → 7 pts, ≥ 5.5 → 5, ≥ 4 → 4,
+    ≥ 2.5 → 2, else 0. Replaces the linear round(min(raw,10)×0.7) which required raw ≥ 9.3 for
+    full points (only 0.33% of repos), calibrated to real distribution (median ≈ 4, p99 ≈ 7.9).
 
 NODE health_score_v2_security_calc
 SQL >
@@ -94,7 +97,17 @@ SQL >
                         vc.openHighs AS openHighs,
                         vc.openModerates AS openModerates,
                         toUInt8(
-                            round(least(toFloat64OrZero(rd.scorecardScore), 10) * 0.7)
+                            multiIf(
+                                toFloat64OrZero(rd.scorecardScore) >= 7,
+                                7,
+                                toFloat64OrZero(rd.scorecardScore) >= 5.5,
+                                5,
+                                toFloat64OrZero(rd.scorecardScore) >= 4,
+                                4,
+                                toFloat64OrZero(rd.scorecardScore) >= 2.5,
+                                2,
+                                0
+                            )
                         ) AS scorecardScorePts,
                         (rd.scorecardLastRunAt IS NOT NULL) AS scorecardAvailable,
                         rd.scorecardScore AS scorecardScore,
