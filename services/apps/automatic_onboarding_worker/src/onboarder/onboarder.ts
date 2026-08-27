@@ -35,6 +35,7 @@ export function parseGithubUrl(repoUrl: string): { owner: string; repo: string }
   const url = new URL(repoUrl.replace('git@github.com:', 'https://github.com/'))
   const pathParts = url.pathname
     .replace(/^\//, '')
+    .replace(/\/$/, '')
     .replace(/\.git$/, '')
     .split('/')
 
