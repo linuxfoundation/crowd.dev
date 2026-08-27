@@ -10,6 +10,8 @@ interface ISegmentQueryResponse {
 }
 
 const SEGMENT_QUERY_PAGE_SIZE = 20
+const BACKEND_REQUEST_TIMEOUT_MS = 30_000
+const GITHUB_REQUEST_TIMEOUT_MS = 10_000
 
 export function deriveProjectName(repoName: string): string {
   return repoName
@@ -36,7 +38,7 @@ export function parseGithubUrl(repoUrl: string): { owner: string; repo: string }
     .replace(/\.git$/, '')
     .split('/')
 
-  if (pathParts.length < 2 || !pathParts[0] || !pathParts[1]) {
+  if (url.hostname !== 'github.com' || pathParts.length !== 2 || !pathParts[0] || !pathParts[1]) {
     throw new Error(`Invalid GitHub URL format: ${repoUrl}`)
   }
 
@@ -92,6 +94,7 @@ async function queryProjectByName(
         limit: SEGMENT_QUERY_PAGE_SIZE,
         offset,
       }),
+      signal: AbortSignal.timeout(BACKEND_REQUEST_TIMEOUT_MS),
     })
 
     if (!response.ok) {
@@ -131,6 +134,7 @@ async function createProjectSegment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ name, slug, isLF: false, parentSlug: LF_OSS_INDEX_PROJECT_GROUP_SLUG }),
+    signal: AbortSignal.timeout(BACKEND_REQUEST_TIMEOUT_MS),
   })
 
   if (!response.ok) {
@@ -150,6 +154,7 @@ async function fetchGithubOrgLogo(owner: string, githubToken: string): Promise<s
   try {
     const response = await fetch(`https://api.github.com/users/${owner}`, {
       headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
     })
     if (!response.ok) return ''
 
@@ -168,6 +173,7 @@ async function fetchGithubForkedFrom(
   try {
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
     })
     if (!response.ok) return null
 
@@ -200,6 +206,7 @@ async function createGithubIntegration(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(BACKEND_REQUEST_TIMEOUT_MS),
   })
 
   if (!response.ok) {
