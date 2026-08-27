@@ -6,7 +6,10 @@ const LINUX_KERNEL_GIT_URL = 'https://git.kernel.org/pub/scm/linux/kernel/git/to
 
 interface ISegmentQueryResponse {
   rows?: Array<{ subprojects?: Array<{ id: string; name: string }> }>
+  count?: number
 }
+
+const SEGMENT_QUERY_PAGE_SIZE = 20
 
 export function deriveProjectName(repoName: string): string {
   return repoName
@@ -76,28 +79,41 @@ async function queryProjectByName(
   apiUrl: string,
   token: string,
 ): Promise<string | null> {
-  const response = await fetch(`${apiUrl}/segment/project/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      filter: { name, parentSlug: LF_OSS_INDEX_PROJECT_GROUP_SLUG },
-      limit: 20,
-      offset: 0,
-    }),
-  })
+  const normalizedName = name.toLowerCase()
+  let offset = 0
+  let hasMorePages = true
 
-  if (!response.ok) {
-    return null
+  while (hasMorePages) {
+    const response = await fetch(`${apiUrl}/segment/project/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        filter: { name, parentSlug: LF_OSS_INDEX_PROJECT_GROUP_SLUG },
+        limit: SEGMENT_QUERY_PAGE_SIZE,
+        offset,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Segment query returned HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const body = (await response.json()) as ISegmentQueryResponse
+    const rows = body.rows ?? []
+    const subprojects = rows.flatMap((row) => row.subprojects ?? [])
+
+    const exactMatch = subprojects.find(
+      (subproject) => subproject.name.toLowerCase() === normalizedName,
+    )
+    if (exactMatch) {
+      return exactMatch.id
+    }
+
+    offset += SEGMENT_QUERY_PAGE_SIZE
+    hasMorePages = offset < (body.count ?? 0)
   }
 
-  const body = (await response.json()) as ISegmentQueryResponse
-  const subprojects = body.rows?.flatMap((row) => row.subprojects ?? []) ?? []
-
-  const exactMatch = subprojects.find(
-    (subproject) => subproject.name.toLowerCase() === name.toLowerCase(),
-  )
-
-  return exactMatch?.id ?? null
+  return null
 }
 
 async function createProjectSegment(
