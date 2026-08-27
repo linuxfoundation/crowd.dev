@@ -24,15 +24,14 @@ export const isPartialEmail = (value: string): boolean => {
   }
 
   const local = value.slice(0, at)
-  let host = value.slice(at + 1)
-  if (host.endsWith('.')) {
-    host = host.slice(0, -1)
-  }
-  if (!local || !host) {
-    return false
-  }
+  const host = value.endsWith('.') ? value.slice(at + 1, -1) : value.slice(at + 1)
 
-  return everyCharIn(local, PARTIAL_EMAIL_LOCAL) && everyCharIn(host, PARTIAL_EMAIL_HOST)
+  return (
+    local.length > 0 &&
+    host.length > 0 &&
+    everyCharIn(local, PARTIAL_EMAIL_LOCAL) &&
+    everyCharIn(host, PARTIAL_EMAIL_HOST)
+  )
 }
 
 function everyCharIn(value: string, allowed: Set<string>): boolean {
