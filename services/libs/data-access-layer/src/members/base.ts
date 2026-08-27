@@ -7,8 +7,8 @@ import {
   TimeoutError,
   generateUUIDv1,
   generateUUIDv4,
-  normalizeDisplayName,
   groupBy,
+  normalizeDisplayName,
 } from '@crowd/common'
 import { formatSql, getDbInstance, prepareForModification } from '@crowd/database'
 import { getServiceLogger } from '@crowd/logging'

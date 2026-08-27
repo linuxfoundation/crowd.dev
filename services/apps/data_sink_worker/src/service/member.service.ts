@@ -8,11 +8,11 @@ import {
   getAttributeValue,
   getCountry,
   getEarliestValidDate,
-  normalizeDisplayName,
   hasAttributeValue,
   isDomainExcluded,
   isObjectEmpty,
   isSameMemberIdentity,
+  normalizeDisplayName,
   normalizeMemberIdentities,
   singleOrDefault,
 } from '@crowd/common'

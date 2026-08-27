@@ -9,9 +9,9 @@ import {
   calculateReach,
   getAttributeValue,
   getCountry,
-  normalizeDisplayName,
   hasAttributeValue,
   isDomainExcluded,
+  normalizeDisplayName,
 } from '@crowd/common'
 import {
   CommonMemberService,
