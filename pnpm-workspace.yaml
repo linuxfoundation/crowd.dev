@@ -17,7 +17,7 @@ catalog:
   '@types/node': ^24.13.3
   axios: ^1.19.0
   config: ^3.3.12
-  eslint: ^8.39.0
+  eslint: ^8.50.0
   pg-promise: ^11.4.3
   prettier: ^3.3.3
   tsx: ^4.20.3
