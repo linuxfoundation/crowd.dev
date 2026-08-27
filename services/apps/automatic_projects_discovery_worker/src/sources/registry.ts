@@ -1,9 +1,10 @@
 import { InsightsDiscussionsSource } from './insights-discussions/source'
-import { LfCriticalityScoreSource } from './lf-criticality-score/source'
+// import { LfCriticalityScoreSource } from './lf-criticality-score/source'
 import { IDiscoverySource } from './types'
 
+// lf-criticality-score disabled locally: no production deployment yet, will be reintegrated later
 const sources: IDiscoverySource[] = [
-  new LfCriticalityScoreSource(),
+  // new LfCriticalityScoreSource(),
   new InsightsDiscussionsSource(),
 ]
 
