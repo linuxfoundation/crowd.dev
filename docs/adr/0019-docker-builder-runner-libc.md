@@ -1,4 +1,4 @@
-# ADR-0019: Use matching Node image families in Docker builds
+# ADR-0019: Same libc in Docker builder and runner
 
 **Date**: 2026-08-27
 **Status**: accepted
