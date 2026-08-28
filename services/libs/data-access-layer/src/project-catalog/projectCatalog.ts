@@ -20,6 +20,7 @@ const PROJECT_CATALOG_COLUMNS = [
   'evaluationReason',
   'evaluatedAt',
   'onboardedAt',
+  'onboardingError',
   'syncedAt',
   'createdAt',
   'updatedAt',
@@ -471,6 +472,10 @@ export async function updateProjectCatalog(
   if (data.onboardedAt !== undefined) {
     setClauses.push('"onboardedAt" = $(onboardedAt)')
     params.onboardedAt = data.onboardedAt
+  }
+  if (data.onboardingError !== undefined) {
+    setClauses.push('"onboardingError" = $(onboardingError)')
+    params.onboardingError = data.onboardingError
   }
 
   if (setClauses.length === 0) {
