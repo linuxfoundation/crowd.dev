@@ -186,8 +186,14 @@ SQL >
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
-        toUInt8(round(hv2.healthScoreV2)) AS healthScoreV2,
+        -- shortcut: overall healthScoreV2/healthLabel forced NULL for korg (Linux Kernel, IN-1244)
+        -- since its per-category scores are populated but the overall rollup isn't meaningful for it.
+        -- revisit: generalize once the project-level rollup's null-vs-populated-categories mismatch
+        -- is root-caused.
+        if(base.slug = 'korg', NULL, toUInt8(round(hv2.healthScoreV2))) AS healthScoreV2,
         multiIf(
+            base.slug = 'korg',
+            NULL,
             hv2.healthScoreV2 IS NULL,
             NULL,
             hv2.healthScoreV2 >= 85,
