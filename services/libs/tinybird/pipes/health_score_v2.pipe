@@ -96,11 +96,6 @@ SQL >
                 s.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
                 d.developmentActivityScoreV2 AS developmentActivityScoreV2,
                 (
-                    if(m.maintainerHealthScoreV2 IS NOT NULL, 40, 0)
-                    + if(s.securitySupplyChainScoreV2 IS NOT NULL, 35, 0)
-                    + if(d.developmentActivityScoreV2 IS NOT NULL, 25, 0)
-                ) AS coveredCategoryWeight,
-                (
                     if(m.maintainerHealthScoreV2 IS NOT NULL, 1, 0)
                     + if(s.securitySupplyChainScoreV2 IS NOT NULL, 1, 0)
                     + if(d.developmentActivityScoreV2 IS NOT NULL, 1, 0)
