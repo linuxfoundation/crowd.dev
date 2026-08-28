@@ -1,5 +1,6 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
+import { canonicalRepoUrl, parseRepoUrl } from '../deps-dev/canonicalRepoUrl'
 import { getCdpDb, getPackagesDb } from '../db'
 import { buildInsert } from '../deps-dev/sqlUtils'
 
@@ -11,7 +12,7 @@ export async function syncLfGithubRepos(): Promise<{ inserted: number }> {
 
   const cdpRows = (await cdpDb.select(
     `
-    SELECT LOWER(r.url) AS url
+    SELECT r.url
     FROM public.repositories r
     JOIN public.integrations i ON r."sourceIntegrationId" = i.id
     JOIN public."insightsProjects" ip ON r."insightsProjectId" = ip.id
@@ -34,15 +35,11 @@ export async function syncLfGithubRepos(): Promise<{ inserted: number }> {
 
   const rows: RepoRow[] = []
   for (const { url } of cdpRows) {
-    const path = url.replace('https://github.com/', '')
-    const slash = path.indexOf('/')
-    if (slash <= 0 || slash === path.length - 1) continue
-    rows.push({
-      url,
-      host: 'github',
-      owner: path.slice(0, slash),
-      name: path.slice(slash + 1),
-    })
+    const canonical = canonicalRepoUrl('GITHUB', url)
+    if (!canonical) continue
+    const { host, owner, name } = parseRepoUrl(canonical)
+    if (host !== 'github') continue
+    rows.push({ url: canonical, host, owner, name })
   }
 
   if (rows.length === 0) {

@@ -1,4 +1,4 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { patched, proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../../deps-dev/activities'
 import type * as scorecardActivities from '../activities'
@@ -123,9 +123,10 @@ export async function ingestScorecard(opts: {
   reuseExports?: boolean
   exportName?: string
 }): Promise<void> {
-  await syncLfGithubRepos()
+  if (patched('sync-lf-github-repos')) {
+    await syncLfGithubRepos()
+  }
 
-  // Step 1: repos aggregate scores
   const reposExport = await bqExportToGcs({
     jobKind: 'scorecard_repos',
     sql: SCORECARD_REPOS_SQL,
