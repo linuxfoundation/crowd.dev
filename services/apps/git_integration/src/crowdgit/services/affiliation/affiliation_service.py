@@ -396,6 +396,14 @@ class AffiliationService(BaseService):
         except ValueError:
             return None
 
+    @staticmethod
+    def _sanitize_date_range(
+        date_start: date | None, date_end: date | None
+    ) -> tuple[date | None, date | None]:
+        if date_end is not None and (date_start is None or date_end < date_start):
+            return None, None
+        return date_start, date_end
+
     @classmethod
     def group_parse_rows(
         cls, rows: list[AffiliationParseRow]
@@ -425,13 +433,17 @@ class AffiliationService(BaseService):
             organization = row.organization
             is_unaffiliated = organization.is_unaffiliated
             domain = cls._strip(organization.domain)
+            date_start, date_end = cls._sanitize_date_range(
+                cls._parse_optional_date(organization.date_start),
+                cls._parse_optional_date(organization.date_end),
+            )
 
             if is_unaffiliated:
                 stint = AffiliationOrganizationStint(
                     name="Individual",
                     domain="nonameaccount.com",
-                    date_start=cls._parse_optional_date(organization.date_start),
-                    date_end=cls._parse_optional_date(organization.date_end),
+                    date_start=date_start,
+                    date_end=date_end,
                     is_unaffiliated=True,
                 )
             elif not domain:
@@ -440,8 +452,8 @@ class AffiliationService(BaseService):
                 stint = AffiliationOrganizationStint(
                     name=cls._strip(organization.name),
                     domain=domain.lower(),
-                    date_start=cls._parse_optional_date(organization.date_start),
-                    date_end=cls._parse_optional_date(organization.date_end),
+                    date_start=date_start,
+                    date_end=date_end,
                     is_unaffiliated=False,
                 )
 
@@ -890,8 +902,9 @@ class AffiliationService(BaseService):
             existing_msas = segment_affiliations_by_member.get(member_id, [])
             deleted_mos = deleted_member_organizations_by_member.get(member_id, [])
             deleted_msas = deleted_segment_affiliations_by_member.get(member_id, [])
-            date_start = organization.date_start
-            date_end = organization.date_end
+            date_start, date_end = self._sanitize_date_range(
+                organization.date_start, organization.date_end
+            )
 
             if not self.has_existing_stint(
                 existing_mos, organization_id, date_start, date_end
