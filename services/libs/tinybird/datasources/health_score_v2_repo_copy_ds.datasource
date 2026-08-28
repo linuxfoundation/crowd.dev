@@ -12,7 +12,10 @@ DESCRIPTION >
     dependency health (checked against the repo's own published packages' dependencies, not an average
     across unrelated packages), supply chain integrity (hardcoded 0 — provenance/2FA data not yet piped).
     - `developmentActivityScoreV2` (0-25) — release cadence, commit activity, issue resolution, PR merge health.
-    - `healthScoreV2` (0-100) — weighted rescale of available categories: SUM(available subtotals) * (100 / SUM(available weights)), clamped to 100. NULL when fewer than 2 of the 3 categories are available. Does not equal the arithmetic sum of the three subtotals.
+    - `healthScoreV2` (0-100) — sum of measured category scores plus population-median imputation for
+    any NULL category (`categoryMax × median(score/max)` over measured repos), clamped to 100. NULL
+    when fewer than 2 of the 3 categories are available (IN-1248). A category field above may be NULL
+    while still contributing an imputed value to this total (IN-1249).
     - `lifecycleLabelV2` — per-repo lifecycle state (active/stable/declining/inert/abandoned/archived),
     computed via the spec's decision tree (archived flag > abandoned > inert > declining > stable >
     active, first match wins), or NULL when the repo has zero commits and zero issues/PRs in every window
@@ -21,11 +24,11 @@ DESCRIPTION >
     - `impactScore` (0-100) — MAX(packages.impact) * 100 over packages published by this repo. NULL when
     the repo has no linked packages.
     - Graceful degradation (spec Layer 1+2): per-category pipes emit NULL when covered sub-signal weight
-    is <40% of that category's max pts (Layer 1); the aggregate health_score_v2 applies Layer 2 rescaling
-    (`SUM(available categories) * (100 / SUM(available category weights))`) so only actually-available
-    scores are summed. healthScoreV2 is NULL when fewer than 2 of the 3 categories are available —
-    a single-category rescale would extrapolate ≤40 pts of evidence into a full 0-100 range (IN-1248).
-    See health_score_v2.pipe DESCRIPTION for the full spec.
+    is <40% of that category's max pts (Layer 1); the aggregate health_score_v2 imputes each missing
+    category at the population median rate for that category (`missing_max × median(score/max)` over
+    measured repos — IN-1249, 2026-08-28) rather than redistributing the missing weight. healthScoreV2
+    is NULL when fewer than 2 of the 3 categories are available — a single-category score cannot anchor
+    reliable imputation for the other two (IN-1248). See health_score_v2.pipe DESCRIPTION for the full spec.
     - Known temporary gap: security-practices score's spec-stated max is 8 points (includes +1 for
     `security_contact_email IS NOT NULL` flag), but no `security_contact_email` column exists yet in
     the GitHub enrichment datasource, so the current maximum achievable is 7 points. This gap is

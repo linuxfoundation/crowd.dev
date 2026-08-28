@@ -113,8 +113,8 @@ DESCRIPTION >
     repo in the project," since max-of-maxes = max-over-all.
     - maintainerHealthScoreV2 / securitySupplyChainScoreV2 / developmentActivityScoreV2 (IN-1212): same
     exact-median rollup as healthScoreV2, over the same repo set — kept consistent since healthScoreV2
-    is itself defined as the sum of these three categories at repo level (see
-    health_score_v2_repo_copy_ds). `quantileExact(0.5)` (not quantile/median, which uses reservoir
+    is itself the sum of measured category scores plus population-median imputation for missing categories
+    at repo level (IN-1249; see health_score_v2_repo_copy_ds). `quantileExact(0.5)` (not quantile/median, which uses reservoir
     sampling) already returns NULL, not 0/NaN, when every repo is NULL for a category (confirmed live);
     deterministic output required to reproduce v1↔v2 divergence analysis and acceptance-criteria targets.
 
