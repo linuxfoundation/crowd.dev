@@ -11,7 +11,10 @@ DESCRIPTION >
     - Same best-state-wins precedence and `if(empty(groupArray(...)), NULL, ...)` NULL-guard as
     `project_insights_copy_health_v2_project` (see that node's DESCRIPTION for the `arrayElement` on
     an empty array returning `''` instead of NULL rationale, IN-1196).
-    - Parameters: `repos` (required array of repo URLs).
+    - Joins `repositories` (matched on `url` = `repoUrl`) to `insightsProjects` (matched on
+    `insightsProjectId` = `id`) and requires `insightsProjects.slug` = the caller's `slug` param, so a
+    `repos` value from a different project can't leak that project's repo-level data into this response.
+    - Parameters: `slug` (required, the calling project's slug), `repos` (required array of repo URLs).
 
 TOKEN "insights-app-token" READ
 
@@ -36,7 +39,10 @@ SQL >
                 )
             )
         ) AS lifecycleLabel
-    FROM health_score_v2_repo_copy_ds
+    FROM health_score_v2_repo_copy_ds hs
+    INNER JOIN repositories rep FINAL ON rep.url = hs.repoUrl
+    INNER JOIN insightsProjects ip FINAL ON ip.id = rep.insightsProjectId
     WHERE
-        repoUrl
+        hs.repoUrl
         IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
+        AND ip.slug = {{ String(slug, description="Calling project's slug", required=True) }}

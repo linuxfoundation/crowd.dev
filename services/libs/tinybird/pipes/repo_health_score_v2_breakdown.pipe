@@ -16,7 +16,10 @@ DESCRIPTION >
     this query returns zero rows rather than one row of NULL/NaN aggregates over an empty input.
     - No `slug`/project grouping — this collapses to a single row for the given repo set, unlike the
     project-level copy pipe which groups by project.
-    - Parameters: `repos` (required array of repo URLs).
+    - Additionally joins `insightsProjects` (matched on `repositories.insightsProjectId` = `id`) and
+    requires `insightsProjects.slug` = the caller's `slug` param, so a `repos` value from a different
+    project can't leak that project's repo-level data into this response.
+    - Parameters: `slug` (required, the calling project's slug), `repos` (required array of repo URLs).
 
 TOKEN "insights-app-token" READ
 
@@ -86,9 +89,11 @@ SQL >
         avg(sd.medianMergeS) AS medianMergeS
     FROM repositories rep FINAL
     INNER JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
+    INNER JOIN insightsProjects ip FINAL ON ip.id = rep.insightsProjectId
     WHERE
         rep.url
         IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
         AND rep.enabled = true
         AND rep.excluded = false
+        AND ip.slug = {{ String(slug, description="Calling project's slug", required=True) }}
     HAVING count() > 0
