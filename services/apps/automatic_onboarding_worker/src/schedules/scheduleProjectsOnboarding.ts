@@ -4,7 +4,7 @@ import { svc } from '../main'
 import { IOnboardProjectsInput, onboardProjects } from '../workflows'
 
 const ONBOARDING_ARGS: IOnboardProjectsInput = {
-  batchSize: 50,
+  batchSize: 20,
 }
 
 export const scheduleProjectsOnboarding = async () => {
@@ -12,7 +12,7 @@ export const scheduleProjectsOnboarding = async () => {
 
   try {
     await svc.temporal.schedule.create({
-      scheduleId: 'projectsOnboarding',
+      scheduleId: 'automaticOnboarding',
       spec: {
         // Daily: catches up on whatever landed in 'onboard' state, independent of the evaluation schedule's timing.
         cronExpressions: ['0 8 * * *'],
@@ -26,7 +26,7 @@ export const scheduleProjectsOnboarding = async () => {
         workflowType: onboardProjects,
         taskQueue: 'automatic-onboarding',
         args: [ONBOARDING_ARGS],
-        workflowExecutionTimeout: '14 hours',
+        workflowExecutionTimeout: '6 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,

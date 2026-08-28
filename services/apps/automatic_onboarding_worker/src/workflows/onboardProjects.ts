@@ -22,7 +22,7 @@ const failureActivities = proxyActivities<typeof activities>({
 })
 
 export async function onboardProjects(input: IOnboardProjectsInput = {}): Promise<void> {
-  const { batchSize = 50 } = input
+  const { batchSize = 20 } = input
 
   log.info('onboardProjects workflow started.')
 
