@@ -6,6 +6,22 @@ import { buildInsert } from '../deps-dev/sqlUtils'
 
 const log = getServiceChildLogger('syncLfGithubRepos')
 
+type RepoRow = { url: string; host: string; owner: string; name: string }
+
+export function toRepoRow(url: string): RepoRow | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  if (parsed.hostname !== 'github.com') return null
+  const canonical = canonicalRepoUrl('GITHUB', url)
+  if (!canonical) return null
+  const { host, owner, name } = parseRepoUrl(canonical)
+  return { url: canonical, host, owner, name }
+}
+
 export async function syncLfGithubRepos(): Promise<{ inserted: number }> {
   const cdpDb = await getCdpDb()
   const pkgsDb = await getPackagesDb()
@@ -31,15 +47,10 @@ export async function syncLfGithubRepos(): Promise<{ inserted: number }> {
 
   log.info({ count: cdpRows.length }, 'Seeding LF GitHub repos into packages-db')
 
-  type RepoRow = { url: string; host: string; owner: string; name: string }
-
   const rows: RepoRow[] = []
   for (const { url } of cdpRows) {
-    const canonical = canonicalRepoUrl('GITHUB', url)
-    if (!canonical) continue
-    const { host, owner, name } = parseRepoUrl(canonical)
-    if (host !== 'github') continue
-    rows.push({ url: canonical, host, owner, name })
+    const row = toRepoRow(url)
+    if (row) rows.push(row)
   }
 
   if (rows.length === 0) {
