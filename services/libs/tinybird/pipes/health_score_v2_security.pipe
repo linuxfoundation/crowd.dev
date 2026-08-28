@@ -15,9 +15,9 @@ DESCRIPTION >
     ≥ 2.5 → 2, else 0. Replaces the linear round(min(raw,10)×0.7) which required raw ≥ 9.3 for
     full points (only 0.33% of repos), calibrated to real distribution (median ≈ 4, p99 ≈ 7.9).
     - Supply-chain-integrity reallocation (2026-08-28, IN-1250): the permanently-blocked 5 pts were
-    folded proportionally into the four available signals (×35/29 each, rounded to integers), so the
-    covered-weight maximum equals the category maximum (35) and the rescale factor is 1.0 for
-    fully-covered repos. Category max and Layer 2 weight unchanged.
+    deliberately distributed into the four available signals (openVuln +2, scorecard +1, practices +1,
+    deps +2 → 12/8/8/7), so the covered-weight maximum equals the category maximum (35) and the
+    rescale factor is 1.0 for fully-covered repos. Category max and Layer 2 weight unchanged.
 
 NODE health_score_v2_security_calc
 SQL >
