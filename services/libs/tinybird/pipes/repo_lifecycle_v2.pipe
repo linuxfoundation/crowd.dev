@@ -43,6 +43,5 @@ SQL >
     INNER JOIN repositories rep FINAL ON rep.url = hs.repoUrl
     INNER JOIN insightsProjects ip FINAL ON ip.id = rep.insightsProjectId
     WHERE
-        hs.repoUrl
-        IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
+        hs.repoUrl IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
         AND ip.slug = {{ String(slug, description="Calling project's slug", required=True) }}

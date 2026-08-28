@@ -19,13 +19,26 @@ DESCRIPTION >
     - Additionally joins `insightsProjects` (matched on `repositories.insightsProjectId` = `id`) and
     requires `insightsProjects.slug` = the caller's `slug` param, so a `repos` value from a different
     project can't leak that project's repo-level data into this response.
+    - `maintainerHealthScoreV2` / `securitySupplyChainScoreV2` / `developmentActivityScoreV2` (IN-1253):
+    same exact-median (`quantileExact(0.5)`) rollup of `health_score_v2_repo_copy_ds`'s per-repo category
+    scores that `project_insights_copy.pipe` uses at the project level, scoped here to the caller-supplied
+    `repos` set instead of a project's full repo set — kept consistent so a single-repo selection reduces
+    to that repo's own per-repo score. Joined via the same `repositories` (enabled/non-excluded, project-
+    scope-checked) population as the rest of this pipe, so a repo with no `health_score_v2_repo_copy_ds`
+    row (LEFT JOIN) contributes NULL rather than being silently dropped from the median.
+    - `healthScoreV2` / `healthLabel` (IN-1253): same exact-median rollup of `health_score_v2_repo_copy_ds`'s
+    per-repo total, with the label bands copied 1:1 from `project_insights_copy.pipe`
+    (>=85 excellent, >=70 healthy, >=50 fair, >=30 concerning, else critical). This pipe only computes the
+    value — whether the caller's UI actually displays a repo-scoped total (e.g. a dedicated single-repo
+    page) versus suppressing it (a multi-repo filter selection, where the total is intentionally hidden per
+    IN-1253 State 2) is a display decision made by the frontend, not this pipe.
     - Parameters: `slug` (required, the calling project's slug), `repos` (required array of repo URLs).
 
 TOKEN "insights-app-token" READ
 
 TAGS "Insights, Widget", "Project", "Health"
 
-NODE repo_health_score_v2_breakdown_endpoint
+NODE repo_health_score_v2_breakdown_category_totals
 SQL >
     %
     SELECT
@@ -86,14 +99,42 @@ SQL >
         max(sd.prMergeAvailable) AS prMergeAvailable,
         max(sd.merged12m) AS merged12m,
         max(sd.closedUnmerged12m) AS closedUnmerged12m,
-        avg(sd.medianMergeS) AS medianMergeS
+        avg(sd.medianMergeS) AS medianMergeS,
+        quantileExact(0.5)
+        (hv2.maintainerHealthScoreV2) AS maintainerHealthScoreV2,
+        quantileExact(0.5)
+        (hv2.securitySupplyChainScoreV2) AS securitySupplyChainScoreV2,
+        quantileExact(0.5)
+        (hv2.developmentActivityScoreV2) AS developmentActivityScoreV2,
+        quantileExact(0.5)
+        (hv2.healthScoreV2) AS healthScoreV2Raw
     FROM repositories rep FINAL
     INNER JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
     INNER JOIN insightsProjects ip FINAL ON ip.id = rep.insightsProjectId
+    LEFT JOIN health_score_v2_repo_copy_ds hv2 ON hv2.repoUrl = rep.url
     WHERE
-        rep.url
-        IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
+        rep.url IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
         AND rep.enabled = true
         AND rep.excluded = false
         AND ip.slug = {{ String(slug, description="Calling project's slug", required=True) }}
     HAVING count() > 0
+
+NODE repo_health_score_v2_breakdown_endpoint
+SQL >
+    SELECT
+        * EXCEPT (healthScoreV2Raw),
+        toUInt8(round(healthScoreV2Raw)) AS healthScoreV2,
+        multiIf(
+            healthScoreV2Raw IS NULL,
+            NULL,
+            healthScoreV2Raw >= 85,
+            'excellent',
+            healthScoreV2Raw >= 70,
+            'healthy',
+            healthScoreV2Raw >= 50,
+            'fair',
+            healthScoreV2Raw >= 30,
+            'concerning',
+            'critical'
+        ) AS healthLabel
+    FROM repo_health_score_v2_breakdown_category_totals
