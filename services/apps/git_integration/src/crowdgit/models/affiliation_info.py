@@ -6,7 +6,7 @@ from typing import Any
 
 import orjson
 from loguru import logger
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 
 
 class AffiliationContributor(BaseModel):
@@ -40,6 +40,20 @@ class AffiliationOrganizationStint(BaseModel):
     is_unaffiliated: bool = Field(default=False, alias="isUnaffiliated")
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def sanitize_date_range(self) -> AffiliationOrganizationStint:
+        if self.date_end is not None and self.date_start is None:
+            self.date_start = None
+            self.date_end = None
+        elif (
+            self.date_start is not None
+            and self.date_end is not None
+            and self.date_end < self.date_start
+        ):
+            self.date_start = None
+            self.date_end = None
+        return self
 
 
 class AffiliationContributorEntry(BaseModel):

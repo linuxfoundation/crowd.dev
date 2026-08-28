@@ -329,6 +329,7 @@ class AffiliationService(BaseService):
 
         Time period (only when the file states it):
         - "dateStart" and "dateEnd" as ISO dates (YYYY-MM-DD).
+        - dateStart must be on or before dateEnd; if unclear, use null for both.
         - Use null for any bound the file does not state (open-ended or undated).
         - When a contributor has multiple affiliations over time, emit a separate
           entry for each period. Do not merge, deduplicate, or keep only the latest.
