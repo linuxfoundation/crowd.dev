@@ -35,20 +35,29 @@ DESCRIPTION >
 NODE population_priors
 SQL >
     SELECT
-        (
-            SELECT quantileExact(0.5)(maintainerHealthScoreV2 / 40.0)
-            FROM health_score_v2_maintainer_ds
-            WHERE maintainerHealthScoreV2 IS NOT NULL
+        coalesce(
+            (
+                SELECT quantileExact(0.5)(maintainerHealthScoreV2 / 40.0)
+                FROM health_score_v2_maintainer_ds
+                WHERE maintainerHealthScoreV2 IS NOT NULL
+            ),
+            0.0
         ) AS priorMaintainerRate,
-        (
-            SELECT quantileExact(0.5)(securitySupplyChainScoreV2 / 35.0)
-            FROM health_score_v2_security_ds
-            WHERE securitySupplyChainScoreV2 IS NOT NULL
+        coalesce(
+            (
+                SELECT quantileExact(0.5)(securitySupplyChainScoreV2 / 35.0)
+                FROM health_score_v2_security_ds
+                WHERE securitySupplyChainScoreV2 IS NOT NULL
+            ),
+            0.0
         ) AS priorSecurityRate,
-        (
-            SELECT quantileExact(0.5)(developmentActivityScoreV2 / 25.0)
-            FROM health_score_v2_development_ds
-            WHERE developmentActivityScoreV2 IS NOT NULL
+        coalesce(
+            (
+                SELECT quantileExact(0.5)(developmentActivityScoreV2 / 25.0)
+                FROM health_score_v2_development_ds
+                WHERE developmentActivityScoreV2 IS NOT NULL
+            ),
+            0.0
         ) AS priorDevelopmentRate
 
 NODE health_score_v2_results
