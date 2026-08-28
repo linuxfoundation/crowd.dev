@@ -1,7 +1,7 @@
 import { getServiceChildLogger } from '@crowd/logging'
 
-import { canonicalRepoUrl, parseRepoUrl } from '../deps-dev/canonicalRepoUrl'
 import { getCdpDb, getPackagesDb } from '../db'
+import { canonicalRepoUrl, parseRepoUrl } from '../deps-dev/canonicalRepoUrl'
 import { buildInsert } from '../deps-dev/sqlUtils'
 
 const log = getServiceChildLogger('syncLfGithubRepos')
