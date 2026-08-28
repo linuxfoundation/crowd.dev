@@ -126,7 +126,8 @@ SQL >
         if(
             (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
             + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
-            + (quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL) < 2,
+            + (quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL)
+            < 2,
             NULL,
             coalesce(quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2), 0)
             + coalesce(quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2), 0)
