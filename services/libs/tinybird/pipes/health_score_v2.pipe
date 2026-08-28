@@ -18,7 +18,7 @@ DESCRIPTION >
     without security data averaged 85.0 vs 80.8 for measured peers, and 2,742 repos were rated
     "excellent" with zero security assessment. Imputing at the population median instead removes
     that reward: missing weight earns the typical rate, not the repo's inflated rate. Population
-    medians are computed from the same *_ds tables via population_priors NODE (quantileExact(0.5)
+    medians are computed from the same *_ds tables via population_priors NODE (quantileExactOrNull(0.5)
     over measured-only rows). Each category datasource already carries NULL when its own coverage
     fell below 40% (Layer 1, done per-category pipe). If fewer than 2 of the 3 categories are
     available, healthScoreV2 becomes NULL — a single-category score cannot anchor a reliable median
@@ -37,7 +37,7 @@ SQL >
     SELECT
         coalesce(
             (
-                SELECT quantileExact(0.5)(maintainerHealthScoreV2 / 40.0)
+                SELECT quantileExactOrNull(0.5)(maintainerHealthScoreV2 / 40.0)
                 FROM health_score_v2_maintainer_ds
                 WHERE maintainerHealthScoreV2 IS NOT NULL
             ),
@@ -45,7 +45,7 @@ SQL >
         ) AS priorMaintainerRate,
         coalesce(
             (
-                SELECT quantileExact(0.5)(securitySupplyChainScoreV2 / 35.0)
+                SELECT quantileExactOrNull(0.5)(securitySupplyChainScoreV2 / 35.0)
                 FROM health_score_v2_security_ds
                 WHERE securitySupplyChainScoreV2 IS NOT NULL
             ),
@@ -53,7 +53,7 @@ SQL >
         ) AS priorSecurityRate,
         coalesce(
             (
-                SELECT quantileExact(0.5)(developmentActivityScoreV2 / 25.0)
+                SELECT quantileExactOrNull(0.5)(developmentActivityScoreV2 / 25.0)
                 FROM health_score_v2_development_ds
                 WHERE developmentActivityScoreV2 IS NOT NULL
             ),
