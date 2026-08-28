@@ -6,7 +6,7 @@ SQL >
     --
     -- Joins in the Health breakdown (maintainerHealthScoreV2/securitySupplyChainScoreV2/
     -- developmentActivityScoreV2, already columns on project_insights_copy_ds) and the
-    -- Impact breakdown (directDependents/transitiveDependents/downloads/centrality +
+    -- Impact breakdown (directDependents/transitiveDependents/downloads +
     -- their percentile bands, from the separate project_insights_impact_breakdown_ds --
     -- materialized on its own 02:40 UTC schedule, see that datasource's pipe for why it's
     -- a separate table) via a LEFT JOIN on id, so a project missing impact data still sinks
@@ -31,9 +31,6 @@ SQL >
         i.downloads AS downloads,
         i.downloadsTopPct AS downloadsTopPct,
         i.downloadsBand AS downloadsBand,
-        i.centrality AS centrality,
-        i.centralityTopPct AS centralityTopPct,
-        i.centralityBand AS centralityBand,
         toStartOfDay(now()) as date
     FROM project_insights_copy_ds AS p
     LEFT JOIN project_insights_impact_breakdown_ds AS i ON p.id = i.id

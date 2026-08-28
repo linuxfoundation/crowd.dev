@@ -175,6 +175,10 @@ export function inferMemberOrganizationStintChanges(
 
   const activeRows = normalizedRows.filter((row) => !row.deletedAt)
 
+  const tombstonedOrgIds = new Set(
+    normalizedRows.filter((row) => row.deletedAt && row.deletedBy).map((row) => row.organizationId),
+  )
+
   // Deleted dated rows suppress recreation for dates the user removed
   const deletedRows = normalizedRows.filter(
     (row): row is typeof row & { dateStart: string } => !!row.deletedAt && !!row.dateStart,
@@ -199,6 +203,10 @@ export function inferMemberOrganizationStintChanges(
   }))
 
   for (const { organizationId, date: targetDate } of sortedDates) {
+    if (tombstonedOrgIds.has(organizationId)) {
+      continue
+    }
+
     if (
       deletedRows.some(
         (row) =>

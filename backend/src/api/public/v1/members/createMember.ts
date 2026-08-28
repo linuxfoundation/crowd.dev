@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { captureApiChange, memberCreateAction, memberEditIdentitiesAction } from '@crowd/audit-logs'
-import { ConflictError, getProperDisplayName } from '@crowd/common'
+import { ConflictError, normalizeDisplayName } from '@crowd/common'
 import {
   findMemberIdByVerifiedIdentity,
   findMembersByIdentities,
@@ -41,7 +41,7 @@ export async function createMember(req: Request, res: Response): Promise<void> {
   const { displayName, identities } = validateOrThrow(bodySchema, req.body)
   const qx = optionsQx(req)
 
-  const normalizedDisplayName = getProperDisplayName(displayName)
+  const normalizedDisplayName = normalizeDisplayName(displayName)
 
   const { dbMember, dbIdentities } = await qx.tx(async (tx) => {
     // Unverified identities aren't unique in the db, so the same handle or

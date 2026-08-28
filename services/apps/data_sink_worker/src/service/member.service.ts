@@ -8,11 +8,11 @@ import {
   getAttributeValue,
   getCountry,
   getEarliestValidDate,
-  getProperDisplayName,
   hasAttributeValue,
   isDomainExcluded,
   isObjectEmpty,
   isSameMemberIdentity,
+  normalizeDisplayName,
   normalizeMemberIdentities,
   singleOrDefault,
 } from '@crowd/common'
@@ -370,7 +370,7 @@ export default class MemberService extends LoggerBase {
             dropInvalidEmails: true,
           })
 
-          data.displayName = getProperDisplayName(data.displayName)
+          data.displayName = normalizeDisplayName(data.displayName)
 
           // detect if the member is a bot
           const botDetection = this.botDetectionService.isMemberBot(
@@ -613,7 +613,7 @@ export default class MemberService extends LoggerBase {
 
           // make sure displayName is proper
           if (data.displayName) {
-            data.displayName = getProperDisplayName(data.displayName)
+            data.displayName = normalizeDisplayName(data.displayName)
           }
 
           const toUpdate = this.mergeData(original, originalIdentities, data)

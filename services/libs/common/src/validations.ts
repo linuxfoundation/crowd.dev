@@ -10,22 +10,37 @@ const URL_REGEXP = new RegExp(
   'i',
 )
 
-const EMAIL_REGEXP = new RegExp(
-  "[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?",
-)
-
-const PARTIAL_EMAIL_REGEXP = new RegExp("^[a-z0-9!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+\\.?$")
+const PARTIAL_EMAIL_LOCAL = new Set("abcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+/=?^_`{|}~-")
+const PARTIAL_EMAIL_HOST = new Set('abcdefghijklmnopqrstuvwxyz0123456789-')
 
 export const isUrl = (value: string): boolean => {
   return URL_REGEXP.test(value)
 }
 
-export const isEmail = (value: string): boolean => {
-  return EMAIL_REGEXP.test(value)
+export const isPartialEmail = (value: string): boolean => {
+  const at = value.indexOf('@')
+  if (at <= 0 || at !== value.lastIndexOf('@')) {
+    return false
+  }
+
+  const local = value.slice(0, at)
+  const host = value.endsWith('.') ? value.slice(at + 1, -1) : value.slice(at + 1)
+
+  return (
+    local.length > 0 &&
+    host.length > 0 &&
+    everyCharIn(local, PARTIAL_EMAIL_LOCAL) &&
+    everyCharIn(host, PARTIAL_EMAIL_HOST)
+  )
 }
 
-export const isPartialEmail = (value: string): boolean => {
-  return PARTIAL_EMAIL_REGEXP.test(value)
+function everyCharIn(value: string, allowed: Set<string>): boolean {
+  for (const char of value) {
+    if (!allowed.has(char)) {
+      return false
+    }
+  }
+  return true
 }
 
 /**

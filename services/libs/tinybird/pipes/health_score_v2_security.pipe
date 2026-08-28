@@ -96,7 +96,7 @@ SQL >
                         toUInt8(
                             round(least(toFloat64OrZero(rd.scorecardScore), 10) * 0.7)
                         ) AS scorecardScorePts,
-                        (rd.url != '') AS scorecardAvailable,
+                        (rd.scorecardLastRunAt IS NOT NULL) AS scorecardAvailable,
                         rd.scorecardScore AS scorecardScore,
                         toUInt8(
                             2 * coalesce(rd.securityPolicyEnabled, 0)
@@ -133,6 +133,7 @@ SQL >
                             SELECT
                                 url,
                                 argMax(scorecardScore, updatedAt) AS scorecardScore,
+                                argMax(scorecardLastRunAt, updatedAt) AS scorecardLastRunAt,
                                 argMax(securityPolicyEnabled, updatedAt) AS securityPolicyEnabled,
                                 argMax(branchProtectionEnabled, updatedAt) AS branchProtectionEnabled,
                                 argMax(
