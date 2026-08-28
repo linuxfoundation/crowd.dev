@@ -25,7 +25,7 @@ const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   retry: { maximumAttempts: 3, initialInterval: '30 seconds', backoffCoefficient: 2 },
 })
 
-const { syncLfGithubRepos } = proxyActivities<typeof scorecardActivities>({
+const { syncGithubRepos } = proxyActivities<typeof scorecardActivities>({
   startToCloseTimeout: '30 minutes',
   retry: { maximumAttempts: 3, initialInterval: '1 minute', backoffCoefficient: 2 },
 })
@@ -123,8 +123,8 @@ export async function ingestScorecard(opts: {
   reuseExports?: boolean
   exportName?: string
 }): Promise<void> {
-  if (patched('sync-lf-github-repos')) {
-    await syncLfGithubRepos()
+  if (patched('sync-github-repos')) {
+    await syncGithubRepos()
   }
 
   const reposExport = await bqExportToGcs({

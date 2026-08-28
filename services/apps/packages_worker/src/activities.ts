@@ -70,4 +70,4 @@ export {
   blastRadiusReport,
 } from './blast-radius/activities'
 export { slackNotify } from './activities/index'
-export { syncLfGithubRepos } from './scorecard/activities'
+export { syncGithubRepos } from './scorecard/activities'
