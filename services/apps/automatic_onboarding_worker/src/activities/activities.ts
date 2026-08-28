@@ -1,6 +1,7 @@
 import {
   findProjectCatalogById,
   findProjectCatalogPendingOnboarding,
+  markProjectCatalogOnboardingFailed,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
@@ -61,6 +62,7 @@ export async function onboardAndUpdateProject(project: IDbProjectCatalog): Promi
 
   await updateProjectCatalog(qx, project.id, {
     onboardedAt: new Date().toISOString(),
+    onboardingError: null,
   })
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -77,20 +79,15 @@ export async function markProjectOnboardingFailed(
 ): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
 
-  // Guard: the write may have succeeded after the API call before retries were exhausted.
-  const fresh = await findAlreadyOnboarded(qx, projectId)
-  if (fresh) {
+  const updatedRows = await markProjectCatalogOnboardingFailed(qx, projectId, reason)
+
+  if (updatedRows === 0) {
     log.info(
-      { id: projectId, onboardedAt: fresh.onboardedAt },
-      'Project was already onboarded despite the reported failure, not marking as error.',
+      { id: projectId },
+      'Project was already onboarded or no longer pending, not marking as error.',
     )
     return
   }
-
-  await updateProjectCatalog(qx, projectId, {
-    action: 'error',
-    onboardingError: reason,
-  })
 
   log.error({ id: projectId, reason }, 'Onboarding permanently failed, marked as error.')
 }

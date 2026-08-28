@@ -495,6 +495,21 @@ export async function updateProjectCatalog(
   )
 }
 
+export async function markProjectCatalogOnboardingFailed(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'error', "onboardingError" = $(reason), "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
+    `,
+    { id, reason },
+  )
+}
+
 export async function updateProjectCatalogSyncedAt(qx: QueryExecutor, id: string): Promise<void> {
   await qx.selectNone(
     `
