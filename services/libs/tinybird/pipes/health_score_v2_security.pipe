@@ -4,7 +4,8 @@ DESCRIPTION >
     conflated with "never scanned"), OpenSSF Scorecard (8,
     blocked for repos with no repos-table row — effectively non-GitHub hosts), security practices
     (8, blocked when repos-table row is missing; security_contact_email has no column in GitHub
-    enrichment data so the sub-score is capped at 7 internally, scaled to 8 at aggregation),
+    enrichment data so the sub-score is capped at 7 internally, scaled to 8 at aggregation via
+    `* 8.0/7`; if email is ever added, remove that factor and use the raw score directly),
     dependency health (7, blocked when the repo has no published packages so vulnerability exposure
     is unknown). Graceful degradation (spec Layer 1+2): category_subtotal =
     SUM(available_sub_scores) * (35 / SUM(available_sub_max_weights)); category is `unavailable`
