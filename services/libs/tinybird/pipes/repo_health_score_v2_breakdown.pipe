@@ -12,7 +12,8 @@ DESCRIPTION >
     - Join path: `repositories` (filtered by the `repos` param, `enabled = true AND excluded = false`)
     -> `health_score_v2_signal_detail_ds` (matched on `repoUrl` = `rep.url`) — same population filter
     as the project-level rollup, so archived/excluded repos in a mixed selection are dropped from the
-    aggregation. When every repo in `repos` is archived/excluded, this query returns zero rows.
+    aggregation. `HAVING count() > 0` ensures that when every repo in `repos` is archived/excluded,
+    this query returns zero rows rather than one row of NULL/NaN aggregates over an empty input.
     - No `slug`/project grouping — this collapses to a single row for the given repo set, unlike the
     project-level copy pipe which groups by project.
     - Parameters: `repos` (required array of repo URLs).
@@ -82,16 +83,7 @@ SQL >
         max(sd.prMergeAvailable) AS prMergeAvailable,
         max(sd.merged12m) AS merged12m,
         max(sd.closedUnmerged12m) AS closedUnmerged12m,
-        avg(sd.medianMergeS) AS medianMergeS,
-        sumIf(
-            coalesce(sd.commitsLast6m, 0) * coalesce(sd.busFactorScore, 0),
-            sd.busFactorAvailable
-        ) / nullIf(
-            sumIf(
-                coalesce(sd.commitsLast6m, 0), sd.busFactorAvailable AND sd.commitsLast6m IS NOT NULL
-            ),
-            0
-        ) AS busFactorScoreActivityWeightedMean
+        avg(sd.medianMergeS) AS medianMergeS
     FROM repositories rep FINAL
     INNER JOIN health_score_v2_signal_detail_ds sd ON sd.repoUrl = rep.url
     WHERE
@@ -99,3 +91,4 @@ SQL >
         IN {{ Array(repos, 'String', description="Selected repo URLs", required=True) }}
         AND rep.enabled = true
         AND rep.excluded = false
+    HAVING count() > 0
