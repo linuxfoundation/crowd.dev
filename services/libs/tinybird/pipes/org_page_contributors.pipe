@@ -92,8 +92,10 @@ SQL >
             FROM activityRelations_deduplicated_cleaned_bucket_union
             WHERE
                 organizationId = (SELECT id FROM org_slug_lookup)
-                {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }} {% end %}
-                {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }} {% end %}
+                {% if defined(startDate) %} AND timestamp >= {{ DateTime(startDate) }}
+                {% end %}
+                {% if defined(endDate) %} AND timestamp < {{ DateTime(endDate) }}
+                {% end %}
         {% end %}
     {% else %}
         SELECT
