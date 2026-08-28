@@ -10,12 +10,20 @@ DESCRIPTION >
     were being re-scanned once per category, and the 6-node version's runtime grew from ~13min to
     20-28+ minutes across repeated runs even with an equivalent-cost SQL change (see git history).
     This node now does a single cheap LEFT JOIN over 5 small pre-computed tables instead.
-    - Applies spec Layer 2 graceful degradation across categories: healthScoreV2 = SUM(available
-    category subtotals) * (100 / SUM(available category max weights)) — each category datasource
-    already carries NULL when its own coverage fell below 40% (Layer 1, done per-category pipe).
-    If fewer than 2 of the 3 categories are available, healthScoreV2 becomes NULL rather than
-    rescaling a single-category score into a misleading full 0-100 range (IN-1248). Impact stays
-    NULL (not defaulted to 0) when the repo has no packages.
+    - Applies spec Layer 2 graceful degradation across categories: healthScoreV2 =
+    SUM(measured_subtotals) + SUM(missing_category_max × population_median_rate_for_that_category)
+    (IN-1249, 2026-08-28). The previous redistribution formula (availableCategorySum × 100 /
+    coveredCategoryWeight) projected each repo's own measured rate onto the missing weight, which
+    rewarded repos for having unmeasured categories — within the same top development band, repos
+    without security data averaged 85.0 vs 80.8 for measured peers, and 2,742 repos were rated
+    "excellent" with zero security assessment. Imputing at the population median instead removes
+    that reward: missing weight earns the typical rate, not the repo's inflated rate. Population
+    medians are computed from the same *_ds tables via population_priors NODE (quantileExact(0.5)
+    over measured-only rows). Each category datasource already carries NULL when its own coverage
+    fell below 40% (Layer 1, done per-category pipe). If fewer than 2 of the 3 categories are
+    available, healthScoreV2 becomes NULL — a single-category score cannot anchor a reliable median
+    imputation for the other two (IN-1248). Impact stays NULL (not defaulted to 0) when the repo
+    has no packages.
     - lifecycleLabelV2 passes through health_score_v2_lifecycle_ds unmodified (2026-07-24,
     IN-1196) — previously wrapped in `coalesce(l.lifecycleLabelV2, 'active')`, which silently
     converted the upstream pipe's genuine "no usable signal" NULL back into a fabricated 'active'
@@ -23,6 +31,25 @@ DESCRIPTION >
     zero actual join-misses (every repo has a matching lifecycle row), so the coalesce was never
     serving its ostensible "missing row" fallback purpose in practice — it was only erasing real
     NULLs.
+
+NODE population_priors
+SQL >
+    SELECT
+        (
+            SELECT quantileExact(0.5)(maintainerHealthScoreV2 / 40.0)
+            FROM health_score_v2_maintainer_ds
+            WHERE maintainerHealthScoreV2 IS NOT NULL
+        ) AS priorMaintainerRate,
+        (
+            SELECT quantileExact(0.5)(securitySupplyChainScoreV2 / 35.0)
+            FROM health_score_v2_security_ds
+            WHERE securitySupplyChainScoreV2 IS NOT NULL
+        ) AS priorSecurityRate,
+        (
+            SELECT quantileExact(0.5)(developmentActivityScoreV2 / 25.0)
+            FROM health_score_v2_development_ds
+            WHERE developmentActivityScoreV2 IS NOT NULL
+        ) AS priorDevelopmentRate
 
 NODE health_score_v2_results
 SQL >
@@ -35,7 +62,11 @@ SQL >
             coveredCategoryCount < 2,
             NULL,
             toNullable(
-                toUInt8(round(least(100.0, availableCategorySum * (100.0 / coveredCategoryWeight))))
+                toUInt8(round(least(100.0,
+                    coalesce(maintainerHealthScoreV2, 40 * priorMaintainerRate)
+                    + coalesce(securitySupplyChainScoreV2, 35 * priorSecurityRate)
+                    + coalesce(developmentActivityScoreV2, 25 * priorDevelopmentRate)
+                )))
             )
         ) AS healthScoreV2,
         lifecycleLabelV2,
@@ -50,11 +81,6 @@ SQL >
                 m.maintainerHealthScoreV2 AS maintainerHealthScoreV2,
                 s.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
                 d.developmentActivityScoreV2 AS developmentActivityScoreV2,
-                (
-                    coalesce(m.maintainerHealthScoreV2, 0)
-                    + coalesce(s.securitySupplyChainScoreV2, 0)
-                    + coalesce(d.developmentActivityScoreV2, 0)
-                ) AS availableCategorySum,
                 (
                     if(m.maintainerHealthScoreV2 IS NOT NULL, 40, 0)
                     + if(s.securitySupplyChainScoreV2 IS NOT NULL, 35, 0)
@@ -79,6 +105,7 @@ SQL >
             LEFT JOIN health_score_v2_lifecycle_ds AS l ON l.repoUrl = base.repoUrl
             LEFT JOIN health_score_v2_impact_ds AS i ON i.repoUrl = base.repoUrl
         )
+    CROSS JOIN population_priors
 
 TYPE COPY
 TARGET_DATASOURCE health_score_v2_repo_copy_ds
