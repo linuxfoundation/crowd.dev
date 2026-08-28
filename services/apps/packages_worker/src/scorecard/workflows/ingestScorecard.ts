@@ -1,6 +1,7 @@
-import { proxyActivities } from '@temporalio/workflow'
+import { patched, proxyActivities } from '@temporalio/workflow'
 
 import type * as depsDevActivities from '../../deps-dev/activities'
+import type * as scorecardActivities from '../activities'
 import { SCORECARD_CHECKS_SQL, SCORECARD_REPOS_SQL } from '../queries/scorecardSql'
 
 const { bqExportToGcs } = proxyActivities<typeof depsDevActivities>({
@@ -22,6 +23,11 @@ const { gcsParquetToStaging } = proxyActivities<typeof depsDevActivities>({
 const { mergeStagingToTable } = proxyActivities<typeof depsDevActivities>({
   startToCloseTimeout: '30 minutes',
   retry: { maximumAttempts: 3, initialInterval: '30 seconds', backoffCoefficient: 2 },
+})
+
+const { syncGithubRepos } = proxyActivities<typeof scorecardActivities>({
+  startToCloseTimeout: '30 minutes',
+  retry: { maximumAttempts: 3, initialInterval: '1 minute', backoffCoefficient: 2 },
 })
 
 const SCORECARD_REPOS_STAGING_TABLE = 'staging.osspckgs_scorecard_repos_raw'
@@ -117,7 +123,10 @@ export async function ingestScorecard(opts: {
   reuseExports?: boolean
   exportName?: string
 }): Promise<void> {
-  // Step 1: repos aggregate scores (plain UPDATE — repos already exist from deps-dev ingest)
+  if (patched('sync-github-repos')) {
+    await syncGithubRepos()
+  }
+
   const reposExport = await bqExportToGcs({
     jobKind: 'scorecard_repos',
     sql: SCORECARD_REPOS_SQL,
