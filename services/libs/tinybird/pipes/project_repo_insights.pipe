@@ -12,7 +12,7 @@ DESCRIPTION >
     - `page`: Optional integer for pagination offset calculation, defaults to 0
     - Response: Project and repository records with insights metrics
     - `healthScoreV2`, `healthLabel`, `lifecycleLabel`, `impactScore`, `impactLabel` are the Akrites-methodology fields (see `project_insights_copy_ds` for band definitions); may be null when the record has no linked package data. `healthScoreV2` is distinct from the legacy `healthScore` field.
-    - `maintainerHealthScoreV2` (0-40), `securitySupplyChainScoreV2` (0-35), `developmentActivityScoreV2` (0-25) are the rollup of the Health Score v2 category breakdown (IN-1212) — the three categories that sum to `healthScoreV2`. Null when the record has no value for that category.
+    - `maintainerHealthScoreV2` (0-40), `securitySupplyChainScoreV2` (0-35), `developmentActivityScoreV2` (0-25) are the Health Score v2 category breakdown (IN-1212). For project records: independent medians (`quantileExact(0.5)`) over the project's enabled, non-excluded repos — they do not necessarily sum to `healthScoreV2`. For repo records: per-repo values passed through from `health_score_v2_repo_copy_ds`; they sum to `healthScoreV2` only when all three categories are available (partial coverage rescales). Null when the record has no value for that category.
 
 TAGS "Insights, Widget", "Project", "Repository"
 

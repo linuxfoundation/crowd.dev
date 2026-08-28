@@ -105,6 +105,25 @@ export async function findProjectCatalogPendingEvaluation(
   )
 }
 
+export async function findProjectCatalogPendingOnboarding(
+  qx: QueryExecutor,
+  options: { limit?: number; offset?: number } = {},
+): Promise<IDbProjectCatalog[]> {
+  const { limit, offset } = options
+
+  return qx.select(
+    `
+    SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    FROM "projectCatalog"
+    WHERE action = 'onboard' AND "onboardedAt" IS NULL
+    ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC, id ASC
+    ${limit !== undefined ? 'LIMIT $(limit)' : ''}
+    ${offset !== undefined ? 'OFFSET $(offset)' : ''}
+    `,
+    { limit, offset },
+  )
+}
+
 export async function countProjectCatalog(qx: QueryExecutor): Promise<number> {
   const result = await qx.selectOne(
     `
