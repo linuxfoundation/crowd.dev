@@ -43,13 +43,8 @@ class AffiliationOrganizationStint(BaseModel):
 
     @model_validator(mode="after")
     def sanitize_date_range(self) -> AffiliationOrganizationStint:
-        if self.date_end is not None and self.date_start is None:
-            self.date_start = None
-            self.date_end = None
-        elif (
-            self.date_start is not None
-            and self.date_end is not None
-            and self.date_end < self.date_start
+        if self.date_end is not None and (
+            self.date_start is None or self.date_end < self.date_start
         ):
             self.date_start = None
             self.date_end = None
