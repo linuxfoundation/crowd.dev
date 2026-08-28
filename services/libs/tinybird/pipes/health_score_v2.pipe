@@ -13,8 +13,9 @@ DESCRIPTION >
     - Applies spec Layer 2 graceful degradation across categories: healthScoreV2 = SUM(available
     category subtotals) * (100 / SUM(available category max weights)) — each category datasource
     already carries NULL when its own coverage fell below 40% (Layer 1, done per-category pipe).
-    If all three categories are unavailable, healthScoreV2 itself becomes NULL, per spec, rather
-    than a fabricated 0. Impact stays NULL (not defaulted to 0) when the repo has no packages.
+    If fewer than 2 of the 3 categories are available, healthScoreV2 becomes NULL rather than
+    rescaling a single-category score into a misleading full 0-100 range (IN-1248). Impact stays
+    NULL (not defaulted to 0) when the repo has no packages.
     - lifecycleLabelV2 passes through health_score_v2_lifecycle_ds unmodified (2026-07-24,
     IN-1196) — previously wrapped in `coalesce(l.lifecycleLabelV2, 'active')`, which silently
     converted the upstream pipe's genuine "no usable signal" NULL back into a fabricated 'active'
@@ -31,7 +32,7 @@ SQL >
         securitySupplyChainScoreV2,
         developmentActivityScoreV2,
         if(
-            coveredCategoryWeight = 0,
+            coveredCategoryCount < 2,
             NULL,
             toNullable(
                 toUInt8(round(least(100.0, availableCategorySum * (100.0 / coveredCategoryWeight))))
@@ -59,6 +60,11 @@ SQL >
                     + if(s.securitySupplyChainScoreV2 IS NOT NULL, 35, 0)
                     + if(d.developmentActivityScoreV2 IS NOT NULL, 25, 0)
                 ) AS coveredCategoryWeight,
+                (
+                    if(m.maintainerHealthScoreV2 IS NOT NULL, 1, 0)
+                    + if(s.securitySupplyChainScoreV2 IS NOT NULL, 1, 0)
+                    + if(d.developmentActivityScoreV2 IS NOT NULL, 1, 0)
+                ) AS coveredCategoryCount,
                 l.lifecycleLabelV2 AS lifecycleLabelV2,
                 i.impactScoreRaw AS impactScoreRaw
             FROM
