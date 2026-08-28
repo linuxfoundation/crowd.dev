@@ -218,7 +218,9 @@ SQL >
         ) AS centralityBand,
         sonatypePopularityScore,
         if(
-            sonatypePopularityScore IS NULL, NULL, round(100.0 * sonatypePopularityScoreRank / sonatypePopularityScoreTotalRanked, 2)
+            sonatypePopularityScore IS NULL,
+            NULL,
+            round(100.0 * sonatypePopularityScoreRank / sonatypePopularityScoreTotalRanked, 2)
         ) AS sonatypePopularityScoreTopPct,
         if(
             sonatypePopularityScore IS NULL,
