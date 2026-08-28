@@ -12,7 +12,7 @@ DESCRIPTION >
     dependency health (checked against the repo's own published packages' dependencies, not an average
     across unrelated packages), supply chain integrity (hardcoded 0 — provenance/2FA data not yet piped).
     - `developmentActivityScoreV2` (0-25) — release cadence, commit activity, issue resolution, PR merge health.
-    - `healthScoreV2` (0-100) is the sum of the three categories above, clamped to 100.
+    - `healthScoreV2` (0-100) — weighted rescale of available categories: SUM(available subtotals) * (100 / SUM(available weights)), clamped to 100. NULL when fewer than 2 of the 3 categories are available. Does not equal the arithmetic sum of the three subtotals.
     - `lifecycleLabelV2` — per-repo lifecycle state (active/stable/declining/inert/abandoned/archived),
     computed via the spec's decision tree (archived flag > abandoned > inert > declining > stable >
     active, first match wins), or NULL when the repo has zero commits and zero issues/PRs in every window
