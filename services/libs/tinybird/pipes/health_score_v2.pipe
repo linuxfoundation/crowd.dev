@@ -10,20 +10,10 @@ DESCRIPTION >
     were being re-scanned once per category, and the 6-node version's runtime grew from ~13min to
     20-28+ minutes across repeated runs even with an equivalent-cost SQL change (see git history).
     This node now does a single cheap LEFT JOIN over 5 small pre-computed tables instead.
-    - Applies spec Layer 2 graceful degradation across categories: healthScoreV2 =
-    SUM(measured_subtotals) + SUM(missing_category_max × population_median_rate_for_that_category)
-    (IN-1249, 2026-08-28). The previous redistribution formula (availableCategorySum × 100 /
-    coveredCategoryWeight) projected each repo's own measured rate onto the missing weight, which
-    rewarded repos for having unmeasured categories — within the same top development band, repos
-    without security data averaged 85.0 vs 80.8 for measured peers, and 2,742 repos were rated
-    "excellent" with zero security assessment. Imputing at the population median instead removes
-    that reward: missing weight earns the typical rate, not the repo's inflated rate. Population
-    medians are computed from the same *_ds tables via population_priors NODE (quantileExactOrNull(0.5)
-    over measured-only rows). Each category datasource already carries NULL when its own coverage
-    fell below 40% (Layer 1, done per-category pipe). If fewer than 2 of the 3 categories are
-    available, healthScoreV2 becomes NULL — a single-category score cannot anchor a reliable median
-    imputation for the other two (IN-1248). Impact stays NULL (not defaulted to 0) when the repo
-    has no packages.
+    - Layer 2: healthScoreV2 = SUM(measured subtotals) + SUM(missing_max × population_median_rate),
+    where each prior is quantileExactOrNull(0.5) over measured-only rows in the category *_ds tables
+    (population_priors NODE). NULL when fewer than 2 categories available (IN-1248). Impact stays NULL
+    when the repo has no packages.
     - lifecycleLabelV2 passes through health_score_v2_lifecycle_ds unmodified (2026-07-24,
     IN-1196) — previously wrapped in `coalesce(l.lifecycleLabelV2, 'active')`, which silently
     converted the upstream pipe's genuine "no usable signal" NULL back into a fabricated 'active'
