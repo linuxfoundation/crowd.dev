@@ -8,9 +8,10 @@ DESCRIPTION >
     own published packages (via packageRepos), not an average over unrelated packages.
     - `repoUrl` is the repository URL — the join key back to `repositories`/`repos`.
     - `maintainerHealthScoreV2` (0-40) — bus factor, org diversity, maintainer responsiveness.
-    - `securitySupplyChainScoreV2` (0-35) — open vulnerabilities, OpenSSF Scorecard, security practices,
-    dependency health (checked against the repo's own published packages' dependencies, not an average
-    across unrelated packages), supply chain integrity (hardcoded 0 — provenance/2FA data not yet piped).
+    - `securitySupplyChainScoreV2` (0-35) — open vulnerabilities (12), OpenSSF Scorecard (8), security
+    practices (8), dependency health (7, checked against the repo's own published packages' dependencies,
+    not an average across unrelated packages). Supply chain integrity weight reallocated into these four
+    signals (IN-1250); provenance/2FA data not yet piped.
     - `developmentActivityScoreV2` (0-25) — release cadence, commit activity, issue resolution, PR merge health.
     - `healthScoreV2` (0-100) — sum of measured category scores plus population-median imputation for
     any NULL category (`categoryMax × median(score/max)` over measured repos), clamped to 100. NULL
