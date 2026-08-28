@@ -62,11 +62,16 @@ SQL >
             coveredCategoryCount < 2,
             NULL,
             toNullable(
-                toUInt8(round(least(100.0,
-                    coalesce(maintainerHealthScoreV2, 40 * priorMaintainerRate)
-                    + coalesce(securitySupplyChainScoreV2, 35 * priorSecurityRate)
-                    + coalesce(developmentActivityScoreV2, 25 * priorDevelopmentRate)
-                )))
+                toUInt8(
+                    round(
+                        least(
+                            100.0,
+                            coalesce(maintainerHealthScoreV2, 40 * priorMaintainerRate)
+                            + coalesce(securitySupplyChainScoreV2, 35 * priorSecurityRate)
+                            + coalesce(developmentActivityScoreV2, 25 * priorDevelopmentRate)
+                        )
+                    )
+                )
             )
         ) AS healthScoreV2,
         lifecycleLabelV2,
