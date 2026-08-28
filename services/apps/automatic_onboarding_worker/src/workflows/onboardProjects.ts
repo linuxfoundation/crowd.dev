@@ -9,8 +9,14 @@ const fetchActivities = proxyActivities<typeof activities>({
   retry: { maximumAttempts: 3 },
 })
 
-// Each onboarding call chains a segment create/query plus GitHub enrichment and integration calls; give generous headroom per project.
+// Each onboarding call chains a segment create/query plus GitHub enrichment and integration calls,
+// each of which can individually approach a ~30s backend timeout; give generous headroom per project.
 const onboardActivities = proxyActivities<typeof activities>({
+  startToCloseTimeout: '5 minutes',
+  retry: { maximumAttempts: 2 },
+})
+
+const failureActivities = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 minutes',
   retry: { maximumAttempts: 2 },
 })
@@ -49,7 +55,7 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
       )
 
       try {
-        await onboardActivities.markProjectOnboardingFailed(project.id, reason)
+        await failureActivities.markProjectOnboardingFailed(project.id, reason)
       } catch (markErr) {
         // Don't let a failure to record the error state abort the rest of the batch.
         log.error(`Failed to mark project id=${project.id} as errored: ${String(markErr)}`)

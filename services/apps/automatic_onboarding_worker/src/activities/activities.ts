@@ -24,14 +24,21 @@ export async function fetchProjectsPendingOnboarding(
   return projects
 }
 
+async function findAlreadyOnboarded(
+  qx: ReturnType<typeof pgpQx>,
+  projectId: string,
+): Promise<IDbProjectCatalog | null> {
+  const fresh = await findProjectCatalogById(qx, projectId)
+  return fresh?.onboardedAt ? fresh : null
+}
+
 export async function onboardAndUpdateProject(project: IDbProjectCatalog): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
-  // Guard: fetch fresh state to ensure the API is called at most once per project.
-  // Uses the writer connection to avoid replica lag missing a just-written onboardedAt.
-  const fresh = await findProjectCatalogById(qx, project.id)
-  if (fresh?.onboardedAt) {
+  // Guard: uses the writer connection to avoid replica lag missing a just-written onboardedAt.
+  const fresh = await findAlreadyOnboarded(qx, project.id)
+  if (fresh) {
     log.info(
       { id: project.id, repoUrl: project.repoUrl, onboardedAt: fresh.onboardedAt },
       'Project already onboarded, skipping API call.',
@@ -69,6 +76,16 @@ export async function markProjectOnboardingFailed(
   reason: string,
 ): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
+
+  // Guard: the write may have succeeded after the API call before retries were exhausted.
+  const fresh = await findAlreadyOnboarded(qx, projectId)
+  if (fresh) {
+    log.info(
+      { id: projectId, onboardedAt: fresh.onboardedAt },
+      'Project was already onboarded despite the reported failure, not marking as error.',
+    )
+    return
+  }
 
   await updateProjectCatalog(qx, projectId, {
     action: 'error',

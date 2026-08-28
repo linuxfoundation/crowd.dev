@@ -19,15 +19,14 @@ export const scheduleProjectsOnboarding = async () => {
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
-        catchupWindow: '1 minute',
+        catchupWindow: '1 hour',
       },
       action: {
         type: 'startWorkflow',
         workflowType: onboardProjects,
         taskQueue: 'automatic-onboarding',
         args: [ONBOARDING_ARGS],
-        // 50 projects × up to ~2min per attempt, up to 2 attempts each = ~3.3h worst case; set ceiling with margin.
-        workflowExecutionTimeout: '6 hours',
+        workflowExecutionTimeout: '14 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,
