@@ -404,6 +404,22 @@ class AffiliationService(BaseService):
             return None, None
         return date_start, date_end
 
+    def normalize_affiliation_dates(
+        self,
+        affiliations: list[AffiliationContributorEntry] | None,
+    ) -> list[AffiliationContributorEntry] | None:
+        if not affiliations:
+            return affiliations
+
+        for entry in affiliations:
+            for organization in entry.organizations:
+                organization.date_start, organization.date_end = self._sanitize_date_range(
+                    organization.date_start,
+                    organization.date_end,
+                )
+
+        return affiliations
+
     @classmethod
     def group_parse_rows(
         cls, rows: list[AffiliationParseRow]
@@ -433,17 +449,13 @@ class AffiliationService(BaseService):
             organization = row.organization
             is_unaffiliated = organization.is_unaffiliated
             domain = cls._strip(organization.domain)
-            date_start, date_end = cls._sanitize_date_range(
-                cls._parse_optional_date(organization.date_start),
-                cls._parse_optional_date(organization.date_end),
-            )
 
             if is_unaffiliated:
                 stint = AffiliationOrganizationStint(
                     name="Individual",
                     domain="nonameaccount.com",
-                    date_start=date_start,
-                    date_end=date_end,
+                    date_start=cls._parse_optional_date(organization.date_start),
+                    date_end=cls._parse_optional_date(organization.date_end),
                     is_unaffiliated=True,
                 )
             elif not domain:
@@ -452,8 +464,8 @@ class AffiliationService(BaseService):
                 stint = AffiliationOrganizationStint(
                     name=cls._strip(organization.name),
                     domain=domain.lower(),
-                    date_start=date_start,
-                    date_end=date_end,
+                    date_start=cls._parse_optional_date(organization.date_start),
+                    date_end=cls._parse_optional_date(organization.date_end),
                     is_unaffiliated=False,
                 )
 
@@ -902,9 +914,8 @@ class AffiliationService(BaseService):
             existing_msas = segment_affiliations_by_member.get(member_id, [])
             deleted_mos = deleted_member_organizations_by_member.get(member_id, [])
             deleted_msas = deleted_segment_affiliations_by_member.get(member_id, [])
-            date_start, date_end = self._sanitize_date_range(
-                organization.date_start, organization.date_end
-            )
+            date_start = organization.date_start
+            date_end = organization.date_end
 
             if not self.has_existing_stint(
                 existing_mos, organization_id, date_start, date_end
@@ -1041,6 +1052,8 @@ class AffiliationService(BaseService):
                     file_hash,
                 )
             ai_cost += parse_cost
+
+            affiliations = self.normalize_affiliation_dates(affiliations)
 
             if repository.parent_repo:
                 affiliations = await self.exclude_parent_repo_affiliations(
