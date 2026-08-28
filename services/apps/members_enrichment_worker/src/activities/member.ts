@@ -1,3 +1,4 @@
+import { Error404 } from '@crowd/common'
 import { CommonMemberService } from '@crowd/common_services'
 import {
   MemberField,
@@ -136,6 +137,14 @@ export async function mergeMembers(
   try {
     await memberService.merge(primaryMemberId, secondaryMemberId)
   } catch (error) {
+    if (error instanceof Error404) {
+      svc.log.info(
+        { primaryMemberId, secondaryMemberId },
+        'Skipping merge, member no longer exists',
+      )
+      return
+    }
+
     svc.log.error({ err: error }, 'Failed to merge members')
     throw error
   }
