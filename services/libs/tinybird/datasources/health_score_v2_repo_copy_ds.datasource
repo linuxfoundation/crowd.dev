@@ -23,8 +23,9 @@ DESCRIPTION >
     - Graceful degradation (spec Layer 1+2): per-category pipes emit NULL when covered sub-signal weight
     is <40% of that category's max pts (Layer 1); the aggregate health_score_v2 applies Layer 2 rescaling
     (`SUM(available categories) * (100 / SUM(available category weights))`) so only actually-available
-    scores are summed. If all three categories are unavailable, healthScoreV2 itself is NULL (see
-    health_score_v2.pipe DESCRIPTION for the full spec).
+    scores are summed. healthScoreV2 is NULL when fewer than 2 of the 3 categories are available —
+    a single-category rescale would extrapolate ≤40 pts of evidence into a full 0-100 range (IN-1248).
+    See health_score_v2.pipe DESCRIPTION for the full spec.
     - Known temporary gap: security-practices score's spec-stated max is 8 points (includes +1 for
     `security_contact_email IS NOT NULL` flag), but no `security_contact_email` column exists yet in
     the GitHub enrichment datasource, so the current maximum achievable is 7 points. This gap is
