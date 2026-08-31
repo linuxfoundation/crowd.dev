@@ -396,6 +396,30 @@ class AffiliationService(BaseService):
         except ValueError:
             return None
 
+    @staticmethod
+    def _sanitize_date_range(
+        date_start: date | None, date_end: date | None
+    ) -> tuple[date | None, date | None]:
+        if date_end is not None and (date_start is None or date_end < date_start):
+            return None, None
+        return date_start, date_end
+
+    def normalize_affiliation_dates(
+        self,
+        affiliations: list[AffiliationContributorEntry] | None,
+    ) -> list[AffiliationContributorEntry] | None:
+        if not affiliations:
+            return affiliations
+
+        for entry in affiliations:
+            for organization in entry.organizations:
+                organization.date_start, organization.date_end = self._sanitize_date_range(
+                    organization.date_start,
+                    organization.date_end,
+                )
+
+        return affiliations
+
     @classmethod
     def group_parse_rows(
         cls, rows: list[AffiliationParseRow]
@@ -1028,6 +1052,8 @@ class AffiliationService(BaseService):
                     file_hash,
                 )
             ai_cost += parse_cost
+
+            affiliations = self.normalize_affiliation_dates(affiliations)
 
             if repository.parent_repo:
                 affiliations = await self.exclude_parent_repo_affiliations(

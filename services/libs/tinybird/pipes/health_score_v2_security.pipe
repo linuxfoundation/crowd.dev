@@ -1,14 +1,13 @@
 DESCRIPTION >
-    Security & Supply Chain category (max 35 pts): open vulnerabilities (10, blocked when the repo
+    Security & Supply Chain category (max 35 pts): open vulnerabilities (12, blocked when the repo
     has never completed a vulnerability scan — see vulnerability_scans — so "0 open vulns" isn't
-    conflated with "never scanned"), OpenSSF Scorecard (7,
+    conflated with "never scanned"), OpenSSF Scorecard (8,
     blocked for repos with no repos-table row — effectively non-GitHub hosts), security practices
-    (spec max 8, but capped here at 7 achievable — the spec's 6th bullet, security_contact_email,
-    has no corresponding column anywhere in our GitHub enrichment data, so it's permanently omitted
-    like Supply Chain Integrity below; blocked entirely when repos-table row missing), dependency
-    health (5, blocked when the repo has no published packages so vulnerability exposure is unknown),
-    supply chain integrity (5, permanently blocked — hardcoded per spec, provenance/2FA data not yet
-    in the pipeline). Graceful degradation (spec Layer 1+2): category_subtotal =
+    (8, blocked when repos-table row is missing; security_contact_email has no column in GitHub
+    enrichment data so the sub-score is capped at 7 internally, scaled to 8 at aggregation via
+    `* 8.0/7`; if email is ever added, remove that factor and use the raw score directly),
+    dependency health (7, blocked when the repo has no published packages so vulnerability exposure
+    is unknown). Graceful degradation (spec Layer 1+2): category_subtotal =
     SUM(available_sub_scores) * (35 / SUM(available_sub_max_weights)); category is `unavailable`
     (NULL) when covered weight is <40% of 35.
     - Split out of health_score_v2.pipe into its own copy pipe (2026-07-22) — see
@@ -16,6 +15,12 @@ DESCRIPTION >
     - Scorecard banded mapping (2026-08-27, IN-1247): raw ≥ 7 → 7 pts, ≥ 5.5 → 5, ≥ 4 → 4,
     ≥ 2.5 → 2, else 0. Replaces the linear round(min(raw,10)×0.7) which required raw ≥ 9.3 for
     full points (only 0.33% of repos), calibrated to real distribution (median ≈ 4, p99 ≈ 7.9).
+    - Supply-chain-integrity reallocation (2026-08-28, IN-1250): coveredWeight raised from 29 to 35
+    (+6 total: 5 from the permanently-blocked supply-chain slot + 1 restoring the practices signal's
+    nominal 8th pt, always in spec but unachievable due to missing security_contact_email column,
+    now recovered via `* 8.0/7` scaling) distributed as openVuln +2, scorecard +1, practices +1
+    (via 8.0/7), deps +2 → 12/8/8/7. Rescale factor is now 1.0 for fully-covered repos. Category
+    max and Layer 2 weight unchanged.
 
 NODE health_score_v2_security_calc
 SQL >
@@ -68,16 +73,16 @@ SQL >
                 dependencyHealthAvailable,
                 vulnerableDeps,
                 (
-                    openVulnAvailable * openVulnScore
-                    + scorecardAvailable * scorecardScorePts
-                    + securityPracticesAvailable * securityPracticesScore
-                    + dependencyHealthAvailable * dependencyHealthScore
+                    openVulnAvailable * openVulnScore * 1.2
+                    + scorecardAvailable * scorecardScorePts * 8.0 / 7
+                    + securityPracticesAvailable * securityPracticesScore * 8.0 / 7
+                    + dependencyHealthAvailable * dependencyHealthScore * 1.4
                 ) AS rawScore,
                 (
-                    openVulnAvailable * 10
-                    + scorecardAvailable * 7
-                    + securityPracticesAvailable * 7
-                    + dependencyHealthAvailable * 5
+                    openVulnAvailable * 12
+                    + scorecardAvailable * 8
+                    + securityPracticesAvailable * 8
+                    + dependencyHealthAvailable * 7
                 ) AS coveredWeight
             FROM
                 (
