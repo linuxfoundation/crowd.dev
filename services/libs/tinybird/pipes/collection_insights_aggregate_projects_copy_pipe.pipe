@@ -12,10 +12,8 @@ NODE collection_insights_aggregate_projects_aggregated
 DESCRIPTION >
     Aggregates project counts and health scores per collection from insights_projects_populated_ds.
     Uses same "onboarded" definition as original logic: projects with organizationCount > 0 OR contributorCount > 0.
-    Must use healthScoreV2, not legacy healthScore, to agree with the member project card's
-    "Unavailable" state, which gates on healthScoreV2 IS NULL (IN-1257). A project with
-    healthScoreV2 IS NULL (e.g. korg, forced NULL per IN-1244) still counts in projectCount
-    but is excluded from avgHealthScore.
+    Averages healthScoreV2 (not legacy healthScore) to agree with the "Unavailable" state
+    shown elsewhere, which also gates on healthScoreV2 IS NULL (IN-1257).
 
 SQL >
     SELECT
@@ -42,7 +40,12 @@ SQL >
                 arrayJoin(p.collectionsSlugs) as collectionSlug
             FROM insights_projects_populated_ds p
             LEFT JOIN
-                (SELECT id, healthScoreV2 FROM project_insights_copy_ds WHERE type = 'project') pi
+                (
+                    SELECT id, any (healthScoreV2) as healthScoreV2
+                    FROM project_insights_copy_ds
+                    WHERE type = 'project'
+                    GROUP BY id
+                ) pi
                 ON pi.id = p.id
             WHERE p.enabled = 1
         )
