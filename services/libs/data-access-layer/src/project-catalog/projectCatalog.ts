@@ -20,6 +20,7 @@ const PROJECT_CATALOG_COLUMNS = [
   'evaluationReason',
   'evaluatedAt',
   'onboardedAt',
+  'onboardingError',
   'syncedAt',
   'createdAt',
   'updatedAt',
@@ -98,6 +99,25 @@ export async function findProjectCatalogPendingEvaluation(
     FROM "projectCatalog"
     WHERE action = 'evaluate'
     ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC
+    ${limit !== undefined ? 'LIMIT $(limit)' : ''}
+    ${offset !== undefined ? 'OFFSET $(offset)' : ''}
+    `,
+    { limit, offset },
+  )
+}
+
+export async function findProjectCatalogPendingOnboarding(
+  qx: QueryExecutor,
+  options: { limit?: number; offset?: number } = {},
+): Promise<IDbProjectCatalog[]> {
+  const { limit, offset } = options
+
+  return qx.select(
+    `
+    SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    FROM "projectCatalog"
+    WHERE action = 'onboard' AND "onboardedAt" IS NULL
+    ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC, id ASC
     ${limit !== undefined ? 'LIMIT $(limit)' : ''}
     ${offset !== undefined ? 'OFFSET $(offset)' : ''}
     `,
@@ -316,7 +336,7 @@ export async function upsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,
@@ -389,7 +409,7 @@ export async function bulkUpsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,
@@ -453,6 +473,10 @@ export async function updateProjectCatalog(
     setClauses.push('"onboardedAt" = $(onboardedAt)')
     params.onboardedAt = data.onboardedAt
   }
+  if (data.onboardingError !== undefined) {
+    setClauses.push('"onboardingError" = $(onboardingError)')
+    params.onboardingError = data.onboardingError
+  }
 
   if (setClauses.length === 0) {
     return findProjectCatalogById(qx, id)
@@ -468,6 +492,21 @@ export async function updateProjectCatalog(
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     params,
+  )
+}
+
+export async function markProjectCatalogOnboardingFailed(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'error', "onboardingError" = $(reason), "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
+    `,
+    { id, reason },
   )
 }
 

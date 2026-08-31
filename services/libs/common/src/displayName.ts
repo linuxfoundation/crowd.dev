@@ -1,54 +1,57 @@
-import { isEmail, isPartialEmail } from './validations'
+import { isValidEmail } from './email'
+import { isPartialEmail } from './validations'
 
 /**
- * Get a proper display name from a given name string.
- *
- * If there are multiple name parts and one or multiple of them (but not all) look like email,
- * those parts are removed and the remaining parts are concatenated and returned.
- *
- * If there is one name part and it looks like an email, the part before '@' is returned.
- *
- * If there are multiple name parts and all of them look like emails, the first part before '@' is returned.
- *
- * @param {string} name - The input name string.
- * @returns {string} - The proper display name.
- *
- * @example
- * getProperDisplayName('John Doe') // returns 'John Doe'
- * getProperDisplayName('john.doe@example.com') // returns 'john.doe'
- * getProperDisplayName('John john.doe@example.com Doe') // returns 'John Doe'
- * getProperDisplayName('john.doe@example.com jane.doe@example.com') // returns 'john.doe'
- * getProperDisplayName('john@gmail.com') // returns 'john'
- * getProperDisplayName('john@gmail') // returns 'john'
- * getProperDisplayName('john@gmail.') // returns 'john'
- * getProperDisplayName('john@g') // returns 'john'
- * getProperDisplayName('@johndoe') // returns '@johndoe'
- * getProperDisplayName('johndoe@') // returns 'johndoe@'
+ * Strip email tokens from a name. If the whole string is an email, use the local part.
  */
-export function getProperDisplayName(name: string): string {
-  const nameParts = name.trim().split(/\s+/)
+export function normalizeDisplayName(name: string): string {
+  const tokens = name
+    .trim()
+    .split(/\s+/)
+    .map(cleanNamePart)
+    .filter((token) => token.length > 0)
 
-  if (nameParts.length === 1 && !nameParts[0]) {
+  if (tokens.length === 0) {
     throw new Error('Display name cannot be empty')
   }
 
-  if (nameParts.length === 0) {
-    throw new Error('Display name cannot be empty')
+  const withoutEmails = tokens.filter((token) => !isValidEmail(token) && !isPartialEmail(token))
+  if (withoutEmails.length > 0) {
+    return withoutEmails.join(' ')
   }
 
-  if (nameParts.length === 1) {
-    if (isEmail(nameParts[0]) || isPartialEmail(nameParts[0])) {
-      return nameParts[0].split('@')[0]
+  return tokens[0].split('@')[0]
+}
+
+function cleanNamePart(part: string): string {
+  let token = part
+
+  if (token.endsWith(',') || token.endsWith(';')) {
+    token = token.slice(0, -1)
+  }
+
+  while (token.length >= 2) {
+    const open = token[0]
+    const close = token[token.length - 1]
+    const isWrapped =
+      (open === '<' && close === '>') ||
+      (open === '(' && close === ')') ||
+      (open === '"' && close === '"') ||
+      (open === "'" && close === "'")
+
+    if (!isWrapped) {
+      break
     }
-    return nameParts[0]
+
+    token = token.slice(1, -1)
   }
 
-  // parts that are not emails
-  const filteredNameParts = nameParts.filter((part) => !isEmail(part) && !isPartialEmail(part))
-
-  if (filteredNameParts.length > 0) {
-    return filteredNameParts.join(' ')
+  while (token.startsWith('@')) {
+    token = token.slice(1)
+  }
+  while (token.endsWith('@')) {
+    token = token.slice(0, -1)
   }
 
-  return nameParts[0].split('@')[0]
+  return token
 }

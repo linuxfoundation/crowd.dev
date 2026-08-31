@@ -83,7 +83,8 @@ export async function fetchMemberOrganizationsBySource(
         "title",
         "memberId",
         "source",
-        "deletedAt"
+        "deletedAt",
+        "deletedBy"
       FROM "memberOrganizations"
       WHERE "memberId" = $(memberId)
         AND "source" = $(source)

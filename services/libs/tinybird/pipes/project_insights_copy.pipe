@@ -90,7 +90,8 @@ DESCRIPTION >
     Lifecycle, Health Score v2, and Impact Score all rolled up to project level from the pre-computed
     per-repo values in health_score_v2_repo_copy_ds (materialized by health_score_v2.pipe — the
     expensive per-signal joins run there as their own copy job, not inline here). Per spec section 5/6:
-    - healthScoreV2: straight mean across the project's enabled, non-excluded repos.
+    - healthScoreV2: sum of the three per-category medians (maintainer + security + development), null-guarded
+    per IN-1248 (NULL when fewer than 2 categories are present). See the node SQL for the full expression.
     - lifecycleLabelV2: best-state-wins (active > stable > declining > inert > abandoned > archived), with
     NULL (no usable signal, see health_score_v2_lifecycle.pipe) as the most-cautious outcome.
     `groupArray` silently drops NULL entries, so a project with at least one repo in a real state
@@ -111,16 +112,27 @@ DESCRIPTION >
     - impactScoreRaw: MAX across the project's repos (each repo's own value is already a MAX over its
     published packages) — matches the spec's "MAX(packages.impact) over packages published by any
     repo in the project," since max-of-maxes = max-over-all.
-    - maintainerHealthScoreV2 / securitySupplyChainScoreV2 / developmentActivityScoreV2 (IN-1212): same
-    straight-mean rollup as healthScoreV2, over the same repo set — kept consistent since healthScoreV2
-    is itself defined as the sum of these three categories at repo level (see
-    health_score_v2_repo_copy_ds). `avg()` (not avgOrNull) matches the healthScoreV2 idiom above and
-    already returns NULL, not 0/NaN, when every repo is NULL for a category (confirmed live).
+    - healthScoreV2: sum of the three per-category medians below, null-guarded per IN-1248 (NULL when
+    fewer than 2 categories are present). `quantileExactOrNull` is used instead of `quantileExact` so
+    the guard and coalesce can see NULL explicitly — `quantileExact` returns 0 on an empty set, which
+    would defeat the "< 2 categories → NULL" rule.
+    - maintainerHealthScoreV2 / securitySupplyChainScoreV2 / developmentActivityScoreV2 (IN-1212):
+    independent per-category medians (`quantileExact(0.5)`) over repos where that category is non-NULL.
+    NULL when every repo is NULL for a category.
 
 SQL >
     SELECT
         rep.insightsProjectId AS insightsProjectId,
-        avg(hv2.healthScoreV2) AS healthScoreV2,
+        if(
+            (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL)
+            < 2,
+            NULL,
+            coalesce(quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2), 0)
+            + coalesce(quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2), 0)
+            + coalesce(quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2), 0)
+        ) AS healthScoreV2,
         if(
             empty(groupArray(hv2.lifecycleLabelV2)),
             NULL,
@@ -137,9 +149,12 @@ SQL >
             )
         ) AS lifecycleLabelV2,
         maxOrNull(hv2.impactScore) AS impactScoreRaw,
-        avg(hv2.maintainerHealthScoreV2) AS maintainerHealthScoreV2,
-        avg(hv2.securitySupplyChainScoreV2) AS securitySupplyChainScoreV2,
-        avg(hv2.developmentActivityScoreV2) AS developmentActivityScoreV2
+        quantileExact(0.5)
+        (hv2.maintainerHealthScoreV2) AS maintainerHealthScoreV2,
+        quantileExact(0.5)
+        (hv2.securitySupplyChainScoreV2) AS securitySupplyChainScoreV2,
+        quantileExact(0.5)
+        (hv2.developmentActivityScoreV2) AS developmentActivityScoreV2
     FROM repositories rep FINAL
     INNER JOIN health_score_v2_repo_copy_ds hv2 ON hv2.repoUrl = rep.url
     WHERE rep.insightsProjectId != '' AND rep.enabled = true AND rep.excluded = false
@@ -181,8 +196,14 @@ SQL >
         pm.forksPrevious365Days AS forksPrevious365Days,
         pm.activeContributorsPrevious365Days AS activeContributorsPrevious365Days,
         pm.activeOrganizationsPrevious365Days AS activeOrganizationsPrevious365Days,
-        toUInt8(round(hv2.healthScoreV2)) AS healthScoreV2,
+        -- shortcut: overall healthScoreV2/healthLabel forced NULL for korg (Linux Kernel, IN-1244)
+        -- since its per-category scores are populated but the overall rollup isn't meaningful for it.
+        -- revisit: generalize once the project-level rollup's null-vs-populated-categories mismatch
+        -- is root-caused.
+        if(base.slug = 'korg', NULL, toUInt8(round(hv2.healthScoreV2))) AS healthScoreV2,
         multiIf(
+            base.slug = 'korg',
+            NULL,
             hv2.healthScoreV2 IS NULL,
             NULL,
             hv2.healthScoreV2 >= 85,

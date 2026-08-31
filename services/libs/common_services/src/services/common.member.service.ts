@@ -10,6 +10,7 @@ import {
 } from '@crowd/audit-logs'
 import {
   DEFAULT_TENANT_ID,
+  Error404,
   Error409,
   calculateReach,
   getEarliestValidDate,
@@ -358,6 +359,10 @@ export class CommonMemberService extends LoggerBase {
           const original = await this.getMemberById(originalId)
           const toMerge = await this.getMemberById(toMergeId)
 
+          if (!original || !toMerge) {
+            throw new Error404(options?.language)
+          }
+
           captureOldState({
             primary: original,
             secondary: toMerge,
@@ -486,6 +491,10 @@ export class CommonMemberService extends LoggerBase {
         return { status: 409, mergedId: originalId }
       }
 
+      if (err instanceof Error404) {
+        throw err
+      }
+
       this.log.error(err, 'Error while merging members!', { originalId, toMergeId })
 
       await setMergeAction(this.qx, MergeActionType.MEMBER, originalId, toMergeId, {
@@ -509,6 +518,10 @@ export class CommonMemberService extends LoggerBase {
       MemberField.MANUALLY_CREATED,
       MemberField.MANUALLY_CHANGED_FIELDS,
     ])
+
+    if (!member) {
+      return null
+    }
 
     const affiliations = await findMemberAffiliations(this.qx, memberId)
 

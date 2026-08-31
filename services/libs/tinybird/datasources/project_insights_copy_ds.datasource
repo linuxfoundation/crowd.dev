@@ -32,14 +32,14 @@ DESCRIPTION >
     - `activeContributorsPrevious365Days` column is the unique count of active contributors in the previous 365 days (365-730 days ago).
     - `activeOrganizationsPrevious365Days` column is the unique count of active organizations in the previous 365 days (365-730 days ago).
     - `status` column is the current status of the project (e.g., 'active', 'archived').
-    - `healthScoreV2` column is the Akrites-methodology composite health score (0-100), averaged from `ossPackages_enriched_ds.healthScore` across the project's linked packages. Distinct from the legacy `healthScore` column (community/contributor-based); null when the project has no linked package data.
+    - `healthScoreV2` column is the Akrites-methodology composite health score (0-100). For project records (`type='project'`): sum of the three per-category medians (maintainerHealthScoreV2 + securitySupplyChainScoreV2 + developmentActivityScoreV2), null-guarded per IN-1248 (null when fewer than 2 categories are present). For repo records (`type='repo'`): per-repo score passed through from `health_score_v2_repo_copy_ds`. Distinct from the legacy `healthScore` column (community/contributor-based).
     - `healthLabel` column buckets `healthScoreV2`: 'excellent' (85+), 'healthy' (70-84), 'fair' (50-69), 'concerning' (30-49), 'critical' (<30). Lowercase, matches `ossPackages_enriched_ds.healthLabel` convention.
     - `lifecycleLabel` column is the project's aggregated maintenance state across its packages, using best-state-wins precedence (active > stable > declining > abandoned > archived) over `ossPackages_enriched_ds.lifecycleLabel`.
     - `impactScore` column is the average Osprey criticality `impact` (0-100) across the project's packages. Null when the project has no linked package data.
     - `impactLabel` column buckets `impactScore`: 'foundational' (85-100), 'major' (60-84), 'moderate' (30-59), 'minor' (0-29). Null when `impactScore` is null.
-    - `maintainerHealthScoreV2` column is the project-level rollup (0-40) of `health_score_v2_repo_copy_ds.maintainerHealthScoreV2` — mean across the project's enabled, non-excluded repos, same convention as `healthScoreV2`. Null when no repo has a value.
-    - `securitySupplyChainScoreV2` column is the project-level rollup (0-35) of `health_score_v2_repo_copy_ds.securitySupplyChainScoreV2` — mean across the project's enabled, non-excluded repos. Null when no repo has a value.
-    - `developmentActivityScoreV2` column is the project-level rollup (0-25) of `health_score_v2_repo_copy_ds.developmentActivityScoreV2` — mean across the project's enabled, non-excluded repos. Null when no repo has a value.
+    - `maintainerHealthScoreV2` column (0-40): for project records, median (`quantileExact(0.5)`) of per-repo values across the project's enabled, non-excluded repos; for repo records, per-repo value from `health_score_v2_repo_copy_ds`. Null when no value is available.
+    - `securitySupplyChainScoreV2` column (0-35): same convention as `maintainerHealthScoreV2`. Null when no value is available.
+    - `developmentActivityScoreV2` column (0-25): same convention as `maintainerHealthScoreV2`. Null when no value is available.
 
 TAGS "Project insights", "Metrics"
 

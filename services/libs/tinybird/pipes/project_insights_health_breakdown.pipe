@@ -33,6 +33,7 @@ SQL >
         isGerrit,
         isExcluded,
         openVulnScore,
+        openVulnAvailable,
         openCriticals,
         openHighs,
         openModerates,

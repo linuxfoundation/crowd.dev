@@ -20,9 +20,14 @@ DESCRIPTION >
     so a blocked repo's score is a real `0`, not NULL — `avg()` folds that placeholder zero into the
     mean for any project with at least one available sibling repo, silently understating the
     project-level score. (Fixed post-review.)
-    - `openVulnScore`/`commitActivityScore`: plain `avg()` — these 2 of 11 signals have no matching
-    `*Available` flag (confirmed against the category pipes' own `coveredWeight` SQL, which treats
-    both as unconditionally covered), so there's no blocked-repo case to filter out.
+    - `commitActivityScore`: plain `avg()` — has no matching `*Available` flag (confirmed against
+    `health_score_v2_development.pipe`'s own `coveredWeight` SQL, which treats it as unconditionally
+    covered), so there's no blocked-repo case to filter out.
+    - `openVulnScore` (IN-1241): now `sumIf(score, available) / nullIf(countIf(available), 0)`, same
+    coverage-filtered pattern as the other `*Available`-backed scores above — `openVulnAvailable` was
+    added because a repo that has never completed a vulnerability scan (see `vulnerability_scans`)
+    was previously indistinguishable from a genuinely clean repo, both defaulting to a perfect
+    `openVulnScore` of 10.
     - Count columns (`busFactorCount`, `orgCount`, `openCriticals`, `openHighs`, `openModerates`,
     `vulnerableDeps`, `commitsLast6m`, `closed12m`, `opened12m`, `merged12m`, `closedUnmerged12m`,
     `branchProtectionRequiredReviews`): `max()` across repos — the most-staffed/most-active/
@@ -82,7 +87,9 @@ SQL >
         avg(sd.medianIssueResponseS) AS medianIssueResponseS,
         min(sd.isGerrit) AS isGerrit,
         min(sd.isExcluded) AS isExcluded,
-        avg(sd.openVulnScore) AS openVulnScore,
+        sumIf(sd.openVulnScore, sd.openVulnAvailable)
+        / nullIf(countIf(sd.openVulnAvailable), 0) AS openVulnScore,
+        max(sd.openVulnAvailable) AS openVulnAvailable,
         max(sd.openCriticals) AS openCriticals,
         max(sd.openHighs) AS openHighs,
         max(sd.openModerates) AS openModerates,

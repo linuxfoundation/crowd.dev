@@ -1,8 +1,8 @@
 FROM node:24-alpine
 
-RUN npm install -g corepack@latest && corepack enable pnpm && corepack prepare pnpm@9.15.0 --activate
-
 WORKDIR /usr/crowd/app
+COPY ./package.json ./
+RUN corepack enable && corepack prepare --activate
 
 RUN apk add --no-cache nano git python3 py3-pip make build-base && rm -rf /var/cache/apk/* && git clone https://github.com/CrowdDotDev/crowd.dev.git && cd crowd.dev && pnpm i --frozen-lockfile
 

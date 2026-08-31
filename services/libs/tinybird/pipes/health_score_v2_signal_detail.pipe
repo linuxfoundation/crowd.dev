@@ -35,6 +35,7 @@ SQL >
         m.isGerrit AS isGerrit,
         m.isExcluded AS isExcluded,
         s.openVulnScore AS openVulnScore,
+        s.openVulnAvailable AS openVulnAvailable,
         s.openCriticals AS openCriticals,
         s.openHighs AS openHighs,
         s.openModerates AS openModerates,

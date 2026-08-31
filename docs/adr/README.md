@@ -25,6 +25,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0016](./0016-akrites-cdp-public-api-authentication.md)    | Akrites → CDP public API authentication                                                              | proposed | 2026-07-22 |
 | [ADR-0017](./0017-blast-radius-pipeline-architecture.md)       | Blast radius analysis pipeline — multi-ecosystem architecture                                        | accepted | 2026-08-11 |
 | [ADR-0018](./0018-per-client-rate-limiting-members-resolve.md) | Per-client rate limiting for `POST /members/resolve` using in-memory store                           | accepted | 2026-08-12 |
+| [ADR-0019](./0019-docker-builder-runner-libc.md)               | Same libc in Docker builder and runner                                                               | accepted | 2026-08-27 |
 
 ## Why ADRs?
 
