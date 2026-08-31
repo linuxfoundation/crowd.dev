@@ -180,7 +180,9 @@ SQL >
                                 repoUrl,
                                 countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
                                 countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
-                                countIf(status = 'OPEN' AND severity IN ('MEDIUM', 'LOW')) AS openModerates,
+                                countIf(
+                                    status = 'OPEN' AND severity IN ('MEDIUM', 'LOW')
+                                ) AS openModerates,
                                 countIf(
                                     status = 'OPEN'
                                     AND severity NOT IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')
