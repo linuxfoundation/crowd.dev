@@ -12,8 +12,9 @@ DESCRIPTION >
     (no data), not scored 0. `openVulnAvailable` is 0 when the repo has never completed a
     vulnerability scan (see `vulnerability_scans`), so "0 open vulns" isn't conflated with
     "never scanned".
-    - `openCriticals`/`openHighs`/`openModerates` (IN-1212) are the raw open-vulnerability counts by
-    severity; NULL when the repo has no rows in `vulnerabilities`.
+    - `openCriticals`/`openHighs`/`openModerates`/`openUnknowns` (IN-1212; `openUnknowns` and
+    `openModerates`'s widened `MEDIUM`/`LOW` predicate added IN-1255) are the raw open-vulnerability
+    counts by severity; NULL when the repo has no rows in `vulnerabilities`.
     - `scorecardScore` (IN-1212) is the raw OpenSSF Scorecard aggregate score (0-10 as a string,
     passed through from `repos.scorecardScore`; empty string when unavailable).
     - `securityPolicyEnabled`/`branchProtectionEnabled`/`branchProtectionRequiredReviews`/
@@ -30,6 +31,7 @@ SCHEMA >
     `openCriticals` Nullable(UInt64),
     `openHighs` Nullable(UInt64),
     `openModerates` Nullable(UInt64),
+    `openUnknowns` Nullable(UInt64),
     `scorecardScorePts` UInt8,
     `scorecardAvailable` UInt8,
     `scorecardScore` String,

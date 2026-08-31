@@ -29,11 +29,11 @@ DESCRIPTION >
     was previously indistinguishable from a genuinely clean repo, both defaulting to a perfect
     `openVulnScore` of 10.
     - Count columns (`busFactorCount`, `orgCount`, `openCriticals`, `openHighs`, `openModerates`,
-    `vulnerableDeps`, `commitsLast6m`, `closed12m`, `opened12m`, `merged12m`, `closedUnmerged12m`,
-    `branchProtectionRequiredReviews`): `max()` across repos — the most-staffed/most-active/
-    most-protected repo is the meaningful project-level signal, matching the precedent set by
-    `project_insights_impact_breakdown_copy.pipe`'s `directDependents` MAX rollup and bus factor's
-    own per-repo tiering logic.
+    `openUnknowns`, `vulnerableDeps`, `commitsLast6m`, `closed12m`, `opened12m`, `merged12m`,
+    `closedUnmerged12m`, `branchProtectionRequiredReviews`): `max()` across repos — the
+    most-staffed/most-active/most-protected repo is the meaningful project-level signal, matching the
+    precedent set by `project_insights_impact_breakdown_copy.pipe`'s `directDependents` MAX rollup
+    and bus factor's own per-repo tiering logic.
     - `daysSinceLatest`/`daysBetweenRecent`: `min()`, not `max()` — these are inverse-activity
     durations (per `health_score_v2_development.pipe`'s own scoring: smaller = more recent/frequent
     releases = higher score). `max()` here would silently pick the stalest repo as the project-level
@@ -93,6 +93,7 @@ SQL >
         max(sd.openCriticals) AS openCriticals,
         max(sd.openHighs) AS openHighs,
         max(sd.openModerates) AS openModerates,
+        max(sd.openUnknowns) AS openUnknowns,
         sumIf(sd.scorecardScorePts, sd.scorecardAvailable)
         / nullIf(countIf(sd.scorecardAvailable), 0) AS scorecardScorePts,
         max(sd.scorecardAvailable) AS scorecardAvailable,
