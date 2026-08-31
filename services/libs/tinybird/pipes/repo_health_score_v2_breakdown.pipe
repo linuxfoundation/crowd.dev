@@ -63,6 +63,7 @@ SQL >
         max(sd.openCriticals) AS openCriticals,
         max(sd.openHighs) AS openHighs,
         max(sd.openModerates) AS openModerates,
+        max(sd.openUnknowns) AS openUnknowns,
         sumIf(sd.scorecardScorePts, sd.scorecardAvailable)
         / nullIf(countIf(sd.scorecardAvailable), 0) AS scorecardScorePts,
         max(sd.scorecardAvailable) AS scorecardAvailable,
