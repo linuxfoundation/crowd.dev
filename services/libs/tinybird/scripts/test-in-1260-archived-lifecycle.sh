@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Regression test for IN-1260.
-#
-# Bug: node `project_insights_copy_project_results` in project_insights_copy.pipe
-# computed lifecycleLabel purely from repo-activity signals (hv2.lifecycleLabelV2),
-# ignoring the project's own PCC-driven `status`. A project archived in PCC but with
-# still-active repos kept a stale non-"archived" lifecycleLabel.
-#
-# This script pulls the *current* lifecycleLabel expression straight out of the pipe
-# file (not a hardcoded copy of it) and re-runs it against live production data via
-# `tb sql`, asserting that every project with status='archived' also gets
-# lifecycleLabel='archived'. Revert the fix and this fails with 34 mismatches
-# (the exact count found during IN-1260 triage); with the fix applied it passes with 0.
+# Pulls the current lifecycleLabel expression straight out of the pipe file
+# (not a hardcoded copy) and re-runs it against live production data via `tb sql`,
+# asserting every project with status='archived' also has lifecycleLabel='archived'.
 #
 # Requires: `tb` CLI authenticated against the lfx_insights workspace (`tb auth info`).
 set -euo pipefail
