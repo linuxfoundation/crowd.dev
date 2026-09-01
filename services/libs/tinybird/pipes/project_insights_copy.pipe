@@ -139,10 +139,10 @@ SQL >
             + coalesce(quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2), 0)
             + coalesce(quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2), 0)
         ) AS healthScoreV2,
-        (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
-        + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
-        + (
-            quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL
+        toUInt8(
+            (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL)
         ) AS coveredCategoryCount,
         multiIf(
             (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
