@@ -98,7 +98,10 @@ export async function findProjectCatalogPendingEvaluation(
     SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     FROM "projectCatalog"
     WHERE action = 'evaluate'
-    ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC
+    ORDER BY
+      (source = 'manual') DESC NULLS LAST,
+      "lfCriticalityScore" DESC NULLS LAST,
+      "createdAt" ASC
     ${limit !== undefined ? 'LIMIT $(limit)' : ''}
     ${offset !== undefined ? 'OFFSET $(offset)' : ''}
     `,
