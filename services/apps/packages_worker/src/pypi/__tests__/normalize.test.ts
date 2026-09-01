@@ -276,7 +276,12 @@ describe('classifyProjectUrls', () => {
 
   it('returns nulls/empties when there are no urls', () => {
     const r = classifyProjectUrls(null, null)
-    expect(r).toEqual({ homepage: null, declaredRepositoryUrl: null, fundingLinks: [] })
+    expect(r).toEqual({
+      homepage: null,
+      declaredRepositoryUrl: null,
+      declaredRepositoryField: null,
+      fundingLinks: [],
+    })
   })
 })
 

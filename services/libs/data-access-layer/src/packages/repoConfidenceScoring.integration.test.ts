@@ -18,6 +18,7 @@ const HAVE_DB =
 type ScoreInput = {
   source: string
   ecosystem?: string
+  signal?: string
   provenance?: string | null
   archived?: boolean | null
   isFork?: boolean | null
@@ -44,11 +45,12 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
   async function score(input: ScoreInput): Promise<number> {
     const row = await qx.selectOne(
       `SELECT package_repo_confidence(
-         $(source), $(ecosystem), $(provenance),
+         $(source), $(ecosystem), $(signal), $(provenance),
          $(archived), $(isFork), $(disabled), $(host), $(competingGithub), $(repoId)
        )::float8 AS score`,
       {
         ecosystem: 'npm',
+        signal: 'primary',
         provenance: null,
         archived: null,
         isFork: null,
@@ -73,6 +75,18 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
     expect(await score({ source: 'declared' })).toBeCloseTo(0.85, 2)
     expect(await score({ source: 'declared', ecosystem: 'maven' })).toBeCloseTo(0.8, 2)
     expect(await score({ source: 'heuristic' })).toBeCloseTo(0.3, 2)
+  })
+
+  it('penalises a secondary signal on declared links only', async () => {
+    expect(await score({ source: 'declared', signal: 'secondary' })).toBeCloseTo(0.75, 2)
+    expect(await score({ source: 'declared', ecosystem: 'maven', signal: 'secondary' })).toBeCloseTo(
+      0.7,
+      2,
+    )
+    expect(await score({ source: 'manual', signal: 'secondary' })).toBeCloseTo(0.99, 2)
+    expect(
+      await score({ source: 'deps_dev', provenance: 'GO_ORIGIN', signal: 'secondary' }),
+    ).toBeCloseTo(0.9, 2)
   })
 
   it('stacks repo-state penalties and floors at 0.05', async () => {

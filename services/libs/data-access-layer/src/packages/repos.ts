@@ -100,9 +100,9 @@ export async function upsertPackageRepo(
      ),
      ins AS (
        INSERT INTO package_repos (
-         package_id, repo_id, source, provenance, confidence, created_at
+         package_id, repo_id, source, signal, provenance, confidence, created_at
        )
-       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(provenance),
+       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal), $(provenance),
               scored.confidence, NOW()
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET

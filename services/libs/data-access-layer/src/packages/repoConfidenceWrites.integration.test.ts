@@ -152,7 +152,7 @@ describe.skipIf(!HAVE_DB)('package_repos write and rescore policy', () => {
       const link = await storedLink(githubRepoId)
       const expected: { confidence: number } = await qx.selectOne(
         `SELECT package_repo_confidence(
-           pr.source, p.ecosystem, pr.provenance,
+           pr.source, p.ecosystem, pr.signal, pr.provenance,
            r.archived, r.is_fork, r.disabled, r.host, false, pr.repo_id
          )::float8 AS confidence
            FROM package_repos pr
