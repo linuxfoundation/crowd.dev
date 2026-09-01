@@ -316,6 +316,11 @@ class Permissions {
         id: 'categoryRead',
         allowedRoles: [roles.admin, roles.projectAdmin, roles.readonly],
       },
+
+      projectCatalogEdit: {
+        id: 'projectCatalogEdit',
+        allowedRoles: [roles.admin],
+      },
     }
   }
 

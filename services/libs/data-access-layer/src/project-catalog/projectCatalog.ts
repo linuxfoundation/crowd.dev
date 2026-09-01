@@ -360,6 +360,53 @@ export async function upsertProjectCatalog(
   )
 }
 
+export async function upsertProjectCatalogManualAction(
+  qx: QueryExecutor,
+  data: { projectSlug: string; repoName: string; repoUrl: string; action: ProjectCatalogAction },
+): Promise<IDbProjectCatalog> {
+  return qx.selectOne(
+    `
+    INSERT INTO "projectCatalog" (
+      "projectSlug",
+      "repoName",
+      "repoUrl",
+      "source",
+      "action",
+      "createdAt",
+      "updatedAt",
+      "syncedAt"
+    )
+    VALUES (
+      $(projectSlug),
+      $(repoName),
+      $(repoUrl),
+      'manual',
+      $(action),
+      NOW(),
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT ("repoUrl") DO UPDATE SET
+      "projectSlug" = EXCLUDED."projectSlug",
+      "repoName" = EXCLUDED."repoName",
+      "source" = 'manual',
+      "action" = EXCLUDED."action",
+      "onboardedAt" = CASE
+        WHEN EXCLUDED."action" = 'onboard' THEN NULL
+        ELSE "projectCatalog"."onboardedAt"
+      END,
+      "onboardingError" = CASE
+        WHEN EXCLUDED."action" = 'onboard' THEN NULL
+        ELSE "projectCatalog"."onboardingError"
+      END,
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    data,
+  )
+}
+
 export async function bulkUpsertProjectCatalog(
   qx: QueryExecutor,
   items: IDbProjectCatalogCreate[],
