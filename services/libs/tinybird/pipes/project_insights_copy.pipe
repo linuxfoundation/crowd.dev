@@ -262,8 +262,8 @@ SQL >
         toUInt8(round(hv2.maintainerHealthScoreV2)) AS maintainerHealthScoreV2,
         toUInt8(round(hv2.securitySupplyChainScoreV2)) AS securitySupplyChainScoreV2,
         toUInt8(round(hv2.developmentActivityScoreV2)) AS developmentActivityScoreV2,
-        hv2.coveredCategoryCount AS coveredCategoryCount,
-        hv2.healthMaxScore AS healthMaxScore
+        if(base.slug = 'korg', NULL, hv2.coveredCategoryCount) AS coveredCategoryCount,
+        if(base.slug = 'korg', NULL, hv2.healthMaxScore) AS healthMaxScore
     FROM project_insights_copy_base_projects AS base
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
