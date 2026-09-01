@@ -216,7 +216,7 @@ SQL >
             'concerning',
             'critical'
         ) AS healthLabel,
-        hv2.lifecycleLabelV2 AS lifecycleLabel,
+        if(base.status = 'archived', 'archived', hv2.lifecycleLabelV2) AS lifecycleLabel,
         hv2.impactScoreRaw AS impactScore,
         multiIf(
             hv2.impactScoreRaw IS NULL,
