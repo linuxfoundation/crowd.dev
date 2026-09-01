@@ -1,4 +1,4 @@
-import { CanonicalRepo } from '../utils/canonicalizeRepoUrl'
+import { ResolvedManifestRepo } from '../utils/resolveManifestRepo'
 
 export interface BatchResult {
   processed: number
@@ -25,6 +25,7 @@ export interface RubyGemsGemResponse {
   info?: string | null
   homepage_uri?: string | null
   source_code_uri?: string | null
+  bug_tracker_uri?: string | null
   licenses?: string[] | null
   downloads?: number
 }
@@ -46,7 +47,7 @@ export interface NormalizedRubyGemsPackage {
   description: string | null
   homepage: string | null
   declaredRepositoryUrl: string | null
-  repo: CanonicalRepo | null
+  resolvedRepo: ResolvedManifestRepo | null
   licenses: string[] | null
   licensesRaw: string | null
   latestVersion: string | null

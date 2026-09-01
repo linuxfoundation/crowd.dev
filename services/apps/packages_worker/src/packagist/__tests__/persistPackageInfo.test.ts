@@ -57,6 +57,7 @@ describe('persistPackagistPackageInfo', () => {
     mockUpdate.mockResolvedValue({
       id: '7',
       isCritical: true,
+      homepage: null,
       changedFields: ['packages.description'],
     })
     mockMaintainers.mockResolvedValue(['maintainers.display_name'])
@@ -78,7 +79,10 @@ describe('persistPackagistPackageInfo', () => {
     expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('downloadsLast30d')
     // canonicalized (lowercased) url + coarse host, linked with the manifest-declared convention
     expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
-    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', { source: 'declared' })
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', {
+      source: 'declared',
+      signal: 'primary',
+    })
     // any stale 'declared' link pointing at a different repo is pruned in the same pass
     expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '55')
     expect(mockMaintainers).toHaveBeenCalledWith(qx, '7', stats.maintainers, 'packagist')
@@ -96,30 +100,36 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('skips maintainers for a non-critical package but still links the repo', async () => {
-    mockUpdate.mockResolvedValue({ id: '8', isCritical: false, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '8', isCritical: false, homepage: null, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, stats)
 
     expect(mockMaintainers).not.toHaveBeenCalled()
     expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
-    expect(mockRepoLink).toHaveBeenCalledWith(qx, '8', '55', { source: 'declared' })
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '8', '55', {
+      source: 'declared',
+      signal: 'primary',
+    })
   })
 
   it('prunes a stale declared link when the repository URL switches to a different repo', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, homepage: null, changedFields: [] })
     mockRepoGet.mockResolvedValue({ id: '99', changedFields: [] })
     mockRepoRemove.mockResolvedValue(['package_repos.repo_id'])
 
     const result = await persistPackagistPackageInfo(qx, PURL, stats)
 
-    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '99', { source: 'declared' })
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '99', {
+      source: 'declared',
+      signal: 'primary',
+    })
     // old link (some other repo_id) removed, new one (99) kept
     expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '99')
     expect(result.changedFields).toContain('package_repos.repo_id')
   })
 
   it('reconciles a maintainer list that dropped to empty for a critical package', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
     mockMaintainers.mockResolvedValue(['package_maintainers.maintainer_id'])
 
     const result = await persistPackagistPackageInfo(qx, PURL, { ...stats, maintainers: [] })
@@ -131,7 +141,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('skips the repo link and clears any previously-declared one when there is no repository URL', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
     mockRepoRemove.mockResolvedValue(['package_repos.repo_id'])
 
     const result = await persistPackagistPackageInfo(qx, PURL, { ...stats, repositoryUrl: null })
@@ -143,8 +153,40 @@ describe('persistPackagistPackageInfo', () => {
     expect(result.changedFields).toContain('package_repos.repo_id')
   })
 
+  it('falls back to the stored homepage with a secondary signal when no repository URL is declared', async () => {
+    mockUpdate.mockResolvedValue({
+      id: '7',
+      isCritical: true,
+      homepage: 'https://github.com/Seldaek/monolog',
+      changedFields: [],
+    })
+
+    await persistPackagistPackageInfo(qx, PURL, { ...stats, repositoryUrl: null })
+
+    expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', {
+      source: 'declared',
+      signal: 'secondary',
+    })
+  })
+
+  it('rejects a homepage fallback that is not on a recognized VCS host', async () => {
+    mockUpdate.mockResolvedValue({
+      id: '7',
+      isCritical: true,
+      homepage: 'https://monolog.example.com/docs/intro',
+      changedFields: [],
+    })
+
+    await persistPackagistPackageInfo(qx, PURL, { ...stats, repositoryUrl: null })
+
+    expect(mockRepoGet).not.toHaveBeenCalled()
+    expect(mockRepoLink).not.toHaveBeenCalled()
+    expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7')
+  })
+
   it('skips the repo link and clears the stale one when the repository URL cannot be canonicalized', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, { ...stats, repositoryUrl: 'not-a-valid-url' })
 
@@ -154,7 +196,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('does not trust a canonicalized host outside the SCM allowlist (wiki/issue-tracker/registry URLs)', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, {
       ...stats,
@@ -173,6 +215,7 @@ describe('persistPackagistPackageInfo', () => {
     mockUpdate.mockResolvedValue({
       id: '7',
       isCritical: false,
+      homepage: null,
       changedFields: ['packages.description'],
     })
     mockRepoGet.mockResolvedValue({ id: '55', changedFields: ['repos.url', 'repos.host'] })
@@ -202,7 +245,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('strips NUL bytes from the description before writing (Postgres rejects them)', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, homepage: null, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, {
       ...stats,

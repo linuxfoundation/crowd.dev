@@ -184,6 +184,8 @@ export function collectPypiMaintainers(info: PyPiInfo): PypiPerson[] {
   return [...map.values()]
 }
 
+export type PypiRepositoryField = 'source' | 'homepage' | 'bug_tracker'
+
 export interface PypiFundingLink {
   type: string
   url: string
@@ -204,6 +206,7 @@ export function classifyProjectUrls(
 ): {
   homepage: string | null
   declaredRepositoryUrl: string | null
+  declaredRepositoryField: PypiRepositoryField | null
   fundingLinks: PypiFundingLink[]
 } {
   const entries = Object.entries(projectUrls ?? {}).map(
@@ -226,9 +229,18 @@ export function classifyProjectUrls(
     findByKey(/^code$/i) ??
     entries.find(([k, v]) => /source|repo|code|git/i.test(k) && REPO_HOST.test(v))?.[1] ??
     null
-  // Many projects only declare a Homepage that is itself the repo.
+  let declaredRepositoryField: PypiRepositoryField | null = declaredRepositoryUrl ? 'source' : null
+  // Many projects only declare a Homepage, or only a Bug Tracker, that is itself the repo.
   if (!declaredRepositoryUrl && homepage && REPO_HOST.test(homepage)) {
     declaredRepositoryUrl = homepage
+    declaredRepositoryField = 'homepage'
+  }
+  if (!declaredRepositoryUrl) {
+    const tracker = entries.find(([k, v]) => /bug|issue|tracker/i.test(k) && REPO_HOST.test(v))?.[1]
+    if (tracker) {
+      declaredRepositoryUrl = tracker
+      declaredRepositoryField = 'bug_tracker'
+    }
   }
 
   const seen = new Set<string>()
@@ -239,7 +251,7 @@ export function classifyProjectUrls(
     fundingLinks.push({ type: inferFundingType(v), url: v })
   }
 
-  return { homepage, declaredRepositoryUrl, fundingLinks }
+  return { homepage, declaredRepositoryUrl, declaredRepositoryField, fundingLinks }
 }
 
 export function parseKeywords(raw: string | null | undefined): string[] {

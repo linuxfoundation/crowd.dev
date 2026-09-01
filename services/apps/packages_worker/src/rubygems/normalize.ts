@@ -1,4 +1,4 @@
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import {
   NormalizedRubyGemsOwner,
@@ -22,7 +22,11 @@ export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRu
     description: nonEmpty(doc.info),
     homepage: nonEmpty(doc.homepage_uri),
     declaredRepositoryUrl,
-    repo: declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null,
+    resolvedRepo: resolveManifestRepo([
+      { field: 'source_code_uri', url: declaredRepositoryUrl },
+      { field: 'homepage_uri', url: doc.homepage_uri },
+      { field: 'bug_tracker_uri', url: doc.bug_tracker_uri },
+    ]),
     licenses,
     licensesRaw: licenses ? licenses.join(', ') : null,
     latestVersion: nonEmpty(doc.version),

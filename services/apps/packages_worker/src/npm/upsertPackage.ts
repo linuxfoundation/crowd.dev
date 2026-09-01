@@ -12,10 +12,11 @@ import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
   collectMaintainers,
-  extractRepo,
   isPrerelease,
   normalizeLicenses,
+  npmRepositoryField,
   parseNpmName,
+  resolveNpmRepo,
   versionLicense,
 } from './normalize'
 import type { FundingEntry, Packument } from './types'
@@ -36,9 +37,9 @@ export async function upsertPackage(
   const { namespace, name } = parseNpmName(raw)
   const licenses = normalizeLicenses(packument)
   const licensesRaw = typeof packument.license === 'string' ? packument.license : null
-  const declaredRepositoryUrl = rawRepoUrl(packument)
-  const repo = extractRepo(packument)
-  const repositoryUrl = repo?.url ?? null
+  const declaredRepositoryUrl = npmRepositoryField(packument)
+  const resolvedRepo = resolveNpmRepo(packument)
+  const repositoryUrl = resolvedRepo?.repo.url ?? null
   const versionEntries = Object.entries(packument.versions)
   const time = packument.time ?? {}
   const latestVersion = packument['dist-tags']?.latest ?? null
@@ -80,15 +81,18 @@ export async function upsertPackage(
     })
     pkgChanged.forEach((f) => changed.add(f))
 
-    if (repo) {
+    if (resolvedRepo) {
       const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
         t,
-        repo.url,
-        repo.host,
+        resolvedRepo.repo.url,
+        resolvedRepo.repo.host,
       )
       repoChanged.forEach((f) => changed.add(f))
 
-      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, { source: 'declared' })
+      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
+        source: 'declared',
+        signal: resolvedRepo.signal,
+      })
       linkChanged.forEach((f) => changed.add(f))
     }
 
@@ -117,12 +121,6 @@ export async function upsertPackage(
   })
 
   return { purl, changedFields: Array.from(changed) }
-}
-
-function rawRepoUrl(packument: Packument): string | null {
-  const repo = packument.repository
-  if (!repo) return null
-  return typeof repo === 'string' ? repo || null : repo.url || null
 }
 
 function extractFundingLinks(

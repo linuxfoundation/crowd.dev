@@ -6,6 +6,7 @@ import {
   upsertPypiPackage,
   upsertPypiVersions,
 } from '@crowd/data-access-layer/src/packages'
+import type { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
@@ -37,11 +38,11 @@ export async function upsertProject(
     `https://pypi.org/project/${pypiName}/`
   const description = info.summary?.trim() ? info.summary.trim() : null
 
-  const { homepage, declaredRepositoryUrl, fundingLinks } = classifyProjectUrls(
-    info.project_urls,
-    info.home_page,
-  )
+  const { homepage, declaredRepositoryUrl, declaredRepositoryField, fundingLinks } =
+    classifyProjectUrls(info.project_urls, info.home_page)
   const repo = declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null
+  const repoSignal: PackageRepoSignal =
+    declaredRepositoryField === 'source' ? 'primary' : 'secondary'
   const { licenses, licensesRaw } = resolvePypiLicenses(info)
   const keywords = parseKeywords(info.keywords)
   const maintainers = collectPypiMaintainers(info)
@@ -86,7 +87,10 @@ export async function upsertProject(
         repo.host,
       )
       repoChanged.forEach((f) => changed.add(f))
-      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, { source: 'declared' })
+      const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
+        source: 'declared',
+        signal: repoSignal,
+      })
       linkChanged.forEach((f) => changed.add(f))
     }
 
