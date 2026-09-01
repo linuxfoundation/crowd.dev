@@ -2,8 +2,8 @@ DESCRIPTION >
     - Fast, small copy pipe for project-count and average health-score aggregation.
     - Scans ONLY insights_projects_populated_ds (no activity tables, no massive joins).
     - Produces projectCount and avgHealthScore per collection slug.
-    - Runs after all per-bucket contributor copy pipes have completed (all run in 2:05-2:50 window).
-    - Scheduled at 3:00 UTC to clear after all 10 bucket pipes finish, giving a 10-min safety margin.
+    - Runs after all per-bucket contributor copy pipes have completed (all run in 5:05-5:50 window).
+    - Scheduled at 6:00 UTC to clear after all 10 bucket pipes finish, giving a 10-min safety margin.
     - COPY_MODE replace: one row per collection per copy run (idempotent daily rebuild).
 
 TAGS "Insights, Widget", "Collection"
@@ -12,25 +12,42 @@ NODE collection_insights_aggregate_projects_aggregated
 DESCRIPTION >
     Aggregates project counts and health scores per collection from insights_projects_populated_ds.
     Uses same "onboarded" definition as original logic: projects with organizationCount > 0 OR contributorCount > 0.
+    Averages healthScoreV2 (not legacy healthScore) to agree with the "Unavailable" state
+    shown elsewhere, which also gates on healthScoreV2 IS NULL (IN-1257).
 
 SQL >
     SELECT
         collectionSlug,
         count(distinct projectId) as projectCount,
         round(
-            avg(if(NOT ((organizationCount = 0) AND (contributorCount = 0)), healthScore, NULL))
+            avg(
+                if(
+                    NOT ((organizationCount = 0) AND (contributorCount = 0))
+                    AND healthScoreV2 IS NOT NULL,
+                    healthScoreV2,
+                    NULL
+                )
+            )
         ) as avgHealthScore,
         now() as updatedAt
     FROM
         (
             SELECT
-                id as projectId,
-                healthScore,
-                organizationCount,
-                contributorCount,
-                arrayJoin(collectionsSlugs) as collectionSlug
-            FROM insights_projects_populated_ds
-            WHERE enabled = 1
+                p.id as projectId,
+                pi.healthScoreV2 as healthScoreV2,
+                p.organizationCount,
+                p.contributorCount,
+                arrayJoin(p.collectionsSlugs) as collectionSlug
+            FROM insights_projects_populated_ds p
+            LEFT JOIN
+                (
+                    SELECT id, any (healthScoreV2) as healthScoreV2
+                    FROM project_insights_copy_ds
+                    WHERE type = 'project'
+                    GROUP BY id
+                ) pi
+                ON pi.id = p.id
+            WHERE p.enabled = 1
         )
     GROUP BY collectionSlug
 
