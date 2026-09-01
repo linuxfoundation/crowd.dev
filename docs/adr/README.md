@@ -28,6 +28,7 @@ Use the `/adr` skill in Claude Code to record new ADRs or query past decisions.
 | [ADR-0019](./0019-docker-builder-runner-libc.md)               | Same libc in Docker builder and runner                                                               | accepted | 2026-08-27 |
 | [ADR-0020](./0020-package-repo-confidence-scoring.md)          | Deterministic package→repo confidence scoring                                                        | accepted | 2026-09-01 |
 | [ADR-0021](./0021-secondary-manifest-repository-signal.md)     | Secondary manifest repository signal                                                                 | accepted | 2026-09-01 |
+| [ADR-0022](./0022-package-repo-ownership-evidence.md)          | Ownership evidence for package→repo links                                                            | accepted | 2026-09-01 |
 
 ## Why ADRs?
 

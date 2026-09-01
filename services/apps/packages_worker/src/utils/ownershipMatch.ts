@@ -1,0 +1,67 @@
+import type { PackageRepoOwnershipMatch } from '@crowd/data-access-layer/src/packages/repoConfidence'
+
+import type { CanonicalRepo } from './canonicalizeRepoUrl'
+
+export interface OwnershipEvidence {
+  // Registry namespace: npm scope, Maven groupId, packagist vendor, ... — null when the
+  // ecosystem has no namespace concept (cargo, rubygems, nuget).
+  namespace?: string | null
+  maintainers?: Array<string | null | undefined>
+  repoOwner: string | null
+}
+
+const VANITY_SUFFIXES = ['-ai', '-io', '-team', '-labs', '-oss', '-dev']
+
+function normalizeIdentity(raw: string): string {
+  let s = raw.trim().toLowerCase()
+  if (!s) return ''
+  s = s.replace(/^@/, '')
+  for (const suffix of VANITY_SUFFIXES) {
+    if (s.endsWith(suffix) && s.length > suffix.length + 1) {
+      s = s.slice(0, -suffix.length)
+      break
+    }
+  }
+  return s.replace(/[^a-z0-9]/g, '')
+}
+
+// Reverse-DNS namespaces (Maven `org.apache.commons`, NuGet-style `Com.Foo.Bar`) carry the
+// owner in one of their segments, not in the whole string — `io.github.<owner>` even puts it
+// last. Compare every segment plus the joined form so `org.projectlombok` matches `projectlombok`
+// and `io.github.resilience4j` matches `resilience4j`.
+function namespaceCandidates(namespace: string): string[] {
+  const segments = namespace.split(/[./]/).filter(Boolean)
+  return [namespace, ...segments].map(normalizeIdentity).filter(Boolean)
+}
+
+function isSameIdentity(a: string, b: string): boolean {
+  if (!a || !b) return false
+  if (a === b) return true
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a]
+  return short.length >= 4 && long.startsWith(short)
+}
+
+/**
+ * Compares a package's registry identity against the owner of the repository it declares.
+ * `no_evidence` means the ecosystem exposed neither a namespace nor a maintainer identity —
+ * distinct from `unmatched`, which is a real mismatch and priced as such by the confidence
+ * scoring function.
+ */
+export function matchOwnership(evidence: OwnershipEvidence): PackageRepoOwnershipMatch {
+  const repoOwner = evidence.repoOwner ? normalizeIdentity(evidence.repoOwner) : ''
+  if (!repoOwner) return 'no_evidence'
+
+  const candidates = [
+    ...(evidence.namespace ? namespaceCandidates(evidence.namespace) : []),
+    ...(evidence.maintainers ?? []).map((m) => (m ? normalizeIdentity(m) : '')),
+  ].filter(Boolean)
+
+  if (candidates.length === 0) return 'no_evidence'
+  return candidates.some((c) => isSameIdentity(c, repoOwner)) ? 'matched' : 'unmatched'
+}
+
+// GitLab subgroups make the owner the first path segment, not the second-to-last one.
+export function repoOwnerFromCanonical(repo: CanonicalRepo): string | null {
+  const path = repo.url.replace(/^https?:\/\/[^/]+\//, '').split('/')
+  return path.length >= 2 ? path[0] : null
+}

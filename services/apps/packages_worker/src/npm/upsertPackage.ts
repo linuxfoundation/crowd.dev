@@ -9,6 +9,7 @@ import {
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
@@ -93,6 +94,11 @@ export async function upsertPackage(
       const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
         source: 'declared',
         signal: resolvedRepo.signal,
+        ownershipMatch: matchOwnership({
+          namespace,
+          maintainers: maintainers.map((m) => m.username),
+          repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
+        }),
       })
       linkChanged.forEach((f) => changed.add(f))
 

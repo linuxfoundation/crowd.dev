@@ -17,6 +17,7 @@ import {
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getNuGetConfig } from '../config'
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 
 import { fetchNuspec, fetchRegistration, fetchSearch } from './client'
 import { normalizeNuGetPackage } from './normalize'
@@ -144,6 +145,10 @@ async function processPackage(
         const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
           source: 'declared',
           signal: normalized.resolvedRepo.signal,
+          ownershipMatch: matchOwnership({
+            maintainers: [...normalized.owners, ...normalized.authors],
+            repoOwner: repoOwnerFromCanonical(normalized.resolvedRepo.repo),
+          }),
         })
         linkChanged.forEach((f) => changed.add(f))
 

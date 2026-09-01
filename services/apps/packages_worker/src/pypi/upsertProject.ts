@@ -11,6 +11,7 @@ import type { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/re
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
@@ -97,6 +98,10 @@ export async function upsertProject(
       const linkChanged = await upsertPackageRepo(t, pkgId, repoId, {
         source: 'declared',
         signal: repoSignal,
+        ownershipMatch: matchOwnership({
+          maintainers: maintainers.map((m) => m.username),
+          repoOwner: repoOwnerFromCanonical(repo),
+        }),
       })
       linkChanged.forEach((f) => changed.add(f))
 

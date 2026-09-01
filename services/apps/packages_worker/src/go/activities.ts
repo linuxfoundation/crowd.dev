@@ -11,6 +11,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 import { getGoConfig } from '../config'
 import { getPackagesDb } from '../db'
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 
 import { fetchStatus } from './pkgGoDevClient'
 import { fetchLatest } from './proxyClient'
@@ -27,6 +28,24 @@ export interface GoScanCursor {
 }
 
 type GoRow = { id: string; purl: string; name: string; declaredRepositoryUrl: string | null }
+
+const GO_VCS_MODULE_HOSTS = new Set([
+  'github.com',
+  'gitlab.com',
+  'bitbucket.org',
+  'codeberg.org',
+  'gitea.com',
+  'git.sr.ht',
+])
+
+// Only module paths rooted at a real VCS host carry the owner in their second segment.
+// Vanity paths (`k8s.io/client-go`, `gopkg.in/yaml.v2`) name the package, not the owner, so
+// deriving one there would produce a false `unmatched`.
+function goModuleOwner(name: string): string | null {
+  const segments = name.split('/')
+  if (segments.length < 2 || !GO_VCS_MODULE_HOSTS.has(segments[0].toLowerCase())) return null
+  return segments[1] || null
+}
 
 // Two independent purl-keyset cursors — one for critical packages, one for everything else —
 // each ordered/paginated purely by purl so WHERE and ORDER BY always match (no gaps, no
@@ -138,7 +157,13 @@ export async function enrichGoVersionsBatch(
         )
         changedFields.push(...repoChanged)
 
-        const linkChanged = await upsertPackageRepo(t, row.id, repoId, { source: 'declared' })
+        const linkChanged = await upsertPackageRepo(t, row.id, repoId, {
+          source: 'declared',
+          ownershipMatch: matchOwnership({
+            namespace: goModuleOwner(row.name),
+            repoOwner: repoOwnerFromCanonical(repoToLink),
+          }),
+        })
         changedFields.push(...linkChanged)
       }
 

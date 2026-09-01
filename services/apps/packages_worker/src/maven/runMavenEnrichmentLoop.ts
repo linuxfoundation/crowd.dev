@@ -17,6 +17,7 @@ import type { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/re
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
+import { OwnershipEvidence, matchOwnership } from '../utils/ownershipMatch'
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
@@ -57,7 +58,7 @@ type PackageRow = MavenPackageToSync
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // prettier-ignore
-export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>, signal: PackageRepoSignal = 'primary'): Promise<void> {
+export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>, signal: PackageRepoSignal = 'primary', evidence?: Omit<OwnershipEvidence, 'repoOwner'>): Promise<void> {
   if (!repositoryUrl) {
     const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
     removedFields.forEach((f) => changed?.add(f))
@@ -70,7 +71,8 @@ export async function writeRepoLink(qx: QueryExecutor, packageId: number, reposi
     return
   }
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal })
+  const ownershipMatch = matchOwnership({ ...evidence, repoOwner: parsed.owner })
+  const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal, ownershipMatch })
   repoChanged.forEach((f) => changed?.add(f))
   const removedFields = await removeDeclaredPackageRepo(qx, String(packageId), String(repoId))
   removedFields.forEach((f) => changed?.add(f))
@@ -352,7 +354,10 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         pmChanged.forEach((f) => changed.add(f))
       }
 
-      await writeRepoLink(t, packageId, repositoryUrl, changed, fallbackRepo ? 'secondary' : 'primary')
+      await writeRepoLink(t, packageId, repositoryUrl, changed, fallbackRepo ? 'secondary' : 'primary', {
+        namespace: groupId,
+        maintainers: allPeople.map((p) => p.username),
+      })
 
       await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
 

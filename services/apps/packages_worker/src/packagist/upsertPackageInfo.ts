@@ -9,6 +9,7 @@ import {
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { matchOwnership, repoOwnerFromCanonical } from '../utils/ownershipMatch'
 import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
@@ -77,6 +78,11 @@ export async function persistPackagistPackageInfo(
       const linkChanged = await upsertPackageRepo(t, id, repo.id, {
         source: 'declared',
         signal: resolvedRepo.signal,
+        ownershipMatch: matchOwnership({
+          namespace: stats.name.split('/')[0] || null,
+          maintainers: stats.maintainers.map((m) => m.username),
+          repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
+        }),
       })
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
