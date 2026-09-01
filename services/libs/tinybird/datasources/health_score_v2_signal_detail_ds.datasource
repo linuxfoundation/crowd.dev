@@ -10,7 +10,7 @@ DESCRIPTION >
     `responsivenessAvailable`, `medianPrResponseS`, `medianIssueResponseS`, `isGerrit`, `isExcluded`
     — see `health_score_v2_maintainer_ds` for definitions.
     - Security signals: `openVulnScore`, `openVulnAvailable`, `openCriticals`, `openHighs`, `openModerates`,
-    `scorecardScorePts`, `scorecardAvailable`, `scorecardScore`, `securityPracticesScore`,
+    `openUnknowns`, `scorecardScorePts`, `scorecardAvailable`, `scorecardScore`, `securityPracticesScore`,
     `securityPracticesAvailable`, `securityPolicyEnabled`, `branchProtectionEnabled`,
     `branchProtectionRequiredReviews`, `branchProtectionRequiresStatusChecks`,
     `branchProtectionAllowsForcePush`, `dependencyHealthScore`, `dependencyHealthAvailable`,
@@ -43,6 +43,7 @@ SCHEMA >
     `openCriticals` Nullable(UInt64),
     `openHighs` Nullable(UInt64),
     `openModerates` Nullable(UInt64),
+    `openUnknowns` Nullable(UInt64),
     `scorecardScorePts` Nullable(UInt8),
     `scorecardAvailable` Nullable(UInt8),
     `scorecardScore` Nullable(String),

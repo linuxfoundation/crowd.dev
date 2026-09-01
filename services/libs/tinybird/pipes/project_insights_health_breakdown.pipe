@@ -37,6 +37,7 @@ SQL >
         openCriticals,
         openHighs,
         openModerates,
+        openUnknowns,
         scorecardScorePts,
         scorecardAvailable,
         scorecardScore,

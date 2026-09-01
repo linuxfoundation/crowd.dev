@@ -21,6 +21,10 @@ DESCRIPTION >
     now recovered via `* 8.0/7` scaling) distributed as openVuln +2, scorecard +1, practices +1
     (via 8.0/7), deps +2 → 12/8/8/7. Rescale factor is now 1.0 for fully-covered repos. Category
     max and Layer 2 weight unchanged.
+    - UNKNOWN/LOW severity blind spot fix (2026-08-31, IN-1255): `openModerates`'s predicate widened
+    from `severity = 'MEDIUM'` to `severity IN ('MEDIUM', 'LOW')`, and a new `openUnknowns` bucket
+    added (`severity NOT IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')`) so every open vuln lands in
+    exactly one bucket — previously LOW and UNKNOWN severities fell through every bucket entirely.
 
 NODE health_score_v2_security_calc
 SQL >
@@ -36,6 +40,7 @@ SQL >
         openCriticals,
         openHighs,
         openModerates,
+        openUnknowns,
         scorecardScorePts,
         scorecardAvailable,
         scorecardScore,
@@ -59,6 +64,7 @@ SQL >
                 openCriticals,
                 openHighs,
                 openModerates,
+                openUnknowns,
                 scorecardScorePts,
                 scorecardAvailable,
                 scorecardScore,
@@ -101,6 +107,7 @@ SQL >
                         vc.openCriticals AS openCriticals,
                         vc.openHighs AS openHighs,
                         vc.openModerates AS openModerates,
+                        vc.openUnknowns AS openUnknowns,
                         toUInt8(
                             multiIf(
                                 toFloat64OrZero(rd.scorecardScore) >= 7,
@@ -173,7 +180,13 @@ SQL >
                                 repoUrl,
                                 countIf(status = 'OPEN' AND severity = 'CRITICAL') AS openCriticals,
                                 countIf(status = 'OPEN' AND severity = 'HIGH') AS openHighs,
-                                countIf(status = 'OPEN' AND severity = 'MEDIUM') AS openModerates
+                                countIf(
+                                    status = 'OPEN' AND severity IN ('MEDIUM', 'LOW')
+                                ) AS openModerates,
+                                countIf(
+                                    status = 'OPEN'
+                                    AND severity NOT IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')
+                                ) AS openUnknowns
                             FROM vulnerabilities FINAL
                             GROUP BY repoUrl
                         ) AS vc

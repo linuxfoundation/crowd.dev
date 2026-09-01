@@ -39,6 +39,7 @@ SQL >
         s.openCriticals AS openCriticals,
         s.openHighs AS openHighs,
         s.openModerates AS openModerates,
+        s.openUnknowns AS openUnknowns,
         s.scorecardScorePts AS scorecardScorePts,
         s.scorecardAvailable AS scorecardAvailable,
         s.scorecardScore AS scorecardScore,

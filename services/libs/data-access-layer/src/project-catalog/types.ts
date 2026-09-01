@@ -1,4 +1,11 @@
-export type ProjectCatalogAction = 'auto' | 'evaluate' | 'onboard' | 'skip' | 'unsure' | 'error'
+export type ProjectCatalogAction =
+  | 'auto'
+  | 'evaluate'
+  | 'onboard'
+  | 'onboarded'
+  | 'skip'
+  | 'unsure'
+  | 'error'
 
 export interface IDbProjectCatalog {
   id: string

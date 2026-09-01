@@ -117,7 +117,11 @@ export async function findProjectCatalogPendingOnboarding(
     SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     FROM "projectCatalog"
     WHERE action = 'onboard' AND "onboardedAt" IS NULL
-    ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC, id ASC
+    ORDER BY
+      (source = 'manual') DESC NULLS LAST,
+      "lfCriticalityScore" DESC NULLS LAST,
+      "createdAt" ASC,
+      id ASC
     ${limit !== undefined ? 'LIMIT $(limit)' : ''}
     ${offset !== undefined ? 'OFFSET $(offset)' : ''}
     `,
@@ -336,7 +340,7 @@ export async function upsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'onboarded', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,
@@ -409,7 +413,7 @@ export async function bulkUpsertProjectCatalog(
       "repoName" = EXCLUDED."repoName",
       "source" = COALESCE(EXCLUDED."source", "projectCatalog"."source"),
       "action" = CASE
-        WHEN "projectCatalog"."action" IN ('onboard', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
+        WHEN "projectCatalog"."action" IN ('onboard', 'onboarded', 'skip', 'unsure', 'error') THEN "projectCatalog"."action"
         WHEN EXCLUDED.action = 'evaluate' THEN 'evaluate'
         ELSE "projectCatalog"."action"
       END,
