@@ -61,6 +61,7 @@ const es = {
     validation: {
       message: 'Ocurrió un error',
     },
+    alreadyOnboarded: 'El repositorio {0} ya está incorporado o la incorporación está en curso.',
   },
   email: {
     error: 'El proveedor de correo electrónico no está configurado.',

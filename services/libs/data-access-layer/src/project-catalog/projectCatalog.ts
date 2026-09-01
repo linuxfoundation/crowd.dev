@@ -363,8 +363,8 @@ export async function upsertProjectCatalog(
 export async function upsertProjectCatalogManualAction(
   qx: QueryExecutor,
   data: { projectSlug: string; repoName: string; repoUrl: string; action: ProjectCatalogAction },
-): Promise<IDbProjectCatalog> {
-  return qx.selectOne(
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
     `
     INSERT INTO "projectCatalog" (
       "projectSlug",
@@ -389,8 +389,12 @@ export async function upsertProjectCatalogManualAction(
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "source" = 'manual',
+      "source" = COALESCE("projectCatalog"."source", 'manual'),
       "action" = EXCLUDED."action",
+      "evaluatedAt" = CASE
+        WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
+        ELSE "projectCatalog"."evaluatedAt"
+      END,
       "onboardedAt" = CASE
         WHEN EXCLUDED."action" = 'onboard' THEN NULL
         ELSE "projectCatalog"."onboardedAt"
@@ -401,6 +405,16 @@ export async function upsertProjectCatalogManualAction(
       END,
       "updatedAt" = NOW(),
       "syncedAt" = NOW()
+    WHERE (
+        "projectCatalog"."onboardedAt" IS NULL
+        AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded')
+      )
+      -- automatic_onboarding_worker's workflowExecutionTimeout caps a legitimate run at 6h;
+      -- past that a stuck 'onboard' row is safe to reclaim manually.
+      OR (
+        "projectCatalog"."action" = 'onboard'
+        AND "projectCatalog"."updatedAt" < NOW() - INTERVAL '8 hours'
+      )
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     data,

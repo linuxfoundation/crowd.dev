@@ -66,6 +66,7 @@ const ptBR = {
     validation: {
       message: 'Ocorreu um erro',
     },
+    alreadyOnboarded: 'O repositório {0} já foi integrado ou a integração está em andamento.',
   },
 
   email: {
