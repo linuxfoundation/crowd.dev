@@ -23,7 +23,7 @@ const evaluateActivities = proxyActivities<typeof activities>({
 
 const DEFAULT_PRIORITY_CONFIG: IPriorityConfig = {
   evaluateLimit: 50,
-  sourcePriority: ['insights-discussions'],
+  sourcePriority: ['manual', 'insights-discussions'],
 }
 
 export async function evaluateProjects(input: IEvaluateProjectsInput = {}): Promise<void> {

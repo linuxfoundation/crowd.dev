@@ -10,7 +10,7 @@ const EVALUATION_ARGS: IEvaluateProjectsInput = {
   batchSize: 50,
   priorityConfig: {
     evaluateLimit: 50,
-    sourcePriority: ['insights-discussions'],
+    sourcePriority: ['manual', 'insights-discussions'],
   },
 }
 

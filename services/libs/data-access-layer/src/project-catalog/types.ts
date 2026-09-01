@@ -1,11 +1,14 @@
-export type ProjectCatalogAction =
-  | 'auto'
-  | 'evaluate'
-  | 'onboard'
-  | 'onboarded'
-  | 'skip'
-  | 'unsure'
-  | 'error'
+export const PROJECT_CATALOG_ACTIONS = [
+  'auto',
+  'evaluate',
+  'onboard',
+  'onboarded',
+  'skip',
+  'unsure',
+  'error',
+] as const
+
+export type ProjectCatalogAction = (typeof PROJECT_CATALOG_ACTIONS)[number]
 
 export interface IDbProjectCatalog {
   id: string

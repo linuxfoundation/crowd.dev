@@ -98,7 +98,10 @@ export async function findProjectCatalogPendingEvaluation(
     SELECT ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     FROM "projectCatalog"
     WHERE action = 'evaluate'
-    ORDER BY "lfCriticalityScore" DESC NULLS LAST, "createdAt" ASC
+    ORDER BY
+      (source = 'manual') DESC NULLS LAST,
+      "lfCriticalityScore" DESC NULLS LAST,
+      "createdAt" ASC
     ${limit !== undefined ? 'LIMIT $(limit)' : ''}
     ${offset !== undefined ? 'OFFSET $(offset)' : ''}
     `,
@@ -360,6 +363,59 @@ export async function upsertProjectCatalog(
   )
 }
 
+export async function upsertProjectCatalogManualAction(
+  qx: QueryExecutor,
+  data: { projectSlug: string; repoName: string; repoUrl: string; action: ProjectCatalogAction },
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    INSERT INTO "projectCatalog" (
+      "projectSlug",
+      "repoName",
+      "repoUrl",
+      "source",
+      "action",
+      "createdAt",
+      "updatedAt",
+      "syncedAt"
+    )
+    VALUES (
+      $(projectSlug),
+      $(repoName),
+      $(repoUrl),
+      'manual',
+      $(action),
+      NOW(),
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT ("repoUrl") DO UPDATE SET
+      "projectSlug" = EXCLUDED."projectSlug",
+      "repoName" = EXCLUDED."repoName",
+      "source" = 'manual',
+      "action" = EXCLUDED."action",
+      "evaluatedAt" = CASE
+        WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
+        ELSE "projectCatalog"."evaluatedAt"
+      END,
+      "onboardedAt" = CASE
+        WHEN EXCLUDED."action" = 'onboard' THEN NULL
+        ELSE "projectCatalog"."onboardedAt"
+      END,
+      "onboardingError" = CASE
+        WHEN EXCLUDED."action" = 'onboard' THEN NULL
+        ELSE "projectCatalog"."onboardingError"
+      END,
+      "updatedAt" = NOW(),
+      "syncedAt" = NOW()
+    WHERE "projectCatalog"."onboardedAt" IS NULL
+      AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded')
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    data,
+  )
+}
+
 export async function bulkUpsertProjectCatalog(
   qx: QueryExecutor,
   items: IDbProjectCatalogCreate[],
@@ -511,6 +567,31 @@ export async function markProjectCatalogOnboardingFailed(
     WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
     `,
     { id, reason },
+  )
+}
+
+// Guarded like markProjectCatalogOnboardingFailed above: a manual request
+// (POST /project-catalog) may have moved the row out of 'evaluate' while this
+// evaluation was in flight — in that case the manual action wins and this
+// write is a no-op.
+export async function finalizeProjectCatalogEvaluation(
+  qx: QueryExecutor,
+  id: string,
+  data: { action: ProjectCatalogAction; evaluationResult: string; evaluationReason: string },
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    UPDATE "projectCatalog"
+    SET
+      "action" = $(action),
+      "evaluationResult" = $(evaluationResult),
+      "evaluationReason" = $(evaluationReason),
+      "evaluatedAt" = NOW(),
+      "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { id, ...data },
   )
 }
 
