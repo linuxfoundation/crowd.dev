@@ -13,6 +13,7 @@ DESCRIPTION >
     - Response: Project and repository records with insights metrics
     - `healthScoreV2`, `healthLabel`, `lifecycleLabel`, `impactScore`, `impactLabel` are the Akrites-methodology fields (see `project_insights_copy_ds` for band definitions); may be null when the record has no linked package data. `healthScoreV2` is distinct from the legacy `healthScore` field.
     - `maintainerHealthScoreV2` (0-40), `securitySupplyChainScoreV2` (0-35), `developmentActivityScoreV2` (0-25) are the Health Score v2 category breakdown (IN-1212). For project records: independent medians (`quantileExact(0.5)`) over the project's enabled, non-excluded repos; `healthScoreV2` is their sum (null-guarded per IN-1248). For repo records: per-repo values passed through from `health_score_v2_repo_copy_ds`; they sum to `healthScoreV2` only when all three categories are available; missing categories are imputed at the population median rate (IN-1249). Null when the record has no value for that category.
+    - `coveredCategoryCount` (0-3) and `healthMaxScore` (60/65/75/100, IN-1262) describe a partial Health Score v2: `healthMaxScore` is the capped denominator when exactly one category is missing (2 of 3 covered), 100 when all 3 are covered, and null when fewer than 2 are covered (same guard as `healthScoreV2`).
 
 TAGS "Insights, Widget", "Project", "Repository"
 
@@ -57,7 +58,9 @@ SQL >
         impactLabel,
         maintainerHealthScoreV2,
         securitySupplyChainScoreV2,
-        developmentActivityScoreV2
+        developmentActivityScoreV2,
+        coveredCategoryCount,
+        healthMaxScore
     FROM project_insights_copy_ds
     WHERE
         1 = 1
