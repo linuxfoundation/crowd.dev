@@ -389,7 +389,7 @@ export async function upsertProjectCatalogManualAction(
     ON CONFLICT ("repoUrl") DO UPDATE SET
       "projectSlug" = EXCLUDED."projectSlug",
       "repoName" = EXCLUDED."repoName",
-      "source" = COALESCE("projectCatalog"."source", 'manual'),
+      "source" = 'manual',
       "action" = EXCLUDED."action",
       "evaluatedAt" = CASE
         WHEN EXCLUDED."action" IN ('auto', 'evaluate') THEN NULL
@@ -405,16 +405,8 @@ export async function upsertProjectCatalogManualAction(
       END,
       "updatedAt" = NOW(),
       "syncedAt" = NOW()
-    WHERE (
-        "projectCatalog"."onboardedAt" IS NULL
-        AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded')
-      )
-      -- automatic_onboarding_worker's workflowExecutionTimeout caps a legitimate run at 6h;
-      -- past that a stuck 'onboard' row is safe to reclaim manually.
-      OR (
-        "projectCatalog"."action" = 'onboard'
-        AND "projectCatalog"."updatedAt" < NOW() - INTERVAL '8 hours'
-      )
+    WHERE "projectCatalog"."onboardedAt" IS NULL
+      AND "projectCatalog"."action" NOT IN ('onboard', 'onboarded')
     RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
     `,
     data,
@@ -572,6 +564,31 @@ export async function markProjectCatalogOnboardingFailed(
     WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
     `,
     { id, reason },
+  )
+}
+
+// Guarded like markProjectCatalogOnboardingFailed above: a manual request
+// (POST /project-catalog) may have moved the row out of 'evaluate' while this
+// evaluation was in flight — in that case the manual action wins and this
+// write is a no-op.
+export async function finalizeProjectCatalogEvaluation(
+  qx: QueryExecutor,
+  id: string,
+  data: { action: ProjectCatalogAction; evaluationResult: string; evaluationReason: string },
+): Promise<IDbProjectCatalog | null> {
+  return qx.selectOneOrNone(
+    `
+    UPDATE "projectCatalog"
+    SET
+      "action" = $(action),
+      "evaluationResult" = $(evaluationResult),
+      "evaluationReason" = $(evaluationReason),
+      "evaluatedAt" = NOW(),
+      "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'evaluate' AND "evaluatedAt" IS NULL
+    RETURNING ${prepareSelectColumns(PROJECT_CATALOG_COLUMNS)}
+    `,
+    { id, ...data },
   )
 }
 
