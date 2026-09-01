@@ -14,6 +14,7 @@ interface MemberOrganization {
   dateEnd?: string
   affiliationOverride?: {
     isPrimaryWorkExperience?: boolean
+    allowAffiliation?: boolean
   }
 }
 
@@ -37,41 +38,61 @@ interface MemberSegmentData {
   }>
 }
 
+const OPEN_END = Date.parse('9999-12-31')
+
+const rangeMs = (org: MemberOrganization) => {
+  if (!org.dateStart) return 0
+  const end = org.dateEnd ? new Date(org.dateEnd).getTime() : OPEN_END
+  return end - new Date(org.dateStart).getTime()
+}
+
 export const sortActiveOrganizations = (
   activeOrgs: MemberOrganization[],
   organizationsInfo: OrganizationInfo[],
 ): MemberOrganization[] => {
-  return activeOrgs.sort((a, b) => {
+  return [...activeOrgs].sort((a, b) => {
     if (!a || !b) return 0
 
-    // First priority: isPrimaryWorkExperience
+    // First priority: allowed over blocked
+    const aAllowed = a.affiliationOverride?.allowAffiliation !== false
+    const bAllowed = b.affiliationOverride?.allowAffiliation !== false
+    if (aAllowed !== bAllowed) return aAllowed ? -1 : 1
+
+    // Second priority: isPrimaryWorkExperience
     const aPrimary = a.affiliationOverride?.isPrimaryWorkExperience === true
     const bPrimary = b.affiliationOverride?.isPrimaryWorkExperience === true
-
     if (aPrimary !== bPrimary) return aPrimary ? -1 : 1
 
-    // Second priority: has dateStart
+    // Third priority: has dateStart
     const aHasDate = !!a.dateStart
     const bHasDate = !!b.dateStart
-
     if (aHasDate !== bHasDate) return aHasDate ? -1 : 1
 
-    // Third priority: createdAt and alphabetical
-    if (!a.dateStart && !b.dateStart) {
-      const aOrgInfo = organizationsInfo.find((odn) => odn.id === a.organizationId)
-      const bOrgInfo = organizationsInfo.find((odn) => odn.id === b.organizationId)
-
-      const aCreatedAt = aOrgInfo?.createdAt ? new Date(aOrgInfo.createdAt).getTime() : 0
-      const bCreatedAt = bOrgInfo?.createdAt ? new Date(bOrgInfo.createdAt).getTime() : 0
-
-      if (aCreatedAt !== bCreatedAt) return bCreatedAt - aCreatedAt
-
-      const aName = (aOrgInfo?.displayName || '').toLowerCase()
-      const bName = (bOrgInfo?.displayName || '').toLowerCase()
-      return aName.localeCompare(bName)
+    // Fourth priority: longer date range, then id
+    if (aHasDate && bHasDate) {
+      const rangeDiff = rangeMs(b) - rangeMs(a)
+      if (rangeDiff !== 0) return rangeDiff
+      return a.id.localeCompare(b.id)
     }
 
-    return 0
+    // Undated: createdAt, then name, then id
+    const aOrgInfo = organizationsInfo.find((odn) => odn.id === a.organizationId)
+    const bOrgInfo = organizationsInfo.find((odn) => odn.id === b.organizationId)
+
+    const aCreatedAt = aOrgInfo?.createdAt ? new Date(aOrgInfo.createdAt).getTime() : 0
+    const bCreatedAt = bOrgInfo?.createdAt ? new Date(bOrgInfo.createdAt).getTime() : 0
+    if (aCreatedAt !== bCreatedAt) return bCreatedAt - aCreatedAt
+
+    const nameDiff = (aOrgInfo?.displayName || '').localeCompare(
+      bOrgInfo?.displayName || '',
+      undefined,
+      {
+        sensitivity: 'base',
+      },
+    )
+    if (nameDiff !== 0) return nameDiff
+
+    return a.id.localeCompare(b.id)
   })
 }
 

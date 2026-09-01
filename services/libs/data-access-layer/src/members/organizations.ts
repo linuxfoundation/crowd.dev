@@ -189,18 +189,19 @@ export async function fetchManyMemberOrgs(
   qx: QueryExecutor,
   memberIds: string[],
 ): Promise<{ memberId: string; organizations: IMemberOrganization[] }[]> {
+  // Include affiliation override flags. Order by id so equal createdAt stays stable.
   return qx.select(
     `
       SELECT
         mo."memberId",
         JSONB_AGG(
           TO_JSONB(mo) || JSONB_BUILD_OBJECT(
-            'affiliationOverride', 
-            CASE WHEN moao."isPrimaryWorkExperience" IS NOT NULL 
-                 THEN JSONB_BUILD_OBJECT('isPrimaryWorkExperience', moao."isPrimaryWorkExperience")
-                 ELSE NULL 
-            END
-          ) ORDER BY mo."createdAt"
+            'affiliationOverride',
+            JSONB_BUILD_OBJECT(
+              'isPrimaryWorkExperience', COALESCE(moao."isPrimaryWorkExperience", false),
+              'allowAffiliation', COALESCE(moao."allowAffiliation", true)
+            )
+          ) ORDER BY mo."createdAt", mo.id
         ) AS "organizations"
       FROM "memberOrganizations" mo
       LEFT JOIN "memberOrganizationAffiliationOverrides" moao 
