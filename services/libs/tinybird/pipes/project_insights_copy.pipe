@@ -119,6 +119,12 @@ DESCRIPTION >
     - maintainerHealthScoreV2 / securitySupplyChainScoreV2 / developmentActivityScoreV2 (IN-1212):
     independent per-category medians (`quantileExact(0.5)`) over repos where that category is non-NULL.
     NULL when every repo is NULL for a category.
+    - coveredCategoryCount / healthMaxScore (IN-1262): coveredCategoryCount is the count (0-3) of the
+    same category presence checks used by the healthScoreV2 guard above. healthMaxScore is the capped
+    denominator for a partial score: NULL when fewer than 2 categories are covered (mirrors the
+    healthScoreV2 guard), 100 when all 3 are covered, otherwise 100 minus the weight of the one missing
+    category (Maintainer Health 40 / Security & Supply Chain 35 / Development Activity 25) — 60, 65, or
+    75 respectively.
 
 SQL >
     SELECT
@@ -133,6 +139,30 @@ SQL >
             + coalesce(quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2), 0)
             + coalesce(quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2), 0)
         ) AS healthScoreV2,
+        (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
+        + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
+        + (
+            quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL
+        ) AS coveredCategoryCount,
+        multiIf(
+            (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL)
+            < 2,
+            NULL,
+            (quantileExactOrNull(0.5)(hv2.maintainerHealthScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.securitySupplyChainScoreV2) IS NOT NULL)
+            + (quantileExactOrNull(0.5)(hv2.developmentActivityScoreV2) IS NOT NULL)
+            = 3,
+            100,
+            quantileExactOrNull(0.5)
+            (hv2.maintainerHealthScoreV2) IS NULL,
+            60,
+            quantileExactOrNull(0.5)
+            (hv2.securitySupplyChainScoreV2) IS NULL,
+            65,
+            75
+        ) AS healthMaxScore,
         if(
             empty(groupArray(hv2.lifecycleLabelV2)),
             NULL,
@@ -231,7 +261,9 @@ SQL >
         ) AS impactLabel,
         toUInt8(round(hv2.maintainerHealthScoreV2)) AS maintainerHealthScoreV2,
         toUInt8(round(hv2.securitySupplyChainScoreV2)) AS securitySupplyChainScoreV2,
-        toUInt8(round(hv2.developmentActivityScoreV2)) AS developmentActivityScoreV2
+        toUInt8(round(hv2.developmentActivityScoreV2)) AS developmentActivityScoreV2,
+        hv2.coveredCategoryCount AS coveredCategoryCount,
+        hv2.healthMaxScore AS healthMaxScore
     FROM project_insights_copy_base_projects AS base
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
@@ -351,7 +383,9 @@ SQL >
         ) AS impactLabel,
         hv2.maintainerHealthScoreV2 AS maintainerHealthScoreV2,
         hv2.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
-        hv2.developmentActivityScoreV2 AS developmentActivityScoreV2
+        hv2.developmentActivityScoreV2 AS developmentActivityScoreV2,
+        CAST(NULL AS Nullable(UInt8)) AS coveredCategoryCount,
+        CAST(NULL AS Nullable(UInt8)) AS healthMaxScore
     FROM project_insights_copy_repo_base AS base
     LEFT JOIN repo_health_score_copy_ds AS hs ON base.repoUrl = hs.channel
     LEFT JOIN project_insights_copy_repo_period_metrics AS rm ON base.repoUrl = rm.channel

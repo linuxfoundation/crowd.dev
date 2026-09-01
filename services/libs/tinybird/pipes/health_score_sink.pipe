@@ -11,6 +11,8 @@ SQL >
         if(isNaN(hs.popularityPercentage), null, hs.popularityPercentage) as popularityPercentage,
         if(isNaN(hs.developmentPercentage), null, hs.developmentPercentage) as developmentPercentage,
         p.healthScoreV2 as overall_score_v2,
+        p.coveredCategoryCount as covered_category_count_v2,
+        p.healthMaxScore as health_max_score_v2,
         toStartOfDay(now()) as date
     FROM health_score_copy_ds AS hs
     LEFT JOIN project_insights_copy_ds AS p ON hs.id = p.id AND p.type = 'project'

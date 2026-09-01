@@ -40,6 +40,8 @@ DESCRIPTION >
     - `maintainerHealthScoreV2` column (0-40): for project records, median (`quantileExact(0.5)`) of per-repo values across the project's enabled, non-excluded repos; for repo records, per-repo value from `health_score_v2_repo_copy_ds`. Null when no value is available.
     - `securitySupplyChainScoreV2` column (0-35): same convention as `maintainerHealthScoreV2`. Null when no value is available.
     - `developmentActivityScoreV2` column (0-25): same convention as `maintainerHealthScoreV2`. Null when no value is available.
+    - `coveredCategoryCount` column (0-3) is the count of the three health-v2 categories (maintainer, security, development) with a non-null score. Project records only; null for repo records.
+    - `healthMaxScore` column is the capped denominator for a partial `healthScoreV2` (e.g. 65 out of 100 when Security & Supply Chain is the one missing category). Null when `coveredCategoryCount` < 2, 100 when all 3 categories are covered. Project records only; null for repo records.
 
 TAGS "Project insights", "Metrics"
 
@@ -81,7 +83,9 @@ SCHEMA >
     `impactLabel` Nullable(String),
     `maintainerHealthScoreV2` Nullable(UInt8),
     `securitySupplyChainScoreV2` Nullable(UInt8),
-    `developmentActivityScoreV2` Nullable(UInt8)
+    `developmentActivityScoreV2` Nullable(UInt8),
+    `coveredCategoryCount` Nullable(UInt8),
+    `healthMaxScore` Nullable(UInt8)
 
 ENGINE MergeTree
 ENGINE_SORTING_KEY type, id
