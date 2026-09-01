@@ -61,6 +61,7 @@ export async function onboardAndUpdateProject(project: IDbProjectCatalog): Promi
   }
 
   await updateProjectCatalog(qx, project.id, {
+    action: 'onboarded',
     onboardedAt: new Date().toISOString(),
     onboardingError: null,
   })
