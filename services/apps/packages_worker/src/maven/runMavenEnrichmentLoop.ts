@@ -12,9 +12,11 @@ import {
   upsertRepo,
   upsertVersionsBatch,
 } from '@crowd/data-access-layer'
+import type { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { getMavenConfig } from '../config'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 
 import { extractArtifact, getPomCacheStats, normalizeScmUrl } from './extract'
 import { isMavenFetchError, resolveVersionsList } from './metadata'
@@ -54,12 +56,12 @@ type PackageRow = MavenPackageToSync
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // prettier-ignore
-export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>): Promise<void> {
+export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>, signal: PackageRepoSignal = 'primary'): Promise<void> {
   if (!repositoryUrl) return
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) return
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared' })
+  const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal })
   repoChanged.forEach((f) => changed?.add(f))
 }
 
@@ -261,7 +263,11 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
     return { status: 'error' }
   }
 
-  const repositoryUrl = normalizeScmUrl(result.scmUrl)
+  const scmRepositoryUrl = normalizeScmUrl(result.scmUrl)
+  const fallbackRepo = scmRepositoryUrl
+    ? null
+    : resolveManifestRepo([{ field: 'url', url: result.homepageUrl, signal: 'secondary' }])
+  const repositoryUrl = scmRepositoryUrl ?? fallbackRepo?.repo.url ?? null
 
   await withDeadlockRetry(() =>
     qx.tx(async (t: QueryExecutor) => {
@@ -335,7 +341,7 @@ async function processCriticalPackage(qx: QueryExecutor, pkg: PackageRow, forceF
         pmChanged.forEach((f) => changed.add(f))
       }
 
-      await writeRepoLink(t, packageId, repositoryUrl, changed)
+      await writeRepoLink(t, packageId, repositoryUrl, changed, fallbackRepo ? 'secondary' : 'primary')
 
       await logAuditFieldChange(t, 'maven', pkg.purl, Array.from(changed))
 

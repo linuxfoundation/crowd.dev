@@ -109,7 +109,7 @@ async function processPackage(
         description: normalized.description,
         homepage: normalized.homepage,
         declaredRepositoryUrl: normalized.declaredRepositoryUrl,
-        repositoryUrl: normalized.repo?.url ?? null,
+        repositoryUrl: normalized.resolvedRepo?.repo.url ?? null,
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         latestVersion: normalized.latestVersion,
@@ -118,16 +118,17 @@ async function processPackage(
       })
       pkgChanged.forEach((f) => changed.add(f))
 
-      if (normalized.repo) {
+      if (normalized.resolvedRepo) {
         const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
           t,
-          normalized.repo.url,
-          normalized.repo.host,
+          normalized.resolvedRepo.repo.url,
+          normalized.resolvedRepo.repo.host,
         )
         repoChanged.forEach((f) => changed.add(f))
 
         const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
           source: 'declared',
+          signal: normalized.resolvedRepo.signal,
         })
         linkChanged.forEach((f) => changed.add(f))
       }

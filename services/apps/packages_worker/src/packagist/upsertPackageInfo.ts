@@ -9,6 +9,7 @@ import {
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import type { NormalizedPackagistStats } from './types'
@@ -31,13 +32,13 @@ export async function persistPackagistPackageInfo(
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(stats)
 
-  const canonical = stats.repositoryUrl ? canonicalizeRepoUrl(stats.repositoryUrl) : null
   // Packagist's repository field is free-form/author-supplied. canonicalizeRepoUrl's
   // 'other' bucket also matches non-repo URLs (wikis, issue trackers, registry pages)
   // that happen to have 2+ path segments, so only trust the verified SCM hosts here —
   // github.com/gitlab.com/bitbucket.org — rather than the shared utility's default,
   // which other callers (npm/maven/cargo) rely on staying permissive.
-  const trustedRepo = canonical && canonical.host !== 'other' ? canonical : null
+  const declared = stats.repositoryUrl ? canonicalizeRepoUrl(stats.repositoryUrl) : null
+  const primaryRepo = declared && declared.host !== 'other' ? declared : null
 
   let found = false
   const changedFields: string[] = []
@@ -48,7 +49,7 @@ export async function persistPackagistPackageInfo(
       purl,
       description: stats.description,
       declaredRepositoryUrl: stats.repositoryUrl,
-      repositoryUrl: trustedRepo?.url ?? null,
+      repositoryUrl: primaryRepo?.url ?? null,
       status: stats.status,
       totalDownloads: stats.downloadsTotal,
       dependentCount: stats.dependents,
@@ -60,14 +61,23 @@ export async function persistPackagistPackageInfo(
     const { id, isCritical } = result
     changedFields.push(...result.changedFields)
 
+    // The version manifests carry the homepage, not this endpoint — read back the one the
+    // metadata lane stored so a package that only declares a homepage still gets a link.
+    const resolvedRepo = primaryRepo
+      ? { repo: primaryRepo, signal: 'primary' as const }
+      : resolveManifestRepo([{ field: 'homepage', url: result.homepage, signal: 'secondary' }])
+
     // When there's no trusted repo (removed from the manifest, or no longer
     // canonicalizable to a known host), or it now resolves to a different repo, clear any
     // previously-declared link that no longer applies — package_repos' unique key is
     // (package_id, repo_id), not (package_id, source), so upserting the new link alone
     // would leave a stale one dangling.
-    if (trustedRepo) {
-      const repo = await getOrCreateRepoByUrl(t, trustedRepo.url, trustedRepo.host)
-      const linkChanged = await upsertPackageRepo(t, id, repo.id, { source: 'declared' })
+    if (resolvedRepo) {
+      const repo = await getOrCreateRepoByUrl(t, resolvedRepo.repo.url, resolvedRepo.repo.host)
+      const linkChanged = await upsertPackageRepo(t, id, repo.id, {
+        source: 'declared',
+        signal: resolvedRepo.signal,
+      })
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
     } else {

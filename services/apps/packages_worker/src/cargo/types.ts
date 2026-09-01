@@ -15,6 +15,7 @@ export interface LoadResult {
 export interface NormalizeReposResult {
   scanned: number
   normalized: number
+  homepageFallbacks: number
 }
 
 export interface EnrichPackagesResult {
