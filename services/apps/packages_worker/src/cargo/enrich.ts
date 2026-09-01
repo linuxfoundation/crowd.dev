@@ -1,4 +1,4 @@
-import { QueryExecutor } from '@crowd/data-access-layer'
+import { QueryExecutor, packageRepoConfidenceCall } from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { STAGING_SCHEMA } from './loadDump'
@@ -15,7 +15,12 @@ const log = getServiceChildLogger('cargo-enrich')
 export const AUDIT_WORKER = 'cargo-registry'
 const INGESTION_SOURCE = 'cargo-registry'
 const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest-declared repo URLs
-const REPO_LINK_CONFIDENCE = 0.8
+const CARGO_CONFIDENCE = packageRepoConfidenceCall('p', 'r', {
+  source: '$(source)',
+  signal: "'primary'",
+  ownershipMatch: "'no_evidence'",
+  provenance: 'NULL',
+})
 
 // synchronous_commit off: skip WAL fsync on bulk writes — job is idempotent.
 const WORK_MEM = '512MB'
@@ -234,17 +239,28 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          )
        ),
        ins AS (
-         INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at, verified_at)
-         SELECT e.package_id, r.id, $(source), $(confidence), NOW(), NOW()
+         INSERT INTO package_repos (
+           package_id, repo_id, source, signal, ownership_match, provenance,
+           confidence, created_at, verified_at
+         )
+         SELECT e.package_id, r.id, $(source), 'primary', 'no_evidence', NULL,
+                s.confidence, NOW(), NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
          JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          JOIN repos r ON r.url = rn.repository_url
-         -- Leaves source untouched on conflict — a link another enricher already owns for
-         -- this (package_id, repo_id) keeps its provenance instead of being reassigned to
-         -- 'declared', matching upsertMavenPackageRepo's confidence-only merge.
+         JOIN packages p ON p.id = e.package_id
+         CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
-           confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
-           verified_at = NOW()
+           source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                   THEN EXCLUDED.source ELSE package_repos.source END,
+           signal           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                   THEN EXCLUDED.signal ELSE package_repos.signal END,
+           ownership_match  = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                   THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
+           provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                   THEN EXCLUDED.provenance ELSE package_repos.provenance END,
+           confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
+           verified_at      = NOW()
          RETURNING package_id, repo_id, source, confidence
        ),
        diff AS (
@@ -263,7 +279,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          SELECT package_id, field FROM diff RETURNING 1
        )
        SELECT (SELECT COUNT(*) FROM ins)::int AS links`,
-      { source: REPO_LINK_SOURCE, confidence: REPO_LINK_CONFIDENCE },
+      { source: REPO_LINK_SOURCE },
     )
 
     return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }

@@ -138,7 +138,7 @@ export async function enrichGoVersionsBatch(
         )
         changedFields.push(...repoChanged)
 
-        const linkChanged = await upsertPackageRepo(t, row.id, repoId, 'declared', 0.8)
+        const linkChanged = await upsertPackageRepo(t, row.id, repoId, { source: 'declared' })
         changedFields.push(...linkChanged)
       }
 

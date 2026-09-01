@@ -1,3 +1,4 @@
+import { rescorePackageReposForRepos } from '@crowd/data-access-layer/src/packages'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { LightRepoResult } from './types'
@@ -11,7 +12,9 @@ export async function bulkUpdateEnrichedRepos(
   // Single round-trip: unpack rows from JSON, update all in one query.
   // NULLIF handles empty strings from JSON serialisation of null timestamps.
   // Nullable columns (stars, forks, etc.) stay null when GitHub returns nothing.
-  await qx.result(
+  // archived / disabled / is_fork feed package_repo_confidence, so the links of every
+  // repo touched here are rescored in the same transaction.
+  const updated = await qx.select(
     `
     UPDATE repos AS r
     SET
@@ -65,8 +68,14 @@ export async function bulkUpdateEnrichedRepos(
       FROM jsonb_array_elements($1::jsonb) j
     ) v
     WHERE r.url = v.url
+    RETURNING r.id::text AS id
     `,
     [JSON.stringify(rows)],
+  )
+
+  await rescorePackageReposForRepos(
+    qx,
+    (updated as { id: string }[]).map((r) => r.id),
   )
 }
 

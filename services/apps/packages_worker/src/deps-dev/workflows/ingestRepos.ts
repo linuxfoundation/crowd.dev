@@ -1,5 +1,7 @@
 import { proxyActivities } from '@temporalio/workflow'
 
+import { packageRepoConfidenceCall } from '@crowd/data-access-layer/src/packages/repoConfidence'
+
 import type * as depsDevActivities from '../activities'
 import { buildPackageReposSql } from '../queries/packageReposSql'
 import { buildReposSql } from '../queries/reposSql'
@@ -71,30 +73,55 @@ ON CONFLICT (url) DO NOTHING
 
 const PKGREPOS_STAGING_TABLE = 'staging.osspckgs_package_repos_raw'
 
-const PKGREPOS_STAGING_DDL = `
-CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_package_repos_raw (
+// Dropped rather than IF NOT EXISTS: the column set changed (confidence → provenance)
+// in CM-1306 and the table is unlogged and truncated on every chunk anyway.
+const PKGREPOS_STAGING_DDL = [
+  `DROP TABLE IF EXISTS staging.osspckgs_package_repos_raw`,
+  `CREATE UNLOGGED TABLE staging.osspckgs_package_repos_raw (
   purl          text,
   canonical_url text,
-  confidence    float8
-)
-`
+  provenance    text
+)`,
+]
 
-const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'confidence']
+const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 
-// DISTINCT ON picks the highest-confidence row per (package, repo) pair.
+// DISTINCT ON picks the highest-scoring row per (package, repo) pair.
 // packages must already be loaded (ingestPackages runs before ingestRepos in bootstrapOsspckgs).
 // packages.purl is version-stripped by buildPackagesFullSql (REGEXP_REPLACE in BQ).
 // Staging purl may or may not include @version depending on when the GCS export was taken,
 // so strip on staging side only — packages.purl stays bare and the UNIQUE index is usable.
 const PKGREPOS_MERGE_SQL = `
-INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
+INSERT INTO package_repos (
+  package_id, repo_id, source, signal, ownership_match, provenance,
+  confidence, verified_at, created_at
+)
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', s.confidence, NOW(), NOW()
+  p.id, r.id, 'deps_dev', 'primary', 'no_evidence', s.provenance,
+  c.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 JOIN repos r ON r.url = s.canonical_url
-ORDER BY p.id, r.id, s.confidence DESC
-ON CONFLICT (package_id, repo_id) DO NOTHING
+CROSS JOIN LATERAL (
+  SELECT ${packageRepoConfidenceCall('p', 'r', {
+    source: `'deps_dev'`,
+    signal: `'primary'`,
+    ownershipMatch: `'no_evidence'`,
+    provenance: 's.provenance',
+  })} AS confidence
+) c
+ORDER BY p.id, r.id, c.confidence DESC
+ON CONFLICT (package_id, repo_id) DO UPDATE SET
+  source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                          THEN EXCLUDED.source ELSE package_repos.source END,
+  signal           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                          THEN EXCLUDED.signal ELSE package_repos.signal END,
+  ownership_match  = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                          THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
+  provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                          THEN EXCLUDED.provenance ELSE package_repos.provenance END,
+  confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
+  verified_at      = NOW()
 `
 
 const ROWS_PER_CHUNK = 1_000_000

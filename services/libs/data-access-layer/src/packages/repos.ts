@@ -1,5 +1,12 @@
 import { QueryExecutor } from '../queryExecutor'
 
+import {
+  PackageRepoLinkClaim,
+  claimFromRow,
+  packageRepoConfidenceCall,
+  packageRepoLinkClaimParams,
+} from './repoConfidence'
+
 export async function getOrCreateRepoByUrl(
   qx: QueryExecutor,
   url: string,
@@ -54,75 +61,85 @@ export async function removeDeclaredPackageRepo(
   return rowCount > 0 ? ['package_repos.repo_id'] : []
 }
 
+// Confidence is never passed in — package_repo_confidence() (V1788307200) is the only
+// path that produces one. Callers describe the claim (source, which manifest field it
+// came from, what ownership evidence backs it) and the function scores it against the
+// package's ecosystem and the repo's current state.
+//
+// Conflict policy, uniform across every writer: keep the highest-scoring claim and adopt
+// that claim's provenance. Writer order is irrelevant — a routine registry refresh cannot
+// downgrade a link a stronger source (manual, an attested deps.dev row) already owns, and
+// a stronger claim arriving later takes the row over completely.
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
   repoId: string,
-  source: string,
-  confidence: number,
+  claim: PackageRepoLinkClaim,
 ): Promise<string[]> {
   const row: { changed_fields: string[] } = await qx.selectOne(
     `WITH old AS (
        SELECT source, confidence FROM package_repos
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
      ),
+     scored AS (
+       SELECT ${packageRepoConfidenceCall('p', 'r')} AS confidence
+         FROM packages p, repos r
+        WHERE p.id = $(packageId)::bigint AND r.id = $(repoId)::bigint
+     ),
      ins AS (
-       INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at)
-       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence), NOW())
+       INSERT INTO package_repos (
+         package_id, repo_id, source, signal, ownership_match, provenance,
+         confidence, created_at
+       )
+       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal),
+              $(ownershipMatch), $(provenance),
+              scored.confidence, NOW()
+         FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
-         source      = EXCLUDED.source,
-         confidence  = EXCLUDED.confidence,
-         verified_at = NOW()
+         source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                 THEN EXCLUDED.source ELSE package_repos.source END,
+         signal           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                 THEN EXCLUDED.signal ELSE package_repos.signal END,
+         ownership_match  = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                 THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
+         provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+                                 THEN EXCLUDED.provenance ELSE package_repos.provenance END,
+         confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
+         verified_at      = NOW()
        RETURNING source, confidence
      )
      SELECT array_remove(ARRAY[
-       CASE WHEN o.source IS NULL                             THEN 'package_repos.repo_id' END,
+       CASE WHEN o.source IS NULL                                         THEN 'package_repos.repo_id' END,
        CASE WHEN o.source IS NULL
-              OR o.source     IS DISTINCT FROM ins.source     THEN 'package_repos.source' END,
+              OR o.source           IS DISTINCT FROM ins.source           THEN 'package_repos.source' END,
        CASE WHEN o.source IS NULL
               OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
      ], NULL) AS changed_fields
      FROM ins LEFT JOIN old o ON true`,
-    { packageId, repoId, source, confidence },
+    { packageId, repoId, ...packageRepoLinkClaimParams(claim) },
   )
   return row.changed_fields
 }
 
-// Same shape as upsertPackageRepo, but never lets this write downgrade an existing
-// link: `source` is left untouched on conflict (a manual/deps_dev link keeps its
-// provenance instead of being reassigned to this caller's source) and `confidence`
-// only ever moves up via GREATEST. Matches the established pattern in
-// upsertMavenPackageRepo (osspckgs/repos.ts) and cargo/enrich.ts's inline equivalent —
-// added here as a separate function rather than changing upsertPackageRepo itself,
-// which pypi/npm/go/nuget/rubygems also call and rely on staying an unconditional set.
-export async function upsertPackageRepoPreserveProvenance(
+// Rescores every link pointing at these repos. Called when the GitHub enricher flips
+// archived / is_fork / disabled, since those are NULL at ingest time (the enricher runs
+// after the registry writers) and carry penalties the original score could not apply.
+export async function rescorePackageReposForRepos(
   qx: QueryExecutor,
-  packageId: string,
-  repoId: string,
-  source: string,
-  confidence: number,
-): Promise<string[]> {
-  const row: { changed_fields: string[] } = await qx.selectOne(
-    `WITH old AS (
-       SELECT source, confidence FROM package_repos
-        WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
-     ),
-     ins AS (
-       INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at)
-       VALUES ($(packageId)::bigint, $(repoId)::bigint, $(source), $(confidence), NOW())
-       ON CONFLICT (package_id, repo_id) DO UPDATE SET
-         confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
-         verified_at = NOW()
-       RETURNING source, confidence
-     )
-     SELECT array_remove(ARRAY[
-       CASE WHEN o.source IS NULL                             THEN 'package_repos.repo_id' END,
-       CASE WHEN o.source IS NULL                             THEN 'package_repos.source' END,
-       CASE WHEN o.source IS NULL
-              OR o.confidence IS DISTINCT FROM ins.confidence THEN 'package_repos.confidence' END
-     ], NULL) AS changed_fields
-     FROM ins LEFT JOIN old o ON true`,
-    { packageId, repoId, source, confidence },
+  repoIds: string[],
+): Promise<void> {
+  if (repoIds.length === 0) return
+
+  await qx.result(
+    `UPDATE package_repos pr
+        SET confidence = s.confidence
+       FROM packages p, repos r,
+            LATERAL (
+              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
+            ) s
+      WHERE p.id = pr.package_id
+        AND r.id = pr.repo_id
+        AND pr.repo_id = ANY($(repoIds)::bigint[])`,
+    { repoIds },
   )
-  return row.changed_fields
 }
