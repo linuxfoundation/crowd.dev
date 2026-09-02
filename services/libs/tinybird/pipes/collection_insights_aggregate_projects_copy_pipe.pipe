@@ -14,6 +14,9 @@ DESCRIPTION >
     Uses same "onboarded" definition as original logic: projects with organizationCount > 0 OR contributorCount > 0.
     Averages healthScoreV2 (not legacy healthScore) to agree with the "Unavailable" state
     shown elsewhere, which also gates on healthScoreV2 IS NULL (IN-1257).
+    Normalizes each project's score to a /100 scale before averaging (healthScoreV2 * 100 /
+    healthMaxScore) so a partial score (e.g. 45/60) contributes its equivalent full-scale value
+    (75) rather than being averaged in as a raw, disadvantaged 45 (IN-1262, per product decision).
 
 SQL >
     SELECT
@@ -23,8 +26,10 @@ SQL >
             avg(
                 if(
                     NOT ((organizationCount = 0) AND (contributorCount = 0))
-                    AND healthScoreV2 IS NOT NULL,
-                    healthScoreV2,
+                    AND healthScoreV2 IS NOT NULL
+                    AND healthMaxScore IS NOT NULL
+                    AND healthMaxScore > 0,
+                    healthScoreV2 * 100.0 / healthMaxScore,
                     NULL
                 )
             )
@@ -35,13 +40,15 @@ SQL >
             SELECT
                 p.id as projectId,
                 pi.healthScoreV2 as healthScoreV2,
+                pi.healthMaxScore as healthMaxScore,
                 p.organizationCount,
                 p.contributorCount,
                 arrayJoin(p.collectionsSlugs) as collectionSlug
             FROM insights_projects_populated_ds p
             LEFT JOIN
                 (
-                    SELECT id, any (healthScoreV2) as healthScoreV2
+                    SELECT
+                        id, any (healthScoreV2) as healthScoreV2, any (healthMaxScore) as healthMaxScore
                     FROM project_insights_copy_ds
                     WHERE type = 'project'
                     GROUP BY id
