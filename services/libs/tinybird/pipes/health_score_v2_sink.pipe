@@ -22,6 +22,8 @@ SQL >
         p.maintainerHealthScoreV2 AS maintainerHealthScoreV2,
         p.securitySupplyChainScoreV2 AS securitySupplyChainScoreV2,
         p.developmentActivityScoreV2 AS developmentActivityScoreV2,
+        p.coveredCategoryCount AS coveredCategoryCount,
+        p.healthMaxScore AS healthMaxScore,
         i.directDependents AS directDependents,
         i.directDependentsTopPct AS directDependentsTopPct,
         i.directDependentsBand AS directDependentsBand,
