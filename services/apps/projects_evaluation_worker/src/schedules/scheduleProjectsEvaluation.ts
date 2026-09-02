@@ -7,9 +7,9 @@ import { IEvaluateProjectsInput, evaluateProjects } from '../workflows'
 // - evaluateLimit: maximum number of projects in 'evaluate' state at any time.
 // - sourcePriority: ordered list of sources; earlier = higher priority; unlisted sources rank last.
 const EVALUATION_ARGS: IEvaluateProjectsInput = {
-  batchSize: 50,
+  batchSize: 20,
   priorityConfig: {
-    evaluateLimit: 50,
+    evaluateLimit: 20,
     sourcePriority: ['manual', 'insights-discussions'],
   },
 }
@@ -21,20 +21,18 @@ export const scheduleProjectsEvaluation = async () => {
     await svc.temporal.schedule.create({
       scheduleId: 'projectsEvaluation',
       spec: {
-        // Run every Monday at 02:00 UTC — gives time after the weekly discovery run.
-        cronExpressions: ['0 2 * * 1'],
+        cronExpressions: ['0 4 * * *'],
       },
       policies: {
         overlap: ScheduleOverlapPolicy.SKIP,
-        catchupWindow: '1 minute',
+        catchupWindow: '1 hour',
       },
       action: {
         type: 'startWorkflow',
         workflowType: evaluateProjects,
         taskQueue: 'projects-evaluation',
         args: [EVALUATION_ARGS],
-        // 50 projects × ~3min each = ~2.5h worst case; set ceiling with margin.
-        workflowExecutionTimeout: '6 hours',
+        workflowExecutionTimeout: '3 hours',
         retry: {
           initialInterval: '30 seconds',
           backoffCoefficient: 2,
