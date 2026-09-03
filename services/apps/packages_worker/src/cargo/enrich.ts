@@ -201,15 +201,11 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        SELECT (SELECT COUNT(*) FROM new_repos)::int AS repos`,
     )
 
-    // Prunes stale 'declared' links before relinking — covers junk/unparseable declared
-    // values, rewrites (declared URL now maps elsewhere), and removals (this dump's
-    // declared_repository_url is NULL, meaning the crate no longer declares a repo at
-    // all — loadDump.ts stages every matched crate every run, so NULL here is
-    // authoritative, not "no data this run"). Safe to always prune on that signal because
-    // the DELETE is scoped to source = 'declared' — cargo only ever removes links it owns.
-    // Without this, package_repos would accumulate a link to a repo no crate declares
-    // anymore, and consumers such as security-contacts (which join through
-    // repos ⋈ package_repos, not packages.repository_url) would keep reading it.
+    // Unconditionally prunes all cargo-owned declared links before relinking. Covers:
+    // removals (NULL in this dump is authoritative — loadDump stages every crate every run),
+    // URL rewrites, junk/unparseable values, and primary→secondary signal downgrades on the
+    // same URL (keep-highest would otherwise block the downgrade). Scoped to source =
+    // 'declared' so only cargo-owned rows are touched.
     const pruneRow = await tx.selectOne(
       `WITH targets AS (
          SELECT rc.package_id, r.id AS repo_id
@@ -221,7 +217,6 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          USING targets t
          WHERE pr.package_id = t.package_id
            AND pr.source = $(source)
-           AND (t.repo_id IS NULL OR pr.repo_id IS DISTINCT FROM t.repo_id)
          RETURNING pr.package_id
        ),
        ins_audit AS (
