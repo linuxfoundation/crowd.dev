@@ -47,6 +47,23 @@ function goModuleOwner(name: string): string | null {
   return segments[1] || null
 }
 
+// canonicalizeRepoUrl classifies codeberg, gitea, and git.sr.ht as host='other' (unknown
+// forges), so repoOwnerFromCanonical returns null for them. For Go VCS hosts specifically,
+// the owner is always the first URL path segment — fall back to extracting it directly.
+function goRepoOwner(canonical: ReturnType<typeof canonicalizeRepoUrl>): string | null {
+  if (!canonical) return null
+  const owner = repoOwnerFromCanonical(canonical)
+  if (owner !== null) return owner
+  try {
+    const parsed = new URL(canonical.url)
+    if (!GO_VCS_MODULE_HOSTS.has(parsed.hostname)) return null
+    const parts = parsed.pathname.split('/').filter(Boolean)
+    return parts.length >= 2 ? parts[0] : null
+  } catch {
+    return null
+  }
+}
+
 // Two independent purl-keyset cursors — one for critical packages, one for everything else —
 // each ordered/paginated purely by purl so WHERE and ORDER BY always match (no gaps, no
 // duplicates). A single query sorted by is_critical DESC with one shared purl cursor was tried
@@ -161,7 +178,7 @@ export async function enrichGoVersionsBatch(
           source: 'declared',
           ownershipMatch: matchOwnership({
             namespace: goModuleOwner(row.name),
-            repoOwner: repoOwnerFromCanonical(repoToLink),
+            repoOwner: goRepoOwner(repoToLink),
           }),
         })
         changedFields.push(...linkChanged)

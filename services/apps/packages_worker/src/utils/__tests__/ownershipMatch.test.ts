@@ -62,6 +62,22 @@ describe('matchOwnership', () => {
       'no_evidence',
     )
   })
+
+  it('excludes email-format maintainer strings to prevent domain-prefix false matches', () => {
+    // acme@example.com normalises to acmeexamplecom, which would prefix-match owner acme
+    expect(matchOwnership({ maintainers: ['acme@example.com'], repoOwner: 'acme' })).toBe(
+      'no_evidence',
+    )
+  })
+
+  it('matches flat dotted namespaces like NuGet or Packagist vendors by all segments', () => {
+    // Microsoft.Extensions — first segment is identity-bearing, not a TLD
+    expect(matchOwnership({ namespace: 'Microsoft.Extensions', repoOwner: 'microsoft' })).toBe(
+      'matched',
+    )
+    // Packagist vendor with dot — foo should be a candidate
+    expect(matchOwnership({ namespace: 'foo.bar', repoOwner: 'foo' })).toBe('matched')
+  })
 })
 
 describe('repoOwnerFromCanonical', () => {

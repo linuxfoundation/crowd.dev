@@ -61,7 +61,7 @@ export async function normalizeRepos(qx: QueryExecutor): Promise<NormalizeReposR
      SELECT e.package_id,
             COALESCE(rd.repository_url, rh.repository_url) AS repository_url,
             COALESCE(rd.host, rh.host)                     AS host,
-            COALESCE(rd.owner, rh.owner)                   AS owner,
+            CASE WHEN rd.repository_url IS NOT NULL THEN rd.owner ELSE rh.owner END AS owner,
             CASE WHEN rd.repository_url IS NOT NULL THEN 'primary' ELSE 'secondary' END AS signal
      FROM ${STAGING_SCHEMA}.enrich_packages e
      LEFT JOIN ${STAGING_SCHEMA}.repo_norm rd ON rd.declared = e.declared_repository_url

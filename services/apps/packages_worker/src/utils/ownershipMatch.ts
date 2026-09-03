@@ -42,19 +42,22 @@ const STRUCTURAL_SEGMENTS = new Set([
   'codeberg',
 ])
 
-// Reverse-DNS namespaces (Maven `org.apache.commons`, NuGet-style `Com.Foo.Bar`) carry the
-// owner in one of their segments, not in the whole string — `io.github.<owner>` even puts it
-// last. For multi-segment namespaces, compare only identity-bearing segments (not the joined
-// form, which would prefix-match structural prefixes against lookalike owners). Flat scopes
-// such as `@vercel` or `tokio-rs` are single-segment — normalise the whole string so vanity
-// suffix stripping applies.
+// Reverse-DNS namespaces (Maven `org.apache.commons`) carry the owner in one of their segments.
+// For multi-segment namespaces, if the first segment is a structural label (TLD like `org`,
+// `com`, `io`) skip it — otherwise keep it (e.g., Packagist vendors like `foo.bar` or NuGet
+// namespaces like `Microsoft.Extensions` where the first segment is identity-bearing). Flat
+// scopes (`@vercel`, `tokio-rs`) are single-segment — normalise the whole string.
 function namespaceCandidates(namespace: string): string[] {
   const segments = namespace.split(/[./]/).filter(Boolean)
   if (segments.length === 1) {
     return [normalizeIdentity(namespace)].filter(Boolean)
   }
+  const firstNorm = normalizeIdentity(segments[0])
+  const firstIsStructural =
+    STRUCTURAL_SEGMENTS.has(firstNorm) ||
+    [...STRUCTURAL_SEGMENTS].some((ss) => isSameIdentity(firstNorm, ss))
   return segments
-    .slice(1)
+    .slice(firstIsStructural ? 1 : 0)
     .map(normalizeIdentity)
     .filter(
       (normalized) =>
@@ -77,7 +80,9 @@ export function matchOwnership(evidence: OwnershipEvidence): PackageRepoOwnershi
 
   const candidates = [
     ...(evidence.namespace ? namespaceCandidates(evidence.namespace) : []),
-    ...(evidence.maintainers ?? []).map((m) => (m ? normalizeIdentity(m) : '')),
+    ...(evidence.maintainers ?? [])
+      .filter((m) => m && !m.includes('@'))
+      .map((m) => normalizeIdentity(m!)),
   ].filter(Boolean)
 
   if (candidates.length === 0) return 'no_evidence'

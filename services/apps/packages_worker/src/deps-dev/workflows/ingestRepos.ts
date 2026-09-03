@@ -99,8 +99,9 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // github_staged: package IDs that have at least one GitHub-hosted repo in this chunk.
 // Precomputed once per INSERT so the per-row competing_github check is a simple join
 // rather than a correlated scan of the million-row staging table (O(n) not O(n²)).
-// After all chunks are merged, rescore non-GitHub deps_dev links that now have a competing
-// GitHub link but were scored in an earlier chunk before that GitHub link was inserted.
+// After all chunks are merged, rescore all non-GitHub links for packages where a competing
+// GitHub repo was introduced — the competing-GitHub penalty applies to every source, so
+// declared and other-source links written before this ingest also need refreshing.
 const PKGREPOS_RESCORE_SQL = `
 UPDATE package_repos pr
    SET confidence = s.confidence
@@ -108,8 +109,7 @@ UPDATE package_repos pr
        LATERAL (
          SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), competingGithubRepoExpr('p.id', 'r.id'))} AS confidence
        ) s
- WHERE pr.source = 'deps_dev'
-   AND p.id = pr.package_id
+ WHERE p.id = pr.package_id
    AND r.id = pr.repo_id
    AND r.host <> 'github'
    AND ${competingGithubRepoExpr('p.id', 'r.id')}
