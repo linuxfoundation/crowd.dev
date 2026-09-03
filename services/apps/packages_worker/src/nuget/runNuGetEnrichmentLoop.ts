@@ -7,6 +7,7 @@ import {
   logAuditFieldChange,
   markNuGetPackageError,
   recordNuGetDownloadSnapshot,
+  removeDeclaredPackageRepo,
   replacePackageMaintainers,
   upsertMaintainer,
   upsertNuGetPackage,
@@ -145,6 +146,12 @@ async function processPackage(
           signal: normalized.resolvedRepo.signal,
         })
         linkChanged.forEach((f) => changed.add(f))
+
+        const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString(), repoId)
+        removedFields.forEach((f) => changed.add(f))
+      } else {
+        const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
+        removedFields.forEach((f) => changed.add(f))
       }
 
       if (normalized.versions.length > 0) {
