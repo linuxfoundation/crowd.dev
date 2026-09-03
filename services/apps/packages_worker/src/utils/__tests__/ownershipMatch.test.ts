@@ -76,6 +76,8 @@ describe('matchOwnership', () => {
     expect(matchOwnership({ maintainers: ['acme@example.com'], repoOwner: 'acme' })).toBe(
       'no_evidence',
     )
+    // @vercel is a handle, not an email — the leading @ is stripped by normalizeIdentity
+    expect(matchOwnership({ maintainers: ['@vercel'], repoOwner: 'vercel' })).toBe('matched')
   })
 
   it('matches flat dotted namespaces like NuGet or Packagist vendors by all segments', () => {

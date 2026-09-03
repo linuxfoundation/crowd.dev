@@ -77,7 +77,7 @@ export function matchOwnership(evidence: OwnershipEvidence): PackageRepoOwnershi
   const candidates = [
     ...(evidence.namespace ? namespaceCandidates(evidence.namespace) : []),
     ...(evidence.maintainers ?? [])
-      .filter((m) => m && !m.includes('@'))
+      .filter((m) => m && !/\S@\S/.test(m))
       .map((m) => normalizeIdentity(m!)),
   ].filter(Boolean)
 
