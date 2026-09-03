@@ -41,9 +41,13 @@ export async function upsertProject(
 
   const { homepage, declaredRepositoryUrl, declaredRepositoryField, fundingLinks } =
     classifyProjectUrls(info.project_urls, info.home_page)
-  const repo = declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null
+  const repoCanonicalized = declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null
   const repoSignal: PackageRepoSignal =
     declaredRepositoryField === 'source' ? 'primary' : 'secondary'
+  const repo =
+    repoCanonicalized && (repoSignal === 'primary' || repoCanonicalized.host !== 'other')
+      ? repoCanonicalized
+      : null
   const { licenses, licensesRaw } = resolvePypiLicenses(info)
   const keywords = parseKeywords(info.keywords)
   const maintainers = collectPypiMaintainers(info)
@@ -81,7 +85,7 @@ export async function upsertProject(
     })
     pkgChanged.forEach((f) => changed.add(f))
 
-    if (repo && (repoSignal === 'primary' || repo.host !== 'other')) {
+    if (repo) {
       const { id: repoId, changedFields: repoChanged } = await getOrCreateRepoByUrl(
         t,
         repo.url,
