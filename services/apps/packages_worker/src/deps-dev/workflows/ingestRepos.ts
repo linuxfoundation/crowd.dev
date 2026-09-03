@@ -134,21 +134,15 @@ CROSS JOIN LATERAL (
 ) c
 ORDER BY p.id, r.id, c.confidence DESC
 ON CONFLICT (package_id, repo_id) DO UPDATE SET
-  source           = CASE WHEN EXCLUDED.source = package_repos.source
-                               OR EXCLUDED.confidence > package_repos.confidence
+  source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                           THEN EXCLUDED.source ELSE package_repos.source END,
-  signal           = CASE WHEN EXCLUDED.source = package_repos.source
-                               OR EXCLUDED.confidence > package_repos.confidence
+  signal           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                           THEN EXCLUDED.signal ELSE package_repos.signal END,
-  ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source
-                               OR EXCLUDED.confidence > package_repos.confidence
+  ownership_match  = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                           THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
-  provenance       = CASE WHEN EXCLUDED.source = package_repos.source
-                               OR EXCLUDED.confidence > package_repos.confidence
+  provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                           THEN EXCLUDED.provenance ELSE package_repos.provenance END,
-  confidence       = CASE WHEN EXCLUDED.source = package_repos.source
-                          THEN EXCLUDED.confidence
-                          ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
+  confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
   verified_at      = NOW()
 `
 

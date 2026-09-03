@@ -34,12 +34,17 @@ const STRUCTURAL_SEGMENTS = new Set([
 
 // Reverse-DNS namespaces (Maven `org.apache.commons`, NuGet-style `Com.Foo.Bar`) carry the
 // owner in one of their segments, not in the whole string — `io.github.<owner>` even puts it
-// last. Compare every identity-bearing segment plus the joined form so `org.projectlombok`
-// matches `projectlombok` and `io.github.resilience4j` matches `resilience4j`.
+// last. For multi-segment namespaces, compare only identity-bearing segments (not the joined
+// form, which would prefix-match structural prefixes against lookalike owners). Flat scopes
+// such as `@vercel` or `tokio-rs` are single-segment — normalise the whole string so vanity
+// suffix stripping applies.
 function namespaceCandidates(namespace: string): string[] {
   const segments = namespace.split(/[./]/).filter(Boolean)
+  if (segments.length === 1) {
+    return [normalizeIdentity(namespace)].filter(Boolean)
+  }
   const identityBearing = segments.filter((s) => !STRUCTURAL_SEGMENTS.has(s.toLowerCase()))
-  return [namespace, ...identityBearing].map(normalizeIdentity).filter(Boolean)
+  return identityBearing.map(normalizeIdentity).filter(Boolean)
 }
 
 function isSameIdentity(a: string, b: string): boolean {

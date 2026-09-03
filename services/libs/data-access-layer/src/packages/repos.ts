@@ -61,6 +61,11 @@ export async function removeDeclaredPackageRepo(
   return rowCount > 0 ? ['package_repos.repo_id'] : []
 }
 
+// Confidence is never passed in — package_repo_confidence() (V1788307200) is the only
+// path that produces one. Callers describe the claim (source, which manifest field it
+// came from, what ownership evidence backs it) and the function scores it against the
+// package's ecosystem and the repo's current state.
+//
 // Conflict policy: same-source refreshes always replace the stored claim so that updated
 // ownership evidence (e.g. `no_evidence` → `unmatched`) is persisted. Cross-source,
 // the highest-scoring claim wins — a stronger source (manual, an attested deps.dev row)
@@ -91,13 +96,17 @@ export async function upsertPackageRepo(
               scored.confidence, NOW()
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
-         source           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
+         source           = CASE WHEN EXCLUDED.source = package_repos.source
+                                      OR EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.source ELSE package_repos.source END,
-         signal           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
+         signal           = CASE WHEN EXCLUDED.source = package_repos.source
+                                      OR EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.signal ELSE package_repos.signal END,
-         ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
+         ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source
+                                      OR EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
-         provenance       = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
+         provenance       = CASE WHEN EXCLUDED.source = package_repos.source
+                                      OR EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.provenance ELSE package_repos.provenance END,
          confidence       = CASE WHEN EXCLUDED.source = package_repos.source
                                  THEN EXCLUDED.confidence
