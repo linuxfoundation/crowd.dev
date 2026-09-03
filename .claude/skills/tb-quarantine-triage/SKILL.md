@@ -5,7 +5,7 @@ name: tb-quarantine-triage
 description: >
   On-demand Tinybird quarantine investigator. Detects datasources with live
   quarantined rows, runs per-datasource root-cause analysis, presents a
-  diagnosis plan for human review, then creates CM Jira tickets and git
+  diagnosis plan for human review, then creates IN Jira tickets and git
   worktrees for approved datasources. No automation — always requires human
   sign-off before any Jira or Git action.
 allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, Skill, mcp__tinybird__list_datasources, mcp__tinybird__execute_query, mcp__plugin_context-mode_context-mode__ctx_execute, mcp__mcp-atlassian__createJiraIssue
