@@ -83,10 +83,12 @@ BEGIN
         END IF;
     END IF;
 
-    -- Disabled overrides all state penalties but still gets the uniqueness offset so
-    -- the no-ties invariant holds and a stronger claim can displace the stored row.
     IF p_disabled IS TRUE THEN
-        base := 0.05;
+        -- Scale proportionally so pre-disabled claim ordering is preserved across sources.
+        -- source_priority is excluded from the offset to prevent deps_dev (priority 2)
+        -- inverting over declared (priority 1) when both link to different disabled repos.
+        base := 0.05 + LEAST(base, 0.99) * 0.004;
+        offset_units := COALESCE(p_repo_id, 0) % 1000000;
     ELSE
         IF p_archived IS TRUE THEN
             base := base - 0.20;
@@ -99,21 +101,21 @@ BEGIN
         IF p_competing_github IS TRUE AND COALESCE(p_host, '') <> 'github' THEN
             base := base - 0.05;
         END IF;
+
+        base := GREATEST(base, 0.05);
+
+        source_priority := CASE p_source
+            WHEN 'manual'    THEN 3
+            WHEN 'deps_dev'  THEN 2
+            WHEN 'declared'  THEN 1
+            ELSE 0
+        END;
+
+        -- Tie-breaker: reduces same-source collisions to the rare case where two repo IDs for
+        -- the same package are congruent mod 1,000,000. BEST_REPO_LINK_JOIN uses a secondary
+        -- ORDER BY repo_id DESC as the canonical deterministic pick when confidence ties.
+        offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
     END IF;
-
-    base := GREATEST(base, 0.05);
-
-    source_priority := CASE p_source
-        WHEN 'manual'    THEN 3
-        WHEN 'deps_dev'  THEN 2
-        WHEN 'declared'  THEN 1
-        ELSE 0
-    END;
-
-    -- Tie-breaker: reduces same-source collisions to the rare case where two repo IDs for
-    -- the same package are congruent mod 1,000,000. BEST_REPO_LINK_JOIN uses a secondary
-    -- ORDER BY repo_id DESC as the canonical deterministic pick when confidence ties.
-    offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
 
     RETURN LEAST(base + offset_units * 0.000000001, 0.999999999);
 END;
