@@ -12,7 +12,7 @@ import { pullRequestCommentsSync } from './syncs/pullRequestComments'
 import { pullRequestCommitsSync } from './syncs/pullRequestCommits'
 import { pullRequestReviewCommentsSync } from './syncs/pullRequestReviewComments'
 import { pullRequestsSync } from './syncs/pullRequests'
-import { starsSync } from './syncs/stars'
+// import { starsSync } from './syncs/stars'
 
 export const githubConnector: Manifest = {
   platform: 'github',
@@ -25,7 +25,7 @@ export const githubConnector: Manifest = {
     pullRequestCommentsSync,
     pullRequestReviewCommentsSync,
     pullRequestCommitsSync,
-    starsSync,
+    // starsSync,
   ],
   discover: discoverRepos,
   preparePool: prepareGithubPool,
