@@ -61,8 +61,10 @@ export async function removeDeclaredPackageRepo(
   return rowCount > 0 ? ['package_repos.repo_id'] : []
 }
 
-// Conflict policy: keep the highest-scoring claim. A stronger claim arriving later takes
-// the row over completely; a weaker one (routine registry refresh) is silently ignored.
+// Conflict policy: same-source refreshes always replace the stored claim so that updated
+// ownership evidence (e.g. `no_evidence` → `unmatched`) is persisted. Cross-source,
+// the highest-scoring claim wins — a stronger source (manual, an attested deps.dev row)
+// cannot be downgraded by a weaker routine registry refresh.
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,

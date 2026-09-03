@@ -54,7 +54,7 @@ async function main(): Promise<void> {
 
   const tiedPackages = await reportTies()
   if (tiedPackages > 0) {
-    log.warn({ tiedPackages }, 'Packages with tied confidence — ranking is ambiguous')
+    log.warn({ tiedPackages }, 'Packages with tied confidence (repo_id DESC breaks ties deterministically)')
   } else {
     log.info('No tied confidence values')
   }
