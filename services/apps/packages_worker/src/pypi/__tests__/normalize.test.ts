@@ -263,19 +263,13 @@ describe('classifyProjectUrls', () => {
   })
 
   it('falls back to bug tracker URL when no explicit repo or homepage repo', () => {
-    const r = classifyProjectUrls(
-      { 'Bug Tracker': 'https://github.com/foo/bar/issues' },
-      null,
-    )
+    const r = classifyProjectUrls({ 'Bug Tracker': 'https://github.com/foo/bar/issues' }, null)
     expect(r.declaredRepositoryUrl).toBe('https://github.com/foo/bar/issues')
     expect(r.declaredRepositoryField).toBe('bug_tracker')
   })
 
   it('does not classify GitHub Issues URL as source via the git heuristic', () => {
-    const r = classifyProjectUrls(
-      { 'GitHub Issues': 'https://github.com/foo/bar/issues' },
-      null,
-    )
+    const r = classifyProjectUrls({ 'GitHub Issues': 'https://github.com/foo/bar/issues' }, null)
     expect(r.declaredRepositoryField).toBe('bug_tracker')
   })
 
