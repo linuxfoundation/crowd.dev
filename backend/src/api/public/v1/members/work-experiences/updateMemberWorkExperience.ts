@@ -12,6 +12,7 @@ import { normalizeMemberOrganizationDate, signalMemberUpdate } from '@crowd/comm
 import {
   MemberField,
   cleanSoftDeletedMemberOrganization,
+  cleanupOrphanMemberSegmentAffiliations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
   fetchMemberOrganizations,
@@ -73,13 +74,6 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
     throw new NotFoundError('Member not found')
   }
 
-  const memberOrgs = await fetchMemberOrganizations(qx, memberId)
-  const existing = memberOrgs.find((mo) => mo.id === workExperienceId)
-
-  if (!existing) {
-    throw new NotFoundError('Work experience not found')
-  }
-
   let dates: MemberOrganizationDateRange
 
   try {
@@ -103,9 +97,16 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
   await captureApiChange(
     req,
     memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
-      captureOldState(existing)
-
       await qx.tx(async (tx) => {
+        const memberOrgs = await fetchMemberOrganizations(tx, memberId)
+        const existing = memberOrgs.find((mo) => mo.id === workExperienceId)
+
+        if (!existing) {
+          throw new NotFoundError('Work experience not found')
+        }
+
+        captureOldState(existing)
+
         // Avoid unique-index collisions before we UPDATE the visible row.
         const conflictingRows = memberOrgs.filter(
           (row) =>
@@ -151,6 +152,11 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
 
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)
         await updateMemberOrganization(tx, memberId, workExperienceId, update)
+
+        // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
+        if (existing.organizationId !== data.organizationId) {
+          await cleanupOrphanMemberSegmentAffiliations(tx, memberId, [existing.organizationId])
+        }
       })
 
       // Signal after commit so the workflow sees persisted changes

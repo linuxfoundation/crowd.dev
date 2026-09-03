@@ -7,6 +7,7 @@ import {
   OrganizationField,
   changeMemberOrganizationAffiliationOverrides,
   cleanSoftDeletedMemberOrganization,
+  cleanupOrphanMemberSegmentAffiliations,
   createMemberOrganization,
   deleteMemberOrganizations,
   fetchManyOrganizationAffiliationPolicies,
@@ -330,6 +331,11 @@ export default class MemberOrganizationsService extends LoggerBase {
         ...update,
         source: OrganizationSource.UI,
       })
+
+      // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
+      if (existing.organizationId !== data.organizationId) {
+        await cleanupOrphanMemberSegmentAffiliations(qx, memberId, [existing.organizationId])
+      }
 
       // Trigger recalculation for old and new orgs if changed
       const orgsToRecalculate = Array.from(

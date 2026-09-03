@@ -567,20 +567,31 @@ export async function deleteMemberOrganizations(
 
     // Replacement cleanup deletes leftovers before the new UI row exists; keep MSAs for that org.
     if (affectedOrgIds.length > 0 && !skipMsaCleanup) {
-      await tx.result(
-        `DELETE FROM "memberSegmentAffiliations" msa
-         WHERE msa."memberId" = $(memberId)
-           AND msa."organizationId" IN ($(orgIds:csv))
-           AND NOT EXISTS (
-             SELECT 1 FROM "memberOrganizations" mo
-             WHERE mo."memberId" = $(memberId)
-               AND mo."organizationId" = msa."organizationId"
-               AND mo."deletedAt" IS NULL
-           )`,
-        { memberId, orgIds: affectedOrgIds },
-      )
+      await cleanupOrphanMemberSegmentAffiliations(tx, memberId, affectedOrgIds)
     }
   })
+}
+
+export async function cleanupOrphanMemberSegmentAffiliations(
+  qx: QueryExecutor,
+  memberId: string,
+  organizationIds: string[],
+): Promise<void> {
+  if (organizationIds.length === 0) {
+    return
+  }
+  await qx.result(
+    `DELETE FROM "memberSegmentAffiliations" msa
+     WHERE msa."memberId" = $(memberId)
+       AND msa."organizationId" IN ($(orgIds:csv))
+       AND NOT EXISTS (
+         SELECT 1 FROM "memberOrganizations" mo
+         WHERE mo."memberId" = $(memberId)
+           AND mo."organizationId" = msa."organizationId"
+           AND mo."deletedAt" IS NULL
+       )`,
+    { memberId, orgIds: organizationIds },
+  )
 }
 
 export async function deleteUndatedMemberOrganizations(
