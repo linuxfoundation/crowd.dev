@@ -99,11 +99,11 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // github_staged: package IDs that have at least one GitHub-hosted repo in this chunk.
 // Precomputed once per INSERT so the per-row competing_github check is a simple join
 // rather than a correlated scan of the million-row staging table (O(n) not O(n²)).
-// After all chunks are merged, rescore all non-GitHub links for packages that appeared in
-// this ingest run and now have a competing GitHub repo. Scoped to staging package IDs so a
-// single-ecosystem run does not touch unrelated rows in the full table.
-// The competing-GitHub penalty applies to every source (declared, deps_dev, etc.) so all
-// non-GitHub links for affected packages need refreshing, not just deps_dev ones.
+// After all chunks are merged, rescore all non-GitHub links for packages where a competing
+// GitHub repo now exists. The competing-GitHub penalty applies to every source (declared,
+// deps_dev, etc.), so links written before the GitHub competitor arrived also need refreshing.
+// Staging is truncated per chunk and only reflects the last chunk at merge time, so we scope
+// instead via competingGithubRepoExpr which reads the live package_repos table.
 const PKGREPOS_RESCORE_SQL = `
 UPDATE package_repos pr
    SET confidence = s.confidence
@@ -116,11 +116,6 @@ UPDATE package_repos pr
    AND r.host <> 'github'
    AND ${competingGithubRepoExpr('p.id', 'r.id')}
    AND s.confidence IS DISTINCT FROM pr.confidence
-   AND p.id IN (
-     SELECT DISTINCT p2.id
-       FROM staging.osspckgs_package_repos_raw s2
-       JOIN packages p2 ON p2.purl = REGEXP_REPLACE(s2.purl, '@[^@]+$', '')
-   )
 `
 
 const PKGREPOS_MERGE_SQL = `
