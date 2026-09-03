@@ -70,8 +70,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            description             = COALESCE(e.description, p.description),
            homepage                = COALESCE(e.homepage, p.homepage),
            declared_repository_url = COALESCE(e.declared_repository_url, p.declared_repository_url),
-           repository_url          = CASE WHEN e.declared_repository_url IS NOT NULL OR rn.repository_url IS NOT NULL
-                                          THEN rn.repository_url ELSE p.repository_url END,
+           repository_url          = rn.repository_url,
            licenses                = COALESCE(e.licenses, p.licenses),
            licenses_raw            = COALESCE(e.licenses_raw, p.licenses_raw),
            keywords                = COALESCE(e.keywords, p.keywords),
@@ -99,9 +98,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            ('packages.description',             s.description             IS DISTINCT FROM COALESCE(e.description, s.description)),
            ('packages.homepage',                s.homepage                IS DISTINCT FROM COALESCE(e.homepage, s.homepage)),
            ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM COALESCE(e.declared_repository_url, s.declared_repository_url)),
-           ('packages.repository_url',          s.repository_url          IS DISTINCT FROM
-               CASE WHEN e.declared_repository_url IS NOT NULL OR rn.repository_url IS NOT NULL
-                    THEN rn.repository_url ELSE s.repository_url END),
+           ('packages.repository_url',          s.repository_url          IS DISTINCT FROM rn.repository_url),
            ('packages.licenses',                s.licenses                IS DISTINCT FROM COALESCE(e.licenses, s.licenses)),
            ('packages.licenses_raw',            s.licenses_raw            IS DISTINCT FROM COALESCE(e.licenses_raw, s.licenses_raw)),
            ('packages.keywords',                s.keywords                IS DISTINCT FROM COALESCE(e.keywords, s.keywords)),
