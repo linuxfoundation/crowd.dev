@@ -100,6 +100,18 @@ export async function resolveInstallationId(credential: Credential): Promise<str
 
 const POOL_RESEED_INTERVAL_MS = 3_600_000
 
+function poolInstallationAllowlist(): Set<string> | null {
+  const raw = process.env.CROWD_GITHUB_POOL_INSTALLATION_IDS
+  if (!raw) {
+    return null
+  }
+  const ids = raw
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+  return ids.length > 0 ? new Set(ids) : null
+}
+
 export async function prepareGithubPool(
   credential: Credential,
   pool: TokenPool,
@@ -108,9 +120,16 @@ export async function prepareGithubPool(
   if (!(await pool.needsSeed(POOL_RESEED_INTERVAL_MS))) {
     return { preferredEntryId }
   }
-  const installationIds = await listInstallationIds(credential)
+  const allowlist = poolInstallationAllowlist()
+  const installationIds = (await listInstallationIds(credential)).filter(
+    (id) => !allowlist || allowlist.has(id),
+  )
   if (installationIds.length === 0) {
-    throw new Error('github app has no installations')
+    throw new Error(
+      allowlist
+        ? 'none of CROWD_GITHUB_POOL_INSTALLATION_IDS match an installation of this github app'
+        : 'github app has no installations',
+    )
   }
   await pool.seed(installationIds)
   return { preferredEntryId: preferredEntryId ?? installationIds[0] }
