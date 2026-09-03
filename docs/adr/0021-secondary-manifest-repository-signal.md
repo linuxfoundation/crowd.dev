@@ -60,29 +60,40 @@ almost always docs.rs, which the host gate rejects anyway.
 
 ## Alternatives Considered
 
-### Per-ecosystem fallback (no shared helper)
+### Alternative 1: Widen each writer's existing extractor in place
 
-Each registry writer would duplicate its own fallback chain — npm already tried
-`bugs.url`, packagist already tried `homepage`.
+- **Pros**: no new module; smallest diff per ecosystem.
+- **Cons**: seven copies of the fallback order and the host gate, which is how
+  the current per-ecosystem divergence arose in the first place; the `signal`
+  value would be derived independently in each writer.
+- **Why not**: the whole point is one rule; nine implementations of "which
+  field won" is the defect, not the fix.
 
-**Pros:** no new abstraction; each writer stays self-contained.
-**Cons:** seven writers meant seven copies of the same ordered-candidate logic
-and seven copies of the host-gate rule; adding a new ecosystem requires knowing
-which copy to follow.
-**Why not:** the duplication already caused drift (packagist's host gate existed
-alone; npm had no gate at all); a single helper enforces the rule once.
+### Alternative 2: Accept fallback URLs on any host, like the primary field does
 
-### Accept all fallback fields at `primary` confidence
+- **Pros**: maximum coverage; no URL is discarded.
+- **Cons**: a documentation site or a marketing page with two path segments
+  becomes a repo link, creating a `repos` row and an incorrect
+  `packages_published` attribution — the exact failure this epic exists to fix.
+- **Why not**: coverage gained by inventing repos is negative value; the
+  primary field at least carries the publisher's explicit claim.
 
-Widen each writer to try secondary fields but record every link as `primary`.
+### Alternative 3: Score fallback links lower directly in the writers instead of adding `signal`
 
-**Pros:** simpler persistence — no signal column needed.
-**Cons:** free-form fields (`homepage`, `projectUrl`) are noisy; ranking a
-documentation site equal to an explicit `<scm>` declaration inflates wrong
-links and corrupts the confidence score distribution.
-**Why not:** ADR-0020 already reserved the `signal` column and its −0.10 penalty
-specifically to express this distinction; a flat approach would abandon that
-mechanism before it could be used.
+- **Pros**: no schema column; visible in one place.
+- **Cons**: reintroduces per-writer confidence literals, and the penalty could
+  not be retuned or audited afterwards — nothing records *why* a row scored
+  lower.
+- **Why not**: ADR-0020 makes the stored score derivable from stored evidence;
+  `signal` is that evidence.
+
+### Alternative 4: Backfill a separate pass that mines fallback fields for packages with no link
+
+- **Pros**: zero risk to the existing write paths; can be re-run at will.
+- **Cons**: a second code path that has to re-fetch or re-read every manifest,
+  and it goes stale the moment a package is re-ingested.
+- **Why not**: the data is already in hand at write time; the write path is
+  the cheapest place to fix coverage.
 
 ## Consequences
 
