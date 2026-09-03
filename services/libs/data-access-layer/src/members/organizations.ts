@@ -32,7 +32,7 @@ export async function fetchMemberOrganizations(
 ): Promise<IMemberOrganization[]> {
   return qx.select(
     `
-      SELECT "id", "organizationId", "dateStart", "dateEnd", "title", "memberId", "source"
+      SELECT *
       FROM "memberOrganizations"
       WHERE "memberId" = $(memberId)
       AND "deletedAt" IS NULL
