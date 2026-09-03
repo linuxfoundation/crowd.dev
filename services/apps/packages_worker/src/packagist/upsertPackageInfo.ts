@@ -2,6 +2,7 @@ import {
   getOrCreateRepoByUrl,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
+  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
@@ -82,12 +83,7 @@ export async function persistPackagistPackageInfo(
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
 
       if (resolvedRepo.signal === 'secondary') {
-        const repoUrlChanged = await t.result(
-          `UPDATE packages SET repository_url = $(url) WHERE id = $(id)::bigint
-             AND (repository_url IS DISTINCT FROM $(url))`,
-          { url: resolvedRepo.repo.url, id },
-        )
-        if (repoUrlChanged > 0) changedFields.push('packages.repository_url')
+        changedFields.push(...(await setPackageRepositoryUrl(t, id, resolvedRepo.repo.url)))
       }
     } else {
       const removedFields = await removeDeclaredPackageRepo(t, id)
