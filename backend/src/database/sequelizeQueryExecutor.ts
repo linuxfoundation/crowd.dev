@@ -110,6 +110,10 @@ export class TransactionalSequelizeQueryExecutor extends SequelizeQueryExecutor 
       transaction: this.transaction,
     }
   }
+
+  tx<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T> {
+    return fn(this)
+  }
 }
 
 export function optionsQx(options: any): QueryExecutor {
