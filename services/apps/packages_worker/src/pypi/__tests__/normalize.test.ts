@@ -247,6 +247,7 @@ describe('classifyProjectUrls', () => {
     )
     expect(r.homepage).toBe('https://flask.palletsprojects.com/')
     expect(r.declaredRepositoryUrl).toBe('https://github.com/pallets/flask/')
+    expect(r.declaredRepositoryField).toBe('source')
     expect(r.fundingLinks).toEqual([{ type: 'other', url: 'https://palletsprojects.com/donate' }])
   })
 
@@ -258,6 +259,28 @@ describe('classifyProjectUrls', () => {
   it('falls back to a repo-looking homepage when no explicit repo key', () => {
     const r = classifyProjectUrls({ Homepage: 'https://github.com/psf/requests' }, null)
     expect(r.declaredRepositoryUrl).toBe('https://github.com/psf/requests')
+    expect(r.declaredRepositoryField).toBe('homepage')
+  })
+
+  it('falls back to bug tracker URL when no explicit repo or homepage repo', () => {
+    const r = classifyProjectUrls(
+      { 'Bug Tracker': 'https://github.com/foo/bar/issues' },
+      null,
+    )
+    expect(r.declaredRepositoryUrl).toBe('https://github.com/foo/bar/issues')
+    expect(r.declaredRepositoryField).toBe('bug_tracker')
+  })
+
+  it('does not use bug tracker when an explicit repo key is present', () => {
+    const r = classifyProjectUrls(
+      {
+        Source: 'https://github.com/foo/bar',
+        'Bug Tracker': 'https://github.com/foo/bar/issues',
+      },
+      null,
+    )
+    expect(r.declaredRepositoryUrl).toBe('https://github.com/foo/bar')
+    expect(r.declaredRepositoryField).toBe('source')
   })
 
   it('infers funding type from the host', () => {
