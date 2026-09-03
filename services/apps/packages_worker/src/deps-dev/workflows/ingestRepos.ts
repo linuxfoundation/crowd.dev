@@ -114,6 +114,7 @@ UPDATE package_repos pr
  WHERE p.id = pr.package_id
    AND r.id = pr.repo_id
    AND r.host <> 'github'
+   AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
    AND ${competingGithubRepoExpr('p.id', 'r.id')}
    AND s.confidence IS DISTINCT FROM pr.confidence
 `
