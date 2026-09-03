@@ -8,7 +8,7 @@ description: >
   diagnosis plan for human review, then creates IN Jira tickets and git
   worktrees for approved datasources. No automation — always requires human
   sign-off before any Jira or Git action.
-allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, Skill, mcp__tinybird__list_datasources, mcp__tinybird__execute_query, mcp__plugin_context-mode_context-mode__ctx_execute, mcp__mcp-atlassian__createJiraIssue
+allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, Skill, mcp__tinybird__list_datasources, mcp__tinybird__execute_query, mcp__plugin_context-mode_context-mode__ctx_execute, mcp__mcp-atlassian__searchJiraIssuesUsingJql, mcp__mcp-atlassian__createJiraIssue
 ---
 
 # Tinybird Quarantine Investigator
@@ -192,7 +192,7 @@ Do not proceed to Phase 5 until the user responds.
 For each datasource approved by the user:
 
 1. Skip any bundle where `dominant_error` is `null` (zero-row race condition — rows expired before diagnosis). Report it as resolved.
-2. Search for an existing open IN ticket with label `tb-quarantine-fp-<fingerprint>` using the Atlassian MCP `search` tool. If found, report the existing key and skip ticket creation.
+2. Search for an existing open IN ticket with label `tb-quarantine-fp-<fingerprint>` using `mcp__mcp-atlassian__searchJiraIssuesUsingJql` with JQL: `project = IN AND labels = "tb-quarantine-fp-<fingerprint>" AND statusCategory != Done`. If found, report the existing key and skip ticket creation.
 3. Otherwise, create a ticket with `createJiraIssue`:
 
 - **project**: `IN`
