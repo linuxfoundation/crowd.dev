@@ -113,7 +113,7 @@ UPDATE package_repos pr
        ) s
  WHERE p.id = pr.package_id
    AND r.id = pr.repo_id
-   AND r.host <> 'github'
+   AND COALESCE(r.host, '') <> 'github'
    AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
    AND ${competingGithubRepoExpr('p.id', 'r.id')}
    AND s.confidence IS DISTINCT FROM pr.confidence
@@ -147,7 +147,7 @@ CROSS JOIN LATERAL (
       ownershipMatch: `'no_evidence'`,
       provenance: 's.provenance',
     },
-    `(${competingGithubRepoExpr('p.id', 'r.id')} OR (EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id) AND r.host <> 'github'))`,
+    `(${competingGithubRepoExpr('p.id', 'r.id')} OR (EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id) AND COALESCE(r.host, '') <> 'github'))`,
   )} AS confidence
 ) c
 ORDER BY p.id, r.id, c.confidence DESC
