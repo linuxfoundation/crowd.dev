@@ -106,7 +106,9 @@ Each subagent returns a **diagnosis bundle** (JSON):
 
 ## Phase 3 — Present diagnosis plan
 
-After all subagents complete, present a structured report:
+After all subagents complete, discard any bundles where `dominant_error` is `null` (zero-row race condition). Log each discarded datasource as "expired before diagnosis — no action needed." Only bundles with a non-null `dominant_error` proceed to the report and approval gate.
+
+Present a structured report of the remaining bundles:
 
 ### Summary table
 

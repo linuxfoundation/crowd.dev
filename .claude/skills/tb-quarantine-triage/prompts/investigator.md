@@ -18,10 +18,11 @@ You are a read-only investigator. Analyze why rows are being quarantined in a sp
 ```sql
 SELECT
   insertion_date,
-  c__error_column,
-  c__error,
+  error_column,
+  error,
   c__import_id
 FROM {DS_NAME}_quarantine
+ARRAY JOIN c__error_column AS error_column, c__error AS error
 ORDER BY insertion_date DESC
 LIMIT 30
 ```
@@ -53,13 +54,14 @@ If the query succeeds but returns 0 rows (race condition — rows expired betwee
 
 ```sql
 SELECT
-  c__error_column,
-  c__error,
+  error_column,
+  error,
   count() AS occurrences,
   min(insertion_date) AS first_seen,
   max(insertion_date) AS last_seen
 FROM {DS_NAME}_quarantine
-GROUP BY c__error_column, c__error
+ARRAY JOIN c__error_column AS error_column, c__error AS error
+GROUP BY error_column, error
 ORDER BY occurrences DESC
 ```
 
