@@ -219,8 +219,12 @@ Write `fix_description` as a precise paragraph:
 
 ## Step 7 — Fingerprint
 
-```bash
-echo -n "{DS_NAME}|{sorted offending_columns joined by ','}|{normalized dominant error}" | shasum -a 256 | cut -c1-16
+Compute in-process (do not interpolate values into a shell command — normalized errors may contain shell metacharacters from ingested data):
+
+```javascript
+const crypto = require('crypto');
+const input = [DS_NAME, offending_columns.slice().sort().join(','), normalized_dominant_error].join('|');
+const fingerprint = crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
 ```
 
 ## Output
