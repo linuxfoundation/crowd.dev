@@ -53,8 +53,15 @@ function namespaceCandidates(namespace: string): string[] {
   if (segments.length === 1) {
     return [normalizeIdentity(namespace)].filter(Boolean)
   }
-  const identityBearing = segments.slice(1).filter((s) => !STRUCTURAL_SEGMENTS.has(s.toLowerCase()))
-  return identityBearing.map(normalizeIdentity).filter(Boolean)
+  return segments
+    .slice(1)
+    .map(normalizeIdentity)
+    .filter(
+      (normalized) =>
+        normalized &&
+        !STRUCTURAL_SEGMENTS.has(normalized) &&
+        ![...STRUCTURAL_SEGMENTS].some((ss) => isSameIdentity(normalized, ss)),
+    )
 }
 
 function isSameIdentity(a: string, b: string): boolean {

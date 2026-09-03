@@ -43,6 +43,8 @@ describe('matchOwnership', () => {
     )
     // `org.foo` must not match an owner literally named `org`
     expect(matchOwnership({ namespace: 'org.foo', repoOwner: 'org' })).toBe('unmatched')
+    // `de.github-ai.pkg` — `github-ai` normalises to `githubai`, which must not prefix-match `github`
+    expect(matchOwnership({ namespace: 'de.github-ai.pkg', repoOwner: 'github' })).toBe('unmatched')
   })
 
   it('reports unmatched when evidence exists but nothing lines up', () => {
@@ -71,5 +73,11 @@ describe('repoOwnerFromCanonical', () => {
   it('takes the top-level group of a gitlab subgroup path', () => {
     const repo = canonicalizeRepoUrl('https://gitlab.com/group/sub/project')
     expect(repo && repoOwnerFromCanonical(repo)).toBe('group')
+  })
+
+  it('returns null for host=other where first path segment is not an owner', () => {
+    const repo = canonicalizeRepoUrl('https://git.sr.ht/~sircmpwn/aerc')
+    expect(repo?.host).toBe('other')
+    expect(repo && repoOwnerFromCanonical(repo)).toBeNull()
   })
 })
