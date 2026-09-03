@@ -59,7 +59,7 @@ And stop.
 
 ## Phase 2 — Diagnose (parallel subagents)
 
-For each affected datasource, spawn one investigator subagent **in parallel**. Read the prompt from `.claude/skills/tinybird-quarantine/prompts/investigator.md` and pass:
+For each affected datasource, spawn one investigator subagent **in parallel**. Read the prompt from `.claude/skills/tb-quarantine-triage/prompts/investigator.md` and pass:
 
 - `DS_NAME` — datasource name
 - `QUARANTINED_COUNT` — count from Pass B
