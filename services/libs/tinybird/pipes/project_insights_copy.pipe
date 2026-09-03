@@ -11,6 +11,7 @@ SQL >
         logoUrl,
         isLF,
         status,
+        maturity,
         contributorCount,
         organizationCount,
         softwareValue,
@@ -25,6 +26,7 @@ SQL >
         logoUrl,
         isLF,
         status,
+        maturity,
         contributorCount,
         organizationCount,
         softwareValue,
@@ -195,6 +197,7 @@ DESCRIPTION >
     Join all project insights together
 
 SQL >
+    WITH (base.status = 'archived' OR base.maturity = 'Archived') AS isArchived
     SELECT
         base.id AS id,
         'project' AS type,
@@ -230,7 +233,9 @@ SQL >
         -- since its per-category scores are populated but the overall rollup isn't meaningful for it.
         -- revisit: generalize once the project-level rollup's null-vs-populated-categories mismatch
         -- is root-caused.
-        if(base.slug = 'korg', NULL, toUInt8(round(hv2.healthScoreV2))) AS healthScoreV2,
+        -- Also NULL for archived projects (lifecycle status or maturity), IN-1268: a dead project's
+        -- health score is not meaningful.
+        if(base.slug = 'korg' OR isArchived, NULL, toUInt8(round(hv2.healthScoreV2))) AS healthScoreV2,
         -- healthLabel buckets the score NORMALIZED to /100 (healthScoreV2 * 100 / healthMaxScore),
         -- not the raw capped healthScoreV2 - so a partial score like 45/60 benchmarks as its
         -- full-scale equivalent 75/100 ('healthy'), not the raw 45 ('fair') (IN-1262, per product
@@ -238,7 +243,7 @@ SQL >
         -- applied to the Collections average). healthMaxScore is 100 when all 3 categories are
         -- covered, so this is a no-op for non-partial scores.
         multiIf(
-            base.slug = 'korg',
+            base.slug = 'korg' OR isArchived,
             NULL,
             hv2.healthScoreV2 IS NULL,
             NULL,
@@ -252,7 +257,7 @@ SQL >
             'concerning',
             'critical'
         ) AS healthLabel,
-        if(base.status = 'archived', 'archived', hv2.lifecycleLabelV2) AS lifecycleLabel,
+        if(isArchived, 'archived', hv2.lifecycleLabelV2) AS lifecycleLabel,
         hv2.impactScoreRaw AS impactScore,
         multiIf(
             hv2.impactScoreRaw IS NULL,
@@ -268,8 +273,8 @@ SQL >
         toUInt8(round(hv2.maintainerHealthScoreV2)) AS maintainerHealthScoreV2,
         toUInt8(round(hv2.securitySupplyChainScoreV2)) AS securitySupplyChainScoreV2,
         toUInt8(round(hv2.developmentActivityScoreV2)) AS developmentActivityScoreV2,
-        if(base.slug = 'korg', NULL, hv2.coveredCategoryCount) AS coveredCategoryCount,
-        if(base.slug = 'korg', NULL, hv2.healthMaxScore) AS healthMaxScore
+        if(base.slug = 'korg' OR isArchived, NULL, hv2.coveredCategoryCount) AS coveredCategoryCount,
+        if(base.slug = 'korg' OR isArchived, NULL, hv2.healthMaxScore) AS healthMaxScore
     FROM project_insights_copy_base_projects AS base
     LEFT JOIN project_insights_copy_dependency_metrics AS dep ON base.slug = dep.slug
     LEFT JOIN project_insights_copy_achievements AS ach ON base.slug = ach.slug
