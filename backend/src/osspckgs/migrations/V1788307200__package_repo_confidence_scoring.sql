@@ -149,55 +149,60 @@ BEGIN
 
     applied_rows := 0;
 
-    LOOP
-        WITH batch AS (
-            SELECT pr.id
-              FROM package_repos pr
-             WHERE pr.id > cursor_id
-               AND (p_repo_ids IS NULL OR pr.repo_id = ANY(p_repo_ids))
-               -- deps_dev rows with NULL provenance were ingested before this column existed;
-               -- skip them so the backfill does not downgrade SLSA/attestation links to 0.50.
-               -- They will be rescored correctly once the next ingest populates provenance.
-               AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
-             ORDER BY pr.id
-             LIMIT chunk_size
-        ),
-        updated AS (
-            UPDATE package_repos pr
-               SET confidence = s.confidence
-              FROM batch b, packages p, repos r,
-                   LATERAL (
-                     SELECT package_repo_confidence(
-                       pr.source, p.ecosystem, pr.signal, pr.ownership_match, pr.provenance,
-                       r.archived, r.is_fork, r.disabled, r.host,
-                       EXISTS (
-                         SELECT 1
-                           FROM package_repos c
-                           JOIN repos cr ON cr.id = c.repo_id
-                          WHERE c.package_id = pr.package_id
-                            AND c.repo_id <> pr.repo_id
-                            AND cr.host = 'github'
-                       ),
-                       pr.repo_id
-                     ) AS confidence
-                   ) s
-             WHERE pr.id = b.id
-               AND p.id = pr.package_id
-               AND r.id = pr.repo_id
-               AND s.confidence IS DISTINCT FROM pr.confidence
-            RETURNING pr.id
-        )
-        SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id),
-               (SELECT COUNT(*) FROM updated)
-          INTO batch_rows, cursor_id, updated_rows
-          FROM batch b;
+    BEGIN
+        LOOP
+            WITH batch AS (
+                SELECT pr.id
+                  FROM package_repos pr
+                 WHERE pr.id > cursor_id
+                   AND (p_repo_ids IS NULL OR pr.repo_id = ANY(p_repo_ids))
+                   -- deps_dev rows with NULL provenance were ingested before this column existed;
+                   -- skip them so the backfill does not downgrade SLSA/attestation links to 0.50.
+                   -- They will be rescored correctly once the next ingest populates provenance.
+                   AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
+                 ORDER BY pr.id
+                 LIMIT chunk_size
+            ),
+            updated AS (
+                UPDATE package_repos pr
+                   SET confidence = s.confidence
+                  FROM batch b, packages p, repos r,
+                       LATERAL (
+                         SELECT package_repo_confidence(
+                           pr.source, p.ecosystem, pr.signal, pr.ownership_match, pr.provenance,
+                           r.archived, r.is_fork, r.disabled, r.host,
+                           EXISTS (
+                             SELECT 1
+                               FROM package_repos c
+                               JOIN repos cr ON cr.id = c.repo_id
+                              WHERE c.package_id = pr.package_id
+                                AND c.repo_id <> pr.repo_id
+                                AND cr.host = 'github'
+                           ),
+                           pr.repo_id
+                         ) AS confidence
+                       ) s
+                 WHERE pr.id = b.id
+                   AND p.id = pr.package_id
+                   AND r.id = pr.repo_id
+                   AND s.confidence IS DISTINCT FROM pr.confidence
+                RETURNING pr.id
+            )
+            SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id),
+                   (SELECT COUNT(*) FROM updated)
+              INTO batch_rows, cursor_id, updated_rows
+              FROM batch b;
 
-        applied_rows := applied_rows + updated_rows;
+            applied_rows := applied_rows + updated_rows;
 
-        COMMIT;
+            COMMIT;
 
-        EXIT WHEN batch_rows < chunk_size;
-    END LOOP;
+            EXIT WHEN batch_rows < chunk_size;
+        END LOOP;
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM pg_advisory_unlock(hashtextextended('rescore_package_repo_confidence', 0));
+        RAISE;
+    END;
 
     PERFORM pg_advisory_unlock(hashtextextended('rescore_package_repo_confidence', 0));
 END;
