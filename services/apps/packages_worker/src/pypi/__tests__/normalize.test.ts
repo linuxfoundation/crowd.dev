@@ -271,6 +271,14 @@ describe('classifyProjectUrls', () => {
     expect(r.declaredRepositoryField).toBe('bug_tracker')
   })
 
+  it('does not classify GitHub Issues URL as source via the git heuristic', () => {
+    const r = classifyProjectUrls(
+      { 'GitHub Issues': 'https://github.com/foo/bar/issues' },
+      null,
+    )
+    expect(r.declaredRepositoryField).toBe('bug_tracker')
+  })
+
   it('does not use bug tracker when an explicit repo key is present', () => {
     const r = classifyProjectUrls(
       {
