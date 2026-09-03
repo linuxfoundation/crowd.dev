@@ -67,21 +67,36 @@ export async function mintInstallationToken(
   }
 }
 
+const INSTALLATIONS_PER_PAGE = 100
+const MAX_INSTALLATION_PAGES = 100
+
 export async function listInstallationIds(credential: Credential): Promise<string[]> {
+  const appJwt = mintAppJwt(credential)
+  const installationIds: string[] = []
   try {
-    const response = await axios.get('https://api.github.com/app/installations', {
-      headers: {
-        Authorization: `Bearer ${mintAppJwt(credential)}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': GITHUB_API_VERSION,
-      },
-      params: { per_page: 100 },
-      timeout: GITHUB_REQUEST_TIMEOUT_MS,
-    })
-    return (response.data as { id: number }[]).map((installation) => String(installation.id))
+    for (let page = 1; page <= MAX_INSTALLATION_PAGES; page++) {
+      const response = await axios.get('https://api.github.com/app/installations', {
+        headers: {
+          Authorization: `Bearer ${appJwt}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': GITHUB_API_VERSION,
+        },
+        params: { per_page: INSTALLATIONS_PER_PAGE, page },
+        timeout: GITHUB_REQUEST_TIMEOUT_MS,
+      })
+      const installations = response.data as { id: number }[]
+      installationIds.push(...installations.map((installation) => String(installation.id)))
+      if (installations.length < INSTALLATIONS_PER_PAGE) {
+        return installationIds
+      }
+    }
   } catch (err) {
     throw classifyAppApiError(err, 'installation listing') ?? err
   }
+  // truncating would silently shrink the pool, so refuse instead
+  throw new Error(
+    `github app has more than ${MAX_INSTALLATION_PAGES * INSTALLATIONS_PER_PAGE} installations`,
+  )
 }
 
 // TODO(CM-1372): POC-only resolution; store the installation id per integration after the POC
