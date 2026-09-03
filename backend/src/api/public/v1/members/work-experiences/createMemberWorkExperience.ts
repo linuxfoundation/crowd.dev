@@ -14,8 +14,10 @@ import {
   changeMemberOrganizationAffiliationOverrides,
   cleanSoftDeletedMemberOrganization,
   createMemberOrganization,
+  deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
   fetchManyOrganizationAffiliationPolicies,
+  fetchMemberOrganizations,
   findMemberById,
 } from '@crowd/data-access-layer'
 import { deleteMemberSegmentAffiliations } from '@crowd/data-access-layer/src/member_segment_affiliations'
@@ -27,7 +29,7 @@ import type {
 
 import { optionsQx } from '@/database/sequelizeQueryExecutor'
 import { created } from '@/utils/api'
-import { toMemberWorkExperience } from '@/utils/mapper'
+import { getOverlappingGroupedMemberOrganizations, toMemberWorkExperience } from '@/utils/mapper'
 import { validateOrThrow } from '@/utils/validation'
 
 const paramsSchema = z.object({
@@ -85,6 +87,18 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
       let newMemberOrgId: string | undefined
 
       await qx.tx(async (tx) => {
+        const memberOrgs = await fetchMemberOrganizations(tx, memberId)
+        // Hidden project-registry/email-domain rows for this company are shown as the same card.
+        // Drop them so the new UI job owns the dates the person just entered.
+        const overlappingIds = getOverlappingGroupedMemberOrganizations(
+          memberOrgs,
+          memberOrgData,
+        ).flatMap((row) => (row.id ? [row.id] : []))
+
+        if (overlappingIds.length > 0) {
+          await deleteMemberOrganizations(tx, memberId, overlappingIds, true, data.verifiedBy)
+        }
+
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, memberOrgData)
 
         newMemberOrgId = await createMemberOrganization(tx, memberId, memberOrgData)

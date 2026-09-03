@@ -128,52 +128,26 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           throw new ConflictError('A work experience with the same dates already exists')
         }
 
-        // Conflict if a collapsible work experience with the same dates already exists.
-        // Soft-delete it so the visible update can take that unique key.
-        const conflictingHiddenIds = conflictingRows
-          .filter((row) => isCollapsibleMemberOrganization(row))
-          .map((row) => row.id)
-          .filter((id): id is string => !!id)
+        // Hidden leftovers were merged into this card. Remove anything that overlapped
+        // the old dates or the new ones, so shrinking a range doesn't leave a ghost job.
+        const overlappingIds = [
+          ...new Set(
+            [
+              ...getOverlappingGroupedMemberOrganizations(memberOrgs, existing),
+              ...getOverlappingGroupedMemberOrganizations(memberOrgs, {
+                ...existing,
+                ...update,
+              }),
+            ].flatMap((row) => (row.id ? [row.id] : [])),
+          ),
+        ]
 
-        if (conflictingHiddenIds.length > 0) {
-          await deleteMemberOrganizations(tx, memberId, conflictingHiddenIds)
+        if (overlappingIds.length > 0) {
+          await deleteMemberOrganizations(tx, memberId, overlappingIds, true, data.verifiedBy)
         }
-
-        // Fan-out below should not touch rows we just soft-deleted.
-        const memberOrgsAfterConflict = memberOrgs.filter(
-          (row) => !row.id || !conflictingHiddenIds.includes(row.id),
-        )
 
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)
         await updateMemberOrganization(tx, memberId, workExperienceId, update)
-
-        const overlapBasis = { ...existing, ...update }
-
-        const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
-          memberOrgsAfterConflict,
-          overlapBasis,
-        )
-
-        const groupedUpdate: MemberOrganizationUpdate = {}
-
-        // Keep grouped rows aligned for shared display fields; dates stay on the edited row
-        if (data.jobTitle !== undefined) {
-          groupedUpdate.title = data.jobTitle
-        }
-        if (data.verified !== undefined) {
-          groupedUpdate.verified = data.verified
-        }
-        if (data.verifiedBy !== undefined) {
-          groupedUpdate.verifiedBy = data.verifiedBy
-        }
-
-        if (overlappingGroupedRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
-          for (const overlappingRow of overlappingGroupedRows.filter(
-            (row): row is typeof row & { id: string } => !!row.id,
-          )) {
-            await updateMemberOrganization(tx, memberId, overlappingRow.id, groupedUpdate)
-          }
-        }
       })
 
       // Signal after commit so the workflow sees persisted changes

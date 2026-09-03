@@ -625,6 +625,30 @@ class AffiliationService(BaseService):
             return True
         return date_start is not None and date_end is None
 
+    @staticmethod
+    def as_date(value: date | datetime | None) -> date | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        return value
+
+    @staticmethod
+    def dates_overlap(
+        start_a: date | None,
+        end_a: date | None,
+        start_b: date | None,
+        end_b: date | None,
+    ) -> bool:
+        # No dates means "still at this company / all time", so it overlaps every period.
+        if (start_a is None and end_a is None) or (start_b is None and end_b is None):
+            return True
+        left_start = start_a or date.min
+        left_end = end_a or date.max
+        right_start = start_b or date.min
+        right_end = end_b or date.max
+        return left_start <= right_end and left_end >= right_start
+
     def has_existing_stint(
         self,
         existing_rows: list[dict],
@@ -632,20 +656,23 @@ class AffiliationService(BaseService):
         date_start: date | None,
         date_end: date | None,
     ) -> bool:
-        """True when MO/MSA already has this stint or an open-ended row covers an undated insert."""
-        incoming_undated = date_start is None and date_end is None
+        """True when MO/MSA already has this stint, or a UI row already covers this period."""
+        incoming_start = self.as_date(date_start)
+        incoming_end = self.as_date(date_end)
+        incoming_undated = incoming_start is None and incoming_end is None
         for row in existing_rows:
             if str(row["organizationId"]) != organization_id:
                 continue
-            existing_start = row.get("dateStart")
-            existing_end = row.get("dateEnd")
-            if isinstance(existing_start, datetime):
-                existing_start = existing_start.date()
-            if isinstance(existing_end, datetime):
-                existing_end = existing_end.date()
-            if existing_start == date_start and existing_end == date_end:
+            existing_start = self.as_date(row.get("dateStart"))
+            existing_end = self.as_date(row.get("dateEnd"))
+            if existing_start == incoming_start and existing_end == incoming_end:
                 return True
             if incoming_undated and self.is_undated_or_open_ended(existing_start, existing_end):
+                return True
+            # Someone already set this job in the UI for this period — don't overwrite it from the file.
+            if row.get("source") == "ui" and self.dates_overlap(
+                existing_start, existing_end, incoming_start, incoming_end
+            ):
                 return True
         return False
 
@@ -657,17 +684,15 @@ class AffiliationService(BaseService):
         date_end: date | None,
     ) -> bool:
         """True when a soft-deleted stint should not be re-created from the file."""
-        incoming_undated = date_start is None and date_end is None
+        incoming_start = self.as_date(date_start)
+        incoming_end = self.as_date(date_end)
+        incoming_undated = incoming_start is None and incoming_end is None
         for row in deleted_rows:
             if str(row["organizationId"]) != organization_id:
                 continue
 
-            existing_start = row.get("dateStart")
-            existing_end = row.get("dateEnd")
-            if isinstance(existing_start, datetime):
-                existing_start = existing_start.date()
-            if isinstance(existing_end, datetime):
-                existing_end = existing_end.date()
+            existing_start = self.as_date(row.get("dateStart"))
+            existing_end = self.as_date(row.get("dateEnd"))
 
             if incoming_undated:
                 if existing_start is None and existing_end is None:
@@ -681,9 +706,9 @@ class AffiliationService(BaseService):
 
             min_date = date.min
             max_date = date.max
-            if (existing_start or min_date) <= (date_end or max_date) and (
+            if (existing_start or min_date) <= (incoming_end or max_date) and (
                 existing_end or max_date
-            ) >= (date_start or min_date):
+            ) >= (incoming_start or min_date):
                 return True
         return False
 
