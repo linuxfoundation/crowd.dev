@@ -25,13 +25,21 @@ function normalizeIdentity(raw: string): string {
   return s.replace(/[^a-z0-9]/g, '')
 }
 
+// Structural labels in reverse-DNS namespaces (TLDs, VCS hostnames) are not owner identities.
+// `io.github.attacker` must not produce `github` as a candidate — only `attacker` is identity-bearing.
+const STRUCTURAL_SEGMENTS = new Set([
+  'com', 'org', 'net', 'io', 'dev', 'app', 'co',
+  'github', 'gitlab', 'bitbucket', 'sourceforge', 'codeberg',
+])
+
 // Reverse-DNS namespaces (Maven `org.apache.commons`, NuGet-style `Com.Foo.Bar`) carry the
 // owner in one of their segments, not in the whole string — `io.github.<owner>` even puts it
-// last. Compare every segment plus the joined form so `org.projectlombok` matches `projectlombok`
-// and `io.github.resilience4j` matches `resilience4j`.
+// last. Compare every identity-bearing segment plus the joined form so `org.projectlombok`
+// matches `projectlombok` and `io.github.resilience4j` matches `resilience4j`.
 function namespaceCandidates(namespace: string): string[] {
   const segments = namespace.split(/[./]/).filter(Boolean)
-  return [namespace, ...segments].map(normalizeIdentity).filter(Boolean)
+  const identityBearing = segments.filter((s) => !STRUCTURAL_SEGMENTS.has(s.toLowerCase()))
+  return [namespace, ...identityBearing].map(normalizeIdentity).filter(Boolean)
 }
 
 function isSameIdentity(a: string, b: string): boolean {

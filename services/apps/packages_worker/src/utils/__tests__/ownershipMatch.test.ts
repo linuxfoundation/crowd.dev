@@ -32,6 +32,15 @@ describe('matchOwnership', () => {
     )
   })
 
+  it('does not match structural DNS/VCS segments against a repo owner', () => {
+    // `io.github.attacker` must not claim the `github` org
+    expect(matchOwnership({ namespace: 'io.github.attacker', repoOwner: 'github' })).toBe(
+      'unmatched',
+    )
+    // `org.foo` must not match an owner literally named `org`
+    expect(matchOwnership({ namespace: 'org.foo', repoOwner: 'org' })).toBe('unmatched')
+  })
+
   it('reports unmatched when evidence exists but nothing lines up', () => {
     expect(
       matchOwnership({ namespace: 'squatter', maintainers: ['nobody'], repoOwner: 'torvalds' }),

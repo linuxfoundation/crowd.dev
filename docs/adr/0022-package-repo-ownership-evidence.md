@@ -113,7 +113,7 @@ join against the staged maintainer logins, with the repo owner carried on
 - Squatting links are separated from legitimate ones by score alone — the read
   side needs no filtering, and `ORDER BY confidence DESC LIMIT 1` starts
   returning the right repo for the epic's named cases.
-- `no_evidence` keeps ecosystems with thin metadata from being punished for it.
+- `no_evidence` carries a smaller penalty (−0.10) than `unmatched` (−0.25), so ecosystems with thin metadata are not scored as if they had actively mismatched the owner.
 - The matcher is a pure function with standalone unit tests; the SQL twin
   mirrors it explicitly rather than approximating it.
 
