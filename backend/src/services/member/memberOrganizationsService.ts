@@ -223,13 +223,7 @@ export default class MemberOrganizationsService extends LoggerBase {
       const overlappingIds = overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : []))
 
       if (overlappingIds.length > 0) {
-        await deleteMemberOrganizations(
-          qx,
-          memberId,
-          overlappingIds,
-          true,
-          this.options.currentUser.id,
-        )
+        await deleteMemberOrganizations(qx, memberId, overlappingIds)
       }
 
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, memberOrgData)
@@ -322,13 +316,7 @@ export default class MemberOrganizationsService extends LoggerBase {
       ]
 
       if (overlappingIds.length > 0) {
-        await deleteMemberOrganizations(
-          qx,
-          memberId,
-          overlappingIds,
-          true,
-          this.options.currentUser.id,
-        )
+        await deleteMemberOrganizations(qx, memberId, overlappingIds)
       }
 
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)

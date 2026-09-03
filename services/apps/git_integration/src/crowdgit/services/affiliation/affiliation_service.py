@@ -656,7 +656,7 @@ class AffiliationService(BaseService):
         date_start: date | None,
         date_end: date | None,
     ) -> bool:
-        """True when MO/MSA already has this stint, or a UI row already covers this period."""
+        """True when MO/MSA already has this stint, or an existing row already covers this period."""
         incoming_start = self.as_date(date_start)
         incoming_end = self.as_date(date_end)
         incoming_undated = incoming_start is None and incoming_end is None
