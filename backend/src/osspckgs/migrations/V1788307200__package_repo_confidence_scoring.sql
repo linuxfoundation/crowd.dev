@@ -132,8 +132,9 @@ CREATE OR REPLACE PROCEDURE rescore_package_repo_confidence(
 )
 LANGUAGE plpgsql AS $$
 DECLARE
-    batch_rows int;
-    cursor_id  bigint := 0;
+    batch_rows   int;
+    updated_rows int;
+    cursor_id    bigint := 0;
 BEGIN
     IF chunk_size IS NULL OR chunk_size <= 0 THEN
         RAISE EXCEPTION 'rescore_package_repo_confidence: chunk_size must be positive, got %', chunk_size;
@@ -152,6 +153,10 @@ BEGIN
               FROM package_repos pr
              WHERE pr.id > cursor_id
                AND (p_repo_ids IS NULL OR pr.repo_id = ANY(p_repo_ids))
+               -- deps_dev rows with NULL provenance were ingested before this column existed;
+               -- skip them so the backfill does not downgrade SLSA/attestation links to 0.50.
+               -- They will be rescored correctly once the next ingest populates provenance.
+               AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
              ORDER BY pr.id
              LIMIT chunk_size
         ),
@@ -180,11 +185,12 @@ BEGIN
                AND s.confidence IS DISTINCT FROM pr.confidence
             RETURNING pr.id
         )
-        SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id)
-          INTO batch_rows, cursor_id
+        SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id),
+               (SELECT COUNT(*) FROM updated)
+          INTO batch_rows, cursor_id, updated_rows
           FROM batch b;
 
-        applied_rows := applied_rows + batch_rows;
+        applied_rows := applied_rows + updated_rows;
 
         COMMIT;
 

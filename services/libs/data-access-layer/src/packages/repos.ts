@@ -154,7 +154,8 @@ export async function rescorePackageReposForRepos(
             ) s
       WHERE p.id = pr.package_id
         AND r.id = pr.repo_id
-        AND pr.repo_id = ANY($(repoIds)::bigint[])`,
+        AND pr.repo_id = ANY($(repoIds)::bigint[])
+        AND s.confidence IS DISTINCT FROM pr.confidence`,
     { repoIds },
   )
 }
