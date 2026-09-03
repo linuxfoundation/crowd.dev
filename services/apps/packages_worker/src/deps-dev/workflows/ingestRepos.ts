@@ -95,22 +95,20 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // Staging purl may or may not include @version depending on when the GCS export was taken,
 // so strip on staging side only — packages.purl stays bare and the UNIQUE index is usable.
 
-// competing_github checks both already-persisted links AND other rows in the current staging
-// chunk so that non-GitHub links see GitHub siblings inserted in the same statement.
-const PKGREPOS_COMPETING_GITHUB = `(
-  ${competingGithubRepoExpr('p.id', 'r.id')}
-  OR EXISTS (
-    SELECT 1
-      FROM staging.osspckgs_package_repos_raw s2
-      JOIN repos cr ON cr.url = s2.canonical_url
-      JOIN packages p2 ON p2.purl = REGEXP_REPLACE(s2.purl, '@[^@]+$', '')
-     WHERE p2.id = p.id
-       AND cr.id <> r.id
-       AND cr.host = 'github'
-  )
-)`
-
+// github_staged: package IDs that have at least one GitHub-hosted repo in this chunk.
+// Precomputed once per INSERT so the per-row competing_github check is a simple join
+// rather than a correlated scan of the million-row staging table (O(n) not O(n²)).
+// Cross-chunk ordering is not addressed here — if a non-GitHub link lands in chunk N
+// and its GitHub sibling lands in chunk N+1, the penalty is applied by the daily
+// rescore_package_repo_confidence() sweep, not inline.
 const PKGREPOS_MERGE_SQL = `
+WITH github_staged AS (
+  SELECT DISTINCT p2.id AS package_id
+  FROM staging.osspckgs_package_repos_raw s2
+  JOIN repos r2 ON r2.url = s2.canonical_url
+  JOIN packages p2 ON p2.purl = REGEXP_REPLACE(s2.purl, '@[^@]+$', '')
+  WHERE r2.host = 'github'
+)
 INSERT INTO package_repos (
   package_id, repo_id, source, signal, ownership_match, provenance,
   confidence, verified_at, created_at
@@ -131,7 +129,7 @@ CROSS JOIN LATERAL (
       ownershipMatch: `'no_evidence'`,
       provenance: 's.provenance',
     },
-    PKGREPOS_COMPETING_GITHUB,
+    `(${competingGithubRepoExpr('p.id', 'r.id')} OR (EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id) AND r.host <> 'github'))`,
   )} AS confidence
 ) c
 ORDER BY p.id, r.id, c.confidence DESC

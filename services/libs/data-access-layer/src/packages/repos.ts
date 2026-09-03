@@ -130,7 +130,8 @@ export async function rescorePackageReposForPackages(
             ) s
       WHERE p.id = pr.package_id
         AND r.id = pr.repo_id
-        AND pr.package_id = ANY($(packageIds)::bigint[])`,
+        AND pr.package_id = ANY($(packageIds)::bigint[])
+        AND s.confidence IS DISTINCT FROM pr.confidence`,
     { packageIds },
   )
 }

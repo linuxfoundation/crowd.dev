@@ -46,8 +46,8 @@ Base tier by `source` (and `provenance` for deps.dev):
 Penalties, stacked, floored at 0.05:
 
 - declared-only evidence penalties: `signal='secondary'` −0.10,
-  `ownership_match='unmatched'` −0.25, `'no_evidence'` −0.10
-- repo state: `disabled` → flat 0.05, `archived` −0.20, fork −0.10,
+  `ownership_match='unmatched'` −0.25 (`'no_evidence'` is a no-op rollout default, penalised only when CM-1394 sets real values)
+- repo state: `disabled` → 0.05 + offset, `archived` −0.20, fork −0.10,
   non-GitHub host while a competing GitHub link exists −0.05
 
 Two new columns feed those penalties: `signal` (`primary|secondary`, written by

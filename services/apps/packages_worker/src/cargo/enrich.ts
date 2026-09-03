@@ -230,7 +230,9 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          SELECT package_id, 'package_repos.repo_id' FROM del
          RETURNING 1
        )
-       SELECT (SELECT COUNT(*) FROM del)::int AS pruned`,
+       SELECT
+         (SELECT COUNT(*) FROM del)::int AS pruned,
+         ARRAY(SELECT DISTINCT package_id::text FROM del) AS pruned_package_ids`,
       { source: REPO_LINK_SOURCE },
     )
 
@@ -288,7 +290,11 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
       { source: REPO_LINK_SOURCE },
     )
 
-    await rescorePackageReposForPackages(tx, linkRow.package_ids ?? [])
+    const allAffectedPackageIds = [
+      ...(pruneRow.pruned_package_ids ?? []),
+      ...(linkRow.package_ids ?? []),
+    ]
+    await rescorePackageReposForPackages(tx, [...new Set(allAffectedPackageIds)])
 
     return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }
   })
