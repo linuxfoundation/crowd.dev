@@ -670,9 +670,7 @@ class AffiliationService(BaseService):
             if incoming_undated and self.is_undated_or_open_ended(existing_start, existing_end):
                 return True
             # An existing row for this org already covers this period — file inference defers to it.
-            if self.dates_overlap(
-                existing_start, existing_end, incoming_start, incoming_end
-            ):
+            if self.dates_overlap(existing_start, existing_end, incoming_start, incoming_end):
                 return True
         return False
 
