@@ -58,6 +58,32 @@ SQL over a dump, so `normalizeRepos` stages both `declared_repository_url` and
 first-wins-with-host-gate rule in SQL. `documentation` is not staged — it is
 almost always docs.rs, which the host gate rejects anyway.
 
+## Alternatives Considered
+
+### Per-ecosystem fallback (no shared helper)
+
+Each registry writer would duplicate its own fallback chain — npm already tried
+`bugs.url`, packagist already tried `homepage`.
+
+**Pros:** no new abstraction; each writer stays self-contained.
+**Cons:** seven writers meant seven copies of the same ordered-candidate logic
+and seven copies of the host-gate rule; adding a new ecosystem requires knowing
+which copy to follow.
+**Why not:** the duplication already caused drift (packagist's host gate existed
+alone; npm had no gate at all); a single helper enforces the rule once.
+
+### Accept all fallback fields at `primary` confidence
+
+Widen each writer to try secondary fields but record every link as `primary`.
+
+**Pros:** simpler persistence — no signal column needed.
+**Cons:** free-form fields (`homepage`, `projectUrl`) are noisy; ranking a
+documentation site equal to an explicit `<scm>` declaration inflates wrong
+links and corrupts the confidence score distribution.
+**Why not:** ADR-0020 already reserved the `signal` column and its −0.10 penalty
+specifically to express this distinction; a flat approach would abandon that
+mechanism before it could be used.
+
 ## Consequences
 
 ### Positive

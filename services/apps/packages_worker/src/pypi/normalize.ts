@@ -227,7 +227,10 @@ export function classifyProjectUrls(
     findByKey(/^repository$/i) ??
     findByKey(/^repo$/i) ??
     findByKey(/^code$/i) ??
-    entries.find(([k, v]) => /source|repo|code|\bgit\b/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k))?.[1] ??
+    entries.find(
+      ([k, v]) =>
+        /source|repo|code|\bgit\b/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k),
+    )?.[1] ??
     null
   let declaredRepositoryField: PypiRepositoryField | null = declaredRepositoryUrl ? 'source' : null
   // Many projects only declare a Homepage, or only a Bug Tracker, that is itself the repo.
