@@ -246,12 +246,12 @@ For each ticket approved by the user, create a worktree.
 
 Use the `superpowers:using-git-worktrees` skill:
 
-- **branch**: `fix/tb-quarantine/<JIRA_KEY>`
+- **branch**: `fix/<JIRA_KEY>-tb-quarantine-<datasource_name>`
 - If the skill is not available, fall back to:
   ```bash
   # Verify .worktrees is gitignored before creating
   git check-ignore -q .worktrees 2>/dev/null || echo '.worktrees' >> .gitignore
-  git worktree add .worktrees/<JIRA_KEY> -b fix/tb-quarantine/<JIRA_KEY>
+  git worktree add .worktrees/<JIRA_KEY> -b fix/<JIRA_KEY>-tb-quarantine-<datasource_name>
   ```
 
 After all worktrees are created, print a summary per datasource:
@@ -261,7 +261,7 @@ After all worktrees are created, print a summary per datasource:
 
 Ticket: <JIRA_KEY> (https://crowddev.atlassian.net/browse/<JIRA_KEY>)
 Worktree: .worktrees/<JIRA_KEY>
-Branch: fix/tb-quarantine/<JIRA_KEY>
+Branch: fix/<JIRA_KEY>-tb-quarantine-<datasource_name>
 
 Next steps:
 <fix_description — verbatim from the diagnosis bundle>

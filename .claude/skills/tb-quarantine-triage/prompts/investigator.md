@@ -61,16 +61,13 @@ GROUP BY c__error_column, c__error
 ORDER BY occurrences DESC
 ```
 
-Capture as `all_error_types`. This is the authoritative error picture.
+Capture as raw error rows. Before computing uniformity or selecting the dominant error, normalize every `c__error` string: strip UUIDs (replace with `<UUID>`), timestamps (`<TS>`), raw numeric values (`<N>`), truncate to 120 chars. Then group by `(c__error_column, normalized_error)`, summing occurrences and merging `first_seen`/`last_seen` across rows that collapse to the same normalized pair. The result is `all_error_types`.
 
-**Determine uniformity:**
-- Count distinct `(c__error_column, c__error)` pairs
-- `uniform` — one dominant pair accounts for ≥ 80% of quarantined rows
-- `mixed` — multiple distinct error types, no single pair dominates
+**Determine uniformity** (on normalized groups):
+- `uniform` — one dominant `(column, normalized_error)` pair accounts for ≥ 80% of quarantined rows
+- `mixed` — multiple distinct pairs, no single one dominates
 
-The dominant error is the top row of `all_error_types`. Compute `pct_of_quarantined = (dominant.occurrences / QUARANTINED_COUNT) * 100`.
-
-Normalize the `c__error` string for `dominant_error.error`: strip UUIDs (replace with `<UUID>`), timestamps (`<TS>`), raw numeric values (`<N>`), truncate to 120 chars.
+The dominant error is the top normalized group. Compute `pct_of_quarantined = (dominant.occurrences / QUARANTINED_COUNT) * 100`.
 
 ## Step 3 — Total row count
 
@@ -108,22 +105,24 @@ For each found file, read the lines referencing the datasource and note the payl
 
 From the producer files found in Step 5, extract the postgres table name(s) that feed this datasource (look for `FROM <table>`, `INSERT INTO <table>`, Sequin config `table:` field, or Kafka topic names that map to a table).
 
-For each identified postgres table, search all three migration paths for `CREATE TABLE` and `ALTER TABLE` statements that define its columns:
+For each identified postgres table, locate migration files that reference it, then read those files in full to extract complete `CREATE TABLE` and `ALTER TABLE` statements (multiline bodies included):
 
 **CDP database** (crowd.dev repo):
 ```bash
-grep -rl "{table_name}" {REPO_ROOT}/backend/src/database/migrations --include="*.sql" 2>/dev/null | sort | xargs grep -h -i "CREATE TABLE\|ALTER TABLE\|ADD COLUMN\|{table_name}" 2>/dev/null
+grep -rl "{table_name}" {REPO_ROOT}/backend/src/database/migrations --include="*.sql" 2>/dev/null | sort
 ```
 
 **Packages database** (crowd.dev repo):
 ```bash
-grep -rl "{table_name}" {REPO_ROOT}/backend/src/osspckgs/migrations --include="*.sql" 2>/dev/null | sort | xargs grep -h -i "CREATE TABLE\|ALTER TABLE\|ADD COLUMN\|{table_name}" 2>/dev/null
+grep -rl "{table_name}" {REPO_ROOT}/backend/src/osspckgs/migrations --include="*.sql" 2>/dev/null | sort
 ```
 
 **Insights database** (insights repo at `{REPO_ROOT}/../insights`):
 ```bash
-grep -rl "{table_name}" {REPO_ROOT}/../insights/database/migrations --include="*.sql" 2>/dev/null | sort | xargs grep -h -i "CREATE TABLE\|ALTER TABLE\|ADD COLUMN\|{table_name}" 2>/dev/null
+grep -rl "{table_name}" {REPO_ROOT}/../insights/database/migrations --include="*.sql" 2>/dev/null | sort
 ```
+
+Read each matched file in full. Extract every `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` statement that defines a column. The most recent `ALTER TABLE ... ADD COLUMN` for a column supersedes the `CREATE TABLE` definition.
 
 For each offending column from `offending_columns`, compare:
 - **Postgres declared type** (from the most recent migration that defines it — `ALTER TABLE ... ADD COLUMN` supersedes `CREATE TABLE`)
@@ -143,22 +142,6 @@ Flag mismatches where a postgres type cannot be safely mapped to the Tinybird ty
 
 Add a `postgres_type_conflicts` field to the output bundle listing any mismatches found. If the postgres table was not found in any migration path, set `postgres_source_table: "not_found"`.
 
-## Step 6b — Downstream Tinybird impact (only if fix_type is schema_type_change)
-
-If the proposed fix changes a column type in a `.datasource` file, search all pipes and datasources for references to that datasource and column:
-
-```bash
-grep -rl "{DS_NAME}" {REPO_ROOT}/services/libs/tinybird/pipes --include="*.pipe" 2>/dev/null
-grep -rl "{DS_NAME}" {REPO_ROOT}/services/libs/tinybird/datasources --include="*.datasource" 2>/dev/null | grep -v "{DS_NAME}.datasource"
-```
-
-For each file found, read it and check whether `{offending_column}` is:
-- Used in arithmetic, comparison, or aggregation (type-sensitive — will break if type changes)
-- Cast explicitly (safe regardless of type change)
-- Passed through as-is (may silently break downstream consumers)
-
-Add a `downstream_impacts` field to the bundle listing each affected file, the usage, and whether it requires a change. If any downstream pipe/datasource requires a change, set `fix_type: "schema_type_change_with_downstream"` and include the required downstream changes in `fix_description`.
-
 ## Step 7 — Determine fix
 
 Use `ds_total_rows` to assess backfill cost:
@@ -175,8 +158,24 @@ Pick fix type based on the dominant error:
 - **`producer_cast`** — producer sends wrong type (e.g. string for Int64, negative int for UInt) → cast or coerce at producer. Prefer this when DS is large. Quarantined rows had bad data — discard them, re-sync fixes the main DS.
 - **`producer_guard`** — producer sends null for non-nullable column **and the field is omitted / absent in some events** → add null guard / default at producer so the field is always present. `DEFAULT` in Tinybird only applies when the key is **absent** from the JSON payload — it does NOT rescue an explicit `null` value. If the CDC/producer sends `{"col": null}` explicitly, `DEFAULT` is ignored and the row is quarantined regardless.
 - **`schema_type_change`** — schema type is wrong, OR a non-nullable column receives explicit `null` values from the source (e.g. Postgres column is nullable but Tinybird column is `String` not `Nullable(String)`) → change type in `.datasource` file (e.g. `String` → `Nullable(String)`). Requires delete-and-recreate of the datasource and Sequin backfill. Quarantined rows are valid data — they come back via the backfill.
-- **`schema_add_column`** — producer sends a field not in schema → add column to `.datasource` file. Always safe (additive, no backfill).
+- **`schema_add_column`** — producer sends a field not in schema → add column to `.datasource` file. Additive and safe, but quarantined rows (which were rejected before the column existed) will not replay automatically. Set `backfill_required: true` and recommend Sequin backfill to recover them.
 - **`ambiguous`** — mixed errors, conflicting signals, or insufficient data to determine fix confidently.
+
+## Step 7b — Downstream Tinybird impact (only if fix_type is schema_type_change)
+
+If the initial fix classification is `schema_type_change`, search all pipes and datasources for references to that datasource and column:
+
+```bash
+grep -rl "{DS_NAME}" {REPO_ROOT}/services/libs/tinybird/pipes --include="*.pipe" 2>/dev/null
+grep -rl "{DS_NAME}" {REPO_ROOT}/services/libs/tinybird/datasources --include="*.datasource" 2>/dev/null | grep -v "{DS_NAME}.datasource"
+```
+
+For each file found, read it and check whether `{offending_column}` is:
+- Used in arithmetic, comparison, or aggregation (type-sensitive — will break if type changes)
+- Cast explicitly (safe regardless of type change)
+- Passed through as-is (may silently break downstream consumers)
+
+Add a `downstream_impacts` field to the bundle listing each affected file, the usage, and whether it requires a change. If any downstream pipe/datasource requires a change, set `fix_type: "schema_type_change_with_downstream"` and include the required downstream changes in `fix_description`.
 
 > **Explicit null vs absent field:** When a Postgres column is nullable and CDC replication sends the row with `{"col": null}`, Tinybird receives an explicit null. A `DEFAULT` value on the Tinybird column cannot rescue this — only `Nullable(Type)` can accept it. Always check whether the error says "Null value not allowed" (explicit null → `schema_type_change` to `Nullable`) vs a truly absent/missing field (absent → `DEFAULT` or `producer_guard`).
 
