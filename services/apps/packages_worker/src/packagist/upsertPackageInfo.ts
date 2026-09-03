@@ -80,6 +80,15 @@ export async function persistPackagistPackageInfo(
       })
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
+
+      if (resolvedRepo.signal === 'secondary') {
+        const repoUrlChanged = await t.result(
+          `UPDATE packages SET repository_url = $(url) WHERE id = $(id)::bigint
+             AND (repository_url IS DISTINCT FROM $(url))`,
+          { url: resolvedRepo.repo.url, id },
+        )
+        if (repoUrlChanged > 0) changedFields.push('packages.repository_url')
+      }
     } else {
       const removedFields = await removeDeclaredPackageRepo(t, id)
       changedFields.push(...removedFields)

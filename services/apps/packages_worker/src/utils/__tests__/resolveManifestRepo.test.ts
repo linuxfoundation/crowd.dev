@@ -12,7 +12,6 @@ describe('resolveManifestRepo', () => {
     ).toEqual({
       repo: { url: 'https://github.com/babel/babel', host: 'github' },
       signal: 'primary',
-      field: 'repository',
     })
   })
 
@@ -25,7 +24,6 @@ describe('resolveManifestRepo', () => {
     ).toEqual({
       repo: { url: 'https://github.com/foo/bar', host: 'github' },
       signal: 'secondary',
-      field: 'homepage',
     })
   })
 
