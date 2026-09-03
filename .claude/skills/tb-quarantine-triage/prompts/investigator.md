@@ -151,7 +151,7 @@ Flag mismatches where a postgres type cannot be safely mapped to the Tinybird ty
 | `timestamptz`, `timestamp` | `DateTime`, `Nullable(DateTime)` | `Int64` |
 | `jsonb`, `json` | `String` | Any typed column |
 | `uuid` | `String` | Any non-String |
-| `numeric`, `decimal` | `Float64`, `Nullable(Float64)` | `Int64` |
+| `numeric`, `decimal` | `Decimal(P,S)`, `Nullable(Decimal(P,S))` | `Float64` (loses precision), `Int64` |
 
 Add a `postgres_type_conflicts` field to the output bundle listing any mismatches found. If the postgres table was not found in any migration path, set `postgres_source_table: "not_found"`.
 
