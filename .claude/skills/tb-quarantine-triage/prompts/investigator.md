@@ -124,10 +124,19 @@ grep -rl "{table_name}" {REPO_ROOT}/backend/src/osspckgs/migrations --include="*
 grep -rl "{table_name}" {REPO_ROOT}/../insights/database/migrations --include="*.sql" 2>/dev/null | sort
 ```
 
-Read each matched file in full. Extract every `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` statement that defines a column. The most recent `ALTER TABLE ... ADD COLUMN` for a column supersedes the `CREATE TABLE` definition.
+Read each matched file in full. Build the effective column definition by applying migrations in chronological order (sort by filename — Flyway V-prefix timestamps guarantee order):
+
+1. `CREATE TABLE` — establishes initial column types
+2. `ALTER TABLE ... ADD COLUMN` — adds new columns
+3. `ALTER TABLE ... ALTER COLUMN ... TYPE` — changes an existing column's type
+4. `ALTER TABLE ... ALTER COLUMN ... SET NOT NULL` / `DROP NOT NULL` — changes nullability
+5. `ALTER TABLE ... RENAME COLUMN` — tracks renames (update the column name being tracked)
+6. `ALTER TABLE ... DROP COLUMN` — column no longer exists; mark as dropped
+
+The effective type is the result of applying all applicable statements in order. A later `ALTER COLUMN TYPE` supersedes `ADD COLUMN` and `CREATE TABLE`.
 
 For each offending column from `offending_columns`, compare:
-- **Postgres declared type** (from the most recent migration that defines it — `ALTER TABLE ... ADD COLUMN` supersedes `CREATE TABLE`)
+- **Postgres effective type** (after applying all migrations chronologically as above)
 - **Tinybird declared type** (from the `.datasource` file in Step 4)
 
 Flag mismatches where a postgres type cannot be safely mapped to the Tinybird type without casting:
