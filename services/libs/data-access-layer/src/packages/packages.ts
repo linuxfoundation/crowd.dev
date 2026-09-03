@@ -320,6 +320,19 @@ export async function updatePackagistPackageStats(
   }
 }
 
+export async function setPackageRepositoryUrl(
+  qx: QueryExecutor,
+  packageId: string,
+  url: string,
+): Promise<string[]> {
+  const affected = await qx.result(
+    `UPDATE packages SET repository_url = $(url)
+      WHERE id = $(packageId)::bigint AND repository_url IS DISTINCT FROM $(url)`,
+    { url, packageId },
+  )
+  return affected > 0 ? ['packages.repository_url'] : []
+}
+
 export interface PackagistVersionAggregates {
   versionsCount: number
   latestVersion: string | null
