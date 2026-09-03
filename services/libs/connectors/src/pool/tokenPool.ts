@@ -27,6 +27,7 @@ export interface TokenPool {
   acquire(preferredEntryId?: string): Promise<IPooledToken>
   hasHeadroom(estimate: number): Promise<boolean>
   park(entryId: string, resumeAt: Date): Promise<void>
+  invalidate(entryId: string): Promise<void>
   quarantine(entryId: string): Promise<void>
   seed(entryIds: string[]): Promise<void>
   earliestResumeAt(): Promise<Date | null>
@@ -263,6 +264,10 @@ export function createTokenPool(
 
     async park(entryId: string, resumeAt: Date): Promise<void> {
       await updateState(entryId, { parkedUntil: resumeAt.toISOString() })
+    },
+
+    async invalidate(entryId: string): Promise<void> {
+      await updateState(entryId, { token: undefined, tokenExpiresAtMs: undefined })
     },
 
     // POC only: quarantined entries are kept for inspection and never revived automatically

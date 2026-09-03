@@ -107,7 +107,7 @@ export async function executeSync(unitId: string): Promise<void> {
     http = createHttpClient({
       acquireToken: () => pool.acquire(preferredEntryId),
       parkToken: pool.park,
-      quarantineToken: pool.quarantine,
+      invalidateToken: pool.invalidate,
       interpretResponse: manifest.interpretResponse,
       log,
     })

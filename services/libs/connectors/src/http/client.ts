@@ -28,7 +28,7 @@ export type ResponseInterpreter = (response: HttpResponse) => ConnectorError | n
 export interface HttpClientDeps {
   acquireToken: () => Promise<IPooledToken>
   parkToken: (tokenId: string, resumeAt: Date) => Promise<void>
-  quarantineToken: (tokenId: string) => Promise<void>
+  invalidateToken: (tokenId: string) => Promise<void>
   log: Logger
   applyToken?: TokenApplier
   interpretResponse?: ResponseInterpreter
@@ -111,10 +111,10 @@ async function attemptRequest<T>(
   }
 
   if (error.errorClass === 'provider.auth') {
-    await deps.quarantineToken(token.id)
+    await deps.invalidateToken(token.id)
     deps.log.warn(
       { tokenId: token.id, status: response.status },
-      'token quarantined on auth failure',
+      'token invalidated on auth failure',
     )
     if (allowTokenRotation) {
       return attemptRequest<T>(deps, config, false)
