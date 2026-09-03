@@ -26,7 +26,9 @@ ORDER BY insertion_date DESC
 LIMIT 30
 ```
 
-If query errors or returns 0 rows, return:
+If query errors, propagate the failure — do not swallow it into a zero-row bundle. The parent skill's error-handling block will catch it and continue with other datasources.
+
+If the query succeeds but returns 0 rows (race condition — rows expired between Phase 1 count and now), return:
 ```json
 {
   "datasource": "<DS_NAME>",
@@ -40,7 +42,7 @@ If query errors or returns 0 rows, return:
   "schema_file": "not_found",
   "likely_producer_files": [],
   "fix_type": "ambiguous",
-  "fix_description": "No quarantined rows found — possibly already resolved.",
+  "fix_description": "No quarantined rows found — possibly expired before investigation.",
   "backfill_required": false,
   "backfill_risk": "none",
   "fingerprint": "0000000000000000"
@@ -92,14 +94,14 @@ If file does not exist, set `schema_file = "not_found"`.
 Search for files that write to this datasource:
 
 ```bash
-# Kafka/Sequin configs
-grep -rl "{DS_NAME}" {REPO_ROOT} --include="*.json" --include="*.yaml" --include="*.yml" 2>/dev/null | grep -v node_modules | head -10
+# Kafka/Sequin configs (likely producers — check table:/topic: fields)
+grep -rl "{DS_NAME}" {REPO_ROOT} --include="*.json" --include="*.yaml" --include="*.yml" 2>/dev/null | grep -v node_modules
 
-# TypeScript producers
-grep -rl "{DS_NAME}" {REPO_ROOT} --include="*.ts" --include="*.js" 2>/dev/null | grep -v node_modules | grep -v ".datasource" | head -10
+# TypeScript files referencing the datasource
+grep -rl "{DS_NAME}" {REPO_ROOT} --include="*.ts" --include="*.js" 2>/dev/null | grep -v node_modules | grep -v ".datasource"
 ```
 
-For each found file, read the lines referencing the datasource and note the payload shape.
+Collect all results. For each file, read the lines referencing the datasource and classify as writer (sends data to this DS) or reader (queries or references it). Writers are files that: push to a Tinybird ingest endpoint, define a Sequin sink targeting this DS, or build the payload shape sent to it. Discard readers. Apply `head -10` only after classification — never before.
 
 ## Step 6 — Postgres schema cross-reference
 

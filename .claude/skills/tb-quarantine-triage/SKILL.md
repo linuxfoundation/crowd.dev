@@ -8,7 +8,7 @@ description: >
   diagnosis plan for human review, then creates CM Jira tickets and git
   worktrees for approved datasources. No automation — always requires human
   sign-off before any Jira or Git action.
-allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, mcp__tinybird__list_datasources, mcp__tinybird__execute_query, mcp__plugin_context-mode_context-mode__ctx_execute, mcp__mcp-atlassian__createJiraIssue
+allowed-tools: Bash, Read, Glob, Grep, Agent, AskUserQuestion, Skill, mcp__tinybird__list_datasources, mcp__tinybird__execute_query, mcp__plugin_context-mode_context-mode__ctx_execute, mcp__mcp-atlassian__createJiraIssue
 ---
 
 # Tinybird Quarantine Investigator
@@ -32,7 +32,7 @@ Call the `list_datasources` MCP tool. The result may be large and saved to a fil
 Extract all datasource `name` values. Exclude any where the name:
 - starts with `raul_` or `test_`
 - ends with `_old` or contains `_backup`
-- ends with `_MV` or `_MV_ds` or `_copy_ds` (materialized views and copy targets — they do not receive direct ingestion)
+- ends with `_MV` or `_MV_ds` or `_copy_ds`, or matches `*_MV_ds_\d+` (materialized views, numbered MV shards, and copy targets — they do not receive direct ingestion)
 - ends with `_sorted` or `_sorted_alt`
 - matches `*_bucket_*_ds` or `*_deduplicated_cleaned_bucket_*_ds` or `*_enriched_deduplicated_bucket_*_ds` or `*_collection_bucket_*_ds` or `*_collection_deduplicated_cleaned_bucket_*_ds` (sharded bucket datasources)
 
@@ -87,7 +87,14 @@ Each subagent returns a **diagnosis bundle** (JSON):
   "offending_columns": ["<col1>"],
   "schema_file": "<rel/path or 'not_found'>",
   "likely_producer_files": ["<rel/path>:<line>"],
-  "fix_type": "producer_cast | producer_guard | schema_add_column | schema_type_change | ambiguous",
+  "postgres_source_table": "<table_name or 'not_found'>",
+  "postgres_type_conflicts": [
+    {"column": "<col>", "postgres_type": "<type>", "tinybird_type": "<type>", "safe_mapping": true}
+  ],
+  "downstream_impacts": [
+    {"file": "<rel/path>", "usage": "<how the column is used>", "requires_change": true, "change_needed": "<description or null>"}
+  ],
+  "fix_type": "producer_cast | producer_guard | schema_add_column | schema_type_change | schema_type_change_with_downstream | ambiguous",
   "fix_description": "<what specifically needs to change, including file paths and the exact change>",
   "backfill_required": true | false,
   "backfill_risk": "low | medium | high | none",
@@ -142,12 +149,17 @@ For each datasource, print a section:
 
 Recovery path depends on fix type and whether the quarantined data itself is valid:
 
-**Schema change (`schema_type_change` / `schema_add_column`) — quarantined data is valid:**
+**Schema type change (`schema_type_change` / `schema_type_change_with_downstream`) — quarantined data is valid:**
 1. Pause the Sequin sink for this datasource
-2. Update `{DS_NAME}.datasource` with the type/column fix
+2. Update `{DS_NAME}.datasource` with the type fix (and any downstream pipes if `schema_type_change_with_downstream`)
 3. Delete and recreate the datasource: `tb push datasources/{DS_NAME}.datasource --force`
 4. Backfill from Sequin — re-sends all rows including previously-quarantined ones (now accepted by the fixed schema)
 5. Restart the sink
+
+**Add column (`schema_add_column`) — quarantined data is valid:**
+1. Add the missing column to `{DS_NAME}.datasource`
+2. Push the updated schema: `tb push datasources/{DS_NAME}.datasource` (no delete/recreate needed — additive)
+3. Backfill from Sequin — re-sends previously-quarantined rows so the new column is populated
 
 **Producer fix (`producer_cast` / `producer_guard`) — quarantined data is bad:**
 1. Fix the producer code (cast or null-guard the offending value)
@@ -249,9 +261,9 @@ Use the `superpowers:using-git-worktrees` skill:
 - **branch**: `fix/<JIRA_KEY>-tb-quarantine-<datasource_name>`
 - If the skill is not available, fall back to:
   ```bash
-  # Verify .worktrees is gitignored before creating
-  git check-ignore -q .worktrees 2>/dev/null || echo '.worktrees' >> .gitignore
-  git worktree add .worktrees/<JIRA_KEY> -b fix/<JIRA_KEY>-tb-quarantine-<datasource_name>
+  # Ensure .worktrees is gitignored (add once if missing)
+  grep -qxF '.worktrees' .gitignore || echo '.worktrees' >> .gitignore
+  git worktree add .worktrees/<JIRA_KEY> -b fix/<JIRA_KEY>-tb-quarantine-<datasource_name> origin/main
   ```
 
 After all worktrees are created, print a summary per datasource:
