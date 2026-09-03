@@ -196,21 +196,30 @@ export default class MemberOrganizationsService extends LoggerBase {
 
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
+      if (!data.organizationId) {
+        throw new Error404('Organization not found')
+      }
+
       const dates = sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
-      const memberOrgData: Partial<IMemberOrganization> = {
-        ...data,
+      const memberOrgData: IMemberOrganization = {
+        memberId,
+        organizationId: data.organizationId,
         dateStart: dates.dateStart,
         dateEnd: dates.dateEnd,
+        title: data.title,
+        source: data.source,
+        verified: data.verified,
+        verifiedBy: data.verifiedBy,
       }
 
       const memberOrganizations = await fetchMemberOrganizations(qx, memberId)
 
       // Hidden project-registry/email-domain rows for this company are shown as the same card.
       // Drop them so the new UI job owns the dates the person just entered.
-      const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(memberOrganizations, {
-        memberId,
-        ...memberOrgData,
-      })
+      const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
+        memberOrganizations,
+        memberOrgData,
+      )
       const overlappingIds = overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : []))
 
       if (overlappingIds.length > 0) {

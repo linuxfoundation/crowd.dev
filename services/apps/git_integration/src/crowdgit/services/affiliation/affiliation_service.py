@@ -669,8 +669,8 @@ class AffiliationService(BaseService):
                 return True
             if incoming_undated and self.is_undated_or_open_ended(existing_start, existing_end):
                 return True
-            # Someone already set this job in the UI for this period — don't overwrite it from the file.
-            if row.get("source") == "ui" and self.dates_overlap(
+            # An existing row for this org already covers this period — file inference defers to it.
+            if self.dates_overlap(
                 existing_start, existing_end, incoming_start, incoming_end
             ):
                 return True
