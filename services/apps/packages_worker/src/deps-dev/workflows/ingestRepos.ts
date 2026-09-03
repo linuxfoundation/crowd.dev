@@ -1,6 +1,7 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import {
+  claimFromRow,
   competingGithubRepoExpr,
   packageRepoConfidenceCall,
 } from '@crowd/data-access-layer/src/packages/repoConfidence'
@@ -98,9 +99,23 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // github_staged: package IDs that have at least one GitHub-hosted repo in this chunk.
 // Precomputed once per INSERT so the per-row competing_github check is a simple join
 // rather than a correlated scan of the million-row staging table (O(n) not O(n²)).
-// Cross-chunk ordering is not addressed here — if a non-GitHub link lands in chunk N
-// and its GitHub sibling lands in chunk N+1, the penalty is applied by the daily
-// rescore_package_repo_confidence() sweep, not inline.
+// After all chunks are merged, rescore non-GitHub deps_dev links that now have a competing
+// GitHub link but were scored in an earlier chunk before that GitHub link was inserted.
+const PKGREPOS_RESCORE_SQL = `
+UPDATE package_repos pr
+   SET confidence = s.confidence
+  FROM packages p, repos r,
+       LATERAL (
+         SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), competingGithubRepoExpr('p.id', 'r.id'))} AS confidence
+       ) s
+ WHERE pr.source = 'deps_dev'
+   AND p.id = pr.package_id
+   AND r.id = pr.repo_id
+   AND r.host <> 'github'
+   AND ${competingGithubRepoExpr('p.id', 'r.id')}
+   AND s.confidence IS DISTINCT FROM pr.confidence
+`
+
 const PKGREPOS_MERGE_SQL = `
 WITH github_staged AS MATERIALIZED (
   SELECT DISTINCT p2.id AS package_id
@@ -284,8 +299,8 @@ export async function ingestRepos(opts: {
 
     const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgReposExport.jobId,
-      mergeSql: PKGREPOS_MERGE_SQL,
-      tableNames: 'package_repos',
+      mergeSql: isFinal ? [PKGREPOS_MERGE_SQL, PKGREPOS_RESCORE_SQL] : PKGREPOS_MERGE_SQL,
+      tableNames: isFinal ? ['package_repos', 'package_repos'] : 'package_repos',
       isFinal,
       priorRowsAffected: pkgRepoPriorRowsAffected,
       priorTableRowCounts: pkgRepoPriorTableRowCounts,

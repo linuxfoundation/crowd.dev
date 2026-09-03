@@ -58,7 +58,11 @@ export async function removeDeclaredPackageRepo(
         AND ($(exceptRepoId)::bigint IS NULL OR repo_id <> $(exceptRepoId)::bigint)`,
     { packageId, exceptRepoId: exceptRepoId ?? null },
   )
-  return rowCount > 0 ? ['package_repos.repo_id'] : []
+  if (rowCount > 0) {
+    await rescorePackageReposForPackages(qx, [packageId])
+    return ['package_repos.repo_id']
+  }
+  return []
 }
 
 // Confidence is never passed in — package_repo_confidence() (V1788307200) is the only

@@ -53,7 +53,7 @@ function namespaceCandidates(namespace: string): string[] {
   if (segments.length === 1) {
     return [normalizeIdentity(namespace)].filter(Boolean)
   }
-  const identityBearing = segments.filter((s) => !STRUCTURAL_SEGMENTS.has(s.toLowerCase()))
+  const identityBearing = segments.slice(1).filter((s) => !STRUCTURAL_SEGMENTS.has(s.toLowerCase()))
   return identityBearing.map(normalizeIdentity).filter(Boolean)
 }
 
@@ -78,7 +78,10 @@ export function matchOwnership(evidence: OwnershipEvidence): PackageRepoOwnershi
 }
 
 // GitLab subgroups make the owner the first path segment, not the second-to-last one.
+// Returns null for host=other: those URLs preserve full path segments (e.g. sourceforge /p/foo/code)
+// so path[0] is not the owner.
 export function repoOwnerFromCanonical(repo: CanonicalRepo): string | null {
+  if (repo.host === 'other') return null
   const path = repo.url.replace(/^https?:\/\/[^/]+\//, '').split('/')
   return path.length >= 2 ? path[0] : null
 }
