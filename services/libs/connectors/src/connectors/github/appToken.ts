@@ -7,8 +7,8 @@ import {
   ProviderContractError,
   ProviderUnavailableError,
 } from '../../http/errors'
-import type { TokenPool } from '../../pool/tokenPool'
-import type { Credential } from '../../types'
+import type { TokenMinter, TokenPool } from '../../pool/tokenPool'
+import type { Credential, PoolPreparation } from '../../types'
 
 const GITHUB_API_VERSION = '2022-11-28'
 
@@ -67,14 +67,7 @@ export async function mintInstallationToken(
   }
 }
 
-// TODO(CM-1372): POC-only resolution; store the installation id per integration after the POC
-export async function resolveInstallationId(credential: Credential): Promise<string> {
-  const fromEnv = process.env.CROWD_GITHUB_INSTALLATION_ID
-  if (fromEnv) {
-    return fromEnv
-  }
-
-  let installations: { id: number }[]
+export async function listInstallationIds(credential: Credential): Promise<string[]> {
   try {
     const response = await axios.get('https://api.github.com/app/installations', {
       headers: {
@@ -82,20 +75,42 @@ export async function resolveInstallationId(credential: Credential): Promise<str
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': GITHUB_API_VERSION,
       },
+      params: { per_page: 100 },
       timeout: GITHUB_REQUEST_TIMEOUT_MS,
     })
-    installations = response.data as { id: number }[]
+    return (response.data as { id: number }[]).map((installation) => String(installation.id))
   } catch (err) {
-    throw classifyAppApiError(err, 'installation resolution') ?? err
+    throw classifyAppApiError(err, 'installation listing') ?? err
   }
-  if (installations.length === 0) {
-    throw new Error('github app has no installations')
-  }
-  return String(installations[0].id)
 }
 
-export async function seedGithubTokens(credential: Credential, pool: TokenPool): Promise<void> {
-  const installationId = await resolveInstallationId(credential)
-  const { token } = await mintInstallationToken(credential, installationId)
-  await pool.seed(`install-${installationId}`, token)
+// TODO(CM-1372): POC-only resolution; store the installation id per integration after the POC
+export async function resolveInstallationId(credential: Credential): Promise<string> {
+  const fromEnv = process.env.CROWD_GITHUB_INSTALLATION_ID
+  if (fromEnv) {
+    return fromEnv
+  }
+
+  const installationIds = await listInstallationIds(credential)
+  if (installationIds.length === 0) {
+    throw new Error('github app has no installations')
+  }
+  return installationIds[0]
+}
+
+export async function prepareGithubPool(
+  credential: Credential,
+  pool: TokenPool,
+): Promise<PoolPreparation> {
+  const installationIds = await listInstallationIds(credential)
+  if (installationIds.length === 0) {
+    throw new Error('github app has no installations')
+  }
+  await pool.seed(installationIds)
+  const preferredEntryId = process.env.CROWD_GITHUB_INSTALLATION_ID ?? installationIds[0]
+  return { preferredEntryId }
+}
+
+export function createGithubTokenMinter(credential: Credential): TokenMinter {
+  return (installationId) => mintInstallationToken(credential, installationId)
 }

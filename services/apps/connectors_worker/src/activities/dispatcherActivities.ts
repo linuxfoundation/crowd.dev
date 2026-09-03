@@ -22,7 +22,7 @@ export async function claimDue(limit: number): Promise<IClaimedUnit[]> {
 export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionResult> {
   const headrooms = await mapWithConcurrency(units, BUDGET_PROBE_CONCURRENCY, (unit) => {
     const manifest = findManifest(unit.platform)
-    const pool = createTokenPool(svc.redis, unit.platform, unit.integrationId, {
+    const pool = createTokenPool(svc.redis, unit.platform, {
       probeBudget: manifest?.probeBudget,
     })
     return pool.hasHeadroom(DEFAULT_RUN_ESTIMATE)

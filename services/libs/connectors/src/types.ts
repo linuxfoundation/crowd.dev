@@ -3,7 +3,7 @@ import type { ZodType } from 'zod'
 import type { Logger } from '@crowd/logging'
 
 import type { ConnectorHttp, ResponseInterpreter } from './http/client'
-import type { BudgetProbe, TokenPool } from './pool/tokenPool'
+import type { BudgetProbe, TokenMinter, TokenPool } from './pool/tokenPool'
 
 export interface Channel {
   channelId: string
@@ -44,11 +44,16 @@ export interface SyncDefinition {
   run: (ctx: SyncContext) => Promise<SyncOutcome>
 }
 
+export interface PoolPreparation {
+  preferredEntryId?: string
+}
+
 export interface Manifest {
   platform: string
   syncs: SyncDefinition[]
   discover: (credential: Credential) => Promise<Channel[]>
-  seedTokens?: (credential: Credential, pool: TokenPool) => Promise<void>
+  preparePool?: (credential: Credential, pool: TokenPool) => Promise<PoolPreparation>
+  mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
   interpretResponse?: ResponseInterpreter
 }

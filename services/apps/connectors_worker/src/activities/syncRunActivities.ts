@@ -92,15 +92,20 @@ export async function executeSync(unitId: string): Promise<void> {
     }
 
     const manifest = getManifest(unit.platform)
-    const pool = createTokenPool(svc.redis, unit.platform, unit.integrationId, {
+    const credential =
+      manifest.preparePool || manifest.mintToken
+        ? await getCredential(qx, unit.integrationId)
+        : null
+    const pool = createTokenPool(svc.redis, unit.platform, {
       probeBudget: manifest.probeBudget,
+      mintToken: credential && manifest.mintToken ? manifest.mintToken(credential) : undefined,
     })
-    if (manifest.seedTokens) {
-      const credential = await getCredential(qx, unit.integrationId)
-      await manifest.seedTokens(credential, pool)
+    let preferredEntryId: string | undefined
+    if (credential && manifest.preparePool) {
+      preferredEntryId = (await manifest.preparePool(credential, pool)).preferredEntryId
     }
     http = createHttpClient({
-      acquireToken: pool.acquire,
+      acquireToken: () => pool.acquire(preferredEntryId),
       parkToken: pool.park,
       quarantineToken: pool.quarantine,
       interpretResponse: manifest.interpretResponse,

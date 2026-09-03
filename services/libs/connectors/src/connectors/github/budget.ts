@@ -10,7 +10,7 @@ interface RateLimitResource {
   reset: number
 }
 
-export const probeGithubBudget: BudgetProbe = async (_platform, _connectionId, token) => {
+export const probeGithubBudget: BudgetProbe = async (_platform, token) => {
   try {
     const response = await axios.get('https://api.github.com/rate_limit', {
       headers: {

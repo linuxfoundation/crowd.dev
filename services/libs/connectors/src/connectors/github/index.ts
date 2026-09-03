@@ -1,6 +1,6 @@
 import type { Manifest } from '../../types'
 
-import { seedGithubTokens } from './appToken'
+import { createGithubTokenMinter, prepareGithubPool } from './appToken'
 import { probeGithubBudget } from './budget'
 import { discoverRepos } from './discover'
 import { interpretGithubResponse } from './interpret'
@@ -28,7 +28,8 @@ export const githubConnector: Manifest = {
     starsSync,
   ],
   discover: discoverRepos,
-  seedTokens: seedGithubTokens,
+  preparePool: prepareGithubPool,
+  mintToken: createGithubTokenMinter,
   probeBudget: probeGithubBudget,
   interpretResponse: interpretGithubResponse,
 }
