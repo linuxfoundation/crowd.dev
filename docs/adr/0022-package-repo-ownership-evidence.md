@@ -67,45 +67,6 @@ join against the staged maintainer logins, with the repo owner carried on
 `cargo_sync.repo_choice` (see
 [ADR-0021](./0021-secondary-manifest-repository-signal.md)).
 
-## Alternatives Considered
-
-### Alternative 1: Verify ownership against the forge (GitHub API) instead of registry metadata
-
-- **Pros**: authoritative — the repo's actual owner, org membership, and
-  whether the publisher can push.
-- **Cons**: an API call per candidate link across millions of packages, with
-  rate limits, and a hard dependency on the enricher having run first.
-- **Why not**: the registry metadata is already in hand at write time and is
-  enough to separate the obvious cases; forge verification can raise
-  `matched` to a stronger tier later without changing this contract.
-
-### Alternative 2: Treat "no evidence available" as `unmatched`
-
-- **Pros**: one fewer state; simpler scoring table.
-- **Cons**: every rubygems link and every Maven backfill row would be
-  penalised as if a comparison had failed, which is a data-availability
-  artefact, not a quality signal.
-- **Why not**: it would push whole ecosystems below the medium label for
-  reasons that have nothing to do with the link's correctness.
-
-### Alternative 3: Reject `unmatched` links instead of scoring them down
-
-- **Pros**: squatting links never enter the table at all.
-- **Cons**: legitimate cases fail the heuristic — a package published under a
-  personal account for a repo owned by a foundation, a rename, a monorepo
-  vendor split — and those packages would silently lose their only link.
-- **Why not**: a ranked link degrades gracefully; a dropped one is
-  unrecoverable and invisible.
-
-### Alternative 4: Implement the matcher only in TypeScript and stream cargo rows through Node
-
-- **Pros**: a single implementation, unit-tested, no SQL duplication.
-- **Cons**: the cargo enrich phase would round-trip millions of staged rows
-  through the worker purely to compute a three-valued enum.
-- **Why not**: cost is unacceptable for the bulk path. The SQL twin was
-  validated read-only against packages-db case-by-case, including the `-io`
-  suffix edge case, to confirm it agrees with `normalizeIdentity`.
-
 ## Consequences
 
 ### Positive
