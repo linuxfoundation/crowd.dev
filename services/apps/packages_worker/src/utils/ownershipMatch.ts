@@ -28,8 +28,18 @@ function normalizeIdentity(raw: string): string {
 // Structural labels in reverse-DNS namespaces (TLDs, VCS hostnames) are not owner identities.
 // `io.github.attacker` must not produce `github` as a candidate — only `attacker` is identity-bearing.
 const STRUCTURAL_SEGMENTS = new Set([
-  'com', 'org', 'net', 'io', 'dev', 'app', 'co',
-  'github', 'gitlab', 'bitbucket', 'sourceforge', 'codeberg',
+  'com',
+  'org',
+  'net',
+  'io',
+  'dev',
+  'app',
+  'co',
+  'github',
+  'gitlab',
+  'bitbucket',
+  'sourceforge',
+  'codeberg',
 ])
 
 // Reverse-DNS namespaces (Maven `org.apache.commons`, NuGet-style `Com.Foo.Bar`) carry the
@@ -54,12 +64,6 @@ function isSameIdentity(a: string, b: string): boolean {
   return short.length >= 4 && long.startsWith(short)
 }
 
-/**
- * Compares a package's registry identity against the owner of the repository it declares.
- * `no_evidence` means the ecosystem exposed neither a namespace nor a maintainer identity —
- * distinct from `unmatched`, which is a real mismatch and priced as such by the confidence
- * scoring function.
- */
 export function matchOwnership(evidence: OwnershipEvidence): PackageRepoOwnershipMatch {
   const repoOwner = evidence.repoOwner ? normalizeIdentity(evidence.repoOwner) : ''
   if (!repoOwner) return 'no_evidence'

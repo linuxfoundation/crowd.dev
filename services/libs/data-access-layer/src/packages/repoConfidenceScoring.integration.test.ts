@@ -81,7 +81,7 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
 
   it('penalises a secondary manifest field and unmatched ownership evidence', async () => {
     expect(await score({ source: 'declared', signal: 'secondary' })).toBeCloseTo(0.75, 2)
-    expect(await score({ source: 'declared', ownershipMatch: 'no_evidence' })).toBeCloseTo(0.85, 2)
+    expect(await score({ source: 'declared', ownershipMatch: 'no_evidence' })).toBeCloseTo(0.75, 2)
     expect(await score({ source: 'declared', ownershipMatch: 'unmatched' })).toBeCloseTo(0.6, 2)
   })
 

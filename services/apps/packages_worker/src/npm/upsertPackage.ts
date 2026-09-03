@@ -96,7 +96,7 @@ export async function upsertPackage(
         signal: resolvedRepo.signal,
         ownershipMatch: matchOwnership({
           namespace,
-          maintainers: maintainers.map((m) => m.username),
+          maintainers: maintainers.filter((m) => m.role === 'maintainer').map((m) => m.username),
           repoOwner: repoOwnerFromCanonical(resolvedRepo.repo),
         }),
       })
