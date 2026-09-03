@@ -15,6 +15,7 @@ import {
   cleanupOrphanMemberSegmentAffiliations,
   deleteMemberOrganizations,
   fetchManyMemberOrgsWithOrgData,
+  fetchMemberOrganizationById,
   fetchMemberOrganizations,
   findMemberById,
   updateMemberOrganization,
@@ -99,15 +100,16 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
     req,
     memberEditOrganizationsAction(memberId, async (captureOldState, captureNewState) => {
       await qx.tx(async (tx) => {
-        const memberOrgs = await fetchMemberOrganizations(tx, memberId)
-        const existing = memberOrgs.find((mo) => mo.id === workExperienceId)
+        const existing = await fetchMemberOrganizationById(tx, workExperienceId)
 
-        if (!existing) {
+        if (!existing || existing.memberId !== memberId) {
           throw new NotFoundError('Work experience not found')
         }
 
         captureOldState(existing)
         oldOrganizationId = existing.organizationId
+
+        const memberOrgs = await fetchMemberOrganizations(tx, memberId)
 
         // Avoid unique-index collisions before we UPDATE the visible row.
         const conflictingRows = memberOrgs.filter(
