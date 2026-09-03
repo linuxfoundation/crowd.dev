@@ -110,8 +110,11 @@ BEGIN
         ELSE 0
     END;
 
-    -- Two repos on the same package collide only if their ids are congruent mod 1e6
-    -- and their sources share a priority band.
+    -- Tie-breaker: unique within the package as long as no two repo IDs for the same
+    -- package are congruent mod 1,000,000 (i.e., differ by exactly N×1M). The packages
+    -- database has well under 1M repos, making same-package congruent-mod-1M pairs
+    -- near-impossible in practice. If that assumption ever breaks, widen to numeric(15,12)
+    -- and drop the modulo.
     offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
 
     RETURN LEAST(base + offset_units * 0.000000001, 0.999999999);
@@ -176,6 +179,7 @@ BEGIN
              WHERE pr.id = b.id
                AND p.id = pr.package_id
                AND r.id = pr.repo_id
+               AND s.confidence IS DISTINCT FROM pr.confidence
             RETURNING pr.id
         )
         SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id)
