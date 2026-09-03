@@ -15,7 +15,7 @@ ALTER TABLE package_repos
     ADD COLUMN IF NOT EXISTS signal text NOT NULL DEFAULT 'primary'
         CHECK (signal IN ('primary', 'secondary')),
     -- Ownership evidence for a declared link. Real values written by CM-1394;
-    -- 'no_evidence' until then, which is the no-op default for scoring.
+    -- 'no_evidence' is the rollout default — no penalty applied until CM-1394 sets real values.
     ADD COLUMN IF NOT EXISTS ownership_match text NOT NULL DEFAULT 'no_evidence'
         CHECK (ownership_match IN ('matched', 'unmatched', 'no_evidence')),
     -- deps.dev RelationProvenance for source='deps_dev'. Previously collapsed to a
@@ -78,27 +78,27 @@ BEGIN
             base := base - 0.10;
         END IF;
 
-        base := base - CASE p_ownership_match
-            WHEN 'unmatched'   THEN 0.25
-            WHEN 'no_evidence' THEN 0.10
-            ELSE 0
-        END;
+        IF p_ownership_match = 'unmatched' THEN
+            base := base - 0.25;
+        END IF;
     END IF;
 
+    -- Disabled overrides all state penalties but still gets the uniqueness offset so
+    -- the no-ties invariant holds and a stronger claim can displace the stored row.
     IF p_disabled IS TRUE THEN
-        RETURN 0.05;
-    END IF;
+        base := 0.05;
+    ELSE
+        IF p_archived IS TRUE THEN
+            base := base - 0.20;
+        END IF;
 
-    IF p_archived IS TRUE THEN
-        base := base - 0.20;
-    END IF;
+        IF p_is_fork IS TRUE THEN
+            base := base - 0.10;
+        END IF;
 
-    IF p_is_fork IS TRUE THEN
-        base := base - 0.10;
-    END IF;
-
-    IF p_competing_github IS TRUE AND COALESCE(p_host, '') <> 'github' THEN
-        base := base - 0.05;
+        IF p_competing_github IS TRUE AND COALESCE(p_host, '') <> 'github' THEN
+            base := base - 0.05;
+        END IF;
     END IF;
 
     base := GREATEST(base, 0.05);

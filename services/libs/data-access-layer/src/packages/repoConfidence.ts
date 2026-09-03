@@ -78,11 +78,14 @@ export function packageRepoConfidenceCall(
   packageAlias: string,
   repoAlias: string,
   claim: PackageRepoClaimExprs = CLAIM_FROM_PARAMS,
+  competingGithubExpr?: string,
 ): string {
+  const competing =
+    competingGithubExpr ?? competingGithubRepoExpr(`${packageAlias}.id`, `${repoAlias}.id`)
   return `package_repo_confidence(
         ${claim.source}, ${packageAlias}.ecosystem, ${claim.signal}, ${claim.ownershipMatch}, ${claim.provenance},
         ${repoAlias}.archived, ${repoAlias}.is_fork, ${repoAlias}.disabled, ${repoAlias}.host,
-        ${competingGithubRepoExpr(`${packageAlias}.id`, `${repoAlias}.id`)},
+        ${competing},
         ${repoAlias}.id
       )`
 }

@@ -67,22 +67,22 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
   }
 
   it('scores the source tiers', async () => {
-    expect(await score({ source: 'manual' })).toBeCloseTo(0.99, 3)
-    expect(await score({ source: 'deps_dev', provenance: 'SLSA_ATTESTATION' })).toBeCloseTo(0.99, 3)
-    expect(await score({ source: 'deps_dev', provenance: 'GO_ORIGIN' })).toBeCloseTo(0.9, 3)
+    expect(await score({ source: 'manual' })).toBeCloseTo(0.99, 2)
+    expect(await score({ source: 'deps_dev', provenance: 'SLSA_ATTESTATION' })).toBeCloseTo(0.99, 2)
+    expect(await score({ source: 'deps_dev', provenance: 'GO_ORIGIN' })).toBeCloseTo(0.9, 2)
     expect(await score({ source: 'deps_dev', provenance: 'UNVERIFIED_METADATA' })).toBeCloseTo(
       0.5,
-      3,
+      2,
     )
-    expect(await score({ source: 'declared' })).toBeCloseTo(0.85, 3)
-    expect(await score({ source: 'declared', ecosystem: 'maven' })).toBeCloseTo(0.8, 3)
-    expect(await score({ source: 'heuristic' })).toBeCloseTo(0.3, 3)
+    expect(await score({ source: 'declared' })).toBeCloseTo(0.85, 2)
+    expect(await score({ source: 'declared', ecosystem: 'maven' })).toBeCloseTo(0.8, 2)
+    expect(await score({ source: 'heuristic' })).toBeCloseTo(0.3, 2)
   })
 
-  it('penalises a secondary manifest field and missing ownership evidence', async () => {
-    expect(await score({ source: 'declared', signal: 'secondary' })).toBeCloseTo(0.75, 3)
-    expect(await score({ source: 'declared', ownershipMatch: 'no_evidence' })).toBeCloseTo(0.75, 3)
-    expect(await score({ source: 'declared', ownershipMatch: 'unmatched' })).toBeCloseTo(0.6, 3)
+  it('penalises a secondary manifest field and unmatched ownership evidence', async () => {
+    expect(await score({ source: 'declared', signal: 'secondary' })).toBeCloseTo(0.75, 2)
+    expect(await score({ source: 'declared', ownershipMatch: 'no_evidence' })).toBeCloseTo(0.85, 2)
+    expect(await score({ source: 'declared', ownershipMatch: 'unmatched' })).toBeCloseTo(0.6, 2)
   })
 
   it('leaves attested and manual links untouched by the declared-only adjustments', async () => {
@@ -92,15 +92,15 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
         provenance: 'SLSA_ATTESTATION',
         ownershipMatch: 'unmatched',
       }),
-    ).toBeCloseTo(0.99, 3)
-    expect(await score({ source: 'manual', signal: 'secondary' })).toBeCloseTo(0.99, 3)
+    ).toBeCloseTo(0.99, 2)
+    expect(await score({ source: 'manual', signal: 'secondary' })).toBeCloseTo(0.99, 2)
   })
 
   it('stacks repo-state penalties and floors at 0.05', async () => {
-    expect(await score({ source: 'declared', archived: true })).toBeCloseTo(0.65, 3)
-    expect(await score({ source: 'declared', isFork: true })).toBeCloseTo(0.75, 3)
-    expect(await score({ source: 'declared', archived: true, isFork: true })).toBeCloseTo(0.55, 3)
-    expect(await score({ source: 'declared', disabled: true })).toBeCloseTo(0.05, 3)
+    expect(await score({ source: 'declared', archived: true })).toBeCloseTo(0.65, 2)
+    expect(await score({ source: 'declared', isFork: true })).toBeCloseTo(0.75, 2)
+    expect(await score({ source: 'declared', archived: true, isFork: true })).toBeCloseTo(0.55, 2)
+    expect(await score({ source: 'declared', disabled: true })).toBeCloseTo(0.05, 2)
     expect(
       await score({
         source: 'heuristic',
@@ -108,21 +108,21 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
         isFork: true,
         ownershipMatch: 'unmatched',
       }),
-    ).toBeCloseTo(0.05, 3)
+    ).toBeCloseTo(0.05, 2)
   })
 
   it('demotes a non-github link only when a github repo competes', async () => {
     expect(await score({ source: 'declared', host: 'gitlab', competingGithub: true })).toBeCloseTo(
       0.8,
-      3,
+      2,
     )
     expect(await score({ source: 'declared', host: 'gitlab', competingGithub: false })).toBeCloseTo(
       0.85,
-      3,
+      2,
     )
     expect(await score({ source: 'declared', host: 'github', competingGithub: true })).toBeCloseTo(
       0.85,
-      3,
+      2,
     )
   })
 

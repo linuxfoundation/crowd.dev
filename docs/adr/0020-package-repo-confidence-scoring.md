@@ -90,44 +90,6 @@ them: keyset-paged, `COMMIT` per chunk, guarded by a session advisory lock, run
 out-of-band via `scripts/rescorePackageRepos.ts` (which also reports the
 no-ties invariant).
 
-## Alternatives Considered
-
-### Alternative 1: TypeScript scoring function in `data-access-layer`
-
-- **Pros**: unit-testable without a database; one language; easy to read.
-- **Cons**: cargo and deps.dev write links in set-based SQL over staging
-  tables, so they would have to round-trip millions of rows through Node just
-  to obtain a number; the rescore sweep could not be a single UPDATE.
-- **Why not**: two implementations of the same formula would drift, and the
-  bulk paths are exactly where the cost is.
-
-### Alternative 2: Add `confidence_score numeric(12,9)` alongside the existing `confidence numeric(3,2)`
-
-- **Pros**: no table rewrite, no `ACCESS EXCLUSIVE` lock, Sequin and Tinybird
-  keep streaming a column whose type never changed.
-- **Cons**: every writer maintains two values, every reader has to know which
-  column ranks and which one displays, and the duplication is permanent.
-- **Why not**: the sinks can be paused for the rewrite; a permanent schema
-  wart to avoid a one-off maintenance window is the wrong trade.
-
-### Alternative 3: Keep `numeric(3,2)` and break ties with `source` then `repo_id` in the ORDER BY
-
-- **Pros**: no migration at all.
-- **Cons**: every read site must repeat the same multi-column ordering, which
-  is precisely the drift this ADR removes; and no ordering clause can express
-  a penalty stack.
-- **Why not**: the ranking rule belongs in the stored value, so every
-  consumer — including Tinybird, which does not run our SQL — sees the same
-  ranking.
-
-### Alternative 4: Filter untrusted links on read instead of scoring them
-
-- **Pros**: no schema change; downstream can opt in.
-- **Cons**: each consumer invents its own threshold, and a package whose only
-  link is weak would resolve to no repo at all.
-- **Why not**: a ranked-but-present link degrades gracefully; a filtered one
-  loses information.
-
 ## Consequences
 
 ### Positive

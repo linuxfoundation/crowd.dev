@@ -61,15 +61,8 @@ export async function removeDeclaredPackageRepo(
   return rowCount > 0 ? ['package_repos.repo_id'] : []
 }
 
-// Confidence is never passed in — package_repo_confidence() (V1788307200) is the only
-// path that produces one. Callers describe the claim (source, which manifest field it
-// came from, what ownership evidence backs it) and the function scores it against the
-// package's ecosystem and the repo's current state.
-//
-// Conflict policy, uniform across every writer: keep the highest-scoring claim and adopt
-// that claim's provenance. Writer order is irrelevant — a routine registry refresh cannot
-// downgrade a link a stronger source (manual, an attested deps.dev row) already owns, and
-// a stronger claim arriving later takes the row over completely.
+// Conflict policy: keep the highest-scoring claim. A stronger claim arriving later takes
+// the row over completely; a weaker one (routine registry refresh) is silently ignored.
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
@@ -118,7 +111,28 @@ export async function upsertPackageRepo(
      FROM ins LEFT JOIN old o ON true`,
     { packageId, repoId, ...packageRepoLinkClaimParams(claim) },
   )
+  await rescorePackageReposForPackages(qx, [packageId])
   return row.changed_fields
+}
+
+export async function rescorePackageReposForPackages(
+  qx: QueryExecutor,
+  packageIds: string[],
+): Promise<void> {
+  if (packageIds.length === 0) return
+
+  await qx.result(
+    `UPDATE package_repos pr
+        SET confidence = s.confidence
+       FROM packages p, repos r,
+            LATERAL (
+              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
+            ) s
+      WHERE p.id = pr.package_id
+        AND r.id = pr.repo_id
+        AND pr.package_id = ANY($(packageIds)::bigint[])`,
+    { packageIds },
+  )
 }
 
 // Rescores every link pointing at these repos. Called when the GitHub enricher flips

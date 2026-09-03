@@ -1,6 +1,9 @@
 import { proxyActivities } from '@temporalio/workflow'
 
-import { packageRepoConfidenceCall } from '@crowd/data-access-layer/src/packages/repoConfidence'
+import {
+  competingGithubRepoExpr,
+  packageRepoConfidenceCall,
+} from '@crowd/data-access-layer/src/packages/repoConfidence'
 
 import type * as depsDevActivities from '../activities'
 import { buildPackageReposSql } from '../queries/packageReposSql'
@@ -91,6 +94,22 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // packages.purl is version-stripped by buildPackagesFullSql (REGEXP_REPLACE in BQ).
 // Staging purl may or may not include @version depending on when the GCS export was taken,
 // so strip on staging side only — packages.purl stays bare and the UNIQUE index is usable.
+
+// competing_github checks both already-persisted links AND other rows in the current staging
+// chunk so that non-GitHub links see GitHub siblings inserted in the same statement.
+const PKGREPOS_COMPETING_GITHUB = `(
+  ${competingGithubRepoExpr('p.id', 'r.id')}
+  OR EXISTS (
+    SELECT 1
+      FROM staging.osspckgs_package_repos_raw s2
+      JOIN repos cr ON cr.url = s2.canonical_url
+      JOIN packages p2 ON p2.purl = REGEXP_REPLACE(s2.purl, '@[^@]+$', '')
+     WHERE p2.id = p.id
+       AND cr.id <> r.id
+       AND cr.host = 'github'
+  )
+)`
+
 const PKGREPOS_MERGE_SQL = `
 INSERT INTO package_repos (
   package_id, repo_id, source, signal, ownership_match, provenance,
@@ -103,12 +122,17 @@ FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 JOIN repos r ON r.url = s.canonical_url
 CROSS JOIN LATERAL (
-  SELECT ${packageRepoConfidenceCall('p', 'r', {
-    source: `'deps_dev'`,
-    signal: `'primary'`,
-    ownershipMatch: `'no_evidence'`,
-    provenance: 's.provenance',
-  })} AS confidence
+  SELECT ${packageRepoConfidenceCall(
+    'p',
+    'r',
+    {
+      source: `'deps_dev'`,
+      signal: `'primary'`,
+      ownershipMatch: `'no_evidence'`,
+      provenance: 's.provenance',
+    },
+    PKGREPOS_COMPETING_GITHUB,
+  )} AS confidence
 ) c
 ORDER BY p.id, r.id, c.confidence DESC
 ON CONFLICT (package_id, repo_id) DO UPDATE SET

@@ -1,4 +1,8 @@
-import { QueryExecutor, packageRepoConfidenceCall } from '@crowd/data-access-layer'
+import {
+  QueryExecutor,
+  packageRepoConfidenceCall,
+  rescorePackageReposForPackages,
+} from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { STAGING_SCHEMA } from './loadDump'
@@ -278,9 +282,13 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
          SELECT package_id, field FROM diff RETURNING 1
        )
-       SELECT (SELECT COUNT(*) FROM ins)::int AS links`,
+       SELECT
+         (SELECT COUNT(*) FROM ins)::int AS links,
+         ARRAY(SELECT DISTINCT package_id::text FROM ins) AS package_ids`,
       { source: REPO_LINK_SOURCE },
     )
+
+    await rescorePackageReposForPackages(tx, linkRow.package_ids ?? [])
 
     return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }
   })
