@@ -127,7 +127,7 @@ export async function rescorePackageReposForPackages(
 
   await qx.result(
     `UPDATE package_repos pr
-        SET confidence = s.confidence
+        SET confidence = s.confidence, verified_at = NOW()
        FROM packages p, repos r,
             LATERAL (
               SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
@@ -152,7 +152,7 @@ export async function rescorePackageReposForRepos(
 
   await qx.result(
     `UPDATE package_repos pr
-        SET confidence = s.confidence
+        SET confidence = s.confidence, verified_at = NOW()
        FROM packages p, repos r,
             LATERAL (
               SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence

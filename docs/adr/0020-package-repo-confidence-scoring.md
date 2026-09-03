@@ -68,10 +68,13 @@ total and reproducible, not arbitrary on ties. Reachable range is `0.05` to
 
 ### Write and read policy
 
-- Every write converges on keep-highest: `confidence = GREATEST(EXCLUDED.
-  confidence, package_repos.confidence)`, and the descriptive columns
-  (`source`, `signal`, `ownership_match`, `provenance`) only move when the new
-  score actually wins. A weaker source can no longer overwrite a stronger one.
+- **Same-source refreshes** always replace the stored claim so that updated
+  ownership evidence (e.g. `no_evidence` → `unmatched`) and provenance
+  downgrades are persisted. **Cross-source conflicts** use keep-highest:
+  `confidence = GREATEST(EXCLUDED.confidence, package_repos.confidence)`, and
+  the descriptive columns only move when the incoming score wins. A weaker
+  source (routine registry refresh) cannot overwrite a stronger one (manual,
+  attested deps.dev).
 - All read paths use one shared ordering fragment (`bestRepoLinkOrderBy` /
   `BEST_REPO_LINK_JOIN` in `osspckgs/sqlFragments.ts`), replacing five inline
   copies with divergent tie-breakers. The fragment keeps

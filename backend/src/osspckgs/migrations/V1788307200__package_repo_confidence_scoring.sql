@@ -164,7 +164,7 @@ BEGIN
             ),
             updated AS (
                 UPDATE package_repos pr
-                   SET confidence = s.confidence
+                   SET confidence = s.confidence, verified_at = NOW()
                   FROM batch b, packages p, repos r,
                        LATERAL (
                          SELECT package_repo_confidence(
