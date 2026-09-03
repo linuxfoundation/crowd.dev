@@ -82,9 +82,13 @@ BEGIN
         ELSE 0
     END;
 
-    -- Two repos on the same package collide only if their ids are congruent mod 1e6
-    -- and their sources share a priority band.
-    offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
+    -- Disabled tier gaps are 0.0002 wide; use a tighter modulo so repo IDs cannot
+    -- cross a tier boundary.
+    IF p_disabled IS TRUE THEN
+        offset_units := source_priority::bigint * 1000 + COALESCE(p_repo_id, 0) % 1000;
+    ELSE
+        offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
+    END IF;
 
     RETURN LEAST(base + offset_units * 0.000000001, 0.999999999);
 END;
