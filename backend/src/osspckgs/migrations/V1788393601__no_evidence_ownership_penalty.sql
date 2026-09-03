@@ -56,8 +56,9 @@ BEGIN
 
     -- Disabled overrides all state penalties but still gets the uniqueness offset so
     -- the no-ties invariant holds and a stronger claim can displace the stored row.
+    -- Proportional scaling preserves pre-disabled claim ordering across sources.
     IF p_disabled IS TRUE THEN
-        base := 0.05;
+        base := 0.05 + LEAST(base, 0.99) * 0.004;
     ELSE
         IF p_archived IS TRUE THEN
             base := base - 0.20;
