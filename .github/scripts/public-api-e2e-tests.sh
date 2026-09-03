@@ -410,8 +410,10 @@ suite_member_work_experiences() {
   check "PUT update Globex title" 200 '.jobTitle == "Senior Software Engineer"'
 
   api v1 GET "/members/${PERSON_ID}/work-experiences"
-  check "GET shows updated title" 200 \
-    ".workExperiences[] | select(.id == \"$globex_we\") | .jobTitle == \"Senior Software Engineer\""
+  check "GET shows updated title and submitted dates" 200 \
+    ".workExperiences[] | select(.id == \"$globex_we\") | .jobTitle == \"Senior Software Engineer\"" \
+    ".workExperiences[] | select(.id == \"$globex_we\") | .endDate | startswith(\"2022-06-01\")" \
+    ".workExperiences[] | select(.id == \"$globex_we\") | .source | test(\"email-domain\") | not"
 
   api v1 PATCH "/members/${PERSON_ID}/work-experiences/${globex_we}" \
     "$(json --arg by "$VERIFIED_BY" '{verified:true, verifiedBy:$by}')"
