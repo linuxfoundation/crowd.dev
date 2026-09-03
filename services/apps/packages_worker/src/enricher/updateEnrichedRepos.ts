@@ -37,7 +37,7 @@ export async function bulkUpdateEnrichedRepos(
       FROM jsonb_array_elements($1::jsonb) j
     ),
     before AS (
-      SELECT r.id, r.archived, r.disabled, r.is_fork
+      SELECT r.id, r.archived, r.disabled, r.is_fork, r.host
       FROM repos r
       JOIN v ON r.url = v.url
     ),
@@ -69,14 +69,15 @@ export async function bulkUpdateEnrichedRepos(
         updated_at       = NOW()
       FROM v
       WHERE r.url = v.url
-      RETURNING r.id, r.archived, r.disabled, r.is_fork
+      RETURNING r.id, r.archived, r.disabled, r.is_fork, r.host
     )
     SELECT u.id::text AS id
     FROM updated u
     JOIN before b ON b.id = u.id
     WHERE b.archived IS DISTINCT FROM u.archived
        OR b.disabled IS DISTINCT FROM u.disabled
-       OR b.is_fork  IS DISTINCT FROM u.is_fork`,
+       OR b.is_fork  IS DISTINCT FROM u.is_fork
+       OR b.host     IS DISTINCT FROM u.host`,
     [JSON.stringify(rows)],
   )
 

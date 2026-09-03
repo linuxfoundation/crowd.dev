@@ -110,11 +110,9 @@ BEGIN
         ELSE 0
     END;
 
-    -- Tie-breaker: unique within the package as long as no two repo IDs for the same
-    -- package are congruent mod 1,000,000 (i.e., differ by exactly N×1M). The packages
-    -- database has well under 1M repos, making same-package congruent-mod-1M pairs
-    -- near-impossible in practice. If that assumption ever breaks, widen to numeric(15,12)
-    -- and drop the modulo.
+    -- Tie-breaker: reduces same-source collisions to the rare case where two repo IDs for
+    -- the same package are congruent mod 1,000,000. BEST_REPO_LINK_JOIN uses a secondary
+    -- ORDER BY repo_id DESC as the canonical deterministic pick when confidence ties.
     offset_units := source_priority::bigint * 1000000 + COALESCE(p_repo_id, 0) % 1000000;
 
     RETURN LEAST(base + offset_units * 0.000000001, 0.999999999);
@@ -125,7 +123,7 @@ $$;
 -- Rescore — chunked, keyset-paged, committed per chunk so the Sequin slot advances.
 -- ============================================================
 --
--- Used for the initial backfill (p_repo_ids NULL = whole table) and as the daily
+-- Used for the initial backfill (p_repo_ids NULL = whole table) and as a manual
 -- safety-net sweep. The enricher rescores its own touched repos inline.
 CREATE OR REPLACE PROCEDURE rescore_package_repo_confidence(
     p_repo_ids   bigint[] DEFAULT NULL,
