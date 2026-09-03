@@ -40,6 +40,27 @@ interface IEntryState {
   quarantined?: boolean
 }
 
+type EntryStateUpdate = { [K in keyof IEntryState]?: IEntryState[K] | null }
+
+// atomic get-merge-set per entry; JSON null in the update deletes the field
+const MERGE_ENTRY_STATE_SCRIPT = `
+local json = redis.call('HGET', KEYS[1], ARGV[1])
+if not json then
+  return 0
+end
+local state = cjson.decode(json)
+local update = cjson.decode(ARGV[2])
+for field, value in pairs(update) do
+  if value == cjson.null then
+    state[field] = nil
+  else
+    state[field] = value
+  end
+end
+redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(state))
+return 1
+`
+
 interface IBucket {
   limit: number
   remaining: number
@@ -102,15 +123,11 @@ export function createTokenPool(
     return earliest
   }
 
-  // POC only: read-modify-write can lose a concurrent park/quarantine on the same entry
-  // within a ~ms window; accepted tradeoff — fix with atomic writes when productizing.
-  async function updateState(entryId: string, update: Partial<IEntryState>): Promise<void> {
-    const json = await redis.hGet(entriesKey, entryId)
-    if (!json) {
-      return
-    }
-    const state = JSON.parse(json) as IEntryState
-    await redis.hSet(entriesKey, entryId, JSON.stringify({ ...state, ...update }))
+  async function updateState(entryId: string, update: EntryStateUpdate): Promise<void> {
+    await redis.eval(MERGE_ENTRY_STATE_SCRIPT, {
+      keys: [entriesKey],
+      arguments: [entryId, JSON.stringify(update)],
+    })
   }
 
   async function ensureUsableToken(
@@ -267,7 +284,7 @@ export function createTokenPool(
     },
 
     async invalidate(entryId: string): Promise<void> {
-      await updateState(entryId, { token: undefined, tokenExpiresAtMs: undefined })
+      await updateState(entryId, { token: null, tokenExpiresAtMs: null })
     },
 
     // POC only: quarantined entries are kept for inspection and never revived automatically
