@@ -257,15 +257,17 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          JOIN packages p ON p.id = e.package_id
          CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
-           source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+           source           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
                                    THEN EXCLUDED.source ELSE package_repos.source END,
-           signal           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+           signal           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
                                    THEN EXCLUDED.signal ELSE package_repos.signal END,
-           ownership_match  = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+           ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
                                    THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
-           provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
+           provenance       = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
                                    THEN EXCLUDED.provenance ELSE package_repos.provenance END,
-           confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
+           confidence       = CASE WHEN EXCLUDED.source = package_repos.source
+                                   THEN EXCLUDED.confidence
+                                   ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
            verified_at      = NOW()
          RETURNING package_id, repo_id, source, confidence
        ),
@@ -286,7 +288,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        )
        SELECT
          (SELECT COUNT(*) FROM ins)::int AS links,
-         ARRAY(SELECT DISTINCT package_id::text FROM ins) AS package_ids`,
+         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids`,
       { source: REPO_LINK_SOURCE },
     )
 
