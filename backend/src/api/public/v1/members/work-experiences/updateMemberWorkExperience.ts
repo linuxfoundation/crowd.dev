@@ -143,7 +143,10 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
         ]
 
         if (overlappingIds.length > 0) {
-          await deleteMemberOrganizations(tx, memberId, overlappingIds)
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: overlappingIds,
+            skipMsaCleanup: true,
+          })
         }
 
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, update)

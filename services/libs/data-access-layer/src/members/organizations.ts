@@ -510,13 +510,19 @@ export async function updateMemberOrganization(
   return qx.selectOneOrNone(query, params)
 }
 
+type DeleteMemberOrganizationsOptions = {
+  ids?: string[]
+  softDelete?: boolean
+  deletedBy?: string
+  skipMsaCleanup?: boolean
+}
+
 export async function deleteMemberOrganizations(
   qx: QueryExecutor,
   memberId: string,
-  ids?: string[],
-  softDelete = true,
-  deletedBy?: string,
+  options: DeleteMemberOrganizationsOptions = {},
 ): Promise<void> {
+  const { ids, softDelete = true, deletedBy, skipMsaCleanup = false } = options
   // deletedBy marks a human delete; the enrichment worker's own rebuild deletes must
   // never set it, since only a human delete permanently blocks recreation.
   const baseQuery = softDelete
@@ -559,8 +565,8 @@ export async function deleteMemberOrganizations(
     // Then perform the soft/hard delete on memberOrganizations
     await tx.result(query, params)
 
-    // Clean up segment affiliations for orgs that no longer have any active work experiences
-    if (affectedOrgIds.length > 0) {
+    // Replacement cleanup deletes leftovers before the new UI row exists; keep MSAs for that org.
+    if (affectedOrgIds.length > 0 && !skipMsaCleanup) {
       await tx.result(
         `DELETE FROM "memberSegmentAffiliations" msa
          WHERE msa."memberId" = $(memberId)

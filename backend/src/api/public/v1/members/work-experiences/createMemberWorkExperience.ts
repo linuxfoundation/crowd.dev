@@ -96,7 +96,10 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
         ).flatMap((row) => (row.id ? [row.id] : []))
 
         if (overlappingIds.length > 0) {
-          await deleteMemberOrganizations(tx, memberId, overlappingIds)
+          await deleteMemberOrganizations(tx, memberId, {
+            ids: overlappingIds,
+            skipMsaCleanup: true,
+          })
         }
 
         await cleanSoftDeletedMemberOrganization(tx, memberId, data.organizationId, memberOrgData)

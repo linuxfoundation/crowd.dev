@@ -58,7 +58,10 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
       captureOldState(memberOrg)
 
       await qx.tx(async (tx) => {
-        await deleteMemberOrganizations(tx, memberId, memberOrgIdsToDelete, true, deletedBy)
+        await deleteMemberOrganizations(tx, memberId, {
+          ids: memberOrgIdsToDelete,
+          deletedBy,
+        })
       })
 
       // Signal after commit so the workflow sees persisted changes

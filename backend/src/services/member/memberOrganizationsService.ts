@@ -223,7 +223,10 @@ export default class MemberOrganizationsService extends LoggerBase {
       const overlappingIds = overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : []))
 
       if (overlappingIds.length > 0) {
-        await deleteMemberOrganizations(qx, memberId, overlappingIds)
+        await deleteMemberOrganizations(qx, memberId, {
+          ids: overlappingIds,
+          skipMsaCleanup: true,
+        })
       }
 
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, memberOrgData)
@@ -316,7 +319,10 @@ export default class MemberOrganizationsService extends LoggerBase {
       ]
 
       if (overlappingIds.length > 0) {
-        await deleteMemberOrganizations(qx, memberId, overlappingIds)
+        await deleteMemberOrganizations(qx, memberId, {
+          ids: overlappingIds,
+          skipMsaCleanup: true,
+        })
       }
 
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)
@@ -372,13 +378,10 @@ export default class MemberOrganizationsService extends LoggerBase {
       ]
 
       // Delete hidden grouped rows with the visible row so list responses stay consistent
-      await deleteMemberOrganizations(
-        qx,
-        memberId,
-        memberOrganizationIdsToDelete,
-        true,
-        this.options.currentUser.id,
-      )
+      await deleteMemberOrganizations(qx, memberId, {
+        ids: memberOrganizationIdsToDelete,
+        deletedBy: this.options.currentUser.id,
+      })
 
       const result = await this.list(memberId, transaction)
 
