@@ -30,6 +30,7 @@ export interface TokenPool {
   invalidate(entryId: string): Promise<void>
   quarantine(entryId: string): Promise<void>
   seed(entryIds: string[]): Promise<void>
+  needsSeed(maxAgeMs: number): Promise<boolean>
   earliestResumeAt(): Promise<Date | null>
 }
 
@@ -75,6 +76,7 @@ export function createTokenPool(
 ): TokenPool {
   const entriesKey = `connectors:pool:${platform}:entries`
   const lruKey = `connectors:pool:${platform}:lru`
+  const seededAtKey = `connectors:pool:${platform}:seededAt`
   const bucketKey = (entryId: string) => `connectors:pool:${platform}:budget:${entryId}`
 
   async function readStates(): Promise<Map<string, IEntryState>> {
@@ -301,7 +303,13 @@ export function createTokenPool(
         multi.hSetNX(entriesKey, id, '{}')
         multi.zAdd(lruKey, { score: 0, value: id }, { NX: true })
       }
+      multi.set(seededAtKey, String(Date.now()))
       await multi.exec()
+    },
+
+    async needsSeed(maxAgeMs: number): Promise<boolean> {
+      const seededAt = await redis.get(seededAtKey)
+      return !seededAt || Date.now() - Number(seededAt) > maxAgeMs
     },
 
     async earliestResumeAt(): Promise<Date | null> {

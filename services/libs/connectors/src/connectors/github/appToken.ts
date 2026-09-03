@@ -98,17 +98,22 @@ export async function resolveInstallationId(credential: Credential): Promise<str
   return installationIds[0]
 }
 
+const POOL_RESEED_INTERVAL_MS = 3_600_000
+
 export async function prepareGithubPool(
   credential: Credential,
   pool: TokenPool,
 ): Promise<PoolPreparation> {
+  const preferredEntryId = process.env.CROWD_GITHUB_INSTALLATION_ID
+  if (!(await pool.needsSeed(POOL_RESEED_INTERVAL_MS))) {
+    return { preferredEntryId }
+  }
   const installationIds = await listInstallationIds(credential)
   if (installationIds.length === 0) {
     throw new Error('github app has no installations')
   }
   await pool.seed(installationIds)
-  const preferredEntryId = process.env.CROWD_GITHUB_INSTALLATION_ID ?? installationIds[0]
-  return { preferredEntryId }
+  return { preferredEntryId: preferredEntryId ?? installationIds[0] }
 }
 
 export function createGithubTokenMinter(credential: Credential): TokenMinter {
