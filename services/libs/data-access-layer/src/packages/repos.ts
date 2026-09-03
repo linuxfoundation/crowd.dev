@@ -131,6 +131,7 @@ export async function rescorePackageReposForPackages(
       WHERE p.id = pr.package_id
         AND r.id = pr.repo_id
         AND pr.package_id = ANY($(packageIds)::bigint[])
+        AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
         AND s.confidence IS DISTINCT FROM pr.confidence`,
     { packageIds },
   )
@@ -155,6 +156,7 @@ export async function rescorePackageReposForRepos(
       WHERE p.id = pr.package_id
         AND r.id = pr.repo_id
         AND pr.repo_id = ANY($(repoIds)::bigint[])
+        AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
         AND s.confidence IS DISTINCT FROM pr.confidence`,
     { repoIds },
   )

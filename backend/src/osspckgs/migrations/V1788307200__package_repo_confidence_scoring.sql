@@ -83,12 +83,19 @@ BEGIN
         END IF;
     END IF;
 
+    source_priority := CASE p_source
+        WHEN 'manual'    THEN 3
+        WHEN 'deps_dev'  THEN 2
+        WHEN 'declared'  THEN 1
+        ELSE 0
+    END;
+
     IF p_disabled IS TRUE THEN
         -- Scale proportionally so pre-disabled claim ordering is preserved across sources.
-        -- source_priority is excluded from the offset to prevent deps_dev (priority 2)
-        -- inverting over declared (priority 1) when both link to different disabled repos.
+        -- The offset uses a tighter modulo so max contribution (3*1000+999)*1e-9 ≈ 4e-6
+        -- stays below the 0.0002 minimum scaled tier gap and cannot invert source ordering.
         base := 0.05 + LEAST(base, 0.99) * 0.004;
-        offset_units := COALESCE(p_repo_id, 0) % 1000000;
+        offset_units := source_priority::bigint * 1000 + COALESCE(p_repo_id, 0) % 1000;
     ELSE
         IF p_archived IS TRUE THEN
             base := base - 0.20;
@@ -103,13 +110,6 @@ BEGIN
         END IF;
 
         base := GREATEST(base, 0.05);
-
-        source_priority := CASE p_source
-            WHEN 'manual'    THEN 3
-            WHEN 'deps_dev'  THEN 2
-            WHEN 'declared'  THEN 1
-            ELSE 0
-        END;
 
         -- Tie-breaker: reduces same-source collisions to the rare case where two repo IDs for
         -- the same package are congruent mod 1,000,000. BEST_REPO_LINK_JOIN uses a secondary
@@ -149,8 +149,7 @@ BEGIN
 
     applied_rows := 0;
 
-    BEGIN
-        LOOP
+    LOOP
             WITH batch AS (
                 SELECT pr.id
                   FROM package_repos pr
@@ -199,10 +198,6 @@ BEGIN
 
             EXIT WHEN batch_rows < chunk_size;
         END LOOP;
-    EXCEPTION WHEN OTHERS THEN
-        PERFORM pg_advisory_unlock(hashtextextended('rescore_package_repo_confidence', 0));
-        RAISE;
-    END;
 
     PERFORM pg_advisory_unlock(hashtextextended('rescore_package_repo_confidence', 0));
 END;
