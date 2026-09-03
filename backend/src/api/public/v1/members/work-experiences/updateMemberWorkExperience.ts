@@ -93,6 +93,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
   }
 
   let updated: ReturnType<typeof toMemberWorkExperience> | undefined
+  let oldOrganizationId: string | undefined
 
   await captureApiChange(
     req,
@@ -106,6 +107,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
         }
 
         captureOldState(existing)
+        oldOrganizationId = existing.organizationId
 
         // Avoid unique-index collisions before we UPDATE the visible row.
         const conflictingRows = memberOrgs.filter(
@@ -160,8 +162,13 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
       })
 
       // Signal after commit so the workflow sees persisted changes
+      const orgsToSignal =
+        oldOrganizationId && oldOrganizationId !== data.organizationId
+          ? [oldOrganizationId, data.organizationId]
+          : [data.organizationId]
+
       await signalMemberUpdate(req.temporal, memberId, {
-        memberOrganizationIds: [data.organizationId],
+        memberOrganizationIds: orgsToSignal,
       })
 
       const orgsMap = await fetchManyMemberOrgsWithOrgData(qx, [memberId], { withDomains: true })
