@@ -41,7 +41,9 @@ export async function upsertProject(
 
   const { homepage, declaredRepositoryUrl, declaredRepositoryField, fundingLinks } =
     classifyProjectUrls(info.project_urls, info.home_page)
-  const repoCanonicalized = declaredRepositoryUrl ? canonicalizeRepoUrl(declaredRepositoryUrl) : null
+  const repoCanonicalized = declaredRepositoryUrl
+    ? canonicalizeRepoUrl(declaredRepositoryUrl)
+    : null
   const repoSignal: PackageRepoSignal =
     declaredRepositoryField === 'source' ? 'primary' : 'secondary'
   const repo =
