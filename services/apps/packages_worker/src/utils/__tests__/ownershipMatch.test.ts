@@ -37,6 +37,10 @@ describe('matchOwnership', () => {
     expect(matchOwnership({ namespace: 'io.github.attacker', repoOwner: 'github' })).toBe(
       'unmatched',
     )
+    // `io.github.attacker` must not prefix-match `io-github` via the joined form `iogithubattacker`
+    expect(matchOwnership({ namespace: 'io.github.attacker', repoOwner: 'io-github' })).toBe(
+      'unmatched',
+    )
     // `org.foo` must not match an owner literally named `org`
     expect(matchOwnership({ namespace: 'org.foo', repoOwner: 'org' })).toBe('unmatched')
   })

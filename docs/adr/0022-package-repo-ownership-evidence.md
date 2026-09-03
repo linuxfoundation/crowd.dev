@@ -33,9 +33,13 @@ that exposes nothing to compare must not be treated as a failed comparison.
 Identities are compared after `normalizeIdentity`: trim, lowercase, strip a
 leading `@`, strip one trailing vanity suffix from `-ai`, `-io`, `-team`,
 `-labs`, `-oss`, `-dev` (only when a suffix strip leaves more than one
-character), then drop all non-alphanumerics. Reverse-DNS namespaces expand into
-candidates — `org.projectlombok` yields its segments plus the joined form, so
-`io.github.resilience4j` matches `resilience4j`. Two identities match on
+character), then drop all non-alphanumerics. Reverse-DNS namespaces (multi-segment, e.g. `org.projectlombok`) contribute
+only their identity-bearing segments as candidates — structural labels (`io`,
+`com`, `org`, `github`, etc.) are excluded, and no joined form is produced.
+Flat single-segment scopes are normalised as a whole string. This means
+`io.github.resilience4j` matches `resilience4j` via its identity-bearing
+segment, while `io.github.attacker` cannot prefix-match a lookalike owner
+such as `io-github`. Two identities match on
 equality or on prefix when the shorter is at least 4 characters, which is what
 makes `tokio-rs` → `tokio` and `langchain-ai` → `langchain` match while `ab`
 against `abcdef` stays `unmatched`.
