@@ -99,6 +99,7 @@ export async function executeSync(unitId: string): Promise<void> {
     const pool = createTokenPool(svc.redis, unit.platform, {
       probeBudget: manifest.probeBudget,
       mintToken: credential && manifest.mintToken ? manifest.mintToken(credential) : undefined,
+      log,
     })
     let preferredEntryId: string | undefined
     if (credential && manifest.preparePool) {

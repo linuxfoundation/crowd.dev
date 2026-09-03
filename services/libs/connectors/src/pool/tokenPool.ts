@@ -1,3 +1,4 @@
+import type { Logger } from '@crowd/logging'
 import type { RedisClient } from '@crowd/redis'
 
 import type { IPooledToken } from '../http/client'
@@ -21,6 +22,7 @@ export type TokenMinter = (entryId: string) => Promise<{ token: string; expiresA
 export interface TokenPoolOptions {
   probeBudget?: BudgetProbe
   mintToken?: TokenMinter
+  log?: Logger
 }
 
 export interface TokenPool {
@@ -77,6 +79,35 @@ export function createTokenPool(
   const entriesKey = `connectors:pool:${platform}:entries`
   const lruKey = `connectors:pool:${platform}:lru`
   const seededAtKey = `connectors:pool:${platform}:seededAt`
+  const log = options?.log
+
+  const loggedSkips = new Set<string>()
+  let lastAcquiredEntryId: string | null = null
+
+  function logSkip(entryId: string, reason: string, fields: Record<string, unknown> = {}): void {
+    const key = `${entryId}:${reason}`
+    if (!log || loggedSkips.has(key)) {
+      return
+    }
+    loggedSkips.add(key)
+    log.info({ event: 'pool_entry_skipped', entryId, reason, ...fields }, 'pool entry skipped')
+  }
+
+  function logAcquired(entryId: string, preferredEntryId?: string): void {
+    if (!log || lastAcquiredEntryId === entryId) {
+      return
+    }
+    lastAcquiredEntryId = entryId
+    log.info(
+      {
+        event: 'pool_token_acquired',
+        entryId,
+        preferredEntryId,
+        borrowed: preferredEntryId ? entryId !== preferredEntryId : false,
+      },
+      'pool token acquired',
+    )
+  }
   const bucketKey = (entryId: string) => `connectors:pool:${platform}:budget:${entryId}`
 
   async function readStates(): Promise<Map<string, IEntryState>> {
@@ -148,12 +179,27 @@ export function createTokenPool(
     try {
       const { token, expiresAt } = await mint(entryId)
       await updateState(entryId, { token, tokenExpiresAtMs: new Date(expiresAt).getTime() })
+      log?.info({ event: 'pool_token_minted', entryId, expiresAt }, 'pool token minted')
       return token
     } catch (err) {
       if (err instanceof ConnectorError) {
         if (err.errorClass === 'provider.auth' || err.errorClass === 'provider.contract') {
           await updateState(entryId, { quarantined: true })
+          log?.warn(
+            {
+              event: 'pool_entry_quarantined',
+              entryId,
+              errorClass: err.errorClass,
+              errMsg: err.message,
+            },
+            'pool entry quarantined on mint failure',
+          )
+          return null
         }
+        log?.warn(
+          { event: 'pool_mint_failed', entryId, errorClass: err.errorClass, errMsg: err.message },
+          'token mint failed, skipping entry',
+        )
         return null
       }
       throw err
@@ -222,7 +268,15 @@ export function createTokenPool(
       let earliestBudgetResetAt: Date | null = null
       for (const id of ordered) {
         const state = states.get(id)
-        if (!state || !isHealthy(state, nowMs)) {
+        if (!state) {
+          continue
+        }
+        if (state.quarantined) {
+          logSkip(id, 'quarantined')
+          continue
+        }
+        if (state.parkedUntil && new Date(state.parkedUntil).getTime() > nowMs) {
+          logSkip(id, 'parked', { parkedUntil: state.parkedUntil })
           continue
         }
         const token = await ensureUsableToken(id, state, nowMs)
@@ -236,6 +290,7 @@ export function createTokenPool(
             if (!earliestBudgetResetAt || resetAt < earliestBudgetResetAt) {
               earliestBudgetResetAt = resetAt
             }
+            logSkip(id, 'budget_exhausted', { resetAt })
             continue
           }
           if (bucket) {
@@ -243,6 +298,7 @@ export function createTokenPool(
           }
         }
         await redis.zAdd(lruKey, { score: nowMs, value: id })
+        logAcquired(id, preferredEntryId)
         return { id, value: token }
       }
       const parkedResumeAt = earliestParkedUntil(states, nowMs)
