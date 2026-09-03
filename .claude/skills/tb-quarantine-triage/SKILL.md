@@ -187,9 +187,11 @@ Do not proceed to Phase 5 until the user responds.
 
 ## Phase 5 — Create Jira tickets
 
-For each datasource approved by the user, create one Jira ticket.
+For each datasource approved by the user:
 
-Use the Atlassian MCP `createJiraIssue`:
+1. Skip any bundle where `dominant_error` is `null` (zero-row race condition — rows expired before diagnosis). Report it as resolved.
+2. Search for an existing open IN ticket with label `tb-quarantine-fp-<fingerprint>` using the Atlassian MCP `search` tool. If found, report the existing key and skip ticket creation.
+3. Otherwise, create a ticket with `createJiraIssue`:
 
 - **project**: `IN`
 - **issuetype**: Bug
@@ -261,8 +263,8 @@ Use the `superpowers:using-git-worktrees` skill:
 - **branch**: `fix/<JIRA_KEY>-tb-quarantine-<datasource_name>`
 - If the skill is not available, fall back to:
   ```bash
-  # Ensure .worktrees is gitignored (add once if missing)
-  grep -qxF '.worktrees' .gitignore || echo '.worktrees' >> .gitignore
+  # Exclude .worktrees locally without modifying tracked .gitignore
+  grep -qxF '.worktrees' .git/info/exclude 2>/dev/null || echo '.worktrees' >> .git/info/exclude
   git worktree add .worktrees/<JIRA_KEY> -b fix/<JIRA_KEY>-tb-quarantine-<datasource_name> origin/main
   ```
 
