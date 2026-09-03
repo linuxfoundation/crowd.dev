@@ -11,29 +11,6 @@ const log = getServiceChildLogger('cargo-normalize')
 // Batch size for the mapping upsert — keeps parameter arrays well under Postgres limits.
 const INSERT_BATCH = 5000
 
-/**
- * Builds `cargo_sync.repo_norm(declared, repository_url, host)`, mapping every
- * distinct `declared_repository_url` and `homepage` staged in `enrich_packages` to its canonical
- * `https://<host>/<owner>/<name>` form via the shared `canonicalizeRepoUrl`
- * (same normalizer npm/pypi use — no per-ecosystem fork).
- *
- * Only inputs `canonicalizeRepoUrl` can reduce to an owner/name pair are stored;
- * unparseable URLs or those with fewer than two path segments are omitted, so a
- * LEFT JOIN from `enrich_packages` yields NULL — that both recovers derivable
- * URLs (Gap A) and clears that class of junk from `packages.repository_url`
- * (Gap C). Note this does not validate that the result is an actual repository
- * host — a URL-shaped homepage with ≥2 path segments (e.g.
- * `https://example.com/owner/repo`) still canonicalizes and is stored.
- *
- * `cargo_sync.repo_choice` then picks one repo per crate: the declared `repository`
- * field (`primary`) or, when that is absent or unparseable, the `homepage` — accepted
- * only on a recognized VCS host, since a homepage is free-form. `documentation` is not
- * staged from the dump and is almost always docs.rs, which that gate rejects anyway.
- *
- * Normalization runs in TypeScript because the bulk set-based cargo pipeline
- * cannot call the parser per row; the resulting mapping table lets the SQL
- * enrich phases join back to it. Idempotent: the table is rebuilt each run.
- */
 export async function normalizeRepos(qx: QueryExecutor): Promise<NormalizeReposResult> {
   const rows: Array<{ url: string }> = await qx.select(
     `SELECT DISTINCT declared_repository_url AS url

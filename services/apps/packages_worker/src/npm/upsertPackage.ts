@@ -1,5 +1,6 @@
 import {
   getOrCreateRepoByUrl,
+  removeDeclaredPackageRepo,
   upsertNpmFundingLinks,
   upsertNpmPackage,
   upsertNpmVersions,
@@ -94,6 +95,12 @@ export async function upsertPackage(
         signal: resolvedRepo.signal,
       })
       linkChanged.forEach((f) => changed.add(f))
+
+      const removedFields = await removeDeclaredPackageRepo(t, pkgId, repoId)
+      removedFields.forEach((f) => changed.add(f))
+    } else {
+      const removedFields = await removeDeclaredPackageRepo(t, pkgId)
+      removedFields.forEach((f) => changed.add(f))
     }
 
     const verChanged = await upsertNpmVersions(

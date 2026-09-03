@@ -28,7 +28,7 @@ One shared helper, `resolveManifestRepo(candidates)`
 (`packages_worker/src/utils/resolveManifestRepo.ts`), resolves a package's repo
 from an ordered candidate list. The first candidate is the ecosystem's canonical
 field and resolves as `primary`; every later candidate resolves as `secondary`.
-The result carries `{ repo, signal, field }`, and each writer persists the
+The result carries `{ repo, signal }`, and each writer persists the
 returned `signal` on the link. No writer computes a confidence value.
 
 ### Chains
@@ -58,43 +58,6 @@ SQL over a dump, so `normalizeRepos` stages both `declared_repository_url` and
 first-wins-with-host-gate rule in SQL. `documentation` is not staged — it is
 almost always docs.rs, which the host gate rejects anyway.
 
-## Alternatives Considered
-
-### Alternative 1: Widen each writer's existing extractor in place
-
-- **Pros**: no new module; smallest diff per ecosystem.
-- **Cons**: seven copies of the fallback order and the host gate, which is how
-  the current per-ecosystem divergence arose in the first place; the `signal`
-  value would be derived independently in each writer.
-- **Why not**: the whole point is one rule; nine implementations of "which
-  field won" is the defect, not the fix.
-
-### Alternative 2: Accept fallback URLs on any host, like the primary field does
-
-- **Pros**: maximum coverage; no URL is discarded.
-- **Cons**: a documentation site or a marketing page with two path segments
-  becomes a repo link, creating a `repos` row and an incorrect
-  `packages_published` attribution — the exact failure this epic exists to fix.
-- **Why not**: coverage gained by inventing repos is negative value; the
-  primary field at least carries the publisher's explicit claim.
-
-### Alternative 3: Score fallback links lower directly in the writers instead of adding `signal`
-
-- **Pros**: no schema column; visible in one place.
-- **Cons**: reintroduces per-writer confidence literals, and the penalty could
-  not be retuned or audited afterwards — nothing records *why* a row scored
-  lower.
-- **Why not**: ADR-0020 makes the stored score derivable from stored evidence;
-  `signal` is that evidence.
-
-### Alternative 4: Backfill a separate pass that mines fallback fields for packages with no link
-
-- **Pros**: zero risk to the existing write paths; can be re-run at will.
-- **Cons**: a second code path that has to re-fetch or re-read every manifest,
-  and it goes stale the moment a package is re-ingested.
-- **Why not**: the data is already in hand at write time; the write path is
-  the cheapest place to fix coverage.
-
 ## Consequences
 
 ### Positive
@@ -110,8 +73,9 @@ almost always docs.rs, which the host gate rejects anyway.
 
 - Secondary links are, by construction, less certain than declared ones; some
   will be wrong even with the host gate.
-- Maven and cargo needed local restructuring (maven onto the shared
-  canonicalizer, cargo's `repo_choice` in SQL) to reach the same behaviour.
+- Maven and cargo needed local restructuring (maven's POM-specific
+  `normalizeScmUrl` feeds the same `package_repos` write path; cargo's
+  `repo_choice` applies the host-gate rule in SQL) to reach the same behaviour.
 - Row counts in `package_repos` grow, and the dedup/keep-highest path now sees
   more competing links per package.
 
