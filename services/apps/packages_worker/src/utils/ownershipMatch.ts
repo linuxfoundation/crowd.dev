@@ -47,24 +47,20 @@ const STRUCTURAL_SEGMENTS = new Set([
 // `com`, `io`) skip it — otherwise keep it (e.g., Packagist vendors like `foo.bar` or NuGet
 // namespaces like `Microsoft.Extensions` where the first segment is identity-bearing). Flat
 // scopes (`@vercel`, `tokio-rs`) are single-segment — normalise the whole string.
+// normalizeIdentity already strips vanity suffixes, so `github-ai` → `github` hits the
+// set-membership check directly; isSameIdentity is not needed here and would over-eagerly
+// discard legitimate identities like `github-tools` (normalises to `githubtools`).
 function namespaceCandidates(namespace: string): string[] {
   const segments = namespace.split(/[./]/).filter(Boolean)
   if (segments.length === 1) {
     return [normalizeIdentity(namespace)].filter(Boolean)
   }
   const firstNorm = normalizeIdentity(segments[0])
-  const firstIsStructural =
-    STRUCTURAL_SEGMENTS.has(firstNorm) ||
-    [...STRUCTURAL_SEGMENTS].some((ss) => isSameIdentity(firstNorm, ss))
+  const firstIsStructural = STRUCTURAL_SEGMENTS.has(firstNorm)
   return segments
     .slice(firstIsStructural ? 1 : 0)
     .map(normalizeIdentity)
-    .filter(
-      (normalized) =>
-        normalized &&
-        !STRUCTURAL_SEGMENTS.has(normalized) &&
-        ![...STRUCTURAL_SEGMENTS].some((ss) => isSameIdentity(normalized, ss)),
-    )
+    .filter((normalized) => normalized && !STRUCTURAL_SEGMENTS.has(normalized))
 }
 
 function isSameIdentity(a: string, b: string): boolean {

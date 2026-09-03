@@ -71,7 +71,10 @@ export async function writeRepoLink(qx: QueryExecutor, packageId: number, reposi
     return
   }
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
-  const ownershipMatch = matchOwnership({ ...evidence, repoOwner: parsed.owner })
+  const ownershipMatch = matchOwnership({
+    ...evidence,
+    repoOwner: parsed.host === 'other' ? null : parsed.owner,
+  })
   const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal, ownershipMatch })
   repoChanged.forEach((f) => changed?.add(f))
   const removedFields = await removeDeclaredPackageRepo(qx, String(packageId), String(repoId))

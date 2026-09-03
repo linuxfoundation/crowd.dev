@@ -43,8 +43,16 @@ describe('matchOwnership', () => {
     )
     // `org.foo` must not match an owner literally named `org`
     expect(matchOwnership({ namespace: 'org.foo', repoOwner: 'org' })).toBe('unmatched')
-    // `de.github-ai.pkg` — `github-ai` normalises to `githubai`, which must not prefix-match `github`
+    // `de.github-ai.pkg` — `github-ai` normalises to `github` via vanity-suffix stripping, filtered by set membership
     expect(matchOwnership({ namespace: 'de.github-ai.pkg', repoOwner: 'github' })).toBe('unmatched')
+  })
+
+  it('does not discard legitimate identity segments that share a prefix with a structural label', () => {
+    // `io.github.github-tools` — `github-tools` normalises to `githubtools`, which is NOT structural
+    // and must not be filtered even though it starts with `github`
+    expect(matchOwnership({ namespace: 'io.github.github-tools', repoOwner: 'github-tools' })).toBe(
+      'matched',
+    )
   })
 
   it('reports unmatched when evidence exists but nothing lines up', () => {
