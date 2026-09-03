@@ -102,7 +102,7 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // and its GitHub sibling lands in chunk N+1, the penalty is applied by the daily
 // rescore_package_repo_confidence() sweep, not inline.
 const PKGREPOS_MERGE_SQL = `
-WITH github_staged AS (
+WITH github_staged AS MATERIALIZED (
   SELECT DISTINCT p2.id AS package_id
   FROM staging.osspckgs_package_repos_raw s2
   JOIN repos r2 ON r2.url = s2.canonical_url
