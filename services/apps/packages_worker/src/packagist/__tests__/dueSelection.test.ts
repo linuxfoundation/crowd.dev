@@ -225,6 +225,7 @@ describe('updatePackagistPackageStats', () => {
     qx.selectOneOrNone.mockResolvedValue({
       id: '7',
       is_critical: true,
+      homepage: null,
       changed_fields: ['packages.description'],
     })
 
@@ -241,6 +242,7 @@ describe('updatePackagistPackageStats', () => {
     expect(result).toEqual({
       id: '7',
       isCritical: true,
+      homepage: null,
       changedFields: ['packages.description'],
     })
   })
