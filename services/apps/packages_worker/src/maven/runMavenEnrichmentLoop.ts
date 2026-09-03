@@ -4,6 +4,7 @@ import {
   listMavenCriticalPackagesById,
   listMavenPackagesToSync,
   logAuditFieldChange,
+  removeDeclaredPackageRepo,
   replacePackageMaintainers,
   touchPackageSyncedAt,
   upsertMaintainer,
@@ -57,12 +58,22 @@ type PackageRow = MavenPackageToSync
 
 // prettier-ignore
 export async function writeRepoLink(qx: QueryExecutor, packageId: number, repositoryUrl: string | null, changed?: Set<string>, signal: PackageRepoSignal = 'primary'): Promise<void> {
-  if (!repositoryUrl) return
+  if (!repositoryUrl) {
+    const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
+    removedFields.forEach((f) => changed?.add(f))
+    return
+  }
   const parsed = parseRepoUrl(repositoryUrl)
-  if (!parsed) return
+  if (!parsed) {
+    const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
+    removedFields.forEach((f) => changed?.add(f))
+    return
+  }
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })
   const repoChanged = await upsertPackageRepo(qx, String(packageId), String(repoId), { source: 'declared', signal })
   repoChanged.forEach((f) => changed?.add(f))
+  const removedFields = await removeDeclaredPackageRepo(qx, String(packageId), String(repoId))
+  removedFields.forEach((f) => changed?.add(f))
 }
 
 // Postgres deadlock (40P01) is transient: concurrent transactions upserting the same shared
