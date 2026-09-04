@@ -17,7 +17,7 @@ export async function rescoreAllPackageRepos(
     // release the lock from an exception handler — the caller has to, before the pool reuses
     // this connection.
     try {
-      await session.none(`SELECT pg_advisory_unlock_all()`)
+      await session.one(`SELECT pg_advisory_unlock_all()`)
     } finally {
       session.done()
     }

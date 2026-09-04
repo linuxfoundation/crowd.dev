@@ -7,12 +7,12 @@ const { sweepPackageRepoConfidenceScores } = proxyActivities<typeof packageRepoA
   retry: { maximumAttempts: 2, initialInterval: '5 minutes', backoffCoefficient: 2 },
 })
 
-const { assertNoTiedPackageRepos } = proxyActivities<typeof packageRepoActivities>({
+const { reportTiedPackageRepos } = proxyActivities<typeof packageRepoActivities>({
   startToCloseTimeout: '30 minutes',
   retry: { maximumAttempts: 1 },
 })
 
 export async function sweepPackageRepoConfidence(): Promise<void> {
   await sweepPackageRepoConfidenceScores()
-  await assertNoTiedPackageRepos()
+  await reportTiedPackageRepos()
 }

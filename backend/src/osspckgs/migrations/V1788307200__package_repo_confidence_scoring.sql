@@ -83,7 +83,7 @@ BEGIN
             base := base - 0.10;
         END IF;
 
-        IF p_competing_github IS TRUE AND COALESCE(p_host, '') <> 'github' THEN
+        IF p_competing_github IS TRUE AND p_host IS NOT NULL AND p_host <> 'github' THEN
             base := base - 0.05;
         END IF;
 
@@ -139,6 +139,7 @@ BEGIN
                    AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
                  ORDER BY pr.id
                  LIMIT chunk_size
+                   FOR UPDATE
             ),
             updated AS (
                 UPDATE package_repos pr

@@ -110,13 +110,13 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
     expect(declared).not.toBe(otherRepo)
     expect(Math.abs(declared - 0.85)).toBeLessThan(0.004)
 
-    const depsDev = await score({
+    const manual = await score({ source: 'manual', repoId: 10 })
+    const attested = await score({
       source: 'deps_dev',
-      provenance: 'UNVERIFIED_METADATA',
+      provenance: 'SLSA_ATTESTATION',
       repoId: 10,
     })
-    const heuristicSameBase = await score({ source: 'heuristic', repoId: 10 })
-    expect(depsDev).toBeGreaterThan(0.5)
-    expect(heuristicSameBase).toBeGreaterThan(0.3)
+    expect(manual).toBeGreaterThan(attested)
+    expect(manual - attested).toBeLessThan(0.004)
   })
 })

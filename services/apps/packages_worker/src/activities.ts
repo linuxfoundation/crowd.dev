@@ -73,5 +73,5 @@ export { slackNotify } from './activities/index'
 export { syncGithubRepos } from './scorecard/activities'
 export {
   sweepPackageRepoConfidenceScores,
-  assertNoTiedPackageRepos,
+  reportTiedPackageRepos,
 } from './package-repos/activities'

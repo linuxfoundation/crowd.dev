@@ -58,12 +58,16 @@ export function claimFromRow(alias: string): PackageRepoClaimExprs {
 }
 
 // Keep-highest: a claim only replaces the stored one when it scores strictly higher, which
-// makes the result independent of the order the writers run in. Two claims can never tie
-// because package_repo_confidence bands each source into its own offset range.
+// makes the result independent of the order the writers run in.
+// Provenance also hydrates a losing row that has none: rows written before the column
+// existed are skipped by every rescore path until something fills it in.
 export const KEEP_HIGHEST_CONFLICT_UPDATE = `source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.source ELSE package_repos.source END,
          provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
-                                 THEN EXCLUDED.provenance ELSE package_repos.provenance END,
+                                 THEN EXCLUDED.provenance
+                                 WHEN package_repos.provenance IS NULL
+                                 THEN EXCLUDED.provenance
+                                 ELSE package_repos.provenance END,
          confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
          verified_at      = NOW()`
 

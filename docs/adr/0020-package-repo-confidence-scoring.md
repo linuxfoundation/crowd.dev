@@ -63,10 +63,16 @@ and its own penalty branch; because every writer already routes through
 `source_priority * 1e6 + repo_id % 1e6`, scaled by `1e-9` — max
 `0.003999999`. It sits below the 0.05 tier gap and below both label boundaries
 (0.80 high / 0.50 medium), so it can never move a row across a tier or a
-label. This is why the column needs nine decimal places: ranking must be
-total and reproducible, not arbitrary on ties. Reachable range is `0.05` to
-`0.993999999`; a live (non-disabled) row floors at `0.05` and a disabled row
-sits between `0.05` and `0.054`.
+label. This is why the column needs nine decimal places. Reachable range is
+`0.05` to `0.993999999`; a live (non-disabled) row floors at `0.05` and a
+disabled row sits between `0.05` and `0.054`.
+
+The offset separates same-source claims but is not injective: two repo IDs for
+the same package that are congruent modulo 1e6 (1e3 when disabled) still score
+identically. Total ordering therefore comes from the shared read fragment,
+which tie-breaks on `repo_id` after `confidence`; the offset only keeps the
+common case from reaching that tie-break. The daily sweep counts remaining
+ties and logs them as a data-quality signal rather than failing.
 
 ### Write and read policy
 
@@ -96,10 +102,52 @@ sits between `0.05` and `0.054`.
 `ACCESS EXCLUSIVE`. Run with the Sequin and Tinybird sinks paused. Existing
 rows keep their values until `rescore_package_repo_confidence()` backfills
 them: keyset-paged, `COMMIT` per chunk, guarded by a session advisory lock, run
-out-of-band via `scripts/rescorePackageRepos.ts` (which also reports the
-no-ties invariant). Afterwards the `package-repo-confidence-sweep-daily`
-Temporal schedule reruns the same procedure and fails the no-ties check as a
-data-quality alert.
+out-of-band via `scripts/rescorePackageRepos.ts` (which also reports the tie
+count). Afterwards the `package-repo-confidence-sweep-daily` Temporal schedule
+reruns the same procedure and logs the tie count.
+
+## Alternatives Considered
+
+### Keep per-writer confidence constants
+
+Each registry loop keeps its own literal (`0.8`, `0.95`, …) and the deps.dev
+BigQuery query keeps its inline `CASE`.
+
+- **Pros**: no migration, no table rewrite, no backfill, no cross-service
+  coupling to a database function.
+- **Cons**: nine writers drifted to five different tie-breakers and two
+  incompatible meanings of 0.8; a tier change means a coordinated deploy;
+  nothing can be rescored, because the inputs are collapsed at write time.
+- **Why not**: the drift is the problem CM-1306 exists to fix, and the
+  evidence-quality work in CM-1393/CM-1394 needs a single place to hook into.
+
+### Score in TypeScript instead of in the database
+
+A shared `computeConfidence()` in `@crowd/data-access-layer`, called by every
+writer before the INSERT.
+
+- **Pros**: unit-testable without a database, no migration to change a tier,
+  familiar to every service author.
+- **Cons**: rescoring 200M+ rows means pulling them into Node and writing them
+  back; the deps.dev merge is a set-based `INSERT … SELECT` from staging that
+  would have to become row-by-row; nothing stops a raw SQL writer from
+  bypassing it.
+- **Why not**: the backfill and the daily sweep are both bulk set operations —
+  an `IMMUTABLE` function lets them stay single statements, and it can be used
+  from a `LATERAL` in any query.
+
+### Store the inputs and compute confidence at read time
+
+Persist `source`, `provenance` and repo state only; rank with the scoring
+expression inlined into each read query.
+
+- **Pros**: no stored value to go stale, no backfill, no sweep.
+- **Cons**: every read path repeats the expression (the drift problem, moved);
+  no index can serve `ORDER BY confidence DESC`, so best-repo lookups become
+  sorts over a package's whole link set; Tinybird and the public API have no
+  column to mirror.
+- **Why not**: `package_repos_package_id_confidence_idx` is what keeps the
+  best-repo read cheap at this scale.
 
 ## Consequences
 
@@ -107,8 +155,8 @@ data-quality alert.
 
 - One formula, one place to change it; retuning a tier is a migration, not a
   sweep through nine writers.
-- Ranking is total and reproducible — `ORDER BY confidence DESC LIMIT 1` has
-  exactly one answer per package.
+- Ranking is total and reproducible — the shared read fragment gives
+  `ORDER BY confidence DESC LIMIT 1` exactly one answer per package.
 - A single scoring seam is what makes CM-1393 and CM-1394 possible without
   either PR hardcoding a confidence it does not own.
 - Keep-highest everywhere means re-running any loop is idempotent and cannot

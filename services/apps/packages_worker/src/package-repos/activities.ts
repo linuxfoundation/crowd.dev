@@ -10,12 +10,10 @@ export async function sweepPackageRepoConfidenceScores(): Promise<number> {
   return appliedRows
 }
 
-export async function assertNoTiedPackageRepos(): Promise<void> {
+export async function reportTiedPackageRepos(): Promise<number> {
   const tiedPackages = await countTiedPackageRepos()
   if (tiedPackages > 0) {
-    throw new Error(
-      `package_repos confidence uniqueness violated: ${tiedPackages} package(s) have repo links sharing a confidence`,
-    )
+    log.warn({ tiedPackages }, 'Packages with repo links sharing a confidence')
   }
-  log.info('No tied package repo confidence values')
+  return tiedPackages
 }
