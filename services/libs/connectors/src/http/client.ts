@@ -191,9 +191,14 @@ function computeResumeAt(headers: Record<string, string>): Date {
   if (Number.isFinite(retryAfterDateMs) && retryAfterDateMs > Date.now()) {
     return new Date(retryAfterDateMs)
   }
-  const resetEpochSeconds = Number(headers['x-ratelimit-reset'])
-  if (Number.isFinite(resetEpochSeconds) && resetEpochSeconds * 1000 > Date.now()) {
-    return new Date(resetEpochSeconds * 1000)
+  // x-ratelimit-reset describes the primary bucket only. Honouring it on a
+  // secondary/abuse block parks the token for the rest of the hour instead of
+  // the minute or so the block actually lasts.
+  if (headers['x-ratelimit-remaining'] === '0') {
+    const resetEpochSeconds = Number(headers['x-ratelimit-reset'])
+    if (Number.isFinite(resetEpochSeconds) && resetEpochSeconds * 1000 > Date.now()) {
+      return new Date(resetEpochSeconds * 1000)
+    }
   }
   return new Date(Date.now() + RATE_LIMIT_FALLBACK_MS)
 }

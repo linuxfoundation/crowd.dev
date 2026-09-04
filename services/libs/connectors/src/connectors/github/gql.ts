@@ -1,9 +1,22 @@
 import type { ConnectorHttp } from '../../http/client'
 import { ProviderContractError } from '../../http/errors'
 
+interface GraphqlError {
+  type?: string
+  message?: string
+  path?: (string | number)[]
+}
+
 interface GraphqlEnvelope<T> {
   data?: T
-  errors?: { type?: string; message?: string }[]
+  errors?: GraphqlError[]
+}
+
+// GitHub resolves what it can and reports unreachable nodes (actors in orgs with
+// IP allow lists) as errors with a deep path, alongside usable data. Only errors
+// at or above the root field mean the whole response is unusable.
+function isFatal(error: GraphqlError): boolean {
+  return (error.path?.length ?? 0) <= 1
 }
 
 export async function githubGraphql<T>(
@@ -16,8 +29,9 @@ export async function githubGraphql<T>(
     url: 'https://api.github.com/graphql',
     data: { query, variables },
   })
-  if (body.errors?.length) {
-    const details = body.errors.map((e) => `${e.type ?? 'ERROR'}: ${e.message ?? ''}`).join('; ')
+  const fatal = body.errors?.filter(isFatal) ?? []
+  if (fatal.length > 0) {
+    const details = fatal.map((e) => `${e.type ?? 'ERROR'}: ${e.message ?? ''}`).join('; ')
     throw new ProviderContractError(`github graphql errors: ${details}`)
   }
   if (!body.data) {
