@@ -102,7 +102,25 @@ async function attemptRequest<T>(
     // parking makes acquire() skip this entry, so rotation ends when the pool
     // itself reports exhaustion rather than after a fixed number of tries
     await deps.parkToken(token.id, resumeAt)
-    deps.log.info({ tokenId: token.id, resumeAt }, 'token rate limited, retrying with fresh token')
+    // TODO(CM-1372): temporary — drop once the staging secondary-limit parks are explained
+    deps.log.info(
+      {
+        event: 'pool_rate_limit_detail',
+        tokenId: token.id,
+        resumeAt,
+        resumeSource: error.options?.resumeAt ? 'error' : 'headers',
+        status: response.status,
+        reason: error.message,
+        resource: headers['x-ratelimit-resource'],
+        limit: headers['x-ratelimit-limit'],
+        remaining: headers['x-ratelimit-remaining'],
+        used: headers['x-ratelimit-used'],
+        reset: headers['x-ratelimit-reset'],
+        retryAfter: headers['retry-after'],
+        body: rateLimitBodySummary(response.data),
+      },
+      'token rate limited, retrying with fresh token',
+    )
     return attemptRequest<T>(deps, config, authRetried)
   }
 
@@ -118,6 +136,23 @@ async function attemptRequest<T>(
   }
 
   throw error
+}
+
+const BODY_SUMMARY_MAX_LENGTH = 200
+
+function rateLimitBodySummary(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') {
+    return undefined
+  }
+  const body = data as { message?: string; errors?: { type?: string; message?: string }[] }
+  if (body.message) {
+    return body.message.slice(0, BODY_SUMMARY_MAX_LENGTH)
+  }
+  const first = body.errors?.[0]
+  if (!first) {
+    return undefined
+  }
+  return `${first.type ?? 'ERROR'}: ${first.message ?? ''}`.slice(0, BODY_SUMMARY_MAX_LENGTH)
 }
 
 async function send<T>(
