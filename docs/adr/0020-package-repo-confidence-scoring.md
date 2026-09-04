@@ -99,8 +99,9 @@ ties and logs them as a data-quality signal rather than failing.
   `ROUND(pr2.confidence, 2)` so API payloads stay at two decimals.
 - Repo-state penalties depend on columns that are NULL until the enricher
   runs, so writers score with what exists and the enricher rescores that
-  repo's links (`rescorePackageReposForRepos`) when `archived` / `disabled` /
-  `is_fork` flip.
+  repo's links (`rescorePackageReposForRepoState`) when `archived` / `disabled` /
+  `is_fork` flip. A `host` change widens that set to the package's sibling
+  links, which gain or lose the competing-GitHub penalty.
 
 ### Migration and backfill
 
