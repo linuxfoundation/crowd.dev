@@ -15,8 +15,13 @@ function nonEmpty(value: string | null | undefined): string | null {
   return trimmed === '' ? null : trimmed
 }
 
+function cleanLicenses(raw: (string | null)[] | null | undefined): string[] | null {
+  const cleaned = raw?.filter((l): l is string => !!l && l.trim() !== '')
+  return cleaned && cleaned.length > 0 ? cleaned : null
+}
+
 export function normalizeRubyGemsPackage(doc: RubyGemsGemResponse): NormalizedRubyGemsPackage {
-  const licenses = doc.licenses && doc.licenses.length > 0 ? doc.licenses : null
+  const licenses = cleanLicenses(doc.licenses)
   const declaredRepositoryUrl = nonEmpty(doc.source_code_uri)
   return {
     description: nonEmpty(doc.info),
@@ -43,7 +48,7 @@ export function normalizeRubyGemsVersions(
     number: item.number,
     publishedAt: parseCreatedAt(item.created_at),
     isPrerelease: item.prerelease ?? false,
-    licenses: item.licenses && item.licenses.length > 0 ? item.licenses : null,
+    licenses: cleanLicenses(item.licenses),
   }))
 }
 
