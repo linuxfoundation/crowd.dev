@@ -1,7 +1,9 @@
 -- Deterministic package→repo confidence scoring (CM-1306).
 --
--- confidence numeric(3,2) cannot hold the uniqueness offset that makes
--- ORDER BY confidence DESC LIMIT 1 unambiguous, so it is widened to numeric(12,9).
+-- confidence numeric(3,2) cannot hold the uniqueness offset that separates links
+-- sharing a tier, so it is widened to numeric(12,9). The offset is not injective —
+-- repo ids congruent modulo 1e6 still tie — so total ordering comes from the repo_id
+-- tie-break in the shared read fragment, not from confidence alone.
 -- Scale changes rewrite the table under an ACCESS EXCLUSIVE lock, and package_repos
 -- carries REPLICA IDENTITY FULL plus a Sequin publication (see V1781009234) — run this
 -- with the Sequin and Tinybird sinks paused.
@@ -144,26 +146,27 @@ BEGIN
             updated AS (
                 UPDATE package_repos pr
                    SET confidence = s.confidence, verified_at = NOW()
-                  FROM batch b, packages p, repos r,
+                  FROM batch b
+                  JOIN package_repos cur ON cur.id = b.id
+                  JOIN packages p ON p.id = cur.package_id
+                  JOIN repos r ON r.id = cur.repo_id,
                        LATERAL (
                          SELECT package_repo_confidence(
-                           pr.source, p.ecosystem, pr.provenance,
+                           cur.source, p.ecosystem, cur.provenance,
                            r.archived, r.is_fork, r.disabled, r.host,
                            EXISTS (
                              SELECT 1
                                FROM package_repos c
                                JOIN repos cr ON cr.id = c.repo_id
-                              WHERE c.package_id = pr.package_id
-                                AND c.repo_id <> pr.repo_id
+                              WHERE c.package_id = cur.package_id
+                                AND c.repo_id <> cur.repo_id
                                 AND cr.host = 'github'
                            ),
-                           pr.repo_id
+                           cur.repo_id
                          ) AS confidence
                        ) s
                  WHERE pr.id = b.id
-                   AND p.id = pr.package_id
-                   AND r.id = pr.repo_id
-                   AND s.confidence IS DISTINCT FROM pr.confidence
+                   AND s.confidence IS DISTINCT FROM cur.confidence
                 RETURNING pr.id
             )
             SELECT COUNT(*), COALESCE(MAX(b.id), cursor_id),

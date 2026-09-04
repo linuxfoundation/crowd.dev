@@ -77,13 +77,19 @@ ties and logs them as a data-quality signal rather than failing.
 ### Write and read policy
 
 - **Conflicts are keep-highest**, in every writer:
-  `confidence = GREATEST(EXCLUDED.confidence, package_repos.confidence)`, with
-  `source` and `provenance` moving only when the incoming score wins strictly.
-  The stored row therefore does not depend on the order the writers run in, and
-  a weaker source (routine registry refresh) cannot overwrite a stronger one
-  (manual, attested deps.dev). A claim that scores lower than the stored one —
-  including a same-source re-read that lost provenance — is applied by the
-  rescore path, not by the upsert.
+  `confidence = GREATEST(EXCLUDED.confidence, package_repos.confidence)` when
+  the claim comes from a different source than the stored row, with `source` and
+  `provenance` moving only when the incoming score wins strictly. A weaker source
+  (routine registry refresh) therefore cannot overwrite a stronger one (manual,
+  attested deps.dev), and the stored row does not depend on the order different
+  writers run in.
+
+  A same-source write is latest-refresh: that source is restating its own row, so
+  `confidence` and `provenance` are replaced outright, downgrades included. This
+  is what lets evidence that genuinely got weaker — a deps.dev link that lost its
+  attestation — reach the table at all, and what lets a row written before
+  `provenance` existed acquire one. Keep-highest arbitrates between sources; it is
+  not a ratchet within one.
 - **Rescores lock in primary-key order** (`ORDER BY pr.id FOR UPDATE`) so a
   package-scoped and a repo-scoped rescore over an overlapping set cannot
   deadlock.

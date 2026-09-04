@@ -4,6 +4,7 @@ import {
   KEEP_HIGHEST_CONFLICT_UPDATE,
   PackageRepoLinkClaim,
   claimFromRow,
+  competingGithubRepoExpr,
   packageRepoConfidenceCall,
   packageRepoLinkClaimParams,
 } from './repoConfidence'
@@ -138,15 +139,16 @@ function rescoreQuery(filterColumn: 'package_id' | 'repo_id', param: string): st
      )
      UPDATE package_repos pr
         SET confidence = s.confidence, verified_at = NOW()
-       FROM target t, packages p, repos r,
+       FROM target t
+       JOIN package_repos cur ON cur.id = t.id
+       JOIN packages p ON p.id = cur.package_id
+       JOIN repos r ON r.id = cur.repo_id,
             LATERAL (
-              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
+              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('cur'), competingGithubRepoExpr('cur.package_id', 'cur.repo_id'))} AS confidence
             ) s
       WHERE pr.id = t.id
-        AND p.id = pr.package_id
-        AND r.id = pr.repo_id
-        AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
-        AND s.confidence IS DISTINCT FROM pr.confidence`
+        AND NOT (cur.source = 'deps_dev' AND cur.provenance IS NULL)
+        AND s.confidence IS DISTINCT FROM cur.confidence`
 }
 
 export async function rescorePackageReposForPackages(
