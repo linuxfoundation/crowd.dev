@@ -57,12 +57,8 @@ export function claimFromRow(alias: string): PackageRepoClaimExprs {
   }
 }
 
-// Keep-highest arbitrates between different sources only: a claim from another source
-// replaces the stored one when it scores strictly higher, which makes the result
-// independent of the order the writers run in. A same-source write is that source
-// refreshing its own row, so it always replaces — otherwise evidence that got weaker
-// (a deps.dev link that lost its attestation) could never be persisted, and a row
-// written before `provenance` existed could never acquire one.
+// Keep-highest arbitrates between sources, not within one: a same-source write restates its
+// own row and always replaces, downgrades included (ADR-0020).
 export const KEEP_HIGHEST_CONFLICT_UPDATE = `source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.source ELSE package_repos.source END,
          provenance       = CASE WHEN EXCLUDED.source = package_repos.source
