@@ -67,7 +67,7 @@ async function requestWithRetry<T>(
   let lastError: ConnectorError = new ProviderUnavailableError()
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      return await attemptRequest<T>(deps, config, true)
+      return await attemptRequest<T>(deps, config)
     } catch (err) {
       if (!(err instanceof ConnectorError) || err.errorClass !== 'provider.unavailable') {
         throw err
@@ -86,7 +86,7 @@ async function requestWithRetry<T>(
 async function attemptRequest<T>(
   deps: CountingHttpClientDeps,
   config: AxiosRequestConfig,
-  allowTokenRotation: boolean,
+  authRetried = false,
 ): Promise<T> {
   const token = await deps.acquireToken()
   const response = await send<T>(deps, config, token)
@@ -99,15 +99,11 @@ async function attemptRequest<T>(
 
   if (error.errorClass === 'provider.rate_limit') {
     const resumeAt = error.options?.resumeAt ?? computeResumeAt(headers)
+    // parking makes acquire() skip this entry, so rotation ends when the pool
+    // itself reports exhaustion rather than after a fixed number of tries
     await deps.parkToken(token.id, resumeAt)
-    if (allowTokenRotation) {
-      deps.log.info(
-        { tokenId: token.id, resumeAt },
-        'token rate limited, retrying with fresh token',
-      )
-      return attemptRequest<T>(deps, config, false)
-    }
-    throw new RateLimitError(error.message, { ...error.options, resumeAt })
+    deps.log.info({ tokenId: token.id, resumeAt }, 'token rate limited, retrying with fresh token')
+    return attemptRequest<T>(deps, config, authRetried)
   }
 
   if (error.errorClass === 'provider.auth') {
@@ -116,8 +112,8 @@ async function attemptRequest<T>(
       { tokenId: token.id, status: response.status },
       'token invalidated on auth failure',
     )
-    if (allowTokenRotation) {
-      return attemptRequest<T>(deps, config, false)
+    if (!authRetried) {
+      return attemptRequest<T>(deps, config, true)
     }
   }
 
