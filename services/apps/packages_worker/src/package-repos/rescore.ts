@@ -23,16 +23,9 @@ export async function rescoreAllPackageRepos(
     ])
     return row.applied_rows as number
   } finally {
-    // The procedure holds a session-level advisory lock and COMMITs per chunk, so it cannot
-    // release the lock from an exception handler — the caller has to, before the pool reuses
-    // this connection.
-    let unlocked = false
-    try {
-      await session.one(`SELECT pg_advisory_unlock_all()`)
-      unlocked = true
-    } finally {
-      session.done(!unlocked)
-    }
+    // The session-scoped timeouts and the procedure's advisory lock both outlive the CALL, and
+    // this runs once a day — destroy the connection rather than hand either back to the pool.
+    session.done(true)
   }
 }
 
