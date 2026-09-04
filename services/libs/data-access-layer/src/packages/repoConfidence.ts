@@ -73,9 +73,8 @@ export const KEEP_HIGHEST_CONFLICT_UPDATE = `source           = CASE WHEN EXCLUD
                                  ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
          verified_at      = NOW()`
 
-// Call into the scoring function defined in V1788307200 — the only path that may produce
-// a package_repos confidence value. Ecosystem and repo state are read from the package
-// and repo rows the caller has joined in.
+// The only path that may produce a package_repos confidence value (V1788307200). The caller
+// must have the package and repo rows joined — ecosystem and repo state are read off them.
 export function packageRepoConfidenceCall(
   packageAlias: string,
   repoAlias: string,
