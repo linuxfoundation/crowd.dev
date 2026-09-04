@@ -71,9 +71,29 @@ export async function onboardAndUpdateProject(
       project.projectSlug,
       deletedInsightsProject.deletedAt,
     )
-    await markProjectCatalogOnboardingSkipped(qx, project.id, reason)
-    log.info({ id: project.id, repoUrl: project.repoUrl, reason }, 'Onboarding skipped.')
-    return 'skipped'
+    const updatedRows = await markProjectCatalogOnboardingSkipped(qx, project.id, reason)
+    if (updatedRows > 0) {
+      log.info({ id: project.id, repoUrl: project.repoUrl, reason }, 'Onboarding skipped.')
+      return 'skipped'
+    }
+
+    const current = await findProjectCatalogById(qx, project.id)
+    if (current?.onboardedAt) {
+      log.info(
+        { id: project.id, repoUrl: project.repoUrl, onboardedAt: current.onboardedAt },
+        'Project already onboarded, skipping API call.',
+      )
+      return 'already-onboarded'
+    }
+    if (current?.action === 'skip') {
+      log.info({ id: project.id, repoUrl: project.repoUrl }, 'Project already skipped.')
+      return 'skipped'
+    }
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl, action: current?.action },
+      'Skip guard was a no-op; project catalog row changed concurrently, not calling onboarding API.',
+    )
+    return 'catalog-changed'
   }
 
   log.info({ id: project.id, repoUrl: project.repoUrl }, 'Starting onboarding.')

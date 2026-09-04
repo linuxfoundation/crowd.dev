@@ -37,6 +37,7 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
 
   let succeeded = 0
   let skipped = 0
+  let racedOut = 0
   let failed = 0
 
   for (let i = 0; i < projects.length; i++) {
@@ -47,6 +48,8 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
       const outcome = await onboardActivities.onboardAndUpdateProject(project)
       if (outcome === 'skipped') {
         skipped++
+      } else if (outcome === 'catalog-changed') {
+        racedOut++
       } else {
         succeeded++
       }
@@ -69,6 +72,6 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
   }
 
   log.info(
-    `Batch onboarding complete. total=${projects.length} succeeded=${succeeded} skipped=${skipped} failed=${failed}`,
+    `Batch onboarding complete. total=${projects.length} succeeded=${succeeded} skipped=${skipped} racedOut=${racedOut} failed=${failed}`,
   )
 }
