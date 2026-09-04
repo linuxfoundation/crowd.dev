@@ -70,9 +70,34 @@ export async function mintInstallationToken(
 const INSTALLATIONS_PER_PAGE = 100
 const MAX_INSTALLATION_PAGES = 100
 
-export async function listInstallationIds(credential: Credential): Promise<string[]> {
+export interface InstallationSummary {
+  id: string
+  accountLogin: string | null
+  accountType: string | null
+  repositorySelection: string | null
+  suspendedAt: string | null
+}
+
+interface InstallationPayload {
+  id: number
+  account: { login?: string; type?: string } | null
+  repository_selection?: string
+  suspended_at?: string | null
+}
+
+function toInstallationSummary(installation: InstallationPayload): InstallationSummary {
+  return {
+    id: String(installation.id),
+    accountLogin: installation.account?.login ?? null,
+    accountType: installation.account?.type ?? null,
+    repositorySelection: installation.repository_selection ?? null,
+    suspendedAt: installation.suspended_at ?? null,
+  }
+}
+
+export async function listInstallations(credential: Credential): Promise<InstallationSummary[]> {
   const appJwt = mintAppJwt(credential)
-  const installationIds: string[] = []
+  const summaries: InstallationSummary[] = []
   try {
     for (let page = 1; page <= MAX_INSTALLATION_PAGES; page++) {
       const response = await axios.get('https://api.github.com/app/installations', {
@@ -84,10 +109,10 @@ export async function listInstallationIds(credential: Credential): Promise<strin
         params: { per_page: INSTALLATIONS_PER_PAGE, page },
         timeout: GITHUB_REQUEST_TIMEOUT_MS,
       })
-      const installations = response.data as { id: number }[]
-      installationIds.push(...installations.map((installation) => String(installation.id)))
+      const installations = response.data as InstallationPayload[]
+      summaries.push(...installations.map(toInstallationSummary))
       if (installations.length < INSTALLATIONS_PER_PAGE) {
-        return installationIds
+        return summaries
       }
     }
   } catch (err) {
@@ -97,6 +122,11 @@ export async function listInstallationIds(credential: Credential): Promise<strin
   throw new Error(
     `github app has more than ${MAX_INSTALLATION_PAGES * INSTALLATIONS_PER_PAGE} installations`,
   )
+}
+
+export async function listInstallationIds(credential: Credential): Promise<string[]> {
+  const installations = await listInstallations(credential)
+  return installations.map((installation) => installation.id)
 }
 
 // TODO(CM-1372): POC-only resolution; store the installation id per integration after the POC

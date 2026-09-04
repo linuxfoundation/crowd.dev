@@ -11,7 +11,8 @@
     "format": "npx prettier --write \"src/**/*.ts\"",
     "format-check": "npx prettier --check .",
     "tsc-check": "tsc --noEmit",
-    "script:seed-github-sync-units": "tsx src/bin/seed-github-sync-units.ts"
+    "script:seed-github-sync-units": "tsx src/bin/seed-github-sync-units.ts",
+    "script:audit-github-app-budget": "tsx src/bin/audit-github-app-budget.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
