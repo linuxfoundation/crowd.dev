@@ -575,11 +575,8 @@ export async function markProjectCatalogOnboardingFailed(
   )
 }
 
-// Guarded like markProjectCatalogOnboardingFailed above: a manual request
-// (POST /project-catalog) may have moved the row out of 'onboard' while this
-// pre-check was in flight — in that case the manual action wins and this write
-// is a no-op. onboardingError is cleared in case this project had previously
-// failed and was requeued.
+// Guarded like markProjectCatalogOnboardingFailed: a concurrent manual action wins.
+// onboardingError is cleared in case this row was previously failed and requeued.
 export async function markProjectCatalogOnboardingSkipped(
   qx: QueryExecutor,
   id: string,
