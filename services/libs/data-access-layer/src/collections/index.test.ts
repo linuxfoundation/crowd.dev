@@ -16,6 +16,7 @@ describe('findInsightsProjectBySlugIncludingDeleted', () => {
     const created = await createInsightsProject(qx, {
       name: 'Gerrit',
       slug: 'gerritcodereview-gerrit',
+      isLF: false,
     })
     await deleteInsightsProject(qx, created.id)
 
@@ -32,6 +33,7 @@ describe('findInsightsProjectBySlugIncludingDeleted', () => {
     const created = await createInsightsProject(qx, {
       name: 'Kubernetes',
       slug: 'kubernetes-kubernetes',
+      isLF: true,
     })
 
     const found = await findInsightsProjectBySlugIncludingDeleted(qx, 'kubernetes-kubernetes', [
