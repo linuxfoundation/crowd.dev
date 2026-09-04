@@ -13,6 +13,15 @@
             "command": ".claude/hooks/guard-protected-files.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-gh-api.sh"
+          }
+        ]
       }
     ]
   },
