@@ -135,7 +135,8 @@ writer before the INSERT.
 
 - **Pros**: unit-testable without a database, no migration to change a tier,
   familiar to every service author.
-- **Cons**: rescoring 200M+ rows means pulling them into Node and writing them
+- **Cons**: rescoring every row (~6M today, growing with registry coverage)
+  means pulling them into Node and writing them
   back; the deps.dev merge is a set-based `INSERT … SELECT` from staging that
   would have to become row-by-row; nothing stops a raw SQL writer from
   bypassing it.
