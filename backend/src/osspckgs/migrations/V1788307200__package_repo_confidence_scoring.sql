@@ -73,7 +73,7 @@ BEGIN
     IF p_disabled IS TRUE THEN
         -- Scale proportionally so pre-disabled claim ordering is preserved across sources.
         -- The offset uses a tighter modulo so max contribution (3*1000+999)*1e-9 ≈ 4e-6
-        -- stays below the 0.0002 minimum scaled tier gap and cannot invert source ordering.
+        -- stays below the 0.00016 minimum scaled tier gap and cannot invert source ordering.
         base := 0.05 + LEAST(base, 0.99) * 0.004;
         offset_units := source_priority::bigint * 1000 + COALESCE(p_repo_id, 0) % 1000;
     ELSE

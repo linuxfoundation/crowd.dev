@@ -6,7 +6,7 @@
  * package-repo-confidence-sweep-daily Temporal schedule.
  *
  * Usage:
- *   pnpm rescore-package-repos [--chunk-size <n>] [--check-only]
+ *   pnpm --filter @crowd/packages-worker rescore-package-repos [--chunk-size <n>] [--check-only]
  *
  *   --chunk-size <n>  Rows per committed chunk (default: 25000).
  *   --check-only      Skip the rescore, only report packages with tied scores.
