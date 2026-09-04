@@ -1,4 +1,3 @@
-/* eslint-disable no-continue */
 import lodash from 'lodash'
 import { Transaction } from 'sequelize'
 
@@ -8,10 +7,10 @@ import {
   OrganizationField,
   changeMemberOrganizationAffiliationOverrides,
   cleanSoftDeletedMemberOrganization,
+  cleanupOrphanMemberSegmentAffiliations,
   createMemberOrganization,
   deleteMemberOrganizations,
   fetchManyOrganizationAffiliationPolicies,
-  fetchMemberOrganizationById,
   fetchMemberOrganizations,
   findMemberAffiliationOverrides,
   queryOrgs,
@@ -198,17 +197,41 @@ export default class MemberOrganizationsService extends LoggerBase {
 
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
-      const dates = sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
-      const memberOrgData: Partial<IMemberOrganization> = {
-        ...data,
-        dateStart: dates.dateStart,
-        dateEnd: dates.dateEnd,
+      if (!data.organizationId) {
+        throw new Error404('Organization not found')
       }
 
-      // Clean up any soft-deleted entries
+      const dates = sanitizeMemberOrganizationDateRange(data.dateStart, data.dateEnd, true)
+      const memberOrgData: IMemberOrganization = {
+        memberId,
+        organizationId: data.organizationId,
+        dateStart: dates.dateStart,
+        dateEnd: dates.dateEnd,
+        title: data.title,
+        source: data.source,
+        verified: data.verified,
+        verifiedBy: data.verifiedBy,
+      }
+
+      const memberOrganizations = await fetchMemberOrganizations(qx, memberId)
+
+      // Hidden project-registry/email-domain rows for this company are shown as the same card.
+      // Drop them so the new UI job owns the dates the person just entered.
+      const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
+        memberOrganizations,
+        memberOrgData,
+      )
+      const overlappingIds = overlappingGroupedRows.flatMap((row) => (row.id ? [row.id] : []))
+
+      if (overlappingIds.length > 0) {
+        await deleteMemberOrganizations(qx, memberId, {
+          ids: overlappingIds,
+          skipMsaCleanup: true,
+        })
+      }
+
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, memberOrgData)
 
-      // Create new member organization
       const newMemberOrgId = await createMemberOrganization(qx, memberId, memberOrgData)
 
       const orgAffiliationPolicyById = await fetchManyOrganizationAffiliationPolicies(qx, [
@@ -255,7 +278,8 @@ export default class MemberOrganizationsService extends LoggerBase {
     try {
       const qx = SequelizeRepository.getQueryExecutor(repositoryOptions)
 
-      const existing = await fetchMemberOrganizationById(qx, id)
+      const memberOrganizations = await fetchMemberOrganizations(qx, memberId)
+      const existing = memberOrganizations.find((mo) => mo.id === id)
       if (!existing || existing.memberId !== memberId) {
         throw new Error404(`Member organization with id ${id} not found!`)
       }
@@ -281,39 +305,36 @@ export default class MemberOrganizationsService extends LoggerBase {
         (v) => v !== undefined,
       ) as MemberOrganizationUpdate
 
+      // Hidden leftovers were merged into this card. Remove anything that overlapped
+      // the old dates or the new ones, so shrinking a range doesn't leave a ghost job.
+      const overlappingIds = [
+        ...new Set(
+          [
+            ...getOverlappingGroupedMemberOrganizations(memberOrganizations, existing),
+            ...getOverlappingGroupedMemberOrganizations(memberOrganizations, {
+              ...existing,
+              ...update,
+            }),
+          ].flatMap((row) => (row.id ? [row.id] : [])),
+        ),
+      ]
+
+      if (overlappingIds.length > 0) {
+        await deleteMemberOrganizations(qx, memberId, {
+          ids: overlappingIds,
+          skipMsaCleanup: true,
+        })
+      }
+
       await cleanSoftDeletedMemberOrganization(qx, memberId, data.organizationId, update)
       await updateMemberOrganization(qx, memberId, id, {
         ...update,
         source: OrganizationSource.UI,
       })
 
-      const memberOrganizations = await fetchMemberOrganizations(qx, memberId)
-
-      const overlapBasis = { ...existing, ...update }
-
-      const overlappingGroupedRows = getOverlappingGroupedMemberOrganizations(
-        memberOrganizations,
-        overlapBasis,
-      )
-
-      const groupedUpdate = lodash.pickBy(
-        {
-          // Keep grouped rows aligned for shared display fields; dates stay on the edited row
-          title: data.title,
-          verified: data.verified,
-          verifiedBy: data.verifiedBy,
-        },
-        (value) => value !== undefined,
-      ) as MemberOrganizationUpdate
-
-      if (overlappingGroupedRows.length > 0 && Object.keys(groupedUpdate).length > 0) {
-        for (const overlappingRow of overlappingGroupedRows) {
-          if (!overlappingRow.id) {
-            continue
-          }
-
-          await updateMemberOrganization(qx, memberId, overlappingRow.id, groupedUpdate)
-        }
+      // Moving the visible row away can orphan the old org's MSAs; clean up now that the row has moved.
+      if (existing.organizationId !== data.organizationId) {
+        await cleanupOrphanMemberSegmentAffiliations(qx, memberId, [existing.organizationId])
       }
 
       // Trigger recalculation for old and new orgs if changed
@@ -363,13 +384,10 @@ export default class MemberOrganizationsService extends LoggerBase {
       ]
 
       // Delete hidden grouped rows with the visible row so list responses stay consistent
-      await deleteMemberOrganizations(
-        qx,
-        memberId,
-        memberOrganizationIdsToDelete,
-        true,
-        this.options.currentUser.id,
-      )
+      await deleteMemberOrganizations(qx, memberId, {
+        ids: memberOrganizationIdsToDelete,
+        deletedBy: this.options.currentUser.id,
+      })
 
       const result = await this.list(memberId, transaction)
 

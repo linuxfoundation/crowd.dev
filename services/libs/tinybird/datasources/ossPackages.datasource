@@ -67,7 +67,7 @@ SCHEMA >
     `lastRankPassAt` Nullable(DateTime64(3)) `json:$.record.last_rank_pass_at`,
     `downloadsLast30d` Nullable(UInt64) `json:$.record.downloads_last_30d`,
     `centralityScore` Nullable(String) `json:$.record.centrality_score`,
-    `sonatypePopularityScore` Nullable(Float64) `json:$.record.sonatype_popularity_score`,
+    `sonatypePopularityScore` Nullable(String) `json:$.record.sonatype_popularity_score`,
     `rankInEcosystem` Nullable(UInt32) `json:$.record.rank_in_ecosystem`,
     `ingestionSource` Nullable(String) `json:$.record.ingestion_source`,
     `lastSyncedAt` DateTime64(3) `json:$.record.last_synced_at`,

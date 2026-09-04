@@ -116,7 +116,7 @@ export class CommonMemberService extends LoggerBase {
           )
 
           for (const item of toDelete) {
-            await deleteMemberOrganizations(this.qx, memberId, [item.id])
+            await deleteMemberOrganizations(this.qx, memberId, { ids: [item.id] })
             ;(item as any).delete = true
           }
         }
