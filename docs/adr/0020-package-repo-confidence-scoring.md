@@ -61,7 +61,7 @@ and its own penalty branch; because every writer already routes through
 ### Uniqueness offset
 
 `source_priority * 1e6 + repo_id % 1e6`, scaled by `1e-9` — max
-`0.003999999`. It sits below the 0.05 tier gap and below both label boundaries
+`0.003999999`. It sits below the 0.04 smallest tier gap (0.99 to 0.95) and below both label boundaries
 (0.80 high / 0.50 medium), so it can never move a row across a tier or a
 label. This is why the column needs nine decimal places. Reachable range is
 `0.05` to `0.993999999`; a live (non-disabled) row floors at `0.05` and a
