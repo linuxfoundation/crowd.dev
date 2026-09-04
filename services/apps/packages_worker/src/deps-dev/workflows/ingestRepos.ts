@@ -1,5 +1,11 @@
 import { proxyActivities } from '@temporalio/workflow'
 
+import {
+  KEEP_HIGHEST_CONFLICT_UPDATE,
+  competingGithubRepoExpr,
+  packageRepoConfidenceCall,
+} from '@crowd/data-access-layer/src/packages/repoConfidence'
+
 import type * as depsDevActivities from '../activities'
 import { buildPackageReposSql } from '../queries/packageReposSql'
 import { buildReposSql } from '../queries/reposSql'
@@ -71,30 +77,62 @@ ON CONFLICT (url) DO NOTHING
 
 const PKGREPOS_STAGING_TABLE = 'staging.osspckgs_package_repos_raw'
 
-const PKGREPOS_STAGING_DDL = `
-CREATE UNLOGGED TABLE IF NOT EXISTS staging.osspckgs_package_repos_raw (
+// Dropped rather than IF NOT EXISTS so the staging schema always matches this DDL;
+// the table is unlogged and truncated every chunk, so recreating it costs nothing.
+const PKGREPOS_STAGING_DDL = [
+  `DROP TABLE IF EXISTS staging.osspckgs_package_repos_raw`,
+  `CREATE UNLOGGED TABLE staging.osspckgs_package_repos_raw (
   purl          text,
   canonical_url text,
-  confidence    float8
-)
-`
+  provenance    text
+)`,
+]
 
-const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'confidence']
+const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 
-// DISTINCT ON picks the highest-confidence row per (package, repo) pair.
+// DISTINCT ON picks the highest-scoring row per (package, repo) pair.
 // packages must already be loaded (ingestPackages runs before ingestRepos in bootstrapOsspckgs).
 // packages.purl is version-stripped by buildPackagesFullSql (REGEXP_REPLACE in BQ).
 // Staging purl may or may not include @version depending on when the GCS export was taken,
 // so strip on staging side only — packages.purl stays bare and the UNIQUE index is usable.
+
+// github_staged: package IDs that have at least one GitHub-hosted repo in this chunk.
+// Precomputed once per INSERT so the per-row competing_github check is a simple join
+// rather than a correlated scan of the million-row staging table (O(n) not O(n²)).
+// Cross-chunk ordering is not addressed here — if a non-GitHub link lands in chunk N
+// and its GitHub sibling lands in chunk N+1, the penalty is applied by the daily
+// rescore_package_repo_confidence() sweep, not inline.
 const PKGREPOS_MERGE_SQL = `
-INSERT INTO package_repos (package_id, repo_id, source, confidence, verified_at, created_at)
+WITH github_staged AS MATERIALIZED (
+  SELECT DISTINCT p2.id AS package_id
+  FROM staging.osspckgs_package_repos_raw s2
+  JOIN repos r2 ON r2.url = s2.canonical_url
+  JOIN packages p2 ON p2.purl = REGEXP_REPLACE(s2.purl, '@[^@]+$', '')
+  WHERE r2.host = 'github'
+)
+INSERT INTO package_repos (
+  package_id, repo_id, source, provenance, confidence, verified_at, created_at
+)
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', s.confidence, NOW(), NOW()
+  p.id, r.id, 'deps_dev', s.provenance,
+  c.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
 JOIN repos r ON r.url = s.canonical_url
-ORDER BY p.id, r.id, s.confidence DESC
-ON CONFLICT (package_id, repo_id) DO NOTHING
+CROSS JOIN LATERAL (
+  SELECT ${packageRepoConfidenceCall(
+    'p',
+    'r',
+    {
+      source: `'deps_dev'`,
+      provenance: 's.provenance',
+    },
+    `((r.host <> 'github' AND EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id)) OR ${competingGithubRepoExpr('p.id', 'r.id')})`,
+  )} AS confidence
+) c
+ORDER BY p.id, r.id, c.confidence DESC
+ON CONFLICT (package_id, repo_id) DO UPDATE SET
+  ${KEEP_HIGHEST_CONFLICT_UPDATE}
 `
 
 const ROWS_PER_CHUNK = 1_000_000

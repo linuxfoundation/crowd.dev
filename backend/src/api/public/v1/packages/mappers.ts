@@ -1,3 +1,5 @@
+import { packageRepoConfidenceLabel } from '@crowd/data-access-layer'
+
 export function snakeToCamelKeys(
   obj: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
@@ -12,9 +14,9 @@ export function toNullableNumber(value: number | string | null): number | null {
   return value != null ? Number(value) : null
 }
 
+const REPO_MAPPING_LABELS = { high: 'High', medium: 'Medium', low: 'Low' } as const
+
 export function repoMappingLabel(confidence: number | null): 'High' | 'Medium' | 'Low' | null {
   if (confidence === null) return null
-  if (confidence >= 0.8) return 'High'
-  if (confidence >= 0.5) return 'Medium'
-  return 'Low'
+  return REPO_MAPPING_LABELS[packageRepoConfidenceLabel(confidence)]
 }
