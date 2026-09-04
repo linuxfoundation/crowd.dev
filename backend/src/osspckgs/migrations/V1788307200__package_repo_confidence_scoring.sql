@@ -11,13 +11,6 @@
 
 ALTER TABLE package_repos
     ALTER COLUMN confidence TYPE numeric(12, 9),
-    -- Which manifest field produced the link. 'secondary' is written by CM-1393.
-    ADD COLUMN IF NOT EXISTS signal text NOT NULL DEFAULT 'primary'
-        CHECK (signal IN ('primary', 'secondary')),
-    -- Ownership evidence for a declared link. Real values written by CM-1394;
-    -- 'no_evidence' is the rollout default — no penalty applied until CM-1394 sets real values.
-    ADD COLUMN IF NOT EXISTS ownership_match text NOT NULL DEFAULT 'no_evidence'
-        CHECK (ownership_match IN ('matched', 'unmatched', 'no_evidence')),
     -- deps.dev RelationProvenance for source='deps_dev'. Previously collapsed to a
     -- confidence number inside the BigQuery query, which left nothing to rescore from.
     ADD COLUMN IF NOT EXISTS provenance text;
@@ -37,8 +30,6 @@ CREATE INDEX IF NOT EXISTS package_repos_package_id_confidence_idx
 CREATE OR REPLACE FUNCTION package_repo_confidence(
     p_source           text,
     p_ecosystem        text,
-    p_signal           text,
-    p_ownership_match  text,
     p_provenance       text,
     p_archived         bool,
     p_is_fork          bool,
@@ -69,19 +60,6 @@ BEGIN
         WHEN 'declared' THEN CASE WHEN p_ecosystem = 'maven' THEN 0.80 ELSE 0.85 END
         ELSE 0.30
     END;
-
-    -- Signal and ownership adjust the declared tier only. A deps.dev publish
-    -- attestation already proves the publisher–repo relationship, and manual links
-    -- are operator-pinned.
-    IF p_source = 'declared' THEN
-        IF p_signal = 'secondary' THEN
-            base := base - 0.10;
-        END IF;
-
-        IF p_ownership_match = 'unmatched' THEN
-            base := base - 0.25;
-        END IF;
-    END IF;
 
     source_priority := CASE p_source
         WHEN 'manual'    THEN 3
@@ -168,7 +146,7 @@ BEGIN
                   FROM batch b, packages p, repos r,
                        LATERAL (
                          SELECT package_repo_confidence(
-                           pr.source, p.ecosystem, pr.signal, pr.ownership_match, pr.provenance,
+                           pr.source, p.ecosystem, pr.provenance,
                            r.archived, r.is_fork, r.disabled, r.host,
                            EXISTS (
                              SELECT 1

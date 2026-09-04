@@ -18,8 +18,6 @@ const HAVE_DB =
 type ScoreInput = {
   source: string
   ecosystem?: string
-  signal?: string
-  ownershipMatch?: string
   provenance?: string | null
   archived?: boolean | null
   isFork?: boolean | null
@@ -46,13 +44,11 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
   async function score(input: ScoreInput): Promise<number> {
     const row = await qx.selectOne(
       `SELECT package_repo_confidence(
-         $(source), $(ecosystem), $(signal), $(ownershipMatch), $(provenance),
+         $(source), $(ecosystem), $(provenance),
          $(archived), $(isFork), $(disabled), $(host), $(competingGithub), $(repoId)
        )::float8 AS score`,
       {
         ecosystem: 'npm',
-        signal: 'primary',
-        ownershipMatch: 'matched',
         provenance: null,
         archived: null,
         isFork: null,
@@ -79,23 +75,6 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
     expect(await score({ source: 'heuristic' })).toBeCloseTo(0.3, 2)
   })
 
-  it('penalises a secondary manifest field and unmatched ownership evidence', async () => {
-    expect(await score({ source: 'declared', signal: 'secondary' })).toBeCloseTo(0.75, 2)
-    expect(await score({ source: 'declared', ownershipMatch: 'no_evidence' })).toBeCloseTo(0.85, 2)
-    expect(await score({ source: 'declared', ownershipMatch: 'unmatched' })).toBeCloseTo(0.6, 2)
-  })
-
-  it('leaves attested and manual links untouched by the declared-only adjustments', async () => {
-    expect(
-      await score({
-        source: 'deps_dev',
-        provenance: 'SLSA_ATTESTATION',
-        ownershipMatch: 'unmatched',
-      }),
-    ).toBeCloseTo(0.99, 2)
-    expect(await score({ source: 'manual', signal: 'secondary' })).toBeCloseTo(0.99, 2)
-  })
-
   it('stacks repo-state penalties and floors at 0.05', async () => {
     expect(await score({ source: 'declared', archived: true })).toBeCloseTo(0.65, 2)
     expect(await score({ source: 'declared', isFork: true })).toBeCloseTo(0.75, 2)
@@ -106,7 +85,6 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
         source: 'heuristic',
         archived: true,
         isFork: true,
-        ownershipMatch: 'unmatched',
       }),
     ).toBeCloseTo(0.05, 2)
   })

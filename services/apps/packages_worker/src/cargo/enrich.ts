@@ -1,4 +1,5 @@
 import {
+  KEEP_HIGHEST_CONFLICT_UPDATE,
   QueryExecutor,
   packageRepoConfidenceCall,
   rescorePackageReposForPackages,
@@ -21,8 +22,6 @@ const INGESTION_SOURCE = 'cargo-registry'
 const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest-declared repo URLs
 const CARGO_CONFIDENCE = packageRepoConfidenceCall('p', 'r', {
   source: '$(source)',
-  signal: "'primary'",
-  ownershipMatch: "'no_evidence'",
   provenance: 'NULL',
 })
 
@@ -34,8 +33,8 @@ const SYNC_COMMIT = 'off'
 async function withTunedSession<T>(
   qx: QueryExecutor,
   phase: string,
-  fn: (tx: QueryExecutor) => Promise<T>,
-): Promise<T> {
+  fn: (tx: QueryExecutor) => Promise,
+): Promise {
   return qx.tx(async (tx) => {
     await tx.result(`SET LOCAL work_mem = '${WORK_MEM}'`)
     await tx.result(`SET LOCAL synchronous_commit = ${SYNC_COMMIT}`)
@@ -52,7 +51,7 @@ async function withTunedSession<T>(
 }
 
 // Nullable fields are COALESCEd — dump nulls don't wipe existing values.
-export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesResult> {
+export async function enrichPackages(qx: QueryExecutor): Promise {
   const row = await withTunedSession(qx, 'packages', (tx) =>
     tx.selectOne(
       `WITH snap AS (
@@ -126,7 +125,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
 }
 
 // namespace/name from the package row; license stored as ARRAY[spdx_string].
-export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsResult> {
+export async function enrichVersions(qx: QueryExecutor): Promise {
   const row = await withTunedSession(qx, 'versions', (tx) =>
     tx.selectOne(
       `WITH old AS (
@@ -178,7 +177,7 @@ export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsR
 // Writes only url + host — other repo fields belong to the GitHub enricher. Uses
 // repo_norm (built by normalizeRepos) so repos.url/package_repos always agree with
 // the canonical packages.repository_url — never the raw declared_repository_url.
-export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult> {
+export async function enrichRepos(qx: QueryExecutor): Promise {
   return withTunedSession(qx, 'repos', async (tx) => {
     const repoRow = await tx.selectOne(
       `WITH new_repos AS (
@@ -246,10 +245,9 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        ),
        ins AS (
          INSERT INTO package_repos (
-           package_id, repo_id, source, signal, ownership_match, provenance,
-           confidence, created_at, verified_at
+           package_id, repo_id, source, provenance, confidence, created_at, verified_at
          )
-         SELECT e.package_id, r.id, $(source), 'primary', 'no_evidence', NULL,
+         SELECT e.package_id, r.id, $(source), NULL,
                 s.confidence, NOW(), NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
          JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
@@ -257,18 +255,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          JOIN packages p ON p.id = e.package_id
          CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
-           source           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                   THEN EXCLUDED.source ELSE package_repos.source END,
-           signal           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                   THEN EXCLUDED.signal ELSE package_repos.signal END,
-           ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                   THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
-           provenance       = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                   THEN EXCLUDED.provenance ELSE package_repos.provenance END,
-           confidence       = CASE WHEN EXCLUDED.source = package_repos.source
-                                   THEN EXCLUDED.confidence
-                                   ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
-           verified_at      = NOW()
+           ${KEEP_HIGHEST_CONFLICT_UPDATE}
          RETURNING package_id, repo_id, source, confidence
        ),
        diff AS (
@@ -303,7 +290,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
 }
 
 // Fully replaces each package's maintainer links (role='owner').
-export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMaintainersResult> {
+export async function enrichMaintainers(qx: QueryExecutor): Promise {
   return withTunedSession(qx, 'maintainers', async (tx) => {
     await tx.result(
       `DROP TABLE IF EXISTS ${STAGING_SCHEMA}.mnt_before;
@@ -381,9 +368,9 @@ export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMainta
 }
 
 // Batched by date — downloads_daily is range-partitioned. DO NOTHING preserves history.
-export async function enrichDownloadsDaily(qx: QueryExecutor): Promise<EnrichDownloadsDailyResult> {
+export async function enrichDownloadsDaily(qx: QueryExecutor): Promise {
   return withTunedSession(qx, 'downloadsDaily', async (tx) => {
-    const dates: Array<{ date: string }> = await tx.select(
+    const dates: Array = await tx.select(
       `SELECT DISTINCT date::text AS date FROM ${STAGING_SCHEMA}.enrich_downloads_daily ORDER BY date`,
     )
     let inserted = 0
@@ -412,7 +399,7 @@ export async function enrichDownloadsDaily(qx: QueryExecutor): Promise<EnrichDow
   })
 }
 
-export async function flushAudit(qx: QueryExecutor): Promise<number> {
+export async function flushAudit(qx: QueryExecutor): Promise {
   return qx.result(
     `INSERT INTO audit_field_changes (worker, purl, changed_fields)
      SELECT $(worker), p.purl, array_agg(DISTINCT ac.field)

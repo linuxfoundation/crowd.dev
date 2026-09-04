@@ -45,17 +45,18 @@ Base tier by `source` (and `provenance` for deps.dev):
 
 Penalties, stacked, floored at 0.05:
 
-- declared-only evidence penalties: `signal='secondary'` −0.10,
-  `ownership_match='unmatched'` −0.25 (`'no_evidence'` is a no-op rollout default, penalised only when CM-1394 sets real values)
-- repo state: `disabled` → 0.05 + offset, `archived` −0.20, fork −0.10,
-  non-GitHub host while a competing GitHub link exists −0.05
+- repo state: `disabled` collapses the score into a `[0.05, 0.054]` band that
+  preserves the source ordering, `archived` −0.20, fork −0.10, non-GitHub host
+  while a competing GitHub link exists −0.05
 
-Two new columns feed those penalties: `signal` (`primary|secondary`, written by
-CM-1393 / [ADR-0021](./0021-secondary-manifest-repository-signal.md)) and
-`ownership_match` (`matched|unmatched|no_evidence`, written by CM-1394 /
-[ADR-0022](./0022-package-repo-ownership-evidence.md)). Both default to the
-no-op value, so this ADR's change is behaviour-neutral on merge. `provenance`
-is stored so deps.dev rows can be rescored without re-reading BigQuery.
+One new column feeds the tiers: `provenance`, stored so deps.dev rows can be
+rescored without re-reading BigQuery. Evidence-quality penalties are out of
+scope here and arrive on top of this function: the secondary-manifest signal in
+CM-1393 / [ADR-0021](./0021-secondary-manifest-repository-signal.md), and
+ownership evidence in CM-1394 /
+[ADR-0022](./0022-package-repo-ownership-evidence.md). Each adds its own column
+and its own penalty branch; because every writer already routes through
+`package_repo_confidence`, neither needs to touch a call site.
 
 ### Uniqueness offset
 
@@ -64,17 +65,22 @@ is stored so deps.dev rows can be rescored without re-reading BigQuery.
 (0.80 high / 0.50 medium), so it can never move a row across a tier or a
 label. This is why the column needs nine decimal places: ranking must be
 total and reproducible, not arbitrary on ties. Reachable range is `0.05` to
-`0.993999999`.
+`0.993999999`; a live (non-disabled) row floors at `0.05` and a disabled row
+sits between `0.05` and `0.054`.
 
 ### Write and read policy
 
-- **Same-source refreshes** always replace the stored claim so that updated
-  ownership evidence (e.g. `no_evidence` → `unmatched`) and provenance
-  downgrades are persisted. **Cross-source conflicts** use keep-highest:
-  `confidence = GREATEST(EXCLUDED.confidence, package_repos.confidence)`, and
-  the descriptive columns only move when the incoming score wins. A weaker
-  source (routine registry refresh) cannot overwrite a stronger one (manual,
-  attested deps.dev).
+- **Conflicts are keep-highest**, in every writer:
+  `confidence = GREATEST(EXCLUDED.confidence, package_repos.confidence)`, with
+  `source` and `provenance` moving only when the incoming score wins strictly.
+  The stored row therefore does not depend on the order the writers run in, and
+  a weaker source (routine registry refresh) cannot overwrite a stronger one
+  (manual, attested deps.dev). A claim that scores lower than the stored one —
+  including a same-source re-read that lost provenance — is applied by the
+  rescore path, not by the upsert.
+- **Rescores lock in primary-key order** (`ORDER BY pr.id FOR UPDATE`) so a
+  package-scoped and a repo-scoped rescore over an overlapping set cannot
+  deadlock.
 - All read paths use one shared ordering fragment (`bestRepoLinkOrderBy` /
   `BEST_REPO_LINK_JOIN` in `osspckgs/sqlFragments.ts`), replacing five inline
   copies with divergent tie-breakers. The fragment keeps
@@ -91,7 +97,9 @@ total and reproducible, not arbitrary on ties. Reachable range is `0.05` to
 rows keep their values until `rescore_package_repo_confidence()` backfills
 them: keyset-paged, `COMMIT` per chunk, guarded by a session advisory lock, run
 out-of-band via `scripts/rescorePackageRepos.ts` (which also reports the
-no-ties invariant).
+no-ties invariant). Afterwards the `package-repo-confidence-sweep-daily`
+Temporal schedule reruns the same procedure and fails the no-ties check as a
+data-quality alert.
 
 ## Consequences
 
@@ -101,8 +109,8 @@ no-ties invariant).
   sweep through nine writers.
 - Ranking is total and reproducible — `ORDER BY confidence DESC LIMIT 1` has
   exactly one answer per package.
-- Evidence quality is now expressible, which is what makes CM-1393 and
-  CM-1394 possible without either PR hardcoding a confidence it does not own.
+- A single scoring seam is what makes CM-1393 and CM-1394 possible without
+  either PR hardcoding a confidence it does not own.
 - Keep-highest everywhere means re-running any loop is idempotent and cannot
   downgrade a link.
 

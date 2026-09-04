@@ -1,17 +1,14 @@
 import { QueryExecutor } from '../queryExecutor'
 
 import {
+  KEEP_HIGHEST_CONFLICT_UPDATE,
   PackageRepoLinkClaim,
   claimFromRow,
   packageRepoConfidenceCall,
   packageRepoLinkClaimParams,
 } from './repoConfidence'
 
-export async function getOrCreateRepoByUrl(
-  qx: QueryExecutor,
-  url: string,
-  host: string,
-): Promise<{ id: string; changedFields: string[] }> {
+export async function getOrCreateRepoByUrl(qx: QueryExecutor, url: string, host: string): Promise {
   // Repos are shared across packages (every package in a monorepo points at one repo)
   // so this is by far the common case
   const existing: { id: string } | null = await qx.selectOneOrNone(
@@ -50,7 +47,7 @@ export async function removeDeclaredPackageRepo(
   qx: QueryExecutor,
   packageId: string,
   exceptRepoId?: string,
-): Promise<string[]> {
+): Promise {
   const rowCount = await qx.result(
     `DELETE FROM package_repos
       WHERE package_id = $(packageId)::bigint
@@ -58,20 +55,22 @@ export async function removeDeclaredPackageRepo(
         AND ($(exceptRepoId)::bigint IS NULL OR repo_id <> $(exceptRepoId)::bigint)`,
     { packageId, exceptRepoId: exceptRepoId ?? null },
   )
-  return rowCount > 0 ? ['package_repos.repo_id'] : []
+  if (rowCount === 0) return []
+
+  await rescorePackageReposForPackages(qx, [packageId])
+  return ['package_repos.repo_id']
 }
 
-// Conflict policy: same-source refreshes always replace the stored claim so that updated
-// ownership evidence (e.g. `no_evidence` → `unmatched`) is persisted. Cross-source,
-// the highest-scoring claim wins — a stronger source (manual, an attested deps.dev row)
-// cannot be downgraded by a weaker routine registry refresh.
+// Conflict policy: keep-highest. A claim replaces the stored one only when it scores
+// strictly higher, so the stored value does not depend on the order the writers run in
+// and re-running any ingest loop is idempotent.
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
   repoId: string,
   claim: PackageRepoLinkClaim,
-): Promise<string[]> {
-  const row: { changed_fields: string[] } = await qx.selectOne(
+): Promise {
+  const row: { changed_fields: string[] } | null = await qx.selectOneOrNone(
     `WITH old AS (
        SELECT source, confidence FROM package_repos
         WHERE package_id = $(packageId)::bigint AND repo_id = $(repoId)::bigint
@@ -83,26 +82,13 @@ export async function upsertPackageRepo(
      ),
      ins AS (
        INSERT INTO package_repos (
-         package_id, repo_id, source, signal, ownership_match, provenance,
-         confidence, created_at
+         package_id, repo_id, source, provenance, confidence, created_at
        )
-       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(signal),
-              $(ownershipMatch), $(provenance),
+       SELECT $(packageId)::bigint, $(repoId)::bigint, $(source), $(provenance),
               scored.confidence, NOW()
          FROM scored
        ON CONFLICT (package_id, repo_id) DO UPDATE SET
-         source           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                 THEN EXCLUDED.source ELSE package_repos.source END,
-         signal           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                 THEN EXCLUDED.signal ELSE package_repos.signal END,
-         ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                 THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
-         provenance       = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                                 THEN EXCLUDED.provenance ELSE package_repos.provenance END,
-         confidence       = CASE WHEN EXCLUDED.source = package_repos.source
-                                 THEN EXCLUDED.confidence
-                                 ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
-         verified_at      = NOW()
+         ${KEEP_HIGHEST_CONFLICT_UPDATE}
        RETURNING source, confidence
      )
      SELECT array_remove(ARRAY[
@@ -115,53 +101,49 @@ export async function upsertPackageRepo(
      FROM ins LEFT JOIN old o ON true`,
     { packageId, repoId, ...packageRepoLinkClaimParams(claim) },
   )
+  if (!row) return []
+
   await rescorePackageReposForPackages(qx, [packageId])
   return row.changed_fields
+}
+
+// The target CTE takes its row locks in primary-key order so a package-scoped and a
+// repo-scoped rescore touching an overlapping set cannot deadlock against each other.
+function rescoreQuery(filterColumn: 'package_id' | 'repo_id', param: string): string {
+  return `WITH target AS (
+       SELECT pr.id
+         FROM package_repos pr
+        WHERE pr.${filterColumn} = ANY($(${param})::bigint[])
+        ORDER BY pr.id
+          FOR UPDATE
+     )
+     UPDATE package_repos pr
+        SET confidence = s.confidence, verified_at = NOW()
+       FROM target t, packages p, repos r,
+            LATERAL (
+              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
+            ) s
+      WHERE pr.id = t.id
+        AND p.id = pr.package_id
+        AND r.id = pr.repo_id
+        AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
+        AND s.confidence IS DISTINCT FROM pr.confidence`
 }
 
 export async function rescorePackageReposForPackages(
   qx: QueryExecutor,
   packageIds: string[],
-): Promise<void> {
+): Promise {
   if (packageIds.length === 0) return
 
-  await qx.result(
-    `UPDATE package_repos pr
-        SET confidence = s.confidence, verified_at = NOW()
-       FROM packages p, repos r,
-            LATERAL (
-              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
-            ) s
-      WHERE p.id = pr.package_id
-        AND r.id = pr.repo_id
-        AND pr.package_id = ANY($(packageIds)::bigint[])
-        AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
-        AND s.confidence IS DISTINCT FROM pr.confidence`,
-    { packageIds },
-  )
+  await qx.result(rescoreQuery('package_id', 'packageIds'), { packageIds })
 }
 
 // Rescores every link pointing at these repos. Called when the GitHub enricher flips
 // archived / is_fork / disabled, since those are NULL at ingest time (the enricher runs
 // after the registry writers) and carry penalties the original score could not apply.
-export async function rescorePackageReposForRepos(
-  qx: QueryExecutor,
-  repoIds: string[],
-): Promise<void> {
+export async function rescorePackageReposForRepos(qx: QueryExecutor, repoIds: string[]): Promise {
   if (repoIds.length === 0) return
 
-  await qx.result(
-    `UPDATE package_repos pr
-        SET confidence = s.confidence, verified_at = NOW()
-       FROM packages p, repos r,
-            LATERAL (
-              SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'))} AS confidence
-            ) s
-      WHERE p.id = pr.package_id
-        AND r.id = pr.repo_id
-        AND pr.repo_id = ANY($(repoIds)::bigint[])
-        AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
-        AND s.confidence IS DISTINCT FROM pr.confidence`,
-    { repoIds },
-  )
+  await qx.result(rescoreQuery('repo_id', 'repoIds'), { repoIds })
 }

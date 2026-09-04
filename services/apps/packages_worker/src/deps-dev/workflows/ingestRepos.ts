@@ -1,6 +1,7 @@
 import { proxyActivities } from '@temporalio/workflow'
 
 import {
+  KEEP_HIGHEST_CONFLICT_UPDATE,
   competingGithubRepoExpr,
   packageRepoConfidenceCall,
 } from '@crowd/data-access-layer/src/packages/repoConfidence'
@@ -110,11 +111,10 @@ WITH github_staged AS MATERIALIZED (
   WHERE r2.host = 'github'
 )
 INSERT INTO package_repos (
-  package_id, repo_id, source, signal, ownership_match, provenance,
-  confidence, verified_at, created_at
+  package_id, repo_id, source, provenance, confidence, verified_at, created_at
 )
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', 'primary', 'no_evidence', s.provenance,
+  p.id, r.id, 'deps_dev', s.provenance,
   c.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
@@ -125,27 +125,14 @@ CROSS JOIN LATERAL (
     'r',
     {
       source: `'deps_dev'`,
-      signal: `'primary'`,
-      ownershipMatch: `'no_evidence'`,
       provenance: 's.provenance',
     },
-    `(${competingGithubRepoExpr('p.id', 'r.id')} OR (EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id) AND r.host <> 'github'))`,
+    `((r.host <> 'github' AND EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id)) OR ${competingGithubRepoExpr('p.id', 'r.id')})`,
   )} AS confidence
 ) c
 ORDER BY p.id, r.id, c.confidence DESC
 ON CONFLICT (package_id, repo_id) DO UPDATE SET
-  source           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                          THEN EXCLUDED.source ELSE package_repos.source END,
-  signal           = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                          THEN EXCLUDED.signal ELSE package_repos.signal END,
-  ownership_match  = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                          THEN EXCLUDED.ownership_match ELSE package_repos.ownership_match END,
-  provenance       = CASE WHEN EXCLUDED.source = package_repos.source OR EXCLUDED.confidence > package_repos.confidence
-                          THEN EXCLUDED.provenance ELSE package_repos.provenance END,
-  confidence       = CASE WHEN EXCLUDED.source = package_repos.source
-                          THEN EXCLUDED.confidence
-                          ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
-  verified_at      = NOW()
+  ${KEEP_HIGHEST_CONFLICT_UPDATE}
 `
 
 const ROWS_PER_CHUNK = 1_000_000
@@ -156,7 +143,7 @@ export async function ingestRepos(opts: {
   ecosystems?: string[]
   reuseExports?: boolean
   exportName?: string
-}): Promise<void> {
+}): Promise {
   const systems = toSystemsFilter(opts.ecosystems)
 
   const reposExport = await bqExportToGcs({
@@ -192,7 +179,7 @@ export async function ingestRepos(opts: {
     const repoTotalChunks = Math.ceil(repoFileNames.length / repoFilesPerChunk)
     let priorRowsAffected = 0
     let repoPriorStagingRows = 0
-    const repoPriorTableRowCounts: Record<string, number> = {}
+    const repoPriorTableRowCounts: Record = {}
 
     for (let chunkIndex = 0; chunkIndex < repoTotalChunks; chunkIndex++) {
       const start = chunkIndex * repoFilesPerChunk
@@ -265,7 +252,7 @@ export async function ingestRepos(opts: {
   const pkgRepoTotalChunks = Math.ceil(pkgRepoFileNames.length / pkgRepoFilesPerChunk)
   let pkgRepoPriorRowsAffected = 0
   let pkgRepoPriorStagingRows = 0
-  const pkgRepoPriorTableRowCounts: Record<string, number> = {}
+  const pkgRepoPriorTableRowCounts: Record = {}
 
   for (let chunkIndex = 0; chunkIndex < pkgRepoTotalChunks; chunkIndex++) {
     const start = chunkIndex * pkgRepoFilesPerChunk
