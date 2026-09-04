@@ -40,6 +40,16 @@ export async function getOrCreateRepoByUrl(
   return { id: row.id, changedFields: [] }
 }
 
+// The writers below lock a package_repos row through the write itself, then take more
+// locks in the ordered rescore; serializing per package first is what stops two writers
+// on the same package from deadlocking.
+async function lockPackage(qx: QueryExecutor, packageId: string): Promise<void> {
+  await qx.result(
+    `SELECT pg_advisory_xact_lock(hashtextextended('package_repos:' || $(packageId)::text, 0))`,
+    { packageId },
+  )
+}
+
 // Removes a package's previous 'declared' repo link(s) when its manifest no longer
 // resolves to a trusted repo (the field was removed, or no longer canonicalizes), or
 // now resolves to a different one (pass exceptRepoId to keep only that fresh link —
@@ -52,6 +62,8 @@ export async function removeDeclaredPackageRepo(
   packageId: string,
   exceptRepoId?: string,
 ): Promise<string[]> {
+  await lockPackage(qx, packageId)
+
   const rowCount = await qx.result(
     `DELETE FROM package_repos
       WHERE package_id = $(packageId)::bigint
@@ -65,15 +77,16 @@ export async function removeDeclaredPackageRepo(
   return ['package_repos.repo_id']
 }
 
-// Conflict policy: keep-highest. A claim replaces the stored one only when it scores
-// strictly higher, so the stored value does not depend on the order the writers run in
-// and re-running any ingest loop is idempotent.
+// Conflict policy lives in KEEP_HIGHEST_CONFLICT_UPDATE: keep-highest across sources,
+// replace on a same-source refresh.
 export async function upsertPackageRepo(
   qx: QueryExecutor,
   packageId: string,
   repoId: string,
   claim: PackageRepoLinkClaim,
 ): Promise<string[]> {
+  await lockPackage(qx, packageId)
+
   const row: { changed_fields: string[] } | null = await qx.selectOneOrNone(
     `WITH old AS (
        SELECT source, confidence FROM package_repos
@@ -105,7 +118,9 @@ export async function upsertPackageRepo(
      FROM ins LEFT JOIN old o ON true`,
     { packageId, repoId, ...packageRepoLinkClaimParams(claim) },
   )
-  if (!row) return []
+  if (!row) {
+    throw new Error(`upsertPackageRepo: package ${packageId} or repo ${repoId} does not exist`)
+  }
 
   await rescorePackageReposForPackages(qx, [packageId])
   return row.changed_fields

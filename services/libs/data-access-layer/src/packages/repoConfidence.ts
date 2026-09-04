@@ -57,18 +57,20 @@ export function claimFromRow(alias: string): PackageRepoClaimExprs {
   }
 }
 
-// Keep-highest: a claim only replaces the stored one when it scores strictly higher, which
-// makes the result independent of the order the writers run in.
-// Provenance also hydrates a losing row that has none: rows written before the column
-// existed are skipped by every rescore path until something fills it in.
+// Keep-highest arbitrates between different sources only: a claim from another source
+// replaces the stored one when it scores strictly higher, which makes the result
+// independent of the order the writers run in. A same-source write is that source
+// refreshing its own row, so it always replaces — otherwise evidence that got weaker
+// (a deps.dev link that lost its attestation) could never be persisted, and a row
+// written before `provenance` existed could never acquire one.
 export const KEEP_HIGHEST_CONFLICT_UPDATE = `source           = CASE WHEN EXCLUDED.confidence > package_repos.confidence
                                  THEN EXCLUDED.source ELSE package_repos.source END,
-         provenance       = CASE WHEN EXCLUDED.confidence > package_repos.confidence
-                                 THEN EXCLUDED.provenance
-                                 WHEN package_repos.provenance IS NULL
-                                 THEN EXCLUDED.provenance
-                                 ELSE package_repos.provenance END,
-         confidence       = GREATEST(EXCLUDED.confidence, package_repos.confidence),
+         provenance       = CASE WHEN EXCLUDED.source = package_repos.source
+                                   OR EXCLUDED.confidence > package_repos.confidence
+                                 THEN EXCLUDED.provenance ELSE package_repos.provenance END,
+         confidence       = CASE WHEN EXCLUDED.source = package_repos.source
+                                 THEN EXCLUDED.confidence
+                                 ELSE GREATEST(EXCLUDED.confidence, package_repos.confidence) END,
          verified_at      = NOW()`
 
 // Call into the scoring function defined in V1788307200 — the only path that may produce
