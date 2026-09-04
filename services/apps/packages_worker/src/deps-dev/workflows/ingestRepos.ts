@@ -77,8 +77,8 @@ ON CONFLICT (url) DO NOTHING
 
 const PKGREPOS_STAGING_TABLE = 'staging.osspckgs_package_repos_raw'
 
-// Dropped rather than IF NOT EXISTS: the column set changed (confidence → provenance)
-// in CM-1306 and the table is unlogged and truncated on every chunk anyway.
+// Dropped rather than IF NOT EXISTS so the staging schema always matches this DDL;
+// the table is unlogged and truncated every chunk, so recreating it costs nothing.
 const PKGREPOS_STAGING_DDL = [
   `DROP TABLE IF EXISTS staging.osspckgs_package_repos_raw`,
   `CREATE UNLOGGED TABLE staging.osspckgs_package_repos_raw (
