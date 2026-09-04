@@ -21,6 +21,7 @@ const PROJECT_CATALOG_COLUMNS = [
   'evaluatedAt',
   'onboardedAt',
   'onboardingError',
+  'skipReason',
   'syncedAt',
   'createdAt',
   'updatedAt',
@@ -537,6 +538,10 @@ export async function updateProjectCatalog(
     setClauses.push('"onboardingError" = $(onboardingError)')
     params.onboardingError = data.onboardingError
   }
+  if (data.skipReason !== undefined) {
+    setClauses.push('"skipReason" = $(skipReason)')
+    params.skipReason = data.skipReason
+  }
 
   if (setClauses.length === 0) {
     return findProjectCatalogById(qx, id)
@@ -564,6 +569,26 @@ export async function markProjectCatalogOnboardingFailed(
     `
     UPDATE "projectCatalog"
     SET "action" = 'error', "onboardingError" = $(reason), "updatedAt" = NOW()
+    WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
+    `,
+    { id, reason },
+  )
+}
+
+// Guarded like markProjectCatalogOnboardingFailed above: a manual request
+// (POST /project-catalog) may have moved the row out of 'onboard' while this
+// pre-check was in flight — in that case the manual action wins and this write
+// is a no-op. onboardingError is cleared in case this project had previously
+// failed and was requeued.
+export async function markProjectCatalogOnboardingSkipped(
+  qx: QueryExecutor,
+  id: string,
+  reason: string,
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE "projectCatalog"
+    SET "action" = 'skip', "skipReason" = $(reason), "onboardingError" = NULL, "updatedAt" = NOW()
     WHERE id = $(id) AND "action" = 'onboard' AND "onboardedAt" IS NULL
     `,
     { id, reason },

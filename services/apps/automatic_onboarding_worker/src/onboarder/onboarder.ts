@@ -12,6 +12,16 @@ interface ISegmentQueryResponse {
 const SEGMENT_QUERY_PAGE_SIZE = 20
 const BACKEND_REQUEST_TIMEOUT_MS = 30_000
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000
+const ERROR_BODY_MAX_LENGTH = 500
+
+export async function readErrorBody(response: Response): Promise<string> {
+  try {
+    const body = await response.text()
+    return body.length > ERROR_BODY_MAX_LENGTH ? `${body.slice(0, ERROR_BODY_MAX_LENGTH)}…` : body
+  } catch {
+    return ''
+  }
+}
 
 export function deriveProjectName(repoName: string): string {
   return repoName
@@ -99,7 +109,9 @@ async function queryProjectByName(
     })
 
     if (!response.ok) {
-      throw new Error(`Segment query returned HTTP ${response.status}: ${response.statusText}`)
+      throw new Error(
+        `Segment query returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+      )
     }
 
     const body = (await response.json()) as ISegmentQueryResponse
@@ -139,7 +151,9 @@ async function createProjectSegment(
   })
 
   if (!response.ok) {
-    throw new Error(`Segment creation returned HTTP ${response.status}: ${response.statusText}`)
+    throw new Error(
+      `Segment creation returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+    )
   }
 
   // POST /segment/project does not return the created segment's id in its response body; re-query by name to get it.
@@ -211,7 +225,9 @@ async function createGithubIntegration(
   })
 
   if (!response.ok) {
-    throw new Error(`GitHub integration returned HTTP ${response.status}: ${response.statusText}`)
+    throw new Error(
+      `GitHub integration returned HTTP ${response.status}: ${response.statusText} - ${await readErrorBody(response)}`,
+    )
   }
 }
 

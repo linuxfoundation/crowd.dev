@@ -36,6 +36,7 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
   log.info(`Onboarding ${projects.length} project(s) (batch size: ${batchSize}).`)
 
   let succeeded = 0
+  let skipped = 0
   let failed = 0
 
   for (let i = 0; i < projects.length; i++) {
@@ -43,8 +44,12 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
     log.info(`[${i + 1}/${projects.length}] Onboarding: ${project.repoUrl}`)
 
     try {
-      await onboardActivities.onboardAndUpdateProject(project)
-      succeeded++
+      const outcome = await onboardActivities.onboardAndUpdateProject(project)
+      if (outcome === 'skipped') {
+        skipped++
+      } else {
+        succeeded++
+      }
     } catch (err) {
       // Activity-level retries are already exhausted at this point — mark as a
       // terminal error so the daily schedule stops retrying this project forever.
@@ -64,6 +69,6 @@ export async function onboardProjects(input: IOnboardProjectsInput = {}): Promis
   }
 
   log.info(
-    `Batch onboarding complete. total=${projects.length} succeeded=${succeeded} failed=${failed}`,
+    `Batch onboarding complete. total=${projects.length} succeeded=${succeeded} skipped=${skipped} failed=${failed}`,
   )
 }
