@@ -8,7 +8,11 @@ import {
   packageRepoLinkClaimParams,
 } from './repoConfidence'
 
-export async function getOrCreateRepoByUrl(qx: QueryExecutor, url: string, host: string): Promise {
+export async function getOrCreateRepoByUrl(
+  qx: QueryExecutor,
+  url: string,
+  host: string,
+): Promise<{ id: string; changedFields: string[] }> {
   // Repos are shared across packages (every package in a monorepo points at one repo)
   // so this is by far the common case
   const existing: { id: string } | null = await qx.selectOneOrNone(
@@ -47,7 +51,7 @@ export async function removeDeclaredPackageRepo(
   qx: QueryExecutor,
   packageId: string,
   exceptRepoId?: string,
-): Promise {
+): Promise<string[]> {
   const rowCount = await qx.result(
     `DELETE FROM package_repos
       WHERE package_id = $(packageId)::bigint
@@ -69,7 +73,7 @@ export async function upsertPackageRepo(
   packageId: string,
   repoId: string,
   claim: PackageRepoLinkClaim,
-): Promise {
+): Promise<string[]> {
   const row: { changed_fields: string[] } | null = await qx.selectOneOrNone(
     `WITH old AS (
        SELECT source, confidence FROM package_repos
@@ -133,7 +137,7 @@ function rescoreQuery(filterColumn: 'package_id' | 'repo_id', param: string): st
 export async function rescorePackageReposForPackages(
   qx: QueryExecutor,
   packageIds: string[],
-): Promise {
+): Promise<void> {
   if (packageIds.length === 0) return
 
   await qx.result(rescoreQuery('package_id', 'packageIds'), { packageIds })
@@ -142,7 +146,10 @@ export async function rescorePackageReposForPackages(
 // Rescores every link pointing at these repos. Called when the GitHub enricher flips
 // archived / is_fork / disabled, since those are NULL at ingest time (the enricher runs
 // after the registry writers) and carry penalties the original score could not apply.
-export async function rescorePackageReposForRepos(qx: QueryExecutor, repoIds: string[]): Promise {
+export async function rescorePackageReposForRepos(
+  qx: QueryExecutor,
+  repoIds: string[],
+): Promise<void> {
   if (repoIds.length === 0) return
 
   await qx.result(rescoreQuery('repo_id', 'repoIds'), { repoIds })

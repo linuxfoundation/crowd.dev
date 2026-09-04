@@ -143,7 +143,7 @@ export async function ingestRepos(opts: {
   ecosystems?: string[]
   reuseExports?: boolean
   exportName?: string
-}): Promise {
+}): Promise<void> {
   const systems = toSystemsFilter(opts.ecosystems)
 
   const reposExport = await bqExportToGcs({
@@ -179,7 +179,7 @@ export async function ingestRepos(opts: {
     const repoTotalChunks = Math.ceil(repoFileNames.length / repoFilesPerChunk)
     let priorRowsAffected = 0
     let repoPriorStagingRows = 0
-    const repoPriorTableRowCounts: Record = {}
+    const repoPriorTableRowCounts: Record<string, number> = {}
 
     for (let chunkIndex = 0; chunkIndex < repoTotalChunks; chunkIndex++) {
       const start = chunkIndex * repoFilesPerChunk
@@ -252,7 +252,7 @@ export async function ingestRepos(opts: {
   const pkgRepoTotalChunks = Math.ceil(pkgRepoFileNames.length / pkgRepoFilesPerChunk)
   let pkgRepoPriorRowsAffected = 0
   let pkgRepoPriorStagingRows = 0
-  const pkgRepoPriorTableRowCounts: Record = {}
+  const pkgRepoPriorTableRowCounts: Record<string, number> = {}
 
   for (let chunkIndex = 0; chunkIndex < pkgRepoTotalChunks; chunkIndex++) {
     const start = chunkIndex * pkgRepoFilesPerChunk

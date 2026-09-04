@@ -4,7 +4,7 @@ export const DEFAULT_RESCORE_CHUNK_SIZE = 25000
 
 export async function rescoreAllPackageRepos(
   chunkSize: number = DEFAULT_RESCORE_CHUNK_SIZE,
-): Promise {
+): Promise<number> {
   const conn = await getPackagesDbConnection()
   const session = await conn.connect()
   try {
@@ -24,7 +24,7 @@ export async function rescoreAllPackageRepos(
   }
 }
 
-export async function countTiedPackageRepos(): Promise {
+export async function countTiedPackageRepos(): Promise<number> {
   const qx = await getPackagesDb()
   const row = await qx.selectOne(`
     SELECT COUNT(*)::int AS tied_packages

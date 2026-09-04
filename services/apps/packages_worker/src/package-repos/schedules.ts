@@ -4,7 +4,7 @@ import { svc } from '../service'
 
 import { sweepPackageRepoConfidence } from './workflows'
 
-export async function schedulePackageRepoConfidenceSweep(): Promise {
+export async function schedulePackageRepoConfidenceSweep(): Promise<void> {
   const { temporal } = svc
   if (!temporal) throw new Error('Temporal client not initialized')
 

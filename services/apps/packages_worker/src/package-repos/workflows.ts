@@ -12,7 +12,7 @@ const { assertNoTiedPackageRepos } = proxyActivities<typeof packageRepoActivitie
   retry: { maximumAttempts: 1 },
 })
 
-export async function sweepPackageRepoConfidence(): Promise {
+export async function sweepPackageRepoConfidence(): Promise<void> {
   await sweepPackageRepoConfidenceScores()
   await assertNoTiedPackageRepos()
 }

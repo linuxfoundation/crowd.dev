@@ -33,8 +33,8 @@ const SYNC_COMMIT = 'off'
 async function withTunedSession<T>(
   qx: QueryExecutor,
   phase: string,
-  fn: (tx: QueryExecutor) => Promise,
-): Promise {
+  fn: (tx: QueryExecutor) => Promise<T>,
+): Promise<T> {
   return qx.tx(async (tx) => {
     await tx.result(`SET LOCAL work_mem = '${WORK_MEM}'`)
     await tx.result(`SET LOCAL synchronous_commit = ${SYNC_COMMIT}`)
@@ -51,7 +51,7 @@ async function withTunedSession<T>(
 }
 
 // Nullable fields are COALESCEd — dump nulls don't wipe existing values.
-export async function enrichPackages(qx: QueryExecutor): Promise {
+export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesResult> {
   const row = await withTunedSession(qx, 'packages', (tx) =>
     tx.selectOne(
       `WITH snap AS (
@@ -125,7 +125,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise {
 }
 
 // namespace/name from the package row; license stored as ARRAY[spdx_string].
-export async function enrichVersions(qx: QueryExecutor): Promise {
+export async function enrichVersions(qx: QueryExecutor): Promise<EnrichVersionsResult> {
   const row = await withTunedSession(qx, 'versions', (tx) =>
     tx.selectOne(
       `WITH old AS (
@@ -177,7 +177,7 @@ export async function enrichVersions(qx: QueryExecutor): Promise {
 // Writes only url + host — other repo fields belong to the GitHub enricher. Uses
 // repo_norm (built by normalizeRepos) so repos.url/package_repos always agree with
 // the canonical packages.repository_url — never the raw declared_repository_url.
-export async function enrichRepos(qx: QueryExecutor): Promise {
+export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult> {
   return withTunedSession(qx, 'repos', async (tx) => {
     const repoRow = await tx.selectOne(
       `WITH new_repos AS (
@@ -290,7 +290,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise {
 }
 
 // Fully replaces each package's maintainer links (role='owner').
-export async function enrichMaintainers(qx: QueryExecutor): Promise {
+export async function enrichMaintainers(qx: QueryExecutor): Promise<EnrichMaintainersResult> {
   return withTunedSession(qx, 'maintainers', async (tx) => {
     await tx.result(
       `DROP TABLE IF EXISTS ${STAGING_SCHEMA}.mnt_before;
@@ -368,9 +368,9 @@ export async function enrichMaintainers(qx: QueryExecutor): Promise {
 }
 
 // Batched by date — downloads_daily is range-partitioned. DO NOTHING preserves history.
-export async function enrichDownloadsDaily(qx: QueryExecutor): Promise {
+export async function enrichDownloadsDaily(qx: QueryExecutor): Promise<EnrichDownloadsDailyResult> {
   return withTunedSession(qx, 'downloadsDaily', async (tx) => {
-    const dates: Array = await tx.select(
+    const dates: Array<{ date: string }> = await tx.select(
       `SELECT DISTINCT date::text AS date FROM ${STAGING_SCHEMA}.enrich_downloads_daily ORDER BY date`,
     )
     let inserted = 0
@@ -399,7 +399,7 @@ export async function enrichDownloadsDaily(qx: QueryExecutor): Promise {
   })
 }
 
-export async function flushAudit(qx: QueryExecutor): Promise {
+export async function flushAudit(qx: QueryExecutor): Promise<number> {
   return qx.result(
     `INSERT INTO audit_field_changes (worker, purl, changed_fields)
      SELECT $(worker), p.purl, array_agg(DISTINCT ac.field)

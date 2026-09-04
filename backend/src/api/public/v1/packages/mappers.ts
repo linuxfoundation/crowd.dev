@@ -1,6 +1,8 @@
 import { packageRepoConfidenceLabel } from '@crowd/data-access-layer'
 
-export function snakeToCamelKeys(obj: Record | null): Record | null {
+export function snakeToCamelKeys(
+  obj: Record<string, unknown> | null,
+): Record<string, unknown> | null {
   if (obj === null) return null
   return Object.fromEntries(
     Object.entries(obj).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]),

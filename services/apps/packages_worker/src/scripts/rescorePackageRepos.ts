@@ -21,7 +21,7 @@ import {
 
 const log = getServiceChildLogger('rescorePackageRepos')
 
-async function main(): Promise {
+async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const chunkIdx = args.indexOf('--chunk-size')
   const chunkSize = chunkIdx !== -1 ? Number(args[chunkIdx + 1]) : DEFAULT_RESCORE_CHUNK_SIZE
