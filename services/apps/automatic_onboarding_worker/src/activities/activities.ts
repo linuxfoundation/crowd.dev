@@ -2,14 +2,22 @@ import {
   findProjectCatalogById,
   findProjectCatalogPendingOnboarding,
   markProjectCatalogOnboardingFailed,
+  markProjectCatalogOnboardingSkipped,
   updateProjectCatalog,
 } from '@crowd/data-access-layer'
+import {
+  InsightsProjectField,
+  findInsightsProjectBySlugIncludingDeleted,
+} from '@crowd/data-access-layer/src/collections'
 import { IDbProjectCatalog } from '@crowd/data-access-layer/src/project-catalog/types'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 
 import { svc } from '../main'
-import { onboardProject } from '../onboarder/onboarder'
+import { deriveProjectSlug, onboardProject } from '../onboarder/onboarder'
+import { OnboardAndUpdateProjectOutcome } from '../types'
+
+import { buildInsightsProjectSkipReason } from './insightsProjectSkip'
 
 const log = getServiceLogger()
 
@@ -33,7 +41,17 @@ async function findAlreadyOnboarded(
   return fresh?.onboardedAt ? fresh : null
 }
 
-export async function onboardAndUpdateProject(project: IDbProjectCatalog): Promise<void> {
+async function findDeletedInsightsProjectBySlug(qx: ReturnType<typeof pgpQx>, projectSlug: string) {
+  const slug = deriveProjectSlug(projectSlug)
+  const insightsProject = await findInsightsProjectBySlugIncludingDeleted(qx, slug, [
+    InsightsProjectField.DELETED_AT,
+  ])
+  return insightsProject?.deletedAt ? insightsProject : null
+}
+
+export async function onboardAndUpdateProject(
+  project: IDbProjectCatalog,
+): Promise<OnboardAndUpdateProjectOutcome> {
   const qx = pgpQx(svc.postgres.writer.connection())
   const startTime = Date.now()
 
@@ -44,7 +62,38 @@ export async function onboardAndUpdateProject(project: IDbProjectCatalog): Promi
       { id: project.id, repoUrl: project.repoUrl, onboardedAt: fresh.onboardedAt },
       'Project already onboarded, skipping API call.',
     )
-    return
+    return 'already-onboarded'
+  }
+
+  const deletedInsightsProject = await findDeletedInsightsProjectBySlug(qx, project.projectSlug)
+  if (deletedInsightsProject) {
+    const reason = buildInsightsProjectSkipReason(
+      project.projectSlug,
+      deletedInsightsProject.deletedAt,
+    )
+    const updatedRows = await markProjectCatalogOnboardingSkipped(qx, project.id, reason)
+    if (updatedRows > 0) {
+      log.info({ id: project.id, repoUrl: project.repoUrl, reason }, 'Onboarding skipped.')
+      return 'skipped'
+    }
+
+    const current = await findProjectCatalogById(qx, project.id)
+    if (current?.onboardedAt) {
+      log.info(
+        { id: project.id, repoUrl: project.repoUrl, onboardedAt: current.onboardedAt },
+        'Project already onboarded, skipping API call.',
+      )
+      return 'already-onboarded'
+    }
+    if (current?.action === 'skip') {
+      log.info({ id: project.id, repoUrl: project.repoUrl }, 'Project already skipped.')
+      return 'skipped'
+    }
+    log.info(
+      { id: project.id, repoUrl: project.repoUrl, action: current?.action },
+      'Skip guard was a no-op; project catalog row changed concurrently, not calling onboarding API.',
+    )
+    return 'catalog-changed'
   }
 
   log.info({ id: project.id, repoUrl: project.repoUrl }, 'Starting onboarding.')
@@ -72,6 +121,8 @@ export async function onboardAndUpdateProject(project: IDbProjectCatalog): Promi
     { id: project.id, repoUrl: project.repoUrl, segmentId: result.segmentId, elapsedSeconds },
     'Onboarding complete.',
   )
+
+  return 'onboarded'
 }
 
 export async function markProjectOnboardingFailed(

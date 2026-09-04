@@ -23,6 +23,7 @@ export interface IDbProjectCatalog {
   evaluatedAt: string | null
   onboardedAt: string | null
   onboardingError: string | null
+  skipReason: string | null
   syncedAt: string | null
   createdAt: string | null
   updatedAt: string | null
@@ -39,6 +40,7 @@ type ProjectCatalogWritable = Pick<
   | 'evaluationResult'
   | 'evaluationReason'
   | 'onboardingError'
+  | 'skipReason'
 >
 
 export type IDbProjectCatalogCreate = Omit<
@@ -49,6 +51,7 @@ export type IDbProjectCatalogCreate = Omit<
   | 'evaluationResult'
   | 'evaluationReason'
   | 'onboardingError'
+  | 'skipReason'
 > & {
   source?: string | null
   action?: ProjectCatalogAction
@@ -56,6 +59,7 @@ export type IDbProjectCatalogCreate = Omit<
   evaluationResult?: string | null
   evaluationReason?: string | null
   onboardingError?: string | null
+  skipReason?: string | null
 }
 
 export type IDbProjectCatalogUpdate = Partial<ProjectCatalogWritable> & {
