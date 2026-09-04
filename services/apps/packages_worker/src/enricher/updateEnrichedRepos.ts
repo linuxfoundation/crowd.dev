@@ -1,7 +1,4 @@
-import {
-  rescorePackageReposForPackages,
-  rescorePackageReposForRepos,
-} from '@crowd/data-access-layer/src/packages'
+import { rescorePackageReposForRepoState } from '@crowd/data-access-layer/src/packages'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import { LightRepoResult } from './types'
@@ -85,25 +82,10 @@ export async function bulkUpdateEnrichedRepos(
   )
 
   const changed = updated as { id: string; host_changed: boolean }[]
-  await rescorePackageReposForRepos(
+  await rescorePackageReposForRepoState(
     qx,
     changed.map((r) => r.id),
-  )
-
-  // A host change flips the competing-GitHub penalty on the package's other links,
-  // which the repo-scoped rescore above does not reach.
-  const hostChangedRepoIds = changed.filter((r) => r.host_changed).map((r) => r.id)
-  if (hostChangedRepoIds.length === 0) return
-
-  const affected = await qx.select(
-    `SELECT DISTINCT package_id::text AS package_id
-       FROM package_repos
-      WHERE repo_id = ANY($1::bigint[])`,
-    [hostChangedRepoIds],
-  )
-  await rescorePackageReposForPackages(
-    qx,
-    (affected as { package_id: string }[]).map((r) => r.package_id),
+    changed.filter((r) => r.host_changed).map((r) => r.id),
   )
 }
 

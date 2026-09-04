@@ -22,7 +22,8 @@ export async function schedulePackageRepoConfidenceSweep(): Promise<void> {
         type: 'startWorkflow',
         workflowType: sweepPackageRepoConfidence,
         taskQueue: 'bq-dataset-ingest',
-        workflowRunTimeout: '8 hours',
+        // Covers the activity retry budget: 2 x 6h sweep attempts + 5m backoff + 30m report.
+        workflowRunTimeout: '13 hours',
         retry: { maximumAttempts: 1 },
         args: [],
       },

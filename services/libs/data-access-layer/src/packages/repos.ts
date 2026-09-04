@@ -129,11 +129,11 @@ export async function upsertPackageRepo(
 
 // The target CTE takes its row locks in primary-key order so a package-scoped and a
 // repo-scoped rescore touching an overlapping set cannot deadlock against each other.
-function rescoreQuery(filterColumn: 'package_id' | 'repo_id', param: string): string {
+function rescoreQuery(targetPredicate: string): string {
   return `WITH target AS (
        SELECT pr.id
          FROM package_repos pr
-        WHERE pr.${filterColumn} = ANY($(${param})::bigint[])
+        WHERE ${targetPredicate}
         ORDER BY pr.id
           FOR UPDATE
      )
@@ -157,7 +157,7 @@ export async function rescorePackageReposForPackages(
 ): Promise<void> {
   if (packageIds.length === 0) return
 
-  await qx.result(rescoreQuery('package_id', 'packageIds'), { packageIds })
+  await qx.result(rescoreQuery(`pr.package_id = ANY($(packageIds)::bigint[])`), { packageIds })
 }
 
 // Rescores every link pointing at these repos. Called when the GitHub enricher flips
@@ -169,5 +169,27 @@ export async function rescorePackageReposForRepos(
 ): Promise<void> {
   if (repoIds.length === 0) return
 
-  await qx.result(rescoreQuery('repo_id', 'repoIds'), { repoIds })
+  await qx.result(rescoreQuery(`pr.repo_id = ANY($(repoIds)::bigint[])`), { repoIds })
+}
+
+// A host change also flips the competing-GitHub penalty on the package's other links, which
+// the repo-scoped set does not cover. Both sets are locked in one ordered pass: acquiring
+// them in two nested calls lets a concurrent rescore hold a lower-id row of the second set
+// while waiting on a row of the first.
+export async function rescorePackageReposForRepoState(
+  qx: QueryExecutor,
+  repoIds: string[],
+  hostChangedRepoIds: string[],
+): Promise<void> {
+  if (repoIds.length === 0) return
+
+  await qx.result(
+    rescoreQuery(`(pr.repo_id = ANY($(repoIds)::bigint[])
+             OR pr.package_id IN (
+                  SELECT hosted.package_id
+                    FROM package_repos hosted
+                   WHERE hosted.repo_id = ANY($(hostChangedRepoIds)::bigint[])
+                ))`),
+    { repoIds, hostChangedRepoIds },
+  )
 }
