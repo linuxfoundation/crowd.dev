@@ -165,8 +165,8 @@ expression inlined into each read query.
   `ORDER BY confidence DESC LIMIT 1` exactly one answer per package.
 - A single scoring seam is what makes CM-1393 and CM-1394 possible without
   either PR hardcoding a confidence it does not own.
-- Keep-highest everywhere means re-running any loop is idempotent and cannot
-  downgrade a link.
+- Cross-source keep-highest makes the stored link independent of the order the
+  writers run in; a same-source refresh restates its own row.
 
 ### Negative
 
