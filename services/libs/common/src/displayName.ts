@@ -23,6 +23,10 @@ export function normalizeDisplayName(name: string): string {
   return tokens[0].split('@')[0]
 }
 
+export function firstIdentityValue<T extends { value: string }>(identities: T[]): string {
+  return identities[0].value
+}
+
 function cleanNamePart(part: string): string {
   let token = part
 

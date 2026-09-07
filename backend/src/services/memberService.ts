@@ -7,6 +7,7 @@ import { captureApiChange, memberUnmergeAction } from '@crowd/audit-logs'
 import {
   Error400,
   calculateReach,
+  firstIdentityValue,
   getAttributeValue,
   getCountry,
   hasAttributeValue,
@@ -279,7 +280,7 @@ export default class MemberService extends LoggerBase {
     }
 
     if (!data.displayName) {
-      data.displayName = normalizeDisplayName(data.username[data.platform][0].username)
+      data.displayName = normalizeDisplayName(firstIdentityValue(data.username[data.platform]))
     }
 
     if (!(data.platform in data.username)) {
