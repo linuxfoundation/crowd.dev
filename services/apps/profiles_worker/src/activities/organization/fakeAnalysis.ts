@@ -162,7 +162,7 @@ export async function markOrganizationAsFake(organizationId: string): Promise<vo
   const workflowId = `${TemporalWorkflowId.ORGANIZATION_UPDATE}/${organizationId}`
 
   try {
-    await svc.temporal.workflow.start(TemporalWorkflowId.ORGANIZATION_UPDATE, {
+    await svc.temporal.workflow.start('organizationUpdate', {
       taskQueue: 'profiles',
       workflowId,
       workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_TERMINATE_IF_RUNNING,

@@ -1,6 +1,6 @@
 import { proxyActivities } from '@temporalio/workflow'
 
-import { parseLlmJson } from '@crowd/common'
+import { parseLlmJson } from '@crowd/common/src/llm'
 import { LlmQueryType } from '@crowd/types'
 
 import * as activities from '../../activities'
