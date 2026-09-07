@@ -6,7 +6,8 @@ DESCRIPTION >
     - `packageId` links to the parent packages row.
     - `repoId` links to the associated repos row.
     - `source` identifies how the link was established: 'declared', 'deps_dev', 'heuristic', or 'manual'.
-    - `confidence` is a 0.00–1.00 score representing how certain the link is (1.00 = verified/declared).
+    - `confidence` is a 0–1 score produced by the package_repo_confidence() function in packages-db, with nine decimal places; the low-order digits are a per-row uniqueness offset, not precision.
+    - `provenance` is the deps.dev RelationProvenance for source='deps_dev' rows and empty for every other source.
     - `verifiedAt` is when the link was last confirmed or upserted — serves as the updated_at watermark for sync.
     - `createdAt` is the row-insert timestamp — set once on first insert, never updated.
 
@@ -16,6 +17,7 @@ SCHEMA >
     `repoId` UInt64 `json:$.record.repo_id`,
     `source` String `json:$.record.source`,
     `confidence` String `json:$.record.confidence`,
+    `provenance` String `json:$.record.provenance` DEFAULT '',
     `verifiedAt` DateTime64(3) `json:$.record.verified_at`,
     `createdAt` DateTime64(3) `json:$.record.created_at`
 

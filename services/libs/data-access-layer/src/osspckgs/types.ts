@@ -95,12 +95,3 @@ export type IDbRepoUpsert = {
   owner: string | null
   name: string | null
 }
-
-// ─── package_repos ────────────────────────────────────────────────────────────
-
-export type IDbPackageRepoUpsert = {
-  packageId: number
-  repoId: number
-  source: 'declared' | 'deps_dev' | 'heuristic' | 'manual'
-  confidence: number
-}

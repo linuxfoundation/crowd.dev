@@ -1,4 +1,9 @@
-import { QueryExecutor } from '@crowd/data-access-layer'
+import {
+  KEEP_HIGHEST_CONFLICT_UPDATE,
+  QueryExecutor,
+  packageRepoConfidenceCall,
+  rescorePackageReposForPackages,
+} from '@crowd/data-access-layer'
 import { getServiceChildLogger } from '@crowd/logging'
 
 import { STAGING_SCHEMA } from './loadDump'
@@ -15,7 +20,10 @@ const log = getServiceChildLogger('cargo-enrich')
 export const AUDIT_WORKER = 'cargo-registry'
 const INGESTION_SOURCE = 'cargo-registry'
 const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest-declared repo URLs
-const REPO_LINK_CONFIDENCE = 0.8
+const CARGO_CONFIDENCE = packageRepoConfidenceCall('p', 'r', {
+  source: '$(source)',
+  provenance: 'NULL',
+})
 
 // synchronous_commit off: skip WAL fsync on bulk writes — job is idempotent.
 const WORK_MEM = '512MB'
@@ -221,7 +229,9 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          SELECT package_id, 'package_repos.repo_id' FROM del
          RETURNING 1
        )
-       SELECT (SELECT COUNT(*) FROM del)::int AS pruned`,
+       SELECT
+         (SELECT COUNT(*) FROM del)::int AS pruned,
+         ARRAY(SELECT DISTINCT package_id::text FROM del) AS pruned_package_ids`,
       { source: REPO_LINK_SOURCE },
     )
 
@@ -234,17 +244,18 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          )
        ),
        ins AS (
-         INSERT INTO package_repos (package_id, repo_id, source, confidence, created_at, verified_at)
-         SELECT e.package_id, r.id, $(source), $(confidence), NOW(), NOW()
+         INSERT INTO package_repos (
+           package_id, repo_id, source, provenance, confidence, created_at, verified_at
+         )
+         SELECT e.package_id, r.id, $(source), NULL,
+                s.confidence, NOW(), NOW()
          FROM ${STAGING_SCHEMA}.enrich_packages e
          JOIN ${STAGING_SCHEMA}.repo_norm rn ON rn.declared = e.declared_repository_url
          JOIN repos r ON r.url = rn.repository_url
-         -- Leaves source untouched on conflict — a link another enricher already owns for
-         -- this (package_id, repo_id) keeps its provenance instead of being reassigned to
-         -- 'declared', matching upsertMavenPackageRepo's confidence-only merge.
+         JOIN packages p ON p.id = e.package_id
+         CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
-           confidence  = GREATEST(EXCLUDED.confidence, package_repos.confidence),
-           verified_at = NOW()
+           ${KEEP_HIGHEST_CONFLICT_UPDATE}
          RETURNING package_id, repo_id, source, confidence
        ),
        diff AS (
@@ -262,9 +273,17 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          INSERT INTO ${STAGING_SCHEMA}.audit_changes (package_id, field)
          SELECT package_id, field FROM diff RETURNING 1
        )
-       SELECT (SELECT COUNT(*) FROM ins)::int AS links`,
-      { source: REPO_LINK_SOURCE, confidence: REPO_LINK_CONFIDENCE },
+       SELECT
+         (SELECT COUNT(*) FROM ins)::int AS links,
+         ARRAY(SELECT DISTINCT package_id::text FROM diff) AS package_ids`,
+      { source: REPO_LINK_SOURCE },
     )
+
+    const allAffectedPackageIds = [
+      ...(pruneRow.pruned_package_ids ?? []),
+      ...(linkRow.package_ids ?? []),
+    ]
+    await rescorePackageReposForPackages(tx, [...new Set(allAffectedPackageIds)])
 
     return { repos: repoRow.repos, links: linkRow.links, pruned: pruneRow.pruned }
   })

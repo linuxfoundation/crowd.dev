@@ -126,13 +126,9 @@ async function processPackage(
         )
         repoChanged.forEach((f) => changed.add(f))
 
-        const linkChanged = await upsertPackageRepo(
-          t,
-          packageDbId.toString(),
-          repoId,
-          'declared',
-          0.8,
-        )
+        const linkChanged = await upsertPackageRepo(t, packageDbId.toString(), repoId, {
+          source: 'declared',
+        })
         linkChanged.forEach((f) => changed.add(f))
       }
 

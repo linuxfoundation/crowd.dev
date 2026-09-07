@@ -18,13 +18,18 @@ export const STEWARD_DISPLAY_NAME_METADATA = `CASE
         ELSE sa.metadata
       END`
 
-// Best repo link for a package: highest-confidence package_repos row, preferring
-// a 'declared' source on ties. Expects a `packages p` in the outer FROM clause.
+// Ranking of a package's repo links. The uniqueness offset in confidence (V1788307200)
+// is not injective, so repo_id is what makes the order total. Mirrored in ossPackages_enriched.
+export function bestRepoLinkOrderBy(alias: string): string {
+  return `ORDER BY ${alias}.confidence DESC, ${alias}.repo_id DESC`
+}
+
+// Best repo link for a package. Expects a `packages p` in the outer FROM clause.
 export const BEST_REPO_LINK_JOIN = `LEFT JOIN LATERAL (
-      SELECT pr2.repo_id, pr2.confidence
+      SELECT pr2.repo_id, ROUND(pr2.confidence, 2) AS confidence
       FROM package_repos pr2
       WHERE pr2.package_id = p.id
-      ORDER BY pr2.confidence DESC, (pr2.source = 'declared') DESC, pr2.repo_id DESC
+      ${bestRepoLinkOrderBy('pr2')}
       LIMIT 1
     ) pr ON true
     LEFT JOIN repos r ON r.id = pr.repo_id`

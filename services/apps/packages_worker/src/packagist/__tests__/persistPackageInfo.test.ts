@@ -6,7 +6,7 @@ import {
   removeDeclaredPackageRepo,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
-  upsertPackageRepoPreserveProvenance,
+  upsertPackageRepo,
 } from '@crowd/data-access-layer/src/packages'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
@@ -17,7 +17,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   updatePackagistPackageStats: vi.fn(),
   upsertPackageMaintainers: vi.fn().mockResolvedValue([]),
   getOrCreateRepoByUrl: vi.fn(),
-  upsertPackageRepoPreserveProvenance: vi.fn().mockResolvedValue([]),
+  upsertPackageRepo: vi.fn().mockResolvedValue([]),
   removeDeclaredPackageRepo: vi.fn().mockResolvedValue([]),
   logAuditFieldChanges: vi.fn(),
 }))
@@ -25,7 +25,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
 const mockUpdate = vi.mocked(updatePackagistPackageStats)
 const mockMaintainers = vi.mocked(upsertPackageMaintainers)
 const mockRepoGet = vi.mocked(getOrCreateRepoByUrl)
-const mockRepoLink = vi.mocked(upsertPackageRepoPreserveProvenance)
+const mockRepoLink = vi.mocked(upsertPackageRepo)
 const mockRepoRemove = vi.mocked(removeDeclaredPackageRepo)
 const mockAudit = vi.mocked(logAuditFieldChanges)
 
@@ -78,7 +78,7 @@ describe('persistPackagistPackageInfo', () => {
     expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('downloadsLast30d')
     // canonicalized (lowercased) url + coarse host, linked with the manifest-declared convention
     expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
-    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', 'declared', 0.8)
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', { source: 'declared' })
     // any stale 'declared' link pointing at a different repo is pruned in the same pass
     expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '55')
     expect(mockMaintainers).toHaveBeenCalledWith(qx, '7', stats.maintainers, 'packagist')
@@ -102,7 +102,7 @@ describe('persistPackagistPackageInfo', () => {
 
     expect(mockMaintainers).not.toHaveBeenCalled()
     expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
-    expect(mockRepoLink).toHaveBeenCalledWith(qx, '8', '55', 'declared', 0.8)
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '8', '55', { source: 'declared' })
   })
 
   it('prunes a stale declared link when the repository URL switches to a different repo', async () => {
@@ -112,7 +112,7 @@ describe('persistPackagistPackageInfo', () => {
 
     const result = await persistPackagistPackageInfo(qx, PURL, stats)
 
-    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '99', 'declared', 0.8)
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '99', { source: 'declared' })
     // old link (some other repo_id) removed, new one (99) kept
     expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '99')
     expect(result.changedFields).toContain('package_repos.repo_id')

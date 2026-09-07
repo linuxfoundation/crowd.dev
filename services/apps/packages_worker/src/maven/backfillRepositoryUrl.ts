@@ -1,6 +1,7 @@
 import {
   deleteMavenPackageRepoLinks,
   listMavenPackagesForRepoUrlRecompute,
+  rescorePackageReposForPackages,
   updateMavenRepositoryUrls,
 } from '@crowd/data-access-layer'
 import { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
@@ -106,6 +107,7 @@ export async function backfillMavenRepositoryUrls(
         qx.tx(async (t: QueryExecutor) => {
           await updateMavenRepositoryUrls(t, updates)
           await deleteMavenPackageRepoLinks(t, pruneTargets)
+          await rescorePackageReposForPackages(t, pruneTargets.map(String))
           for (const target of linkTargets) {
             await writeRepoLink(t, target.id, target.repositoryUrl)
           }
