@@ -22,7 +22,13 @@ import {
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
 } from '@crowd/common_services'
-import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
+import {
+  IFindOrCreateOrganizationResult,
+  QueryExecutor,
+  createMember,
+  dbStoreQx,
+  updateMember,
+} from '@crowd/data-access-layer'
 import {
   findIdentitiesForMembers,
   findMembersByIdentities,
@@ -57,6 +63,10 @@ import {
 import { IMemberCreateData, IMemberUpdateData } from './member.data'
 import MemberAttributeService from './memberAttribute.service'
 import { OrganizationService } from './organization.service'
+
+type OrgPromiseCache = Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>
+
+type OrganizationIdSourceWithCreated = IOrganizationIdSource & { created?: boolean }
 
 /**
  * Returns a stable cache key for an org based on its verified identities, falling back to
@@ -316,7 +326,7 @@ export default class MemberService extends LoggerBase {
     integrationId: string,
     data: IMemberCreateData,
     platform: PlatformType,
-    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    orgPromiseCache?: OrgPromiseCache,
     activityTimestamp?: string,
   ): Promise<string> {
     return logExecutionTimeV2(
@@ -473,8 +483,8 @@ export default class MemberService extends LoggerBase {
             await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
-          const organizations = []
-          const orgService = new OrganizationService(this.store, this.log)
+          const organizations: OrganizationIdSourceWithCreated[] = []
+          const orgService = new OrganizationService(this.store, this.temporal, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
               // Temp fix: skip the individual-noaccount.com placeholder org to avoid
@@ -488,7 +498,7 @@ export default class MemberService extends LoggerBase {
 
               const key = orgCacheKey(org)
               const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<string | undefined>
+              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
               if (cachedOrgPromise) {
                 orgIdPromise = cachedOrgPromise
               } else {
@@ -502,10 +512,10 @@ export default class MemberService extends LoggerBase {
                   orgIdPromise.catch(() => orgPromiseCache?.delete(key))
                 }
               }
-              const orgId = await orgIdPromise
-              if (orgId) {
+              const result = await orgIdPromise
+              if (result) {
                 organizations.push({
-                  id: orgId,
+                  id: result.id,
                   source: org.source,
                 })
               }
@@ -519,6 +529,7 @@ export default class MemberService extends LoggerBase {
           const emailIdentities = data.identities.filter(
             (i) => i.type === MemberIdentityType.EMAIL && i.verified,
           )
+          const createdEmailDomainOrgIds = new Set<string>()
           if (emailIdentities.length > 0) {
             const orgs = await logExecutionTimeV2(
               () =>
@@ -535,6 +546,11 @@ export default class MemberService extends LoggerBase {
             )
             if (orgs.length > 0) {
               organizations.push(...orgs)
+              for (const org of orgs) {
+                if (org.created) {
+                  createdEmailDomainOrgIds.add(org.id)
+                }
+              }
             }
           }
 
@@ -562,6 +578,12 @@ export default class MemberService extends LoggerBase {
                 this.log,
                 'memberService -> create -> addToMember',
               )
+
+              for (const org of orgsToAdd) {
+                if (createdEmailDomainOrgIds.has(org.id)) {
+                  await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
+                }
+              }
             }
           }
 
@@ -584,7 +606,7 @@ export default class MemberService extends LoggerBase {
     original: IDbMember,
     originalIdentities: IMemberIdentity[],
     platform: PlatformType,
-    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    orgPromiseCache?: OrgPromiseCache,
     activityTimestamp?: string,
   ): Promise<string | void> {
     return logExecutionTimeV2(
@@ -726,8 +748,8 @@ export default class MemberService extends LoggerBase {
             return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
 
-          const organizations = []
-          const orgService = new OrganizationService(this.store, this.log)
+          const organizations: OrganizationIdSourceWithCreated[] = []
+          const orgService = new OrganizationService(this.store, this.temporal, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
               // Temp fix: skip the individual-noaccount.com placeholder org to avoid
@@ -743,7 +765,7 @@ export default class MemberService extends LoggerBase {
 
               const key = orgCacheKey(org)
               const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-              let orgIdPromise: Promise<string | undefined>
+              let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
               if (cachedOrgPromise) {
                 orgIdPromise = cachedOrgPromise
               } else {
@@ -757,10 +779,10 @@ export default class MemberService extends LoggerBase {
                   orgIdPromise.catch(() => orgPromiseCache?.delete(key))
                 }
               }
-              const orgId = await orgIdPromise
-              if (orgId) {
+              const result = await orgIdPromise
+              if (result) {
                 organizations.push({
-                  id: orgId,
+                  id: result.id,
                   source: data.source,
                 })
               }
@@ -770,6 +792,7 @@ export default class MemberService extends LoggerBase {
           const emailIdentities = data.identities.filter(
             (i) => i.verified && i.type === MemberIdentityType.EMAIL,
           )
+          const createdEmailDomainOrgIds = new Set<string>()
           if (emailIdentities.length > 0) {
             this.log.trace({ memberId: id }, 'Assigning organization by email domain!')
             const orgs = await logExecutionTimeV2(
@@ -787,6 +810,11 @@ export default class MemberService extends LoggerBase {
             )
             if (orgs.length > 0) {
               organizations.push(...orgs)
+              for (const org of orgs) {
+                if (org.created) {
+                  createdEmailDomainOrgIds.add(org.id)
+                }
+              }
             }
           }
 
@@ -816,6 +844,12 @@ export default class MemberService extends LoggerBase {
                 this.log,
                 'memberService -> update -> addToMember',
               )
+
+              for (const org of orgsToAdd) {
+                if (createdEmailDomainOrgIds.has(org.id)) {
+                  await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
+                }
+              }
             }
           }
 
@@ -833,13 +867,13 @@ export default class MemberService extends LoggerBase {
   public async assignOrganizationByEmailDomain(
     integrationId: string,
     emails: string[],
-    orgPromiseCache?: Map<string, Promise<string | undefined>>,
+    orgPromiseCache?: OrgPromiseCache,
     memberId?: string,
     activityTimestamp?: string,
     isBotMember = false,
-  ): Promise<IOrganizationIdSource[]> {
-    const orgService = new OrganizationService(this.store, this.log)
-    const organizations: IOrganizationIdSource[] = []
+  ): Promise<OrganizationIdSourceWithCreated[]> {
+    const orgService = new OrganizationService(this.store, this.temporal, this.log)
+    const organizations: OrganizationIdSourceWithCreated[] = []
     const emailDomains = new Set<string>()
 
     // Collect unique domains
@@ -876,7 +910,7 @@ export default class MemberService extends LoggerBase {
       }
       const key = orgCacheKey(org)
       const cachedOrgPromise = key ? orgPromiseCache?.get(key) : undefined
-      let orgIdPromise: Promise<string | undefined>
+      let orgIdPromise: Promise<IFindOrCreateOrganizationResult | undefined>
       if (cachedOrgPromise) {
         orgIdPromise = cachedOrgPromise
       } else {
@@ -890,15 +924,16 @@ export default class MemberService extends LoggerBase {
           orgIdPromise.catch(() => orgPromiseCache?.delete(key))
         }
       }
-      const orgId = await orgIdPromise
-      if (orgId) {
+      const result = await orgIdPromise
+      if (result) {
         organizations.push({
-          id: orgId,
+          id: result.id,
           source: orgSource,
+          created: result.created,
         })
 
         if (memberId && activityTimestamp && !isBotMember) {
-          await this.bufferMemberOrganizationActivityDates(memberId, orgId, activityTimestamp)
+          await this.bufferMemberOrganizationActivityDates(memberId, result.id, activityTimestamp)
         }
       }
     }
