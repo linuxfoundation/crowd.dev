@@ -100,7 +100,7 @@
     "@temporalio/activity": "catalog:",
     "@temporalio/client": "catalog:",
     "@temporalio/workflow": "catalog:",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.1",
     "jsonwebtoken": "^9.0.0",
     "semver": "^7.6.0",
     "axios": "catalog:",
