@@ -66,7 +66,11 @@ import { OrganizationService } from './organization.service'
 
 type OrgPromiseCache = Map<string, Promise<IFindOrCreateOrganizationResult | undefined>>
 
-type OrganizationIdSourceWithCreated = IOrganizationIdSource & { created?: boolean }
+type EmailDomainOrganization = {
+  id: string
+  source: OrganizationSource
+  created: boolean
+}
 
 /**
  * Returns a stable cache key for an org based on its verified identities, falling back to
@@ -483,7 +487,7 @@ export default class MemberService extends LoggerBase {
             await this.startMemberBotAnalysisWithLLMWorkflow(effectiveMemberId)
           }
 
-          const organizations: OrganizationIdSourceWithCreated[] = []
+          const organizations: IOrganizationIdSource[] = []
           const orgService = new OrganizationService(this.store, this.temporal, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
@@ -529,9 +533,9 @@ export default class MemberService extends LoggerBase {
           const emailIdentities = data.identities.filter(
             (i) => i.type === MemberIdentityType.EMAIL && i.verified,
           )
-          const createdEmailDomainOrgIds = new Set<string>()
+          let fromEmailDomain: EmailDomainOrganization[] = []
           if (emailIdentities.length > 0) {
-            const orgs = await logExecutionTimeV2(
+            fromEmailDomain = await logExecutionTimeV2(
               () =>
                 this.assignOrganizationByEmailDomain(
                   integrationId,
@@ -544,13 +548,8 @@ export default class MemberService extends LoggerBase {
               this.log,
               'memberService -> create -> assignOrganizationByEmailDomain',
             )
-            if (orgs.length > 0) {
-              organizations.push(...orgs)
-              for (const org of orgs) {
-                if (org.created) {
-                  createdEmailDomainOrgIds.add(org.id)
-                }
-              }
+            if (fromEmailDomain.length > 0) {
+              organizations.push(...fromEmailDomain)
             }
           }
 
@@ -579,8 +578,9 @@ export default class MemberService extends LoggerBase {
                 'memberService -> create -> addToMember',
               )
 
-              for (const org of orgsToAdd) {
-                if (createdEmailDomainOrgIds.has(org.id)) {
+              const addedIds = new Set(orgsToAdd.map((org) => org.id))
+              for (const org of fromEmailDomain) {
+                if (org.created && addedIds.has(org.id)) {
                   await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
                 }
               }
@@ -748,7 +748,7 @@ export default class MemberService extends LoggerBase {
             return effectiveMemberId !== id ? effectiveMemberId : undefined
           }
 
-          const organizations: OrganizationIdSourceWithCreated[] = []
+          const organizations: IOrganizationIdSource[] = []
           const orgService = new OrganizationService(this.store, this.temporal, this.log)
           if (data.organizations) {
             for (const org of data.organizations) {
@@ -792,10 +792,10 @@ export default class MemberService extends LoggerBase {
           const emailIdentities = data.identities.filter(
             (i) => i.verified && i.type === MemberIdentityType.EMAIL,
           )
-          const createdEmailDomainOrgIds = new Set<string>()
+          let fromEmailDomain: EmailDomainOrganization[] = []
           if (emailIdentities.length > 0) {
             this.log.trace({ memberId: id }, 'Assigning organization by email domain!')
-            const orgs = await logExecutionTimeV2(
+            fromEmailDomain = await logExecutionTimeV2(
               () =>
                 this.assignOrganizationByEmailDomain(
                   integrationId,
@@ -808,13 +808,8 @@ export default class MemberService extends LoggerBase {
               this.log,
               'memberService -> update -> assignOrganizationByEmailDomain',
             )
-            if (orgs.length > 0) {
-              organizations.push(...orgs)
-              for (const org of orgs) {
-                if (org.created) {
-                  createdEmailDomainOrgIds.add(org.id)
-                }
-              }
+            if (fromEmailDomain.length > 0) {
+              organizations.push(...fromEmailDomain)
             }
           }
 
@@ -845,8 +840,9 @@ export default class MemberService extends LoggerBase {
                 'memberService -> update -> addToMember',
               )
 
-              for (const org of orgsToAdd) {
-                if (createdEmailDomainOrgIds.has(org.id)) {
+              const addedIds = new Set(orgsToAdd.map((org) => org.id))
+              for (const org of fromEmailDomain) {
+                if (org.created && addedIds.has(org.id)) {
                   await orgService.startFakeOrganizationAnalysisWorkflow(org.id)
                 }
               }
@@ -871,9 +867,9 @@ export default class MemberService extends LoggerBase {
     memberId?: string,
     activityTimestamp?: string,
     isBotMember = false,
-  ): Promise<OrganizationIdSourceWithCreated[]> {
+  ): Promise<EmailDomainOrganization[]> {
     const orgService = new OrganizationService(this.store, this.temporal, this.log)
-    const organizations: OrganizationIdSourceWithCreated[] = []
+    const organizations: EmailDomainOrganization[] = []
     const emailDomains = new Set<string>()
 
     // Collect unique domains
