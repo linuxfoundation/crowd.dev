@@ -79,10 +79,9 @@ describe.skipIf(!HAVE_DB)('package_repo_confidence', () => {
 
   it('penalises a secondary signal on declared links only', async () => {
     expect(await score({ source: 'declared', signal: 'secondary' })).toBeCloseTo(0.75, 2)
-    expect(await score({ source: 'declared', ecosystem: 'maven', signal: 'secondary' })).toBeCloseTo(
-      0.7,
-      2,
-    )
+    expect(
+      await score({ source: 'declared', ecosystem: 'maven', signal: 'secondary' }),
+    ).toBeCloseTo(0.7, 2)
     expect(await score({ source: 'manual', signal: 'secondary' })).toBeCloseTo(0.99, 2)
     expect(
       await score({ source: 'deps_dev', provenance: 'GO_ORIGIN', signal: 'secondary' }),

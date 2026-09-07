@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   getOrCreateRepoByUrl,
+  getPackageHomepage,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
-  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
@@ -20,7 +20,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   getOrCreateRepoByUrl: vi.fn(),
   upsertPackageRepo: vi.fn().mockResolvedValue([]),
   removeDeclaredPackageRepo: vi.fn().mockResolvedValue([]),
-  setPackageRepositoryUrl: vi.fn().mockResolvedValue([]),
+  getPackageHomepage: vi.fn().mockResolvedValue(null),
   logAuditFieldChanges: vi.fn(),
 }))
 
@@ -29,7 +29,7 @@ const mockMaintainers = vi.mocked(upsertPackageMaintainers)
 const mockRepoGet = vi.mocked(getOrCreateRepoByUrl)
 const mockRepoLink = vi.mocked(upsertPackageRepo)
 const mockRepoRemove = vi.mocked(removeDeclaredPackageRepo)
-const mockSetRepositoryUrl = vi.mocked(setPackageRepositoryUrl)
+const mockGetHomepage = vi.mocked(getPackageHomepage)
 const mockAudit = vi.mocked(logAuditFieldChanges)
 
 const qx = {
@@ -60,7 +60,6 @@ describe('persistPackagistPackageInfo', () => {
     mockUpdate.mockResolvedValue({
       id: '7',
       isCritical: true,
-      homepage: null,
       changedFields: ['packages.description'],
     })
     mockMaintainers.mockResolvedValue(['maintainers.display_name'])
@@ -103,7 +102,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('skips maintainers for a non-critical package but still links the repo', async () => {
-    mockUpdate.mockResolvedValue({ id: '8', isCritical: false, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '8', isCritical: false, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, stats)
 
@@ -116,7 +115,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('prunes a stale declared link when the repository URL switches to a different repo', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, changedFields: [] })
     mockRepoGet.mockResolvedValue({ id: '99', changedFields: [] })
     mockRepoRemove.mockResolvedValue(['package_repos.repo_id'])
 
@@ -132,7 +131,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('reconciles a maintainer list that dropped to empty for a critical package', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
     mockMaintainers.mockResolvedValue(['package_maintainers.maintainer_id'])
 
     const result = await persistPackagistPackageInfo(qx, PURL, { ...stats, maintainers: [] })
@@ -144,7 +143,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('skips the repo link and clears any previously-declared one when there is no repository URL', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
     mockRepoRemove.mockResolvedValue(['package_repos.repo_id'])
 
     const result = await persistPackagistPackageInfo(qx, PURL, { ...stats, repositoryUrl: null })
@@ -157,10 +156,10 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('falls back to the stored homepage with a secondary signal when no repository URL is declared', async () => {
+    mockGetHomepage.mockResolvedValue('https://github.com/Seldaek/monolog')
     mockUpdate.mockResolvedValue({
       id: '7',
       isCritical: true,
-      homepage: 'https://github.com/Seldaek/monolog',
       changedFields: [],
     })
 
@@ -171,14 +170,17 @@ describe('persistPackagistPackageInfo', () => {
       source: 'declared',
       signal: 'secondary',
     })
-    expect(mockSetRepositoryUrl).toHaveBeenCalledWith(qx, '7', 'https://github.com/seldaek/monolog')
+    expect(mockUpdate).toHaveBeenCalledWith(
+      qx,
+      expect.objectContaining({ repositoryUrl: 'https://github.com/seldaek/monolog' }),
+    )
   })
 
   it('rejects a homepage fallback that is not on a recognized VCS host', async () => {
+    mockGetHomepage.mockResolvedValue('https://monolog.example.com/docs/intro')
     mockUpdate.mockResolvedValue({
       id: '7',
       isCritical: true,
-      homepage: 'https://monolog.example.com/docs/intro',
       changedFields: [],
     })
 
@@ -190,7 +192,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('skips the repo link and clears the stale one when the repository URL cannot be canonicalized', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, { ...stats, repositoryUrl: 'not-a-valid-url' })
 
@@ -200,7 +202,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('does not trust a canonicalized host outside the SCM allowlist (wiki/issue-tracker/registry URLs)', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: true, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, {
       ...stats,
@@ -219,7 +221,6 @@ describe('persistPackagistPackageInfo', () => {
     mockUpdate.mockResolvedValue({
       id: '7',
       isCritical: false,
-      homepage: null,
       changedFields: ['packages.description'],
     })
     mockRepoGet.mockResolvedValue({ id: '55', changedFields: ['repos.url', 'repos.host'] })
@@ -249,7 +250,7 @@ describe('persistPackagistPackageInfo', () => {
   })
 
   it('strips NUL bytes from the description before writing (Postgres rejects them)', async () => {
-    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, homepage: null, changedFields: [] })
+    mockUpdate.mockResolvedValue({ id: '7', isCritical: false, changedFields: [] })
 
     await persistPackagistPackageInfo(qx, PURL, {
       ...stats,

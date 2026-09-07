@@ -70,8 +70,11 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            description             = COALESCE(e.description, p.description),
            homepage                = COALESCE(e.homepage, p.homepage),
            declared_repository_url = COALESCE(e.declared_repository_url, p.declared_repository_url),
-           repository_url          = CASE WHEN e.declared_repository_url IS NOT NULL OR rn.repository_url IS NOT NULL
-                                         THEN rn.repository_url ELSE p.repository_url END,
+           -- repo_choice has exactly one row per package_id in enrich_packages (a plain FROM,
+           -- never filtered), so rn.repository_url is authoritative for this run — direct-assign
+           -- it (not COALESCE) so a package that lost its repo in this dump has the denormalized
+           -- column cleared consistently with enrichRepos' unconditional package_repos prune.
+           repository_url          = rn.repository_url,
            licenses                = COALESCE(e.licenses, p.licenses),
            licenses_raw            = COALESCE(e.licenses_raw, p.licenses_raw),
            keywords                = COALESCE(e.keywords, p.keywords),
@@ -99,9 +102,7 @@ export async function enrichPackages(qx: QueryExecutor): Promise<EnrichPackagesR
            ('packages.description',             s.description             IS DISTINCT FROM COALESCE(e.description, s.description)),
            ('packages.homepage',                s.homepage                IS DISTINCT FROM COALESCE(e.homepage, s.homepage)),
            ('packages.declared_repository_url', s.declared_repository_url IS DISTINCT FROM COALESCE(e.declared_repository_url, s.declared_repository_url)),
-           ('packages.repository_url',          s.repository_url IS DISTINCT FROM
-              CASE WHEN e.declared_repository_url IS NOT NULL OR rn.repository_url IS NOT NULL
-                   THEN rn.repository_url ELSE s.repository_url END),
+           ('packages.repository_url',          s.repository_url IS DISTINCT FROM rn.repository_url),
            ('packages.licenses',                s.licenses                IS DISTINCT FROM COALESCE(e.licenses, s.licenses)),
            ('packages.licenses_raw',            s.licenses_raw            IS DISTINCT FROM COALESCE(e.licenses_raw, s.licenses_raw)),
            ('packages.keywords',                s.keywords                IS DISTINCT FROM COALESCE(e.keywords, s.keywords)),
@@ -201,11 +202,12 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        SELECT (SELECT COUNT(*) FROM new_repos)::int AS repos`,
     )
 
-    // Unconditionally prunes all cargo-owned declared links before relinking. Covers:
-    // removals (NULL in this dump is authoritative — loadDump stages every crate every run),
-    // URL rewrites, junk/unparseable values, and primary→secondary signal downgrades on the
-    // same URL (keep-highest would otherwise block the downgrade). Scoped to source =
-    // 'declared' so only cargo-owned rows are touched.
+    // Prunes cargo-owned declared links whose target changed since the last run: removals
+    // (NULL in this dump is authoritative — loadDump stages every crate every run), URL
+    // rewrites, and junk/unparseable values. An unchanged link is left alone so the upsert
+    // below's ON CONFLICT ... KEEP_HIGHEST_CONFLICT_UPDATE handles same-repo signal/confidence
+    // changes (e.g. a primary→secondary downgrade) without a delete+reinsert. Scoped to
+    // source = 'declared' so only cargo-owned rows are touched.
     const pruneRow = await tx.selectOne(
       `WITH targets AS (
          SELECT rc.package_id, r.id AS repo_id
@@ -217,6 +219,7 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
          USING targets t
          WHERE pr.package_id = t.package_id
            AND pr.source = $(source)
+           AND pr.repo_id IS DISTINCT FROM t.repo_id
          RETURNING pr.package_id
        ),
        ins_audit AS (

@@ -200,13 +200,17 @@ function inferFundingType(url: string): string {
   return 'other'
 }
 
+export interface PypiRepoCandidate {
+  field: PypiRepositoryField
+  url: string
+}
+
 export function classifyProjectUrls(
   projectUrls: Record<string, string> | null | undefined,
   homePage: string | null | undefined,
 ): {
   homepage: string | null
-  declaredRepositoryUrl: string | null
-  declaredRepositoryField: PypiRepositoryField | null
+  repositoryCandidates: PypiRepoCandidate[]
   fundingLinks: PypiFundingLink[]
 } {
   const entries = Object.entries(projectUrls ?? {}).map(
@@ -221,8 +225,12 @@ export function classifyProjectUrls(
     findByKey(/^home[\s-]*page$/i) ??
     findByKey(/^home$/i)
 
+  // Candidates are ordered by trust, most trusted first — a project can declare a Source
+  // field AND a Homepage/Bug Tracker that also happen to point at a repo host. Keeping all
+  // of them (rather than picking one before validation) lets the caller fall through to the
+  // next candidate when the top pick fails canonicalization (malformed URL, unsupported path).
   const REPO_HOST = /github\.com|gitlab\.com|bitbucket\.org/i
-  let declaredRepositoryUrl =
+  const sourceUrl =
     findByKey(/^source(\s*code)?$/i) ??
     findByKey(/^repository$/i) ??
     findByKey(/^repo$/i) ??
@@ -232,19 +240,15 @@ export function classifyProjectUrls(
         /source|repo|code|\bgit\b/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k),
     )?.[1] ??
     null
-  let declaredRepositoryField: PypiRepositoryField | null = declaredRepositoryUrl ? 'source' : null
-  // Many projects only declare a Homepage, or only a Bug Tracker, that is itself the repo.
-  if (!declaredRepositoryUrl && homepage && REPO_HOST.test(homepage)) {
-    declaredRepositoryUrl = homepage
-    declaredRepositoryField = 'homepage'
+  const trackerUrl =
+    entries.find(([k, v]) => /bug|issue|tracker/i.test(k) && REPO_HOST.test(v))?.[1] ?? null
+
+  const repositoryCandidates: PypiRepoCandidate[] = []
+  if (sourceUrl) repositoryCandidates.push({ field: 'source', url: sourceUrl })
+  if (homepage && REPO_HOST.test(homepage)) {
+    repositoryCandidates.push({ field: 'homepage', url: homepage })
   }
-  if (!declaredRepositoryUrl) {
-    const tracker = entries.find(([k, v]) => /bug|issue|tracker/i.test(k) && REPO_HOST.test(v))?.[1]
-    if (tracker) {
-      declaredRepositoryUrl = tracker
-      declaredRepositoryField = 'bug_tracker'
-    }
-  }
+  if (trackerUrl && !sourceUrl) repositoryCandidates.push({ field: 'bug_tracker', url: trackerUrl })
 
   const seen = new Set<string>()
   const fundingLinks: PypiFundingLink[] = []
@@ -254,7 +258,7 @@ export function classifyProjectUrls(
     fundingLinks.push({ type: inferFundingType(v), url: v })
   }
 
-  return { homepage, declaredRepositoryUrl, declaredRepositoryField, fundingLinks }
+  return { homepage, repositoryCandidates, fundingLinks }
 }
 
 export function parseKeywords(raw: string | null | undefined): string[] {

@@ -9,6 +9,7 @@ import {
   recordNuGetDownloadSnapshot,
   removeDeclaredPackageRepo,
   replacePackageMaintainers,
+  setPackageRepositoryUrl,
   upsertMaintainer,
   upsertNuGetPackage,
   upsertNuGetVersionsBatch,
@@ -152,6 +153,8 @@ async function processPackage(
       } else {
         const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
         removedFields.forEach((f) => changed.add(f))
+        const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
+        clearedFields.forEach((f) => changed.add(f))
       }
 
       if (normalized.versions.length > 0) {
