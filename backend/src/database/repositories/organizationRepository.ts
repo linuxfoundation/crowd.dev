@@ -121,7 +121,7 @@ class OrganizationRepository {
     const transaction = SequelizeRepository.getTransaction(options)
 
     if (!data.displayName) {
-      data.displayName = data.identities[0].name
+      data.displayName = data.identities[0].value
     }
     const toInsert = {
       ...lodash.pick(data, [
