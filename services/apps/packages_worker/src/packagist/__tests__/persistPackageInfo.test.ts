@@ -4,6 +4,7 @@ import {
   getOrCreateRepoByUrl,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
+  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
@@ -19,6 +20,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   getOrCreateRepoByUrl: vi.fn(),
   upsertPackageRepo: vi.fn().mockResolvedValue([]),
   removeDeclaredPackageRepo: vi.fn().mockResolvedValue([]),
+  setPackageRepositoryUrl: vi.fn().mockResolvedValue([]),
   logAuditFieldChanges: vi.fn(),
 }))
 
@@ -27,6 +29,7 @@ const mockMaintainers = vi.mocked(upsertPackageMaintainers)
 const mockRepoGet = vi.mocked(getOrCreateRepoByUrl)
 const mockRepoLink = vi.mocked(upsertPackageRepo)
 const mockRepoRemove = vi.mocked(removeDeclaredPackageRepo)
+const mockSetRepositoryUrl = vi.mocked(setPackageRepositoryUrl)
 const mockAudit = vi.mocked(logAuditFieldChanges)
 
 const qx = {
@@ -168,6 +171,7 @@ describe('persistPackagistPackageInfo', () => {
       source: 'declared',
       signal: 'secondary',
     })
+    expect(mockSetRepositoryUrl).toHaveBeenCalledWith(qx, '7', 'https://github.com/seldaek/monolog')
   })
 
   it('rejects a homepage fallback that is not on a recognized VCS host', async () => {
