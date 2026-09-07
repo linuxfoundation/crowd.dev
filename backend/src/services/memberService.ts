@@ -279,7 +279,7 @@ export default class MemberService extends LoggerBase {
     }
 
     if (!data.displayName) {
-      data.displayName = normalizeDisplayName(data.username[data.platform][0].username)
+      data.displayName = normalizeDisplayName(data.username[data.platform][0].value)
     }
 
     if (!(data.platform in data.username)) {
