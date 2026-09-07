@@ -273,13 +273,11 @@ export async function updatePackagistPackageStats(
 ): Promise<{
   id: string
   isCritical: boolean
-  homepage: string | null
   changedFields: string[]
 } | null> {
-  const row:
-    | { id: string; is_critical: boolean; homepage: string | null; changed_fields: string[] }
-    | undefined = await qx.selectOneOrNone(
-    `WITH old AS (
+  const row: { id: string; is_critical: boolean; changed_fields: string[] } | undefined =
+    await qx.selectOneOrNone(
+      `WITH old AS (
          SELECT description, declared_repository_url, repository_url, status,
                 total_downloads, dependent_count, ingestion_source
            FROM packages WHERE purl = $(purl) AND ecosystem = 'packagist'
@@ -294,10 +292,10 @@ export async function updatePackagistPackageStats(
            dependent_count           = COALESCE($(dependentCount), dependent_count),
            last_synced_at            = NOW()
          WHERE purl = $(purl) AND ecosystem = 'packagist'
-         RETURNING id, is_critical, homepage, description, declared_repository_url, repository_url,
+         RETURNING id, is_critical, description, declared_repository_url, repository_url,
                    status, total_downloads, dependent_count, ingestion_source
        )
-       SELECT ins.id::text AS id, ins.is_critical, ins.homepage,
+       SELECT ins.id::text AS id, ins.is_critical,
               array_remove(ARRAY[
                 CASE WHEN o.description               IS DISTINCT FROM ins.description               THEN 'packages.description' END,
                 CASE WHEN o.declared_repository_url   IS DISTINCT FROM ins.declared_repository_url   THEN 'packages.declared_repository_url' END,
@@ -308,14 +306,13 @@ export async function updatePackagistPackageStats(
                 CASE WHEN o.ingestion_source          IS DISTINCT FROM ins.ingestion_source          THEN 'packages.ingestion_source' END
               ], NULL) AS changed_fields
          FROM ins LEFT JOIN old o ON true`,
-    input,
-  )
+      input,
+    )
 
   if (!row) return null
   return {
     id: row.id,
     isCritical: row.is_critical,
-    homepage: row.homepage,
     changedFields: row.changed_fields,
   }
 }
@@ -323,7 +320,7 @@ export async function updatePackagistPackageStats(
 export async function setPackageRepositoryUrl(
   qx: QueryExecutor,
   packageId: string,
-  url: string,
+  url: string | null,
 ): Promise<string[]> {
   const affected = await qx.result(
     `UPDATE packages SET repository_url = $(url)
@@ -331,6 +328,13 @@ export async function setPackageRepositoryUrl(
     { url, packageId },
   )
   return affected > 0 ? ['packages.repository_url'] : []
+}
+
+export async function getPackageHomepage(qx: QueryExecutor, purl: string): Promise<string | null> {
+  const row = await qx.selectOneOrNone(`SELECT homepage FROM packages WHERE purl = $(purl)`, {
+    purl,
+  })
+  return row?.homepage ?? null
 }
 
 export interface PackagistVersionAggregates {

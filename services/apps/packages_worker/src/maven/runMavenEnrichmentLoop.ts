@@ -6,6 +6,7 @@ import {
   logAuditFieldChange,
   removeDeclaredPackageRepo,
   replacePackageMaintainers,
+  setPackageRepositoryUrl,
   touchPackageSyncedAt,
   upsertMaintainer,
   upsertPackage,
@@ -61,12 +62,16 @@ export async function writeRepoLink(qx: QueryExecutor, packageId: number, reposi
   if (!repositoryUrl) {
     const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
     removedFields.forEach((f) => changed?.add(f))
+    const clearedFields = await setPackageRepositoryUrl(qx, String(packageId), null)
+    clearedFields.forEach((f) => changed?.add(f))
     return
   }
   const parsed = parseRepoUrl(repositoryUrl)
   if (!parsed) {
     const removedFields = await removeDeclaredPackageRepo(qx, String(packageId))
     removedFields.forEach((f) => changed?.add(f))
+    const clearedFields = await setPackageRepositoryUrl(qx, String(packageId), null)
+    clearedFields.forEach((f) => changed?.add(f))
     return
   }
   const repoId = await upsertRepo(qx, { url: repositoryUrl, ...parsed })

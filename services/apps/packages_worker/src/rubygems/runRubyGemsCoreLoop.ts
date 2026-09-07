@@ -6,6 +6,7 @@ import {
   logAuditFieldChange,
   recordDownloadSnapshot,
   removeDeclaredPackageRepo,
+  setPackageRepositoryUrl,
   upsertPackage,
   upsertPackageRepo,
 } from '@crowd/data-access-layer'
@@ -138,6 +139,8 @@ async function processPackage(
       } else {
         const removedFields = await removeDeclaredPackageRepo(t, packageDbId.toString())
         removedFields.forEach((f) => changed.add(f))
+        const clearedFields = await setPackageRepositoryUrl(t, packageDbId.toString(), null)
+        clearedFields.forEach((f) => changed.add(f))
       }
 
       if (normalized.totalDownloads > 0) {

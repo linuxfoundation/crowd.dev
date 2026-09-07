@@ -1,8 +1,8 @@
 import {
   getOrCreateRepoByUrl,
+  getPackageHomepage,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
-  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
@@ -45,12 +45,20 @@ export async function persistPackagistPackageInfo(
   const changedFields: string[] = []
 
   await qx.tx(async (t) => {
+    // The version manifests carry the homepage, not this endpoint — peek at the currently
+    // stored homepage so a package that only declares a homepage still gets a link, without
+    // a second write once the stats row is updated below.
+    const storedHomepage = await getPackageHomepage(t, purl)
+    const resolvedRepo = primaryRepo
+      ? { repo: primaryRepo, signal: 'primary' as const }
+      : resolveManifestRepo([{ field: 'homepage', url: storedHomepage, signal: 'secondary' }])
+
     // Step 1: Update packages row
     const result = await updatePackagistPackageStats(t, {
       purl,
       description: stats.description,
       declaredRepositoryUrl: stats.repositoryUrl,
-      repositoryUrl: primaryRepo?.url ?? null,
+      repositoryUrl: resolvedRepo?.repo.url ?? null,
       status: stats.status,
       totalDownloads: stats.downloadsTotal,
       dependentCount: stats.dependents,
@@ -61,12 +69,6 @@ export async function persistPackagistPackageInfo(
     found = true
     const { id, isCritical } = result
     changedFields.push(...result.changedFields)
-
-    // The version manifests carry the homepage, not this endpoint — read back the one the
-    // metadata lane stored so a package that only declares a homepage still gets a link.
-    const resolvedRepo = primaryRepo
-      ? { repo: primaryRepo, signal: 'primary' as const }
-      : resolveManifestRepo([{ field: 'homepage', url: result.homepage, signal: 'secondary' }])
 
     // When there's no trusted repo (removed from the manifest, or no longer
     // canonicalizable to a known host), or it now resolves to a different repo, clear any
@@ -81,10 +83,6 @@ export async function persistPackagistPackageInfo(
       })
       const removedFields = await removeDeclaredPackageRepo(t, id, repo.id)
       changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
-
-      if (resolvedRepo.signal === 'secondary') {
-        changedFields.push(...(await setPackageRepositoryUrl(t, id, resolvedRepo.repo.url)))
-      }
     } else {
       const removedFields = await removeDeclaredPackageRepo(t, id)
       changedFields.push(...removedFields)

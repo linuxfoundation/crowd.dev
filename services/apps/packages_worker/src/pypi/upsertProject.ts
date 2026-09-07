@@ -10,7 +10,7 @@ import {
 import type { PackageRepoSignal } from '@crowd/data-access-layer/src/packages/repoConfidence'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { canonicalizeRepoUrl } from '../utils/canonicalizeRepoUrl'
+import { resolveManifestRepo } from '../utils/resolveManifestRepo'
 import { stripNullBytesDeep } from '../utils/stripNullBytesDeep'
 
 import {
@@ -39,17 +39,20 @@ export async function upsertProject(
     `https://pypi.org/project/${pypiName}/`
   const description = info.summary?.trim() ? info.summary.trim() : null
 
-  const { homepage, declaredRepositoryUrl, declaredRepositoryField, fundingLinks } =
-    classifyProjectUrls(info.project_urls, info.home_page)
-  const repoCanonicalized = declaredRepositoryUrl
-    ? canonicalizeRepoUrl(declaredRepositoryUrl)
-    : null
-  const repoSignal: PackageRepoSignal =
-    declaredRepositoryField === 'source' ? 'primary' : 'secondary'
-  const repo =
-    repoCanonicalized && (repoSignal === 'primary' || repoCanonicalized.host !== 'other')
-      ? repoCanonicalized
-      : null
+  const { homepage, repositoryCandidates, fundingLinks } = classifyProjectUrls(
+    info.project_urls,
+    info.home_page,
+  )
+  const declaredRepositoryUrl = repositoryCandidates[0]?.url ?? null
+  const resolvedRepo = resolveManifestRepo(
+    repositoryCandidates.map((candidate) => ({
+      field: candidate.field,
+      url: candidate.url,
+      signal: candidate.field === 'source' ? 'primary' : 'secondary',
+    })),
+  )
+  const repo = resolvedRepo?.repo ?? null
+  const repoSignal: PackageRepoSignal = resolvedRepo?.signal ?? 'primary'
   const { licenses, licensesRaw } = resolvePypiLicenses(info)
   const keywords = parseKeywords(info.keywords)
   const maintainers = collectPypiMaintainers(info)
