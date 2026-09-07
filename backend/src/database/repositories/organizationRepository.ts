@@ -8,7 +8,7 @@ import {
   organizationEditIdentitiesAction,
   organizationUpdateAction,
 } from '@crowd/audit-logs'
-import { Error400, Error404, Error409, RawQueryParser } from '@crowd/common'
+import { Error400, Error404, Error409, RawQueryParser, firstIdentityValue } from '@crowd/common'
 import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
 import {
@@ -121,7 +121,7 @@ class OrganizationRepository {
     const transaction = SequelizeRepository.getTransaction(options)
 
     if (!data.displayName) {
-      data.displayName = data.identities[0].value
+      data.displayName = firstIdentityValue(data.identities)
     }
     const toInsert = {
       ...lodash.pick(data, [
