@@ -87,7 +87,9 @@ export async function fetchStatus(
     onHeartbeat?.()
     if (isFetchError(result)) return result
 
-    if (versionsCount === null && typeof result.total === 'number') versionsCount = result.total
+    // pkg.go.dev returns total: -1 when the count is unresolvable (IN-1270); treat as unknown.
+    if (versionsCount === null && typeof result.total === 'number' && result.total >= 0)
+      versionsCount = result.total
     const items = result.items ?? []
     const latestVersion = items.find((i) => i.latestVersion)?.latestVersion
     const match = latestVersion ? items.find((i) => i.version === latestVersion) : undefined

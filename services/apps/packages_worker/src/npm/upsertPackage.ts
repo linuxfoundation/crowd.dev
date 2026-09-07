@@ -69,7 +69,7 @@ export async function upsertPackage(
       repositoryUrl,
       licenses: licenses.length ? licenses : null,
       licensesRaw,
-      keywords: packument.keywords?.length ? packument.keywords : null,
+      keywords: cleanKeywords(packument.keywords),
       distLatest: packument['dist-tags']?.latest ?? null,
       distNext: packument['dist-tags']?.next ?? null,
       distBeta: packument['dist-tags']?.beta ?? null,
@@ -117,6 +117,12 @@ export async function upsertPackage(
   })
 
   return { purl, changedFields: Array.from(changed) }
+}
+
+function cleanKeywords(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null
+  const cleaned = raw.filter((k): k is string => typeof k === 'string' && k.trim() !== '')
+  return cleaned.length > 0 ? cleaned : null
 }
 
 function rawRepoUrl(packument: Packument): string | null {
