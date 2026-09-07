@@ -5,7 +5,7 @@ import { getDbConnection } from '@crowd/database'
 import type { QueryExecutor } from '../queryExecutor'
 import { pgpQx } from '../queryExecutor'
 
-// Integration test: hits the running packages-db, where V1788307200 defines
+// Integration test: hits the running packages-db, where V1788307300 defines
 // package_repo_confidence. Skipped when the DB env vars are missing so unit-test runs
 // in CI stay green.
 const HAVE_DB =

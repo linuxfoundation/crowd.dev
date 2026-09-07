@@ -8,7 +8,7 @@ import { pgpQx } from '../queryExecutor'
 
 import { upsertPackageRepo } from './repos'
 
-// Integration test: hits the running packages-db, where V1788307200 defines
+// Integration test: hits the running packages-db, where V1788307300 defines
 // package_repo_confidence and rescore_package_repo_confidence. Skipped when the DB env
 // vars are missing so unit-test runs in CI stay green.
 const HAVE_DB =
