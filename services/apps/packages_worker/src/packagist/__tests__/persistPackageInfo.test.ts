@@ -5,6 +5,7 @@ import {
   getPackageHomepage,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
+  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
@@ -12,7 +13,7 @@ import {
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
 import type { NormalizedPackagistStats } from '../types'
-import { persistPackagistPackageInfo } from '../upsertPackageInfo'
+import { persistPackagistPackageInfo, reconcilePackagistHomepageRepo } from '../upsertPackageInfo'
 
 vi.mock('@crowd/data-access-layer/src/packages', () => ({
   updatePackagistPackageStats: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@crowd/data-access-layer/src/packages', () => ({
   upsertPackageRepo: vi.fn().mockResolvedValue([]),
   removeDeclaredPackageRepo: vi.fn().mockResolvedValue([]),
   getPackageHomepage: vi.fn().mockResolvedValue(null),
+  setPackageRepositoryUrl: vi.fn().mockResolvedValue([]),
   logAuditFieldChanges: vi.fn(),
 }))
 
@@ -30,6 +32,7 @@ const mockRepoGet = vi.mocked(getOrCreateRepoByUrl)
 const mockRepoLink = vi.mocked(upsertPackageRepo)
 const mockRepoRemove = vi.mocked(removeDeclaredPackageRepo)
 const mockGetHomepage = vi.mocked(getPackageHomepage)
+const mockSetRepositoryUrl = vi.mocked(setPackageRepositoryUrl)
 const mockAudit = vi.mocked(logAuditFieldChanges)
 
 const qx = {
@@ -243,7 +246,12 @@ describe('persistPackagistPackageInfo', () => {
 
     const result = await persistPackagistPackageInfo(qx, PURL, stats)
 
-    expect(result).toEqual({ found: false, changedFields: [] })
+    expect(result).toEqual({
+      found: false,
+      changedFields: [],
+      packageId: null,
+      hasPrimaryRepo: true,
+    })
     expect(mockRepoGet).not.toHaveBeenCalled()
     expect(mockMaintainers).not.toHaveBeenCalled()
     expect(mockAudit).not.toHaveBeenCalled()
@@ -261,5 +269,54 @@ describe('persistPackagistPackageInfo', () => {
       qx,
       expect.objectContaining({ description: 'Esta es una descripcin random' }),
     )
+  })
+})
+
+// Phase 1 links a homepage-fallback repo from whatever homepage is already stored;
+// this reconciles it once phase 2 has persisted a fresh homepage for a package that
+// had none yet (a new package, or one whose homepage just changed).
+describe('reconcilePackagistHomepageRepo', () => {
+  beforeEach(() => {
+    mockRepoGet.mockResolvedValue({ id: '55', changedFields: [] })
+  })
+
+  it('links the fresh homepage with a secondary signal', async () => {
+    mockSetRepositoryUrl.mockResolvedValue(['packages.repository_url'])
+    mockRepoLink.mockResolvedValue(['package_repos.repo_id'])
+
+    const changedFields = await reconcilePackagistHomepageRepo(
+      qx,
+      PURL,
+      '7',
+      'https://github.com/Seldaek/monolog',
+    )
+
+    expect(mockSetRepositoryUrl).toHaveBeenCalledWith(qx, '7', 'https://github.com/seldaek/monolog')
+    expect(mockRepoGet).toHaveBeenCalledWith(qx, 'https://github.com/seldaek/monolog', 'github')
+    expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', {
+      source: 'declared',
+      signal: 'secondary',
+    })
+    expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '55')
+    expect(changedFields).toContain('packages.repository_url')
+  })
+
+  it('clears the link when there is no homepage to fall back to', async () => {
+    mockRepoRemove.mockResolvedValue(['package_repos.repo_id'])
+
+    await reconcilePackagistHomepageRepo(qx, PURL, '7', null)
+
+    expect(mockSetRepositoryUrl).toHaveBeenCalledWith(qx, '7', null)
+    expect(mockRepoGet).not.toHaveBeenCalled()
+    expect(mockRepoLink).not.toHaveBeenCalled()
+    expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7')
+  })
+
+  it('clears the link when the homepage is not on a recognized VCS host', async () => {
+    await reconcilePackagistHomepageRepo(qx, PURL, '7', 'https://monolog.example.com/docs')
+
+    expect(mockSetRepositoryUrl).toHaveBeenCalledWith(qx, '7', null)
+    expect(mockRepoGet).not.toHaveBeenCalled()
+    expect(mockRepoLink).not.toHaveBeenCalled()
   })
 })

@@ -3,6 +3,7 @@ import {
   getPackageHomepage,
   logAuditFieldChanges,
   removeDeclaredPackageRepo,
+  setPackageRepositoryUrl,
   updatePackagistPackageStats,
   upsertPackageMaintainers,
   upsertPackageRepo,
@@ -28,7 +29,12 @@ export async function persistPackagistPackageInfo(
   qx: QueryExecutor,
   purl: string,
   stats: NormalizedPackagistStats,
-): Promise<{ found: boolean; changedFields: string[] }> {
+): Promise<{
+  found: boolean
+  changedFields: string[]
+  packageId: string | null
+  hasPrimaryRepo: boolean
+}> {
   // Registry data can contain NUL bytes (e.g. mojibake descriptions) that Postgres
   // text columns reject; strip them before any field is persisted.
   stripNullBytesDeep(stats)
@@ -42,6 +48,7 @@ export async function persistPackagistPackageInfo(
   const primaryRepo = declared && declared.host !== 'other' ? declared : null
 
   let found = false
+  let packageId: string | null = null
   const changedFields: string[] = []
 
   await qx.tx(async (t) => {
@@ -68,6 +75,7 @@ export async function persistPackagistPackageInfo(
 
     found = true
     const { id, isCritical } = result
+    packageId = id
     changedFields.push(...result.changedFields)
 
     // When there's no trusted repo (removed from the manifest, or no longer
@@ -105,5 +113,39 @@ export async function persistPackagistPackageInfo(
     await logAuditFieldChanges(t, WORKER, purl, changedFields)
   })
 
-  return { found, changedFields }
+  return { found, changedFields, packageId, hasPrimaryRepo: !!primaryRepo }
+}
+
+// Phase 1 (dynamic endpoint) resolves the homepage-fallback repo from whatever homepage
+// is already stored, but the p2 endpoint (phase 2) is what actually carries a new/changed
+// homepage — see ingestOnePackagistMetadata. Called after phase 2 persists, so a package
+// with no declared repository field still gets linked to its homepage in the same run it's
+// first seen, instead of waiting for the next scheduled ingestion.
+export async function reconcilePackagistHomepageRepo(
+  qx: QueryExecutor,
+  purl: string,
+  packageId: string,
+  homepage: string | null,
+): Promise<string[]> {
+  const resolved = resolveManifestRepo([{ field: 'homepage', url: homepage, signal: 'secondary' }])
+  const changedFields: string[] = []
+
+  await qx.tx(async (t) => {
+    changedFields.push(...(await setPackageRepositoryUrl(t, packageId, resolved?.repo.url ?? null)))
+    if (resolved) {
+      const repo = await getOrCreateRepoByUrl(t, resolved.repo.url, resolved.repo.host)
+      const linkChanged = await upsertPackageRepo(t, packageId, repo.id, {
+        source: 'declared',
+        signal: 'secondary',
+      })
+      const removedFields = await removeDeclaredPackageRepo(t, packageId, repo.id)
+      changedFields.push(...repo.changedFields, ...linkChanged, ...removedFields)
+    } else {
+      const removedFields = await removeDeclaredPackageRepo(t, packageId)
+      changedFields.push(...removedFields)
+    }
+    await logAuditFieldChanges(t, WORKER, purl, changedFields)
+  })
+
+  return changedFields
 }

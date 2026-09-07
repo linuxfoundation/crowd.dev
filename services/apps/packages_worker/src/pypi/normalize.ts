@@ -237,7 +237,7 @@ export function classifyProjectUrls(
     findByKey(/^code$/i) ??
     entries.find(
       ([k, v]) =>
-        /source|repo|code|\bgit\b/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k),
+        /source|repo|code|git/i.test(k) && REPO_HOST.test(v) && !/bug|issue|tracker/i.test(k),
     )?.[1] ??
     null
   const trackerUrl =

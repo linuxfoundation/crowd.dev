@@ -176,7 +176,12 @@ describe('persistPackagistMetadata', () => {
 
     const result = await persistPackagistMetadata(qx, PURL, expanded)
 
-    expect(result).toEqual({ found: false, changedFields: [], unresolvedDependencyTargets: 0 })
+    expect(result).toEqual({
+      found: false,
+      changedFields: [],
+      unresolvedDependencyTargets: 0,
+      homepage: 'https://monolog.example.org',
+    })
     expect(mockVersions).not.toHaveBeenCalled()
     expect(mockIds).not.toHaveBeenCalled()
     expect(mockDeps).not.toHaveBeenCalled()

@@ -49,7 +49,7 @@ import { normalizePackagistStats, packagistNameFromPurl } from './normalize'
 import { INGEST_MAX_ATTEMPTS, TRANSITIVE_PREPARE_MAX_ATTEMPTS } from './retryPolicy'
 import { FetchError, isFetchError, isP2NotModified } from './types'
 import { persistPackagistMetadata } from './upsertMetadata'
-import { persistPackagistPackageInfo } from './upsertPackageInfo'
+import { persistPackagistPackageInfo, reconcilePackagistHomepageRepo } from './upsertPackageInfo'
 
 const log = getServiceChildLogger('packagist')
 
@@ -175,7 +175,7 @@ export async function ingestOnePackagistMetadata(
   // persistPackagistPackageInfo audits its own writes atomically, inside the same
   // transaction — phase 1 is committed-and-audited before the p2 fetch (which can
   // throw) ever runs.
-  await persistPackagistPackageInfo(qx, candidate.purl, stats)
+  const phase1 = await persistPackagistPackageInfo(qx, candidate.purl, stats)
 
   // Phase 2: p2 endpoint
   const p2 = await fetchWithFastRetry(
@@ -207,6 +207,17 @@ export async function ingestOnePackagistMetadata(
       log.debug(
         { purl: candidate.purl, unresolved: persistResult.unresolvedDependencyTargets },
         'packagist dependency targets not found in packages — edges skipped',
+      )
+    }
+    // Phase 1's homepage-fallback repo link used whatever homepage was already stored —
+    // for a new package, or one whose homepage just changed, that's stale/absent until
+    // this p2 write lands it. Reconcile now so the link doesn't wait for the next run.
+    if (!phase1.hasPrimaryRepo && phase1.packageId) {
+      await reconcilePackagistHomepageRepo(
+        qx,
+        candidate.purl,
+        phase1.packageId,
+        persistResult.homepage,
       )
     }
     lastModified = p2.value.lastModified
