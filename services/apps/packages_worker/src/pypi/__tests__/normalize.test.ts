@@ -248,6 +248,7 @@ describe('classifyProjectUrls', () => {
     expect(r.homepage).toBe('https://flask.palletsprojects.com/')
     expect(r.repositoryCandidates).toEqual([
       { field: 'source', url: 'https://github.com/pallets/flask/' },
+      { field: 'homepage', url: 'https://flask.palletsprojects.com/' },
     ])
     expect(r.fundingLinks).toEqual([{ type: 'other', url: 'https://palletsprojects.com/donate' }])
   })
@@ -271,13 +272,14 @@ describe('classifyProjectUrls', () => {
     ])
   })
 
-  it('prefers a repo-looking project_urls.Homepage over a non-repo info.home_page', () => {
+  it('orders a repo-looking project_urls.Homepage before a non-repo info.home_page', () => {
     const r = classifyProjectUrls(
       { Homepage: 'https://github.com/psf/requests' },
       'https://primary.example',
     )
     expect(r.repositoryCandidates).toEqual([
       { field: 'homepage', url: 'https://github.com/psf/requests' },
+      { field: 'homepage', url: 'https://primary.example' },
     ])
   })
 
