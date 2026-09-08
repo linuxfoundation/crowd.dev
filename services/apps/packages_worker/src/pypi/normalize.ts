@@ -234,12 +234,14 @@ export function classifyProjectUrls(
     findByKey(/^repository$/i),
     findByKey(/^repo$/i),
     findByKey(/^code$/i),
-    entries.find(
-      ([k, v]) =>
-        /source|repo|code|git/i.test(k) &&
-        !/bug|issue|tracker/i.test(k) &&
-        canonicalizeRepoUrl(v) !== null,
-    )?.[1] ?? null,
+    ...entries
+      .filter(
+        ([k, v]) =>
+          /source|repo|code|git/i.test(k) &&
+          !/bug|issue|tracker/i.test(k) &&
+          canonicalizeRepoUrl(v) !== null,
+      )
+      .map(([, v]) => v),
   ].filter((v): v is string => v !== null)
   const seenSourceUrls = new Set<string>()
   const sourceUrls = sourceUrlCandidates.filter(

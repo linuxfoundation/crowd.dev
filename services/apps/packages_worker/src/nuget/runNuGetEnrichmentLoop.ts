@@ -125,7 +125,9 @@ async function processPackage(
         description: normalized.description,
         homepage: normalized.homepage,
         declaredRepositoryUrl: normalized.declaredRepositoryUrl,
-        repositoryUrl: normalized.resolvedRepo?.repo.url ?? null,
+        // null on a rate-limited nuspec fetch — the DAL coalesces null to the stored value,
+        // so an unknown nuspec-repo result can't be overwritten by a lower-trust fallback.
+        repositoryUrl: nuspecRateLimited ? null : (normalized.resolvedRepo?.repo.url ?? null),
         licenses: normalized.licenses,
         licensesRaw: normalized.licensesRaw,
         keywords: normalized.keywords,

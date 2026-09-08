@@ -322,9 +322,8 @@ export async function setPackageRepositoryUrl(
   packageId: string,
   url: string | null,
 ): Promise<string[]> {
-  // last_synced_at must strictly advance past the caller's upsert, and clock_timestamp()
-  // alone can still tie it at DateTime64(3) resolution — GREATEST with +1ms over the
-  // stored value guarantees a strictly newer CDC version even on that collision.
+  // clock_timestamp() alone can tie last_synced_at at DateTime64(3) resolution — GREATEST
+  // with +1ms over the stored value guarantees a strictly newer CDC version regardless.
   const affected = await qx.result(
     `UPDATE packages
         SET repository_url = $(url),
