@@ -87,6 +87,7 @@ describe('persistPackagistPackageInfo', () => {
     expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', {
       source: 'declared',
       signal: 'primary',
+      ownershipMatch: 'matched',
     })
     // any stale 'declared' link pointing at a different repo is pruned in the same pass
     expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '55')
@@ -114,6 +115,7 @@ describe('persistPackagistPackageInfo', () => {
     expect(mockRepoLink).toHaveBeenCalledWith(qx, '8', '55', {
       source: 'declared',
       signal: 'primary',
+      ownershipMatch: 'matched',
     })
   })
 
@@ -127,6 +129,7 @@ describe('persistPackagistPackageInfo', () => {
     expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '99', {
       source: 'declared',
       signal: 'primary',
+      ownershipMatch: 'matched',
     })
     // old link (some other repo_id) removed, new one (99) kept
     expect(mockRepoRemove).toHaveBeenCalledWith(qx, '7', '99')
@@ -172,6 +175,7 @@ describe('persistPackagistPackageInfo', () => {
     expect(mockRepoLink).toHaveBeenCalledWith(qx, '7', '55', {
       source: 'declared',
       signal: 'secondary',
+      ownershipMatch: 'matched',
     })
     expect(mockUpdate).toHaveBeenCalledWith(
       qx,

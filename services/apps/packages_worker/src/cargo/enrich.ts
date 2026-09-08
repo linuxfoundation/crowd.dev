@@ -23,6 +23,7 @@ const REPO_LINK_SOURCE = 'declared' // same convention as npm/maven for manifest
 const CARGO_CONFIDENCE = packageRepoConfidenceCall('p', 'r', {
   source: '$(source)',
   signal: 'rc.signal',
+  ownershipMatch: 'om.match',
   provenance: 'NULL',
 })
 
@@ -236,13 +237,22 @@ export async function enrichRepos(qx: QueryExecutor): Promise<EnrichReposResult>
        ),
        ins AS (
          INSERT INTO package_repos (
-           package_id, repo_id, source, signal, provenance, confidence, created_at, verified_at
+           package_id, repo_id, source, signal, ownership_match, provenance,
+           confidence, created_at, verified_at
          )
-         SELECT rc.package_id, r.id, $(source), rc.signal, NULL,
+         SELECT rc.package_id, r.id, $(source), rc.signal, om.match, NULL,
                 s.confidence, NOW(), NOW()
          FROM ${STAGING_SCHEMA}.repo_choice rc
          JOIN repos r ON r.url = rc.repository_url
          JOIN packages p ON p.id = rc.package_id
+         CROSS JOIN LATERAL (
+           SELECT package_repo_owner_match(
+             rc.owner,
+             ARRAY(SELECT em.github_login
+                     FROM ${STAGING_SCHEMA}.enrich_maintainers em
+                    WHERE em.package_id = rc.package_id)
+           ) AS match
+         ) om
          CROSS JOIN LATERAL (SELECT ${CARGO_CONFIDENCE} AS confidence) s
          ON CONFLICT (package_id, repo_id) DO UPDATE SET
            ${KEEP_HIGHEST_CONFLICT_UPDATE}

@@ -2,6 +2,7 @@ import { proxyActivities } from '@temporalio/workflow'
 
 import {
   KEEP_HIGHEST_CONFLICT_UPDATE,
+  claimFromRow,
   competingGithubRepoExpr,
   packageRepoConfidenceCall,
 } from '@crowd/data-access-layer/src/packages/repoConfidence'
@@ -99,9 +100,26 @@ const PKGREPOS_PG_COLUMNS = ['purl', 'canonical_url', 'provenance']
 // github_staged: package IDs that have at least one GitHub-hosted repo in this chunk.
 // Precomputed once per INSERT so the per-row competing_github check is a simple join
 // rather than a correlated scan of the million-row staging table (O(n) not O(n²)).
-// Cross-chunk ordering is not addressed here — if a non-GitHub link lands in chunk N
-// and its GitHub sibling lands in chunk N+1, the penalty is applied by the daily
-// rescore_package_repo_confidence() sweep, not inline.
+// After all chunks are merged, rescore all non-GitHub links for packages where a competing
+// GitHub repo now exists. The competing-GitHub penalty applies to every source (declared,
+// deps_dev, etc.), so links written before the GitHub competitor arrived also need refreshing.
+// Staging is truncated per chunk and only reflects the last chunk at merge time, so we scope
+// instead via competingGithubRepoExpr which reads the live package_repos table.
+const PKGREPOS_RESCORE_SQL = `
+UPDATE package_repos pr
+   SET confidence = s.confidence
+  FROM packages p, repos r,
+       LATERAL (
+         SELECT ${packageRepoConfidenceCall('p', 'r', claimFromRow('pr'), competingGithubRepoExpr('p.id', 'r.id'))} AS confidence
+       ) s
+ WHERE p.id = pr.package_id
+   AND r.id = pr.repo_id
+   AND COALESCE(r.host, '') <> 'github'
+   AND NOT (pr.source = 'deps_dev' AND pr.provenance IS NULL)
+   AND ${competingGithubRepoExpr('p.id', 'r.id')}
+   AND s.confidence IS DISTINCT FROM pr.confidence
+`
+
 const PKGREPOS_MERGE_SQL = `
 WITH github_staged AS MATERIALIZED (
   SELECT DISTINCT p2.id AS package_id
@@ -111,10 +129,11 @@ WITH github_staged AS MATERIALIZED (
   WHERE r2.host = 'github'
 )
 INSERT INTO package_repos (
-  package_id, repo_id, source, signal, provenance, confidence, verified_at, created_at
+  package_id, repo_id, source, signal, ownership_match, provenance,
+  confidence, verified_at, created_at
 )
 SELECT DISTINCT ON (p.id, r.id)
-  p.id, r.id, 'deps_dev', 'primary', s.provenance,
+  p.id, r.id, 'deps_dev', 'primary', 'no_evidence', s.provenance,
   c.confidence, NOW(), NOW()
 FROM staging.osspckgs_package_repos_raw s
 JOIN packages p ON p.purl = REGEXP_REPLACE(s.purl, '@[^@]+$', '')
@@ -126,6 +145,7 @@ CROSS JOIN LATERAL (
     {
       source: `'deps_dev'`,
       signal: `'primary'`,
+      ownershipMatch: `'no_evidence'`,
       provenance: 's.provenance',
     },
     `((r.host <> 'github' AND EXISTS (SELECT 1 FROM github_staged gs WHERE gs.package_id = p.id)) OR ${competingGithubRepoExpr('p.id', 'r.id')})`,
@@ -274,8 +294,8 @@ export async function ingestRepos(opts: {
 
     const { rowsAffected, tableRowCounts } = await mergeStagingToTable({
       jobId: pkgReposExport.jobId,
-      mergeSql: PKGREPOS_MERGE_SQL,
-      tableNames: 'package_repos',
+      mergeSql: isFinal ? [PKGREPOS_MERGE_SQL, PKGREPOS_RESCORE_SQL] : PKGREPOS_MERGE_SQL,
+      tableNames: isFinal ? ['package_repos', 'package_repos'] : 'package_repos',
       isFinal,
       priorRowsAffected: pkgRepoPriorRowsAffected,
       priorTableRowCounts: pkgRepoPriorTableRowCounts,
