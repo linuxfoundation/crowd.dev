@@ -232,6 +232,29 @@ export class OrganizationService {
       .then(({ data }) => Promise.resolve(data));
   }
 
+  static async fetchFakeOrganizationSuggestions(limit, offset, query = {}) {
+    const segments = [getSelectedProjectGroup().id];
+
+    return authAxios
+      .get('/organization/fake-suggestions', {
+        params: {
+          segments,
+          offset,
+          limit,
+          ...query,
+        },
+      })
+      .then(({ data }) => Promise.resolve(data));
+  }
+
+  static async dismissFakeOrganizationSuggestion(organizationId) {
+    const response = await authAxios.delete(
+      `/organization/${organizationId}/fake-suggestion`,
+    );
+
+    return response.data;
+  }
+
   static async export({
     filter,
     orderBy,
