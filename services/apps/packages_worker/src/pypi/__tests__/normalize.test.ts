@@ -264,6 +264,23 @@ describe('classifyProjectUrls', () => {
     ])
   })
 
+  it('falls back to a repo-looking info.home_page when project_urls has no matching Homepage', () => {
+    const r = classifyProjectUrls({}, 'https://github.com/psf/requests')
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'homepage', url: 'https://github.com/psf/requests' },
+    ])
+  })
+
+  it('prefers a repo-looking project_urls.Homepage over a non-repo info.home_page', () => {
+    const r = classifyProjectUrls(
+      { Homepage: 'https://github.com/psf/requests' },
+      'https://primary.example',
+    )
+    expect(r.repositoryCandidates).toEqual([
+      { field: 'homepage', url: 'https://github.com/psf/requests' },
+    ])
+  })
+
   it('falls back to bug tracker URL when no explicit repo or homepage repo', () => {
     const r = classifyProjectUrls({ 'Bug Tracker': 'https://github.com/foo/bar/issues' }, null)
     expect(r.repositoryCandidates).toEqual([

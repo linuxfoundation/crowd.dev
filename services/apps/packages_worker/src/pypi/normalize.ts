@@ -241,10 +241,15 @@ export function classifyProjectUrls(
 
   const repositoryCandidates: PypiRepoCandidate[] = []
   if (sourceUrl) repositoryCandidates.push({ field: 'source', url: sourceUrl })
-  // Checked against project_urls.Homepage directly, not the resolved `homepage` above — a
-  // non-repo info.home_page must not mask a repo-looking project_urls.Homepage candidate.
-  if (projectUrlsHomepage && REPO_HOST.test(projectUrlsHomepage)) {
-    repositoryCandidates.push({ field: 'homepage', url: projectUrlsHomepage })
+  // project_urls.Homepage wins when it looks like a repo; a non-repo info.home_page must not
+  // mask it. Otherwise fall back to info.home_page itself, so a bare repo URL there (with no
+  // matching project_urls.Homepage) still yields a candidate.
+  const rawHomePage = blankToNull(homePage)
+  const homepageRepoUrl =
+    (projectUrlsHomepage && REPO_HOST.test(projectUrlsHomepage) ? projectUrlsHomepage : null) ??
+    (rawHomePage && REPO_HOST.test(rawHomePage) ? rawHomePage : null)
+  if (homepageRepoUrl) {
+    repositoryCandidates.push({ field: 'homepage', url: homepageRepoUrl })
   }
   // Kept even with a source candidate already present — a malformed source is dropped at
   // canonicalization, not here, so the tracker stays available for the resolver to fall to.
