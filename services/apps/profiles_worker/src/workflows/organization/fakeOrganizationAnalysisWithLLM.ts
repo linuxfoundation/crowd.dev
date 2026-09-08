@@ -38,30 +38,12 @@ export async function fakeOrganizationAnalysisWithLLM(
     Use the org domain identities and the member's displayName for the name match. Emails and usernames are context only — they can help you recognize a genuine organization, but never count toward a FAKE name match. You may use knowledge of well-known real organizations when you are sure.
 
     Decide in this order:
-    1. GENUINE — you recognize this as a real organization, or the domain is clearly a business or institution name (a trade, service, or product — not a person). Stop here.
-    2. FAKE — the domain label is the linked member's name, and you do not recognize this as a company.
-      Compare the domain's registrable name (label before the TLD, ignoring hyphens, dots, digits) to the member's displayName: given name, family name, given+family, initials. Any language or script.
+    1. GENUINE — you recognize this as a real organization from the document or from knowledge you are sure of. Stop here.
+    2. FAKE — the domain label equals the linked member's name, and you do not recognize this as a company.
+      Compare the domain's registrable name (label before the TLD, ignoring hyphens, dots, digits) to the member's displayName: given name, family name, given+family, or actual initials only.
+      The domain label must equal one of those forms — not merely contain part of the name, and not a stretch or nickname. Any language or script.
       Only that domain-label vs displayName match counts. Do not use nicknames, usernames, email local-part (before @), or "this feels like a personal brand." Every business owner uses their name in their email and username. A domain that is just that person's name (.me, name.dev, firstlast.io) is the fake pattern. Use it.
-    3. UNSURE — the name relationship is weak, partial, or only via a nickname/username, or the domain looks like it could be a real one-person shop (consultancy, studio, or product name that is not just the person).
-
-    EXAMPLES
-    Domain: jamesparker.dev, member name: "James Parker"
-    → fake (domain label "jamesparker" is exactly the member's name)
-
-    Domain: parkerlabs.io, member name: "James Parker"
-    → unsure (domain contains part of the name but isn't exactly it — could be a real business)
-
-    Domain: nickforge.dev, member name: "Nicholas Reed", username: "nick"
-    → unsure (domain matches only a nickname/username, not the member's name)
-
-    Domain: redoakstudio.com, member name: "Emily Carter"
-    → unsure (no name relationship, and a "studio" could be one person's portfolio — not clearly a business)
-
-    Domain: hillcrestplumbing.com, member name: "Emily Carter"
-    → genuine (a trade/service company name — clearly a business, not a person)
-
-    Domain: spotify.com, member name: "Emily Carter"
-    → genuine (well-known company, unrelated to the member)
+    3. UNSURE — anything else: partial name match, name embedded in a longer label, nickname/username only, unclear initials, or the domain could be a real one-person shop (consultancy, studio, or product name).
 
     OUTPUT FORMAT
     Return ONLY valid JSON. No code fences or extra text.
