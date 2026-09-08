@@ -7,6 +7,7 @@
           <lf-data-quality-type-dropdown
             v-model="tab"
             :config="[]"
+            :suggestion-types="['fake-suggestions']"
           />
         </div>
         <p class="text-small text-gray-500 italic">
@@ -21,6 +22,10 @@
         v-if="tab === 'merge-suggestions'"
         :project-group="projectGroup"
       />
+      <lf-data-quality-fake-organization-suggestions
+        v-else-if="tab === 'fake-suggestions'"
+        :project-group="projectGroup"
+      />
     </div>
   </div>
 </template>
@@ -29,6 +34,8 @@
 import { ref } from 'vue';
 import LfDataQualityOrganizationMergeSuggestions
   from '@/modules/data-quality/components/organization/data-quality-organization-merge-suggestions.vue';
+import LfDataQualityFakeOrganizationSuggestions
+  from '@/modules/data-quality/components/organization/data-quality-fake-organization-suggestions.vue';
 import LfDataQualityTypeDropdown from '@/modules/data-quality/components/shared/data-quality-type-dropdown.vue';
 import LfDataQualityProjectDropdown from '@/modules/data-quality/components/shared/data-quality-project-dropdown.vue';
 import { useRoute } from 'vue-router';
