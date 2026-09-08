@@ -241,8 +241,7 @@ export function classifyProjectUrls(
 
   const repositoryCandidates: PypiRepoCandidate[] = []
   if (sourceUrl) repositoryCandidates.push({ field: 'source', url: sourceUrl })
-  // Passed through raw, untested — the shared resolver's own host==='other' gate rejects
-  // non-repositories, same as every other resolveManifestRepo caller. project_urls.Homepage
+  // Passed through raw, untested, per resolveManifestRepo convention. project_urls.Homepage
   // goes first so a non-repo info.home_page can't mask it.
   const rawHomePage = blankToNull(homePage)
   if (projectUrlsHomepage)

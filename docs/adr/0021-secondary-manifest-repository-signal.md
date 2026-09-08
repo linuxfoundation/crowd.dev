@@ -6,13 +6,14 @@
 
 ## Context
 
-Every registry writer only created a `package_repos` row when the ecosystem's
+Most registry writers only created a `package_repos` row when the ecosystem's
 canonical repository field parsed — npm `repository`, cargo `repository`,
-rubygems `source_code_uri`, NuGet `<repository>`, POM `<scm><url>`. A large
-share of packages leave that field empty while publishing the same repo URL in
-`homepage`, `bugs.url`, `projectUrl`, `bug_tracker_uri`, or the POM `<url>`, and
-those packages ended up with no repo link at all — invisible to criticality,
-blast radius, and Insights.
+rubygems `source_code_uri`, NuGet `<repository>`, POM `<scm><url>`. PyPI and
+NuGet already had ad hoc fallbacks onto `homepage`/`projectUrl`, but wrote them
+as `primary` with no record of which field won. Everywhere else, a package
+that left the canonical field empty while publishing the same repo URL in
+`homepage`, `bugs.url`, `bug_tracker_uri`, or the POM `<url>` ended up with no
+repo link at all — invisible to criticality, blast radius, and Insights.
 
 Simply widening each writer to accept any of those fields would trade
 under-coverage for wrong links: fallback fields are free-form, so
@@ -26,10 +27,8 @@ rank equally with a declared one.
 
 One shared helper, `resolveManifestRepo(candidates)`
 (`packages_worker/src/utils/resolveManifestRepo.ts`), resolves a package's repo
-from an ordered candidate list. The first candidate is the ecosystem's canonical
-field and resolves as `primary`; every later candidate resolves as `secondary`.
-The result carries `{ repo, signal }`, and each writer persists the
-returned `signal` on the link. No writer computes a confidence value.
+from an ordered candidate list — the first candidate is `primary`, every later
+one is `secondary` — and each writer persists the returned `signal` on the link.
 
 ### Chains
 

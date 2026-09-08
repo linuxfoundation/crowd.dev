@@ -97,9 +97,8 @@ export function normalizeNuGetPackage(
   const fetchedNuspecRepoUrl = nuspecXml ? parseNuspecRepositoryUrl(nuspecXml) : null
   const nuspecRepoUrl = fetchedNuspecRepoUrl ?? catalogRepoUrl
   const declaredRepositoryUrl = nuspecRepoUrl ?? null
-  // searchResult.projectUrl and the catalog's projectUrl are passed as separate candidates
-  // (not collapsed via the `homepage` fallback above) so a non-repo search result doesn't
-  // mask a repo-looking catalog projectUrl at the host gate.
+  // Passed as separate candidates so a non-repo search projectUrl can't mask
+  // a repo-looking catalog projectUrl at the host gate.
   const resolvedRepo = resolveManifestRepo([
     { field: 'repository', url: nuspecRepoUrl },
     { field: 'projectUrl', url: searchProjectUrl },
