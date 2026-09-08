@@ -16,9 +16,9 @@ import { IDatasetDescriptor } from '../sources/types'
 
 const log = getServiceLogger()
 
-// Candidates are collected in chunks this size before checking which repoUrls
-// already exist in projectCatalog, so we don't do one DB round-trip per row.
-const CANDIDATE_CHUNK_SIZE = 500
+// Matches the LF Criticality Score API's page size, so the stream can stop after one page
+// once a chunk satisfies the cap, instead of always fetching several pages upfront.
+const CANDIDATE_CHUNK_SIZE = 100
 
 export async function listSources(): Promise<string[]> {
   return getAvailableSourceNames()

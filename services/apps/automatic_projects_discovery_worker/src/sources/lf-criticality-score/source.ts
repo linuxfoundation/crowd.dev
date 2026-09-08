@@ -78,10 +78,14 @@ function parseRetryAfterMs(header: string | string[] | undefined): number | null
   return Number.isFinite(secs) && secs > 0 ? secs * 1000 : null
 }
 
+// Bounds a single request so a hung connection doesn't block the activity's heartbeat
+// for the full Temporal heartbeatTimeout (5 min) while the socket stays open.
+const REQUEST_TIMEOUT_MS = 30_000
+
 function httpGet(url: string): Promise<HttpGetResult> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https://') ? https : http
-    const req = client.get(url, (res) => {
+    const req = client.get(url, { timeout: REQUEST_TIMEOUT_MS }, (res) => {
       const statusCode = res.statusCode ?? 0
       const retryAfterMs = parseRetryAfterMs(res.headers['retry-after'])
       const chunks: Uint8Array[] = []
@@ -91,6 +95,9 @@ function httpGet(url: string): Promise<HttpGetResult> {
       )
       res.on('error', reject)
     })
+    req.on('timeout', () =>
+      req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`)),
+    )
     req.on('error', reject)
     req.end()
   })

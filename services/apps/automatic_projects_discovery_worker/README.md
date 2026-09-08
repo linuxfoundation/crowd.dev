@@ -43,10 +43,16 @@ discoverProjects({ mode: 'incremental' | 'full' })
 ```
 
 Each source is capped independently at `CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` (default 20) _new_
-projects per run — rows already present in `projectCatalog` don't count against the cap and
-aren't re-fetched, so every run brings in genuinely new candidates. Sources are processed in
-registry order (`insights-discussions`, then `lf-criticality-score`); once a source hits its
-limit, `processDataset` stops consuming its stream early.
+projects per `processDataset` call — rows already present in `projectCatalog` are still fetched
+from the source but don't count against the cap, so every run brings in genuinely new candidates.
+Sources are processed in registry order (`insights-discussions`, then `lf-criticality-score`);
+once a source hits its limit, `processDataset` stops consuming its stream early.
+
+In `full` mode the cap applies per dataset, not per source: a source with N historical dataset
+snapshots can add up to `N × CROWD_DISCOVERY_NEW_PROJECTS_LIMIT` new rows in a single `full` run,
+since each dataset is processed by its own `processDataset` call. This is intentional for an
+initial backfill; `incremental` (the daily schedule) only ever processes the latest dataset, so
+the cap is a true per-source-per-run limit there.
 
 ### Timeouts
 

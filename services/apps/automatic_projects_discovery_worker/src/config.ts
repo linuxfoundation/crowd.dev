@@ -8,7 +8,6 @@ export function parseEnvInt(
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : defaultValue
 }
 
-// Max new (not-yet-in-projectCatalog) rows a single source can add per discovery run.
 export const DISCOVERY_NEW_PROJECTS_LIMIT = parseEnvInt(
   process.env.CROWD_DISCOVERY_NEW_PROJECTS_LIMIT,
   20,
